@@ -18,12 +18,12 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { BackLink } from "../patterns/BackLink";
-import { parentLabel } from "../patterns/parentLabel";
-import { GalleryScreen } from "./GalleryScreen";
-import { IngestScreen } from "./IngestScreen";
-import { ProjectScreen } from "./ProjectScreen";
-import { renderWithData } from "../testing/dataHarness";
+import { BackLink } from "../patterns/BackLink.js";
+import { parentLabel } from "../patterns/parentLabel.js";
+import { GalleryScreen } from "./GalleryScreen.js";
+import { IngestScreen } from "./IngestScreen.js";
+import { ProjectScreen } from "./ProjectScreen.js";
+import { renderWithData } from "../testing/dataHarness.js";
 import { batchActions } from "../testing/wire.fixtures.js";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";

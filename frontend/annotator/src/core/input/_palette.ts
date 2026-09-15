@@ -21,18 +21,18 @@
  * does not move.
  */
 
-import { createDocument } from "../state/document";
-import type { AnnotationDocument } from "../state/document";
-import { AnnotatorStore } from "../state/store";
+import { createDocument } from "../state/document.js";
+import type { AnnotationDocument } from "../state/document.js";
+import { AnnotatorStore } from "../state/store.js";
 import type {
   Annotation,
   AnnotationSchema,
   AssetDescriptor,
   Geometry,
   LabelClass,
-} from "../types";
-import type { KeyPress } from "./keys";
-import type { InputHost } from "./runAction";
+} from "../types.js";
+import type { KeyPress } from "./keys.js";
+import type { InputHost } from "./runAction.js";
 
 /**
  * A press with nothing held, unless told otherwise.

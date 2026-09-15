@@ -30,11 +30,11 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
-import { useApiClient } from "../data/VisionSetDataProvider";
-import { usePollingQuery } from "../data/polling";
-import { asApiError, unwrap } from "../data/errors";
-import type { Refusal } from "../data/refusals";
-import type { VisionSetDataClient } from "../data/port";
+import { useApiClient } from "../data/VisionSetDataProvider.js";
+import { usePollingQuery } from "../data/polling.js";
+import { asApiError, unwrap } from "../data/errors.js";
+import type { Refusal } from "../data/refusals.js";
+import type { VisionSetDataClient } from "../data/port.js";
 import {
   checkApproveBatch,
   checkAssignJob,
@@ -102,10 +102,10 @@ import {
   checkStartIngest,
   checkStartJob,
   checkVerifyRelease,
-} from "../generated/checks";
-import type { components } from "../generated/api";
-import { jobKeys } from "../annotator/jobQueries";
-import type { WireAnnotation } from "../annotator/jobQueries";
+} from "../generated/checks.js";
+import type { components } from "../generated/api.js";
+import { jobKeys } from "../annotator/jobQueries.js";
+import type { WireAnnotation } from "../annotator/jobQueries.js";
 
 export type Project = components["schemas"]["ProjectOut"];
 export type ProjectPage = components["schemas"]["ProjectPage"];
@@ -119,7 +119,7 @@ export type LabelClassBody = components["schemas"]["LabelClassBody"];
 export type AttributeBody = components["schemas"]["AttributeBody"];
 export type GeometryType = components["schemas"]["GeometryType"];
 export type ProjectStats = components["schemas"]["ProjectStatsOut"];
-export type { ClassCount } from "../data/refusals";
+export type { ClassCount } from "../data/refusals.js";
 export type Asset = components["schemas"]["AssetOut"];
 export type AssetPage = components["schemas"]["AssetPage"];
 export type DatasetAsset = components["schemas"]["DatasetAssetOut"];

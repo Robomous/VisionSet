@@ -113,21 +113,21 @@
  * pointer, so naming it is the whole fix.
  */
 
-import type { IdFactory } from "../ids";
-import { copiedEntries, pastedAnnotations } from "../interaction/clipboard";
-import type { Clipboard } from "../interaction/clipboard";
-import { toggleTagCommand } from "../interaction/tags";
-import { toolFor } from "../interaction/tool";
-import type { Tool } from "../interaction/tool";
+import type { IdFactory } from "../ids.js";
+import { copiedEntries, pastedAnnotations } from "../interaction/clipboard.js";
+import type { Clipboard } from "../interaction/clipboard.js";
+import { toggleTagCommand } from "../interaction/tags.js";
+import { toolFor } from "../interaction/tool.js";
+import type { Tool } from "../interaction/tool.js";
 import {
   addAnnotationCommand,
   composeCommands,
   removeAnnotationsCommand,
-} from "../state/commands";
-import { classNamed } from "../state/document";
-import { selectAll, selectedAnnotations, selectionOf } from "../state/selection";
-import type { AnnotatorStore } from "../state/store";
-import type { Action, SentEvent } from "./actions";
+} from "../state/commands.js";
+import { classNamed } from "../state/document.js";
+import { selectAll, selectedAnnotations, selectionOf } from "../state/selection.js";
+import type { AnnotatorStore } from "../state/store.js";
+import type { Action, SentEvent } from "./actions.js";
 
 /**
  * The capabilities core does not have.

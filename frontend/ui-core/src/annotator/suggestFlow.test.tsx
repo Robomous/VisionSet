@@ -22,10 +22,10 @@ import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
-import { clearPrefs, writePref } from "../data/prefs";
-import { AnnotationPage } from "./AnnotationPage";
+import { clearPrefs, writePref } from "../data/prefs.js";
+import { AnnotationPage } from "./AnnotationPage.js";
 import { TooltipProvider } from "@robomous/ui-core";
-import { renderWithData } from "../testing/dataHarness";
+import { renderWithData } from "../testing/dataHarness.js";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
 const PROJECT = "11111111-1111-4111-8111-111111111111";

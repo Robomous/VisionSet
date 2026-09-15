@@ -25,9 +25,9 @@ import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
-import { AnnotationPage } from "./AnnotationPage";
+import { AnnotationPage } from "./AnnotationPage.js";
 import { TooltipProvider, TONE_BORDER, TONE_FILL } from "@robomous/ui-core";
-import { renderWithData } from "../testing/dataHarness";
+import { renderWithData } from "../testing/dataHarness.js";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
 

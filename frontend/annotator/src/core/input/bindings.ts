@@ -121,9 +121,9 @@
  * a *test*, where the assertion belongs.
  */
 
-import { isTaggableClass } from "../interaction/tags";
-import { drawableGeometries } from "../interaction/tool";
-import type { AnnotationSchema } from "../types";
+import { isTaggableClass } from "../interaction/tags.js";
+import { drawableGeometries } from "../interaction/tool.js";
+import type { AnnotationSchema } from "../types.js";
 import {
   FOCUS_CLASS_FIELD,
   RESET_ZOOM,
@@ -134,10 +134,10 @@ import {
   FINER_SUGGESTION,
   TOGGLE_HAND,
   TOGGLE_SUGGEST,
-} from "./actions";
-import type { Action } from "./actions";
-import { chordOf } from "./keys";
-import type { Keystroke } from "./keys";
+} from "./actions.js";
+import type { Action } from "./actions.js";
+import { chordOf } from "./keys.js";
+import type { Keystroke } from "./keys.js";
 
 /** One row of the map. `action: null` unbinds the chord — see `registryOf`. */
 export interface Binding {

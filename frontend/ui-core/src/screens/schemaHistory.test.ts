@@ -12,8 +12,8 @@
 
 import { describe, expect, it } from "vitest";
 
-import { groupByProvenance, RUN_MINIMUM, versionsOf } from "./schemaHistory";
-import type { SchemaProvenance, SchemaVersion } from "./queries";
+import { groupByProvenance, RUN_MINIMUM, versionsOf } from "./schemaHistory.js";
+import type { SchemaProvenance, SchemaVersion } from "./queries.js";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 

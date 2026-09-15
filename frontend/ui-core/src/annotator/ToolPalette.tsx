@@ -93,10 +93,10 @@ import {
   type Tool,
 } from "@visionset/annotator";
 
-import { geometryLabel } from "../data/geometryCategory";
+import { geometryLabel } from "../data/geometryCategory.js";
 import { CircleHelp, Hand, Plus, Redo2, Sparkles, Undo2 } from "lucide-react";
 
-import { GeometryIcon } from "./GeometryIcon";
+import { GeometryIcon } from "./GeometryIcon.js";
 import type { JSX, MouseEvent, ReactNode } from "react";
 
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from "@robomous/ui-core";

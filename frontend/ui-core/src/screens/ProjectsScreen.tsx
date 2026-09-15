@@ -27,12 +27,12 @@
 import { ArrowDown, ArrowUp, FolderPlus, Trash2 } from "lucide-react";
 import { useState, type FormEvent, type JSX } from "react";
 
-import { Async } from "../data/Async";
-import { refusalProse } from "../data/refusals";
+import { Async } from "../data/Async.js";
+import { refusalProse } from "../data/refusals.js";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Textarea, Label, FieldDescription, FieldError, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
-import { formatWhen } from "../lib/format";
-import { AssetThumbnail, ThumbnailPlaceholder } from "./AssetThumbnail";
-import { useCreateProject, useDeleteProject, useProjects, type Project } from "./queries";
+import { formatWhen } from "../lib/format.js";
+import { AssetThumbnail, ThumbnailPlaceholder } from "./AssetThumbnail.js";
+import { useCreateProject, useDeleteProject, useProjects, type Project } from "./queries.js";
 
 export interface ProjectsScreenProps {
   /** The app turns this into a route change. See the note above. */

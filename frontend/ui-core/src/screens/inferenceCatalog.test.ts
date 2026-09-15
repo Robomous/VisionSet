@@ -16,7 +16,7 @@
 
 import { expect, it } from "vitest";
 
-import type { CuratedEntry } from "../data/inferenceQueries";
+import type { CuratedEntry } from "../data/inferenceQueries.js";
 import {
   DEVICES,
   PREFERRED_MODEL_ID,
@@ -27,7 +27,7 @@ import {
   groupsOf,
   precisionOn,
   precisionsFor,
-} from "./inferenceCatalog";
+} from "./inferenceCatalog.js";
 
 const COMMIT = "0".repeat(40);
 

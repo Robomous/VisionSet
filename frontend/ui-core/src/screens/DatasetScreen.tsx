@@ -48,11 +48,11 @@
 import { Braces, Check, Download, ShieldCheck, Tag, Trash2, Upload } from "lucide-react";
 import { useEffect, useState, type FormEvent, type JSX } from "react";
 
-import { Async } from "../data/Async";
-import { asApiError } from "../data/errors";
+import { Async } from "../data/Async.js";
+import { asApiError } from "../data/errors.js";
 import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardAction, CardContent, CardHeader, CardTitle, Tabs, TabsContent, TabsList, TabsTrigger, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
-import type { BadgeTone } from "./batchState";
-import { SectionHeader } from "../patterns/SectionHeader";
+import type { BadgeTone } from "./batchState.js";
+import { SectionHeader } from "../patterns/SectionHeader.js";
 import {
   classBlockers,
   describeClassCount,
@@ -60,14 +60,14 @@ import {
   jobFailureProse,
   lostClasses,
   refusalProse,
-} from "../data/refusals";
-import { EmptyState, ErrorState } from "../patterns/AsyncStates";
-import { ExportTargetSelect } from "../patterns/ExportTargetSelect";
-import { AssetThumbnail } from "./AssetThumbnail";
-import { DatasetAssetDialog, trunkAssetLabel } from "./DatasetAssetDialog";
-import { saveBlob } from "./download";
-import { PreprocessingTab } from "./PreprocessingTab";
-import { describeRecipeSpec } from "./recipeDraft";
+} from "../data/refusals.js";
+import { EmptyState, ErrorState } from "../patterns/AsyncStates.js";
+import { ExportTargetSelect } from "../patterns/ExportTargetSelect.js";
+import { AssetThumbnail } from "./AssetThumbnail.js";
+import { DatasetAssetDialog, trunkAssetLabel } from "./DatasetAssetDialog.js";
+import { saveBlob } from "./download.js";
+import { PreprocessingTab } from "./PreprocessingTab.js";
+import { describeRecipeSpec } from "./recipeDraft.js";
 import {
   TRUNK_PAGE_SIZE,
   useBackgroundJob,
@@ -87,7 +87,7 @@ import {
   type DatasetAsset,
   type BackgroundJob,
   type Release,
-} from "./queries";
+} from "./queries.js";
 
 /** The 409 that means "say you meant it". Not `confirm`, and not destructive. */
 const LOSSY = "LOSSY_EXPORT_NOT_CONSENTED";

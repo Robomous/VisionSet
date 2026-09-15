@@ -5,8 +5,8 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { Async } from "./Async";
-import { ApiError } from "./errors";
+import { Async } from "./Async.js";
+import { ApiError } from "./errors.js";
 
 describe("Async", () => {
   it("renders the empty state for the API's own list envelope", () => {

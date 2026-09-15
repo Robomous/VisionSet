@@ -60,9 +60,9 @@ import type {
   PolygonGeometry,
   PolylineGeometry,
   Point,
-} from "../types";
-import { clamp } from "./clamp";
-import { clampPoint, closestPointOnSegment, type Bounds } from "./primitives";
+} from "../types.js";
+import { clamp } from "./clamp.js";
+import { clampPoint, closestPointOnSegment, type Bounds } from "./primitives.js";
 
 /** The fewest points a polygon may carry. Below it there is no polygon left. */
 export const MIN_POLYGON_POINTS = 3;

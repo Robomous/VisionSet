@@ -16,8 +16,8 @@ import {
   VERTEX_TOLERANCE_PX,
   assetTolerances,
   toleranceInAssetPixels,
-} from "./tolerance";
-import type { Tolerances } from "./tolerance";
+} from "./tolerance.js";
+import type { Tolerances } from "./tolerance.js";
 
 describe("screen pixels become asset pixels once, at the boundary", () => {
   it("is the identity at a zoom of one", () => {

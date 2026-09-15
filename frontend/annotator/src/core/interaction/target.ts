@@ -51,20 +51,20 @@
  * removing it would be.
  */
 
-import type { BboxHandle } from "../geometry/bbox";
+import type { BboxHandle } from "../geometry/bbox.js";
 import {
   nearestEdge,
   nearestHandle,
   nearestPolylineEdge,
   nearestVertex,
   topmostAnnotationAt,
-} from "../geometry/hitTest";
-import type { Tolerances } from "../geometry/tolerance";
-import { annotationsInDrawOrder } from "../state/document";
-import type { AnnotationDocument } from "../state/document";
-import type { Selection } from "../state/selection";
-import type { Annotation, Geometry, Point } from "../types";
-import type { VertexEditableGeometry } from "./state";
+} from "../geometry/hitTest.js";
+import type { Tolerances } from "../geometry/tolerance.js";
+import { annotationsInDrawOrder } from "../state/document.js";
+import type { AnnotationDocument } from "../state/document.js";
+import type { Selection } from "../state/selection.js";
+import type { Annotation, Geometry, Point } from "../types.js";
+import type { VertexEditableGeometry } from "./state.js";
 
 /** Everything resolving a hit needs: the shapes, what is picked, and how near counts. */
 export interface Scene {

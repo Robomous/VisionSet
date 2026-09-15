@@ -34,10 +34,10 @@
  * logger, one level further out.
  */
 
-import { annotationById, replaceAnnotation } from "../state/document";
-import { addAnnotationCommand, removeAnnotationsCommand, replaceAnnotationCommand } from "../state/commands";
-import type { AnnotatorStore } from "../state/store";
-import type { Effect } from "./effects";
+import { annotationById, replaceAnnotation } from "../state/document.js";
+import { addAnnotationCommand, removeAnnotationsCommand, replaceAnnotationCommand } from "../state/commands.js";
+import type { AnnotatorStore } from "../state/store.js";
+import type { Effect } from "./effects.js";
 
 function apply(store: AnnotatorStore, effect: Effect): void {
   switch (effect.kind) {

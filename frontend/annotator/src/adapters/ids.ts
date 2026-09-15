@@ -15,7 +15,7 @@
  * own factory, which is exactly what the port is for.
  */
 
-import type { IdFactory } from "../core/ids";
+import type { IdFactory } from "../core/ids.js";
 
 /** A fresh uuid v4 from the platform's own cryptographic source. */
 export const randomUuid: IdFactory = () => crypto.randomUUID();

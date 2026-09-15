@@ -18,13 +18,13 @@ import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
-import { PreLabelButton } from "./PreLabelDialog";
-import { useBatch, useBatchJobs } from "./queries";
-import { renderWithData } from "../testing/dataHarness";
+import { PreLabelButton } from "./PreLabelDialog.js";
+import { useBatch, useBatchJobs } from "./queries.js";
+import { renderWithData } from "../testing/dataHarness.js";
 import { batchActions, jobActions } from "../testing/wire.fixtures.js";
-import type { Segment } from "./batchState";
-import type { Connection } from "../data/inferenceQueries";
-import type { components } from "../generated/api";
+import type { Segment } from "./batchState.js";
+import type { Connection } from "../data/inferenceQueries.js";
+import type { components } from "../generated/api.js";
 
 type BatchState = components["schemas"]["BatchState"];
 

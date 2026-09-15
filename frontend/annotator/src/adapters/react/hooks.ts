@@ -11,12 +11,12 @@
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
-import { documentFromWire } from "../../core/state/document";
-import type { WireDocument } from "../../core/state/document";
-import { AnnotatorStore } from "../../core/state/store";
-import type { StoreSnapshot } from "../../core/state/store";
-import type { Selection } from "../../core/state/selection";
-import { pendingIndicator } from "./pending";
+import { documentFromWire } from "../../core/state/document.js";
+import type { WireDocument } from "../../core/state/document.js";
+import { AnnotatorStore } from "../../core/state/store.js";
+import type { StoreSnapshot } from "../../core/state/store.js";
+import type { Selection } from "../../core/state/selection.js";
+import { pendingIndicator } from "./pending.js";
 
 /**
  * One store per asset, built from exactly what the API returned.

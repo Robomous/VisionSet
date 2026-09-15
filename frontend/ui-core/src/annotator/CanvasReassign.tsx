@@ -58,7 +58,7 @@ import { Tag } from "lucide-react";
 import type { JSX } from "react";
 
 import { Button, DropdownMenu, DropdownMenuTrigger } from "@robomous/ui-core";
-import { ReassignMenu } from "./ReassignMenu";
+import { ReassignMenu } from "./ReassignMenu.js";
 
 /**
  * The trigger's own size, in screen pixels — Nova's `icon-xs`, which is 24px

@@ -20,26 +20,26 @@
 
 import type { JSX } from "react";
 
-import { polygonCloseAttempt } from "../../core/geometry/hitTest";
-import type { Target } from "../../core/interaction/target";
-import type { InteractionState } from "../../core/interaction/state";
-import type { PromptPoint } from "../../core/interaction/suggestion";
-import type { AssetDescriptor, Point } from "../../core/types";
+import { polygonCloseAttempt } from "../../core/geometry/hitTest.js";
+import type { Target } from "../../core/interaction/target.js";
+import type { InteractionState } from "../../core/interaction/state.js";
+import type { PromptPoint } from "../../core/interaction/suggestion.js";
+import type { AssetDescriptor, Point } from "../../core/types.js";
 import {
   SUGGESTION_DASH,
   SUGGESTION_OPACITY,
   pendingPolygon,
   rubberBand,
   screenPx,
-} from "./paint";
-import type { PaintedAnnotation, PaintedSuggestion } from "./paint";
+} from "./paint.js";
+import type { PaintedAnnotation, PaintedSuggestion } from "./paint.js";
 import {
   AnnotationShape,
   HANDLE_PX,
   STROKE_PX,
   VERTEX_PX,
   Vertices,
-} from "./Shapes";
+} from "./Shapes.js";
 
 export interface TransientLayerProps {
   /** The shape the drag is holding, painted from `store.rendered`. */

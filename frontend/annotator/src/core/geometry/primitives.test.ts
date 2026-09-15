@@ -5,14 +5,14 @@
 
 import { describe, expect, it } from "vitest";
 
-import { ASSET } from "../state/_sample";
+import { ASSET } from "../state/_sample.js";
 import {
   clampPoint,
   closestPointOnSegment,
   distance,
   withinBounds,
   type Bounds,
-} from "./primitives";
+} from "./primitives.js";
 
 describe("measuring between points", () => {
   it("is zero at a point and symmetric", () => {

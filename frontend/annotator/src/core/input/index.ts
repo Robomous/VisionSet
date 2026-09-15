@@ -76,7 +76,7 @@ export {
   type KeyPress,
   type Keystroke,
   type ModifierState,
-} from "./keys";
+} from "./keys.js";
 export {
   ACCEPT_SUGGESTION,
   DISCARD_SUGGESTION,
@@ -95,7 +95,7 @@ export {
   type ActionKind,
   type KeyIntent,
   type SentEvent,
-} from "./actions";
+} from "./actions.js";
 export {
   CLASS_HOTKEY_DIGITS,
   DEFAULT_BINDINGS,
@@ -107,11 +107,11 @@ export {
   resolve,
   type Binding,
   type Registry,
-} from "./bindings";
+} from "./bindings.js";
 export {
   runAction,
   type ActionContext,
   type ActionOutcome,
   type InputHost,
-} from "./runAction";
-export { pointerButton, pointerPoint, type PointerPress } from "./pointer";
+} from "./runAction.js";
+export { pointerButton, pointerPoint, type PointerPress } from "./pointer.js";

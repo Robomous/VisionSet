@@ -19,11 +19,11 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { GalleryScreen } from "./GalleryScreen";
-import { defaultOpenJob } from "./JobPanels";
-import { renderWithData } from "../testing/dataHarness";
+import { GalleryScreen } from "./GalleryScreen.js";
+import { defaultOpenJob } from "./JobPanels.js";
+import { renderWithData } from "../testing/dataHarness.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
-import type { Job } from "./queries";
+import type { Job } from "./queries.js";
 import type { components } from "../generated/api.js";
 
 type BatchState = components["schemas"]["BatchState"];

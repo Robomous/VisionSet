@@ -79,7 +79,7 @@ import {
   type LabelClass,
   type Point,
   type Provenance,
-} from "./types";
+} from "./types.js";
 
 /** A payload that is not the wire contract. The message names the field. */
 export class WireFormatError extends Error {

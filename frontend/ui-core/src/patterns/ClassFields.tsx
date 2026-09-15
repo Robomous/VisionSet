@@ -22,10 +22,10 @@
 import { Plus, Trash2 } from "lucide-react";
 import type { JSX } from "react";
 
-import { geometryLabel, groupGeometries } from "../data/geometryCategory";
-import { classColor, hexColor } from "../palette";
+import { geometryLabel, groupGeometries } from "../data/geometryCategory.js";
+import { classColor, hexColor } from "../palette.js";
 import { Button, Input, Label, FieldDescription, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
-import type { AttributeBody, GeometryType, LabelClassBody } from "../screens/queries";
+import type { AttributeBody, GeometryType, LabelClassBody } from "../screens/queries.js";
 
 /**
  * The four an `Annotation` can carry. The other four are refused at write time.

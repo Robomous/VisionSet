@@ -139,7 +139,7 @@ export {
 } from "./screens/SchemaEditor.js";
 export { IngestScreen, type IngestScreenProps } from "./screens/IngestScreen.js";
 export { BatchesScreen, type BatchesScreenProps } from "./screens/BatchesScreen.js";
-export { HomeScreen, type HomeScreenProps } from "./screens/HomeScreen";
+export { HomeScreen, type HomeScreenProps } from "./screens/HomeScreen.js";
 export { GalleryScreen, type GalleryScreenProps } from "./screens/GalleryScreen.js";
 export { ApproveDialog, BatchProgressBar } from "./screens/BatchLifecycle.js";
 export { PromoteButton, promotionSummary, type PromoteButtonProps } from "./screens/PromoteButton.js";

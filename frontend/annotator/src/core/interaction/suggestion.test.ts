@@ -11,12 +11,12 @@
 
 import { describe, expect, it } from "vitest";
 
-import { AnnotatorStore } from "../state/store";
-import { annotationsInDrawOrder, createDocument } from "../state/document";
-import type { AnnotationDocument } from "../state/document";
-import { addAnnotationCommand } from "../state/commands";
-import type { AnnotationSchema, AssetDescriptor, Geometry, LabelClass, Point } from "../types";
-import type { Answer } from "./suggestion";
+import { AnnotatorStore } from "../state/store.js";
+import { annotationsInDrawOrder, createDocument } from "../state/document.js";
+import type { AnnotationDocument } from "../state/document.js";
+import { addAnnotationCommand } from "../state/commands.js";
+import type { AnnotationSchema, AssetDescriptor, Geometry, LabelClass, Point } from "../types.js";
+import type { Answer } from "./suggestion.js";
 import {
   vertexCount,
   withTolerance,
@@ -38,8 +38,8 @@ import {
   suggestibleClassIn,
   withClass,
   withPoint,
-} from "./suggestion";
-import type { Suggestion, SuggestionState } from "./suggestion";
+} from "./suggestion.js";
+import type { Suggestion, SuggestionState } from "./suggestion.js";
 
 const ASSET: AssetDescriptor = { id: "asset-424", width: 800, height: 600 };
 

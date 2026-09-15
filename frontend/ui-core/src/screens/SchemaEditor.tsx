@@ -99,13 +99,13 @@
 import { Plus, Trash2 } from "lucide-react";
 import { useId, useMemo, useRef, useState, type JSX, type KeyboardEvent } from "react";
 
-import { formatGeometries } from "../data/geometryCategory";
-import { asApiError } from "../data/errors";
-import { classBlockers, describeClassCount, refusalProse } from "../data/refusals";
+import { formatGeometries } from "../data/geometryCategory.js";
+import { asApiError } from "../data/errors.js";
+import { classBlockers, describeClassCount, refusalProse } from "../data/refusals.js";
 import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardAction, CardContent, CardHeader, CardTitle, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
-import { ClassFields, swatchOf } from "../patterns/ClassFields";
-import { ClassListRow } from "../patterns/DataDisplay";
-import { formatCount, formatWhen } from "../lib/format";
+import { ClassFields, swatchOf } from "../patterns/ClassFields.js";
+import { ClassListRow } from "../patterns/DataDisplay.js";
+import { formatCount, formatWhen } from "../lib/format.js";
 import { toast } from "sonner";
 import type {
   ClassCount,
@@ -115,14 +115,14 @@ import type {
   SchemaDiff,
   ServerSchemaDraft,
   SchemaVersion,
-} from "./queries";
+} from "./queries.js";
 import {
   usePublishSchemaDraft,
   usePreviewSchemaChange,
   useProjectStats,
   useSchemaComparison,
   useSchemaVersions,
-} from "./queries";
+} from "./queries.js";
 
 /** The terminal 409: annotations already exist that this change would orphan. */
 const WOULD_ORPHAN = "SCHEMA_CHANGE_WOULD_ORPHAN";

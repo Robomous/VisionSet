@@ -88,18 +88,18 @@
 import { Plus, X } from "lucide-react";
 import { useEffect, useRef, useState, type JSX } from "react";
 
-import { asApiError } from "../data/errors";
-import { refusalProse } from "../data/refusals";
-import { classColor } from "../palette";
+import { asApiError } from "../data/errors.js";
+import { refusalProse } from "../data/refusals.js";
+import { classColor } from "../palette.js";
 import { Alert, AlertDescription, AlertTitle, Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label } from "@robomous/ui-core";
-import { formatGeometries } from "../data/geometryCategory";
-import { ClassFields } from "../patterns/ClassFields";
+import { formatGeometries } from "../data/geometryCategory.js";
+import { ClassFields } from "../patterns/ClassFields.js";
 import type {
   DraftLabelClassBody,
   LabelClassBody,
   SchemaVersion,
   ServerSchemaDraft,
-} from "../screens/queries";
+} from "../screens/queries.js";
 
 /** A fresh class, in the shape the wire takes. */
 function blank(): LabelClassBody {

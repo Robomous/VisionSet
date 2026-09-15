@@ -5,8 +5,8 @@
 
 import { describe, expect, it } from "vitest";
 
-import { digitFromCode, isComposing, isTextEntry } from "./keyboard";
-import type { TextEntryProbe } from "./keyboard";
+import { digitFromCode, isComposing, isTextEntry } from "./keyboard.js";
+import type { TextEntryProbe } from "./keyboard.js";
 
 function element(
   tagName: string,

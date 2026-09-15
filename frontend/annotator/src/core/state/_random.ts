@@ -20,11 +20,11 @@ import {
   composeCommands,
   removeAnnotationsCommand,
   replaceAnnotationCommand,
-} from "./commands";
-import { annotationsInDrawOrder } from "./document";
-import type { AnnotationDocument } from "./document";
-import type { Command } from "./commandLog";
-import type { Annotation } from "../types";
+} from "./commands.js";
+import { annotationsInDrawOrder } from "./document.js";
+import type { AnnotationDocument } from "./document.js";
+import type { Command } from "./commandLog.js";
+import type { Annotation } from "../types.js";
 
 /** What a run needs to invent an annotation the document will accept. */
 export interface RandomWorld {

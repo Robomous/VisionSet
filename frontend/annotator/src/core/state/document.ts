@@ -55,13 +55,13 @@
  * which is the boundary the epic means by "annotations leave by events".
  */
 
-import { parseAnnotations, parseAssetDescriptor, parseSchema } from "../wire";
+import { parseAnnotations, parseAssetDescriptor, parseSchema } from "../wire.js";
 import type {
   Annotation,
   AnnotationSchema,
   AssetDescriptor,
   LabelClass,
-} from "../types";
+} from "../types.js";
 
 /** A document that would break one of its own invariants. */
 export class DocumentError extends Error {

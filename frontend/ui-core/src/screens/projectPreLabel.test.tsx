@@ -11,10 +11,10 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import { BatchesScreen } from "./BatchesScreen";
-import { renderWithData } from "../testing/dataHarness";
+import { BatchesScreen } from "./BatchesScreen.js";
+import { renderWithData } from "../testing/dataHarness.js";
 import { batchActions } from "../testing/wire.fixtures.js";
-import type { Connection } from "../data/inferenceQueries";
+import type { Connection } from "../data/inferenceQueries.js";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const OPEN = "22222222-2222-4222-8222-222222222222";

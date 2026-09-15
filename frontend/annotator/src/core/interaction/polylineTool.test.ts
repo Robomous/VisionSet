@@ -28,14 +28,14 @@
 
 import { describe, expect, it } from "vitest";
 
-import { geometryContains } from "../geometry/hitTest";
-import { MIN_POLYLINE_POINTS } from "../geometry/polygon";
-import { VERTEX_TOLERANCE_PX, assetTolerances } from "../geometry/tolerance";
-import { annotationById } from "../state/document";
-import type { AnnotationDocument } from "../state/document";
-import type { Point, PolylineGeometry } from "../types";
-import { PATH_BODY, PATH_ID, PATH_VERTEX, World, doubleClick, down, move, up } from "./_scene";
-import { IDLE } from "./state";
+import { geometryContains } from "../geometry/hitTest.js";
+import { MIN_POLYLINE_POINTS } from "../geometry/polygon.js";
+import { VERTEX_TOLERANCE_PX, assetTolerances } from "../geometry/tolerance.js";
+import { annotationById } from "../state/document.js";
+import type { AnnotationDocument } from "../state/document.js";
+import type { Point, PolylineGeometry } from "../types.js";
+import { PATH_BODY, PATH_ID, PATH_VERTEX, World, doubleClick, down, move, up } from "./_scene.js";
+import { IDLE } from "./state.js";
 
 /** Three points running up and to the right — deliberately in descending Y. */
 const A: Point = [200, 400];

@@ -32,8 +32,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import type { Check } from "./check";
-import * as generated from "../generated/checks";
+import type { Check } from "./check.js";
+import * as generated from "../generated/checks.js";
 
 interface Spec {
   readonly components: { readonly schemas: Record<string, JsonSchema> };

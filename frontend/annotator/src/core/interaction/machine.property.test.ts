@@ -36,9 +36,9 @@
 
 import { describe, expect, it } from "vitest";
 
-import { mulberry32, SEEDS } from "../_random";
-import type { AnnotationDocument } from "../state/document";
-import type { Point } from "../types";
+import { mulberry32, SEEDS } from "../_random.js";
+import type { AnnotationDocument } from "../state/document.js";
+import type { Point } from "../types.js";
 import {
   BOX_BODY,
   BOX_NW,
@@ -50,10 +50,10 @@ import {
   held,
   move,
   up,
-} from "./_scene";
-import type { Effect } from "./effects";
-import type { InteractionEvent, Modifiers, PointerButton } from "./events";
-import { NO_MODIFIERS } from "./events";
+} from "./_scene.js";
+import type { Effect } from "./effects.js";
+import type { InteractionEvent, Modifiers, PointerButton } from "./events.js";
+import { NO_MODIFIERS } from "./events.js";
 
 /** Events per run. Long enough to walk into and out of every state repeatedly. */
 const STEPS = 200;

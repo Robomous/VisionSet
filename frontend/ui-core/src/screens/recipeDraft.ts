@@ -15,8 +15,8 @@
  * survives a change of model.
  */
 
-import type { ExportTarget } from "./queries";
-import type { components } from "../generated/api";
+import type { ExportTarget } from "./queries.js";
+import type { components } from "../generated/api.js";
 
 export type RecipeSpec = components["schemas"]["RecipeSpecBody"];
 export type ResizeStepSpec = components["schemas"]["ResizeStepBody"];

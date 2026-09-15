@@ -68,23 +68,23 @@
 import { ChevronDown, ChevronRight, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 
-import { formatGeometries } from "../data/geometryCategory";
-import { Async } from "../data/Async";
-import { useApiClient } from "../data/VisionSetDataProvider";
-import { asApiError } from "../data/errors";
-import { refusalProse } from "../data/refusals";
+import { formatGeometries } from "../data/geometryCategory.js";
+import { Async } from "../data/Async.js";
+import { useApiClient } from "../data/VisionSetDataProvider.js";
+import { asApiError } from "../data/errors.js";
+import { refusalProse } from "../data/refusals.js";
 import { Badge, Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
-import { formatCount, formatWhen } from "../lib/format";
-import { ErrorState, LoadingState } from "../patterns/AsyncStates";
-import { DEFAULT_PROJECT_SECTION, PROJECT_SECTIONS, type ProjectSection } from "../patterns/ProjectNav";
-import { SectionHeader } from "../patterns/SectionHeader";
-import { BatchesScreen } from "./BatchesScreen";
-import { DatasetScreen, type DatasetTab } from "./DatasetScreen";
-import { AssetThumbnail } from "./AssetThumbnail";
-import { firstRunInvitation, invitationOwnsTheAction, OverviewPanel } from "./OverviewPanel";
-import { openForAnnotation, ProjectFrame } from "./ProjectFrame";
-import { same, SchemaEditor, shownDraft, type SchemaDraft } from "./SchemaEditor";
-import { groupByProvenance } from "./schemaHistory";
+import { formatCount, formatWhen } from "../lib/format.js";
+import { ErrorState, LoadingState } from "../patterns/AsyncStates.js";
+import { DEFAULT_PROJECT_SECTION, PROJECT_SECTIONS, type ProjectSection } from "../patterns/ProjectNav.js";
+import { SectionHeader } from "../patterns/SectionHeader.js";
+import { BatchesScreen } from "./BatchesScreen.js";
+import { DatasetScreen, type DatasetTab } from "./DatasetScreen.js";
+import { AssetThumbnail } from "./AssetThumbnail.js";
+import { firstRunInvitation, invitationOwnsTheAction, OverviewPanel } from "./OverviewPanel.js";
+import { openForAnnotation, ProjectFrame } from "./ProjectFrame.js";
+import { same, SchemaEditor, shownDraft, type SchemaDraft } from "./SchemaEditor.js";
+import { groupByProvenance } from "./schemaHistory.js";
 import {
   useActiveSchema,
   useBatches,
@@ -98,7 +98,7 @@ import {
   useSchemaVersions,
   type LabelClassBody,
   type SchemaVersion,
-} from "./queries";
+} from "./queries.js";
 
 /** What `SchemaService.require_active` raises for a project that has none. */
 const SCHEMA_NOT_FOUND = "SCHEMA_NOT_FOUND";

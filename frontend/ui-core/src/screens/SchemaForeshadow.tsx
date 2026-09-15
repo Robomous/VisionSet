@@ -22,7 +22,7 @@
 import type { JSX } from "react";
 
 import { Alert, AlertDescription, Button } from "@robomous/ui-core";
-import { useProjectReadiness } from "./queries";
+import { useProjectReadiness } from "./queries.js";
 
 export function SchemaForeshadow({
   projectId,

@@ -63,7 +63,7 @@
  * catch in shipping code.
  */
 
-import type { InteractionEvent } from "../interaction/events";
+import type { InteractionEvent } from "../interaction/events.js";
 
 /**
  * The two machine intents a key may raise.

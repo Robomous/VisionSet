@@ -32,7 +32,7 @@ import {
 } from "react";
 
 import { cn } from "@robomous/ui-core";
-import { clock, mergedRanges, type ClipRange } from "./clipRanges";
+import { clock, mergedRanges, type ClipRange } from "./clipRanges.js";
 
 function capture(target: Element, pointerId: number): void {
   // jsdom implements the method but knows no pointers, so it throws where a

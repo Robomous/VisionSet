@@ -46,9 +46,9 @@ import {
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { Check, Eraser, SkipForward, Trash2, Undo2, X } from "lucide-react";
 
-import { Async } from "../data/Async";
+import { Async } from "../data/Async.js";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@robomous/ui-core";
-import { AssetThumbnail } from "./AssetThumbnail";
+import { AssetThumbnail } from "./AssetThumbnail.js";
 import {
   ASSET_ACTION,
   BATCH_ACTION,
@@ -56,8 +56,8 @@ import {
   declaring,
   withheldBecause,
   type AssetAction,
-} from "../data/capabilities";
-import { groupRefusals, refusalProse } from "../data/refusals";
+} from "../data/capabilities.js";
+import { groupRefusals, refusalProse } from "../data/refusals.js";
 import {
   affinityWord,
   progressDot,
@@ -66,7 +66,7 @@ import {
   progressTone,
   SEGMENT_LABEL,
   type Segment,
-} from "./batchState";
+} from "./batchState.js";
 import {
   useBatchAssets,
   useBulkDiscardModelLabels,
@@ -75,7 +75,7 @@ import {
   type AssetView,
   type Batch,
   type BatchAsset,
-} from "./queries";
+} from "./queries.js";
 
 /**
  * The density ladder: four steps, as minimum column widths in CSS pixels.

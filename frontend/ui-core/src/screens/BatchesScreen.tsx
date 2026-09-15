@@ -33,20 +33,20 @@
 import { Layers, Play, Upload } from "lucide-react";
 import { useState, type JSX } from "react";
 
-import { Async } from "../data/Async";
-import { BATCH_ACTION, declares } from "../data/capabilities";
-import { refusalProse } from "../data/refusals";
+import { Async } from "../data/Async.js";
+import { BATCH_ACTION, declares } from "../data/capabilities.js";
+import { refusalProse } from "../data/refusals.js";
 import { Badge, Button, FieldError, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
-import { SectionHeader } from "../patterns/SectionHeader";
-import { ApproveDialog, BatchProgressBar, CompleteBatchButton } from "./BatchLifecycle";
-import { ApproveAndStartButton } from "./ComposedTransitions";
-import { BATCH_STATE_VARIANT, batchStateLabel } from "./batchState";
-import { SchemaForeshadow } from "./SchemaForeshadow";
-import { CorrectionButton, CorrectionOf } from "./CorrectionBatch";
-import { BatchOverflowMenu } from "./DeleteBatch";
-import { ProjectPreLabelButton } from "./ProjectPreLabelDialog";
-import { PromoteButton } from "./PromoteButton";
-import { isLiveJobState, useBatchTransition, useBatches, type Batch } from "./queries";
+import { SectionHeader } from "../patterns/SectionHeader.js";
+import { ApproveDialog, BatchProgressBar, CompleteBatchButton } from "./BatchLifecycle.js";
+import { ApproveAndStartButton } from "./ComposedTransitions.js";
+import { BATCH_STATE_VARIANT, batchStateLabel } from "./batchState.js";
+import { SchemaForeshadow } from "./SchemaForeshadow.js";
+import { CorrectionButton, CorrectionOf } from "./CorrectionBatch.js";
+import { BatchOverflowMenu } from "./DeleteBatch.js";
+import { ProjectPreLabelButton } from "./ProjectPreLabelDialog.js";
+import { PromoteButton } from "./PromoteButton.js";
+import { isLiveJobState, useBatchTransition, useBatches, type Batch } from "./queries.js";
 
 export interface BatchesScreenProps {
   readonly projectId: string;

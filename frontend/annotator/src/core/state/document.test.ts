@@ -9,9 +9,9 @@
 
 import { describe, expect, it } from "vitest";
 
-import { fixture } from "../_fixture";
-import type { Annotation, AnnotationSchema, AssetDescriptor } from "../types";
-import { WireFormatError, parseAnnotations, toAnnotationCreate } from "../wire";
+import { fixture } from "../_fixture.js";
+import type { Annotation, AnnotationSchema, AssetDescriptor } from "../types.js";
+import { WireFormatError, parseAnnotations, toAnnotationCreate } from "../wire.js";
 import {
   DocumentError,
   addAnnotation,
@@ -22,7 +22,7 @@ import {
   documentFromWire,
   removeAnnotations,
   replaceAnnotation,
-} from "./document";
+} from "./document.js";
 
 const ASSET: AssetDescriptor = { id: "asset-1", width: 640, height: 480 };
 

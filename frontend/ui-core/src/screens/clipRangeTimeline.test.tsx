@@ -12,8 +12,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { useState, type JSX } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ClipRangeTimeline } from "./ClipRangeTimeline";
-import type { ClipRange } from "./clipRanges";
+import { ClipRangeTimeline } from "./ClipRangeTimeline.js";
+import type { ClipRange } from "./clipRanges.js";
 
 function Harness({
   initial = [],

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { scaledDimension } from "./ingestScale";
+import { scaledDimension } from "./ingestScale.js";
 
 describe("scaledDimension", () => {
   it("mirrors the server's integer half-up formula", () => {

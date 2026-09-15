@@ -115,18 +115,18 @@
  * document on the next pointer-move.
  */
 
-import type { IdFactory } from "../ids";
-import type { Command } from "../state/commandLog";
-import { documentCommand } from "../state/commands";
+import type { IdFactory } from "../ids.js";
+import type { Command } from "../state/commandLog.js";
+import { documentCommand } from "../state/commands.js";
 import {
   addAnnotation,
   annotationsInDrawOrder,
   classNamed,
   removeAnnotations,
-} from "../state/document";
-import type { AnnotationDocument } from "../state/document";
-import type { Annotation, LabelClass } from "../types";
-import { draftAnnotation } from "./draft";
+} from "../state/document.js";
+import type { AnnotationDocument } from "../state/document.js";
+import type { Annotation, LabelClass } from "../types.js";
+import { draftAnnotation } from "./draft.js";
 
 /**
  * Whether this class can be tagged — that is, whether it accepts a tag at all.

@@ -15,7 +15,7 @@
 import { classColor as fromEngine } from "@visionset/annotator";
 import { describe, expect, it } from "vitest";
 
-import { CLASS_FILL_OPACITY, classColor, hexColor, type LabelClass } from "./palette";
+import { CLASS_FILL_OPACITY, classColor, hexColor, type LabelClass } from "./palette.js";
 
 const withColour: LabelClass = {
   name: "vehicle",

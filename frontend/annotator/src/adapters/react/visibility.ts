@@ -25,8 +25,8 @@
  * memoizes the rest.
  */
 
-import { removeAnnotations } from "../../core/state/document";
-import type { AnnotationDocument } from "../../core/state/document";
+import { removeAnnotations } from "../../core/state/document.js";
+import type { AnnotationDocument } from "../../core/state/document.js";
 
 /**
  * `document` without the hidden annotations, or `document` itself when none are.

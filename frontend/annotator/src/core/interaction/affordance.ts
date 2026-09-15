@@ -57,16 +57,16 @@
  * it right.
  */
 
-import { bboxHandlePositions } from "../geometry/bbox";
-import type { BboxHandle } from "../geometry/bbox";
-import { polygonCloseAttempt, topmostAnnotationAt } from "../geometry/hitTest";
-import { clampPoint } from "../geometry/primitives";
-import { annotationById, annotationsInDrawOrder } from "../state/document";
-import type { Point } from "../types";
-import type { InteractionState } from "./state";
-import { NO_TARGET, resolveTarget } from "./target";
-import type { Scene, Target } from "./target";
-import type { Tool } from "./tool";
+import { bboxHandlePositions } from "../geometry/bbox.js";
+import type { BboxHandle } from "../geometry/bbox.js";
+import { polygonCloseAttempt, topmostAnnotationAt } from "../geometry/hitTest.js";
+import { clampPoint } from "../geometry/primitives.js";
+import { annotationById, annotationsInDrawOrder } from "../state/document.js";
+import type { Point } from "../types.js";
+import type { InteractionState } from "./state.js";
+import { NO_TARGET, resolveTarget } from "./target.js";
+import type { Scene, Target } from "./target.js";
+import type { Tool } from "./tool.js";
 
 /**
  * The cursors this engine can ask for.

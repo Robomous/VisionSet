@@ -17,9 +17,9 @@
 
 import type { JSX } from "react";
 
-import { GEOMETRY_LABELS } from "../data/geometryCategory";
+import { GEOMETRY_LABELS } from "../data/geometryCategory.js";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@robomous/ui-core";
-import type { ExportTarget } from "../screens/queries";
+import type { ExportTarget } from "../screens/queries.js";
 
 export interface ExportTargetFamily {
   readonly family: string;

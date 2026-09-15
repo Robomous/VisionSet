@@ -33,10 +33,10 @@
 
 import { describe, expect, it } from "vitest";
 
-import { removeAnnotationsCommand } from "../state/commands";
-import { annotationById } from "../state/document";
-import type { AnnotationDocument } from "../state/document";
-import type { BboxGeometry, PolygonGeometry } from "../types";
+import { removeAnnotationsCommand } from "../state/commands.js";
+import { annotationById } from "../state/document.js";
+import type { AnnotationDocument } from "../state/document.js";
+import type { BboxGeometry, PolygonGeometry } from "../types.js";
 import {
   BOX_BODY,
   BOX_ID,
@@ -48,8 +48,8 @@ import {
   down,
   move,
   up,
-} from "./_scene";
-import { IDLE } from "./state";
+} from "./_scene.js";
+import { IDLE } from "./state.js";
 
 function boxIn(document: AnnotationDocument, id = BOX_ID): BboxGeometry {
   const geometry = annotationById(document, id)?.geometry;

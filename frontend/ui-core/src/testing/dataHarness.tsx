@@ -24,8 +24,8 @@ import { QueryClient } from "@tanstack/react-query";
 import { render, type RenderResult } from "@testing-library/react";
 import type { ReactNode } from "react";
 
-import type { DataResult, VisionSetDataClient, paths } from "../index";
-import { VisionSetDataProvider } from "../data/VisionSetDataProvider";
+import type { DataResult, VisionSetDataClient, paths } from "../index.js";
+import { VisionSetDataProvider } from "../data/VisionSetDataProvider.js";
 
 /**
  * The origin the harness's requests carry.

@@ -40,12 +40,12 @@
  * one annotation.
  */
 
-import { normalizeBbox } from "../../core/geometry/bbox";
-import { annotationsInDrawOrder } from "../../core/state/document";
-import type { AnnotationDocument } from "../../core/state/document";
-import type { Selection } from "../../core/state/selection";
-import type { InteractionState } from "../../core/interaction/state";
-import type { PromptPoint, SuggestionState } from "../../core/interaction/suggestion";
+import { normalizeBbox } from "../../core/geometry/bbox.js";
+import { annotationsInDrawOrder } from "../../core/state/document.js";
+import type { AnnotationDocument } from "../../core/state/document.js";
+import type { Selection } from "../../core/state/selection.js";
+import type { InteractionState } from "../../core/interaction/state.js";
+import type { PromptPoint, SuggestionState } from "../../core/interaction/suggestion.js";
 import type {
   Annotation,
   BboxGeometry,
@@ -53,7 +53,7 @@ import type {
   Point,
   PolygonGeometry,
   PolylineGeometry,
-} from "../../core/types";
+} from "../../core/types.js";
 
 /** A shape whose class the schema declares, ready to draw. */
 export interface PaintedAnnotation {

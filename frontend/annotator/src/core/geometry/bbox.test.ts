@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import type { BboxGeometry } from "../types";
+import type { BboxGeometry } from "../types.js";
 import {
   BBOX_HANDLES,
   MIN_BBOX_SIZE,
@@ -18,8 +18,8 @@ import {
   normalizeBbox,
   resizeBbox,
   type BboxHandle,
-} from "./bbox";
-import type { Bounds } from "./primitives";
+} from "./bbox.js";
+import type { Bounds } from "./primitives.js";
 
 const FRAME: Bounds = { width: 640, height: 480 };
 

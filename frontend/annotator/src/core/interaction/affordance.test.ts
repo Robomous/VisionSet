@@ -15,13 +15,13 @@
 
 import { describe, expect, it } from "vitest";
 
-import { BBOX_HANDLES, bboxHandlePositions } from "../geometry/bbox";
-import type { BboxHandle } from "../geometry/bbox";
-import { assetTolerances } from "../geometry/tolerance";
-import { annotationById, removeAnnotations } from "../state/document";
-import { EMPTY_SELECTION, selectOnly } from "../state/selection";
-import type { Selection } from "../state/selection";
-import type { Point } from "../types";
+import { BBOX_HANDLES, bboxHandlePositions } from "../geometry/bbox.js";
+import type { BboxHandle } from "../geometry/bbox.js";
+import { assetTolerances } from "../geometry/tolerance.js";
+import { annotationById, removeAnnotations } from "../state/document.js";
+import { EMPTY_SELECTION, selectOnly } from "../state/selection.js";
+import type { Selection } from "../state/selection.js";
+import type { Point } from "../types.js";
 import {
   BOX_BODY,
   BOX_ID,
@@ -34,15 +34,15 @@ import {
   down,
   sceneDocument,
   worldIn,
-} from "./_scene";
-import { HANDLE_CURSORS, affordanceAt, viewerAffordanceAt, viewerPressTarget } from "./affordance";
-import type { Cursor } from "./affordance";
-import { transition } from "./machine";
-import { IDLE } from "./state";
-import type { InteractionState } from "./state";
-import { NO_TARGET } from "./target";
-import type { Scene } from "./target";
-import type { Tool } from "./tool";
+} from "./_scene.js";
+import { HANDLE_CURSORS, affordanceAt, viewerAffordanceAt, viewerPressTarget } from "./affordance.js";
+import type { Cursor } from "./affordance.js";
+import { transition } from "./machine.js";
+import { IDLE } from "./state.js";
+import type { InteractionState } from "./state.js";
+import { NO_TARGET } from "./target.js";
+import type { Scene } from "./target.js";
+import type { Tool } from "./tool.js";
 
 /** Every cursor, so a new one cannot arrive without a test naming it. */
 const KNOWN_CURSORS: Record<Cursor, true> = {

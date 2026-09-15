@@ -31,7 +31,7 @@ import {
   openOneOf,
   tagged,
   tuple,
-} from "./check";
+} from "./check.js";
 
 const bbox = object({
   type: [true, lit("bbox")],

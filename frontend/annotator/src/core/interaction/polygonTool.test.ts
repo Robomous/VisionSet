@@ -31,18 +31,18 @@
 
 import { describe, expect, it } from "vitest";
 
-import { MIN_POLYGON_POINTS } from "../geometry/polygon";
+import { MIN_POLYGON_POINTS } from "../geometry/polygon.js";
 import {
   CLOSE_POLYGON_TOLERANCE_PX,
   VERTEX_TOLERANCE_PX,
   assetTolerances,
-} from "../geometry/tolerance";
-import { annotationById } from "../state/document";
-import type { AnnotationDocument } from "../state/document";
-import { selectOnly } from "../state/selection";
-import type { Point, PolygonGeometry } from "../types";
-import { POLY_BODY, POLY_ID, POLY_VERTEX, World, doubleClick, down, move, up } from "./_scene";
-import { IDLE } from "./state";
+} from "../geometry/tolerance.js";
+import { annotationById } from "../state/document.js";
+import type { AnnotationDocument } from "../state/document.js";
+import { selectOnly } from "../state/selection.js";
+import type { Point, PolygonGeometry } from "../types.js";
+import { POLY_BODY, POLY_ID, POLY_VERTEX, World, doubleClick, down, move, up } from "./_scene.js";
+import { IDLE } from "./state.js";
 
 /** Three points that close a triangle, far enough apart that no rule swallows one. */
 const A: Point = [200, 200];

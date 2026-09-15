@@ -17,7 +17,7 @@ import { Plus, Trash2 } from "lucide-react";
 import type { JSX } from "react";
 
 import { cn, Badge, Button } from "@robomous/ui-core";
-import { describeRecipeSpec, type RecipeSpec } from "../screens/recipeDraft";
+import { describeRecipeSpec, type RecipeSpec } from "../screens/recipeDraft.js";
 
 export interface RecipeListItem {
   readonly name: string;

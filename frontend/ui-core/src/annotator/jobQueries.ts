@@ -47,8 +47,8 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
-import { useApiClient } from "../data/VisionSetDataProvider";
-import { unwrap } from "../data/errors";
+import { useApiClient } from "../data/VisionSetDataProvider.js";
+import { unwrap } from "../data/errors.js";
 import {
   checkAddAnnotations,
   checkCompleteJob,
@@ -62,9 +62,9 @@ import {
   checkSetAssetProgress,
   checkStartJob,
   checkUpdateAnnotations,
-} from "../generated/checks";
-import type { components } from "../generated/api";
-import { batchKeys, type Batch, type BatchAsset } from "../screens/queries";
+} from "../generated/checks.js";
+import type { components } from "../generated/api.js";
+import { batchKeys, type Batch, type BatchAsset } from "../screens/queries.js";
 
 export type Job = components["schemas"]["JobOut"];
 export type AssetProgress = components["schemas"]["AssetProgress"];

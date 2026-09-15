@@ -525,9 +525,9 @@ export function renderChecks(root = repoRoot()) {
   return `${CHECKS_BANNER}
 import {
 ${helpers.map((helper) => `  ${helper},`).join("\n")}
-} from "../data/check";
-import type { Check } from "../data/check";
-import type { components, operations } from "./api";
+} from "../data/check.js";
+import type { Check } from "../data/check.js";
+import type { components, operations } from "./api.js";
 
 type Schemas = components["schemas"];
 

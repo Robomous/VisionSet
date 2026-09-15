@@ -11,10 +11,10 @@ import { useQuery } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
-import { checkListProjects } from "../generated/checks";
-import { unwrap } from "../data/errors";
-import { useApiClient } from "../data/VisionSetDataProvider";
-import { HARNESS_BASE_URL, harnessClient, renderWithData } from "./dataHarness";
+import { checkListProjects } from "../generated/checks.js";
+import { unwrap } from "../data/errors.js";
+import { useApiClient } from "../data/VisionSetDataProvider.js";
+import { HARNESS_BASE_URL, harnessClient, renderWithData } from "./dataHarness.js";
 
 beforeEach(() => {
   vi.stubGlobal("fetch", () =>

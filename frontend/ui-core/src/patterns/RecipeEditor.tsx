@@ -18,11 +18,11 @@
 
 import type { JSX, ReactNode } from "react";
 
-import { GEOMETRY_LABELS, GEOMETRY_PLURALS } from "../data/geometryCategory";
-import { refusalProse } from "../data/refusals";
+import { GEOMETRY_LABELS, GEOMETRY_PLURALS } from "../data/geometryCategory.js";
+import { refusalProse } from "../data/refusals.js";
 import { cn, Button, FieldError, FieldDescription, Input, Label } from "@robomous/ui-core";
-import { formatCount } from "../lib/format";
-import type { ExportTarget } from "../screens/queries";
+import { formatCount } from "../lib/format.js";
+import type { ExportTarget } from "../screens/queries.js";
 import {
   AMOUNT_MAX,
   AUGMENT_OPS,
@@ -33,9 +33,9 @@ import {
   type AugmentOp,
   type RecipeDraft,
   type ResizeChoice,
-} from "../screens/recipeDraft";
-import { ExportTargetSelect, exportTargetFamily } from "./ExportTargetSelect";
-import { StepMarker, type StepState } from "./StepMarker";
+} from "../screens/recipeDraft.js";
+import { ExportTargetSelect, exportTargetFamily } from "./ExportTargetSelect.js";
+import { StepMarker, type StepState } from "./StepMarker.js";
 
 const STRATEGIES: readonly { readonly value: ResizeChoice; readonly label: string }[] = [
   { value: "letterbox", label: "Letterbox" },

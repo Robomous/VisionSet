@@ -19,8 +19,8 @@
  * writes `if (error)` by hand.
  */
 
-import { firstMismatch, type Check } from "./check";
-import type { DataFailure, DataResult } from "./port";
+import { firstMismatch, type Check } from "./check.js";
+import type { DataFailure, DataResult } from "./port.js";
 
 /**
  * The shape every VisionSet error response carries.

@@ -29,10 +29,10 @@ import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 
-import { BatchesScreen } from "./BatchesScreen";
-import { AssetThumbnail } from "./AssetThumbnail";
-import { GalleryScreen, columnsFor } from "./GalleryScreen";
-import { renderWithData } from "../testing/dataHarness";
+import { BatchesScreen } from "./BatchesScreen.js";
+import { AssetThumbnail } from "./AssetThumbnail.js";
+import { GalleryScreen, columnsFor } from "./GalleryScreen.js";
+import { renderWithData } from "../testing/dataHarness.js";
 import { assetActions, batchActions, jobActions, datasetOf } from "../testing/wire.fixtures.js";
 import type { components } from "../generated/api.js";
 import { TONE_BORDER, TONE_FILL } from "@robomous/ui-core";

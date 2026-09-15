@@ -38,15 +38,15 @@
 
 import { describe, expect, it } from "vitest";
 
-import { SEEDS, mulberry32 } from "../_random";
-import type { BboxGeometry, PolygonGeometry, Point } from "../types";
+import { SEEDS, mulberry32 } from "../_random.js";
+import type { BboxGeometry, PolygonGeometry, Point } from "../types.js";
 import {
   BBOX_HANDLES,
   MIN_BBOX_SIZE,
   moveBbox,
   resizeBbox,
   type BboxHandle,
-} from "./bbox";
+} from "./bbox.js";
 import {
   MIN_POLYGON_POINTS,
   insertPolygonVertex,
@@ -54,8 +54,8 @@ import {
   polygonBbox,
   removePolygonVertex,
   translatePolygon,
-} from "./polygon";
-import type { Bounds } from "./primitives";
+} from "./polygon.js";
+import type { Bounds } from "./primitives.js";
 
 const ROUNDS = 200;
 

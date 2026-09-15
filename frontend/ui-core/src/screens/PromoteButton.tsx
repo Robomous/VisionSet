@@ -46,10 +46,10 @@
 import { ArrowRight, ArrowUpToLine } from "lucide-react";
 import type { JSX } from "react";
 
-import { BATCH_ACTION, declares } from "../data/capabilities";
-import { refusalProse } from "../data/refusals";
+import { BATCH_ACTION, declares } from "../data/capabilities.js";
+import { refusalProse } from "../data/refusals.js";
 import { Button, FieldError } from "@robomous/ui-core";
-import { usePromoteBatch, type Batch } from "./queries";
+import { usePromoteBatch, type Batch } from "./queries.js";
 
 export interface PromoteButtonProps {
   readonly batch: Batch;

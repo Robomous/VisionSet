@@ -9,9 +9,9 @@ import { classColor } from "@visionset/annotator";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import type { WireAnnotation } from "../annotator/jobQueries";
-import type { LabelClass } from "../palette";
-import { StaticAnnotationOverlay } from "./StaticAnnotationOverlay";
+import type { WireAnnotation } from "../annotator/jobQueries.js";
+import type { LabelClass } from "../palette.js";
+import { StaticAnnotationOverlay } from "./StaticAnnotationOverlay.js";
 
 const VEHICLE: LabelClass = { name: "vehicle", geometries: ["bbox"], color: "#38bdf8", attributes: [] };
 

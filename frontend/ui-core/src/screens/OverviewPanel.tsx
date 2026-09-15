@@ -43,15 +43,15 @@
 import { Image, Tags, TriangleAlert, Upload } from "lucide-react";
 import type { JSX } from "react";
 
-import { asApiError } from "../data/errors";
-import { refusalProse } from "../data/refusals";
-import { classColor } from "../palette";
+import { asApiError } from "../data/errors.js";
+import { refusalProse } from "../data/refusals.js";
+import { classColor } from "../palette.js";
 import { cn, STATUS_INK, Button, Skeleton } from "@robomous/ui-core";
-import { formatCount, formatPercent } from "../lib/format";
-import { EmptyState, ErrorState } from "../patterns/AsyncStates";
-import { DistributionBar, StatCard, ThumbnailGrid } from "../patterns/DataDisplay";
-import { AssetThumbnail } from "./AssetThumbnail";
-import { imbalanceNote } from "./imbalance";
+import { formatCount, formatPercent } from "../lib/format.js";
+import { EmptyState, ErrorState } from "../patterns/AsyncStates.js";
+import { DistributionBar, StatCard, ThumbnailGrid } from "../patterns/DataDisplay.js";
+import { AssetThumbnail } from "./AssetThumbnail.js";
+import { imbalanceNote } from "./imbalance.js";
 import {
   useActiveSchema,
   useBatches,
@@ -64,7 +64,7 @@ import {
   type ClassCount,
   type LabelClassBody,
   type ProjectReadiness,
-} from "./queries";
+} from "./queries.js";
 
 /** How many tiles the samples grid asks for. Six is two rows of three. */
 const SAMPLE_LIMIT = 6;

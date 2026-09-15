@@ -31,8 +31,8 @@ import {
   segmentProgress,
   SEGMENTS,
   type Segment,
-} from "./batchState";
-import type { AssetProgress } from "../annotator/jobQueries";
+} from "./batchState.js";
+import type { AssetProgress } from "../annotator/jobQueries.js";
 import { TONE_BORDER, TONE_FILL } from "@robomous/ui-core";
 
 /** The domain's six, written out so a seventh fails here first. */

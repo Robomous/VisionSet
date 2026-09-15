@@ -17,9 +17,9 @@
 import { Sparkles } from "lucide-react";
 import { useMemo, useState, type JSX } from "react";
 
-import { BATCH_ACTION, declares } from "../data/capabilities";
-import { useConnections, type Connection } from "../data/inferenceQueries";
-import { refusalProse } from "../data/refusals";
+import { BATCH_ACTION, declares } from "../data/capabilities.js";
+import { useConnections, type Connection } from "../data/inferenceQueries.js";
+import { refusalProse } from "../data/refusals.js";
 import { Alert, AlertDescription, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Label, FieldError } from "@robomous/ui-core";
 import {
   DEFAULT_CONFIDENCE,
@@ -28,14 +28,14 @@ import {
   PromptClasses,
   TEXT_DETECT,
   selectedShapes,
-} from "./PreLabelDialog";
+} from "./PreLabelDialog.js";
 import {
   usePreLabelPlans,
   usePreLabelProject,
   type Batch,
   type GeometryType,
   type PreLabelFanOutOut,
-} from "./queries";
+} from "./queries.js";
 
 /**
  * One row per job. A batch that fanned out to several jobs would otherwise

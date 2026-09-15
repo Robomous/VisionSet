@@ -16,7 +16,7 @@ import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
-import { asApiError } from "../data/errors";
+import { asApiError } from "../data/errors.js";
 import {
   useBatch,
   usePublishSchemaDraft,
@@ -25,8 +25,8 @@ import {
   useSchemaDraft,
   type Batch,
   type SchemaDraftKind,
-} from "./queries";
-import { renderWithData } from "../testing/dataHarness";
+} from "./queries.js";
+import { renderWithData } from "../testing/dataHarness.js";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "55555555-5555-4555-8555-555555555555";

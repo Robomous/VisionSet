@@ -40,7 +40,7 @@
 import { Image, ImageOff } from "lucide-react";
 import { useEffect, useState, type JSX } from "react";
 
-import { useApiClient } from "../data/VisionSetDataProvider";
+import { useApiClient } from "../data/VisionSetDataProvider.js";
 
 export interface ThumbnailPlaceholderProps {
   /** What a pointer hover should say about why there is no picture here. */

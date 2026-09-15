@@ -23,7 +23,7 @@ import type {
   ConnectionSetupState,
   ConnectionType,
   ModelOrigin,
-} from "../data/inferenceQueries";
+} from "../data/inferenceQueries.js";
 import type { KnownMembers } from "../generated/api.js";
 
 // --- origin: where the weights come from -------------------------------------------

@@ -65,7 +65,7 @@
  * adapter's, and a second `pointer-down` arriving mid-gesture is ignored.
  */
 
-import type { Point } from "../types";
+import type { Point } from "../types.js";
 
 /** Which button, named rather than numbered. */
 export type PointerButton = "primary" | "secondary" | "auxiliary";

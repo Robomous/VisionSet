@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import type { PolygonGeometry, PolylineGeometry, Point } from "../types";
+import type { PolygonGeometry, PolylineGeometry, Point } from "../types.js";
 import {
   MIN_POLYGON_POINTS,
   MIN_POLYLINE_POINTS,
@@ -20,8 +20,8 @@ import {
   removePolylineVertex,
   translatePolygon,
   translatePolyline,
-} from "./polygon";
-import type { Bounds } from "./primitives";
+} from "./polygon.js";
+import type { Bounds } from "./primitives.js";
 
 const FRAME: Bounds = { width: 640, height: 480 };
 

@@ -45,12 +45,12 @@
  * is an infinite loop in somebody else's component.
  */
 
-import { CommandLog } from "./commandLog";
-import type { Command } from "./commandLog";
-import { documentCommand } from "./commands";
-import type { AnnotationDocument } from "./document";
-import { EMPTY_SELECTION } from "./selection";
-import type { Selection } from "./selection";
+import { CommandLog } from "./commandLog.js";
+import type { Command } from "./commandLog.js";
+import { documentCommand } from "./commands.js";
+import type { AnnotationDocument } from "./document.js";
+import { EMPTY_SELECTION } from "./selection.js";
+import type { Selection } from "./selection.js";
 
 /** Everything a renderer reads, in one value with one identity. */
 export interface StoreSnapshot {

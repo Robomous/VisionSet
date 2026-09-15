@@ -16,8 +16,8 @@ import {
   filterOptions,
   offeredDimensions,
   optionsOf,
-} from "./modelFilters";
-import type { Connection } from "../data/inferenceQueries";
+} from "./modelFilters.js";
+import type { Connection } from "../data/inferenceQueries.js";
 
 function connection(name: string, overrides: Partial<Connection> = {}): Connection {
   return {

@@ -19,14 +19,14 @@
 
 import { describe, expect, it } from "vitest";
 
-import { assetTolerances } from "../geometry/tolerance";
-import { createDocument } from "../state/document";
-import { ASSET, SCHEMA, annotation } from "../state/_sample";
-import { selectionOf } from "../state/selection";
-import type { Selection } from "../state/selection";
-import type { Annotation, Point } from "../types";
-import { nearestInsertion, resolveTarget } from "./target";
-import type { Scene } from "./target";
+import { assetTolerances } from "../geometry/tolerance.js";
+import { createDocument } from "../state/document.js";
+import { ASSET, SCHEMA, annotation } from "../state/_sample.js";
+import { selectionOf } from "../state/selection.js";
+import type { Selection } from "../state/selection.js";
+import type { Annotation, Point } from "../types.js";
+import { nearestInsertion, resolveTarget } from "./target.js";
+import type { Scene } from "./target.js";
 
 const TOLERANCES = assetTolerances(1);
 

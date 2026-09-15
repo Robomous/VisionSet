@@ -73,13 +73,13 @@
  * already happen*, not *are these two shapes near each other*.
  */
 
-import type { IdFactory } from "../ids";
-import { moveBbox } from "../geometry/bbox";
-import { polygonBbox, translatePolygon, translatePolyline } from "../geometry/polygon";
-import type { Bounds } from "../geometry/primitives";
-import { annotationsInDrawOrder } from "../state/document";
-import type { AnnotationDocument } from "../state/document";
-import type { Annotation, AttributeValue, Geometry } from "../types";
+import type { IdFactory } from "../ids.js";
+import { moveBbox } from "../geometry/bbox.js";
+import { polygonBbox, translatePolygon, translatePolyline } from "../geometry/polygon.js";
+import type { Bounds } from "../geometry/primitives.js";
+import { annotationsInDrawOrder } from "../state/document.js";
+import type { AnnotationDocument } from "../state/document.js";
+import type { Annotation, AttributeValue, Geometry } from "../types.js";
 
 /**
  * One copied annotation, with everything that identifies the original removed.

@@ -14,10 +14,10 @@
 
 import { describe, expect, it } from "vitest";
 
-import { createDocument } from "../state/document";
-import type { AnnotationDocument } from "../state/document";
-import type { AnnotationSchema, AssetDescriptor, Geometry, LabelClass } from "../types";
-import { draftAnnotation } from "./draft";
+import { createDocument } from "../state/document.js";
+import type { AnnotationDocument } from "../state/document.js";
+import type { AnnotationSchema, AssetDescriptor, Geometry, LabelClass } from "../types.js";
+import { draftAnnotation } from "./draft.js";
 
 const ASSET: AssetDescriptor = { id: "asset-7", width: 640, height: 480 };
 

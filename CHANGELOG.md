@@ -11,6 +11,23 @@ nothing was being distributed. This is the first version that is.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The published npm packages can be imported by Node's own ESM resolver** (#839). Both
+  `@visionset/annotator` and `@visionset/ui-core` declare `"type": "module"`, but every relative
+  specifier they emitted was extensionless — `export * from "./core/types"` — which a bundler
+  resolves by trying extensions and Node does not, because there a specifier is a URL. Importing
+  either package from a plain Node process failed at the first re-export in the entry file, and
+  had done since `0.0.1-beta.1`. Every relative specifier in both packages now carries an explicit
+  extension. Bundler consumers are unaffected either way; what starts working is any consumer that
+  hands a specifier to Node — a Node script or worker, a test runner not backed by a bundler, or
+  an SSR path that externalises these packages instead of bundling them.
+
+  Two gates keep it fixed: `tsconfig.build.json` — the config that produces `dist/` — now models
+  Node's resolution, so omitting an extension is a compile error rather than a package that builds
+  green and fails on a consumer's machine; and CI imports both built packages by name from Node,
+  which is the question no other check was asking.
+
 ## [0.0.1b3] — 2026-09-14
 
 ### Added

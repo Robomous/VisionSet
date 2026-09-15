@@ -152,18 +152,18 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from "react";
 
-import { topmostAnnotationAt } from "../../core/geometry/hitTest";
-import { withinBounds } from "../../core/geometry/primitives";
-import { assetTolerances } from "../../core/geometry/tolerance";
-import { affordanceAt, viewerAffordanceAt } from "../../core/interaction/affordance";
-import { transition } from "../../core/interaction/machine";
-import { runEffects } from "../../core/interaction/runEffects";
-import { IDLE } from "../../core/interaction/state";
-import type { InteractionEvent } from "../../core/interaction/events";
-import type { InteractionState, InteractionStateType } from "../../core/interaction/state";
-import { NO_TARGET } from "../../core/interaction/target";
-import { toolFor } from "../../core/interaction/tool";
-import type { Tool } from "../../core/interaction/tool";
+import { topmostAnnotationAt } from "../../core/geometry/hitTest.js";
+import { withinBounds } from "../../core/geometry/primitives.js";
+import { assetTolerances } from "../../core/geometry/tolerance.js";
+import { affordanceAt, viewerAffordanceAt } from "../../core/interaction/affordance.js";
+import { transition } from "../../core/interaction/machine.js";
+import { runEffects } from "../../core/interaction/runEffects.js";
+import { IDLE } from "../../core/interaction/state.js";
+import type { InteractionEvent } from "../../core/interaction/events.js";
+import type { InteractionState, InteractionStateType } from "../../core/interaction/state.js";
+import { NO_TARGET } from "../../core/interaction/target.js";
+import { toolFor } from "../../core/interaction/tool.js";
+import type { Tool } from "../../core/interaction/tool.js";
 import {
   ACCEPT_SUGGESTION,
   DISCARD_SUGGESTION,
@@ -177,20 +177,20 @@ import {
   pointerPoint,
   resolve,
   runAction,
-} from "../../core/input";
-import type { Action, Binding, InputHost } from "../../core/input";
-import { hasPending, isAcceptable } from "../../core/interaction/suggestion";
-import type { Polarity, SuggestionState } from "../../core/interaction/suggestion";
-import { createClipboard } from "../../core/interaction/clipboard";
-import type { Clipboard } from "../../core/interaction/clipboard";
-import type { IdFactory } from "../../core/ids";
-import { annotationsInDrawOrder } from "../../core/state/document";
-import type { AnnotationDocument } from "../../core/state/document";
-import { clearSelection, selectOnly } from "../../core/state/selection";
-import type { Selection } from "../../core/state/selection";
-import type { AnnotatorStore } from "../../core/state/store";
-import type { Point } from "../../core/types";
-import { randomUuid } from "../ids";
+} from "../../core/input/index.js";
+import type { Action, Binding, InputHost } from "../../core/input/index.js";
+import { hasPending, isAcceptable } from "../../core/interaction/suggestion.js";
+import type { Polarity, SuggestionState } from "../../core/interaction/suggestion.js";
+import { createClipboard } from "../../core/interaction/clipboard.js";
+import type { Clipboard } from "../../core/interaction/clipboard.js";
+import type { IdFactory } from "../../core/ids.js";
+import { annotationsInDrawOrder } from "../../core/state/document.js";
+import type { AnnotationDocument } from "../../core/state/document.js";
+import { clearSelection, selectOnly } from "../../core/state/selection.js";
+import type { Selection } from "../../core/state/selection.js";
+import type { AnnotatorStore } from "../../core/state/store.js";
+import type { Point } from "../../core/types.js";
+import { randomUuid } from "../ids.js";
 import {
   IDENTITY_VIEWPORT,
   bareWheelZooms,
@@ -204,16 +204,16 @@ import {
   screenToImage,
   wheelZoomFactor,
   zoomAbout,
-} from "../viewport";
-import type { Viewport } from "../viewport";
-import { AnnotationLayer } from "./AnnotationLayer";
-import { useAnnotatorSnapshot } from "./hooks";
-import { digitFromCode, isComposing, isTextEntry } from "./keyboard";
-import { classColor, editedId, paintAnnotation, paintSuggestions } from "./paint";
-import type { PaintedSuggestion } from "./paint";
-import { stageScreenSizes } from "./Shapes";
-import { withoutHidden } from "./visibility";
-import { TransientLayer } from "./TransientLayer";
+} from "../viewport.js";
+import type { Viewport } from "../viewport.js";
+import { AnnotationLayer } from "./AnnotationLayer.js";
+import { useAnnotatorSnapshot } from "./hooks.js";
+import { digitFromCode, isComposing, isTextEntry } from "./keyboard.js";
+import { classColor, editedId, paintAnnotation, paintSuggestions } from "./paint.js";
+import type { PaintedSuggestion } from "./paint.js";
+import { stageScreenSizes } from "./Shapes.js";
+import { withoutHidden } from "./visibility.js";
+import { TransientLayer } from "./TransientLayer.js";
 
 /** The states a press must hold the pointer for. `drawing-polygon` is not one. */
 const DRAG_STATES: ReadonlySet<InteractionStateType> = new Set([

@@ -14,10 +14,10 @@
 
 import { describe, expect, it } from "vitest";
 
-import { NO_MODIFIERS } from "../interaction/events";
-import { pressOf } from "./_palette";
-import { chordOf, keystrokeOf, modifiersOf } from "./keys";
-import type { KeyPress, Keystroke } from "./keys";
+import { NO_MODIFIERS } from "../interaction/events.js";
+import { pressOf } from "./_palette.js";
+import { chordOf, keystrokeOf, modifiersOf } from "./keys.js";
+import type { KeyPress, Keystroke } from "./keys.js";
 
 /** The chord a press produces, which is the only path a registry ever takes. */
 function chordFrom(key: string, held: Partial<KeyPress> = {}): string {

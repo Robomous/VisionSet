@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import type { DataResult, VisionSetDataClient } from "./port";
+import type { DataResult, VisionSetDataClient } from "./port.js";
 
 /** A client backed by a table, not a network. */
 function tableClient(answers: ReadonlyMap<string, DataResult>): VisionSetDataClient {

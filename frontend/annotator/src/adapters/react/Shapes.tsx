@@ -56,16 +56,16 @@
 
 import type { JSX } from "react";
 
-import { BBOX_HANDLES, bboxHandlePositions } from "../../core/geometry/bbox";
-import { polygonBbox } from "../../core/geometry/polygon";
+import { BBOX_HANDLES, bboxHandlePositions } from "../../core/geometry/bbox.js";
+import { polygonBbox } from "../../core/geometry/polygon.js";
 import type {
   BboxGeometry,
   Point,
   PolygonGeometry,
   PolylineGeometry,
-} from "../../core/types";
-import { screenPx } from "./paint";
-import type { PaintedAnnotation } from "./paint";
+} from "../../core/types.js";
+import { screenPx } from "./paint.js";
+import type { PaintedAnnotation } from "./paint.js";
 
 /** Stroke thickness, in screen pixels, for an unselected shape. */
 export const STROKE_PX = 2;

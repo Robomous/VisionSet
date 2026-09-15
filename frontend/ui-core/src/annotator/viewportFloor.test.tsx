@@ -18,14 +18,14 @@ import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
-import { AnnotationPage } from "./AnnotationPage";
-import { renderWithData } from "../testing/dataHarness";
+import { AnnotationPage } from "./AnnotationPage.js";
+import { renderWithData } from "../testing/dataHarness.js";
 import { batchActions, jobActions } from "../testing/wire.fixtures.js";
 import {
   ANNOTATOR_MIN_VIEWPORT_PX,
   atLeastQuery,
   useViewportAtLeast,
-} from "./viewportFloor";
+} from "./viewportFloor.js";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";

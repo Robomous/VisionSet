@@ -20,15 +20,15 @@ import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
-import { probeClip } from "./clipProbe";
-import { IngestScreen } from "./IngestScreen";
-import { renderWithData } from "../testing/dataHarness";
+import { probeClip } from "./clipProbe.js";
+import { IngestScreen } from "./IngestScreen.js";
+import { renderWithData } from "../testing/dataHarness.js";
 import { batchActions, datasetOf } from "../testing/wire.fixtures.js";
 
 // The browser-side clip read is substituted whole. The default — a promise that
 // never settles — is exactly what the real module does under jsdom, which has no
 // media pipeline; tests that want an estimate resolve it explicitly.
-vi.mock("./clipProbe", () => ({
+vi.mock("./clipProbe.js", () => ({
   probeClip: vi.fn(() => new Promise(() => {})),
 }));
 

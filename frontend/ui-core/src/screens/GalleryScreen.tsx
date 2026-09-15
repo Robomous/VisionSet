@@ -11,37 +11,37 @@
 
 import { useState, type JSX, type ReactNode } from "react";
 
-import { readStep, writePref } from "../data/prefs";
+import { readStep, writePref } from "../data/prefs.js";
 import { Badge, Button, FieldError } from "@robomous/ui-core";
-import { BackLink } from "../patterns/BackLink";
+import { BackLink } from "../patterns/BackLink.js";
 import {
   DEFAULT_DENSITY,
   DENSITY_INDEXES,
   DENSITY_PREF,
   DENSITY_STEPS,
   FrameGrid,
-} from "./FrameGrid";
+} from "./FrameGrid.js";
 import {
   ApproveDialog,
   BatchProgressBar,
   CompleteBatchButton,
   StartAnnotatingButton,
-} from "./BatchLifecycle";
-import { CompleteAndPromoteButton } from "./ComposedTransitions";
-import { CorrectionButton, CorrectionOf } from "./CorrectionBatch";
-import { BatchOverflowMenu } from "./DeleteBatch";
-import { DensityControl, Toolbar } from "./GalleryControls";
-import { JobPanels, SingleJobWorkspace, type JobPanelsProps } from "./JobPanels";
-import { PromoteButton } from "./PromoteButton";
-import { BATCH_ACTION, declares } from "../data/capabilities";
-import { refusalProse } from "../data/refusals";
+} from "./BatchLifecycle.js";
+import { CompleteAndPromoteButton } from "./ComposedTransitions.js";
+import { CorrectionButton, CorrectionOf } from "./CorrectionBatch.js";
+import { BatchOverflowMenu } from "./DeleteBatch.js";
+import { DensityControl, Toolbar } from "./GalleryControls.js";
+import { JobPanels, SingleJobWorkspace, type JobPanelsProps } from "./JobPanels.js";
+import { PromoteButton } from "./PromoteButton.js";
+import { BATCH_ACTION, declares } from "../data/capabilities.js";
+import { refusalProse } from "../data/refusals.js";
 import {
   BATCH_STATE_VARIANT,
   batchStateLabel,
   earliestArrival,
   hasJobs,
   relativeAge,
-} from "./batchState";
+} from "./batchState.js";
 import {
   GALLERY_PAGE_SIZE,
   useBatch,
@@ -50,7 +50,7 @@ import {
   useSource,
   type Batch,
   type BatchAsset,
-} from "./queries";
+} from "./queries.js";
 
 export interface GalleryScreenProps {
   readonly projectId: string;
@@ -495,5 +495,5 @@ function BatchHeader({
   );
 }
 
-export { columnsFor } from "./FrameGrid";
+export { columnsFor } from "./FrameGrid.js";
 export { GALLERY_PAGE_SIZE };

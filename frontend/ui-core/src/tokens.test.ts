@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { blockBody, declarations, foundationTokenNames, rawDeclarations } from "@robomous/ui-core/gates";
 import { describe, expect, it } from "vitest";
 
-import { DARK_THEME, EXTENSION_DARK, EXTENSION_LIGHT, EXTENSIONS, LIGHT_THEME } from "./tokens";
+import { DARK_THEME, EXTENSION_DARK, EXTENSION_LIGHT, EXTENSIONS, LIGHT_THEME } from "./tokens.js";
 
 const STYLESHEET = readFileSync(fileURLToPath(new URL("./styles.css", import.meta.url)), "utf8");
 

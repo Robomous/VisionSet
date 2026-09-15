@@ -156,7 +156,7 @@
  * it.** `gestures.test.ts` pins it by reference rather than by value.
  */
 
-import { isDrawnBox, moveBbox, normalizeBbox, resizeBbox } from "../geometry/bbox";
+import { isDrawnBox, moveBbox, normalizeBbox, resizeBbox } from "../geometry/bbox.js";
 import {
   MIN_POLYGON_POINTS,
   MIN_POLYLINE_POINTS,
@@ -169,31 +169,31 @@ import {
   removePolylineVertex,
   translatePolygon,
   translatePolyline,
-} from "../geometry/polygon";
-import { polygonCloseAttempt } from "../geometry/hitTest";
-import { clampPoint, distance } from "../geometry/primitives";
-import type { Tolerances } from "../geometry/tolerance";
-import type { IdFactory } from "../ids";
-import { annotationById } from "../state/document";
-import type { AnnotationDocument } from "../state/document";
-import { clearSelection, selectAlso, selectOnly, toggleSelection } from "../state/selection";
-import type { Selection } from "../state/selection";
-import type { Annotation, Geometry, Point } from "../types";
-import { draftAnnotation } from "./draft";
-import { NO_EFFECTS } from "./effects";
-import type { Effect } from "./effects";
-import { isToggleModifier } from "./events";
-import type { InteractionEvent, InteractionEventType } from "./events";
-import { IDLE } from "./state";
+} from "../geometry/polygon.js";
+import { polygonCloseAttempt } from "../geometry/hitTest.js";
+import { clampPoint, distance } from "../geometry/primitives.js";
+import type { Tolerances } from "../geometry/tolerance.js";
+import type { IdFactory } from "../ids.js";
+import { annotationById } from "../state/document.js";
+import type { AnnotationDocument } from "../state/document.js";
+import { clearSelection, selectAlso, selectOnly, toggleSelection } from "../state/selection.js";
+import type { Selection } from "../state/selection.js";
+import type { Annotation, Geometry, Point } from "../types.js";
+import { draftAnnotation } from "./draft.js";
+import { NO_EFFECTS } from "./effects.js";
+import type { Effect } from "./effects.js";
+import { isToggleModifier } from "./events.js";
+import type { InteractionEvent, InteractionEventType } from "./events.js";
+import { IDLE } from "./state.js";
 import type {
   InteractionState,
   InteractionStateType,
   MovableGeometry,
   VertexEditableGeometry,
-} from "./state";
-import { nearestInsertion, resolveTarget } from "./target";
-import type { Scene } from "./target";
-import type { Tool } from "./tool";
+} from "./state.js";
+import { nearestInsertion, resolveTarget } from "./target.js";
+import type { Scene } from "./target.js";
+import type { Tool } from "./tool.js";
 
 /** Everything a transition needs that is not the state or the event. */
 export interface InteractionContext {

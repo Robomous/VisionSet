@@ -27,10 +27,10 @@
 import { memo } from "react";
 import type { JSX } from "react";
 
-import type { AnnotationDocument } from "../../core/state/document";
-import type { Selection } from "../../core/state/selection";
-import { paintDocument } from "./paint";
-import { AnnotationShape } from "./Shapes";
+import type { AnnotationDocument } from "../../core/state/document.js";
+import type { Selection } from "../../core/state/selection.js";
+import { paintDocument } from "./paint.js";
+import { AnnotationShape } from "./Shapes.js";
 
 export interface AnnotationLayerProps {
   /**

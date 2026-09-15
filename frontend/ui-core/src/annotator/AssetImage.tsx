@@ -25,7 +25,7 @@
 import { ImageOff } from "lucide-react";
 import { useEffect, useState, type JSX, type ReactNode } from "react";
 
-import { useApiClient } from "../data/VisionSetDataProvider";
+import { useApiClient } from "../data/VisionSetDataProvider.js";
 
 export interface AssetImageProps {
   readonly projectId: string;

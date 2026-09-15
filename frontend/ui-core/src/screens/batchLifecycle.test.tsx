@@ -18,9 +18,9 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApproveDialog, BatchProgressBar } from "./BatchLifecycle";
-import type { Batch } from "./queries";
-import { renderWithData } from "../testing/dataHarness";
+import { ApproveDialog, BatchProgressBar } from "./BatchLifecycle.js";
+import type { Batch } from "./queries.js";
+import { renderWithData } from "../testing/dataHarness.js";
 import { batchActions } from "../testing/wire.fixtures.js";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";

@@ -72,8 +72,8 @@
  * everything else the adapter owes.
  */
 
-import { isToggleModifier } from "../interaction/events";
-import type { Modifiers } from "../interaction/events";
+import { isToggleModifier } from "../interaction/events.js";
+import type { Modifiers } from "../interaction/events.js";
 
 /**
  * The four modifier flags, as a browser event spells them.

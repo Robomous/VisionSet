@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { pointerButton, pointerPoint } from "./pointer";
+import { pointerButton, pointerPoint } from "./pointer.js";
 
 describe("pointerButton", () => {
   it("names the three the engine knows", () => {

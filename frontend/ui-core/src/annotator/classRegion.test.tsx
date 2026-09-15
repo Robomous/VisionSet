@@ -20,8 +20,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { AnnotationSchema } from "@visionset/annotator";
 import type { JSX } from "react";
 
-import { CLASS_ROW_PX } from "../patterns/DataDisplay";
-import { ClassRegion, MAX_CLASS_ROWS, MIN_CLASS_ROWS, classListHeight } from "./ClassRegion";
+import { CLASS_ROW_PX } from "../patterns/DataDisplay.js";
+import { ClassRegion, MAX_CLASS_ROWS, MIN_CLASS_ROWS, classListHeight } from "./ClassRegion.js";
 
 /** A schema of `n` classes, named so the row order is readable in a failure. */
 function schemaOf(n: number): AnnotationSchema {

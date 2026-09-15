@@ -26,15 +26,15 @@
 
 import { describe, expect, it } from "vitest";
 
-import { BBOX_HANDLES, bboxHandlePositions } from "../geometry/bbox";
-import type { BboxHandle } from "../geometry/bbox";
-import { MIN_DRAW_SIZE_PX, assetTolerances } from "../geometry/tolerance";
-import { ASSET } from "../state/_sample";
-import { annotationById } from "../state/document";
-import type { AnnotationDocument } from "../state/document";
-import { selectOnly } from "../state/selection";
-import type { BboxGeometry, Point } from "../types";
-import { BOX_BODY, BOX_ID, World, down, move, up } from "./_scene";
+import { BBOX_HANDLES, bboxHandlePositions } from "../geometry/bbox.js";
+import type { BboxHandle } from "../geometry/bbox.js";
+import { MIN_DRAW_SIZE_PX, assetTolerances } from "../geometry/tolerance.js";
+import { ASSET } from "../state/_sample.js";
+import { annotationById } from "../state/document.js";
+import type { AnnotationDocument } from "../state/document.js";
+import { selectOnly } from "../state/selection.js";
+import type { BboxGeometry, Point } from "../types.js";
+import { BOX_BODY, BOX_ID, World, down, move, up } from "./_scene.js";
 
 function bbox(x: number, y: number, width: number, height: number): BboxGeometry {
   return { type: "bbox", x, y, width, height };

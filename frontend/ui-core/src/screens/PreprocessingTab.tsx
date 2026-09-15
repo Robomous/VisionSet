@@ -31,14 +31,14 @@
 import { Image as ImageIcon, Plus } from "lucide-react";
 import { useEffect, useState, type JSX } from "react";
 
-import { asApiError } from "../data/errors";
-import { refusalProse } from "../data/refusals";
-import type { WireAnnotation } from "../annotator/jobQueries";
+import { asApiError } from "../data/errors.js";
+import { refusalProse } from "../data/refusals.js";
+import type { WireAnnotation } from "../annotator/jobQueries.js";
 import { parseLabelClass, type LabelClass } from "@visionset/annotator";
-import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
-import { RecipeEditor } from "../patterns/RecipeEditor";
-import { RecipeList } from "../patterns/RecipeList";
-import { StaticAnnotationOverlay } from "../patterns/StaticAnnotationOverlay";
+import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates.js";
+import { RecipeEditor } from "../patterns/RecipeEditor.js";
+import { RecipeList } from "../patterns/RecipeList.js";
+import { StaticAnnotationOverlay } from "../patterns/StaticAnnotationOverlay.js";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FieldError } from "@robomous/ui-core";
 import {
   useActiveSchema,
@@ -54,7 +54,7 @@ import {
   type ExportTarget,
   type PreprocessingRecipe,
   type Release,
-} from "./queries";
+} from "./queries.js";
 import {
   AUGMENT_OPS,
   canonicalSpec,
@@ -65,7 +65,7 @@ import {
   type AugmentStepSpec,
   type RecipeDraft,
   type RecipeSpec,
-} from "./recipeDraft";
+} from "./recipeDraft.js";
 
 export interface PreprocessingTabProps {
   readonly projectId: string;

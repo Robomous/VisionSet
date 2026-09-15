@@ -26,24 +26,24 @@
 
 import { describe, expect, it } from "vitest";
 
-import { SEEDS, mulberry32 } from "../_random";
-import { fixture } from "../_fixture";
-import { CommandLog } from "../state/commandLog";
-import { createDocument, documentFromWire } from "../state/document";
-import type { AnnotationDocument } from "../state/document";
-import { AnnotatorStore } from "../state/store";
+import { SEEDS, mulberry32 } from "../_random.js";
+import { fixture } from "../_fixture.js";
+import { CommandLog } from "../state/commandLog.js";
+import { createDocument, documentFromWire } from "../state/document.js";
+import type { AnnotationDocument } from "../state/document.js";
+import { AnnotatorStore } from "../state/store.js";
 import {
   ANNOTATION_CREATE_KEYS,
   parseAnnotation,
   toAnnotationCreate,
-} from "../wire";
-import { GEOMETRY_TYPES } from "../types";
+} from "../wire.js";
+import { GEOMETRY_TYPES } from "../types.js";
 import type {
   Annotation,
   AnnotationSchema,
   AssetDescriptor,
   LabelClass,
-} from "../types";
+} from "../types.js";
 import {
   isTaggableClass,
   tagCommand,
@@ -51,7 +51,7 @@ import {
   tagsFor,
   toggleTagCommand,
   untagCommand,
-} from "./tags";
+} from "./tags.js";
 
 const ASSET: AssetDescriptor = { id: "asset-7", width: 640, height: 480 };
 

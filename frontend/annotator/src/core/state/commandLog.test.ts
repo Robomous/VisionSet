@@ -9,16 +9,16 @@
 
 import { describe, expect, it } from "vitest";
 
-import { annotation, documentOf } from "./_sample";
-import { CommandLog, type Command } from "./commandLog";
+import { annotation, documentOf } from "./_sample.js";
+import { CommandLog, type Command } from "./commandLog.js";
 import {
   addAnnotationCommand,
   composeCommands,
   documentCommand,
   removeAnnotationsCommand,
   replaceAnnotationCommand,
-} from "./commands";
-import { annotationsInDrawOrder, type AnnotationDocument } from "./document";
+} from "./commands.js";
+import { annotationsInDrawOrder, type AnnotationDocument } from "./document.js";
 
 const idsOf = (document: AnnotationDocument): readonly string[] =>
   annotationsInDrawOrder(document).map((a) => a.id);

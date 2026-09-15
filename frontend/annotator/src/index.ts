@@ -1,5 +1,5 @@
 // Headless engine (pure TS — safe in any renderer or in Node)
-export * from "./core/types";
+export * from "./core/types.js";
 export {
   ANNOTATION_CREATE_KEYS,
   ANNOTATION_KEYS,
@@ -14,8 +14,8 @@ export {
   parseSchema,
   toAnnotationCreate,
   toAnnotationUpdate,
-} from "./core/wire";
-export type { IdFactory } from "./core/ids";
+} from "./core/wire.js";
+export type { IdFactory } from "./core/ids.js";
 export {
   DocumentError,
   addAnnotation,
@@ -28,7 +28,7 @@ export {
   replaceAnnotation,
   type AnnotationDocument,
   type WireDocument,
-} from "./core/state/document";
+} from "./core/state/document.js";
 export {
   EMPTY_SELECTION,
   clearSelection,
@@ -43,8 +43,8 @@ export {
   selectionOf,
   toggleSelection,
   type Selection,
-} from "./core/state/selection";
-export { CommandLog, type Command } from "./core/state/commandLog";
+} from "./core/state/selection.js";
+export { CommandLog, type Command } from "./core/state/commandLog.js";
 export {
   addAnnotationCommand,
   addAnnotationsCommand,
@@ -52,21 +52,21 @@ export {
   documentCommand,
   removeAnnotationsCommand,
   replaceAnnotationCommand,
-} from "./core/state/commands";
+} from "./core/state/commands.js";
 export {
   AnnotatorStore,
   type Projection,
   type StoreSnapshot,
-} from "./core/state/store";
+} from "./core/state/store.js";
 // Geometry — asset-pixel math: predicates, hit-testing, transforms
-export { clamp } from "./core/geometry/clamp";
+export { clamp } from "./core/geometry/clamp.js";
 export {
   clampPoint,
   closestPointOnSegment,
   distance,
   withinBounds,
   type Bounds,
-} from "./core/geometry/primitives";
+} from "./core/geometry/primitives.js";
 export {
   BBOX_HANDLES,
   MIN_BBOX_SIZE,
@@ -78,7 +78,7 @@ export {
   normalizeBbox,
   resizeBbox,
   type BboxHandle,
-} from "./core/geometry/bbox";
+} from "./core/geometry/bbox.js";
 export {
   MIN_POLYGON_POINTS,
   insertPolygonVertex,
@@ -88,7 +88,7 @@ export {
   removePolygonVertex,
   translatePolygon,
   translatePolyline,
-} from "./core/geometry/polygon";
+} from "./core/geometry/polygon.js";
 export {
   geometryContains,
   nearestEdge,
@@ -100,7 +100,7 @@ export {
   type EdgeHit,
   type HandleHit,
   type VertexHit,
-} from "./core/geometry/hitTest";
+} from "./core/geometry/hitTest.js";
 export {
   CLICK_SLOP_PX,
   CLOSE_POLYGON_TOLERANCE_PX,
@@ -113,14 +113,14 @@ export {
   assetTolerances,
   toleranceInAssetPixels,
   type Tolerances,
-} from "./core/geometry/tolerance";
+} from "./core/geometry/tolerance.js";
 // Interaction — the state machine: states, events, effects, and the runner
 export {
   IDLE,
   type InteractionState,
   type InteractionStateType,
   type MovableGeometry,
-} from "./core/interaction/state";
+} from "./core/interaction/state.js";
 export {
   NO_MODIFIERS,
   isToggleModifier,
@@ -128,9 +128,9 @@ export {
   type InteractionEventType,
   type Modifiers,
   type PointerButton,
-} from "./core/interaction/events";
-export { NO_EFFECTS, type Effect, type EffectKind } from "./core/interaction/effects";
-export { drawableGeometries, toolFor, toolForClass, type Tool } from "./core/interaction/tool";
+} from "./core/interaction/events.js";
+export { NO_EFFECTS, type Effect, type EffectKind } from "./core/interaction/effects.js";
+export { drawableGeometries, toolFor, toolForClass, type Tool } from "./core/interaction/tool.js";
 export {
   NO_TARGET,
   nearestInsertion,
@@ -138,15 +138,15 @@ export {
   type Insertion,
   type Scene,
   type Target,
-} from "./core/interaction/target";
+} from "./core/interaction/target.js";
 // The bbox tool — what the pointer would do here, for a renderer to show
 export {
   HANDLE_CURSORS,
   affordanceAt,
   type Affordance,
   type Cursor,
-} from "./core/interaction/affordance";
-export { draftAnnotation } from "./core/interaction/draft";
+} from "./core/interaction/affordance.js";
+export { draftAnnotation } from "./core/interaction/draft.js";
 // The suggest session — ephemeral by construction: no effects, no store,
 // nothing in the command log until `acceptedAnnotations` are added like any shape
 export {
@@ -181,7 +181,7 @@ export {
   type SuggestibleGeometryType,
   type SuggestionState,
   type SuggestionStatus,
-} from "./core/interaction/suggestion";
+} from "./core/interaction/suggestion.js";
 
 // The simplifier the editor re-runs when the tolerance moves, and the range it
 // moves through. Exported because `ui-core` renders the control and reads the
@@ -194,15 +194,15 @@ export {
   polygonAt,
   simplified,
   steppedTolerance,
-} from "./core/geometry/simplify";
+} from "./core/geometry/simplify.js";
 export {
   TRANSITIONS,
   transition,
   type InteractionContext,
   type Transition,
   type Turn,
-} from "./core/interaction/machine";
-export { runEffects } from "./core/interaction/runEffects";
+} from "./core/interaction/machine.js";
+export { runEffects } from "./core/interaction/runEffects.js";
 // Copy and paste — a session clipboard, and the two transformations over it
 export {
   copiedEntries,
@@ -210,7 +210,7 @@ export {
   pastedAnnotations,
   type Clipboard,
   type ClipboardEntry,
-} from "./core/interaction/clipboard";
+} from "./core/interaction/clipboard.js";
 // The classification tag tool — a panel, and the only tool not on the canvas
 export {
   isTagAnnotation,
@@ -220,7 +220,7 @@ export {
   tagsFor,
   toggleTagCommand,
   untagCommand,
-} from "./core/interaction/tags";
+} from "./core/interaction/tags.js";
 // The input layer — a press, a chord, the map, and what carries a row out
 export {
   ACCEPT_SUGGESTION,
@@ -263,10 +263,10 @@ export {
   type PointerPress,
   type Registry,
   type SentEvent,
-} from "./core/input";
+} from "./core/input/index.js";
 
 // Host adapters — each needs a capability the headless core may not name
-export { randomUuid } from "./adapters/ids";
+export { randomUuid } from "./adapters/ids.js";
 // The screen↔image transform — a zoom is not the engine's to name, so this
 // is the one piece of geometry that lives outside `core/`. Renderer-agnostic.
 export {
@@ -294,7 +294,7 @@ export {
   type Pinch,
   type WheelShape,
   type Viewport,
-} from "./adapters/viewport";
+} from "./adapters/viewport.js";
 
 // React adapter (requires the optional `react` peer dependency)
 export {
@@ -346,4 +346,4 @@ export {
   type PendingPolygon,
   type TextEntryProbe,
   type TransientLayerProps,
-} from "./adapters/react";
+} from "./adapters/react/index.js";

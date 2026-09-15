@@ -35,9 +35,9 @@
 
 import type { JSX, ReactNode } from "react";
 
-import { EmptyState, ErrorState, LoadingState, type EmptyStateProps } from "../patterns/AsyncStates";
-import { asApiError } from "./errors";
-import { refusalProse } from "./refusals";
+import { EmptyState, ErrorState, LoadingState, type EmptyStateProps } from "../patterns/AsyncStates.js";
+import { asApiError } from "./errors.js";
+import { refusalProse } from "./refusals.js";
 
 /**
  * The part of TanStack Query's result this needs.

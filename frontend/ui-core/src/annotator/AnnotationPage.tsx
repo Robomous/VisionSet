@@ -151,22 +151,22 @@ import {
   type AssetAction,
   type BatchAction,
   type JobAction,
-} from "../data/capabilities";
+} from "../data/capabilities.js";
 import type { OpenMember } from "../generated/api.js";
-import { asApiError } from "../data/errors";
-import { refusalProse } from "../data/refusals";
+import { asApiError } from "../data/errors.js";
+import { refusalProse } from "../data/refusals.js";
 import { Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Tooltip, TooltipContent, TooltipTrigger } from "@robomous/ui-core";
-import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
-import { AnnotatorPanel } from "./AnnotatorPanel";
-import { CanvasReassign } from "./CanvasReassign";
-import { EditorNotice, EditorNotices } from "./EditorNotice";
-import { ShortcutSheet, modKey } from "./ShortcutSheet";
-import { ToolPalette } from "./ToolPalette";
-import { ZoomWidget } from "./ZoomWidget";
-import { ANNOTATOR_MIN_VIEWPORT_PX, useViewportAtLeast } from "./viewportFloor";
-import { AssetImage } from "./AssetImage";
-import type { AssetProgress, WireAnnotation } from "./jobQueries";
-import type { BatchAsset } from "../screens/queries";
+import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates.js";
+import { AnnotatorPanel } from "./AnnotatorPanel.js";
+import { CanvasReassign } from "./CanvasReassign.js";
+import { EditorNotice, EditorNotices } from "./EditorNotice.js";
+import { ShortcutSheet, modKey } from "./ShortcutSheet.js";
+import { ToolPalette } from "./ToolPalette.js";
+import { ZoomWidget } from "./ZoomWidget.js";
+import { ANNOTATOR_MIN_VIEWPORT_PX, useViewportAtLeast } from "./viewportFloor.js";
+import { AssetImage } from "./AssetImage.js";
+import type { AssetProgress, WireAnnotation } from "./jobQueries.js";
+import type { BatchAsset } from "../screens/queries.js";
 import {
   jobKeys,
   assetPositionOf,
@@ -181,13 +181,13 @@ import {
   useJobTransition,
   useSaveAnnotations,
   useSetAssetProgress,
-} from "./jobQueries";
-import { AddClassDialog, runAddClass } from "./AddClassDialog";
-import { FrameGallery } from "./FrameGallery";
-import { SuggestPanel } from "./SuggestPanel";
-import { useConnections, useSuggestRegion, usableConnection } from "../data/inferenceQueries";
-import type { SuggestionOut } from "../data/inferenceQueries";
-import { readPref, writePref } from "../data/prefs";
+} from "./jobQueries.js";
+import { AddClassDialog, runAddClass } from "./AddClassDialog.js";
+import { FrameGallery } from "./FrameGallery.js";
+import { SuggestPanel } from "./SuggestPanel.js";
+import { useConnections, useSuggestRegion, usableConnection } from "../data/inferenceQueries.js";
+import type { SuggestionOut } from "../data/inferenceQueries.js";
+import { readPref, writePref } from "../data/prefs.js";
 
 /**
  * Where a project's suggest-through choice is remembered.
@@ -211,8 +211,8 @@ function preferredConnectionKey(projectId: string): string {
  * one gesture, not an error.
  */
 const PRECISE_DEVICE_PREF = "annotator.precise-device";
-import { PROGRESS_LABEL, outstandingWork, progressDotClass, progressTone } from "../screens/batchState";
-import type { DraftLabelClassBody, LabelClassBody, SchemaDiff, SchemaVersion } from "../screens/queries";
+import { PROGRESS_LABEL, outstandingWork, progressDotClass, progressTone } from "../screens/batchState.js";
+import type { DraftLabelClassBody, LabelClassBody, SchemaDiff, SchemaVersion } from "../screens/queries.js";
 import {
   batchKeys,
   useActiveSchema,
@@ -222,7 +222,7 @@ import {
   useSaveSchemaDraft,
   useSchemaComparison,
   useSchemaDraft,
-} from "../screens/queries";
+} from "../screens/queries.js";
 import { toast } from "sonner";
 
 /**

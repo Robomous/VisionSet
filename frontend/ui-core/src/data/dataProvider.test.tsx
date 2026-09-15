@@ -7,14 +7,14 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { startTransition, Suspense, useEffect, useState, type JSX, type ReactNode } from "react";
 
-import { unwrap } from "./errors";
-import type { DataResult, VisionSetDataClient } from "./port";
+import { unwrap } from "./errors.js";
+import type { DataResult, VisionSetDataClient } from "./port.js";
 import {
   useApiClient,
   VisionSetDataProvider,
   type VisionSetDataScope,
-} from "./VisionSetDataProvider";
-import { checkListProjects } from "../generated/checks";
+} from "./VisionSetDataProvider.js";
+import { checkListProjects } from "../generated/checks.js";
 
 /** A client that answers whatever it is told to, and is a distinct identity. */
 function clientAnswering(answer: () => DataResult): VisionSetDataClient {

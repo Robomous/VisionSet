@@ -5,8 +5,8 @@
 
 import { describe, expect, it } from "vitest";
 
-import { mulberry32, SEEDS } from "../core/_random";
-import type { AssetDescriptor } from "../core/types";
+import { mulberry32, SEEDS } from "../core/_random.js";
+import type { AssetDescriptor } from "../core/types.js";
 import {
   IDENTITY_VIEWPORT,
   MAX_ZOOM,
@@ -29,8 +29,8 @@ import {
   screenToImage,
   wheelZoomFactor,
   zoomAbout,
-} from "./viewport";
-import type { Viewport } from "./viewport";
+} from "./viewport.js";
+import type { Viewport } from "./viewport.js";
 
 const ASSET: AssetDescriptor = { id: "a", width: 1280, height: 720 };
 

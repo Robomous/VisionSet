@@ -22,8 +22,8 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
 import { TooltipProvider } from "@robomous/ui-core";
-import { AnnotationPage } from "./AnnotationPage";
-import { renderWithData } from "../testing/dataHarness";
+import { AnnotationPage } from "./AnnotationPage.js";
+import { renderWithData } from "../testing/dataHarness.js";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
 

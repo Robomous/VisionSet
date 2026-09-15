@@ -10,20 +10,20 @@
 
 import { describe, expect, it } from "vitest";
 
-import { annotation, documentOf } from "./_sample";
+import { annotation, documentOf } from "./_sample.js";
 import {
   addAnnotationCommand,
   removeAnnotationsCommand,
   replaceAnnotationCommand,
-} from "./commands";
+} from "./commands.js";
 import {
   annotationById,
   annotationsInDrawOrder,
   replaceAnnotation,
   type AnnotationDocument,
-} from "./document";
-import { selectedAnnotations, selectionOf } from "./selection";
-import { AnnotatorStore } from "./store";
+} from "./document.js";
+import { selectedAnnotations, selectionOf } from "./selection.js";
+import { AnnotatorStore } from "./store.js";
 
 const idsOf = (document: AnnotationDocument): readonly string[] =>
   annotationsInDrawOrder(document).map((a) => a.id);

@@ -61,10 +61,10 @@ import {
 import { Plus } from "lucide-react";
 import { useState, type JSX, type RefObject } from "react";
 
-import { formatGeometries, geometryLabel } from "../data/geometryCategory";
-import { classColor } from "../palette";
+import { formatGeometries, geometryLabel } from "../data/geometryCategory.js";
+import { classColor } from "../palette.js";
 import { Button, Input } from "@robomous/ui-core";
-import { CLASS_ROW_PX, ClassListRow } from "../patterns/DataDisplay";
+import { CLASS_ROW_PX, ClassListRow } from "../patterns/DataDisplay.js";
 
 /** The fewest rows' worth of height the region ever takes. */
 export const MIN_CLASS_ROWS = 3;

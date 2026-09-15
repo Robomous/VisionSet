@@ -36,21 +36,21 @@
  * sending the second.
  */
 
-import { assetTolerances } from "../geometry/tolerance";
-import type { Tolerances } from "../geometry/tolerance";
-import { createDocument } from "../state/document";
-import type { AnnotationDocument } from "../state/document";
-import { ASSET, SCHEMA, annotation } from "../state/_sample";
-import { AnnotatorStore } from "../state/store";
-import type { Annotation, Point } from "../types";
-import { NO_MODIFIERS } from "./events";
-import type { InteractionEvent, InteractionEventType, Modifiers, PointerButton } from "./events";
-import { transition } from "./machine";
-import type { InteractionContext, Transition } from "./machine";
-import { runEffects } from "./runEffects";
-import { IDLE } from "./state";
-import type { InteractionState, InteractionStateType } from "./state";
-import { toolFor } from "./tool";
+import { assetTolerances } from "../geometry/tolerance.js";
+import type { Tolerances } from "../geometry/tolerance.js";
+import { createDocument } from "../state/document.js";
+import type { AnnotationDocument } from "../state/document.js";
+import { ASSET, SCHEMA, annotation } from "../state/_sample.js";
+import { AnnotatorStore } from "../state/store.js";
+import type { Annotation, Point } from "../types.js";
+import { NO_MODIFIERS } from "./events.js";
+import type { InteractionEvent, InteractionEventType, Modifiers, PointerButton } from "./events.js";
+import { transition } from "./machine.js";
+import type { InteractionContext, Transition } from "./machine.js";
+import { runEffects } from "./runEffects.js";
+import { IDLE } from "./state.js";
+import type { InteractionState, InteractionStateType } from "./state.js";
+import { toolFor } from "./tool.js";
 
 /** The box in the scene: class `sign`, which draws bboxes. */
 export const BOX_ID = "box";

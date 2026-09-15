@@ -36,10 +36,10 @@
 import { MoreHorizontal, Trash2 } from "lucide-react";
 import { useState, type JSX } from "react";
 
-import { BATCH_ACTION, declares, withheldBecause } from "../data/capabilities";
-import { refusalProse } from "../data/refusals";
+import { BATCH_ACTION, declares, withheldBecause } from "../data/capabilities.js";
+import { refusalProse } from "../data/refusals.js";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FieldError, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@robomous/ui-core";
-import { useDeleteBatch, type Batch } from "./queries";
+import { useDeleteBatch, type Batch } from "./queries.js";
 
 export interface BatchOverflowMenuProps {
   readonly batch: Batch;

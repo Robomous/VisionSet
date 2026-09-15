@@ -19,8 +19,8 @@
  * workspace, derived on every render, never a layout somebody configured.
  */
 
-import type { Connection } from "../data/inferenceQueries";
-import { OPTION_LABELS } from "./modelCopy";
+import type { Connection } from "../data/inferenceQueries.js";
+import { OPTION_LABELS } from "./modelCopy.js";
 
 /** The dimensions, in the order the page lays them out. */
 export const DIMENSIONS = ["origin", "capability", "kind", "state"] as const;

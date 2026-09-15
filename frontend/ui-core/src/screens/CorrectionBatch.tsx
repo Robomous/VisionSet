@@ -34,10 +34,10 @@
 import { GitBranch } from "lucide-react";
 import { useState, type JSX } from "react";
 
-import { BATCH_ACTION, declares } from "../data/capabilities";
-import { refusalProse } from "../data/refusals";
+import { BATCH_ACTION, declares } from "../data/capabilities.js";
+import { refusalProse } from "../data/refusals.js";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError } from "@robomous/ui-core";
-import { useCreateCorrection, type Batch } from "./queries";
+import { useCreateCorrection, type Batch } from "./queries.js";
 
 /** What a correction covers. `all` sends nothing and lets the server default. */
 export type CorrectionScope = "all" | "selection";

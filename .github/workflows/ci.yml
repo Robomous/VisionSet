@@ -238,6 +238,38 @@ jobs:
       - name: Build
         run: pnpm -r build
 
+      # Can Node itself load what we publish? Every other gate in this repository
+      # answers that question through a bundler — `pnpm -r build`, the vitest
+      # suites, the Playwright specs and `frontend/app` all run inside Vite or a
+      # Vite-backed runner, and a bundler resolves an extensionless relative
+      # specifier by trying extensions. Node's ESM resolver does not: there a
+      # specifier is a URL, and `./core/types` names no file. That is why #839
+      # shipped in every release from `0.0.1-beta.1` onward while CI stayed green
+      # — the failure existed only in the published artifact, which was the one
+      # place nothing looked.
+      #
+      # Imported by package name rather than by path, so the `exports` map is part
+      # of what is being tested and not just the file it points at.
+      #
+      # Two things it deliberately does not prove, stated because a gate that is
+      # believed to cover more than it does is worse than a narrow one:
+      # it runs where the workspace install has already provided every dependency,
+      # so it says nothing about whether a *peer* the manifest calls optional
+      # really is (see #843); and it resolves from `dist/` rather than from a
+      # packed tarball, so it does not exercise the `files` field. What it does
+      # prove is the thing #839 was about — that the specifiers inside the built
+      # output are ones Node can resolve.
+      - name: Node can import the published packages
+        working-directory: frontend/app
+        run: |
+          node --input-type=module -e "
+          for (const name of ['@visionset/annotator', '@visionset/ui-core']) {
+            const m = await import(name);
+            if (Object.keys(m).length === 0) throw new Error(name + ' loaded but exported nothing');
+            console.log(name, '->', Object.keys(m).length, 'exports');
+          }
+          "
+
       - name: Lint
         run: pnpm -r lint
 

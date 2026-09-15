@@ -17,9 +17,9 @@ import type { JSX } from "react";
 import { answered, armed, refused, withClass, withPoint } from "@visionset/annotator";
 import type { Suggestion, SuggestionState } from "@visionset/annotator";
 
-import { SuggestPanel } from "./SuggestPanel";
+import { SuggestPanel } from "./SuggestPanel.js";
 import type { Answer } from "@visionset/annotator";
-import { usableConnection, type Connection } from "../data/inferenceQueries";
+import { usableConnection, type Connection } from "../data/inferenceQueries.js";
 
 const A_BOX = { type: "bbox", x: 10, y: 20, width: 30, height: 40 } as const;
 

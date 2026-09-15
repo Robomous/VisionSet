@@ -75,9 +75,9 @@
  * rest: `classification_tag` simply contributes nothing to the drawable list.
  */
 
-import { classNamed } from "../state/document";
-import type { AnnotationDocument } from "../state/document";
-import type { LabelClass } from "../types";
+import { classNamed } from "../state/document.js";
+import type { AnnotationDocument } from "../state/document.js";
+import type { LabelClass } from "../types.js";
 
 /** The four modes the canvas has. Three draw; one edits what is already there. */
 export type Tool = "select" | "bbox" | "polygon" | "polyline";

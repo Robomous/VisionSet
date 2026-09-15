@@ -17,12 +17,12 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { createClipboard } from "../interaction/clipboard";
-import type { Clipboard } from "../interaction/clipboard";
-import { tagsFor } from "../interaction/tags";
-import { addAnnotationCommand } from "../state/commands";
-import { annotationsInDrawOrder } from "../state/document";
-import { EMPTY_SELECTION, selectOnly, selectionOf } from "../state/selection";
+import { createClipboard } from "../interaction/clipboard.js";
+import type { Clipboard } from "../interaction/clipboard.js";
+import { tagsFor } from "../interaction/tags.js";
+import { addAnnotationCommand } from "../state/commands.js";
+import { annotationsInDrawOrder } from "../state/document.js";
+import { EMPTY_SELECTION, selectOnly, selectionOf } from "../state/selection.js";
 import {
   A_BOX,
   A_TAG,
@@ -31,13 +31,13 @@ import {
   counter,
   paletteStore,
   recordingHost,
-} from "./_palette";
-import { RESET_ZOOM } from "./actions";
-import type { Action } from "./actions";
-import { runAction } from "./runAction";
-import type { ActionContext } from "./runAction";
-import type { AnnotatorStore } from "../state/store";
-import type { RecordingHost } from "./_palette";
+} from "./_palette.js";
+import { RESET_ZOOM } from "./actions.js";
+import type { Action } from "./actions.js";
+import { runAction } from "./runAction.js";
+import type { ActionContext } from "./runAction.js";
+import type { AnnotatorStore } from "../state/store.js";
+import type { RecordingHost } from "./_palette.js";
 
 const BOX = annotationOf("a1", "sign", A_BOX);
 const OTHER = annotationOf("a2", "sign", A_BOX);

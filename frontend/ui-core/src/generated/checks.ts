@@ -30,9 +30,9 @@ import {
   openOneOf,
   tagged,
   tuple,
-} from "../data/check";
-import type { Check } from "../data/check";
-import type { components, operations } from "./api";
+} from "../data/check.js";
+import type { Check } from "../data/check.js";
+import type { components, operations } from "./api.js";
 
 type Schemas = components["schemas"];
 

@@ -17,7 +17,7 @@ import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
-import { AnnotatorPanel } from "./AnnotatorPanel";
+import { AnnotatorPanel } from "./AnnotatorPanel.js";
 import { TooltipProvider } from "@robomous/ui-core";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
 

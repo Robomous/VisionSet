@@ -38,10 +38,10 @@ import { useEffect, useState, type JSX, type KeyboardEvent } from "react";
 import { ChevronDown, ChevronRight, User } from "lucide-react";
 
 import { Progress, FieldError } from "@robomous/ui-core";
-import { refusalProse } from "../data/refusals";
-import { DEFAULT_JOB_VIEW, JobWorkspace, patchView, type JobView } from "./GalleryControls";
-import { annotatedShare } from "./batchState";
-import { useJobsProgress, type Batch, type BatchAsset, type Job, type ProgressCounts } from "./queries";
+import { refusalProse } from "../data/refusals.js";
+import { DEFAULT_JOB_VIEW, JobWorkspace, patchView, type JobView } from "./GalleryControls.js";
+import { annotatedShare } from "./batchState.js";
+import { useJobsProgress, type Batch, type BatchAsset, type Job, type ProgressCounts } from "./queries.js";
 
 export interface JobPanelsProps {
   readonly projectId: string;

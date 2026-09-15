@@ -18,13 +18,13 @@
 
 import { useMemo, useState, type JSX, type ReactNode } from "react";
 
-import { refusalProse } from "../data/refusals";
-import { asApiError } from "../data/errors";
-import { formatCount } from "../lib/format";
-import { ErrorState } from "../patterns/AsyncStates";
-import { ProjectEyebrow } from "../patterns/ProjectEyebrow";
-import type { AnnotateTarget, ProjectSection } from "../patterns/ProjectNav";
-import { ProjectShell, type ProjectNavData } from "../patterns/ProjectShell";
+import { refusalProse } from "../data/refusals.js";
+import { asApiError } from "../data/errors.js";
+import { formatCount } from "../lib/format.js";
+import { ErrorState } from "../patterns/AsyncStates.js";
+import { ProjectEyebrow } from "../patterns/ProjectEyebrow.js";
+import type { AnnotateTarget, ProjectSection } from "../patterns/ProjectNav.js";
+import { ProjectShell, type ProjectNavData } from "../patterns/ProjectShell.js";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldError } from "@robomous/ui-core";
 import {
   useActiveSchema,
@@ -36,7 +36,7 @@ import {
   useRenameProject,
   type Batch,
   type Job,
-} from "./queries";
+} from "./queries.js";
 import type { FormEvent } from "react";
 
 export interface ProjectFrameProps {

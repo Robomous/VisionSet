@@ -18,8 +18,8 @@ import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
-import { ErrorBoundary, installRejectionHandler } from "./ErrorBoundary";
-import { ApiError } from "../data/errors";
+import { ErrorBoundary, installRejectionHandler } from "./ErrorBoundary.js";
+import { ApiError } from "../data/errors.js";
 
 /**
  * React logs a caught error to `console.error` on its way to the boundary, and

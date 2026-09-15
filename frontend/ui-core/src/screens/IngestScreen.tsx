@@ -133,25 +133,25 @@ import {
   type ReactNode,
 } from "react";
 
-import { refusalProse } from "../data/refusals";
+import { refusalProse } from "../data/refusals.js";
 import { cn, STATUS_INK, Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardContent, Progress, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
-import { formatBytes, formatCount } from "../lib/format";
-import { BackLink } from "../patterns/BackLink";
-import { parentLabel } from "../patterns/parentLabel";
-import { StepMarker } from "../patterns/StepMarker";
-import type { BadgeTone } from "./batchState";
-import { ScaleField, scaledDimension } from "./ingestScale";
-import { OutcomeNextStep } from "./ComposedTransitions";
-import { SchemaForeshadow } from "./SchemaForeshadow";
-import { ClipRangeTimeline } from "./ClipRangeTimeline";
-import { probeClip, type ClipProbe } from "./clipProbe";
+import { formatBytes, formatCount } from "../lib/format.js";
+import { BackLink } from "../patterns/BackLink.js";
+import { parentLabel } from "../patterns/parentLabel.js";
+import { StepMarker } from "../patterns/StepMarker.js";
+import type { BadgeTone } from "./batchState.js";
+import { ScaleField, scaledDimension } from "./ingestScale.js";
+import { OutcomeNextStep } from "./ComposedTransitions.js";
+import { SchemaForeshadow } from "./SchemaForeshadow.js";
+import { ClipRangeTimeline } from "./ClipRangeTimeline.js";
+import { probeClip, type ClipProbe } from "./clipProbe.js";
 import {
   clock,
   expectedFrames,
   mergedRanges,
   selectionSummary,
   type ClipRange,
-} from "./clipRanges";
+} from "./clipRanges.js";
 import {
   useBatches,
   useIngestJob,
@@ -162,7 +162,7 @@ import {
   type IngestFailure,
   type IngestJob,
   type Source,
-} from "./queries";
+} from "./queries.js";
 
 /** The kernel's own default. One frame per second. */
 const DEFAULT_EXTRACTION_FPS = 1;

@@ -55,9 +55,9 @@
  * grip that got away from them.
  */
 
-import type { BboxGeometry, Point } from "../types";
-import { clamp } from "./clamp";
-import { clampPoint, type Bounds } from "./primitives";
+import type { BboxGeometry, Point } from "../types.js";
+import { clamp } from "./clamp.js";
+import { clampPoint, type Bounds } from "./primitives.js";
 
 /**
  * The eight grips a selected box shows, clockwise from the top-left.

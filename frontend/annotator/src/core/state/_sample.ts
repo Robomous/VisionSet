@@ -12,9 +12,9 @@
  * convention as `_fixture.ts` and `tests/server/_flow.py`.
  */
 
-import { createDocument } from "./document";
-import type { AnnotationDocument } from "./document";
-import type { Annotation, AnnotationSchema, AssetDescriptor } from "../types";
+import { createDocument } from "./document.js";
+import type { AnnotationDocument } from "./document.js";
+import type { Annotation, AnnotationSchema, AssetDescriptor } from "../types.js";
 
 export const ASSET: AssetDescriptor = { id: "asset-1", width: 640, height: 480 };
 

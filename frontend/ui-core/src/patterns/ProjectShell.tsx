@@ -11,9 +11,9 @@
 
 import type { JSX, ReactNode } from "react";
 
-import { useViewportAtLeast } from "../annotator/viewportFloor";
-import { PaddedContent } from "./PaddedContent";
-import { ProjectNav, type ProjectNavProps } from "./ProjectNav";
+import { useViewportAtLeast } from "../annotator/viewportFloor.js";
+import { PaddedContent } from "./PaddedContent.js";
+import { ProjectNav, type ProjectNavProps } from "./ProjectNav.js";
 
 /** Tailwind's `lg`, the width at which the column earns its pixels. */
 export const PROJECT_NAV_MIN_VIEWPORT_PX = 1024;

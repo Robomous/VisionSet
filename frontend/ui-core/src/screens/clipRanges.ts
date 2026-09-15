@@ -10,7 +10,7 @@
  * only together with the other.
  */
 
-import type { components } from "../generated/api";
+import type { components } from "../generated/api.js";
 
 export type ClipRange = components["schemas"]["ClipRange"];
 

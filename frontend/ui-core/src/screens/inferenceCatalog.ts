@@ -35,8 +35,8 @@
  * list living here could never cover.
  */
 
-import type { KnownMembers } from "../generated/api";
-import { SUGGEST_CAPABILITY, type CuratedEntry, type InstalledProvider, type Precision } from "../data/inferenceQueries";
+import type { KnownMembers } from "../generated/api.js";
+import { SUGGEST_CAPABILITY, type CuratedEntry, type InstalledProvider, type Precision } from "../data/inferenceQueries.js";
 
 export type { Precision };
 

@@ -23,15 +23,15 @@ import { ChevronLeft, ChevronRight, Eye, EyeOff, Trash2 } from "lucide-react";
 import { useState, type JSX, type KeyboardEvent } from "react";
 import { parseLabelClass, type LabelClass } from "@visionset/annotator";
 
-import { AssetImage } from "../annotator/AssetImage";
-import type { WireAnnotation } from "../annotator/jobQueries";
-import { refusalProse } from "../data/refusals";
-import { formatWhen } from "../lib/format";
-import { classColor } from "../palette";
+import { AssetImage } from "../annotator/AssetImage.js";
+import type { WireAnnotation } from "../annotator/jobQueries.js";
+import { refusalProse } from "../data/refusals.js";
+import { formatWhen } from "../lib/format.js";
+import { classColor } from "../palette.js";
 import { Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@robomous/ui-core";
-import { DescriptionList, DescriptionRow } from "../patterns/DataDisplay";
-import { StaticAnnotationOverlay } from "../patterns/StaticAnnotationOverlay";
-import { useActiveSchema, useDatasetAssetAnnotations, type DatasetAsset } from "./queries";
+import { DescriptionList, DescriptionRow } from "../patterns/DataDisplay.js";
+import { StaticAnnotationOverlay } from "../patterns/StaticAnnotationOverlay.js";
+import { useActiveSchema, useDatasetAssetAnnotations, type DatasetAsset } from "./queries.js";
 
 export interface DatasetAssetDialogProps {
   readonly projectId: string;

@@ -12,10 +12,10 @@
 
 import { describe, expect, it } from "vitest";
 
-import { ApiError, MALFORMED_ERROR, NETWORK_ERROR, asApiError, unwrap } from "./errors";
-import { checkNoContent } from "./check";
-import type { components } from "../generated/api";
-import { checkGetProjectStats, checkListProjects } from "../generated/checks";
+import { ApiError, MALFORMED_ERROR, NETWORK_ERROR, asApiError, unwrap } from "./errors.js";
+import { checkNoContent } from "./check.js";
+import type { components } from "../generated/api.js";
+import { checkGetProjectStats, checkListProjects } from "../generated/checks.js";
 
 type ProjectStats = components["schemas"]["ProjectStatsOut"];
 

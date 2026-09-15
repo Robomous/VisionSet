@@ -45,7 +45,7 @@
  * map with structural sharing. Written down here so that stays a choice.
  */
 
-import type { AnnotationDocument } from "./document";
+import type { AnnotationDocument } from "./document.js";
 
 /**
  * One step in the history: a label, and how to get the next document.

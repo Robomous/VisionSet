@@ -55,8 +55,8 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
-import { useApiClient } from "./VisionSetDataProvider";
-import { unwrap } from "./errors";
+import { useApiClient } from "./VisionSetDataProvider.js";
+import { unwrap } from "./errors.js";
 import {
   checkCheckConnectionIntegrity,
   checkCreateInferenceConnection,
@@ -68,8 +68,8 @@ import {
   checkSuggestRegion,
   checkTestConnectionEndpoint,
   checkUpdateInferenceConnection,
-} from "../generated/checks";
-import type { components } from "../generated/api";
+} from "../generated/checks.js";
+import type { components } from "../generated/api.js";
 
 export type Connection = components["schemas"]["ConnectionOut"];
 export type ConnectionPage = components["schemas"]["ConnectionPage"];

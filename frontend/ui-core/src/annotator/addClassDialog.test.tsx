@@ -16,9 +16,9 @@ import { userEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
-import { ApiError } from "../data/errors";
-import { AddClassDialog } from "./AddClassDialog";
-import type { SchemaVersion } from "../screens/queries";
+import { ApiError } from "../data/errors.js";
+import { AddClassDialog } from "./AddClassDialog.js";
+import type { SchemaVersion } from "../screens/queries.js";
 
 const ACTIVE = {
   project_id: "11111111-1111-4111-8111-111111111111",

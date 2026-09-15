@@ -36,7 +36,7 @@
  * the same points or they can never be held to the same answer.
  */
 
-import type { Point } from "../types";
+import type { Point } from "../types.js";
 
 /** What a caller that says nothing gets: an outline within one pixel of the mask. */
 export const DEFAULT_TOLERANCE = 1;

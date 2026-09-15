@@ -20,11 +20,11 @@ import { screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CorrectionButton, CorrectionOf, defaultCorrectionName } from "./CorrectionBatch";
-import { PromoteButton, promotionSummary } from "./PromoteButton";
-import { renderWithData } from "../testing/dataHarness";
+import { CorrectionButton, CorrectionOf, defaultCorrectionName } from "./CorrectionBatch.js";
+import { PromoteButton, promotionSummary } from "./PromoteButton.js";
+import { renderWithData } from "../testing/dataHarness.js";
 import { batchActions } from "../testing/wire.fixtures.js";
-import type { Batch } from "./queries";
+import type { Batch } from "./queries.js";
 
 describe("what a press promoted, in one sentence", () => {
   it("counts what moved, and says where the rest went", () => {

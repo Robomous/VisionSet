@@ -4,5 +4,20 @@
   // reason, and a consumer resolving `@visionset/ui-core` should never be one
   // `import` away from a testing-library dependency.
   "extends": "./tsconfig.json",
+  // Node's module semantics, for the config that produces what ships. `dist/` is
+  // loaded by whatever the consumer uses, and Node's ESM resolver does not guess
+  // extensions: `./core/types` is a URL there, and it names no file. `tsc` emits a
+  // relative specifier exactly as written, so the extension has to be in the source
+  // — and this is what makes leaving it out a compile error (TS2835) instead of a
+  // package that builds green and fails on the consumer's machine. See #839.
+  //
+  // Only the build config. `tsconfig.json` stays on `bundler` because the test
+  // files it additionally compiles run under vitest, and @testing-library/user-event
+  // resolves its default export differently under nodenext. Test files never ship,
+  // so the stricter model is applied exactly where the artifact is produced.
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext"
+  },
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/testing"]
 }

@@ -100,8 +100,8 @@
  * `AnnotatorStore.commit` answers `false` to and does not record.
  */
 
-import type { BboxHandle } from "../geometry/bbox";
-import type { BboxGeometry, Point, PolygonGeometry, PolylineGeometry } from "../types";
+import type { BboxHandle } from "../geometry/bbox.js";
+import type { BboxGeometry, Point, PolygonGeometry, PolylineGeometry } from "../types.js";
 
 /**
  * Every shape a drag can be moving. A tag has no coordinates to move.

@@ -5,12 +5,12 @@
 
 import { describe, expect, it } from "vitest";
 
-import { BOX_ID, PATH_ID, POLY_ID, box, polygon, sceneDocument } from "../../core/interaction/_scene";
-import { everyStateType, worldIn } from "../../core/interaction/_scene";
-import { ASSET, SCHEMA, annotation } from "../../core/state/_sample";
-import { createDocument } from "../../core/state/document";
-import { EMPTY_SELECTION, selectionOf } from "../../core/state/selection";
-import type { Annotation } from "../../core/types";
+import { BOX_ID, PATH_ID, POLY_ID, box, polygon, sceneDocument } from "../../core/interaction/_scene.js";
+import { everyStateType, worldIn } from "../../core/interaction/_scene.js";
+import { ASSET, SCHEMA, annotation } from "../../core/state/_sample.js";
+import { createDocument } from "../../core/state/document.js";
+import { EMPTY_SELECTION, selectionOf } from "../../core/state/selection.js";
+import type { Annotation } from "../../core/types.js";
 import {
   SUGGESTION_DASH,
   SUGGESTION_OPACITY,
@@ -26,16 +26,16 @@ import {
   screenPx,
   type PaintedAnnotation,
   type PaintedSuggestion,
-} from "./paint";
+} from "./paint.js";
 import {
   answered,
   armed,
   cleared,
   refused,
   withPoint,
-} from "../../core/interaction/suggestion";
-import type { Answer, Suggestion, SuggestionState } from "../../core/interaction/suggestion";
-import type { LabelClass } from "../../core/types";
+} from "../../core/interaction/suggestion.js";
+import type { Answer, Suggestion, SuggestionState } from "../../core/interaction/suggestion.js";
+import type { LabelClass } from "../../core/types.js";
 
 const MODEL_REF = "facebook/sam2-hiera-base-plus@main";
 const A_BOX = { type: "bbox", x: 10, y: 20, width: 30, height: 40 } as const;

@@ -43,13 +43,13 @@ import {
   move,
   up,
   worldIn,
-} from "./_scene";
-import { annotation } from "../state/_sample";
-import { addAnnotationCommand, removeAnnotationsCommand } from "../state/commands";
-import type { EffectKind } from "./effects";
-import { TRANSITIONS } from "./machine";
-import { IDLE } from "./state";
-import type { InteractionStateType } from "./state";
+} from "./_scene.js";
+import { annotation } from "../state/_sample.js";
+import { addAnnotationCommand, removeAnnotationsCommand } from "../state/commands.js";
+import type { EffectKind } from "./effects.js";
+import { TRANSITIONS } from "./machine.js";
+import { IDLE } from "./state.js";
+import type { InteractionStateType } from "./state.js";
 
 /** Every effect the runner has a case for. A new kind fails to compile here. */
 const KNOWN_EFFECTS: Record<EffectKind, true> = {

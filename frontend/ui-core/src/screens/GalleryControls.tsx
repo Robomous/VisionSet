@@ -12,12 +12,12 @@
 import { useCallback, useRef, useState, type JSX } from "react";
 import { Play, User, X } from "lucide-react";
 
-import type { AssetProgress } from "../annotator/jobQueries";
+import type { AssetProgress } from "../annotator/jobQueries.js";
 import { Button, FieldError, Input } from "@robomous/ui-core";
-import { JOB_ACTION, declares } from "../data/capabilities";
-import { refusalProse } from "../data/refusals";
-import { DEFAULT_DENSITY, DENSITY_STEPS, FrameGrid } from "./FrameGrid";
-import { PreLabelButton } from "./PreLabelDialog";
+import { JOB_ACTION, declares } from "../data/capabilities.js";
+import { refusalProse } from "../data/refusals.js";
+import { DEFAULT_DENSITY, DENSITY_STEPS, FrameGrid } from "./FrameGrid.js";
+import { PreLabelButton } from "./PreLabelDialog.js";
 import {
   progressCellClass,
   progressLabel,
@@ -26,7 +26,7 @@ import {
   segmentCounts,
   segmentProgress,
   type Segment,
-} from "./batchState";
+} from "./batchState.js";
 import {
   useAssignJob,
   useStartJob,
@@ -35,7 +35,7 @@ import {
   type BatchAsset,
   type Job,
   type ProgressCounts,
-} from "./queries";
+} from "./queries.js";
 
 // --- one job's frames and everything that acts on them ------------------------
 

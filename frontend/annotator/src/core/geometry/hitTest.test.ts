@@ -7,8 +7,8 @@
 
 import { describe, expect, it } from "vitest";
 
-import type { Annotation, BboxGeometry, Geometry, Point, PolylineGeometry } from "../types";
-import { BBOX_HANDLES } from "./bbox";
+import type { Annotation, BboxGeometry, Geometry, Point, PolylineGeometry } from "../types.js";
+import { BBOX_HANDLES } from "./bbox.js";
 import {
   geometryContains,
   nearestEdge,
@@ -17,7 +17,7 @@ import {
   nearestVertex,
   polygonCloseAttempt,
   topmostAnnotationAt,
-} from "./hitTest";
+} from "./hitTest.js";
 
 /** A 100-square at the origin, as a point list. */
 const SQUARE: readonly Point[] = [

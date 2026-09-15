@@ -89,14 +89,14 @@ import { useEffect, useState, type JSX } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
 
-import { JOB_ACTION, declares } from "../data/capabilities";
-import { producesProse } from "../data/geometryCategory";
-import { useConnections, type Connection } from "../data/inferenceQueries";
-import { refusalProse } from "../data/refusals";
+import { JOB_ACTION, declares } from "../data/capabilities.js";
+import { producesProse } from "../data/geometryCategory.js";
+import { useConnections, type Connection } from "../data/inferenceQueries.js";
+import { refusalProse } from "../data/refusals.js";
 import { Alert, AlertDescription, Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
-import type { BadgeTone, Segment } from "./batchState";
-import type { KnownMembers } from "../generated/api";
-import { jobKeys, useJobProgress } from "../annotator/jobQueries";
+import type { BadgeTone, Segment } from "./batchState.js";
+import type { KnownMembers } from "../generated/api.js";
+import { jobKeys, useJobProgress } from "../annotator/jobQueries.js";
 import {
   batchKeys,
   isLiveJobState,
@@ -110,7 +110,7 @@ import {
   type PreLabelExclusion,
   type PreLabelPlan,
   type PreLabelRun,
-} from "./queries";
+} from "./queries.js";
 
 /** The capability a candidate connection has to declare. Read off the wire, never guessed. */
 export const TEXT_DETECT = "text_detect" as const;

@@ -26,10 +26,10 @@ import {
   addAnnotation,
   removeAnnotations,
   replaceAnnotation,
-} from "./document";
-import type { AnnotationDocument } from "./document";
-import type { Command } from "./commandLog";
-import type { Annotation } from "../types";
+} from "./document.js";
+import type { AnnotationDocument } from "./document.js";
+import type { Command } from "./commandLog.js";
+import type { Annotation } from "../types.js";
 
 /**
  * A command from a label and a document transformation. The primitive.

@@ -138,9 +138,9 @@
 import { Cpu, Download, FileSearch, Filter, Globe, MoreHorizontal, Pencil, Plug, RadioTower, ShieldCheck, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type JSX, type ReactNode } from "react";
 
-import { Async } from "../data/Async";
-import { asApiError } from "../data/errors";
-import { producesProse } from "../data/geometryCategory";
+import { Async } from "../data/Async.js";
+import { asApiError } from "../data/errors.js";
+import { producesProse } from "../data/geometryCategory.js";
 import {
   isLive,
   useCheckIntegrity,
@@ -157,10 +157,10 @@ import {
   type CuratedEntry,
   type IntegrityCheck,
   type WeightDownload,
-} from "../data/inferenceQueries";
-import { jobFailureProse, refusalProse } from "../data/refusals";
+} from "../data/inferenceQueries.js";
+import { jobFailureProse, refusalProse } from "../data/refusals.js";
 import { cn, Badge, Button, Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, Progress, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@robomous/ui-core";
-import { ErrorState, LoadingState } from "../patterns/AsyncStates";
+import { ErrorState, LoadingState } from "../patterns/AsyncStates.js";
 import {
   CUSTOM_MODEL,
   DEVICES,
@@ -172,7 +172,7 @@ import {
   precisionOn,
   precisionsFor,
   type Precision,
-} from "./inferenceCatalog";
+} from "./inferenceCatalog.js";
 import {
   DIMENSION,
   NO_FILTERS,
@@ -184,8 +184,8 @@ import {
   type Dimension,
   type FilterOption,
   type ModelFilters,
-} from "./modelFilters";
-import { STATE_LABELS, capabilityProse, kindLabel, originLabel, originMark } from "./modelCopy";
+} from "./modelFilters.js";
+import { STATE_LABELS, capabilityProse, kindLabel, originLabel, originMark } from "./modelCopy.js";
 /** Above this many cards a list carries a filter input (`docs/content/ui/product-principles.md`). */
 const FILTER_ABOVE = 20;
 

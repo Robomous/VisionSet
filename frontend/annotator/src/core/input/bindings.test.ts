@@ -24,7 +24,7 @@ import {
   SIGN,
   pressOf,
   wideSchema,
-} from "./_palette";
+} from "./_palette.js";
 import {
   FOCUS_CLASS_FIELD,
   RESET_ZOOM,
@@ -35,8 +35,8 @@ import {
   FINER_SUGGESTION,
   TOGGLE_HAND,
   TOGGLE_SUGGEST,
-} from "./actions";
-import type { Action } from "./actions";
+} from "./actions.js";
+import type { Action } from "./actions.js";
 import {
   CLASS_HOTKEY_DIGITS,
   DEFAULT_BINDINGS,
@@ -46,9 +46,9 @@ import {
   hotkeyForClass,
   registryOf,
   resolve,
-} from "./bindings";
-import { keystrokeOf } from "./keys";
-import type { KeyPress, Keystroke } from "./keys";
+} from "./bindings.js";
+import { keystrokeOf } from "./keys.js";
+import type { KeyPress, Keystroke } from "./keys.js";
 
 /** One documented row: what a user presses, and what it must mean. */
 interface DispatchRow {

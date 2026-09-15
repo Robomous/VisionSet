@@ -49,9 +49,9 @@
 import { useEffect, useRef, useState, type JSX, type KeyboardEvent } from "react";
 
 
-import { AssetThumbnail } from "../screens/AssetThumbnail";
+import { AssetThumbnail } from "../screens/AssetThumbnail.js";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@robomous/ui-core";
-import { ThumbnailGrid } from "../patterns/DataDisplay";
+import { ThumbnailGrid } from "../patterns/DataDisplay.js";
 import {
   inSegment,
   progressDotClass,
@@ -60,8 +60,8 @@ import {
   SEGMENT_LABEL,
   SEGMENTS,
   type Segment,
-} from "../screens/batchState";
-import type { BatchAsset } from "../screens/queries";
+} from "../screens/batchState.js";
+import type { BatchAsset } from "../screens/queries.js";
 
 export interface FrameGalleryProps {
   readonly open: boolean;

@@ -13,9 +13,9 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DatasetScreen } from "./DatasetScreen";
-import { PreprocessingTab } from "./PreprocessingTab";
-import type { ExportTarget } from "./queries";
+import { DatasetScreen } from "./DatasetScreen.js";
+import { PreprocessingTab } from "./PreprocessingTab.js";
+import type { ExportTarget } from "./queries.js";
 import {
   applyTargetHints,
   describeRecipeSpec,
@@ -24,8 +24,8 @@ import {
   EMPTY_DRAFT,
   touch,
   type RecipeSpec,
-} from "./recipeDraft";
-import { renderWithData } from "../testing/dataHarness";
+} from "./recipeDraft.js";
+import { renderWithData } from "../testing/dataHarness.js";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const DATASET = "22222222-2222-4222-8222-222222222222";

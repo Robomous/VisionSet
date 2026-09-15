@@ -11,22 +11,22 @@ export {
   AnnotatorCanvas,
   type AnnotatorCanvasProps,
   type AnnotatorView,
-} from "./AnnotatorCanvas";
+} from "./AnnotatorCanvas.js";
 export {
   useAnnotatorSnapshot,
   useAnnotatorStore,
   usePendingIndicator,
   type PendingIndicatorState,
-} from "./hooks";
+} from "./hooks.js";
 export {
   ESCALATE_MS,
   MIN_VISIBLE_MS,
   pendingIndicator,
   type PendingIndicator,
   type PendingPhase,
-} from "./pending";
-export { AnnotationLayer, type AnnotationLayerProps } from "./AnnotationLayer";
-export { TransientLayer, type TransientLayerProps } from "./TransientLayer";
+} from "./pending.js";
+export { AnnotationLayer, type AnnotationLayerProps } from "./AnnotationLayer.js";
+export { TransientLayer, type TransientLayerProps } from "./TransientLayer.js";
 export {
   AnnotationShape,
   BboxShape,
@@ -40,7 +40,7 @@ export {
   ShapeLabel,
   VERTEX_PX,
   Vertices,
-} from "./Shapes";
+} from "./Shapes.js";
 export {
   SUGGESTION_DASH,
   SUGGESTION_OPACITY,
@@ -57,11 +57,11 @@ export {
   type PaintedAnnotation,
   type PaintedSuggestion,
   type PendingPolygon,
-} from "./paint";
+} from "./paint.js";
 export {
   digitFromCode,
   isComposing,
   isTextEntry,
   type CompositionProbe,
   type TextEntryProbe,
-} from "./keyboard";
+} from "./keyboard.js";

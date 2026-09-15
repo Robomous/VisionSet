@@ -52,8 +52,8 @@
  * both.
  */
 
-import type { Selection } from "../state/selection";
-import type { Annotation, Geometry } from "../types";
+import type { Selection } from "../state/selection.js";
+import type { Annotation, Geometry } from "../types.js";
 
 /** One instruction from a turn to the store. */
 export type Effect =

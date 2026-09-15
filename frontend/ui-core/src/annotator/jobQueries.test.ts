@@ -17,7 +17,7 @@ import {
   isEmptyPlan,
   planSave,
   type WireAnnotation,
-} from "./jobQueries";
+} from "./jobQueries.js";
 
 const SCHEMA = {
   project_id: "11111111-1111-4111-8111-111111111111",

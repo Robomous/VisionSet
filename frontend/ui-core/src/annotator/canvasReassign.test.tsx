@@ -22,7 +22,7 @@ import { userEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
-import { CanvasReassign } from "./CanvasReassign";
+import { CanvasReassign } from "./CanvasReassign.js";
 
 const SCHEMA = {
   project_id: "11111111-1111-4111-8111-111111111111",

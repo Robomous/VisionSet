@@ -38,8 +38,8 @@
  * rather than left as an oversight.
  */
 
-import type { Point } from "../types";
-import { clamp } from "./clamp";
+import type { Point } from "../types.js";
+import { clamp } from "./clamp.js";
 
 /**
  * A rectangle of legal coordinate space, in the asset's own pixels, anchored at

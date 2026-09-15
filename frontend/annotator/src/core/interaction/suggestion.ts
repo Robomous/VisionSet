@@ -89,14 +89,14 @@
  * that belongs to a class nobody is on any more.
  */
 
-import { DEFAULT_TOLERANCE, polygonAt } from "../geometry/simplify";
-import { classNamed } from "../state/document";
-import type { AnnotationDocument } from "../state/document";
-import type { IdFactory } from "../ids";
-import type { Annotation, AnnotationSchema, Geometry, GeometryType, LabelClass, Point } from "../types";
-import { draftAnnotation } from "./draft";
-import { toolForClass } from "./tool";
-import type { Tool } from "./tool";
+import { DEFAULT_TOLERANCE, polygonAt } from "../geometry/simplify.js";
+import { classNamed } from "../state/document.js";
+import type { AnnotationDocument } from "../state/document.js";
+import type { IdFactory } from "../ids.js";
+import type { Annotation, AnnotationSchema, Geometry, GeometryType, LabelClass, Point } from "../types.js";
+import { draftAnnotation } from "./draft.js";
+import { toolForClass } from "./tool.js";
+import type { Tool } from "./tool.js";
 
 /**
  * The kinds a segmenter's answer can be narrowed into, and therefore the classes

@@ -14,7 +14,7 @@ import type { JSX } from "react";
 
 import { TooltipProvider } from "@robomous/ui-core";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
-import { ToolPalette, toolChoices } from "./ToolPalette";
+import { ToolPalette, toolChoices } from "./ToolPalette.js";
 
 // Every button below is a Tooltip trigger, and `userEvent.click` opens the
 // tooltip on its way to the press. See `testing/resizeObserver.ts`.

@@ -50,9 +50,9 @@ import type { Annotation, AnnotationSchema, LabelClass } from "@visionset/annota
 import { Check } from "lucide-react";
 import type { JSX, KeyboardEvent } from "react";
 
-import { formatGeometries } from "../data/geometryCategory";
+import { formatGeometries } from "../data/geometryCategory.js";
 import { DropdownMenuContent, DropdownMenuItem } from "@robomous/ui-core";
-import { classColor } from "../palette";
+import { classColor } from "../palette.js";
 
 export interface ReassignMenuProps {
   /** The object whose class is being changed. Its geometry decides what fits. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { clamp } from "./clamp";
+import { clamp } from "./clamp.js";
 
 describe("clamp", () => {
   it("passes through in-range values", () => {

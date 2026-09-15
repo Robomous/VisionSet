@@ -51,7 +51,7 @@
  * session.
  */
 
-import type { AssetDescriptor, Point } from "../core/types";
+import type { AssetDescriptor, Point } from "../core/types.js";
 
 /** Where the asset is on screen: a scale, and an offset in screen pixels. */
 export interface Viewport {

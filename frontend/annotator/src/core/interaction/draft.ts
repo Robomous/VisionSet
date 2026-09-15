@@ -45,10 +45,10 @@
  * the second spelling `wire.ts`'s rule 2 argues against.
  */
 
-import type { IdFactory } from "../ids";
-import { classNamed } from "../state/document";
-import type { AnnotationDocument } from "../state/document";
-import type { Annotation, AttributeValue, Geometry } from "../types";
+import type { IdFactory } from "../ids.js";
+import { classNamed } from "../state/document.js";
+import type { AnnotationDocument } from "../state/document.js";
+import type { Annotation, AttributeValue, Geometry } from "../types.js";
 
 /**
  * What the class says a new annotation of it carries.

@@ -32,10 +32,10 @@ import {
   type AssetAction,
   type BatchAction,
   type Capable,
-} from "./capabilities";
+} from "./capabilities.js";
 import type { KnownMembers } from "../generated/api.js";
-import { groupRefusals, REFUSAL_PROSE, refusalProse, type Refusal } from "./refusals";
-import { ApiError } from "./errors";
+import { groupRefusals, REFUSAL_PROSE, refusalProse, type Refusal } from "./refusals.js";
+import { ApiError } from "./errors.js";
 
 describe("reading a declaration", () => {
   it("offers an action the resource declares", () => {

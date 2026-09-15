@@ -12,18 +12,18 @@
 
 import { describe, expect, it } from "vitest";
 
-import { annotation, documentOf } from "./_sample";
+import { annotation, documentOf } from "./_sample.js";
 import {
   addAnnotationCommand,
   removeAnnotationsCommand,
   replaceAnnotationCommand,
-} from "./commands";
+} from "./commands.js";
 import {
   annotationsInDrawOrder,
   removeAnnotations,
   replaceAnnotation,
-} from "./document";
-import { AnnotatorStore } from "./store";
+} from "./document.js";
+import { AnnotatorStore } from "./store.js";
 import {
   EMPTY_SELECTION,
   clearSelection,
@@ -37,7 +37,7 @@ import {
   selectedCount,
   selectionOf,
   toggleSelection,
-} from "./selection";
+} from "./selection.js";
 
 describe("picking things", () => {
   it("starts empty", () => {

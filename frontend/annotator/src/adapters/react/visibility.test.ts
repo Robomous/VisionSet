@@ -4,8 +4,8 @@
 
 import { describe, expect, it } from "vitest";
 
-import { documentFromWire } from "../../core/state/document";
-import { withoutHidden } from "./visibility";
+import { documentFromWire } from "../../core/state/document.js";
+import { withoutHidden } from "./visibility.js";
 
 const WIRE = {
   asset: { id: "asset-1", width: 100, height: 100 },

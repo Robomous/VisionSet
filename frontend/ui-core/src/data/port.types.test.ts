@@ -8,7 +8,7 @@
  */
 import { describe, expectTypeOf, it } from "vitest";
 
-import type { DataResult, VisionSetDataClient } from "./port";
+import type { DataResult, VisionSetDataClient } from "./port.js";
 
 /**
  * The subjects, as **runtime** values rather than `declare const`.

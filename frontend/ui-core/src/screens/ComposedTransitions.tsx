@@ -23,12 +23,12 @@
 import { ArrowRight, ArrowUpToLine, FolderOpen, Play } from "lucide-react";
 import { useState, type JSX } from "react";
 
-import { asApiError } from "../data/errors";
-import { BATCH_ACTION, declares } from "../data/capabilities";
-import { refusalProse } from "../data/refusals";
+import { asApiError } from "../data/errors.js";
+import { BATCH_ACTION, declares } from "../data/capabilities.js";
+import { refusalProse } from "../data/refusals.js";
 import { Button, FieldError } from "@robomous/ui-core";
-import { outstandingWork } from "./batchState";
-import { promotionSummary } from "./PromoteButton";
+import { outstandingWork } from "./batchState.js";
+import { promotionSummary } from "./PromoteButton.js";
 import {
   useActiveSchema,
   useApproveBatch,
@@ -38,7 +38,7 @@ import {
   usePromoteBatch,
   type Batch,
   type FinishBatchResult,
-} from "./queries";
+} from "./queries.js";
 
 /** What `SchemaService.require_active` raises for a project that has none. */
 const SCHEMA_NOT_FOUND = "SCHEMA_NOT_FOUND";

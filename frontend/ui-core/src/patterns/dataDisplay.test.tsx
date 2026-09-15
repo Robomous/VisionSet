@@ -15,7 +15,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { formatCount, formatPercent, formatWhen } from "../lib/format";
+import { formatCount, formatPercent, formatWhen } from "../lib/format.js";
 import {
   ClassListRow,
   DescriptionList,
@@ -23,7 +23,7 @@ import {
   DistributionBar,
   StatCard,
   ThumbnailGrid,
-} from "./DataDisplay";
+} from "./DataDisplay.js";
 
 /** The rendered width of a bar's fill, as the percentage string it was given. */
 function fillWidth(container: HTMLElement): string {

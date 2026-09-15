@@ -85,11 +85,11 @@ import {
 import { Check, Eye, EyeOff, Sparkles, Tag, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, type JSX, type RefObject } from "react";
 
-import { geometryLabel } from "../data/geometryCategory";
-import { classColor } from "../palette";
+import { geometryLabel } from "../data/geometryCategory.js";
+import { classColor } from "../palette.js";
 import { Badge, Button, DropdownMenu, DropdownMenuTrigger, Input, Tooltip, TooltipContent, TooltipTrigger, cn } from "@robomous/ui-core";
-import { ClassRegion } from "./ClassRegion";
-import { ReassignMenu } from "./ReassignMenu";
+import { ClassRegion } from "./ClassRegion.js";
+import { ReassignMenu } from "./ReassignMenu.js";
 
 export interface AnnotatorPanelProps {
   readonly store: AnnotatorStore;

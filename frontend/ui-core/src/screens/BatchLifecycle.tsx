@@ -25,17 +25,17 @@
 import { useState, type JSX } from "react";
 import { SquareCheck } from "lucide-react";
 
-import { asApiError } from "../data/errors";
-import { refusalProse } from "../data/refusals";
+import { asApiError } from "../data/errors.js";
+import { refusalProse } from "../data/refusals.js";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError, Progress, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
-import { annotatedShare, outstandingWork } from "./batchState";
+import { annotatedShare, outstandingWork } from "./batchState.js";
 import {
   useApproveBatch,
   useBatchTransition,
   useFinishBatch,
   type Batch,
   type ProgressCounts,
-} from "./queries";
+} from "./queries.js";
 
 /**
  * The counts, as one bar and a readout.

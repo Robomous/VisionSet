@@ -36,9 +36,9 @@ import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 
-import { ConnectionCard, ModelsScreen, bytes, sourceLine } from "./ModelsScreen";
-import { CONNECTION_POLL_MS, type Connection } from "../data/inferenceQueries";
-import { renderWithData } from "../testing/dataHarness";
+import { ConnectionCard, ModelsScreen, bytes, sourceLine } from "./ModelsScreen.js";
+import { CONNECTION_POLL_MS, type Connection } from "../data/inferenceQueries.js";
+import { renderWithData } from "../testing/dataHarness.js";
 
 // Spelled here rather than read from a module: the catalog is the server's
 // answer now, and a fixture that imported the ids it then asserts on would be

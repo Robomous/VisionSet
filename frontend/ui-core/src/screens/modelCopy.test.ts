@@ -14,7 +14,7 @@ import {
   kindLabel,
   originLabel,
   originMark,
-} from "./modelCopy";
+} from "./modelCopy.js";
 
 it("names every origin, and marks each with its own edge", () => {
   expect(originLabel("huggingface")).toBe("Hugging Face");

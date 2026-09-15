@@ -14,8 +14,8 @@
 
 import { describe, expect, it } from "vitest";
 
-import { fixture, sampleAnnotation as sample } from "./_fixture";
-import { ATTRIBUTE_KINDS, GEOMETRY_TYPES, IMPLEMENTED_GEOMETRY_TYPES } from "./types";
+import { fixture, sampleAnnotation as sample } from "./_fixture.js";
+import { ATTRIBUTE_KINDS, GEOMETRY_TYPES, IMPLEMENTED_GEOMETRY_TYPES } from "./types.js";
 import {
   ANNOTATION_CREATE_KEYS,
   ANNOTATION_KEYS,
@@ -30,7 +30,7 @@ import {
   parseSchema,
   toAnnotationCreate,
   toAnnotationUpdate,
-} from "./wire";
+} from "./wire.js";
 
 describe("the geometry vocabulary", () => {
   it("names every geometry the kernel can address", () => {

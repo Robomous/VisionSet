@@ -22,11 +22,11 @@
 
 import { describe, expect, it } from "vitest";
 
-import { mulberry32, SEEDS } from "../_random";
-import { documentOf } from "./_sample";
-import { randomCommand, type RandomWorld } from "./_random";
-import { annotationsInDrawOrder } from "./document";
-import { AnnotatorStore } from "./store";
+import { mulberry32, SEEDS } from "../_random.js";
+import { documentOf } from "./_sample.js";
+import { randomCommand, type RandomWorld } from "./_random.js";
+import { annotationsInDrawOrder } from "./document.js";
+import { AnnotatorStore } from "./store.js";
 
 const START = ["a", "b", "c"] as const;
 const STEPS = 40;

@@ -14,8 +14,8 @@ import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DatasetScreen } from "./DatasetScreen";
-import { renderWithData } from "../testing/dataHarness";
+import { DatasetScreen } from "./DatasetScreen.js";
+import { renderWithData } from "../testing/dataHarness.js";
 
 // The four list fields `FormatOut` declares with a default. A default means the
 // server serializes them every time, which is why the contract types them as always

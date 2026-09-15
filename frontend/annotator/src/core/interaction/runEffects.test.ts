@@ -14,11 +14,11 @@
 
 import { describe, expect, it } from "vitest";
 
-import { documentOf, annotation } from "../state/_sample";
-import { AnnotatorStore } from "../state/store";
-import { selectOnly } from "../state/selection";
-import { runEffects } from "./runEffects";
-import type { Effect } from "./effects";
+import { documentOf, annotation } from "../state/_sample.js";
+import { AnnotatorStore } from "../state/store.js";
+import { selectOnly } from "../state/selection.js";
+import { runEffects } from "./runEffects.js";
+import type { Effect } from "./effects.js";
 
 describe("what each effect asks the store for", () => {
   it("picks ids without touching the history", () => {

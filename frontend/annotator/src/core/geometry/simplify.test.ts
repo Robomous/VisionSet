@@ -16,7 +16,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import type { Point } from "../types";
+import type { Point } from "../types.js";
 import {
   DEFAULT_TOLERANCE,
   MAXIMUM_TOLERANCE,
@@ -24,7 +24,7 @@ import {
   polygonAt,
   simplified,
   steppedTolerance,
-} from "./simplify";
+} from "./simplify.js";
 
 interface Case {
   readonly name: string;

@@ -66,9 +66,9 @@ import {
 import { Check, Loader2, Sparkles, TriangleAlert, X } from "lucide-react";
 import type { JSX, ReactNode } from "react";
 
-import { EditorNotice } from "./EditorNotice";
+import { EditorNotice } from "./EditorNotice.js";
 import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
-import type { Connection, SuggestBlocker } from "../data/inferenceQueries";
+import type { Connection, SuggestBlocker } from "../data/inferenceQueries.js";
 
 export interface SuggestPanelProps {
   /** The session, whose status decides which sentence this card carries. */

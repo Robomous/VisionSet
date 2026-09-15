@@ -24,8 +24,8 @@ import {
   type Geometry,
 } from "@visionset/annotator";
 
-import type { WireAnnotation } from "../annotator/jobQueries";
-import { classColor, type LabelClass } from "../palette";
+import type { WireAnnotation } from "../annotator/jobQueries.js";
+import { classColor, type LabelClass } from "../palette.js";
 
 export interface StaticAnnotationOverlayProps {
   /** The picture's pixel size, which is the frame every coordinate is read in. */

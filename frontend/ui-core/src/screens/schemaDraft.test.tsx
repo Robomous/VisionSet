@@ -34,10 +34,10 @@ import type { JSX, ReactNode } from "react";
 // `mount()` would swap out the whole provider subtree and remount
 // `ProjectScreen` — defeating the very thing those two tests assert (that a
 // project switch re-renders, not remounts). See `mountLive` below.
-import { VisionSetDataProvider } from "../data/VisionSetDataProvider";
+import { VisionSetDataProvider } from "../data/VisionSetDataProvider.js";
 import { Toaster } from "@robomous/ui-core";
-import { ProjectScreen } from "./ProjectScreen";
-import { harnessClient, renderWithData } from "../testing/dataHarness";
+import { ProjectScreen } from "./ProjectScreen.js";
+import { harnessClient, renderWithData } from "../testing/dataHarness.js";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const OTHER = "33333333-3333-4333-8333-333333333333";

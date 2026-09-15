@@ -14,8 +14,8 @@ import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createElement, useState, type ReactNode } from "react";
 
-import { renderWithData } from "../testing/dataHarness";
-import { AddClassDialog, composeVersion, defaultNote, runAddClass } from "./AddClassDialog";
+import { renderWithData } from "../testing/dataHarness.js";
+import { AddClassDialog, composeVersion, defaultNote, runAddClass } from "./AddClassDialog.js";
 import {
   useDiscardSchemaDraft,
   usePublishSchemaDraft,
@@ -23,7 +23,7 @@ import {
   useSchemaDraft,
   type LabelClassBody,
   type SchemaVersion,
-} from "../screens/queries";
+} from "../screens/queries.js";
 
 const SIGN: LabelClassBody = { name: "sign", geometries: ["bbox"], color: null, attributes: [] };
 const LANE: LabelClassBody = { name: "lane", geometries: ["polygon"], color: null, attributes: [] };

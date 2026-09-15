@@ -40,9 +40,9 @@
  * that are each independently testable is the right size.
  */
 
-import type { PointerButton } from "../interaction/events";
-import type { Point } from "../types";
-import type { ModifierState } from "./keys";
+import type { PointerButton } from "../interaction/events.js";
+import type { Point } from "../types.js";
+import type { ModifierState } from "./keys.js";
 
 /** A pointer going down or up, as a browser event spells it. Never a DOM type. */
 export interface PointerPress extends ModifierState {

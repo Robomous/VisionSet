@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { formatBytes } from "./format";
+import { formatBytes } from "./format.js";
 
 describe("formatBytes", () => {
   it("keeps small counts in bytes", () => {

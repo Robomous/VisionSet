@@ -36,7 +36,7 @@
  * over its own order, which is what a caller filtering a history means.
  */
 
-import type { SchemaVersion } from "./queries";
+import type { SchemaVersion } from "./queries.js";
 
 /** Fewer than this many consecutive `annotation` versions stay individual rows. */
 export const RUN_MINIMUM = 2;

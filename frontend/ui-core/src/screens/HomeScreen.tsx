@@ -48,21 +48,21 @@
 import { ArrowRight, CircleAlert, Folders, Layers, Loader2, Play, Plus, Rocket, Sparkles, Tags, Upload } from "lucide-react";
 import { useState, type JSX, type ReactNode } from "react";
 
-import { asApiError } from "../data/errors";
-import { refusalProse } from "../data/refusals";
-import { formatCount, formatPercent, formatWhen } from "../lib/format";
-import { ErrorState } from "../patterns/AsyncStates";
-import { StatCard } from "../patterns/DataDisplay";
+import { asApiError } from "../data/errors.js";
+import { refusalProse } from "../data/refusals.js";
+import { formatCount, formatPercent, formatWhen } from "../lib/format.js";
+import { ErrorState } from "../patterns/AsyncStates.js";
+import { StatCard } from "../patterns/DataDisplay.js";
 import { Badge, Button, Skeleton } from "@robomous/ui-core";
-import { CreateProjectDialog } from "./ProjectsScreen";
-import { AssetThumbnail } from "./AssetThumbnail";
+import { CreateProjectDialog } from "./ProjectsScreen.js";
+import { AssetThumbnail } from "./AssetThumbnail.js";
 import {
   useHome,
   type ActivityEntry,
   type AttentionItem,
   type ProjectSummary,
   type ResumeTarget,
-} from "./queries";
+} from "./queries.js";
 
 export interface HomeScreenProps {
   /**

@@ -53,8 +53,8 @@ import {
   type ReactNode,
 } from "react";
 
-import { asApiError } from "./errors";
-import type { DataResult, VisionSetDataClient } from "./port";
+import { asApiError } from "./errors.js";
+import type { DataResult, VisionSetDataClient } from "./port.js";
 
 /**
  * VisionSet's cache policy.

@@ -33,9 +33,9 @@
  * annotation's id and its place.
  */
 
-import { annotationsInDrawOrder } from "./document";
-import type { AnnotationDocument } from "./document";
-import type { Annotation } from "../types";
+import { annotationsInDrawOrder } from "./document.js";
+import type { AnnotationDocument } from "./document.js";
+import type { Annotation } from "../types.js";
 
 /** The ids the user has picked. Immutable; every operation returns a new one. */
 export type Selection = ReadonlySet<string>;

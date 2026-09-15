@@ -25,17 +25,17 @@ import { useState, type JSX, type ReactNode } from "react";
 // since they assert on its cache) present on both sides of the rerender —
 // something `renderWithData`'s result cannot give a caller-driven `rerender`.
 // See each local `wrap` below.
-import { VisionSetDataProvider } from "../data/VisionSetDataProvider";
-import { classColor, hexColor } from "../palette";
-import { ProjectScreen } from "./ProjectScreen";
-import { ProjectsScreen } from "./ProjectsScreen";
+import { VisionSetDataProvider } from "../data/VisionSetDataProvider.js";
+import { classColor, hexColor } from "../palette.js";
+import { ProjectScreen } from "./ProjectScreen.js";
+import { ProjectsScreen } from "./ProjectsScreen.js";
 import {
   usePreviewSchemaChange,
   useSchemaBlockingAssets,
   type LabelClassBody,
   type SchemaChangePreview,
-} from "./queries";
-import { harnessClient, renderWithData } from "../testing/dataHarness";
+} from "./queries.js";
+import { harnessClient, renderWithData } from "../testing/dataHarness.js";
 import { batchActions } from "../testing/wire.fixtures.js";
 import type { components as capComponents } from "../generated/api.js";
 

@@ -19,8 +19,8 @@ import { screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
-import { useActiveSchema, useProjectReadiness, useProjectStats } from "./queries";
-import { renderWithData } from "../testing/dataHarness";
+import { useActiveSchema, useProjectReadiness, useProjectStats } from "./queries.js";
+import { renderWithData } from "../testing/dataHarness.js";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 

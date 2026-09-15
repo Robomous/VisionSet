@@ -14,7 +14,7 @@ import {
   mergedRanges,
   selectedSeconds,
   selectionSummary,
-} from "./clipRanges";
+} from "./clipRanges.js";
 
 function r(start: number, end: number): { start_seconds: number; end_seconds: number } {
   return { start_seconds: start, end_seconds: end };

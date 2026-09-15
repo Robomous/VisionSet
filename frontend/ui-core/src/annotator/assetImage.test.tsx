@@ -7,8 +7,8 @@ import { screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 
-import { renderWithData } from "../testing/dataHarness";
-import { AssetImage } from "./AssetImage";
+import { renderWithData } from "../testing/dataHarness.js";
+import { AssetImage } from "./AssetImage.js";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 

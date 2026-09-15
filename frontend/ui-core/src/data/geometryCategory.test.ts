@@ -19,9 +19,9 @@
 
 import { describe, expect, it } from "vitest";
 
-import { checkGeometryType } from "../generated/checks";
-import type { GeometryType } from "../screens/queries";
-import { firstMismatch } from "./check";
+import { checkGeometryType } from "../generated/checks.js";
+import type { GeometryType } from "../screens/queries.js";
+import { firstMismatch } from "./check.js";
 import {
   GEOMETRY_CATEGORIES,
   GEOMETRY_CATEGORY,
@@ -32,7 +32,7 @@ import {
   groupGeometries,
   producesProse,
   type GeometryCategory,
-} from "./geometryCategory";
+} from "./geometryCategory.js";
 
 describe("the category map", () => {
   it("is total over the wire's geometry union", () => {

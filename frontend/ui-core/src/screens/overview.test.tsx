@@ -12,9 +12,9 @@ import { screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { IMBALANCE_MIN_CLASSES, IMBALANCE_SHARE, imbalanceNote } from "./imbalance";
-import { firstRunInvitation, invitationOwnsTheAction, OverviewPanel } from "./OverviewPanel";
-import { renderWithData } from "../testing/dataHarness";
+import { IMBALANCE_MIN_CLASSES, IMBALANCE_SHARE, imbalanceNote } from "./imbalance.js";
+import { firstRunInvitation, invitationOwnsTheAction, OverviewPanel } from "./OverviewPanel.js";
+import { renderWithData } from "../testing/dataHarness.js";
 import { datasetOf, releaseOf } from "../testing/wire.fixtures.js";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";

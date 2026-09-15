@@ -13,11 +13,11 @@
 
 import { describe, expect, it } from "vitest";
 
-import { createDocument } from "../state/document";
-import type { AnnotationDocument } from "../state/document";
-import type { Annotation, AssetDescriptor, AnnotationSchema, Geometry } from "../types";
-import { copiedEntries, createClipboard, pastedAnnotations } from "./clipboard";
-import type { ClipboardEntry } from "./clipboard";
+import { createDocument } from "../state/document.js";
+import type { AnnotationDocument } from "../state/document.js";
+import type { Annotation, AssetDescriptor, AnnotationSchema, Geometry } from "../types.js";
+import { copiedEntries, createClipboard, pastedAnnotations } from "./clipboard.js";
+import type { ClipboardEntry } from "./clipboard.js";
 
 const WIDE: AssetDescriptor = { id: "wide", width: 800, height: 600 };
 /** Small enough that a shape copied off `WIDE` has to be pushed back inside. */

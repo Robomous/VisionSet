@@ -18,8 +18,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ESCALATE_MS, MIN_VISIBLE_MS, pendingIndicator } from "./pending";
-import type { PendingPhase } from "./pending";
+import { ESCALATE_MS, MIN_VISIBLE_MS, pendingIndicator } from "./pending.js";
+import type { PendingPhase } from "./pending.js";
 
 /** Every phase the machine announced, in order, since the last `start`. */
 function recorder(): { readonly seen: PendingPhase[]; on: (phase: PendingPhase) => void } {

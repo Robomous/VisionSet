@@ -40,16 +40,16 @@
  * `AnnotationDocument` would cost that for one line at the call site.
  */
 
-import type { Annotation, BboxGeometry, Geometry, Point } from "../types";
+import type { Annotation, BboxGeometry, Geometry, Point } from "../types.js";
 import {
   BBOX_HANDLES,
   bboxContains,
   bboxCorners,
   bboxHandlePositions,
   type BboxHandle,
-} from "./bbox";
-import { MIN_POLYGON_POINTS, polygonContains } from "./polygon";
-import { closestPointOnSegment, distance } from "./primitives";
+} from "./bbox.js";
+import { MIN_POLYGON_POINTS, polygonContains } from "./polygon.js";
+import { closestPointOnSegment, distance } from "./primitives.js";
 
 /** A vertex found near a point. `point` is the vertex itself. */
 export interface VertexHit {
