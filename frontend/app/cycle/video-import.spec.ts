@@ -625,7 +625,7 @@ test("cancelling mid-import leaves no batch, and no staged session either", asyn
   expect(partway).toBeGreaterThan(0);
   expect(partway).toBeLessThan(expectedFrames([], DURATION, CANCEL_RATE));
 
-  // Nothing reached the project. A batch holding a fraction of a clip is
+  // No asset and no batch reached the project. A batch holding a fraction of a clip is
   // undetectable downstream, which is why frames are staged rather than ingested
   // as they arrive.
   const batches = await request.get(`/projects/${projectId}/batches`, { headers: bearer() });

@@ -556,7 +556,7 @@ export function VideoImportFlow({
                 <FieldDescription>
                   {commit.isPending
                     ? "Too late to cancel: these frames are being turned into assets now, in one transaction that cannot be taken back."
-                    : "Stops decoding and throws the staged frames away. Nothing has reached the project yet, so there is nothing to undo afterwards."}
+                    : "Stops decoding and throws the staged frames away. No assets and no batch have been created yet, so there is nothing to undo afterwards."}
                 </FieldDescription>
               </div>
             )}
@@ -565,7 +565,7 @@ export function VideoImportFlow({
               <Alert data-testid="import-cancelled">
                 <AlertTitle>That import was cancelled</AlertTitle>
                 <AlertDescription>
-                  The staged frames were discarded and the project is exactly as it was.
+                  The staged frames were discarded. No assets and no batch were added to the project.
                 </AlertDescription>
               </Alert>
             )}

@@ -157,6 +157,8 @@ export const REFUSAL_PROSE: Record<string, string> = {
     "The same position in this clip was sent twice with different pictures, so this import cannot be trusted and was stopped. Import the clip again.",
   FRAME_ORDINAL_OUT_OF_RANGE:
     "A frame arrived from outside the stretch of clip this import covers. Import the clip again, and keep the rate and the selection as they were when it started.",
+  FRAME_TIMESTAMP_OFF_GRID:
+    "A frame arrived describing a different moment of the clip than the position it claims, so this import cannot be trusted. Import the clip again.",
 
   // Background runs.
   BACKGROUND_JOB_NOT_FOUND: "That background job is no longer on record.",

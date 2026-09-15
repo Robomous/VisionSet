@@ -29,13 +29,16 @@ nothing was being distributed. This is the first version that is.
   ```
 
   The invariant the session exists for: **nothing staged is a project asset before `commit`**. A
-  closed tab, a crashed decoder or an aborted import leaves the project exactly as it was, where a
-  half-finished server-side extraction used to leave frames in a batch and a report explaining the
-  rest. `commit` refuses with `VIDEO_IMPORT_INCOMPLETE` until every expected ordinal has arrived,
-  is idempotent, and answers the batch it made; `FRAME_CONTENT_CONFLICT`,
-  `FRAME_ORDINAL_OUT_OF_RANGE`, `VIDEO_IMPORT_NOT_FOUND` and `VIDEO_IMPORT_NOT_OPEN` are the
-  session's other refusals. Opening a session is bounded as well as gated: a cut whose grid holds
-  more frames than one session may stage is `VIDEO_IMPORT_TOO_LARGE`, a project already holding the
+  closed tab, a crashed decoder or an aborted import adds no asset and no batch to the project,
+  where a half-finished server-side extraction used to leave frames in a batch and a report
+  explaining the rest. `commit` refuses with `VIDEO_IMPORT_INCOMPLETE` until every expected
+  ordinal has arrived, is idempotent, and answers the batch it made; `FRAME_CONTENT_CONFLICT`,
+  `FRAME_ORDINAL_OUT_OF_RANGE`, `FRAME_TIMESTAMP_OFF_GRID`, `VIDEO_IMPORT_NOT_FOUND` and
+  `VIDEO_IMPORT_NOT_OPEN` are the session's other refusals — the timestamp a frame declares must
+  be its ordinal's own grid point, which the server derives rather than takes on trust. Opening a
+  session is bounded as well as gated: a *selected cut* holding more frames than one session may
+  stage is `VIDEO_IMPORT_TOO_LARGE` — counted over the canonical ranges, so narrowing a selection
+  genuinely lifts it — a project already holding the
   most open sessions it may is `TOO_MANY_OPEN_VIDEO_IMPORTS`, and `start` sweeps sessions nothing
   has touched for a day — deleting each through its source, so the `VIDEO` source it declared goes
   with it. A frame must also decode to the geometry the session declared, the clip's size after

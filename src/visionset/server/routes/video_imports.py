@@ -297,6 +297,17 @@ def append_video_import_frames(
     cover is 422 `FRAME_ORDINAL_OUT_OF_RANGE`, whether or not it happens to fall
     below `expected_frame_count`, which is a count of frames and never a bound
     on their indices.
+
+    **`requested_timestamp` must be that ordinal's own grid point**,
+    `ordinal / extraction_fps`, and the server divides it out of the session's
+    stored rate rather than taking it on trust — a descriptor saying anything
+    else contradicts the ordinal it arrived with, and there is no half of that
+    pair worth believing over the other. `source_timestamp`, when it is present,
+    is the presentation time of the sample the decoder actually drew for that
+    grid point, so it is at or before it; a sample after it did not come from
+    that grid point. Either contradiction is 422 `FRAME_TIMESTAMP_OFF_GRID`, and
+    it is refused rather than quietly corrected: overwriting the number a client
+    sent would record a provenance nobody produced.
     """
     frames = _incoming(files, descriptors)
     return VideoImportOut.of(VideoImportService(workspace).append_frames(import_id, frames))
@@ -346,7 +357,7 @@ def commit_video_import(workspace: WorkspaceDep, import_id: UUID) -> BatchOut:
     responses=documented(404, 409),
 )
 def abort_video_import(workspace: WorkspaceDep, import_id: UUID) -> None:
-    """Throw the session away: no assets, no batch, nothing left in the project.
+    """Throw the session away: no assets, no batch, nothing staged reaches the project.
 
     The staged frames go with it. Aborting an import that is already aborted
     changes nothing and still answers 204, because a client cancelling twice

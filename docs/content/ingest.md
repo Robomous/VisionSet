@@ -413,8 +413,8 @@ DELETE /video-imports/{import_id}              throw the session away           
 taken as provenance rather than probed, because there is nothing here to probe it against. Its
 `fps` is the rate the clip was *shot* at and is `null` for a variable-rate one, which has no
 single rate; the rate it is being cut at is `extraction_fps`, and it is never put in the other's
-place. The one
-number not taken on trust is `expected_frame_count` - the ranges and rate the caller declared are
+place. What is
+**not** taken on trust is `expected_frame_count` - the ranges and rate the caller declared are
 canonicalized and counted server-side, the same `expected_frames` arithmetic
 [sources.md](sources.md) describes, so "every frame arrived" at commit is a fact this process
 computed rather than a client's claim.
@@ -435,11 +435,20 @@ bytes is an ordinary retry and writes nothing; the same ordinal carrying differe
 restarted - and that adjudication holds under two genuinely concurrent appends at one ordinal,
 where the unique index refuses the loser's insert and the re-read settles it.
 
+**A frame's timestamps are derived from its ordinal, not read off its descriptor.** An ordinal is
+a grid index, so the moment it names is `ordinal / extraction_fps` - a division the server does
+out of the session's own provenance - and a `requested_timestamp` that is not that number
+contradicts the ordinal it arrived beside. `source_timestamp`, when the client reports one, is the
+presentation time of the sample actually drawn for that grid point, which is the last sample at or
+before it, so one *after* the grid point could not have come from that sampling at all. Either
+contradiction is `FRAME_TIMESTAMP_OFF_GRID` - refused rather than silently corrected, because
+writing the derived number over the sent one would record a provenance nobody produced.
+
 **The invariant the whole session exists to protect: nothing staged is a project `Asset` before
 `commit`.** Between `start` and `commit`, frames sit in the blob store and in `video_import_frame`
 rows that no listing, batch or dataset membership check can see. A closed tab, a crashed decoder,
-an aborted session - every one of them leaves the project exactly as it was before `start`, which
-is the property an `IngestJob` never had to promise, because an ordinary ingest run is one
+an aborted session - every one of them adds no asset and no batch to the project, which is the
+property an `IngestJob` never had to promise, because an ordinary ingest run is one
 process's one pass and either completes or leaves a job stuck at `running` with whatever it had
 already written. `commit` is the single moment that changes: it refuses with
 `VIDEO_IMPORT_INCOMPLETE` while any expected ordinal is still missing, and otherwise turns every
@@ -458,9 +467,11 @@ because aborting does not un-declare that somebody offered this clip.
 
 **A session is a row somebody can ask for, so two bounds sit on `start`.** A project may hold only
 so many sessions `open` at once - `TOO_MANY_OPEN_VIDEO_IMPORTS` past that, resolved by committing
-or aborting one - and a declaration whose whole-clip grid holds more frames than a session may
+or aborting one - and a declaration whose *selected cut* holds more frames than a session may
 stage is `VIDEO_IMPORT_TOO_LARGE`, which is how a duration and a rate that are each individually
-in bounds are caught - as is a declared frame geometry no decoder here could open, which is also
+in bounds are caught. It is the count over the canonical ranges and never the clip's own grid, so
+a long recording with a short selection is an ordinary import and narrowing one genuinely lifts
+the refusal. A declared frame geometry no decoder here could open is refused too, which is also
 what keeps the per-part weight ceiling a number rather than whatever a caller declared. The same call sweeps what was genuinely abandoned: a session neither
 committed nor touched for a day is deleted *through its source*, which cascades the session and
 every frame staged under it away together. Deleting the session alone would leave one `VIDEO`

@@ -465,6 +465,46 @@ def test_a_descriptor_that_disagrees_with_its_bytes_is_refused(
     assert response.json()["code"] == "UNSUPPORTED_MEDIA"
 
 
+def test_a_timestamp_that_contradicts_its_ordinal_is_refused(
+    client: TestClient, session: str, tmp_path: Path
+) -> None:
+    """`requested_timestamp` is the ordinal's grid point, derived here and not taken.
+
+    `ordinal=1` on a 1 fps session is 1.0s. A body claiming 9000 used to be
+    written straight onto the asset as the moment it came from.
+    """
+    response = post_frames(
+        client, session, [png(tmp_path, seed=1)], [described(1, requested_timestamp=9000.0)]
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "FRAME_TIMESTAMP_OFF_GRID"
+
+
+def test_a_source_timestamp_after_the_grid_point_is_refused(
+    client: TestClient, session: str, tmp_path: Path
+) -> None:
+    """The sample drawn for a grid point is the last one at or before it, never a later one."""
+    response = post_frames(
+        client, session, [png(tmp_path, seed=1)], [described(1, source_timestamp=1.5)]
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "FRAME_TIMESTAMP_OFF_GRID"
+
+
+def test_a_source_timestamp_past_the_declared_duration_is_refused(
+    client: TestClient, session: str, tmp_path: Path
+) -> None:
+    """Outside the clip is a special case of after the grid point; one rule answers both."""
+    response = post_frames(
+        client, session, [png(tmp_path, seed=1)], [described(1, source_timestamp=99.0)]
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "FRAME_TIMESTAMP_OFF_GRID"
+
+
 def test_appending_to_an_unknown_import_is_404(client: TestClient, tmp_path: Path) -> None:
     response = send(client, str(uuid4()), tmp_path, 0)
 

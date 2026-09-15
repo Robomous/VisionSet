@@ -14,6 +14,7 @@ decode.
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -43,6 +44,7 @@ from visionset.kernel.errors import (
     CorruptMedia,
     FrameContentConflict,
     FrameOrdinalOutOfRange,
+    FrameTimestampOffGrid,
     InvalidName,
     ProjectNotFound,
     TooManyOpenVideoImports,
@@ -326,23 +328,89 @@ def test_a_cut_that_would_stage_an_absurd_number_of_frames_is_refused(
 
     `1e18` seconds at `1e5` fps passes every validator on the way in and then
     died in the mapper, on an integer SQLite has no column wide enough to hold.
-    An infinite rate is the same arithmetic reached from the other side — the
-    product is `inf`, which `math.ceil` refuses rather than rounds — and it is
-    checked here rather than left to `VideoProvenance`, because the refusal has
-    to come before anything is constructed from it.
+    Whole-clip is the selection here — no ranges — so the count the bound sees
+    is the clip's own grid, and it is refused.
+
+    An infinite rate is the same arithmetic reached from the other side, and it
+    never gets as far as a count: `VideoProvenance` forbids inf and NaN, which is
+    one of the two facts the finiteness guard in `start` relies on.
 
     Nothing is written either way: the assertion at the end is that half.
     """
-    for duration, rate in ((1e18, 1e5), (10.0, float("inf"))):
+    with pytest.raises(VideoImportTooLarge):
+        fixture.imports.start(
+            fixture.project.id,
+            display_name="clip.webm",
+            metadata=_metadata(1e18),
+            extraction_fps=1e5,
+        )
+    with pytest.raises(ValidationError):
+        fixture.imports.start(
+            fixture.project.id,
+            display_name="clip.webm",
+            metadata=_metadata(10.0),
+            extraction_fps=float("inf"),
+        )
+    with fixture.workspace.unit_of_work() as uow:
+        assert uow.sources.list(fixture.project.id) == []
+
+
+def test_the_frame_bound_is_on_the_selected_cut_and_not_on_the_whole_clip(
+    fixture: Fixture,
+) -> None:
+    """Two hours at 30 fps is a grid nobody could send, and ten seconds of it is not.
+
+    The bound used to be `duration * fps`, so this session was refused — and the
+    refusal told the caller to narrow a selection that had already been narrowed
+    as far as it goes. The count over the canonical ranges is what the limit is
+    about, so the session opens and promises exactly the selected cut.
+    """
+    session = fixture.imports.start(
+        fixture.project.id,
+        display_name="drive.mp4",
+        metadata=_metadata(7200.0),
+        extraction_fps=30.0,
+        ranges=(TimeRange(start_seconds=100.0, end_seconds=110.0),),
+    )
+
+    assert session.expected_frame_count == 300
+    assert session.state is VideoImportState.OPEN
+
+
+def test_a_selected_cut_over_the_ceiling_is_still_refused(fixture: Fixture) -> None:
+    """Narrowing lifts the refusal; not narrowing enough does not."""
+    with pytest.raises(VideoImportTooLarge):
+        fixture.imports.start(
+            fixture.project.id,
+            display_name="drive.mp4",
+            metadata=_metadata(7200.0),
+            extraction_fps=30.0,
+            ranges=(TimeRange(start_seconds=0.0, end_seconds=4000.0),),
+        )
+    with fixture.workspace.unit_of_work() as uow:
+        assert uow.sources.list(fixture.project.id) == []
+
+
+def test_a_product_that_overflows_to_infinity_is_refused_rather_than_raised(
+    fixture: Fixture,
+) -> None:
+    """Both operands finite, their product not: the one case one guard exists for.
+
+    `1e308` seconds and `1e10` fps each satisfy every validator — finite,
+    positive, no NaN — and multiply to `inf`, which `math.ceil` raises
+    `OverflowError` on rather than rounding. An `OverflowError` out of here is a
+    500 where a refusal belongs, so it is failed loudly rather than caught.
+    """
+    try:
         with pytest.raises(VideoImportTooLarge):
             fixture.imports.start(
                 fixture.project.id,
                 display_name="clip.webm",
-                metadata=_metadata(duration),
-                extraction_fps=rate,
+                metadata=_metadata(1e308),
+                extraction_fps=1e10,
             )
-    with fixture.workspace.unit_of_work() as uow:
-        assert uow.sources.list(fixture.project.id) == []
+    except OverflowError as escaped:  # pragma: no cover - the defect this guards
+        pytest.fail(f"the grid arithmetic overflowed instead of being refused: {escaped!r}")
 
 
 def test_a_declaration_carrying_a_non_finite_number_is_refused_by_the_model(
@@ -621,6 +689,127 @@ def test_the_requested_and_source_timestamps_are_kept_apart(fixture: Fixture) ->
     assert staged[1].timestamp == pytest.approx(0.9667)
     assert staged[2].source_timestamp is None
     assert staged[2].timestamp == 2.0
+
+
+def test_a_requested_timestamp_that_is_not_the_ordinals_grid_point_is_refused(
+    fixture: Fixture,
+) -> None:
+    """The moment a frame records is derived from the session, never taken from the frame.
+
+    Ordinal 1 on a 1 fps session is the grid point 1.0s. A descriptor saying 9000
+    used to be stored verbatim as the asset's `frame_timestamp`, which is a
+    provenance nobody produced — and the ordinal beside it says the opposite, so
+    there is no half worth believing over the other.
+    """
+    import_id = fixture.start()
+    contradictory = IncomingFrame(
+        ordinal=1,
+        requested_timestamp=9000.0,
+        width=FRAME_SIZE[0],
+        height=FRAME_SIZE[1],
+        content=BytesIO(_png(1)),
+    )
+
+    with pytest.raises(FrameTimestampOffGrid):
+        fixture.imports.append_frames(import_id, [contradictory])
+
+    assert fixture.imports.get(import_id).received_frame_count == 0
+
+
+def test_a_source_timestamp_after_its_grid_point_is_refused(fixture: Fixture) -> None:
+    """The sample drawn for a grid point is the last one at or before it.
+
+    That is what `CanvasSink.canvasesAtTimestamps` is documented to return, so a
+    sample *after* the grid point is not a late frame — it is a number that
+    cannot have come from that sampling at all.
+    """
+    import_id = fixture.start()
+
+    with pytest.raises(FrameTimestampOffGrid):
+        fixture.imports.append_frames(import_id, [_frame(1, source_timestamp=1.5)])
+
+    assert fixture.imports.get(import_id).received_frame_count == 0
+
+
+def test_a_source_timestamp_past_the_declared_duration_is_refused(fixture: Fixture) -> None:
+    """Outside the clip is a special case of after the grid point, and one rule covers it."""
+    import_id = fixture.start()
+
+    with pytest.raises(FrameTimestampOffGrid):
+        fixture.imports.append_frames(import_id, [_frame(2, source_timestamp=99.0)])
+
+    assert fixture.imports.get(import_id).received_frame_count == 0
+
+
+def test_a_grid_point_reached_by_another_arithmetic_route_is_accepted(
+    fixture: Fixture,
+) -> None:
+    """A few ulps off `1/3` is the same grid point, and exact equality would refuse it.
+
+    This is the test that fails the moment `math.isclose` becomes `==`: a client
+    that accumulated its way to the third of a second, rather than dividing once,
+    is correct and must not be told its grid has drifted.
+    """
+    import_id = fixture.start(metadata=_metadata(1.0), extraction_fps=3.0)
+    nudged = 1 / 3
+    for _ in range(4):
+        nudged = math.nextafter(nudged, 1.0)
+    assert nudged != 1 / 3
+
+    fixture.imports.append_frames(
+        import_id,
+        [
+            IncomingFrame(
+                ordinal=1,
+                requested_timestamp=nudged,
+                width=FRAME_SIZE[0],
+                height=FRAME_SIZE[1],
+                content=BytesIO(_png(1)),
+            )
+        ],
+    )
+
+    assert fixture.imports.get(import_id).received_frame_count == 1
+
+
+def test_a_cut_from_a_non_zero_start_carries_its_own_grid_points(fixture: Fixture) -> None:
+    """A session cut from 5 s at 1 fps holds ordinals 5, 6, 7 — and 5.0s, 6.0s, 7.0s.
+
+    The timestamp check is on the extraction grid, which is counted from the
+    clip's start and not the selection's, so the numbers a selection-relative
+    reading would send (0.0, 1.0, 2.0) are precisely what it refuses.
+    """
+    import_id = fixture.start(
+        metadata=_metadata(10.0), ranges=(TimeRange(start_seconds=5.0, end_seconds=8.0),)
+    )
+
+    fixture.imports.append_frames(import_id, [_frame(5), _frame(6), _frame(7)])
+
+    with fixture.workspace.unit_of_work() as uow:
+        staged = {row.ordinal: row for row in uow.video_import_frames.list(import_id)}
+    assert [staged[ordinal].requested_timestamp for ordinal in (5, 6, 7)] == [5.0, 6.0, 7.0]
+
+    # The crossing assertion, and the reason this test is not two. A client
+    # reading the grid as selection-relative sends an ordinal this session does
+    # hold beside the moment that ordinal would be *within the selection* — so
+    # `selects` passes and only the timestamp catches it. That is the shape the
+    # ordinal convention was already got wrong in once.
+    with pytest.raises(FrameTimestampOffGrid):
+        fixture.imports.append_frames(
+            import_id,
+            [
+                IncomingFrame(
+                    ordinal=5,
+                    requested_timestamp=0.0,
+                    width=FRAME_SIZE[0],
+                    height=FRAME_SIZE[1],
+                    content=BytesIO(_png(5)),
+                )
+            ],
+        )
+
+    with pytest.raises(FrameTimestampOffGrid):
+        fixture.imports.append_frames(import_id, [_frame(5, seed=5, fps=1.0, source_timestamp=6.0)])
 
 
 def test_one_session_cannot_be_filled_through_another(tmp_path: Path) -> None:

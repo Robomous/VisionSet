@@ -929,7 +929,7 @@ export function useCommitVideoImport(projectId: string) {
 }
 
 /**
- * Throw the session away: no assets, no batch, nothing left in the project.
+ * Throw the session away: no assets, no batch, nothing staged reaches the project.
  *
  * What a cancel calls, and what a materialization that died calls on its way out —
  * a half-import left open is staged bytes nobody will ever claim. Aborting twice

@@ -64,6 +64,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "VideoImportTooLarge": (422, "VIDEO_IMPORT_TOO_LARGE"),
     "TooManyOpenVideoImports": (409, "TOO_MANY_OPEN_VIDEO_IMPORTS"),
     "FrameOrdinalOutOfRange": (422, "FRAME_ORDINAL_OUT_OF_RANGE"),
+    "FrameTimestampOffGrid": (422, "FRAME_TIMESTAMP_OFF_GRID"),
     "BackgroundJobNotFound": (404, "BACKGROUND_JOB_NOT_FOUND"),
     "AssetNotFound": (404, "ASSET_NOT_FOUND"),
     "SourceNotFound": (404, "SOURCE_NOT_FOUND"),

@@ -11,7 +11,7 @@ That middle is the whole reason these two models exist. A staged frame is not an
 that answers "what is in this project". Nothing a caller abandons — a closed tab,
 a refused frame, a cancelled dialog — leaves a trace in the dataset. The
 commit is the single moment staged bytes become assets, and until it happens the
-project is exactly what it was before ``start``.
+session adds no asset and no batch to the project.
 
 **The grid is not moved here.** ``canonical_ranges``, ``grid_bounds``,
 ``expected_frames`` and ``scaled_dimension`` stay in ``domain/source.py``, where

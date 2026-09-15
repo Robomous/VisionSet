@@ -1133,9 +1133,10 @@ count beside it is the main thread's own tally of what the sink actually took â€
 [`media`](architecture/frontend/media.md) for why the decoder is not asked for it.
 
 **Cancel** is offered for as long as the import is in flight, and its description is the whole
-point of the session: it stops decoding and throws the staged frames away, and nothing has
-reached the project yet, so there is nothing to undo afterwards. A cancelled import says so and
-leaves the form ready for another clip. There is no Resume: a stalled session is aborted and
+point of the session: it stops decoding and throws the staged frames away, and no assets and no
+batch have been created yet, so there is nothing to undo afterwards. A cancelled import says so,
+naming what was not added rather than claiming the project is untouched, and leaves the form ready
+for another clip. There is no Resume: a stalled session is aborted and
 restarted, because half a clip's frames are not a batch anybody asked for.
 
 A commit that is refused renders as prose - a batch approved or deleted while the clip decoded,

@@ -76,6 +76,7 @@ from visionset.kernel import (
     ExportTargetNotFound,
     FrameContentConflict,
     FrameOrdinalOutOfRange,
+    FrameTimestampOffGrid,
     GeometryNotProduced,
     InferenceConnectionInvalid,
     InferenceConnectionModelFixed,
@@ -247,6 +248,9 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # did not move under the caller — the grid it was opened with has not
     # changed and will not, so there is no conflict to re-read and resolve.
     FrameOrdinalOutOfRange: ErrorRule(422, "FRAME_ORDINAL_OUT_OF_RANGE"),
+    # 422 for the same reason as its neighbour: the timestamp is a field of the
+    # descriptor, and the grid it contradicts was fixed when the session opened.
+    FrameTimestampOffGrid: ErrorRule(422, "FRAME_TIMESTAMP_OFF_GRID"),
     # 422 for the same reason, one level up: the cut is a field of the payload
     # and nothing about the project refuses it, so there is no state to re-read.
     VideoImportTooLarge: ErrorRule(422, "VIDEO_IMPORT_TOO_LARGE"),

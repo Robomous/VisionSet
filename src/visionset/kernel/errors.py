@@ -1428,6 +1428,31 @@ class FrameOrdinalOutOfRange(VisionSetError):
     """
 
 
+class FrameTimestampOffGrid(VisionSetError):
+    """A frame's declared timestamp is not the one its ordinal names.
+
+    An ordinal is an **extraction-grid index**, so the grid point it names is
+    ``ordinal / extraction_fps`` — a number the server divides out of the
+    session's own provenance, never one it takes from the descriptor beside the
+    ordinal. A descriptor claiming anything else contradicts the ordinal it
+    arrived with, and the server has no way to pick which of the two halves to
+    believe: the ordinal decides where the frame is staged, the timestamp
+    decides what the asset records it as, and one of them is wrong. Correcting
+    it silently is the one thing that must not happen, because the result is a
+    stored provenance nobody produced.
+
+    ``source_timestamp`` is bounded the same way and on one side only. It is the
+    presentation time of the sample the decoder actually drew for that grid
+    point, which is the last sample at or before it — so one *after* the grid
+    point is not a late frame but a number that cannot have come from that
+    sampling at all.
+
+    Not a :class:`FrameOrdinalOutOfRange`: the index itself is fine here, and the
+    session does hold it. Not a :class:`FrameContentConflict` either — nothing
+    disagrees about bytes, and there is no earlier frame to be in conflict with.
+    """
+
+
 class FrameContentConflict(VisionSetError):
     """Two different frames were offered at one grid position.
 
@@ -1445,12 +1470,15 @@ class VideoImportTooLarge(VisionSetError):
     """The declaration would stage more than one import may hold — in frames or in pixels.
 
     A bound on the *work*, not a statement about the clip, and two of them
-    because a declaration commissions work along two axes. A duration and an
-    extraction rate whose product is absurd promises more grid points than
-    anybody can send; a geometry whose product is absurd promises frames no
-    decoder here could open, and leaves the per-part size ceiling — which is
-    derived from that geometry — with nothing bounding it. Both are refused at
-    ``start``, before a source row, a session row or a single frame exists.
+    because a declaration commissions work along two axes. A **selected cut**
+    holding more grid points than anybody can send is one: the count over the
+    canonical ranges, so a long recording is not refused for being long — ten
+    seconds of a two-hour drive is an ordinary import, and narrowing a selection
+    is a remedy rather than advice. A geometry whose product is absurd is the
+    other: it promises frames no decoder here could open, and leaves the per-part
+    size ceiling — which is derived from that geometry — with nothing bounding
+    it. Both are refused at ``start``, before a source row, a session row or a
+    single frame exists.
 
     It is a refusal of the declaration rather than of any one frame, which is why
     it is not a ``FrameOrdinalOutOfRange``: nothing was offered yet. The remedy

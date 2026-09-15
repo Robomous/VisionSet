@@ -12,7 +12,7 @@ would have made every one of its invariants conditional too.
 Between ``start`` and ``commit`` a session holds bytes in the blob store and rows
 in ``video_import_frame``, and no read that answers "what is in this project"
 can see any of it. A cancelled tab, a decoder that gave up, a refused frame, an
-upload that stalled — every one of them leaves the project exactly as it was.
+upload that stalled — every one of them adds no asset and no batch to the project.
 ``commit`` is the single moment that changes, and it is one transaction.
 
 What *is* reused is everything below the session: content hashing and
@@ -24,6 +24,7 @@ only thing that makes it a video frame is the ``VIDEO`` source it points at.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from io import SEEK_END, BytesIO
@@ -48,13 +49,13 @@ from visionset.kernel.domain import (
     canonical_ranges,
     expected_frames,
     normalize_name,
-    scaled_dimension,
 )
 from visionset.kernel.errors import (
     BatchNotFound,
     ConstraintViolated,
     FrameContentConflict,
     FrameOrdinalOutOfRange,
+    FrameTimestampOffGrid,
     MediaError,
     ProjectNotFound,
     TooManyOpenVideoImports,
@@ -83,6 +84,16 @@ product is what every count downstream is computed from: at ``1e18`` seconds and
 integer SQLite has no column wide enough to hold. And a session that promises
 more frames than anybody can send is a session that can never commit, so it
 stages rows until it is swept and then stages them again.
+
+**The bound is on the cut that was selected, never on the clip it was cut
+from.** Comparing ``duration * fps`` against this number was the cheaper
+spelling and the wrong one: it refuses a two-hour recording at 30 fps even when
+the selection is ten seconds of it, which is three hundred grid points and a
+perfectly ordinary import — and the refusal then tells the caller to narrow a
+selection that changes nothing. ``expected_frames`` over the canonical ranges is
+the count this bound is about, so narrowing really does lift it. The one thing
+the product is still asked is whether it is *finite*, which is what keeps an
+overflowed ``inf`` out of ``math.ceil``; see :meth:`VideoImportService.start`.
 
 A hundred thousand is far past any real import and far short of anything the
 store notices: at the default rate it is twenty-seven hours of footage, at 30 fps
@@ -119,6 +130,30 @@ already on the sweeper's list.
 Sixteen because a person decodes one clip at a time in one tab, and the number
 has to leave room for several tabs plus whatever a crashed one left behind
 inside the sweep window, while still being a number rather than a direction.
+"""
+
+GRID_TIMESTAMP_TOLERANCE: Final = 1e-9
+"""How far a frame's declared timestamp may sit from the grid point it claims.
+
+Both halves reach that number the same way today — the server divides
+``ordinal / extraction_fps`` and ``gridTimestamps`` in ``frontend/media`` yields
+exactly ``index / fps``, both as IEEE-754 doubles — so they agree bit for bit and
+``==`` would pass. The tolerance is not there for them. It is there so a client
+that arrives at the same grid point by another arithmetic route — accumulating
+an interval, or round-tripping through a container's own timebase — is not
+refused over a rounding step in work that was correct.
+
+``math.isclose`` rather than a hand-rolled epsilon because the *relative* half is
+what keeps the comparison meaningful at the far end of a long clip, where a
+double's spacing is no longer a nanosecond and a fixed epsilon silently becomes
+either exact equality or no check at all.
+
+A nanosecond is orders of magnitude below any container's timebase — 1/90000 s
+for MPEG, microseconds for Matroska — and below half a grid interval by a factor
+of a million at 1000 fps, which is already far past any rate a clip is shot or
+cut at. A rate high enough to close that gap would put its neighbouring grid
+points a nanosecond apart, which is to say at the same instant of the clip; there
+is no frame such a tolerance could mistake for a different one.
 """
 
 ABANDONED_AFTER: Final = timedelta(hours=24)
@@ -232,11 +267,13 @@ class VideoImportService:
         decoding is finding it out after the work.
 
         **The session is also what a caller could make unboundedly many of**, so
-        three refusals guard the row store rather than the dataset. A cut whose
-        whole-clip grid holds more than ``MAX_IMPORT_FRAMES`` points is refused
-        before the count is even taken — see that constant — as is a frame
-        geometry over ``MAX_FRAME_PIXELS``, which is what gives the per-part
-        weight ceiling something finite to be derived from. A project already
+        three refusals guard the row store rather than the dataset. A *selected
+        cut* holding more than ``MAX_IMPORT_FRAMES`` grid points is refused — the
+        count over the canonical ranges, not the clip's own grid, so a long
+        recording with a short selection is an ordinary import and narrowing a
+        selection genuinely lifts the refusal. A frame geometry over
+        ``MAX_FRAME_PIXELS`` is refused too, which is what gives the per-part
+        weight ceiling something finite to be derived from. And a project already
         holding ``MAX_OPEN_IMPORTS`` open sessions is refused until one of them
         ends, and the same pass sweeps what is genuinely abandoned; see
         :meth:`_make_room`.
@@ -247,7 +284,7 @@ class VideoImportService:
             BatchNotEditable: the target batch is past ``draft``.
             TooManyOpenVideoImports: this project already holds the most open
                 sessions it may.
-            VideoImportTooLarge: the declared cut would stage more frames than
+            VideoImportTooLarge: the selected cut would stage more frames than
                 one session may hold, or frames larger than one may decode.
             InvalidName: ``display_name``, or a provided ``batch_name``, is
                 blank once stripped.
@@ -255,32 +292,13 @@ class VideoImportService:
                 a non-positive rate, a scale outside 1-100, or a selection that
                 holds no grid point at all.
         """
-        if metadata.duration_seconds * extraction_fps > MAX_IMPORT_FRAMES:
-            # Before ``expected_frames``, not after, and that order is the whole
-            # of why this is one comparison rather than two. The clip's own grid
-            # is ``ceil(duration * fps)`` and no selection can hold more than it,
-            # so bounding the product bounds the count — and bounding it *first*
-            # is what keeps a product that overflowed to ``inf`` out of
-            # ``math.ceil``, which raises ``OverflowError`` rather than rounding.
-            raise VideoImportTooLarge(
-                f"a clip of {metadata.duration_seconds}s at {extraction_fps} fps holds more"
-                f" than {MAX_IMPORT_FRAMES} frames; narrow the selection or lower the rate"
-            )
-        if (
-            scaled_dimension(metadata.width, scale_percent)
-            * scaled_dimension(metadata.height, scale_percent)
-            > MAX_FRAME_PIXELS
-        ):
-            # The other half of "how much work is this", and the half that bounds
-            # a single request rather than the session: the per-part byte ceiling
-            # is derived from this geometry, so an unbounded declaration is an
-            # unbounded part. Computed from the arguments rather than from
-            # ``provenance`` below, because the refusal belongs before anything
-            # is constructed from them.
-            raise VideoImportTooLarge(
-                f"frames of {metadata.width}x{metadata.height} at {scale_percent}% hold more"
-                f" than {MAX_FRAME_PIXELS} pixels; scale the import down"
-            )
+        # Built before the bounds are asked anything, because it is what they
+        # have to be asked *about*. A ``VideoProvenance`` is a frozen value in
+        # memory: constructing one opens no transaction, writes no row and
+        # commits the caller to nothing, so there is nothing to undo if the next
+        # line refuses. What it costs nothing to get is the cut as it will
+        # actually be stored — canonical ranges, and the geometry frames land at
+        # — rather than the whole clip the arguments happen to describe.
         provenance = VideoProvenance(
             metadata=metadata,
             extraction_fps=extraction_fps,
@@ -289,11 +307,51 @@ class VideoImportService:
             policy_version=SAMPLING_POLICY_VERSION,
             materializer=materializer,
         )
+        if provenance.stored_width * provenance.stored_height > MAX_FRAME_PIXELS:
+            # One half of "how much work is this", and the half that bounds a
+            # single request rather than the session: the per-part byte ceiling
+            # is derived from this geometry, so an unbounded declaration is an
+            # unbounded part. Read off ``provenance`` rather than re-spelling
+            # ``scaled_dimension``, so the number refused is the number stored.
+            raise VideoImportTooLarge(
+                f"frames of {metadata.width}x{metadata.height} at {scale_percent}% hold more"
+                f" than {MAX_FRAME_PIXELS} pixels; scale the import down"
+            )
+        if not math.isfinite(metadata.duration_seconds * provenance.extraction_fps):
+            # The one guard that makes every ``math.ceil`` below incapable of
+            # raising ``OverflowError``, and one is enough because of what the
+            # two models have already proved. ``VideoMetadata`` forbids inf and
+            # NaN and requires a positive duration; ``VideoProvenance`` forbids
+            # them and requires a positive rate — so both operands here are
+            # finite positives and only their *product* can reach ``inf``. And
+            # ``canonical_ranges`` has clamped every range end to
+            # ``min(end, duration_seconds)`` and dropped every range starting at
+            # or past the duration, so if that product is finite then
+            # ``start * fps`` and ``end * fps`` are finite for every canonical
+            # range there is — which is exactly the arithmetic ``grid_bounds``
+            # and ``expected_frames`` round. Nothing below can overflow once this
+            # line has passed.
+            raise VideoImportTooLarge(
+                f"a clip of {metadata.duration_seconds}s at {extraction_fps} fps is past every"
+                " number this can be counted in; lower the rate or the declared duration"
+            )
         expected = expected_frames(
             provenance.ranges,
             duration_seconds=metadata.duration_seconds,
             fps=provenance.extraction_fps,
         )
+        if expected > MAX_IMPORT_FRAMES:
+            # The bound is on the cut that was *selected*. The clip's own grid is
+            # not the number: two hours at 30 fps is a grid nobody could send
+            # whole, and ten seconds of it is three hundred points and an
+            # ordinary import. Counting first is what makes "narrow the
+            # selection" a remedy the caller can act on rather than advice that
+            # changes nothing. Nothing large is ever stored either way —
+            # ``expected`` is bounded here, before it can reach a row.
+            raise VideoImportTooLarge(
+                f"the selected cut holds {expected} frames at {extraction_fps} fps and one"
+                f" import may hold {MAX_IMPORT_FRAMES}; narrow the selection or lower the rate"
+            )
         if expected <= 0:
             # A selection narrower than one grid interval. Refused here rather
             # than committed as an empty batch: the two are indistinguishable
@@ -396,6 +454,9 @@ class VideoImportService:
             VideoImportNotOpen: the session was already committed or aborted.
             FrameOrdinalOutOfRange: an ordinal is not a grid index the session's
                 selection holds.
+            FrameTimestampOffGrid: a descriptor's ``requested_timestamp`` is not
+                its ordinal's own grid point, or its ``source_timestamp`` is
+                after that point.
             FrameContentConflict: an ordinal already holds different bytes.
             UnsupportedMedia: a frame is not PNG, is not the geometry this
                 session stores, or weighs more than that geometry can.
@@ -558,7 +619,7 @@ class VideoImportService:
             return batch
 
     def abort(self, import_id: UUID) -> VideoImport:
-        """Throw the session away: no assets, no batch, nothing left in the project.
+        """Throw the session away: no assets, no batch, nothing staged reaches the project.
 
         The frame rows go with it, deleted one by one. The table's ``ON DELETE
         CASCADE`` does not do it, and cannot: an abort **updates** the session
@@ -673,6 +734,40 @@ class VideoImportService:
         5 s at 1 fps expects three frames and their indices are 5, 6, 7 — so
         bounding by the count refuses every frame of every other selection.
 
+        **The timestamps are derived, never taken.** An ordinal is a grid index,
+        so the moment it names is ``ordinal / extraction_fps`` — and this method
+        divides that itself, out of the ``extraction_fps`` on the source's own
+        provenance, rather than reading ``requested_timestamp`` off the
+        descriptor. Storing what was sent let a client post ordinal 5 on a 1 fps
+        session and have the asset recorded at 9000 seconds: two halves of one
+        claim contradicting each other, with no way to choose between them and no
+        honest way to correct one — writing the derived number over the sent one
+        would record a provenance nobody produced. So it is refused. The
+        comparison is :data:`GRID_TIMESTAMP_TOLERANCE` wide for the reason stated
+        there, and never wide enough to reach a neighbouring point.
+
+        ``source_timestamp`` is the presentation time of the sample the decoder
+        actually drew, and the one thing that can be said about it is that it is
+        **at or before** the grid point. That is not a convention; it is what the
+        sampling this import uses means. Mediabunny's
+        ``CanvasSink.canvasesAtTimestamps`` — and ``getCanvas`` beside it —
+        document what they return as the last video frame in presentation order
+        whose start timestamp is less than or equal to the timestamp asked for,
+        and ``frontend/media``'s worker asks for ``first + clipRelative`` and
+        reports ``sample.timestamp - first``. So a sample after the grid point is
+        not a late frame, it is a number that cannot have come from that sink,
+        and the tolerance is there to absorb the float round trip through that
+        ``first`` rather than to permit any real overshoot.
+
+        **There is no separate "within the clip" check, and there needs to be
+        none.** ``selection.selects`` has already passed, every grid bound ends at
+        ``ceil(t * fps)`` for a ``t`` that ``canonical_ranges`` clamped to the
+        declared duration, so ``ordinal / extraction_fps`` is strictly inside the
+        clip — and ``source_timestamp <= grid_timestamp`` therefore lands inside
+        it too. Finiteness and non-negativity are ``IncomingFrame``'s, through
+        ``allow_inf_nan=False`` and ``ge=0``; re-checking them here would be a
+        second, weaker copy of a bound that already holds.
+
         **The size is checked against the declaration, and only then against the
         descriptor.** Comparing a client's descriptor with the client's own bytes
         is circular: both halves come from the same place, so a client declaring
@@ -697,6 +792,35 @@ class VideoImportService:
         if not selection.selects(frame.ordinal):
             raise FrameOrdinalOutOfRange(
                 f"frame {frame.ordinal} is not on the grid video import {session.id} selected"
+            )
+        # Derived here, from the session's own provenance and the ordinal beside
+        # it, and never read off the descriptor. The descriptor's own number is
+        # only ever the thing being checked.
+        grid_timestamp = frame.ordinal / selection.extraction_fps
+        if not math.isclose(
+            frame.requested_timestamp,
+            grid_timestamp,
+            rel_tol=GRID_TIMESTAMP_TOLERANCE,
+            abs_tol=GRID_TIMESTAMP_TOLERANCE,
+        ):
+            raise FrameTimestampOffGrid(
+                f"frame {frame.ordinal} of video import {session.id} is the grid point"
+                f" {grid_timestamp}s and its descriptor says"
+                f" {frame.requested_timestamp}s"
+            )
+        if frame.source_timestamp is not None and not (
+            frame.source_timestamp <= grid_timestamp
+            or math.isclose(
+                frame.source_timestamp,
+                grid_timestamp,
+                rel_tol=GRID_TIMESTAMP_TOLERANCE,
+                abs_tol=GRID_TIMESTAMP_TOLERANCE,
+            )
+        ):
+            raise FrameTimestampOffGrid(
+                f"frame {frame.ordinal} of video import {session.id} was drawn at"
+                f" {frame.source_timestamp}s, after the grid point {grid_timestamp}s it"
+                " claims to be"
             )
         name = f"video import {session.id}#frame={frame.ordinal}"
         content = frame.content
