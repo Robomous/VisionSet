@@ -1,0 +1,102 @@
+# The scheduled half of the advisory scan, and the half that does the work a pull
+# request cannot.
+#
+# `ci.yml`'s `osv` job answers "does this change introduce a known vulnerability",
+# which is the right question to block a merge on. It cannot answer the other one:
+# **an advisory disclosed after a dependency was merged makes yesterday's green tree
+# vulnerable today, with no pull request to notice it.** Nothing in a per-commit
+# gate ever looks again. This does, daily, against `main`.
+#
+# It opens an issue rather than failing a build. There is no pull request to block,
+# nobody introduced anything, and a red scheduled run on a default branch is a
+# notification nobody receives — it is not attached to anything anyone is waiting
+# on. An issue is addressed to a person and survives until it is closed.
+name: Dependency advisories (scheduled)
+
+on:
+  schedule:
+    # 07:00 UTC daily. Advisories are disclosed continuously, so the cadence is
+    # about how long a window of exposure is acceptable rather than about matching
+    # any publisher's schedule.
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+# One run at a time. A scan that takes longer than the gap between two schedules
+# would otherwise stack up and file the same issue twice.
+concurrency:
+  group: osv-schedule
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    name: Scan main for new advisories
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # `issues: write` is the whole point of this job; everything else the block
+      # does not name is set to `none`.
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+
+      # Pinned by version and checksum, for the reason given in ci.yml's `osv` job.
+      # The two must move together; a bump to one is a bump to both.
+      - name: Install osv-scanner
+        env:
+          OSV_VERSION: v2.5.1
+          OSV_SHA256: f9f25499a2c8cc367b3af45df2ea7eeca7fbccceab9c35079968f4b3652194be
+        run: |
+          curl -sSfL -o /tmp/osv-scanner \
+            "https://github.com/google/osv-scanner/releases/download/$OSV_VERSION/osv-scanner_linux_amd64"
+          echo "$OSV_SHA256  /tmp/osv-scanner" | sha256sum --check --status || {
+            echo "::error::osv-scanner $OSV_VERSION did not match its pinned checksum"
+            exit 1
+          }
+          chmod +x /tmp/osv-scanner
+          sudo mv /tmp/osv-scanner /usr/local/bin/osv-scanner
+
+      - name: Scan every lockfile
+        id: scan
+        # The step must not fail the job — a finding is the expected outcome here,
+        # and the reporting below is what the run is for.
+        run: |
+          set +e
+          output="$(bash scripts/osv_scan.sh 2>&1)"
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          {
+            echo "status=$status"
+            echo "report<<OSV_REPORT_EOF"
+            printf '%s\n' "$output"
+            echo "OSV_REPORT_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # Findings are reported to a person; a clean run says nothing at all, because
+      # a daily "nothing to report" is how a notification stops being read.
+      - name: Open or update the advisory issue
+        if: steps.scan.outputs.status != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT: ${{ steps.scan.outputs.report }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Dependency advisories found on main"
+          existing="$(gh issue list --state open --label dependencies --search "$title in:title" \
+            --json number --jq '.[0].number // empty')"
+
+          body="$(printf '%s\n\n```\n%s\n```\n\n[Full run](%s)\n' \
+            "The scheduled OSV scan found advisories against the locked dependency set on \`main\`. Nothing was introduced by a pull request — an advisory was disclosed against something already merged, or the scan itself could not complete." \
+            "$REPORT" "$RUN_URL")"
+
+          if [ -n "$existing" ]; then
+            # Updated rather than duplicated: the same advisory reappears every day
+            # until it is dealt with, and a new issue each morning is a mute button.
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --label dependencies --body "$body"
+          fi

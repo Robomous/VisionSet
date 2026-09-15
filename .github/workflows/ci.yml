@@ -754,6 +754,56 @@ jobs:
           path: frontend/app/bench-results.json
           retention-days: 30
 
+  # Known vulnerabilities in the locked dependency set, against the OSV database.
+  #
+  # This is the half the cool-down structurally cannot cover. `scripts/cooldown.sh`
+  # and pnpm's own lockfile verification ask whether a version is *old enough to
+  # have been looked at* and *published by whoever published the last one*; neither
+  # has any opinion about whether a version, however old and however well published,
+  # has a known advisory against it. Those are different questions and this answers
+  # the second one.
+  #
+  # **On the pull request, not on the publish.** The scanner reads lockfiles, not
+  # built artifacts — there is no mode that inspects a wheel or an npm tarball — so
+  # a copy of this at publish time would re-read the file this job already read, at
+  # the one moment when acting on the answer means abandoning a half-published
+  # release. It also would not be reproducible: advisories are disclosed daily, so
+  # the same commit would publish on Monday and refuse on Thursday. The scheduled
+  # run in `osv-schedule.yml` is what catches an advisory disclosed after a merge.
+  osv:
+    name: dependency advisories (OSV)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # The binary, pinned by version *and* checksum, rather than the published
+      # action. The action scans on your behalf and has no mode that puts the tool
+      # on PATH, and what this repository needs is the tool — `scripts/osv_scan.sh`
+      # has to split a multi-document lockfile before the scanner ever sees it.
+      # Pinning the digest is the same bargain the action SHAs and image digests in
+      # this repository already make: a release is a pointer until you name its
+      # bytes. v2.5.1 rather than the newest, under the dependency cool-down.
+      - name: Install osv-scanner
+        env:
+          OSV_VERSION: v2.5.1
+          OSV_SHA256: f9f25499a2c8cc367b3af45df2ea7eeca7fbccceab9c35079968f4b3652194be
+        run: |
+          curl -sSfL -o /tmp/osv-scanner \
+            "https://github.com/google/osv-scanner/releases/download/$OSV_VERSION/osv-scanner_linux_amd64"
+          echo "$OSV_SHA256  /tmp/osv-scanner" | sha256sum --check --status || {
+            echo "::error::osv-scanner $OSV_VERSION did not match its pinned checksum"
+            exit 1
+          }
+          chmod +x /tmp/osv-scanner
+          sudo mv /tmp/osv-scanner /usr/local/bin/osv-scanner
+          osv-scanner --version
+
+      - name: Scan every lockfile
+        run: bash scripts/osv_scan.sh
+
   openapi:
     name: OpenAPI contract drift gate
     runs-on: ubuntu-latest
