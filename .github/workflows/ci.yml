@@ -84,7 +84,7 @@ jobs:
           # 'some' (paths-filter's default) matches a file against every listed
           # pattern independently of the `!` ones — the exclusions below are
           # inert without this, and `relevant` would be `true` on every push.
-          predicate-quantifier: some-with-excludes
+          predicate-quantifier: every
           filters: |
             relevant:
               - '**'
@@ -190,7 +190,7 @@ jobs:
           # 'some' (paths-filter's default) matches a file against every listed
           # pattern independently of the `!` ones — the exclusions below are
           # inert without this, and `relevant` would be `true` on every push.
-          predicate-quantifier: some-with-excludes
+          predicate-quantifier: every
           filters: |
             relevant:
               - '**'
@@ -521,7 +521,7 @@ jobs:
         with:
           # Same reasoning as the `python` job's filter step: 'some' (the
           # default) leaves `!`-exclusions inert.
-          predicate-quantifier: some-with-excludes
+          predicate-quantifier: every
           filters: |
             relevant:
               - '**'
@@ -623,7 +623,7 @@ jobs:
         with:
           # Same reasoning as the `python` job's filter step: 'some' (the
           # default) leaves `!`-exclusions inert.
-          predicate-quantifier: some-with-excludes
+          predicate-quantifier: every
           filters: |
             relevant:
               - '**'
@@ -714,7 +714,7 @@ jobs:
         with:
           # Same reasoning as the `python` job's filter step: 'some' (the
           # default) leaves `!`-exclusions inert.
-          predicate-quantifier: some-with-excludes
+          predicate-quantifier: every
           filters: |
             relevant:
               - '**'
@@ -778,7 +778,7 @@ jobs:
         with:
           # Same reasoning as the `python` job's filter step: 'some' (the
           # default) leaves `!`-exclusions inert.
-          predicate-quantifier: some-with-excludes
+          predicate-quantifier: every
           filters: |
             relevant:
               - '**'
@@ -910,7 +910,7 @@ jobs:
           # 'some' (paths-filter's default) matches a file against every listed
           # pattern independently of the `!` ones — the exclusions below are
           # inert without this, and `relevant` would be `true` on every push.
-          predicate-quantifier: some-with-excludes
+          predicate-quantifier: every
           filters: |
             relevant:
               - '**'
@@ -990,7 +990,7 @@ jobs:
           # 'some' (paths-filter's default) matches a file against every listed
           # pattern independently of the `!` ones — the exclusions below are
           # inert without this, and `relevant` would be `true` on every push.
-          predicate-quantifier: some-with-excludes
+          predicate-quantifier: every
           filters: |
             relevant:
               - '**'
@@ -1140,7 +1140,7 @@ jobs:
           # 'some' (paths-filter's default) matches a file against every listed
           # pattern independently of the `!` ones — the exclusions below are
           # inert without this, and `relevant` would be `true` on every push.
-          predicate-quantifier: some-with-excludes
+          predicate-quantifier: every
           filters: |
             relevant:
               - '**'
