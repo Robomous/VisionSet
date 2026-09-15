@@ -25,7 +25,7 @@ asked to build in this process — so this is ``Exporter``'s shape, and
 
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Protocol, TypeAlias, runtime_checkable
 
 from visionset.kernel.domain import (
     CuratedModel,
@@ -36,7 +36,7 @@ from visionset.kernel.domain import (
 from visionset.kernel.ports.model_provider import ModelProvider
 from visionset.kernel.ports.point_segmenter import PointSegmenter
 
-type Runner = ModelProvider | PointSegmenter
+Runner: TypeAlias = ModelProvider | PointSegmenter
 """Either kind of thing a connection can resolve to.
 
 A union rather than one widened port: a detector is asked what it sees and answers

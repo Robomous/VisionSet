@@ -22,6 +22,7 @@ import logging
 from datetime import UTC, datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
+from typing import Generic, TypeVar
 from uuid import UUID, uuid4
 
 import pytest
@@ -108,7 +109,10 @@ SAMPLES: dict[type[DomainEvent], DomainEvent] = {
 }
 
 
-class Recorder[E: DomainEvent]:
+E = TypeVar("E", bound=DomainEvent)
+
+
+class Recorder(Generic[E]):
     """A subscriber that only remembers what it was handed."""
 
     def __init__(self) -> None:
@@ -340,10 +344,10 @@ class Fixture:
                 )
             ).id
 
-    def of[E: DomainEvent](self, event_type: type[E]) -> list[E]:
+    def of(self, event_type: type[E]) -> list[E]:
         return [event for event in self.seen if isinstance(event, event_type)]
 
-    def one[E: DomainEvent](self, event_type: type[E]) -> E:
+    def one(self, event_type: type[E]) -> E:
         (event,) = self.of(event_type)
         return event
 

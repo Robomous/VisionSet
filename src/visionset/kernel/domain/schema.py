@@ -25,7 +25,7 @@ import unicodedata
 from collections.abc import Mapping
 from datetime import datetime
 from enum import StrEnum
-from typing import Final, Literal
+from typing import Final, Literal, TypeAlias
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -89,7 +89,7 @@ class SchemaProvenance(StrEnum):
 #:
 #: ``bool`` first is not cosmetic: ``True`` is an ``int`` to Python, so a laxer
 #: order would quietly store ``1.0`` as a boolean default.
-type AttributeValue = bool | float | str
+AttributeValue: TypeAlias = bool | float | str
 
 
 #: The type each ``Attribute.kind`` accepts, as ``isinstance`` sees it.

@@ -20,7 +20,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Final, cast
+from typing import Any, Final, Generic, TypeVar, cast
 from uuid import UUID
 
 from sqlalchemy import (
@@ -269,7 +269,10 @@ def _first_gap(connection: Connection) -> str | None:
     return None
 
 
-class SqlRepository[T: m.Entity]:
+T = TypeVar("T", bound=m.Entity)
+
+
+class SqlRepository(Generic[T]):
     """Generic repository driven by one ``EntityMapping``.
 
     Fourteen entity types share this implementation because they share a shape:

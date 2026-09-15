@@ -481,6 +481,61 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  # The wheel job above proves the artifact installs and serves on one Python,
+  # on Linux. This repeats the same install-and-serve leg (`tests/packaging`,
+  # never the full suite) across every Python version `requires-python`
+  # promises and every OS `pip install visionset` is expected to work on,
+  # against the *same* wheel rather than a rebuild per leg — it is
+  # `py3-none-any`, no compiled extension, so one Linux build is every
+  # platform's artifact and a second build would test bytes nobody would
+  # actually publish.
+  #
+  # Deliberately not the full suite: `tests/server` and everything that opens a
+  # `starlette.testclient.TestClient` drives anyio's synchronous blocking portal,
+  # which segfaults inside CPython 3.14's `_asyncio` extension on teardown — an
+  # anyio/CPython incompatibility with no visionset-side fix, confirmed by hand
+  # against every Python this matrix names. `tests/packaging` never opens one: it
+  # installs into a real venv and drives a real subprocess over a socket, the same
+  # way a user's own `visionset server` runs, so it is unaffected and answers the
+  # question this job exists to ask — does the *package* install and start.
+  wheel-python-versions:
+    name: wheel across Python (${{ matrix.python-version }}, ${{ matrix.os }})
+    needs: wheel
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    env:
+      VISIONSET_REQUIRE_WHEEL: "1"
+      # Read by both the outer `uv sync`/`uv run` below and by `tests/packaging`'s
+      # own `uv venv` call, which otherwise picks whatever `uv` defaults to rather
+      # than the version this leg exists to test.
+      UV_PYTHON: ${{ matrix.python-version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Download the distribution the `wheel` job already built
+        uses: actions/download-artifact@v7
+        with:
+          name: visionset-dist
+          path: dist
+
+      - name: Sync a dev environment for this Python version
+        run: uv sync --locked
+
+      - name: Install the wheel into a clean venv and serve the app
+        run: uv run pytest tests/packaging -q
+
   # #67: the vision document's success metric, automated — install → project →
   # video → 50 boxes → release → YOLO export → a trainer loads it. The gate the
   # beta cannot ship without, and the one job here that runs against **what a

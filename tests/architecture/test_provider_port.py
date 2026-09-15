@@ -91,7 +91,11 @@ def test_a_provider_offers_curated_entries_as_an_immutable_sequence() -> None:
 def test_building_answers_with_either_runner_port() -> None:
     returned = get_type_hints(Provider.build)["return"]
     assert returned is Runner
-    assert set(Runner.__value__.__args__) == {
+    # `Runner` is a plain ``X | Y`` union (a ``TypeAlias``, not a PEP 695 ``type``
+    # statement — the latter is 3.12+ only and ``requires-python`` floors at
+    # 3.11), so its members are its own ``__args__`` rather than a wrapping
+    # ``TypeAliasType``'s ``__value__``.
+    assert set(Runner.__args__) == {
         model_provider.ModelProvider,
         point_segmenter.PointSegmenter,
     }

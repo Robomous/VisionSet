@@ -29,6 +29,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from datetime import UTC, datetime
+from typing import TypeVar
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -658,9 +659,10 @@ class InferenceConnectionService:
             return uow.inference_connections.list()
 
 
-def _newest_by_connection[J: ConnectionJob](
-    jobs: Iterable[BackgroundJob], kind: type[J]
-) -> dict[UUID, J]:
+J = TypeVar("J", bound=ConnectionJob)
+
+
+def _newest_by_connection(jobs: Iterable[BackgroundJob], kind: type[J]) -> dict[UUID, J]:
     """That kind's most recent job per connection, out of a newest-first list.
 
     Generic over the kind rather than written twice, because the two differ only
