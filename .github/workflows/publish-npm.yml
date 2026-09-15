@@ -39,10 +39,30 @@ name: Publish to npm
 on:
   workflow_dispatch:
     inputs:
+      # `latest` is the default *while every published version is a prerelease*,
+      # and that is the opposite of the usual advice for a reason worth writing
+      # down. The convention — a prerelease must not move `latest` — exists to
+      # stop a bare `npm install` handing someone a beta when a stable release
+      # exists. No stable release exists here: `0.0.1-beta.1` onward is the whole
+      # history. Publishing under `beta` therefore protects nobody and simply
+      # leaves `latest` on an *older* beta, so `npm install @visionset/ui-core`
+      # resolves to the previous release while the newer one sits unreachable
+      # without naming a tag. `pip install visionset` already resolves to the
+      # newest, because pip falls back to prereleases when there is no stable —
+      # so the two registries disagreed about what "the current release" means.
+      #
+      # **Change this back to `beta` the day a stable version ships**, at which
+      # point the convention starts protecting someone and `latest` must mean the
+      # stable line.
+      #
+      # Note npm's trusted publishing can only set a tag *at publish time*: OIDC
+      # authorises `npm publish` and nothing else, so `npm dist-tag add` cannot
+      # move a tag afterwards from this workflow (npm/cli#8547). The tag chosen
+      # here is the only one a release gets.
       dist-tag:
-        description: "npm dist-tag to publish under"
+        description: "npm dist-tag to publish under (latest while all versions are prereleases)"
         required: true
-        default: beta
+        default: latest
         type: string
 
 jobs:
