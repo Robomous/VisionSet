@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import cast
+from typing import TypeVar, cast
 
 from visionset.kernel.domain import DomainEvent
+
+E = TypeVar("E", bound=DomainEvent)
 
 #: The kernel's only logger, and the only place a swallowed subscriber failure
 #: can surface. It is deliberately never configured here: a library that calls
@@ -65,7 +67,7 @@ class InProcessEventBus:
                     event.id,
                 )
 
-    def subscribe[E: DomainEvent](self, event_type: type[E], handler: Callable[[E], None]) -> None:
+    def subscribe(self, event_type: type[E], handler: Callable[[E], None]) -> None:
         """Register ``handler`` for ``event_type`` and every subclass of it."""
         # A ``Callable[[BatchApproved], None]`` is not a ``Callable[[DomainEvent],
         # None]`` — parameters are contravariant, and a handler expecting the

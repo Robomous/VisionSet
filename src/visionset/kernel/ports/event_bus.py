@@ -1,7 +1,9 @@
 from collections.abc import Callable
-from typing import Protocol, runtime_checkable
+from typing import Protocol, TypeVar, runtime_checkable
 
 from visionset.kernel.domain import DomainEvent
+
+E = TypeVar("E", bound=DomainEvent)
 
 
 @runtime_checkable
@@ -29,6 +31,4 @@ class EventBus(Protocol):
 
     def publish(self, event: DomainEvent) -> None: ...
 
-    def subscribe[E: DomainEvent](
-        self, event_type: type[E], handler: Callable[[E], None]
-    ) -> None: ...
+    def subscribe(self, event_type: type[E], handler: Callable[[E], None]) -> None: ...

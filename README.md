@@ -5,6 +5,7 @@
 # Robomous VisionSet
 
 [![CI](https://github.com/robomous/visionset/actions/workflows/ci.yml/badge.svg)](https://github.com/robomous/visionset/actions/workflows/ci.yml)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/visionset.svg)](https://pypi.org/project/visionset/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 **VisionSet** is an open-source, local-first, SDK-first tool by [Robomous](https://robomous.ai)

@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from contextlib import AbstractContextManager
 from datetime import datetime
-from typing import Final, Protocol, runtime_checkable
+from typing import Final, Protocol, TypeVar, runtime_checkable
 from uuid import UUID
 
 from visionset.kernel.domain import (
@@ -49,7 +49,10 @@ from visionset.kernel.domain import (
 UNINITIALIZED: Final = 0
 
 
-class Repository[T](Protocol):
+T = TypeVar("T")
+
+
+class Repository(Protocol[T]):
     """Storage for one entity type, addressed by UUID.
 
     Every entity in the domain has at most one parent — a Project belongs to a

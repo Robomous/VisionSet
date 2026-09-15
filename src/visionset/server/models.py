@@ -41,7 +41,7 @@ import base64
 from collections.abc import Iterable
 from collections.abc import Set as AbstractSet
 from datetime import datetime
-from typing import Annotated, Literal, Self
+from typing import Annotated, Generic, Literal, Self, TypeVar
 from uuid import UUID, uuid4
 
 from fastapi import Query
@@ -165,6 +165,8 @@ from visionset.kernel.domain import (
 )
 from visionset.kernel.ports import Exporter, Provider
 
+T = TypeVar("T")
+
 # A gate is a query parameter and never a body field, so a client that gets a 409
 # resubmits the *identical* request with one extra parameter — which is what
 # ``docs/content/api.md``'s retry table promises. The route passes it straight to the
@@ -189,9 +191,10 @@ DestructiveQuery = Annotated[
 #
 # This class is never a response model itself; a concrete subclass is. FastAPI
 # names a parametrised generic ``Page_ProjectOut_`` in the spec, which is not a
-# name to hand a client generator. The PEP 695 syntax is required rather than
-# preferred: ruff's UP046 rejects ``Generic[T]`` as a base.
-class Page[T](BaseModel):
+# name to hand a client generator. ``Generic[T]`` rather than the PEP 695
+# ``class Page[T]`` syntax: the latter is 3.12+ only, and ``requires-python``
+# floors at 3.11.
+class Page(BaseModel, Generic[T]):
     """One page of a collection."""
 
     items: list[T]
@@ -247,7 +250,7 @@ SortQuery = Annotated[
 ]
 
 
-def window[T](items: list[T], *, limit: int | None, offset: int) -> list[T]:
+def window(items: list[T], *, limit: int | None, offset: int) -> list[T]:
     """The slice ``limit`` and ``offset`` ask for, out of everything that matched.
 
     An offset past the end is an empty window, never an error: a client walking

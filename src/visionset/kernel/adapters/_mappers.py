@@ -31,7 +31,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Protocol, cast
+from typing import Any, Generic, Protocol, TypeVar, cast
 from uuid import UUID
 
 from pydantic import BaseModel, TypeAdapter
@@ -87,7 +87,16 @@ class Entity(Protocol):
     id: UUID
 
 
-class ChildWriter[T](Protocol):
+T = TypeVar("T", bound=Entity)
+M = TypeVar("M", bound=Entity)
+#: Contravariant: used only as a parameter type below, and the PEP 695 ``[T]``
+#: this class used to declare its type parameter with infers exactly this
+#: variance automatically — a plain ``TypeVar`` does not, and defaults to
+#: invariant, which a strict Protocol check on a write-only position rejects.
+T_contra = TypeVar("T_contra", bound=Entity, contravariant=True)
+
+
+class ChildWriter(Protocol[T_contra]):
     """How an entity's child rows are written, told whether the parent is new.
 
     ``inserting`` is keyword-only because it is the whole of what distinguishes
@@ -95,11 +104,11 @@ class ChildWriter[T](Protocol):
     it to write membership once and never again; jobs ignore it, and say so.
     """
 
-    def __call__(self, session: Session, entity: T, *, inserting: bool) -> None: ...
+    def __call__(self, session: Session, entity: T_contra, *, inserting: bool) -> None: ...
 
 
 @dataclass(frozen=True)
-class EntityMapping[T: Entity]:
+class EntityMapping(Generic[T]):
     """How one domain model is stored, read back, and scoped to its parent.
 
     ``parent_column`` is ``None`` only for ``Workspace``, the single root
@@ -118,7 +127,7 @@ def _columns(row: Any) -> dict[str, Any]:
     return {column.name: getattr(row, column.name) for column in row.__table__.columns}
 
 
-def _flat_mapping[M: Entity](
+def _flat_mapping(
     domain: type[M], row: type[t.Base], parent_column: str | None
 ) -> EntityMapping[M]:
     """Mapping for an entity whose fields are exactly its table's columns.
