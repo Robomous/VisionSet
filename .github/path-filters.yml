@@ -1,0 +1,128 @@
+# Which files each CI job actually depends on — the one place that decides it.
+#
+# `ci.yml`'s `changes` job hands this file to `dorny/paths-filter`, which turns it
+# into one boolean per group; every other job reads those booleans and skips its
+# expensive steps when its own group did not change. A pull request touching only
+# `CHANGELOG.md` should cost seconds, not a torch download.
+#
+# **Allow-lists, never "everything except".** An earlier version of this inverted
+# the rule — match `**` and subtract `frontend/**` and `docs/**` — and it was
+# wrong in the way that shape is always wrong: every file nobody had thought of
+# landed in the "run everything" bucket. `CHANGELOG.md` did exactly that (#867).
+# Naming what a job reads is the honest direction, and the cost of the honest
+# direction is that a path nobody classified would be silently skipped instead.
+# That is what `scripts/check_ci_path_coverage.mjs` exists to prevent: it fails
+# the `changes` job when a tracked path matches no group and is not named `inert`
+# below, so the mistake is a red check with a message rather than a suite that
+# quietly stopped running.
+#
+# **Patterns are deliberately dull.** Every entry is either `some/dir/**` or an
+# exact path. No `*.md`, no `**/*.ts`. The coverage checker matches these two
+# shapes itself rather than depending on picomatch's, and refuses any pattern
+# that is neither — so the checker and the action can never disagree about what
+# a pattern means.
+#
+# A path may appear in several groups. `src/visionset/**` is `python`'s by rights
+# and `docker`'s too, because the dev image installs from it.
+
+# Everything the Python distribution is built, linted, typed and tested from.
+python:
+  - "src/visionset/**"
+  - "tests/**"
+  - "scripts/**"
+  - "examples/**"
+  - "pyproject.toml"
+  - "uv.lock"
+  - "VERSION"
+  # Read as package metadata by hatchling: `readme` and `license-files` both name
+  # files, and what they name travels inside the wheel.
+  - "README.md"
+  - "LICENSE"
+  - "THIRD-PARTY-NOTICES.md"
+  # The committed contract the `openapi` job regenerates and compares against, so
+  # a hand-edit with no source change still has to face it.
+  - "openapi.json"
+  - ".github/workflows/ci.yml"
+  - ".github/path-filters.yml"
+
+# The pnpm workspace, and the three root files that decide what it installs.
+frontend:
+  - "frontend/**"
+  - "package.json"
+  - "pnpm-lock.yaml"
+  - "pnpm-workspace.yaml"
+  - ".nvmrc"
+  # The `frontend` job regenerates the typed client from this and fails on drift,
+  # and its version-sync gate reads `VERSION`.
+  - "openapi.json"
+  - "VERSION"
+  # Node scripts the frontend job runs directly. `scripts/**` is already `python`'s;
+  # naming them here too is what makes a change to one rebuild the workspace.
+  - "scripts/verify_npm_packages.sh"
+  - "scripts/generate_client.mjs"
+  - "scripts/sync_versions.mjs"
+  - "scripts/bundle_static.mjs"
+  # `pnpm test` is the frontend job's last step and it ends in `pnpm test:scripts`,
+  # so this is where `tests/scripts/*.test.mjs` actually runs — `tests/**` belongs
+  # to `python`, whose pytest never collects them. Without this line, editing one
+  # of those tests would run every suite except the one being edited.
+  - "tests/scripts/**"
+  - ".github/workflows/ci.yml"
+  - ".github/path-filters.yml"
+
+# `docker/api.Dockerfile`'s real build context. Its job's name says "docker", but
+# the image is built from the Python distribution, so a change under
+# `src/visionset/` is exactly the kind that once broke it with no `docker/` file
+# touched — see the job's own comment in ci.yml.
+docker:
+  - "docker/**"
+  - ".dockerignore"
+  - "pyproject.toml"
+  - "uv.lock"
+  - "VERSION"
+  - "README.md"
+  - "src/visionset/**"
+  # The two suites the built image runs against itself.
+  - "tests/packaging/**"
+  - "tests/formats/**"
+  - ".github/workflows/ci.yml"
+  - ".github/path-filters.yml"
+
+# The documentation site: its own pnpm workspace, its own lockfile, its own build.
+docs:
+  - "docs/**"
+  - ".github/workflows/ci.yml"
+  - ".github/path-filters.yml"
+
+# Tracked paths that no job reads, declared so the coverage checker can tell
+# "deliberately inert" apart from "nobody classified this yet". Adding a file
+# here is a claim that changing it cannot break a check — if that stops being
+# true, it belongs in a group above instead.
+#
+# `paths-filter` computes an output for this group like any other. Nothing reads
+# it; it is here because one file listing every path is easier to keep honest
+# than two.
+inert:
+  - ".editorconfig"
+  - ".gitattributes"
+  - ".gitignore"
+  - "AGENTS.md"
+  - "CHANGELOG.md"
+  - "CONTRIBUTING.md"
+  - "DESIGN.md"
+  # AWS Amplify builds the documentation site from this; Amplify watches the
+  # repository itself and nothing in this workflow reads it.
+  - "amplify.yml"
+  # The other workflows and Dependabot's configuration. Each has its own
+  # triggers and none of them is exercised by a job in ci.yml — which is also
+  # why they are named one at a time rather than as `.github/**`: a new workflow
+  # arriving should stop at the coverage checker and be classified on purpose,
+  # not inherit "inert" from a glob nobody re-read.
+  - ".github/dependabot.yml"
+  - ".github/workflows/publish-npm.yml"
+  - ".github/workflows/publish-pypi.yml"
+  # The committed skills, read by coding agents and by no check.
+  - ".agents/**"
+  # The placeholder that keeps the dev stack's data directory in the tree while
+  # its contents stay ignored. An empty file; nothing reads it.
+  - "workspace-data/.gitkeep"
