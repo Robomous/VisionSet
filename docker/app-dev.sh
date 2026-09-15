@@ -1,22 +1,22 @@
 #!/bin/sh
-# Start the Vite dev server for the compose dev stack, with annotator and ui-core
-# rebuilding as they are edited. No install: docker/app.Dockerfile already did it.
+# Start the Vite dev server for the compose dev stack, with annotator, media and
+# ui-core rebuilding as they are edited. No install: docker/app.Dockerfile already did it.
 set -eu
 
-# Both libraries are consumed through their `dist/`, so vite cannot resolve them from
-# source. A blocking build first, because a watcher's first pass is asynchronous and vite
-# would race an empty `dist/`. The app itself is not built: nothing in dev reads it.
-echo "app-dev: building @visionset/annotator and @visionset/ui-core"
-pnpm --filter @visionset/annotator --filter @visionset/ui-core build
+# All three libraries are consumed through their `dist/`, so vite cannot resolve them
+# from source. A blocking build first, because a watcher's first pass is asynchronous and
+# vite would race an empty `dist/`. Topological order matters here (unlike the watch
+# below): ui-core imports @visionset/media, so media must build before ui-core does. The
+# app itself is not built: nothing in dev reads it.
+echo "app-dev: building @visionset/annotator, @visionset/media and @visionset/ui-core"
+pnpm --filter @visionset/annotator --filter @visionset/media --filter @visionset/ui-core build
 
-# Polling flags for the same reason as CHOKIDAR_USEPOLLING in compose.yaml;
-# `--preserveWatchOutput` because tsc otherwise clears the screen on every rebuild.
-echo "app-dev: starting watch builds for annotator + ui-core"
-pnpm --filter @visionset/annotator --filter @visionset/ui-core --parallel run build \
-  --watch \
-  --preserveWatchOutput \
-  --watchFile dynamicPriorityPolling \
-  --watchDirectory dynamicPriorityPolling &
+# tsup's watcher is chokidar underneath, so it already honours CHOKIDAR_USEPOLLING from
+# compose.yaml — no polling flags to pass here, unlike tsc before #839. `--watch` alone;
+# tsup accepts no `--preserveWatchOutput`/`--watchFile`/`--watchDirectory` (those were
+# tsc's) and rejects unknown flags outright.
+echo "app-dev: starting watch builds for annotator + media + ui-core"
+pnpm --filter @visionset/annotator --filter @visionset/media --filter @visionset/ui-core --parallel run build --watch &
 WATCH_PID=$!
 
 # Backgrounded rather than `exec`, so this shell stays PID 1 and keeps the trap.
@@ -49,7 +49,7 @@ shutdown() {
   echo "app-dev: stopping vite ($VITE_PID) and the watch builds ($WATCH_PID)"
 
   # Signal every process, not just the two pids held: `pnpm --parallel run` ignores
-  # SIGTERM, while the tsc watchers under it exit on it at once.
+  # SIGTERM, while the tsup watchers under it exit on it at once.
   live_pids
   if [ -n "$LIVE" ]; then
     kill $LIVE || echo "app-dev: SIGTERM reported a failure above" >&2

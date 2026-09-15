@@ -81,6 +81,7 @@ services:
       # image's node_modules. Manifests, tsconfigs, vite.config.ts and index.html are
       # baked into the image, so editing one needs `build`.
       - ../frontend/annotator/src:/workspace/frontend/annotator/src
+      - ../frontend/media/src:/workspace/frontend/media/src
       - ../frontend/ui-core/src:/workspace/frontend/ui-core/src
       - ../frontend/app/src:/workspace/frontend/app/src
       - ../frontend/app/public:/workspace/frontend/app/public

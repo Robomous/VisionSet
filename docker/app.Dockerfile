@@ -20,6 +20,7 @@ WORKDIR /workspace
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY frontend/annotator/package.json ./frontend/annotator/
 COPY frontend/ui-core/package.json ./frontend/ui-core/
+COPY frontend/media/package.json ./frontend/media/
 COPY frontend/app/package.json ./frontend/app/
 
 # chown joins this RUN: the watch builds and vite's cache write into the install, and a
@@ -33,9 +34,13 @@ RUN --mount=type=cache,target=/pnpm-store \
 
 # Baked in rather than mounted: a bind mount over a package root would bury its
 # node_modules. Editing one of these needs `build`. tsconfig.e2e.json is left out on
-# purpose (Playwright, which this image never runs).
-COPY frontend/annotator/tsconfig*.json ./frontend/annotator/
-COPY frontend/ui-core/tsconfig*.json ./frontend/ui-core/
+# purpose (Playwright, which this image never runs). tsup.config.ts is required too:
+# app-dev.sh builds these packages with tsup (#839), and it reads no CLI entry, so
+# without the config file on disk it fails with "No input files". ui-core imports
+# @visionset/media (#847), so it needs the same treatment.
+COPY frontend/annotator/tsconfig*.json frontend/annotator/tsup.config.ts ./frontend/annotator/
+COPY frontend/ui-core/tsconfig*.json frontend/ui-core/tsup.config.ts ./frontend/ui-core/
+COPY frontend/media/tsconfig*.json frontend/media/tsup.config.ts ./frontend/media/
 COPY frontend/app/tsconfig.json frontend/app/vite.config.ts frontend/app/index.html ./frontend/app/
 
 # Reuse the base's `node` user (uid 1000) and remap it when the host differs. `-o` survives
