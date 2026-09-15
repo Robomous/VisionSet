@@ -37,7 +37,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Final
+from typing import Final, TypeAlias
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
@@ -50,7 +50,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 #: a payload holding a service or an open handle fails validation at the door
 #: rather than at ``pickle.dumps`` inside a worker, where the traceback names
 #: neither the job nor the caller.
-type JobPayload = Mapping[str, JsonValue]
+JobPayload: TypeAlias = Mapping[str, JsonValue]
 
 
 class BackgroundJobState(StrEnum):

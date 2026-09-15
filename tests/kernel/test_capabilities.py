@@ -27,7 +27,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 from uuid import UUID
 
 import pytest
@@ -228,11 +228,14 @@ def _box(asset_id: UUID) -> Annotation:
     )
 
 
-def _edges[S](transitions: dict[S, frozenset[S]]) -> set[tuple[S, S]]:
+S = TypeVar("S")
+
+
+def _edges(transitions: dict[S, frozenset[S]]) -> set[tuple[S, S]]:
     return {(origin, to) for origin, targets in transitions.items() for to in targets}
 
 
-def _claimed[S](moves: dict[Any, Move[S]]) -> list[tuple[S, S]]:
+def _claimed(moves: dict[Any, Move[S]]) -> list[tuple[S, S]]:
     return [(origin, move.to) for move in moves.values() for origin in move.origins]
 
 

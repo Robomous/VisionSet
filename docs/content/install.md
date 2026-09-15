@@ -7,7 +7,7 @@ be downloaded afterward, and there is no separate frontend to serve.
 
 | | |
 | --- | --- |
-| **Python** | 3.12 or newer |
+| **Python** | 3.11 or newer |
 | Disk | your images, plus a copy: assets are content-addressed into the workspace |
 
 Nothing else. No database server, no Node, no Docker, and no media binary — not even for

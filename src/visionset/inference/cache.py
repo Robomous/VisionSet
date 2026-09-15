@@ -26,7 +26,10 @@ from __future__ import annotations
 
 import threading
 from collections import OrderedDict
-from typing import Final
+from typing import Final, Generic, TypeVar
+
+K = TypeVar("K")
+V = TypeVar("V")
 
 DEFAULT_EMBEDDING_CAPACITY: Final = 8
 """How many assets' image embeddings to keep.
@@ -50,7 +53,7 @@ latency failure the embedding cache exists to prevent, one level up.
 """
 
 
-class BoundedCache[K, V]:
+class BoundedCache(Generic[K, V]):
     """Bounded, least-recently-used, and safe to share between threads.
 
     **It did not used to be, and the assumption behind that was wrong.** This
@@ -126,7 +129,7 @@ class BoundedCache[K, V]:
             return key in self._held
 
 
-class KeyedLocks[K]:
+class KeyedLocks(Generic[K]):
     """One lock per key, so that a value is computed once and only once.
 
     **What a bounded cache alone cannot do.** A cache tells a caller whether a

@@ -30,9 +30,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import TypeAlias
 from uuid import UUID
 
-type Mask = Sequence[Sequence[int]]
+Mask: TypeAlias = Sequence[Sequence[int]]
 """Rows of columns, ``mask[y][x]``, where a lit pixel is truthy.
 
 The orientation every image library agrees on, in the asset's own pixels and at

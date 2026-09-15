@@ -30,7 +30,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from importlib import import_module
 from pathlib import Path
-from typing import Final, Protocol
+from typing import Final, Protocol, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, JsonValue
 
@@ -50,7 +50,9 @@ from visionset.kernel.ports import ProgressReporter
 #:
 #: The return value is the job's ``result``: small, JSON-shaped, and read by
 #: whoever polls. A handler with nothing to say returns ``{}``.
-type JobHandler = Callable[[Path, dict[str, JsonValue], ProgressReporter], dict[str, JsonValue]]
+JobHandler: TypeAlias = Callable[
+    [Path, dict[str, JsonValue], ProgressReporter], dict[str, JsonValue]
+]
 
 
 class _Handler(Protocol):
