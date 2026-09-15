@@ -798,8 +798,11 @@ jobs:
             exit 1
           }
           chmod +x /tmp/osv-scanner
-          sudo mv /tmp/osv-scanner /usr/local/bin/osv-scanner
-          osv-scanner --version
+          # $GITHUB_PATH rather than `sudo mv` into a system directory: the runner
+          # gives passwordless sudo, but nothing here needs privilege to put one
+          # binary on PATH for the rest of the job.
+          mkdir -p "$RUNNER_TEMP/bin" && mv /tmp/osv-scanner "$RUNNER_TEMP/bin/osv-scanner"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
       - name: Scan every lockfile
         run: bash scripts/osv_scan.sh

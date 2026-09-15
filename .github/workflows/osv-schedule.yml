@@ -15,10 +15,17 @@ name: Dependency advisories (scheduled)
 
 on:
   schedule:
-    # 07:00 UTC daily. Advisories are disclosed continuously, so the cadence is
-    # about how long a window of exposure is acceptable rather than about matching
-    # any publisher's schedule.
-    - cron: "0 7 * * *"
+    # Daily, deliberately not on the hour. GitHub documents that `schedule` is
+    # delayed under load and that "some queued jobs may be dropped", with the start
+    # of every hour named as a peak — so a run at :00 is the one most likely to be
+    # the dropped one. Advisories are disclosed continuously, so the cadence is
+    # about an acceptable window of exposure, not about matching any clock.
+    #
+    # Two properties of `schedule` worth knowing before relying on this:
+    # it runs **only from the default branch**, and in a public repository it is
+    # **automatically disabled after 60 days with no repository activity** — it
+    # then has to be re-enabled by hand from the workflow's page.
+    - cron: "17 7 * * *"
   workflow_dispatch:
 
 # One run at a time. A scan that takes longer than the gap between two schedules
@@ -57,7 +64,8 @@ jobs:
             exit 1
           }
           chmod +x /tmp/osv-scanner
-          sudo mv /tmp/osv-scanner /usr/local/bin/osv-scanner
+          mkdir -p "$RUNNER_TEMP/bin" && mv /tmp/osv-scanner "$RUNNER_TEMP/bin/osv-scanner"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
       - name: Scan every lockfile
         id: scan
@@ -65,16 +73,16 @@ jobs:
         # and the reporting below is what the run is for.
         run: |
           set +e
-          output="$(bash scripts/osv_scan.sh 2>&1)"
+          bash scripts/osv_scan.sh > "$RUNNER_TEMP/osv-report.txt" 2>&1
           status=$?
           set -e
-          printf '%s\n' "$output"
-          {
-            echo "status=$status"
-            echo "report<<OSV_REPORT_EOF"
-            printf '%s\n' "$output"
-            echo "OSV_REPORT_EOF"
-          } >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/osv-report.txt"
+          # Only the status travels through $GITHUB_OUTPUT. The report itself is a
+          # file, because GitHub's own documentation says the heredoc form must not
+          # carry a value that is "completely arbitrary" — a delimiter appearing on
+          # its own line inside the value would truncate or corrupt the output, and
+          # scanner text naming a package is exactly that kind of value.
+          echo "status=$status" >> "$GITHUB_OUTPUT"
 
       # Findings are reported to a person; a clean run says nothing at all, because
       # a daily "nothing to report" is how a notification stops being read.
@@ -82,16 +90,19 @@ jobs:
         if: steps.scan.outputs.status != '0'
         env:
           GH_TOKEN: ${{ github.token }}
-          REPORT: ${{ steps.scan.outputs.report }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           title="Dependency advisories found on main"
-          existing="$(gh issue list --state open --label dependencies --search "$title in:title" \
-            --json number --jq '.[0].number // empty')"
+          # Exact title comparison in jq rather than `--search "... in:title"`,
+          # which is a substring text search: it would match any other open issue
+          # whose title merely contains this phrase, and comment the report onto it.
+          existing="$(gh issue list --state open --label dependencies \
+            --json number,title \
+            --jq "[.[] | select(.title == \"$title\") | .number] | first // empty")"
 
           body="$(printf '%s\n\n```\n%s\n```\n\n[Full run](%s)\n' \
             "The scheduled OSV scan found advisories against the locked dependency set on \`main\`. Nothing was introduced by a pull request — an advisory was disclosed against something already merged, or the scan itself could not complete." \
-            "$REPORT" "$RUN_URL")"
+            "$(cat "$RUNNER_TEMP/osv-report.txt")" "$RUN_URL")"
 
           if [ -n "$existing" ]; then
             # Updated rather than duplicated: the same advisory reappears every day
