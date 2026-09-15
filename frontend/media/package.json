@@ -1,6 +1,6 @@
 {
   "name": "@visionset/media",
-  "version": "0.0.1-beta.3",
+  "version": "0.0.1-beta.4",
   "description": "Video import core: sampling policy, grid arithmetic and materializer contracts, framework- and browser-free.",
   "license": "Apache-2.0",
   "repository": {
