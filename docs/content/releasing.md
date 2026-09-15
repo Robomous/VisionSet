@@ -56,10 +56,24 @@ npm ships the literal `workspace:*` string, and the published package is then un
 anybody. This is also why the two are published in dependency order - annotator first, so the
 version ui-core's rewritten dependency names already exists on the registry.
 
-**`--tag beta` does not keep `latest` clear on a package's first version.** npm sets `latest` on a
-first publish whatever tag is asked for, and `latest` cannot be unset afterwards - only repointed.
-Both packages therefore carry `latest` from `0.0.1-beta.2` onwards; a stable release will repoint
-it.
+**Publish under `latest`, not `beta`, for as long as every published version is a prerelease.**
+The usual advice is the opposite, and the reason it does not apply here is worth stating. That
+convention exists so a bare `npm install` does not hand somebody a prerelease when a stable release
+exists. No stable release exists: `0.0.1-beta.1` onward is the entire history. Publishing under
+`beta` therefore protects nobody, and because npm sets `latest` on a first publish whatever tag is
+asked for and `latest` can only be repointed afterwards, it leaves `latest` stuck on an *older*
+beta - `npm install @visionset/ui-core` then resolves to the previous release while the newer one
+is unreachable without naming a tag. `pip install visionset` already resolves to the newest, since
+pip falls back to prereleases when no stable exists, so the two registries disagreed about what
+"the current release" means.
+
+**Change back to `--tag beta` the day a stable version ships**, when `latest` must mean the stable
+line and the convention starts protecting someone.
+
+**A tag can only be chosen at publish time.** npm's trusted publishing authorises `npm publish` and
+nothing else, so `npm dist-tag add` cannot repoint a tag from the workflow (npm/cli#8547). Fixing a
+tag after the fact needs an authenticated human - `npm login`, then
+`npm dist-tag add <pkg>@<version> latest` - which is the whole reason to get it right at dispatch.
 
 **A fresh publish 404s for up to about ninety seconds.** `npm view` and `npm install` answer 404
 while `npm dist-tag ls` already serves the new version. That is registry replication, not a failed
@@ -174,7 +188,7 @@ and like the PyPI one it needs no credentials from anybody.** It is `workflow_di
 human starts it deliberately, and it is dispatched against the tag for the same reason:
 
 ```bash
-gh workflow run publish-npm.yml --ref v0.0.1-beta.3 -f dist-tag=beta
+gh workflow run publish-npm.yml --ref v0.0.1-beta.3 -f dist-tag=latest
 gh run watch "$(gh run list --workflow=publish-npm.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
 ```
 
