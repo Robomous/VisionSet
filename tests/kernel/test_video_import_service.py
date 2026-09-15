@@ -103,11 +103,12 @@ def _frame(
     content: bytes | None = None,
     size: tuple[int, int] = FRAME_SIZE,
     fps: float = 1.0,
+    requested_timestamp: float | None = None,
     source_timestamp: float | None = None,
 ) -> IncomingFrame:
     return IncomingFrame(
         ordinal=ordinal,
-        requested_timestamp=ordinal / fps,
+        requested_timestamp=ordinal / fps if requested_timestamp is None else requested_timestamp,
         source_timestamp=source_timestamp,
         width=size[0],
         height=size[1],
@@ -769,6 +770,49 @@ def test_a_grid_point_reached_by_another_arithmetic_route_is_accepted(
         ],
     )
 
+    assert fixture.imports.get(import_id).received_frame_count == 1
+
+
+def test_a_neighbouring_grid_point_is_refused_however_late_in_the_clip_it_sits(
+    fixture: Fixture,
+) -> None:
+    """The window is a width, not a proportion, so ten million seconds in it is the same width.
+
+    A relative tolerance of 1e-9 is 10 ms wide at 1e7 seconds — ten whole grid
+    intervals at 1000 fps — so under one the frame next door passed the check and
+    was staged at a moment it was not cut from. Ranges make that magnitude
+    ordinary: a narrow selection far into a long recording is a small import with
+    large ordinals, not an exotic one.
+
+    The nudge at the end is the other half of the same rule. A double's own
+    spacing out here is wider than a nanosecond, so a flat epsilon would have
+    quietly become exact equality; four ulps keeps honest roundoff accepted
+    without the window ever reaching a fiftieth of the way to the next point.
+    """
+    start, fps = 10_000_000.0, 1000.0
+    import_id = fixture.start(
+        metadata=_metadata(start + 10.0),
+        extraction_fps=fps,
+        ranges=(TimeRange(start_seconds=start, end_seconds=start + 0.01),),
+    )
+    ordinal = int(start * fps)
+    grid, neighbour = ordinal / fps, (ordinal + 1) / fps
+    assert neighbour - grid < 1e-9 * neighbour, "the old relative window was this wide"
+
+    with pytest.raises(FrameTimestampOffGrid):
+        fixture.imports.append_frames(
+            import_id, [_frame(ordinal, fps=fps, requested_timestamp=neighbour)]
+        )
+    with pytest.raises(FrameTimestampOffGrid):
+        fixture.imports.append_frames(
+            import_id, [_frame(ordinal, fps=fps, source_timestamp=neighbour)]
+        )
+    assert fixture.imports.get(import_id).received_frame_count == 0
+
+    nudged = grid
+    for _ in range(4):
+        nudged = math.nextafter(nudged, math.inf)
+    fixture.imports.append_frames(import_id, [_frame(ordinal, fps=fps, requested_timestamp=nudged)])
     assert fixture.imports.get(import_id).received_frame_count == 1
 
 

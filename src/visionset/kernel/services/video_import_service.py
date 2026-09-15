@@ -133,7 +133,7 @@ inside the sweep window, while still being a number rather than a direction.
 """
 
 GRID_TIMESTAMP_TOLERANCE: Final = 1e-9
-"""How far a frame's declared timestamp may sit from the grid point it claims.
+"""The floor of how far a frame's declared timestamp may sit from the grid point it claims.
 
 Both halves reach that number the same way today — the server divides
 ``ordinal / extraction_fps`` and ``gridTimestamps`` in ``frontend/media`` yields
@@ -143,17 +143,25 @@ that arrives at the same grid point by another arithmetic route — accumulating
 an interval, or round-tripping through a container's own timebase — is not
 refused over a rounding step in work that was correct.
 
-``math.isclose`` rather than a hand-rolled epsilon because the *relative* half is
-what keeps the comparison meaningful at the far end of a long clip, where a
-double's spacing is no longer a nanosecond and a fixed epsilon silently becomes
-either exact equality or no check at all.
+**The tolerance follows floating-point representation error, not elapsed clip
+time.** A nanosecond is orders of magnitude below any container's timebase —
+1/90000 s for MPEG, microseconds for Matroska — and it stays a nanosecond a
+million seconds into a clip. It must: a selected range may sit far into a long
+recording, so a large timestamp is ordinary here, and a window that grew with the
+timestamp would reach the neighbouring grid point long before the clip ran out.
+"""
 
-A nanosecond is orders of magnitude below any container's timebase — 1/90000 s
-for MPEG, microseconds for Matroska — and below half a grid interval by a factor
-of a million at 1000 fps, which is already far past any rate a clip is shot or
-cut at. A rate high enough to close that gap would put its neighbouring grid
-points a nanosecond apart, which is to say at the same instant of the clip; there
-is no frame such a tolerance could mistake for a different one.
+GRID_TIMESTAMP_ULPS: Final = 4
+"""How many representable doubles either side of the grid point the window covers.
+
+Past roughly 4.5e6 seconds a double's own spacing is wider than a nanosecond, and
+a fixed epsilon there would be exact equality wearing a tolerance's clothes.
+:func:`math.ulp` is that spacing, so the window is stated in the units the error
+is actually made in. Four of them absorbs a handful of correctly-rounded
+operations — a divide, a multiply, a round trip through a container's timebase —
+and nothing else: the neighbouring grid point is ``1 / extraction_fps`` away, and
+a grid fine enough to put it within eight ulps of this one has already collapsed
+both points onto the same few doubles, where no comparison could separate them.
 """
 
 ABANDONED_AFTER: Final = timedelta(hours=24)
@@ -186,6 +194,20 @@ byte, and zlib's own framing on data that will not compress. Fixed rather than
 proportional, because every one of those is a constant or a function of height
 that a fixed sixty-four kilobytes covers for any geometry this service accepts.
 """
+
+
+def _grid_timestamp_tolerance(grid_timestamp: float, extraction_fps: float) -> float:
+    """The absolute window around one grid point, and never a relative one.
+
+    Absolute so it cannot grow with the timestamp, ulp-aware so it does not
+    shrink below the error a double can make at that magnitude, and capped at
+    half a grid interval so the windows of two adjacent grid points cannot touch
+    however fine the grid or however far into the clip it is read.
+    """
+    return min(
+        max(GRID_TIMESTAMP_TOLERANCE, GRID_TIMESTAMP_ULPS * math.ulp(grid_timestamp)),
+        0.5 / extraction_fps,
+    )
 
 
 def frame_byte_ceiling(selection: VideoProvenance) -> int:
@@ -742,9 +764,9 @@ class VideoImportService:
         session and have the asset recorded at 9000 seconds: two halves of one
         claim contradicting each other, with no way to choose between them and no
         honest way to correct one — writing the derived number over the sent one
-        would record a provenance nobody produced. So it is refused. The
-        comparison is :data:`GRID_TIMESTAMP_TOLERANCE` wide for the reason stated
-        there, and never wide enough to reach a neighbouring point.
+        would record a provenance nobody produced. So it is refused. The window
+        is :func:`_grid_timestamp_tolerance` wide — absolute, never relative, and
+        by construction never wide enough to reach a neighbouring grid point.
 
         ``source_timestamp`` is the presentation time of the sample the decoder
         actually drew, and the one thing that can be said about it is that it is
@@ -797,11 +819,12 @@ class VideoImportService:
         # it, and never read off the descriptor. The descriptor's own number is
         # only ever the thing being checked.
         grid_timestamp = frame.ordinal / selection.extraction_fps
+        tolerance = _grid_timestamp_tolerance(grid_timestamp, selection.extraction_fps)
         if not math.isclose(
             frame.requested_timestamp,
             grid_timestamp,
-            rel_tol=GRID_TIMESTAMP_TOLERANCE,
-            abs_tol=GRID_TIMESTAMP_TOLERANCE,
+            rel_tol=0.0,
+            abs_tol=tolerance,
         ):
             raise FrameTimestampOffGrid(
                 f"frame {frame.ordinal} of video import {session.id} is the grid point"
@@ -813,8 +836,8 @@ class VideoImportService:
             or math.isclose(
                 frame.source_timestamp,
                 grid_timestamp,
-                rel_tol=GRID_TIMESTAMP_TOLERANCE,
-                abs_tol=GRID_TIMESTAMP_TOLERANCE,
+                rel_tol=0.0,
+                abs_tol=tolerance,
             )
         ):
             raise FrameTimestampOffGrid(
