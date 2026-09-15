@@ -7,7 +7,7 @@ name = "visionset"
 dynamic = ["version"]
 description = "Open-source, local-first tool for creating, curating, and versioning computer-vision training datasets — with a Physical AI roadmap."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 license = "Apache-2.0"
 # Shipped beside the licence because the wheel redistributes a compiled browser bundle:
 # whatever that bundle contains travels with the wheel, and one of those dependencies is
@@ -19,8 +19,10 @@ classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Image Recognition",
 ]
 dependencies = [
@@ -213,7 +215,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 # --- Mypy: strict on the kernel, normal elsewhere ---
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.11"
 warn_unused_configs = true
 warn_redundant_casts = true
 

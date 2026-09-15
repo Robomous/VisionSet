@@ -35,7 +35,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final
+from typing import Final, Generic, TypeVar
 
 from visionset.kernel.domain.batch import (
     BATCH_TRANSITIONS,
@@ -162,8 +162,11 @@ class ConnectionAction(OpenVocabulary):
     DELETE = "delete"
 
 
+S = TypeVar("S", bound=StrEnum)
+
+
 @dataclass(frozen=True, slots=True)
-class Move[S: StrEnum]:
+class Move(Generic[S]):
     """One named edge of a transition table: where it goes, and from where.
 
     ``origins`` is why this is a dataclass and not a plain target state. Most

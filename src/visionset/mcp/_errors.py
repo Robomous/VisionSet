@@ -46,7 +46,7 @@ import functools
 import inspect
 import json
 from collections.abc import Callable
-from typing import Any, Final
+from typing import Any, Final, ParamSpec, TypeVar
 
 from mcp.types import CallToolResult, TextContent
 
@@ -147,7 +147,11 @@ def _envelope(exc: VisionSetError) -> dict[str, Any]:
     }
 
 
-def guarded[**P, T](fn: Callable[P, T]) -> Callable[P, T | dict[str, Any]]:
+P = ParamSpec("P")
+T = TypeVar("T")
+
+
+def guarded(fn: Callable[P, T]) -> Callable[P, T | dict[str, Any]]:
     """Turn any kernel refusal raised by ``fn`` into the error envelope.
 
     ``functools.wraps`` is load-bearing rather than cosmetic: MCPServer builds a

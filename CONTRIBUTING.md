@@ -3,7 +3,7 @@
 ## Dev setup
 
 ```bash
-uv sync                        # Python 3.12+, installs the package editable + dev tools
+uv sync                        # Python 3.11+, installs the package editable + dev tools
 pnpm install                   # pnpm workspace under frontend/
 pnpm --dir docs install        # optional: the documentation site (its own workspace)
 bash scripts/setup_agents.sh   # optional: expose .agents/skills/ to coding agents

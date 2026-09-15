@@ -25,13 +25,14 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from enum import StrEnum
+from typing import TypeVar
 
 from visionset.kernel.errors import InvalidTransition
 
+S = TypeVar("S", bound=StrEnum)
 
-def require_move[S: StrEnum](
-    transitions: Mapping[S, frozenset[S]], current: S, to: S, subject: str
-) -> None:
+
+def require_move(transitions: Mapping[S, frozenset[S]], current: S, to: S, subject: str) -> None:
     """Consult a transition table, and refuse in its own vocabulary.
 
     Generic over every machine rather than written once per service: ``subject``
@@ -50,9 +51,7 @@ def require_move[S: StrEnum](
     )
 
 
-def require_state[S: StrEnum](
-    allowed: frozenset[S], current: S, subject: str, *, refusal: str
-) -> None:
+def require_state(allowed: frozenset[S], current: S, subject: str, *, refusal: str) -> None:
     """Consult a named set of states, and refuse in its own vocabulary.
 
     The sibling of :func:`require_move`, for the operations that need the

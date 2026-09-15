@@ -47,7 +47,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import IO, Any, Final
+from typing import IO, Any, Final, TypeVar
 from urllib import error
 from urllib import request as urllib_request
 from uuid import UUID
@@ -329,7 +329,10 @@ def _not_the_targets_asked(url: str) -> InferenceEndpointUnavailable:
     )
 
 
-def _in_target_order[A](
+A = TypeVar("A")
+
+
+def _in_target_order(
     url: str,
     targets: Sequence[PredictionTarget],
     parsed: Sequence[A],

@@ -56,6 +56,7 @@ from collections.abc import Callable
 from contextlib import AbstractContextManager
 from pathlib import Path
 from types import TracebackType
+from typing import TypeAlias
 from uuid import UUID
 
 from visionset.kernel.adapters import (
@@ -108,27 +109,27 @@ WORKSPACE_ENV_VAR = "VISIONSET_WORKSPACE"
 #: How many entries a "this directory is not empty" message names.
 _PREVIEW = 3
 
-type MetadataStoreFactory = Callable[[Path], MetadataStore]
-type BlobStoreFactory = Callable[[Path], BlobStore]
+MetadataStoreFactory: TypeAlias = Callable[[Path], MetadataStore]
+BlobStoreFactory: TypeAlias = Callable[[Path], BlobStore]
 #: Zero-argument, unlike the two store factories: a bus is not derived from the
 #: workspace path, because it has nothing on disk to be derived from.
-type EventBusFactory = Callable[[], EventBus]
+EventBusFactory: TypeAlias = Callable[[], EventBus]
 #: Zero-argument for the same reason, and with even less to say for itself: a
 #: decoder has no state at all. It is composed here anyway, because this module is
 #: the only one allowed to name an adapter.
-type ImageProcessorFactory = Callable[[], ImageProcessor]
+ImageProcessorFactory: TypeAlias = Callable[[], ImageProcessor]
 #: Two arguments, unlike every factory above, and the first port that is derived
 #: from another one: verifying a token means reading the workspace's own ``token``
 #: table, scoped to the workspace that owns it. ``StoredTokenAuthProvider`` binds
 #: both positionally, so the bare class reference still satisfies this type.
-type AuthProviderFactory = Callable[[MetadataStore, UUID], AuthProvider]
+AuthProviderFactory: TypeAlias = Callable[[MetadataStore, UUID], AuthProvider]
 #: One argument, and the second port derived from the store rather than the path.
 #: A queue is rows, and the rows live in the workspace's own database — see
 #: ``SqliteJobQueue`` for why they are not in a file of their own. It takes no
 #: workspace id because a job is not scoped to one: a server serves exactly one
 #: workspace, so the queue in this handle is that workspace's queue by
 #: construction.
-type JobQueueFactory = Callable[[MetadataStore], JobQueue]
+JobQueueFactory: TypeAlias = Callable[[MetadataStore], JobQueue]
 
 
 def _resolved(path: Path | str) -> Path:
