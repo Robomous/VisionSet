@@ -26,14 +26,15 @@ from tests.cli._flow import NARROW, plain, run, usage_error
 
 from visionset.kernel.services import WORKSPACE_ENV_VAR
 
-WRAPPED = "greater than zero"
+WRAPPED = "three fractions"
 """A phrase the pinned width splits, chosen because nothing about it varies.
 
-``--fps 0`` is refused in the CLI's own words and **interpolates no path**, so the
-panel's layout is a function of the pinned width alone. The sibling refusal —
-``--fps`` against a folder — embeds ``tmp_path``, whose length moves the wrap
-point and differs under xdist, which is the very accident this module exists to
-take out of the suite. A guard written on that one fails the way #535 failed.
+``--split 1,2`` is refused in the CLI's own words and **interpolates no path**,
+so the panel's layout is a function of the pinned width alone. A refusal that
+embedded ``tmp_path`` would move the wrap point with the length of a temporary
+directory, which differs under xdist — the very accident this module exists to
+take out of the suite, and the way #535 failed. ``ingest``'s own refusal of a
+video does embed one, so it is deliberately not the subject here.
 """
 
 
@@ -44,10 +45,10 @@ def _no_ambient_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _refusal(tmp_path: Path) -> Result:
-    """A non-positive rate: refused before the workspace is ever opened."""
-    clip = tmp_path / "clip.mp4"
-    clip.write_bytes(b"")
-    return run(tmp_path / "ws", "ingest", str(clip), "-p", "road-signs", "--fps", "0")
+    """A malformed split: refused before the workspace is ever opened."""
+    return run(
+        tmp_path / "ws", "release", "publish", "--tag", "v1", "-p", "road-signs", "--split", "1,2"
+    )
 
 
 def test_the_panel_is_rendered_at_the_pinned_width(tmp_path: Path) -> None:

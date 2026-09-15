@@ -1,5 +1,8 @@
 /**
- * The ingest flow, success and failure, against a stubbed `fetch`.
+ * The image ingest flow, success and failure, against a stubbed `fetch`.
+ *
+ * A clip never comes through here: it is decoded in the browser and its frames
+ * are staged against a session, which `videoImport.test.tsx` covers.
  *
  * Two things here can only be checked this way.
  *
@@ -15,22 +18,14 @@
  * reader's problem.
  */
 
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
-import { probeClip } from "./clipProbe";
 import { IngestScreen } from "./IngestScreen";
 import { renderWithData } from "../testing/dataHarness";
 import { batchActions, datasetOf } from "../testing/wire.fixtures.js";
-
-// The browser-side clip read is substituted whole. The default — a promise that
-// never settles — is exactly what the real module does under jsdom, which has no
-// media pipeline; tests that want an estimate resolve it explicitly.
-vi.mock("./clipProbe", () => ({
-  probeClip: vi.fn(() => new Promise(() => {})),
-}));
 
 // `ProgressCounts` is seven counters and the server always sends all seven.
 const NO_PROGRESS = {
@@ -121,24 +116,6 @@ function on(method: string, pattern: RegExp, answer: Answer): void {
   );
 }
 
-const VIDEO_SOURCE = {
-  id: SOURCE,
-  project_id: PROJECT,
-  kind: "video",
-  name: "drive.mp4",
-  registered_at: "2026-07-31T00:00:00.000000Z",
-  video: {
-    width: 1920,
-    height: 1080,
-    fps: 29.97,
-    duration_seconds: 12.5,
-    codec: "h264",
-    extraction_fps: 2,
-    ranges: [],
-    scale_percent: 100,
-  },
-};
-
 const IMAGE_SOURCE = {
   id: SOURCE,
   project_id: PROJECT,
@@ -197,144 +174,6 @@ describe("registering a source", () => {
     // file's *stem*, because "a.png" is a file and "a" is a thing you can call a
     // source. Without a name the server would call it by the upload's digest.
     expect((form as FormData).get("name")).toBe("a");
-  });
-
-  it("sends a clip with the extraction rate, chosen before anything is probed", async () => {
-    on("POST", /\/sources\/video$/, { status: 201, body: VIDEO_SOURCE });
-
-    renderWithData(<IngestScreen projectId={PROJECT} />);
-    await choose([pick("drive.mp4", "video/mp4")]);
-
-    // The rate lives in the selection panel and is decided *now* — the probe
-    // does not exist yet, because `extraction_fps` is part of what the source is.
-    await userEvent.clear(screen.getByTestId("extraction-fps"));
-    await userEvent.type(screen.getByTestId("extraction-fps"), "2");
-    await userEvent.click(screen.getByTestId("register-source"));
-
-    await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
-    const form = bodies.get(sent.find((r) => r.method === "POST") as Request) as FormData;
-    expect(form.get("extraction_fps")).toBe("2");
-    // The clip rides under `file` — singular, unlike the images' repeated `files`,
-    // because `register_video_source` takes one `UploadFile`.
-    //
-    // A clip states no name: its filename already is one, and the wire
-    // does not take the parameter on the video route.
-    expect(form.has("name")).toBe(false);
-
-    // Its *contents* are not asserted, and that is a limit of the harness rather
-    // than a gap in the claim: jsdom's `File` and undici's `FormData` are two
-    // realms, so a real `File` appended here is coerced to a string exactly as a
-    // jsdom `FormData` was before `vitest.setup.ts` reconciled that pair. The bug
-    // this test exists for — no multipart encoding, so the body is JSON — is
-    // caught by the body being a `FormData` at all.
-    expect(form.has("file")).toBe(true);
-  });
-
-  it("sends the chosen scale and previews the stored size", async () => {
-    vi.mocked(probeClip).mockResolvedValueOnce({ durationSeconds: 10, width: 1920, height: 1080 });
-    on("POST", /\/sources\/video$/, { status: 201, body: VIDEO_SOURCE });
-
-    renderWithData(<IngestScreen projectId={PROJECT} />);
-    await choose([pick("drive.mp4", "video/mp4")]);
-
-    // Untouched, the readout still states what exists — the fact was missing
-    // from the first design and is the reason the block leads with it.
-    expect((await screen.findByTestId("stored-size-native")).textContent).toContain("1920×1080");
-    fireEvent.change(screen.getByTestId("scale-percent"), { target: { value: "50" } });
-    expect(screen.getByTestId("stored-size").textContent).toContain("960×540");
-
-    await userEvent.click(screen.getByTestId("register-source"));
-    await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
-    const form = bodies.get(sent.find((r) => r.method === "POST") as Request) as FormData;
-    expect(form.get("scale_percent")).toBe("50");
-  });
-
-  it("sends the default scale untouched, as one hundred", async () => {
-    on("POST", /\/sources\/video$/, { status: 201, body: VIDEO_SOURCE });
-
-    renderWithData(<IngestScreen projectId={PROJECT} />);
-    await choose([pick("drive.mp4", "video/mp4")]);
-    await userEvent.click(screen.getByTestId("register-source"));
-
-    await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
-    const form = bodies.get(sent.find((r) => r.method === "POST") as Request) as FormData;
-    expect(form.get("scale_percent")).toBe("100");
-  });
-
-  it("offers the slider without a size preview when the clip is unreadable", async () => {
-    vi.mocked(probeClip).mockResolvedValueOnce(null);
-
-    renderWithData(<IngestScreen projectId={PROJECT} />);
-    await choose([pick("weird.mkv", "video/x-matroska")]);
-    await screen.findByTestId("clip-undecodable");
-
-    fireEvent.change(screen.getByTestId("scale-percent"), { target: { value: "50" } });
-    expect(screen.queryByTestId("stored-size")).toBeNull();
-    expect(screen.getByTestId("stored-size-blind").textContent).toContain("50%");
-  });
-
-  it("threads the timeline selection into the multipart body, raw", async () => {
-    vi.mocked(probeClip).mockResolvedValueOnce({ durationSeconds: 10, width: 1920, height: 1080 });
-    on("POST", /\/sources\/video$/, { status: 201, body: VIDEO_SOURCE });
-
-    renderWithData(<IngestScreen projectId={PROJECT} />);
-    await choose([pick("drive.mp4", "video/mp4")]);
-    const track = await screen.findByTestId("range-track");
-    vi.spyOn(track, "getBoundingClientRect").mockReturnValue({
-      left: 0,
-      top: 0,
-      right: 200,
-      bottom: 40,
-      width: 200,
-      height: 40,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    } as DOMRect);
-    fireEvent.pointerDown(track, { clientX: 20 });
-    fireEvent.pointerMove(track, { clientX: 100 });
-    fireEvent.pointerUp(track, { clientX: 100 });
-
-    // The merged form drives the estimate — [1, 5) at 1 fps is four grid points.
-    expect(screen.getByTestId("frames-estimate").textContent?.trim()).toBe("≈ 4");
-
-    await userEvent.click(screen.getByTestId("register-source"));
-    await waitFor(() => expect(sent.some((r) => r.method === "POST")).toBe(true));
-    const form = bodies.get(sent.find((r) => r.method === "POST") as Request) as FormData;
-    // Raw, not merged: the kernel canonicalizes, and step 2 echoes that form.
-    expect(JSON.parse(form.get("ranges") as string)).toEqual([
-      { start_seconds: 1, end_seconds: 5 },
-    ]);
-  });
-
-  it("says a clip the browser cannot decode is ingested whole", async () => {
-    vi.mocked(probeClip).mockResolvedValueOnce(null);
-
-    renderWithData(<IngestScreen projectId={PROJECT} />);
-    await choose([pick("weird.mkv", "video/x-matroska")]);
-
-    expect((await screen.findByTestId("clip-undecodable")).textContent).toContain(
-      "ingested whole",
-    );
-    expect(screen.queryByTestId("clip-timeline")).toBeNull();
-    // The statement is advisory: registration proceeds exactly as before.
-    expect((screen.getByTestId("register-source") as HTMLButtonElement).disabled).toBe(false);
-  });
-
-  it("shows the probe only after registering, which is the only time it exists", async () => {
-    on("POST", /\/sources\/video$/, { status: 201, body: VIDEO_SOURCE });
-
-    renderWithData(<IngestScreen projectId={PROJECT} />);
-    await choose([pick("drive.mp4", "video/mp4")]);
-    expect(screen.queryByTestId("probe")).toBeNull();
-
-    await userEvent.click(screen.getByTestId("register-source"));
-
-    const probe = await screen.findByTestId("probe");
-    expect(probe.textContent).toContain("29.97");
-    expect(probe.textContent).toContain("1920×1080");
-    // Duration × extraction rate, which is what the run will actually produce.
-    expect(probe.textContent).toContain("25");
   });
 
   it("renders a refusal with its code rather than a bare failure", async () => {
@@ -422,78 +261,6 @@ describe("the selection panel", () => {
     expect(form.get("name")).toBe("vacation shots");
   });
 
-  it("offers no name field for a clip, whose filename already is one", async () => {
-    renderWithData(<IngestScreen projectId={PROJECT} />);
-    await choose([pick("drive.mp4", "video/mp4")]);
-    expect(screen.queryByTestId("source-name")).toBeNull();
-  });
-
-  it("shows the rate for a clip, with the second-source consequence beside it", async () => {
-    renderWithData(<IngestScreen projectId={PROJECT} />);
-    await choose([pick("drive.mp4", "video/mp4")]);
-
-    const selection = screen.getByTestId("selection");
-    expect(within(selection).getByTestId("extraction-fps")).not.toBeNull();
-    expect(selection.textContent).toContain("second source");
-    expect((screen.getByTestId("extraction-fps") as HTMLInputElement).value).toBe("1");
-  });
-
-  it("cannot register a clip whose rate is unusable, and says so next door", async () => {
-    renderWithData(<IngestScreen projectId={PROJECT} />);
-    await choose([pick("drive.mp4", "video/mp4")]);
-
-    const button = (): HTMLButtonElement =>
-      screen.getByTestId("register-source") as HTMLButtonElement;
-    expect(button().disabled).toBe(false);
-
-    // `<input type="number">` reports a rejected keystroke as an empty string,
-    // so a blank is reachable by typing, not only by pasting.
-    await userEvent.clear(screen.getByTestId("extraction-fps"));
-    expect(button().disabled).toBe(true);
-
-    await userEvent.type(screen.getByTestId("extraction-fps"), "0");
-    expect(button().disabled).toBe(true);
-
-    await userEvent.clear(screen.getByTestId("extraction-fps"));
-    await userEvent.type(screen.getByTestId("extraction-fps"), "2");
-    expect(button().disabled).toBe(false);
-  });
-
-  it("estimates the frames from the browser's own read of the clip", async () => {
-    vi.mocked(probeClip).mockResolvedValueOnce({ durationSeconds: 47.7, width: 1920, height: 1080 });
-
-    renderWithData(<IngestScreen projectId={PROJECT} />);
-    await choose([pick("drive.mp4", "video/mp4")]);
-
-    // ceil(47.7 × 1) = 48 — the grid includes t = 0, which the old floor
-    // spelling missed. The same arithmetic as the probe card's "Frames
-    // expected", so the estimate and the registered answer can only differ by
-    // what the two probes measured, never by rounding.
-    expect((await screen.findByTestId("frames-estimate")).textContent).toContain("48");
-    expect(screen.getByTestId("selection").textContent).toContain("47.7 s");
-
-    // It tracks the typed rate: ceil(47.7 × 2) = 96 — and the pair pins the
-    // spelling, since floor would answer 47 and 95.
-    await userEvent.clear(screen.getByTestId("extraction-fps"));
-    await userEvent.type(screen.getByTestId("extraction-fps"), "2");
-    expect(screen.getByTestId("frames-estimate").textContent).toContain("96");
-
-    // No usable rate, no estimate — a number computed from garbage is worse
-    // than none.
-    await userEvent.clear(screen.getByTestId("extraction-fps"));
-    expect(screen.queryByTestId("frames-estimate")).toBeNull();
-  });
-
-  it("degrades to no estimate when the browser cannot read the clip", async () => {
-    // The default mock never settles, which is also jsdom's real behaviour —
-    // no media pipeline, so `loadedmetadata` never fires.
-    renderWithData(<IngestScreen projectId={PROJECT} />);
-    await choose([pick("drive.mp4", "video/mp4")]);
-
-    expect(screen.queryByTestId("frames-estimate")).toBeNull();
-    // The estimate is advisory: not having one must not block registration.
-    expect((screen.getByTestId("register-source") as HTMLButtonElement).disabled).toBe(false);
-  });
 });
 
 /**
@@ -759,64 +526,6 @@ describe("watching a run", () => {
     );
   });
 
-  it("says how much of a damaged clip arrived, and what to do about it", async () => {
-    // The run holds "eight of about twenty" rather than a sentence about the file
-    // being corrupt. The frames are in the batch, so the
-    // report is not a failure row — it says what arrived and what the remedy is.
-    on("GET", /\/ingest-jobs\//, {
-      status: 200,
-      body: job({
-        processed: 8,
-        total: null,
-        failures: [
-          {
-            name: "broken.mp4",
-            kind: "partial",
-            reason: "the video is damaged or truncated after 8 frames",
-            frames_produced: 8,
-            frames_expected_estimate: 20,
-          },
-        ],
-      }),
-    });
-    await launch();
-
-    const partial = await screen.findByTestId("partials");
-    expect(partial.textContent).toContain("broken.mp4");
-    expect(partial.textContent).toContain("8");
-    expect(partial.textContent).toContain("20");
-    expect(partial.textContent).toContain("re-ingest");
-    // A partial is not a file the run could not read, and the table that says so
-    // must not claim it.
-    expect(screen.queryByTestId("failures")).toBeNull();
-  });
-
-  it("reports the frames it recovered even when the container named no total", async () => {
-    // The estimate is optional by design — a damaged container's own metadata is
-    // suspect — so the count has to stand on its own without a denominator.
-    on("GET", /\/ingest-jobs\//, {
-      status: 200,
-      body: job({
-        processed: 8,
-        total: null,
-        failures: [
-          {
-            name: "broken.mp4",
-            kind: "partial",
-            reason: "the video is damaged or truncated after 8 frames",
-            frames_produced: 8,
-            frames_expected_estimate: null,
-          },
-        ],
-      }),
-    });
-    await launch();
-
-    const partial = await screen.findByTestId("partials");
-    expect(partial.textContent).toContain("8");
-    expect(partial.textContent).not.toContain("claimed");
-  });
-
   it("says nothing at all about a run in which everything was read", async () => {
     // Silence is the ok-state: surfacing a clean run again would only be noise,
     // and the first place that holds is here.
@@ -824,14 +533,13 @@ describe("watching a run", () => {
     await launch();
 
     await waitFor(() => expect(screen.getByTestId("run-state").textContent).toBe("Done"));
-    expect(screen.queryByTestId("partials")).toBeNull();
     expect(screen.queryByTestId("failures")).toBeNull();
   });
 
   it("offers a resume only for a failed run, and says what a resume is", async () => {
     on("GET", /\/ingest-jobs\//, {
       status: 200,
-      body: job({ state: "failed", error: "ffmpeg is not installed", processed: 0 }),
+      body: job({ state: "failed", error: "the staging directory is not readable", processed: 0 }),
     });
     await launch();
 
@@ -865,7 +573,7 @@ describe("watching a run", () => {
   it("keeps a failed run in the error colour, and the word with it (#391)", async () => {
     on("GET", /\/ingest-jobs\//, {
       status: 200,
-      body: job({ state: "failed", error: "ffmpeg is not installed", processed: 0 }),
+      body: job({ state: "failed", error: "the staging directory is not readable", processed: 0 }),
     });
     await launch();
 
@@ -886,7 +594,7 @@ describe("watching a run", () => {
   it("says a refused resume was refused, and does not disguise it as the run's own error", async () => {
     on("GET", /\/ingest-jobs\//, {
       status: 200,
-      body: job({ state: "failed", error: "ffmpeg is not installed", processed: 0 }),
+      body: job({ state: "failed", error: "the staging directory is not readable", processed: 0 }),
     });
     on("POST", /\/resume$/, {
       status: 409,
@@ -901,7 +609,7 @@ describe("watching a run", () => {
     expect(said).not.toContain("INVALID_TRANSITION");
     // Two different things went wrong and the screen says both. The run's own
     // cause is still there, unchanged and still about the run.
-    expect(screen.getByTestId("run-error").textContent).toContain("ffmpeg is not installed");
+    expect(screen.getByTestId("run-error").textContent).toContain("the staging directory is not readable");
   });
 });
 
@@ -962,7 +670,7 @@ describe("what a settled run offers next", () => {
   it("degrades to no button when the run reached no batch", async () => {
     on("GET", /\/ingest-jobs\//, {
       status: 200,
-      body: job({ state: "failed", batch_id: null, error: "ffmpeg is not installed" }),
+      body: job({ state: "failed", batch_id: null, error: "the staging directory is not readable" }),
     });
     await launch(<IngestScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
 

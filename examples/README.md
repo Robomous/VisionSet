@@ -10,10 +10,10 @@ surfaces, which is M3's exit criterion: one kernel, reachable three ways. The la
 | Example | What it shows |
 | --- | --- |
 | [`sdk_end_to_end.py`](sdk_end_to_end.py) | The whole cycle in one pass: workspace → project → schema → synthetic frames → batch → jobs → annotations → curated trunk → verified release |
-| [`ingest_end_to_end.py`](ingest_end_to_end.py) | Where assets come from: a generated 10 s clip → source at 5 fps → 50 deduplicated assets → approved batch of 2 jobs, plus a re-run that creates nothing, the same clip at a second rate, and a folder of stills with one unreadable file. **Needs ffmpeg.** |
+| [`ingest_end_to_end.py`](ingest_end_to_end.py) | Where assets come from: a folder of 50 photographs → 50 deduplicated assets → approved batch of 2 jobs, plus a re-run that creates nothing, a second folder that overlaps it, and a stray file that is not an image. |
 | [`http_end_to_end.py`](http_end_to_end.py) | The same cycle over HTTP, against a real server on a real port with a bearer token — including the multipart upload and the launch-and-poll ingest. `urllib` only: no `httpx`, no `requests`, no `curl`. |
-| [`cli_end_to_end.sh`](cli_end_to_end.sh) | The same cycle from a shell, using nothing but the `visionset` command: init → project → schema → ingest → batch → jobs → release → export, with the `--json` shapes asserted and one deliberate refusal. No ffmpeg, no `jq`, no server. |
-| [`thirty_minute_flow.py`](thirty_minute_flow.py) | The promise, executable: a 10 s clip → 50 frames → 50 boxes → a verified release → a YOLO dataset `ultralytics` agrees to load. Every stage named, timed, and asserted against a wall-clock ceiling. **Needs ffmpeg**; `ultralytics` optional. CI runs it from the wheel in an empty venv. |
+| [`cli_end_to_end.sh`](cli_end_to_end.sh) | The same cycle from a shell, using nothing but the `visionset` command: init → project → schema → ingest → batch → jobs → release → export, with the `--json` shapes asserted and one deliberate refusal. No media binary, no `jq`, no server. |
+| [`thirty_minute_flow.py`](thirty_minute_flow.py) | The promise, executable: 50 photographs → 50 boxes → a verified release → a YOLO dataset `ultralytics` agrees to load. Every stage named, timed, and asserted against a wall-clock ceiling. `ultralytics` optional. CI runs it from the wheel in an empty venv. |
 | [`mcp_end_to_end.py`](mcp_end_to_end.py) | The same cycle over MCP stdio, spawning `visionset mcp` and speaking JSON-RPC down its pipe — including looking at a preview and scaling the box back into the asset's own pixels. |
 
 ## Running the SDK end-to-end example
@@ -50,19 +50,14 @@ uv run python examples/ingest_end_to_end.py            # into examples/workspace
 uv run python examples/ingest_end_to_end.py ./scratch  # or wherever you like
 ```
 
-Same destination rules as above, with one extra requirement: **ffmpeg must be on `PATH`**, because
-this one generates its own ten-second clip. A video is a container wrapped around a codec, and the
-only honest way to write one is the tool that reads it — so the example checks for the binary
-before it writes anything and exits with an install hint if it is missing:
+Same destination rules as above. It needs no media binary at all: video import is a browser
+capability now ([`docs/content/ingest.md`](../docs/content/ingest.md)), so an ingest example has
+nothing left to shell out to and generates only stills, with Pillow.
 
-```bash
-brew install ffmpeg              # macOS
-sudo apt-get install ffmpeg      # Debian/Ubuntu
-```
-
-It leaves a project holding 53 assets: 50 frames cut from the clip at 5 fps into an approved batch
-of two jobs, and three stills from `incoming/` — where a fourth file is deliberately not an image,
-so the run's per-file report has something in it.
+It leaves a project holding 58 assets: 50 photographs from `incoming/` into an approved batch of
+two jobs — where a stray file in that same folder is deliberately not an image, so the run's
+per-file report has something in it — plus 8 new assets from a second folder, `incoming-2/`, whose
+other 2 files are byte-identical to ones already ingested and collapse into what is already known.
 
 ```python
 from visionset.kernel.services import IngestService, ProjectService, SourceService, WorkspaceService

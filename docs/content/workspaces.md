@@ -58,14 +58,20 @@ or one whose process was killed, is all four entries.
 Everything written since the last checkpoint lives in `visionset.db-wal` until then. Close the
 workspace first, or copy all three files together.
 
-Five of the seven ports have no line in that layout, and that is the point: the [event
-bus](events.md) is in-process, the two [media processors](media.md) are decoders, and the
+Four of the six ports have no line in that layout, and that is the point: the [event
+bus](events.md) is in-process, the [media processor](media.md) is a decoder, and the
 [auth provider](auth.md) and the [job queue](background-jobs.md) both read a table inside the
 database above, so none of them leaves anything behind. They are composed here anyway, because a
 workspace is what services are handed and every port has to arrive with it. One of each per open
-workspace, built by `event_bus_factory`, `image_processor_factory`, `video_processor_factory`,
+workspace, built by `event_bus_factory`, `image_processor_factory`,
 `auth_provider_factory` and `job_queue_factory` — never a module-level singleton, which two
 workspaces open at once must not share.
+
+There used to be a fifth port here, `VideoProcessor`, backed by `FfmpegVideoProcessor`. It is
+gone with no replacement composed in its place: the kernel decodes no video at all any more, a
+`VIDEO` source is a receipt for frames a browser already materialized, and `VideoImportService`
+reaches only `image_processor` - the same port an image-directory ingest uses. See
+[media.md](media.md).
 
 `auth_provider_factory` is the one that takes arguments: `(metadata_store, workspace_id)`, because
 it is the first port derived from another rather than from the path. No kernel service uses it -
@@ -77,7 +83,7 @@ bind those arguments positionally, so a parameter added in the middle silently r
 after it.
 
 `WorkspaceService` is the only place in the kernel that names `SqliteMetadataStore`,
-`FilesystemBlobStore`, `InProcessEventBus`, `PillowImageProcessor`, `FfmpegVideoProcessor`,
+`FilesystemBlobStore`, `InProcessEventBus`, `PillowImageProcessor`,
 `StoredTokenAuthProvider` or `SqliteJobQueue`.
 Everything above it — later
 surface, the CLI, MCP — gets an open service and reaches the ports through it, so swapping
@@ -386,10 +392,10 @@ Four habits that keep the boundary honest:
   workspace-level rules with it.
 - One `unit_of_work()` per operation, and do the whole operation inside it.
 - Reach the ports through the handle - `workspace.metadata_store`, `workspace.blob_store`,
-  `workspace.event_bus`, `workspace.image_processor`, `workspace.video_processor`,
+  `workspace.event_bus`, `workspace.image_processor`,
   `workspace.auth_provider`, `workspace.job_queue`. No service other than `workspace_service`
   should name `SqliteMetadataStore`, `FilesystemBlobStore`, `InProcessEventBus`,
-  `PillowImageProcessor`, `FfmpegVideoProcessor`, `StoredTokenAuthProvider` or `SqliteJobQueue`
+  `PillowImageProcessor`, `StoredTokenAuthProvider` or `SqliteJobQueue`
   — if a second one does, the composition point has stopped being single.
 - Publish [events](events.md) *after* the `unit_of_work()` block, never inside it. An
   announcement is about work that committed, and a subscriber that raises must have nothing

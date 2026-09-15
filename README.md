@@ -41,7 +41,7 @@ visionset server                         # API at http://127.0.0.1:8000, app at 
 ```
 
 Then follow [the tutorial](docs/content/tutorial.md): a clip of video to a YOLO dataset in about half an
-hour. Full prerequisites — Python 3.12, and ffmpeg only if you are starting from video — are in
+hour. Full prerequisites — Python 3.12, and a browser, which is where a video is decoded — are in
 [docs/content/install.md](docs/content/install.md).
 
 `init` is the only command that creates a workspace, and it refuses a directory that already holds
@@ -90,9 +90,10 @@ no CLI, nothing to download. Run it with `uv run python examples/sdk_end_to_end.
 walkthrough is in [docs/content/examples.md](docs/content/examples.md).
 
 For where the assets themselves come from,
-[`examples/ingest_end_to_end.py`](examples/ingest_end_to_end.py) turns a generated ten-second clip
+[`examples/ingest_end_to_end.py`](examples/ingest_end_to_end.py) turns a folder of generated stills
 into 50 deduplicated assets in an approved batch, then shows a re-run creating nothing. It needs
-ffmpeg.
+nothing on the host. Starting from a video is a browser capability and has no script form: see
+[docs/content/ingest.md](docs/content/ingest.md).
 
 The same cycle runs over each of the other two surfaces, and both start the shipped command for
 real: [`examples/http_end_to_end.py`](examples/http_end_to_end.py) starts `visionset server` on a
@@ -234,3 +235,6 @@ cover, is in [CONTRIBUTING.md](CONTRIBUTING.md#checks-that-must-stay-green).
 ## License
 
 Apache-2.0 — copyright Robomous Inc. See [LICENSE](LICENSE).
+
+The wheel ships a compiled browser bundle, so it redistributes its dependencies too;
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) records the notices that owes.

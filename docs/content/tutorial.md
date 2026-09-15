@@ -1,10 +1,12 @@
 # Your first dataset
 
-This tutorial turns a video clip into a trainer-ready YOLO dataset in about half an hour.
+This tutorial turns a folder of photographs into a trainer-ready YOLO dataset in about half an
+hour. Starting from a video instead? Step 3 is the one that differs - a clip is imported through
+the browser, not the command line, because decoding it happens on your own machine rather than on
+the server; see the box at the end of that step. Everything after it is identical either way.
 
-You will need [VisionSet installed](install.md) and - because this starts from video -
-`ffmpeg` on the `PATH`. If you would rather start from a folder of photographs, skip step 3 and
-point `ingest` at the folder instead; everything after it is identical.
+You will need [VisionSet installed](install.md). No other binary - not even for a video, since
+nothing in this process decodes one.
 
 > **On screenshots.** There are none here, deliberately. This repository refuses to track binary
 > media - an architecture test caps every tracked file at 200 KB and fails on committed pictures,
@@ -61,29 +63,36 @@ schema (removing a class, taking a geometry away from one) needs `--allow-destru
 already depend on what you are removing it is refused outright with no override. See
 [schemas.md](schemas.md).
 
-## 3. Point it at a clip
+## 3. Point it at a folder of images
 
 ```bash
-visionset ingest ./drive.mp4 --project road-signs --fps 2
+visionset ingest ./photos --project road-signs
 ```
 
 Two things happen, and the split is worth understanding because it explains most of VisionSet's
 behaviour.
 
-**A source is registered.** The clip's path, its probed metadata, and the extraction rate become a
-`Source`. The rate is part of *what the source is*, not a per-run flag - "the same source yields
-the same assets" only means something if the parameters deciding those assets are recorded with
-it. Register the same clip at 1 fps and at 2 fps and you have two sources, deliberately.
+**A source is registered.** The folder's path becomes a `Source` - the record that this origin
+was offered to the project, nothing more. Registering the same folder again returns the same
+source rather than a second one.
 
-**Then it is decomposed.** Frames are cut, hashed, and stored by content. Identical bytes are one
-asset, so re-running the same ingest creates nothing and costs nothing:
+**Then it is read.** Every file at the top level is decoded, hashed, and stored by content.
+Identical bytes are one asset, so re-running the same ingest creates nothing and costs nothing:
 
 ```bash
-visionset ingest ./drive.mp4 --project road-signs --fps 2   # created: 0
+visionset ingest ./photos --project road-signs   # created: 0
 ```
 
 The command prints a batch id. A **batch** is a unit of work: the assets one ingest produced,
 which somebody is going to label.
+
+> **Starting from a video instead?** `visionset ingest` takes a directory of stills only, and
+> refuses a video file by name rather than guessing what you meant. Importing a clip is a
+> **browser** capability: run `visionset server`, open the project's Ingest screen, and choose the
+> file there - it is demuxed and decoded on your own machine, and only the PNG frames it produces
+> ever reach the server. Nothing in this process decodes video, so there is no CLI or MCP
+> equivalent of this step; once the import finishes you have a batch, and step 4 onward is
+> unchanged. See [ingest.md](ingest.md) for why the two paths are separate.
 
 ## 4. Open the batch for annotation
 

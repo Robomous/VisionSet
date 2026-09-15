@@ -32,6 +32,13 @@ export default tseslint.config(
     // `src/testing` is exempt because it never ships: `tsconfig.build.json`
     // excludes it, and the test harness needs a real client to answer a stubbed
     // `fetch`. The boundary being defended is the shipped reusable UI.
+    //
+    // `@visionset/media/*` is the second boundary, and the same shape of one: the
+    // package root is core arithmetic and contracts, its `/mediabunny` subpath is a
+    // decoder with a worker and WebCodecs in it. Which decoder is the host's answer,
+    // so the reusable UI takes a materializer and never imports one. There is a text
+    // scan over this in `tests/scripts/ui_core_boundary.test.mjs`; this is the same
+    // rule stated where the compiler can see the import rather than the characters.
     files: ["src/**/*.ts", "src/**/*.tsx"],
     ignores: ["src/testing/**"],
     rules: {
@@ -44,6 +51,13 @@ export default tseslint.config(
               allowTypeImports: true,
               message:
                 "Type-only. A value import puts a transport in the reusable UI — the host supplies the client (see src/data/port.ts).",
+            },
+          ],
+          patterns: [
+            {
+              group: ["@visionset/media/*"],
+              message:
+                "A decoder belongs to the host, not the reusable UI — take a VideoMaterializer through VisionSetMediaProvider (see src/media/port.ts).",
             },
           ],
         },

@@ -1614,6 +1614,30 @@
         "title": "BlockingAssetPage",
         "type": "object"
       },
+      "Body_append_video_import_frames": {
+        "properties": {
+          "descriptors": {
+            "description": "One entry per part of `files`, in the same order, as a JSON array of {\"ordinal\": n, \"requested_timestamp\": s, \"source_timestamp\": s|null, \"width\": w, \"height\": h} objects. `ordinal` is the extraction-grid index, counted from the start of the clip rather than of the selection. `requested_timestamp` is the grid point ordinal/extraction_fps; `source_timestamp` is the presentation time of the sample the decoder actually drew, or null if it reported none.",
+            "title": "Descriptors",
+            "type": "string"
+          },
+          "files": {
+            "description": "The frames, as one multipart part each, PNG.",
+            "items": {
+              "contentMediaType": "application/octet-stream",
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          }
+        },
+        "required": [
+          "files",
+          "descriptors"
+        ],
+        "title": "Body_append_video_import_frames",
+        "type": "object"
+      },
       "Body_register_image_source": {
         "properties": {
           "files": {
@@ -1642,48 +1666,6 @@
           "files"
         ],
         "title": "Body_register_image_source",
-        "type": "object"
-      },
-      "Body_register_video_source": {
-        "properties": {
-          "extraction_fps": {
-            "default": 1.0,
-            "description": "Frames per second to cut the clip at. One per second by default.",
-            "exclusiveMinimum": 0.0,
-            "title": "Extraction Fps",
-            "type": "number"
-          },
-          "file": {
-            "contentMediaType": "application/octet-stream",
-            "description": "The clip.",
-            "title": "File",
-            "type": "string"
-          },
-          "ranges": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Which stretches of the clip to extract, as a JSON array of {\"start_seconds\": s, \"end_seconds\": e} objects, each half-open [start, end). Omitted means the whole clip.",
-            "title": "Ranges"
-          },
-          "scale_percent": {
-            "default": 100,
-            "description": "Percent of the native size to store extracted frames at; 100 \u2014 the default \u2014 stores them unscaled. Part of the source's identity, like extraction_fps: the same clip at another scale is a second source.",
-            "maximum": 100.0,
-            "minimum": 1.0,
-            "title": "Scale Percent",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "file"
-        ],
-        "title": "Body_register_video_source",
         "type": "object"
       },
       "BySegmentsBody": {
@@ -3105,11 +3087,10 @@
         "type": "string"
       },
       "IngestFailureKind": {
-        "description": "What became of one item the run could not simply read, split by remedy.\n\nAn enum rather than a plain ``str``, on exactly ``SourceKind``'s terms: the\nset is closed, no writer outside this build produces a value, and the kernel\nbranches on it. What makes it worth a type at all is that a report has to be\n**grouped**, not read \u2014 ``CorruptMedia``'s docstring is explicit that a\nreport unable to separate the kinds would bury real data loss under ordinary\noperator noise, and a reason sentence cannot be grouped on.\n\n``PARTIAL`` is the third member and the only one that is not a total loss.\nIt exists because the two below cannot say the thing an operator most needs\nto hear about a damaged clip: *some of it is in your batch*. Filing a\ntruncated video as ``CORRUPT`` is true of the file and misleading about the\nrun, which had just created assets from it.",
+        "description": "What became of one item the run could not simply read, split by remedy.\n\nAn enum rather than a plain ``str``, on exactly ``SourceKind``'s terms: the\nset is closed, no writer outside this build produces a value, and the kernel\nbranches on it. What makes it worth a type at all is that a report has to be\n**grouped**, not read \u2014 ``CorruptMedia``'s docstring is explicit that a\nreport unable to separate the kinds would bury real data loss under ordinary\noperator noise, and a reason sentence cannot be grouped on.\n\nTwo members, and there is no partial read: a run reads one file at a time and\na file either decoded or did not. The kind that used to say \"some of this\nclip reached your batch\" went with server-side video decoding \u2014 a clip is\nmaterialized by a client now, and a materialization that stops halfway leaves\nan uncommitted ``VideoImport`` rather than a half-filled batch.",
         "enum": [
           "unsupported",
-          "corrupt",
-          "partial"
+          "corrupt"
         ],
         "title": "IngestFailureKind",
         "type": "string"
@@ -3117,28 +3098,6 @@
       "IngestFailureOut": {
         "description": "What became of one item the run could not simply read.",
         "properties": {
-          "frames_expected_estimate": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Frames Expected Estimate"
-          },
-          "frames_produced": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Frames Produced"
-          },
           "kind": {
             "$ref": "#/components/schemas/IngestFailureKind"
           },
@@ -3154,9 +3113,7 @@
         "required": [
           "name",
           "kind",
-          "reason",
-          "frames_produced",
-          "frames_expected_estimate"
+          "reason"
         ],
         "title": "IngestFailureOut",
         "type": "object"
@@ -5475,7 +5432,7 @@
         "type": "object"
       },
       "SourceKind": {
-        "description": "The shapes of raw input VisionSet accepts.\n\nAn enum, where ``DatasetChange.operation`` and ``VideoMetadata.codec`` are\nplain ``str``. That doctrine turns on one question \u2014 *can something outside\nthis build write the value?* A change-log entry outlives the release that\nwrote it and a codec name is whatever ffmpeg decides to call it, so both have\nto stay readable when they name something this build never heard of.\n\nNeither applies here. ``SourceService`` is the only door to a ``Source``, so\nno foreign writer exists; the kernel **branches** on this value, in the two\nregistration methods and in the invariant tying :attr:`Source.video` to\n:attr:`SourceKind.VIDEO`, and a branch on a magic string is the shape this\ncodebase replaces with a table; and the set grows by a deliberate kernel\nchange with a service method behind it. That is ``ImageFormat`` /\n``BatchState`` / ``IngestState`` territory, and it costs persistence nothing\n\u2014 a ``StrEnum`` member *is* a ``str``.",
+        "description": "The shapes of raw input VisionSet accepts.\n\nAn enum, where ``DatasetChange.operation`` and ``VideoMetadata.codec`` are\nplain ``str``. That doctrine turns on one question \u2014 *can something outside\nthis build write the value?* A change-log entry outlives the release that\nwrote it and a codec name is whatever the decoder that read it decides to\ncall it, so both have to stay readable when they name something this build\nnever heard of.\n\nNeither applies here. ``SourceService`` and ``VideoImportService`` are the\nonly two doors to a ``Source``, one per member, so no foreign writer exists;\nthe kernel **branches** on this value, in the invariant tying\n:attr:`Source.video` to\n:attr:`SourceKind.VIDEO`, and a branch on a magic string is the shape this\ncodebase replaces with a table; and the set grows by a deliberate kernel\nchange with a service method behind it. That is ``ImageFormat`` /\n``BatchState`` / ``IngestState`` territory, and it costs persistence nothing\n\u2014 a ``StrEnum`` member *is* a ``str``.",
         "enum": [
           "image_directory",
           "video"
@@ -5817,8 +5774,204 @@
         "type": "string",
         "x-visionset-open": true
       },
+      "VideoImportOut": {
+        "description": "A browser-driven import: how many frames are expected, and how many arrived.",
+        "properties": {
+          "batch_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Id"
+          },
+          "expected_frame_count": {
+            "title": "Expected Frame Count",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "received_frame_count": {
+            "title": "Received Frame Count",
+            "type": "integer"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/VideoImportState"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "source_id",
+          "state",
+          "expected_frame_count",
+          "received_frame_count",
+          "batch_id",
+          "started_at",
+          "updated_at"
+        ],
+        "title": "VideoImportOut",
+        "type": "object"
+      },
+      "VideoImportStart": {
+        "additionalProperties": false,
+        "description": "Everything a session needs to be opened, which is metadata and no bytes.\n\n`batch_id` and `batch_name` are the two ways of naming where the frames\nland, exactly as on `POST /sources/{source_id}/ingest-jobs`: the first joins\na draft batch that already exists, the second names one the commit creates,\nand neither lets the batch take the clip's own name. Sending both is\nrefused rather than resolved \u2014 a body that names a batch *and* asks for a new\none says two different things, and picking one of them silently is how\nsomebody's frames end up somewhere they did not choose.",
+        "properties": {
+          "batch_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Id"
+          },
+          "batch_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Name"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "extraction_fps": {
+            "default": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Extraction Fps",
+            "type": "number"
+          },
+          "materializer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Materializer"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/VideoMetadataBody"
+          },
+          "ranges": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ClipRange"
+            },
+            "title": "Ranges",
+            "type": "array"
+          },
+          "scale_percent": {
+            "default": 100,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Scale Percent",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "display_name",
+          "metadata"
+        ],
+        "title": "VideoImportStart",
+        "type": "object"
+      },
+      "VideoImportState": {
+        "description": "Lifecycle: ``open`` -> (``committed`` | ``aborted``). Both ends are final.\n\nNo transition table beside it, unlike ``BatchState`` or ``IngestState``.\nThose have enough edges \u2014 and enough callers asking \"may I?\" before moving \u2014\nthat the legality is a fact worth declaring once and testing as a whole. This\nhas two edges out of one state and exactly one service that moves it, so a\ntable would be a lookup restating the guard next to it.\n\nThere is no edge back to ``open``, and that is the invariant the session\nexists to protect. A committed session has already turned its staged frames\ninto assets somebody may be annotating; an aborted one has thrown its frames\naway. Re-opening either would mean appending frames to a count that has\nalready been spent.",
+        "enum": [
+          "open",
+          "committed",
+          "aborted"
+        ],
+        "title": "VideoImportState",
+        "type": "string"
+      },
+      "VideoMetadataBody": {
+        "additionalProperties": false,
+        "description": "What a client's decoder read off the clip, as displayed.\n\n`fps` is the rate the clip was **shot** at, not the rate it is being cut at\n\u2014 that one is `extraction_fps`, and it belongs to the import rather than to\nthe file. Omit it, or send `null`, when the decoder reports no single rate: a\nvariable-frame-rate clip has none, and the extraction rate standing in for it\nwould record a property the clip does not have.",
+        "properties": {
+          "codec": {
+            "minLength": 1,
+            "title": "Codec",
+            "type": "string"
+          },
+          "duration_seconds": {
+            "exclusiveMinimum": 0.0,
+            "title": "Duration Seconds",
+            "type": "number"
+          },
+          "fps": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fps"
+          },
+          "height": {
+            "minimum": 1.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "width": {
+            "minimum": 1.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "width",
+          "height",
+          "duration_seconds",
+          "codec"
+        ],
+        "title": "VideoMetadataBody",
+        "type": "object"
+      },
       "VideoProvenanceOut": {
-        "description": "What a clip turned out to be, and the cut it is decomposed by.\n\n`ranges` is the canonical form of the selection the source was registered\nwith \u2014 clamped to the clip, sorted, overlaps merged \u2014 and empty means the\nwhole clip. Like `extraction_fps`, it is part of the source's identity.\n\n`scale_percent` is the percent of the native size extracted frames are\nstored at; 100 means unscaled. `width` and `height` stay the clip's own \u2014\nwhat is stored is each dimension scaled by this percent. Also part of the\nsource's identity.",
+        "description": "What a clip turned out to be, and the cut it is decomposed by.\n\n`ranges` is the canonical form of the selection the source was registered\nwith \u2014 clamped to the clip, sorted, overlaps merged \u2014 and empty means the\nwhole clip. Like `extraction_fps`, it is part of the source's identity.\n\n`scale_percent` is the percent of the native size extracted frames are\nstored at; 100 means unscaled. `width` and `height` stay the clip's own \u2014\nwhat is stored is each dimension scaled by this percent. Also part of the\nsource's identity.\n\n`policy_version` and `materializer` describe the *decomposition* rather than\nthe clip, and both are `null` for a source registered before either existed.\nFrame bytes are not reproducible across decoders, so rather than promise a\nreproducibility nobody can keep, a source says which spelling of the sampling\nrules was in force and what drew the frames \u2014 which is only legible to a\nclient if it is published, so it is.",
         "properties": {
           "codec": {
             "title": "Codec",
@@ -5833,12 +5986,41 @@
             "type": "number"
           },
           "fps": {
-            "title": "Fps",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fps"
           },
           "height": {
             "title": "Height",
             "type": "integer"
+          },
+          "materializer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Materializer"
+          },
+          "policy_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Version"
           },
           "ranges": {
             "items": {
@@ -5864,7 +6046,9 @@
           "codec",
           "extraction_fps",
           "ranges",
-          "scale_percent"
+          "scale_percent",
+          "policy_version",
+          "materializer"
         ],
         "title": "VideoProvenanceOut",
         "type": "object"
@@ -9909,7 +10093,7 @@
     },
     "/ingest-jobs/{job_id}": {
       "get": {
-        "description": "Where a run is now.\n\n`processed` and `total` are written as the run goes, so this answers \"where\nis it\" rather than \"where did it end\". `total` is null for a clip \u2014 a video's\nframe count is a guess before extraction, so it is not reported.\n\nTerminal states are `completed` and `failed`. A `failed` job keeps its\ncounters exactly where they stopped, and `error` says why; unreadable\nindividual items are in `failures` and never fail a run on their own.",
+        "description": "Where a run is now.\n\n`processed` and `total` are written as the run goes, so this answers \"where\nis it\" rather than \"where did it end\". `total` is null until the run has\ncounted what it has to read.\n\nTerminal states are `completed` and `failed`. A `failed` job keeps its\ncounters exactly where they stopped, and `error` says why; unreadable\nindividual items are in `failures` and never fail a run on their own.",
         "operationId": "get_ingest_job",
         "parameters": [
           {
@@ -14661,105 +14845,6 @@
         ]
       }
     },
-    "/projects/{project_id}/sources/video": {
-      "post": {
-        "description": "Offer a project a clip, to be cut at `extraction_fps` inside `ranges`.\n\nThe clip is probed on the way in, so a file that is not a video, or one\nwhose bytes will not decode, is 422 here rather than a run that fails later:\n422 `UNSUPPORTED_MEDIA` for a kind of file this cannot cut, and 422\n`CORRUPT_MEDIA` for one that is the right kind and will not decode. The\nmessage says what was wrong with the file and never where it was put.\n\nThe cut is part of what the source *is*: the same clip registered at 1 fps\nand again at 5 fps \u2014 or over different ranges, or at another scale \u2014 is two\nsources over one file, which is what makes \"the same source yields the same\nassets\" mean anything. Ranges are stored canonically (clamped, sorted,\nmerged), and the response carries that canonical form. `scale_percent`\nbelow 100 stores every extracted frame at that percent of the clip's size.",
-        "operationId": "register_video_source",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "project_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Project Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_register_video_source"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SourceOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Missing or invalid bearer token"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "No such resource"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "The request payload is not processable"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Unhandled server error, with an incident id"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "The workspace is busy; retry after the header says"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Register Video Source",
-        "tags": [
-          "sources"
-        ]
-      }
-    },
     "/projects/{project_id}/stats": {
       "get": {
         "description": "What the project holds, counted \u2014 overall and per label class.\n\nCounts **everything ingested**, whatever batch it landed in and whether or\nnot anybody has promoted it. `GET /datasets/{dataset_id}/stats` is the\nsibling that counts the curated trunk, and the two disagree by design: a\nproject mid-annotation has assets here and none there.\n\n`class_count` is what the active schema version declares, so a project that\nhas just authored an ontology and labeled nothing reports its classes.\n`annotated_pct` is `0` for a project with no assets, never `null`.\n\n`classes` lists only classes somebody has actually used, ordered by name.",
@@ -14846,6 +14931,115 @@
         "summary": "Get Project Stats",
         "tags": [
           "projects"
+        ]
+      }
+    },
+    "/projects/{project_id}/video-imports": {
+      "post": {
+        "description": "Declare a clip, and open a session to receive the frames cut out of it.\n\nThe body is metadata only: what the caller's decoder read off the container,\nand the cut it is about to materialize. **No video bytes are sent here or\nanywhere else** \u2014 this server decodes nothing, so the file stays on the\nmachine it is already on.\n\n`metadata` is recorded as the new source's provenance: what the clip *was*,\nrather than a promise about bytes somebody else can reproduce. Two decoders\ngenuinely disagree over the same frame, which is why `materializer` is worth\nnaming \u2014 it says what produced these ones.\n\nThe one number **not** taken on trust is `expected_frame_count`. `ranges` is\ncanonicalized against the declared duration and the grid points are counted\nhere, so \"every frame arrived\" at commit is a fact this server computed\nrather than a claim it was handed. A selection holding no frame at all \u2014\nnarrower than one interval at `extraction_fps` \u2014 is 422 rather than an empty\nbatch nobody meant.\n\n**Where the frames will land is settled here too**, on the same terms\n`POST /sources/{source_id}/ingest-jobs` settles it. `batch_id` adds them to a\ndraft batch that already exists, which is how a second clip joins the first\none's batch; `batch_name` names a batch the commit will create; passing\nneither uses the clip's own name, and passing both is 422. A `batch_name`\nthat is not a name is 422 `INVALID_NAME`, a `batch_id` naming no batch in\nthis project is 404 `BATCH_NOT_FOUND` \u2014 as is an unknown project, 404\n`PROJECT_NOT_FOUND` \u2014 and one naming a batch past `draft` \u2014\nan approved batch has been cut into jobs already \u2014 is 409\n`BATCH_NOT_EDITABLE`. Every one of them is answered *here* rather than at\ncommit: the alternative is telling somebody their target was unusable after\nthey have spent minutes decoding a clip.\n\nEvery import registers a source of its own, so starting twice over one file\nis two sources and never a collision. Identical frames still deduplicate by\ncontent, which is the only thing that deduplicates them.",
+        "operationId": "start_video_import",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoImportStart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoImportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Start Video Import",
+        "tags": [
+          "video imports"
         ]
       }
     },
@@ -15699,7 +15893,7 @@
         ]
       },
       "post": {
-        "description": "Launch a run over the source and answer at once with the job to poll.\n\n**202, not 201**: the row exists, the work does not. Poll\n`GET /ingest-jobs/{id}` \u2014 the `Location` header names it \u2014 and watch\n`processed` climb until `state` is `completed` or `failed`.\n\nA run that could not even be recorded is refused here; everything that goes\nwrong afterwards is reported *on the job*, which is the whole point of the\nshape. Unreadable files land in `failures` and do not fail the run; a\nmissing ffmpeg does, in `error`.\n\n`batch_id` puts what this run gathers into a batch that already exists,\nwhich is how a second source joins the first one's batch. It has to be a\ndraft \u2014 an approved batch has been cut into jobs already, so adding to it is\n409 `BATCH_NOT_EDITABLE` \u2014 and an unknown one is 404 `BATCH_NOT_FOUND`. Both\nare answered here, before the job row is written, as is 404\n`SOURCE_NOT_FOUND` for the source this run would read. `batch_name` names a new batch instead;\npassing neither uses the source's own name.",
+        "description": "Launch a run over the source and answer at once with the job to poll.\n\n**202, not 201**: the row exists, the work does not. Poll\n`GET /ingest-jobs/{id}` \u2014 the `Location` header names it \u2014 and watch\n`processed` climb until `state` is `completed` or `failed`.\n\nA run that could not even be recorded is refused here; everything that goes\nwrong afterwards is reported *on the job*, which is the whole point of the\nshape. Unreadable files land in `failures` and do not fail the run; only a\ncondition that stops the run reaching any further file at all is reported in\n`error`.\n\n**Only a folder of stills is run here.** This server holds no decoder, so a\n`video` source has nothing it could read: a clip is decoded by the client\nthat holds the file and its frames are posted to\n`POST /projects/{project_id}/video-imports` instead. Asking for a run over\none is 422 `UNSUPPORTED_MEDIA`.\n\n`batch_id` puts what this run gathers into a batch that already exists,\nwhich is how a second source joins the first one's batch. It has to be a\ndraft \u2014 an approved batch has been cut into jobs already, so adding to it is\n409 `BATCH_NOT_EDITABLE` \u2014 and an unknown one is 404 `BATCH_NOT_FOUND`. Both\nare answered here, before the job row is written, as is 404\n`SOURCE_NOT_FOUND` for the source this run would read. `batch_name` names a new batch instead,\nand one that is blank once stripped is 422 `INVALID_NAME`;\npassing neither uses the source's own name.",
         "operationId": "start_ingest",
         "parameters": [
           {
@@ -15810,6 +16004,393 @@
         "summary": "Start Ingest",
         "tags": [
           "sources"
+        ]
+      }
+    },
+    "/video-imports/{import_id}": {
+      "delete": {
+        "description": "Throw the session away: no assets, no batch, nothing left in the project.\n\nThe staged frames go with it. Aborting an import that is already aborted\nchanges nothing and still answers 204, because a client cancelling twice\nmeans the same thing once; aborting a **committed** one is 409\n`VIDEO_IMPORT_NOT_OPEN`, since its frames are assets somebody may already be\nannotating and there is nothing here that could take them back.\n\nThe source stays. It is the record that somebody declared this clip, which an\nabort does not un-declare, and it owns no assets.",
+        "operationId": "abort_video_import",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "import_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Import Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Abort Video Import",
+        "tags": [
+          "video imports"
+        ]
+      },
+      "get": {
+        "description": "Where an import has got to.\n\nThe session is its own progress report. `received_frame_count` counts\n*distinct* ordinals rather than appends, so re-sending a frame that is\nalready staged never moves it. `state` is `open` until the import ends, and\nboth of its ends \u2014 `committed` and `aborted` \u2014 are final.",
+        "operationId": "get_video_import",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "import_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Import Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoImportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Video Import",
+        "tags": [
+          "video imports"
+        ]
+      }
+    },
+    "/video-imports/{import_id}/commit": {
+      "post": {
+        "description": "Turn every staged frame into an asset, in one transaction, and answer the batch.\n\nRefused with 409 `VIDEO_IMPORT_INCOMPLETE` while any expected frame is still\nmissing. That gate is the point of the session: a materialization that died\npartway would otherwise produce a batch silently short of a stretch of its\nclip, and nothing downstream could detect it \u2014 the assets are perfectly good\nimages and the batch looks like any other.\n\n**Idempotent.** A repeated commit answers the batch the first one created and\nwrites nothing, so a client that retried a timed-out request never gets a\nsecond batch. Committing an import that was aborted is 409\n`VIDEO_IMPORT_NOT_OPEN`, and an import this workspace does not hold is 404\n`VIDEO_IMPORT_NOT_FOUND`.\n\nThe batch is the draft the import named with `batch_id`, if it named one, and\notherwise one created here \u2014 called by the import's `batch_name` if it\ndeclared one and after its source if not. A target batch that has since been\ndeleted is 404 `BATCH_NOT_FOUND` and one approved while the clip was decoding\nis 409 `BATCH_NOT_EDITABLE`; neither falls back to a batch of its own, which\nwould put the frames somewhere nobody chose. Two frames with identical bytes\ncollapse into one asset \u2014 a static shot at 1 fps genuinely yields the same image twice, and\ncontent addressing has always said so \u2014 so `asset_count` can be shorter than\nthe frame count, which is the honest report.",
+        "operationId": "commit_video_import",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "import_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Import Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Commit Video Import",
+        "tags": [
+          "video imports"
+        ]
+      }
+    },
+    "/video-imports/{import_id}/frames": {
+      "post": {
+        "description": "Stage a chunk of materialized frames, and answer the session's progress.\n\n**A chunk, not a whole extraction**: at most 32 parts per request, and\nbeyond that is 422. Send as many requests as the clip needs; they may be\nsent in any order, and the session's frame count is what tracks them.\n\nA descriptor count that does not match the part count is 422 \u2014 the two\narrays have drifted apart, and nothing here could pick which to believe.\n\nEvery frame is decoded before it is stored, so a part that is not a PNG, or\none whose bytes disagree with the size its descriptor declares, is 422\n`UNSUPPORTED_MEDIA` and one that will not decode at all is 422\n`CORRUPT_MEDIA`. A descriptor that does not describe its own bytes is not a\nframe with bad metadata; it is evidence a client's grid and this session's\nhave diverged, which is worth finding out now rather than in a training run.\n\n**Re-sending a frame is free.** The same ordinal carrying the same bytes is a\nretry \u2014 a chunked upload that lost its connection is the ordinary case \u2014 so\nit succeeds, writes nothing, and leaves `received_frame_count` where it was.\nThe same ordinal carrying *different* bytes is 409 `FRAME_CONTENT_CONFLICT`:\nabort the import and start again. Appending to an import that has already\nended is 409 `VIDEO_IMPORT_NOT_OPEN`.\n\n**`ordinal` is an extraction-grid index**, not a position within the\nselection: it is the frame at `ordinal / extraction_fps` seconds into the\nclip, counted from the clip's start. A session cut from 5 s at 1 fps holds\n5, 6 and 7 \u2014 not 0, 1 and 2 \u2014 so an index the session's `ranges` do not\ncover is 422 `FRAME_ORDINAL_OUT_OF_RANGE`, whether or not it happens to fall\nbelow `expected_frame_count`, which is a count of frames and never a bound\non their indices.",
+        "operationId": "append_video_import_frames",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "import_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Import Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_append_video_import_frames"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoImportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Append Video Import Frames",
+        "tags": [
+          "video imports"
         ]
       }
     }

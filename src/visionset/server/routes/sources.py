@@ -6,15 +6,19 @@ off the project that owns it (`ProjectService` is the door to a project, and a
 source belongs to exactly one); the resource does not, because what hangs off
 *it* — its ingest jobs — would otherwise sit four path segments deep for no gain.
 
-**Registration is upload-only.** The kernel registers a source by path, so these
-routes stage the bytes first (see ``server/uploads.py``) and register the staged
-directory or file. There is no route that takes a server-side path: it would
+**Registration is upload-only.** The kernel registers a directory source by path,
+so these routes stage the bytes first (see ``server/uploads.py``) and register
+the staged directory. There is no route that takes a server-side path: it would
 hand every token holder an arbitrary-directory read, and the two surfaces that
 legitimately hold real paths — the CLI and MCP — call the SDK in-process and
 never come through here. It also has a quiet dividend: because the server just
-wrote the file, `SourceService`'s ``FileNotFoundError`` and ``NotADirectoryError``
+wrote the files, `SourceService`'s ``FileNotFoundError`` and ``NotADirectoryError``
 are unreachable, and those are plain Python exceptions with no place in
 ``ERROR_RULES``.
+
+**A clip is not registered here.** The server decodes no video: a video source is
+opened as a session in ``routes/video_imports.py``, and its frames arrive as
+ordinary images a client materialized locally.
 
 Handlers are ``def``, not ``async def``, for the reason ``projects.py`` gives.
 Reading a spooled upload is blocking I/O too.
@@ -22,17 +26,14 @@ Reading a spooled upload is blocking I/O too.
 
 from __future__ import annotations
 
-from typing import Annotated, Final
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import File, Form, Response, UploadFile, status
-from fastapi.exceptions import RequestValidationError
-from pydantic import TypeAdapter, ValidationError
 
 from visionset.jobs.ingest import JOB_TYPE as ingest_job_type
 from visionset.jobs.ingest import payload_for as ingest_payload_for
-from visionset.kernel.domain import BackgroundJobSpec, TimeRange
-from visionset.kernel.ports import DEFAULT_EXTRACTION_FPS
+from visionset.kernel.domain import BackgroundJobSpec
 from visionset.kernel.services import IngestService, SourceService
 from visionset.server.dependencies import RunnerDep, WorkspaceDep, protected_router
 from visionset.server.errors import documented
@@ -47,61 +48,6 @@ from visionset.server.uploads import stage
 
 project_router = protected_router(prefix="/projects/{project_id}/sources", tags=["sources"])
 router = protected_router(prefix="/sources", tags=["sources"])
-
-#: The decomposition rate, as a multipart field. ``gt=0`` mirrors
-#: ``VideoProvenance.extraction_fps``' own bound, which is what keeps
-#: `SourceService`'s bare ``ValueError`` — outside the ``VisionSetError`` tree,
-#: so a 500 — from ever being reachable over HTTP.
-ExtractionFpsForm = Annotated[
-    float,
-    Form(gt=0, description="Frames per second to cut the clip at. One per second by default."),
-]
-
-#: The clip-range selection, as a multipart field. Multipart carries strings, so
-#: the JSON array rides in one and is parsed here rather than by FastAPI.
-RangesForm = Annotated[
-    str | None,
-    Form(
-        description=(
-            "Which stretches of the clip to extract, as a JSON array of "
-            '{"start_seconds": s, "end_seconds": e} objects, each half-open '
-            "[start, end). Omitted means the whole clip."
-        ),
-    ),
-]
-
-_RANGES_ADAPTER: Final = TypeAdapter(tuple[TimeRange, ...])
-
-
-def _parse_ranges(ranges: str | None) -> tuple[TimeRange, ...]:
-    """The `ranges` field as domain values, or the 422 a malformed one earns.
-
-    Parsed against the kernel's own `TimeRange`, so its bounds (a start at or
-    after zero, an end after the start) refuse here as `VALIDATION_ERROR` —
-    the kernel's `ValidationError` is not a `VisionSetError` and would be a 500.
-    """
-    if ranges is None:
-        return ()
-    try:
-        return _RANGES_ADAPTER.validate_json(ranges)
-    except ValidationError as exc:
-        raise RequestValidationError(exc.errors()) from exc
-
-
-#: A clip's storage scale, as a multipart field. The bounds mirror
-#: ``VideoProvenance.scale_percent``'s own, for ``ExtractionFpsForm``'s reason.
-ScalePercentForm = Annotated[
-    int,
-    Form(
-        ge=1,
-        le=100,
-        description=(
-            "Percent of the native size to store extracted frames at; 100 — the "
-            "default — stores them unscaled. Part of the source's identity, like "
-            "extraction_fps: the same clip at another scale is a second source."
-        ),
-    ),
-]
 
 
 @project_router.post("/images", status_code=status.HTTP_201_CREATED, responses=documented(404))
@@ -144,42 +90,6 @@ def register_image_source(
     )
 
 
-@project_router.post("/video", status_code=status.HTTP_201_CREATED, responses=documented(404))
-def register_video_source(
-    workspace: WorkspaceDep,
-    project_id: UUID,
-    file: Annotated[UploadFile, File(description="The clip.")],
-    extraction_fps: ExtractionFpsForm = DEFAULT_EXTRACTION_FPS,
-    ranges: RangesForm = None,
-    scale_percent: ScalePercentForm = 100,
-) -> SourceOut:
-    """Offer a project a clip, to be cut at `extraction_fps` inside `ranges`.
-
-    The clip is probed on the way in, so a file that is not a video, or one
-    whose bytes will not decode, is 422 here rather than a run that fails later:
-    422 `UNSUPPORTED_MEDIA` for a kind of file this cannot cut, and 422
-    `CORRUPT_MEDIA` for one that is the right kind and will not decode. The
-    message says what was wrong with the file and never where it was put.
-
-    The cut is part of what the source *is*: the same clip registered at 1 fps
-    and again at 5 fps — or over different ranges, or at another scale — is two
-    sources over one file, which is what makes "the same source yields the same
-    assets" mean anything. Ranges are stored canonically (clamped, sorted,
-    merged), and the response carries that canonical form. `scale_percent`
-    below 100 stores every extracted frame at that percent of the clip's size.
-    """
-    selection = _parse_ranges(ranges)
-    staged = stage(workspace.root, [file])
-    source = SourceService(workspace).register_video(
-        project_id,
-        staged.only,
-        extraction_fps=extraction_fps,
-        ranges=selection,
-        scale_percent=scale_percent,
-    )
-    return SourceOut.of(source)
-
-
 @project_router.get("", responses=documented(404))
 def list_sources(workspace: WorkspaceDep, project_id: UUID) -> SourcePage:
     """Every source of that project, in registration order."""
@@ -213,15 +123,23 @@ def start_ingest(
 
     A run that could not even be recorded is refused here; everything that goes
     wrong afterwards is reported *on the job*, which is the whole point of the
-    shape. Unreadable files land in `failures` and do not fail the run; a
-    missing ffmpeg does, in `error`.
+    shape. Unreadable files land in `failures` and do not fail the run; only a
+    condition that stops the run reaching any further file at all is reported in
+    `error`.
+
+    **Only a folder of stills is run here.** This server holds no decoder, so a
+    `video` source has nothing it could read: a clip is decoded by the client
+    that holds the file and its frames are posted to
+    `POST /projects/{project_id}/video-imports` instead. Asking for a run over
+    one is 422 `UNSUPPORTED_MEDIA`.
 
     `batch_id` puts what this run gathers into a batch that already exists,
     which is how a second source joins the first one's batch. It has to be a
     draft — an approved batch has been cut into jobs already, so adding to it is
     409 `BATCH_NOT_EDITABLE` — and an unknown one is 404 `BATCH_NOT_FOUND`. Both
     are answered here, before the job row is written, as is 404
-    `SOURCE_NOT_FOUND` for the source this run would read. `batch_name` names a new batch instead;
+    `SOURCE_NOT_FOUND` for the source this run would read. `batch_name` names a new batch instead,
+    and one that is blank once stripped is 422 `INVALID_NAME`;
     passing neither uses the source's own name.
     """
     job = IngestService(workspace).enqueue(

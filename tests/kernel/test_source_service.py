@@ -1,11 +1,10 @@
 """`SourceService`: registration, provenance, and the idempotency rule.
 
-Two things shape this file.
-
-The ffmpeg requirement arrives through `write_video`, which calls `require_ffmpeg`
-itself — there is deliberately no module-level skip. The tests that need no clip
-(directory registration, the not-found ladders, the domain invariant) have to run
-on a machine without ffmpeg, and a module-level skip would take them with it.
+**There is no clip anywhere in this file, and no decoder behind it.** A `VIDEO`
+source is written by `VideoImportService` from what a browser declared; this
+service registers directories. What survives here about video is the *domain*
+invariant tying `Source.video` to `SourceKind.VIDEO`, which is a rule about the
+model and needs no bytes to check.
 
 The idempotency assertions compare `id`s rather than counting rows wherever they
 can, because "returns the same source" is the contract; "wrote one row" is how it
@@ -18,22 +17,14 @@ from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
-from tests.fixtures.media import (
-    GeneratedVideo,
-    write_corrupt_video,
-    write_unsupported_file,
-    write_video,
-)
 
 from visionset.kernel import (
     InvalidName,
     ProjectNotFound,
     SourceNotFound,
-    UnsupportedMedia,
     WorkspaceCorrupt,
 )
-from visionset.kernel.domain import Source, SourceKind, TimeRange, VideoMetadata, VideoProvenance
-from visionset.kernel.ports import DEFAULT_EXTRACTION_FPS
+from visionset.kernel.domain import Source, SourceKind, VideoMetadata, VideoProvenance
 from visionset.kernel.services import ProjectService, SourceService, WorkspaceService
 
 
@@ -48,9 +39,6 @@ class Fixture:
         self.project = self.projects.create(f"{name}-project")
         self.stills = tmp_path / f"{name}-stills"
         self.stills.mkdir()
-
-    def clip(self, name: str = "clip.mp4", **kwargs: object) -> GeneratedVideo:
-        return write_video(self.tmp_path / name, **kwargs)  # type: ignore[arg-type]
 
     def close(self) -> None:
         self.workspace.close()
@@ -69,7 +57,7 @@ def test_an_image_directory_source_persists_and_rehydrates_completely(tmp_path: 
     reopened = WorkspaceService.open(tmp_path / "ws")
     read_back = SourceService(reopened).get(registered.id)
     assert read_back.kind is SourceKind.IMAGE_DIRECTORY
-    assert read_back.path == str(fx.stills.resolve())
+    assert read_back.locator == str(fx.stills.resolve())
     assert read_back.capture_params == {"site": "yard-3"}
     assert read_back.video is None
     assert read_back.registered_at == registered.registered_at
@@ -110,83 +98,6 @@ def test_a_relative_path_and_its_absolute_form_are_one_source(
     fx.close()
 
 
-# --- registering a clip ------------------------------------------------------
-
-
-def test_a_video_source_stores_the_original_fps_from_the_probe(tmp_path: Path) -> None:
-    """Registration's probe, asserted against the generator."""
-    fx = Fixture(tmp_path)
-    clip = fx.clip(fps=10, duration_seconds=2.0)
-    registered = fx.sources.register_video(fx.project.id, clip.path, extraction_fps=5.0)
-
-    provenance = registered.require_video()
-    assert provenance.metadata.fps == pytest.approx(clip.fps)
-    assert provenance.metadata.width == clip.width
-    assert provenance.metadata.height == clip.height
-    assert provenance.metadata.duration_seconds == pytest.approx(clip.duration_seconds, abs=0.2)
-    assert provenance.metadata.codec
-    assert provenance.extraction_fps == 5.0
-    fx.close()
-
-
-def test_a_video_source_rehydrates_its_whole_provenance(tmp_path: Path) -> None:
-    fx = Fixture(tmp_path)
-    clip = fx.clip()
-    registered = fx.sources.register_video(fx.project.id, clip.path, extraction_fps=2.5)
-    fx.close()
-
-    reopened = WorkspaceService.open(tmp_path / "ws")
-    read_back = SourceService(reopened).get(registered.id)
-    assert read_back == registered
-    assert read_back.require_video() == registered.require_video()
-    reopened.close()
-
-
-def test_registering_a_video_defaults_to_the_port_extraction_rate(tmp_path: Path) -> None:
-    fx = Fixture(tmp_path)
-    registered = fx.sources.register_video(fx.project.id, fx.clip().path)
-    assert registered.require_video().extraction_fps == DEFAULT_EXTRACTION_FPS
-    fx.close()
-
-
-def test_a_non_positive_extraction_rate_is_refused_before_anything_is_probed(
-    tmp_path: Path,
-) -> None:
-    fx = Fixture(tmp_path)
-    with pytest.raises(ValueError, match="extraction_fps must be positive"):
-        fx.sources.register_video(fx.project.id, tmp_path / "never-read.mp4", extraction_fps=0)
-    fx.close()
-
-
-def test_registering_something_that_is_not_a_video_stores_nothing(tmp_path: Path) -> None:
-    fx = Fixture(tmp_path)
-    not_a_clip = write_unsupported_file(tmp_path / "notes.mp4")
-    with pytest.raises(UnsupportedMedia):
-        fx.sources.register_video(fx.project.id, not_a_clip)
-    assert fx.sources.list(fx.project.id) == []
-    fx.close()
-
-
-def test_a_truncated_clip_registers_because_a_probe_only_reads_the_header(
-    tmp_path: Path,
-) -> None:
-    """Registration is not a validation pass, and ingest must not assume it is.
-
-    `write_corrupt_video` truncates a faststart clip, so the index at the front
-    still describes the whole thing and ffprobe answers happily; ffmpeg only
-    fails once a decode runs off the end of the bytes. So damage surfaces at
-    extraction, not here — and the duration this source records is the one the
-    intact file would have had.
-    """
-    fx = Fixture(tmp_path)
-    broken = write_corrupt_video(tmp_path / "broken.mp4")
-    registered = fx.sources.register_video(fx.project.id, broken.path)
-    assert registered.require_video().metadata.duration_seconds == pytest.approx(
-        broken.duration_seconds, abs=0.2
-    )
-    fx.close()
-
-
 # --- idempotency -------------------------------------------------------------
 
 
@@ -199,124 +110,6 @@ def test_registering_the_same_directory_twice_returns_the_same_source(tmp_path: 
     fx.close()
 
 
-def test_registering_the_same_clip_at_the_same_rate_returns_the_same_source(
-    tmp_path: Path,
-) -> None:
-    fx = Fixture(tmp_path)
-    clip = fx.clip()
-    first = fx.sources.register_video(fx.project.id, clip.path, extraction_fps=5.0)
-    second = fx.sources.register_video(fx.project.id, clip.path, extraction_fps=5.0)
-    assert second == first
-    assert len(fx.sources.list(fx.project.id)) == 1
-    fx.close()
-
-
-def test_the_same_clip_at_a_different_rate_is_a_second_source(tmp_path: Path) -> None:
-    """The decomposition rate is part of the source's identity, deliberately."""
-    fx = Fixture(tmp_path)
-    clip = fx.clip()
-    slow = fx.sources.register_video(fx.project.id, clip.path, extraction_fps=1.0)
-    fast = fx.sources.register_video(fx.project.id, clip.path, extraction_fps=5.0)
-    assert fast.id != slow.id
-    assert {s.id for s in fx.sources.list(fx.project.id)} == {slow.id, fast.id}
-    fx.close()
-
-
-def test_the_same_clip_with_the_same_ranges_is_one_source(tmp_path: Path) -> None:
-    fx = Fixture(tmp_path)
-    clip = fx.clip()
-    selection = [TimeRange(start_seconds=0.5, end_seconds=1.5)]
-    first = fx.sources.register_video(fx.project.id, clip.path, ranges=selection)
-    second = fx.sources.register_video(fx.project.id, clip.path, ranges=selection)
-    assert second == first
-    assert len(fx.sources.list(fx.project.id)) == 1
-    fx.close()
-
-
-def test_the_same_clip_with_different_ranges_is_a_second_source(tmp_path: Path) -> None:
-    """Ranges are the other half of the cut, so they fork identity as the rate does."""
-    fx = Fixture(tmp_path)
-    clip = fx.clip()
-    head = fx.sources.register_video(
-        fx.project.id, clip.path, ranges=[TimeRange(start_seconds=0, end_seconds=1)]
-    )
-    tail = fx.sources.register_video(
-        fx.project.id, clip.path, ranges=[TimeRange(start_seconds=1, end_seconds=2)]
-    )
-    assert head.id != tail.id
-    assert {s.id for s in fx.sources.list(fx.project.id)} == {head.id, tail.id}
-    fx.close()
-
-
-def test_the_same_clip_at_a_different_scale_is_a_second_source(tmp_path: Path) -> None:
-    """The scale is the third cut parameter, so it forks identity as the rate does."""
-    fx = Fixture(tmp_path)
-    clip = fx.clip()
-    native = fx.sources.register_video(fx.project.id, clip.path, scale_percent=100)
-    half = fx.sources.register_video(fx.project.id, clip.path, scale_percent=50)
-    assert half.id != native.id
-    assert half.require_video().scale_percent == 50
-    assert {s.id for s in fx.sources.list(fx.project.id)} == {native.id, half.id}
-    fx.close()
-
-
-def test_a_scale_of_one_hundred_is_the_plain_source(tmp_path: Path) -> None:
-    fx = Fixture(tmp_path)
-    clip = fx.clip()
-    plain = fx.sources.register_video(fx.project.id, clip.path)
-    explicit = fx.sources.register_video(fx.project.id, clip.path, scale_percent=100)
-    assert explicit == plain
-    assert len(fx.sources.list(fx.project.id)) == 1
-    fx.close()
-
-
-def test_range_spelling_variants_collapse_to_one_source(tmp_path: Path) -> None:
-    """Identity compares the canonical form, never what a caller happened to type."""
-    fx = Fixture(tmp_path)
-    clip = fx.clip()
-    messy = fx.sources.register_video(
-        fx.project.id,
-        clip.path,
-        ranges=[
-            TimeRange(start_seconds=1.2, end_seconds=1.8),
-            TimeRange(start_seconds=0.2, end_seconds=1.5),
-        ],
-    )
-    tidy = fx.sources.register_video(
-        fx.project.id, clip.path, ranges=[TimeRange(start_seconds=0.2, end_seconds=1.8)]
-    )
-    assert tidy.id == messy.id
-    assert messy.require_video().ranges == (TimeRange(start_seconds=0.2, end_seconds=1.8),)
-    fx.close()
-
-
-def test_a_selection_covering_the_whole_clip_is_the_plain_source(tmp_path: Path) -> None:
-    """\"Whole clip\" has one identity spelling: the empty selection."""
-    fx = Fixture(tmp_path)
-    clip = fx.clip(duration_seconds=2.0)
-    plain = fx.sources.register_video(fx.project.id, clip.path)
-    covering = fx.sources.register_video(
-        fx.project.id, clip.path, ranges=[TimeRange(start_seconds=0, end_seconds=5)]
-    )
-    assert covering.id == plain.id
-    assert covering.require_video().ranges == ()
-    fx.close()
-
-
-def test_a_ranged_source_rehydrates_its_selection(tmp_path: Path) -> None:
-    fx = Fixture(tmp_path)
-    clip = fx.clip()
-    registered = fx.sources.register_video(
-        fx.project.id, clip.path, ranges=[TimeRange(start_seconds=0.5, end_seconds=1.5)]
-    )
-    fx.close()
-
-    reopened = WorkspaceService.open(tmp_path / "ws")
-    read_back = SourceService(reopened).get(registered.id)
-    assert read_back.require_video().ranges == (TimeRange(start_seconds=0.5, end_seconds=1.5),)
-    reopened.close()
-
-
 def test_differing_capture_params_update_the_source_rather_than_forking_it(
     tmp_path: Path,
 ) -> None:
@@ -327,23 +120,6 @@ def test_differing_capture_params_update_the_source_rather_than_forking_it(
     assert second.id == first.id
     assert second.capture_params == {"lens": "35mm"}
     assert fx.sources.list(fx.project.id) == [second]
-    fx.close()
-
-
-def test_a_replaced_clip_refreshes_its_provenance_and_keeps_its_identity(tmp_path: Path) -> None:
-    """The path is the source; the bytes behind it are what a re-probe is for."""
-    fx = Fixture(tmp_path)
-    clip = fx.clip(fps=10, duration_seconds=2.0)
-    first = fx.sources.register_video(fx.project.id, clip.path, extraction_fps=1.0)
-
-    write_video(clip.path, fps=25, duration_seconds=1.0)
-    second = fx.sources.register_video(fx.project.id, clip.path, extraction_fps=1.0)
-
-    assert second.id == first.id
-    assert second.registered_at == first.registered_at
-    assert second.require_video().metadata.fps == pytest.approx(25)
-    assert second.require_video().metadata.fps != first.require_video().metadata.fps
-    assert len(fx.sources.list(fx.project.id)) == 1
     fx.close()
 
 
@@ -496,14 +272,14 @@ def test_an_image_directory_source_may_not_carry_video_provenance() -> None:
         Source(
             project_id=uuid4(),
             kind=SourceKind.IMAGE_DIRECTORY,
-            path="/data",
+            locator="/data",
             video=_provenance(),
         )
 
 
 def test_a_video_source_must_carry_video_provenance() -> None:
     with pytest.raises(ValidationError, match="must carry video provenance"):
-        Source(project_id=uuid4(), kind=SourceKind.VIDEO, path="/data/clip.mp4")
+        Source(project_id=uuid4(), kind=SourceKind.VIDEO, locator="/data/clip.mp4")
 
 
 def test_the_invariant_survives_assignment_not_only_construction() -> None:
@@ -513,7 +289,7 @@ def test_the_invariant_survives_assignment_not_only_construction() -> None:
     source = Source(
         project_id=uuid4(),
         kind=SourceKind.VIDEO,
-        path="/data/clip.mp4",
+        locator="/data/clip.mp4",
         video=_provenance(),
     )
     with pytest.raises(ValidationError, match="must not carry video provenance"):
@@ -527,12 +303,12 @@ def test_a_naive_registration_timestamp_is_refused() -> None:
         Source(
             project_id=uuid4(),
             kind=SourceKind.IMAGE_DIRECTORY,
-            path="/data",
+            locator="/data",
             registered_at=datetime(2026, 7, 27, 9, 0),
         )
 
 
 def test_require_video_refuses_a_source_that_is_not_a_clip() -> None:
-    source = Source(project_id=uuid4(), kind=SourceKind.IMAGE_DIRECTORY, path="/data")
+    source = Source(project_id=uuid4(), kind=SourceKind.IMAGE_DIRECTORY, locator="/data")
     with pytest.raises(WorkspaceCorrupt, match="no video provenance"):
         source.require_video()

@@ -53,13 +53,17 @@ PUT    /projects/{project_id}/schema/drafts/{kind}        409 STALE_WRITE
 DELETE /projects/{project_id}/schema/drafts/{kind}
 POST   /projects/{project_id}/schema/drafts/{kind}/publish
 POST   /projects/{project_id}/sources/images              multipart
-POST   /projects/{project_id}/sources/video               multipart
 GET    /projects/{project_id}/sources
 GET    /sources/{source_id}
 POST   /sources/{source_id}/ingest-jobs                   launch
 GET    /sources/{source_id}/ingest-jobs
 GET    /ingest-jobs/{job_id}                              poll
 POST   /ingest-jobs/{job_id}/resume
+POST   /projects/{project_id}/video-imports               declare a clip, open a session
+GET    /video-imports/{import_id}                         poll
+POST   /video-imports/{import_id}/frames                  multipart, bounded chunk
+POST   /video-imports/{import_id}/commit                  every expected frame staged
+DELETE /video-imports/{import_id}                         throw the session away, 204
 GET    /projects/{project_id}/assets/{asset_id}
 GET    /projects/{project_id}/assets/{asset_id}/content   bytes
 GET    /projects/{project_id}/assets/{asset_id}/thumbnail bytes
@@ -540,14 +544,15 @@ and the defect is in stored content, so reconcile the annotations and publish ag
 
 **422 - the payload itself is wrong.** A blank name, a schema that declares two classes with one
 name, an annotation that names a class the batch's pinned version does not have. Media failures
-are here as well: `UNSUPPORTED_MEDIA` and `CORRUPT_MEDIA` describe a file that cannot become an
-asset. They are deliberately *not* 415 - 415 is about the request's own `Content-Type`, and these
-are raised while reading a file on disk that the operator pointed at.
+are here as well: `UNSUPPORTED_MEDIA` and `CORRUPT_MEDIA` describe bytes that cannot become an
+asset - a file on disk the operator pointed at, or a video-import frame a client posted. They are
+deliberately *not* 415 - 415 is about the request's own `Content-Type`, and these are raised
+after the server has actually looked at the bytes.
 
 **503 - transient, and waiting helps.** Exactly one error: `WORKSPACE_BUSY`. See below.
 
 **500 - nothing the caller can do.** A corrupt or unreadable workspace, a store constraint no
-service pre-checked, a missing ffmpeg, or a bug.
+service pre-checked, or a bug.
 
 ### The two shapes of 422
 
@@ -585,15 +590,14 @@ sentence. The real message and traceback go to the server log under the same id 
 greps one string, and a response body never becomes a channel for filesystem paths, SQL text, or
 a stack trace.
 
-Nine errors opt out and expose their real message, each because that message *is* the remedy:
+Eight errors opt out and expose their real message, each because that message *is* the remedy:
 
 | Code | Why the message is published |
 | --- | --- |
 | `WORKSPACE_BUSY` | Names the contention; and the whole point is that a retry works. |
 | `WORKSPACE_FORMAT_TOO_NEW` | Says which of the two things happened - a later VisionSet wrote it, or one that numbered its generations differently - and only one of those has a fix. |
 | `WORKSPACE_SCHEMA_MISMATCH` | Names the table and column the workspace lacks. Opaque, this is a 500 with no cause on a route with no connection to it, and the answer is only in the server's log. |
-| `MEDIA_TOOL_UNAVAILABLE` | Carries the install hint. Without it the error says nothing an operator did not suspect. |
-| `LOCAL_INFERENCE_UNAVAILABLE` | Carries the `pip install` for the optional runtime, on the same licence `ffmpeg` gets. |
+| `LOCAL_INFERENCE_UNAVAILABLE` | Carries the `pip install` for the optional runtime it is missing. |
 | `INFERENCE_CONNECTION_NOT_RUNNABLE` | Says which of the two things nothing installed here can run - a recorded driver that is not installed, or a model family (declared by the config, or by the endpoint) no installed driver serves - and lists what is installed instead. A fact about the installation rather than about the request, and one that changes when a driver is installed. |
 | `INFERENCE_OUT_OF_MEMORY` | Names which memory ran out - the device's or the machine's - and the ways off it, which are not the same ways: a full device can be answered by moving the connection to the CPU, and a full machine is only made worse by it. No generic sentence can carry that. |
 | `INFERENCE_ENDPOINT_UNAVAILABLE` | Names the endpoint an `http` connection points at and what it did - unreachable, timed out, a bad status, or a body outside the contract - which is the whole remedy: look at the endpoint, not at this connection or this machine. |
@@ -603,8 +607,8 @@ A **mapped** 5xx keeps its own code (`WORKSPACE_CORRUPT`, `CONSTRAINT_VIOLATED`)
 rule covers - a bug - gets `INTERNAL_ERROR`. That difference is how the two are told apart in a
 log without reading the message.
 
-`MEDIA_TOOL_UNAVAILABLE` is a 500 rather than a 503 on purpose: 503 promises that waiting helps,
-and no amount of retrying installs ffmpeg.
+`LOCAL_INFERENCE_UNAVAILABLE` is a 500 rather than a 503 on purpose: 503 promises that waiting
+helps, and no amount of retrying installs the optional runtime it names.
 
 ## Retrying
 
@@ -626,13 +630,13 @@ argument for branching on `code`.
 | Status | Codes |
 | --- | --- |
 | **401** | `UNAUTHORIZED` — with a `WWW-Authenticate: Bearer` challenge |
-| **404** | `PROJECT_NOT_FOUND` · `SCHEMA_NOT_FOUND` · `SCHEMA_DRAFT_NOT_FOUND` · `BATCH_NOT_FOUND` · `JOB_NOT_FOUND` · `INGEST_JOB_NOT_FOUND` · `BACKGROUND_JOB_NOT_FOUND` · `ASSET_NOT_FOUND` · `SOURCE_NOT_FOUND` · `DATASET_NOT_FOUND` · `ANNOTATION_NOT_FOUND` · `RELEASE_NOT_FOUND` · `TOKEN_NOT_FOUND` · `INFERENCE_CONNECTION_NOT_FOUND` · `ASSET_NOT_IN_JOB` · `ASSET_NOT_IN_DATASET` · `NO_SPLIT_RECIPE` · `EXPORT_FORMAT_NOT_FOUND` · `EXPORT_TARGET_NOT_FOUND` · `THUMBNAIL_NOT_CACHED` · `PREPROCESSING_RECIPE_NOT_FOUND` · `NOT_FOUND` (no such route) |
+| **404** | `PROJECT_NOT_FOUND` · `SCHEMA_NOT_FOUND` · `SCHEMA_DRAFT_NOT_FOUND` · `BATCH_NOT_FOUND` · `JOB_NOT_FOUND` · `INGEST_JOB_NOT_FOUND` · `VIDEO_IMPORT_NOT_FOUND` · `BACKGROUND_JOB_NOT_FOUND` · `ASSET_NOT_FOUND` · `SOURCE_NOT_FOUND` · `DATASET_NOT_FOUND` · `ANNOTATION_NOT_FOUND` · `RELEASE_NOT_FOUND` · `TOKEN_NOT_FOUND` · `INFERENCE_CONNECTION_NOT_FOUND` · `ASSET_NOT_IN_JOB` · `ASSET_NOT_IN_DATASET` · `NO_SPLIT_RECIPE` · `EXPORT_FORMAT_NOT_FOUND` · `EXPORT_TARGET_NOT_FOUND` · `THUMBNAIL_NOT_CACHED` · `PREPROCESSING_RECIPE_NOT_FOUND` · `NOT_FOUND` (no such route) |
 | **405** | `METHOD_NOT_ALLOWED` |
-| **409** | `PROJECT_NAME_TAKEN` · `RELEASE_TAG_TAKEN` · `TOKEN_NAME_TAKEN` · `INFERENCE_CONNECTION_NAME_TAKEN` · `PREPROCESSING_RECIPE_NAME_TAKEN` · `WORKSPACE_ALREADY_EXISTS` · `WORKSPACE_NOT_EMPTY` · `SCHEMA_VERSION_CONFLICT` · `INVALID_TRANSITION` · `STALE_WRITE` · `BATCH_NOT_EDITABLE` · `BATCH_IMMUTABLE` · `BATCH_NOT_IN_ANNOTATION` · `ASSET_NOT_WRITABLE` · `JOB_FINISHED` · `BATCH_NOT_COMPLETE` · `JOB_NOT_COMPLETE` · `EMPTY_BATCH` · `EMPTY_RELEASE` · `RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA` · `CONFIRMATION_REQUIRED` · `DESTRUCTIVE_SCHEMA_CHANGE` · `SCHEMA_CHANGE_WOULD_ORPHAN` · `SCHEMA_HAS_NO_DETECTABLE_CLASS` · `UNSERIALIZABLE_MANIFEST` · `LOSSY_EXPORT_NOT_CONSENTED` · `EXPORT_SOURCE_UNREADABLE` · `INFERENCE_CONNECTION_NOT_DOWNLOADABLE` · `INFERENCE_CONNECTION_NOT_CHECKABLE` · `INFERENCE_CONNECTION_NOT_TESTABLE` · `INFERENCE_CONNECTION_MODEL_FIXED` · `WEIGHTS_DAMAGED` · `INFERENCE_CONNECTION_NOT_SET_UP` · `AUGMENTATION_REQUIRES_SPLIT` · `PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY` |
-| **422** | `VALIDATION_ERROR` · `ASSET_NOT_IN_BATCH` · `ANNOTATION_NOT_FROM_MODEL` · `INVALID_NAME` · `INFERENCE_CONNECTION_INVALID` · `INVALID_SCHEMA` · `UNSUPPORTED_GEOMETRY` · `INVALID_ANNOTATION` · `LABEL_CLASS_NOT_IN_SCHEMA` · `DISALLOWED_GEOMETRY` · `ANNOTATION_GEOMETRY_OUT_OF_BOUNDS` · `DUPLICATE_CLASSIFICATION_TAG` · `MISSING_REQUIRED_ATTRIBUTE` · `UNKNOWN_ATTRIBUTE` · `INVALID_ATTRIBUTE_VALUE` · `INVALID_PARTITION` · `UNKNOWN_JOB_TYPE` · `MEDIA_ERROR` · `UNSUPPORTED_MEDIA` · `CORRUPT_MEDIA` · `UNSUPPORTED_PROMPT` · `PROMPT_POINT_OUT_OF_BOUNDS` · `GEOMETRY_NOT_PRODUCED` |
+| **409** | `PROJECT_NAME_TAKEN` · `RELEASE_TAG_TAKEN` · `TOKEN_NAME_TAKEN` · `INFERENCE_CONNECTION_NAME_TAKEN` · `PREPROCESSING_RECIPE_NAME_TAKEN` · `WORKSPACE_ALREADY_EXISTS` · `WORKSPACE_NOT_EMPTY` · `SCHEMA_VERSION_CONFLICT` · `INVALID_TRANSITION` · `STALE_WRITE` · `VIDEO_IMPORT_NOT_OPEN` · `VIDEO_IMPORT_INCOMPLETE` · `FRAME_CONTENT_CONFLICT` · `BATCH_NOT_EDITABLE` · `BATCH_IMMUTABLE` · `BATCH_NOT_IN_ANNOTATION` · `ASSET_NOT_WRITABLE` · `JOB_FINISHED` · `BATCH_NOT_COMPLETE` · `JOB_NOT_COMPLETE` · `EMPTY_BATCH` · `EMPTY_RELEASE` · `RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA` · `CONFIRMATION_REQUIRED` · `DESTRUCTIVE_SCHEMA_CHANGE` · `SCHEMA_CHANGE_WOULD_ORPHAN` · `SCHEMA_HAS_NO_DETECTABLE_CLASS` · `UNSERIALIZABLE_MANIFEST` · `LOSSY_EXPORT_NOT_CONSENTED` · `EXPORT_SOURCE_UNREADABLE` · `INFERENCE_CONNECTION_NOT_DOWNLOADABLE` · `INFERENCE_CONNECTION_NOT_CHECKABLE` · `INFERENCE_CONNECTION_NOT_TESTABLE` · `INFERENCE_CONNECTION_MODEL_FIXED` · `WEIGHTS_DAMAGED` · `INFERENCE_CONNECTION_NOT_SET_UP` · `AUGMENTATION_REQUIRES_SPLIT` · `PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY` |
+| **422** | `VALIDATION_ERROR` · `ASSET_NOT_IN_BATCH` · `FRAME_ORDINAL_OUT_OF_RANGE` · `ANNOTATION_NOT_FROM_MODEL` · `INVALID_NAME` · `INFERENCE_CONNECTION_INVALID` · `INVALID_SCHEMA` · `UNSUPPORTED_GEOMETRY` · `INVALID_ANNOTATION` · `LABEL_CLASS_NOT_IN_SCHEMA` · `DISALLOWED_GEOMETRY` · `ANNOTATION_GEOMETRY_OUT_OF_BOUNDS` · `DUPLICATE_CLASSIFICATION_TAG` · `MISSING_REQUIRED_ATTRIBUTE` · `UNKNOWN_ATTRIBUTE` · `INVALID_ATTRIBUTE_VALUE` · `INVALID_PARTITION` · `UNKNOWN_JOB_TYPE` · `MEDIA_ERROR` · `UNSUPPORTED_MEDIA` · `CORRUPT_MEDIA` · `UNSUPPORTED_PROMPT` · `PROMPT_POINT_OUT_OF_BOUNDS` · `GEOMETRY_NOT_PRODUCED` |
 | **502** | `INFERENCE_ENDPOINT_UNAVAILABLE` |
 | **503** | `WORKSPACE_BUSY` |
-| **500** | `WORKSPACE_CORRUPT` · `NOT_A_WORKSPACE` · `WORKSPACE_FORMAT_TOO_NEW` · `WORKSPACE_SCHEMA_MISMATCH` · `ENTITY_NOT_FOUND` · `ENTITY_ALREADY_EXISTS` · `CONSTRAINT_VIOLATED` · `MEDIA_TOOL_UNAVAILABLE` · `LOCAL_INFERENCE_UNAVAILABLE` · `INFERENCE_CONNECTION_NOT_RUNNABLE` · `INFERENCE_OUT_OF_MEMORY` · `EXPORT_TARGET_CONFLICT` · `INVALID_EXPORT_TARGET` · `PREPROCESSING_DRIVER_NOT_FOUND` · `INTERNAL_ERROR` |
+| **500** | `WORKSPACE_CORRUPT` · `NOT_A_WORKSPACE` · `WORKSPACE_FORMAT_TOO_NEW` · `WORKSPACE_SCHEMA_MISMATCH` · `ENTITY_NOT_FOUND` · `ENTITY_ALREADY_EXISTS` · `CONSTRAINT_VIOLATED` · `LOCAL_INFERENCE_UNAVAILABLE` · `INFERENCE_CONNECTION_NOT_RUNNABLE` · `INFERENCE_OUT_OF_MEMORY` · `EXPORT_TARGET_CONFLICT` · `INVALID_EXPORT_TARGET` · `PREPROCESSING_DRIVER_NOT_FOUND` · `INTERNAL_ERROR` |
 
 Every row but `VALIDATION_ERROR`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `UNAUTHORIZED` and
 `INTERNAL_ERROR` — the five the framework and the auth guard raise — comes from `ERROR_RULES`

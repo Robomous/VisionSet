@@ -8,11 +8,11 @@ be downloaded afterward, and there is no separate frontend to serve.
 | | |
 | --- | --- |
 | **Python** | 3.12 or newer |
-| **ffmpeg** | only for video - see below |
 | Disk | your images, plus a copy: assets are content-addressed into the workspace |
 
-Nothing else. No database server, no Node, no Docker. The metadata lives in one SQLite file
-inside the workspace, and the pixels live beside it.
+Nothing else. No database server, no Node, no Docker, and no media binary — not even for
+video; see below. The metadata lives in one SQLite file inside the workspace, and the pixels
+live beside it.
 
 ## Install
 
@@ -53,20 +53,16 @@ for the current set rather than trusting a list written down somewhere - third-p
 distributions register into the same entry-point group, so what a given installation can write
 is a property of that installation.
 
-## ffmpeg, and when you need it
+## Video, and where it is decoded
 
-**Only for video.** Images need nothing. VisionSet shells out to `ffmpeg` and `ffprobe` to read a
-clip's metadata and to cut it into frames, so a source registered from a `.mp4` needs the binary
-on the `PATH`:
+VisionSet needs no media binary at all, for images or for video. There is nothing to install and
+nothing this page can tell you to run.
 
-```bash
-brew install ffmpeg                     # macOS
-sudo apt-get install -y ffmpeg          # Debian / Ubuntu
-```
-
-A missing binary is reported as `MediaToolUnavailable` with the same hint, at the moment a video
-is registered rather than at import - so a machine without ffmpeg still opens workspaces, ingests
-images, annotates, publishes and exports.
+Importing a video is a **browser** capability: the browser demuxes and decodes it with its own
+built-in `WebCodecs` support and turns it into the image assets a project is made of before the
+server ever hears about it. There is no server-side decoder behind that, and no fallback - a
+browser that cannot decode a given codec says so, in the browser, rather than quietly handing the
+file to a server that would have decoded it instead. See [ingest.md](ingest.md).
 
 ## Running a model on this machine
 
@@ -83,8 +79,8 @@ gigabytes, most of it CUDA - which is exactly why it is not in the base install.
 command on every platform: the macOS wheels it installs carry Apple Silicon GPU support already,
 so a Mac needs no second index and no build flag to run a connection on `mps`. Without it you can still create a
 local connection, list it, and see what it is configured for; what you cannot do is fetch its
-weights or ask it to predict. Both refusals name the command above rather than saying
-"unavailable", the way a missing `ffmpeg` does.
+weights or ask it to predict. Both refusals name the command above rather than simply saying
+"unavailable".
 
 **Installing it downloads no model.** Weights arrive when you run `visionset inference download`,
 never at install time, never at startup, and never on the way to anything else. They land inside

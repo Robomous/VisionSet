@@ -479,6 +479,8 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
             height: 720,
             ranges: [],
             scale_percent: 100,
+            policy_version: 1,
+            materializer: "mediabunny/1.56.1",
           },
         } satisfies Wire["SourceOut"],
       });

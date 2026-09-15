@@ -358,6 +358,8 @@ class SqlUnitOfWork:
         self.schemas = SqlRepository(session, m.SCHEMAS)
         self.schema_drafts = SqlRepository(session, m.SCHEMA_DRAFTS)
         self.sources = SqlRepository(session, m.SOURCES)
+        self.video_imports = SqlRepository(session, m.VIDEO_IMPORTS)
+        self.video_import_frames = SqlRepository(session, m.VIDEO_IMPORT_FRAMES)
         self.ingest_jobs = SqlRepository(session, m.INGEST_JOBS)
         self.assets = SqlRepository(session, m.ASSETS)
         self.batches = SqlRepository(session, m.BATCHES)
@@ -577,6 +579,39 @@ class SqlUnitOfWork:
             .where(t.BatchAssetRow.asset_id.in_(held))
         )
         return [asset_id for asset_id in wanted if asset_id in held]
+
+    def recount_video_import_frames(self, import_id: UUID, *, at: datetime) -> int:
+        """``COUNT(*)`` as a subquery inside the ``UPDATE`` — see the port for why.
+
+        ``synchronize_session=False`` because the criteria carry a subquery the
+        evaluator cannot run, and because nothing in this transaction reads the
+        session back through the identity map: the value is read below as a bare
+        column, which is real SQL rather than a cached attribute.
+        """
+        counted = (
+            select(func.count())
+            .select_from(t.VideoImportFrameRow)
+            .where(t.VideoImportFrameRow.import_id == import_id)
+            .scalar_subquery()
+        )
+        result = cast(
+            "CursorResult[Any]",
+            self._session.execute(
+                update(t.VideoImportRow)
+                .where(t.VideoImportRow.id == import_id)
+                .values(received_frame_count=counted, updated_at=at.isoformat())
+                .execution_options(synchronize_session=False)
+            ),
+        )
+        if result.rowcount == 0:
+            raise EntityNotFound(f"no video import {import_id}")
+        return int(
+            self._session.scalars(
+                select(t.VideoImportRow.received_frame_count).where(
+                    t.VideoImportRow.id == import_id
+                )
+            ).one()
+        )
 
     def batches_holding(self, asset_id: UUID) -> list[UUID]:
         """The port's one non-repository read — see its docstring for why.

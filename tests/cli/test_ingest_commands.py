@@ -1,10 +1,10 @@
-"""``visionset ingest`` — one path in, one batch out, and the per-file report.
+"""``visionset ingest`` — one directory in, one batch out, and the per-file report.
 
-The two things worth pinning: the **dispatch** on ``is_dir()`` (one command
-standing in for two registration methods), and that the failure modes which are
-*not* ``VisionSetError`` — a missing path, a non-positive rate, ``--fps`` on a
-folder — are refused by Click at exit 2 rather than reaching the kernel and
-printing a traceback.
+The two things worth pinning: that a **video is refused here by name**, pointing
+at browser import rather than falling back to anything, and that the failure
+modes which are *not* ``VisionSetError`` — a missing path, a file where a
+directory belongs — are refused by Click at exit 2 rather than reaching the
+kernel and printing a traceback.
 """
 
 from __future__ import annotations
@@ -22,7 +22,6 @@ from tests.cli._flow import (
     usage_error,
     workspace,
 )
-from tests.fixtures.media import require_ffmpeg, write_corrupt_video, write_video
 
 from visionset.kernel.domain import SourceKind
 from visionset.kernel.services import (
@@ -170,138 +169,47 @@ def test_a_path_that_is_not_there_exits_two(root: Path, tmp_path: Path) -> None:
     assert result.exit_code == 2, result.output
 
 
-def test_a_non_positive_rate_exits_two(root: Path, tmp_path: Path) -> None:
-    # ``register_video`` raises a bare ``ValueError`` for this, and Typer cannot
-    # express ``gt=0`` — hence the explicit check.
-    clip = tmp_path / "clip.mp4"
-    clip.write_bytes(b"")
-    result = run(root, "ingest", str(clip), "-p", "road-signs", "--fps", "0")
+def test_a_video_is_refused_and_told_where_import_lives(root: Path, tmp_path: Path) -> None:
+    """The one refusal this command exists to make well.
+
+    A usage error, not a traceback and not a fallback: nothing in this process
+    decodes video, so the answer has to name the screen that does. The message is
+    asserted because "unsupported" on its own would send somebody looking for a
+    flag that is never coming.
+    """
+    clip = tmp_path / "drive.mp4"
+    clip.write_bytes(b"not really a video, and it never gets read")
+
+    result = run(root, "ingest", str(clip), "-p", "road-signs")
+
     assert result.exit_code == 2, result.output
-    assert "greater than zero" in usage_error(result)
+    message = usage_error(result)
+    assert "is not a directory" in message
+    assert "imported in the browser" in message
+    assert "visionset server" in message
+    assert "Ingest screen" in message
 
 
-def test_fps_on_a_directory_exits_two(root: Path, tmp_path: Path) -> None:
-    # A rate has no meaning for stills, and silently ignoring it would let
-    # somebody believe they had chosen one.
-    result = run(root, "ingest", str(stills(tmp_path)), "-p", "road-signs", "--fps", "5")
+def test_a_file_that_is_not_a_video_gets_the_same_refusal(root: Path, tmp_path: Path) -> None:
+    """The branch is ``is_dir()``, not a suffix list — and the sentence stays true.
+
+    Pointing ``ingest`` at one photograph has always been a mistake; it is the
+    folder that is the source. The message says "a directory of still images",
+    which answers this case as well as the clip one.
+    """
+    directory = stills(tmp_path)
+    single = next(iter(sorted(directory.iterdir())))
+
+    result = run(root, "ingest", str(single), "-p", "road-signs")
+
     assert result.exit_code == 2, result.output
-    assert "directory of stills" in usage_error(result)
-
-
-def test_range_on_a_directory_exits_two(root: Path, tmp_path: Path) -> None:
-    result = run(root, "ingest", str(stills(tmp_path)), "-p", "road-signs", "--range", "0:1")
-    assert result.exit_code == 2, result.output
-    assert "directory of stills" in usage_error(result)
-
-
-def test_a_malformed_range_exits_two(root: Path, tmp_path: Path) -> None:
-    clip = tmp_path / "clip.mp4"
-    clip.write_bytes(b"")
-    result = run(root, "ingest", str(clip), "-p", "road-signs", "--range", "banana")
-    assert result.exit_code == 2, result.output
-    assert "START:END" in usage_error(result)
-
-
-def test_an_inverted_range_exits_two(root: Path, tmp_path: Path) -> None:
-    # ``TimeRange`` refuses with a bare ``ValidationError``, which is not a
-    # ``VisionSetError`` and would print a traceback.
-    clip = tmp_path / "clip.mp4"
-    clip.write_bytes(b"")
-    result = run(root, "ingest", str(clip), "-p", "road-signs", "--range", "2:1")
-    assert result.exit_code == 2, result.output
-    assert "end after it starts" in usage_error(result)
+    assert "directory of still images" in usage_error(result)
 
 
 def test_an_unknown_project_exits_one(root: Path, tmp_path: Path) -> None:
     result = run(root, "ingest", str(stills(tmp_path)), "-p", "nope")
     assert result.exit_code == 1, result.output
     assert result.stdout == ""
-
-
-# --- a clip ------------------------------------------------------------------
-
-
-def test_a_video_registers_at_the_rate_it_was_given(root: Path, tmp_path: Path) -> None:
-    require_ffmpeg()
-    # 96x72 rather than the fixture default: below roughly that, ``testsrc``'s
-    # per-frame movement falls under what the encoder resolves, consecutive
-    # frames come out byte-identical, and content addressing deduplicates them —
-    # which would read as this command losing frames.
-    clip = write_video(tmp_path / "clip.mp4", size=(96, 72), fps=10, duration_seconds=2.0)
-    document = payload(root, "ingest", str(clip.path), "-p", "road-signs", "--fps", "5")
-    assert document["source"]["kind"] == "video"
-    assert document["source"]["video"]["extraction_fps"] == 5.0
-    assert document["created"] == 10
-
-
-def test_a_video_registers_the_ranges_it_was_given(root: Path, tmp_path: Path) -> None:
-    """Five grid points sit in [0.5, 1.5) at 5 fps, and `--json` echoes the canon."""
-    require_ffmpeg()
-    clip = write_video(tmp_path / "clip.mp4", size=(96, 72), fps=10, duration_seconds=2.0)
-    document = payload(
-        root,
-        "ingest",
-        str(clip.path),
-        "-p",
-        "road-signs",
-        "--fps",
-        "5",
-        "--range",
-        "0.5:1.5",
-    )
-    assert document["source"]["video"]["ranges"] == [{"start_seconds": 0.5, "end_seconds": 1.5}]
-    assert document["created"] == 5
-
-
-def test_a_video_registers_the_scale_it_was_given(root: Path, tmp_path: Path) -> None:
-    require_ffmpeg()
-    clip = write_video(tmp_path / "clip.mp4", size=(96, 72), fps=10, duration_seconds=2.0)
-    document = payload(root, "ingest", str(clip.path), "-p", "road-signs", "--scale", "50")
-    assert document["source"]["video"]["scale_percent"] == 50
-
-
-def test_scale_on_a_directory_exits_two(root: Path, tmp_path: Path) -> None:
-    result = run(root, "ingest", str(stills(tmp_path)), "-p", "road-signs", "--scale", "50")
-    assert result.exit_code == 2, result.output
-    assert "directory of stills" in usage_error(result)
-
-
-def test_an_out_of_range_scale_exits_two(root: Path, tmp_path: Path) -> None:
-    result = run(root, "ingest", str(stills(tmp_path)), "-p", "road-signs", "--scale", "0")
-    assert result.exit_code == 2, result.output
-
-
-def test_a_damaged_clip_says_how_much_of_it_arrived(root: Path, tmp_path: Path) -> None:
-    """The partial report on stderr, where the person who typed the command is
-    looking.
-
-    Not on stdout: that carries the batch id and nothing else, which is what makes
-    `BATCH=$(visionset ingest …)` work — and a damaged clip still fills a batch.
-    """
-    require_ffmpeg()
-    clip = write_corrupt_video(tmp_path / "broken.mp4", size=(96, 72), fps=10, duration_seconds=2.0)
-
-    result = run(root, "ingest", str(clip.path), "-p", "road-signs", "--fps", "5")
-
-    assert result.exit_code == 0, result.output
-    assert "broken.mp4" in result.stderr
-    assert "re-ingest" in result.stderr
-    assert "\n" not in result.stdout.strip()
-
-
-def test_json_carries_the_partial_counts(root: Path, tmp_path: Path) -> None:
-    """Wire parity: the CLI's `--json` and the REST job publish the same numbers."""
-    require_ffmpeg()
-    clip = write_corrupt_video(tmp_path / "broken.mp4", size=(96, 72), fps=10, duration_seconds=2.0)
-
-    document = payload(root, "ingest", str(clip.path), "-p", "road-signs", "--fps", "5")
-
-    assert document["failures"][0]["kind"] == "partial"
-    assert document["failures"][0]["frames_produced"] == document["created"] > 0
-    assert document["failures"][0]["frames_expected_estimate"] == 10
-    # A partial is not a file the run could not read, so it is not in that count.
-    assert document["failed"] == 0
-    assert document["partial"] == 1
 
 
 # --- the preview backfill ----------------------------------------------------

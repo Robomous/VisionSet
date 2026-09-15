@@ -1,17 +1,7 @@
 # The dev stack's Python image. Every dependency is installed here, so `docker compose up`
 # starts a server instead of building one. Dev only: the source arrives by bind mount and
 # uvicorn runs with --reload.
-#
-# Trixie, not bookworm: bookworm's ffmpeg is 5.1, which lacks `-display_rotation` and
-# misclassifies a truncated clip. Read versions off `ffmpeg -version`, not the package
-# version, whose leading `7:` is a Debian epoch.
 FROM ghcr.io/astral-sh/uv:python3.12-trixie-slim
-
-# ffmpeg is a binary, not a Python dependency, so `uv sync` cannot bring it. Without it the
-# image serves stills fine and answers MEDIA_TOOL_UNAVAILABLE on the first video.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
 
 # The venv lives outside /workspace, which the bind mount shadows at run time.
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv \

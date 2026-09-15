@@ -45,10 +45,6 @@ jobs:
   python:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      # ffmpeg is installed below. If that ever breaks, the video tests must go red — a
-      # silently skipped video test looks exactly like a passing one.
-      VISIONSET_REQUIRE_FFMPEG: "1"
     steps:
       # `persist-credentials: false` on every checkout in this file, and the reason
       # is the step that comes after it rather than this one. By default the action
@@ -63,44 +59,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-
-      # The ubuntu-24.04 runner routes apt through /etc/apt/apt-mirrors.txt with
-      # azure.archive.ubuntu.com first. When that mirror degrades it does not fail,
-      # it stalls: apt pays a timeout per index before falling back, which is how a
-      # fifteen-second step became a fifty-minute one and held a pull request behind
-      # a check that was never going to arrive. Pin the fallback as the only mirror.
-      # It is the canonical archive, and a mirrorlist whose first entry can silently
-      # cost an hour is not a mirrorlist worth keeping.
-      #
-      # One file at a time, because the layout moves: this image carries `.sources`
-      # and no `.list`, and it has been the other way round. Patching them in a single
-      # `sed` reads as tidier and is the trap — an unmatched glob fails the whole
-      # invocation, so one absent path leaves *every* file unpatched while the step
-      # still reports success, which is the silent half-fix this exists to prevent.
-      # The `[ -f ]` guard makes each file independent and makes an absent one a
-      # no-op. The pattern matches the host alone, with no scheme, so it holds whether
-      # the entry is written http or https.
-      - name: Pin apt to archive.ubuntu.com
-        run: |
-          for f in /etc/apt/apt-mirrors.txt /etc/apt/sources.list \
-                   /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
-            [ -f "$f" ] || continue
-            sudo sed -i 's|azure\.archive\.ubuntu\.com|archive.ubuntu.com|g' "$f"
-          done
-
-      # `-o` options rather than bare `apt-get`, because the pin above removes the
-      # mirror that stalls and these bound what any *other* mirror can cost. A
-      # fifteen-second ceiling per request with three retries turns an unreachable
-      # index into seconds of noise instead of an unbounded wait; without them apt's
-      # own default is patient enough to outlast the job.
-      #
-      # ffmpeg is installed rather than assumed: unlike the browsers, it is not in
-      # the runner image, and the video fixtures shell out to it.
-      - name: Install ffmpeg
-        run: |
-          sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=15
-          sudo apt-get install -y --no-install-recommends \
-            -o Acquire::Retries=3 -o Acquire::http::Timeout=15 ffmpeg
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -147,8 +105,8 @@ jobs:
       - name: SDK end-to-end example
         run: uv run python examples/sdk_end_to_end.py
 
-      # The ingest half of the same argument, and the one that needs the ffmpeg
-      # installed above: this example generates its own clip.
+      # The ingest half of the same argument: stills only, so it needs nothing this
+      # job does not already have.
       - name: Ingest end-to-end example
         run: uv run python examples/ingest_end_to_end.py
 
@@ -156,7 +114,7 @@ jobs:
   # ways from outside the process. One job per surface rather than three steps in
   # one, so a red X names the surface that broke; `fail-fast: false` is what keeps
   # one broken leg from cancelling the other two and reporting on a third of the
-  # criterion. Stills only in all three, so none of them needs ffmpeg.
+  # criterion. Stills only in all three.
   #
   # Each Python leg also runs inside `uv run pytest` above, as a smoke test
   # asserting on the frozen Summary it returns. This is the other half of that
@@ -325,6 +283,7 @@ jobs:
       - name: Build the workspace packages
         run: |
           pnpm --filter @visionset/annotator build
+          pnpm --filter @visionset/media build
           pnpm --filter @visionset/ui-core build
 
       # Four workers to match the runner's four cores; the config's own CI
@@ -339,6 +298,63 @@ jobs:
         with:
           name: playwright-report
           path: frontend/app/playwright-report/
+          retention-days: 7
+
+  # `@visionset/media`'s mediabunny adapter, in a real Chromium — jsdom has none of
+  # `VideoDecoder`, `OffscreenCanvas` or a module worker, the three things this suite
+  # actually exercises (see `frontend/media/playwright.media.config.ts`). The config
+  # builds the package and serves its own `dist/` itself (`webServer.command`), so
+  # this job only needs to install and run it — no app build, no port resolution:
+  # the config derives its own from the worktree, the same scheme
+  # `frontend/app/e2e-ports.ts` uses.
+  media-e2e:
+    name: media e2e (chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Keyed on the version the lockfile actually resolved — the same reasoning as
+      # the annotator e2e job's own cache key.
+      - name: Resolve the Playwright version
+        id: playwright
+        run: |
+          version=$(node -p "require('./frontend/media/node_modules/@playwright/test/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache browsers
+        id: browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      # No `--with-deps` — the annotator e2e job's install step carries the full
+      # reasoning; it applies unchanged here.
+      - name: Install chromium
+        if: steps.browsers.outputs.cache-hit != 'true'
+        run: pnpm --filter @visionset/media exec playwright install chromium
+
+      - name: Run the media browser suite
+        run: pnpm --filter @visionset/media test:browser
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: media-playwright-report
+          path: frontend/media/playwright-report/
           retention-days: 7
 
   # #59: the whole cycle in a browser, against a real server and a real kernel.
@@ -421,7 +437,8 @@ jobs:
   #
   # The wheel and sdist are uploaded from every build, so a main build always
   # leaves something installable behind. VISIONSET_REQUIRE_WHEEL turns the local
-  # skip into an error here, the VISIONSET_REQUIRE_FFMPEG rule.
+  # skip into an error here, the same require-not-skip pattern this file uses for
+  # every optional runtime.
   wheel:
     name: wheel (build, install, serve)
     runs-on: ubuntu-latest
@@ -492,29 +509,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-
-      # The mirror pin, argued in the `python` job at the top of this file.
-      - name: Pin apt to archive.ubuntu.com
-        run: |
-          for f in /etc/apt/apt-mirrors.txt /etc/apt/sources.list \
-                   /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
-            [ -f "$f" ] || continue
-            sudo sed -i 's|azure\.archive\.ubuntu\.com|archive.ubuntu.com|g' "$f"
-          done
-
-      # `-o` options rather than bare `apt-get`, because the pin above removes the
-      # mirror that stalls and these bound what any *other* mirror can cost. A
-      # fifteen-second ceiling per request with three retries turns an unreachable
-      # index into seconds of noise instead of an unbounded wait; without them apt's
-      # own default is patient enough to outlast the job.
-      #
-      # ffmpeg is installed rather than assumed: unlike the browsers, it is not in
-      # the runner image, and the video fixtures shell out to it.
-      - name: Install ffmpeg
-        run: |
-          sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=15
-          sudo apt-get install -y --no-install-recommends \
-            -o Acquire::Retries=3 -o Acquire::http::Timeout=15 ffmpeg
 
       - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
 
@@ -604,9 +598,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      # A missing runtime is an error rather than a skip, the
-      # VISIONSET_REQUIRE_FFMPEG rule: a job that exists to exercise the runtime
-      # and quietly exercised nothing looks exactly like a passing one.
+      # A missing runtime is an error rather than a skip, the same rule
+      # VISIONSET_REQUIRE_WHEEL uses above: a job that exists to exercise the
+      # runtime and quietly exercised nothing looks exactly like a passing one.
       #
       # It says nothing about a missing *GPU*. This runner has no CUDA device and
       # never will, so the one test that reproduces the half-precision finding on
@@ -657,7 +651,7 @@ jobs:
   #
   # VISIONSET_REQUIRE_ULTRALYTICS turns the local skip into an error, so a broken
   # install goes red rather than quietly shrinking the suite. Same rule, same
-  # reason, as VISIONSET_REQUIRE_FFMPEG in the python job.
+  # reason, as VISIONSET_REQUIRE_WHEEL in the wheel job.
   #
   # It runs the smoke FILES, never the suite, and that is not thrift. The ultralytics
   # wheel ships a top-level `tests` package — `__init__.py`, `conftest.py` and
@@ -887,7 +881,8 @@ jobs:
 
   # The only job that touches docker/. Every other job installs the environment its
   # own way, so until this existed the dev stack was unverified by construction —
-  # which is how its image came to be missing ffmpeg without a single red build.
+  # which is how its image once came to be missing a binary the dev stack depended
+  # on, without a single red build.
   #
   # The image, not the compose file: `up` would need the frontend image, nginx and
   # a browser to say anything, while what can actually rot here is what the api
@@ -913,48 +908,24 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Both binaries are on PATH
-        run: |
-          docker run --rm visionset-api-dev:ci ffprobe -version
-          docker run --rm visionset-api-dev:ci ffmpeg -version
-
-      # The assertion that means something. A version banner proves a package is
-      # installed; this proves the kernel can reach it — `_require_tool`, the probe,
-      # the frame extraction, PYTHONPATH and the dev-group venv, all of it. Run the
-      # way docker/compose.yaml runs the container, source bind-mounted at
-      # /workspace, so a change to either file is exercised the way it will be used.
-      #
-      # VISIONSET_REQUIRE_FFMPEG=1 for the reason the `python` job sets it: without
-      # it a missing binary skips the suite, and a silently skipped video test looks
-      # exactly like a passing one — which is precisely the failure being guarded.
-      #
-      # `--user` on both bind-mounting steps, and it is the same argument the compose
-      # file makes: a container writing into a mounted tree as root leaves files
-      # behind that their owner cannot remove. A runner is thrown away, so what is at
-      # stake here is not cleanup but agreement — this is the one place the image is
-      # exercised the way the stack runs it, and an image that only works as root
-      # would pass a gate that never tried anything else. A runner checks out as its
-      # own uid rather than 1000, so the flag also proves the image does not depend
-      # on the id it was built for. HOME with it, because the home directory the
-      # image creates belongs to that other id.
-      - name: The image can decode video
-        run: |
-          docker run --rm \
-            --user "$(id -u):$(id -g)" \
-            -e HOME=/tmp \
-            -v "$PWD:/workspace" \
-            -e VISIONSET_REQUIRE_FFMPEG=1 \
-            visionset-api-dev:ci \
-            pytest tests/kernel/test_video_processor.py -q
-
-      # The same shape of gap as the ffmpeg one above, and it had the same cause:
-      # every other job installs visionset, so every entry-point assertion in the
-      # suite was true by construction everywhere it was ever run, and none of them
-      # ran here. The image shipped reaching the source by PYTHONPATH and installing
-      # no distribution metadata — which cost the dev stack every one of its export
+      # The same shape of gap this job exists to catch: every other job installs
+      # visionset, so every entry-point assertion in the suite was true by
+      # construction everywhere it was ever run, and none of them ran here. The
+      # image shipped reaching the source by PYTHONPATH and installing no
+      # distribution metadata — which cost the dev stack every one of its export
       # formats and stamped "0.0.0" into published releases, without a red build.
       #
-      # Bind-mounted like the step above so it exercises the image the way
+      # `--user`, and it is the same argument the compose file makes: a container
+      # writing into a mounted tree as root leaves files behind that their owner
+      # cannot remove. A runner is thrown away, so what is at stake here is not
+      # cleanup but agreement — this is the one place the image is exercised the
+      # way the stack runs it, and an image that only works as root would pass a
+      # gate that never tried anything else. A runner checks out as its own uid
+      # rather than 1000, so the flag also proves the image does not depend on the
+      # id it was built for. HOME with it, because the home directory the image
+      # creates belongs to that other id.
+      #
+      # Bind-mounted so it exercises the image the way
       # docker/compose.yaml runs it. `tests/formats/test_entry_points.py` is here
       # deliberately as well as in the `python` job: it was already the discovery
       # test, and *where* it ran was the whole of what it was missing.

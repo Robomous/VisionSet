@@ -1,48 +1,42 @@
 /**
- * Clip ranges, mirrored from the kernel: the canonical form and the one count.
- *
- * The kernel's `canonical_ranges` and `expected_frames` (kernel/domain/source.py)
- * decide identity and what extraction emits; these are their TypeScript
- * spellings, for the advisory numbers the screen shows before the server has
- * answered. Ranges are half-open [start, end) on the t = 0 grid and the count is
- * `ceil` per bound — the grid includes t = 0, which the old `floor` estimate
- * missed by one on every fractional product. Change either side of the mirror
- * only together with the other.
+ * Clip ranges, over `@visionset/media`'s shared arithmetic — itself mirrored from
+ * the kernel (`kernel/domain/source.py`). This module is the wire-shaped
+ * (`ClipRange`, snake_case seconds) adapter over that one TypeScript spelling; the
+ * arithmetic lives in `@visionset/media` and is not re-derived here.
  */
+
+import { canonicalRanges, expectedFrames as sharedExpectedFrames, type TimeRange } from "@visionset/media";
 
 import type { components } from "../generated/api";
 
 export type ClipRange = components["schemas"]["ClipRange"];
 
-/** Clamp to the clip, sort, merge overlaps and touches; a full cover is `[]`. */
+function toTimeRange(range: ClipRange): TimeRange {
+  return { startSeconds: range.start_seconds, endSeconds: range.end_seconds };
+}
+
+function toClipRange(range: TimeRange): ClipRange {
+  return { start_seconds: range.startSeconds, end_seconds: range.endSeconds };
+}
+
+/**
+ * Clamp to the clip, sort, merge overlaps and touches; a full cover is `[]`.
+ *
+ * `@visionset/media`'s `TimeRange` carries the kernel's own invariant (start ≥ 0,
+ * end > start) enforced at construction — `canonicalRanges` assumes it holds and
+ * does not re-check it. `ClipRangeTimeline` hands over ranges mid-drag, before a
+ * dragged handle has settled into a valid `ClipRange`, so this adapter clamps a
+ * negative start and drops what a snap left empty *before* calling the shared
+ * function — the one piece of behaviour that is this caller's, not the kernel's.
+ */
 export function mergedRanges(
   ranges: readonly ClipRange[],
   durationSeconds: number,
 ): readonly ClipRange[] {
-  const clamped = ranges
-    .filter((one) => one.start_seconds < durationSeconds && one.end_seconds > one.start_seconds)
-    .map((one) => ({
-      start_seconds: Math.max(0, one.start_seconds),
-      end_seconds: Math.min(one.end_seconds, durationSeconds),
-    }))
-    .sort((a, b) => a.start_seconds - b.start_seconds || a.end_seconds - b.end_seconds);
-  const merged: { start_seconds: number; end_seconds: number }[] = [];
-  for (const one of clamped) {
-    const last = merged[merged.length - 1];
-    if (last !== undefined && one.start_seconds <= last.end_seconds) {
-      last.end_seconds = Math.max(last.end_seconds, one.end_seconds);
-    } else {
-      merged.push({ ...one });
-    }
-  }
-  if (
-    merged.length === 1 &&
-    merged[0].start_seconds === 0 &&
-    merged[0].end_seconds === durationSeconds
-  ) {
-    return [];
-  }
-  return merged;
+  const settled = ranges
+    .map((one) => ({ start_seconds: Math.max(0, one.start_seconds), end_seconds: one.end_seconds }))
+    .filter((one) => one.end_seconds > one.start_seconds);
+  return canonicalRanges(settled.map(toTimeRange), durationSeconds).map(toClipRange);
 }
 
 /** Grid points inside the selection — exactly what extraction will emit. */
@@ -51,12 +45,7 @@ export function expectedFrames(
   durationSeconds: number,
   fps: number,
 ): number {
-  if (ranges.length === 0) return Math.ceil(durationSeconds * fps);
-  let count = 0;
-  for (const one of ranges) {
-    count += Math.ceil(one.end_seconds * fps) - Math.ceil(one.start_seconds * fps);
-  }
-  return count;
+  return sharedExpectedFrames(ranges.map(toTimeRange), durationSeconds, fps);
 }
 
 /** Seconds an already-merged selection covers; the whole clip when empty. */
@@ -84,4 +73,9 @@ export function clock(seconds: number): string {
   const fraction = rest % 10;
   const padded = String(whole).padStart(2, "0");
   return fraction === 0 ? `${minutes}:${padded}` : `${minutes}:${padded}.${fraction}`;
+}
+
+/** The same selection in `@visionset/media`'s own vocabulary, for a materializer. */
+export function toTimeRanges(ranges: readonly ClipRange[]): TimeRange[] {
+  return ranges.map(toTimeRange);
 }

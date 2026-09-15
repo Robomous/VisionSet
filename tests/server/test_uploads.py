@@ -48,11 +48,11 @@ def test_a_filename_that_names_nothing_usable_falls_back(sent: str | None) -> No
 
 
 def test_a_staged_part_lands_under_uploads_with_its_bytes(tmp_path: Path) -> None:
-    staged = stage(tmp_path, [part("clip.mp4", b"video bytes")])
+    staged = stage(tmp_path, [part("a.png", b"image bytes")])
 
     assert staged.directory.parent == tmp_path / UPLOADS_DIRNAME
-    assert staged.names == ("clip.mp4",)
-    assert staged.only.read_bytes() == b"video bytes"
+    assert staged.names == ("a.png",)
+    assert (staged.directory / "a.png").read_bytes() == b"image bytes"
 
 
 def test_the_same_bytes_under_the_same_name_stage_to_the_same_directory(tmp_path: Path) -> None:

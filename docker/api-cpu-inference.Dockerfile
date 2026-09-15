@@ -6,11 +6,6 @@
 # A divergence from that file is a bug here, not a variant.
 FROM ghcr.io/astral-sh/uv:python3.12-trixie-slim
 
-# ffmpeg, for the reason docker/api.Dockerfile gives.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
-
 # Same venv path as docker/api.Dockerfile, so the two images are interchangeable.
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_LINK_MODE=copy \

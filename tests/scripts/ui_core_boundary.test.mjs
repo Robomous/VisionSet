@@ -88,6 +88,33 @@ const DATA_LAYER_STORAGE = [[/\b(?:localStorage|sessionStorage)\b/, "reaches web
 const inDataLayer = (file) => file.startsWith("frontend/ui-core/src/data/") && !file.endsWith("prefs.ts");
 
 /**
+ * The media seam's own boundary: `ui-core` depends on `@visionset/media` for its
+ * framework-free sampling policy and grid arithmetic, and on its contract types
+ * (`VideoMaterializer`, `FrameSink`) for `VisionSetMediaRuntime` — but never on
+ * `@visionset/media/mediabunny`, the concrete browser decoder. That subpath is an
+ * 800 KB bundled adapter and the host's choice of materializer to make, not
+ * ui-core's; pulling it into shipped source would drag it into every consumer of
+ * this package and put the choice inside the reusable one. No type-only exception
+ * here, unlike `openapi-fetch`: every type this package needs from `@visionset/media`
+ * (`VideoMaterializer`, `FrameSink`, …) already lives on the root entrypoint, so
+ * there is no legitimate reason for shipped source to name the subpath at all.
+ */
+const MEDIA_HOST_BOUNDARY = [
+  [
+    /\bfrom\s+["']@visionset\/media\/mediabunny["']/,
+    "imports @visionset/media/mediabunny — the browser materializer is the host's choice, not ui-core's",
+  ],
+  [
+    /\brequire\(\s*["']@visionset\/media\/mediabunny["']\s*\)/,
+    "require()s @visionset/media/mediabunny",
+  ],
+  [
+    /\bimport\(\s*["']@visionset\/media\/mediabunny["']\s*\)/,
+    "dynamically imports @visionset/media/mediabunny",
+  ],
+];
+
+/**
  * Reading a `DataResult`'s status as meaning.
  *
  * The invariant, in its exact wording:
@@ -184,6 +211,10 @@ test("web storage is not reached from the data layer", () => {
   assert.deepEqual(violations(shippedSource(), DATA_LAYER_STORAGE, inDataLayer), []);
 });
 
+test("the reusable UI never reaches for the browser video materializer directly", () => {
+  assert.deepEqual(violations(shippedSource(), MEDIA_HOST_BOUNDARY), []);
+});
+
 test("no semantic branching on DataResult.status in reusable ui-core", () => {
   assert.deepEqual(violations(shippedSource(), STATUS_AS_MEANING), []);
 });
@@ -230,6 +261,29 @@ test("the gate fires on a violation", () => {
   ];
   assert.equal(violations(statusViolations, STATUS_AS_MEANING).length, statusViolations.length);
 
+  const mediaBoundaryViolations = [
+    {
+      path: "frontend/ui-core/src/media/BadImport.ts",
+      text: 'import { MediabunnyVideoMaterializer } from "@visionset/media/mediabunny";\n',
+    },
+    {
+      path: "frontend/ui-core/src/media/BadTypeImport.ts",
+      text: 'import type { MediabunnyVideoMaterializer } from "@visionset/media/mediabunny";\n',
+    },
+    {
+      path: "frontend/ui-core/src/media/BadRequire.ts",
+      text: 'const m = require("@visionset/media/mediabunny");\n',
+    },
+    {
+      path: "frontend/ui-core/src/media/BadDynamic.ts",
+      text: 'const m = await import("@visionset/media/mediabunny");\n',
+    },
+  ];
+  assert.equal(
+    violations(mediaBoundaryViolations, MEDIA_HOST_BOUNDARY).length,
+    mediaBoundaryViolations.length,
+  );
+
   assert.deepEqual(offeredRemovedExports('export type { ApiProviderProps } from "./x.js";\n'), ["ApiProviderProps"]);
   assert.deepEqual(offeredRemovedExports('export type { TokenGateProps } from "./x.js";\n'), ["TokenGateProps"]);
   assert.deepEqual(offeredRemovedExports('export type { Access } from "./x.js";\n'), ["Access"]);
@@ -271,6 +325,20 @@ test("the gate does NOT fire on the legitimate neighbouring form", () => {
     },
   ];
   assert.deepEqual(violations(legitimateDataLayer, DATA_LAYER_STORAGE, inDataLayer), []);
+
+  const legitimateMediaBoundary = [
+    {
+      path: "frontend/ui-core/src/media/port.ts",
+      // The root entrypoint, in type position — exactly what VisionSetMediaRuntime
+      // is built from, and the only door this package uses into @visionset/media.
+      text: 'import type { FrameSink, VideoMaterializer } from "@visionset/media";\n',
+    },
+    {
+      path: "frontend/ui-core/src/screens/clipRanges.ts",
+      text: 'import { canonicalRanges } from "@visionset/media";\n',
+    },
+  ];
+  assert.deepEqual(violations(legitimateMediaBoundary, MEDIA_HOST_BOUNDARY), []);
 
   const legitimateStatus = [
     {

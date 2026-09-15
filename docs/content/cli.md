@@ -19,7 +19,7 @@ visionset schema draft set FILE --project P [--kind K] [--note TEXT] [--revision
 visionset schema draft clear --project P [--kind K]
 visionset schema draft publish --project P [--kind K] [--revision N] [--allow-destructive]
 
-visionset ingest PATH --project P [--fps N] [--range S:E]... [--scale PCT] [--batch-name NAME] [--start]
+visionset ingest DIRECTORY --project P [--batch-name NAME] [--start]
 visionset batch list --project P
 visionset batch approve BATCH_ID [--jobs-of N] [--start]
 visionset batch pre-label BATCH_ID CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels] [--geometry SHAPE]...
@@ -110,9 +110,9 @@ $ echo $?
 
 Only `VisionSetError` is caught. An `OSError`, a `KeyboardInterrupt` or a bug keeps its traceback,
 because folding one into `Error: [Errno 2] ...` would hide the thing that identifies it. Where a
-kernel call refuses with something outside that family - a non-positive `--fps`, a `--split` whose
-fractions do not add up, a schema file that is not JSON - the CLI catches it **before** the call and
-raises Click's own usage error, so it lands at 2 rather than as a traceback.
+kernel call refuses with something outside that family - a `--split` whose fractions do not add
+up, a schema file that is not JSON - the CLI catches it **before** the call and raises Click's own
+usage error, so it lands at 2 rather than as a traceback.
 
 **Code 1 also means "the answer is no".** `visionset release verify` runs, finds damage, and exits 1
 with one sentence naming it; nothing refused, and nothing about the command failed. That is what
@@ -347,20 +347,22 @@ name, no geometry, a select with no options - is refused there, named by its pos
 
 ### `visionset ingest`
 
-`PATH --project P [--fps N] [--range S:E]... [--scale PCT] [--batch-name NAME]` - **the one
-command that is two SDK calls**:
-`SourceService.register_images` or `register_video`, dispatched on whether the path is a directory,
-then `IngestService.ingest`. Registration is idempotent, so re-running the same line registers once;
-content addressing means it also creates no asset it created before, which is the remedy for an
-interrupted run. The batch id goes to stdout.
+`DIRECTORY --project P [--batch-name NAME]` - **the one command that is two SDK calls**:
+`SourceService.register_images` then `IngestService.ingest`. Registration is idempotent, so
+re-running the same line registers once; content addressing means it also creates no asset it
+created before, which is the remedy for an interrupted run. The batch id goes to stdout.
 
-`--fps`, `--range` and `--scale` are video-only and usage errors on a folder. `--range
-START:END` repeats, in seconds, and the selection is stored canonically - clamped to the clip,
-sorted, overlapping and touching ranges merged. `--scale` stores every extracted frame at that
-percent of the clip's native size and, like the rate and the ranges, is part of the source's
-identity: another scale is a second source. The run is **synchronous**, and there is no
-`--resume`: polling needs a second process, which is what `visionset server` and
-`GET /ingest-jobs/{id}` are for. See [ingest.md](ingest.md#at-a-terminal).
+It takes a directory and only a directory. Pointed at anything else - a video file included - it
+is a usage error (exit 2) naming where video actually goes:
+
+> ingest takes a directory of still images. A video is imported in the browser: run `visionset
+> server`, open the project's Ingest screen and choose the clip there — it is decoded on your
+> machine and uploaded as frames. Nothing in this process decodes video.
+
+There is no `--fps`, `--range` or `--scale` here any more, and no video path for the CLI to
+dispatch to - see [ingest.md](ingest.md#at-a-terminal). The run is **synchronous**, and there is
+no `--resume`: polling needs a second process, which is what `visionset server` and
+`GET /ingest-jobs/{id}` are for.
 
 ### `visionset batch`
 
@@ -586,8 +588,7 @@ own rather than a private module under `cli/`.
 **A bound the domain enforces with a pydantic `Field` has to be mirrored in the Typer option**, or
 the refusal arrives as a traceback: a pydantic `ValidationError` and a bare `ValueError` are not
 `VisionSetError`s and `domain_errors()` deliberately does not catch either. `--jobs-of` carries
-`min=1`, `--fps` is checked in the body (Typer has no `min_open`), and `--split` is parsed into a
-`SplitRecipe` inside a `try`.
+`min=1`, and `--split` is parsed into a `SplitRecipe` inside a `try`.
 
 Commands are tested through `typer.testing.CliRunner` against the real `visionset.cli.main:app`, with
 `result.stdout` and `result.stderr` asserted separately. There is no `conftest.py` anywhere in this

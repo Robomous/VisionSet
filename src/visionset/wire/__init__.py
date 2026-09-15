@@ -8,8 +8,11 @@ dumping the model — promoted to the shape a program parses. The alternative,
 hold today and silently republish whatever it holds tomorrow. Three fields make
 the point, and each is already absent from the wire model the server publishes:
 
-- ``Asset.uri`` and ``Source.path`` are absolute paths on this machine. A caller
-  reading them learns the layout of somebody's disk and nothing it can use.
+- ``Asset.uri`` and ``Source.locator`` identify an origin to the process that
+  registered it, and nothing else: an image directory's is an absolute path on
+  this machine, so a caller reading it learns the layout of somebody's disk, and
+  a clip's is an opaque ``video-import:<uuid>`` that names nothing a caller could
+  open. Neither is anything a client can use. ``Source.name`` is the part it can.
 - ``Batch.asset_ids`` is a batch's whole roll call, which for fifty thousand
   frames must not travel on every read of its name.
 
@@ -328,6 +331,8 @@ def video_provenance(value: VideoProvenance) -> dict[str, Any]:
         "codec": value.metadata.codec,
         "extraction_fps": value.extraction_fps,
         "scale_percent": value.scale_percent,
+        "policy_version": value.policy_version,
+        "materializer": value.materializer,
         "ranges": [
             {"start_seconds": r.start_seconds, "end_seconds": r.end_seconds} for r in value.ranges
         ],
@@ -335,9 +340,9 @@ def video_provenance(value: VideoProvenance) -> dict[str, Any]:
 
 
 def source(value: Source) -> dict[str, Any]:
-    """A registered origin. ``path`` is absent; ``name`` is the domain's resolution.
+    """A registered origin. ``locator`` is absent; ``name`` is the domain's resolution.
 
-    ``Source.name`` is the stated display name when one exists, else the path's
+    ``Source.name`` is the stated display name when one exists, else the locator's
     last component — one spelling, shared with ``SourceOut``.
     """
     return {
@@ -351,18 +356,11 @@ def source(value: Source) -> dict[str, Any]:
 
 
 def ingest_failure(value: IngestFailure) -> dict[str, Any]:
-    """What became of one file the run could not simply read.
-
-    The two counts are null on every kind but ``partial`` — the domain refuses
-    any other arrangement — and are published anyway rather than omitted, so the
-    shape of an entry does not depend on which kind it is.
-    """
+    """What became of one file the run could not read."""
     return {
         "name": value.name,
         "kind": value.kind.value,
         "reason": value.reason,
-        "frames_produced": value.frames_produced,
-        "frames_expected_estimate": value.frames_expected_estimate,
     }
 
 

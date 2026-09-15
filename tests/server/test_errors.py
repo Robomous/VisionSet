@@ -22,7 +22,7 @@ from tests.server._probe import PROBE_PATH, StubAuthProvider, stubbed_app
 from visionset.kernel import (
     AssetNotInJob,
     CorruptMedia,
-    MediaToolUnavailable,
+    LocalInferenceUnavailable,
     ProjectNotFound,
     VisionSetError,
     WorkspaceBusy,
@@ -57,6 +57,11 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "BatchNotFound": (404, "BATCH_NOT_FOUND"),
     "JobNotFound": (404, "JOB_NOT_FOUND"),
     "IngestJobNotFound": (404, "INGEST_JOB_NOT_FOUND"),
+    "VideoImportNotFound": (404, "VIDEO_IMPORT_NOT_FOUND"),
+    "VideoImportNotOpen": (409, "VIDEO_IMPORT_NOT_OPEN"),
+    "VideoImportIncomplete": (409, "VIDEO_IMPORT_INCOMPLETE"),
+    "FrameContentConflict": (409, "FRAME_CONTENT_CONFLICT"),
+    "FrameOrdinalOutOfRange": (422, "FRAME_ORDINAL_OUT_OF_RANGE"),
     "BackgroundJobNotFound": (404, "BACKGROUND_JOB_NOT_FOUND"),
     "AssetNotFound": (404, "ASSET_NOT_FOUND"),
     "SourceNotFound": (404, "SOURCE_NOT_FOUND"),
@@ -144,7 +149,6 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "EntityNotFound": (500, "ENTITY_NOT_FOUND"),
     "EntityAlreadyExists": (500, "ENTITY_ALREADY_EXISTS"),
     "ConstraintViolated": (500, "CONSTRAINT_VIOLATED"),
-    "MediaToolUnavailable": (500, "MEDIA_TOOL_UNAVAILABLE"),
     "LocalInferenceUnavailable": (500, "LOCAL_INFERENCE_UNAVAILABLE"),
     "InferenceOutOfMemory": (500, "INFERENCE_OUT_OF_MEMORY"),
     "InferenceConnectionNotRunnable": (500, "INFERENCE_CONNECTION_NOT_RUNNABLE"),
@@ -227,12 +231,10 @@ def test_message_exposure_is_opt_in_and_only_for_5xx() -> None:
         # problem, and the answer is only in the server's log — which was the
         # complaint. The message names the table and column instead.
         "WorkspaceSchemaMismatch",
-        "MediaToolUnavailable",
         # The two deployment conditions inference can hit. Both
         # carry a remedy nobody can reconstruct from a generic sentence — the
         # exact `pip install` for one, and which connection kind this build has
-        # no adapter for in the other — which is `MediaToolUnavailable`'s stated
-        # licence and the only one this list takes.
+        # no adapter for in the other, which is the only licence this list takes.
         "LocalInferenceUnavailable",
         "InferenceConnectionNotRunnable",
         # The third condition of the machine rather than of the request. Its
@@ -366,9 +368,9 @@ def probe() -> Iterator[TestClient]:
     async def corrupt() -> None:
         raise WorkspaceCorrupt("/srv/data/visionset.db is not a database")
 
-    @probe_app.get("/no-ffmpeg")
-    async def no_ffmpeg() -> None:
-        raise MediaToolUnavailable("ffmpeg is not installed; brew install ffmpeg")
+    @probe_app.get("/no-extra")
+    async def no_extra() -> None:
+        raise LocalInferenceUnavailable("local inference needs `pip install visionset[local]`")
 
     @probe_app.get("/bad-media")
     async def bad_media() -> None:
@@ -434,9 +436,9 @@ def test_a_mapped_500_is_opaque_but_keeps_its_code(
 
 
 def test_an_error_whose_message_is_the_remedy_opts_out_of_opacity(probe: TestClient) -> None:
-    response = probe.get("/no-ffmpeg")
+    response = probe.get("/no-extra")
     assert response.status_code == 500
-    assert "brew install ffmpeg" in response.json()["message"]
+    assert "pip install visionset[local]" in response.json()["message"]
     assert response.json()["detail"]["incident_id"]  # still incident-tracked
 
 

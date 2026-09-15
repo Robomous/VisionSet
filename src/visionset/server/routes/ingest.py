@@ -31,8 +31,8 @@ def get_ingest_job(workspace: WorkspaceDep, job_id: UUID) -> IngestJobOut:
     """Where a run is now.
 
     `processed` and `total` are written as the run goes, so this answers "where
-    is it" rather than "where did it end". `total` is null for a clip — a video's
-    frame count is a guess before extraction, so it is not reported.
+    is it" rather than "where did it end". `total` is null until the run has
+    counted what it has to read.
 
     Terminal states are `completed` and `failed`. A `failed` job keeps its
     counters exactly where they stopped, and `error` says why; unreadable

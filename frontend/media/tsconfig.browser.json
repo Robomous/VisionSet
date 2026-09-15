@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "noEmit": true,
+    // Type-check only, so the emit shape is irrelevant — but `rootDir` still has to
+    // cover the browser suite and its config, which sit beside `src/` rather than in it.
+    "rootDir": ".",
+    // The specs import `./_support.ts` with its extension, as the three configs in
+    // frontend/app do — Playwright's loader resolves it and nothing here is emitted.
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src/mediabunny", "browser", "playwright.media.config.ts"],
+  "exclude": []
+}

@@ -15,9 +15,9 @@ intention of running a model at all.
 side: it imports the whole product in a fresh interpreter and fails if any of
 them is in ``sys.modules`` afterwards.
 
-**The message is the remedy.** ``MediaToolUnavailable`` states the rule this
-follows — an error that merely says "unavailable" has told an operator nothing —
-so the refusal carries the exact command, and the command is spelled once, here,
+**The message is the remedy.** ``LocalInferenceUnavailable`` states the rule —
+an error that merely says "unavailable" has told an operator nothing — so the
+refusal carries the exact command, and the command is spelled once, here,
 because the kernel deliberately does not know what the extra is called.
 """
 

@@ -80,7 +80,7 @@ TRIANGLE_AREA = 192.0
 
 
 def require_pycocotools() -> None:
-    """Skip locally, fail in CI — the ``require_ffmpeg`` rule, one subsystem over."""
+    """Skip locally, fail in CI — the ``require_local_inference`` rule, one subsystem over."""
     try:
         import pycocotools  # noqa: F401
     except ImportError:

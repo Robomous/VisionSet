@@ -12,8 +12,9 @@
 # PATH, so `visionset` and `python3` are the same installation. That is this
 # script's one requirement.
 #
-# **No ffmpeg.** Stills only, so it runs anywhere the package installs. The
-# ingest example is where video lives.
+# **No media binary of any kind.** Stills only, so it runs anywhere the package
+# installs — video import is a browser capability, not something this shell or
+# its sibling examples decode.
 #
 # **No jq.** Listings are read with `tail -n +2 | awk '{print $1}'`, which is
 # what the always-printed header and the id-first column order exist for; the

@@ -16,10 +16,11 @@ there; `inference-smoke` installs the extra from the lock and sets
 `VISIONSET_REQUIRE_LOCAL_INFERENCE=1`.
 
 **What the variable does is turn a missing runtime from a skip into an error**,
-the rule `VISIONSET_REQUIRE_FFMPEG` states for the video suite: a job that exists
-to exercise the runtime and quietly exercised nothing looks exactly like a
-passing one. It says nothing about a missing *GPU*, which is a separate and
-permanent fact about a CI runner — see `require_local_inference`.
+the rule `VISIONSET_REQUIRE_PYCOCOTOOLS` and `VISIONSET_REQUIRE_ULTRALYTICS`
+state for the export suites: a job that exists to exercise the runtime and
+quietly exercised nothing looks exactly like a passing one. It says nothing about
+a missing *GPU*, which is a separate and permanent fact about a CI runner — see
+`require_local_inference`.
 """
 
 from __future__ import annotations
@@ -63,10 +64,10 @@ suite for having it either.
 def require_local_inference() -> None:
     """Skip locally, fail where the runtime was supposed to be installed.
 
-    `tests.fixtures.media.require_ffmpeg`, called from inside a test rather than
-    at module level: the modules holding these tests hold the without-runtime
-    half too, and a module-level skip would take the tests the `python` job
-    exists to run along with them.
+    The bargain `require_pycocotools` and `require_ultralytics` make, except
+    called from inside a test rather than at module level: the modules holding
+    these tests hold the without-runtime half too, and a module-level skip would
+    take the tests the `python` job exists to run along with them.
 
     **Missing runtime, not missing GPU.** A CI runner has no CUDA device and
     never will, so a test that needs one keeps skipping honestly under this

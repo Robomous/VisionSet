@@ -1,38 +1,25 @@
-"""The generators are load-bearing for every M2 test, so they get tested themselves.
+"""The generators are load-bearing for every media test, so they get tested themselves.
 
 What is pinned here is the part everything else *relies on*: that equal arguments give equal
-bytes (dedup and idempotency), that the EXIF fixture really is rotated, that a
-corrupt file really fails to decode, that a clip carries the frame count it claims, and
-that the two damaged/rotated video generators really produce what their names say — both
-of those lean on ffmpeg behaviour that is easy to get subtly, silently wrong.
+bytes (dedup and idempotency), that the EXIF fixture really is rotated, and that a
+corrupt file really fails to decode.
 """
 
 import hashlib
-import subprocess
 from pathlib import Path
 
 import pytest
 from PIL import Image, ImageOps, UnidentifiedImageError
-from tests.fixtures import media
 from tests.fixtures.media import (
     DEFAULT_IMAGE_SIZE,
-    DEFAULT_VIDEO_SIZE,
-    FFMPEG_REQUIRED_ENV,
-    GeneratedVideo,
-    require_ffmpeg,
     write_corrupt_image,
-    write_corrupt_video,
     write_exif_rotated_image,
     write_image,
     write_image_in_unsupported_format,
     write_images,
     write_multi_picture_jpeg,
-    write_rotated_video,
     write_unsupported_file,
-    write_video,
 )
-
-# --- images ---------------------------------------------------------------------------------
 
 
 def _digest(path: Path) -> str:
@@ -126,97 +113,3 @@ def test_the_generators_added_for_the_image_processor_are_deterministic(tmp_path
     assert _digest(write_multi_picture_jpeg(tmp_path / "a.jpg")) == _digest(
         write_multi_picture_jpeg(tmp_path / "b.jpg")
     )
-
-
-# --- video ----------------------------------------------------------------------------------
-
-
-def _probe(video: Path, entries: str) -> list[str]:
-    result = subprocess.run(
-        ["ffprobe", "-loglevel", "error", "-show_entries", entries, "-of", "csv=p=0", str(video)],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return result.stdout.split()
-
-
-def test_a_generated_clip_matches_the_dimensions_it_reports(tmp_path: Path) -> None:
-    require_ffmpeg()
-    video = write_video(tmp_path / "clip.mp4")
-    assert _probe(video.path, "stream=width,height") == [f"{video.width},{video.height}"]
-
-
-def test_a_generated_clip_holds_the_frame_count_it_claims(tmp_path: Path) -> None:
-    """Extraction runs at 1/5/10 fps against this clip, so its frame count cannot be approximate."""
-    require_ffmpeg()
-    video = write_video(tmp_path / "clip.mp4", fps=10, duration_seconds=2.0)
-    assert video.frame_count == 20
-    assert _probe(video.path, "stream=nb_frames") == ["20"]
-
-
-def test_clip_length_and_rate_follow_the_arguments(tmp_path: Path) -> None:
-    require_ffmpeg()
-    video = write_video(tmp_path / "short.mp4", size=(32, 32), fps=5, duration_seconds=1.0)
-    assert (video.width, video.height, video.frame_count) == (32, 32, 5)
-    assert _probe(video.path, "stream=r_frame_rate") == ["5/1"]
-
-
-def test_two_runs_of_the_same_clip_are_byte_identical(tmp_path: Path) -> None:
-    """Determinism within one ffmpeg build — enough for extraction's repeatability. Across
-    ffmpeg versions the bytes differ, so nothing may assert a hardcoded hash."""
-    require_ffmpeg()
-    first = write_video(tmp_path / "one.mp4")
-    second = write_video(tmp_path / "two.mp4")
-    assert _digest(first.path) == _digest(second.path)
-
-
-def test_a_corrupt_clip_is_still_readable_enough_to_describe(tmp_path: Path) -> None:
-    """The whole trick of the fixture: the faststart index survives, so ffprobe still answers.
-
-    A clip whose index went with its tail is unopenable, which is a different refusal (mapped
-    to `UnsupportedMedia`) and `write_unsupported_file`'s job. This one has to break *during*
-    a decode, not before one.
-    """
-    require_ffmpeg()
-    broken = write_corrupt_video(tmp_path / "broken.mp4")
-    intact = write_video(tmp_path / "intact.mp4")
-
-    assert broken.path.stat().st_size < intact.path.stat().st_size
-    assert _probe(broken.path, "stream=codec_name") == ["h264"]
-
-
-def test_a_rotated_clip_carries_a_display_matrix(tmp_path: Path) -> None:
-    """Guards the trap that made this fixture worth a helper: `-metadata:s:v rotate=` is dropped
-    silently by recent ffmpeg, which would generate a file that tests nothing and fails nowhere."""
-    require_ffmpeg()
-    rotated = write_rotated_video(tmp_path / "portrait.mp4")
-
-    assert _probe(rotated.path, "stream_side_data=rotation") == ["90"]
-    assert (rotated.width, rotated.height) == DEFAULT_VIDEO_SIZE
-
-
-def test_the_generated_video_record_is_immutable() -> None:
-    """No ffmpeg needed: this is about the record, not the file it describes."""
-    video = GeneratedVideo(path=Path("clip.mp4"), width=64, height=48, fps=10, duration_seconds=1.5)
-    assert video.frame_count == 15
-    with pytest.raises(AttributeError):
-        video.fps = 30  # type: ignore[misc]
-
-
-# --- the missing-ffmpeg tripwire --------------------------------------------------------------
-
-
-def test_a_missing_binary_skips_when_nobody_demanded_it(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(media.shutil, "which", lambda _name: None)
-    monkeypatch.delenv(FFMPEG_REQUIRED_ENV, raising=False)
-    with pytest.raises(pytest.skip.Exception, match="ffmpeg is not on PATH"):
-        require_ffmpeg()
-
-
-def test_a_missing_binary_is_an_error_once_ci_demands_it(monkeypatch: pytest.MonkeyPatch) -> None:
-    """CI installs ffmpeg and sets the flag, so a broken install goes red instead of quiet."""
-    monkeypatch.setattr(media.shutil, "which", lambda _name: None)
-    monkeypatch.setenv(FFMPEG_REQUIRED_ENV, "1")
-    with pytest.raises(RuntimeError, match="brew install ffmpeg"):
-        require_ffmpeg()

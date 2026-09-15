@@ -118,7 +118,7 @@ def test_a_job_failed_by_anything_else_has_no_code(
 def test_the_payload_is_not_on_the_wire(client: TestClient, workspace: WorkspaceService) -> None:
     """It is an internal contract between a surface and a handler, and it can name a path.
 
-    The rule that keeps `Source.path` and `Asset.uri` unpublished, applied to the
+    The rule that keeps `Source.locator` and `Asset.uri` unpublished, applied to the
     one field that would otherwise carry either.
     """
     job_id = enqueue(workspace, release_id="abc")

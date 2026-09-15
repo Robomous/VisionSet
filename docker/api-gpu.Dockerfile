@@ -10,13 +10,6 @@
 ARG TORCH_IMAGE=pytorch/pytorch:2.13.0-cuda13.0-cudnn9-runtime
 FROM ${TORCH_IMAGE}
 
-# ffmpeg, for the reason docker/api.Dockerfile gives. This base is Ubuntu 24.04 (ffmpeg
-# 6.1, the same as CI) rather than trixie's 7.1; both are above every threshold that file
-# names.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
-
 # Pinned to the uv the default image currently carries, so both read uv.lock the same way.
 COPY --from=ghcr.io/astral-sh/uv:0.12.3 /uv /usr/local/bin/uv
 

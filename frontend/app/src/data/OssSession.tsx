@@ -34,9 +34,11 @@ import {
   type ReactNode,
 } from "react";
 import type { QueryClient } from "@tanstack/react-query";
-import { VisionSetDataProvider } from "@visionset/ui-core";
+import { VisionSetDataProvider, VisionSetMediaProvider } from "@visionset/ui-core";
+import { MediabunnyVideoMaterializer } from "@visionset/media/mediabunny";
 
 import { createOssDataClient, requestSession } from "./ossClient";
+import { createLocalApiFrameSink } from "./frameSink";
 import { clearToken, readToken, writeToken } from "./token";
 
 /**
@@ -135,6 +137,27 @@ export function OssSessionProvider({
     [baseUrl, scope],
   );
 
+  /**
+   * The media runtime: this host's decoder, and where its frames go.
+   *
+   * Keyed to the same client the data provider hands out, because the frame sink
+   * posts through it — a runtime built against a stale client would upload with a
+   * credential the rest of the app has already stopped using.
+   *
+   * `@visionset/media/mediabunny` is imported **here and nowhere else**. It
+   * carries a bundled decoder and a module worker, and which materializer a host
+   * uses is the host's choice — `ui-core` may not make it, and
+   * `tests/scripts/ui_core_boundary.test.mjs` holds that line.
+   */
+  const mediaRuntime = useMemo(
+    () => ({
+      materializer: new MediabunnyVideoMaterializer(),
+      createFrameSink: (target: { readonly projectId: string; readonly importId: string }) =>
+        createLocalApiFrameSink(client, target),
+    }),
+    [client],
+  );
+
   const signIn = useCallback((next: string) => {
     writeToken(next);
     setToken(next);
@@ -192,7 +215,7 @@ export function OssSessionProvider({
         onUnauthorized={signOut}
         makeQueryClient={makeQueryClient}
       >
-        {children}
+        <VisionSetMediaProvider runtime={mediaRuntime}>{children}</VisionSetMediaProvider>
       </VisionSetDataProvider>
     </OssSessionContext.Provider>
   );

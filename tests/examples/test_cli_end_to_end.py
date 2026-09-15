@@ -45,7 +45,8 @@ def destination(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def run(destination: Path) -> subprocess.CompletedProcess[str]:
     """One run of the script, shared by every assertion below."""
     # An *assert*, not a skip: a silently skipped CLI test looks exactly like a
-    # passing one, which is the posture ``require_ffmpeg`` already takes.
+    # passing one, which is the posture every "did CI install it?" gate here
+    # takes — see ``require_local_inference``.
     assert shutil.which("visionset") is not None, "the console script is not on PATH"
     # ``setenv``-style rather than deleting: the script exports the variable, and
     # a developer with it already exported must get CI's result. Empty is the

@@ -24,7 +24,7 @@ flowchart TB
         Cli["visionset.cli\nTyper"]
         Mcp["visionset.mcp\nMCP tools"]
         Kernel["visionset.kernel\ndomain · ports · services"]
-        Adapters["kernel.adapters\nSQLite · filesystem · Pillow · ffmpeg"]
+        Adapters["kernel.adapters\nSQLite · filesystem · Pillow"]
     end
 
     Store[("Workspace\none directory, one SQLite file")]

@@ -417,6 +417,29 @@ def _add_preprocessing_recipes(connection: Connection) -> None:
     Base.metadata.create_all(connection, tables=[Base.metadata.tables["preprocessing_recipes"]])
 
 
+def _add_video_imports(connection: Connection) -> None:
+    """``video_import`` and ``video_import_frame``: browser-driven import sessions.
+
+    Migration 4's kind — tables created whole, ``create_all`` restricted to
+    them — so neither of the ``ALTER`` rules comes up: the foreign keys on both
+    tables arrive as table constraints, the way ``create_all`` spells them, and
+    column order is free.
+
+    **Nothing to backfill, and nothing to migrate into them.** Before this the
+    server decoded video itself and a clip's frames became assets inside one
+    ingest run, which left no session behind to convert. An existing workspace
+    starts with two empty tables and loses nothing; its old video sources go on
+    reading exactly as they did.
+    """
+    Base.metadata.create_all(
+        connection,
+        tables=[
+            Base.metadata.tables["video_import"],
+            Base.metadata.tables["video_import_frame"],
+        ],
+    )
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
     Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
@@ -436,6 +459,7 @@ MIGRATIONS: list[Migration] = [
     Migration(version=16, name="source_clip_ranges", upgrade=_reshape_source_origin_index),
     Migration(version=17, name="preprocessing_recipes", upgrade=_add_preprocessing_recipes),
     Migration(version=18, name="source_scale", upgrade=_add_source_scale),
+    Migration(version=19, name="video_imports", upgrade=_add_video_imports),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version

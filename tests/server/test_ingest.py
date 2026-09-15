@@ -1,8 +1,8 @@
 """Launching a run and polling it — the contract every long operation reuses.
 
-The acceptance walk is one test here: upload a clip, register it at 5 fps,
-launch, wait, read the assets. It is deliberately the shape a real client has —
-nothing reaches past the API for an answer the API is supposed to give.
+The acceptance walk is one test here: upload a folder of stills, launch, wait,
+read the assets. It is deliberately the shape a real client has — nothing
+reaches past the API for an answer the API is supposed to give.
 
 **Nothing in this module sleeps, and nothing needs to.** Work is
 claimed off a durable queue, so "launched but not yet run" is a row rather than a
@@ -24,19 +24,11 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
-from tests.fixtures.media import write_corrupt_video, write_image, write_video
+from tests.fixtures.media import write_image
 from tests.server._api import api_client
 from tests.server._jobs import JOIN_TIMEOUT, InlineDispatcher, ManualDispatcher
 
 from visionset.kernel.services import WorkspaceService
-
-# Above `testsrc`'s resolution floor — see `test_sources.py`.
-CLIP_SIZE = (160, 120)
-
-#: 2 seconds at 10 fps cut at 5 fps. The generator's defaults make this exact,
-#: which is what lets the walk assert a count rather than a range.
-EXTRACTION_FPS = 5
-EXPECTED_FRAMES = 10
 
 
 @pytest.fixture()
@@ -70,33 +62,6 @@ def queued_jobs(client: TestClient) -> int:
     assert response.status_code == 200, response.text
     total: int = response.json()["total"]
     return total
-
-
-def registered_clip(client: TestClient, project: str, tmp_path: Path) -> str:
-    clip = write_video(tmp_path / "made" / "drive.mp4", size=CLIP_SIZE).path
-    return _uploaded_clip(client, project, clip)
-
-
-def registered_broken_clip(client: TestClient, project: str, tmp_path: Path) -> str:
-    """The same upload, of a clip whose tail is gone.
-
-    Truncated *before* it is posted, so the server registers and probes exactly what a
-    half-finished copy would have left on somebody's disk. The faststart index at the front
-    is what keeps that file describable — see `write_corrupt_video`.
-    """
-    clip = write_corrupt_video(tmp_path / "made" / "broken.mp4", size=CLIP_SIZE).path
-    return _uploaded_clip(client, project, clip)
-
-
-def _uploaded_clip(client: TestClient, project: str, clip: Path) -> str:
-    response = client.post(
-        f"/projects/{project}/sources/video",
-        files={"file": (clip.name, clip.read_bytes(), "video/mp4")},
-        data={"extraction_fps": EXTRACTION_FPS},
-    )
-    assert response.status_code == 201, response.text
-    source_id: str = response.json()["id"]
-    return source_id
 
 
 def png_part(
@@ -162,10 +127,15 @@ def test_uploaded_wide_formats_ingest_through_the_same_door(
 # --- the acceptance walk -----------------------------------------------------
 
 
-def test_a_clip_uploaded_and_ingested_at_five_fps_lists_its_assets(
+def test_a_folder_of_stills_uploaded_and_ingested_lists_its_assets(
     client: TestClient, project: str, tmp_path: Path, runner: InlineDispatcher
 ) -> None:
-    source = registered_clip(client, project, tmp_path)
+    source = registered_images(
+        client,
+        project,
+        png_part(tmp_path, "a.png", seed=1),
+        png_part(tmp_path, "b.png", seed=2),
+    )
 
     started = launch(client, source)
     assert started.status_code == 202, started.text
@@ -177,17 +147,15 @@ def test_a_clip_uploaded_and_ingested_at_five_fps_lists_its_assets(
 
     polled = client.get(f"/ingest-jobs/{job['id']}").json()
     assert polled["state"] == "completed"
-    assert polled["processed"] == EXPECTED_FRAMES
-    # NULL for a clip: `VideoMetadata` carries no frame count by design.
-    assert polled["total"] is None
+    assert polled["processed"] == 2
+    assert polled["total"] == 2
     assert polled["failures"] == []
     assert polled["batch_id"] is not None
 
     assets = client.get(f"/batches/{polled['batch_id']}/assets")
     assert assets.status_code == 200
     body = assets.json()
-    assert body["total"] == EXPECTED_FRAMES
-    assert [asset["frame_index"] for asset in body["items"]] == list(range(EXPECTED_FRAMES))
+    assert body["total"] == 2
     assert all(asset["source_id"] == source for asset in body["items"])
 
 
@@ -294,59 +262,6 @@ def test_an_unreadable_item_is_reported_and_does_not_fail_the_run(
 
     assets = client.get(f"/batches/{polled['batch_id']}/assets").json()
     assert assets["total"] == 1
-
-
-def test_a_partial_extraction_is_reported_with_both_numbers(
-    client: TestClient, project: str, tmp_path: Path, runner: InlineDispatcher
-) -> None:
-    """The partial report, on the wire the ingest screen actually polls."""
-    source = registered_broken_clip(client, project, tmp_path)
-
-    job = launch(client, source).json()
-    runner.wait()
-
-    polled = client.get(f"/ingest-jobs/{job['id']}").json()
-    assert polled["state"] == "completed"
-    reported = polled["failures"]
-    assert [f["kind"] for f in reported] == ["partial"]
-    assert reported[0]["name"] == "broken.mp4"
-    # What arrived is what is in the batch, and it is short of the estimate.
-    assets = client.get(f"/batches/{polled['batch_id']}/assets").json()
-    assert reported[0]["frames_produced"] == assets["total"] > 0
-    assert reported[0]["frames_expected_estimate"] == EXPECTED_FRAMES
-    assert reported[0]["frames_produced"] < EXPECTED_FRAMES
-
-
-def test_a_partial_extraction_changes_nothing_about_the_assets_it_produced(
-    client: TestClient, project: str, tmp_path: Path, runner: InlineDispatcher
-) -> None:
-    """The boundary the partial report draws, asserted rather than intended.
-
-    The report is the ingest job's and it stops there. An asset lifted out of a damaged
-    clip is an ordinary asset — same fields, same batch — so nothing downstream can learn
-    where it came from, and nothing downstream has to.
-    """
-    clean = registered_clip(client, project, tmp_path)
-    broken = registered_broken_clip(client, project, tmp_path)
-
-    good = launch(client, clean).json()
-    runner.wait()
-    damaged = launch(client, broken).json()
-    runner.wait()
-
-    good_batch = client.get(f"/ingest-jobs/{good['id']}").json()["batch_id"]
-    damaged_batch = client.get(f"/ingest-jobs/{damaged['id']}").json()["batch_id"]
-
-    def shape(payload: dict[str, Any]) -> set[str]:
-        return set(payload.keys())
-
-    good_assets = client.get(f"/batches/{good_batch}/assets").json()["items"]
-    damaged_assets = client.get(f"/batches/{damaged_batch}/assets").json()["items"]
-    assert damaged_assets
-    assert shape(damaged_assets[0]) == shape(good_assets[0])
-    assert shape(client.get(f"/batches/{damaged_batch}").json()) == shape(
-        client.get(f"/batches/{good_batch}").json()
-    )
 
 
 def test_listing_the_runs_of_a_source(

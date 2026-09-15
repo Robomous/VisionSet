@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // No "DOM": core takes no browser lib type, Blob/File included — those come
+    // from `node:buffer`'s own declarations instead. See src/index.ts.
+    "lib": ["ES2022"],
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "declaration": true,
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  // The adapter lives in its own project (tsconfig.browser.json) with the DOM lib.
+  // Keeping it out of this one is what keeps "core takes no browser lib" a real check
+  // rather than a comment.
+  "include": ["src"],
+  "exclude": ["src/mediabunny"]
+}

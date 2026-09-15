@@ -110,44 +110,15 @@ def test_a_report_name_never_carries_the_directory_it_was_read_from() -> None:
         assert "/srv/visionset" not in report_name(item, root=root)
 
 
-def test_a_partial_report_must_say_how_much_arrived() -> None:
-    """The kind and the count are one statement, so neither may be made without the other.
+def test_a_report_entry_says_only_what_became_of_one_item() -> None:
+    """Three fields, and the kind is the whole of what a reader branches on.
 
-    `partial` means *some of it is in the batch*, and a report that claimed it without
-    saying how much would be a prose sentence where a number belongs. The estimate is
-    genuinely optional beside it — a container that will not say how long it is still
-    yields a countable number of frames.
-    """
-    partial = IngestFailure(
-        name="broken.mp4",
-        kind=IngestFailureKind.PARTIAL,
-        reason="the video is damaged or truncated after 8 frames",
-        frames_produced=8,
-    )
-    assert partial.frames_expected_estimate is None
-
-    with pytest.raises(ValidationError):
-        IngestFailure(name="broken.mp4", kind=IngestFailureKind.PARTIAL, reason="ran out of bytes")
-    with pytest.raises(ValidationError):
-        IngestFailure(
-            name="broken.mp4",
-            kind=IngestFailureKind.PARTIAL,
-            reason="ran out of bytes",
-            frames_produced=0,
-        )
-
-
-def test_a_report_that_recovered_nothing_may_not_carry_a_count() -> None:
-    """The other half: `unsupported` and `corrupt` are the *nothing arrived* kinds.
-
-    Letting them carry `frames_produced=0` would give the report two ways to say the same
-    thing, and a reader grouping on the kind would have to check the number as well.
+    There is no count beside it and no third kind: a run reads one file at a time,
+    so an entry means the item did not become an asset. Extra fields are refused
+    rather than ignored, which is what keeps a report groupable on its kind.
     """
     for kind in (IngestFailureKind.UNSUPPORTED, IngestFailureKind.CORRUPT):
         assert IngestFailure(name="notes.txt", kind=kind, reason="not an image")
         with pytest.raises(ValidationError):
-            IngestFailure(name="notes.txt", kind=kind, reason="not an image", frames_produced=0)
-        with pytest.raises(ValidationError):
-            IngestFailure(
-                name="notes.txt", kind=kind, reason="not an image", frames_expected_estimate=20
-            )
+            IngestFailure(name="notes.txt", kind=kind, reason="not an image", frames_produced=8)
+    assert [kind.value for kind in IngestFailureKind] == ["unsupported", "corrupt"]

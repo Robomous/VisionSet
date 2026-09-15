@@ -37,6 +37,38 @@ change that fights one is wrong - the boundary does not move to make a build pas
   proves each gate fires by breaking it.
 - **Why it is drawn there** - [frontend/annotator.md](frontend/annotator.md).
 
+## The host boundary
+
+Two rules run through every place a reusable package meets whatever embeds it - the
+standalone application, or another host entirely.
+
+> VisionSet OSS must provide a complete local adapter for every core VisionSet
+> capability and must not require a Robomous service, cloud account, hosted identity
+> provider, or managed storage service.
+
+Browser video import is the clearest instance of it. Decoding happens in the browser
+([`frontend/media`](frontend/media.md)) precisely so that capability needs nothing
+running anywhere: no server-side decoder, no external transcoding service, no
+account to hold either. `tests/scripts/no_server_video_decode.test.mjs` holds the
+negative side of this - no VisionSet code, image, workflow or dependency may name
+`ffmpeg`, `ffprobe`, or a server-side decoding library - because an optional decoder
+reintroduced "just for one case" is a decoder the OSS distribution now depends on
+again.
+
+> Reusable VisionSet packages declare ports; the standalone application and other
+> hosts supply adapters.
+
+`@visionset/ui-core` is the sharpest example: it declares `VisionSetDataClient` for
+data and `VisionSetMediaRuntime` for browser video import, and knows the shape of
+each without ever knowing which transport, credential, materializer or storage
+target answers it (see [frontend/ui-core.md](frontend/ui-core.md)). `@visionset/app`
+is *a* host that implements both - the one this repository ships - not the only
+host either port permits. A managed host satisfies the identical ports with its own
+adapters, and neither `ui-core` nor `@visionset/media`'s core changes to allow that;
+[frontend/media.md](frontend/media.md) covers the equivalent split one level down,
+between the port `@visionset/media`'s core declares and the browser decoder its
+`./mediabunny` subpath adapts.
+
 ## The capabilities contract
 
 The kernel answers *what may be asked of this resource, right now*, and every

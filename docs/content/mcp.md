@@ -105,8 +105,8 @@ page groups them by what they are for.
 
 | | |
 | --- | --- |
-| `ingest` | A local path in, one batch out. Synchronous. |
-| `list_sources` | The folders and clips a project was built from. |
+| `ingest` | A local directory of stills in, one batch out. Synchronous. Refuses a video by name - there is no tool that ingests one; see below. |
+| `list_sources` | The folders a project was built from, and the clips a browser import declared for it - read-only, both kinds. |
 | `backfill_thumbnails` | Render previews that are missing. |
 
 ### Batches
@@ -328,9 +328,9 @@ guard is that a batch which is no longer `in_annotation` refuses every write.
 
 **Ingest, export, weight downloads, integrity checks and pre-labeling are synchronous.** A
 stdio server has no background worker: something has to do the decode, and an agent driving a
-"resume" loop would block for exactly as long as doing the work in the first place. A long video
-makes `ingest` a long call, a large model makes `download_connection_weights` one, and a job of
-untouched assets makes `pre_label_job` one — minutes, with nothing to poll from here.
+"resume" loop would block for exactly as long as doing the work in the first place. A large
+directory makes `ingest` a long call, a large model makes `download_connection_weights` one, and a
+job of untouched assets makes `pre_label_job` one — minutes, with nothing to poll from here.
 `pre_label_batch` runs that once per open job of a batch and `pre_label_project` once per open
 job of every batch it selects, so the wait is that many jobs' worth of minutes. A cut-off
 download changed nothing (the connection is only marked ready once every file is here) and the
@@ -356,9 +356,9 @@ named, it writes only those, a region in any other shape counts as discarded, an
 the plan is the selection. A shape the model does not produce is refused before anything runs.
 
 There is therefore no ingest polling, and no `resume_ingest`. If a call is cut off part way, call
-`ingest` again - registration is idempotent on `(kind, path, extraction_fps)` and content
-addressing means the re-run creates nothing it created before. That is the same argument that
-gave the CLI no `--resume`.
+`ingest` again - registration is idempotent on the directory and content addressing means the
+re-run creates nothing it created before. That is the same argument that gave the CLI no
+`--resume`.
 
 **Paths are local.** `ingest` and `export_release` take paths on the machine the server runs on.
 The API's upload staging exists because HTTP has bytes where the kernel has paths; an agent runs
@@ -396,10 +396,12 @@ only when an agent has a reason to reach for it that no neighbour covers.
 trip: `get_project_dataset`, `get_dataset`, `list_schema_versions`, `get_source`,
 `list_batch_jobs`, `get_job_progress`, `get_asset`, `get_release`.
 
-**Folded into `ingest`**: `register_image_source`, `register_video_source`, `start_ingest`. The
-kernel splits registration in two because a clip needs a rate and a probe while a folder needs
-neither; by the time ingest runs, the source already carries the kind, the path and the rate. The
-dispatch is whether the path is a directory.
+**Folded into `ingest`**: `register_image_source`, `start_ingest`. `register_video_source` was a
+parity candidate for a kernel capability that no longer exists: registering a clip by path was
+always going to need a probe this process could run, and the server does not decode video at all
+any more, so there is nothing left for a tool by that name to call. A video is imported by a
+browser demuxing and decoding it locally — [ingest.md](ingest.md) — which is not a capability a
+stdio agent has a way to perform, so no tool stands in for it.
 
 **Dropped, no poll to make**: `get_ingest_job`, `list_ingest_jobs`, `resume_ingest` - see the
 synchronous limit above.

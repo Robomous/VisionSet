@@ -762,3 +762,139 @@ def test_batch_lineage_starts_null_because_nothing_was_a_correction_of_anything(
             is None
         )
     reopened.close()
+
+
+def _at_generation_eighteen(path: Path) -> None:
+    """A file the way a workspace created before migration 19 would look.
+
+    Migration 19 creates *tables*, so the undo is dropping them rather than
+    dropping columns — and unlike migration 4, which the helper above leaves
+    alone, this pair is worth undoing: they are the whole of what the migration
+    does, so a file that still carries them exercises nothing at all.
+    """
+    store = SqliteMetadataStore(path)
+    store.initialize()
+    with store.engine.begin() as connection:
+        connection.execute(text("DROP TABLE video_import_frame"))
+        connection.execute(text("DROP TABLE video_import"))
+        connection.execute(text(f"UPDATE {META_TABLE} SET format_version = 18"))
+    store.close()
+
+
+def test_a_generation_eighteen_file_gains_the_video_import_tables(tmp_path: Path) -> None:
+    """Migration 19 exercised for real, against a file that genuinely lacks them."""
+    old = tmp_path / "old.db"
+    _at_generation_eighteen(old)
+    stale = SqliteMetadataStore(old)
+    with stale.engine.connect() as connection:
+        assert "video_import" not in set(inspect(connection).get_table_names())
+    stale.close()
+
+    migrated = SqliteMetadataStore(old)
+    migrated.initialize()
+    assert migrated.format_version == FORMAT_VERSION == 19
+    with migrated.engine.connect() as connection:
+        tables = set(inspect(connection).get_table_names())
+    assert {"video_import", "video_import_frame"} <= tables
+    migrated.close()
+
+
+def test_a_migrated_nineteen_file_matches_a_fresh_one(tmp_path: Path) -> None:
+    """The ``create_all`` path and the migration path emit the same two tables."""
+    fresh = SqliteMetadataStore(tmp_path / "fresh.db")
+    fresh.initialize()
+    expected = {sql for sql in _schema(fresh) if "video_import" in sql}
+    fresh.close()
+
+    old = tmp_path / "old.db"
+    _at_generation_eighteen(old)
+    migrated = SqliteMetadataStore(old)
+    migrated.initialize()
+    assert {sql for sql in _schema(migrated) if "video_import" in sql} == expected
+    migrated.close()
+
+
+def test_the_staged_frame_ordinal_is_unique_per_import(tmp_path: Path) -> None:
+    """The constraint that makes ``received_frame_count`` reconcilable.
+
+    Without it a lost race between two appends at one ordinal stages the frame
+    twice, and the session's count is a number nothing can check.
+    """
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    with store.engine.begin() as connection:
+        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
+        connection.execute(
+            text("insert into project (id, workspace_id, name) values ('p', 'w', 'clips')")
+        )
+        connection.execute(
+            text(
+                "insert into source (id, project_id, kind, path, registered_at, capture_params)"
+                " values ('s', 'p', 'image_directory', '/x', '2026-01-01T00:00:00+00:00', '{}')"
+            )
+        )
+        connection.execute(
+            text(
+                "insert into video_import (id, project_id, source_id, state,"
+                " expected_frame_count, received_frame_count, started_at, updated_at)"
+                " values ('i', 'p', 's', 'open', 2, 0,"
+                " '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')"
+            )
+        )
+        connection.execute(
+            text(
+                "insert into video_import_frame (id, import_id, ordinal, requested_timestamp,"
+                " content_hash, width, height, image_format)"
+                f" values ('f1', 'i', 0, 0.0, '{'a' * 64}', 16, 12, 'png')"
+            )
+        )
+    with pytest.raises(IntegrityError), store.engine.begin() as connection:
+        connection.execute(
+            text(
+                "insert into video_import_frame (id, import_id, ordinal, requested_timestamp,"
+                " content_hash, width, height, image_format)"
+                f" values ('f2', 'i', 0, 0.0, '{'b' * 64}', 16, 12, 'png')"
+            )
+        )
+    store.close()
+
+
+def test_the_new_provenance_fields_leave_the_origin_index_alone(tmp_path: Path) -> None:
+    """``policy_version`` and ``materializer`` are not index terms, and must not become one.
+
+    The pair below differs only in those two keys and in nothing the index
+    reads, so the origin is the same origin and the second insert must be
+    refused. That is the claim worth pinning: adding keys to ``source.video``
+    is safe exactly while ``json_extract`` of the three cut parameters is
+    unchanged, and this is what would fail if a future key were quietly added
+    to the index instead.
+    """
+    base = (
+        '{{"metadata": {{"width": 64, "height": 48, "fps": 10.0,'
+        ' "duration_seconds": 2.0, "codec": "h264"}}, "extraction_fps": 1.0{extra}}}'
+    )
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    with store.engine.begin() as connection:
+        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
+        connection.execute(
+            text("insert into project (id, workspace_id, name) values ('p', 'w', 'clips')")
+        )
+        connection.execute(
+            text(
+                "insert into source (id, project_id, kind, path, registered_at,"
+                " capture_params, video) values ('s1', 'p', 'video', 'video-import:one',"
+                f" '2026-01-01T00:00:00+00:00', '{{}}', '{base.format(extra='')}')"
+            )
+        )
+    with pytest.raises(IntegrityError), store.engine.begin() as connection:
+        connection.execute(
+            text(
+                "insert into source (id, project_id, kind, path, registered_at,"
+                " capture_params, video) values ('s2', 'p', 'video', 'video-import:one',"
+                " '2026-01-02T00:00:00+00:00', '{}', '"
+                + base.format(extra=', "policy_version": 1, "materializer": "mediabunny/1.56.1"')
+                + "')"
+            )
+        )
+    store.close()

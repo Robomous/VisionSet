@@ -74,6 +74,8 @@ from visionset.kernel import (
     ExportSourceUnreadable,
     ExportTargetConflict,
     ExportTargetNotFound,
+    FrameContentConflict,
+    FrameOrdinalOutOfRange,
     GeometryNotProduced,
     InferenceConnectionInvalid,
     InferenceConnectionModelFixed,
@@ -101,7 +103,6 @@ from visionset.kernel import (
     LocalInferenceUnavailable,
     LossyExportNotConsented,
     MediaError,
-    MediaToolUnavailable,
     MissingRequiredAttribute,
     NoSplitRecipe,
     NotAWorkspace,
@@ -131,6 +132,9 @@ from visionset.kernel import (
     UnsupportedGeometry,
     UnsupportedMedia,
     UnsupportedPrompt,
+    VideoImportIncomplete,
+    VideoImportNotFound,
+    VideoImportNotOpen,
     VisionSetError,
     WeightsDamaged,
     WorkspaceAlreadyExists,
@@ -215,6 +219,7 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     BatchNotFound: ErrorRule(404, "BATCH_NOT_FOUND"),
     JobNotFound: ErrorRule(404, "JOB_NOT_FOUND"),
     IngestJobNotFound: ErrorRule(404, "INGEST_JOB_NOT_FOUND"),
+    VideoImportNotFound: ErrorRule(404, "VIDEO_IMPORT_NOT_FOUND"),
     BackgroundJobNotFound: ErrorRule(404, "BACKGROUND_JOB_NOT_FOUND"),
     AssetNotFound: ErrorRule(404, "ASSET_NOT_FOUND"),
     SourceNotFound: ErrorRule(404, "SOURCE_NOT_FOUND"),
@@ -236,6 +241,10 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # it is usually reached through a path segment; this one only ever arrives in
     # a list, which is a payload problem. The `docs/content/api.md` rule, applied.
     AssetNotInBatch: ErrorRule(422, "ASSET_NOT_IN_BATCH"),
+    # 422 and not 409: the ordinal is a field of the payload and the session
+    # did not move under the caller — the grid it was opened with has not
+    # changed and will not, so there is no conflict to re-read and resolve.
+    FrameOrdinalOutOfRange: ErrorRule(422, "FRAME_ORDINAL_OUT_OF_RANGE"),
     AssetNotInJob: ErrorRule(404, "ASSET_NOT_IN_JOB"),
     AssetNotInDataset: ErrorRule(404, "ASSET_NOT_IN_DATASET"),
     # Not a 409: a release is immutable, so its state will never change and
@@ -244,9 +253,8 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # apart from RELEASE_NOT_FOUND, which is the case codes exist for.
     NoSplitRecipe: ErrorRule(404, "NO_SPLIT_RECIPE"),
     # The caller named a format nothing is installed for — the SOURCE_NOT_FOUND
-    # reading, not the MEDIA_TOOL_UNAVAILABLE one. This is not "the machine is
-    # missing a tool it should have"; it is "there is no such thing here", and
-    # ``GET /formats`` is what says which things there are.
+    # reading, not "the machine is missing a tool it should have". It is "there
+    # is no such thing here", and ``GET /formats`` says which things there are.
     ExportFormatNotFound: ErrorRule(404, "EXPORT_FORMAT_NOT_FOUND"),
     # The same reading one vocabulary over: the caller named a target no
     # installed exporter declares. No route raises it yet — the target routes are
@@ -278,6 +286,13 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # under it, so a re-read and a resubmit is the whole remedy. It has no flag,
     # deliberately — a "write anyway" would be the lost update this closes.
     StaleWrite: ErrorRule(409, "STALE_WRITE"),
+    # The three video-import refusals a caller resolves by looking at the
+    # session again: it is finished, it is short, or that ordinal is taken by
+    # something else. None is retryable as sent, and none has a flag — see
+    # their kernel docstrings for why a "commit anyway" cannot exist.
+    VideoImportNotOpen: ErrorRule(409, "VIDEO_IMPORT_NOT_OPEN"),
+    VideoImportIncomplete: ErrorRule(409, "VIDEO_IMPORT_INCOMPLETE"),
+    FrameContentConflict: ErrorRule(409, "FRAME_CONTENT_CONFLICT"),
     BatchNotEditable: ErrorRule(409, "BATCH_NOT_EDITABLE"),
     # No route reaches this yet — batch delete is SDK-only. Mapped anyway,
     # because the exact-correspondence test is what keeps the table honest, and
@@ -453,17 +468,11 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # reaching here is a guard nobody wrote. Opaque as well as 500: the message
     # is ``str(exc.orig)``, raw SQLite text naming our own tables and columns.
     ConstraintViolated: ErrorRule(500, "CONSTRAINT_VIOLATED"),
-    # Not a 503, despite being about availability: 503 promises transience, and
-    # retrying never succeeds until an operator installs the binary. The message
-    # is exposed because it carries the install hint, which its docstring calls
-    # the whole reason the message exists.
-    MediaToolUnavailable: ErrorRule(500, "MEDIA_TOOL_UNAVAILABLE", expose_message=True),
-    # The same shape, one layer up: an optional runtime rather than an external
-    # program, and the message carries the exact `pip install` rather than an
-    # apt or brew line. Not a 503 for MEDIA_TOOL_UNAVAILABLE's reason — 503
-    # promises transience, and retrying never succeeds until somebody installs
-    # the extra — and exposed because the command *is* the remedy and nobody can
-    # reconstruct it from "unavailable".
+    # An optional runtime that is not installed. Not a 503 despite being about
+    # availability: 503 promises transience, and retrying never succeeds until
+    # somebody installs the extra. The message is exposed because it carries the
+    # exact `pip install`, which *is* the remedy — nobody can reconstruct it
+    # from "unavailable".
     LocalInferenceUnavailable: ErrorRule(500, "LOCAL_INFERENCE_UNAVAILABLE", expose_message=True),
     # The neighbour of LOCAL_INFERENCE_UNAVAILABLE, exposed for the same reason:
     # the message is the remedy, and this one names the device that filled up
@@ -491,8 +500,8 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # A recipe step kind with no installed driver. The grammar admits only the
     # kinds this distribution ships drivers for, so a caller cannot reach this
     # by naming something wrong — the installation is missing a plugin it was
-    # built with. MEDIA_TOOL_UNAVAILABLE's status and its exposed message, which
-    # lists what is installed. No route raises it yet; mapped for
+    # built with. LOCAL_INFERENCE_UNAVAILABLE's status and its exposed message,
+    # which lists what is installed. No route raises it yet; mapped for
     # BATCH_IMMUTABLE's reason.
     PreprocessingDriverNotFound: ErrorRule(
         500, "PREPROCESSING_DRIVER_NOT_FOUND", expose_message=True

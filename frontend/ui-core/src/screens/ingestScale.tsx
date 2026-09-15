@@ -1,18 +1,14 @@
 import type { JSX } from "react";
 
 import { Label } from "@robomous/ui-core";
+import { scaledDimension } from "@visionset/media";
 
 /**
- * The server's scaled-dimension formula, mirrored exactly.
- *
- * Integer half-up on purpose: Python `round` is half-even and `Math.round` is
- * half-up, so the one spelling both sides can share is integer arithmetic —
- * the kernel's `scaled_dimension`. The 25 × 50% → 13 fixture is pinned on both
- * sides to keep them one formula.
+ * The server's scaled-dimension formula. `@visionset/media`'s `scaledDimension`
+ * is the one spelling; re-exported here so existing callers keep importing it
+ * from this module.
  */
-export function scaledDimension(native: number, percent: number): number {
-  return Math.max(1, Math.floor((native * percent + 50) / 100));
-}
+export { scaledDimension };
 
 /**
  * A native `input[type=range]` and not a primitive, for SuggestPanel's reason:

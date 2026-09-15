@@ -22,11 +22,13 @@
 # other suites cover, so it belongs to a change that touches `docs/`. CI runs it
 # on every pull request either way.
 #
-# The browser group is two suites and neither is a luxury: frontend/app's e2e
-# (stubbed API, CI job `annotator e2e (chromium)`) and the whole cycle against a
-# real server and a real kernel (CI job `browser cycle (chromium)`). The cycle
-# suite has repeatedly been the only check to catch a regression — including one
-# that shipped on a green run of this script back when it ran no browser at all.
+# The browser group is three suites and none is a luxury: frontend/app's e2e
+# (stubbed API, CI job `annotator e2e (chromium)`), the whole cycle against a
+# real server and a real kernel (CI job `browser cycle (chromium)`), and
+# `@visionset/media`'s mediabunny adapter in a real Chromium (CI job `media e2e
+# (chromium)`). The cycle suite has repeatedly been the only check to catch a
+# regression — including one that shipped on a green run of this script back
+# when it ran no browser at all.
 #
 # `CI=1` is set here for the Playwright steps, and it is load-bearing:
 # `playwright.config.ts` sets `reuseExistingServer: !process.env.CI`, so without
@@ -185,10 +187,18 @@ browser_cycle() {
   ( cd "$root/frontend/app" && CI=1 pnpm exec playwright test -c playwright.cycle.config.ts )
 }
 
+# `@visionset/media`'s own config builds the package and serves it itself
+# (`webServer.command`), so this needs no separate build step here — unlike the
+# two above, which is why it is not folded into either.
+media_e2e() {
+  ( cd "$root/frontend/media" && CI=1 pnpm exec playwright test -c playwright.media.config.ts )
+}
+
 run_browser() {
   require_node_modules
   step "annotator + app e2e (chromium)" browser_e2e
   step "browser cycle, real server (chromium)" browser_cycle
+  step "media e2e (chromium)" media_e2e
 }
 
 # The documentation site — not in the default set (see the header). It is a
@@ -280,6 +290,7 @@ summary() {
   echo "=============================================================================" >&2
   echo " skipped:  annotator + app e2e           CI job: annotator e2e (chromium)" >&2
   echo "           browser cycle, real server    CI job: browser cycle (chromium)" >&2
+  echo "           media e2e                     CI job: media e2e (chromium)" >&2
   echo "" >&2
   echo " The real-server cycle run was three separate times the ONLY suite to" >&2
   echo " catch a regression that every other suite reported green." >&2

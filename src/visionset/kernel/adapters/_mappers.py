@@ -69,8 +69,11 @@ from visionset.kernel.domain import (
     Source,
     SourceKind,
     SplitRecipe,
+    StagedFrame,
     TaskGroup,
     Token,
+    VideoImport,
+    VideoImportState,
     VideoProvenance,
     Workspace,
 )
@@ -352,6 +355,16 @@ def _video_to_json(video: VideoProvenance | None) -> dict[str, Any] | None:
     ``json_extract`` of these keys, and rows written before each feature
     existed have no key — a whole-clip, unscaled selection must serialize the
     same way, or the index would hold two spellings of one origin.
+
+    ``materializer`` and ``policy_version`` are dropped on the same terms, one
+    step weaker: neither is an index term, so this is about the blob rather than
+    about uniqueness. A source nothing materialized under a policy this build
+    knows — every clip registered before browser import — carries neither key,
+    and ``null`` would be a second spelling of that same absence. Both are
+    dropped only when they are ``None``, never at a matching value: a stamped
+    ``policy_version`` is written out even when it equals today's constant,
+    because the constant is expected to move and an omitted one would then be
+    indistinguishable from the legacy row that never had the key.
     """
     if video is None:
         return None
@@ -360,6 +373,10 @@ def _video_to_json(video: VideoProvenance | None) -> dict[str, Any] | None:
         del dump["ranges"]
     if dump["scale_percent"] == 100:
         del dump["scale_percent"]
+    if dump["materializer"] is None:
+        del dump["materializer"]
+    if dump["policy_version"] is None:
+        del dump["policy_version"]
     return dump
 
 
@@ -368,7 +385,8 @@ def _source_to_row(entity: Source) -> t.Base:
         id=entity.id,
         project_id=entity.project_id,
         kind=entity.kind,
-        path=entity.path,
+        # ``path`` is the column's historical name; the domain field is `locator`.
+        path=entity.locator,
         display_name=entity.display_name,
         # Spelled out for the reason ``_release_to_row`` is: ``_flat_mapping``
         # dumps in python mode and would hand a ``datetime`` to a ``String``
@@ -385,11 +403,45 @@ def _source_to_domain(_: Session, row: Any) -> Source:
         id=row.id,
         project_id=row.project_id,
         kind=SourceKind(row.kind),
-        path=row.path,
+        # ``row.path`` is the column's historical name; it fills the domain's `locator`.
+        locator=row.path,
         display_name=row.display_name,
         registered_at=datetime.fromisoformat(row.registered_at),
         capture_params=row.capture_params,
         video=None if row.video is None else VideoProvenance.model_validate(row.video),
+    )
+
+
+def _video_import_to_row(entity: VideoImport) -> t.Base:
+    """Spelled out for ``_release_to_row``'s reason: two ``datetime`` columns."""
+    return t.VideoImportRow(
+        id=entity.id,
+        project_id=entity.project_id,
+        source_id=entity.source_id,
+        state=entity.state,
+        expected_frame_count=entity.expected_frame_count,
+        received_frame_count=entity.received_frame_count,
+        batch_name=entity.batch_name,
+        target_batch_id=entity.target_batch_id,
+        batch_id=entity.batch_id,
+        started_at=entity.started_at.isoformat(),
+        updated_at=entity.updated_at.isoformat(),
+    )
+
+
+def _video_import_to_domain(_: Session, row: Any) -> VideoImport:
+    return VideoImport(
+        id=row.id,
+        project_id=row.project_id,
+        source_id=row.source_id,
+        state=VideoImportState(row.state),
+        expected_frame_count=row.expected_frame_count,
+        received_frame_count=row.received_frame_count,
+        batch_name=row.batch_name,
+        target_batch_id=row.target_batch_id,
+        batch_id=row.batch_id,
+        started_at=datetime.fromisoformat(row.started_at),
+        updated_at=datetime.fromisoformat(row.updated_at),
     )
 
 
@@ -738,6 +790,18 @@ INGEST_JOBS: EntityMapping[IngestJob] = EntityMapping(
     parent_column="source_id",
     to_row=_ingest_job_to_row,
     to_domain=_ingest_job_to_domain,
+)
+VIDEO_IMPORTS: EntityMapping[VideoImport] = EntityMapping(
+    row=t.VideoImportRow,
+    parent_column="project_id",
+    to_row=_video_import_to_row,
+    to_domain=_video_import_to_domain,
+)
+#: Parented on the session rather than on the project: a staged frame is only
+#: ever read as "everything this import holds", which is the one query shape
+#: ``Repository`` has.
+VIDEO_IMPORT_FRAMES: EntityMapping[StagedFrame] = _flat_mapping(
+    StagedFrame, t.VideoImportFrameRow, "import_id"
 )
 SOURCES: EntityMapping[Source] = EntityMapping(
     row=t.SourceRow,
