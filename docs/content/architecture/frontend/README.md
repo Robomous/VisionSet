@@ -1,10 +1,10 @@
 # The frontend
 
-[`frontend/`](../../../../frontend/) is a pnpm workspace containing four packages.
+[`frontend/`](../../../../frontend/) is a pnpm workspace containing five packages.
 The division is architectural, not merely a build convenience: each package is
 defined by what it is *allowed to know*.
 
-## The four packages
+## The five packages
 
 ```mermaid
 flowchart TB
@@ -13,6 +13,7 @@ flowchart TB
     Annotator["@visionset/annotator\nheadless engine + React adapter"]
     Media["@visionset/media\nsampling policy · materializer contract"]
     Mediabunny["@visionset/media/mediabunny\nMediabunny + WebCodecs adapter"]
+    Inference["@visionset/browser-inference\npersistent worker · ONNX Runtime Web"]
 
     App --> UiCore
     App --> Annotator
@@ -40,6 +41,7 @@ Arrows are `dependencies` in each `package.json`. The interesting part is what i
 | [`media`](media.md) | nothing at runtime (core); its own `./mediabunny` subpath depends on `mediabunny` and the browser | React, HTTP, routing, a host — and the core entrypoint never touches `window`, `Worker` or `VideoDecoder` at module scope |
 | [`ui-core`](ui-core.md) | `@visionset/annotator`, `@visionset/media` **root entrypoint only**, Radix, TanStack Query; `openapi-fetch` is a dependency for consumer-resolvable type references in emitted declarations, never a runtime/value import | a router, HTTP, `@visionset/media/mediabunny`, or which transport a `FrameSink` uses |
 | [`app`](app.md) | all three of the above (`media`'s root **and** its `/mediabunny` subpath), `react-router`, `openapi-fetch` as an actual client | domain logic |
+| [`browser-inference`](browser-inference.md) | `onnxruntime-web`, and nothing else — **no VisionSet package at all** | React, a host, HTTP, a model, or the `ui-core` port it deliberately does not implement |
 
 Read down the right-hand column and the architecture falls out. The annotator
 ships with **zero runtime dependencies**, so an application can embed it without
@@ -51,6 +53,11 @@ materializer, so a screen takes navigation as a callback and video import as an
 injected runtime, and both work inside anybody's tree. The app is shell only, so a
 capability that lands there instead of in `ui-core` or `media` is an architecture
 bug by definition - the future enterprise UI could not reuse it.
+
+`browser-inference` is the newest and the strictest: it has no arrow into the graph
+above at all, because a runtime that executes a model graph needs to know nothing
+about VisionSet to do it. Nothing imports it yet, which is the honest state of a
+package built before the thing that will use it.
 
 ## What the workspace runs
 

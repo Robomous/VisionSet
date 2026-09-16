@@ -1,0 +1,53 @@
+{
+  "name": "@visionset/browser-inference",
+  "version": "0.0.1-beta.4",
+  "description": "Executes ONNX graphs in a persistent module worker: protocol, capability interpretation and execution-provider policy, framework-free and with no VisionSet dependency.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Robomous/VisionSet.git",
+    "directory": "frontend/browser-inference"
+  },
+  "homepage": "https://github.com/Robomous/VisionSet#readme",
+  "bugs": {
+    "url": "https://github.com/Robomous/VisionSet/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser/index.d.ts",
+      "import": "./dist/browser/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "THIRD-PARTY-NOTICES.md",
+    "LICENSES"
+  ],
+  "scripts": {
+    "build": "tsup && node scripts/copy-ort-assets.mjs",
+    "test": "vitest run",
+    "test:browser": "playwright test -c playwright.inference.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.browser.json",
+    "lint": "eslint src browser && pnpm run typecheck"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.5.1",
+    "eslint": "^10.10.0",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.0",
+    "vitest": "^5.0.0"
+  },
+  "dependencies": {
+    "onnxruntime-web": "1.29.0"
+  }
+}

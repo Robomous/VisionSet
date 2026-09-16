@@ -28,3 +28,9 @@ browser runs. They were written together, and they are easiest to read in this o
 | [Browser inference is host-injected](browser-inference-is-host-injected.md) | The reusable UI declares a port for running a model here; it never chooses an implementation. |
 | [Asking is not sending](asking-is-not-sending.md) | Requesting a suggestion and posting it to a route are separate concerns, and the answer has one shape either way. |
 | [Where a model runs is not where it came from](where-a-model-runs-is-not-where-it-came-from.md) | `ModelOrigin` describes provenance. It never implies an execution location. |
+
+## Running a model in the browser
+
+| Page | The rule |
+| --- | --- |
+| [The inference worker is persistent](the-inference-worker-is-persistent.md) | One worker outlives every operation, so routing, cancellation and disposal become the runtime's own obligations - and its operation ids are not the editor's suggestion serial. |

@@ -38,8 +38,15 @@ minimumReleaseAgeExclude:
 # esbuild's postinstall fetches the platform binary for the machine doing the
 # install. Without it `vite` and `vitest` have no binary to call, and every frontend
 # build and test fails at startup rather than at resolution.
+#
+# protobufjs arrives under onnxruntime-web. Its postinstall only compares the range a
+# dependent declared against its own versioning scheme and prints a warning; it writes
+# nothing and generates nothing, so declining it costs the build nothing. The entry
+# exists because pnpm requires the answer to be recorded, not because there was a
+# question about whether to run it.
 allowBuilds:
   esbuild: true
+  protobufjs: false
 
 # Forced resolutions. An entry here is a version this repository takes regardless of
 # what the dependency graph asked for, so each one should say why it exists.

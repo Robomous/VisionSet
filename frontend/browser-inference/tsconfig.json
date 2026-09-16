@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // No "DOM": core cannot so much as name `navigator`, `Worker` or `GPUAdapter`.
+    // The environment reaches core as the plain record in src/capabilities.ts, which
+    // is what makes every branch of the capability logic reachable from a Node test.
+    "lib": ["ES2022"],
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "declaration": true,
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  // The adapter lives in its own project (tsconfig.browser.json) with the DOM lib.
+  // Keeping it out of this one is what keeps "core takes no browser lib" a real check
+  // rather than a comment.
+  "include": ["src"],
+  "exclude": ["src/browser"]
+}
