@@ -67,6 +67,18 @@ DECODER_MAX_POINTS = 6
 ENCODER_PATCH_EMBED_DIM = 192
 MODEL_ID = "efficientsam-ti"
 
+# The browser half of the parity chain. The graphs this script writes are measured against
+# Python ONNX Runtime, and the browser is then measured against *that* measurement --
+# PyTorch -> Python ORT -> ORT Web. If the two ONNX Runtimes are different releases, the
+# reference a browser is compared against was produced by a different implementation of the
+# same graph, and a real browser regression becomes indistinguishable from a version
+# difference. So the versions are not merely recorded here, they are checked: `pyproject.toml`
+# pins `onnxruntime` exactly and this reads the `onnxruntime-web` pin beside it, and an export
+# whose two runtimes disagree fails rather than writing a report that quietly documents the
+# gap. Moving one means moving the other.
+BROWSER_PACKAGE_JSON = REPO_ROOT / "frontend/browser-inference/package.json"
+ONNXRUNTIME_WEB_PACKAGE = "onnxruntime-web"
+
 # Measured against the pinned checkout, not assumed from the design doc (an earlier draft of
 # this text claimed a Meta copyright line inside LICENSE and a header on every source file;
 # neither is true -- see task-7-8 fix report for how this was checked).
@@ -420,6 +432,43 @@ def assert_graph_contract(
     return measured
 
 
+def onnxruntime_web_pin() -> str:
+    """The exact `onnxruntime-web` version the browser package depends on.
+
+    Refuses a range. A caret or a `>=` here would mean the version a browser actually loads
+    is chosen at install time, which is precisely the variable the pin exists to remove --
+    there would be nothing for `assert_runtime_alignment` to compare against.
+    """
+    manifest = json.loads(BROWSER_PACKAGE_JSON.read_text())
+    for field in ("dependencies", "devDependencies", "peerDependencies"):
+        declared = manifest.get(field, {}).get(ONNXRUNTIME_WEB_PACKAGE)
+        if declared is None:
+            continue
+        if not declared[:1].isdigit():
+            raise AssertionError(
+                f"{BROWSER_PACKAGE_JSON} declares {ONNXRUNTIME_WEB_PACKAGE} as {declared!r}, "
+                "which is a range. The browser runtime must be pinned exactly so the graphs "
+                "exported here are measured against the runtime a browser will actually load."
+            )
+        return declared
+    raise AssertionError(
+        f"{BROWSER_PACKAGE_JSON} declares no {ONNXRUNTIME_WEB_PACKAGE} dependency; the export "
+        "cannot confirm which runtime the browser half of the parity chain uses."
+    )
+
+
+def assert_runtime_alignment(python_version: str, web_version: str) -> None:
+    """Both halves of the parity chain must be the same ONNX Runtime release."""
+    if python_version != web_version:
+        raise AssertionError(
+            f"ONNX Runtime versions disagree: Python onnxruntime=={python_version} but "
+            f"{ONNXRUNTIME_WEB_PACKAGE}=={web_version}. The browser is measured against the "
+            "Python reference, so these must move together -- update the `browser-models` "
+            f"group in pyproject.toml and the dependency in {BROWSER_PACKAGE_JSON} as one "
+            "change, or the reference stops describing what the browser runs."
+        )
+
+
 def assert_runtime_shapes(onnxruntime_module: Any, encoder_path: Path, decoder_path: Path) -> None:
     """Run each graph at two different sizes and assert the concrete shapes the design's
     section 5 names.
@@ -717,11 +766,15 @@ def main() -> None:
         print("Writing LICENSE, PROVENANCE.md and build-report.json...")
         (tmp_output_dir / "LICENSE").write_bytes((upstream_dir / "LICENSE").read_bytes())
         write_provenance(tmp_output_dir)
+        onnxruntime_web_version = onnxruntime_web_pin()
+        assert_runtime_alignment(onnxruntime.__version__, onnxruntime_web_version)
         versions = {
             "python": platform.python_version(),
             "torch": torch.__version__,
             "onnx": onnx.__version__,
             "onnxruntime": onnxruntime.__version__,
+            "onnxruntime_web": onnxruntime_web_version,
+            "opset": str(encoder_opset),
         }
         write_build_report(
             tmp_output_dir,

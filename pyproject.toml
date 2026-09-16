@@ -199,7 +199,17 @@ coco = [
 browser-models = [
     "numpy>=2.4.6",
     "onnx>=1.22.0",
-    "onnxruntime>=1.30.0",
+    # Exact, and the only exact pin in this file. Every other constraint here is a
+    # floor because `uv.lock` is the artifact a reviewer reads; this one is a floor
+    # *and* a ceiling because the version is not an implementation detail of the
+    # export -- it is half of a parity claim. `onnxruntime-web` in
+    # frontend/browser-inference/package.json is pinned to 1.29.0, and the chain this
+    # phase exists to prove runs PyTorch -> Python ORT -> ORT Web. Letting the Python
+    # side float to a different release would mean the reference the browser is
+    # measured against was produced by a different implementation of the same graph,
+    # so a genuine browser regression and an ORT-version difference would arrive
+    # looking identical. Move the two together or not at all.
+    "onnxruntime==1.29.0",
     "onnxscript>=0.7.2",
     "torch>=2.14.0",
 ]
