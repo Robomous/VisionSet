@@ -312,6 +312,67 @@ describe("dispose", () => {
   });
 });
 
+describe("terminating the worker exactly once", () => {
+  it("does not stop the worker a second time when dispose() follows a channel failure", async () => {
+    const { runtime, posted, failChannel, terminations, idsOf } = harness();
+
+    const loading = runtime.loadGraph(Uint8Array.from([1]));
+    failChannel(new Error("worker thread died"));
+
+    expect((await rejection(loading)).code).toBe("worker-crashed");
+    expect(terminations()).toBe(1);
+
+    const postedAtFailure = posted.length;
+    runtime.dispose();
+
+    // A stopped worker cannot hear a shutdown and does not need stopping again. One
+    // worker, one termination, whichever path got there first.
+    expect(terminations()).toBe(1);
+    expect(idsOf("shutdown")).toEqual([]);
+    expect(posted.length).toBe(postedAtFailure);
+
+    runtime.dispose();
+    expect(terminations()).toBe(1);
+  });
+
+  it("does not stop the worker a second time when dispose() follows a configuration failure", async () => {
+    const { runtime, posted, reply, idsOf, terminations } = harness();
+
+    const [configureId] = idsOf("configure");
+    reply({
+      kind: "error",
+      id: configureId,
+      code: "worker-initialization-failed",
+      message: "no WASM artifact at the configured base URL",
+    });
+
+    expect((await rejection(runtime.ready())).code).toBe("worker-initialization-failed");
+    expect(terminations()).toBe(1);
+
+    const postedAtFailure = posted.length;
+    runtime.dispose();
+
+    expect(terminations()).toBe(1);
+    expect(idsOf("shutdown")).toEqual([]);
+    expect(posted.length).toBe(postedAtFailure);
+  });
+
+  it("keeps a disposed runtime disposed when the channel fails afterwards", async () => {
+    const { runtime, failChannel, terminations } = harness();
+
+    runtime.dispose();
+    expect(terminations()).toBe(1);
+
+    // A worker the caller already ended can still emit an error on its way out. That is
+    // not a new failure to relabel: the runtime is already over, and it is over as
+    // `disposed`, which is what its caller asked for.
+    failChannel(new Error("worker thread died"));
+
+    expect(terminations()).toBe(1);
+    expect((await rejection(runtime.run("graph", { x: tensor(1) }))).code).toBe("disposed");
+  });
+});
+
 describe("configuration", () => {
   it("posts configure as an ordinary operation and answers ready from its reply", async () => {
     const { runtime, posted, reply, idsOf } = harness();

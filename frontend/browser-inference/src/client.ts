@@ -40,7 +40,16 @@ export interface RuntimeConfiguration {
  * for video import in `@visionset/media`, would throw all of that away on every call.
  */
 export interface BrowserInferenceRuntime {
-  /** The providers ORT was configured with, once the worker has confirmed them. */
+  /**
+   * The providers ORT was configured with, once the worker has confirmed them.
+   *
+   * This is the **initialization result**, not a health probe: it settles once, with the
+   * answer configuration gave, and hands out that same settled promise forever after. A
+   * worker that crashes later does not retract it — `ready()` will still resolve with the
+   * providers initialization agreed on. What a crash changes is `loadGraph()` and `run()`,
+   * which reject immediately from that moment on. Asking whether a runtime is *currently*
+   * usable means calling one of those.
+   */
   ready(): Promise<readonly ExecutionProvider[]>;
   /**
    * Hand the worker a serialized ONNX graph and keep the session it creates.
@@ -125,6 +134,7 @@ export function createRuntimeClient(
    * silently recreated, because automatic recovery is not part of this phase.
    */
   let terminalError: InferenceRuntimeError | null = null;
+  let workerStopped = false;
 
   function post(message: ToWorker, transfer?: readonly unknown[]): void {
     channel.worker.postMessage(message, transfer);
@@ -140,15 +150,28 @@ export function createRuntimeClient(
   }
 
   /**
+   * One worker, stopped once. Three paths reach a stopped worker — disposal, a channel
+   * crash and a configuration failure — and any two of them can happen in either order,
+   * so the guard lives here rather than being argued about at each call site.
+   */
+  function stopWorker(): void {
+    if (workerStopped) return;
+    workerStopped = true;
+    channel.worker.terminate();
+  }
+
+  /**
    * Move the runtime into its terminal state: every operation still pending rejects
    * with `error`, and the worker is stopped. Idempotent, because both a channel crash
-   * and a configuration failure can each try to call this once.
+   * and a configuration failure can each try to call this once. A runtime the caller
+   * already disposed stays disposed: it has nothing pending and no worker left, and
+   * relabelling its refusals after the fact would only confuse whoever ended it.
    */
   function terminate(error: InferenceRuntimeError): void {
-    if (terminalError !== null) return;
+    if (terminalError !== null || disposed) return;
     terminalError = error;
     settleAll(error);
-    channel.worker.terminate();
+    stopWorker();
   }
 
   function send<T>(request: (id: OperationId) => void): Promise<T> {
@@ -255,17 +278,18 @@ export function createRuntimeClient(
     dispose() {
       if (disposed) return;
       disposed = true;
-      // A worker already in its terminal state has nothing pending to settle and
-      // nothing left to ask to shut down cleanly — `terminate()` already did both.
+      // A worker already in its terminal state has nothing pending to settle, nothing
+      // left to ask to shut down cleanly, and nothing left to stop — `terminate()` did
+      // all three. `stopWorker()` is what keeps that true rather than a comment.
       if (terminalError === null) {
         settleAll(new InferenceRuntimeError("disposed"));
         // The worker is asked to release its sessions before it is stopped, but
-        // `terminate()` is what guarantees the stop, so the release is best-effort and
-        // the `disposed` reply — if it is ever sent — is dropped by the routing rule,
-        // because this id is deliberately never entered in the pending table.
+        // `terminate()` on the worker is what guarantees the stop, so the release is
+        // best-effort and the `disposed` reply — if it is ever sent — is dropped by the
+        // routing rule, because this id is deliberately never entered in the pending table.
         post({ kind: "shutdown", id: nextOperationId++ });
       }
-      channel.worker.terminate();
+      stopWorker();
     },
   };
 }
