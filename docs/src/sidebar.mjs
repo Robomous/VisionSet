@@ -63,6 +63,16 @@ export const sidebar = [
           { slug: "architecture/frontend/visual-baselines" },
         ],
       },
+      {
+        label: "Decisions",
+        items: [
+          { slug: "architecture/decisions" },
+          { slug: "architecture/decisions/a-connection-is-not-a-browser" },
+          { slug: "architecture/decisions/browser-inference-is-host-injected" },
+          { slug: "architecture/decisions/asking-is-not-sending" },
+          { slug: "architecture/decisions/where-a-model-runs-is-not-where-it-came-from" },
+        ],
+      },
     ],
   },
   {

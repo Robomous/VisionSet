@@ -63,6 +63,60 @@ import, so there is exactly one hook, nullable, and no second
 way it holds the `fetch` boundary below: it now also refuses a `@visionset/media/mediabunny`
 import, value or type, anywhere in this package's shipped source.
 
+## A third host-injected runtime, for suggesting on this device
+
+`inference/browserPort.ts` declares `VisionSetBrowserInferenceRuntime` - which targets can
+answer an interactive suggestion **on this device, right now**, and how to ask one of them -
+and `VisionSetBrowserInferenceProvider` / `useBrowserInferenceRuntime()` carry it exactly as
+`media/port.ts` is carried. Third seam, same rule: this package owns the port and the React
+plumbing and never the implementation. It imports no model runtime, no execution backend and no
+concrete adapter, and it discovers none either.
+
+Absence is the ordinary case, so the hook answers `null` and never throws - the rule stated
+twice above, for a third capability. **A host that offers browser inference composes the
+runtime at the host boundary; a host that does not offer it supplies nothing.** No host in this
+repository supplies one, so every build behaves as it did before the port existed.
+
+The port is two members wide on purpose, and it is an *execution* contract rather than a
+catalog: finding and obtaining a model is a question about things that cannot answer yet, and
+this is not where it is answered. Nor is the narrowness a promise that growth is free - the
+interface is published, so adding a **required** member to it would break every host
+implementing the older one, and
+[browser inference is host-injected](../decisions/browser-inference-is-host-injected.md) says
+how it is grown instead.
+
+> An `InferenceConnection` is a model the VisionSet server has. A browser inference runtime is
+> something this browser can do. They are not two spellings of one idea, and neither is
+> derivable from the other.
+
+## Asking for a suggestion is not sending one
+
+`inference/suggestionExecutor.ts` is the seam the runtime above would plug into, and it exists
+on its own. A `SuggestionRequest` is what the editor asks - whose asset, the accumulated
+positive and negative points in placement order, the geometry kinds the ask will accept, and
+where the adjustments stand - and a `SuggestionExecutor` answers one. The request carries **no
+connection id**: where an answer is routed is the executor's own business, fixed when it is
+built.
+
+`useServerSuggestionExecutor()` is the only implementation that ships. It posts
+`/inference/suggest` exactly as `AnnotationPage` used to, and answers `null` when there is no
+usable connection - "nowhere to send this" is the state `usableConnection()` already reports
+through its blocker, and the panel renders the blocker rather than a refusal.
+
+Every executor answers in one shape, `SuggestionOut`, which is what keeps the suggestion
+session - the accumulated points, the serial, and the rule that a slow first answer may not
+overwrite a fast second one - written once. The editor consumes that promise with a
+two-argument `then(success, failure)` rather than a chained `.catch`, so that only the
+executor's own rejection is read as a refusal and a failure while *reading* a successful answer
+is never dressed up as the model declining to answer.
+
+The constraints behind all of this are recorded under
+[Decisions](../decisions/README.md): [a connection is not a
+browser](../decisions/a-connection-is-not-a-browser.md), [browser inference is
+host-injected](../decisions/browser-inference-is-host-injected.md), [asking is not
+sending](../decisions/asking-is-not-sending.md), and [where a model runs is not where it came
+from](../decisions/where-a-model-runs-is-not-where-it-came-from.md).
+
 ## Nothing in this package calls `fetch`
 
 `data/port.ts` declares `VisionSetDataClient`, the data contract a host satisfies -

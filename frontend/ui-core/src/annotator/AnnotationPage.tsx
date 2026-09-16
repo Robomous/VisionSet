@@ -185,8 +185,9 @@ import {
 import { AddClassDialog, runAddClass } from "./AddClassDialog";
 import { FrameGallery } from "./FrameGallery";
 import { SuggestPanel } from "./SuggestPanel";
-import { useConnections, useSuggestRegion, usableConnection } from "../data/inferenceQueries";
+import { useConnections, usableConnection } from "../data/inferenceQueries";
 import type { SuggestionOut } from "../data/inferenceQueries";
+import { useServerSuggestionExecutor } from "../inference/suggestionExecutor";
 import { readPref, writePref } from "../data/prefs";
 
 /**
@@ -953,7 +954,9 @@ function Workspace({
     connections.data?.items,
     preferredConnection,
   );
-  const suggestRegion = useSuggestRegion();
+  // Server-only today, and `null` is how "nowhere to send this" arrives — the same fact
+  // `usableConnection`'s blocker states, which is what the panel renders.
+  const executor = useServerSuggestionExecutor(connection?.id ?? null);
 
   /**
    * One clock over the wait, read by the canvas and by the panel alike.
@@ -1037,7 +1040,7 @@ function Workspace({
    * by the time an answer lands the session has usually moved.
    */
   function suggestAt(point: Point, polarity: Polarity): void {
-    if (session === null || connection === null) return;
+    if (session === null || executor === null) return;
     const declared = store.document.schema.classes.find(
       (candidate) => candidate.name === session.labelClass,
     );
@@ -1047,29 +1050,28 @@ function Workspace({
     setSession(next);
     const asked = next.serial;
     const prompt = promptOf(next);
-    suggestRegion.mutate(
-      {
+    void executor
+      .suggest({
         projectId,
         assetId: asset.id,
-        connectionId: connection.id,
         positive: prompt.positive,
         negative: prompt.negative,
         // The shape the strip is showing, not every shape the class admits —
         // sending the set would ignore the held tool. See `suggestGeometriesFor`.
         allowedGeometries: suggestGeometriesFor(declared, activeTool),
         adjustments: next.adjustments,
-      },
-      {
-        onSuccess: (answer) => {
+      })
+      // Two handlers on one promise, never `.then(...).catch(...)`: a `.catch` chained
+      // after would also swallow a failure in the fold above and report our own bug as
+      // the model's refusal. `onSuccess`/`onError` never did that.
+      .then(
+        (answer) => {
           setSession((live) => (live === null ? live : answered(live, asked, readAnswer(answer))));
         },
-        onError: (error: unknown) => {
-          setSession((live) =>
-            live === null ? live : refused(live, asked, refusalProse(error)),
-          );
+        (error: unknown) => {
+          setSession((live) => (live === null ? live : refused(live, asked, refusalProse(error))));
         },
-      },
-    );
+      );
   }
 
   /**

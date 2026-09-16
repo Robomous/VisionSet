@@ -1,0 +1,296 @@
+import { fireEvent, screen } from "@testing-library/react";
+import { userEvent } from "@testing-library/user-event";
+import { renderHook, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { JSX, ReactNode } from "react";
+
+import {
+  useBrowserInferenceRuntime,
+  VisionSetBrowserInferenceProvider,
+} from "./VisionSetBrowserInferenceProvider";
+import type { VisionSetBrowserInferenceRuntime } from "./browserPort";
+import { clearPrefs } from "../data/prefs";
+import { AnnotationPage } from "../annotator/AnnotationPage";
+import { TooltipProvider } from "@robomous/ui-core";
+import { renderWithData } from "../testing/dataHarness";
+import { stubResizeObserver } from "../testing/resizeObserver.js";
+import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
+
+const RUNTIME: VisionSetBrowserInferenceRuntime = {
+  listTargets: async () => [
+    { id: "t1", label: "This device", modelRef: "example/model@rev" },
+  ],
+  executorFor: () => ({ suggest: async () => { throw new Error("not called"); } }),
+};
+
+function withRuntime(runtime?: VisionSetBrowserInferenceRuntime) {
+  return function Wrapper({ children }: { readonly children: ReactNode }): JSX.Element {
+    return (
+      <VisionSetBrowserInferenceProvider runtime={runtime}>
+        {children}
+      </VisionSetBrowserInferenceProvider>
+    );
+  };
+}
+
+describe("useBrowserInferenceRuntime", () => {
+  it("is null with no provider at all, and does not throw", () => {
+    const { result } = renderHook(() => useBrowserInferenceRuntime());
+    expect(result.current).toBeNull();
+  });
+
+  it("is null when a host supplies no runtime", () => {
+    const { result } = renderHook(() => useBrowserInferenceRuntime(), {
+      wrapper: withRuntime(undefined),
+    });
+    expect(result.current).toBeNull();
+  });
+
+  it("is the host's runtime when one is supplied", () => {
+    const { result } = renderHook(() => useBrowserInferenceRuntime(), {
+      wrapper: withRuntime(RUNTIME),
+    });
+    expect(result.current).toBe(RUNTIME);
+  });
+
+  it("hands back a target list and an executor for a target", async () => {
+    const { result } = renderHook(() => useBrowserInferenceRuntime(), {
+      wrapper: withRuntime(RUNTIME),
+    });
+    const targets = await result.current!.listTargets();
+    expect(targets.map((target) => target.id)).toEqual(["t1"]);
+    expect(typeof result.current!.executorFor("t1").suggest).toBe("function");
+  });
+});
+
+/**
+ * The seam is inert: a `VisionSetBrowserInferenceProvider` in the tree must not change what
+ * the suggest gesture puts on the wire. Nothing in `@visionset/ui-core` reads this runtime
+ * yet, so the strongest available proof is a black-box one — drive the real annotation flow
+ * twice, once bare and once wrapped, and diff the requests byte for byte.
+ *
+ * This is the minimum lifted from `suggestFlow.test.tsx`'s harness, not an import of it: that
+ * file's helpers are module-private, and the plan treats copying the minimum as the accepted
+ * deviation from lifting them into a shared module, so as not to touch the primary
+ * behaviour-preservation gate for this branch.
+ */
+const PROJECT = "11111111-1111-4111-8111-111111111111";
+const BATCH = "22222222-2222-4222-8222-222222222222";
+const JOB = "33333333-3333-4333-8333-333333333333";
+const ASSET = "44444444-4444-4444-8444-444444444444";
+const CONNECTION = "66666666-6666-4666-8666-666666666666";
+const MODEL_REF = "facebook/sam2-hiera-base-plus@main";
+
+const SCHEMA = {
+  project_id: PROJECT,
+  version: 1,
+  description: null,
+  created_at: null,
+  provenance: "curated",
+  classes: [{ name: "vehicle", geometries: ["bbox"], color: "#3355ff", attributes: [] }],
+};
+
+interface Sent {
+  readonly method: string;
+  readonly path: string;
+  readonly body: string;
+}
+
+const sent: Sent[] = [];
+let connections: readonly Record<string, unknown>[] = [];
+let suggestion: Record<string, unknown> | null = null;
+
+function connectionRow(): Record<string, unknown> {
+  return {
+    id: CONNECTION,
+    name: "local sam",
+    connection_type: "local",
+    model_id: "facebook/sam2-hiera-base-plus",
+    model_revision: "main",
+    device: "cuda",
+    precision: "fp16",
+    endpoint_url: null,
+    provider_id: "sam",
+    credential_env: null,
+    origin: "huggingface",
+    setup_state: "ready",
+    allowed_actions: [],
+    capabilities: ["point_suggest"],
+    produces: ["bbox", "polygon"],
+    download: null,
+    integrity_check: null,
+    created_at: "2026-08-08T00:00:00Z",
+    updated_at: "2026-08-08T00:00:00Z",
+  };
+}
+
+function assetRow(id: string, hash: string): Record<string, unknown> {
+  return {
+    id,
+    project_id: PROJECT,
+    modality: "image",
+    content_hash: hash.padEnd(64, "0"),
+    width: 640,
+    height: 480,
+    format: "png",
+    thumbnail_hash: null,
+    frame_index: null,
+    frame_timestamp: null,
+    source_id: null,
+    ingested_at: null,
+    job_id: JOB,
+    progress: "unannotated",
+    allowed_actions: assetActions("unannotated", { batchState: "in_annotation" }),
+    annotation_count: 0,
+    min_confidence: null,
+  };
+}
+
+function answer(path: string): unknown {
+  if (path === "/inference/connections") {
+    return { items: connections, total: connections.length };
+  }
+  if (path === `/jobs/${JOB}`) {
+    return {
+      id: JOB,
+      batch_id: BATCH,
+      state: "in_progress",
+      asset_count: 1,
+      allowed_actions: jobActions("in_progress", { settled: false }),
+      assignee: null,
+      pre_label_run: null,
+    };
+  }
+  if (path === `/batches/${BATCH}`) {
+    return {
+      id: BATCH,
+      project_id: PROJECT,
+      name: "drive-01",
+      state: "in_annotation",
+      schema_version: 1,
+      asset_count: 1,
+      allowed_actions: batchActions("in_annotation"),
+      promoted_asset_count: 0,
+      parent_batch_id: null,
+      pre_label_run: null,
+      progress: {
+        unannotated: 1,
+        pre_labeled: 0,
+        annotated: 0,
+        skipped: 0,
+        review_pending: 0,
+        accepted: 0,
+        total: 1,
+      },
+    };
+  }
+  if (path.endsWith("/schema/versions/1") || path.endsWith("/schema")) return SCHEMA;
+  if (path.endsWith("/assets")) {
+    return { items: [assetRow(ASSET, "abcdef0")], total: 1 };
+  }
+  return { items: [], total: 0 };
+}
+
+beforeEach(() => {
+  sent.length = 0;
+  clearPrefs();
+  connections = [connectionRow()];
+  suggestion = {
+    model_ref: MODEL_REF,
+    confidence: 0.9125,
+    regions: [
+      { geometry: { type: "bbox", x: 12, y: 34, width: 56, height: 78 }, contour: [] },
+    ],
+    applied: { tolerance: 1 },
+    parameters: [],
+  };
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    media: query,
+    matches: true,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+  stubResizeObserver();
+  vi.stubGlobal("fetch", async (request: Request) => {
+    const path = new URL(request.url).pathname;
+    if (request.method !== "GET") {
+      sent.push({ method: request.method, path, body: await request.clone().text() });
+      if (path === "/inference/suggest") {
+        return new Response(JSON.stringify(suggestion), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify(answer(path)), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  globalThis.sessionStorage.clear();
+});
+
+function mount(node: ReactNode, runtime?: VisionSetBrowserInferenceRuntime): JSX.Element {
+  return (
+    <TooltipProvider>
+      <VisionSetBrowserInferenceProvider runtime={runtime}>
+        {node}
+      </VisionSetBrowserInferenceProvider>
+    </TooltipProvider>
+  );
+}
+
+async function open(runtime?: VisionSetBrowserInferenceRuntime): Promise<() => void> {
+  const view = renderWithData(mount(<AnnotationPage jobId={JOB} />, runtime));
+  await screen.findByTestId("annotation-page");
+  return view.unmount;
+}
+
+async function arm(): Promise<void> {
+  await userEvent.click(screen.getByTestId("tool-suggest"));
+  await screen.findByTestId("suggest-panel");
+}
+
+function clickCanvas(): void {
+  fireEvent.pointerDown(screen.getByTestId("annotator-pane"), {
+    button: 0,
+    clientX: 100,
+    clientY: 100,
+    pointerId: 1,
+  });
+}
+
+function asks(): readonly Record<string, unknown>[] {
+  return sent
+    .filter((row) => row.path === "/inference/suggest")
+    .map((row) => JSON.parse(row.body) as Record<string, unknown>);
+}
+
+describe("an injected browser runtime changes nothing on the wire", () => {
+  it("sends the identical suggest request with and without a runtime in the tree", async () => {
+    const unmountFirst = await open();
+    await arm();
+    clickCanvas();
+    await waitFor(() => expect(asks()).toHaveLength(1));
+    const withoutRuntime = asks();
+    unmountFirst();
+
+    sent.length = 0;
+    const unmountSecond = await open(RUNTIME);
+    await arm();
+    clickCanvas();
+    await waitFor(() => expect(asks()).toHaveLength(1));
+    const withRuntime = asks();
+    unmountSecond();
+
+    expect(withRuntime).toEqual(withoutRuntime);
+  });
+});

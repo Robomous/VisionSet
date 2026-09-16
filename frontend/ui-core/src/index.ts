@@ -114,6 +114,23 @@ export {
   type VisionSetMediaProviderProps,
 } from "./media/VisionSetMediaProvider.js";
 export type { VisionSetMediaRuntime } from "./media/port.js";
+
+// The browser inference shell: a third host-injected runtime, for answering a suggestion on
+// this device. No runtime supplied → no local target, and every ask goes to the server.
+export {
+  useBrowserInferenceRuntime,
+  VisionSetBrowserInferenceProvider,
+  type VisionSetBrowserInferenceProviderProps,
+} from "./inference/VisionSetBrowserInferenceProvider.js";
+export type {
+  BrowserSuggestionTarget,
+  VisionSetBrowserInferenceRuntime,
+} from "./inference/browserPort.js";
+export {
+  useServerSuggestionExecutor,
+  type SuggestionExecutor,
+  type SuggestionRequest,
+} from "./inference/suggestionExecutor.js";
 export {
   ApiError,
   MALFORMED_ERROR,

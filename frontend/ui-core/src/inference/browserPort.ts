@@ -1,0 +1,52 @@
+/**
+ * The browser inference contract: what a host may offer the reusable UI for running a
+ * suggestion on this device, beside the data client (`data/port.ts`) and the media runtime
+ * (`media/port.ts`).
+ *
+ * This is a different kind of thing from an `InferenceConnection`, and the distinction is the
+ * reason the port exists at all. A connection is a workspace fact — a model the VisionSet
+ * server has, with a setup state everyone in the workspace shares. Whether a model can run in
+ * *this* browser is a fact about one browser profile on one machine: the same workspace, opened
+ * on a laptop and on a desktop, gives two different answers, and there is no honest value a
+ * server-side row could take. So a target here is never persisted as a connection, and nothing
+ * on this port reaches the server.
+ *
+ * Narrow on purpose. It names no execution backend, no model format and no acquisition
+ * mechanism, because a host that answers these two questions is the whole of what the UI needs
+ * and everything else would be this package guessing at an implementation it does not own.
+ *
+ * It is an *execution* contract, not a catalog: it says what can answer now, and says nothing
+ * about what could be obtained. Finding and acquiring a model is a question about things that
+ * cannot answer yet, and it is answered elsewhere, later, by whatever seam the work that needs
+ * it earns.
+ */
+import type { SuggestionExecutor } from "./suggestionExecutor.js";
+
+/** A model this browser can run a suggestion with, right now. */
+export interface BrowserSuggestionTarget {
+  /** Stable within one runtime. What `executorFor` is given back. */
+  readonly id: string;
+  /** What a chooser shows. The host's wording, rendered as given. */
+  readonly label: string;
+  /**
+   * The model identity an accepted suggestion is attributed to.
+   *
+   * Provenance outlives the runtime that produced it, so this is the artifact's own identity
+   * and not a description of how it ran. Two browsers running the same model revision by
+   * different means attribute an annotation identically.
+   */
+  readonly modelRef: string;
+}
+
+export interface VisionSetBrowserInferenceRuntime {
+  /**
+   * The targets that can answer *now*.
+   *
+   * Only usable ones. A host with nothing available returns an empty list, which is the whole
+   * of "this device has nothing to offer" — there is no half-ready state on this port, because
+   * a UI that rendered one would be rendering a control it cannot honour.
+   */
+  listTargets(): Promise<readonly BrowserSuggestionTarget[]>;
+  /** How to ask one of them. The same contract the server path answers through. */
+  executorFor(targetId: string): SuggestionExecutor;
+}
