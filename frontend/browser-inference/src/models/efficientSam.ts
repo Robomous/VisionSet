@@ -72,11 +72,11 @@ export function requireAnswerablePrompt(prompt: PointPrompt, width: number, heig
   if (prompt.positive.length === 0) {
     refuse("a point prompt needs at least one positive point to say what to find");
   }
-  const total = prompt.positive.length;
-  if (total > EFFICIENT_SAM_TI.maxPoints) {
+  const positiveCount = prompt.positive.length;
+  if (positiveCount > EFFICIENT_SAM_TI.maxPoints) {
     refuse(
-      `${total} points, and this model takes ${EFFICIENT_SAM_TI.maxPoints}; remove one rather ` +
-        "than letting it be dropped silently",
+      `${positiveCount} points, and this model takes ${EFFICIENT_SAM_TI.maxPoints}; remove ` +
+        "one rather than letting it be dropped silently",
     );
   }
   for (const [x, y] of prompt.positive) {

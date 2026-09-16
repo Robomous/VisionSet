@@ -88,7 +88,10 @@ describe("refusing a prompt this model cannot be asked", () => {
   it("reports a negative point before the point-count overflow, when both apply", () => {
     const refusal = refusalFrom(() =>
       requireAnswerablePrompt(
-        { positive: [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6]], negative: [[7, 7]] },
+        {
+          positive: [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6], [7, 7]],
+          negative: [[8, 8]],
+        },
         100,
         100,
       ),
