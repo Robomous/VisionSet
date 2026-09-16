@@ -72,11 +72,40 @@ echo "@visionset/browser-inference tarball carries its worker, both ORT artifact
 # The export pipeline runs entirely outside this package; nothing it produces should
 # ever ride along in the npm tarball. A `.onnx` or `.pt` here would mean the package
 # grew a dependency on a build artifact rather than staying a pure runtime.
-if grep -qE '^package/.*\.(onnx|pt)$' <<<"$inference_listing"; then
+model_artifact_pattern='^package/.*\.(onnx|pt)$'
+
+# A guard that has never seen the thing it guards against is a guard nobody has tested,
+# and this one protects against shipping tens of megabytes of weights to every consumer.
+# The real listing has never contained a model artifact and — if everything is working —
+# never will, so it cannot demonstrate that the pattern discriminates. These can. They
+# share the pattern variable with the check below rather than restating it, because a
+# copy of a regex is a copy that drifts, and a drifted copy would prove the wrong thing.
+for decoy in \
+  "package/model-artifacts/efficientsam-ti/encoder.onnx" \
+  "package/dist/browser/decoder.onnx" \
+  "package/weights/efficient_sam_vitt.pt"; do
+  if ! grep -qE "$model_artifact_pattern" <<<"$decoy"; then
+    echo "error: the model-artifact guard no longer catches $decoy" >&2
+    exit 1
+  fi
+done
+# And it must not fire on what the package legitimately ships, or it would be a guard
+# nobody could keep green and somebody would eventually delete.
+for allowed in \
+  "package/dist/browser/worker.js" \
+  "package/dist/browser/ort/ort-wasm-simd-threaded.asyncify.wasm" \
+  "package/README.md"; do
+  if grep -qE "$model_artifact_pattern" <<<"$allowed"; then
+    echo "error: the model-artifact guard falsely flags $allowed" >&2
+    exit 1
+  fi
+done
+
+if grep -qE "$model_artifact_pattern" <<<"$inference_listing"; then
   echo "error: @visionset/browser-inference tarball carries a model artifact" >&2
   exit 1
 fi
-echo "@visionset/browser-inference tarball carries no model weights"
+echo "@visionset/browser-inference tarball carries no model weights (guard proved against three decoys)"
 
 consumer="$work/consumer"
 mkdir -p "$consumer"
