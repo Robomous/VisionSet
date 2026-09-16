@@ -191,18 +191,85 @@ describe("worker failures", () => {
     expect(error.cause).toBe("Error: [ONNXRuntimeError] invalid protobuf");
   });
 
-  it("fails every outstanding operation when the worker itself never started", async () => {
+  it("fails every outstanding operation when the channel itself fails", async () => {
     const { runtime, failChannel } = harness();
 
     const ready = runtime.ready();
     const loading = runtime.loadGraph(Uint8Array.from([1]));
     const running = runtime.run("graph", { x: tensor(1) });
 
-    failChannel(new Error("Failed to construct 'Worker'"));
+    const cause = new Error("Failed to construct 'Worker'");
+    failChannel(cause);
 
     for (const operation of [ready, loading, running]) {
-      expect((await rejection(operation)).code).toBe("worker-initialization-failed");
+      const error = await rejection(operation);
+      expect(error.code).toBe("worker-crashed");
+      expect(error.cause).toBe(cause);
     }
+  });
+});
+
+describe("terminal worker failure", () => {
+  it("moves to a permanent failed state on a channel error: pending work rejects, later calls reject immediately, and nothing more is posted", async () => {
+    const { runtime, posted, failChannel, terminations } = harness();
+
+    const loading = runtime.loadGraph(Uint8Array.from([1]));
+    const running = runtime.run("graph", { x: tensor(1) });
+
+    failChannel(new Error("worker thread died"));
+
+    expect((await rejection(loading)).code).toBe("worker-crashed");
+    expect((await rejection(running)).code).toBe("worker-crashed");
+    expect(terminations()).toBe(1);
+
+    const postedAtFailure = posted.length;
+    const laterLoad = await rejection(runtime.loadGraph(Uint8Array.from([2])));
+    const laterRun = await rejection(runtime.run("graph", { x: tensor(2) }));
+    expect(laterLoad.code).toBe("worker-crashed");
+    expect(laterRun.code).toBe("worker-crashed");
+    // Same terminal error every time, not a fresh one manufactured per call.
+    expect(laterLoad).toBe(laterRun);
+    expect(posted.length).toBe(postedAtFailure);
+  });
+
+  it("treats a configuration failure as terminal: ready(), and every later call, reject with it", async () => {
+    const { runtime, posted, reply, idsOf, terminations } = harness();
+
+    const [configureId] = idsOf("configure");
+    reply({
+      kind: "error",
+      id: configureId,
+      code: "worker-initialization-failed",
+      message: "no WASM artifact at the configured base URL",
+    });
+
+    expect((await rejection(runtime.ready())).code).toBe("worker-initialization-failed");
+    expect(terminations()).toBe(1);
+
+    const postedAtFailure = posted.length;
+    expect((await rejection(runtime.loadGraph(Uint8Array.from([1])))).code).toBe(
+      "worker-initialization-failed",
+    );
+    expect((await rejection(runtime.run("graph", { x: tensor(1) }))).code).toBe(
+      "worker-initialization-failed",
+    );
+    expect(posted.length).toBe(postedAtFailure);
+  });
+
+  it("rejects operations still pending when configuration fails, not only ready()", async () => {
+    const { runtime, reply, idsOf } = harness();
+
+    const running = runtime.run("graph", { x: tensor(1) });
+    const [configureId] = idsOf("configure");
+
+    reply({
+      kind: "error",
+      id: configureId,
+      code: "worker-initialization-failed",
+      message: "no WASM artifact at the configured base URL",
+    });
+
+    expect((await rejection(running)).code).toBe("worker-initialization-failed");
   });
 });
 

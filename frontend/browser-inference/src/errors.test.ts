@@ -9,6 +9,7 @@ import {
 const EVERY_CODE: readonly InferenceRuntimeErrorCode[] = [
   "unsupported-runtime",
   "worker-initialization-failed",
+  "worker-crashed",
   "webgpu-unavailable",
   "graph-load-failed",
   "runtime-execution-failed",

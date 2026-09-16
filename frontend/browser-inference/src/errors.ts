@@ -6,10 +6,19 @@
  * two codes for one state would be a contract lying about how many things can go
  * wrong. A code is added when a failure that callers must distinguish becomes
  * possible, not in anticipation of one.
+ *
+ * `worker-initialization-failed` names a `configure` operation that answered with an
+ * ordinary error reply — the worker started, ran, and told us it could not set itself
+ * up. `worker-crashed` names the other channel of failure: the browser `Worker` itself
+ * emitted an `error` event, which carries no operation id and can happen at any point
+ * in the worker's life, not only at startup. Both are terminal for the runtime that
+ * received them; they differ in what actually failed, and a caller may reasonably
+ * treat one as retryable-by-a-fresh-runtime and the other as a build/asset problem.
  */
 export type InferenceRuntimeErrorCode =
   | "unsupported-runtime"
   | "worker-initialization-failed"
+  | "worker-crashed"
   | "webgpu-unavailable"
   | "graph-load-failed"
   | "runtime-execution-failed"
@@ -24,6 +33,8 @@ const DEFAULT_MESSAGE: Readonly<Record<InferenceRuntimeErrorCode, string>> = {
   "unsupported-runtime":
     "This environment provides no Worker or no WebAssembly, so no inference runtime can exist here.",
   "worker-initialization-failed": "The inference worker could not be started or configured.",
+  "worker-crashed":
+    "The inference worker terminated unexpectedly and this runtime can no longer be used.",
   "webgpu-unavailable": "WebGPU was required, but this environment declares none.",
   "graph-load-failed": "The graph could not be loaded.",
   "runtime-execution-failed": "The graph could not be run.",
