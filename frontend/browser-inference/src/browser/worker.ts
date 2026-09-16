@@ -205,7 +205,13 @@ async function run(id: OperationId, graphId: GraphId, inputs: RunInputs): Promis
  */
 function failFromModel(id: OperationId, error: unknown): void {
   if (isInferenceRuntimeError(error)) {
-    reply({ kind: "error", id, code: error.code, message: error.message, detail: String(error.cause ?? "") });
+    reply({
+      kind: "error",
+      id,
+      code: error.code,
+      message: error.message,
+      detail: error.cause === undefined ? undefined : String(error.cause),
+    });
     return;
   }
   fail(id, "runtime-execution-failed", error);
@@ -221,17 +227,34 @@ function requireHost(): ModelHost {
 async function modelLoad(id: OperationId, encoder: Uint8Array, decoder: Uint8Array): Promise<void> {
   try {
     if (cancelled.delete(id)) return;
+    // Tracked outside the inner try so a failure partway through `load()` — the
+    // realistic one is the decoder create throwing after the encoder create already
+    // succeeded — still has a reference to release, rather than leaking whatever `load()`
+    // managed to create before it threw.
+    let created: ModelHost | null = null;
     try {
-      const created = createModelHost(ortSessions(providers));
+      created = createModelHost(ortSessions(providers));
       await created.load(encoder, decoder);
       if (cancelled.delete(id)) {
         await created.release();
         return;
       }
-      await host?.release();
+      // Swap first, release the replaced model best-effort second: a throwing release on
+      // the way out must not leave `host` pointing at a half-released model while the
+      // two brand-new sessions in `created` sit unreferenced. The replaced model is gone
+      // either way, so its release failing changes nothing about what happens next.
+      const previous = host;
       host = created;
+      try {
+        await previous?.release();
+      } catch {
+        /* the replaced model is gone either way */
+      }
       reply({ kind: "model-loaded", id });
     } catch (error) {
+      await created?.release().catch(() => {
+        /* already failing; nothing left to report this against */
+      });
       fail(id, "graph-load-failed", error);
     }
   } finally {
@@ -249,8 +272,15 @@ async function modelPrepare(
   try {
     if (cancelled.delete(id)) return;
     try {
-      const answer = await requireHost().prepare({ width, height, rgb });
-      if (cancelled.delete(id)) return;
+      const active = requireHost();
+      const answer = await active.prepare({ width, height, rgb });
+      if (cancelled.delete(id)) {
+        // The embedding this produced is already installed in the host's one slot. The
+        // caller was settled as cancelled on the main thread and will never learn this
+        // generation, so nothing here should go on holding a ~4 MB tensor for it.
+        active.forget();
+        return;
+      }
       reply({
         kind: "prepared",
         id,

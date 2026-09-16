@@ -33,6 +33,13 @@ export interface ModelHost {
   load(encoder: Uint8Array, decoder: Uint8Array): Promise<void>;
   prepare(image: PixelImage): Promise<{ generation: number; width: number; height: number }>;
   suggest(generation: number, prompt: PointPrompt): Promise<RawSegmentation>;
+  /**
+   * Drops the held embedding, if any, without touching the loaded graphs. For a caller
+   * who asked for a `prepare()` and stopped listening before it answered: the embedding
+   * it produced is still installed in this host's one slot, and this is how that slot is
+   * emptied again without a second `prepare()` or a full `release()`.
+   */
+  forget(): void;
   release(): Promise<void>;
 }
 
@@ -127,6 +134,8 @@ export function createModelHost(factory: ModelSessionFactory): ModelHost {
       const { index, confidence } = bestCandidate(scores.data as Float32Array);
       return { width, height, mask: binaryMask(logits.data as Float32Array, index, width, height), confidence };
     },
+
+    forget,
 
     async release() {
       await releaseLoaded();

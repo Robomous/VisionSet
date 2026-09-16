@@ -12,33 +12,59 @@ import type { FromWorker, TensorLike, ToWorker } from "../protocol.js";
 const ortBehaviour = vi.hoisted(() => ({
   duringCreate: null as null | (() => void),
   duringRun: null as null | (() => void),
+  /** How many fake tensors have had `dispose()` called, for the model tests below. */
+  disposals: 0,
 }));
 
 /**
  * A fake ORT that never touches WebAssembly or a GPU: `create` and `run` resolve on the
  * microtask queue, which is enough to drive the worker's real message-handling and
- * cancellation logic without a browser. `run` answers `y = x + 1`, so a caller can tell
- * two calls apart by their numbers alone.
+ * cancellation logic without a browser. `run` answers `y = x + 1` for the plain
+ * `load-graph`/`run` tests, so a caller can tell two calls apart by their numbers alone;
+ * it also recognises EfficientSAM-Ti's real encoder and decoder feed names, so the model
+ * tests below can drive `createModelHost`'s `prepare`/`suggest` to a genuine success
+ * rather than only ever exercising their failure paths.
  */
 vi.mock("onnxruntime-web/webgpu", () => {
   class FakeTensor {
     readonly type = "float32";
     constructor(
       _type: string,
-      readonly data: Float32Array,
+      readonly data: Float32Array | BigInt64Array,
       readonly dims: readonly number[],
     ) {}
+    dispose(): void {
+      ortBehaviour.disposals += 1;
+    }
   }
 
   const create = vi.fn(async () => {
     ortBehaviour.duringCreate?.();
     return {
-      outputNames: ["y"],
+      outputNames: ["y", "image_embeddings", "output_masks", "iou_predictions"],
       run: vi.fn(async (feeds: Record<string, InstanceType<typeof FakeTensor>>) => {
         ortBehaviour.duringRun?.();
-        const x = feeds.x;
+        if ("batched_images" in feeds) {
+          // The encoder: a fixed, tiny "embedding". Its value never matters — it is
+          // only ever fed straight back into the decoder branch below.
+          return {
+            image_embeddings: new FakeTensor("float32", Float32Array.from([1, 2, 3, 4]), [1, 4]),
+          };
+        }
+        if ("orig_im_size" in feeds) {
+          // The decoder: one candidate, lit, with a fixed confidence.
+          return {
+            output_masks: new FakeTensor("float32", Float32Array.from([1]), [1, 1, 1, 1, 1]),
+            iou_predictions: new FakeTensor("float32", Float32Array.from([0.75]), [1, 1]),
+          };
+        }
+        const x = feeds.x as InstanceType<typeof FakeTensor>;
         return {
-          y: new FakeTensor("float32", Float32Array.from(x.data, (value) => value + 1), x.dims),
+          y: new FakeTensor(
+            "float32",
+            Float32Array.from(x.data as Float32Array, (value) => value + 1),
+            x.dims,
+          ),
         };
       }),
       release: vi.fn(async () => undefined),
@@ -239,6 +265,7 @@ describe("the model operations join the same bookkeeping", () => {
     vi.clearAllMocks();
     ortBehaviour.duringCreate = null;
     ortBehaviour.duringRun = null;
+    ortBehaviour.disposals = 0;
   });
 
   afterEach(() => {
@@ -309,5 +336,241 @@ describe("the model operations join the same bookkeeping", () => {
 
     expect(encoderSession.release).toHaveBeenCalledTimes(1);
     expect(decoderSession.release).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops a model-load whose id was cancelled before it ran", async () => {
+    const worker = await openWorker();
+    worker.dispatch({ kind: "configure", id: 1, providers: ["wasm"], wasmThreads: 1 });
+    await worker.replyTo(1);
+
+    const encoder = Uint8Array.from([1]);
+    const decoder = Uint8Array.from([2]);
+
+    worker.dispatch({ kind: "model-load", id: 2, encoder, decoder });
+    worker.dispatch({ kind: "cancel", id: 2 });
+
+    worker.dispatch({ kind: "model-load", id: 3, encoder, decoder });
+    const marker = await worker.replyTo(3);
+    expect(marker.kind).toBe("model-loaded");
+
+    expect(worker.messages.some((message) => message.id === 2)).toBe(false);
+
+    const from = worker.messages.length;
+    worker.dispatch({ kind: "model-load", id: 2, encoder, decoder });
+    const afterwards = await worker.replyTo(2, from);
+    expect(afterwards.kind).toBe("model-loaded");
+  });
+
+  it("drops a model-prepare whose id was cancelled before it ran", async () => {
+    const worker = await openWorker();
+    worker.dispatch({ kind: "configure", id: 1, providers: ["wasm"], wasmThreads: 1 });
+    await worker.replyTo(1);
+
+    const rgb = Uint8Array.from([1, 2, 3]);
+
+    worker.dispatch({ kind: "model-prepare", id: 2, width: 1, height: 1, rgb });
+    worker.dispatch({ kind: "cancel", id: 2 });
+
+    // No model is loaded in this test at all: the entry check must reject the id before
+    // `modelPrepare` ever reaches `requireHost()`.
+    worker.dispatch({ kind: "model-prepare", id: 3, width: 1, height: 1, rgb });
+    const marker = await worker.replyTo(3);
+    expect(marker.kind).toBe("error");
+
+    expect(worker.messages.some((message) => message.id === 2)).toBe(false);
+
+    const from = worker.messages.length;
+    worker.dispatch({ kind: "model-prepare", id: 2, width: 1, height: 1, rgb });
+    const afterwards = await worker.replyTo(2, from);
+    expect(afterwards.kind).toBe("error");
+    expect((afterwards as Extract<FromWorker, { kind: "error" }>).code).toBe("graph-load-failed");
+  });
+
+  it(
+    "abandons a model-load's freshly created sessions when cancelled after both graphs " +
+      "finished loading",
+    async () => {
+      const worker = await openWorker();
+      worker.dispatch({ kind: "configure", id: 1, providers: ["wasm"], wasmThreads: 1 });
+      await worker.replyTo(1);
+
+      // Fires during both the encoder's and the decoder's `InferenceSession.create()`;
+      // dispatching `cancel` twice for the same id is harmless (it is a `Set`), and by
+      // the time `host.load()` resolves both sessions exist and the id is marked
+      // cancelled — the exact race the post-await check in `modelLoad` exists for.
+      ortBehaviour.duringCreate = () => {
+        worker.dispatch({ kind: "cancel", id: 2 });
+      };
+      worker.dispatch({
+        kind: "model-load",
+        id: 2,
+        encoder: Uint8Array.from([1]),
+        decoder: Uint8Array.from([2]),
+      });
+
+      // Trailing marker: no model was ever installed, so this fails "no model is loaded".
+      worker.dispatch({ kind: "model-prepare", id: 3, width: 1, height: 1, rgb: Uint8Array.from([1, 2, 3]) });
+      const marker = await worker.replyTo(3);
+      expect(marker.kind).toBe("error");
+      expect((marker as Extract<FromWorker, { kind: "error" }>).code).toBe("graph-load-failed");
+
+      expect(worker.messages.some((message) => message.id === 2)).toBe(false);
+
+      const { InferenceSession } = await import("onnxruntime-web/webgpu");
+      const create = vi.mocked(InferenceSession.create);
+      const encoderSession = await create.mock.results[0]!.value;
+      const decoderSession = await create.mock.results[1]!.value;
+      expect(encoderSession.release).toHaveBeenCalledTimes(1);
+      expect(decoderSession.release).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("releases the encoder session a failed decoder create would otherwise leak", async () => {
+    const worker = await openWorker();
+    worker.dispatch({ kind: "configure", id: 1, providers: ["wasm"], wasmThreads: 1 });
+    await worker.replyTo(1);
+
+    let createCalls = 0;
+    ortBehaviour.duringCreate = () => {
+      createCalls += 1;
+      // The encoder (first call) succeeds; the decoder (second) is the realistic
+      // failure — a corrupt artifact, an OOM — after a session already exists.
+      if (createCalls === 2) throw new Error("[ONNXRuntimeError] corrupt decoder artifact");
+    };
+
+    worker.dispatch({
+      kind: "model-load",
+      id: 2,
+      encoder: Uint8Array.from([1]),
+      decoder: Uint8Array.from([2]),
+    });
+    const failure = await worker.replyTo(2);
+    expect(failure.kind).toBe("error");
+    expect((failure as Extract<FromWorker, { kind: "error" }>).code).toBe("graph-load-failed");
+
+    const { InferenceSession } = await import("onnxruntime-web/webgpu");
+    const create = vi.mocked(InferenceSession.create);
+    expect(create.mock.results).toHaveLength(2);
+    const encoderSession = await create.mock.results[0]!.value;
+    // The bug this guards against: `created` (holding the live encoder session) was
+    // simply dropped on the failure path, so nothing ever released it.
+    expect(encoderSession.release).toHaveBeenCalledTimes(1);
+
+    // The worker is not left holding a broken half-loaded model.
+    worker.dispatch({ kind: "model-prepare", id: 3, width: 1, height: 1, rgb: Uint8Array.from([1, 2, 3]) });
+    const afterFailure = await worker.replyTo(3);
+    expect((afterFailure as Extract<FromWorker, { kind: "error" }>).code).toBe("graph-load-failed");
+
+    // And a retry is not blocked by anything the failed attempt left behind.
+    ortBehaviour.duringCreate = null;
+    const from = worker.messages.length;
+    worker.dispatch({
+      kind: "model-load",
+      id: 4,
+      encoder: Uint8Array.from([1]),
+      decoder: Uint8Array.from([2]),
+    });
+    const retried = await worker.replyTo(4, from);
+    expect(retried.kind).toBe("model-loaded");
+  });
+
+  it("keeps the newly loaded model in place when releasing the model it replaces throws", async () => {
+    const worker = await openWorker();
+    worker.dispatch({ kind: "configure", id: 1, providers: ["wasm"], wasmThreads: 1 });
+    await worker.replyTo(1);
+
+    worker.dispatch({
+      kind: "model-load",
+      id: 2,
+      encoder: Uint8Array.from([1]),
+      decoder: Uint8Array.from([2]),
+    });
+    const firstLoad = await worker.replyTo(2);
+    expect(firstLoad.kind).toBe("model-loaded");
+
+    const { InferenceSession } = await import("onnxruntime-web/webgpu");
+    const create = vi.mocked(InferenceSession.create);
+    const firstEncoder = await create.mock.results[0]!.value;
+    firstEncoder.release.mockRejectedValueOnce(new Error("stuck GPU buffer"));
+
+    worker.dispatch({
+      kind: "model-load",
+      id: 3,
+      encoder: Uint8Array.from([3]),
+      decoder: Uint8Array.from([4]),
+    });
+    const secondLoad = await worker.replyTo(3);
+    // The bug this guards against: the old release throwing here used to propagate out
+    // of `modelLoad` as a `graph-load-failed` error, even though the new model's two
+    // sessions had already been created successfully — orphaning them.
+    expect(secondLoad.kind).toBe("model-loaded");
+
+    const secondEncoder = await create.mock.results[2]!.value;
+    const secondDecoder = await create.mock.results[3]!.value;
+
+    worker.dispatch({ kind: "shutdown", id: 4 });
+    const disposed = await worker.replyTo(4);
+    expect(disposed.kind).toBe("disposed");
+
+    // Proof that `host` really was swapped to the second model rather than left pointing
+    // at the first (which would leave these two never released).
+    expect(secondEncoder.release).toHaveBeenCalledTimes(1);
+    expect(secondDecoder.release).toHaveBeenCalledTimes(1);
+  });
+
+  it("forgets the embedding a prepare produced after its caller was cancelled", async () => {
+    const worker = await openWorker();
+    worker.dispatch({ kind: "configure", id: 1, providers: ["wasm"], wasmThreads: 1 });
+    await worker.replyTo(1);
+
+    worker.dispatch({
+      kind: "model-load",
+      id: 2,
+      encoder: Uint8Array.from([1]),
+      decoder: Uint8Array.from([2]),
+    });
+    await worker.replyTo(2);
+
+    // Fires during the encoder's `session.run()`, i.e. after `host.prepare()` has
+    // committed the new embedding to its one slot but before `modelPrepare` has replied.
+    ortBehaviour.duringRun = () => {
+      worker.dispatch({ kind: "cancel", id: 3 });
+    };
+    worker.dispatch({ kind: "model-prepare", id: 3, width: 1, height: 1, rgb: Uint8Array.from([1, 2, 3]) });
+
+    // Trailing marker and a second proof at once: `prepare()` is this host's first ever
+    // call, so its generation is deterministically 1. If `forget()` had not run, this
+    // `suggest` would succeed instead of failing "image-superseded".
+    worker.dispatch({
+      kind: "model-suggest",
+      id: 4,
+      generation: 1,
+      prompt: { positive: [[0, 0]], negative: [] },
+    });
+    const marker = await worker.replyTo(4);
+    expect(marker.kind).toBe("error");
+    expect((marker as Extract<FromWorker, { kind: "error" }>).code).toBe("image-superseded");
+
+    expect(worker.messages.some((message) => message.id === 3)).toBe(false);
+    // The embedding itself — not just the bookkeeping around it — was released.
+    expect(ortBehaviour.disposals).toBe(1);
+  });
+
+  it("omits detail rather than sending an empty string when a model error carries no cause", async () => {
+    const worker = await openWorker();
+    worker.dispatch({ kind: "configure", id: 1, providers: ["wasm"], wasmThreads: 1 });
+    await worker.replyTo(1);
+
+    // No model is loaded: `requireHost()` throws an `InferenceRuntimeError` with no
+    // `cause` at all, which is the case `failFromModel` must not turn into `detail: ""`.
+    worker.dispatch({
+      kind: "model-suggest",
+      id: 2,
+      generation: 1,
+      prompt: { positive: [[0, 0]], negative: [] },
+    });
+    const failure = await worker.replyTo(2);
+    expect(failure.kind).toBe("error");
+    expect((failure as Extract<FromWorker, { kind: "error" }>).detail).toBeUndefined();
   });
 });

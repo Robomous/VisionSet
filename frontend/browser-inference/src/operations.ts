@@ -44,6 +44,14 @@ function valueOf(reply: WorkerSuccess): unknown {
       return { generation: reply.generation, width: reply.width, height: reply.height };
     case "segmentation":
       return { width: reply.width, height: reply.height, mask: reply.mask, confidence: reply.confidence };
+    default: {
+      // A compiler-checked catch-all: adding a `FromWorker` success kind without a
+      // matching case here is a type error at this line, not a silent `undefined` a
+      // caller's promise resolves with. `noImplicitReturns` does not cover a `switch`
+      // whose cases already return on every reachable path, which is why this exists.
+      const unreachable: never = reply;
+      return unreachable;
+    }
   }
 }
 

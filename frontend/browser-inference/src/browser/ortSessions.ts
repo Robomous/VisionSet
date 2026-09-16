@@ -11,9 +11,16 @@ import type { ExecutionProvider } from "../capabilities.js";
 import type { ModelSession, ModelSessionFactory, ModelTensor } from "../models/session.js";
 
 function toOrt(tensor: ModelTensor): ort.Tensor {
-  return tensor.type === "int64"
-    ? new ort.Tensor("int64", tensor.data as BigInt64Array, [...tensor.dims])
-    : new ort.Tensor("float32", tensor.data as Float32Array, [...tensor.dims]);
+  if (tensor.type === "int64") {
+    // `ModelTensor` is not a discriminated union — `type` and `data` are independent
+    // fields — so a caller that gets them out of sync would otherwise turn a mistake at
+    // this seam into an opaque failure inside ORT instead of one that names its cause.
+    if (!(tensor.data instanceof BigInt64Array)) {
+      throw new TypeError("An int64 ModelTensor's data must be a BigInt64Array.");
+    }
+    return new ort.Tensor("int64", tensor.data, [...tensor.dims]);
+  }
+  return new ort.Tensor("float32", tensor.data as Float32Array, [...tensor.dims]);
 }
 
 /**
