@@ -1029,23 +1029,28 @@ jobs:
           path: frontend/browser-inference/model-artifacts/.cache
           key: browser-models-${{ steps.export-pin.outputs.pin }}
 
+      # `--group browser-models` is repeated on every `uv run` below rather than left to
+      # this sync. `uv run` performs its own sync first, and whether that prunes a group the
+      # command did not name is behaviour this workflow should not have to know: `setup-uv`
+      # is not version-pinned, so the uv deciding it is whichever one is current on the day.
+      # Naming the group each time costs nothing and makes the step say what it needs.
       - name: Sync environment with the browser-models group
         if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
         run: uv sync --locked --group browser-models
 
       - name: Export EfficientSAM-Ti
         if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
-        run: uv run python scripts/browser_models/efficientsam/export.py
+        run: uv run --group browser-models python scripts/browser_models/efficientsam/export.py
 
       - name: Parity against the eager PyTorch reference
         if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
-        run: uv run python scripts/browser_models/efficientsam/parity.py
+        run: uv run --group browser-models python scripts/browser_models/efficientsam/parity.py
 
       # No `-q`: `addopts` in pyproject.toml already carries one, and a second
       # suppresses the count line this job exists to put on the record.
       - name: The export tests, with the artifacts present
         if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
-        run: uv run pytest tests/browser_models -rs
+        run: uv run --group browser-models pytest tests/browser_models -rs
 
       - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
         if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
