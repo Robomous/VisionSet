@@ -201,10 +201,13 @@ describe("asking the worker for a model answer", () => {
     expect((await suggestion).confidence).toBe(0.3);
   });
 
-  it("refuses a seventh point without posting anything to the worker", async () => {
+  it("refuses a seventh point before the model finishes loading, without waiting on it", async () => {
     const h = harness();
-    await readyRuntime(h);
-    const before = h.posted.length;
+    // `model-load` is deliberately never answered: `loaded` stays pending forever, so a
+    // validation that ran *after* `await loaded` would leave this call hanging rather
+    // than settling — the only way to prove validation happens before that await, not
+    // merely before the post it guards.
+    expect(h.posted.length).toBe(2);
 
     const points: Array<readonly [number, number]> = Array.from(
       { length: EFFICIENT_SAM_TI.maxPoints + 1 },
@@ -214,19 +217,58 @@ describe("asking the worker for a model answer", () => {
 
     const error = await rejection(h.runtime.suggest(image, pointPrompt(points)));
     expect(error.code).toBe("prompt-rejected");
-    expect(h.posted.length).toBe(before);
+    expect(h.posted.length).toBe(2);
   });
 
-  it("refuses an image whose bytes do not match its size without posting anything", async () => {
+  it("refuses an image whose bytes do not match its size before the model finishes loading", async () => {
     const h = harness();
-    await readyRuntime(h);
-    const before = h.posted.length;
+    expect(h.posted.length).toBe(2);
 
     const badImage: PixelImage = { width: 4, height: 4, rgb: new Uint8Array(4 * 4 * 3 - 1) };
 
     const error = await rejection(h.runtime.prepareImage(badImage));
     expect(error.code).toBe("prompt-rejected");
-    expect(h.posted.length).toBe(before);
+    expect(h.posted.length).toBe(2);
+  });
+
+  it("refuses a valid prompt against an image this runtime never prepared, without posting anything", async () => {
+    const h = harness();
+    await readyRuntime(h);
+    const own = await prepared(h, validImage(), 1);
+
+    const other = harness();
+    await readyRuntime(other);
+    const foreign = await prepared(other, validImage(), 1);
+
+    // A handle from a different `createModelClient` instance: valid shape, valid
+    // prompt, but never entered in *this* runtime's generation table.
+    const beforeForeign = h.posted.length;
+    const foreignError = await rejection(h.runtime.suggest(foreign, pointPrompt([[1, 1]])));
+    expect(foreignError.code).toBe("image-superseded");
+    expect(h.posted.length).toBe(beforeForeign);
+
+    // A plain object literal: never returned by any `prepareImage` call at all.
+    const beforeLiteral = h.posted.length;
+    const literalError = await rejection(
+      h.runtime.suggest({ width: 4, height: 4 }, pointPrompt([[1, 1]])),
+    );
+    expect(literalError.code).toBe("image-superseded");
+    expect(h.posted.length).toBe(beforeLiteral);
+
+    // This runtime's own prepared image is unaffected by the two refusals above.
+    const ownSuggestion = h.runtime.suggest(own, pointPrompt([[1, 1]]));
+    await tick();
+    const ownSuggestId = h.idsOf("model-suggest").at(-1);
+    expect(ownSuggestId).toBeDefined();
+    h.reply({
+      kind: "segmentation",
+      id: ownSuggestId!,
+      width: 4,
+      height: 4,
+      mask: new Uint8Array(16),
+      confidence: 0.7,
+    });
+    expect((await ownSuggestion).confidence).toBe(0.7);
   });
 
   it("settles a cancelled suggest immediately and drops the worker's late answer", async () => {

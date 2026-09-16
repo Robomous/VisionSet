@@ -40,14 +40,21 @@ import type { PixelImage, PointPrompt } from "./promptable.js";
  * answer the opposite of what was asked, so `requireAnswerablePrompt` refuses any prompt
  * that carries one, and `decoderPrompt` never emits label `0`.
  */
-export const EFFICIENT_SAM_TI = {
+/**
+ * Frozen, not only `as const`: this is on the **public** surface (`src/index.ts`), and
+ * `as const` is a compile-time literal type with no runtime effect. Without `Object.freeze`
+ * a consumer bypassing types — or one just being careless — could mutate `maxPoints` on
+ * this module's singleton and move the validation boundary for every runtime sharing this
+ * JS realm, not only its own.
+ */
+export const EFFICIENT_SAM_TI = Object.freeze({
   imageSize: 1024,
   maxPoints: 6,
   candidates: 3,
   positiveLabel: 1,
   paddingLabel: -1,
   maskThreshold: 0,
-} as const;
+} as const);
 
 function refuse(message: string): never {
   throw new InferenceRuntimeError("prompt-rejected", message);

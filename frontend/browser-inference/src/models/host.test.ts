@@ -276,4 +276,42 @@ describe("letting go", () => {
     await expect(host.release()).resolves.toBeUndefined();
     expect(embeddings.disposed).toBe(1);
   });
+
+  it("still releases the decoder when the encoder's own release throws", async () => {
+    const throwingEncoder = new FakeSession(() => ({ image_embeddings: embeddings.next() }));
+    throwingEncoder.release = () => Promise.reject(new Error("encoder release blew up"));
+    let created = 0;
+    const localFactory: ModelSessionFactory = {
+      create: () => Promise.resolve(created++ === 0 ? throwingEncoder : decoder),
+    };
+    const host = createModelHost(localFactory);
+    await host.load(new Uint8Array([1]), new Uint8Array([2]));
+
+    await expect(host.release()).resolves.toBeUndefined();
+    expect(decoder.released).toBe(1);
+  });
+
+  it("still releases the new pair when the previous encoder's release throws on a second load", async () => {
+    const throwingEncoder = new FakeSession(() => ({ image_embeddings: embeddings.next() }));
+    throwingEncoder.release = () => Promise.reject(new Error("encoder release blew up"));
+    let created = 0;
+    const sessions: FakeSession[] = [];
+    const localFactory: ModelSessionFactory = {
+      create: () => {
+        if (created++ === 0) return Promise.resolve(throwingEncoder);
+        if (created === 2) return Promise.resolve(decoder);
+        const session = new FakeSession(() => ({}));
+        sessions.push(session);
+        return Promise.resolve(session);
+      },
+    };
+    const host = createModelHost(localFactory);
+    await host.load(new Uint8Array([1]), new Uint8Array([2]));
+    await expect(host.load(new Uint8Array([3]), new Uint8Array([4]))).resolves.toBeUndefined();
+
+    // The previous pair's decoder must still have been released, despite the encoder's
+    // release throwing right beside it.
+    expect(decoder.released).toBe(1);
+    expect(sessions).toHaveLength(2);
+  });
 });

@@ -64,10 +64,22 @@ export function createModelHost(factory: ModelSessionFactory): ModelHost {
   // Shared by `load` (a second call must not leak the first pair of sessions or
   // keep serving an embedding that pair produced) and `release` (which is the same
   // teardown with nothing left to load afterwards).
+  //
+  // Each release is attempted independently: the encoder's `release()` throwing must
+  // not skip the decoder's, or the decoder session leaks right alongside the error —
+  // the same shape as `worker.ts`'s own best-effort release loops.
   async function releaseLoaded(): Promise<void> {
     forget();
-    await encoder?.release();
-    await decoder?.release();
+    try {
+      await encoder?.release();
+    } catch {
+      /* the decoder must still get its chance below */
+    }
+    try {
+      await decoder?.release();
+    } catch {
+      /* the encoder's release was already attempted */
+    }
     encoder = null;
     decoder = null;
   }
