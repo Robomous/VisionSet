@@ -27,7 +27,9 @@ Run with `uv run python scripts/browser_models/efficientsam/parity.py`, after
 `uv sync --locked --group browser-models` and after
 `uv run python scripts/browser_models/efficientsam/export.py` has produced the artifacts
 this reads. Writes `reference.json` beside the artifacts and updates their
-`build-report.json`'s `parity` field in place.
+`build-report.json`'s `parity` field in place -- but only writes the reference when the
+gates pass. A failing run removes it instead, because a run that could not vouch for the
+graphs must not be the thing the browser suite measures itself against.
 """
 
 from __future__ import annotations
@@ -358,13 +360,33 @@ def main() -> None:
     elapsed = time.time() - start
 
     status = "fail" if result["gate_failures"] else "pass"
-    write_reference_json(artifacts_dir, result)
+
+    # `reference.json` is what the browser suite measures itself against, and a run that
+    # failed its own gates has not earned the right to say what correct looks like. Writing
+    # it anyway -- which this did until a deliberately broken run proved it -- leaves a
+    # reference describing graphs nobody vouched for, and every consumer downstream then
+    # agrees with it: the browser suite compares against the wrong numbers and passes, or
+    # fails for a reason that has nothing to do with the browser.
+    #
+    # So a failing run writes no reference and removes any earlier one. A missing
+    # reference.json is a state both consumers already handle correctly -- they skip
+    # locally and fail under VISIONSET_REQUIRE_BROWSER_MODELS -- which is the right answer
+    # here. The build report is still updated either way, because the record of a failure
+    # is exactly what should survive it.
+    if result["gate_failures"]:
+        (artifacts_dir / "reference.json").unlink(missing_ok=True)
+    else:
+        write_reference_json(artifacts_dir, result)
     update_build_report(artifacts_dir, result, status)
 
     print(f"\nparity status: {status}  ({elapsed:.1f}s)")
     if result["gate_failures"]:
         for failure in result["gate_failures"]:
             print(f"  GATE FAILURE: {failure}")
+        print(
+            "\nreference.json was not written (and any earlier one was removed): a run that "
+            "failed its gates does not get to define what the browser is measured against."
+        )
         raise SystemExit(1)
 
 
