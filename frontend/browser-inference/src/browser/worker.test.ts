@@ -3,8 +3,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FromWorker, TensorLike, ToWorker } from "../protocol.js";
 
 /**
- * A fake ORT that never touches WebAssembly or a GPU: `create` and `run` resolve on
- * the microtask queue, which is enough to drive the worker's real message-handling and
+ * What a test wants ORT to do inside the two calls the worker awaits. Each hook runs at
+ * the exact moment the worker is suspended in that call, which is how a `cancel` is made
+ * to arrive *during* the work rather than before or after it — no timers, no deferred
+ * promises, and no ordering left to chance.
+ */
+const ortBehaviour = vi.hoisted(() => ({
+  duringCreate: null as null | (() => void),
+  duringRun: null as null | (() => void),
+}));
+
+/**
+ * A fake ORT that never touches WebAssembly or a GPU: `create` and `run` resolve on the
+ * microtask queue, which is enough to drive the worker's real message-handling and
  * cancellation logic without a browser. `run` answers `y = x + 1`, so a caller can tell
  * two calls apart by their numbers alone.
  */
@@ -18,14 +29,20 @@ vi.mock("onnxruntime-web/webgpu", () => {
     ) {}
   }
 
-  const create = vi.fn(async () => ({
-    outputNames: ["y"],
-    run: vi.fn(async (feeds: Record<string, InstanceType<typeof FakeTensor>>) => {
-      const x = feeds.x;
-      return { y: new FakeTensor("float32", Float32Array.from(x.data, (value) => value + 1), x.dims) };
-    }),
-    release: vi.fn(async () => undefined),
-  }));
+  const create = vi.fn(async () => {
+    ortBehaviour.duringCreate?.();
+    return {
+      outputNames: ["y"],
+      run: vi.fn(async (feeds: Record<string, InstanceType<typeof FakeTensor>>) => {
+        ortBehaviour.duringRun?.();
+        const x = feeds.x;
+        return {
+          y: new FakeTensor("float32", Float32Array.from(x.data, (value) => value + 1), x.dims),
+        };
+      }),
+      release: vi.fn(async () => undefined),
+    };
+  });
 
   return {
     InferenceSession: { create },
@@ -46,8 +63,13 @@ function tensor(...values: number[]): TensorLike {
 async function openWorker(): Promise<{
   dispatch(message: ToWorker): void;
   messages: readonly FromWorker[];
-  /** The reply to the request minted with this id — not "the next message of a kind", so two `run`s in the same test cannot be confused. */
-  replyTo(id: number): Promise<FromWorker>;
+  /**
+   * The reply to the request minted with this id, ignoring everything announced before
+   * `from`. Not "the next message of a kind", so two `run`s in the same test cannot be
+   * confused; not "the first message with this id", so a test that deliberately reuses
+   * an id is not answered with the previous operation's reply.
+   */
+  replyTo(id: number, from?: number): Promise<FromWorker>;
 }> {
   const messages: FromWorker[] = [];
   const listeners: ((event: { data: ToWorker }) => void)[] = [];
@@ -77,17 +99,32 @@ async function openWorker(): Promise<{
       for (const listener of listeners) listener({ data: message });
     },
     messages,
-    replyTo(id) {
-      const already = messages.find((message) => message.id === id);
+    replyTo(id, from = 0) {
+      const already = messages.slice(from).find((message) => message.id === id);
       if (already !== undefined) return Promise.resolve(already);
       return new Promise((resolve) => waiters.push({ id, resolve }));
     },
   };
 }
 
+/** A configured worker with one graph loaded, which is where the interesting tests start. */
+async function openLoadedWorker(): Promise<{
+  worker: Awaited<ReturnType<typeof openWorker>>;
+  graphId: string;
+}> {
+  const worker = await openWorker();
+  worker.dispatch({ kind: "configure", id: 1, providers: ["wasm"], wasmThreads: 1 });
+  await worker.replyTo(1);
+  worker.dispatch({ kind: "load-graph", id: 2, bytes: Uint8Array.from([0]) });
+  const loaded = await worker.replyTo(2);
+  return { worker, graphId: (loaded as Extract<FromWorker, { kind: "loaded" }>).graphId };
+}
+
 describe("worker cancellation bookkeeping", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    ortBehaviour.duringCreate = null;
+    ortBehaviour.duringRun = null;
   });
 
   afterEach(() => {
@@ -108,14 +145,7 @@ describe("worker cancellation bookkeeping", () => {
     "ignores a cancel that arrives after the operation it names has already completed, " +
       "and does not affect the run that follows it",
     async () => {
-      const worker = await openWorker();
-
-      worker.dispatch({ kind: "configure", id: 1, providers: ["wasm"], wasmThreads: 1 });
-      await worker.replyTo(1);
-
-      worker.dispatch({ kind: "load-graph", id: 2, bytes: Uint8Array.from([0]) });
-      const loaded = await worker.replyTo(2);
-      const graphId = (loaded as Extract<FromWorker, { kind: "loaded" }>).graphId;
+      const { worker, graphId } = await openLoadedWorker();
 
       worker.dispatch({ kind: "run", id: 3, graphId, inputs: { x: tensor(10) } });
       const firstResult = await worker.replyTo(3);
@@ -134,14 +164,71 @@ describe("worker cancellation bookkeeping", () => {
       expect([
         ...(secondResult as Extract<FromWorker, { kind: "result" }>).outputs.y.data,
       ]).toEqual([21]);
-
-      // A black-box test cannot see `known`'s size directly without a diagnostic API
-      // this design deliberately does not ship. What it proves instead: a cancel for a
-      // finished id raises nothing and poisons nothing that runs after it. The bound
-      // itself is the code-level invariant in `worker.ts` — every path through
-      // `loadGraph`/`run` removes its own id from `known` in a `finally`, so at any
-      // instant `cancelled.size <= known.size`, which is the count of operations this
-      // worker currently has in flight, not the count it has ever seen.
     },
   );
+
+  it("leaves nothing behind when a run is cancelled while ORT is working and then fails", async () => {
+    const { worker, graphId } = await openLoadedWorker();
+
+    // The exact race: the abort reaches the worker while `session.run()` is suspended,
+    // so the cancellation *is* recorded — and then the run throws, so none of the
+    // `cancelled.delete(id)` checks on the success path is ever reached.
+    ortBehaviour.duringRun = () => {
+      worker.dispatch({ kind: "cancel", id: 3 });
+      throw new Error("[ONNXRuntimeError] execution failed");
+    };
+    worker.dispatch({ kind: "run", id: 3, graphId, inputs: { x: tensor(10) } });
+
+    const failure = await worker.replyTo(3);
+    expect(failure.kind).toBe("error");
+    expect((failure as Extract<FromWorker, { kind: "error" }>).code).toBe(
+      "runtime-execution-failed",
+    );
+    // The cancelled caller was settled on the main thread at the moment it aborted, and
+    // this reply is dropped there by the routing rule. No *result* was produced for it.
+    expect(worker.messages.filter((message) => message.kind === "result")).toEqual([]);
+
+    // Reusing an id is something only a test does — production mints each one once — and
+    // it is precisely what makes a leftover cancellation marker observable from outside:
+    // if id 3 were still in `cancelled`, this operation would be silently swallowed and
+    // no reply would ever arrive.
+    ortBehaviour.duringRun = null;
+    const from = worker.messages.length;
+    worker.dispatch({ kind: "run", id: 3, graphId, inputs: { x: tensor(20) } });
+
+    const afterwards = await worker.replyTo(3, from);
+    expect([...(afterwards as Extract<FromWorker, { kind: "result" }>).outputs.y.data]).toEqual([
+      21,
+    ]);
+  });
+
+  it("leaves nothing behind when a graph load is cancelled while ORT is creating and then fails", async () => {
+    const worker = await openWorker();
+    worker.dispatch({ kind: "configure", id: 1, providers: ["wasm"], wasmThreads: 1 });
+    await worker.replyTo(1);
+
+    ortBehaviour.duringCreate = () => {
+      worker.dispatch({ kind: "cancel", id: 2 });
+      throw new Error("[ONNXRuntimeError] invalid protobuf");
+    };
+    worker.dispatch({ kind: "load-graph", id: 2, bytes: Uint8Array.from([0]) });
+
+    const failure = await worker.replyTo(2);
+    expect(failure.kind).toBe("error");
+    expect((failure as Extract<FromWorker, { kind: "error" }>).code).toBe("graph-load-failed");
+
+    ortBehaviour.duringCreate = null;
+    const from = worker.messages.length;
+    worker.dispatch({ kind: "load-graph", id: 2, bytes: Uint8Array.from([0]) });
+
+    const loaded = await worker.replyTo(2, from);
+    expect(loaded.kind).toBe("loaded");
+
+    // And the graph that load produced is usable, so nothing about the failed attempt
+    // leaked into the session table either.
+    const graphId = (loaded as Extract<FromWorker, { kind: "loaded" }>).graphId;
+    worker.dispatch({ kind: "run", id: 3, graphId, inputs: { x: tensor(30) } });
+    const result = await worker.replyTo(3);
+    expect([...(result as Extract<FromWorker, { kind: "result" }>).outputs.y.data]).toEqual([31]);
+  });
 });

@@ -40,12 +40,19 @@ const cancelled = new Set<OperationId>();
 
 /**
  * `load-graph`/`run` ids this worker still owns: queued behind the serial `queue`, or
- * running right now. Operation ids are minted once and never reused for the life of a
- * persistent worker, so a `cancel` for an id this worker has already finished with — the
- * main thread's `cancel` racing a `result` it already sent — must not be remembered.
- * Without this, `cancelled` would gain one permanent entry per such race for as long as
- * the worker lives. `known` bounds it: a `cancel` is recorded only while its id is still
- * in here, and every path through `loadGraph`/`run` removes its own id on the way out.
+ * running right now.
+ *
+ * Operation ids are minted once and never reused for the life of a persistent worker, so
+ * any record kept past the operation it names is kept forever. Two rules bound both sets
+ * together, and neither is optional:
+ *
+ * - a `cancel` is recorded only while its id is still in `known`, so the main thread's
+ *   `cancel` racing a `result` the worker already sent is ignored rather than remembered;
+ * - every path out of `loadGraph`/`run` — success, failure, cancelled before the work
+ *   started, cancelled after it started — drops that id from *both* sets in a `finally`.
+ *
+ * Together they are the invariant: `cancelled` holds markers only for operations this
+ * worker still owns, and an operation that has left owns nothing here.
  */
 const known = new Set<OperationId>();
 
@@ -125,6 +132,10 @@ async function loadGraph(id: OperationId, bytes: Uint8Array, providers: readonly
       fail(id, "graph-load-failed", error);
     }
   } finally {
+    // Both sets, on every path. The cancellation checks above delete the marker only on
+    // the paths that observe it; a run cancelled while ORT was working and then failing
+    // reaches none of them, and that is precisely the leak this closes.
+    cancelled.delete(id);
     known.delete(id);
   }
 }
@@ -160,6 +171,10 @@ async function run(id: OperationId, graphId: GraphId, inputs: RunInputs): Promis
       fail(id, "runtime-execution-failed", error);
     }
   } finally {
+    // Both sets, on every path. The cancellation checks above delete the marker only on
+    // the paths that observe it; a run cancelled while ORT was working and then failing
+    // reaches none of them, and that is precisely the leak this closes.
+    cancelled.delete(id);
     known.delete(id);
   }
 }
