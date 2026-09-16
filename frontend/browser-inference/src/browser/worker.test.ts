@@ -573,4 +573,127 @@ describe("the model operations join the same bookkeeping", () => {
     expect(failure.kind).toBe("error");
     expect((failure as Extract<FromWorker, { kind: "error" }>).detail).toBeUndefined();
   });
+
+  it("drops a model-suggest's segmentation when cancelled while the decoder is running", async () => {
+    const worker = await openWorker();
+    worker.dispatch({ kind: "configure", id: 1, providers: ["wasm"], wasmThreads: 1 });
+    await worker.replyTo(1);
+
+    worker.dispatch({
+      kind: "model-load",
+      id: 2,
+      encoder: Uint8Array.from([1]),
+      decoder: Uint8Array.from([2]),
+    });
+    await worker.replyTo(2);
+
+    worker.dispatch({ kind: "model-prepare", id: 3, width: 1, height: 1, rgb: Uint8Array.from([1, 2, 3]) });
+    const prepared = await worker.replyTo(3);
+    expect(prepared.kind).toBe("prepared");
+    const generation = (prepared as Extract<FromWorker, { kind: "prepared" }>).generation;
+    const prompt: PointPrompt = { positive: [[0, 0]], negative: [] };
+
+    // Fires during the decoder's `session.run()` — after `host.suggest()` has a real
+    // answer computed but before `modelSuggest` has checked for cancellation again. This
+    // is the same race the pre-existing `run` cancellation tests exercise, for the one
+    // model operation that was missing it. Self-clearing, because both id 4 and the
+    // trailing id 5 below are queued *before* either one actually runs — the hook must
+    // fire only for the first `session.run()` it sees (id 4's), not id 5's too.
+    ortBehaviour.duringRun = () => {
+      ortBehaviour.duringRun = null;
+      worker.dispatch({ kind: "cancel", id: 4 });
+    };
+    worker.dispatch({ kind: "model-suggest", id: 4, generation, prompt });
+
+    // Trailing marker on the same serial queue: this one must succeed, proving the queue
+    // kept moving rather than id 4 wedging it.
+    worker.dispatch({ kind: "model-suggest", id: 5, generation, prompt });
+    const marker = await worker.replyTo(5);
+    expect(marker.kind).toBe("segmentation");
+
+    expect(worker.messages.some((message) => message.id === 4)).toBe(false);
+  });
+
+  it("ignores a stray cancel for a model-load that has already completed, and the id stays usable", async () => {
+    const worker = await openWorker();
+    worker.dispatch({ kind: "configure", id: 1, providers: ["wasm"], wasmThreads: 1 });
+    await worker.replyTo(1);
+
+    const encoder = Uint8Array.from([1]);
+    const decoder = Uint8Array.from([2]);
+
+    worker.dispatch({ kind: "model-load", id: 2, encoder, decoder });
+    const firstLoad = await worker.replyTo(2);
+    expect(firstLoad.kind).toBe("model-loaded");
+
+    // A cancel for an id this worker has already finished with — and, on a real
+    // persistent worker, may have finished with long ago. This is exactly what
+    // `known.delete(id)` in `modelLoad`'s `finally` exists to make safe: without it,
+    // `known` still has this id forever, and this `cancel` would be wrongly recorded.
+    expect(() => worker.dispatch({ kind: "cancel", id: 2 })).not.toThrow();
+
+    // Reusing the id is the only way to observe a wrongly-recorded marker from outside:
+    // if the stray cancel above had been recorded, this fresh operation under the same
+    // id would be silently swallowed by the entry check instead of actually running.
+    const from = worker.messages.length;
+    worker.dispatch({ kind: "model-load", id: 2, encoder, decoder });
+    const secondLoad = await worker.replyTo(2, from);
+    expect(secondLoad.kind).toBe("model-loaded");
+  });
+
+  it("ignores a stray cancel for a model-prepare that has already completed, and the id stays usable", async () => {
+    const worker = await openWorker();
+    worker.dispatch({ kind: "configure", id: 1, providers: ["wasm"], wasmThreads: 1 });
+    await worker.replyTo(1);
+
+    worker.dispatch({
+      kind: "model-load",
+      id: 2,
+      encoder: Uint8Array.from([1]),
+      decoder: Uint8Array.from([2]),
+    });
+    await worker.replyTo(2);
+
+    const rgb = Uint8Array.from([1, 2, 3]);
+    worker.dispatch({ kind: "model-prepare", id: 3, width: 1, height: 1, rgb });
+    const firstPrepare = await worker.replyTo(3);
+    expect(firstPrepare.kind).toBe("prepared");
+
+    expect(() => worker.dispatch({ kind: "cancel", id: 3 })).not.toThrow();
+
+    const from = worker.messages.length;
+    worker.dispatch({ kind: "model-prepare", id: 3, width: 1, height: 1, rgb });
+    const secondPrepare = await worker.replyTo(3, from);
+    expect(secondPrepare.kind).toBe("prepared");
+  });
+
+  it("ignores a stray cancel for a model-suggest that has already completed, and the id stays usable", async () => {
+    const worker = await openWorker();
+    worker.dispatch({ kind: "configure", id: 1, providers: ["wasm"], wasmThreads: 1 });
+    await worker.replyTo(1);
+
+    worker.dispatch({
+      kind: "model-load",
+      id: 2,
+      encoder: Uint8Array.from([1]),
+      decoder: Uint8Array.from([2]),
+    });
+    await worker.replyTo(2);
+
+    worker.dispatch({ kind: "model-prepare", id: 3, width: 1, height: 1, rgb: Uint8Array.from([1, 2, 3]) });
+    const prepared = await worker.replyTo(3);
+    const generation = (prepared as Extract<FromWorker, { kind: "prepared" }>).generation;
+    const prompt: PointPrompt = { positive: [[0, 0]], negative: [] };
+
+    worker.dispatch({ kind: "model-suggest", id: 4, generation, prompt });
+    const firstSuggest = await worker.replyTo(4);
+    expect(firstSuggest.kind).toBe("segmentation");
+
+    expect(() => worker.dispatch({ kind: "cancel", id: 4 })).not.toThrow();
+
+    const from = worker.messages.length;
+    worker.dispatch({ kind: "model-suggest", id: 4, generation, prompt });
+    const secondSuggest = await worker.replyTo(4, from);
+    expect(secondSuggest.kind).toBe("segmentation");
+  });
 });
