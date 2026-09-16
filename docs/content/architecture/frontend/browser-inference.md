@@ -73,8 +73,10 @@ other protects what is on screen, and a correctly routed answer can still be sta
 Because a persistent worker outlives any one operation, and operation ids are never reused,
 the worker cannot afford to remember a `cancel` forever. It tracks only the ids it still owns -
 queued or running - and a `cancel` for anything else, including one that raced a `result` the
-worker already sent, is ignored rather than recorded. Without that bound, an id the worker had
-already finished with would sit in its cancellation set for the rest of the worker's life.
+worker already sent, is ignored rather than recorded. The other half of the same bound is that
+every way out of an operation releases both records: a run that was cancelled while ONNX Runtime
+was working and *then* failed reaches none of the checks that would otherwise clear the marker,
+so the release happens on the way out rather than on the paths that happen to look.
 
 ## Execution policy
 
@@ -117,6 +119,12 @@ runtime into a permanent failed state - every operation still pending rejects wi
 error, the worker is stopped, and every later `loadGraph()`/`run()` rejects with it immediately
 and posts nothing. There is no automatic worker restart; recreating one is a caller decision,
 made with a fresh `createInferenceRuntime()` call, not something this package does silently.
+
+`ready()` is the exception, and deliberately so: it reports what initialization decided, not
+whether the runtime is usable now. A runtime that configured successfully and crashed an hour
+later still resolves `ready()` with the providers it agreed on, while `loadGraph()` and `run()`
+reject. There is no health-probe API, because the operations already are one - a call that would
+fail rejects immediately rather than hanging.
 
 ## Build output
 

@@ -129,9 +129,11 @@ export function createRuntimeClient(
   let disposed = false;
   /**
    * Set once, by a failure the worker cannot come back from: a channel-level crash, or
-   * a `configure` operation answering with an error. From that moment every later call
-   * rejects with this same error and posts nothing — a fatal worker is not retried or
-   * silently recreated, because automatic recovery is not part of this phase.
+   * a `configure` operation answering with an error. From that moment every later
+   * `loadGraph()` and `run()` rejects with this same error and posts nothing — a fatal
+   * worker is not retried or silently recreated, because automatic recovery is not part
+   * of this phase. `ready()` is not among them: it answers what initialization decided,
+   * and a runtime that configured successfully before crashing still resolves it.
    */
   let terminalError: InferenceRuntimeError | null = null;
   let workerStopped = false;

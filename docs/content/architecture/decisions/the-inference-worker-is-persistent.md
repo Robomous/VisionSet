@@ -44,13 +44,20 @@ owns three obligations a per-operation worker never has:
   that ended with the operation could let its caller start over with a fresh one by construction;
   a persistent worker that failed silently mid-life and kept accepting new work would hang every
   later caller instead. A channel-level crash or a `configure` failure moves the runtime into a
-  permanent failed state: everything pending rejects with it, and every later call rejects with
-  the same error immediately, without touching the worker again;
+  permanent failed state: everything pending rejects with it, and every later `loadGraph()` and
+  `run()` rejects with the same error immediately, without touching the worker again. `ready()`
+  is the one thing it does not retract, because `ready()` answers what initialization decided
+  rather than whether the runtime is usable now;
+- **the worker is stopped exactly once.** Disposal, a channel crash and a configuration failure
+  all end in a stopped worker, and any two of them can happen in either order - so whichever
+  arrives first stops it and the rest do nothing, rather than each being trusted to know what
+  the others already did;
 - **cancellation bookkeeping must not outlive the operation it names.** Operation ids are minted
-  once and never reused for the life of a persistent worker, so remembering a `cancel` after its
-  operation has already finished - which the main thread's `cancel` racing a `result` it already
-  sent will do - would be a permanent, unbounded entry. The worker remembers a cancellation only
-  while it still owns that id.
+  once and never reused for the life of a persistent worker, so any record kept past its
+  operation is kept forever. Two rules bound it: a `cancel` is remembered only while the worker
+  still owns that id - which is what makes the main thread's `cancel` racing a `result` it
+  already sent a no-op - and every way out of an operation, success and failure alike, drops
+  that id from both its records.
 
 ## An operation id is not a suggestion serial
 
