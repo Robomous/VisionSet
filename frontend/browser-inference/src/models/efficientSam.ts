@@ -209,6 +209,7 @@ export const EFFICIENT_SAM_TI_DEFINITION: PromptableModelDefinition = Object.fre
     coords: DECODER_COORDS,
     labels: DECODER_LABELS,
     size: DECODER_SIZE,
+    sizeDtype: "int64",
     masks: DECODER_MASKS,
     iou: DECODER_IOU,
   }),

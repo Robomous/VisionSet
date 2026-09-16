@@ -16,8 +16,15 @@ export interface DecoderTensorNames {
   readonly embeddings: string;
   readonly coords: string;
   readonly labels: string;
-  /** `[height, width]` of the original image, int64. */
+  /** `[height, width]` of the original image. */
   readonly size: string;
+  /**
+   * `orig_im_size`'s element type: EfficientSAM-Ti's graph declares it int64, while
+   * MobileSAM's official ONNX export (`SamOnnxModel`, upstream's own dummy inputs)
+   * declares the exact same-purpose input float32 -- this is a real disagreement
+   * between two SAM-family graphs, not a typo either export could have avoided.
+   */
+  readonly sizeDtype: "float32" | "int64";
   readonly masks: string;
   readonly iou: string;
   /**

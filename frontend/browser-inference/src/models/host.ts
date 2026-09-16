@@ -114,15 +114,15 @@ export function createModelHost(
       definition.requireAnswerablePrompt(prompt, width, height);
       const { coords, coordsDims, labels, labelsDims } = definition.decoderPrompt(prompt);
       const decoderNames = definition.decoder;
+      const sizeTensor: ModelTensor =
+        decoderNames.sizeDtype === "int64"
+          ? { type: "int64", data: BigInt64Array.from([BigInt(height), BigInt(width)]), dims: [2] }
+          : { type: "float32", data: Float32Array.from([height, width]), dims: [2] };
       const feeds: Record<string, ModelTensor> = {
         [decoderNames.embeddings]: embedding,
         [decoderNames.coords]: { type: "float32", data: coords, dims: coordsDims },
         [decoderNames.labels]: { type: "float32", data: labels, dims: labelsDims },
-        [decoderNames.size]: {
-          type: "int64",
-          data: BigInt64Array.from([BigInt(height), BigInt(width)]),
-          dims: [2],
-        },
+        [decoderNames.size]: sizeTensor,
       };
       // A decoder that takes the SAM-family "previous low-res mask" refinement pair
       // always gets "there is no previous mask" (`hasMaskInput` zeroed) -- see
