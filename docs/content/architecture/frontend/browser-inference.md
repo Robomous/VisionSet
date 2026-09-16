@@ -68,8 +68,10 @@ There are two calls because the model is two graphs of very different cost. `pre
 the encoder once per image and keeps its output - the embedding - inside the worker; it is never
 returned to the caller and never crosses the boundary again. `suggest` runs only the decoder,
 against that kept embedding, for every point after the first. Keeping the embedding worker-side
-is what makes a refinement cheap instead of a second full run of the expensive graph. `dispose()`
-ends the runtime the same way `BrowserInferenceRuntime`'s does.
+is what makes a refinement cheap instead of a second full run of the expensive graph, and what
+that costs and forbids is recorded in
+[the image embedding stays in the worker](../decisions/the-image-embedding-stays-in-the-worker.md).
+`dispose()` ends the runtime the same way `BrowserInferenceRuntime`'s does.
 
 The worker holds exactly one prepared image at a time. Preparing a second supersedes the first:
 the handle a caller still holds for the old image stops answering, and a `suggest` against it
