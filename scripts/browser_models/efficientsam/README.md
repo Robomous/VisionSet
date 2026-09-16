@@ -13,15 +13,22 @@ uv sync --locked --group browser-models
 uv run python scripts/browser_models/efficientsam/export.py
 ```
 
-`--artifacts-dir <path>` writes elsewhere (CI uses this to control caching layout). The
-default is `frontend/browser-inference/model-artifacts/`, which is gitignored — see
-`.gitignore` and `tests/architecture/test_tracked_file_sizes.py`, which refuses a tracked
-file over 200 KB and would fail if the 41 MB checkpoint or either ~20 MB graph were
-accidentally added to the index.
+`--artifacts-dir <path>` writes elsewhere (CI uses this to control caching layout), but the
+script refuses a target `.gitignore` does not already cover. The default is
+`frontend/browser-inference/model-artifacts/`, which is gitignored — see `.gitignore` and
+`tests/architecture/test_tracked_file_sizes.py`, which refuses a tracked file over 200 KB
+and would fail if the 41 MB checkpoint or either ~20 MB graph were accidentally added to
+the index.
 
 Re-running reuses the cached upstream checkout and checkpoint under
 `<artifacts-dir>/.cache/`; neither is re-fetched once present, though both are still
-re-verified (revision pin, file size, SHA-256) on every run.
+re-verified (revision pin, file size, SHA-256) on every run, and a corrupt cached
+checkpoint is deleted and re-fetched once automatically.
+
+The final `<artifacts-dir>/efficientsam-ti/` directory is only ever replaced as a whole,
+via a build in a temporary directory swapped into place once every assertion has passed —
+a run that fails partway leaves the previous successful build exactly as it was, rather
+than new graphs sitting beside a report that describes different bytes.
 
 ## What it produces
 

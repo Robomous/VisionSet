@@ -14,8 +14,10 @@ is what makes a refinement -- a click inside one region, a second click inside t
 a question with a right answer rather than a coin flip.
 
 frontend/browser-inference/browser/fixtureImage.ts implements this same formula
-independently, in TypeScript. Both assert the same REFERENCE_IMAGE_SHA256 over the pixel
-bytes, which is what proves the two halves drew the same image rather than assuming it.
+independently, in TypeScript, and exports the same REFERENCE_IMAGE_SHA256 constant. This
+side is asserted against a fresh hash of reference_image() by parity.py; the TypeScript side
+is asserted Node-side in browser/efficientSam.spec.ts. Together they prove the two halves
+drew the same image rather than assuming it.
 """
 
 import numpy as np

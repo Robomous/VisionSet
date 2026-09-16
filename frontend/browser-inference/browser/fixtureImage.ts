@@ -17,8 +17,9 @@ import type { PixelImage } from "../src/models/promptable.js";
  * the other — a question with a right answer rather than a coin flip.
  *
  * scripts/browser_models/efficientsam/fixture.py implements this same formula
- * independently, in Python. Both assert the same REFERENCE_IMAGE_SHA256 over the pixel
- * bytes, which is what proves the two halves drew the same image rather than assuming it.
+ * independently, in Python, and exports the same REFERENCE_IMAGE_SHA256 constant. The two
+ * are asserted equal Node-side in browser/efficientSam.spec.ts, which is what proves the
+ * two halves drew the same image rather than assuming it.
  */
 
 const WIDTH = 512;

@@ -17,6 +17,11 @@ Two differences from yformer/EfficientSAM's own onnx_models.py at d525f622, and 
 Importing this module requires upstream's checkout root to already be on `sys.path`,
 because it subclasses `onnx_models.OnnxEfficientSam` from upstream's own (un-packaged,
 top-level) `onnx_models.py`. `export.py` inserts that path before importing this module.
+
+`onnx_models.py` itself carries no Meta copyright header -- unlike most of the rest of
+the tree, it credits a third party: "Onnx export code is from [labelme annotation tool]
+(https://github.com/labelmeai/efficient-sam). Huge thanks to Kentaro Wada." This module
+derives from that file, so the same credit applies here.
 """
 
 from __future__ import annotations
