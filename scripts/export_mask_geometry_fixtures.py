@@ -190,6 +190,10 @@ CASES: list[tuple[str, Mask, list[tuple[float, float]]]] = [
     ("narrow-notch", notched(2), []),
     ("deep-one-row-notch", notched(40), []),
     ("wide-bay", bayed(), []),
+    # The cap, and the only case that reaches it. Below about 98,000 lit pixels
+    # the reach never grows past six, so every other case here would pass a port
+    # that dropped the cap altogether rather than merely changing it.
+    ("capped-reach", rect(320, 320, 0, 0, 319, 319), []),
     ("enclosed-hole", holed(2), []),
     # A polygon at the floor and refused at the ceiling. 16 wide and one tall:
     # a longer strip keeps a vertex at 16 px however thin it is.
