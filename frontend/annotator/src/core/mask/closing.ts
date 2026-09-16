@@ -104,7 +104,9 @@ function shrunk(rows: readonly bigint[], radius: number, width: number): bigint[
  * A hole of area `a` needs a reach of about `sqrt(a) / 2` to be bridged, so the
  * radius comes from the piece's own lit area rather than from a pixel count.
  * Truncated — `Math.trunc` mirrors Python's `int()` — so the smallest shapes get
- * no closing at all rather than one that would swallow a feature.
+ * no closing at all rather than one that would swallow a feature. That
+ * truncation is also what absorbs the one-ulp difference between `Math.sqrt`
+ * and Python's `** 0.5`: it never survives to change the truncated result.
  */
 export function closingRadius(mask: BinaryMask): number {
   let alight = 0;
