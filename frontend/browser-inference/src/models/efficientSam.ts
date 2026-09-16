@@ -10,8 +10,10 @@ import type { PixelImage, PointPrompt } from "./promptable.js";
  * model's 1024-square frame. That is deliberate: the decoder graph itself rescales points
  * into the model's frame (upstream's `get_rescaled_pts`), so rescaling them again here
  * would apply the transform twice. The image size this model was built for is exposed as
- * `EFFICIENT_SAM_TI.imageSize` for whatever *does* need it — the encoder input is resized
- * to it before this module ever sees a tensor — but the prompt path never touches it.
+ * `EFFICIENT_SAM_TI.imageSize` for whatever *does* need it — `EfficientSam.preprocess`
+ * resizes to it *inside the encoder graph itself*, which is exactly why the host feeds
+ * the image at its own natural size rather than resizing it a second time here — but
+ * the prompt path never touches it.
  *
  * `binaryMask` compares `> maskThreshold`, not `>=`. Upstream's own example thresholds
  * with `predicted_logits >= 0` while the model class it calls declares

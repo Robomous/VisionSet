@@ -54,8 +54,20 @@ export function createModelHost(factory: ModelSessionFactory): ModelHost {
     prepared = null;
   }
 
+  // Shared by `load` (a second call must not leak the first pair of sessions or
+  // keep serving an embedding that pair produced) and `release` (which is the same
+  // teardown with nothing left to load afterwards).
+  async function releaseLoaded(): Promise<void> {
+    forget();
+    await encoder?.release();
+    await decoder?.release();
+    encoder = null;
+    decoder = null;
+  }
+
   return {
     async load(encoderBytes, decoderBytes) {
+      await releaseLoaded();
       encoder = await factory.create(encoderBytes);
       decoder = await factory.create(decoderBytes);
     },
@@ -117,11 +129,7 @@ export function createModelHost(factory: ModelSessionFactory): ModelHost {
     },
 
     async release() {
-      forget();
-      await encoder?.release();
-      await decoder?.release();
-      encoder = null;
-      decoder = null;
+      await releaseLoaded();
     },
   };
 }
