@@ -16,6 +16,7 @@ import { createRuntimeClient, type BrowserInferenceRuntime, type InferenceRuntim
 import { InferenceRuntimeError } from "../errors.js";
 import { createModelClient } from "../models/client.js";
 import { EFFICIENT_SAM_TI_DEFINITION } from "../models/efficientSam.js";
+import { MOBILE_SAM_DEFINITION } from "../models/mobileSam.js";
 import type { PromptableSegmentationRuntime } from "../models/promptable.js";
 import type { RuntimeConfiguration } from "../operations.js";
 import type { WorkerChannel } from "../protocol.js";
@@ -118,19 +119,23 @@ export function createInferenceRuntime(
 }
 
 /**
- * What a host chooses when it asks for an EfficientSAM-Ti runtime.
+ * What a host chooses when it asks for a promptable-segmentation model's runtime.
  *
  * `encoder` and `decoder` must back distinct `ArrayBuffer`s. Both are transferred to the
  * worker in one call, and the structured-clone algorithm refuses a transfer list that
  * names the same `ArrayBuffer` twice — passing two `Uint8Array`s that slice the same
  * underlying buffer throws `DataCloneError`, not a graceful merge.
  */
-export interface EfficientSamRuntimeOptions extends InferenceRuntimeOptions {
+export interface PromptableRuntimeOptions extends InferenceRuntimeOptions {
   /** The encoder graph's bytes. Transferred to the worker, and unusable afterwards. */
   readonly encoder: Uint8Array;
   /** The decoder graph's bytes. Transferred to the worker, and unusable afterwards. */
   readonly decoder: Uint8Array;
 }
+
+/** @deprecated Use {@link PromptableRuntimeOptions} -- kept as an alias so existing
+ * imports of this EfficientSAM-Ti-specific name keep compiling. */
+export type EfficientSamRuntimeOptions = PromptableRuntimeOptions;
 
 /**
  * Start a persistent EfficientSAM-Ti worker.
@@ -141,7 +146,7 @@ export interface EfficientSamRuntimeOptions extends InferenceRuntimeOptions {
  * caller gets back speaks points and masks rather than graph ids and tensors.
  */
 export function createEfficientSamRuntime(
-  options: EfficientSamRuntimeOptions,
+  options: PromptableRuntimeOptions,
 ): PromptableSegmentationRuntime {
   const { channel, configuration } = startWorker(options);
   return createModelClient(
@@ -149,5 +154,21 @@ export function createEfficientSamRuntime(
     configuration,
     { encoder: options.encoder, decoder: options.decoder },
     EFFICIENT_SAM_TI_DEFINITION,
+  );
+}
+
+/**
+ * Start a persistent MobileSAM worker. Same shape as `createEfficientSamRuntime`, just
+ * handing `createModelClient` a different model definition.
+ */
+export function createMobileSamRuntime(
+  options: PromptableRuntimeOptions,
+): PromptableSegmentationRuntime {
+  const { channel, configuration } = startWorker(options);
+  return createModelClient(
+    channel,
+    configuration,
+    { encoder: options.encoder, decoder: options.decoder },
+    MOBILE_SAM_DEFINITION,
   );
 }

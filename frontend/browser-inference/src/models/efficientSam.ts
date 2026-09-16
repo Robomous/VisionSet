@@ -148,6 +148,14 @@ export function encoderInput(image: PixelImage): { data: Float32Array; dims: rea
   return { data, dims: [1, 3, height, width] };
 }
 
+/**
+ * `PromptableModelDefinition.decoderPrompt`'s shared signature also takes the image's
+ * width/height, for a model whose decoder needs points pre-rescaled into its own frame
+ * (see `MOBILE_SAM_DEFINITION` for one that does). This model's decoder rescales points
+ * into its own frame itself (upstream's own `get_rescaled_pts`), so this function simply
+ * does not declare those parameters -- assignable to that wider signature regardless,
+ * same as any callback with fewer parameters than the type it satisfies.
+ */
 export function decoderPrompt(prompt: PointPrompt): {
   coords: Float32Array;
   coordsDims: readonly number[];

@@ -112,7 +112,11 @@ export function createModelHost(
       }
       const { width, height, embedding } = prepared;
       definition.requireAnswerablePrompt(prompt, width, height);
-      const { coords, coordsDims, labels, labelsDims } = definition.decoderPrompt(prompt);
+      const { coords, coordsDims, labels, labelsDims } = definition.decoderPrompt(
+        prompt,
+        width,
+        height,
+      );
       const decoderNames = definition.decoder;
       const sizeTensor: ModelTensor =
         decoderNames.sizeDtype === "int64"

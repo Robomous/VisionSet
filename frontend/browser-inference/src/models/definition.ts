@@ -64,9 +64,12 @@ export interface PromptableModelDefinition {
    * The coordinate/label tensors for one decoder call, dims included: a model whose
    * decoder takes a fixed, padded point count (EfficientSAM-Ti) and one whose decoder
    * takes exactly as many points as were actually clicked (MobileSAM, dynamic axes) need
-   * different shapes here, and `host.ts` must not assume either.
+   * different shapes here, and `host.ts` must not assume either. `imageWidth`/`imageHeight`
+   * are the prepared image's own dimensions, in its original pixel frame -- a model whose
+   * decoder expects points pre-rescaled into its own internal frame (MobileSAM) needs
+   * them; a model whose decoder rescales points itself (EfficientSAM-Ti) ignores them.
    */
-  decoderPrompt(prompt: PointPrompt): DecoderPromptTensors;
+  decoderPrompt(prompt: PointPrompt, imageWidth: number, imageHeight: number): DecoderPromptTensors;
   bestCandidate(iou: ArrayLike<number>): { index: number; confidence: number };
   binaryMask(
     logits: ArrayLike<number>,
