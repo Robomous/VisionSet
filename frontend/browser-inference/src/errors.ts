@@ -16,12 +16,14 @@
  * treat one as retryable-by-a-fresh-runtime and the other as a build/asset problem.
  *
  * `prompt-rejected` and `image-superseded` are the model layer's two, and both exist for the
- * same reason: a caller can fix them and the runtime is still good. Trimming an over-long
- * prompt to fit would answer a question nobody asked — the model takes six points, and a
- * seventh click that silently did nothing is worse than a refusal. `image-superseded` is the
- * other half of holding exactly one embedding: a handle for an image the worker has replaced
- * names nothing, and answering it with the current image's mask would be a wrong answer
- * rather than an error.
+ * same reason: a caller can fix them and the runtime is still good. `prompt-rejected` covers
+ * both a prompt and an image the model layer refuses to run — an over-long prompt (the model
+ * takes six points, and a seventh click that silently did nothing is worse than a refusal)
+ * and an image with an unusable width, height or byte count, which is not a prompt but fails
+ * for the same reason: it cannot be expressed to this model, so it is refused rather than
+ * guessed at. `image-superseded` is the other half of holding exactly one embedding: a handle
+ * for an image the worker has replaced names nothing, and answering it with the current
+ * image's mask would be a wrong answer rather than an error.
  */
 export type InferenceRuntimeErrorCode =
   | "unsupported-runtime"
@@ -49,7 +51,7 @@ const DEFAULT_MESSAGE: Readonly<Record<InferenceRuntimeErrorCode, string>> = {
   "graph-load-failed": "The graph could not be loaded.",
   "runtime-execution-failed": "The graph could not be run.",
   "prompt-rejected":
-    "This prompt cannot be expressed to this model, so it was refused rather than trimmed to fit.",
+    "This prompt or image cannot be expressed to this model, so it was refused rather than trimmed to fit.",
   "image-superseded":
     "The prepared image this refers to is no longer the one the runtime holds; prepare it again.",
   cancelled: "The operation was cancelled by its caller.",

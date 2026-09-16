@@ -12,6 +12,8 @@
  * policy and runs a graph; everything ORT knows about itself stays behind the worker.
  */
 
+import { EFFICIENT_SAM_TI as EFFICIENT_SAM_TI_INTERNAL } from "./models/efficientSam.js";
+
 export type {
   ExecutionPolicy,
   ExecutionProvider,
@@ -34,4 +36,16 @@ export type {
   PromptableSegmentationRuntime,
   RawSegmentation,
 } from "./models/promptable.js";
-export { EFFICIENT_SAM_TI } from "./models/efficientSam.js";
+
+/**
+ * The public slice of `EFFICIENT_SAM_TI`: `maxPoints`, because a caller sizing a prompt
+ * UI needs to know how many points the model takes, and `candidates`, because a caller
+ * may reasonably want to know the model offers a best-of-N. Everything else on the full
+ * constant — `imageSize`, `positiveLabel`, `paddingLabel`, `maskThreshold` — is this
+ * model's internal encoding, not this package's business to publish; see the design's
+ * §7, which names `paddingLabel` specifically.
+ */
+export const EFFICIENT_SAM_TI = Object.freeze({
+  maxPoints: EFFICIENT_SAM_TI_INTERNAL.maxPoints,
+  candidates: EFFICIENT_SAM_TI_INTERNAL.candidates,
+});

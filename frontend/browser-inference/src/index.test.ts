@@ -25,4 +25,12 @@ describe("the core entry", () => {
       expect(core[name]).toBeUndefined();
     }
   });
+
+  it("narrows EFFICIENT_SAM_TI to maxPoints and candidates, and nothing that names the graph's internal encoding", async () => {
+    const { EFFICIENT_SAM_TI } = await import("./index.js");
+    expect(EFFICIENT_SAM_TI).toEqual({ maxPoints: 6, candidates: 3 });
+    for (const name of ["imageSize", "positiveLabel", "paddingLabel", "maskThreshold"]) {
+      expect(Object.hasOwn(EFFICIENT_SAM_TI, name)).toBe(false);
+    }
+  });
 });

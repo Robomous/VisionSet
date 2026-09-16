@@ -57,8 +57,8 @@ when called; the `Worker` is constructed inside `createInferenceRuntime()`.
 
 ## A model layer sits on the same split
 
-`PromptableSegmentationRuntime` - `prepareImage`, `suggest`, `dispose` - is a second core type
-alongside `BrowserInferenceRuntime`, exported from the root entrypoint next to `EFFICIENT_SAM_TI`'s
+`PromptableSegmentationRuntime` - `ready`, `prepareImage`, `suggest`, `dispose` - is a second core
+type alongside `BrowserInferenceRuntime`, exported from the root entrypoint next to `EFFICIENT_SAM_TI`'s
 frozen constants. Its implementation, `createEfficientSamRuntime()`, lives only in `./browser`
 and shares `startWorker()` with `createInferenceRuntime()`: the same capability read, the same
 worker construction, the same synchronous refusals. Only the facade differs - one speaks graph
@@ -89,6 +89,11 @@ measured on the exported graph the two are barely distinguishable. Reinterpretin
 answer the opposite of what was asked, so the model refuses any prompt carrying one instead of
 guessing. `PointPrompt.negative` stays on the shared type regardless, as the seam a future model
 with an actual background class reads from.
+
+`prompt-rejected` is not only a prompt code: `prepareImage` raises it the same way for an image
+with a non-positive or non-integer width or height, or a byte count that does not match
+`width * height * 3` — a malformed image is something this model cannot be expressed to run on,
+for the same reason an over-long or negatively-pointed prompt is not.
 
 The decoder answers with several candidate masks and one confidence score per candidate;
 `suggest` keeps only the highest-scoring one. What it returns is a raw binary mask - one byte per
