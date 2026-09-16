@@ -7,7 +7,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const PACKAGES = ["annotator", "media", "ui-core", "app"];
+const PACKAGES = ["annotator", "media", "ui-core", "app", "browser-inference"];
 
 const PEP440_PRERELEASE = { a: "alpha", b: "beta", rc: "rc", dev: "dev" };
 

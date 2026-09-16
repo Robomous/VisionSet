@@ -194,11 +194,20 @@ media_e2e() {
   ( cd "$root/frontend/media" && CI=1 pnpm exec playwright test -c playwright.media.config.ts )
 }
 
+# `@visionset/browser-inference` for the same reason as `media_e2e` above, plus one
+# of its own: the thing under test is the built worker artifact and the ONNX Runtime
+# WASM files beside it, and neither exists in jsdom. Its config builds the package
+# and serves its own `dist/` too, so this is a bare invocation as well.
+inference_e2e() {
+  ( cd "$root/frontend/browser-inference" && CI=1 pnpm exec playwright test -c playwright.inference.config.ts )
+}
+
 run_browser() {
   require_node_modules
   step "annotator + app e2e (chromium)" browser_e2e
   step "browser cycle, real server (chromium)" browser_cycle
   step "media e2e (chromium)" media_e2e
+  step "browser inference runtime (chromium)" inference_e2e
 }
 
 # The documentation site — not in the default set (see the header). It is a

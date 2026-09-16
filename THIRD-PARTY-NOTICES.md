@@ -37,6 +37,35 @@ its source tree. No VisionSet file becomes MPL-2.0, and VisionSet's own Apache-2
 is unaffected. The corresponding source, unmodified and at the exact published version the
 lockfile names, is at the repository linked above.
 
+## ONNX Runtime Web — MIT
+
+| | |
+| --- | --- |
+| Package | [`onnxruntime-web`](https://www.npmjs.com/package/onnxruntime-web) |
+| Version | `1.29.0`, pinned exactly |
+| Licence | MIT |
+| Source | <https://github.com/microsoft/onnxruntime> |
+| Used by | `@visionset/browser-inference` |
+| Modified | **No.** Consumed as an unmodified published package. |
+
+ONNX Runtime Web executes model graphs in the browser. `@visionset/browser-inference`
+redistributes it two ways: its JavaScript is compiled into `dist/browser/worker.js` for the
+same reason Mediabunny is compiled into its worker — a module worker gets no import map — and
+its WebAssembly artifacts (`ort-wasm-simd-threaded.jsep.mjs` and its `.wasm`) are copied
+verbatim into `dist/browser/ort/` so an installed package works without the host sourcing them.
+
+**The published `onnxruntime-web` tarball carries no `LICENSE` file** — only `README.md`,
+`package.json` and `types.d.ts` sit beside its `dist/`. MIT requires its copyright notice to
+travel with redistribution, so for this dependency the notice is not a courtesy; it is the
+condition being met. It is repeated inside the package, in
+[`frontend/browser-inference/THIRD-PARTY-NOTICES.md`](frontend/browser-inference/THIRD-PARTY-NOTICES.md),
+because a consumer who installed the tarball has no repository to follow a link into.
+
+**It is not in the Python wheel's browser bundle.** Nothing in `@visionset/ui-core` or
+`@visionset/app` imports `@visionset/browser-inference`, so `src/visionset/_static/` contains
+none of it. When that changes, this row changes with it — the `Used by` line above is meant to
+be checkable, not aspirational.
+
 ## Everything else
 
 The remaining dependencies are permissively licensed (MIT, BSD, Apache-2.0, ISC and

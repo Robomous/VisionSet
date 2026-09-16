@@ -461,6 +461,67 @@ jobs:
           path: frontend/media/playwright-report/
           retention-days: 7
 
+  # `@visionset/browser-inference`'s persistent worker, in a real Chromium. jsdom has
+  # no module worker and no WebAssembly instantiation from a fetched URL, which is the
+  # whole of what this suite proves: that the *built* `dist/browser/worker.js` and the
+  # ONNX Runtime artifacts copied beside it actually load and execute a graph. The unit
+  # suite under `pnpm test` drives the same runtime through a fake channel and cannot
+  # say anything about the artifact. Same shape as `media-e2e` above, including the
+  # config building and serving its own `dist/`.
+  browser-inference-e2e:
+    name: browser inference runtime (chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: changes
+    if: always()
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
+        if: needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true'
+
+      - uses: actions/setup-node@v7
+        if: needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true'
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        if: needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve the Playwright version
+        if: needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true'
+        id: playwright
+        run: |
+          version=$(node -p "require('./frontend/browser-inference/node_modules/@playwright/test/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache browsers
+        if: needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true'
+        id: browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      - name: Install chromium
+        if: (needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true') && steps.browsers.outputs.cache-hit != 'true'
+        run: pnpm --filter @visionset/browser-inference exec playwright install chromium
+
+      - name: Run the browser inference runtime suite
+        if: needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true'
+        run: pnpm --filter @visionset/browser-inference test:browser
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: browser-inference-playwright-report
+          path: frontend/browser-inference/playwright-report/
+          retention-days: 7
+
   # #59: the whole cycle in a browser, against a real server and a real kernel.
   #
   # A job of its own, and it needs both toolchains — this is the only check in the

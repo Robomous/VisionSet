@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Verifies the actual `@visionset/annotator`, `@visionset/media` and `@visionset/ui-core`
-# npm tarballs — not the workspace `dist/`, which every other check reaches through
+# Verifies the actual `@visionset/annotator`, `@visionset/media`, `@visionset/ui-core`
+# and `@visionset/browser-inference` npm tarballs — not the workspace `dist/`, which every other check reaches through
 # a pnpm symlink and an already-built declaration file. #839: `tsc` with
 # `moduleResolution: "bundler"` emitted extensionless relative specifiers that
 # only a bundler resolves; Node's own ESM resolver does not. This packs all three
-# tarballs and installs them in a lone project outside the workspace — no
+# four tarballs and installs them in a lone project outside the workspace — no
 # `pnpm-workspace.yaml` above it, so nothing here can resolve a package any way
 # other than how installing these tarballs for real would.
 set -euo pipefail
@@ -23,13 +23,17 @@ cd "$root"
 pnpm --filter @visionset/annotator build >/dev/null
 pnpm --filter @visionset/media build >/dev/null
 pnpm --filter @visionset/ui-core build >/dev/null
+# Independent of all three: it depends on no workspace package at all.
+pnpm --filter @visionset/browser-inference build >/dev/null
 pnpm --filter @visionset/annotator pack --pack-destination "$work" >/dev/null
 pnpm --filter @visionset/media pack --pack-destination "$work" >/dev/null
 pnpm --filter @visionset/ui-core pack --pack-destination "$work" >/dev/null
+pnpm --filter @visionset/browser-inference pack --pack-destination "$work" >/dev/null
 
 annotator_tgz=$(ls "$work"/visionset-annotator-*.tgz)
 media_tgz=$(ls "$work"/visionset-media-*.tgz)
 ui_core_tgz=$(ls "$work"/visionset-ui-core-*.tgz)
+inference_tgz=$(ls "$work"/visionset-browser-inference-*.tgz)
 
 # `new URL('./worker.js', import.meta.url)` in the mediabunny adapter fails silently
 # at runtime if a packaging change ever drops the worker file from the tarball —
@@ -45,6 +49,25 @@ for wanted in "package/dist/mediabunny/worker.js" "package/THIRD-PARTY-NOTICES.m
 done
 echo "@visionset/media tarball carries dist/mediabunny/worker.js and THIRD-PARTY-NOTICES.md"
 
+# Same failure mode, one step worse. `@visionset/browser-inference` resolves its worker
+# with `new URL('./worker.js', import.meta.url)` *and* points ONNX Runtime at the WASM
+# artifacts copied beside it, so a packaging change can drop either and leave an install
+# that succeeds, type-checks and then 404s on first use. The `.asyncify` pair is what
+# ORT's WebGPU build actually loads — the `.jsep` pair looks equally plausible and is
+# not what it asks for, which is exactly why this names the files rather than a glob.
+inference_listing=$(tar -tzf "$inference_tgz")
+for wanted in \
+  "package/dist/browser/worker.js" \
+  "package/dist/browser/ort/ort-wasm-simd-threaded.asyncify.mjs" \
+  "package/dist/browser/ort/ort-wasm-simd-threaded.asyncify.wasm" \
+  "package/THIRD-PARTY-NOTICES.md"; do
+  if ! grep -qx "$wanted" <<<"$inference_listing"; then
+    echo "error: @visionset/browser-inference tarball is missing $wanted" >&2
+    exit 1
+  fi
+done
+echo "@visionset/browser-inference tarball carries its worker, both ORT artifacts and THIRD-PARTY-NOTICES.md"
+
 consumer="$work/consumer"
 mkdir -p "$consumer"
 cd "$consumer"
@@ -58,6 +81,7 @@ cat > package.json <<JSON
     "@visionset/annotator": "file:$annotator_tgz",
     "@visionset/media": "file:$media_tgz",
     "@visionset/ui-core": "file:$ui_core_tgz",
+    "@visionset/browser-inference": "file:$inference_tgz",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "tailwindcss": "^4.3.3"
@@ -76,9 +100,16 @@ JSON
 # tarballs, rather than letting resolution reach those versions on the real
 # registry — the point is testing what was just built, not what is already
 # published.
+#
+# `allowBuilds` repeats the repository's own answer rather than inheriting it — this
+# project deliberately has no workspace root above it. Without the line pnpm stops with
+# ERR_PNPM_IGNORED_BUILDS for `protobufjs`, which arrives under `onnxruntime-web`; with a
+# different answer the fixture would be installing something the repository does not.
 cat > pnpm-workspace.yaml <<YAML
 packages:
   - "."
+allowBuilds:
+  protobufjs: false
 overrides:
   "@visionset/annotator": "file:$annotator_tgz"
   "@visionset/media": "file:$media_tgz"
@@ -90,7 +121,7 @@ pnpm install --no-frozen-lockfile --reporter=silent
 # `@visionset/annotator`) instead of the tarball just installed would still pass
 # every other check here — the import would resolve, just to the wrong bytes.
 # `realpath` catches that: none of the three may resolve inside this repository.
-for pkg in "@visionset/annotator" "@visionset/media" "@visionset/ui-core"; do
+for pkg in "@visionset/annotator" "@visionset/media" "@visionset/ui-core" "@visionset/browser-inference"; do
   resolved=$(node -e "console.log(require('node:fs').realpathSync(require('node:path').join('node_modules', process.argv[1])))" "$pkg")
   case "$resolved" in
     "$root"/*)
@@ -108,7 +139,12 @@ import "@visionset/ui-core";
 // import that touches one (window, document, self, …) throws here rather than
 // merely at type-check time.
 import "@visionset/media";
-console.log("Node ESM import OK: @visionset/annotator, @visionset/ui-core, @visionset/media (core)");
+// Same reasoning, and the reason this package splits its entry points at all: the core
+// entry must evaluate where there is no Worker and no navigator.
+import "@visionset/browser-inference";
+console.log(
+  "Node ESM import OK: @visionset/annotator, @visionset/ui-core, @visionset/media (core), @visionset/browser-inference (core)",
+);
 JS
 node esm-check.mjs
 
@@ -137,8 +173,15 @@ import "@visionset/annotator";
 import "@visionset/ui-core";
 import "@visionset/media";
 import type { MediabunnyVideoMaterializer } from "@visionset/media/mediabunny";
-export type { MediabunnyVideoMaterializer };
+// Both entry points, and the split between them: the runtime's *type* is on the core
+// entry, and only `createInferenceRuntime` — the one thing that needs a browser — is
+// behind `/browser`. A consumer naming the type in a Node build must not have to reach
+// for the half that starts a worker.
+import type { BrowserInferenceRuntime } from "@visionset/browser-inference";
+import type { createInferenceRuntime } from "@visionset/browser-inference/browser";
+export type { MediabunnyVideoMaterializer, BrowserInferenceRuntime };
+export type CreateInferenceRuntime = typeof createInferenceRuntime;
 TS
 
 pnpm exec tsc -p tsconfig.json
-echo "TypeScript consumer resolved @visionset/annotator, @visionset/ui-core, @visionset/media and @visionset/media/mediabunny under nodenext OK"
+echo "TypeScript consumer resolved @visionset/annotator, @visionset/ui-core, @visionset/media, @visionset/media/mediabunny, @visionset/browser-inference and @visionset/browser-inference/browser under nodenext OK"
