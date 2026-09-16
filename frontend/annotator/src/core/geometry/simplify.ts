@@ -25,12 +25,11 @@
  * `Math.sqrt` and Python's `** 0.5` are *not* quite the same operation, though:
  * CPython routes `** 0.5` through libm `pow`, which is not correctly rounded,
  * and it disagrees with a correctly-rounded square root by one ulp on roughly a
- * tenth of a percent of inputs. That difference has never reached a comparison
- * boundary here — it is absorbed by the truncation in `closingRadius`, and
- * the distance comparisons downstream of it are decided by margins far
- * wider than an ulp. Making Python's side call `math.sqrt` instead would fix
- * the mismatch, but it is a second Python semantic change and stays out of
- * scope on this branch.
+ * tenth of a percent of inputs. The mask pipeline avoids carrying that
+ * difference into nearest-piece selection by comparing squared distances there;
+ * `closingRadius` absorbs it through truncation. The existing simplification
+ * fixture continues to assert exact output for its covered contours. Making
+ * Python's side call `math.sqrt` would be a separate semantic change.
  *
  * ## Why a contour is the input rather than a mask
  *

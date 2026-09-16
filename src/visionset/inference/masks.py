@@ -266,12 +266,17 @@ def _components(found: Sequence[tuple[int, int, int]]) -> list[int]:
     return [root(index) for index in range(len(found))]
 
 
-def _gap(point: Point, run: tuple[int, int, int]) -> float:
-    """Distance from a point to a run, which is a horizontal segment of pixels."""
+def _squared_gap(point: Point, run: tuple[int, int, int]) -> float:
+    """Squared distance from a point to a run, which is a horizontal segment of pixels.
+
+    The square root cannot change which run is nearest, and leaving it out keeps
+    a one-ulp libm rounding difference from turning a geometric ordering into a
+    reading-order tie.
+    """
     x, y = point
     row, first, last = run
     across = max(0.0, first - x, x - last)
-    return (across * across + (row - y) * (row - y)) ** 0.5
+    return across * across + (row - y) * (row - y)
 
 
 def _areas(found: Sequence[tuple[int, int, int]], labels: Sequence[int]) -> dict[int, int]:
@@ -324,7 +329,7 @@ def _pointed_at(
     if under:
         return min(under, key=lambda label: (-size[label], label))
     nearest = min(
-        range(len(found)), key=lambda index: min(_gap(point, found[index]) for point in at)
+        range(len(found)), key=lambda index: min(_squared_gap(point, found[index]) for point in at)
     )
     return labels[nearest]
 

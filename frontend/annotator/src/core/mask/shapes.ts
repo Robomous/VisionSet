@@ -118,7 +118,7 @@ export function shapesFromMask(
     readonly tolerance?: number;
     readonly at?: readonly Point[];
   },
-): ShapedGeometry[] {
+): readonly ShapedGeometry[] {
   if (mask.mask.length !== mask.width * mask.height) {
     throw new Error(
       `mask carries ${mask.mask.length} bytes for a ${mask.width}x${mask.height} extent`,

@@ -248,6 +248,16 @@ export type CreateEfficientSamRuntime = typeof createEfficientSamRuntime;
 const packedMask: BinaryMask = { width: 1, height: 1, mask: new Uint8Array([1]) };
 const packedShaped: readonly ShapedGeometry[] = shapesFromMask(packedMask, { allowed: ["bbox"] });
 void packedShaped;
+
+type Equal<Left, Right> =
+  (<Value>() => Value extends Left ? 1 : 2) extends
+  (<Value>() => Value extends Right ? 1 : 2)
+    ? true
+    : false;
+type Assert<Condition extends true> = Condition;
+type _ShapesFromMaskReturnsReadonly = Assert<
+  Equal<ReturnType<typeof shapesFromMask>, readonly ShapedGeometry[]>
+>;
 TS
 
 pnpm exec tsc -p tsconfig.json

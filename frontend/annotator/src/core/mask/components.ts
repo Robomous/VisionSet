@@ -64,12 +64,12 @@ function labelled(found: readonly Run[]): number[] {
   return found.map((_, index) => root(index));
 }
 
-/** Distance from a point to a run, which is a horizontal segment of pixels. */
-function gap(point: Point, run: Run): number {
+/** Squared distance from a point to a run, which is a horizontal segment of pixels. */
+function squaredGap(point: Point, run: Run): number {
   const [x, y] = point;
   const [row, first, last] = run;
   const across = Math.max(0, first - x, x - last);
-  return Math.sqrt(across * across + (row - y) * (row - y));
+  return across * across + (row - y) * (row - y);
 }
 
 /** Lit pixels per label, summed off the runs rather than counted. */
@@ -128,7 +128,7 @@ function pointedAt(
   found.forEach((run, index) => {
     let ours = Infinity;
     for (const point of at) {
-      const found_ = gap(point, run);
+      const found_ = squaredGap(point, run);
       if (found_ < ours) ours = found_;
     }
     if (ours < closest) {

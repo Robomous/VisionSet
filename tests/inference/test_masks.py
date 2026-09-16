@@ -163,6 +163,24 @@ def test_a_click_just_off_the_piece_falls_back_to_the_nearest_one() -> None:
     assert (pieces[0].x, pieces[0].y) == (1, 3)
 
 
+def test_nearest_piece_compares_squared_distances_without_a_square_root_tie() -> None:
+    """The smaller geometric distance wins even when its square roots round equal.
+
+    These two one-pixel pieces are separate survivors. Their squared distances
+    from the in-frame point differ by one ulp, while their square roots can
+    round equal on a platform. Comparing the squared values keeps the answer
+    the actual nearer piece rather than letting a libm tie fall back to reading
+    order.
+    """
+    mask = [[0] * 64 for _ in range(64)]
+    mask[12][11] = 1
+    mask[26][44] = 1
+
+    pieces = components(mask, at=[(27.660028289416932, 18.62279046066009)])
+
+    assert (pieces[0].x, pieces[0].y) == (44, 26)
+
+
 def test_several_points_spanning_pieces_prefer_the_largest_of_them() -> None:
     """Two positives can straddle two pieces; the bigger one is the better answer."""
     pieces = components(speckled(), at=[(9.0, 0.0), (3.0, 5.0)])

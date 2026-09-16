@@ -182,6 +182,11 @@ def diagonal() -> Mask:
     return painted(4, 4, [(1, 1, 1), (2, 2, 2)])
 
 
+def squared_distance_near_tie() -> Mask:
+    """Two one-pixel pieces whose squared distances differ below sqrt precision."""
+    return painted(64, 64, [(12, 11, 11), (26, 44, 44)])
+
+
 CASES: list[tuple[str, Mask, list[tuple[float, float]]]] = [
     ("empty", blank(20, 20), []),
     ("single-pixel", painted(5, 5, [(2, 3, 3)]), []),
@@ -195,6 +200,11 @@ CASES: list[tuple[str, Mask, list[tuple[float, float]]]] = [
     ("equal-area-tie-reversed", tied(), [(2.0, 3.0), (12.0, 2.0)]),
     ("click-outside", islands(), [(20.0, 4.0)]),
     ("half-pixel-click", halved(), [(2.0, 2.5), (8.0, 1.0)]),
+    (
+        "squared-distance-near-tie",
+        squared_distance_near_tie(),
+        [(27.660028289416932, 18.62279046066009)],
+    ),
     ("diagonal-touch", diagonal(), []),
     ("narrow-notch", notched(2), []),
     ("deep-one-row-notch", notched(40), []),

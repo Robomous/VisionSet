@@ -53,6 +53,18 @@ describe("components", () => {
     expect(components(islands(), [[20, 4]])[0]!.x).toBe(14);
   });
 
+  it("compares squared distances when square roots would tie", () => {
+    // The second pixel is geometrically closer, although the two Math.sqrt
+    // results round equal on this input. Selection must not depend on that
+    // rounding tie or on the first run's reading order.
+    const nearTie = maskOf(64, 64, [
+      [12, 11, 11],
+      [26, 44, 44],
+    ]);
+    const pieces = components(nearTie, [[27.660028289416932, 18.62279046066009]]);
+    expect([pieces[0]!.x, pieces[0]!.y]).toEqual([44, 26]);
+  });
+
   it("prefers the largest of the pieces several points land in", () => {
     expect(
       components(islands(), [
