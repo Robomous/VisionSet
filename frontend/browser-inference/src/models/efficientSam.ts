@@ -19,13 +19,30 @@ import type { PixelImage, PointPrompt } from "./promptable.js";
  * and the Python reference this ships against is being changed to match, so that a later
  * parity test measures the exported graph rather than re-litigating a tie-break that was
  * never actually specified.
+ *
+ * There is no `negativeLabel`, and that absence is load-bearing, not an oversight: this
+ * model has no negative point. `PromptEncoder._embed_points` in the pinned upstream source
+ * adds a learned type embedding only for labels `-1`, `1`, `2` and `3` — its own docstring
+ * says "each element is 1,2 or 3" — and label `0`, which is what original SAM uses for a
+ * background click, matches none of those `torch.eq` tests. A `0`-labelled point gets a
+ * positional encoding and **no type embedding**, so the graph cannot tell it apart from a
+ * positive one. Measured on the real exported graph, one extra point at the same location
+ * next to a positive-only baseline that lit 25,068 px:
+ *
+ *   - omitted (padding `-1`): 25,068 px lit, IoU 1.0000 — correctly ignored.
+ *   - label `0` ("negative"): 57,895 px lit, IoU 0.4318 vs the baseline.
+ *   - label `1` (positive):   58,036 px lit, IoU 0.4306 vs the baseline.
+ *
+ * A "negative" point agrees with a positive one to within 0.24% and *expands* the mask
+ * instead of carving a hole in it. Reinterpreting `negative` as background would silently
+ * answer the opposite of what was asked, so `requireAnswerablePrompt` refuses any prompt
+ * that carries one, and `decoderPrompt` never emits label `0`.
  */
 export const EFFICIENT_SAM_TI = {
   imageSize: 1024,
   maxPoints: 6,
   candidates: 3,
   positiveLabel: 1,
-  negativeLabel: 0,
   paddingLabel: -1,
   maskThreshold: 0,
 } as const;
@@ -46,30 +63,31 @@ export function requireUsableImage(image: PixelImage): void {
 }
 
 export function requireAnswerablePrompt(prompt: PointPrompt, width: number, height: number): void {
+  if (prompt.negative.length > 0) {
+    refuse(
+      "EfficientSAM-Ti has no background point, so a negative point would be read as a " +
+        "positive one; this prompt was refused rather than answered wrongly",
+    );
+  }
   if (prompt.positive.length === 0) {
     refuse("a point prompt needs at least one positive point to say what to find");
   }
-  const total = prompt.positive.length + prompt.negative.length;
+  const total = prompt.positive.length;
   if (total > EFFICIENT_SAM_TI.maxPoints) {
     refuse(
       `${total} points, and this model takes ${EFFICIENT_SAM_TI.maxPoints}; remove one rather ` +
         "than letting it be dropped silently",
     );
   }
-  for (const [which, points] of [
-    ["positive", prompt.positive],
-    ["negative", prompt.negative],
-  ] as const) {
-    for (const [x, y] of points) {
-      if (!Number.isFinite(x) || !Number.isFinite(y)) {
-        refuse(`the ${which} point at (${x}, ${y}) is not a place`);
-      }
-      if (x < 0 || x > width || y < 0 || y > height) {
-        refuse(
-          `the ${which} point at (${x}, ${y}) is not on this image, which is ${width} by ` +
-            `${height} pixels; send x in [0, ${width}] and y in [0, ${height}]`,
-        );
-      }
+  for (const [x, y] of prompt.positive) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      refuse(`the positive point at (${x}, ${y}) is not a place`);
+    }
+    if (x < 0 || x > width || y < 0 || y > height) {
+      refuse(
+        `the positive point at (${x}, ${y}) is not on this image, which is ${width} by ` +
+          `${height} pixels; send x in [0, ${width}] and y in [0, ${height}]`,
+      );
     }
   }
 }
@@ -88,21 +106,14 @@ export function encoderInput(image: PixelImage): { data: Float32Array; dims: rea
 }
 
 export function decoderPrompt(prompt: PointPrompt): { coords: Float32Array; labels: Float32Array } {
-  const { maxPoints, positiveLabel, negativeLabel, paddingLabel } = EFFICIENT_SAM_TI;
+  const { maxPoints, positiveLabel, paddingLabel } = EFFICIENT_SAM_TI;
   const coords = new Float32Array(maxPoints * 2).fill(paddingLabel);
   const labels = new Float32Array(maxPoints).fill(paddingLabel);
-  let slot = 0;
-  for (const [label, points] of [
-    [positiveLabel, prompt.positive],
-    [negativeLabel, prompt.negative],
-  ] as const) {
-    for (const [x, y] of points) {
-      coords[slot * 2] = x;
-      coords[slot * 2 + 1] = y;
-      labels[slot] = label;
-      slot += 1;
-    }
-  }
+  prompt.positive.forEach(([x, y], slot) => {
+    coords[slot * 2] = x;
+    coords[slot * 2 + 1] = y;
+    labels[slot] = positiveLabel;
+  });
   return { coords, labels };
 }
 

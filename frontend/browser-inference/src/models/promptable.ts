@@ -19,6 +19,14 @@ export interface PixelImage {
 /** The points a caller clicked, in the pixel frame of the image they clicked on. */
 export interface PointPrompt {
   readonly positive: readonly (readonly [number, number])[];
+  /**
+   * Background clicks, for a model that has one. EfficientSAM-Ti does not: its prompt
+   * encoder has no learned embedding for a background label, so this model refuses any
+   * prompt with a non-empty `negative` rather than silently reading it as positive. The
+   * field stays on the shared type anyway — it is the seam a future promptable model with
+   * a real negative point reads from, and dropping it now would make adding one later a
+   * breaking change.
+   */
   readonly negative: readonly (readonly [number, number])[];
 }
 

@@ -28,7 +28,6 @@ describe("what this model is", () => {
       maxPoints: 6,
       candidates: 3,
       positiveLabel: 1,
-      negativeLabel: 0,
       paddingLabel: -1,
       maskThreshold: 0,
     });
@@ -36,16 +35,18 @@ describe("what this model is", () => {
 });
 
 describe("turning a prompt into what the decoder takes", () => {
-  it("says 1 for a positive point and 0 for a negative one", () => {
-    const { labels } = decoderPrompt({ positive: [[1, 2]], negative: [[3, 4]] });
-    expect(labels[0]).toBe(1);
-    expect(labels[1]).toBe(0);
+  it("refuses a negative point outright, because this model has none", () => {
+    const refusal = refusalFrom(() =>
+      requireAnswerablePrompt({ positive: [[1, 2]], negative: [[3, 4]] }, 100, 100),
+    );
+    expect(refusal.code).toBe("prompt-rejected");
+    expect(refusal.message).toMatch(/no background point/i);
   });
 
-  it("orders positives before negatives, so the conversion is testable by equality", () => {
+  it("keeps points in the order given, so the conversion is testable by equality", () => {
     const { coords } = decoderPrompt({
-      positive: [[1, 2], [5, 6]],
-      negative: [[3, 4]],
+      positive: [[1, 2], [5, 6], [3, 4]],
+      negative: [],
     });
     expect([...coords.slice(0, 6)]).toEqual([1, 2, 5, 6, 3, 4]);
   });
@@ -58,20 +59,20 @@ describe("turning a prompt into what the decoder takes", () => {
     expect([...coords.slice(2)]).toEqual([-1, -1, -1, -1, -1, -1, -1, -1, -1, -1]);
   });
 
-  it("fills all six slots when six points are given", () => {
+  it("fills all six slots when six positives are given", () => {
     const { labels } = decoderPrompt({
-      positive: [[1, 1], [2, 2], [3, 3]],
-      negative: [[4, 4], [5, 5], [6, 6]],
+      positive: [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6]],
+      negative: [],
     });
-    expect([...labels]).toEqual([1, 1, 1, 0, 0, 0]);
+    expect([...labels]).toEqual([1, 1, 1, 1, 1, 1]);
   });
 });
 
 describe("refusing a prompt this model cannot be asked", () => {
   it("refuses a seventh point rather than dropping it", () => {
     const seven = {
-      positive: [[1, 1], [2, 2], [3, 3], [4, 4]] as const,
-      negative: [[5, 5], [6, 6], [7, 7]] as const,
+      positive: [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6], [7, 7]] as const,
+      negative: [] as const,
     };
     const refusal = refusalFrom(() => requireAnswerablePrompt(seven, 100, 100));
     expect(refusal.code).toBe("prompt-rejected");
@@ -79,19 +80,29 @@ describe("refusing a prompt this model cannot be asked", () => {
   });
 
   it("refuses a prompt with nothing positive in it", () => {
-    const refusal = refusalFrom(() =>
-      requireAnswerablePrompt({ positive: [], negative: [[1, 1]] }, 100, 100),
-    );
+    const refusal = refusalFrom(() => requireAnswerablePrompt({ positive: [], negative: [] }, 100, 100));
     expect(refusal.code).toBe("prompt-rejected");
     expect(refusal.message).toMatch(/positive/i);
   });
 
-  it("refuses a point that is not on the image, and says which", () => {
+  it("reports a negative point before the point-count overflow, when both apply", () => {
     const refusal = refusalFrom(() =>
-      requireAnswerablePrompt({ positive: [[10, 10]], negative: [[101, 5]] }, 100, 50),
+      requireAnswerablePrompt(
+        { positive: [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6]], negative: [[7, 7]] },
+        100,
+        100,
+      ),
     );
     expect(refusal.code).toBe("prompt-rejected");
-    expect(refusal.message).toMatch(/negative/);
+    expect(refusal.message).toMatch(/no background point/i);
+  });
+
+  it("refuses a point that is not on the image, and says which", () => {
+    const refusal = refusalFrom(() =>
+      requireAnswerablePrompt({ positive: [[10, 10], [101, 5]], negative: [] }, 100, 50),
+    );
+    expect(refusal.code).toBe("prompt-rejected");
+    expect(refusal.message).toMatch(/positive/);
     expect(refusal.message).toMatch(/101/);
   });
 
