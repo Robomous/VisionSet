@@ -68,6 +68,11 @@ src/visionset/_static/*
 **/workspace-data/*
 !workspace-data/.gitkeep
 
+# Exported browser model graphs and the checkpoint they came from. Reproducible
+# from scripts/browser_models/, never committed: the checkpoint alone is 41 MB and
+# tests/architecture/test_tracked_file_sizes.py refuses anything over 200 KB.
+frontend/browser-inference/model-artifacts/
+
 # Compose reads `docker/.env` for the uid the dev stack runs as — a host fact,
 # never a repository one. Unanchored so it holds wherever such a file lands.
 .env

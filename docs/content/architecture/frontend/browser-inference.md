@@ -1,8 +1,9 @@
 # @visionset/browser-inference
 
 [`frontend/browser-inference/`](../../../../frontend/browser-inference/) runs model graphs in
-the browser. It owns a persistent worker, ONNX Runtime Web, and nothing else - no model, no UI,
-no knowledge that VisionSet exists.
+the browser. It owns a persistent worker, ONNX Runtime Web, and a model layer that can execute a
+caller-supplied EfficientSAM-Ti - and nothing else. No weights ship with the package, it offers
+no UI, and it has no knowledge that VisionSet exists.
 
 Read that last clause literally: this package depends on **no VisionSet package and no
 framework**. It is the only one of the five with no edge into the workspace at all.
@@ -17,8 +18,9 @@ through the seam it exists to serve. A host that holds both adapts one to the ot
 what [host composition](../decisions/browser-inference-is-host-injected.md) is for.
 
 Nothing in this repository composes that adapter yet, and nothing imports this package.
-**A package existing is not the product offering a browser target.** There is no model, no
-"This device" control, and no user-visible change.
+**A package existing is not the product offering a browser target.** There is no "This device"
+control and no user-visible change - a caller who wants EfficientSAM-Ti running still has to
+supply the weights and wire the adapter itself.
 
 ## Core and adapter are two entrypoints, for the same reason as media
 
@@ -52,6 +54,76 @@ merely type-checking.
 
 Even in the adapter, no browser global is read at module scope. `readEnvironment()` reads them
 when called; the `Worker` is constructed inside `createInferenceRuntime()`.
+
+## A model layer sits on the same split
+
+`PromptableSegmentationRuntime` - `ready`, `prepareImage`, `suggest`, `dispose` - is a second core
+type alongside `BrowserInferenceRuntime`, exported from the root entrypoint next to `EFFICIENT_SAM_TI`'s
+frozen constants. Its implementation, `createEfficientSamRuntime()`, lives only in `./browser`
+and shares `startWorker()` with `createInferenceRuntime()`: the same capability read, the same
+worker construction, the same synchronous refusals. Only the facade differs - one speaks graph
+ids and tensors, the other speaks points and masks.
+
+There are two calls because the model is two graphs of very different cost. `prepareImage` runs
+the encoder once per image and keeps its output - the embedding - inside the worker; it is never
+returned to the caller and never crosses the boundary again. `suggest` runs only the decoder,
+against that kept embedding, for every point after the first. Keeping the embedding worker-side
+is what makes a refinement cheap instead of a second full run of the expensive graph, and what
+that costs and forbids is recorded in
+[the image embedding stays in the worker](../decisions/the-image-embedding-stays-in-the-worker.md).
+That embedding is the only tensor the worker keeps: what the decoder answers with - the candidate
+masks and their scores - belongs to the one `suggest` that asked for it and is released before
+that call returns, so a long session of refinements retains one embedding rather than a set of
+full-size mask planes per click. `dispose()` ends the runtime the same way
+`BrowserInferenceRuntime`'s does.
+
+The worker holds exactly one prepared image at a time. Preparing a second supersedes the first:
+the handle a caller still holds for the old image stops answering, and a `suggest` against it
+fails with `image-superseded` rather than silently describing the new image. There is no cache
+behind that one slot - a caller who wants two images ready at once holds two runtimes.
+
+EfficientSAM-Ti takes at most six points because its decoder graph does. A prompt over that limit
+is refused outright rather than trimmed to the first six: trimming would answer a prompt the
+caller never sent, with nothing to tell them their later points were dropped.
+
+A prompt with even one negative point is refused for a sharper reason than the count.
+EfficientSAM-Ti defines no negative point at all: its prompt encoder assigns a learned type
+embedding to labels `-1`, `1`, `2` and `3`, and nothing to `0`, the label original SAM uses for a
+background click. A point sent as a negative therefore carries no polarity information into the
+graph, and the model has no way to express exclusion. Measured on the exported graph, such a
+point *expanded* the mask rather than carving a hole in it, landing within 0.24% of what the same
+point does labelled positive - which is evidence that the behaviour is not exclusion, not
+evidence that `0` means positive. The model defines no meaning for it either way, so a prompt
+carrying one is refused rather than answered with something that is not what was asked for.
+`PointPrompt.negative` stays on the shared type regardless, as the seam a future model with an
+actual background class reads from.
+
+That refusal is a real limit on what this model can stand in for, and it is worth stating plainly
+rather than leaving to be discovered. VisionSet's server-side `point_suggest` interaction is
+defined in terms of positive *and* negative points; EfficientSAM-Ti supports positive points and
+multi-positive refinement only. It is the engineering model for this phase - the thing that
+proved the export, the worker-resident embedding and the browser execution path are real - and
+not yet a semantically complete replacement for that capability. Which model eventually becomes a
+browser default is a later decision, and negative-point support is one of the criteria it has to
+be made against.
+
+`prompt-rejected` is not only a prompt code: `prepareImage` raises it the same way for an image
+with a non-positive or non-integer width or height, or a byte count that does not match
+`width * height * 3` — a malformed image is something this model cannot be expressed to run on,
+for the same reason an over-long or negatively-pointed prompt is not.
+
+The decoder answers with several candidate masks and one confidence score per candidate;
+`suggest` keeps only the highest-scoring one. What it returns is a raw binary mask - one byte per
+pixel, `0` or `1` - not a polygon, a bounding box, or any other application geometry. Turning a
+mask into geometry a batch schema accepts happens the same way regardless of which runtime
+produced it, and does not happen here.
+
+Neither graph's bytes live in this package. `createEfficientSamRuntime()` takes `encoder` and
+`decoder` as caller-supplied `Uint8Array`s and transfers them into the worker; where a host gets
+them is the host's problem. The graphs this repository tests against are produced by
+[`scripts/browser_models/efficientsam/`](../../../../scripts/browser_models/efficientsam/), which
+exports EfficientSAM-Ti's encoder and decoder from the pinned upstream checkpoint and checks the
+exported graph against the eager PyTorch reference it came from.
 
 ## The worker is persistent
 

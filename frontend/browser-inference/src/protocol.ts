@@ -1,5 +1,6 @@
 import type { ExecutionProvider } from "./capabilities.js";
 import type { InferenceRuntimeErrorCode } from "./errors.js";
+import type { PointPrompt } from "./models/promptable.js";
 
 /**
  * Correlates one worker request with its one reply, and nothing else.
@@ -64,6 +65,28 @@ export type ToWorker =
       readonly graphId: GraphId;
       readonly inputs: RunInputs;
     }
+  | {
+      readonly kind: "model-load";
+      readonly id: OperationId;
+      readonly encoder: Uint8Array;
+      readonly decoder: Uint8Array;
+    }
+  | {
+      // The pixel bytes cross this boundary; the embedding they produce never does. The
+      // `prepared` reply names the resulting image (its size and generation) rather than
+      // carrying it, because the embedding stays worker-side for `model-suggest` to reuse.
+      readonly kind: "model-prepare";
+      readonly id: OperationId;
+      readonly width: number;
+      readonly height: number;
+      readonly rgb: Uint8Array;
+    }
+  | {
+      readonly kind: "model-suggest";
+      readonly id: OperationId;
+      readonly generation: number;
+      readonly prompt: PointPrompt;
+    }
   | { readonly kind: "cancel"; readonly id: OperationId }
   | { readonly kind: "shutdown"; readonly id: OperationId };
 
@@ -87,7 +110,23 @@ export type FromWorker =
       /** The underlying exception's text, carried to the caller as `cause`. */
       readonly detail?: string;
     }
-  | { readonly kind: "disposed"; readonly id: OperationId };
+  | { readonly kind: "disposed"; readonly id: OperationId }
+  | { readonly kind: "model-loaded"; readonly id: OperationId }
+  | {
+      readonly kind: "prepared";
+      readonly id: OperationId;
+      readonly generation: number;
+      readonly width: number;
+      readonly height: number;
+    }
+  | {
+      readonly kind: "segmentation";
+      readonly id: OperationId;
+      readonly width: number;
+      readonly height: number;
+      readonly mask: Uint8Array;
+      readonly confidence: number;
+    };
 
 /** The replies that carry an answer rather than a failure. */
 export type WorkerSuccess = Exclude<FromWorker, { kind: "error" }>;

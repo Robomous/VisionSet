@@ -14,6 +14,9 @@ import {
 } from "../capabilities.js";
 import { createRuntimeClient, type BrowserInferenceRuntime, type InferenceRuntimeOptions } from "../client.js";
 import { InferenceRuntimeError } from "../errors.js";
+import { createModelClient } from "../models/client.js";
+import type { PromptableSegmentationRuntime } from "../models/promptable.js";
+import type { RuntimeConfiguration } from "../operations.js";
 import type { WorkerChannel } from "../protocol.js";
 
 /**
@@ -68,7 +71,8 @@ function channelOver(worker: Worker): WorkerChannel {
 }
 
 /**
- * Start a persistent inference worker.
+ * The preamble every browser runtime shares, whatever facade it ends up behind: read
+ * capabilities, resolve providers, start the worker and wrap it in a channel.
  *
  * Throws `InferenceRuntimeError("unsupported-runtime")` before constructing anything
  * when the environment cannot host one, and `"webgpu-unavailable"` when the policy
@@ -81,9 +85,9 @@ function channelOver(worker: Worker): WorkerChannel {
  * or `data:` URL, and never a string of source — a host's content-security policy must
  * not be the thing that breaks import.
  */
-export function createInferenceRuntime(
-  options: InferenceRuntimeOptions = {},
-): BrowserInferenceRuntime {
+function startWorker(
+  options: InferenceRuntimeOptions,
+): { readonly channel: WorkerChannel; readonly configuration: RuntimeConfiguration } {
   const capabilities = capabilitiesOf(readEnvironment());
   const providers = executionProvidersFor(options.policy ?? "prefer-webgpu", capabilities);
 
@@ -94,9 +98,53 @@ export function createInferenceRuntime(
     throw new InferenceRuntimeError("worker-initialization-failed", undefined, { cause: error });
   }
 
-  return createRuntimeClient(channelOver(worker), {
-    providers,
-    wasmThreads: capabilities.wasmThreads,
-    assetBaseUrl: options.assetBaseUrl,
+  return {
+    channel: channelOver(worker),
+    configuration: {
+      providers,
+      wasmThreads: capabilities.wasmThreads,
+      assetBaseUrl: options.assetBaseUrl,
+    },
+  };
+}
+
+/** Start a persistent inference worker. */
+export function createInferenceRuntime(
+  options: InferenceRuntimeOptions = {},
+): BrowserInferenceRuntime {
+  const { channel, configuration } = startWorker(options);
+  return createRuntimeClient(channel, configuration);
+}
+
+/**
+ * What a host chooses when it asks for an EfficientSAM-Ti runtime.
+ *
+ * `encoder` and `decoder` must back distinct `ArrayBuffer`s. Both are transferred to the
+ * worker in one call, and the structured-clone algorithm refuses a transfer list that
+ * names the same `ArrayBuffer` twice — passing two `Uint8Array`s that slice the same
+ * underlying buffer throws `DataCloneError`, not a graceful merge.
+ */
+export interface EfficientSamRuntimeOptions extends InferenceRuntimeOptions {
+  /** The encoder graph's bytes. Transferred to the worker, and unusable afterwards. */
+  readonly encoder: Uint8Array;
+  /** The decoder graph's bytes. Transferred to the worker, and unusable afterwards. */
+  readonly decoder: Uint8Array;
+}
+
+/**
+ * Start a persistent EfficientSAM-Ti worker.
+ *
+ * Same capability read, same worker construction and same synchronous refusals as
+ * `createInferenceRuntime` — the two share `startWorker` rather than each repeating it
+ * — but the facade this hands the worker to is `createModelClient`, so the handle a
+ * caller gets back speaks points and masks rather than graph ids and tensors.
+ */
+export function createEfficientSamRuntime(
+  options: EfficientSamRuntimeOptions,
+): PromptableSegmentationRuntime {
+  const { channel, configuration } = startWorker(options);
+  return createModelClient(channel, configuration, {
+    encoder: options.encoder,
+    decoder: options.decoder,
   });
 }

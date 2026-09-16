@@ -99,33 +99,40 @@ test("this workflow and this file wake everything they gate", () => {
   // A change to the gating itself is the one change that must re-validate every
   // job — otherwise a filter edit is only ever tested by the jobs it did not skip.
   for (const file of [".github/workflows/ci.yml", ".github/path-filters.yml"]) {
-    assert.deepEqual(groupsFor(file), ["docker", "docs", "frontend", "python"], file);
+    assert.deepEqual(groupsFor(file), ["browser-models", "docker", "docs", "frontend", "python"], file);
   }
 });
 
 test("every group ci.yml reads is one this file defines", () => {
+  // A hyphenated group name (`browser-models`) cannot use dot access at all —
+  // `needs.changes.outputs.browser-models` is not valid expression syntax — so
+  // every read of one is bracketed instead: `needs.changes.outputs['browser-models']`.
   const defined = new Set(groups().keys());
   const read = new Set(
-    [...readFileSync(WORKFLOW, "utf8").matchAll(/needs\.changes\.outputs\.([a-z]+)/g)].map(
-      (m) => m[1],
-    ),
+    [
+      ...readFileSync(WORKFLOW, "utf8").matchAll(
+        /needs\.changes\.outputs(?:\.([a-z]+)|\['([a-z-]+)'\])/g,
+      ),
+    ].map((m) => m[1] ?? m[2]),
   );
   assert.ok(read.size > 0, "ci.yml reads no group at all — the gating is disconnected");
   for (const name of read) {
-    assert.ok(defined.has(name), `ci.yml reads needs.changes.outputs.${name}, which is not a group`);
+    assert.ok(defined.has(name), `ci.yml reads needs.changes.outputs for '${name}', which is not a group`);
   }
 });
 
 test("every group this file defines is published by the changes job", () => {
   // A group nobody publishes is a group nobody can read: `needs.changes.outputs.x`
   // resolves to an empty string, every `== 'true'` is false, and the jobs meant to
-  // run for it silently stop. `inert` is the deliberate exception.
+  // run for it silently stop. `inert` is the deliberate exception. Same dot-vs-bracket
+  // split as the read side: a hyphenated name is only ever valid bracketed.
   const workflow = readFileSync(WORKFLOW, "utf8");
   for (const name of groups().keys()) {
     if (name === "inert") continue;
+    const accessor = name.includes("-") ? `\\['${name}'\\]` : `\\.${name}`;
     assert.match(
       workflow,
-      new RegExp(`^\\s{6}${name}: \\$\\{\\{ steps\\.filter\\.outputs\\.${name} \\}\\}$`, "m"),
+      new RegExp(`^\\s{6}${name}: \\$\\{\\{ steps\\.filter\\.outputs${accessor} \\}\\}$`, "m"),
       `the changes job does not publish an output for the '${name}' group`,
     );
   }
@@ -152,7 +159,7 @@ test("every gated step opens the gate when the changes job did not succeed", () 
   // condition that reads a group has to carry the escape hatch beside it.
   const workflow = readFileSync(WORKFLOW, "utf8");
   const stepIfs = [...workflow.matchAll(/^ {8}if: (.+)$/gm)].map((m) => m[1]);
-  const gated = stepIfs.filter((c) => c.includes("needs.changes.outputs."));
+  const gated = stepIfs.filter((c) => c.includes("needs.changes.outputs"));
   assert.ok(gated.length > 0, "no step reads a group — the gating is disconnected");
   for (const condition of gated) {
     assert.ok(

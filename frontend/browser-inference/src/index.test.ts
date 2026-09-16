@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
  * leave no runtime trace; the shape of the list is the point.
  */
 const CORE_SURFACE = [
+  "EFFICIENT_SAM_TI",
   "InferenceRuntimeError",
   "capabilitiesOf",
   "executionProvidersFor",
@@ -22,6 +23,14 @@ describe("the core entry", () => {
     const core: Record<string, unknown> = await import("./index.js");
     for (const name of ["createRuntimeClient", "InferenceSession", "Tensor", "ort"]) {
       expect(core[name]).toBeUndefined();
+    }
+  });
+
+  it("narrows EFFICIENT_SAM_TI to maxPoints and candidates, and nothing that names the graph's internal encoding", async () => {
+    const { EFFICIENT_SAM_TI } = await import("./index.js");
+    expect(EFFICIENT_SAM_TI).toEqual({ maxPoints: 6, candidates: 3 });
+    for (const name of ["imageSize", "positiveLabel", "paddingLabel", "maskThreshold"]) {
+      expect(Object.hasOwn(EFFICIENT_SAM_TI, name)).toBe(false);
     }
   });
 });

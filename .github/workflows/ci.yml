@@ -85,6 +85,7 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       docker: ${{ steps.filter.outputs.docker }}
       docs: ${{ steps.filter.outputs.docs }}
+      browser-models: ${{ steps.filter.outputs['browser-models'] }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -959,6 +960,154 @@ jobs:
       - name: The reference readers load the exports
         if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true'
         run: uv run pytest tests/formats/test_ultralytics_roundtrip.py tests/formats/test_coco_smoke.py
+
+  # Phase C's reproducible exporter, proved end to end: the pinned upstream checkpoint
+  # really exports to the two ONNX graphs the worker loads, the PyTorch and ONNX Runtime
+  # sides agree, and a real Chromium actually runs them. Its own job for the same reason
+  # as `inference-smoke` and `format-smoke` — `torch` is the entire cost, multi-GB of
+  # wheels, and every other PR should not pay it.
+  #
+  # The export itself is cheap once `torch` is installed: 9.0s cold (sparse clone plus
+  # the 41 MB checkpoint download) and 3.1s warm, and deterministic — a cold and a warm
+  # run produce identical artifact hashes. `actions/cache` on `model-artifacts/.cache`,
+  # keyed on the pinned upstream revision and the checkpoint's own SHA-256, turns most
+  # runs into the warm case for free. The browser suite adds ~18s for all 17 tests once
+  # the package is built, so the whole proof — install, export, parity, real browser —
+  # stays inside the same budget `inference-smoke` already spends on `torch` alone.
+  #
+  # VISIONSET_REQUIRE_BROWSER_MODELS turns the local skips in `tests/browser_models/` and in
+  # `browser/efficientSam.spec.ts` into failures here, same rule as
+  # VISIONSET_REQUIRE_LOCAL_INFERENCE and VISIONSET_REQUIRE_ULTRALYTICS above: a job that
+  # exists to prove the export ran must not quietly pass because it didn't.
+  #
+  # That flag catches a missing artifact, which is the accident that actually happens. It
+  # cannot catch a spec file that stopped being collected — a module that never loads cannot
+  # raise, and Playwright exits 0 having run nothing. So the same flag also makes the browser
+  # run emit a JSON report, and the last step reads it back and insists the real-model tests
+  # were present, passed, and were not skipped. The invariant is that this job passing implies
+  # the real model ran, not merely that every command returned zero.
+  browser-models:
+    name: browser models (EfficientSAM-Ti export, parity, real browser)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      VISIONSET_REQUIRE_BROWSER_MODELS: "1"
+    needs: changes
+    if: always()
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Plain `python3`, before any environment is synced: `export.py`'s pin and
+      # checkpoint hash are stdlib-only module constants, and reading them here is
+      # cheaper than teaching the cache key about the export script's internals.
+      - name: Resolve the pinned upstream revision and checkpoint hash
+        if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
+        id: export-pin
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import sys
+          sys.path.insert(0, ".")
+          from scripts.browser_models.efficientsam import export
+          print(f"pin={export.UPSTREAM_REVISION}-{export.CHECKPOINT_SHA256}")
+          PY
+
+      - name: Install uv
+        if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      # The sparse upstream checkout and the checkpoint download, never the exported
+      # graphs themselves — those are rebuilt every run so a wrapper or export change is
+      # always exercised for real.
+      - name: Cache the export's upstream checkout and checkpoint
+        if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
+        uses: actions/cache@v6
+        with:
+          path: frontend/browser-inference/model-artifacts/.cache
+          key: browser-models-${{ steps.export-pin.outputs.pin }}
+
+      # `--group browser-models` is repeated on every `uv run` below rather than left to
+      # this sync. `uv run` performs its own sync first, and whether that prunes a group the
+      # command did not name is behaviour this workflow should not have to know: `setup-uv`
+      # is not version-pinned, so the uv deciding it is whichever one is current on the day.
+      # Naming the group each time costs nothing and makes the step say what it needs.
+      - name: Sync environment with the browser-models group
+        if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
+        run: uv sync --locked --group browser-models
+
+      - name: Export EfficientSAM-Ti
+        if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
+        run: uv run --group browser-models python scripts/browser_models/efficientsam/export.py
+
+      - name: Parity against the eager PyTorch reference
+        if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
+        run: uv run --group browser-models python scripts/browser_models/efficientsam/parity.py
+
+      # No `-q`: `addopts` in pyproject.toml already carries one, and a second
+      # suppresses the count line this job exists to put on the record.
+      - name: The export tests, with the artifacts present
+        if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
+        run: uv run --group browser-models pytest tests/browser_models -rs
+
+      - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
+        if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
+
+      - uses: actions/setup-node@v7
+        if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve the Playwright version
+        if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
+        id: playwright
+        run: |
+          version=$(node -p "require('./frontend/browser-inference/node_modules/@playwright/test/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache browsers
+        if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
+        id: browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      - name: Install chromium
+        if: (needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true') && steps.browsers.outputs.cache-hit != 'true'
+        run: pnpm --filter @visionset/browser-inference exec playwright install chromium
+
+      # `playwright.inference.config.ts`'s own `webServer.command` builds `dist/` first,
+      # so this is the one step that both builds and proves it: `runtime.spec.ts`'s
+      # tiny-ONNX suite and `efficientSam.spec.ts`'s real graphs, the latter no longer
+      # skipping because the artifacts now exist on disk.
+      - name: Run the browser inference runtime suite, with the model present
+        if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
+        run: pnpm --filter @visionset/browser-inference test:browser
+
+      # The step that makes this job's green check mean something. Everything above answers
+      # "did what ran succeed?"; a suite that skips itself, or a spec file that stopped being
+      # collected at all, answers that with a cheerful yes. This reads the JSON report the
+      # require flag turns on and insists the real-model specs were there, passed, and were
+      # not skipped. Without it, `browser-models` passing would prove only that a command
+      # exited 0.
+      - name: Prove the real EfficientSAM-Ti tests actually ran
+        if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
+        run: node scripts/browser_models/assert_tests_ran.mjs frontend/browser-inference/playwright-report/results.json
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: browser-models-playwright-report
+          path: frontend/browser-inference/playwright-report/
+          retention-days: 7
 
   # #49's performance benchmark: frame times during pan, zoom and drag over 200
   # boxes and 20 polygons of 32 vertices on a 4K asset, plus a CPU-throttling

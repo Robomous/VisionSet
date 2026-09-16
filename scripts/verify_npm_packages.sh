@@ -69,6 +69,44 @@ for wanted in \
 done
 echo "@visionset/browser-inference tarball carries its worker, both ORT artifacts, THIRD-PARTY-NOTICES.md and the upstream MIT license text"
 
+# The export pipeline runs entirely outside this package; nothing it produces should
+# ever ride along in the npm tarball. A `.onnx` or `.pt` here would mean the package
+# grew a dependency on a build artifact rather than staying a pure runtime.
+model_artifact_pattern='^package/.*\.(onnx|pt)$'
+
+# A guard that has never seen the thing it guards against is a guard nobody has tested,
+# and this one protects against shipping tens of megabytes of weights to every consumer.
+# The real listing has never contained a model artifact and — if everything is working —
+# never will, so it cannot demonstrate that the pattern discriminates. These can. They
+# share the pattern variable with the check below rather than restating it, because a
+# copy of a regex is a copy that drifts, and a drifted copy would prove the wrong thing.
+for decoy in \
+  "package/model-artifacts/efficientsam-ti/encoder.onnx" \
+  "package/dist/browser/decoder.onnx" \
+  "package/weights/efficient_sam_vitt.pt"; do
+  if ! grep -qE "$model_artifact_pattern" <<<"$decoy"; then
+    echo "error: the model-artifact guard no longer catches $decoy" >&2
+    exit 1
+  fi
+done
+# And it must not fire on what the package legitimately ships, or it would be a guard
+# nobody could keep green and somebody would eventually delete.
+for allowed in \
+  "package/dist/browser/worker.js" \
+  "package/dist/browser/ort/ort-wasm-simd-threaded.asyncify.wasm" \
+  "package/README.md"; do
+  if grep -qE "$model_artifact_pattern" <<<"$allowed"; then
+    echo "error: the model-artifact guard falsely flags $allowed" >&2
+    exit 1
+  fi
+done
+
+if grep -qE "$model_artifact_pattern" <<<"$inference_listing"; then
+  echo "error: @visionset/browser-inference tarball carries a model artifact" >&2
+  exit 1
+fi
+echo "@visionset/browser-inference tarball carries no model weights (guard proved against three decoys)"
+
 consumer="$work/consumer"
 mkdir -p "$consumer"
 cd "$consumer"
@@ -143,8 +181,10 @@ import "@visionset/media";
 // Same reasoning, and the reason this package splits its entry points at all: the core
 // entry must evaluate where there is no Worker and no navigator.
 import "@visionset/browser-inference";
+import { EFFICIENT_SAM_TI } from "@visionset/browser-inference";
+if (EFFICIENT_SAM_TI.maxPoints !== 6) throw new Error("core entry lost the model constants");
 console.log(
-  "Node ESM import OK: @visionset/annotator, @visionset/ui-core, @visionset/media (core), @visionset/browser-inference (core)",
+  "Node ESM import OK: @visionset/annotator, @visionset/ui-core, @visionset/media (core), @visionset/browser-inference (core, EFFICIENT_SAM_TI)",
 );
 JS
 node esm-check.mjs
@@ -180,9 +220,20 @@ import type { MediabunnyVideoMaterializer } from "@visionset/media/mediabunny";
 // for the half that starts a worker.
 import type { BrowserInferenceRuntime } from "@visionset/browser-inference";
 import type { createInferenceRuntime } from "@visionset/browser-inference/browser";
+// The model surface: types from the core entry, the runtime factory from `/browser` —
+// same split as `BrowserInferenceRuntime`/`createInferenceRuntime` above, and for the
+// same reason.
+import type {
+  PixelImage, PointPrompt, PreparedImage, PromptableSegmentationRuntime, RawSegmentation,
+} from "@visionset/browser-inference";
+import type { createEfficientSamRuntime } from "@visionset/browser-inference/browser";
 export type { MediabunnyVideoMaterializer, BrowserInferenceRuntime };
 export type CreateInferenceRuntime = typeof createInferenceRuntime;
+export type {
+  PixelImage, PointPrompt, PreparedImage, PromptableSegmentationRuntime, RawSegmentation,
+};
+export type CreateEfficientSamRuntime = typeof createEfficientSamRuntime;
 TS
 
 pnpm exec tsc -p tsconfig.json
-echo "TypeScript consumer resolved @visionset/annotator, @visionset/ui-core, @visionset/media, @visionset/media/mediabunny, @visionset/browser-inference and @visionset/browser-inference/browser under nodenext OK"
+echo "TypeScript consumer resolved @visionset/annotator, @visionset/ui-core, @visionset/media, @visionset/media/mediabunny, @visionset/browser-inference, @visionset/browser-inference/browser and the EfficientSAM model surface under nodenext OK"
