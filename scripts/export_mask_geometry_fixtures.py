@@ -20,6 +20,15 @@ fed into `polygon_at` is the same contour.
 Masks travel as lit runs — `[y, first, last]`, inclusive — which both languages
 reconstruct into identical pixels and a reviewer can read.
 
+Written compact rather than indented, which is the one place this diverges from
+`simplification.json`. That file is 101 KB indented and fits; this one carries a
+mask, five pipeline stages and thirty-five shape answers per case, and indented it
+runs to 886 KB — past the tracked-file size ceiling in
+`tests/architecture/test_tracked_file_sizes.py`, which exists to keep media out of
+git. Nothing is lost: a golden fixture regenerated wholesale by a script is read
+through the tests that consume it, never line by line, and `sort_keys` keeps it
+deterministic either way.
+
 Usage: uv run python scripts/export_mask_geometry_fixtures.py
 """
 
@@ -228,9 +237,7 @@ def _case(name: str, mask: Mask, at: list[tuple[float, float]]) -> dict[str, Any
         "name": name,
         "mask": _grid(mask),
         "at": [list(point) for point in at],
-        "components": [
-            {"x": piece.x, "y": piece.y, **_grid(list(piece.mask))} for piece in pieces
-        ],
+        "components": [{"x": piece.x, "y": piece.y, **_grid(list(piece.mask))} for piece in pieces],
         "closing_radius": None if head is None else closing_radius(head.mask),
         "filled": None if whole is None else _grid([list(row) for row in whole]),
         "outline": None if whole is None else [list(point) for point in outline(whole)],
@@ -262,7 +269,7 @@ def build_fixture() -> dict[str, Any]:
 
 def main() -> None:
     out = REPO_ROOT / OUTPUT_PATH
-    out.write_text(json.dumps(build_fixture(), indent=2, sort_keys=True) + "\n")
+    out.write_text(json.dumps(build_fixture(), separators=(",", ":"), sort_keys=True) + "\n")
     print(f"wrote {out}")
 
 
