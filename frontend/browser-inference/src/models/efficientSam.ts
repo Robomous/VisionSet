@@ -148,7 +148,12 @@ export function encoderInput(image: PixelImage): { data: Float32Array; dims: rea
   return { data, dims: [1, 3, height, width] };
 }
 
-export function decoderPrompt(prompt: PointPrompt): { coords: Float32Array; labels: Float32Array } {
+export function decoderPrompt(prompt: PointPrompt): {
+  coords: Float32Array;
+  coordsDims: readonly number[];
+  labels: Float32Array;
+  labelsDims: readonly number[];
+} {
   const { maxPoints, positiveLabel, paddingLabel } = EFFICIENT_SAM_TI;
   const coords = new Float32Array(maxPoints * 2).fill(PADDING_COORDINATE);
   const labels = new Float32Array(maxPoints).fill(paddingLabel);
@@ -157,7 +162,12 @@ export function decoderPrompt(prompt: PointPrompt): { coords: Float32Array; labe
     coords[slot * 2 + 1] = y;
     labels[slot] = positiveLabel;
   });
-  return { coords, labels };
+  return {
+    coords,
+    coordsDims: [1, 1, maxPoints, 2],
+    labels,
+    labelsDims: [1, 1, maxPoints],
+  };
 }
 
 export function bestCandidate(iou: ArrayLike<number>): { index: number; confidence: number } {

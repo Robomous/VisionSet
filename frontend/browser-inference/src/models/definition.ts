@@ -20,6 +20,25 @@ export interface DecoderTensorNames {
   readonly size: string;
   readonly masks: string;
   readonly iou: string;
+  /**
+   * The SAM-family "previous low-res mask" refinement inputs, for a decoder graph that
+   * has them (MobileSAM's official ONNX export does; EfficientSAM-Ti's and
+   * EfficientViT-SAM-L0's graphs do not). Present together or not at all: `host.ts`
+   * feeds both only when both are named, always with `hasMaskInput` zeroed -- this
+   * package re-decodes from the full current point set on every `suggest`, the same way
+   * every model here already works, rather than threading a previous mask through, so a
+   * decoder that requires this pair still gets a graph-shaped answer for "there is no
+   * previous mask" instead of an omitted input the graph did not declare optional.
+   */
+  readonly maskInput?: string;
+  readonly hasMaskInput?: string;
+}
+
+export interface DecoderPromptTensors {
+  readonly coords: Float32Array;
+  readonly coordsDims: readonly number[];
+  readonly labels: Float32Array;
+  readonly labelsDims: readonly number[];
 }
 
 export interface PromptableModelDefinition {
@@ -34,7 +53,13 @@ export interface PromptableModelDefinition {
   requireUsableImage(image: PixelImage): void;
   requireAnswerablePrompt(prompt: PointPrompt, width: number, height: number): void;
   encoderInput(image: PixelImage): { data: Float32Array; dims: readonly number[] };
-  decoderPrompt(prompt: PointPrompt): { coords: Float32Array; labels: Float32Array };
+  /**
+   * The coordinate/label tensors for one decoder call, dims included: a model whose
+   * decoder takes a fixed, padded point count (EfficientSAM-Ti) and one whose decoder
+   * takes exactly as many points as were actually clicked (MobileSAM, dynamic axes) need
+   * different shapes here, and `host.ts` must not assume either.
+   */
+  decoderPrompt(prompt: PointPrompt): DecoderPromptTensors;
   bestCandidate(iou: ArrayLike<number>): { index: number; confidence: number };
   binaryMask(
     logits: ArrayLike<number>,
@@ -42,4 +67,6 @@ export interface PromptableModelDefinition {
     width: number,
     height: number,
   ): Uint8Array;
+  /** Required exactly when `decoder.maskInput`/`decoder.hasMaskInput` are both named. */
+  emptyMaskInput?(): { data: Float32Array; dims: readonly number[] };
 }

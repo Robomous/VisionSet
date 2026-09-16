@@ -112,26 +112,39 @@ export function createModelHost(
       }
       const { width, height, embedding } = prepared;
       definition.requireAnswerablePrompt(prompt, width, height);
-      const { coords, labels } = definition.decoderPrompt(prompt);
+      const { coords, coordsDims, labels, labelsDims } = definition.decoderPrompt(prompt);
       const decoderNames = definition.decoder;
-      const answer = await sessions.decoder.run({
+      const feeds: Record<string, ModelTensor> = {
         [decoderNames.embeddings]: embedding,
-        [decoderNames.coords]: {
-          type: "float32",
-          data: coords,
-          dims: [1, 1, definition.maxPoints, 2],
-        },
-        [decoderNames.labels]: {
-          type: "float32",
-          data: labels,
-          dims: [1, 1, definition.maxPoints],
-        },
+        [decoderNames.coords]: { type: "float32", data: coords, dims: coordsDims },
+        [decoderNames.labels]: { type: "float32", data: labels, dims: labelsDims },
         [decoderNames.size]: {
           type: "int64",
           data: BigInt64Array.from([BigInt(height), BigInt(width)]),
           dims: [2],
         },
-      });
+      };
+      // A decoder that takes the SAM-family "previous low-res mask" refinement pair
+      // always gets "there is no previous mask" (`hasMaskInput` zeroed) -- see
+      // `DecoderTensorNames.maskInput`'s docstring for why this package never threads a
+      // real previous mask through instead.
+      if (decoderNames.maskInput !== undefined && decoderNames.hasMaskInput !== undefined) {
+        if (definition.emptyMaskInput === undefined) {
+          throw new InferenceRuntimeError(
+            "graph-load-failed",
+            `${definition.id} names decoder.maskInput/hasMaskInput but defines no ` +
+              "emptyMaskInput().",
+          );
+        }
+        const empty = definition.emptyMaskInput();
+        feeds[decoderNames.maskInput] = { type: "float32", data: empty.data, dims: empty.dims };
+        feeds[decoderNames.hasMaskInput] = {
+          type: "float32",
+          data: Float32Array.from([0]),
+          dims: [1],
+        };
+      }
+      const answer = await sessions.decoder.run(feeds);
       // The embedding is state and outlives this call; everything the decoder answers
       // with is scratch. `output_masks` alone is three float32 planes at the image's
       // own size -- tens of MB for a large image, allocated again on every refinement --
