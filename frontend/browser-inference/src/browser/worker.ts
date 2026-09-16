@@ -38,6 +38,17 @@ const sessions = new Map<GraphId, ort.InferenceSession>();
  */
 const cancelled = new Set<OperationId>();
 
+/**
+ * `load-graph`/`run` ids this worker still owns: queued behind the serial `queue`, or
+ * running right now. Operation ids are minted once and never reused for the life of a
+ * persistent worker, so a `cancel` for an id this worker has already finished with — the
+ * main thread's `cancel` racing a `result` it already sent — must not be remembered.
+ * Without this, `cancelled` would gain one permanent entry per such race for as long as
+ * the worker lives. `known` bounds it: a `cancel` is recorded only while its id is still
+ * in here, and every path through `loadGraph`/`run` removes its own id on the way out.
+ */
+const known = new Set<OperationId>();
+
 /** One session, one queue: operations are serialised rather than interleaved. */
 let queue: Promise<void> = Promise.resolve();
 
@@ -97,51 +108,59 @@ function configure(id: OperationId, providers: readonly ExecutionProvider[], was
 }
 
 async function loadGraph(id: OperationId, bytes: Uint8Array, providers: readonly ExecutionProvider[]): Promise<void> {
-  if (cancelled.delete(id)) return;
   try {
-    const session = await ort.InferenceSession.create(bytes, {
-      executionProviders: [...providers],
-    });
-    if (cancelled.delete(id)) {
-      await session.release();
-      return;
+    if (cancelled.delete(id)) return;
+    try {
+      const session = await ort.InferenceSession.create(bytes, {
+        executionProviders: [...providers],
+      });
+      if (cancelled.delete(id)) {
+        await session.release();
+        return;
+      }
+      const graphId: GraphId = `graph-${nextGraphId++}`;
+      sessions.set(graphId, session);
+      reply({ kind: "loaded", id, graphId });
+    } catch (error) {
+      fail(id, "graph-load-failed", error);
     }
-    const graphId: GraphId = `graph-${nextGraphId++}`;
-    sessions.set(graphId, session);
-    reply({ kind: "loaded", id, graphId });
-  } catch (error) {
-    fail(id, "graph-load-failed", error);
+  } finally {
+    known.delete(id);
   }
 }
 
 async function run(id: OperationId, graphId: GraphId, inputs: RunInputs): Promise<void> {
-  if (cancelled.delete(id)) return;
-  const session = sessions.get(graphId);
-  if (session === undefined) {
-    fail(id, "graph-load-failed", new Error(`No graph is loaded under ${graphId}.`));
-    return;
-  }
   try {
-    const feeds: Record<string, ort.Tensor> = {};
-    for (const [name, input] of Object.entries(inputs)) feeds[name] = toTensor(input);
-
-    const answer = await session.run(feeds);
-
-    // The caller has already been settled as cancelled on the main thread; sending the
-    // result would only be a message the routing rule drops.
     if (cancelled.delete(id)) return;
-
-    const outputs: Record<string, TensorLike> = {};
-    for (const name of session.outputNames) {
-      const value = answer[name];
-      if (value !== undefined) outputs[name] = fromTensor(value);
+    const session = sessions.get(graphId);
+    if (session === undefined) {
+      fail(id, "graph-load-failed", new Error(`No graph is loaded under ${graphId}.`));
+      return;
     }
-    reply(
-      { kind: "result", id, outputs: outputs as RunOutputs },
-      Object.values(outputs).map((tensor) => tensor.data.buffer as Transferable),
-    );
-  } catch (error) {
-    fail(id, "runtime-execution-failed", error);
+    try {
+      const feeds: Record<string, ort.Tensor> = {};
+      for (const [name, input] of Object.entries(inputs)) feeds[name] = toTensor(input);
+
+      const answer = await session.run(feeds);
+
+      // The caller has already been settled as cancelled on the main thread; sending the
+      // result would only be a message the routing rule drops.
+      if (cancelled.delete(id)) return;
+
+      const outputs: Record<string, TensorLike> = {};
+      for (const name of session.outputNames) {
+        const value = answer[name];
+        if (value !== undefined) outputs[name] = fromTensor(value);
+      }
+      reply(
+        { kind: "result", id, outputs: outputs as RunOutputs },
+        Object.values(outputs).map((tensor) => tensor.data.buffer as Transferable),
+      );
+    } catch (error) {
+      fail(id, "runtime-execution-failed", error);
+    }
+  } finally {
+    known.delete(id);
   }
 }
 
@@ -172,16 +191,22 @@ self.addEventListener("message", (event: MessageEvent<ToWorker>) => {
       configure(message.id, message.providers, message.wasmThreads, message.assetBaseUrl);
       return;
     case "load-graph":
+      // Recorded before queueing, not inside `loadGraph`, so a `cancel` that arrives
+      // while this id is still behind others in `queue` is not mistaken for one about
+      // an id this worker never heard of.
+      known.add(message.id);
       queue = queue.then(() => loadGraph(message.id, message.bytes, providers));
       return;
     case "run":
+      known.add(message.id);
       queue = queue.then(() => run(message.id, message.graphId, message.inputs));
       return;
     case "cancel":
-      // Recorded rather than acted on: the operation may not have started, may be
-      // running, or may already be done, and every one of those is handled by the
-      // checks at the edges of `loadGraph` and `run`.
-      cancelled.add(message.id);
+      // Recorded only while the worker still owns this id — queued or running. An id
+      // it has already finished with (or never had) is not remembered: there is
+      // nothing left to cancel, and remembering it anyway would be a tombstone this
+      // persistent worker keeps for the rest of its life.
+      if (known.has(message.id)) cancelled.add(message.id);
       return;
     case "shutdown":
       queue = queue.then(() => shutdown(message.id));
