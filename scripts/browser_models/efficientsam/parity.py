@@ -72,7 +72,7 @@ class Case:
 
 # Coordinates tuned against the real model in the pre-Task-8 spike. Case 1 recovers the
 # circle at 25,068 px against its true area of 25,447; case 2 recovers the rectangle at
-# 33,576 against 33,600. Positive-only: this model has no negative point -- see
+# 33,575 against 33,600. Positive-only: this model has no negative point -- see
 # `frontend/browser-inference/src/models/efficientSam.ts`'s module docstring.
 CASES: tuple[Case, ...] = (
     Case("one positive, circle", ((170, 192),)),
@@ -106,7 +106,9 @@ def mask_iou(a: np.ndarray, b: np.ndarray) -> float:
     a_bool, b_bool = a.astype(bool), b.astype(bool)
     union = np.logical_or(a_bool, b_bool).sum()
     if union == 0:
-        return 1.0
+        # No lit pixels on either side is not agreement, it is two empty masks -- do not let
+        # that trivially satisfy the strictest gate.
+        return 0.0
     return float(np.logical_and(a_bool, b_bool).sum() / union)
 
 
@@ -123,16 +125,7 @@ def build_eager_model() -> tuple[Any, Any]:
     upstream_dir = export_module.ensure_upstream_checkout(cache_dir)
     checkpoint_path = export_module.ensure_checkpoint(cache_dir)
     wrapper_module = export_module.load_wrapper_module(upstream_dir)
-    from efficient_sam.efficient_sam import build_efficient_sam
-
-    model = build_efficient_sam(
-        encoder_patch_embed_dim=192, encoder_num_heads=3, checkpoint=str(checkpoint_path)
-    ).eval()
-    if model.decoder_max_num_input_points != MAX_POINTS:
-        raise AssertionError(
-            f"decoder_max_num_input_points: got {model.decoder_max_num_input_points}, "
-            f"expected {MAX_POINTS} -- this checkpoint is not the Ti variant"
-        )
+    model = export_module.build_ti_model(checkpoint_path)
     torch.manual_seed(0)  # the model is deterministic in eval mode; belt and suspenders
     return model, wrapper_module
 
@@ -202,6 +195,11 @@ def run_parity(artifacts_dir: Path) -> dict[str, Any]:
 
         mask_we = binary_mask(masks_we[0, 0, idx_we])
         mask_ort = binary_mask(masks_ort[0, 0, idx_ort])
+        if mask_we.sum() == 0 or mask_ort.sum() == 0:
+            raise AssertionError(
+                f"{case.name}: an empty mask would trivially pass the mask-IoU gate -- "
+                f"lit pixels eager={int(mask_we.sum())}, ort={int(mask_ort.sum())}"
+            )
         export_mask_iou = mask_iou(mask_we, mask_ort)
 
         index_equal = idx_we == idx_ort
@@ -234,7 +232,7 @@ def run_parity(artifacts_dir: Path) -> dict[str, Any]:
         print(
             f"[{case.name}] idx eager={idx_we} ort={idx_ort} | "
             f"iou_score_abs_error={iou_score_abs_error:.3e} (gate <= {IOU_SCORE_ABS_TOL:.0e}) | "
-            f"export_mask_iou={export_mask_iou:.6f} (gate == {MASK_IOU_EXACT}) | "
+            f"export_mask_iou={export_mask_iou:.6f} (gate >= {MASK_IOU_EXACT}) | "
             f"confidence eager={conf_we:.6f} ort={conf_ort:.6f} | "
             f"lit={lit_ort}/{total_pixels}"
         )

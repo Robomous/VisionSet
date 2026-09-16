@@ -5,7 +5,8 @@ Two differences from yformer/EfficientSAM's own onnx_models.py at d525f622, and 
 1. The decoder returns (output_masks, iou_predictions) rather than
    (output_masks, iou_predictions, low_res_masks). Upstream declares two
    output_names for three return values, so its third output ships under a name
-   PyTorch invents — 'onnx::Shape_1830' in the copy published at this revision.
+   PyTorch invents — 'onnx::Shape_1830' in the copy published at this revision
+   (upstream's own published copy; a local re-export names it differently).
    A name a tracer chose is not a contract, and this runtime looks outputs up by
    name. low_res_masks is still computed; it is simply not an output.
 

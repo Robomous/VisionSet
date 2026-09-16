@@ -311,6 +311,33 @@ def load_wrapper_module(upstream_dir: Path):
     return wrapper
 
 
+def build_ti_model(checkpoint_path: Path) -> Any:
+    """Build EfficientSAM-Ti from `checkpoint_path` and confirm the loaded weights are really
+    the Ti variant.
+
+    Requires the upstream checkout already be on `sys.path` (see `load_wrapper_module`).
+    """
+    from efficient_sam.efficient_sam import build_efficient_sam
+
+    model = build_efficient_sam(
+        encoder_patch_embed_dim=ENCODER_PATCH_EMBED_DIM,
+        encoder_num_heads=3,
+        checkpoint=str(checkpoint_path),
+    ).eval()
+    # decoder_max_num_input_points is a hard-coded local inside build_efficient_sam, identical
+    # for the Ti and S variants and for any checkpoint at all -- checking it would pass no
+    # matter what checkpoint was loaded. The patch-embed width is not: it comes from the
+    # weights load_state_dict actually copied in, so this is a check on the checkpoint that
+    # was loaded, not on the config this script itself asked for.
+    loaded_patch_embed_dim = model.image_encoder.patch_embed.proj.weight.shape[0]
+    if loaded_patch_embed_dim != ENCODER_PATCH_EMBED_DIM:
+        raise AssertionError(
+            f"encoder patch-embed width: got {loaded_patch_embed_dim}, "
+            f"expected {ENCODER_PATCH_EMBED_DIM} -- this checkpoint is not the Ti variant"
+        )
+    return model
+
+
 # --- contract assertions -------------------------------------------------------------------
 
 
@@ -394,46 +421,55 @@ def assert_graph_contract(
 
 
 def assert_runtime_shapes(onnxruntime_module: Any, encoder_path: Path, decoder_path: Path) -> None:
-    """Run each graph once and assert the concrete shapes the design's section 5 names."""
-    import numpy as np
+    """Run each graph at two different sizes and assert the concrete shapes the design's
+    section 5 names.
 
-    height, width = 384, 512
-    images = np.zeros((1, 3, height, width), dtype=np.float32)
+    Two sizes, not one: the graph contract declares height and width as dynamic axes
+    (`dim_param` in the proto), but a declared axis is not the same as a measured one.
+    Running only the traced size would let a graph that is secretly baked to that size pass.
+    """
+    import numpy as np
 
     encoder_session = onnxruntime_module.InferenceSession(
         str(encoder_path), providers=["CPUExecutionProvider"]
     )
-    (embeddings,) = encoder_session.run(None, {"batched_images": images})
-    if embeddings.shape != (1, 256, 64, 64):
-        raise AssertionError(
-            f"image_embeddings shape: got {embeddings.shape}, expected (1, 256, 64, 64)"
-        )
-
-    coords = np.full((1, 1, DECODER_MAX_POINTS, 2), -1.0, dtype=np.float32)
-    labels = np.full((1, 1, DECODER_MAX_POINTS), -1.0, dtype=np.float32)
-    coords[0, 0, 0] = (170, 192)
-    labels[0, 0, 0] = 1.0
-
     decoder_session = onnxruntime_module.InferenceSession(
         str(decoder_path), providers=["CPUExecutionProvider"]
     )
-    output_masks, iou_predictions = decoder_session.run(
-        None,
-        {
-            "image_embeddings": embeddings,
-            "batched_point_coords": coords,
-            "batched_point_labels": labels,
-            "orig_im_size": np.array([height, width], dtype=np.int64),
-        },
-    )
-    if output_masks.shape != (1, 1, 3, height, width):
-        raise AssertionError(
-            f"output_masks shape: got {output_masks.shape}, expected (1, 1, 3, {height}, {width})"
+
+    for height, width in ((384, 512), (300, 400)):
+        images = np.zeros((1, 3, height, width), dtype=np.float32)
+        (embeddings,) = encoder_session.run(None, {"batched_images": images})
+        if embeddings.shape != (1, 256, 64, 64):
+            raise AssertionError(
+                f"image_embeddings shape at {height}x{width}: got {embeddings.shape}, "
+                "expected (1, 256, 64, 64)"
+            )
+
+        coords = np.full((1, 1, DECODER_MAX_POINTS, 2), -1.0, dtype=np.float32)
+        labels = np.full((1, 1, DECODER_MAX_POINTS), -1.0, dtype=np.float32)
+        coords[0, 0, 0] = (170, 192)
+        labels[0, 0, 0] = 1.0
+
+        output_masks, iou_predictions = decoder_session.run(
+            None,
+            {
+                "image_embeddings": embeddings,
+                "batched_point_coords": coords,
+                "batched_point_labels": labels,
+                "orig_im_size": np.array([height, width], dtype=np.int64),
+            },
         )
-    if iou_predictions.shape != (1, 1, 3):
-        raise AssertionError(
-            f"iou_predictions shape: got {iou_predictions.shape}, expected (1, 1, 3)"
-        )
+        if output_masks.shape != (1, 1, 3, height, width):
+            raise AssertionError(
+                f"output_masks shape at {height}x{width}: got {output_masks.shape}, "
+                f"expected (1, 1, 3, {height}, {width})"
+            )
+        if iou_predictions.shape != (1, 1, 3):
+            raise AssertionError(
+                f"iou_predictions shape at {height}x{width}: got {iou_predictions.shape}, "
+                "expected (1, 1, 3)"
+            )
 
 
 # --- export ----------------------------------------------------------------------------------
@@ -647,26 +683,9 @@ def main() -> None:
     import torch
 
     wrapper_module = load_wrapper_module(upstream_dir)
-    # Importable only now that load_wrapper_module has put the upstream checkout on sys.path.
-    from efficient_sam.efficient_sam import build_efficient_sam
 
     print("Building EfficientSAM-Ti...")
-    model = build_efficient_sam(
-        encoder_patch_embed_dim=ENCODER_PATCH_EMBED_DIM,
-        encoder_num_heads=3,
-        checkpoint=str(checkpoint_path),
-    ).eval()
-    # decoder_max_num_input_points is a hard-coded local inside build_efficient_sam, identical
-    # for the Ti and S variants and for any checkpoint at all -- checking it would pass no
-    # matter what checkpoint was loaded. The patch-embed width is not: it comes from the
-    # weights load_state_dict actually copied in, so this is a check on the checkpoint that
-    # was loaded, not on the config this script itself asked for.
-    loaded_patch_embed_dim = model.image_encoder.patch_embed.proj.weight.shape[0]
-    if loaded_patch_embed_dim != ENCODER_PATCH_EMBED_DIM:
-        raise AssertionError(
-            f"encoder patch-embed width: got {loaded_patch_embed_dim}, "
-            f"expected {ENCODER_PATCH_EMBED_DIM} -- this checkpoint is not the Ti variant"
-        )
+    model = build_ti_model(checkpoint_path)
 
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     tmp_output_dir = Path(tempfile.mkdtemp(prefix=f".{MODEL_ID}.tmp-", dir=artifacts_dir))

@@ -45,8 +45,8 @@ than new graphs sitting beside a report that describes different bytes.
 
 Upstream's own `onnx_models.py` declares two `output_names` for the decoder while its
 `forward` returns three tensors, so the published decoder ships a third output under a
-name PyTorch invented (`onnx::Shape_1830` in the copy at the pinned revision) rather than
-one anybody chose. `wrapper.py` subclasses upstream's `OnnxEfficientSam` and overrides
+name PyTorch invented (`onnx::Shape_1830` in the copy at the pinned revision; upstream's
+own published copy — a local re-export names it differently) rather than one anybody chose. `wrapper.py` subclasses upstream's `OnnxEfficientSam` and overrides
 `forward` to return exactly the two tensors this runtime looks up by name. That is the
 only deviation from upstream; see `wrapper.py`'s module docstring for the complete,
 verbatim statement of it.
