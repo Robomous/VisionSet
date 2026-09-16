@@ -18,5 +18,11 @@ test("reuses the visible decoded image for exact descriptor-frame RGB", async ({
   await expect(page.getByTestId("annotator-image")).toBeVisible();
   await expect(page.getByTestId("pixel-source-same-image")).toHaveText("true");
   await expect(page.getByTestId("pixel-rgb")).toHaveText("1,2,3,5,6,7,9,10,11");
-  await expect.poll(() => page.evaluate(() => window.__assetContentRequests)).toBe(1);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (window as unknown as { __assetContentRequests?: number }).__assetContentRequests,
+      ),
+    )
+    .toBe(1);
 });
