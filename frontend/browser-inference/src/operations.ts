@@ -32,6 +32,12 @@ function valueOf(reply: WorkerSuccess): unknown {
       return reply.outputs;
     case "disposed":
       return undefined;
+    case "model-loaded":
+      return undefined;
+    case "prepared":
+      return { generation: reply.generation, width: reply.width, height: reply.height };
+    case "segmentation":
+      return { width: reply.width, height: reply.height, mask: reply.mask, confidence: reply.confidence };
   }
 }
 

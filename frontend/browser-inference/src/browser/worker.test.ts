@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { PointPrompt } from "../models/promptable.js";
 import type { FromWorker, TensorLike, ToWorker } from "../protocol.js";
 
 /**
@@ -230,5 +231,83 @@ describe("worker cancellation bookkeeping", () => {
     worker.dispatch({ kind: "run", id: 3, graphId, inputs: { x: tensor(30) } });
     const result = await worker.replyTo(3);
     expect([...(result as Extract<FromWorker, { kind: "result" }>).outputs.y.data]).toEqual([31]);
+  });
+});
+
+describe("the model operations join the same bookkeeping", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ortBehaviour.duringCreate = null;
+    ortBehaviour.duringRun = null;
+  });
+
+  afterEach(() => {
+    delete (globalThis as { self?: unknown }).self;
+  });
+
+  it("drops a model-suggest whose id was cancelled before it ran", async () => {
+    const worker = await openWorker();
+    worker.dispatch({ kind: "configure", id: 1, providers: ["wasm"], wasmThreads: 1 });
+    await worker.replyTo(1);
+
+    const prompt: PointPrompt = { positive: [[1, 1]], negative: [] };
+
+    // Posted and cancelled in the same synchronous turn, exactly as the client's abort
+    // listener does: `known.add` runs before the id is even enqueued behind `queue`, so
+    // this `cancel` finds it there and the queued handler's own `cancelled.delete(id)`
+    // check at entry is what turns it into a no-op — `modelSuggest` never calls
+    // `requireHost()`, and no model was even loaded to call it against.
+    worker.dispatch({ kind: "model-suggest", id: 2, generation: 1, prompt });
+    worker.dispatch({ kind: "cancel", id: 2 });
+
+    // A trailing operation on the same serial queue: once *its* reply arrives, id 2 has
+    // already run its course, silently or not. It fails (no model is loaded), which is
+    // exactly the point — the failure proves the queue kept moving.
+    worker.dispatch({ kind: "model-suggest", id: 3, generation: 1, prompt });
+    const marker = await worker.replyTo(3);
+    expect(marker.kind).toBe("error");
+
+    expect(worker.messages.some((message) => message.id === 2)).toBe(false);
+
+    // Reusable: a fresh operation under the same id now actually runs — it reaches
+    // `requireHost()` and fails loudly — rather than being swallowed a second time by a
+    // leftover cancellation marker.
+    const from = worker.messages.length;
+    worker.dispatch({ kind: "model-suggest", id: 2, generation: 1, prompt });
+    const afterwards = await worker.replyTo(2, from);
+    expect(afterwards.kind).toBe("error");
+    expect((afterwards as Extract<FromWorker, { kind: "error" }>).code).toBe("graph-load-failed");
+  });
+
+  it("releases the model when the worker is shut down", async () => {
+    const worker = await openWorker();
+    worker.dispatch({ kind: "configure", id: 1, providers: ["wasm"], wasmThreads: 1 });
+    await worker.replyTo(1);
+
+    worker.dispatch({
+      kind: "model-load",
+      id: 2,
+      encoder: Uint8Array.from([1]),
+      decoder: Uint8Array.from([2]),
+    });
+    const loaded = await worker.replyTo(2);
+    expect(loaded.kind).toBe("model-loaded");
+
+    // Fetched after the worker module (and the mocked ORT it imports) has already been
+    // (re)loaded for this test, rather than imported once at file scope, so this binds
+    // to the exact module instance `worker.js` is using regardless of how
+    // `vi.resetModules()` in `openWorker()` treats a mocked module's cache.
+    const { InferenceSession } = await import("onnxruntime-web/webgpu");
+    const create = vi.mocked(InferenceSession.create);
+    expect(create.mock.results).toHaveLength(2);
+    const encoderSession = await create.mock.results[0]!.value;
+    const decoderSession = await create.mock.results[1]!.value;
+
+    worker.dispatch({ kind: "shutdown", id: 3 });
+    const disposed = await worker.replyTo(3);
+    expect(disposed.kind).toBe("disposed");
+
+    expect(encoderSession.release).toHaveBeenCalledTimes(1);
+    expect(decoderSession.release).toHaveBeenCalledTimes(1);
   });
 });
