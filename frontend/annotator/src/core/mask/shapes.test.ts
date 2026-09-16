@@ -70,4 +70,14 @@ describe("shapesFromMask", () => {
     const thin = maskOf(20, 8, [[3, 2, 17]]);
     expect(shapesFromMask(thin, { allowed: ["polygon"], tolerance: 16 })).toEqual([]);
   });
+
+  it("rejects a mask whose byte count does not match width times height", () => {
+    const malformed = { width: 4, height: 4, mask: new Uint8Array(8) };
+    expect(() => shapesFromMask(malformed, { allowed: ["bbox", "polygon"] })).toThrow(Error);
+  });
+
+  it("still answers normally for a well-formed mask", () => {
+    const shaped = shapesFromMask(square(12, 4), { allowed: ["bbox", "polygon"] });
+    expect(shaped[0]!.geometry.type).toBe("polygon");
+  });
 });

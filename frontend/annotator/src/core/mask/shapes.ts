@@ -119,6 +119,11 @@ export function shapesFromMask(
     readonly at?: readonly Point[];
   },
 ): ShapedGeometry[] {
+  if (mask.mask.length !== mask.width * mask.height) {
+    throw new Error(
+      `mask carries ${mask.mask.length} bytes for a ${mask.width}x${mask.height} extent`,
+    );
+  }
   const { allowed, tolerance = DEFAULT_TOLERANCE, at = [] } = options;
   const kind = targetKind(allowed);
   if (kind === null) return [];

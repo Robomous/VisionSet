@@ -62,9 +62,13 @@ const holed = (hole: number, size = 64) => {
   return maskOf(size, size, runsOf);
 };
 
+/** A `size`x`size` solid square, placed at the origin of a `canvas`x`canvas` frame. */
+const solidSquareIn = (canvas: number, size: number) =>
+  maskOf(canvas, canvas, Array.from({ length: size }, (_, y): Run => [y, 0, size - 1]));
+
 describe("closingRadius", () => {
   it("scales with the piece's own area, not the frame", () => {
-    expect(closingRadius(notched(0, 64))).toBe(closingRadius(notched(0, 64)));
+    expect(closingRadius(solidSquareIn(64, 64))).toBe(closingRadius(solidSquareIn(200, 64)));
     expect(closingRadius(notched(0, 200))).toBeGreaterThan(closingRadius(notched(0, 64)));
   });
 
