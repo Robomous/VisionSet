@@ -1,5 +1,17 @@
 import { InferenceRuntimeError } from "../errors.js";
+import type { PromptableModelDefinition } from "./definition.js";
 import type { PixelImage, PointPrompt } from "./promptable.js";
+
+// This model's own ONNX tensor names -- not universal, just what this checkpoint's
+// exporter named its graphs' inputs and outputs. A different model names its own.
+const ENCODER_INPUT = "batched_images";
+const ENCODER_OUTPUT = "image_embeddings";
+const DECODER_EMBEDDINGS = "image_embeddings";
+const DECODER_COORDS = "batched_point_coords";
+const DECODER_LABELS = "batched_point_labels";
+const DECODER_SIZE = "orig_im_size";
+const DECODER_MASKS = "output_masks";
+const DECODER_IOU = "iou_predictions";
 
 /**
  * The arithmetic EfficientSAM-Ti needs around its two ONNX graphs, and nothing that
@@ -170,3 +182,30 @@ export function binaryMask(
   }
   return mask;
 }
+
+/**
+ * This model's `PromptableModelDefinition` -- the value `createModelHost`/`createModelClient`
+ * default to, and the one `browser/worker.ts`'s definition registry maps `"efficient-sam-ti"`
+ * to. Bundles the functions above with this model's own tensor names, so neither the host
+ * nor the client needs to import this module's individual exports by name.
+ */
+export const EFFICIENT_SAM_TI_DEFINITION: PromptableModelDefinition = Object.freeze({
+  id: "efficient-sam-ti",
+  maxPoints: EFFICIENT_SAM_TI.maxPoints,
+  encoderInputName: ENCODER_INPUT,
+  encoderOutputName: ENCODER_OUTPUT,
+  decoder: Object.freeze({
+    embeddings: DECODER_EMBEDDINGS,
+    coords: DECODER_COORDS,
+    labels: DECODER_LABELS,
+    size: DECODER_SIZE,
+    masks: DECODER_MASKS,
+    iou: DECODER_IOU,
+  }),
+  requireUsableImage,
+  requireAnswerablePrompt,
+  encoderInput,
+  decoderPrompt,
+  bestCandidate,
+  binaryMask,
+});

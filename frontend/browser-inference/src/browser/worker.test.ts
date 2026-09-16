@@ -277,7 +277,7 @@ describe("the model operations join the same bookkeeping", () => {
     worker.dispatch({ kind: "configure", id: 1, providers: ["wasm"], wasmThreads: 1 });
     await worker.replyTo(1);
     worker.dispatch({
-      kind: "model-load",
+      kind: "model-load", modelId: "efficient-sam-ti",
       id: 2,
       encoder: Uint8Array.from([1]),
       decoder: Uint8Array.from([2]),
@@ -354,7 +354,7 @@ describe("the model operations join the same bookkeeping", () => {
     await worker.replyTo(1);
 
     worker.dispatch({
-      kind: "model-load",
+      kind: "model-load", modelId: "efficient-sam-ti",
       id: 2,
       encoder: Uint8Array.from([1]),
       decoder: Uint8Array.from([2]),
@@ -388,17 +388,17 @@ describe("the model operations join the same bookkeeping", () => {
     const encoder = Uint8Array.from([1]);
     const decoder = Uint8Array.from([2]);
 
-    worker.dispatch({ kind: "model-load", id: 2, encoder, decoder });
+    worker.dispatch({ kind: "model-load", modelId: "efficient-sam-ti", id: 2, encoder, decoder });
     worker.dispatch({ kind: "cancel", id: 2 });
 
-    worker.dispatch({ kind: "model-load", id: 3, encoder, decoder });
+    worker.dispatch({ kind: "model-load", modelId: "efficient-sam-ti", id: 3, encoder, decoder });
     const marker = await worker.replyTo(3);
     expect(marker.kind).toBe("model-loaded");
 
     expect(worker.messages.some((message) => message.id === 2)).toBe(false);
 
     const from = worker.messages.length;
-    worker.dispatch({ kind: "model-load", id: 2, encoder, decoder });
+    worker.dispatch({ kind: "model-load", modelId: "efficient-sam-ti", id: 2, encoder, decoder });
     const afterwards = await worker.replyTo(2, from);
     expect(afterwards.kind).toBe("model-loaded");
   });
@@ -444,7 +444,7 @@ describe("the model operations join the same bookkeeping", () => {
         worker.dispatch({ kind: "cancel", id: 2 });
       };
       worker.dispatch({
-        kind: "model-load",
+        kind: "model-load", modelId: "efficient-sam-ti",
         id: 2,
         encoder: Uint8Array.from([1]),
         decoder: Uint8Array.from([2]),
@@ -481,7 +481,7 @@ describe("the model operations join the same bookkeeping", () => {
     };
 
     worker.dispatch({
-      kind: "model-load",
+      kind: "model-load", modelId: "efficient-sam-ti",
       id: 2,
       encoder: Uint8Array.from([1]),
       decoder: Uint8Array.from([2]),
@@ -507,7 +507,7 @@ describe("the model operations join the same bookkeeping", () => {
     ortBehaviour.duringCreate = null;
     const from = worker.messages.length;
     worker.dispatch({
-      kind: "model-load",
+      kind: "model-load", modelId: "efficient-sam-ti",
       id: 4,
       encoder: Uint8Array.from([1]),
       decoder: Uint8Array.from([2]),
@@ -522,7 +522,7 @@ describe("the model operations join the same bookkeeping", () => {
     await worker.replyTo(1);
 
     worker.dispatch({
-      kind: "model-load",
+      kind: "model-load", modelId: "efficient-sam-ti",
       id: 2,
       encoder: Uint8Array.from([1]),
       decoder: Uint8Array.from([2]),
@@ -536,7 +536,7 @@ describe("the model operations join the same bookkeeping", () => {
     firstEncoder.release.mockRejectedValueOnce(new Error("stuck GPU buffer"));
 
     worker.dispatch({
-      kind: "model-load",
+      kind: "model-load", modelId: "efficient-sam-ti",
       id: 3,
       encoder: Uint8Array.from([3]),
       decoder: Uint8Array.from([4]),
@@ -566,7 +566,7 @@ describe("the model operations join the same bookkeeping", () => {
     await worker.replyTo(1);
 
     worker.dispatch({
-      kind: "model-load",
+      kind: "model-load", modelId: "efficient-sam-ti",
       id: 2,
       encoder: Uint8Array.from([1]),
       decoder: Uint8Array.from([2]),
@@ -622,7 +622,7 @@ describe("the model operations join the same bookkeeping", () => {
     await worker.replyTo(1);
 
     worker.dispatch({
-      kind: "model-load",
+      kind: "model-load", modelId: "efficient-sam-ti",
       id: 2,
       encoder: Uint8Array.from([1]),
       decoder: Uint8Array.from([2]),
@@ -664,7 +664,7 @@ describe("the model operations join the same bookkeeping", () => {
     const encoder = Uint8Array.from([1]);
     const decoder = Uint8Array.from([2]);
 
-    worker.dispatch({ kind: "model-load", id: 2, encoder, decoder });
+    worker.dispatch({ kind: "model-load", modelId: "efficient-sam-ti", id: 2, encoder, decoder });
     const firstLoad = await worker.replyTo(2);
     expect(firstLoad.kind).toBe("model-loaded");
 
@@ -678,7 +678,7 @@ describe("the model operations join the same bookkeeping", () => {
     // if the stray cancel above had been recorded, this fresh operation under the same
     // id would be silently swallowed by the entry check instead of actually running.
     const from = worker.messages.length;
-    worker.dispatch({ kind: "model-load", id: 2, encoder, decoder });
+    worker.dispatch({ kind: "model-load", modelId: "efficient-sam-ti", id: 2, encoder, decoder });
     const secondLoad = await worker.replyTo(2, from);
     expect(secondLoad.kind).toBe("model-loaded");
   });
@@ -689,7 +689,7 @@ describe("the model operations join the same bookkeeping", () => {
     await worker.replyTo(1);
 
     worker.dispatch({
-      kind: "model-load",
+      kind: "model-load", modelId: "efficient-sam-ti",
       id: 2,
       encoder: Uint8Array.from([1]),
       decoder: Uint8Array.from([2]),
@@ -715,7 +715,7 @@ describe("the model operations join the same bookkeeping", () => {
     await worker.replyTo(1);
 
     worker.dispatch({
-      kind: "model-load",
+      kind: "model-load", modelId: "efficient-sam-ti",
       id: 2,
       encoder: Uint8Array.from([1]),
       decoder: Uint8Array.from([2]),

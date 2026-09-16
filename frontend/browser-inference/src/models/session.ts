@@ -31,12 +31,3 @@ export interface ModelSession {
 export interface ModelSessionFactory {
   create(bytes: Uint8Array): Promise<ModelSession>;
 }
-
-export const ENCODER_INPUT = "batched_images";
-export const ENCODER_OUTPUT = "image_embeddings";
-export const DECODER_EMBEDDINGS = "image_embeddings";
-export const DECODER_COORDS = "batched_point_coords";
-export const DECODER_LABELS = "batched_point_labels";
-export const DECODER_SIZE = "orig_im_size";
-export const DECODER_MASKS = "output_masks";
-export const DECODER_IOU = "iou_predictions";

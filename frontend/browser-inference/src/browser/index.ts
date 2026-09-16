@@ -15,6 +15,7 @@ import {
 import { createRuntimeClient, type BrowserInferenceRuntime, type InferenceRuntimeOptions } from "../client.js";
 import { InferenceRuntimeError } from "../errors.js";
 import { createModelClient } from "../models/client.js";
+import { EFFICIENT_SAM_TI_DEFINITION } from "../models/efficientSam.js";
 import type { PromptableSegmentationRuntime } from "../models/promptable.js";
 import type { RuntimeConfiguration } from "../operations.js";
 import type { WorkerChannel } from "../protocol.js";
@@ -143,8 +144,10 @@ export function createEfficientSamRuntime(
   options: EfficientSamRuntimeOptions,
 ): PromptableSegmentationRuntime {
   const { channel, configuration } = startWorker(options);
-  return createModelClient(channel, configuration, {
-    encoder: options.encoder,
-    decoder: options.decoder,
-  });
+  return createModelClient(
+    channel,
+    configuration,
+    { encoder: options.encoder, decoder: options.decoder },
+    EFFICIENT_SAM_TI_DEFINITION,
+  );
 }
