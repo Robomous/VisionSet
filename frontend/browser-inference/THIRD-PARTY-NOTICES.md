@@ -30,17 +30,22 @@ and a worker gets no import map from the document that started it, so a bare `on
 specifier surviving into that file would be unresolvable in any host that does not run a bundler
 over `node_modules`.
 
-Its WebAssembly runtime — `ort-wasm-simd-threaded.jsep.mjs` and `ort-wasm-simd-threaded.jsep.wasm`
-— is copied verbatim into `dist/browser/ort/` at build time. Those files cannot be bundled; they
-are fetched at run time, and a package that did not carry them would install successfully and
-then fail on first use in any host that had not been told to serve them separately.
+Its WebAssembly runtime — `ort-wasm-simd-threaded.asyncify.mjs` and
+`ort-wasm-simd-threaded.asyncify.wasm` — is copied verbatim into `dist/browser/ort/` at build
+time. Those files cannot be bundled; they are fetched at run time, and a package that did not
+carry them would install successfully and then fail on first use in any host that had not been
+told to serve them separately. (The `.asyncify` pair, not `.jsep`: ORT 1.29's native WebGPU
+execution provider needs asyncify to suspend a call across GPU work, since JSEP is on its way
+out. This was measured by running the built worker, not assumed from the changelog.)
 
 **The published `onnxruntime-web` tarball carries no `LICENSE` file.** Beside its `dist/` it
 ships only `README.md`, `package.json` and `types.d.ts`; the MIT grant is declared in
 `package.json`'s `license` field. MIT requires its copyright notice and permission notice to
-accompany redistribution, so for this dependency this file is not a courtesy — it is the
-condition being met, and it is listed in `package.json`'s `files` so that it cannot be dropped
-from a published tarball without the omission being deliberate.
+accompany redistribution, so this package carries the upstream text itself, verbatim and
+unparaphrased, at [`LICENSES/onnxruntime-MIT.txt`](LICENSES/onnxruntime-MIT.txt) — taken from
+the `v1.29.0` tag of the upstream repository linked above. It is listed in `package.json`'s
+`files` so that it cannot be dropped from a published tarball without the omission being
+deliberate.
 
 MIT is permissive: nothing here becomes MIT-licensed by proximity, and this package's own
 Apache-2.0 grant is unaffected. The corresponding source, unmodified and at the exact version

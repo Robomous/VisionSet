@@ -27,7 +27,8 @@
   },
   "files": [
     "dist",
-    "THIRD-PARTY-NOTICES.md"
+    "THIRD-PARTY-NOTICES.md",
+    "LICENSES"
   ],
   "scripts": {
     "build": "tsup && node scripts/copy-ort-assets.mjs",

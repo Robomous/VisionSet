@@ -60,13 +60,14 @@ for wanted in \
   "package/dist/browser/worker.js" \
   "package/dist/browser/ort/ort-wasm-simd-threaded.asyncify.mjs" \
   "package/dist/browser/ort/ort-wasm-simd-threaded.asyncify.wasm" \
-  "package/THIRD-PARTY-NOTICES.md"; do
+  "package/THIRD-PARTY-NOTICES.md" \
+  "package/LICENSES/onnxruntime-MIT.txt"; do
   if ! grep -qx "$wanted" <<<"$inference_listing"; then
     echo "error: @visionset/browser-inference tarball is missing $wanted" >&2
     exit 1
   fi
 done
-echo "@visionset/browser-inference tarball carries its worker, both ORT artifacts and THIRD-PARTY-NOTICES.md"
+echo "@visionset/browser-inference tarball carries its worker, both ORT artifacts, THIRD-PARTY-NOTICES.md and the upstream MIT license text"
 
 consumer="$work/consumer"
 mkdir -p "$consumer"

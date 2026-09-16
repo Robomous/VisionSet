@@ -51,15 +51,17 @@ lockfile names, is at the repository linked above.
 ONNX Runtime Web executes model graphs in the browser. `@visionset/browser-inference`
 redistributes it two ways: its JavaScript is compiled into `dist/browser/worker.js` for the
 same reason Mediabunny is compiled into its worker — a module worker gets no import map — and
-its WebAssembly artifacts (`ort-wasm-simd-threaded.jsep.mjs` and its `.wasm`) are copied
+its WebAssembly artifacts (`ort-wasm-simd-threaded.asyncify.mjs` and its `.wasm`) are copied
 verbatim into `dist/browser/ort/` so an installed package works without the host sourcing them.
 
 **The published `onnxruntime-web` tarball carries no `LICENSE` file** — only `README.md`,
-`package.json` and `types.d.ts` sit beside its `dist/`. MIT requires its copyright notice to
-travel with redistribution, so for this dependency the notice is not a courtesy; it is the
-condition being met. It is repeated inside the package, in
-[`frontend/browser-inference/THIRD-PARTY-NOTICES.md`](frontend/browser-inference/THIRD-PARTY-NOTICES.md),
-because a consumer who installed the tarball has no repository to follow a link into.
+`package.json` and `types.d.ts` sit beside its `dist/`. MIT requires its copyright notice and
+permission notice to accompany redistribution, so `@visionset/browser-inference` carries the
+upstream text itself, verbatim, at
+[`frontend/browser-inference/LICENSES/onnxruntime-MIT.txt`](frontend/browser-inference/LICENSES/onnxruntime-MIT.txt)
+and ships it in the published tarball. The fuller notice, including why the artifact is
+redistributed twice, is in
+[`frontend/browser-inference/THIRD-PARTY-NOTICES.md`](frontend/browser-inference/THIRD-PARTY-NOTICES.md).
 
 **It is not in the Python wheel's browser bundle.** Nothing in `@visionset/ui-core` or
 `@visionset/app` imports `@visionset/browser-inference`, so `src/visionset/_static/` contains
