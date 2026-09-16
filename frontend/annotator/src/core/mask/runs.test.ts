@@ -62,3 +62,37 @@ describe("bboxFrom", () => {
     expect(bboxFrom(maskOf(4, 4, []))).toBeNull();
   });
 });
+
+describe("contract: Python index(True)/index(False) asymmetry", () => {
+  // runs() uses index(True) to find start (advances while byte !== 1) and
+  // index(False) to find end (advances while byte !== 0). This asymmetry
+  // means out-of-contract bytes (e.g. 255) are treated differently: they
+  // never start a run, but they extend a run. spans() uses index(True) for
+  // both directions, so it only counts 1 as lit. These tests pin that
+  // distinction — without them, the next reader will "simplify" back.
+
+  it("runs(): 255 inside a run extends the run", () => {
+    const mask = { width: 5, height: 1, mask: new Uint8Array([0, 1, 255, 1, 0]) };
+    expect(runs(mask)).toEqual([[0, 1, 3]]);
+  });
+
+  it("runs(): 255 alone never starts a run", () => {
+    const mask = { width: 2, height: 1, mask: new Uint8Array([255, 0]) };
+    expect(runs(mask)).toEqual([]);
+  });
+
+  it("runs(): run extends through 255 to row end", () => {
+    const mask = { width: 3, height: 1, mask: new Uint8Array([1, 1, 255]) };
+    expect(runs(mask)).toEqual([[0, 0, 2]]);
+  });
+
+  it("spans(): stops at the last actual 1, ignoring trailing 255", () => {
+    const mask = { width: 3, height: 1, mask: new Uint8Array([1, 1, 255]) };
+    expect(spans(mask)).toEqual([[0, 0, 1]]);
+  });
+
+  it("spans(): 255 alone is not a row", () => {
+    const mask = { width: 2, height: 1, mask: new Uint8Array([255, 0]) };
+    expect(spans(mask)).toEqual([]);
+  });
+});

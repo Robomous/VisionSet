@@ -34,10 +34,11 @@ export function runs(mask: BinaryMask): Run[] {
     let at = 0;
     while (at < width) {
       let first = at;
-      while (first < width && data[base + first] === 0) first += 1;
+      while (first < width && data[base + first] !== 1) first += 1;
       if (first === width) break;
-      let last = first;
-      while (last + 1 < width && data[base + last + 1] !== 0) last += 1;
+      let cursor = first;
+      while (cursor < width && data[base + cursor] !== 0) cursor += 1;
+      const last = cursor - 1;
       found.push([y, first, last]);
       // +2 rather than +1: the pixel that ended the run is known unlit.
       at = last + 2;
@@ -55,7 +56,7 @@ export function spans(mask: BinaryMask): Run[] {
     const base = y * width;
     let first = -1;
     for (let x = 0; x < width; x += 1) {
-      if (data[base + x] !== 0) {
+      if (data[base + x] === 1) {
         first = x;
         break;
       }
@@ -63,7 +64,7 @@ export function spans(mask: BinaryMask): Run[] {
     if (first < 0) continue;
     let last = first;
     for (let x = width - 1; x > first; x -= 1) {
-      if (data[base + x] !== 0) {
+      if (data[base + x] === 1) {
         last = x;
         break;
       }
