@@ -16,19 +16,26 @@ describe("decoded asset image", () => {
   });
 
   it("converts descriptor-frame RGBA pixels into exact row-major RGB", () => {
+    // A distinct object, unlike `{}` — asserted below by identity, not merely by
+    // shape. `rgbPixelsFromDecodedImage` must draw the exact rendered image it
+    // was handed, never a second `Image` it constructs to read from.
+    const image = { tag: "the rendered image" } as unknown as HTMLImageElement;
     const drawImage = vi.fn();
-    const context = {
-      drawImage,
-      getImageData: () => ({ data: new Uint8ClampedArray([1, 2, 3, 4, 5, 6, 7, 8]) }),
-    };
+    const getImageData = vi.fn(() => ({ data: new Uint8ClampedArray([1, 2, 3, 4, 5, 6, 7, 8]) }));
+    const context = { drawImage, getImageData };
     vi.stubGlobal("document", {
       createElement: () => ({ width: 0, height: 0, getContext: () => context }),
     });
 
-    const pixels = rgbPixelsFromDecodedImage({} as HTMLImageElement, 2, 1);
+    const pixels = rgbPixelsFromDecodedImage(image, 2, 1);
 
     expect(pixels).toEqual({ width: 2, height: 1, rgb: new Uint8Array([1, 2, 3, 5, 6, 7]) });
-    expect(drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 2, 1);
+    // The exact requested frame, not the image's own natural size (`image` above
+    // carries no `naturalWidth`/`naturalHeight` at all, so a mutation reading
+    // those instead would call both of these with `undefined`) and not a
+    // transposed pair either.
+    expect(drawImage).toHaveBeenCalledWith(image, 0, 0, 2, 1);
+    expect(getImageData).toHaveBeenCalledWith(0, 0, 2, 1);
     vi.unstubAllGlobals();
   });
 });

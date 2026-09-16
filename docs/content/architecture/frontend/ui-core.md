@@ -97,13 +97,26 @@ The URL is revoked and an unfinished request is aborted when the asset is replac
 There is no JavaScript Blob cache: revisiting an asset relies on the server's immutable HTTP cache.
 
 The React annotator adapter can report a generation-scoped lease over the same visible decoded
-`<img>`. A future host that needs pixels reads them lazily from that lease, in the asset
-descriptor's coordinate frame, through a canvas RGBA-to-RGB copy. It does not fetch or decode a
-second copy of the asset. A lease refuses after its image source is replaced, which prevents a
-retained reference for one asset from reading pixels of the next asset through a reused DOM node.
+`<img>` — `AnnotatorCanvas`'s `onImageReady`, fired from that image's own `onLoad`. A future host
+that needs pixels reads them lazily from that lease: nothing draws to a canvas or calls
+`getImageData` until a caller asks for `readRgb(width, height)`, in the asset descriptor's
+coordinate frame, and ordinary mounting and display never asks. It does not fetch or decode a
+second copy of the asset, and it does not construct a second `Image` to read from — the element
+handed back is the exact node the person is looking at. A lease refuses after its image source is
+replaced, which prevents a retained reference for one asset from reading pixels of the next asset
+through a reused DOM node.
 
 This is resource plumbing only. It neither selects a browser model nor exposes an inference
-target; composing pixels with a browser runtime remains a later host decision.
+target — no capability in this phase lets a host ask for local inference at all; composing pixels
+with a browser runtime remains a later host decision.
+
+**What is proved, and what is not claimed.** `e2e/assetPixels.spec.ts` drives a real Chromium
+against a tiny runtime-generated image and confirms, in that browser, on that image: one content
+request, the same decoded `<img>` handed back as the pixel source, and the exact descriptor-frame
+RGB a real 2D context produced. That is evidence about this seam's wiring, not a claim that a
+browser's canvas decode agrees with the server's own (Pillow) decode byte-for-byte in general —
+this phase changes no server decoding, and takes no position on cross-decoder parity beyond what
+is measured here.
 
 ## Asking for a suggestion is not sending one
 

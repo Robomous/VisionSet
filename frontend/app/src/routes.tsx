@@ -59,6 +59,7 @@ import { Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from
 import type { JSX } from "react";
 
 import { AnnotatorDemo } from "./demo/AnnotatorDemo";
+import { AssetPixelsFixture } from "./demo/AssetPixelsFixture";
 import { BenchmarkHost } from "./demo/BenchmarkHost";
 import { ShowcaseFrame } from "./demo/ShowcaseFrame";
 import { AppShell, FullBleedPane, PaddedPane, ProjectPane } from "./shell/AppShell";
@@ -135,6 +136,12 @@ export function AppRoutes(): JSX.Element {
       {/* No token, no server. Also what the browser suite drives. */}
       <Route path="demo" element={<Showcase />} />
       <Route path="styleguide" element={<Styleguide />} />
+      {/*
+        A test-only harness for `e2e/assetPixels.spec.ts` — proving the displayed
+        asset is the browser pixel source in a real browser. Not linked from
+        anywhere else, the same standing as the two routes above.
+      */}
+      <Route path="asset-pixels-fixture" element={<AssetPixelsFixture />} />
     </Routes>
   );
 }
