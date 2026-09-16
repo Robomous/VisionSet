@@ -163,10 +163,66 @@ def test_a_click_just_off_the_piece_falls_back_to_the_nearest_one() -> None:
     assert (pieces[0].x, pieces[0].y) == (1, 3)
 
 
+def test_nearest_piece_compares_squared_distances_without_a_square_root_tie() -> None:
+    """The smaller geometric distance wins even when its square roots round equal.
+
+    These two one-pixel pieces are separate survivors. Their squared distances
+    from the in-frame point differ by one ulp, while their square roots can
+    round equal on a platform. Comparing the squared values keeps the answer
+    the actual nearer piece rather than letting a libm tie fall back to reading
+    order.
+    """
+    mask = [[0] * 64 for _ in range(64)]
+    mask[12][11] = 1
+    mask[26][44] = 1
+
+    pieces = components(mask, at=[(27.660028289416932, 18.62279046066009)])
+
+    assert (pieces[0].x, pieces[0].y) == (44, 26)
+
+
 def test_several_points_spanning_pieces_prefer_the_largest_of_them() -> None:
     """Two positives can straddle two pieces; the bigger one is the better answer."""
     pieces = components(speckled(), at=[(9.0, 0.0), (3.0, 5.0)])
     assert (pieces[0].x, pieces[0].y) == (1, 3), "the 36-px object beats the 1-px speck"
+
+
+def tied() -> list[list[int]]:
+    """Two five-pixel components, rooted at run indices 3 and 8.
+
+    The row of specks is what puts the roots at those indices, and 3 and 8 are
+    what make the tie visible: a set holding them iterates ``[8, 3]``, because
+    ``8 & 7`` is 0 and lands in an earlier bucket, so ``max`` over the set used
+    to answer with the *later* component.
+    """
+    mask = [[0] * 30 for _ in range(7)]
+    for x in (0, 4, 8, 12, 16, 20, 24):
+        mask[0][x] = 1  # run indices 0..6
+    mask[1][0] = 1  # run index 7, joins the component rooted at 0
+    mask[1][2] = 1  # run index 8, a new component
+    for y in (1, 2, 3, 4):
+        mask[y][12] = 1  # the component rooted at run index 3
+    for y in (2, 3, 4, 5):
+        mask[y][2] = 1  # the component rooted at run index 8
+    return mask
+
+
+def test_two_equally_large_pointed_pieces_are_settled_by_reading_order() -> None:
+    """The tie the module never stated, and the one a port cannot guess.
+
+    A set's iteration order is an interpreter's hash-table layout, not a rule, so
+    the answer here is fixed the way `components` already fixes it for every
+    other piece: biggest first, ties by the lowest label — the piece whose
+    earliest run comes first.
+    """
+    pieces = components(tied(), at=[(12.0, 2.0), (2.0, 3.0)])
+    assert pieces[0].x == 12, "the earlier component leads when the areas are equal"
+
+
+def test_the_tie_is_broken_by_reading_order_whichever_way_the_points_arrive() -> None:
+    """Point order is not a tie-break either — only the pieces decide."""
+    reversed_points = components(tied(), at=[(2.0, 3.0), (12.0, 2.0)])
+    assert reversed_points[0].x == 12
 
 
 def test_without_a_point_the_noise_filter_still_answers_with_the_object() -> None:

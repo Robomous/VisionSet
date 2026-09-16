@@ -266,12 +266,17 @@ def _components(found: Sequence[tuple[int, int, int]]) -> list[int]:
     return [root(index) for index in range(len(found))]
 
 
-def _gap(point: Point, run: tuple[int, int, int]) -> float:
-    """Distance from a point to a run, which is a horizontal segment of pixels."""
+def _squared_gap(point: Point, run: tuple[int, int, int]) -> float:
+    """Squared distance from a point to a run, which is a horizontal segment of pixels.
+
+    The square root cannot change which run is nearest, and leaving it out keeps
+    a one-ulp libm rounding difference from turning a geometric ordering into a
+    reading-order tie.
+    """
     x, y = point
     row, first, last = run
     across = max(0.0, first - x, x - last)
-    return (across * across + (row - y) * (row - y)) ** 0.5
+    return across * across + (row - y) * (row - y)
 
 
 def _areas(found: Sequence[tuple[int, int, int]], labels: Sequence[int]) -> dict[int, int]:
@@ -296,8 +301,15 @@ def _pointed_at(
     rather than of what was clicked.
 
     Three cases, in order. A point inside a piece picks that piece; several
-    points inside several pieces pick the largest of them, because two positives
-    are a caller describing one object rather than proposing two. A point inside
+    points inside several pieces pick the largest of them, because two
+    positives are a caller describing one object rather than proposing two —
+    and two of the same size pick the lowest label, which is the piece whose
+    earliest run comes first. That last clause is not a new preference: it is
+    the ``(-size, label)`` order :func:`components` already applies to every
+    piece behind the head, written where it was missing. It has to be written
+    somewhere, because the alternative was ``max`` over a *set* of labels, and a
+    set's iteration order is an interpreter's hash-table layout rather than a
+    rule a second implementation could hold to. A point inside
     none of them — the model's mask need not cover the exact pixel clicked —
     picks the piece nearest the point, which is still an answer about where the
     user pointed. Negatives never select: they say what the shape is not, and a
@@ -315,9 +327,9 @@ def _pointed_at(
         if row == round(point[1]) and first <= round(point[0]) <= last
     }
     if under:
-        return max(under, key=lambda label: size[label])
+        return min(under, key=lambda label: (-size[label], label))
     nearest = min(
-        range(len(found)), key=lambda index: min(_gap(point, found[index]) for point in at)
+        range(len(found)), key=lambda index: min(_squared_gap(point, found[index]) for point in at)
     )
     return labels[nearest]
 

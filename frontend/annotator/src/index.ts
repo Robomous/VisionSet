@@ -114,6 +114,12 @@ export {
   toleranceInAssetPixels,
   type Tolerances,
 } from "./core/geometry/tolerance";
+// Mask -> geometry: the kernel's pipeline, held to it by tests/fixtures/mask_geometry.json
+export {
+  shapesFromMask,
+  type BinaryMask,
+  type ShapedGeometry,
+} from "./core/mask/shapes";
 // Interaction — the state machine: states, events, effects, and the runner
 export {
   IDLE,

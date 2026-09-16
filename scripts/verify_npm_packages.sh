@@ -172,6 +172,7 @@ done
 echo "no dependency resolved back into the workspace"
 
 cat > esm-check.mjs <<'JS'
+import assert from "node:assert";
 import "@visionset/annotator";
 import "@visionset/ui-core";
 // The core entrypoint on its own: plain Node has no browser globals, so an
@@ -183,8 +184,18 @@ import "@visionset/media";
 import "@visionset/browser-inference";
 import { EFFICIENT_SAM_TI } from "@visionset/browser-inference";
 if (EFFICIENT_SAM_TI.maxPoints !== 6) throw new Error("core entry lost the model constants");
+
+// Mask -> geometry: a real call, not just a resolved symbol — proves the
+// kernel's pipeline still runs correctly from the packed tarball in plain Node.
+const { shapesFromMask } = await import("@visionset/annotator");
+const mask = { width: 3, height: 3, mask: Uint8Array.from([0, 0, 0, 0, 1, 1, 0, 1, 1]) };
+const shaped = shapesFromMask(mask, { allowed: ["bbox"] });
+assert.deepEqual(shaped, [{ geometry: { type: "bbox", x: 1, y: 1, width: 2, height: 2 }, contour: [] }]);
+const outlined = shapesFromMask(mask, { allowed: ["polygon"], tolerance: 1 });
+assert.equal(outlined[0].geometry.type, "polygon");
+
 console.log(
-  "Node ESM import OK: @visionset/annotator, @visionset/ui-core, @visionset/media (core), @visionset/browser-inference (core, EFFICIENT_SAM_TI)",
+  "Node ESM import OK: @visionset/annotator (core, shapesFromMask), @visionset/ui-core, @visionset/media (core), @visionset/browser-inference (core, EFFICIENT_SAM_TI)",
 );
 JS
 node esm-check.mjs
@@ -210,7 +221,7 @@ cat > tsconfig.json <<'JSON'
 JSON
 
 cat > ts-check.ts <<'TS'
-import "@visionset/annotator";
+import { shapesFromMask, type BinaryMask, type ShapedGeometry } from "@visionset/annotator";
 import "@visionset/ui-core";
 import "@visionset/media";
 import type { MediabunnyVideoMaterializer } from "@visionset/media/mediabunny";
@@ -233,7 +244,21 @@ export type {
   PixelImage, PointPrompt, PreparedImage, PromptableSegmentationRuntime, RawSegmentation,
 };
 export type CreateEfficientSamRuntime = typeof createEfficientSamRuntime;
+
+const packedMask: BinaryMask = { width: 1, height: 1, mask: new Uint8Array([1]) };
+const packedShaped: readonly ShapedGeometry[] = shapesFromMask(packedMask, { allowed: ["bbox"] });
+void packedShaped;
+
+type Equal<Left, Right> =
+  (<Value>() => Value extends Left ? 1 : 2) extends
+  (<Value>() => Value extends Right ? 1 : 2)
+    ? true
+    : false;
+type Assert<Condition extends true> = Condition;
+type _ShapesFromMaskReturnsReadonly = Assert<
+  Equal<ReturnType<typeof shapesFromMask>, readonly ShapedGeometry[]>
+>;
 TS
 
 pnpm exec tsc -p tsconfig.json
-echo "TypeScript consumer resolved @visionset/annotator, @visionset/ui-core, @visionset/media, @visionset/media/mediabunny, @visionset/browser-inference, @visionset/browser-inference/browser and the EfficientSAM model surface under nodenext OK"
+echo "TypeScript consumer resolved @visionset/annotator (shapesFromMask, BinaryMask, ShapedGeometry), @visionset/ui-core, @visionset/media, @visionset/media/mediabunny, @visionset/browser-inference, @visionset/browser-inference/browser and the EfficientSAM model surface under nodenext OK"

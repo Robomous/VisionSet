@@ -685,7 +685,8 @@ before anything else looks at the mask.
 **A polygon is the piece you pointed at, not the biggest one on the frame.** Which of the
 survivors you meant is a question only the points can answer, so the choice is made from the
 prompt: a point inside a piece picks that piece; several points inside several pieces pick the
-largest of *those*, because two positives describe one object rather than propose two; and a
+largest of *those*, because two positives describe one object rather than propose two, and two
+pieces of exactly the same size answer with the one whose earliest run comes first; and a
 point inside none of them picks the piece nearest to it, since a mask need not cover the exact
 pixel you clicked. Negative points never select - they say what the shape is not, and a piece is
 chosen before its shape is known.

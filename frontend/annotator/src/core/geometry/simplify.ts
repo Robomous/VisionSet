@@ -16,11 +16,20 @@
  * keeps it current, and neither half shares a toolchain with the other.
  *
  * **Exact equality is achievable and is what the gate asserts.** Both languages
- * hold IEEE-754 doubles, `Math.sqrt` and Python's `** 0.5` are the same
- * correctly-rounded operation, and every expression below is in the same order
- * as the Python it mirrors. Keeping that order is not style: the algorithm's
- * output is decided by comparisons, so a re-association that moves a value by
- * one unit in the last place can move a vertex.
+ * hold IEEE-754 doubles, and every expression below is in the same order as the
+ * Python it mirrors — that ordering is what the parity actually depends on.
+ * Keeping it is not style: the algorithm's output is decided by comparisons, so
+ * a re-association that moves a value by one unit in the last place can move a
+ * vertex.
+ *
+ * `Math.sqrt` and Python's `** 0.5` are *not* quite the same operation, though:
+ * CPython routes `** 0.5` through libm `pow`, which is not correctly rounded,
+ * and it disagrees with a correctly-rounded square root by one ulp on roughly a
+ * tenth of a percent of inputs. The mask pipeline avoids carrying that
+ * difference into nearest-piece selection by comparing squared distances there;
+ * `closingRadius` absorbs it through truncation. The existing simplification
+ * fixture continues to assert exact output for its covered contours. Making
+ * Python's side call `math.sqrt` would be a separate semantic change.
  *
  * ## Why a contour is the input rather than a mask
  *
