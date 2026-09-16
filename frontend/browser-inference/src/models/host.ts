@@ -135,16 +135,30 @@ export function createModelHost(factory: ModelSessionFactory): ModelHost {
           dims: [2],
         },
       });
-      const logits = answer[DECODER_MASKS];
-      const scores = answer[DECODER_IOU];
-      if (logits === undefined || scores === undefined) {
-        throw new InferenceRuntimeError(
-          "runtime-execution-failed",
-          `The decoder answered without ${DECODER_MASKS} and ${DECODER_IOU}.`,
-        );
+      // The embedding is state and outlives this call; everything the decoder answers
+      // with is scratch. `output_masks` alone is three float32 planes at the image's
+      // own size -- tens of MB for a large image, allocated again on every refinement --
+      // so in a worker that stays alive across a whole annotation session these must be
+      // released here rather than left to whenever the GC notices. Disposed by iteration
+      // rather than by name so an output this code does not read is still released, and
+      // in a `finally` so a decoder that answers without one of them, or a failure in
+      // the post-processing below, releases what it did produce.
+      try {
+        const logits = answer[DECODER_MASKS];
+        const scores = answer[DECODER_IOU];
+        if (logits === undefined || scores === undefined) {
+          throw new InferenceRuntimeError(
+            "runtime-execution-failed",
+            `The decoder answered without ${DECODER_MASKS} and ${DECODER_IOU}.`,
+          );
+        }
+        const { index, confidence } = bestCandidate(scores.data as Float32Array);
+        // `binaryMask` copies into its own array, so the returned mask survives the
+        // disposal below; the tensors it read from do not have to.
+        return { width, height, mask: binaryMask(logits.data as Float32Array, index, width, height), confidence };
+      } finally {
+        for (const tensor of Object.values(answer)) tensor.dispose?.();
       }
-      const { index, confidence } = bestCandidate(scores.data as Float32Array);
-      return { width, height, mask: binaryMask(logits.data as Float32Array, index, width, height), confidence };
     },
 
     forget,

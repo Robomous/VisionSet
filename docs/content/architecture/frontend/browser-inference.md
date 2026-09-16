@@ -71,7 +71,11 @@ against that kept embedding, for every point after the first. Keeping the embedd
 is what makes a refinement cheap instead of a second full run of the expensive graph, and what
 that costs and forbids is recorded in
 [the image embedding stays in the worker](../decisions/the-image-embedding-stays-in-the-worker.md).
-`dispose()` ends the runtime the same way `BrowserInferenceRuntime`'s does.
+That embedding is the only tensor the worker keeps: what the decoder answers with - the candidate
+masks and their scores - belongs to the one `suggest` that asked for it and is released before
+that call returns, so a long session of refinements retains one embedding rather than a set of
+full-size mask planes per click. `dispose()` ends the runtime the same way
+`BrowserInferenceRuntime`'s does.
 
 The worker holds exactly one prepared image at a time. Preparing a second supersedes the first:
 the handle a caller still holds for the old image stops answering, and a `suggest` against it

@@ -15,6 +15,11 @@ export interface ModelTensor {
   readonly type: "float32" | "int64";
   readonly data: Float32Array | BigInt64Array;
   readonly dims: readonly number[];
+  /**
+   * Whoever receives a tensor owns it. A `run` result is the caller's to release, and a
+   * backing implementation must not release one on the caller's behalf -- the caller is
+   * still reading it. Optional because a fake session has nothing to free.
+   */
   dispose?(): void;
 }
 

@@ -52,20 +52,38 @@ class Embeddings {
   }
 }
 
-function masks(): ModelTensor {
+/** A tensor that counts its own disposals, so a leak is a number a test can read. */
+interface Counted extends ModelTensor {
+  disposals: number;
+}
+
+function counted(tensor: Omit<ModelTensor, "dispose">): Counted {
+  const tracked: Counted = {
+    ...tensor,
+    disposals: 0,
+    dispose: () => {
+      tracked.disposals += 1;
+    },
+  };
+  return tracked;
+}
+
+function masks(): Counted {
   // Three candidates over PLANE pixels; candidate 1 is the highest-scoring one below.
   const data = new Float32Array(3 * PLANE).fill(-1);
   for (let pixel = 0; pixel < PLANE; pixel += 1) data[PLANE + pixel] = pixel % 2 === 0 ? 5 : -5;
-  return { type: "float32", data, dims: [1, 1, 3, HEIGHT, WIDTH] };
+  return counted({ type: "float32", data, dims: [1, 1, 3, HEIGHT, WIDTH] });
 }
 
-function iou(): ModelTensor {
-  return { type: "float32", data: new Float32Array([0.1, 0.8, 0.3]), dims: [1, 1, 3] };
+function iou(): Counted {
+  return counted({ type: "float32", data: new Float32Array([0.1, 0.8, 0.3]), dims: [1, 1, 3] });
 }
 
 let embeddings: Embeddings;
 let encoder: FakeSession;
 let decoder: FakeSession;
+/** Every answer the fake decoder has given, in order, still carrying its counters. */
+let decoderAnswers: Record<string, Counted>[];
 let created: number;
 let createdBytes: Uint8Array[];
 let factory: ModelSessionFactory;
@@ -73,7 +91,12 @@ let factory: ModelSessionFactory;
 beforeEach(() => {
   embeddings = new Embeddings();
   encoder = new FakeSession(() => ({ image_embeddings: embeddings.next() }));
-  decoder = new FakeSession(() => ({ output_masks: masks(), iou_predictions: iou() }));
+  decoderAnswers = [];
+  decoder = new FakeSession(() => {
+    const answer = { output_masks: masks(), iou_predictions: iou() };
+    decoderAnswers.push(answer);
+    return answer;
+  });
   created = 0;
   createdBytes = [];
   factory = {
@@ -260,6 +283,99 @@ describe("when the graph answers without its output", () => {
     await expect(host.suggest(prepared.generation, PROMPT)).rejects.toSatisfy(
       (error: unknown) => isInferenceRuntimeError(error) && error.code === "runtime-execution-failed",
     );
+  });
+});
+
+describe("what a suggestion leaves behind", () => {
+  it("releases the decoder's outputs, and keeps the embedding it was fed", async () => {
+    const host = createModelHost(factory);
+    await host.load(new Uint8Array([1]), new Uint8Array([2]));
+    const prepared = await host.prepare(image());
+    await host.suggest(prepared.generation, PROMPT);
+
+    const [answer] = decoderAnswers;
+    expect(answer.output_masks.disposals).toBe(1);
+    expect(answer.iou_predictions.disposals).toBe(1);
+    // The embedding is the state the worker exists to hold: releasing it alongside the
+    // scratch it was decoded into would make the next refinement re-encode the image.
+    expect(embeddings.disposed).toBe(0);
+    await expect(host.suggest(prepared.generation, PROMPT)).resolves.toBeDefined();
+  });
+
+  it("releases every refinement's outputs, not only the last", async () => {
+    const host = createModelHost(factory);
+    await host.load(new Uint8Array([1]), new Uint8Array([2]));
+    const prepared = await host.prepare(image());
+
+    await host.suggest(prepared.generation, PROMPT);
+    await host.suggest(prepared.generation, { positive: [[1, 1], [2, 2]], negative: [] });
+    await host.suggest(prepared.generation, { positive: [[1, 1], [2, 2], [3, 1]], negative: [] });
+
+    expect(encoder.runs).toBe(1);
+    expect(decoder.runs).toBe(3);
+    expect(decoderAnswers).toHaveLength(3);
+    expect(decoderAnswers.map((answer) => Object.values(answer).map((tensor) => tensor.disposals))).toEqual([
+      [1, 1],
+      [1, 1],
+      [1, 1],
+    ]);
+    expect(embeddings.disposed).toBe(0);
+  });
+
+  it("releases an output the host never reads", async () => {
+    const host = createModelHost(factory);
+    await host.load(new Uint8Array([1]), new Uint8Array([2]));
+    const prepared = await host.prepare(image());
+    const spare = counted({ type: "float32", data: new Float32Array([0]), dims: [1] });
+    decoder.answer = () => ({ output_masks: masks(), iou_predictions: iou(), onnx_Shape_1830: spare });
+
+    await host.suggest(prepared.generation, PROMPT);
+
+    // Named cleanup would have left this one behind; the graph may grow an output.
+    expect(spare.disposals).toBe(1);
+  });
+
+  it("releases the mask when the decoder answers without an IoU", async () => {
+    const host = createModelHost(factory);
+    await host.load(new Uint8Array([1]), new Uint8Array([2]));
+    const prepared = await host.prepare(image());
+    const orphan = masks();
+    decoder.answer = () => ({ output_masks: orphan });
+
+    await expect(host.suggest(prepared.generation, PROMPT)).rejects.toSatisfy(
+      (error: unknown) => isInferenceRuntimeError(error) && error.code === "runtime-execution-failed",
+    );
+    expect(orphan.disposals).toBe(1);
+  });
+
+  it("releases the IoU when the decoder answers without a mask", async () => {
+    const host = createModelHost(factory);
+    await host.load(new Uint8Array([1]), new Uint8Array([2]));
+    const prepared = await host.prepare(image());
+    const orphan = iou();
+    decoder.answer = () => ({ iou_predictions: orphan });
+
+    await expect(host.suggest(prepared.generation, PROMPT)).rejects.toSatisfy(
+      (error: unknown) => isInferenceRuntimeError(error) && error.code === "runtime-execution-failed",
+    );
+    expect(orphan.disposals).toBe(1);
+  });
+
+  it("releases both outputs when reading them throws", async () => {
+    const host = createModelHost(factory);
+    await host.load(new Uint8Array([1]), new Uint8Array([2]));
+    const prepared = await host.prepare(image());
+    const mask = masks();
+    // An IoU head the real graph would never produce: `bestCandidate` clamps with
+    // `Math.max`, which refuses a BigInt outright. The run succeeded; what follows it
+    // did not, and the tensors that run allocated are still owed a release.
+    const wrong = counted({ type: "int64", data: new BigInt64Array([1n]), dims: [1, 1, 1] });
+    decoder.answer = () => ({ output_masks: mask, iou_predictions: wrong });
+
+    await expect(host.suggest(prepared.generation, PROMPT)).rejects.toThrow(TypeError);
+    expect(mask.disposals).toBe(1);
+    expect(wrong.disposals).toBe(1);
+    expect(embeddings.disposed).toBe(0);
   });
 });
 
