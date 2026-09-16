@@ -975,10 +975,17 @@ jobs:
   # the package is built, so the whole proof — install, export, parity, real browser —
   # stays inside the same budget `inference-smoke` already spends on `torch` alone.
   #
-  # VISIONSET_REQUIRE_BROWSER_MODELS turns `tests/browser_models/test_efficientsam_export.py`'s
-  # local skip into a failure here, same rule as VISIONSET_REQUIRE_LOCAL_INFERENCE and
-  # VISIONSET_REQUIRE_ULTRALYTICS above: a job that exists to prove the export ran must
-  # not quietly pass because it didn't.
+  # VISIONSET_REQUIRE_BROWSER_MODELS turns the local skips in `tests/browser_models/` and in
+  # `browser/efficientSam.spec.ts` into failures here, same rule as
+  # VISIONSET_REQUIRE_LOCAL_INFERENCE and VISIONSET_REQUIRE_ULTRALYTICS above: a job that
+  # exists to prove the export ran must not quietly pass because it didn't.
+  #
+  # That flag catches a missing artifact, which is the accident that actually happens. It
+  # cannot catch a spec file that stopped being collected — a module that never loads cannot
+  # raise, and Playwright exits 0 having run nothing. So the same flag also makes the browser
+  # run emit a JSON report, and the last step reads it back and insists the real-model tests
+  # were present, passed, and were not skipped. The invariant is that this job passing implies
+  # the real model ran, not merely that every command returned zero.
   browser-models:
     name: browser models (EfficientSAM-Ti export, parity, real browser)
     runs-on: ubuntu-latest
@@ -1036,9 +1043,9 @@ jobs:
 
       # No `-q`: `addopts` in pyproject.toml already carries one, and a second
       # suppresses the count line this job exists to put on the record.
-      - name: The export test, with the artifacts present
+      - name: The export tests, with the artifacts present
         if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
-        run: uv run pytest tests/browser_models/test_efficientsam_export.py -rs
+        run: uv run pytest tests/browser_models -rs
 
       - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
         if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
@@ -1079,6 +1086,16 @@ jobs:
       - name: Run the browser inference runtime suite, with the model present
         if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
         run: pnpm --filter @visionset/browser-inference test:browser
+
+      # The step that makes this job's green check mean something. Everything above answers
+      # "did what ran succeed?"; a suite that skips itself, or a spec file that stopped being
+      # collected at all, answers that with a cheerful yes. This reads the JSON report the
+      # require flag turns on and insists the real-model specs were there, passed, and were
+      # not skipped. Without it, `browser-models` passing would prove only that a command
+      # exited 0.
+      - name: Prove the real EfficientSAM-Ti tests actually ran
+        if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
+        run: node scripts/browser_models/assert_tests_ran.mjs frontend/browser-inference/playwright-report/results.json
 
       - uses: actions/upload-artifact@v7
         if: failure()

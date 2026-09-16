@@ -31,7 +31,7 @@
  * test config is not the place to start.
  */
 
-import { defineConfig, devices } from "@playwright/test";
+import { defineConfig, devices, type ReporterDescription } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { realpathSync, statSync } from "node:fs";
 import path from "node:path";
@@ -66,6 +66,28 @@ function resolvePort(): number {
 
 const PORT = resolvePort();
 
+/**
+ * The machine-readable half of the require-not-skip gate.
+ *
+ * `VISIONSET_REQUIRE_BROWSER_MODELS=1` already makes `efficientSam.spec.ts` throw when the
+ * exported graphs are absent. That catches the common accident and not the dangerous one: a
+ * spec file that is renamed, moved out of `testDir`, filtered out by a stray `--grep`, or
+ * quietly given a `test.skip()` never loads at all, so it cannot throw, and Playwright exits
+ * 0 having run nothing. A green check would then mean "the command succeeded", not "the real
+ * model ran" — which is the whole thing the browser-models job exists to assert.
+ *
+ * So under the flag the run also emits a JSON report, and
+ * `scripts/browser_models/assert_tests_ran.mjs` reads it back and insists the real-model specs
+ * are actually present, actually passed, and actually were not skipped.
+ */
+const REAL_MODEL_REQUIRED = process.env["VISIONSET_REQUIRE_BROWSER_MODELS"] === "1";
+export const RESULTS_JSON = "playwright-report/results.json";
+
+const REPORTERS: ReporterDescription[] = process.env["CI"]
+  ? [["github"], ["html", { open: "never" }]]
+  : [["list"]];
+if (REAL_MODEL_REQUIRED) REPORTERS.push(["json", { outputFile: RESULTS_JSON }]);
+
 if (process.env["TEST_WORKER_INDEX"] === undefined) {
   console.error(`[visionset] browser inference port: ${PORT}  (${ROOT})`);
 }
@@ -80,7 +102,7 @@ export default defineConfig({
   // WebAssembly module, and on a cold cache that is most of the budget.
   timeout: 90_000,
   expect: { timeout: 20_000 },
-  reporter: process.env["CI"] ? [["github"], ["html", { open: "never" }]] : [["list"]],
+  reporter: REPORTERS,
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,
     trace: "on-first-retry",

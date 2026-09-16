@@ -9,7 +9,11 @@
  * agrees with the Python ONNX Runtime side of the same export in `reference.json`.
  *
  * Skipped whole-file when the artifacts are absent — a 41 MB checkpoint export is not
- * something a contributor is expected to have on disk by default.
+ * something a contributor is expected to have on disk by default. `VISIONSET_REQUIRE_BROWSER_MODELS=1`
+ * inverts that: in the job whose entire purpose is exercising the real graphs, absent artifacts
+ * are a failure, because a suite that skips itself and exits 0 is indistinguishable from one
+ * that proved something. That flag is the same bargain `tests/browser_models/` strikes on the
+ * Python side, and the same one `VISIONSET_REQUIRE_LOCAL_INFERENCE` strikes one subsystem over.
  */
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
@@ -28,6 +32,9 @@ const REFERENCE_PATH = path.join(ARTIFACTS_DIR, "reference.json");
 
 const HAS_ARTIFACTS =
   existsSync(ENCODER_PATH) && existsSync(DECODER_PATH) && existsSync(REFERENCE_PATH);
+
+const REQUIRE_ENV = "VISIONSET_REQUIRE_BROWSER_MODELS";
+const ARTIFACTS_REQUIRED = process.env[REQUIRE_ENV] === "1";
 
 const MISSING_ARTIFACTS_MESSAGE =
   "model-artifacts/efficientsam-ti/{encoder.onnx,decoder.onnx,reference.json} are not on disk. " +
@@ -89,6 +96,16 @@ function litPixelsTolerance(totalPixels: number): number {
 
 /** Nowhere near the circle (170,192, r=90) or the rectangle ([300,460) x [90,300)). */
 const BACKGROUND_PIXEL: readonly [number, number] = [5, 5];
+
+// Before any `test()` is registered, so this is a file-level collection error rather than a
+// failure inside one test: with the flag set there is no meaningful suite to run at all, and
+// the run should say so once instead of eleven times.
+if (ARTIFACTS_REQUIRED && !HAS_ARTIFACTS) {
+  throw new Error(
+    `${MISSING_ARTIFACTS_MESSAGE}\n\n${REQUIRE_ENV}=1 is set, so missing artifacts are an ` +
+      "error rather than a skip — this is the run that was supposed to build them.",
+  );
+}
 
 test.describe("EfficientSAM-Ti in a real browser", () => {
   test.skip(!HAS_ARTIFACTS, MISSING_ARTIFACTS_MESSAGE);
