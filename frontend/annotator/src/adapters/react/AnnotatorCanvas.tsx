@@ -207,6 +207,7 @@ import {
 } from "../viewport";
 import type { Viewport } from "../viewport";
 import { AnnotationLayer } from "./AnnotationLayer";
+import { createDecodedAssetImage, type DecodedAssetImage } from "./decodedAssetImage";
 import { useAnnotatorSnapshot } from "./hooks";
 import { digitFromCode, isComposing, isTextEntry } from "./keyboard";
 import { classColor, editedId, paintAnnotation, paintSuggestions } from "./paint";
@@ -257,6 +258,14 @@ export interface AnnotatorCanvasProps {
    * individually plausible and uniformly wrong.
    */
   readonly imageSrc: string;
+  /**
+   * The existing rendered image once its exact source has decoded.
+   *
+   * The source is generation-scoped: after `imageSrc` changes, a previously
+   * delivered source refuses pixel reads rather than reading the replacement
+   * through React's reused image node.
+   */
+  readonly onImageReady?: (source: DecodedAssetImage) => void;
   /** The class a drawing gesture will carry. `null` is select mode. */
   readonly activeClass: string | null;
   /**
@@ -488,6 +497,7 @@ const EMPTY_SUGGESTIONS: readonly PaintedSuggestion[] = [];
 export function AnnotatorCanvas({
   store,
   imageSrc,
+  onImageReady,
   activeClass,
   activeTool = null,
   onActivateClass,
@@ -514,6 +524,12 @@ export function AnnotatorCanvas({
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const paneRef = useRef<HTMLDivElement | null>(null);
+  const imageSrcNow = useRef(imageSrc);
+  const imageGeneration = useRef(0);
+  if (imageSrcNow.current !== imageSrc) {
+    imageSrcNow.current = imageSrc;
+    imageGeneration.current += 1;
+  }
 
   // The fallback, built once — see the prop's docstring for why `useState`.
   const [ownClipboard] = useState(createClipboard);
@@ -1465,6 +1481,18 @@ export function AnnotatorCanvas({
         >
           <img
             src={imageSrc}
+            onLoad={(event) => {
+              const image = event.currentTarget;
+              if (imageSrcNow.current !== imageSrc || image.getAttribute("src") !== imageSrc) return;
+              onImageReady?.(
+                createDecodedAssetImage(
+                  image,
+                  imageSrc,
+                  imageGeneration.current,
+                  () => imageGeneration.current,
+                ),
+              );
+            }}
             alt=""
             aria-hidden="true"
             // Named so the pixelated-at-depth rule is asserted against the

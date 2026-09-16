@@ -89,6 +89,22 @@ how it is grown instead.
 > something this browser can do. They are not two spellings of one idea, and neither is
 > derivable from the other.
 
+## The displayed asset is the browser pixel source
+
+`AssetImage` fetches an asset once through the credentialed data client, retains that exact Blob
+only while the asset is mounted, and owns the object URL it gives the existing annotator image.
+The URL is revoked and an unfinished request is aborted when the asset is replaced or unmounted.
+There is no JavaScript Blob cache: revisiting an asset relies on the server's immutable HTTP cache.
+
+The React annotator adapter can report a generation-scoped lease over the same visible decoded
+`<img>`. A future host that needs pixels reads them lazily from that lease, in the asset
+descriptor's coordinate frame, through a canvas RGBA-to-RGB copy. It does not fetch or decode a
+second copy of the asset. A lease refuses after its image source is replaced, which prevents a
+retained reference for one asset from reading pixels of the next asset through a reused DOM node.
+
+This is resource plumbing only. It neither selects a browser model nor exposes an inference
+target; composing pixels with a browser runtime remains a later host decision.
+
 ## Asking for a suggestion is not sending one
 
 `inference/suggestionExecutor.ts` is the seam the runtime above would plug into, and it exists
