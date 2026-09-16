@@ -70,6 +70,12 @@ angles.
 A runtime operation id is not the annotator's suggestion serial. One protects routing, the
 other protects what is on screen, and a correctly routed answer can still be stale.
 
+Because a persistent worker outlives any one operation, and operation ids are never reused,
+the worker cannot afford to remember a `cancel` forever. It tracks only the ids it still owns -
+queued or running - and a `cancel` for anything else, including one that raced a `result` the
+worker already sent, is ignored rather than recorded. Without that bound, an id the worker had
+already finished with would sit in its cancellation set for the rest of the worker's life.
+
 ## Execution policy
 
 The runtime chooses execution providers from a policy and a capability reading, and hands the
@@ -98,11 +104,19 @@ There is no WebGL path. WebNN is out of scope.
 ## Failure has a vocabulary
 
 `InferenceRuntimeError` carries a `code` from a closed union - `unsupported-runtime`,
-`worker-initialization-failed`, `webgpu-unavailable`, `graph-load-failed`,
+`worker-initialization-failed`, `worker-crashed`, `webgpu-unavailable`, `graph-load-failed`,
 `runtime-execution-failed`, `cancelled`, `disposed` - and preserves the original exception as
 `cause`. ONNX Runtime's own message text is diagnostics, never the contract: a caller switches
 on `code`, a developer reads `cause`. Codes cross the worker boundary as strings and are rebuilt
 on the main thread, so a caller cannot tell which side failed, which is the point.
+
+`worker-initialization-failed` and `worker-crashed` are both terminal, and for the same reason:
+each names a failure this worker cannot come back from. A `configure` operation answering with
+an ordinary error reply, or the browser `Worker` itself emitting an `error` event, moves the
+runtime into a permanent failed state - every operation still pending rejects with that same
+error, the worker is stopped, and every later `loadGraph()`/`run()` rejects with it immediately
+and posts nothing. There is no automatic worker restart; recreating one is a caller decision,
+made with a fresh `createInferenceRuntime()` call, not something this package does silently.
 
 ## Build output
 

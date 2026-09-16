@@ -39,7 +39,18 @@ owns three obligations a per-operation worker never has:
   cancellation, late replies and post-disposal traffic safe - there is no second guard, because
   each of them is the same situation seen from a different angle;
 - **disposal settles everything.** Outstanding operations reject rather than hanging, and nothing
-  can resolve afterwards.
+  can resolve afterwards;
+- **a failure the worker cannot come back from must be terminal, not just reported.** A worker
+  that ended with the operation could let its caller start over with a fresh one by construction;
+  a persistent worker that failed silently mid-life and kept accepting new work would hang every
+  later caller instead. A channel-level crash or a `configure` failure moves the runtime into a
+  permanent failed state: everything pending rejects with it, and every later call rejects with
+  the same error immediately, without touching the worker again;
+- **cancellation bookkeeping must not outlive the operation it names.** Operation ids are minted
+  once and never reused for the life of a persistent worker, so remembering a `cancel` after its
+  operation has already finished - which the main thread's `cancel` racing a `result` it already
+  sent will do - would be a permanent, unbounded entry. The worker remembers a cancellation only
+  while it still owns that id.
 
 ## An operation id is not a suggestion serial
 
@@ -71,6 +82,8 @@ other; that is what a host is for.
 - terminating the worker between operations, or spawning one per operation;
 - settling a promise on anything other than an id match;
 - a `cancel` that leaves its caller waiting for the worker to acknowledge it;
+- an automatic worker restart after a terminal failure, silent or otherwise;
+- a worker-side cancellation record that outlives the operation it names;
 - reusing the suggestion serial as a transport identifier, or the reverse;
 - a dependency from this package on `@visionset/ui-core`, `@visionset/annotator` or a UI
   framework;
