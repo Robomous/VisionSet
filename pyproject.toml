@@ -191,6 +191,19 @@ coco = [
     "pycocotools>=2.0",
 ]
 
+# scripts/browser_models/ exports EfficientSAM-Ti to the ONNX graphs the browser worker
+# loads. Its own group beside `yolo` and `coco`, deliberately NOT in `dev`: it brings
+# torch, so it is gigabytes in front of every `uv sync`. `onnxscript` is not optional —
+# torch's `torch.onnx.export` imports it unconditionally, and an environment without it
+# installs everything else and then fails at the first export call.
+browser-models = [
+    "numpy>=2.4.6",
+    "onnx>=1.22.0",
+    "onnxruntime>=1.30.0",
+    "onnxscript>=0.7.2",
+    "torch>=2.14.0",
+]
+
 # --- Version: single source of truth is the repo-root VERSION file ---
 [tool.hatch.version]
 source = "regex"
