@@ -22,23 +22,32 @@ import type { PixelImage, PointPrompt } from "./promptable.js";
  * parity test measures the exported graph rather than re-litigating a tie-break that was
  * never actually specified.
  *
- * There is no `negativeLabel`, and that absence is load-bearing, not an oversight: this
- * model has no negative point. `PromptEncoder._embed_points` in the pinned upstream source
- * adds a learned type embedding only for labels `-1`, `1`, `2` and `3` — its own docstring
- * says "each element is 1,2 or 3" — and label `0`, which is what original SAM uses for a
- * background click, matches none of those `torch.eq` tests. A `0`-labelled point gets a
- * positional encoding and **no type embedding**, so the graph cannot tell it apart from a
- * positive one. Measured on the real exported graph, one extra point at the same location
- * next to a positive-only baseline that lit 25,068 px:
+ * There is no `negativeLabel`, and that absence is load-bearing, not an oversight. Two
+ * separate facts support it, and they are worth keeping apart: what the model *defines*,
+ * and what we *measured* it doing.
+ *
+ * **The contract.** EfficientSAM-Ti defines four point labels, and `0` is not one of them.
+ * `PromptEncoder._embed_points` in the pinned upstream source adds a learned type embedding
+ * only where the label equals `-1` (invalid / padding), `1` (point), `2` (box top-left) or
+ * `3` (box bottom-right); its own docstring says "each element is 1,2 or 3". Label `0` —
+ * what original SAM uses for a background click — matches none of those `torch.eq` tests, so
+ * such a point receives a positional encoding and no polarity embedding at all. The model has
+ * no way to express exclusion. That is a property of the architecture, not a tuning problem,
+ * and not something a different calling convention could recover.
+ *
+ * **What that does in practice.** Measured on the real exported graph, one extra point beside
+ * a positive-only baseline that lit 25,068 px:
  *
  *   - omitted (padding `-1`): 25,068 px lit, IoU 1.0000 — correctly ignored.
- *   - label `0` ("negative"): 57,895 px lit, IoU 0.4318 vs the baseline.
+ *   - label `0`:              57,895 px lit, IoU 0.4318 vs the baseline.
  *   - label `1` (positive):   58,036 px lit, IoU 0.4306 vs the baseline.
  *
- * A "negative" point agrees with a positive one to within 0.24% and *expands* the mask
- * instead of carving a hole in it. Reinterpreting `negative` as background would silently
- * answer the opposite of what was asked, so `requireAnswerablePrompt` refuses any prompt
- * that carries one, and `decoderPrompt` never emits label `0`.
+ * A point sent as a "negative" *expanded* the mask rather than carving a hole in it, landing
+ * within 0.24% of what the same point does when labelled positive. That is an observation and
+ * not a definition: it does not make `0` a positive label — the model defines no meaning for
+ * it — it shows that whatever the untyped embedding contributes, it is not exclusion. Either
+ * reading gives the caller the opposite of what they asked for, so `requireAnswerablePrompt`
+ * refuses any prompt carrying a negative point and `decoderPrompt` never emits label `0`.
  */
 /**
  * Frozen, not only `as const`: this is on the **public** surface (`src/index.ts`), and
@@ -82,8 +91,10 @@ export function requireUsableImage(image: PixelImage): void {
 export function requireAnswerablePrompt(prompt: PointPrompt, width: number, height: number): void {
   if (prompt.negative.length > 0) {
     refuse(
-      "EfficientSAM-Ti has no background point, so a negative point would be read as a " +
-        "positive one; this prompt was refused rather than answered wrongly",
+      "EfficientSAM-Ti defines no negative point: its prompt encoder gives label 0 no " +
+        "polarity embedding, and a point sent as one was measured expanding the mask rather " +
+        "than excluding from it. Refused rather than answered with something that is not " +
+        "the exclusion you asked for.",
     );
   }
   if (prompt.positive.length === 0) {

@@ -83,12 +83,25 @@ is refused outright rather than trimmed to the first six: trimming would answer 
 caller never sent, with nothing to tell them their later points were dropped.
 
 A prompt with even one negative point is refused for a sharper reason than the count.
-EfficientSAM-Ti's prompt encoder has no learned embedding for a background label, so a point
-labelled "negative" is not subtracted from the mask - it reads as another positive one, and
-measured on the exported graph the two are barely distinguishable. Reinterpreting the field would
-answer the opposite of what was asked, so the model refuses any prompt carrying one instead of
-guessing. `PointPrompt.negative` stays on the shared type regardless, as the seam a future model
-with an actual background class reads from.
+EfficientSAM-Ti defines no negative point at all: its prompt encoder assigns a learned type
+embedding to labels `-1`, `1`, `2` and `3`, and nothing to `0`, the label original SAM uses for a
+background click. A point sent as a negative therefore carries no polarity information into the
+graph, and the model has no way to express exclusion. Measured on the exported graph, such a
+point *expanded* the mask rather than carving a hole in it, landing within 0.24% of what the same
+point does labelled positive - which is evidence that the behaviour is not exclusion, not
+evidence that `0` means positive. The model defines no meaning for it either way, so a prompt
+carrying one is refused rather than answered with something that is not what was asked for.
+`PointPrompt.negative` stays on the shared type regardless, as the seam a future model with an
+actual background class reads from.
+
+That refusal is a real limit on what this model can stand in for, and it is worth stating plainly
+rather than leaving to be discovered. VisionSet's server-side `point_suggest` interaction is
+defined in terms of positive *and* negative points; EfficientSAM-Ti supports positive points and
+multi-positive refinement only. It is the engineering model for this phase - the thing that
+proved the export, the worker-resident embedding and the browser execution path are real - and
+not yet a semantically complete replacement for that capability. Which model eventually becomes a
+browser default is a later decision, and negative-point support is one of the criteria it has to
+be made against.
 
 `prompt-rejected` is not only a prompt code: `prepareImage` raises it the same way for an image
 with a non-positive or non-integer width or height, or a byte count that does not match

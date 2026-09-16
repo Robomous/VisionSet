@@ -72,7 +72,7 @@ class Case:
 
 # Coordinates tuned against the real model in the pre-Task-8 spike. Case 1 recovers the
 # circle at 25,068 px against its true area of 25,447; case 2 recovers the rectangle at
-# 33,575 against 33,600. Positive-only: this model has no negative point -- see
+# 33,575 against 33,600. Positive-only: this model defines no negative point -- see
 # `frontend/browser-inference/src/models/efficientSam.ts`'s module docstring.
 CASES: tuple[Case, ...] = (
     Case("one positive, circle", ((170, 192),)),

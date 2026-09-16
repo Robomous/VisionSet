@@ -44,7 +44,7 @@ describe("turning a prompt into what the decoder takes", () => {
       requireAnswerablePrompt({ positive: [[1, 2]], negative: [[3, 4]] }, 100, 100),
     );
     expect(refusal.code).toBe("prompt-rejected");
-    expect(refusal.message).toMatch(/no background point/i);
+    expect(refusal.message).toMatch(/defines no negative point/i);
   });
 
   it("keeps points in the order given, so the conversion is testable by equality", () => {
@@ -101,7 +101,7 @@ describe("refusing a prompt this model cannot be asked", () => {
       ),
     );
     expect(refusal.code).toBe("prompt-rejected");
-    expect(refusal.message).toMatch(/no background point/i);
+    expect(refusal.message).toMatch(/defines no negative point/i);
   });
 
   it("refuses a point that is not on the image, and says which", () => {

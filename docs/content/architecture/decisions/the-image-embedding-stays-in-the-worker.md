@@ -59,12 +59,14 @@ right one, with nothing in the response to say so.
 
 The same refusal, for a sharper reason, applies to any negative point. `PointPrompt` carries a
 `negative` field because a promptable-segmentation model in general can have a background class,
-but EfficientSAM-Ti's prompt encoder does not: it has a learned type embedding for a positive
-point and none for a background one, so a point labelled "negative" is not subtracted from the
-mask - it is read as one more positive point. Sending it anyway, on the grounds that the field
-exists on the type, would answer a question the caller did not ask while looking exactly like an
-answer to the one they did. The model refuses the prompt instead of guessing at what a label the
-graph cannot represent was supposed to mean.
+but EfficientSAM-Ti does not define one: its prompt encoder gives a learned type embedding to
+labels `-1`, `1`, `2` and `3`, and none to `0`. A point sent as a negative arrives carrying no
+polarity at all, and the graph has no way to represent exclusion. What it does instead was
+measured rather than assumed - the mask grew instead of shrinking - which says the behaviour is
+not exclusion without making `0` mean positive; the model assigns it no meaning to read. Sending
+one anyway, on the grounds that the field exists on the type, would answer a question the caller
+did not ask while looking exactly like an answer to the one they did. The model refuses the
+prompt instead of guessing at a label it cannot represent.
 
 ## What this forbids
 
@@ -73,8 +75,10 @@ graph cannot represent was supposed to mean.
 - holding more than one prepared image, until a measurement says a window pays for itself;
 - answering a prompt against a superseded handle with the current image's mask;
 - trimming a prompt to fit the model's point limit instead of refusing it;
-- sending a negative point to a model with no background embedding, on the grounds that the
-  field exists.
+- sending a negative point to a model that defines no negative label, on the grounds that the
+  field exists;
+- presenting EfficientSAM-Ti as a complete replacement for the server's `point_suggest`
+  interaction while it answers only the positive half of it.
 
 ## What would have to change to revisit it
 

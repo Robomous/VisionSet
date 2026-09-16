@@ -20,12 +20,13 @@ export interface PixelImage {
 export interface PointPrompt {
   readonly positive: readonly (readonly [number, number])[];
   /**
-   * Background clicks, for a model that has one. EfficientSAM-Ti does not: its prompt
-   * encoder has no learned embedding for a background label, so this model refuses any
-   * prompt with a non-empty `negative` rather than silently reading it as positive. The
-   * field stays on the shared type anyway — it is the seam a future promptable model with
-   * a real negative point reads from, and dropping it now would make adding one later a
-   * breaking change.
+   * Background clicks, for a model that defines them. EfficientSAM-Ti does not: its prompt
+   * encoder assigns a learned type embedding to labels `-1`, `1`, `2` and `3` and none to
+   * `0`, so a point sent as a negative reaches the graph with no polarity and the model has
+   * no way to express exclusion. It refuses any prompt with a non-empty `negative` rather
+   * than answering with something that is not an exclusion. The field stays on the shared
+   * type anyway — it is the seam a future promptable model with a real negative point reads
+   * from, and dropping it now would make adding one later a breaking change.
    */
   readonly negative: readonly (readonly [number, number])[];
 }
