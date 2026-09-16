@@ -1,5 +1,4 @@
 import type { ExecutionProvider } from "./capabilities.js";
-import type { RuntimeConfiguration } from "./client.js";
 import { InferenceRuntimeError } from "./errors.js";
 import type {
   FromWorker,
@@ -8,6 +7,13 @@ import type {
   WorkerChannel,
   WorkerSuccess,
 } from "./protocol.js";
+
+/** The resolved form of `InferenceRuntimeOptions`, as the worker is configured with it. */
+export interface RuntimeConfiguration {
+  readonly providers: readonly ExecutionProvider[];
+  readonly wasmThreads: number;
+  readonly assetBaseUrl?: string;
+}
 
 interface PendingOperation {
   readonly resolve: (value: unknown) => void;
@@ -56,6 +62,12 @@ function errorOf(reply: Extract<FromWorker, { kind: "error" }>): InferenceRuntim
   return new InferenceRuntimeError(reply.code, reply.message, { cause: reply.detail });
 }
 
+/** The options a `request` call may carry, named once so the two spellings cannot drift. */
+export interface RequestOptions {
+  readonly signal?: AbortSignal;
+  readonly transfer?: readonly unknown[];
+}
+
 /**
  * The correlation and lifecycle core a facade drives to expose a set of operations.
  *
@@ -67,13 +79,7 @@ function errorOf(reply: Extract<FromWorker, { kind: "error" }>): InferenceRuntim
  */
 export interface OperationCore {
   readonly ready: Promise<readonly ExecutionProvider[]>;
-  request<T>(
-    build: (id: OperationId) => ToWorker,
-    options?: {
-      readonly signal?: AbortSignal;
-      readonly transfer?: readonly unknown[];
-    },
-  ): Promise<T>;
+  request<T>(build: (id: OperationId) => ToWorker, options?: RequestOptions): Promise<T>;
   /** Rejects every outstanding operation, releases the worker, and is idempotent. */
   dispose(): void;
 }
@@ -146,10 +152,7 @@ export function createOperationCore(
     stopWorker();
   }
 
-  function request<T>(
-    build: (id: OperationId) => ToWorker,
-    options?: { readonly signal?: AbortSignal; readonly transfer?: readonly unknown[] },
-  ): Promise<T> {
+  function request<T>(build: (id: OperationId) => ToWorker, options?: RequestOptions): Promise<T> {
     if (terminalError !== null) return Promise.reject(terminalError);
     if (disposed) return Promise.reject(new InferenceRuntimeError("disposed"));
     const signal = options?.signal;

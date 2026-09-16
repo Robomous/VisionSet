@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
  * leave no runtime trace; the shape of the list is the point.
  */
 const CORE_SURFACE = [
+  "EFFICIENT_SAM_TI",
   "InferenceRuntimeError",
   "capabilitiesOf",
   "executionProvidersFor",

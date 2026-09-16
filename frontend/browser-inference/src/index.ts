@@ -26,3 +26,12 @@ export { InferenceRuntimeError, isInferenceRuntimeError } from "./errors.js";
 export type { GraphId, RunInputs, RunOutputs, TensorLike } from "./protocol.js";
 
 export type { BrowserInferenceRuntime, InferenceRuntimeOptions } from "./client.js";
+
+export type {
+  PixelImage,
+  PointPrompt,
+  PreparedImage,
+  PromptableSegmentationRuntime,
+  RawSegmentation,
+} from "./models/promptable.js";
+export { EFFICIENT_SAM_TI } from "./models/efficientSam.js";

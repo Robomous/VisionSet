@@ -1,6 +1,9 @@
 import type { ExecutionPolicy, ExecutionProvider } from "./capabilities.js";
 import { createOperationCore } from "./operations.js";
+import type { RuntimeConfiguration } from "./operations.js";
 import type { GraphId, RunInputs, RunOutputs, WorkerChannel } from "./protocol.js";
+
+export type { RuntimeConfiguration } from "./operations.js";
 
 /** What a host chooses when it asks for a runtime. Everything else is derived. */
 export interface InferenceRuntimeOptions {
@@ -11,13 +14,6 @@ export interface InferenceRuntimeOptions {
    * beside the built worker and the worker resolves that location itself, so this is
    * only for a host that would rather serve them from its own origin or a CDN.
    */
-  readonly assetBaseUrl?: string;
-}
-
-/** The resolved form of `InferenceRuntimeOptions`, as the worker is configured with it. */
-export interface RuntimeConfiguration {
-  readonly providers: readonly ExecutionProvider[];
-  readonly wasmThreads: number;
   readonly assetBaseUrl?: string;
 }
 
