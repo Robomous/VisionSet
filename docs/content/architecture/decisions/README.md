@@ -34,3 +34,4 @@ browser runs. They were written together, and they are easiest to read in this o
 | Page | The rule |
 | --- | --- |
 | [The inference worker is persistent](the-inference-worker-is-persistent.md) | One worker outlives every operation, so routing, cancellation and disposal become the runtime's own obligations - and its operation ids are not the editor's suggestion serial. |
+| [The image embedding stays in the worker](the-image-embedding-stays-in-the-worker.md) | An encoded image never crosses the worker boundary, in either direction, and the worker holds exactly one at a time. |
