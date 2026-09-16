@@ -20,7 +20,7 @@
  * cannot answer yet, and it is answered elsewhere, later, by whatever seam the work that needs
  * it earns.
  */
-import type { SuggestionExecutor } from "./suggestionExecutor";
+import type { SuggestionExecutor } from "./suggestionExecutor.js";
 
 /** A model this browser can run a suggestion with, right now. */
 export interface BrowserSuggestionTarget {
