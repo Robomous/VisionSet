@@ -56,6 +56,14 @@ export const EFFICIENT_SAM_TI = Object.freeze({
   maskThreshold: 0,
 } as const);
 
+/**
+ * The value an unused coordinate slot is filled with. Upstream fills an unused coord the
+ * same way it fills an unused label, so this is numerically `EFFICIENT_SAM_TI.paddingLabel`
+ * — but a coordinate is not a label, and naming them separately means a future change to
+ * one cannot silently move the other's fill value.
+ */
+const PADDING_COORDINATE = EFFICIENT_SAM_TI.paddingLabel;
+
 function refuse(message: string): never {
   throw new InferenceRuntimeError("prompt-rejected", message);
 }
@@ -92,6 +100,9 @@ export function requireAnswerablePrompt(prompt: PointPrompt, width: number, heig
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
       refuse(`the positive point at (${x}, ${y}) is not a place`);
     }
+    // Inclusive at both ends, deliberately mirroring the server's `require_points_on_asset`
+    // in `src/visionset/kernel/domain/prediction.py` — not imported, this package stays
+    // VisionSet-free, but the two bounds rules must move together.
     if (x < 0 || x > width || y < 0 || y > height) {
       refuse(
         `the positive point at (${x}, ${y}) is not on this image, which is ${width} by ` +
@@ -116,7 +127,7 @@ export function encoderInput(image: PixelImage): { data: Float32Array; dims: rea
 
 export function decoderPrompt(prompt: PointPrompt): { coords: Float32Array; labels: Float32Array } {
   const { maxPoints, positiveLabel, paddingLabel } = EFFICIENT_SAM_TI;
-  const coords = new Float32Array(maxPoints * 2).fill(paddingLabel);
+  const coords = new Float32Array(maxPoints * 2).fill(PADDING_COORDINATE);
   const labels = new Float32Array(maxPoints).fill(paddingLabel);
   prompt.positive.forEach(([x, y], slot) => {
     coords[slot * 2] = x;

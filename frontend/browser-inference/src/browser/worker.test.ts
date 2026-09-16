@@ -272,6 +272,48 @@ describe("the model operations join the same bookkeeping", () => {
     delete (globalThis as { self?: unknown }).self;
   });
 
+  it("replies to model-suggest with the fake decoder's own width, height, mask and confidence", async () => {
+    const worker = await openWorker();
+    worker.dispatch({ kind: "configure", id: 1, providers: ["wasm"], wasmThreads: 1 });
+    await worker.replyTo(1);
+    worker.dispatch({
+      kind: "model-load",
+      id: 2,
+      encoder: Uint8Array.from([1]),
+      decoder: Uint8Array.from([2]),
+    });
+    await worker.replyTo(2);
+
+    // A 2x1 image, not the 1x1 every other model test in this file uses: with every
+    // fixture square, a reply that transposed width and height, or that answered with
+    // the request's numbers instead of the fake decoder's, would look identical.
+    worker.dispatch({
+      kind: "model-prepare",
+      id: 3,
+      width: 2,
+      height: 1,
+      rgb: Uint8Array.from([1, 2, 3, 4, 5, 6]),
+    });
+    await worker.replyTo(3);
+
+    worker.dispatch({
+      kind: "model-suggest",
+      id: 4,
+      generation: 1,
+      prompt: { positive: [[0, 0]], negative: [] },
+    });
+    const reply = (await worker.replyTo(4)) as Extract<FromWorker, { kind: "segmentation" }>;
+
+    expect(reply.kind).toBe("segmentation");
+    expect(reply.width).toBe(2);
+    expect(reply.height).toBe(1);
+    // The fake decoder's one candidate has exactly one lit logit: `binaryMask` reads it
+    // as pixel 0, and reads past the end of the fake's single-element array for pixel 1,
+    // which is 0 rather than lit.
+    expect([...reply.mask]).toEqual([1, 0]);
+    expect(reply.confidence).toBe(0.75);
+  });
+
   it("drops a model-suggest whose id was cancelled before it ran", async () => {
     const worker = await openWorker();
     worker.dispatch({ kind: "configure", id: 1, providers: ["wasm"], wasmThreads: 1 });

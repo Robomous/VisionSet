@@ -116,7 +116,14 @@ export function createInferenceRuntime(
   return createRuntimeClient(channel, configuration);
 }
 
-/** What a host chooses when it asks for an EfficientSAM-Ti runtime. */
+/**
+ * What a host chooses when it asks for an EfficientSAM-Ti runtime.
+ *
+ * `encoder` and `decoder` must back distinct `ArrayBuffer`s. Both are transferred to the
+ * worker in one call, and the structured-clone algorithm refuses a transfer list that
+ * names the same `ArrayBuffer` twice — passing two `Uint8Array`s that slice the same
+ * underlying buffer throws `DataCloneError`, not a graceful merge.
+ */
 export interface EfficientSamRuntimeOptions extends InferenceRuntimeOptions {
   /** The encoder graph's bytes. Transferred to the worker, and unusable afterwards. */
   readonly encoder: Uint8Array;

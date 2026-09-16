@@ -217,6 +217,12 @@ describe("what the decoder is fed", () => {
     expect([...decoder.lastFeeds.batched_point_labels.dims]).toEqual([1, 1, 6]);
     // Counter-intuitive but graph-declared: the labels are float32, not an integer type.
     expect(decoder.lastFeeds.batched_point_labels.type).toBe("float32");
+    // Dims alone would pass a feed carrying the wrong prompt entirely -- PROMPT's one
+    // positive point must actually reach the coords/labels the decoder is fed.
+    const coords = decoder.lastFeeds.batched_point_coords.data as Float32Array;
+    const labels = decoder.lastFeeds.batched_point_labels.data as Float32Array;
+    expect([coords[0], coords[1]]).toEqual([1, 1]);
+    expect(labels[0]).toBe(1);
   });
 });
 

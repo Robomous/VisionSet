@@ -102,13 +102,26 @@ async function readyRuntime(h: Harness): Promise<void> {
   await tick();
 }
 
-/** Runs `prepareImage` to completion against a hand-delivered `prepared` reply. */
+/**
+ * Runs `prepareImage` to completion against a hand-delivered `prepared` reply.
+ *
+ * The reply's width/height are deliberately offset from the request image's own —
+ * a client that built the returned `PreparedImage` from the request instead of the
+ * worker's reply would still pass every test that calls this helper and never looks at
+ * the result's dimensions, because request and reply used to carry the same numbers.
+ */
 async function prepared(h: Harness, image: PixelImage, generation: number): Promise<PreparedImage> {
   const promise = h.runtime.prepareImage(image);
   await tick();
   const prepareId = h.idsOf("model-prepare").at(-1);
   if (prepareId === undefined) throw new Error("prepareImage did not post model-prepare");
-  h.reply({ kind: "prepared", id: prepareId, generation, width: image.width, height: image.height });
+  h.reply({
+    kind: "prepared",
+    id: prepareId,
+    generation,
+    width: image.width + 1000,
+    height: image.height + 2000,
+  });
   return promise;
 }
 
@@ -133,6 +146,14 @@ describe("asking the worker for a model answer", () => {
     expect(prepareMessage?.transfer).toBeUndefined();
   });
 
+  it("returns the PreparedImage the worker's reply carries, not the request image's own dimensions", async () => {
+    const h = harness();
+    await readyRuntime(h);
+    const image = await prepared(h, validImage(4, 4), 1);
+    expect(image.width).toBe(1004);
+    expect(image.height).toBe(2004);
+  });
+
   it("gives prepare and suggest distinct ids and routes each answer to its own caller", async () => {
     const h = harness();
     await readyRuntime(h);
@@ -148,6 +169,13 @@ describe("asking the worker for a model answer", () => {
     expect(suggestId).toBeDefined();
     expect(secondPrepareId).toBeDefined();
     expect(suggestId).not.toBe(secondPrepareId);
+
+    // The posted message must carry *this* handle's generation (7, from the `prepared`
+    // reply above) — not some other value the client could post without ever consulting
+    // the handle it was actually given.
+    const suggestMessage = h.posted.find((entry) => entry.message.id === suggestId)?.message;
+    expect(suggestMessage?.kind).toBe("model-suggest");
+    expect((suggestMessage as { generation: number }).generation).toBe(7);
 
     // Answer the prepare first; the still-outstanding suggest must not notice.
     h.reply({ kind: "prepared", id: secondPrepareId!, generation: 8, width: 4, height: 4 });

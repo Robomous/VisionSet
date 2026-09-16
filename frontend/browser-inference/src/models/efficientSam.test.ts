@@ -32,6 +32,10 @@ describe("what this model is", () => {
       maskThreshold: 0,
     });
   });
+
+  it("is frozen, so a careless mutation cannot move the validation boundary for every runtime", () => {
+    expect(Object.isFrozen(EFFICIENT_SAM_TI)).toBe(true);
+  });
 });
 
 describe("turning a prompt into what the decoder takes", () => {
@@ -140,19 +144,21 @@ describe("refusing an image this model cannot be given", () => {
 
 describe("the tensor the encoder is handed", () => {
   it("is NCHW, planar, and scaled into 0..1 exactly", () => {
-    // 2x1 image: one red pixel, one mid-grey pixel.
-    const image = { width: 2, height: 1, rgb: new Uint8Array([255, 0, 0, 128, 128, 128]) };
+    // 2x1 image, every one of the 6 bytes a different value, so a plane written to the
+    // wrong offset (or two planes swapped) lands on a value this test does not expect,
+    // rather than on a coincidentally-equal one.
+    const image = { width: 2, height: 1, rgb: new Uint8Array([200, 100, 50, 10, 20, 30]) };
     const { data, dims } = encoderInput(image);
     expect([...dims]).toEqual([1, 3, 1, 2]);
     // `data` is a Float32Array, so the precision here is float32's (~7 decimal digits),
     // not double's — a tighter tolerance would fail on the storage type the interface
     // mandates, not on the scaling arithmetic this test actually checks.
-    expect(data[0]).toBeCloseTo(1, 5); // R(0,0)
-    expect(data[1]).toBeCloseTo(128 / 255, 5); // R(1,0)
-    expect(data[2]).toBeCloseTo(0, 5); // G(0,0)
-    expect(data[3]).toBeCloseTo(128 / 255, 5); // G(1,0)
-    expect(data[4]).toBeCloseTo(0, 5); // B(0,0)
-    expect(data[5]).toBeCloseTo(128 / 255, 5); // B(1,0)
+    expect(data[0]).toBeCloseTo(200 / 255, 5); // R(0,0)
+    expect(data[1]).toBeCloseTo(10 / 255, 5); // R(1,0)
+    expect(data[2]).toBeCloseTo(100 / 255, 5); // G(0,0)
+    expect(data[3]).toBeCloseTo(20 / 255, 5); // G(1,0)
+    expect(data[4]).toBeCloseTo(50 / 255, 5); // B(0,0)
+    expect(data[5]).toBeCloseTo(30 / 255, 5); // B(1,0)
   });
 
   it("does not normalize, because the graph does that itself", () => {

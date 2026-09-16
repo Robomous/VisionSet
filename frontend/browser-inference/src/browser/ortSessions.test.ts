@@ -118,6 +118,10 @@ describe("ortSessions", () => {
     // contents, is the thing this test has to pin — a `.slice()` "fix" would still pass
     // a `toEqual` check and would still allocate 4 MB for nothing.
     expect(outputs.kept!.data).toBe(embeddingData);
+    // `dims` is load-bearing, not decoration: this same `ModelTensor` is fed straight back
+    // as `image_embeddings`, whose shape the decoder graph checks.
+    expect(outputs.kept!.dims).toEqual([1, 4]);
+    expect(outputs.kept!.type).toBe("float32");
   });
 
   it("forwards a ModelTensor's dispose() to the ORT tensor it wraps", async () => {
