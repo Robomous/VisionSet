@@ -94,6 +94,18 @@ docs:
   - ".github/workflows/ci.yml"
   - ".github/path-filters.yml"
 
+# The browser model export and the package that runs what it produces. Both paths
+# already belong to other groups -- `frontend/**` to `frontend`, `scripts/**` to
+# `python` -- and this file says outright that a path may appear in several.
+browser-models:
+  - "frontend/browser-inference/**"
+  - "scripts/browser_models/**"
+  - "tests/browser_models/**"
+  - "pyproject.toml"
+  - "uv.lock"
+  - ".github/workflows/ci.yml"
+  - ".github/path-filters.yml"
+
 # Tracked paths that no job reads, declared so the coverage checker can tell
 # "deliberately inert" apart from "nobody classified this yet". Adding a file
 # here is a claim that changing it cannot break a check — if that stops being
