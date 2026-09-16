@@ -69,6 +69,15 @@ for wanted in \
 done
 echo "@visionset/browser-inference tarball carries its worker, both ORT artifacts, THIRD-PARTY-NOTICES.md and the upstream MIT license text"
 
+# The export pipeline runs entirely outside this package; nothing it produces should
+# ever ride along in the npm tarball. A `.onnx` or `.pt` here would mean the package
+# grew a dependency on a build artifact rather than staying a pure runtime.
+if grep -qE '^package/.*\.(onnx|pt)$' <<<"$inference_listing"; then
+  echo "error: @visionset/browser-inference tarball carries a model artifact" >&2
+  exit 1
+fi
+echo "@visionset/browser-inference tarball carries no model weights"
+
 consumer="$work/consumer"
 mkdir -p "$consumer"
 cd "$consumer"
@@ -143,8 +152,10 @@ import "@visionset/media";
 // Same reasoning, and the reason this package splits its entry points at all: the core
 // entry must evaluate where there is no Worker and no navigator.
 import "@visionset/browser-inference";
+import { EFFICIENT_SAM_TI } from "@visionset/browser-inference";
+if (EFFICIENT_SAM_TI.maxPoints !== 6) throw new Error("core entry lost the model constants");
 console.log(
-  "Node ESM import OK: @visionset/annotator, @visionset/ui-core, @visionset/media (core), @visionset/browser-inference (core)",
+  "Node ESM import OK: @visionset/annotator, @visionset/ui-core, @visionset/media (core), @visionset/browser-inference (core, EFFICIENT_SAM_TI)",
 );
 JS
 node esm-check.mjs
@@ -180,9 +191,20 @@ import type { MediabunnyVideoMaterializer } from "@visionset/media/mediabunny";
 // for the half that starts a worker.
 import type { BrowserInferenceRuntime } from "@visionset/browser-inference";
 import type { createInferenceRuntime } from "@visionset/browser-inference/browser";
+// The model surface: types from the core entry, the runtime factory from `/browser` —
+// same split as `BrowserInferenceRuntime`/`createInferenceRuntime` above, and for the
+// same reason.
+import type {
+  PixelImage, PointPrompt, PreparedImage, PromptableSegmentationRuntime, RawSegmentation,
+} from "@visionset/browser-inference";
+import type { createEfficientSamRuntime } from "@visionset/browser-inference/browser";
 export type { MediabunnyVideoMaterializer, BrowserInferenceRuntime };
 export type CreateInferenceRuntime = typeof createInferenceRuntime;
+export type {
+  PixelImage, PointPrompt, PreparedImage, PromptableSegmentationRuntime, RawSegmentation,
+};
+export type CreateEfficientSamRuntime = typeof createEfficientSamRuntime;
 TS
 
 pnpm exec tsc -p tsconfig.json
-echo "TypeScript consumer resolved @visionset/annotator, @visionset/ui-core, @visionset/media, @visionset/media/mediabunny, @visionset/browser-inference and @visionset/browser-inference/browser under nodenext OK"
+echo "TypeScript consumer resolved @visionset/annotator, @visionset/ui-core, @visionset/media, @visionset/media/mediabunny, @visionset/browser-inference, @visionset/browser-inference/browser and the EfficientSAM model surface under nodenext OK"
