@@ -95,13 +95,18 @@ function fail(id: OperationId, code: InferenceRuntimeErrorCode, error: unknown):
   });
 }
 
+function withTrailingSlash(base: string): string {
+  return base.endsWith("/") ? base : `${base}/`;
+}
+
 /**
  * Where the ORT WebAssembly artifacts are fetched from.
  *
  * Resolved against this module's own URL by default, so the built worker finds the
  * `ort/` directory the build step put beside it and an installed package works with the
  * host serving nothing special. A host that would rather serve them from its own origin
- * passes `assetBaseUrl`; the main thread never guesses this location, because only the
+ * — or whose bundler has moved this worker away from that directory — passes
+ * `assetBaseUrl`; the main thread never guesses this location, because only the
  * worker knows where it was loaded from.
  *
  * The trailing slash is re-applied to the resolved string rather than trusted to the
@@ -110,10 +115,6 @@ function fail(id: OperationId, code: InferenceRuntimeErrorCode, error: unknown):
  * instead of a file inside it — a 404 a dev server answers with an SPA fallback, so the
  * dynamic import receives HTML and every execution provider fails to initialize.
  */
-function withTrailingSlash(base: string): string {
-  return base.endsWith("/") ? base : `${base}/`;
-}
-
 function assetsAt(stated: string | undefined): string {
   if (stated !== undefined && stated !== "") return withTrailingSlash(stated);
   return withTrailingSlash(new URL("./ort/", import.meta.url).href);
