@@ -189,7 +189,8 @@ import { useConnections, usableConnection } from "../data/inferenceQueries";
 import type { SuggestionOut } from "../data/inferenceQueries";
 import { useServerSuggestionExecutor } from "../inference/suggestionExecutor";
 import { useBrowserInferenceRuntime } from "../inference/VisionSetBrowserInferenceProvider.js";
-import type { BrowserSuggestionAssetSource } from "../inference/browserPort.js";
+import type { ActiveSuggestionTarget, BrowserSuggestionAssetSource, BrowserSuggestionTarget } from "../inference/browserPort.js";
+import { computeSuggestBlocker } from "../inference/targetBlocker.js";
 import { readPref, writePref } from "../data/prefs";
 
 /**
@@ -202,6 +203,26 @@ import { readPref, writePref } from "../data/prefs";
  */
 function preferredConnectionKey(projectId: string): string {
   return `suggest.connection.${projectId}`;
+}
+
+/** Where a project's browser-vs-server suggest target is remembered — separate from,
+ * and never overwriting, `preferredConnectionKey`'s server-model preference. */
+function suggestTargetKey(projectId: string): string {
+  return `suggest.target.${projectId}`;
+}
+
+type StoredSuggestTarget = { readonly kind: "server" } | { readonly kind: "browser"; readonly targetId: string };
+
+function readStoredSuggestTarget(projectId: string): StoredSuggestTarget {
+  const raw = readPref(suggestTargetKey(projectId));
+  if (raw !== null && raw.startsWith("browser:")) {
+    return { kind: "browser", targetId: raw.slice("browser:".length) };
+  }
+  return { kind: "server" };
+}
+
+function writeStoredSuggestTarget(projectId: string, target: ActiveSuggestionTarget): void {
+  writePref(suggestTargetKey(projectId), target.kind === "browser" ? `browser:${target.targetId}` : "server");
 }
 
 /**
@@ -958,13 +979,50 @@ function Workspace({
   const [preferredConnection, setPreferredConnection] = useState<string | null>(() =>
     readPref(preferredConnectionKey(projectId)),
   );
-  const { connection, candidates, blocker } = usableConnection(
+  const { connection, candidates, blocker: serverBlocker } = usableConnection(
     connections.data?.items,
     preferredConnection,
   );
-  // Server-only today, and `null` is how "nowhere to send this" arrives — the same fact
-  // `usableConnection`'s blocker states, which is what the panel renders.
-  const executor = useServerSuggestionExecutor(connection?.id ?? null);
+  const serverExecutor = useServerSuggestionExecutor(connection?.id ?? null);
+
+  const [browserTargetsRefreshKey, setBrowserTargetsRefreshKey] = useState(0);
+  const [browserTargets, setBrowserTargets] = useState<readonly BrowserSuggestionTarget[] | undefined>(undefined);
+  useEffect(() => {
+    if (browserRuntime === null) {
+      setBrowserTargets([]);
+      return;
+    }
+    let cancelled = false;
+    setBrowserTargets(undefined);
+    void browserRuntime.listTargets().then((targets) => {
+      if (!cancelled) setBrowserTargets(targets);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [browserRuntime, browserTargetsRefreshKey]);
+
+  const [storedTarget, setStoredTarget] = useState<StoredSuggestTarget>(() => readStoredSuggestTarget(projectId));
+  // A stale/unavailable stored preference (no runtime wired, or the stored target id isn't
+  // ready) falls back to Server silently — the safely-fallback-able case. An *explicit*
+  // choice that later fails is a different thing (surfaced via `blocker`/`refusal`, never
+  // auto-switched), which is why this fallback lives only here, at read time.
+  const activeTarget: ActiveSuggestionTarget =
+    browserRuntime !== null && storedTarget.kind === "browser"
+      ? { kind: "browser", targetId: storedTarget.targetId }
+      : { kind: "server", connectionId: connection?.id ?? "" };
+
+  const blocker = computeSuggestBlocker(activeTarget, serverBlocker, browserTargets);
+  const executor =
+    activeTarget.kind === "browser" && browserRuntime !== null
+      ? browserRuntime.executorFor(activeTarget.targetId)
+      : serverExecutor;
+
+  function chooseTarget(target: ActiveSuggestionTarget): void {
+    setStoredTarget(target.kind === "browser" ? { kind: "browser", targetId: target.targetId } : { kind: "server" });
+    writeStoredSuggestTarget(projectId, target);
+    if (target.kind === "server") setPreferredConnection(connection?.id ?? preferredConnection);
+  }
 
   /**
    * One clock over the wait, read by the canvas and by the panel alike.
@@ -2773,6 +2831,11 @@ function Workspace({
                 // matching while parked — the one reading that has to name it.
                 heldClass={activeClass}
                 blocker={blocker}
+                browserTargets={browserRuntime === null ? undefined : browserTargets}
+                browserAcquisitions={browserRuntime?.listAcquisitions?.()}
+                activeTarget={activeTarget}
+                onChooseTarget={chooseTarget}
+                onAcquired={() => setBrowserTargetsRefreshKey((key) => key + 1)}
                 refusal={suggesting.refusal}
                 candidates={candidates}
                 connectionId={connection?.id ?? null}

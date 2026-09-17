@@ -9,7 +9,7 @@ import {
   VisionSetBrowserInferenceProvider,
 } from "./VisionSetBrowserInferenceProvider";
 import type { BrowserSuggestionAssetSource, VisionSetBrowserInferenceRuntime } from "./browserPort";
-import { clearPrefs } from "../data/prefs";
+import { clearPrefs, writePref } from "../data/prefs";
 import { AnnotationPage } from "../annotator/AnnotationPage";
 import { TooltipProvider } from "@robomous/ui-core";
 import { renderWithData } from "../testing/dataHarness";
@@ -292,6 +292,46 @@ describe("an injected browser runtime changes nothing on the wire", () => {
     unmountSecond();
 
     expect(withRuntime).toEqual(withoutRuntime);
+  });
+});
+
+describe("target selection routes a ready browser target around the server", () => {
+  it("a ready browser target answers suggestions even with no server connections", async () => {
+    connections = [];
+    writePref(`suggest.target.${PROJECT}`, "browser:efficient-sam-ti");
+
+    const browserSuggest = vi.fn().mockResolvedValue({
+      model_ref: "efficient-sam-ti@rev",
+      confidence: 0.9,
+      regions: [{ geometry: { type: "polygon", points: [[0, 0], [1, 0], [1, 1]] }, contour: [] }],
+      applied: { tolerance: 1 },
+      parameters: ["tolerance"],
+    });
+    const runtime: VisionSetBrowserInferenceRuntime = {
+      listTargets: async () => [
+        { id: "efficient-sam-ti", label: "EfficientSAM-Ti", modelRef: "efficient-sam-ti@rev" },
+      ],
+      executorFor: (id) => {
+        expect(id).toBe("efficient-sam-ti");
+        return { suggest: browserSuggest };
+      },
+    };
+
+    const unmount = await open(runtime);
+    await arm();
+
+    // The blocker the panel renders must clear once the browser target reports
+    // ready, even though the server side has nothing — "no-connections" must
+    // never win once the active target isn't asking the server anything.
+    await screen.findByTestId("suggest-idle");
+    expect(screen.queryByTestId("suggest-no-connections")).toBeNull();
+
+    clickCanvas();
+
+    await waitFor(() => expect(browserSuggest).toHaveBeenCalledTimes(1));
+    expect(asks()).toHaveLength(0);
+
+    unmount();
   });
 });
 
