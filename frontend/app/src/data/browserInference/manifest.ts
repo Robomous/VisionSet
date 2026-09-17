@@ -8,6 +8,8 @@ export const MODEL_CDN_BASE_URL: string = (
   (import.meta.env["VITE_MODEL_CDN_BASE_URL"] as string | undefined) ?? "https://models.robomous.ai"
 ).replace(/\/+$/, "");
 
+export const MODEL_REGISTRY_URL = `${MODEL_CDN_BASE_URL}/registry/v1.json`;
+
 export const EFFICIENT_SAM_TI_REVISION = "b19782d049c0-843761ca46f4";
 
 /**
