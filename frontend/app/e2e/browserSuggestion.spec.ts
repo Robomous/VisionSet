@@ -300,21 +300,32 @@ test.describe("browser suggestion", () => {
     test.setTimeout(120_000);
     const sent: Request[] = [];
     const responses: { url: string; bytes: number; milliseconds: number }[] = [];
+    page.on("request", (request) => {
+      if (request.url().startsWith("https://models.robomous.ai/")) {
+        console.info("VISIONSET_LIVE_MODEL_REQUEST", request.url());
+      }
+    });
+    page.on("requestfailed", (request) => {
+      if (request.url().startsWith("https://models.robomous.ai/")) {
+        console.info("VISIONSET_LIVE_MODEL_REQUEST_FAILED", request.url(), request.failure()?.errorText);
+      }
+    });
     page.on("response", async (response) => {
       if (!response.url().startsWith("https://models.robomous.ai/")) return;
+      console.info("VISIONSET_LIVE_MODEL_RESPONSE", response.status(), response.url());
       await response.finished();
+      console.info("VISIONSET_LIVE_MODEL_RESPONSE_FINISHED", response.url());
       const timing = response.request().timing();
       const declaredBytes = Number(response.headers()["content-length"] ?? 0);
       const bytes = declaredBytes > 0 ? declaredBytes : (await response.body()).byteLength;
       responses.push({ url: response.url(), bytes, milliseconds: timing.responseEnd });
     });
-    // Warm Chromium's connection to the public origin with the same registry document the
-    // application will validate. This keeps a one-off DNS/TLS stall from consuming the whole
-    // UI timeout while still exercising the app's own fetch, parser, and admission match below.
-    await page.goto("https://models.robomous.ai/registry/v1.json");
-    await expect(page.locator("body")).toContainText('"schema_version": 1');
     await openJobWithBrowserRuntime(page, sent, true, "live");
     await armSuggestTool(page);
+    // Registry discovery is deliberately asynchronous and does not block the editor. Wait for
+    // its immutable manifest validation before selecting the controlled This device tab; a
+    // machine-speed click before the catalog has any target is intentionally a no-op.
+    await expect.poll(() => responses.some(({ url }) => url.endsWith("/manifest.json"))).toBe(true);
     const coldStarted = Date.now();
     await acquireAndSelectBrowserTarget(page);
     const coldMilliseconds = Date.now() - coldStarted;
