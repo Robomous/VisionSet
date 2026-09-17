@@ -531,6 +531,19 @@ export function AnnotatorCanvas({
     imageGeneration.current += 1;
   }
 
+  // A host switches assets by unmounting this component and mounting a fresh
+  // one for the next asset, not by changing `imageSrc` on a live instance —
+  // so the ordinary generation bump above never runs. Without this, a lease
+  // handed out before teardown still finds its captured generation equal to
+  // `imageGeneration.current` and its detached `<img>` still `complete` with
+  // its old `src` attribute intact, and `readRgb` would hand back the wrong
+  // asset's pixels from a component nothing renders any more.
+  useEffect(() => {
+    return () => {
+      imageGeneration.current += 1;
+    };
+  }, []);
+
   // The fallback, built once — see the prop's docstring for why `useState`.
   const [ownClipboard] = useState(createClipboard);
   const clipboard = hostClipboard ?? ownClipboard;
