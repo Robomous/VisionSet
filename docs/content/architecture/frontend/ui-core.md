@@ -89,6 +89,48 @@ how it is grown instead.
 > something this browser can do. They are not two spellings of one idea, and neither is
 > derivable from the other.
 
+## The displayed asset is the browser pixel source
+
+`AssetImage` fetches an asset once through the credentialed data client, retains that exact Blob
+only while the asset is mounted, and owns the object URL it gives the existing annotator image.
+The URL is revoked and an unfinished request is aborted when the asset is replaced or unmounted.
+There is no JavaScript Blob cache: revisiting an asset relies on the server's immutable HTTP cache.
+
+The React annotator adapter can report a generation-scoped lease over the same visible decoded
+`<img>` — `AnnotatorCanvas`'s `onImageReady`, fired from that image's own `onLoad`. A future host
+that needs pixels reads them lazily from that lease: nothing draws to a canvas or calls
+`getImageData` until a caller asks for `readRgb(width, height)`, in the asset descriptor's
+coordinate frame, and ordinary mounting and display never asks. It does not fetch or decode a
+second copy of the asset, and it does not construct a second `Image` to read from — the element
+handed back is the exact node the person is looking at. A lease refuses after its image source is
+replaced *or* after its owning `AnnotatorCanvas` instance unmounts, which prevents a retained
+reference for one asset from reading pixels of the next asset either through a reused DOM node or
+through the detached one a host's real asset-switch (unmount the old canvas, mount a fresh one)
+leaves behind.
+
+This is resource plumbing only. It neither selects a browser model nor exposes an inference
+target — no capability in this phase lets a host ask for local inference at all; composing pixels
+with a browser runtime remains a later host decision.
+
+**What is proved, and what is not claimed.** `e2e/assetPixels.spec.ts` drives a real Chromium
+against a tiny runtime-generated image and confirms, in that browser, on that image: one content
+request, the same decoded `<img>` handed back as the pixel source, and the exact descriptor-frame
+RGB a real 2D context produced. That is evidence about this seam's wiring, not a claim that a
+browser's canvas decode agrees with the server's own (Pillow) decode byte-for-byte in general —
+this phase changes no server decoding, and takes no position on cross-decoder parity beyond what
+is measured here.
+
+**Measured browser-canvas-vs-Pillow divergence.** A separate, informal comparison against the
+server's `convert("RGB")` decode found three real categories of disagreement: alpha-premultiplication
+rounding loss on partially-transparent pixels, EXIF-orientation auto-rotation (a browser applies an
+image's EXIF orientation when decoding to canvas; the server's direct-bytes decode path does not),
+and AdobeRGB ICC-profile color management (a browser color-manages a tagged profile toward sRGB on
+decode; the server's path does not). None of these are exact figures worth repeating here — they
+are a known limitation, not a benchmark — and no consumer of this lease has yet needed to reconcile
+them, since nothing in this phase reads pixels for inference. A future phase that feeds this lease's
+`readRgb` output to a model must account for these divergences before treating browser-decoded
+pixels as equivalent to the server's own decode of the same asset.
+
 ## Asking for a suggestion is not sending one
 
 `inference/suggestionExecutor.ts` is the seam the runtime above would plug into, and it exists

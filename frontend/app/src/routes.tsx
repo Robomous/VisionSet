@@ -30,7 +30,9 @@
  * The benchmark keeps its query parameter (`/demo?scene=bench`) rather than
  * gaining a route: it is an instrument, its recorded numbers were taken against
  * that exact page, and moving it would change what it measures for no reason
- * anybody asked for.
+ * anybody asked for. `e2e/assetPixels.spec.ts`'s fixture rides the same route
+ * behind `/demo?scene=asset-pixels`, for the same reason: test-only, not linked
+ * from the product, so it earns no route of its own either.
  *
  * ## Every route has a screen
  *
@@ -59,6 +61,7 @@ import { Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from
 import type { JSX } from "react";
 
 import { AnnotatorDemo } from "./demo/AnnotatorDemo";
+import { AssetPixelsFixture } from "./demo/AssetPixelsFixture";
 import { BenchmarkHost } from "./demo/BenchmarkHost";
 import { ShowcaseFrame } from "./demo/ShowcaseFrame";
 import { AppShell, FullBleedPane, PaddedPane, ProjectPane } from "./shell/AppShell";
@@ -139,10 +142,15 @@ export function AppRoutes(): JSX.Element {
   );
 }
 
-/** The showcase, and the benchmark behind its query parameter. */
+/**
+ * The showcase, the benchmark and the asset-pixels test fixture, each behind
+ * its own `scene` query value.
+ */
 function Showcase(): JSX.Element {
   const [query] = useSearchParams();
-  const bench = query.get("scene") === "bench";
+  const scene = query.get("scene");
+  if (scene === "asset-pixels") return <AssetPixelsFixture />;
+  const bench = scene === "bench";
   return (
     <ShowcaseFrame bench={bench}>
       {bench ? <BenchmarkHost wirePane={query.get("chrome") === "wire"} /> : <AnnotatorDemo />}

@@ -33,9 +33,14 @@ export interface AssetImageProps {
   readonly children: (src: string) => ReactNode;
 }
 
+interface AssetImageResource {
+  readonly src: string;
+  readonly blob: Blob;
+}
+
 export function AssetImage({ projectId, assetId, children }: AssetImageProps): JSX.Element {
   const client = useApiClient();
-  const [src, setSrc] = useState<string | null>(null);
+  const [resource, setResource] = useState<AssetImageResource | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -46,7 +51,7 @@ export function AssetImage({ projectId, assetId, children }: AssetImageProps): J
     // running to completion (#572).
     const controller = new AbortController();
     let objectUrl: string | null = null;
-    setSrc(null);
+    setResource(null);
     setFailed(false);
 
     void (async () => {
@@ -63,8 +68,9 @@ export function AssetImage({ projectId, assetId, children }: AssetImageProps): J
           setFailed(true);
           return;
         }
-        objectUrl = URL.createObjectURL(result.data as unknown as Blob);
-        setSrc(objectUrl);
+        const blob = result.data as unknown as Blob;
+        objectUrl = URL.createObjectURL(blob);
+        setResource({ src: objectUrl, blob });
       } catch {
         // The abort lands here by design. Anything else is a network that
         // died, which the error state answers better than an eternal skeleton.
@@ -92,9 +98,9 @@ export function AssetImage({ projectId, assetId, children }: AssetImageProps): J
     );
   }
 
-  if (src === null) {
+  if (resource === null) {
     return <div data-testid="asset-image-loading" className="size-full animate-pulse bg-muted/10" />;
   }
 
-  return <>{children(src)}</>;
+  return <>{children(resource.src)}</>;
 }

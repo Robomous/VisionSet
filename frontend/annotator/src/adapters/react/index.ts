@@ -12,6 +12,7 @@ export {
   type AnnotatorCanvasProps,
   type AnnotatorView,
 } from "./AnnotatorCanvas";
+export type { DecodedAssetImage, RgbPixels } from "./decodedAssetImage";
 export {
   useAnnotatorSnapshot,
   useAnnotatorStore,
