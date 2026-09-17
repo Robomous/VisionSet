@@ -1,22 +1,28 @@
 #!/bin/sh
-# Start the Vite dev server for the compose dev stack, with annotator, media and
-# ui-core rebuilding as they are edited. No install: docker/app.Dockerfile already did it.
+# Start the Vite dev server for the compose dev stack, with browser-inference, annotator,
+# media and ui-core rebuilding as they are edited. No install: docker/app.Dockerfile already
+# did it.
 set -eu
 
-# All three libraries are consumed through their `dist/`, so vite cannot resolve them
+# All four libraries are consumed through their `dist/`, so vite cannot resolve them
 # from source. A blocking build first, because a watcher's first pass is asynchronous and
 # vite would race an empty `dist/`. Topological order matters here (unlike the watch
 # below): ui-core imports @visionset/media, so media must build before ui-core does. The
 # app itself is not built: nothing in dev reads it.
-echo "app-dev: building @visionset/annotator, @visionset/media and @visionset/ui-core"
-pnpm --filter @visionset/annotator --filter @visionset/media --filter @visionset/ui-core build
+# browser-inference also has to build before Vite starts: its ORT artifact directory is
+# served by frontend/app/vite.config.ts rather than being copied into this source tree.
+echo "app-dev: building @visionset/browser-inference, @visionset/annotator, @visionset/media and @visionset/ui-core"
+pnpm --filter @visionset/browser-inference --filter @visionset/annotator --filter @visionset/media --filter @visionset/ui-core build
 
 # tsup's watcher is chokidar underneath, so it already honours CHOKIDAR_USEPOLLING from
-# compose.yaml — no polling flags to pass here, unlike tsc before #839. `--watch` alone;
-# tsup accepts no `--preserveWatchOutput`/`--watchFile`/`--watchDirectory` (those were
-# tsc's) and rejects unknown flags outright.
-echo "app-dev: starting watch builds for annotator + media + ui-core"
-pnpm --filter @visionset/annotator --filter @visionset/media --filter @visionset/ui-core --parallel run build --watch &
+# compose.yaml — no polling flags to pass here, unlike tsc before #839. Every package's
+# regular build uses `clean: true`, which is correct for the blocking build above but
+# wrong for a long-lived watcher: Vite may resolve a library between its clean and emit,
+# or read browser-inference's ORT directory before its copy script restores it. Watch
+# tsup directly with cleaning disabled. The blocking build provides a clean output and
+# browser-inference's immutable ORT assets only change when its configuration is rebuilt.
+echo "app-dev: starting watch builds for browser-inference + annotator + media + ui-core"
+pnpm --filter @visionset/browser-inference --filter @visionset/annotator --filter @visionset/media --filter @visionset/ui-core --parallel exec tsup --watch --clean=false &
 WATCH_PID=$!
 
 # Backgrounded rather than `exec`, so this shell stays PID 1 and keeps the trap.

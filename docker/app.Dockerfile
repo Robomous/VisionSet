@@ -19,6 +19,7 @@ WORKDIR /workspace
 # Manifests and lockfile only, so a source edit does not re-run the install.
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY frontend/annotator/package.json ./frontend/annotator/
+COPY frontend/browser-inference/package.json ./frontend/browser-inference/
 COPY frontend/ui-core/package.json ./frontend/ui-core/
 COPY frontend/media/package.json ./frontend/media/
 COPY frontend/app/package.json ./frontend/app/
@@ -37,8 +38,12 @@ RUN --mount=type=cache,target=/pnpm-store \
 # purpose (Playwright, which this image never runs). tsup.config.ts is required too:
 # app-dev.sh builds these packages with tsup (#839), and it reads no CLI entry, so
 # without the config file on disk it fails with "No input files". ui-core imports
-# @visionset/media (#847), so it needs the same treatment.
+# @visionset/media (#847), and app's Vite configuration reads the ORT assets that
+# @visionset/browser-inference emits, so both need the same treatment.
 COPY frontend/annotator/tsconfig*.json frontend/annotator/tsup.config.ts ./frontend/annotator/
+COPY frontend/browser-inference/tsconfig*.json frontend/browser-inference/tsup.config.ts ./frontend/browser-inference/
+COPY frontend/browser-inference/scripts ./frontend/browser-inference/scripts
+COPY frontend/browser-inference/src ./frontend/browser-inference/src
 COPY frontend/ui-core/tsconfig*.json frontend/ui-core/tsup.config.ts ./frontend/ui-core/
 COPY frontend/media/tsconfig*.json frontend/media/tsup.config.ts ./frontend/media/
 COPY frontend/app/tsconfig.json frontend/app/vite.config.ts frontend/app/index.html ./frontend/app/
