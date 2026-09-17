@@ -16,11 +16,25 @@ function artifactUrl(path: string): string {
 // wider `Uint8Array<ArrayBufferLike>`) — TypeScript 6's `lib.dom.d.ts` types
 // `crypto.subtle.digest`'s `BufferSource` parameter as requiring the concrete
 // `ArrayBuffer` variant.
-async function sha256Hex(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
+export async function sha256Hex(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
+}
+
+export async function verifyArtifact(
+  bytes: Uint8Array<ArrayBuffer>,
+  expected: { readonly bytes: number; readonly sha256: string },
+  subject = "artifact",
+): Promise<void> {
+  if (bytes.byteLength !== expected.bytes) {
+    throw new Error(`${subject} size mismatch: got ${bytes.byteLength} bytes, expected ${expected.bytes}`);
+  }
+  const digest = await sha256Hex(bytes);
+  if (digest !== expected.sha256) {
+    throw new Error(`${subject} SHA-256 mismatch: got ${digest}, expected ${expected.sha256}`);
+  }
 }
 
 export async function fetchVerified(
@@ -31,13 +45,7 @@ export async function fetchVerified(
   const response = await fetch(url, { signal });
   if (!response.ok) throw new Error(`artifact fetch failed: ${response.status} ${response.statusText}`);
   const bytes = new Uint8Array(await response.arrayBuffer());
-  if (bytes.byteLength !== expected.bytes) {
-    throw new Error(`artifact size mismatch for ${url}: got ${bytes.byteLength} bytes, expected ${expected.bytes}`);
-  }
-  const digest = await sha256Hex(bytes);
-  if (digest !== expected.sha256) {
-    throw new Error(`artifact SHA-256 mismatch for ${url}: got ${digest}, expected ${expected.sha256}`);
-  }
+  await verifyArtifact(bytes, expected, `artifact ${url}`);
   return bytes;
 }
 
