@@ -1056,12 +1056,14 @@ function Workspace({
   const blocker = computeSuggestBlocker(activeTarget, serverBlocker, browserTargets);
   // `executorFor` throws for a target that isn't actually ready yet — which is exactly the
   // state selecting "This device" starts in, before a download ever completes — so this must
-  // check readiness itself rather than trust `browserRuntime !== null` alone. `null` here is
-  // this file's existing "nothing to send through" convention, already handled by
-  // `suggestAt`'s guard.
+  // check readiness itself rather than trust `browserRuntime !== null` alone. Derived from
+  // `blocker` rather than re-deriving "is this target in `browserTargets`" a second time:
+  // `computeSuggestBlocker`'s browser case is exactly that check, and re-spelling it here
+  // would let this guard and that one silently drift apart. `null` here is this file's
+  // existing "nothing to send through" convention, already handled by `suggestAt`'s guard.
   const executor: SuggestionExecutor | null =
     activeTarget.kind === "browser"
-      ? browserRuntime !== null && browserTargets?.some((row) => row.id === activeTarget.targetId) === true
+      ? browserRuntime !== null && blocker === null
         ? browserRuntime.executorFor(activeTarget.targetId)
         : null
       : serverExecutor;

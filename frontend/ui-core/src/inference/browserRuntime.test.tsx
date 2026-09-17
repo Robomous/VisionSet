@@ -382,16 +382,33 @@ describe("executor selection never calls executorFor on an unready browser targe
     const unmount = await open(runtime);
     await arm();
 
+    // Wait for the server tab's own connection to resolve to the ready one `beforeEach`
+    // seeds (`connectionRow()`), so the assertion below is a real proof that a click
+    // doesn't fall through to a genuinely usable server executor — not a false negative
+    // from `serverExecutor` merely being null too, for an unrelated reason (still loading,
+    // or no connection at all). `suggest-idle` only renders once the server tab's blocker
+    // clears, which is exactly that resolution.
+    await screen.findByTestId("suggest-idle");
+
     // This click sets `activeTarget` to `{kind: "browser", targetId: "efficient-sam-ti"}`
     // while `browserTargets` is still `[]` — the exact unready state that used to throw
     // during render. A throw here would fail this test on its own, uncaught.
     await userEvent.click(screen.getByTestId("suggest-target-browser"));
     await screen.findByTestId("suggest-device-section");
     expect(screen.queryByTestId("suggest-panel")).not.toBeNull();
+    // The user-facing outcome this whole guard exists for: the tab lands on the actual
+    // Download control rather than a blank or crashed panel.
+    expect(screen.queryByTestId("suggest-device-acquire-efficient-sam-ti")).not.toBeNull();
 
     // With no ready executor, a click on the canvas must be a silent no-op rather than
-    // falling through to the server executor.
+    // falling through to the server executor — which is genuinely non-null here (the
+    // resolved connection above), so this assertion is a real proof, not a false
+    // negative from nothing being available to fall through to. The flush lets a
+    // wrongly-dispatched `mutateAsync` actually reach `sent` before we check — a bare
+    // synchronous check right after `clickCanvas()` would pass even with a fallthrough
+    // bug present, since the fetch is dispatched a tick later.
     clickCanvas();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(asks()).toHaveLength(0);
 
     unmount();
