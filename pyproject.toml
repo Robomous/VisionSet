@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 # setup-uv reads this before falling back to its mutable remote version manifest.
 # An exact version keeps every CI job on the reviewed tool release and removes that
 # metadata fetch from the setup path.
-required-version = "==0.9.17"
+required-version = "==0.12.3"
 
 [project]
 name = "visionset"

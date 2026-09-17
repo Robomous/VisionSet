@@ -19,4 +19,9 @@ test("the repository declares an exact uv version for setup-uv", () => {
     requiredVersion,
     "pyproject.toml must declare an exact [tool.uv] required-version so setup-uv does not resolve latest",
   );
+  assert.equal(
+    requiredVersion[1],
+    "0.12.3",
+    "the required version must match the uv version in the repository's container images",
+  );
 });
