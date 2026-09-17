@@ -760,4 +760,54 @@ describe("this device, once a browser runtime is wired", () => {
     expect(screen.getByRole("alert").textContent).toContain("Download failed");
     expect(button).toHaveProperty("disabled", false);
   });
+
+  it("reaches the This device tab's own download button even though the server side is not-ready (#Task-13 regression)", () => {
+    // The real combination `AnnotationPage` produces once "This device" is
+    // selected and the model has not been acquired: `computeSuggestBlocker`
+    // answers "not-ready" for the *server* side of things (Task 2's rule), and
+    // that answer must never blank the whole panel out from under a tab the
+    // person just chose — it was doing exactly that before this fix, because
+    // the old top-level `blocker !== null` early return fired regardless of
+    // which target was active and replaced the entire `Tabs` tree.
+    const acquire = vi.fn().mockResolvedValue(undefined);
+    render(
+      mount({
+        browserTargets: [],
+        browserAcquisitions: [acquisition({ acquire })],
+        activeTarget: { kind: "browser", targetId: "efficient-sam-ti" },
+        onChooseTarget: vi.fn(),
+        blocker: "not-ready",
+      }),
+    );
+
+    expect(screen.getByTestId("suggest-target-server")).toBeTruthy();
+    expect(screen.getByTestId("suggest-target-browser")).toBeTruthy();
+    const button = screen.getByTestId("suggest-device-acquire-efficient-sam-ti");
+    expect(button).toHaveProperty("disabled", false);
+
+    fireEvent.click(button);
+    expect(acquire).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the server tab's own blocker without hiding the This device tab", async () => {
+    const onChooseTarget = vi.fn();
+    const user = userEvent.setup();
+    render(
+      mount({
+        browserTargets: [READY],
+        browserAcquisitions: [],
+        activeTarget: { kind: "server", connectionId: "" },
+        onChooseTarget,
+        blocker: "no-connections",
+      }),
+    );
+
+    expect(screen.getByTestId("suggest-no-connections")).toBeTruthy();
+    expect(screen.queryByTestId("suggest-connection")).toBeNull();
+
+    const browserTab = screen.getByTestId("suggest-target-browser");
+    expect(browserTab).toBeTruthy();
+    await user.click(browserTab);
+    expect(onChooseTarget).toHaveBeenCalledWith({ kind: "browser", targetId: READY.id });
+  });
 });

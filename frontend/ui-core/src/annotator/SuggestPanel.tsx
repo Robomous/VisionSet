@@ -274,7 +274,19 @@ export function SuggestPanel({
 
   // The blocker outranks everything else: a session over a workspace with no
   // usable connection has nothing to report about a request it never made.
-  if (blocker !== null && blocker !== undefined) {
+  //
+  // Only when no browser runtime is wired at all. Once one is, a server-side
+  // blocker (typically "not-ready" for a browser target still sitting in
+  // `browserAcquisitions`) is a fact about the *server* tab, not the whole
+  // panel — the panel still has a working "This device" tab to offer, and
+  // this early return must not hide it. See `TargetChooser`, which renders
+  // this same `BLOCKER_COPY` message scoped to its server tab instead.
+  if (
+    browserTargets === undefined &&
+    browserAcquisitions === undefined &&
+    blocker !== null &&
+    blocker !== undefined
+  ) {
     const copy = BLOCKER_COPY[blocker];
     return (
       <EditorNotice
@@ -288,23 +300,7 @@ export function SuggestPanel({
           )
         }
       >
-        <p className="font-medium text-foreground" data-testid={`suggest-${blocker}`}>
-          {copy.title}
-        </p>
-        <p className="text-muted-foreground">{copy.body}</p>
-        {/* The action's *destination* is the host's, so its absence removes the
-            control and leaves the explanation — never a dead button. */}
-        {copy.action !== null && onConfigure !== undefined && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-1 self-start"
-            data-testid="suggest-configure"
-            onClick={onConfigure}
-          >
-            {copy.action}
-          </Button>
-        )}
+        <BlockedMessage blocker={blocker} {...(onConfigure === undefined ? {} : { onConfigure })} />
       </EditorNotice>
     );
   }
@@ -464,6 +460,8 @@ export function SuggestPanel({
           activeTarget={activeTarget}
           {...(onChooseTarget === undefined ? {} : { onChooseTarget })}
           {...(onAcquired === undefined ? {} : { onAcquired })}
+          blocker={blocker ?? null}
+          {...(onConfigure === undefined ? {} : { onConfigure })}
         />
       )}
     </EditorNotice>
@@ -534,7 +532,14 @@ function Through({
  * runtime exists, so a segmented control reads better than a `Select` built for
  * an open-ended candidate list. The server tab holds exactly what rendered
  * before this component existed — `Through`/`Discard`, untouched — so choosing
- * "Server" is never a behavior change from the pre-Task-6 panel.
+ * "Server" is never a behavior change from the pre-Task-6 panel, *except* that
+ * a server-side `blocker` now renders inside this tab rather than replacing
+ * the whole card: `computeSuggestBlocker` answers "not-ready" for a browser
+ * target that has not been acquired yet, and that answer must never hide the
+ * "This device" tab's own download control (the bug this component's second
+ * revision exists to fix — a person who picked "This device" could never
+ * reach `DeviceTab`'s button, because picking it made `blocker` fire and blank
+ * the whole panel out from under the tabs).
  */
 function TargetChooser({
   candidates,
@@ -547,6 +552,8 @@ function TargetChooser({
   activeTarget,
   onChooseTarget,
   onAcquired,
+  blocker,
+  onConfigure,
 }: {
   readonly candidates: readonly Connection[];
   readonly connectionId: string | null;
@@ -558,6 +565,8 @@ function TargetChooser({
   readonly activeTarget: ActiveSuggestionTarget | undefined;
   readonly onChooseTarget?: (target: ActiveSuggestionTarget) => void;
   readonly onAcquired?: () => void;
+  readonly blocker: SuggestBlocker | null;
+  readonly onConfigure?: () => void;
 }): JSX.Element {
   const value = activeTarget?.kind ?? "server";
 
@@ -584,15 +593,27 @@ function TargetChooser({
         </TabsTrigger>
       </TabsList>
       <TabsContent value="server">
-        {!pending && (
-          <Through
-            candidates={candidates}
-            connectionId={connectionId}
-            {...(onChoose === undefined ? {} : { onChoose })}
-          />
+        {blocker !== null ? (
+          <BlockedMessage blocker={blocker} {...(onConfigure === undefined ? {} : { onConfigure })} />
+        ) : (
+          <>
+            {!pending && (
+              <Through
+                candidates={candidates}
+                connectionId={connectionId}
+                {...(onChoose === undefined ? {} : { onChoose })}
+              />
+            )}
+            {pending && <Discard onDiscard={onDiscard} />}
+          </>
         )}
-        {pending && <Discard onDiscard={onDiscard} />}
       </TabsContent>
+      {/*
+        Never gated on `blocker` — a server-side "not-ready"/"no-connections"
+        is a fact about the server tab and says nothing about whether this
+        device can run something. `DeviceTab` reads only `browserTargets`/
+        `browserAcquisitions`, which is its own, independent readiness.
+      */}
       <TabsContent value="browser" data-testid="suggest-device-section">
         <DeviceTab
           targets={browserTargets}
@@ -601,6 +622,38 @@ function TargetChooser({
         />
       </TabsContent>
     </Tabs>
+  );
+}
+
+/** The blocker copy, wherever it is read: the whole card once, or scoped to one tab. */
+function BlockedMessage({
+  blocker,
+  onConfigure,
+}: {
+  readonly blocker: SuggestBlocker;
+  readonly onConfigure?: () => void;
+}): JSX.Element {
+  const copy = BLOCKER_COPY[blocker];
+  return (
+    <>
+      <p className="font-medium text-foreground" data-testid={`suggest-${blocker}`}>
+        {copy.title}
+      </p>
+      <p className="text-muted-foreground">{copy.body}</p>
+      {/* The action's *destination* is the host's, so its absence removes the
+          control and leaves the explanation — never a dead button. */}
+      {copy.action !== null && onConfigure !== undefined && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-1 self-start"
+          data-testid="suggest-configure"
+          onClick={onConfigure}
+        >
+          {copy.action}
+        </Button>
+      )}
+    </>
   );
 }
 
