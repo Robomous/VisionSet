@@ -30,7 +30,12 @@
  * with the server's Python and pinned to it by a fixture.
  */
 import { shapesFromMask } from "@visionset/annotator";
-import type { PreparedImage, PromptableSegmentationRuntime } from "@visionset/browser-inference";
+import { isInferenceRuntimeError } from "@visionset/browser-inference";
+import type {
+  InferenceRuntimeErrorCode,
+  PreparedImage,
+  PromptableSegmentationRuntime,
+} from "@visionset/browser-inference";
 import { ApiError } from "@visionset/ui-core";
 import type {
   BrowserSuggestionAssetSource,
@@ -45,6 +50,47 @@ interface Deps {
   readonly runtime: PromptableSegmentationRuntime;
   /** Read afresh at every await point — this is what makes the staleness checks mean anything. */
   readonly getActiveSource: () => BrowserSuggestionAssetSource | null;
+}
+
+/**
+ * Every refusal this executor raises is an `ApiError`, because `refusalProse` stamps
+ * anything else `NETWORK_ERROR` — and "the server could not be reached" is a lie about a
+ * failure that never left the tab. The codes below are this file's own, matched by
+ * `REFUSAL_PROSE` entries in `ui-core`.
+ */
+const ASSET_CHANGED = "BROWSER_ASSET_CHANGED";
+const INFERENCE_UNAVAILABLE = "BROWSER_INFERENCE_UNAVAILABLE";
+const INFERENCE_FAILED = "BROWSER_INFERENCE_FAILED";
+
+/**
+ * Which refusal each of the runtime's own failures becomes.
+ *
+ * Exhaustive over the closed `InferenceRuntimeErrorCode` union on purpose: a code added
+ * to the package stops compiling here until somebody decides what a person should be
+ * told about it, rather than falling into a generic bucket by default.
+ *
+ * The split is between "this device cannot run the model" — a dead end for the session,
+ * where the honest remedy is Server — and "this ask did not work", which a second click
+ * may well answer. `image-superseded` is neither: it is the runtime saying the embedding
+ * it held has been replaced, which is the same fact as the staleness checks below.
+ */
+const REFUSAL_FOR: Readonly<Record<InferenceRuntimeErrorCode, string>> = {
+  "unsupported-runtime": INFERENCE_UNAVAILABLE,
+  "worker-initialization-failed": INFERENCE_UNAVAILABLE,
+  "worker-crashed": INFERENCE_UNAVAILABLE,
+  "webgpu-unavailable": INFERENCE_UNAVAILABLE,
+  "graph-load-failed": INFERENCE_UNAVAILABLE,
+  disposed: INFERENCE_UNAVAILABLE,
+  "runtime-execution-failed": INFERENCE_FAILED,
+  "prompt-rejected": INFERENCE_FAILED,
+  cancelled: INFERENCE_FAILED,
+  "image-superseded": ASSET_CHANGED,
+};
+
+/** The runtime's own error as a refusal, or anything else untouched. */
+function asRefusal(error: unknown): unknown {
+  if (!isInferenceRuntimeError(error)) return error;
+  return new ApiError({ code: REFUSAL_FOR[error.code], message: error.message });
 }
 
 export function createBrowserSuggestionExecutor(deps: Deps): SuggestionExecutor {
@@ -74,7 +120,10 @@ export function createBrowserSuggestionExecutor(deps: Deps): SuggestionExecutor 
 
       const source = deps.getActiveSource();
       if (source === null || source.assetId !== request.assetId) {
-        throw new Error(`no active browser asset source for asset ${request.assetId}`);
+        throw new ApiError({
+          code: ASSET_CHANGED,
+          message: `no active browser asset source for asset ${request.assetId}`,
+        });
       }
 
       let preparing: Promise<PreparedImage>;
@@ -105,17 +154,33 @@ export function createBrowserSuggestionExecutor(deps: Deps): SuggestionExecutor 
         currentPrepared = started;
         preparing = started;
       }
-      const preparedImage = await preparing;
+      let preparedImage: PreparedImage;
+      try {
+        preparedImage = await preparing;
+      } catch (error) {
+        throw asRefusal(error);
+      }
       if (deps.getActiveSource() !== source) {
-        throw new Error("the active asset changed while this device was preparing the image");
+        throw new ApiError({
+          code: ASSET_CHANGED,
+          message: "the active asset changed while this device was preparing the image",
+        });
       }
 
-      const raw = await deps.runtime.suggest(preparedImage, {
-        positive: request.positive,
-        negative: [],
-      });
+      let raw;
+      try {
+        raw = await deps.runtime.suggest(preparedImage, {
+          positive: request.positive,
+          negative: [],
+        });
+      } catch (error) {
+        throw asRefusal(error);
+      }
       if (deps.getActiveSource() !== source) {
-        throw new Error("the active asset changed while this device was answering");
+        throw new ApiError({
+          code: ASSET_CHANGED,
+          message: "the active asset changed while this device was answering",
+        });
       }
 
       const shapes = shapesFromMask(
