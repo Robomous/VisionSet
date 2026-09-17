@@ -810,4 +810,73 @@ describe("this device, once a browser runtime is wired", () => {
     await user.click(browserTab);
     expect(onChooseTarget).toHaveBeenCalledWith({ kind: "browser", targetId: READY.id });
   });
+
+  it("drops the idle invitation to click when the server tab it names is blocked", () => {
+    // "Click the thing you want" is a promise about the *active* tab. With the
+    // server tab active and blocked, that promise is false, and it would read
+    // directly above the sentence explaining why a click will not work.
+    render(
+      mount({
+        browserTargets: [READY],
+        browserAcquisitions: [],
+        activeTarget: { kind: "server", connectionId: "" },
+        onChooseTarget: vi.fn(),
+        blocker: "no-connections",
+      }),
+    );
+
+    expect(screen.queryByTestId("suggest-idle")).toBeNull();
+    expect(screen.getByTestId("suggest-no-connections")).toBeTruthy();
+  });
+
+  it("keeps the idle invitation when the browser tab is active, whatever the server blocker says", () => {
+    // The server's blocker is a fact about the server tab, not about whether
+    // this device can answer a click — the browser tab may be perfectly ready.
+    render(
+      mount({
+        browserTargets: [READY],
+        browserAcquisitions: [],
+        activeTarget: { kind: "browser", targetId: READY.id },
+        onChooseTarget: vi.fn(),
+        blocker: "no-connections",
+      }),
+    );
+
+    expect(screen.getByTestId("suggest-idle")).toBeTruthy();
+  });
+
+  it("draws the warn icon inline with a warn-tone blocker on the server tab", () => {
+    render(
+      mount({
+        browserTargets: [READY],
+        browserAcquisitions: [],
+        activeTarget: { kind: "server", connectionId: "" },
+        onChooseTarget: vi.fn(),
+        blocker: "not-capable",
+      }),
+    );
+
+    const title = screen.getByTestId("suggest-not-capable");
+    const svg = title.querySelector("svg");
+    expect(svg).toBeTruthy();
+    // The spinning icon is the calm-tone one; a warn-tone blocker must not draw it.
+    expect(svg?.classList.contains("animate-spin")).toBe(false);
+  });
+
+  it("draws the calm spinner inline with a calm-tone blocker on the server tab", () => {
+    render(
+      mount({
+        browserTargets: [READY],
+        browserAcquisitions: [],
+        activeTarget: { kind: "server", connectionId: "" },
+        onChooseTarget: vi.fn(),
+        blocker: "checking",
+      }),
+    );
+
+    const title = screen.getByTestId("suggest-checking");
+    const svg = title.querySelector("svg");
+    expect(svg).toBeTruthy();
+    expect(svg?.classList.contains("animate-spin")).toBe(true);
+  });
 });

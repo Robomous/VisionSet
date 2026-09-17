@@ -232,6 +232,13 @@ export function SuggestPanel({
   onTolerance,
   pendingEscalated = false,
 }: SuggestPanelProps): JSX.Element {
+  // The one place this fact is decided. Repeating this condition at both the
+  // early-return guard below and the idle-card render risked them drifting
+  // apart — which is exactly the shape of the bug fixed alongside this line:
+  // the guard used to fire on a wired runtime's own "not-ready" and blank out
+  // the chooser it should have deferred to instead.
+  const runtimeWired = browserTargets !== undefined || browserAcquisitions !== undefined;
+
   /*
     Parked outranks even the blocker. A connection this tool will not use
     is not the thing standing in the way, and "getting the model ready" over a
@@ -281,12 +288,7 @@ export function SuggestPanel({
   // panel — the panel still has a working "This device" tab to offer, and
   // this early return must not hide it. See `TargetChooser`, which renders
   // this same `BLOCKER_COPY` message scoped to its server tab instead.
-  if (
-    browserTargets === undefined &&
-    browserAcquisitions === undefined &&
-    blocker !== null &&
-    blocker !== undefined
-  ) {
+  if (!runtimeWired && blocker !== null && blocker !== undefined) {
     const copy = BLOCKER_COPY[blocker];
     return (
       <EditorNotice
@@ -416,15 +418,29 @@ export function SuggestPanel({
     );
   }
 
+  // Whether the tab a person is looking at (server, absent a choice) is the
+  // one `blocker` is about. Only then is "Click the thing you want" false —
+  // the browser tab's own readiness never depends on `blocker`, so this stays
+  // `false` whenever "This device" is the active tab, however unready it is.
+  const serverTabBlocked =
+    runtimeWired &&
+    (activeTarget?.kind ?? "server") === "server" &&
+    blocker !== null &&
+    blocker !== undefined;
+
   return (
     <EditorNotice testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
-      <p className="font-medium text-foreground" data-testid="suggest-idle">
-        Click the thing you want
-      </p>
-      <p className="text-muted-foreground">
-        One click proposes a shape for “{session.labelClass}”. Alt-click marks something
-        that is not part of it.
-      </p>
+      {!serverTabBlocked && (
+        <>
+          <p className="font-medium text-foreground" data-testid="suggest-idle">
+            Click the thing you want
+          </p>
+          <p className="text-muted-foreground">
+            One click proposes a shape for “{session.labelClass}”. Alt-click marks something
+            that is not part of it.
+          </p>
+        </>
+      )}
       {/*
         Here and in no other reading. This is the state where nothing is in
         flight and nothing is waiting to be accepted, so it is the only one where
@@ -437,7 +453,7 @@ export function SuggestPanel({
         genuinely out. Stating the rule where it is enforced is what makes the
         branch ordering an implementation detail rather than the guarantee.
       */}
-      {browserTargets === undefined && browserAcquisitions === undefined ? (
+      {!runtimeWired ? (
         <>
           {!hasPending(session) && (
             <Through
@@ -594,7 +610,11 @@ function TargetChooser({
       </TabsList>
       <TabsContent value="server">
         {blocker !== null ? (
-          <BlockedMessage blocker={blocker} {...(onConfigure === undefined ? {} : { onConfigure })} />
+          <BlockedMessage
+            blocker={blocker}
+            icon
+            {...(onConfigure === undefined ? {} : { onConfigure })}
+          />
         ) : (
           <>
             {!pending && (
@@ -625,18 +645,39 @@ function TargetChooser({
   );
 }
 
-/** The blocker copy, wherever it is read: the whole card once, or scoped to one tab. */
+/**
+ * The blocker copy, wherever it is read: the whole card once, or scoped to one tab.
+ *
+ * `icon` defaults to off, which is what keeps the unwired early return byte-for-byte
+ * unchanged: its own `EditorNotice` already carries the tone icon in its fixed slot,
+ * driven by this same `copy.tone`. `TargetChooser`'s idle card has no such slot — its
+ * `EditorNotice` is fixed to `Sparkles`/calm regardless of which tab is showing what —
+ * so it opts into drawing the icon here instead, inline with the title.
+ */
 function BlockedMessage({
   blocker,
   onConfigure,
+  icon = false,
 }: {
   readonly blocker: SuggestBlocker;
   readonly onConfigure?: () => void;
+  readonly icon?: boolean;
 }): JSX.Element {
   const copy = BLOCKER_COPY[blocker];
   return (
     <>
-      <p className="font-medium text-foreground" data-testid={`suggest-${blocker}`}>
+      <p
+        className={
+          icon ? "flex items-center gap-1.5 font-medium text-foreground" : "font-medium text-foreground"
+        }
+        data-testid={`suggest-${blocker}`}
+      >
+        {icon &&
+          (copy.tone === "warn" ? (
+            <TriangleAlert className="size-4 shrink-0" aria-hidden="true" />
+          ) : (
+            <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" />
+          ))}
         {copy.title}
       </p>
       <p className="text-muted-foreground">{copy.body}</p>
