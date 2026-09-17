@@ -599,9 +599,10 @@ object list is how a lane is selected, which is a real affordance rather than a 
 
 The sparkles button - hotkey `S` - arms the **suggest tool**: click the thing you
 want and a segmentation model proposes its shape, which you can then adjust
-before accepting. It runs through a model
-connection (`docs/content/inference.md`), and the server side of it is
-`POST /inference/suggest`.
+before accepting. It answers from one of two places - a model connection on the
+server, or a model running in this browser - and the panel carries that choice.
+Through a connection it is `POST /inference/suggest`
+(`docs/content/inference.md`).
 
 **It runs through a connection that can answer a click**, which is a narrower set
 than "the ones that are ready": only those declaring `point_suggest`. A workspace
@@ -618,6 +619,25 @@ become a workspace setting that everybody annotating shares. With one candidate
 there is no control at all, only a line naming what is answering. The picker
 appears on the idle card alone: changing which model answers while a proposal is
 on screen would leave a shape nothing on the card explains.
+
+**Server, or this device.** The panel's two tabs are where a click goes. **Server**
+is the connection described above. **This device** runs a smaller segmentation model
+in this browser, which answers without the picture or the click leaving the machine
+and without a connection being configured at all - useful where the workspace has no
+model that can answer a click, or where the server is slow to reach.
+
+It has to be downloaded first, and the panel says so: about 41 MB, on an explicit
+press, never on its own. **The download does not survive a page reload.** It is held
+for the session only, so reopening the editor tomorrow - or reloading today - means
+downloading it again before "This device" can answer. Until then the tab shows the
+Download button rather than inviting a click that would do nothing, and the choice
+falls back to Server.
+
+**Alt-click needs Server.** The model running here takes only points that are *on*
+the object; a point marking something that is not part of it is refused rather than
+answered with something that is not an exclusion. Switch to Server to refine that
+way. Everything else - the first click, refining with more points, the tolerance,
+`↵` and `Esc` - works the same on both.
 
 The gesture:
 

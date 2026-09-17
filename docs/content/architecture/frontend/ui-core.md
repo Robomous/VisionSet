@@ -74,16 +74,22 @@ concrete adapter, and it discovers none either.
 
 Absence is the ordinary case, so the hook answers `null` and never throws - the rule stated
 twice above, for a third capability. **A host that offers browser inference composes the
-runtime at the host boundary; a host that does not offer it supplies nothing.** No host in this
-repository supplies one, so every build behaves as it did before the port existed.
+runtime at the host boundary; a host that does not offer it supplies nothing.** `frontend/app`
+now supplies one: `data/browserInference/BrowserInferenceRuntime.ts` composes a real
+`VisionSetBrowserInferenceRuntime` over `@visionset/browser-inference` and passes it through
+`OssSession.tsx` unconditionally. A host that omitted it would still behave exactly as it did
+before the port existed.
 
-The port is two members wide on purpose, and it is an *execution* contract rather than a
-catalog: finding and obtaining a model is a question about things that cannot answer yet, and
-this is not where it is answered. Nor is the narrowness a promise that growth is free - the
-interface is published, so adding a **required** member to it would break every host
-implementing the older one, and
+The port is four members wide, and it is an *execution* contract rather than a catalog: the two
+required members - `listTargets` and `executorFor` - are only about asking a model that can
+already answer. The two added since are optional, which is what let them arrive without
+breaking a host implementing the older interface: `listAcquisitions?()`, which names models this
+device could run once their bytes are fetched, and `setActiveAsset?()`, which tells the runtime
+which asset is on screen so an executor's staleness checks have something to check against. That
+is exactly how
 [browser inference is host-injected](../decisions/browser-inference-is-host-injected.md) says
-how it is grown instead.
+the interface is grown - the published shape means a new **required** member would break every
+host implementing the older one, so growth is additive and optional.
 
 > An `InferenceConnection` is a model the VisionSet server has. A browser inference runtime is
 > something this browser can do. They are not two spellings of one idea, and neither is
@@ -108,9 +114,10 @@ reference for one asset from reading pixels of the next asset either through a r
 through the detached one a host's real asset-switch (unmount the old canvas, mount a fresh one)
 leaves behind.
 
-This is resource plumbing only. It neither selects a browser model nor exposes an inference
-target — no capability in this phase lets a host ask for local inference at all; composing pixels
-with a browser runtime remains a later host decision.
+This is resource plumbing only: it neither selects a browser model nor exposes an inference
+target. Composing the two is the host's decision, and `frontend/app` now makes it — the lease
+reaches the browser runtime through the port's `setActiveAsset`, and the executor behind
+`executorFor` is what reads `readRgb`.
 
 **What is proved, and what is not claimed.** `e2e/assetPixels.spec.ts` drives a real Chromium
 against a tiny runtime-generated image and confirms, in that browser, on that image: one content
@@ -126,10 +133,18 @@ rounding loss on partially-transparent pixels, EXIF-orientation auto-rotation (a
 image's EXIF orientation when decoding to canvas; the server's direct-bytes decode path does not),
 and AdobeRGB ICC-profile color management (a browser color-manages a tagged profile toward sRGB on
 decode; the server's path does not). None of these are exact figures worth repeating here — they
-are a known limitation, not a benchmark — and no consumer of this lease has yet needed to reconcile
-them, since nothing in this phase reads pixels for inference. A future phase that feeds this lease's
-`readRgb` output to a model must account for these divergences before treating browser-decoded
-pixels as equivalent to the server's own decode of the same asset.
+are a known limitation, not a benchmark.
+
+**This is now a live limitation, not a future one.** The browser suggestion executor feeds this
+lease's `readRgb` output straight to a model, so the pixels "This device" segments are the
+browser's decode and the pixels the server segments are Pillow's. **Server and "This device" can
+therefore return different masks for the same asset and the same click**, and for an asset
+carrying EXIF orientation or an AdobeRGB profile the difference can be large rather than
+marginal — an auto-rotated decode is not a variation on the same picture. Nothing reconciles
+the two, and nothing in the editor tells a person which decode answered. Treat a browser
+suggestion as this browser's answer about this browser's decode; it is not a claim about what
+the server would have said. Closing the gap means changing a decode, not adding a tolerance,
+and neither side has been changed here.
 
 ## Asking for a suggestion is not sending one
 
