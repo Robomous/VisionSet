@@ -12,6 +12,12 @@
  * `listTargets()` answers non-empty, so "now ready" is read as that text appearing
  * inside `suggest-device-section` — and a failed acquisition renders `role="alert"`
  * beside the still-present acquire button (`SuggestPanel.tsx`'s `DeviceTab`).
+ *
+ * `TargetChooser` — and with it `suggest-target-browser` — is only mounted while
+ * the session is in its ordinary idle/blocked states (`SuggestPanel.tsx`'s final
+ * fallback render). The "shown" and "refused" cards replace it entirely, so a
+ * claim about the active tab or the tab list has to be made from idle, never from
+ * mid-suggestion or mid-refusal.
  */
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -36,8 +42,21 @@ if (process.env[REQUIRE_ENV] === "1" && !HAS_ARTIFACTS) {
 const ENCODER_BYTES = HAS_ARTIFACTS ? readFileSync(ENCODER_PATH) : Buffer.alloc(0);
 const DECODER_BYTES = HAS_ARTIFACTS ? readFileSync(DECODER_PATH) : Buffer.alloc(0);
 
+/**
+ * The real encoder's byte length, from `manifest.ts`'s `EFFICIENT_SAM_TI_EXPECTED.
+ * encoder.bytes` — kept as a literal rather than imported, because that module
+ * reads `import.meta.env` at module scope, which only exists under Vite's own
+ * transform and would throw under this suite's plain Node/tsx loader.
+ */
+const REAL_ENCODER_BYTE_LENGTH = 24_799_777;
+
 /** Routes the CDN manifest + artifacts to the local fixture — no network call ever leaves the page. */
 async function mockCdn(page: Page, encoderBytes = ENCODER_BYTES, decoderBytes = DECODER_BYTES): Promise<void> {
+  // Registered first, so it is matched *last* (Playwright tries the most-recently-added
+  // handler first): anything at this host the three specific routes below don't
+  // recognise is hard-aborted rather than silently reaching the real CDN — including if
+  // `VITE_MODEL_CDN_BASE_URL` or the manifest layout ever drifts out from under this stub.
+  await page.route("**/models.robomous.ai/**", (route) => route.abort());
   await page.route("**/models.robomous.ai/models/efficient-sam-ti/**/manifest.json", (route) =>
     route.fulfill({ json: { encoder: { path: "/encoder.onnx" }, decoder: { path: "/decoder.onnx" } } }),
   );
@@ -66,7 +85,8 @@ function suggestCallsOf(sent: Request[]): Request[] {
  * Counts requests to the model CDN from here on — via `page.on("request", ...)`
  * rather than a second `page.route`, so it never interferes with `mockCdn`'s own
  * fulfil handlers (a later-added `page.route` for the same pattern would run first
- * and could shadow them).
+ * and could shadow them). Attach before whatever moment must not fetch, since a
+ * listener added after the fact cannot see what already happened.
  */
 function countModelRequestsFromNow(page: Page): () => number {
   let count = 0;
@@ -76,15 +96,25 @@ function countModelRequestsFromNow(page: Page): () => number {
   return () => count;
 }
 
+/** Arms the suggest tool. The one and only place a scenario should click `tool-suggest`. */
+async function armSuggestTool(page: Page): Promise<void> {
+  await page.getByTestId("tool-suggest").click();
+}
+
 /**
- * Clicks into the "This device" tab and downloads the model, then waits for the
- * real "ready" signal: `DeviceTab` swaps the acquire button for a `Badge` reading
+ * Switches to "This device" and downloads the model, then waits for the real
+ * "ready" signal: `DeviceTab` swaps the acquire button for a `Badge` reading
  * "Ready" once `listTargets()` answers non-empty (`SuggestPanel.tsx`). There is no
  * separate target-selection control to click — Phase F ships exactly one browser
  * target, and choosing the tab already set it as the active suggestion target.
+ *
+ * **Assumes the suggest tool is already armed** (see {@link armSuggestTool}).
+ * Clicking `tool-suggest` again here would call `toggleSuggest()` a second time —
+ * and `AnnotationPage.tsx`'s `toggleSuggest` clears the whole session when one
+ * already exists (`session !== null` → `setSession(null)`), unmounting the very
+ * panel this helper is trying to drive rather than doing nothing.
  */
 async function acquireAndSelectBrowserTarget(page: Page): Promise<void> {
-  await page.getByTestId("tool-suggest").click();
   await page.getByTestId("suggest-target-browser").click();
   await page.getByTestId("suggest-device-acquire-efficient-sam-ti").click();
   await expect(page.getByTestId("suggest-device-section").getByText(/ready/i)).toBeVisible({ timeout: 60_000 });
@@ -96,7 +126,7 @@ test.describe("browser suggestion", () => {
   test("Server target: a click issues exactly one /inference/suggest HTTP request", async ({ page }) => {
     const sent: Request[] = [];
     await openJobWithBrowserRuntime(page, sent, true);
-    await page.getByTestId("tool-suggest").click();
+    await armSuggestTool(page);
     await expect(page.getByTestId("suggest-idle")).toBeVisible();
     const picture = (await page.getByTestId("annotator-canvas").boundingBox())!;
     await page.mouse.click(picture.x + picture.width / 2, picture.y + picture.height / 2);
@@ -107,6 +137,7 @@ test.describe("browser suggestion", () => {
   test("This device target: a click never issues an /inference/suggest HTTP request", async ({ page }) => {
     const sent: Request[] = [];
     await openJobWithBrowserRuntime(page, sent, true);
+    await armSuggestTool(page);
     await acquireAndSelectBrowserTarget(page);
     const picture = (await page.getByTestId("annotator-canvas").boundingBox())!;
     await page.mouse.click(picture.x + picture.width / 2, picture.y + picture.height / 2);
@@ -117,7 +148,7 @@ test.describe("browser suggestion", () => {
   test("a ready browser target is never blocked by a server-connection blocker", async ({ page }) => {
     const sent: Request[] = [];
     await openJobWithBrowserRuntime(page, sent, false); // no server connections
-    await page.getByTestId("tool-suggest").click();
+    await armSuggestTool(page);
     await expect(page.getByTestId("suggest-no-connections")).toBeVisible();
     await acquireAndSelectBrowserTarget(page);
     await expect(page.getByTestId("suggest-no-connections")).not.toBeVisible();
@@ -128,9 +159,25 @@ test.describe("browser suggestion", () => {
 
   test("the model is never fetched before the user presses Download", async ({ page }) => {
     const sent: Request[] = [];
-    await openJobWithBrowserRuntime(page, sent, true);
+    // Attached before the page even navigates, so an eager fetch during runtime
+    // construction or page load — the most likely regression this test guards
+    // against — cannot happen in an unobserved window before this listener exists.
     const modelRequests = countModelRequestsFromNow(page);
-    await page.getByTestId("tool-suggest").click();
+    await openJobWithBrowserRuntime(page, sent, true);
+    await armSuggestTool(page);
+    await expect(page.getByTestId("suggest-idle")).toBeVisible();
+    expect(modelRequests()).toBe(0);
+
+    // Merely switching to "This device" — without ever pressing Download — must
+    // not fetch anything either. Still idle here, so `suggest-target-browser` and
+    // the acquire button are both mounted.
+    await page.getByTestId("suggest-target-browser").click();
+    await expect(page.getByTestId("suggest-device-acquire-efficient-sam-ti")).toBeVisible();
+    expect(modelRequests()).toBe(0);
+
+    // Back to Server, and the original claim: a Server suggestion never touches
+    // the model CDN at all.
+    await page.getByTestId("suggest-target-server").click();
     const picture = (await page.getByTestId("annotator-canvas").boundingBox())!;
     await page.mouse.click(picture.x + picture.width / 2, picture.y + picture.height / 2);
     await expect(page.getByTestId("suggestion-shape")).toBeVisible();
@@ -139,7 +186,11 @@ test.describe("browser suggestion", () => {
 
   test("a SHA-256 mismatch on the encoder hard-fails acquisition with no target exposed", async ({ page }) => {
     const sent: Request[] = [];
-    const wrongBytes = Buffer.from("not the real encoder, deliberately wrong length and hash");
+    // The *correct* byte length with different content: `fetchVerified`
+    // (`acquireEfficientSam.ts`) checks size before hashing, so a buffer of the
+    // wrong length would fail on the size check and never reach the SHA-256
+    // comparison this test is named for.
+    const wrongBytes = Buffer.alloc(REAL_ENCODER_BYTE_LENGTH);
     await openJobWithBrowserRuntime(page, sent, true);
     // mockCdn already ran with the real bytes inside openJobWithBrowserRuntime; re-route
     // the encoder specifically — Playwright tries the most-recently-added matching
@@ -147,7 +198,7 @@ test.describe("browser suggestion", () => {
     await page.route("**/models.robomous.ai/encoder.onnx", (route) =>
       route.fulfill({ body: wrongBytes, contentType: "application/octet-stream" }),
     );
-    await page.getByTestId("tool-suggest").click();
+    await armSuggestTool(page);
     await page.getByTestId("suggest-target-browser").click();
     await page.getByTestId("suggest-device-acquire-efficient-sam-ti").click();
     await expect(page.getByRole("alert")).toBeVisible({ timeout: 30_000 });
@@ -158,6 +209,7 @@ test.describe("browser suggestion", () => {
   test("two refinements on one asset never re-fetch the model", async ({ page }) => {
     const sent: Request[] = [];
     await openJobWithBrowserRuntime(page, sent, true);
+    await armSuggestTool(page);
     await acquireAndSelectBrowserTarget(page);
     const modelRequests = countModelRequestsFromNow(page);
     const picture = (await page.getByTestId("annotator-canvas").boundingBox())!;
@@ -171,6 +223,7 @@ test.describe("browser suggestion", () => {
   test("a negative-point ask on the browser target refuses deterministically, with no HTTP and no Server fallback", async ({ page }) => {
     const sent: Request[] = [];
     await openJobWithBrowserRuntime(page, sent, true);
+    await armSuggestTool(page);
     await acquireAndSelectBrowserTarget(page);
     const picture = (await page.getByTestId("annotator-canvas").boundingBox())!;
     await page.mouse.click(picture.x + picture.width / 2, picture.y + picture.height / 2);
@@ -184,7 +237,15 @@ test.describe("browser suggestion", () => {
     // model (`BrowserSuggestionExecutor.ts`), and the panel's refusal card carries its
     // message verbatim, same as a server refusal would.
     await expect(page.getByTestId("suggest-refusal")).toHaveText(/positive-point refinement only/i);
-    // Still on the browser tab — a refusal never silently falls back to Server.
+
+    // The refusal card replaces `TargetChooser` entirely (`SuggestPanel.tsx`'s
+    // `status === "refused"` branch), so `suggest-target-browser` isn't mounted at
+    // this instant — asserting on it here would fail on a missing element, not a
+    // real regression. Escape (`discardSuggestion` → `cleared`, since a refused
+    // session always `hasPending`) drops the session back to idle, which remounts
+    // the chooser without touching `activeTarget` — the fact this is actually
+    // proving no silent fallback to Server.
+    await page.keyboard.press("Escape");
     await expect(page.getByTestId("suggest-target-browser")).toHaveAttribute("aria-selected", "true");
     expect(suggestCallsOf(sent)).toHaveLength(0);
   });

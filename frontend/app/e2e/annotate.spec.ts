@@ -6,9 +6,8 @@
  * and what the top bar does — with the API held still, so a failure names the page
  * rather than the stack under it.
  *
- * Everything is routed under `/api/`, which is where the app sends requests in
- * development. Routing the bare paths would also intercept the *document*
- * navigation, and the failure reads as "the shell disappeared".
+ * The stub itself — its route table, and why everything answers under `/api/` —
+ * lives in `./_wireApiStub`.
  */
 
 import { expect, test, type Page, type Request } from "@playwright/test";
