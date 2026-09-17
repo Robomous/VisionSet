@@ -159,6 +159,9 @@ describe("createCacheArtifactStore", () => {
 
     await store.remove(first.admission);
 
+    for (const artifact of first.admission.artifacts) {
+      expect(cache.entries.has(cacheKeyFor(first.admission, artifact))).toBe(false);
+    }
     expect(await store.inspect(first.admission)).toBe(false);
     expect(await store.inspect(second.admission)).toBe(true);
   });
