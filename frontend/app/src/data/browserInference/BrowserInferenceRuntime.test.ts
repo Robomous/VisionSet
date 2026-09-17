@@ -29,7 +29,9 @@ async function acquisition(runtime: VisionSetBrowserInferenceRuntime) {
   // Registry/cache initialization is asynchronous in Phase G. `listTargets()` waits for that
   // initial pass, after which the synchronous Phase F compatibility view is populated.
   await runtime.listTargets();
-  return runtime.listAcquisitions?.()[0]!;
+  const available = runtime.listAcquisitions?.()[0];
+  if (available === undefined) throw new Error("expected an available browser model fixture");
+  return available;
 }
 
 describe("createOssBrowserInferenceRuntime", () => {
