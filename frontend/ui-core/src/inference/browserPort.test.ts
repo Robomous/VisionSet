@@ -20,4 +20,30 @@ describe("VisionSetBrowserInferenceRuntime", () => {
     };
     expect(runtime.listAcquisitions?.()).toHaveLength(1);
   });
+
+  it("accepts the additive reactive catalog without requiring it from existing hosts", () => {
+    const runtime: VisionSetBrowserInferenceRuntime = {
+      listTargets: async () => [],
+      executorFor: () => ({ suggest: async () => { throw new Error("unused"); } }),
+      modelCatalog: {
+        snapshot: () => [{
+          id: "m",
+          label: "Model",
+          modelRef: "model@revision",
+          revision: "revision",
+          bytes: 10,
+          license: "Apache-2.0",
+          source: { label: "Upstream", href: "https://example.test/upstream" },
+          state: "available",
+          storage: "none",
+        }],
+        subscribe: () => () => {},
+        isKnown: (id) => id === "m",
+        acquire: async () => {},
+        activate: async () => {},
+        remove: async () => {},
+      },
+    };
+    expect(runtime.modelCatalog?.isKnown("m")).toBe(true);
+  });
 });

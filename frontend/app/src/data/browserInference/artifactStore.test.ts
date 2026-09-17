@@ -33,7 +33,7 @@ async function fixture(revision = "rev-a"): Promise<{ admission: BrowserModelAdm
       manifestPath: `/models/fixture-model/${revision}/manifest.json`,
       adapter: "efficient-sam-ti",
       license: "Apache-2.0",
-      source: { repository: "https://example.test/source", revision: "source-rev" },
+      source: { label: "Fixture upstream", repository: "https://example.test/source", revision: "source-rev" },
       runtime: { format: "onnx", opset: 17, onnxruntimeWeb: "1.29.0" },
       capabilities: { pointSuggest: true, positivePoints: true, negativePoints: false, maxPoints: 6 },
       artifacts: [

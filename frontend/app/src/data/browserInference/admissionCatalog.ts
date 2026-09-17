@@ -15,6 +15,7 @@ export interface BrowserModelAdmission {
   readonly adapter: "efficient-sam-ti";
   readonly license: string;
   readonly source: {
+    readonly label: string;
     readonly repository: string;
     readonly revision: string;
   };
@@ -41,6 +42,7 @@ export const EFFICIENT_SAM_TI_ADMISSION: BrowserModelAdmission = Object.freeze({
   adapter: "efficient-sam-ti",
   license: "Apache-2.0",
   source: {
+    label: "EfficientSAM",
     repository: "https://github.com/yformer/EfficientSAM",
     revision: "d525f622e6f640acf5a0fc37c7ca1f243da5bde0",
   },

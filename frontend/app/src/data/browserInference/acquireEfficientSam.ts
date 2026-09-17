@@ -41,7 +41,7 @@ export async function fetchVerified(
   url: string,
   expected: { readonly bytes: number; readonly sha256: string },
   signal?: AbortSignal,
-): Promise<Uint8Array> {
+): Promise<Uint8Array<ArrayBuffer>> {
   const response = await fetch(url, { signal });
   if (!response.ok) throw new Error(`artifact fetch failed: ${response.status} ${response.statusText}`);
   const bytes = new Uint8Array(await response.arrayBuffer());
@@ -52,7 +52,10 @@ export async function fetchVerified(
 /** Fetches nothing until called, and hard-fails rather than constructing a runtime on any mismatch. */
 export async function acquireEfficientSam(
   signal?: AbortSignal,
-): Promise<{ readonly encoder: Uint8Array; readonly decoder: Uint8Array }> {
+): Promise<{
+  readonly encoder: Uint8Array<ArrayBuffer>;
+  readonly decoder: Uint8Array<ArrayBuffer>;
+}> {
   const manifest = await fetchEfficientSamManifest(signal);
   const encoder = await fetchVerified(
     artifactUrl(manifest.artifacts.encoder.path),
