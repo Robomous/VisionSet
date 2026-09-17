@@ -362,6 +362,42 @@ describe("target selection routes a ready browser target around the server", () 
   });
 });
 
+describe("executor selection never calls executorFor on an unready browser target", () => {
+  it("selecting 'This device' before any download completes does not crash the render", async () => {
+    // Mirrors `BrowserInferenceRuntime.executorFor`'s real behavior (Task 8): it throws
+    // synchronously for a target whose acquisition state isn't "ready" yet. Selecting the
+    // "This device" tab sets `activeTarget` to a browser target before any download has
+    // completed — that is how the acquisition flow starts — so `executor`'s computation
+    // must never call this unconditionally for a browser-kind `activeTarget`.
+    const runtime: VisionSetBrowserInferenceRuntime = {
+      listTargets: async () => [],
+      executorFor: (id) => {
+        throw new Error(`no ready browser target "${id}"`);
+      },
+      listAcquisitions: () => [
+        { id: "efficient-sam-ti", label: "EfficientSAM-Ti", approxBytes: 123_456, acquire: async () => {} },
+      ],
+    };
+
+    const unmount = await open(runtime);
+    await arm();
+
+    // This click sets `activeTarget` to `{kind: "browser", targetId: "efficient-sam-ti"}`
+    // while `browserTargets` is still `[]` — the exact unready state that used to throw
+    // during render. A throw here would fail this test on its own, uncaught.
+    await userEvent.click(screen.getByTestId("suggest-target-browser"));
+    await screen.findByTestId("suggest-device-section");
+    expect(screen.queryByTestId("suggest-panel")).not.toBeNull();
+
+    // With no ready executor, a click on the canvas must be a silent no-op rather than
+    // falling through to the server executor.
+    clickCanvas();
+    expect(asks()).toHaveLength(0);
+
+    unmount();
+  });
+});
+
 describe("staleStoredBrowserTarget", () => {
   const listed = [{ id: "t1", label: "T1", modelRef: "m@rev" }];
 

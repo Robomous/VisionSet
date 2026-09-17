@@ -188,6 +188,7 @@ import { SuggestPanel } from "./SuggestPanel";
 import { useConnections, usableConnection } from "../data/inferenceQueries";
 import type { SuggestionOut } from "../data/inferenceQueries";
 import { useServerSuggestionExecutor } from "../inference/suggestionExecutor";
+import type { SuggestionExecutor } from "../inference/suggestionExecutor";
 import { useBrowserInferenceRuntime } from "../inference/VisionSetBrowserInferenceProvider.js";
 import type { ActiveSuggestionTarget, BrowserSuggestionAssetSource, BrowserSuggestionTarget } from "../inference/browserPort.js";
 import { computeSuggestBlocker } from "../inference/targetBlocker.js";
@@ -1053,9 +1054,16 @@ function Workspace({
       : { kind: "server", connectionId: connection?.id ?? "" };
 
   const blocker = computeSuggestBlocker(activeTarget, serverBlocker, browserTargets);
-  const executor =
-    activeTarget.kind === "browser" && browserRuntime !== null
-      ? browserRuntime.executorFor(activeTarget.targetId)
+  // `executorFor` throws for a target that isn't actually ready yet — which is exactly the
+  // state selecting "This device" starts in, before a download ever completes — so this must
+  // check readiness itself rather than trust `browserRuntime !== null` alone. `null` here is
+  // this file's existing "nothing to send through" convention, already handled by
+  // `suggestAt`'s guard.
+  const executor: SuggestionExecutor | null =
+    activeTarget.kind === "browser"
+      ? browserRuntime !== null && browserTargets?.some((row) => row.id === activeTarget.targetId) === true
+        ? browserRuntime.executorFor(activeTarget.targetId)
+        : null
       : serverExecutor;
 
   function chooseTarget(target: ActiveSuggestionTarget): void {
