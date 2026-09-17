@@ -22,15 +22,16 @@
  * `_wireApiStub.ts`'s `/content` route serves a real but 1×1 PNG — fine for the
  * ~150 tests in `annotate.spec.ts`, because `AnnotatorCanvas.tsx` lays the picture
  * out at the asset's *declared* width/height and never at its own `naturalWidth`
- * ("a picture whose natural size disagrees is a preview"). This suite is the one
- * caller that cannot get away with that: the browser executor reads the real
- * decoded image's `naturalWidth`/`naturalHeight` (`AnnotationPage.tsx`'s
- * `onImageReady`) as the bounds it validates click coordinates against
- * (`efficientSam.ts`'s `x < 0 || x > width || ...`). A 1×1 real image makes every
- * on-canvas click land "outside" it. `mockAssetImage` below overrides just this
- * file's `/content` route with a real, correctly-sized PNG — scoped here rather
- * than changing `_wireApiStub.ts`'s shared default, which those ~150 other tests
- * may depend on for load speed.
+ * ("a picture whose natural size disagrees is a preview") — and `AnnotationPage.tsx`'s
+ * `onImageReady` now hands the browser executor that same declared frame, so the
+ * bounds it validates click coordinates against (`efficientSam.ts`'s
+ * `x < 0 || x > width || ...`) agree with the canvas a click was made on. What a 1×1
+ * `/content` still leaves wrong here is the *pixels*: `readRgb` would stretch one
+ * sample across the whole declared frame, so this suite would be asking a real
+ * EfficientSAM to segment an image it never saw. `mockAssetImage` below overrides
+ * just this file's `/content` route with a real, correctly-sized PNG — scoped here
+ * rather than changing `_wireApiStub.ts`'s shared default, which those ~150 other
+ * tests may depend on for load speed.
  */
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";

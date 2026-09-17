@@ -124,14 +124,22 @@ function connectionRow(): Record<string, unknown> {
   };
 }
 
+/**
+ * The asset's declared frame — what the wire says this asset measures, and so what
+ * `documentFromWire` puts in the document's `AssetDescriptor`. Per-test rather than
+ * a constant only so the descriptor-frame test below can pick numbers no decoded
+ * `<img>` in this file reports; `beforeEach` puts it back.
+ */
+let assetExtent = { width: 640, height: 480 };
+
 function assetRow(id: string, hash: string): Record<string, unknown> {
   return {
     id,
     project_id: PROJECT,
     modality: "image",
     content_hash: hash.padEnd(64, "0"),
-    width: 640,
-    height: 480,
+    width: assetExtent.width,
+    height: assetExtent.height,
     format: "png",
     thumbnail_hash: null,
     frame_index: null,
@@ -194,6 +202,7 @@ function answer(path: string): unknown {
 beforeEach(() => {
   sent.length = 0;
   clearPrefs();
+  assetExtent = { width: 640, height: 480 };
   connections = [connectionRow()];
   suggestion = {
     model_ref: MODEL_REF,
@@ -460,5 +469,56 @@ describe("BrowserSuggestionAssetSource", () => {
     const [source] = setActiveAsset.mock.calls[0] as [BrowserSuggestionAssetSource];
     expect(source.assetId).toBe(ASSET);
     expect(typeof source.readRgb).toBe("function");
+  });
+
+  it("carries the asset descriptor's frame, not the decoded image's natural size", async () => {
+    /*
+      The two frames are made to disagree — and to disagree by a *transposition*,
+      the shape an EXIF-rotated decode actually takes — because a fixture where
+      they coincide cannot tell them apart. That is exactly how reading
+      `naturalWidth`/`naturalHeight` here survived the suite that shipped it.
+
+      The descriptor is what every coordinate this source meets is expressed in:
+      the click points, the shapes `shapesFromMask` returns, the annotations
+      already on the frame. So the claim is made twice — on the extent the
+      executor bound-checks clicks against, and on what `readRgb` actually asks
+      the decoder for, which is the one a plausible "fix" to the first alone
+      would leave wrong.
+    */
+    assetExtent = { width: 7, height: 5 };
+    const setActiveAsset = vi.fn();
+    const runtime: VisionSetBrowserInferenceRuntime = {
+      listTargets: async () => [],
+      executorFor: () => ({
+        suggest: async () => {
+          throw new Error("unused");
+        },
+      }),
+      setActiveAsset,
+    };
+
+    await open(runtime);
+
+    const image = screen.getByTestId("annotator-image") as HTMLImageElement;
+    Object.defineProperty(image, "naturalWidth", { value: 5, configurable: true });
+    Object.defineProperty(image, "naturalHeight", { value: 7, configurable: true });
+    fireEvent.load(image);
+
+    await waitFor(() => expect(setActiveAsset).toHaveBeenCalledTimes(1));
+    const [source] = setActiveAsset.mock.calls[0] as [BrowserSuggestionAssetSource];
+    expect({ width: source.width, height: source.height }).toEqual({ width: 7, height: 5 });
+
+    const drawImage = vi.fn();
+    const getImageData = vi.fn(() => ({ data: new Uint8ClampedArray(7 * 5 * 4) }));
+    const getContext = vi
+      .spyOn(HTMLCanvasElement.prototype, "getContext")
+      .mockReturnValue({ drawImage, getImageData } as unknown as CanvasRenderingContext2D);
+    try {
+      const pixels = source.readRgb();
+      expect({ width: pixels.width, height: pixels.height }).toEqual({ width: 7, height: 5 });
+    } finally {
+      getContext.mockRestore();
+    }
+    expect(drawImage).toHaveBeenCalledWith(image, 0, 0, 7, 5);
   });
 });

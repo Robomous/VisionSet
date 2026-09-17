@@ -2667,8 +2667,24 @@ function Workspace({
                 clipboard={clipboard}
                 onHostAction={hostAction}
                 onImageReady={(image) => {
-                  const width = image.image.naturalWidth;
-                  const height = image.image.naturalHeight;
+                  /*
+                    The **descriptor's** frame, never the decoded image's
+                    `naturalWidth`/`naturalHeight` — the same rule
+                    `AnnotatorCanvas` lays the picture out under, one layer on.
+
+                    Everything this source meets is already in the descriptor's
+                    pixels: the click points `suggestAt` sends, the geometry
+                    `shapesFromMask` hands back, and the annotations already on
+                    the frame. A decode that disagrees — EXIF orientation
+                    swapping the axes, a preview served in place of the
+                    original — would have the executor bound-check clicks and
+                    extract pixels against a second, private frame, and produce
+                    suggestions that are individually plausible and uniformly
+                    wrong. `readRgb` scales the decode into the frame asked for,
+                    so naming the descriptor here is also what makes a
+                    disagreeing decode harmless rather than silent.
+                  */
+                  const { width, height } = store.document.asset;
                   const source: BrowserSuggestionAssetSource = {
                     assetId: asset.id,
                     width,
