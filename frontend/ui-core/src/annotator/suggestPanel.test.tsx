@@ -9,7 +9,7 @@
  * never a dead button.
  */
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
@@ -20,6 +20,7 @@ import type { Suggestion, SuggestionState } from "@visionset/annotator";
 import { SuggestPanel } from "./SuggestPanel";
 import type { Answer } from "@visionset/annotator";
 import { usableConnection, type Connection } from "../data/inferenceQueries";
+import type { BrowserModelAcquisition, BrowserSuggestionTarget } from "../inference/browserPort.js";
 
 const A_BOX = { type: "bbox", x: 10, y: 20, width: 30, height: 40 } as const;
 
@@ -637,5 +638,126 @@ describe("the adjustments, which are a section and never a popup", () => {
     expect(screen.getByTestId("suggest-none").parentElement?.textContent).not.toContain(
       "The settings below still apply",
     );
+  });
+});
+
+describe("this device, once a browser runtime is wired", () => {
+  const READY: BrowserSuggestionTarget = {
+    id: "efficient-sam-ti",
+    label: "EfficientSAM-Ti",
+    modelRef: "efficient-sam-ti@browser",
+  };
+
+  function acquisition(overrides: Partial<BrowserModelAcquisition> = {}): BrowserModelAcquisition {
+    return {
+      id: "efficient-sam-ti",
+      label: "EfficientSAM-Ti",
+      approxBytes: 41_000_000,
+      acquire: vi.fn().mockResolvedValue(undefined),
+      ...overrides,
+    };
+  }
+
+  it("renders no device section, and no tab chooser, when no runtime is wired at all", () => {
+    render(mount());
+
+    expect(screen.queryByTestId("suggest-device-section")).toBeNull();
+    expect(screen.queryByTestId("suggest-target-server")).toBeNull();
+    expect(screen.queryByTestId("suggest-target-browser")).toBeNull();
+    // The rest of the idle card renders exactly as it does today.
+    expect(screen.getByTestId("suggest-idle")).toBeTruthy();
+  });
+
+  it("shows the ready target with a success badge, and offers the two tabs", () => {
+    render(
+      mount({
+        browserTargets: [READY],
+        browserAcquisitions: [],
+        activeTarget: { kind: "browser", targetId: READY.id },
+        onChooseTarget: vi.fn(),
+      }),
+    );
+
+    expect(screen.getByTestId("suggest-target-server")).toBeTruthy();
+    expect(screen.getByTestId("suggest-target-browser")).toBeTruthy();
+    const section = screen.getByTestId("suggest-device-section");
+    expect(section.textContent).toContain("EfficientSAM-Ti");
+    expect(section.textContent).toContain("Ready");
+  });
+
+  it("switches to the server target when the Server tab is chosen", async () => {
+    const onChooseTarget = vi.fn();
+    const user = userEvent.setup();
+    render(
+      mount({
+        browserTargets: [READY],
+        browserAcquisitions: [],
+        activeTarget: { kind: "browser", targetId: READY.id },
+        onChooseTarget,
+        connectionId: "c1",
+      }),
+    );
+
+    await user.click(screen.getByTestId("suggest-target-server"));
+    expect(onChooseTarget).toHaveBeenCalledWith({ kind: "server", connectionId: "c1" });
+  });
+
+  it("switches to the browser target when the This device tab is chosen", async () => {
+    const onChooseTarget = vi.fn();
+    const user = userEvent.setup();
+    render(
+      mount({
+        browserTargets: [READY],
+        browserAcquisitions: [],
+        activeTarget: { kind: "server", connectionId: "c1" },
+        onChooseTarget,
+      }),
+    );
+
+    await user.click(screen.getByTestId("suggest-target-browser"));
+    expect(onChooseTarget).toHaveBeenCalledWith({ kind: "browser", targetId: READY.id });
+  });
+
+  it("offers a download for a model not yet acquired, and reports success", async () => {
+    const onAcquired = vi.fn();
+    const acquire = vi.fn().mockResolvedValue(undefined);
+    render(
+      mount({
+        browserTargets: [],
+        browserAcquisitions: [acquisition({ acquire })],
+        activeTarget: { kind: "browser", targetId: "efficient-sam-ti" },
+        onChooseTarget: vi.fn(),
+        onAcquired,
+      }),
+    );
+
+    const button = screen.getByTestId("suggest-device-acquire-efficient-sam-ti");
+    expect(button.textContent).toContain("Download to this browser");
+    expect(screen.getByTestId("suggest-device-section").textContent).toContain("41 MB");
+
+    fireEvent.click(button);
+    expect(acquire).toHaveBeenCalledTimes(1);
+    expect(button).toHaveProperty("disabled", true);
+
+    await waitFor(() => expect(onAcquired).toHaveBeenCalledTimes(1));
+  });
+
+  it("shows an alert and re-enables the button when the download fails", async () => {
+    const acquire = vi.fn().mockRejectedValue(new Error("network down"));
+    render(
+      mount({
+        browserTargets: [],
+        browserAcquisitions: [acquisition({ acquire })],
+        activeTarget: { kind: "browser", targetId: "efficient-sam-ti" },
+        onChooseTarget: vi.fn(),
+      }),
+    );
+
+    const button = screen.getByTestId("suggest-device-acquire-efficient-sam-ti");
+    fireEvent.click(button);
+
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect(screen.getByRole("alert").textContent).toContain("Download failed");
+    expect(button).toHaveProperty("disabled", false);
   });
 });

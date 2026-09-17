@@ -64,11 +64,28 @@ import {
   type SuggestionState,
 } from "@visionset/annotator";
 import { Check, Loader2, Sparkles, TriangleAlert, X } from "lucide-react";
-import type { JSX, ReactNode } from "react";
+import { useState, type JSX, type ReactNode } from "react";
 
 import { EditorNotice } from "./EditorNotice";
-import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
+import {
+  Badge,
+  Button,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@robomous/ui-core";
 import type { Connection, SuggestBlocker } from "../data/inferenceQueries";
+import type {
+  ActiveSuggestionTarget,
+  BrowserModelAcquisition,
+  BrowserSuggestionTarget,
+} from "../inference/browserPort.js";
 
 export interface SuggestPanelProps {
   /** The session, whose status decides which sentence this card carries. */
@@ -113,6 +130,14 @@ export interface SuggestPanelProps {
   readonly onChooseConnection?: (connectionId: string) => void;
   /** Where a person goes to make or finish a connection, if the host has one. */
   readonly onConfigure?: () => void;
+  /** Browser targets ready right now. `undefined` when no browser runtime is wired at all. */
+  readonly browserTargets?: readonly BrowserSuggestionTarget[];
+  /** Models not yet acquired. `undefined` when no browser runtime is wired at all. */
+  readonly browserAcquisitions?: readonly BrowserModelAcquisition[];
+  readonly activeTarget?: ActiveSuggestionTarget;
+  readonly onChooseTarget?: (target: ActiveSuggestionTarget) => void;
+  /** Called once an `acquire()` this panel started resolves, so the host can re-read `listTargets()`. */
+  readonly onAcquired?: () => void;
   readonly onAccept: () => void;
   readonly onDiscard: () => void;
   /** Whether the adjustments are open. Owned by the host, because `Esc` layers on it. */
@@ -195,6 +220,11 @@ export function SuggestPanel({
   connectionId = null,
   onChooseConnection,
   onConfigure,
+  browserTargets,
+  browserAcquisitions,
+  activeTarget,
+  onChooseTarget,
+  onAcquired,
   onAccept,
   onDiscard,
   adjusting,
@@ -411,14 +441,31 @@ export function SuggestPanel({
         genuinely out. Stating the rule where it is enforced is what makes the
         branch ordering an implementation detail rather than the guarantee.
       */}
-      {!hasPending(session) && (
-        <Through
+      {browserTargets === undefined && browserAcquisitions === undefined ? (
+        <>
+          {!hasPending(session) && (
+            <Through
+              candidates={candidates}
+              connectionId={connectionId}
+              {...(onChooseConnection === undefined ? {} : { onChoose: onChooseConnection })}
+            />
+          )}
+          {hasPending(session) && <Discard onDiscard={onDiscard} />}
+        </>
+      ) : (
+        <TargetChooser
           candidates={candidates}
           connectionId={connectionId}
           {...(onChooseConnection === undefined ? {} : { onChoose: onChooseConnection })}
+          pending={hasPending(session)}
+          onDiscard={onDiscard}
+          browserTargets={browserTargets ?? []}
+          browserAcquisitions={browserAcquisitions ?? []}
+          activeTarget={activeTarget}
+          {...(onChooseTarget === undefined ? {} : { onChooseTarget })}
+          {...(onAcquired === undefined ? {} : { onAcquired })}
         />
       )}
-      {hasPending(session) && <Discard onDiscard={onDiscard} />}
     </EditorNotice>
   );
 }
@@ -477,6 +524,150 @@ function Through({
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+/**
+ * Server or this device, once a browser runtime is wired in at all.
+ *
+ * `Tabs` rather than a picker: the choice is binary and always available once a
+ * runtime exists, so a segmented control reads better than a `Select` built for
+ * an open-ended candidate list. The server tab holds exactly what rendered
+ * before this component existed — `Through`/`Discard`, untouched — so choosing
+ * "Server" is never a behavior change from the pre-Task-6 panel.
+ */
+function TargetChooser({
+  candidates,
+  connectionId,
+  onChoose,
+  pending,
+  onDiscard,
+  browserTargets,
+  browserAcquisitions,
+  activeTarget,
+  onChooseTarget,
+  onAcquired,
+}: {
+  readonly candidates: readonly Connection[];
+  readonly connectionId: string | null;
+  readonly onChoose?: (connectionId: string) => void;
+  readonly pending: boolean;
+  readonly onDiscard: () => void;
+  readonly browserTargets: readonly BrowserSuggestionTarget[];
+  readonly browserAcquisitions: readonly BrowserModelAcquisition[];
+  readonly activeTarget: ActiveSuggestionTarget | undefined;
+  readonly onChooseTarget?: (target: ActiveSuggestionTarget) => void;
+  readonly onAcquired?: () => void;
+}): JSX.Element {
+  const value = activeTarget?.kind ?? "server";
+
+  return (
+    <Tabs
+      value={value}
+      onValueChange={(next) => {
+        if (next === "server") {
+          onChooseTarget?.({ kind: "server", connectionId: connectionId ?? "" });
+          return;
+        }
+        const targetId = browserTargets[0]?.id ?? browserAcquisitions[0]?.id;
+        if (targetId !== undefined) {
+          onChooseTarget?.({ kind: "browser", targetId });
+        }
+      }}
+    >
+      <TabsList>
+        <TabsTrigger value="server" data-testid="suggest-target-server">
+          Server
+        </TabsTrigger>
+        <TabsTrigger value="browser" data-testid="suggest-target-browser">
+          This device
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="server">
+        {!pending && (
+          <Through
+            candidates={candidates}
+            connectionId={connectionId}
+            {...(onChoose === undefined ? {} : { onChoose })}
+          />
+        )}
+        {pending && <Discard onDiscard={onDiscard} />}
+      </TabsContent>
+      <TabsContent value="browser" data-testid="suggest-device-section">
+        <DeviceTab
+          targets={browserTargets}
+          acquisitions={browserAcquisitions}
+          {...(onAcquired === undefined ? {} : { onAcquired })}
+        />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+/**
+ * What "this device" has to say: a ready target's name and a success pill, or
+ * an unacquired model's size and a download button.
+ *
+ * Phase F ships exactly one browser-suggestible model, so this never has to
+ * choose between several targets or several acquisitions — it reads the first
+ * of whichever list is non-empty. The acquiring/failed state is local and
+ * transient, on `BrowserModelAcquisition`'s own contract: `acquire()` is not
+ * reactive, so the UI owns the story of one attempt in flight.
+ */
+function DeviceTab({
+  targets,
+  acquisitions,
+  onAcquired,
+}: {
+  readonly targets: readonly BrowserSuggestionTarget[];
+  readonly acquisitions: readonly BrowserModelAcquisition[];
+  readonly onAcquired?: () => void;
+}): JSX.Element | null {
+  const [acquiring, setAcquiring] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const target = targets[0];
+  if (target !== undefined) {
+    return (
+      <p className="flex items-center gap-2 text-muted-foreground">
+        {target.label}
+        <Badge variant="success">Ready</Badge>
+      </p>
+    );
+  }
+
+  const acquisition = acquisitions[0];
+  if (acquisition === undefined) return null;
+
+  return (
+    <div className="flex flex-col items-start gap-2">
+      <p className="text-muted-foreground">
+        {acquisition.label} — ~{Math.round(acquisition.approxBytes / 1_000_000)} MB
+      </p>
+      <Button
+        variant="outline"
+        size="sm"
+        data-testid={`suggest-device-acquire-${acquisition.id}`}
+        disabled={acquiring}
+        onClick={() => {
+          setAcquiring(true);
+          setFailed(false);
+          acquisition.acquire().then(
+            () => {
+              setAcquiring(false);
+              onAcquired?.();
+            },
+            () => {
+              setAcquiring(false);
+              setFailed(true);
+            },
+          );
+        }}
+      >
+        {acquiring ? "Downloading…" : "Download to this browser"}
+      </Button>
+      {failed && <p role="alert">Download failed. Try again.</p>}
+    </div>
   );
 }
 
