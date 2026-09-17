@@ -19,7 +19,26 @@ interface Deps {
   readonly createRuntime: (artifacts: { encoder: Uint8Array; decoder: Uint8Array }) => PromptableSegmentationRuntime;
 }
 
-const REAL_DEPS: Deps = { acquire: acquireEfficientSam, createRuntime: createEfficientSamRuntime };
+/**
+ * Where this deployment serves ONNX Runtime's WebAssembly artifacts.
+ *
+ * Stated rather than left to the worker's own default, which resolves `./ort/` against
+ * the worker's module URL: correct for the package as installed, wrong once vite has
+ * hashed the worker into `assets/`. `vite.config.ts` puts the directory at `<base>ort/`,
+ * and `BASE_URL` is the only thing that knows what `<base>` is — `/app/` in a build,
+ * because the wheel mounts the bundle there, and `/` under the dev server.
+ *
+ * Absolute, against the document: the worker resolves a relative `wasmPaths` against
+ * *its* location, which is the one place the path must not be relative to.
+ */
+function ortAssetBaseUrl(): string {
+  return new URL(`${import.meta.env.BASE_URL}ort/`, window.location.href).href;
+}
+
+const REAL_DEPS: Deps = {
+  acquire: acquireEfficientSam,
+  createRuntime: (artifacts) => createEfficientSamRuntime({ ...artifacts, assetBaseUrl: ortAssetBaseUrl() }),
+};
 
 type State = { readonly kind: "unacquired" } | { readonly kind: "ready"; readonly runtime: PromptableSegmentationRuntime };
 
