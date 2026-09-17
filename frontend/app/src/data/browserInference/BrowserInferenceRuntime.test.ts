@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createOssBrowserInferenceRuntime } from "./BrowserInferenceRuntime.js";
+import { EFFICIENT_SAM_TI_REVISION } from "./manifest.js";
 
 function fakeDeps(overrides?: { acquire?: () => Promise<{ encoder: Uint8Array; decoder: Uint8Array }> }) {
   const createRuntime = vi.fn(() => ({
@@ -47,6 +48,14 @@ describe("createOssBrowserInferenceRuntime", () => {
     resolveAcquire({ encoder: new Uint8Array(1), decoder: new Uint8Array(1) });
     await Promise.all([first, second]);
     expect(deps.acquire).toHaveBeenCalledTimes(1);
+  });
+
+  it("carries the pinned revision in the acquired target's modelRef", async () => {
+    const deps = fakeDeps();
+    const runtime = createOssBrowserInferenceRuntime(deps);
+    await runtime.listAcquisitions?.()[0]!.acquire();
+    const targets = await runtime.listTargets();
+    expect(targets[0]!.modelRef).toBe(`efficient-sam-ti@${EFFICIENT_SAM_TI_REVISION}`);
   });
 
   it("throws from executorFor before any acquisition has succeeded", () => {
