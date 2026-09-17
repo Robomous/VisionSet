@@ -220,6 +220,9 @@ importers:
       '@visionset/annotator':
         specifier: workspace:*
         version: link:../annotator
+      '@visionset/browser-inference':
+        specifier: workspace:*
+        version: link:../browser-inference
       '@visionset/media':
         specifier: workspace:*
         version: link:../media
