@@ -188,6 +188,8 @@ import { SuggestPanel } from "./SuggestPanel";
 import { useConnections, usableConnection } from "../data/inferenceQueries";
 import type { SuggestionOut } from "../data/inferenceQueries";
 import { useServerSuggestionExecutor } from "../inference/suggestionExecutor";
+import { useBrowserInferenceRuntime } from "../inference/VisionSetBrowserInferenceProvider.js";
+import type { BrowserSuggestionAssetSource } from "../inference/browserPort.js";
 import { readPref, writePref } from "../data/prefs";
 
 /**
@@ -922,6 +924,12 @@ function Workspace({
    * and the engine ships none. What the engine owns is the settings themselves.
    */
   const [adjusting, setAdjusting] = useState(false);
+
+  const browserRuntime = useBrowserInferenceRuntime();
+
+  useEffect(() => {
+    return () => browserRuntime?.setActiveAsset?.(null);
+  }, [browserRuntime]);
 
   /**
    * The connection list, fetched **only once the tool is armed**.
@@ -2549,6 +2557,17 @@ function Workspace({
                 // its own and lose it on every navigation.
                 clipboard={clipboard}
                 onHostAction={hostAction}
+                onImageReady={(image) => {
+                  const width = image.image.naturalWidth;
+                  const height = image.image.naturalHeight;
+                  const source: BrowserSuggestionAssetSource = {
+                    assetId: asset.id,
+                    width,
+                    height,
+                    readRgb: () => image.readRgb(width, height),
+                  };
+                  browserRuntime?.setActiveAsset?.(source);
+                }}
                 // A right-click on a shape: select it, then open its class
                 // picker over it. Selecting is what makes the picker's
                 // subject unambiguous — it anchors to the selection, and a menu

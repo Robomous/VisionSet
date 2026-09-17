@@ -8,7 +8,7 @@ import {
   useBrowserInferenceRuntime,
   VisionSetBrowserInferenceProvider,
 } from "./VisionSetBrowserInferenceProvider";
-import type { VisionSetBrowserInferenceRuntime } from "./browserPort";
+import type { BrowserSuggestionAssetSource, VisionSetBrowserInferenceRuntime } from "./browserPort";
 import { clearPrefs } from "../data/prefs";
 import { AnnotationPage } from "../annotator/AnnotationPage";
 import { TooltipProvider } from "@robomous/ui-core";
@@ -292,5 +292,30 @@ describe("an injected browser runtime changes nothing on the wire", () => {
     unmountSecond();
 
     expect(withRuntime).toEqual(withoutRuntime);
+  });
+});
+
+describe("BrowserSuggestionAssetSource", () => {
+  it("hands the browser runtime a BrowserSuggestionAssetSource once the asset image loads", async () => {
+    const setActiveAsset = vi.fn();
+    const runtime: VisionSetBrowserInferenceRuntime = {
+      listTargets: async () => [],
+      executorFor: () => ({
+        suggest: async () => {
+          throw new Error("unused");
+        },
+      }),
+      setActiveAsset,
+    };
+
+    await open(runtime);
+
+    const image = screen.getByTestId("annotator-image");
+    fireEvent.load(image);
+
+    await waitFor(() => expect(setActiveAsset).toHaveBeenCalledTimes(1));
+    const [source] = setActiveAsset.mock.calls[0] as [BrowserSuggestionAssetSource];
+    expect(source.assetId).toBe(ASSET);
+    expect(typeof source.readRgb).toBe("function");
   });
 });
