@@ -4,9 +4,12 @@ import {
   createOssBrowserInferenceRuntime,
   getSharedOssBrowserInferenceRuntime,
 } from "./BrowserInferenceRuntime.js";
-import { EFFICIENT_SAM_TI_REVISION } from "./manifest.js";
 import type { VisionSetBrowserInferenceRuntime } from "@visionset/ui-core";
-import type { BrowserArtifactStore, BrowserModelArtifacts } from "./artifactStore.js";
+import type {
+  BrowserArtifactStore,
+  BrowserModelArtifacts,
+  VerifiedBrowserModelArtifacts,
+} from "./artifactStore.js";
 
 function fakeDeps(overrides?: {
   acquire?: () => Promise<BrowserModelArtifacts>;
@@ -24,11 +27,18 @@ function fakeDeps(overrides?: {
     dispose,
   }));
   const acquire = vi.fn(overrides?.acquire ?? (async () => ({ encoder: new Uint8Array(1), decoder: new Uint8Array(1) })));
+  const store: BrowserArtifactStore = overrides?.store ?? {
+    inspect: vi.fn(async () => false),
+    readVerified: vi.fn(async () => null),
+    verifyModelArtifacts: vi.fn(async (_model, artifacts) => artifacts as VerifiedBrowserModelArtifacts),
+    persistVerifiedArtifacts: vi.fn(async () => undefined),
+    remove: vi.fn(async () => undefined),
+  };
   return {
     acquire,
     createRuntime,
     supported: overrides?.supported ?? ((): boolean => true),
-    ...(overrides?.store === undefined ? {} : { store: overrides.store }),
+    store,
     ...(overrides?.discover === undefined ? {} : { discover: overrides.discover }),
     prepareImage,
     dispose,
@@ -75,7 +85,8 @@ describe("createOssBrowserInferenceRuntime", () => {
     const store: BrowserArtifactStore = {
       inspect: vi.fn(async () => true),
       readVerified: vi.fn(async () => artifacts),
-      writeVerified: vi.fn(async () => undefined),
+      verifyModelArtifacts: vi.fn(async () => artifacts as VerifiedBrowserModelArtifacts),
+      persistVerifiedArtifacts: vi.fn(async () => undefined),
       remove: vi.fn(async () => undefined),
     };
     const runtime = createOssBrowserInferenceRuntime(fakeDeps({
@@ -120,12 +131,12 @@ describe("createOssBrowserInferenceRuntime", () => {
     expect(deps.acquire).toHaveBeenCalledTimes(1);
   });
 
-  it("carries the pinned revision in the acquired target's modelRef", async () => {
+  it("preserves the Phase F annotation model_ref for the acquired target", async () => {
     const deps = fakeDeps();
     const runtime = createOssBrowserInferenceRuntime(deps);
     await (await acquisition(runtime)).acquire();
     const targets = await runtime.listTargets();
-    expect(targets[0]!.modelRef).toBe(`robomous/efficient-sam-ti@${EFFICIENT_SAM_TI_REVISION}`);
+    expect(targets[0]!.modelRef).toBe("efficient-sam-ti@b19782d049c0-843761ca46f4");
   });
 
   it("throws from executorFor before any acquisition has succeeded", () => {
@@ -195,9 +206,11 @@ describe("createOssBrowserInferenceRuntime", () => {
         adjustments: { tolerance: 2 },
       };
 
-      await runtime.executorFor("efficient-sam-ti").suggest(request);
+      const first = await runtime.executorFor("efficient-sam-ti").suggest(request);
       await runtime.executorFor("efficient-sam-ti").suggest(request);
 
+      // This is the exact field the annotator copies into accepted model provenance.
+      expect(first.model_ref).toBe("efficient-sam-ti@b19782d049c0-843761ca46f4");
       expect(deps.prepareImage).toHaveBeenCalledTimes(1);
     });
   });

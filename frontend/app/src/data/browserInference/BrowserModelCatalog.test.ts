@@ -5,10 +5,16 @@ import type { BrowserSuggestionTarget, SuggestionExecutor } from "@visionset/ui-
 
 import type { BrowserModelAdmission } from "./admissionCatalog.js";
 import {
+  BrowserArtifactCacheCorruptionError,
   BrowserArtifactRollbackError,
   BrowserArtifactStorageIndeterminateError,
+  BrowserArtifactVerificationError,
+  createCacheArtifactStore,
+  type ArtifactCache,
+  type ArtifactCacheStorage,
   type BrowserArtifactStore,
   type BrowserModelArtifacts,
+  type VerifiedBrowserModelArtifacts,
 } from "./artifactStore.js";
 import { createBrowserModelCatalog } from "./BrowserModelCatalog.js";
 
@@ -16,7 +22,8 @@ const ADMISSION: BrowserModelAdmission = {
   id: "efficient-sam-ti",
   label: "EfficientSAM-Ti",
   revision: "fixture-revision",
-  modelRef: "robomous/efficient-sam-ti@fixture-revision",
+  annotationModelRef: "efficient-sam-ti@fixture-revision",
+  registryModelRef: "robomous/efficient-sam-ti@fixture-revision",
   manifestPath: "/models/efficient-sam-ti/fixture-revision/manifest.json",
   adapter: "efficient-sam-ti",
   license: "Apache-2.0",
@@ -39,20 +46,49 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+async function sha256(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+class MemoryCache implements ArtifactCache {
+  readonly entries = new Map<string, Response>();
+  readonly put = vi.fn(async (request: RequestInfo | URL, response: Response) => {
+    this.entries.set(String(request), response.clone());
+  });
+  readonly match = vi.fn(async (request: RequestInfo | URL) => this.entries.get(String(request))?.clone());
+  readonly delete = vi.fn(async (request: RequestInfo | URL) => this.entries.delete(String(request)));
+}
+
+function storage(cache: MemoryCache): ArtifactCacheStorage {
+  return { open: vi.fn(async () => cache) };
+}
+
 function harness(overrides: {
+  admission?: BrowserModelAdmission;
+  store?: BrowserArtifactStore;
   installed?: boolean;
   inspect?: () => Promise<boolean>;
   discover?: () => Promise<boolean>;
   read?: () => Promise<BrowserModelArtifacts | null>;
-  write?: () => Promise<void>;
+  verify?: (
+    model: BrowserModelAdmission,
+    artifacts: BrowserModelArtifacts,
+  ) => Promise<VerifiedBrowserModelArtifacts>;
+  persist?: () => Promise<void>;
   download?: () => Promise<BrowserModelArtifacts>;
   ready?: () => Promise<unknown>;
 } = {}) {
   let installed = overrides.installed ?? false;
-  const store: BrowserArtifactStore = {
+  const store: BrowserArtifactStore = overrides.store ?? {
     inspect: vi.fn(overrides.inspect ?? (async () => installed)),
     readVerified: vi.fn(overrides.read ?? (async () => (installed ? ARTIFACTS : null))),
-    writeVerified: vi.fn(overrides.write ?? (async () => { installed = true; })),
+    verifyModelArtifacts: vi.fn(
+      overrides.verify ??
+        (async (_model: BrowserModelAdmission, artifacts: BrowserModelArtifacts) =>
+          artifacts as VerifiedBrowserModelArtifacts),
+    ),
+    persistVerifiedArtifacts: vi.fn(overrides.persist ?? (async () => { installed = true; })),
     remove: vi.fn(async () => { installed = false; }),
   };
   const dispose = vi.fn();
@@ -64,14 +100,14 @@ function harness(overrides: {
   } as unknown as PromptableSegmentationRuntime;
   const executor = { suggest: vi.fn() } as unknown as SuggestionExecutor;
   const target: BrowserSuggestionTarget = {
-    id: ADMISSION.id,
-    label: ADMISSION.label,
-    modelRef: ADMISSION.modelRef,
+    id: (overrides.admission ?? ADMISSION).id,
+    label: (overrides.admission ?? ADMISSION).label,
+    modelRef: (overrides.admission ?? ADMISSION).annotationModelRef,
   };
   const download = vi.fn(overrides.download ?? (async () => ARTIFACTS));
   const activate = vi.fn(async () => ({ runtime, executor, target }));
   const catalog = createBrowserModelCatalog({
-    admissions: [ADMISSION],
+    admissions: [overrides.admission ?? ADMISSION],
     store,
     discover: overrides.discover ?? (async () => true),
     download,
@@ -149,8 +185,56 @@ describe("createBrowserModelCatalog", () => {
     expect(catalog.listTargets()).toHaveLength(1);
   });
 
+  it("rejects corrupt downloaded bytes at store verification without retaining or activating them", async () => {
+    const expectedDecoder = ARTIFACTS.decoder;
+    const admission: BrowserModelAdmission = {
+      ...ADMISSION,
+      artifacts: [
+        { ...ADMISSION.artifacts[0], bytes: ARTIFACTS.encoder.byteLength, sha256: await sha256(ARTIFACTS.encoder) },
+        { ...ADMISSION.artifacts[1], bytes: expectedDecoder.byteLength, sha256: await sha256(expectedDecoder) },
+      ],
+    };
+    const cache = new MemoryCache();
+    const store = createCacheArtifactStore(storage(cache));
+    const corrupt = { ...ARTIFACTS, decoder: new Uint8Array([9, 9, 9]) };
+    const { activate, catalog, runtime } = harness({ admission, store, download: async () => corrupt });
+    await settles(catalog);
+
+    await expect(catalog.acquire(admission.id)).rejects.toBeInstanceOf(BrowserArtifactVerificationError);
+
+    expect(cache.put).not.toHaveBeenCalled();
+    expect(activate).not.toHaveBeenCalled();
+    expect(runtime.ready).not.toHaveBeenCalled();
+    expect(catalog.listTargets()).toEqual([]);
+    expect(catalog.snapshot()[0]).toMatchObject({ state: "failed", storage: "none" });
+    // A second activation must read the empty cache rather than reuse an in-memory fallback.
+    await expect(catalog.activate(admission.id)).rejects.toThrow(/not installed/i);
+    expect(activate).not.toHaveBeenCalled();
+  });
+
+  it("allows valid store-verified bytes to activate when cache.put hits quota", async () => {
+    const admission: BrowserModelAdmission = {
+      ...ADMISSION,
+      artifacts: [
+        { ...ADMISSION.artifacts[0], bytes: ARTIFACTS.encoder.byteLength, sha256: await sha256(ARTIFACTS.encoder) },
+        { ...ADMISSION.artifacts[1], bytes: ARTIFACTS.decoder.byteLength, sha256: await sha256(ARTIFACTS.decoder) },
+      ],
+    };
+    const cache = new MemoryCache();
+    cache.put.mockRejectedValueOnce(new DOMException("quota", "QuotaExceededError"));
+    const { activate, catalog, runtime } = harness({ admission, store: createCacheArtifactStore(storage(cache)) });
+    await settles(catalog);
+
+    await catalog.acquire(admission.id);
+
+    expect(cache.put).toHaveBeenCalledTimes(1);
+    expect(activate).toHaveBeenCalledTimes(1);
+    expect(runtime.ready).toHaveBeenCalledTimes(1);
+    expect(catalog.snapshot()[0]).toMatchObject({ state: "ready", storage: "session" });
+  });
+
   it("keeps verified bytes ready for this session when persistent writing fails", async () => {
-    const { catalog } = harness({ write: async () => Promise.reject(new DOMException("quota", "QuotaExceededError")) });
+    const { catalog } = harness({ persist: async () => Promise.reject(new DOMException("quota", "QuotaExceededError")) });
     await settles(catalog);
 
     await catalog.acquire(ADMISSION.id);
@@ -164,7 +248,7 @@ describe("createBrowserModelCatalog", () => {
       new DOMException("quota", "QuotaExceededError"),
       new Error("cache delete failed"),
     );
-    const { catalog, store } = harness({ write: async () => Promise.reject(rollbackFailure) });
+    const { catalog, store } = harness({ persist: async () => Promise.reject(rollbackFailure) });
     await settles(catalog);
 
     await catalog.acquire(ADMISSION.id);
@@ -180,7 +264,7 @@ describe("createBrowserModelCatalog", () => {
       "Browser model cache could not be opened (cache namespace unavailable).",
       new Error("cache namespace unavailable"),
     );
-    const { catalog, store } = harness({ write: async () => Promise.reject(openFailure) });
+    const { catalog, store } = harness({ persist: async () => Promise.reject(openFailure) });
     await settles(catalog);
 
     await catalog.acquire(ADMISSION.id);
@@ -203,10 +287,32 @@ describe("createBrowserModelCatalog", () => {
     expect(catalog.snapshot()[0]?.state).toBe("ready");
   });
 
-  it("fails closed on corrupt cached bytes and never turns activation into a download", async () => {
+  it("marks a corrupt cache as absent when readVerified removed it, without downloading", async () => {
     const { catalog, download } = harness({
       installed: true,
-      read: async () => Promise.reject(new Error("cached encoder SHA-256 mismatch")),
+      read: async () => Promise.reject(
+        new BrowserArtifactCacheCorruptionError(new Error("cached encoder SHA-256 mismatch"), { succeeded: true }),
+      ),
+    });
+    await settles(catalog);
+
+    await expect(catalog.activate(ADMISSION.id)).rejects.toThrow(/sha-256 mismatch/i);
+
+    expect(download).not.toHaveBeenCalled();
+    expect(catalog.snapshot()[0]).toMatchObject({ state: "failed", storage: "none" });
+    expect(catalog.listTargets()).toEqual([]);
+  });
+
+  it("keeps corrupt cache storage unknown when readVerified could not remove it", async () => {
+    const cleanup = new Error("cache delete failed");
+    const { catalog, download } = harness({
+      installed: true,
+      read: async () => Promise.reject(
+        new BrowserArtifactCacheCorruptionError(new Error("cached encoder SHA-256 mismatch"), {
+          succeeded: false,
+          cause: cleanup,
+        }),
+      ),
     });
     await settles(catalog);
 
@@ -214,7 +320,6 @@ describe("createBrowserModelCatalog", () => {
 
     expect(download).not.toHaveBeenCalled();
     expect(catalog.snapshot()[0]).toMatchObject({ state: "failed", storage: "unknown" });
-    expect(catalog.listTargets()).toEqual([]);
   });
 
   it("keeps persistent storage truthful when runtime startup fails after verified cache read", async () => {
@@ -236,6 +341,7 @@ describe("createBrowserModelCatalog", () => {
     await expect(catalog.activate(ADMISSION.id)).rejects.toThrow(/not installed/i);
     expect(download).not.toHaveBeenCalled();
     expect(catalog.listTargets()).toEqual([]);
+    expect(catalog.snapshot()[0]).toMatchObject({ state: "failed", storage: "none" });
   });
 
   it("removes cached artifacts after invalidating and disposing the active runtime", async () => {

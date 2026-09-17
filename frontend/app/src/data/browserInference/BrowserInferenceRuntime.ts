@@ -61,10 +61,10 @@ export function createOssBrowserInferenceRuntime(deps: Deps = REAL_DEPS): Vision
       const target: BrowserSuggestionTarget = {
         id: admission.id,
         label: admission.label,
-        modelRef: admission.modelRef,
+        modelRef: admission.annotationModelRef,
       };
       const executor: SuggestionExecutor = createBrowserSuggestionExecutor({
-        modelRef: admission.modelRef,
+        modelRef: admission.annotationModelRef,
         runtime,
         getActiveSource: () => activeAssetSource,
       });

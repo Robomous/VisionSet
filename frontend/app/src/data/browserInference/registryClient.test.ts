@@ -40,7 +40,8 @@ describe("fetchAdmittedBrowserModels", () => {
     expect(result[0]).toMatchObject({
       id: "efficient-sam-ti",
       revision: "b19782d049c0-843761ca46f4",
-      modelRef: "robomous/efficient-sam-ti@b19782d049c0-843761ca46f4",
+      registryModelRef: "robomous/efficient-sam-ti@b19782d049c0-843761ca46f4",
+      annotationModelRef: "efficient-sam-ti@b19782d049c0-843761ca46f4",
       license: "Apache-2.0",
       source: { repository: "https://github.com/yformer/EfficientSAM" },
     });

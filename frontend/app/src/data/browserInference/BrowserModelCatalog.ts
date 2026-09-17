@@ -8,9 +8,12 @@ import type {
 
 import type { BrowserModelAdmission } from "./admissionCatalog.js";
 import {
+  BrowserArtifactCacheCorruptionError,
   BrowserArtifactStorageIndeterminateError,
+  BrowserArtifactVerificationError,
   type BrowserArtifactStore,
   type BrowserModelArtifacts,
+  type VerifiedBrowserModelArtifacts,
 } from "./artifactStore.js";
 
 interface ActiveModel {
@@ -43,7 +46,7 @@ interface ModelRecord {
   storage: BrowserModelCatalogEntry["storage"];
   error?: string;
   registryFailure?: string;
-  sessionArtifacts?: BrowserModelArtifacts;
+  sessionArtifacts?: VerifiedBrowserModelArtifacts;
 }
 
 export interface OssBrowserModelCatalog extends BrowserModelCatalog {
@@ -62,7 +65,7 @@ function entryOf(record: ModelRecord): BrowserModelCatalogEntry {
   return {
     id: admission.id,
     label: admission.label,
-    modelRef: admission.modelRef,
+    modelRef: admission.annotationModelRef,
     revision: admission.revision,
     bytes: admission.artifacts.reduce((total, artifact) => total + artifact.bytes, 0),
     license: admission.license,
@@ -241,21 +244,32 @@ export function createBrowserModelCatalog(deps: CatalogDeps): OssBrowserModelCat
           if (!record.discovered) throw new Error(`browser model "${id}" is not available from this registry`);
           record.registryFailure = undefined;
         }
+        // A retry supersedes any session-only bytes retained by an earlier attempt. If the new
+        // download fails admission, activation must not be able to resurrect the old artifacts.
+        record.sessionArtifacts = undefined;
         update(record, { visible: true, state: "downloading", storage: "none", error: undefined });
         try {
           const artifacts = await deps.download(record.admission, options?.signal);
+          // Downloaders are transport only. The artifact store is the independent admission
+          // boundary, so unchecked network bytes cannot enter either persistence or ORT.
+          const verifiedArtifacts = await deps.store.verifyModelArtifacts(record.admission, artifacts);
           let storage: BrowserModelCatalogEntry["storage"] = "persistent";
           try {
-            await deps.store.writeVerified(record.admission, artifacts);
+            await deps.store.persistVerifiedArtifacts(record.admission, verifiedArtifacts);
           } catch (error) {
-            // Verified bytes remain usable in memory even when persistence is refused. The
-            // artifact store rolls back partial writes before rejecting. If rollback itself
-            // failed, keep removal available because any subset of the revision may remain.
+            // `persistVerifiedArtifacts` accepts only an opaque verified value, but preserve
+            // the hard boundary if a future store implementation repeats or strengthens an
+            // integrity check while persisting.
+            if (error instanceof BrowserArtifactVerificationError) throw error;
+            // Only a completed admission check reaches this branch. Persistence failures may
+            // retain those verified bytes for this session; integrity failures above hard-fail.
+            // The store rolls back partial writes before rejecting. If rollback itself failed,
+            // keep removal available because any subset of the revision may remain.
             storage = error instanceof BrowserArtifactStorageIndeterminateError ? "unknown" : "session";
-            record.sessionArtifacts = artifacts;
+            record.sessionArtifacts = verifiedArtifacts;
           }
           update(record, { state: "installed", storage, error: undefined });
-          await startRuntime(record, artifacts);
+          await startRuntime(record, verifiedArtifacts);
         } catch (error) {
           if (record.state !== "failed") {
             update(record, { visible: true, state: "failed", storage: "none", error: message(error) });
@@ -268,23 +282,28 @@ export function createBrowserModelCatalog(deps: CatalogDeps): OssBrowserModelCat
       return once(id, "activate", async () => {
         const record = required(id);
         if (record.state === "ready") return;
-        let artifacts: BrowserModelArtifacts;
+        let stored: BrowserModelArtifacts | null;
         try {
-          const stored = record.sessionArtifacts ?? (await deps.store.readVerified(record.admission));
-          if (stored === null) throw new Error(`${record.admission.label} is not installed in this browser`);
-          artifacts = stored;
+          stored = record.sessionArtifacts ?? (await deps.store.readVerified(record.admission));
         } catch (error) {
           record.sessionArtifacts = undefined;
           if (active?.id === id) active = null;
-          // `readVerified` may itself fail while removing a corrupt or partial entry. Preserve
-          // uncertainty so the UI still offers explicit removal instead of hiding remnants.
-          update(record, { visible: true, state: "failed", storage: "unknown", error: message(error) });
+          // Corrupt cache cleanup has an explicit outcome. A successful deletion means no
+          // persisted revision remains; a failed cleanup must retain a removal affordance.
+          const storage =
+            error instanceof BrowserArtifactCacheCorruptionError && error.cleanupSucceeded ? "none" : "unknown";
+          update(record, { visible: true, state: "failed", storage, error: message(error) });
+          throw error;
+        }
+        if (stored === null) {
+          const error = new Error(`${record.admission.label} is not installed in this browser`);
+          update(record, { visible: true, state: "failed", storage: "none", error: message(error) });
           throw error;
         }
         // `startRuntime` owns its failure state. At this point bytes have already passed the
         // cache integrity check, so a worker/session failure must not pretend persistent
         // storage disappeared or was corrupt.
-        await startRuntime(record, artifacts);
+        await startRuntime(record, stored);
       });
     },
     remove(id) {

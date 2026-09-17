@@ -8,7 +8,7 @@ interface RegistryRow {
   readonly id: string;
   readonly name: string;
   readonly revision: string;
-  readonly modelRef: string;
+  readonly registryModelRef: string;
   readonly manifest: string;
   /** Optional in the measured v1 registry schema; preserve it when supplied. */
   readonly license?: string;
@@ -19,7 +19,10 @@ export interface AdmittedRegistryModel {
   readonly id: string;
   readonly label: string;
   readonly revision: string;
-  readonly modelRef: string;
+  /** The registry/manifest identity that was validated during discovery. */
+  readonly registryModelRef: string;
+  /** The VisionSet annotation provenance for suggestions from this admitted runtime. */
+  readonly annotationModelRef: string;
   readonly license: string;
   /** The registry's matching license declaration, when its schema supplied one. */
   readonly registryLicense?: string;
@@ -79,7 +82,7 @@ function parseRegistry(value: unknown): readonly RegistryRow[] {
       id,
       name: text(row["name"], `models[${index}].name`),
       revision: text(row["revision"], `models[${index}].revision`),
-      modelRef: text(row["model_ref"], `models[${index}].model_ref`),
+      registryModelRef: text(row["model_ref"], `models[${index}].model_ref`),
       manifest: text(row["manifest"], `models[${index}].manifest`),
       license: optionalText(row["license"], `models[${index}].license`),
     };
@@ -170,7 +173,7 @@ export function validateManifestAgainstAdmission(
   assertEqual(text(manifest["id"], "manifest.id"), admission.id, "id");
   assertEqual(text(manifest["name"], "manifest.name"), admission.label, "name");
   assertEqual(text(manifest["revision"], "manifest.revision"), admission.revision, "revision");
-  assertEqual(text(manifest["model_ref"], "manifest.model_ref"), admission.modelRef, "model_ref");
+  assertEqual(text(manifest["model_ref"], "manifest.model_ref"), admission.registryModelRef, "model_ref");
   if (manifest["license"] !== undefined) {
     assertEqual(text(manifest["license"], "manifest.license"), admission.license, "license");
   }
@@ -226,7 +229,7 @@ export async function fetchAdmittedBrowserModels(
       throw new Error(`registry revision mismatch for admitted model ${admission.id}`);
     }
     assertEqual(row.name, admission.label, "registry.name");
-    assertEqual(row.modelRef, admission.modelRef, "registry.model_ref");
+    assertEqual(row.registryModelRef, admission.registryModelRef, "registry.model_ref");
     assertEqual(normalizeModelPath(row.manifest), normalizeModelPath(admission.manifestPath), "registry.manifest");
     if (row.license !== undefined) assertEqual(row.license, admission.license, "registry.license");
     const manifestUrl = resolveModelPath(baseUrl, row.manifest);
@@ -243,7 +246,8 @@ export async function fetchAdmittedBrowserModels(
       id: admission.id,
       label: admission.label,
       revision: admission.revision,
-      modelRef: admission.modelRef,
+      registryModelRef: row.registryModelRef,
+      annotationModelRef: admission.annotationModelRef,
       license: row.license ?? admission.license,
       registryLicense: row.license,
       source: admission.source,

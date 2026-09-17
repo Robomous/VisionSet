@@ -10,7 +10,10 @@ export interface BrowserModelAdmission {
   readonly id: string;
   readonly label: string;
   readonly revision: string;
-  readonly modelRef: string;
+  /** The stable VisionSet provenance stamped on annotations accepted from this runtime. */
+  readonly annotationModelRef: string;
+  /** The identity spelling published by the remote registry and immutable manifest. */
+  readonly registryModelRef: string;
   readonly manifestPath: string;
   readonly adapter: "efficient-sam-ti";
   readonly license: string;
@@ -37,7 +40,8 @@ export const EFFICIENT_SAM_TI_ADMISSION: BrowserModelAdmission = Object.freeze({
   id: "efficient-sam-ti",
   label: "EfficientSAM-Ti",
   revision: "b19782d049c0-843761ca46f4",
-  modelRef: "robomous/efficient-sam-ti@b19782d049c0-843761ca46f4",
+  annotationModelRef: "efficient-sam-ti@b19782d049c0-843761ca46f4",
+  registryModelRef: "robomous/efficient-sam-ti@b19782d049c0-843761ca46f4",
   manifestPath: "/models/efficient-sam-ti/b19782d049c0-843761ca46f4/manifest.json",
   adapter: "efficient-sam-ti",
   license: "Apache-2.0",

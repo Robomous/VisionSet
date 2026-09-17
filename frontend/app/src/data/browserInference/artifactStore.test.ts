@@ -5,11 +5,13 @@ import type { BrowserModelAdmission } from "./admissionCatalog.js";
 import {
   CACHE_NAMESPACE,
   BrowserArtifactRollbackError,
+  BrowserArtifactCacheCorruptionError,
   BrowserArtifactStorageIndeterminateError,
   cacheKeyFor,
   createCacheArtifactStore,
   type ArtifactCache,
   type ArtifactCacheStorage,
+  type BrowserArtifactStore,
 } from "./artifactStore.js";
 
 type Artifacts = { readonly encoder: Uint8Array<ArrayBuffer>; readonly decoder: Uint8Array<ArrayBuffer> };
@@ -31,7 +33,8 @@ async function fixture(revision = "rev-a"): Promise<{ admission: BrowserModelAdm
       id: "fixture-model",
       label: "Fixture",
       revision,
-      modelRef: `fixture-model@${revision}`,
+      annotationModelRef: `fixture-model@${revision}`,
+      registryModelRef: `fixture/fixture-model@${revision}`,
       manifestPath: `/models/fixture-model/${revision}/manifest.json`,
       adapter: "efficient-sam-ti",
       license: "Apache-2.0",
@@ -71,6 +74,14 @@ function storage(cache: MemoryCache): ArtifactCacheStorage {
   return { open: vi.fn(async () => cache) };
 }
 
+async function persist(
+  store: BrowserArtifactStore,
+  admission: BrowserModelAdmission,
+  artifacts: Artifacts,
+): Promise<void> {
+  await store.persistVerifiedArtifacts(admission, await store.verifyModelArtifacts(admission, artifacts));
+}
+
 describe("createCacheArtifactStore", () => {
   it("reports a cache miss as not installed", async () => {
     const cache = new MemoryCache();
@@ -83,7 +94,9 @@ describe("createCacheArtifactStore", () => {
     const { admission, artifacts } = await fixture();
     const corrupt = { ...artifacts, decoder: bytes("DECODEX") };
 
-    await expect(createCacheArtifactStore(storage(cache)).writeVerified(admission, corrupt)).rejects.toThrow(
+    const store = createCacheArtifactStore(storage(cache));
+
+    await expect(store.verifyModelArtifacts(admission, corrupt)).rejects.toThrow(
       /sha-256 mismatch/i,
     );
     expect(cache.put).not.toHaveBeenCalled();
@@ -94,7 +107,7 @@ describe("createCacheArtifactStore", () => {
     const { admission, artifacts } = await fixture();
     const store = createCacheArtifactStore(storage(cache));
 
-    await store.writeVerified(admission, artifacts);
+    await persist(store, admission, artifacts);
 
     expect(cache.put).toHaveBeenCalledTimes(2);
     expect(await store.inspect(admission)).toBe(true);
@@ -109,7 +122,7 @@ describe("createCacheArtifactStore", () => {
     const { admission, artifacts } = await fixture();
     const store = createCacheArtifactStore(storage(cache));
 
-    await expect(store.writeVerified(admission, artifacts)).rejects.toThrow(/quota/i);
+    await expect(persist(store, admission, artifacts)).rejects.toThrow(/quota/i);
 
     expect(await store.inspect(admission)).toBe(false);
     expect(cache.entries.size).toBe(0);
@@ -129,7 +142,7 @@ describe("createCacheArtifactStore", () => {
 
     let thrown: unknown;
     try {
-      await store.writeVerified(admission, artifacts);
+      await persist(store, admission, artifacts);
     } catch (error) {
       thrown = error;
     }
@@ -149,7 +162,7 @@ describe("createCacheArtifactStore", () => {
 
     let thrown: unknown;
     try {
-      await createCacheArtifactStore(cacheStorage).writeVerified(admission, artifacts);
+      await persist(createCacheArtifactStore(cacheStorage), admission, artifacts);
     } catch (error) {
       thrown = error;
     }
@@ -174,7 +187,7 @@ describe("createCacheArtifactStore", () => {
     const cache = new MemoryCache();
     const { admission, artifacts } = await fixture();
     const store = createCacheArtifactStore(storage(cache));
-    await store.writeVerified(admission, artifacts);
+    await persist(store, admission, artifacts);
 
     const loaded = await store.readVerified(admission);
 
@@ -185,14 +198,44 @@ describe("createCacheArtifactStore", () => {
     const cache = new MemoryCache();
     const { admission, artifacts } = await fixture();
     const store = createCacheArtifactStore(storage(cache));
-    await store.writeVerified(admission, artifacts);
+    await persist(store, admission, artifacts);
     cache.entries.set(cacheKeyFor(admission, admission.artifacts[0]), new Response(bytes("ENCODER")));
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 
-    await expect(store.readVerified(admission)).rejects.toThrow(/sha-256 mismatch/i);
+    let thrown: unknown;
+    try {
+      await store.readVerified(admission);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(BrowserArtifactCacheCorruptionError);
+    expect(thrown).toMatchObject({ cleanupSucceeded: true });
+    expect(thrown).toHaveProperty("cause", expect.objectContaining({ message: expect.stringMatching(/sha-256 mismatch/i) }));
 
     expect(cache.entries.size).toBe(0);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("reports cache corruption cleanup as indeterminate when deletion fails", async () => {
+    const cache = new MemoryCache();
+    const { admission, artifacts } = await fixture();
+    const store = createCacheArtifactStore(storage(cache));
+    await persist(store, admission, artifacts);
+    cache.entries.set(cacheKeyFor(admission, admission.artifacts[0]), new Response(bytes("ENCODER")));
+    const cleanup = new Error("cache delete failed");
+    cache.delete.mockRejectedValue(cleanup);
+
+    let thrown: unknown;
+    try {
+      await store.readVerified(admission);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(BrowserArtifactCacheCorruptionError);
+    expect(thrown).toMatchObject({ cleanupSucceeded: false, cleanupCause: cleanup });
+    expect(cache.entries.size).toBe(2);
   });
 
   it("removes only the selected revision even when another revision has the same bytes", async () => {
@@ -200,8 +243,8 @@ describe("createCacheArtifactStore", () => {
     const first = await fixture("rev-a");
     const second = await fixture("rev-b");
     const store = createCacheArtifactStore(storage(cache));
-    await store.writeVerified(first.admission, first.artifacts);
-    await store.writeVerified(second.admission, second.artifacts);
+    await persist(store, first.admission, first.artifacts);
+    await persist(store, second.admission, second.artifacts);
 
     await store.remove(first.admission);
 
@@ -233,6 +276,6 @@ describe("createCacheArtifactStore", () => {
     const store = createCacheArtifactStore(undefined);
     await expect(store.inspect(admission)).resolves.toBe(false);
     await expect(store.readVerified(admission)).resolves.toBeNull();
-    await expect(store.writeVerified(admission, artifacts)).rejects.toThrow(/unavailable/i);
+    await expect(persist(store, admission, artifacts)).rejects.toThrow(/unavailable/i);
   });
 });

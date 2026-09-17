@@ -65,11 +65,11 @@ const DECODER_BYTES = HAS_ARTIFACTS ? readFileSync(DECODER_PATH) : Buffer.alloc(
  */
 const REAL_ENCODER_BYTE_LENGTH = 24_799_777;
 const REVISION = "b19782d049c0-843761ca46f4";
-const MODEL_REF = `robomous/efficient-sam-ti@${REVISION}`;
+const REGISTRY_MODEL_REF = `robomous/efficient-sam-ti@${REVISION}`;
 const REGISTRY = {
   schema_version: 1,
   models: [
-    { id: "efficient-sam-ti", name: "EfficientSAM-Ti", revision: REVISION, model_ref: MODEL_REF, manifest: `/models/efficient-sam-ti/${REVISION}/manifest.json` },
+    { id: "efficient-sam-ti", name: "EfficientSAM-Ti", revision: REVISION, model_ref: REGISTRY_MODEL_REF, manifest: `/models/efficient-sam-ti/${REVISION}/manifest.json` },
     { id: "mobile-sam", name: "MobileSAM", revision: "359e37f2b168-7983079ab060", model_ref: "robomous/mobile-sam@359e37f2b168-7983079ab060", manifest: "/models/mobile-sam/359e37f2b168-7983079ab060/manifest.json" },
     { id: "efficientvit-sam-l0", name: "EfficientViT-SAM-L0", revision: "e48dd681ba4b-1d3ba86d781b", model_ref: "robomous/efficientvit-sam-l0@e48dd681ba4b-1d3ba86d781b", manifest: "/models/efficientvit-sam-l0/e48dd681ba4b-1d3ba86d781b/manifest.json" },
     { id: "slimsam-77-uniform", name: "SlimSAM-77-uniform", revision: "7f2c646efd21-e6eb3c03cdbd", model_ref: "robomous/slimsam-77-uniform@7f2c646efd21-e6eb3c03cdbd", manifest: "/models/slimsam-77-uniform/7f2c646efd21-e6eb3c03cdbd/manifest.json" },
@@ -81,7 +81,7 @@ const MANIFEST = {
   id: "efficient-sam-ti",
   name: "EfficientSAM-Ti",
   revision: REVISION,
-  model_ref: MODEL_REF,
+  model_ref: REGISTRY_MODEL_REF,
   source: { repository: "https://github.com/yformer/EfficientSAM", revision: "d525f622e6f640acf5a0fc37c7ca1f243da5bde0" },
   runtime: { format: "onnx", opset: 17, onnxruntime_web: "1.29.0" },
   capabilities: { point_suggest: true, positive_points: true, negative_points: false, max_points: 6 },

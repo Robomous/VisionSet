@@ -19,11 +19,62 @@ export interface BrowserModelArtifacts {
   readonly decoder: Uint8Array<ArrayBuffer>;
 }
 
+declare const verifiedArtifacts: unique symbol;
+
+/**
+ * Artifact bytes that have passed this admission's byte-count and SHA-256 checks.
+ *
+ * This is intentionally an opaque boundary: callers cannot pass downloaded bytes to either
+ * persistence or runtime activation without first going through `verifyModelArtifacts`.
+ */
+export type VerifiedBrowserModelArtifacts = BrowserModelArtifacts & {
+  readonly [verifiedArtifacts]: true;
+};
+
 export interface BrowserArtifactStore {
   inspect(model: BrowserModelAdmission): Promise<boolean>;
   readVerified(model: BrowserModelAdmission): Promise<BrowserModelArtifacts | null>;
-  writeVerified(model: BrowserModelAdmission, artifacts: BrowserModelArtifacts): Promise<void>;
+  verifyModelArtifacts(
+    model: BrowserModelAdmission,
+    artifacts: BrowserModelArtifacts,
+  ): Promise<VerifiedBrowserModelArtifacts>;
+  persistVerifiedArtifacts(
+    model: BrowserModelAdmission,
+    artifacts: VerifiedBrowserModelArtifacts,
+  ): Promise<void>;
   remove(model: BrowserModelAdmission): Promise<void>;
+}
+
+/** A byte-count or SHA-256 failure at the model-admission trust boundary. */
+export class BrowserArtifactVerificationError extends Error {
+  constructor(message: string, cause: unknown) {
+    super(message, { cause });
+    this.name = "BrowserArtifactVerificationError";
+  }
+}
+
+/**
+ * Cached bytes failed re-verification. `cleanupSucceeded` tells the catalog whether the
+ * corrupt revision was definitely removed, rather than forcing it to guess from an error text.
+ */
+export class BrowserArtifactCacheCorruptionError extends Error {
+  readonly cleanupSucceeded: boolean;
+  readonly cleanupCause?: unknown;
+
+  constructor(
+    verificationCause: unknown,
+    cleanup: { readonly succeeded: true } | { readonly succeeded: false; readonly cause: unknown },
+  ) {
+    super(
+      cleanup.succeeded
+        ? `Cached browser model verification failed and corrupt artifacts were removed (${messageFor(verificationCause)}).`
+        : `Cached browser model verification failed (${messageFor(verificationCause)}) and cleanup failed (${messageFor(cleanup.cause)}).`,
+      { cause: verificationCause },
+    );
+    this.name = "BrowserArtifactCacheCorruptionError";
+    this.cleanupSucceeded = cleanup.succeeded;
+    if (!cleanup.succeeded) this.cleanupCause = cleanup.cause;
+  }
 }
 
 /**
@@ -69,6 +120,27 @@ export function cacheKeyFor(model: BrowserModelAdmission, artifact: ArtifactAdmi
 
 function bytesFor(artifacts: BrowserModelArtifacts, role: ArtifactAdmission["role"]): Uint8Array<ArrayBuffer> {
   return artifacts[role];
+}
+
+/**
+ * The admission-owned check for arbitrary artifact bytes. This is deliberately separate from
+ * downloading: callers must not rely on a downloader having performed this verification.
+ */
+export async function verifyModelArtifacts(
+  model: BrowserModelAdmission,
+  artifacts: BrowserModelArtifacts,
+): Promise<VerifiedBrowserModelArtifacts> {
+  try {
+    await Promise.all(
+      model.artifacts.map((artifact) =>
+        verifyArtifact(bytesFor(artifacts, artifact.role), artifact, `downloaded ${artifact.role}`),
+      ),
+    );
+  } catch (error) {
+    if (error instanceof BrowserArtifactVerificationError) throw error;
+    throw new BrowserArtifactVerificationError(`Browser model artifact verification failed: ${messageFor(error)}`, error);
+  }
+  return artifacts as VerifiedBrowserModelArtifacts;
 }
 
 export function createCacheArtifactStore(
@@ -120,20 +192,21 @@ export function createCacheArtifactStore(
         );
         return Object.fromEntries(verified) as unknown as BrowserModelArtifacts;
       } catch (error) {
-        await remove(model);
-        throw error;
+        try {
+          await remove(model);
+        } catch (cleanupError) {
+          throw new BrowserArtifactCacheCorruptionError(error, { succeeded: false, cause: cleanupError });
+        }
+        throw new BrowserArtifactCacheCorruptionError(error, { succeeded: true });
       }
     },
 
-    async writeVerified(model, artifacts) {
-      // This entire pass completes before the cache is opened or the first put is issued.
-      // It is the transaction boundary that prevents a valid encoder being persisted before
-      // a corrupt decoder has even been checked.
-      await Promise.all(
-        model.artifacts.map((artifact) =>
-          verifyArtifact(bytesFor(artifacts, artifact.role), artifact, `downloaded ${artifact.role}`),
-        ),
-      );
+    verifyModelArtifacts,
+
+    async persistVerifiedArtifacts(model, artifacts) {
+      // `artifacts` can only be obtained from `verifyModelArtifacts`. Consequently this is
+      // both a typed API boundary and a transaction boundary: no Cache Storage operation is
+      // reachable until every admission check has completed.
       let opened: ArtifactCache | null;
       try {
         opened = await cache();
