@@ -8,10 +8,16 @@
  * free have to be established by hand:
  *
  * 1. **One encode per asset.** The expensive half of a promptable segmentation is the image
- *    embedding; a refinement click only re-runs the decoder. The `prepareImage` promise is
- *    therefore cached against the *source object's identity* — not its `assetId` — because the
- *    embedding belongs to the pixels that source leased, and a second lease over the same
- *    logical asset is a second set of pixels as far as this module is allowed to assume.
+ *    embedding; a refinement click only re-runs the decoder. So the `prepareImage` promise is
+ *    held and reused — but in a *single slot*, not a per-source map, because that is the shape
+ *    of the thing being cached: `PromptableSegmentationRuntime` "holds exactly one embedding at
+ *    a time; preparing another image invalidates this one". A map could hold two entries the
+ *    runtime cannot both honour, and the second one would be a handle the runtime has already
+ *    invalidated — refused on every later click, with nothing to trigger a retry.
+ *
+ *    The slot is keyed on the *source object's identity*, not its `assetId`: the embedding
+ *    belongs to the pixels that source leased, and a second lease over the same logical asset
+ *    is a second set of pixels as far as this module is allowed to assume.
  *
  * 2. **A stale answer never paints.** The active asset can change at any await point. The
  *    source is captured once, before the first await, and re-checked after *both* the encode
@@ -42,9 +48,19 @@ interface Deps {
 }
 
 export function createBrowserSuggestionExecutor(deps: Deps): SuggestionExecutor {
-  const prepared = new WeakMap<BrowserSuggestionAssetSource, Promise<PreparedImage>>();
+  // The runtime's one embedding, and which source leased the pixels behind it. One slot, because
+  // the runtime has one slot; see the note at the top of the file.
+  let currentSource: BrowserSuggestionAssetSource | null = null;
+  let currentPrepared: Promise<PreparedImage> | null = null;
 
   return {
+    /**
+     * `signal` is deliberately not forwarded to the model calls, matching
+     * `useServerSuggestionExecutor`, which does not honour it either: the session's serial in
+     * `AnnotationPage` is what keeps a late answer off the screen. Forwarding it to
+     * `prepareImage` would additionally be wrong, since that promise is shared — one caller's
+     * abort would take the embedding out from under every other caller of this source.
+     */
     async suggest(request: SuggestionRequest): Promise<SuggestionOut> {
       // Refused before the model is touched, because EfficientSAM-Ti's prompt encoder has no
       // embedding for a background label: a negative point would reach the graph with no
@@ -61,23 +77,33 @@ export function createBrowserSuggestionExecutor(deps: Deps): SuggestionExecutor 
         throw new Error(`no active browser asset source for asset ${request.assetId}`);
       }
 
-      let preparing = prepared.get(source);
-      if (preparing === undefined) {
-        // Only a *settled* embedding is worth keeping. A rejected promise left in the cache
-        // would answer every later click on this asset with the same dead error, so one
-        // transient encoder failure would break suggestion here until the host re-leased the
-        // pixels — evicting on rejection is what makes the next click a retry.
-        preparing = deps.runtime
+      let preparing: Promise<PreparedImage>;
+      if (source === currentSource && currentPrepared !== null) {
+        preparing = currentPrepared;
+      } else {
+        // Only a *settled* embedding is worth keeping. A rejected promise left in the slot
+        // would answer every later click with the same dead error, so one transient encoder
+        // failure would break suggestion here until the host re-leased the pixels — clearing
+        // the slot is what makes the next click a retry. Cleared only if it is still *this*
+        // encode's slot: a newer source has already taken it, and its embedding is good.
+        const started: Promise<PreparedImage> = deps.runtime
           .prepareImage({
             width: source.width,
             height: source.height,
             rgb: source.readRgb().rgb,
           })
           .catch((error: unknown) => {
-            prepared.delete(source);
+            if (currentPrepared === started) {
+              currentSource = null;
+              currentPrepared = null;
+            }
             throw error;
           });
-        prepared.set(source, preparing);
+        // Published before the first await, so a second click on this source reuses this encode
+        // rather than starting a rival one.
+        currentSource = source;
+        currentPrepared = started;
+        preparing = started;
       }
       const preparedImage = await preparing;
       if (deps.getActiveSource() !== source) {
