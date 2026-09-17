@@ -57,13 +57,17 @@ async function mockCdn(page: Page, encoderBytes = ENCODER_BYTES, decoderBytes = 
   // recognise is hard-aborted rather than silently reaching the real CDN — including if
   // `VITE_MODEL_CDN_BASE_URL` or the manifest layout ever drifts out from under this stub.
   await page.route("**/models.robomous.ai/**", (route) => route.abort());
+  // The real, live manifest shape (fixed in manifest.ts/acquireEfficientSam.ts after a
+  // production incident): artifacts nest under `artifacts`, and each `path` is a bare
+  // filename resolved relative to the manifest's own revision directory — never a
+  // leading-slash, top-level path.
   await page.route("**/models.robomous.ai/models/efficient-sam-ti/**/manifest.json", (route) =>
-    route.fulfill({ json: { encoder: { path: "/encoder.onnx" }, decoder: { path: "/decoder.onnx" } } }),
+    route.fulfill({ json: { artifacts: { encoder: { path: "encoder.onnx" }, decoder: { path: "decoder.onnx" } } } }),
   );
-  await page.route("**/models.robomous.ai/encoder.onnx", (route) =>
+  await page.route("**/models.robomous.ai/models/efficient-sam-ti/**/encoder.onnx", (route) =>
     route.fulfill({ body: encoderBytes, contentType: "application/octet-stream" }),
   );
-  await page.route("**/models.robomous.ai/decoder.onnx", (route) =>
+  await page.route("**/models.robomous.ai/models/efficient-sam-ti/**/decoder.onnx", (route) =>
     route.fulfill({ body: decoderBytes, contentType: "application/octet-stream" }),
   );
 }
@@ -195,7 +199,7 @@ test.describe("browser suggestion", () => {
     // mockCdn already ran with the real bytes inside openJobWithBrowserRuntime; re-route
     // the encoder specifically — Playwright tries the most-recently-added matching
     // handler first, so this one now answers every encoder.onnx request.
-    await page.route("**/models.robomous.ai/encoder.onnx", (route) =>
+    await page.route("**/models.robomous.ai/models/efficient-sam-ti/**/encoder.onnx", (route) =>
       route.fulfill({ body: wrongBytes, contentType: "application/octet-stream" }),
     );
     await armSuggestTool(page);
