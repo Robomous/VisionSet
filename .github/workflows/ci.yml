@@ -1092,6 +1092,14 @@ jobs:
         if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
         run: pnpm --filter @visionset/browser-inference test:browser
 
+      - name: Install the app's Playwright browsers
+        if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
+        run: pnpm --filter @visionset/app exec playwright install chromium
+
+      - name: Run the browser suggestion e2e suite, with the model present
+        if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
+        run: pnpm --filter @visionset/app e2e browserSuggestion
+
       # The step that makes this job's green check mean something. Everything above answers
       # "did what ran succeed?"; a suite that skips itself, or a spec file that stopped being
       # collected at all, answers that with a cheerful yes. This reads the JSON report the

@@ -99,6 +99,7 @@ docs:
 # `python` -- and this file says outright that a path may appear in several.
 browser-models:
   - "frontend/browser-inference/**"
+  - "frontend/app/e2e/browserSuggestion.spec.ts"
   - "scripts/browser_models/**"
   - "tests/browser_models/**"
   - "pyproject.toml"
