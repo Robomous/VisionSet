@@ -34,9 +34,10 @@ import {
   type ReactNode,
 } from "react";
 import type { QueryClient } from "@tanstack/react-query";
-import { VisionSetDataProvider, VisionSetMediaProvider } from "@visionset/ui-core";
+import { VisionSetBrowserInferenceProvider, VisionSetDataProvider, VisionSetMediaProvider } from "@visionset/ui-core";
 import { MediabunnyVideoMaterializer } from "@visionset/media/mediabunny";
 
+import { createOssBrowserInferenceRuntime } from "./browserInference/BrowserInferenceRuntime";
 import { createOssDataClient, requestSession } from "./ossClient";
 import { createLocalApiFrameSink } from "./frameSink";
 import { clearToken, readToken, writeToken } from "./token";
@@ -158,6 +159,13 @@ export function OssSessionProvider({
     [client],
   );
 
+  /**
+   * The browser inference runtime: this host's only door into ONNX Runtime, CDN manifests
+   * and SHA-256 verification. Built once per session — its acquisition state (unacquired
+   * vs. ready) must survive across asset navigation, not reset on every render.
+   */
+  const browserInferenceRuntime = useMemo(() => createOssBrowserInferenceRuntime(), []);
+
   const signIn = useCallback((next: string) => {
     writeToken(next);
     setToken(next);
@@ -215,7 +223,9 @@ export function OssSessionProvider({
         onUnauthorized={signOut}
         makeQueryClient={makeQueryClient}
       >
-        <VisionSetMediaProvider runtime={mediaRuntime}>{children}</VisionSetMediaProvider>
+        <VisionSetMediaProvider runtime={mediaRuntime}>
+          <VisionSetBrowserInferenceProvider runtime={browserInferenceRuntime}>{children}</VisionSetBrowserInferenceProvider>
+        </VisionSetMediaProvider>
       </VisionSetDataProvider>
     </OssSessionContext.Provider>
   );
