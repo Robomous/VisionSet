@@ -59,13 +59,17 @@ OPT_IN_HINT = (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-#: The ceiling a wheel may not cross, and it is a guard rather than a budget.
+#: The ceiling the counted part of a wheel may not cross, a guard rather than a
+#: budget. Everything but `ORT_PREFIX` is counted — see `MAX_ORT_BYTES`.
 #:
-#: The wheel is ~570 KB today, of which ~640 KB uncompressed is the app's one
-#: JavaScript bundle. Two megabytes leaves room for the UI to roughly triple and
-#: still fails loudly the day `node_modules/`, a fixture video or a `.venv` gets
-#: swept in — which is the failure this exists for, and the one that is invisible
-#: in a directory listing.
+#: That counted part is ~1.45 MB compressed today, of which the app's one
+#: JavaScript bundle is ~350 KB compressed and ~1.19 MB uncompressed. So the
+#: headroom is about 1.45x, not the "roughly triple" this said while the bundle
+#: was ~640 KB uncompressed — the UI has grown into most of it, and the next
+#: person to read this is likelier to be raising the number than reassured by it.
+#: It still fails loudly the day `node_modules/`, a fixture video or a `.venv`
+#: gets swept in, which is the failure this exists for and the one that is
+#: invisible in a directory listing.
 MAX_WHEEL_BYTES = 2 * 1024 * 1024
 
 #: The one deliberately enormous thing inside, measured separately so the guard
