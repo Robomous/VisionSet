@@ -186,8 +186,9 @@ async function openJobWithBrowserRuntime(
   page: Page,
   sent: Request[],
   suggestible: boolean,
+  modelSource: "fixture" | "live" = "fixture",
 ): Promise<void> {
-  await mockCdn(page);
+  if (modelSource === "fixture") await mockCdn(page);
   await serveApi(page, sent, undefined, undefined, undefined, undefined, suggestible);
   await mockAssetImage(page);
   await page.goto(`/jobs/${JOB}`);
@@ -288,6 +289,74 @@ test.describe("browser suggestion", () => {
     expect(artifactRequests()).toBe(2);
     await makeBrowserSuggestion(page);
     expect(suggestCallsOf(sent)).toHaveLength(0);
+  });
+
+  test("live CDN smoke: admitted artifacts persist and reactivate without a second download", async ({ page }) => {
+    test.skip(process.env.VISIONSET_LIVE_MODEL_SMOKE !== "1", "manual smoke against models.robomous.ai");
+    test.setTimeout(120_000);
+    const sent: Request[] = [];
+    const responses: { url: string; bytes: number; milliseconds: number }[] = [];
+    page.on("response", async (response) => {
+      if (!response.url().startsWith("https://models.robomous.ai/")) return;
+      await response.finished();
+      const timing = response.request().timing();
+      const declaredBytes = Number(response.headers()["content-length"] ?? 0);
+      const bytes = declaredBytes > 0 ? declaredBytes : (await response.body()).byteLength;
+      responses.push({ url: response.url(), bytes, milliseconds: timing.responseEnd });
+    });
+    // Warm Chromium's connection to the public origin with the same registry document the
+    // application will validate. This keeps a one-off DNS/TLS stall from consuming the whole
+    // UI timeout while still exercising the app's own fetch, parser, and admission match below.
+    await page.goto("https://models.robomous.ai/registry/v1.json");
+    await expect(page.locator("body")).toContainText('"schema_version": 1');
+    await openJobWithBrowserRuntime(page, sent, true, "live");
+    await armSuggestTool(page);
+    const coldStarted = Date.now();
+    await acquireAndSelectBrowserTarget(page);
+    const coldMilliseconds = Date.now() - coldStarted;
+    await makeBrowserSuggestion(page);
+
+    const cacheMeasurements = await page.evaluate(async () => {
+      const cache = await caches.open("visionset-browser-models-v1");
+      const keys = await cache.keys();
+      let bytes = 0;
+      let readMilliseconds = 0;
+      let shaMilliseconds = 0;
+      const lookupStarted = performance.now();
+      await Promise.all(keys.map((key) => cache.match(key)));
+      const lookupMilliseconds = performance.now() - lookupStarted;
+      for (const key of keys) {
+        const response = await cache.match(key);
+        if (response === undefined) continue;
+        const readStarted = performance.now();
+        const body = await response.arrayBuffer();
+        readMilliseconds += performance.now() - readStarted;
+        bytes += body.byteLength;
+        const shaStarted = performance.now();
+        await crypto.subtle.digest("SHA-256", body);
+        shaMilliseconds += performance.now() - shaStarted;
+      }
+      return { entries: keys.length, bytes, lookupMilliseconds, readMilliseconds, shaMilliseconds };
+    });
+
+    const artifactRequests = countModelRequestsFromNow(page);
+    const reloadStarted = Date.now();
+    await page.reload();
+    await expect(page.getByTestId("annotation-page")).toBeVisible();
+    await armSuggestTool(page);
+    await expect(page.getByTestId("suggest-device-section").getByText("Ready", { exact: true })).toBeVisible({
+      timeout: 60_000,
+    });
+    const reloadActivationMilliseconds = Date.now() - reloadStarted;
+    expect(artifactRequests()).toBe(0);
+    await makeBrowserSuggestion(page);
+
+    console.info("VISIONSET_LIVE_MODEL_SMOKE", JSON.stringify({
+      responses,
+      coldMilliseconds,
+      reloadActivationMilliseconds,
+      ...cacheMeasurements,
+    }));
   });
 
   test("an installed model remains usable when registry and artifact routes fail", async ({ page }) => {

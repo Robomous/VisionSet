@@ -94,3 +94,16 @@ export function createOssBrowserInferenceRuntime(deps: Deps = REAL_DEPS): Vision
     },
   };
 }
+
+let sharedRuntime: VisionSetBrowserInferenceRuntime | undefined;
+
+/**
+ * The browser model catalog belongs to the page, not to an authenticated server-data scope.
+ * Sharing it also keeps React development strict mounts from starting duplicate discovery.
+ */
+export function getSharedOssBrowserInferenceRuntime(
+  factory: () => VisionSetBrowserInferenceRuntime = createOssBrowserInferenceRuntime,
+): VisionSetBrowserInferenceRuntime {
+  sharedRuntime ??= factory();
+  return sharedRuntime;
+}

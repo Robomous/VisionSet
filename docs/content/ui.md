@@ -627,11 +627,20 @@ and without a connection being configured at all - useful where the workspace ha
 model that can answer a click, or where the server is slow to reach.
 
 It has to be downloaded first, and the panel says so: about 41 MB, on an explicit
-press, never on its own. **The download does not survive a page reload.** It is held
-for the session only, so reopening the editor tomorrow - or reloading today - means
-downloading it again before "This device" can answer. Until then the tab shows the
-Download button rather than inviting a click that would do nothing, and the choice
-falls back to Server.
+press, never on its own. Before that press the panel names the model's upstream source,
+license and download size. Verified weights are stored in this browser and normally
+survive a reload; the browser can still evict its storage, and a removed or evicted
+model can be downloaded again. If storage is unavailable, a verified download may be
+ready for the current session without being described as installed.
+
+Opening the app, arming Suggest, or choosing **This device** never downloads missing
+weights. A stored choice for a known model remains selected and shows the Download
+action when that model is not installed. An installed model is loaded only when the
+suggestion surface needs it, and loading from browser storage does not fetch the model
+again. **Remove from this browser** releases the running model and removes its stored
+weights. The model source receives artifact requests during an explicit download, but
+the image and points being annotated remain local during browser inference. Self-hosted
+deployments can replace the public model source with `VITE_MODEL_CDN_BASE_URL`.
 
 **Alt-click needs Server.** The model running here takes only points that are *on*
 the object; a point marking something that is not part of it is refused rather than

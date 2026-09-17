@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SuggestionRequest } from "@visionset/ui-core";
-import { createOssBrowserInferenceRuntime } from "./BrowserInferenceRuntime.js";
+import {
+  createOssBrowserInferenceRuntime,
+  getSharedOssBrowserInferenceRuntime,
+} from "./BrowserInferenceRuntime.js";
 import { EFFICIENT_SAM_TI_REVISION } from "./manifest.js";
 import type { VisionSetBrowserInferenceRuntime } from "@visionset/ui-core";
 import type { BrowserModelArtifacts } from "./artifactStore.js";
@@ -30,6 +33,15 @@ async function acquisition(runtime: VisionSetBrowserInferenceRuntime) {
 }
 
 describe("createOssBrowserInferenceRuntime", () => {
+  it("shares the host runtime across repeated composition calls", () => {
+    const runtime = createOssBrowserInferenceRuntime(fakeDeps());
+    const factory = vi.fn(() => runtime);
+
+    expect(getSharedOssBrowserInferenceRuntime(factory)).toBe(runtime);
+    expect(getSharedOssBrowserInferenceRuntime(factory)).toBe(runtime);
+    expect(factory).toHaveBeenCalledTimes(1);
+  });
+
   it("exposes the additive model catalog while preserving the Phase F runtime members", () => {
     const runtime = createOssBrowserInferenceRuntime(fakeDeps());
     expect(runtime.modelCatalog).toBeDefined();
