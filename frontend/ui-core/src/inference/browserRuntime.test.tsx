@@ -445,6 +445,12 @@ describe("staleStoredBrowserTarget", () => {
     // fails must keep surfacing through `blocker`/`refusal`, not silently revert.
     expect(staleStoredBrowserTarget({ kind: "browser", targetId: "gone" }, [], true)).toBe(false);
   });
+
+  it("keeps a known admitted preference when the model is not installed yet", () => {
+    expect(staleStoredBrowserTarget({ kind: "browser", targetId: "efficient-sam-ti" }, [], false, true)).toBe(
+      false,
+    );
+  });
 });
 
 describe("BrowserSuggestionAssetSource", () => {

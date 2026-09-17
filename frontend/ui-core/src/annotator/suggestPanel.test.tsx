@@ -20,7 +20,11 @@ import type { Suggestion, SuggestionState } from "@visionset/annotator";
 import { SuggestPanel } from "./SuggestPanel";
 import type { Answer } from "@visionset/annotator";
 import { usableConnection, type Connection } from "../data/inferenceQueries";
-import type { BrowserModelAcquisition, BrowserSuggestionTarget } from "../inference/browserPort.js";
+import type {
+  BrowserModelAcquisition,
+  BrowserModelCatalogEntry,
+  BrowserSuggestionTarget,
+} from "../inference/browserPort.js";
 
 const A_BOX = { type: "bbox", x: 10, y: 20, width: 30, height: 40 } as const;
 
@@ -657,6 +661,104 @@ describe("this device, once a browser runtime is wired", () => {
       ...overrides,
     };
   }
+
+  function catalogEntry(overrides: Partial<BrowserModelCatalogEntry> = {}): BrowserModelCatalogEntry {
+    return {
+      id: "efficient-sam-ti",
+      label: "EfficientSAM-Ti",
+      modelRef: "robomous/efficient-sam-ti@revision",
+      revision: "revision",
+      bytes: 41_301_678,
+      license: "Apache-2.0",
+      source: { label: "EfficientSAM", href: "https://github.com/yformer/EfficientSAM" },
+      state: "available",
+      storage: "none",
+      ...overrides,
+    };
+  }
+
+  it("shows admitted model identity and explicitly acquires an available model", async () => {
+    const acquire = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    render(mount({
+      browserTargets: [],
+      browserModels: [catalogEntry()],
+      activeTarget: { kind: "browser", targetId: "efficient-sam-ti" },
+      onChooseTarget: vi.fn(),
+      onAcquireBrowserModel: acquire,
+    }));
+
+    const section = screen.getByTestId("suggest-device-section");
+    expect(section.textContent).toContain("EfficientSAM-Ti");
+    expect(section.textContent).toContain("41 MB");
+    expect(section.textContent).toContain("Apache-2.0");
+    expect(screen.getByRole("link", { name: "EfficientSAM" }).getAttribute("href")).toBe(
+      "https://github.com/yformer/EfficientSAM",
+    );
+    await user.click(screen.getByTestId("suggest-device-acquire-efficient-sam-ti"));
+    expect(acquire).toHaveBeenCalledWith("efficient-sam-ti");
+  });
+
+  it.each([
+    ["downloading", "Downloading…"],
+    ["installed", "Installed"],
+    ["activating", "Loading…"],
+    ["ready", "Ready"],
+  ] as const)("renders the catalog %s state as %s", (state, label) => {
+    render(mount({
+      browserTargets: state === "ready" ? [READY] : [],
+      browserModels: [catalogEntry({ state, storage: state === "downloading" ? "none" : "persistent" })],
+      activeTarget: { kind: "browser", targetId: READY.id },
+      onChooseTarget: vi.fn(),
+      onAcquireBrowserModel: vi.fn(),
+      onRemoveBrowserModel: vi.fn(),
+    }));
+    expect(screen.getByTestId("suggest-device-section").textContent).toContain(label);
+  });
+
+  it("removes an installed model through an explicit packaged control", async () => {
+    const remove = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    render(mount({
+      browserTargets: [],
+      browserModels: [catalogEntry({ state: "installed", storage: "persistent" })],
+      activeTarget: { kind: "browser", targetId: READY.id },
+      onChooseTarget: vi.fn(),
+      onRemoveBrowserModel: remove,
+    }));
+    await user.click(screen.getByTestId("suggest-device-remove-efficient-sam-ti"));
+    expect(remove).toHaveBeenCalledWith("efficient-sam-ti");
+  });
+
+  it("reports session-only readiness without claiming the model is installed", () => {
+    render(mount({
+      browserTargets: [READY],
+      browserModels: [catalogEntry({ state: "ready", storage: "session" })],
+      activeTarget: { kind: "browser", targetId: READY.id },
+      onChooseTarget: vi.fn(),
+      onRemoveBrowserModel: vi.fn(),
+    }));
+    expect(screen.getByTestId("suggest-device-session-only").textContent).toMatch(
+      /ready for this session.*not saved/i,
+    );
+    expect(screen.getByTestId("suggest-device-section").textContent).not.toContain("Installed");
+  });
+
+  it("turns a cached integrity failure into useful prose and another explicit Download", () => {
+    render(mount({
+      browserTargets: [],
+      browserModels: [catalogEntry({
+        state: "failed",
+        storage: "none",
+        error: "cached encoder SHA-256 mismatch",
+      })],
+      activeTarget: { kind: "browser", targetId: READY.id },
+      onChooseTarget: vi.fn(),
+      onAcquireBrowserModel: vi.fn(),
+    }));
+    expect(screen.getByRole("alert").textContent).toMatch(/failed verification.*download/i);
+    expect(screen.getByTestId("suggest-device-acquire-efficient-sam-ti")).toBeTruthy();
+  });
 
   it("renders no device section, and no tab chooser, when no runtime is wired at all", () => {
     render(mount());

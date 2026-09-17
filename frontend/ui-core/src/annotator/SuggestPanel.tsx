@@ -84,6 +84,7 @@ import type { Connection, SuggestBlocker } from "../data/inferenceQueries";
 import type {
   ActiveSuggestionTarget,
   BrowserModelAcquisition,
+  BrowserModelCatalogEntry,
   BrowserSuggestionTarget,
 } from "../inference/browserPort.js";
 
@@ -134,6 +135,10 @@ export interface SuggestPanelProps {
   readonly browserTargets?: readonly BrowserSuggestionTarget[];
   /** Models not yet acquired. `undefined` when no browser runtime is wired at all. */
   readonly browserAcquisitions?: readonly BrowserModelAcquisition[];
+  /** Reactive install/activation state. Absent keeps the Phase F acquisition UI. */
+  readonly browserModels?: readonly BrowserModelCatalogEntry[];
+  readonly onAcquireBrowserModel?: (id: string) => Promise<void>;
+  readonly onRemoveBrowserModel?: (id: string) => Promise<void>;
   readonly activeTarget?: ActiveSuggestionTarget;
   readonly onChooseTarget?: (target: ActiveSuggestionTarget) => void;
   /** Called once an `acquire()` this panel started resolves, so the host can re-read `listTargets()`. */
@@ -222,6 +227,9 @@ export function SuggestPanel({
   onConfigure,
   browserTargets,
   browserAcquisitions,
+  browserModels,
+  onAcquireBrowserModel,
+  onRemoveBrowserModel,
   activeTarget,
   onChooseTarget,
   onAcquired,
@@ -237,7 +245,8 @@ export function SuggestPanel({
   // apart — which is exactly the shape of the bug fixed alongside this line:
   // the guard used to fire on a wired runtime's own "not-ready" and blank out
   // the chooser it should have deferred to instead.
-  const runtimeWired = browserTargets !== undefined || browserAcquisitions !== undefined;
+  const runtimeWired =
+    browserTargets !== undefined || browserAcquisitions !== undefined || browserModels !== undefined;
 
   /*
     Parked outranks even the blocker. A connection this tool will not use
@@ -491,6 +500,9 @@ export function SuggestPanel({
           onDiscard={onDiscard}
           browserTargets={browserTargets ?? []}
           browserAcquisitions={browserAcquisitions ?? []}
+          {...(browserModels === undefined ? {} : { browserModels })}
+          {...(onAcquireBrowserModel === undefined ? {} : { onAcquireBrowserModel })}
+          {...(onRemoveBrowserModel === undefined ? {} : { onRemoveBrowserModel })}
           activeTarget={activeTarget}
           {...(onChooseTarget === undefined ? {} : { onChooseTarget })}
           {...(onAcquired === undefined ? {} : { onAcquired })}
@@ -583,6 +595,9 @@ function TargetChooser({
   onDiscard,
   browserTargets,
   browserAcquisitions,
+  browserModels,
+  onAcquireBrowserModel,
+  onRemoveBrowserModel,
   activeTarget,
   onChooseTarget,
   onAcquired,
@@ -596,6 +611,9 @@ function TargetChooser({
   readonly onDiscard: () => void;
   readonly browserTargets: readonly BrowserSuggestionTarget[];
   readonly browserAcquisitions: readonly BrowserModelAcquisition[];
+  readonly browserModels?: readonly BrowserModelCatalogEntry[];
+  readonly onAcquireBrowserModel?: (id: string) => Promise<void>;
+  readonly onRemoveBrowserModel?: (id: string) => Promise<void>;
   readonly activeTarget: ActiveSuggestionTarget | undefined;
   readonly onChooseTarget?: (target: ActiveSuggestionTarget) => void;
   readonly onAcquired?: () => void;
@@ -612,7 +630,7 @@ function TargetChooser({
           onChooseTarget?.({ kind: "server", connectionId: connectionId ?? "" });
           return;
         }
-        const targetId = browserTargets[0]?.id ?? browserAcquisitions[0]?.id;
+        const targetId = browserTargets[0]?.id ?? browserModels?.[0]?.id ?? browserAcquisitions[0]?.id;
         if (targetId !== undefined) {
           onChooseTarget?.({ kind: "browser", targetId });
         }
@@ -656,6 +674,9 @@ function TargetChooser({
         <DeviceTab
           targets={browserTargets}
           acquisitions={browserAcquisitions}
+          {...(browserModels === undefined ? {} : { models: browserModels })}
+          {...(onAcquireBrowserModel === undefined ? {} : { onAcquireModel: onAcquireBrowserModel })}
+          {...(onRemoveBrowserModel === undefined ? {} : { onRemoveModel: onRemoveBrowserModel })}
           {...(onAcquired === undefined ? {} : { onAcquired })}
         />
       </TabsContent>
@@ -729,14 +750,31 @@ function BlockedMessage({
 function DeviceTab({
   targets,
   acquisitions,
+  models,
+  onAcquireModel,
+  onRemoveModel,
   onAcquired,
 }: {
   readonly targets: readonly BrowserSuggestionTarget[];
   readonly acquisitions: readonly BrowserModelAcquisition[];
+  readonly models?: readonly BrowserModelCatalogEntry[];
+  readonly onAcquireModel?: (id: string) => Promise<void>;
+  readonly onRemoveModel?: (id: string) => Promise<void>;
   readonly onAcquired?: () => void;
 }): JSX.Element | null {
   const [acquiring, setAcquiring] = useState(false);
   const [failed, setFailed] = useState(false);
+
+  const model = models?.[0];
+  if (model !== undefined) {
+    return (
+      <CatalogModel
+        model={model}
+        {...(onAcquireModel === undefined ? {} : { onAcquire: onAcquireModel })}
+        {...(onRemoveModel === undefined ? {} : { onRemove: onRemoveModel })}
+      />
+    );
+  }
 
   const target = targets[0];
   if (target !== undefined) {
@@ -779,6 +817,110 @@ function DeviceTab({
         {acquiring ? "Downloading…" : "Download to this browser"}
       </Button>
       {failed && <p role="alert">Download failed. Try again.</p>}
+    </div>
+  );
+}
+
+function catalogFailure(error: string | undefined): string | null {
+  if (error === undefined) return null;
+  if (/sha-256|size mismatch|verification/i.test(error)) {
+    return "This model failed verification. Download it again to use it on this device.";
+  }
+  return "That browser model operation failed. Try again.";
+}
+
+function CatalogModel({
+  model,
+  onAcquire,
+  onRemove,
+}: {
+  readonly model: BrowserModelCatalogEntry;
+  readonly onAcquire?: (id: string) => Promise<void>;
+  readonly onRemove?: (id: string) => Promise<void>;
+}): JSX.Element {
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const busy = model.state === "downloading" || model.state === "activating";
+  const canRemove = model.storage !== "none" || model.state === "installed" || model.state === "ready";
+  const failure = localError ?? catalogFailure(model.error);
+  const stateLabel =
+    model.state === "downloading"
+      ? "Downloading…"
+      : model.state === "installed"
+        ? "Installed"
+        : model.state === "activating"
+          ? "Loading…"
+          : model.state === "ready"
+            ? "Ready"
+            : null;
+
+  return (
+    <div className="flex flex-col items-start gap-2">
+      <div className="flex items-center gap-2">
+        <span className="font-medium text-foreground">{model.label}</span>
+        {stateLabel !== null && (
+          <Badge variant={model.state === "ready" ? "success" : "info"}>{stateLabel}</Badge>
+        )}
+      </div>
+      <p className="text-muted-foreground">
+        ~{Math.round(model.bytes / 1_000_000)} MB · {model.license} ·{" "}
+        <a
+          className="underline underline-offset-2"
+          href={model.source.href}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {model.source.label}
+        </a>
+      </p>
+      {(model.state === "available" || model.state === "failed") && onAcquire !== undefined && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          data-testid={`suggest-device-acquire-${model.id}`}
+          onClick={() => {
+            setLocalError(null);
+            void onAcquire(model.id).catch(() => setLocalError("That download failed. Try again."));
+          }}
+        >
+          Download to this browser
+        </Button>
+      )}
+      {busy && (
+        <p className="flex items-center gap-1.5 text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+          {model.state === "downloading" ? "Downloading…" : "Loading…"}
+        </p>
+      )}
+      {model.state === "ready" && model.storage === "session" && (
+        <p className="text-muted-foreground" data-testid="suggest-device-session-only">
+          Ready for this session, but it was not saved in this browser.
+        </p>
+      )}
+      {canRemove && onRemove !== undefined && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          data-testid={`suggest-device-remove-${model.id}`}
+          disabled={removing}
+          onClick={() => {
+            setRemoving(true);
+            setLocalError(null);
+            void onRemove(model.id).then(
+              () => setRemoving(false),
+              () => {
+                setRemoving(false);
+                setLocalError("That model could not be removed. Try again.");
+              },
+            );
+          }}
+        >
+          {removing ? "Removing…" : "Remove from this browser"}
+        </Button>
+      )}
+      {failure !== null && <p role="alert">{failure}</p>}
     </div>
   );
 }
