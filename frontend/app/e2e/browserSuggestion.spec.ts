@@ -18,11 +18,25 @@
  * fallback render). The "shown" and "refused" cards replace it entirely, so a
  * claim about the active tab or the tab list has to be made from idle, never from
  * mid-suggestion or mid-refusal.
+ *
+ * `_wireApiStub.ts`'s `/content` route serves a real but 1×1 PNG — fine for the
+ * ~150 tests in `annotate.spec.ts`, because `AnnotatorCanvas.tsx` lays the picture
+ * out at the asset's *declared* width/height and never at its own `naturalWidth`
+ * ("a picture whose natural size disagrees is a preview"). This suite is the one
+ * caller that cannot get away with that: the browser executor reads the real
+ * decoded image's `naturalWidth`/`naturalHeight` (`AnnotationPage.tsx`'s
+ * `onImageReady`) as the bounds it validates click coordinates against
+ * (`efficientSam.ts`'s `x < 0 || x > width || ...`). A 1×1 real image makes every
+ * on-canvas click land "outside" it. `mockAssetImage` below overrides just this
+ * file's `/content` route with a real, correctly-sized PNG — scoped here rather
+ * than changing `_wireApiStub.ts`'s shared default, which those ~150 other tests
+ * may depend on for load speed.
  */
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import zlib from "node:zlib";
 import { expect, test, type Page, type Request } from "@playwright/test";
-import { openJob } from "./_wireApiStub";
+import { JOB, serveApi } from "./_wireApiStub";
 
 const ARTIFACTS_DIR = path.resolve(
   import.meta.dirname, "..", "..", "browser-inference", "model-artifacts", "efficientsam-ti",
@@ -72,13 +86,88 @@ async function mockCdn(page: Page, encoderBytes = ENCODER_BYTES, decoderBytes = 
   );
 }
 
+// A minimal PNG encoder (signature + IHDR + one IDAT + IEND), so this file needs
+// no image-processing dependency to produce a real, correctly-sized asset.
+// Grayscale, 8-bit, one filter byte per row — `zlib.deflateSync` already emits a
+// standard zlib stream, which is exactly what an IDAT chunk holds. Verified by
+// hand against a real Chromium `Image.decode()` while writing this: a solid
+// 640×480 PNG from this function reports `naturalWidth: 640, naturalHeight: 480`.
+const CRC_TABLE = ((): Uint32Array => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(buf: Buffer): number {
+  let c = 0xffffffff;
+  for (const byte of buf) c = CRC_TABLE[(c ^ byte) & 0xff]! ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const typeBuf = Buffer.from(type, "ascii");
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length, 0);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(Buffer.concat([typeBuf, data])), 0);
+  return Buffer.concat([length, typeBuf, data, crc]);
+}
+
+function solidPng(width: number, height: number, gray = 128): Buffer {
+  const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const ihdrData = Buffer.alloc(13);
+  ihdrData.writeUInt32BE(width, 0);
+  ihdrData.writeUInt32BE(height, 4);
+  ihdrData[8] = 8; // bit depth
+  ihdrData[9] = 0; // color type: grayscale
+  const raw = Buffer.alloc((width + 1) * height);
+  for (let y = 0; y < height; y++) {
+    const rowStart = y * (width + 1);
+    raw[rowStart] = 0; // filter type: none
+    raw.fill(gray, rowStart + 1, rowStart + 1 + width);
+  }
+  return Buffer.concat([
+    signature,
+    pngChunk("IHDR", ihdrData),
+    pngChunk("IDAT", zlib.deflateSync(raw)),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+/** Matches `_wireApiStub.ts`'s `asset()` metadata — the coordinate frame every click here is in. */
+const ASSET_WIDTH = 640;
+const ASSET_HEIGHT = 480;
+const REAL_ASSET_IMAGE = solidPng(ASSET_WIDTH, ASSET_HEIGHT);
+
+/**
+ * Overrides `/content` with a real, correctly-sized PNG. Must be registered
+ * *after* `serveApi`'s own `**\/api/**` handler (Playwright tries the
+ * most-recently-added matching handler first) so this one wins for `/content`
+ * instead of `_wireApiStub.ts`'s 1×1 `PIXEL` — and before `page.goto`, since the
+ * asset image is requested as soon as the annotation page mounts.
+ */
+async function mockAssetImage(page: Page): Promise<void> {
+  await page.route("**/projects/**/assets/**/content", (route) =>
+    route.fulfill({ contentType: "image/png", body: REAL_ASSET_IMAGE }),
+  );
+}
+
 async function openJobWithBrowserRuntime(
   page: Page,
   sent: Request[],
   suggestible: boolean,
 ): Promise<void> {
   await mockCdn(page);
-  await openJob(page, sent, undefined, undefined, undefined, undefined, suggestible);
+  await serveApi(page, sent, undefined, undefined, undefined, undefined, suggestible);
+  await mockAssetImage(page);
+  await page.goto(`/jobs/${JOB}`);
+  await page.getByTestId("token-input").fill("a-token");
+  await page.getByTestId("token-submit").click();
+  await expect(page.getByTestId("annotation-page")).toBeVisible();
 }
 
 function suggestCallsOf(sent: Request[]): Request[] {
