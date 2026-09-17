@@ -115,6 +115,33 @@ const MEDIA_HOST_BOUNDARY = [
 ];
 
 /**
+ * `ui-core` may compose a browser inference runtime's *port* (already exported from
+ * `@visionset/ui-core`'s own root), but never the concrete package that runs ONNX Runtime,
+ * nor any CDN/vendor detail behind it — that composition belongs to `frontend/app` alone.
+ */
+const BROWSER_INFERENCE_HOST_BOUNDARY = [
+  [
+    /\bfrom\s+["']@visionset\/browser-inference(\/browser)?["']/,
+    "imports @visionset/browser-inference — the concrete runtime is the host's choice, not ui-core's",
+  ],
+  [
+    /\brequire\(\s*["']@visionset\/browser-inference(\/browser)?["']\s*\)/,
+    "require()s @visionset/browser-inference",
+  ],
+  [/\bimport\(\s*["']@visionset\/browser-inference(\/browser)?["']\s*\)/, "dynamically imports @visionset/browser-inference"],
+  [/\bonnxruntime-web\b/, "names onnxruntime-web directly"],
+];
+
+/** Concrete CDN/vendor identity. Named literals only — never a generic substring like "s3". */
+const CDN_VENDOR_LITERALS = [
+  [/\bmodels\.robomous\.ai\b/, "names models.robomous.ai — only frontend/app may know this hostname"],
+  [/\bcloudflare\b/i, "names cloudflare"],
+  [/\bcloudfront\b/i, "names cloudfront"],
+  [/\bamazonaws\.com\b/, "names amazonaws.com"],
+  [/\br2\.cloudflarestorage\.com\b/, "names r2.cloudflarestorage.com"],
+];
+
+/**
  * Reading a `DataResult`'s status as meaning.
  *
  * The invariant, in its exact wording:
@@ -215,6 +242,14 @@ test("the reusable UI never reaches for the browser video materializer directly"
   assert.deepEqual(violations(shippedSource(), MEDIA_HOST_BOUNDARY), []);
 });
 
+test("the reusable UI never reaches for @visionset/browser-inference or onnxruntime-web directly", () => {
+  assert.deepEqual(violations(shippedSource(), BROWSER_INFERENCE_HOST_BOUNDARY), []);
+});
+
+test("the reusable UI names no CDN/vendor identity", () => {
+  assert.deepEqual(violations(shippedSource(), CDN_VENDOR_LITERALS), []);
+});
+
 test("no semantic branching on DataResult.status in reusable ui-core", () => {
   assert.deepEqual(violations(shippedSource(), STATUS_AS_MEANING), []);
 });
@@ -284,6 +319,20 @@ test("the gate fires on a violation", () => {
     mediaBoundaryViolations.length,
   );
 
+  const browserInferenceViolations = [
+    { path: "frontend/ui-core/src/inference/BadImport.ts", text: 'import { createEfficientSamRuntime } from "@visionset/browser-inference/browser";\n' },
+    { path: "frontend/ui-core/src/inference/BadRequire.ts", text: 'const m = require("@visionset/browser-inference");\n' },
+    { path: "frontend/ui-core/src/inference/BadDynamic.ts", text: 'const m = await import("@visionset/browser-inference");\n' },
+    { path: "frontend/ui-core/src/inference/BadOrt.ts", text: 'import * as ort from "onnxruntime-web/webgpu";\n' },
+  ];
+  assert.equal(violations(browserInferenceViolations, BROWSER_INFERENCE_HOST_BOUNDARY).length, browserInferenceViolations.length);
+
+  const cdnViolations = [
+    { path: "frontend/ui-core/src/inference/BadCdn.ts", text: 'const url = "https://models.robomous.ai/registry/v1.json";\n' },
+    { path: "frontend/ui-core/src/inference/BadVendor.ts", text: "// served from Cloudflare\n" },
+  ];
+  assert.equal(violations(cdnViolations, CDN_VENDOR_LITERALS).length, cdnViolations.length);
+
   assert.deepEqual(offeredRemovedExports('export type { ApiProviderProps } from "./x.js";\n'), ["ApiProviderProps"]);
   assert.deepEqual(offeredRemovedExports('export type { TokenGateProps } from "./x.js";\n'), ["TokenGateProps"]);
   assert.deepEqual(offeredRemovedExports('export type { Access } from "./x.js";\n'), ["Access"]);
@@ -339,6 +388,26 @@ test("the gate does NOT fire on the legitimate neighbouring form", () => {
     },
   ];
   assert.deepEqual(violations(legitimateMediaBoundary, MEDIA_HOST_BOUNDARY), []);
+
+  const legitimateBrowserInference = [
+    {
+      path: "frontend/ui-core/src/inference/browserPort.ts",
+      // The port's own types, imported from @visionset/annotator — never from
+      // @visionset/browser-inference, and this line must not trip the rule.
+      text: 'import type { RgbPixels } from "@visionset/annotator";\n',
+    },
+  ];
+  assert.deepEqual(violations(legitimateBrowserInference, BROWSER_INFERENCE_HOST_BOUNDARY), []);
+
+  const legitimateCdn = [
+    {
+      path: "frontend/ui-core/src/inference/browserPort.ts",
+      // "cloud" alone, not "cloudflare" — the rule is a named-vendor ban, not a generic
+      // substring ban, and must leave ordinary words alone.
+      text: "// this runtime may run in the cloud someday\n",
+    },
+  ];
+  assert.deepEqual(violations(legitimateCdn, CDN_VENDOR_LITERALS), []);
 
   const legitimateStatus = [
     {
