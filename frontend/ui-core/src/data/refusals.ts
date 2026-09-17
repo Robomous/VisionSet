@@ -209,6 +209,12 @@ export const REFUSAL_PROSE: Record<string, string> = {
   // this" would be wrong about where the problem is.
   NETWORK_ERROR: "The server could not be reached — check the connection and try again.",
   MALFORMED_RESPONSE: "The server answered with something this app does not recognise.",
+
+  // Browser-local suggestion. EfficientSAM-Ti has no true negative point; this is the
+  // executor's own pre-flight refusal, never the model's internal throw, so the message
+  // a person sees is contract-tested at this boundary rather than assumed to propagate.
+  BROWSER_NEGATIVE_POINTS_UNSUPPORTED:
+    "This device supports positive-point refinement only. Choose Server to add a negative point.",
 };
 
 /**
