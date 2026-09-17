@@ -428,19 +428,37 @@ export function SuggestPanel({
     blocker !== null &&
     blocker !== undefined;
 
+  // "This device" is the active target and has no model to answer with yet. The click
+  // this card would otherwise invite is a silent no-op — `AnnotationPage` holds no
+  // executor for an unready browser target — so the invitation is replaced by the one
+  // thing that is actually available: the Download control the tab below already draws.
+  const browserTabUnacquired =
+    runtimeWired && activeTarget?.kind === "browser" && blocker === "not-ready";
+
   return (
     <EditorNotice testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
-      {!serverTabBlocked && (
-        <>
-          <p className="font-medium text-foreground" data-testid="suggest-idle">
-            Click the thing you want
-          </p>
-          <p className="text-muted-foreground">
-            One click proposes a shape for “{session.labelClass}”. Alt-click marks something
-            that is not part of it.
-          </p>
-        </>
-      )}
+      {!serverTabBlocked &&
+        (browserTabUnacquired ? (
+          <>
+            <p className="font-medium text-foreground" data-testid="suggest-idle-unacquired">
+              Download the model first
+            </p>
+            <p className="text-muted-foreground">
+              “This device” has nothing to answer with yet, so a click does nothing. Download
+              it below, or switch back to Server.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="font-medium text-foreground" data-testid="suggest-idle">
+              Click the thing you want
+            </p>
+            <p className="text-muted-foreground">
+              One click proposes a shape for “{session.labelClass}”. Alt-click marks something
+              that is not part of it.
+            </p>
+          </>
+        ))}
       {/*
         Here and in no other reading. This is the state where nothing is in
         flight and nothing is waiting to be accepted, so it is the only one where

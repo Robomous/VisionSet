@@ -845,6 +845,24 @@ describe("this device, once a browser runtime is wired", () => {
     expect(screen.getByTestId("suggest-idle")).toBeTruthy();
   });
 
+  it("points at Download instead of inviting a click the unacquired browser tab cannot answer", () => {
+    // "Click the thing you want" is a promise, and with "This device" selected before
+    // any download it is a false one: `AnnotationPage` holds no executor for an unready
+    // browser target, so the click is a silent no-op.
+    render(
+      mount({
+        browserTargets: [],
+        browserAcquisitions: [acquisition()],
+        activeTarget: { kind: "browser", targetId: "efficient-sam-ti" },
+        onChooseTarget: vi.fn(),
+        blocker: "not-ready",
+      }),
+    );
+
+    expect(screen.queryByTestId("suggest-idle")).toBeNull();
+    expect(screen.getByTestId("suggest-idle-unacquired").textContent).toMatch(/download/i);
+  });
+
   it("draws the warn icon inline with a warn-tone blocker on the server tab", () => {
     render(
       mount({

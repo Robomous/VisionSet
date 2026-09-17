@@ -129,7 +129,6 @@ export type {
   BrowserSuggestionTarget,
   VisionSetBrowserInferenceRuntime,
 } from "./inference/browserPort.js";
-export { computeSuggestBlocker } from "./inference/targetBlocker.js";
 export {
   useServerSuggestionExecutor,
   type SuggestionExecutor,
