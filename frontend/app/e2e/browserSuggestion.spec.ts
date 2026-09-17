@@ -249,6 +249,10 @@ async function makeBrowserSuggestion(page: Page): Promise<void> {
 }
 
 test.describe("browser suggestion", () => {
+  // Real ONNX work competes with the rest of the fully-parallel app suite on local machines.
+  // This is a functional ceiling, not a performance assertion; measured timings are reported
+  // by the opt-in live smoke instead of turning shared-runner wall clock into a gate.
+  test.setTimeout(60_000);
   test.skip(!HAS_ARTIFACTS, MISSING_MESSAGE);
 
   test("Server target: a click issues exactly one /inference/suggest HTTP request", async ({ page }) => {
