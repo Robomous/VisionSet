@@ -1,14 +1,18 @@
-import { EFFICIENT_SAM_TI_BASE_URL, EFFICIENT_SAM_TI_EXPECTED, fetchEfficientSamManifest } from "./manifest.js";
+import {
+  EFFICIENT_SAM_TI_ARTIFACT_PATHS,
+  EFFICIENT_SAM_TI_BASE_URL,
+  EFFICIENT_SAM_TI_EXPECTED,
+  fetchEfficientSamManifest,
+} from "./manifest.js";
 
 // The manifest's `artifacts.*.path` is a bare filename, resolved relative to the
 // manifest's own directory (`EFFICIENT_SAM_TI_BASE_URL`, the same prefix
 // `EFFICIENT_SAM_TI_MANIFEST_URL` is built from) — not an absolute path safe to
-// append directly to `MODEL_CDN_BASE_URL`. A `path` containing a slash is rejected
-// outright: it should always be a bare filename, and a mutated manifest asking to
-// climb out of its own directory fails closed here rather than silently building
-// whatever URL it names.
-function artifactUrl(path: string): string {
-  if (path.includes("/")) throw new Error(`unexpected manifest artifact path: ${path}`);
+// append directly to `MODEL_CDN_BASE_URL`. The mutable value must equal the
+// build-admitted filename, so normalized or encoded traversal syntax fails before
+// an artifact request rather than silently building whatever URL it names.
+function artifactUrl(path: string, expectedPath: string): string {
+  if (path !== expectedPath) throw new Error(`unexpected manifest artifact path: ${path}`);
   return `${EFFICIENT_SAM_TI_BASE_URL}/${path}`;
 }
 
@@ -58,12 +62,12 @@ export async function acquireEfficientSam(
 }> {
   const manifest = await fetchEfficientSamManifest(signal);
   const encoder = await fetchVerified(
-    artifactUrl(manifest.artifacts.encoder.path),
+    artifactUrl(manifest.artifacts.encoder.path, EFFICIENT_SAM_TI_ARTIFACT_PATHS.encoder),
     EFFICIENT_SAM_TI_EXPECTED.encoder,
     signal,
   );
   const decoder = await fetchVerified(
-    artifactUrl(manifest.artifacts.decoder.path),
+    artifactUrl(manifest.artifacts.decoder.path, EFFICIENT_SAM_TI_ARTIFACT_PATHS.decoder),
     EFFICIENT_SAM_TI_EXPECTED.decoder,
     signal,
   );

@@ -31,6 +31,11 @@ export const EFFICIENT_SAM_TI_EXPECTED = Object.fromEntries(
   ]),
 ) as Record<"encoder" | "decoder", { readonly sha256: string; readonly bytes: number }>;
 
+/** Admitted filenames used to bind the actual artifact request to the build's trust record. */
+export const EFFICIENT_SAM_TI_ARTIFACT_PATHS = Object.fromEntries(
+  EFFICIENT_SAM_TI_ADMISSION.artifacts.map((artifact) => [artifact.role, artifact.path]),
+) as Record<"encoder" | "decoder", string>;
+
 /**
  * Mirrors the real, already-deployed manifest shape (nested under `artifacts`,
  * with each `path` a bare filename relative to the manifest's own directory) — not

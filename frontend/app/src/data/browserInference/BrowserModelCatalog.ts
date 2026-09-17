@@ -82,7 +82,10 @@ export function createBrowserModelCatalog(deps: CatalogDeps): OssBrowserModelCat
     ]),
   );
   const listeners = new Set<() => void>();
-  const operations = new Map<string, Promise<void>>();
+  const operations = new Map<
+    string,
+    { readonly kind: "acquire" | "activate" | "remove"; readonly promise: Promise<void> }
+  >();
   let active: { readonly id: string; readonly value: ActiveModel } | null = null;
   let snapshot: readonly BrowserModelCatalogEntry[] = [];
 
@@ -118,6 +121,13 @@ export function createBrowserModelCatalog(deps: CatalogDeps): OssBrowserModelCat
       update(record, { visible: true, state: "installed", storage: "persistent", error: undefined });
     } else if (discovered) {
       update(record, { visible: true, state: "available", storage: "none", error: undefined });
+    } else if (registryResult.status === "rejected") {
+      update(record, {
+        visible: true,
+        state: "failed",
+        storage: "none",
+        error: message(registryResult.reason),
+      });
     }
   }
 
@@ -143,11 +153,21 @@ export function createBrowserModelCatalog(deps: CatalogDeps): OssBrowserModelCat
     }
   }
 
-  function once(id: string, operation: () => Promise<void>): Promise<void> {
+  function once(
+    id: string,
+    kind: "acquire" | "activate" | "remove",
+    operation: () => Promise<void>,
+  ): Promise<void> {
     const current = operations.get(id);
-    if (current !== undefined) return current;
+    if (current !== undefined) {
+      if (current.kind === kind) return current.promise;
+      return current.promise.then(
+        () => once(id, kind, operation),
+        () => once(id, kind, operation),
+      );
+    }
     const promise = operation().finally(() => operations.delete(id));
-    operations.set(id, promise);
+    operations.set(id, { kind, promise });
     return promise;
   }
 
@@ -162,7 +182,7 @@ export function createBrowserModelCatalog(deps: CatalogDeps): OssBrowserModelCat
     },
     isKnown: (id) => records.has(id),
     acquire(id, options) {
-      return once(id, async () => {
+      return once(id, "acquire", async () => {
         const record = required(id);
         if (record.state === "ready") return;
         if (!record.discovered) {
@@ -190,7 +210,7 @@ export function createBrowserModelCatalog(deps: CatalogDeps): OssBrowserModelCat
       });
     },
     activate(id) {
-      return once(id, async () => {
+      return once(id, "activate", async () => {
         const record = required(id);
         if (record.state === "ready") return;
         let artifacts: BrowserModelArtifacts;
@@ -211,7 +231,7 @@ export function createBrowserModelCatalog(deps: CatalogDeps): OssBrowserModelCat
       });
     },
     remove(id) {
-      return once(id, async () => {
+      return once(id, "remove", async () => {
         const record = required(id);
         const previous = active?.id === id ? active.value : null;
         const previousStorage = record.storage;

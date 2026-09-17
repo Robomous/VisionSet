@@ -150,23 +150,25 @@ describe("acquireEfficientSam", () => {
     expect(result.decoder).toEqual(decoderBytes);
   });
 
-  it("fails closed on a manifest artifact path shaped like a traversal, rather than building whatever URL it names", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string) => {
+  it.each(["../secrets.onnx", "..", "%2e%2e", "\\..\\private"])(
+    "fails closed on manifest artifact path %s before any artifact request",
+    async (path) => {
+      const fetchMock = vi.fn(async (url: string) => {
         if (url.endsWith("manifest.json")) {
           return new Response(
-            JSON.stringify({ artifacts: { encoder: { path: "../secrets.onnx" }, decoder: { path: "decoder.onnx" } } }),
+            JSON.stringify({ artifacts: { encoder: { path }, decoder: { path: "decoder.onnx" } } }),
           );
         }
         throw new Error(`unexpected url ${url}`);
-      }),
-    );
-    vi.resetModules();
-    const { acquireEfficientSam } = await import("./acquireEfficientSam.js");
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      vi.resetModules();
+      const { acquireEfficientSam } = await import("./acquireEfficientSam.js");
 
-    await expect(acquireEfficientSam()).rejects.toThrow(/unexpected manifest artifact path/i);
-  });
+      await expect(acquireEfficientSam()).rejects.toThrow(/unexpected manifest artifact path/i);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
 });
 
 describe("fetchEfficientSamManifest", () => {

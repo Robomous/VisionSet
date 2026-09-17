@@ -184,6 +184,25 @@ describe("createBrowserModelCatalog", () => {
     expect(catalog.snapshot()[0]).toMatchObject({ state: "available", storage: "none" });
   });
 
+  it("queues removal behind activation instead of mistaking activation for removal", async () => {
+    const pendingReady = deferred<unknown>();
+    const { catalog, dispose, store } = harness({ installed: true, ready: () => pendingReady.promise });
+    await settles(catalog);
+
+    const activating = catalog.activate(ADMISSION.id);
+    await vi.waitFor(() => expect(catalog.snapshot()[0]?.state).toBe("activating"));
+    const removing = catalog.remove(ADMISSION.id);
+    expect(store.remove).not.toHaveBeenCalled();
+
+    pendingReady.resolve([]);
+    await Promise.all([activating, removing]);
+
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(store.remove).toHaveBeenCalledTimes(1);
+    expect(catalog.listTargets()).toEqual([]);
+    expect(catalog.snapshot()[0]).toMatchObject({ state: "available", storage: "none" });
+  });
+
   it("does not claim cached artifacts were removed when persistent deletion fails", async () => {
     const { catalog, dispose, store } = harness({ installed: true });
     await settles(catalog);
@@ -207,6 +226,18 @@ describe("createBrowserModelCatalog", () => {
     await catalog.activate(ADMISSION.id);
     expect(catalog.listTargets()).toHaveLength(1);
     expect(download).not.toHaveBeenCalled();
+  });
+
+  it("keeps an admitted uninstalled model visible and retryable when registry discovery fails", async () => {
+    const { catalog } = harness({ discover: async () => Promise.reject(new Error("registry unavailable")) });
+    await settles(catalog);
+
+    expect(catalog.snapshot()[0]).toMatchObject({
+      state: "failed",
+      storage: "none",
+      error: "registry unavailable",
+    });
+    expect(catalog.isKnown(ADMISSION.id)).toBe(true);
   });
 
   it("knows an admitted but uninstalled preference without fabricating a ready target", async () => {
