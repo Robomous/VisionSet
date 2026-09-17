@@ -103,10 +103,20 @@ function fail(id: OperationId, code: InferenceRuntimeErrorCode, error: unknown):
  * host serving nothing special. A host that would rather serve them from its own origin
  * passes `assetBaseUrl`; the main thread never guesses this location, because only the
  * worker knows where it was loaded from.
+ *
+ * The trailing slash is re-applied to the resolved string rather than trusted to the
+ * literal: a bundler that rewrites `import.meta.url`-relative asset URLs can emit the
+ * directory without it, and ORT then resolves its `.mjs` glue as a *sibling* of `ort`
+ * instead of a file inside it — a 404 a dev server answers with an SPA fallback, so the
+ * dynamic import receives HTML and every execution provider fails to initialize.
  */
+function withTrailingSlash(base: string): string {
+  return base.endsWith("/") ? base : `${base}/`;
+}
+
 function assetsAt(stated: string | undefined): string {
-  if (stated !== undefined && stated !== "") return stated.endsWith("/") ? stated : `${stated}/`;
-  return new URL("./ort/", import.meta.url).href;
+  if (stated !== undefined && stated !== "") return withTrailingSlash(stated);
+  return withTrailingSlash(new URL("./ort/", import.meta.url).href);
 }
 
 function toTensor(input: TensorLike): ort.Tensor {
