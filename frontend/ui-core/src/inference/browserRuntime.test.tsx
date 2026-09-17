@@ -10,7 +10,7 @@ import {
 } from "./VisionSetBrowserInferenceProvider";
 import type { BrowserSuggestionAssetSource, VisionSetBrowserInferenceRuntime } from "./browserPort";
 import { clearPrefs, writePref } from "../data/prefs";
-import { AnnotationPage } from "../annotator/AnnotationPage";
+import { AnnotationPage, staleStoredBrowserTarget } from "../annotator/AnnotationPage";
 import { TooltipProvider } from "@robomous/ui-core";
 import { renderWithData } from "../testing/dataHarness";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
@@ -332,6 +332,56 @@ describe("target selection routes a ready browser target around the server", () 
     expect(asks()).toHaveLength(0);
 
     unmount();
+  });
+
+  it("falls back to Server silently when the stored browser target isn't in a resolved list", async () => {
+    // Acquired model bytes are never persisted across a reload, so this — a stored
+    // preference naming a browser target `listTargets()` no longer reports — is the
+    // ordinary shape of every reload for someone who last picked "This device", not a
+    // rare failure. It must read as "no connections" (the server's own honest state),
+    // never as a browser "not-ready" the person never asked to see again.
+    connections = [];
+    writePref(`suggest.target.${PROJECT}`, "browser:gone-model");
+
+    const runtime: VisionSetBrowserInferenceRuntime = {
+      listTargets: async () => [],
+      executorFor: () => ({
+        suggest: async () => {
+          throw new Error("unused");
+        },
+      }),
+    };
+
+    const unmount = await open(runtime);
+    await arm();
+
+    await screen.findByTestId("suggest-no-connections");
+    expect(screen.queryByTestId("suggest-not-ready")).toBeNull();
+
+    unmount();
+  });
+});
+
+describe("staleStoredBrowserTarget", () => {
+  const listed = [{ id: "t1", label: "T1", modelRef: "m@rev" }];
+
+  it("flags a stored (non-explicit) browser preference missing from a resolved list", () => {
+    expect(staleStoredBrowserTarget({ kind: "browser", targetId: "gone" }, listed, false)).toBe(true);
+  });
+
+  it("does not flag a stored preference that is in the resolved list", () => {
+    expect(staleStoredBrowserTarget({ kind: "browser", targetId: "t1" }, listed, false)).toBe(false);
+  });
+
+  it("does not flag a server preference, or a list still resolving", () => {
+    expect(staleStoredBrowserTarget({ kind: "server" }, [], false)).toBe(false);
+    expect(staleStoredBrowserTarget({ kind: "browser", targetId: "gone" }, undefined, false)).toBe(false);
+  });
+
+  it("never flags a target this session explicitly chose, even once it drops out of the list", () => {
+    // This is the other half of the same rule: an explicit in-session choice that later
+    // fails must keep surfacing through `blocker`/`refusal`, not silently revert.
+    expect(staleStoredBrowserTarget({ kind: "browser", targetId: "gone" }, [], true)).toBe(false);
   });
 });
 

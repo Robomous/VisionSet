@@ -226,6 +226,28 @@ function writeStoredSuggestTarget(projectId: string, target: ActiveSuggestionTar
 }
 
 /**
+ * Whether a stored browser-target preference is stale enough to fall back to Server
+ * silently.
+ *
+ * Acquired model bytes are never persisted across page loads, so "the stored browser
+ * target isn't in `listTargets()`'s answer" is the ordinary shape of every reload for
+ * someone who previously picked a browser target — not a rare failure, and it must not
+ * surface as a `blocker`. `explicitlyChosen` is what keeps this from also catching a
+ * target this *session* picked and which later drops out: that one is pinned, and stays
+ * pinned to `not-ready`/`refusal` rather than silently reverting.
+ */
+export function staleStoredBrowserTarget(
+  storedTarget: StoredSuggestTarget,
+  browserTargets: readonly BrowserSuggestionTarget[] | undefined,
+  explicitlyChosen: boolean,
+): boolean {
+  if (browserTargets === undefined) return false;
+  if (storedTarget.kind !== "browser") return false;
+  if (explicitlyChosen) return false;
+  return !browserTargets.some((row) => row.id === storedTarget.targetId);
+}
+
+/**
  * Where "a trackpad has been seen on this browser" is remembered.
  *
  * Deliberately not per project, which the connection above is: it describes the
@@ -1003,10 +1025,28 @@ function Workspace({
   }, [browserRuntime, browserTargetsRefreshKey]);
 
   const [storedTarget, setStoredTarget] = useState<StoredSuggestTarget>(() => readStoredSuggestTarget(projectId));
-  // A stale/unavailable stored preference (no runtime wired, or the stored target id isn't
-  // ready) falls back to Server silently — the safely-fallback-able case. An *explicit*
-  // choice that later fails is a different thing (surfaced via `blocker`/`refusal`, never
-  // auto-switched), which is why this fallback lives only here, at read time.
+  // Whether *this session* picked a browser target through `chooseTarget`, as opposed to one
+  // merely read back from a persisted preference. Acquired model bytes are never persisted
+  // across page loads (a later phase's work), so "the stored browser target isn't in
+  // `listTargets()`'s answer" is the ordinary shape of every reload for someone who picked
+  // "This device" last time — not a rare failure. That case must fall back to Server
+  // silently. A target this session explicitly chose and which later drops out is a
+  // different thing (surfaced via `blocker`/`refusal`, never auto-switched), and this ref is
+  // what tells the two apart.
+  const explicitlyChosenBrowser = useRef(false);
+
+  // A stale/unavailable *stored* preference falls back to Server silently, once the browser
+  // target list has actually resolved enough to say the stored id isn't in it — not the
+  // in-memory `storedTarget` state read at mount, so it does not fire on a spurious first
+  // render before `listTargets()` has answered. It never rewrites the persisted
+  // `suggest.target.<projectId>` key, so a later reload re-checks the same id once that
+  // model has actually been re-acquired.
+  useEffect(() => {
+    if (staleStoredBrowserTarget(storedTarget, browserTargets, explicitlyChosenBrowser.current)) {
+      setStoredTarget({ kind: "server" });
+    }
+  }, [browserTargets, storedTarget]);
+
   const activeTarget: ActiveSuggestionTarget =
     browserRuntime !== null && storedTarget.kind === "browser"
       ? { kind: "browser", targetId: storedTarget.targetId }
@@ -1019,6 +1059,7 @@ function Workspace({
       : serverExecutor;
 
   function chooseTarget(target: ActiveSuggestionTarget): void {
+    if (target.kind === "browser") explicitlyChosenBrowser.current = true;
     setStoredTarget(target.kind === "browser" ? { kind: "browser", targetId: target.targetId } : { kind: "server" });
     writeStoredSuggestTarget(projectId, target);
     if (target.kind === "server") setPreferredConnection(connection?.id ?? preferredConnection);
