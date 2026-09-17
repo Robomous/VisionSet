@@ -191,7 +191,12 @@ import type { SuggestionOut } from "../data/inferenceQueries";
 import { useServerSuggestionExecutor } from "../inference/suggestionExecutor";
 import type { SuggestionExecutor } from "../inference/suggestionExecutor";
 import { useBrowserInferenceRuntime } from "../inference/VisionSetBrowserInferenceProvider.js";
-import type { ActiveSuggestionTarget, BrowserSuggestionAssetSource, BrowserSuggestionTarget } from "../inference/browserPort.js";
+import type {
+  ActiveSuggestionTarget,
+  BrowserModelCatalogEntry,
+  BrowserSuggestionAssetSource,
+  BrowserSuggestionTarget,
+} from "../inference/browserPort.js";
 import { computeSuggestBlocker } from "../inference/targetBlocker.js";
 import { readPref, writePref } from "../data/prefs";
 
@@ -231,12 +236,10 @@ function writeStoredSuggestTarget(projectId: string, target: ActiveSuggestionTar
  * Whether a stored browser-target preference is stale enough to fall back to Server
  * silently.
  *
- * Acquired model bytes are never persisted across page loads, so "the stored browser
- * target isn't in `listTargets()`'s answer" is the ordinary shape of every reload for
- * someone who previously picked a browser target — not a rare failure, and it must not
- * surface as a `blocker`. `explicitlyChosen` is what keeps this from also catching a
- * target this *session* picked and which later drops out: that one is pinned, and stays
- * pinned to `not-ready`/`refusal` rather than silently reverting.
+ * A catalog-known target may be installed, activating, or awaiting an explicit download;
+ * none of those make its preference stale. Only an ID unknown to the build falls back.
+ * `explicitlyChosen` separately keeps a target picked in this session pinned if it later
+ * drops out, so failure stays visible instead of silently switching to Server.
  */
 export function staleStoredBrowserTarget(
   storedTarget: StoredSuggestTarget,
@@ -249,6 +252,20 @@ export function staleStoredBrowserTarget(
   if (explicitlyChosen) return false;
   if (knownByCatalog) return false;
   return !browserTargets.some((row) => row.id === storedTarget.targetId);
+}
+
+/**
+ * Reconciles the asynchronously resolved Phase F target list with the catalog's synchronous
+ * lifecycle snapshot. Removal and corruption invalidate an executor before the next
+ * `listTargets()` promise settles, so a target is answerable only while both views say ready.
+ */
+export function readyBrowserTargets(
+  browserTargets: readonly BrowserSuggestionTarget[] | undefined,
+  browserModels: readonly BrowserModelCatalogEntry[],
+): readonly BrowserSuggestionTarget[] | undefined {
+  if (browserTargets === undefined) return browserTargets;
+  const readyIds = new Set(browserModels.filter((entry) => entry.state === "ready").map((entry) => entry.id));
+  return browserTargets.filter((target) => readyIds.has(target.id));
 }
 
 const EMPTY_BROWSER_MODELS = Object.freeze([]);
@@ -1037,6 +1054,8 @@ function Workspace({
       cancelled = true;
     };
   }, [browserRuntime, browserTargetsRefreshKey, browserModels]);
+  const answerableBrowserTargets =
+    browserCatalog === undefined ? browserTargets : readyBrowserTargets(browserTargets, browserModels);
 
   const [storedTarget, setStoredTarget] = useState<StoredSuggestTarget>(() => readStoredSuggestTarget(projectId));
   // Whether this session picked a browser target through `chooseTarget`, as opposed to one
@@ -1084,7 +1103,7 @@ function Workspace({
       .catch(() => setBrowserTargetsRefreshKey((key) => key + 1));
   }, [activeBrowserTargetId, browserCatalog, browserModels, suggestArmed]);
 
-  const blocker = computeSuggestBlocker(activeTarget, serverBlocker, browserTargets);
+  const blocker = computeSuggestBlocker(activeTarget, serverBlocker, answerableBrowserTargets);
   // `executorFor` throws for a target that isn't actually ready yet — which is exactly the
   // state selecting "This device" starts in, before a download ever completes — so this must
   // check readiness itself rather than trust `browserRuntime !== null` alone. Derived from
@@ -2929,7 +2948,7 @@ function Workspace({
                 // matching while parked — the one reading that has to name it.
                 heldClass={activeClass}
                 blocker={blocker}
-                browserTargets={browserRuntime === null ? undefined : browserTargets}
+                browserTargets={browserRuntime === null ? undefined : answerableBrowserTargets}
                 browserAcquisitions={browserRuntime?.listAcquisitions?.()}
                 {...(browserCatalog === undefined
                   ? {}

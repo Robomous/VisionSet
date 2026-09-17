@@ -8,9 +8,17 @@ import {
   useBrowserInferenceRuntime,
   VisionSetBrowserInferenceProvider,
 } from "./VisionSetBrowserInferenceProvider";
-import type { BrowserSuggestionAssetSource, VisionSetBrowserInferenceRuntime } from "./browserPort";
+import type {
+  BrowserModelCatalogEntry,
+  BrowserSuggestionAssetSource,
+  VisionSetBrowserInferenceRuntime,
+} from "./browserPort";
 import { clearPrefs, writePref } from "../data/prefs";
-import { AnnotationPage, staleStoredBrowserTarget } from "../annotator/AnnotationPage";
+import {
+  AnnotationPage,
+  readyBrowserTargets,
+  staleStoredBrowserTarget,
+} from "../annotator/AnnotationPage";
 import { TooltipProvider } from "@robomous/ui-core";
 import { renderWithData } from "../testing/dataHarness";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
@@ -421,6 +429,29 @@ describe("executor selection never calls executorFor on an unready browser targe
     expect(asks()).toHaveLength(0);
 
     unmount();
+  });
+});
+
+describe("readyBrowserTargets", () => {
+  const target = { id: "efficient-sam-ti", label: "EfficientSAM-Ti", modelRef: "model@revision" };
+  const model: BrowserModelCatalogEntry = {
+    id: target.id,
+    label: target.label,
+    modelRef: target.modelRef,
+    revision: "revision",
+    bytes: 41_301_678,
+    license: "Apache-2.0",
+    source: { label: "EfficientSAM", href: "https://example.test/upstream" },
+    state: "ready",
+    storage: "persistent",
+  };
+
+  it("removes a stale ready target synchronously when catalog removal publishes", () => {
+    expect(readyBrowserTargets([target], [{ ...model, state: "available", storage: "none" }])).toEqual([]);
+  });
+
+  it("keeps a target while its catalog entry is ready", () => {
+    expect(readyBrowserTargets([target], [model])).toEqual([target]);
   });
 });
 

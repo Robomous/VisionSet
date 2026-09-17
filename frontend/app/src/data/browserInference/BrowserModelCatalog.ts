@@ -209,11 +209,22 @@ export function createBrowserModelCatalog(deps: CatalogDeps): OssBrowserModelCat
       return once(id, async () => {
         const record = required(id);
         const previous = active?.id === id ? active.value : null;
+        const previousStorage = record.storage;
         if (previous !== null) active = null;
         record.sessionArtifacts = undefined;
         update(record, { visible: true, state: "available", storage: "none", error: undefined });
         if (previous !== null) previous.runtime.dispose();
-        await deps.store.remove(record.admission);
+        try {
+          await deps.store.remove(record.admission);
+        } catch (error) {
+          update(record, {
+            visible: true,
+            state: "failed",
+            storage: previousStorage === "persistent" ? "persistent" : "none",
+            error: message(error),
+          });
+          throw error;
+        }
       });
     },
     listTargets() {

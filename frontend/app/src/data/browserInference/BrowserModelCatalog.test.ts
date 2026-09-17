@@ -171,6 +171,23 @@ describe("createBrowserModelCatalog", () => {
     expect(catalog.snapshot()[0]).toMatchObject({ state: "available", storage: "none" });
   });
 
+  it("does not claim cached artifacts were removed when persistent deletion fails", async () => {
+    const { catalog, dispose, store } = harness({ installed: true });
+    await settles(catalog);
+    await catalog.activate(ADMISSION.id);
+    vi.mocked(store.remove).mockRejectedValue(new Error("storage delete failed"));
+
+    await expect(catalog.remove(ADMISSION.id)).rejects.toThrow(/storage delete failed/i);
+
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(catalog.listTargets()).toEqual([]);
+    expect(catalog.snapshot()[0]).toMatchObject({
+      state: "failed",
+      storage: "persistent",
+      error: "storage delete failed",
+    });
+  });
+
   it("keeps a cached admitted model usable when registry discovery fails", async () => {
     const { catalog, download } = harness({ installed: true, discover: async () => Promise.reject(new Error("503")) });
     await settles(catalog);
