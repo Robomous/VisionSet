@@ -1,16 +1,15 @@
-import {
-  EFFICIENT_SAM_TI_EXPECTED,
-  EFFICIENT_SAM_TI_REVISION,
-  MODEL_CDN_BASE_URL,
-  fetchEfficientSamManifest,
-} from "./manifest.js";
+import { EFFICIENT_SAM_TI_BASE_URL, EFFICIENT_SAM_TI_EXPECTED, fetchEfficientSamManifest } from "./manifest.js";
 
 // The manifest's `artifacts.*.path` is a bare filename, resolved relative to the
-// manifest's own directory — not an absolute path safe to append directly to
-// `MODEL_CDN_BASE_URL`. This restates that same directory prefix, which is also how
-// `EFFICIENT_SAM_TI_MANIFEST_URL` itself is built.
+// manifest's own directory (`EFFICIENT_SAM_TI_BASE_URL`, the same prefix
+// `EFFICIENT_SAM_TI_MANIFEST_URL` is built from) — not an absolute path safe to
+// append directly to `MODEL_CDN_BASE_URL`. A `path` containing a slash is rejected
+// outright: it should always be a bare filename, and a mutated manifest asking to
+// climb out of its own directory fails closed here rather than silently building
+// whatever URL it names.
 function artifactUrl(path: string): string {
-  return `${MODEL_CDN_BASE_URL}/models/efficient-sam-ti/${EFFICIENT_SAM_TI_REVISION}/${path}`;
+  if (path.includes("/")) throw new Error(`unexpected manifest artifact path: ${path}`);
+  return `${EFFICIENT_SAM_TI_BASE_URL}/${path}`;
 }
 
 // `Uint8Array<ArrayBuffer>`, not the bare `Uint8Array` (which now defaults to the

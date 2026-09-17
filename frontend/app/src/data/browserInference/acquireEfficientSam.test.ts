@@ -11,6 +11,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fetchVerified } from "./acquireEfficientSam.js";
+import { fetchEfficientSamManifest } from "./manifest.js";
 
 // `Uint8Array<ArrayBuffer>`, not the bare `Uint8Array` — see the same note in
 // acquireEfficientSam.ts: TypeScript 6's `lib.dom.d.ts` requires the concrete
@@ -105,5 +106,88 @@ describe("acquireEfficientSam", () => {
     expect(fetchMock.mock.calls[2]![0]).toBe(
       "https://models.robomous.ai/models/efficient-sam-ti/b19782d049c0-843761ca46f4/decoder.onnx",
     );
+  });
+
+  it("never trusts the manifest's own bytes/sha256 — a manifest that lies about both still verifies against the pinned constants", async () => {
+    const encoderBytes = bytesOf("encoder-fixture");
+    const decoderBytes = bytesOf("decoder-fixture");
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("manifest.json")) {
+        return new Response(
+          JSON.stringify({
+            artifacts: {
+              // Deliberately wrong `bytes`/`sha256` alongside the real `path` — a
+              // manifest that lies about its own artifacts' hashes. If acquisition
+              // ever read these instead of `EFFICIENT_SAM_TI_EXPECTED`, this fixture
+              // would either reject the correct fixture bytes or accept forged ones.
+              encoder: { path: "encoder.onnx", bytes: 1, sha256: "0".repeat(64) },
+              decoder: { path: "decoder.onnx", bytes: 1, sha256: "0".repeat(64) },
+            },
+          }),
+        );
+      }
+      if (url.endsWith("encoder.onnx")) return new Response(encoderBytes);
+      if (url.endsWith("decoder.onnx")) return new Response(decoderBytes);
+      throw new Error(`unexpected url ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.resetModules();
+    vi.doMock("./manifest.js", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("./manifest.js")>();
+      return {
+        ...actual,
+        EFFICIENT_SAM_TI_EXPECTED: {
+          encoder: { sha256: await sha256Of(encoderBytes), bytes: encoderBytes.byteLength },
+          decoder: { sha256: await sha256Of(decoderBytes), bytes: decoderBytes.byteLength },
+        },
+      };
+    });
+    const { acquireEfficientSam } = await import("./acquireEfficientSam.js");
+
+    const result = await acquireEfficientSam();
+
+    expect(result.encoder).toEqual(encoderBytes);
+    expect(result.decoder).toEqual(decoderBytes);
+  });
+
+  it("fails closed on a manifest artifact path shaped like a traversal, rather than building whatever URL it names", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.endsWith("manifest.json")) {
+          return new Response(
+            JSON.stringify({ artifacts: { encoder: { path: "../secrets.onnx" }, decoder: { path: "decoder.onnx" } } }),
+          );
+        }
+        throw new Error(`unexpected url ${url}`);
+      }),
+    );
+    vi.resetModules();
+    const { acquireEfficientSam } = await import("./acquireEfficientSam.js");
+
+    await expect(acquireEfficientSam()).rejects.toThrow(/unexpected manifest artifact path/i);
+  });
+});
+
+describe("fetchEfficientSamManifest", () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  it("throws a diagnosable error, not a bare TypeError, when the CDN's manifest schema has moved", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ artifacts: { encoder: {} } }))));
+    await expect(fetchEfficientSamManifest()).rejects.toThrow(/unexpected manifest schema/i);
+  });
+
+  it("accepts the real, already-deployed manifest shape", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ artifacts: { encoder: { path: "encoder.onnx" }, decoder: { path: "decoder.onnx" } } }),
+        ),
+      ),
+    );
+    const manifest = await fetchEfficientSamManifest();
+    expect(manifest.artifacts.encoder.path).toBe("encoder.onnx");
+    expect(manifest.artifacts.decoder.path).toBe("decoder.onnx");
   });
 });
