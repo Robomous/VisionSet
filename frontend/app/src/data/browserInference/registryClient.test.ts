@@ -47,6 +47,42 @@ describe("fetchAdmittedBrowserModels", () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
+  it("accepts an equivalent relative admitted manifest path and resolves it below a mirror base prefix", async () => {
+    const row = admittedRow();
+    row.manifest = "models/efficient-sam-ti/b19782d049c0-843761ca46f4/manifest.json";
+    const fetch = fetchFixture(registryWith(row));
+
+    const result = await fetchAdmittedBrowserModels("https://models.example/mirror", { fetch });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.manifestUrl.href).toBe(
+      "https://models.example/mirror/models/efficient-sam-ti/b19782d049c0-843761ca46f4/manifest.json",
+    );
+    expect(fetch.mock.calls.map(([input]) => String(input))).toEqual([
+      "https://models.example/mirror/registry/v1.json",
+      "https://models.example/mirror/models/efficient-sam-ti/b19782d049c0-843761ca46f4/manifest.json",
+    ]);
+  });
+
+  it("validates and preserves a registry license when the deployed registry supplies one", async () => {
+    const row = { ...admittedRow(), license: "Apache-2.0" };
+
+    const [model] = await fetchAdmittedBrowserModels(BASE, {
+      fetch: fetchFixture(registryWith(row)),
+    });
+
+    expect(model?.license).toBe("Apache-2.0");
+    expect(model?.registryLicense).toBe("Apache-2.0");
+  });
+
+  it("rejects a registry license mismatch against the admission", async () => {
+    await expect(
+      fetchAdmittedBrowserModels(BASE, {
+        fetch: fetchFixture(registryWith({ ...admittedRow(), license: "MIT" })),
+      }),
+    ).rejects.toThrow(/admission mismatch at registry\.license/i);
+  });
+
   it.each([
     null,
     {},
@@ -57,6 +93,14 @@ describe("fetchAdmittedBrowserModels", () => {
     await expect(fetchAdmittedBrowserModels(BASE, { fetch: fetchFixture(registry) })).rejects.toThrow(
       /registry schema/i,
     );
+  });
+
+  it("rejects a malformed optional registry license", async () => {
+    await expect(
+      fetchAdmittedBrowserModels(BASE, {
+        fetch: fetchFixture(registryWith({ ...admittedRow(), license: 42 })),
+      }),
+    ).rejects.toThrow(/registry schema/i);
   });
 
   it("rejects duplicate IDs even when their revisions differ", async () => {
@@ -122,6 +166,8 @@ describe("fetchAdmittedBrowserModels", () => {
     "//evil.example/manifest.json",
     "/models/%2e%2e/escape/manifest.json",
     "/models/model/manifest.json?mutable=1",
+    "/models/model/manifest.json%3Fmutable%3D1",
+    "https%3A%2F%2Fevil.example/manifest.json",
   ])("rejects an unsafe manifest path %s", async (manifestPath) => {
     await expect(
       fetchAdmittedBrowserModels(BASE, {
@@ -145,8 +191,8 @@ describe("fetchAdmittedBrowserModels", () => {
 });
 
 describe("resolveModelPath", () => {
-  it("resolves a root-relative public path below a configured base prefix", () => {
-    expect(resolveModelPath("https://models.example/base", "/base/models/a/manifest.json").href).toBe(
+  it("resolves a root-relative logical path below a configured base prefix", () => {
+    expect(resolveModelPath("https://models.example/base", "/models/a/manifest.json").href).toBe(
       "https://models.example/base/models/a/manifest.json",
     );
   });

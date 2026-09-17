@@ -26,6 +26,40 @@ export interface BrowserArtifactStore {
   remove(model: BrowserModelAdmission): Promise<void>;
 }
 
+/**
+ * Cache Storage could not establish a trustworthy persistent state. Callers must retain a
+ * removal affordance: pre-existing entries may still be resident even when this operation could
+ * not inspect or clean them.
+ */
+export class BrowserArtifactStorageIndeterminateError extends Error {
+  constructor(message: string, cause: unknown) {
+    super(message, { cause });
+    this.name = "BrowserArtifactStorageIndeterminateError";
+  }
+}
+
+/**
+ * A failed cache write normally leaves no model bytes behind because the store rolls its keys
+ * back. This error is deliberately distinct: the write failed *and* that rollback failed, so a
+ * caller must not describe the model as merely session-only or hide its removal affordance.
+ */
+export class BrowserArtifactRollbackError extends BrowserArtifactStorageIndeterminateError {
+  readonly cleanupCause: unknown;
+
+  constructor(writeCause: unknown, cleanupCause: unknown) {
+    super(
+      `Browser model cache write failed (${messageFor(writeCause)}) and cleanup failed (${messageFor(cleanupCause)}).`,
+      writeCause,
+    );
+    this.name = "BrowserArtifactRollbackError";
+    this.cleanupCause = cleanupCause;
+  }
+}
+
+function messageFor(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export function cacheKeyFor(model: BrowserModelAdmission, artifact: ArtifactAdmission): string {
   return (
     `${CACHE_ORIGIN}/__visionset_model_cache__/` +
@@ -100,7 +134,15 @@ export function createCacheArtifactStore(
           verifyArtifact(bytesFor(artifacts, artifact.role), artifact, `downloaded ${artifact.role}`),
         ),
       );
-      const opened = await cache();
+      let opened: ArtifactCache | null;
+      try {
+        opened = await cache();
+      } catch (error) {
+        throw new BrowserArtifactStorageIndeterminateError(
+          `Browser model cache could not be opened (${messageFor(error)}).`,
+          error,
+        );
+      }
       if (opened === null) throw new Error("browser model storage is unavailable");
       try {
         for (const artifact of model.artifacts) {
@@ -111,7 +153,11 @@ export function createCacheArtifactStore(
           );
         }
       } catch (error) {
-        await remove(model);
+        try {
+          await remove(model);
+        } catch (cleanupError) {
+          throw new BrowserArtifactRollbackError(error, cleanupError);
+        }
         throw error;
       }
     },

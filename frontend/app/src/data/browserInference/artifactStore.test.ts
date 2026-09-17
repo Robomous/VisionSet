@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { BrowserModelAdmission } from "./admissionCatalog.js";
 import {
   CACHE_NAMESPACE,
+  BrowserArtifactRollbackError,
+  BrowserArtifactStorageIndeterminateError,
   cacheKeyFor,
   createCacheArtifactStore,
   type ArtifactCache,
@@ -111,6 +113,50 @@ describe("createCacheArtifactStore", () => {
 
     expect(await store.inspect(admission)).toBe(false);
     expect(cache.entries.size).toBe(0);
+  });
+
+  it("distinguishes a failed write whose rollback also fails and preserves the write cause", async () => {
+    const cache = new MemoryCache();
+    const quota = new DOMException("quota", "QuotaExceededError");
+    const cleanup = new Error("cache delete failed");
+    cache.put.mockImplementationOnce(async (request, response) => {
+      cache.entries.set(String(request), response.clone());
+    });
+    cache.put.mockRejectedValueOnce(quota);
+    cache.delete.mockRejectedValue(cleanup);
+    const { admission, artifacts } = await fixture();
+    const store = createCacheArtifactStore(storage(cache));
+
+    let thrown: unknown;
+    try {
+      await store.writeVerified(admission, artifacts);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(BrowserArtifactRollbackError);
+    expect(thrown).toMatchObject({ cause: quota, cleanupCause: cleanup });
+    expect((thrown as Error).message).toMatch(/quota.*cleanup failed/i);
+    // The failed cleanup leaves the written encoder potentially resident; callers must offer
+    // explicit removal rather than claiming a clean session-only fallback.
+    expect(cache.entries.size).toBe(1);
+  });
+
+  it("marks a rejected Cache Storage open as indeterminate while retaining the original cause", async () => {
+    const openFailure = new Error("cache namespace unavailable");
+    const cacheStorage: ArtifactCacheStorage = { open: vi.fn(async () => Promise.reject(openFailure)) };
+    const { admission, artifacts } = await fixture();
+
+    let thrown: unknown;
+    try {
+      await createCacheArtifactStore(cacheStorage).writeVerified(admission, artifacts);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(BrowserArtifactStorageIndeterminateError);
+    expect(thrown).toMatchObject({ cause: openFailure });
+    expect((thrown as Error).message).toMatch(/could not be opened.*namespace unavailable/i);
   });
 
   it("cleans up a partial cache instead of treating it as installed", async () => {

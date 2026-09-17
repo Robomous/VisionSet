@@ -911,6 +911,16 @@ function CatalogModel({
           Ready for this session, but it was not saved in this browser.
         </p>
       )}
+      {model.storage === "unknown" && (
+        <p className="text-muted-foreground" data-testid="suggest-device-storage-unknown">
+          Browser storage could not be checked. Remove this model to clear any saved files.
+        </p>
+      )}
+      {model.warning !== undefined && model.warning !== model.error && (
+        <p className="text-muted-foreground" data-testid="suggest-device-catalog-warning">
+          The model registry could not be checked. A saved model can still run on this device.
+        </p>
+      )}
       {canRemove && onRemove !== undefined && (
         <Button
           type="button"

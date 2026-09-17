@@ -4,7 +4,12 @@ import type { PromptableSegmentationRuntime } from "@visionset/browser-inference
 import type { BrowserSuggestionTarget, SuggestionExecutor } from "@visionset/ui-core";
 
 import type { BrowserModelAdmission } from "./admissionCatalog.js";
-import type { BrowserArtifactStore, BrowserModelArtifacts } from "./artifactStore.js";
+import {
+  BrowserArtifactRollbackError,
+  BrowserArtifactStorageIndeterminateError,
+  type BrowserArtifactStore,
+  type BrowserModelArtifacts,
+} from "./artifactStore.js";
 import { createBrowserModelCatalog } from "./BrowserModelCatalog.js";
 
 const ADMISSION: BrowserModelAdmission = {
@@ -36,6 +41,7 @@ function deferred<T>() {
 
 function harness(overrides: {
   installed?: boolean;
+  inspect?: () => Promise<boolean>;
   discover?: () => Promise<boolean>;
   read?: () => Promise<BrowserModelArtifacts | null>;
   write?: () => Promise<void>;
@@ -44,7 +50,7 @@ function harness(overrides: {
 } = {}) {
   let installed = overrides.installed ?? false;
   const store: BrowserArtifactStore = {
-    inspect: vi.fn(async () => installed),
+    inspect: vi.fn(overrides.inspect ?? (async () => installed)),
     readVerified: vi.fn(overrides.read ?? (async () => (installed ? ARTIFACTS : null))),
     writeVerified: vi.fn(overrides.write ?? (async () => { installed = true; })),
     remove: vi.fn(async () => { installed = false; }),
@@ -63,14 +69,15 @@ function harness(overrides: {
     modelRef: ADMISSION.modelRef,
   };
   const download = vi.fn(overrides.download ?? (async () => ARTIFACTS));
+  const activate = vi.fn(async () => ({ runtime, executor, target }));
   const catalog = createBrowserModelCatalog({
     admissions: [ADMISSION],
     store,
     discover: overrides.discover ?? (async () => true),
     download,
-    activate: vi.fn(async () => ({ runtime, executor, target })),
+    activate,
   });
-  return { catalog, store, download, runtime, executor, dispose };
+  return { catalog, store, download, runtime, executor, dispose, activate };
 }
 
 async function settles(catalog: ReturnType<typeof createBrowserModelCatalog>): Promise<void> {
@@ -92,6 +99,36 @@ describe("createBrowserModelCatalog", () => {
     await settles(catalog);
     expect(catalog.snapshot()[0]).toMatchObject({ state: "installed", storage: "persistent" });
     expect(runtime.ready).not.toHaveBeenCalled();
+  });
+
+  it("publishes cached installation and permits activation while registry discovery never settles", async () => {
+    const never = new Promise<boolean>(() => undefined);
+    const { catalog, download, runtime } = harness({ installed: true, discover: async () => never });
+
+    await settles(catalog);
+    expect(catalog.snapshot()[0]).toMatchObject({ state: "installed", storage: "persistent" });
+
+    await catalog.activate(ADMISSION.id);
+    expect(catalog.listTargets()).toHaveLength(1);
+    expect(runtime.ready).toHaveBeenCalledTimes(1);
+    expect(download).not.toHaveBeenCalled();
+  });
+
+  it("serializes activation requested before cache initialization and creates one runtime", async () => {
+    const inspection = deferred<boolean>();
+    const { catalog, activate, dispose, runtime } = harness({ installed: true, inspect: () => inspection.promise });
+
+    const first = catalog.activate(ADMISSION.id);
+    const second = catalog.activate(ADMISSION.id);
+    expect(activate).not.toHaveBeenCalled();
+    inspection.resolve(true);
+    await Promise.all([first, second]);
+
+    expect(activate).toHaveBeenCalledTimes(1);
+    expect(runtime.ready).toHaveBeenCalledTimes(1);
+    expect(catalog.snapshot()[0]).toMatchObject({ state: "ready", storage: "persistent" });
+    await catalog.remove(ADMISSION.id);
+    expect(dispose).toHaveBeenCalledTimes(1);
   });
 
   it("deduplicates an explicit acquisition and exposes every lifecycle transition", async () => {
@@ -122,6 +159,38 @@ describe("createBrowserModelCatalog", () => {
     expect(catalog.listTargets()).toHaveLength(1);
   });
 
+  it("keeps removal available when a failed cache write could not be rolled back", async () => {
+    const rollbackFailure = new BrowserArtifactRollbackError(
+      new DOMException("quota", "QuotaExceededError"),
+      new Error("cache delete failed"),
+    );
+    const { catalog, store } = harness({ write: async () => Promise.reject(rollbackFailure) });
+    await settles(catalog);
+
+    await catalog.acquire(ADMISSION.id);
+
+    expect(catalog.snapshot()[0]).toMatchObject({ state: "ready", storage: "unknown" });
+    await catalog.remove(ADMISSION.id);
+    expect(store.remove).toHaveBeenCalledTimes(1);
+    expect(catalog.snapshot()[0]).toMatchObject({ state: "available", storage: "none" });
+  });
+
+  it("keeps removal available when Cache Storage could not open", async () => {
+    const openFailure = new BrowserArtifactStorageIndeterminateError(
+      "Browser model cache could not be opened (cache namespace unavailable).",
+      new Error("cache namespace unavailable"),
+    );
+    const { catalog, store } = harness({ write: async () => Promise.reject(openFailure) });
+    await settles(catalog);
+
+    await catalog.acquire(ADMISSION.id);
+
+    expect(catalog.snapshot()[0]).toMatchObject({ state: "ready", storage: "unknown" });
+    await catalog.remove(ADMISSION.id);
+    expect(store.remove).toHaveBeenCalledTimes(1);
+    expect(catalog.snapshot()[0]).toMatchObject({ state: "available", storage: "none" });
+  });
+
   it("activates installed bytes from cache without any artifact download", async () => {
     const { catalog, download, runtime, store } = harness({ installed: true });
     await settles(catalog);
@@ -144,7 +213,7 @@ describe("createBrowserModelCatalog", () => {
     await expect(catalog.activate(ADMISSION.id)).rejects.toThrow(/sha-256 mismatch/i);
 
     expect(download).not.toHaveBeenCalled();
-    expect(catalog.snapshot()[0]).toMatchObject({ state: "failed", storage: "none" });
+    expect(catalog.snapshot()[0]).toMatchObject({ state: "failed", storage: "unknown" });
     expect(catalog.listTargets()).toEqual([]);
   });
 
@@ -215,14 +284,25 @@ describe("createBrowserModelCatalog", () => {
     expect(catalog.listTargets()).toEqual([]);
     expect(catalog.snapshot()[0]).toMatchObject({
       state: "failed",
-      storage: "persistent",
+      storage: "unknown",
       error: "storage delete failed",
     });
+  });
+
+  it("keeps removal available when inspection cannot determine whether artifacts remain", async () => {
+    const { catalog, store } = harness({ inspect: async () => Promise.reject(new Error("cache match failed")) });
+    await settles(catalog);
+
+    expect(catalog.snapshot()[0]).toMatchObject({ state: "failed", storage: "unknown" });
+    await catalog.remove(ADMISSION.id);
+    expect(store.remove).toHaveBeenCalledTimes(1);
+    expect(catalog.snapshot()[0]).toMatchObject({ state: "available", storage: "none" });
   });
 
   it("keeps a cached admitted model usable when registry discovery fails", async () => {
     const { catalog, download } = harness({ installed: true, discover: async () => Promise.reject(new Error("503")) });
     await settles(catalog);
+    await vi.waitFor(() => expect(catalog.snapshot()[0]).toMatchObject({ warning: "503" }));
     await catalog.activate(ADMISSION.id);
     expect(catalog.listTargets()).toHaveLength(1);
     expect(download).not.toHaveBeenCalled();

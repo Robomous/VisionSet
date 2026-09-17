@@ -10,8 +10,11 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { EFFICIENT_SAM_TI_MANIFEST_V1 } from "./fixtures/manifests-v1.js";
+import registryV1 from "./fixtures/registry-v1.json";
 import { fetchVerified } from "./acquireEfficientSam.js";
 import { fetchEfficientSamManifest } from "./manifest.js";
+import { fetchAdmittedBrowserModels } from "./registryClient.js";
 
 // `Uint8Array<ArrayBuffer>`, not the bare `Uint8Array` — see the same note in
 // acquireEfficientSam.ts: TypeScript 6's `lib.dom.d.ts` requires the concrete
@@ -25,8 +28,33 @@ async function sha256Of(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+interface ManifestArtifactOverride {
+  readonly path?: string;
+  readonly bytes?: number;
+  readonly sha256?: string;
+  readonly content_type?: string;
+}
+
+function manifestWithArtifactOverrides(
+  encoder: ManifestArtifactOverride = {},
+  decoder: ManifestArtifactOverride = {},
+) {
+  return {
+    ...EFFICIENT_SAM_TI_MANIFEST_V1,
+    artifacts: {
+      encoder: { ...EFFICIENT_SAM_TI_MANIFEST_V1.artifacts.encoder, ...encoder },
+      decoder: { ...EFFICIENT_SAM_TI_MANIFEST_V1.artifacts.decoder, ...decoder },
+    },
+  };
+}
+
 describe("fetchVerified", () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.resetModules();
+    vi.doUnmock("./admissionCatalog.js");
+    vi.doUnmock("./manifest.js");
+  });
 
   it("returns the bytes when size and SHA-256 both match", async () => {
     const bytes = bytesOf("hello world");
@@ -55,17 +83,50 @@ describe("fetchVerified", () => {
 });
 
 describe("acquireEfficientSam", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.resetModules();
+    vi.doUnmock("./admissionCatalog.js");
+    vi.doUnmock("./manifest.js");
+  });
+
+  it("rejects a mutated acquisition-time manifest even after catalog discovery admitted an earlier copy", async () => {
+    let manifestRequests = 0;
+    const mutatedManifest = {
+      ...structuredClone(EFFICIENT_SAM_TI_MANIFEST_V1),
+      runtime: { ...EFFICIENT_SAM_TI_MANIFEST_V1.runtime, opset: 18 },
+    };
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href.endsWith("registry/v1.json")) return new Response(JSON.stringify(registryV1));
+      if (href.endsWith("manifest.json")) {
+        manifestRequests += 1;
+        return new Response(JSON.stringify(manifestRequests === 1 ? EFFICIENT_SAM_TI_MANIFEST_V1 : mutatedManifest));
+      }
+      throw new Error(`artifact must not be fetched after a manifest mismatch: ${href}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchAdmittedBrowserModels("https://models.robomous.ai")).resolves.toHaveLength(1);
+    await expect((await import("./acquireEfficientSam.js")).acquireEfficientSam()).rejects.toThrow(
+      /admission mismatch at runtime\.opset/i,
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it("fetches the manifest, then each artifact — never before the manifest resolves", async () => {
     const encoderBytes = bytesOf("encoder-fixture");
     const decoderBytes = bytesOf("decoder-fixture");
+    const manifest = manifestWithArtifactOverrides(
+      { bytes: encoderBytes.byteLength, sha256: await sha256Of(encoderBytes) },
+      { bytes: decoderBytes.byteLength, sha256: await sha256Of(decoderBytes) },
+    );
     const fetchMock = vi.fn(async (url: string) => {
       if (url.endsWith("manifest.json")) {
         // The real, already-deployed manifest shape: artifacts nested under
         // `artifacts`, each `path` a bare filename relative to the manifest's own
         // directory — not `{ encoder: { path: "/encoder.onnx" } }` at the top level.
-        return new Response(
-          JSON.stringify({ artifacts: { encoder: { path: "encoder.onnx" }, decoder: { path: "decoder.onnx" } } }),
-        );
+        return new Response(JSON.stringify(manifest));
       }
       if (url.endsWith("encoder.onnx")) return new Response(encoderBytes);
       if (url.endsWith("decoder.onnx")) return new Response(decoderBytes);
@@ -79,15 +140,24 @@ describe("acquireEfficientSam", () => {
     // the cache first, forcing the dynamic `import()` below to re-evaluate both
     // modules fresh, this time picking up the mock.
     vi.resetModules();
-    vi.doMock("./manifest.js", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("./manifest.js")>();
-      return {
-        ...actual,
-        EFFICIENT_SAM_TI_EXPECTED: {
-          encoder: { sha256: await sha256Of(encoderBytes), bytes: encoderBytes.byteLength },
-          decoder: { sha256: await sha256Of(decoderBytes), bytes: decoderBytes.byteLength },
-        },
+    vi.doMock("./admissionCatalog.js", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("./admissionCatalog.js")>();
+      const admitted = {
+        ...actual.EFFICIENT_SAM_TI_ADMISSION,
+        artifacts: [
+          {
+            ...actual.EFFICIENT_SAM_TI_ADMISSION.artifacts[0],
+            bytes: encoderBytes.byteLength,
+            sha256: await sha256Of(encoderBytes),
+          },
+          {
+            ...actual.EFFICIENT_SAM_TI_ADMISSION.artifacts[1],
+            bytes: decoderBytes.byteLength,
+            sha256: await sha256Of(decoderBytes),
+          },
+        ] as const,
       };
+      return { ...actual, EFFICIENT_SAM_TI_ADMISSION: admitted, ADMITTED_BROWSER_MODELS: [admitted] };
     });
     const { acquireEfficientSam } = await import("./acquireEfficientSam.js");
 
@@ -108,46 +178,21 @@ describe("acquireEfficientSam", () => {
     );
   });
 
-  it("never trusts the manifest's own bytes/sha256 — a manifest that lies about both still verifies against the pinned constants", async () => {
-    const encoderBytes = bytesOf("encoder-fixture");
-    const decoderBytes = bytesOf("decoder-fixture");
+  it("rejects a manifest that lies about an admitted artifact hash before fetching artifact bytes", async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (url.endsWith("manifest.json")) {
         return new Response(
-          JSON.stringify({
-            artifacts: {
-              // Deliberately wrong `bytes`/`sha256` alongside the real `path` — a
-              // manifest that lies about its own artifacts' hashes. If acquisition
-              // ever read these instead of `EFFICIENT_SAM_TI_EXPECTED`, this fixture
-              // would either reject the correct fixture bytes or accept forged ones.
-              encoder: { path: "encoder.onnx", bytes: 1, sha256: "0".repeat(64) },
-              decoder: { path: "decoder.onnx", bytes: 1, sha256: "0".repeat(64) },
-            },
-          }),
+          JSON.stringify(manifestWithArtifactOverrides({ sha256: "0".repeat(64) })),
         );
       }
-      if (url.endsWith("encoder.onnx")) return new Response(encoderBytes);
-      if (url.endsWith("decoder.onnx")) return new Response(decoderBytes);
-      throw new Error(`unexpected url ${url}`);
+      throw new Error(`artifact must not be fetched: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
     vi.resetModules();
-    vi.doMock("./manifest.js", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("./manifest.js")>();
-      return {
-        ...actual,
-        EFFICIENT_SAM_TI_EXPECTED: {
-          encoder: { sha256: await sha256Of(encoderBytes), bytes: encoderBytes.byteLength },
-          decoder: { sha256: await sha256Of(decoderBytes), bytes: decoderBytes.byteLength },
-        },
-      };
-    });
     const { acquireEfficientSam } = await import("./acquireEfficientSam.js");
 
-    const result = await acquireEfficientSam();
-
-    expect(result.encoder).toEqual(encoderBytes);
-    expect(result.decoder).toEqual(decoderBytes);
+    await expect(acquireEfficientSam()).rejects.toThrow(/admission mismatch at artifacts\.encoder\.sha256/i);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it.each(["../secrets.onnx", "..", "%2e%2e", "\\..\\private"])(
@@ -156,7 +201,7 @@ describe("acquireEfficientSam", () => {
       const fetchMock = vi.fn(async (url: string) => {
         if (url.endsWith("manifest.json")) {
           return new Response(
-            JSON.stringify({ artifacts: { encoder: { path }, decoder: { path: "decoder.onnx" } } }),
+            JSON.stringify(manifestWithArtifactOverrides({ path })),
           );
         }
         throw new Error(`unexpected url ${url}`);
@@ -165,14 +210,19 @@ describe("acquireEfficientSam", () => {
       vi.resetModules();
       const { acquireEfficientSam } = await import("./acquireEfficientSam.js");
 
-      await expect(acquireEfficientSam()).rejects.toThrow(/unexpected manifest artifact path/i);
+      await expect(acquireEfficientSam()).rejects.toThrow(/admission mismatch at artifacts\.encoder\.path/i);
       expect(fetchMock).toHaveBeenCalledTimes(1);
     },
   );
 });
 
 describe("fetchEfficientSamManifest", () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.resetModules();
+    vi.doUnmock("./admissionCatalog.js");
+    vi.doUnmock("./manifest.js");
+  });
 
   it("throws a diagnosable error, not a bare TypeError, when the CDN's manifest schema has moved", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ artifacts: { encoder: {} } }))));
@@ -184,7 +234,7 @@ describe("fetchEfficientSamManifest", () => {
       "fetch",
       vi.fn().mockResolvedValue(
         new Response(
-          JSON.stringify({ artifacts: { encoder: { path: "encoder.onnx" }, decoder: { path: "decoder.onnx" } } }),
+          JSON.stringify(EFFICIENT_SAM_TI_MANIFEST_V1),
         ),
       ),
     );

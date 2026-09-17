@@ -7,7 +7,11 @@ import type {
 } from "@visionset/ui-core";
 
 import type { BrowserModelAdmission } from "./admissionCatalog.js";
-import type { BrowserArtifactStore, BrowserModelArtifacts } from "./artifactStore.js";
+import {
+  BrowserArtifactStorageIndeterminateError,
+  type BrowserArtifactStore,
+  type BrowserModelArtifacts,
+} from "./artifactStore.js";
 
 interface ActiveModel {
   readonly runtime: PromptableSegmentationRuntime;
@@ -38,6 +42,7 @@ interface ModelRecord {
   state: BrowserModelCatalogEntry["state"];
   storage: BrowserModelCatalogEntry["storage"];
   error?: string;
+  registryFailure?: string;
   sessionArtifacts?: BrowserModelArtifacts;
 }
 
@@ -65,6 +70,7 @@ function entryOf(record: ModelRecord): BrowserModelCatalogEntry {
     state: record.state,
     storage: record.storage,
     ...(record.error === undefined ? {} : { error: record.error }),
+    ...(record.registryFailure === undefined ? {} : { warning: record.registryFailure }),
   };
 }
 
@@ -84,10 +90,14 @@ export function createBrowserModelCatalog(deps: CatalogDeps): OssBrowserModelCat
   const listeners = new Set<() => void>();
   const operations = new Map<
     string,
-    { readonly kind: "acquire" | "activate" | "remove"; readonly promise: Promise<void> }
+    { readonly kind: "initialize" | "acquire" | "activate" | "remove"; readonly promise: Promise<void> }
   >();
   let active: { readonly id: string; readonly value: ActiveModel } | null = null;
   let snapshot: readonly BrowserModelCatalogEntry[] = [];
+  // One lifecycle lane makes the active runtime a real singleton, not merely a best-effort
+  // per-model convention. It also means an initial cache inspection cannot publish over a
+  // caller that has already started activation.
+  let lifecycleTail: Promise<void> | null = null;
 
   function publish(): void {
     snapshot = [...records.values()].filter((record) => record.visible).map(entryOf);
@@ -110,27 +120,47 @@ export function createBrowserModelCatalog(deps: CatalogDeps): OssBrowserModelCat
   }
 
   async function initializeRecord(record: ModelRecord): Promise<void> {
-    const [cacheResult, registryResult] = await Promise.allSettled([
-      deps.store.inspect(record.admission),
-      deps.discover(record.admission),
-    ]);
-    const installed = cacheResult.status === "fulfilled" && cacheResult.value;
-    const discovered = registryResult.status === "fulfilled" && registryResult.value;
-    record.discovered = discovered;
-    if (installed) {
-      update(record, { visible: true, state: "installed", storage: "persistent", error: undefined });
-    } else if (discovered) {
-      update(record, { visible: true, state: "available", storage: "none", error: undefined });
-    } else {
-      update(record, {
-        visible: true,
+    try {
+      const installed = await deps.store.inspect(record.admission);
+      if (installed) {
+        update(record, { visible: true, state: "installed", storage: "persistent", error: undefined });
+      } else if (record.registryFailure !== undefined) {
+        update(record, { visible: true, state: "failed", storage: "none", error: record.registryFailure });
+      } else {
+        update(record, { visible: true, state: "available", storage: "none", error: undefined });
+      }
+    } catch (error) {
+      // An inspection may fail while opening storage, matching an entry, or cleaning a partial
+      // model. In each case we cannot honestly say that no persistent bytes remain.
+      update(record, { visible: true, state: "failed", storage: "unknown", error: message(error) });
+    }
+  }
+
+  async function discoverRecord(record: ModelRecord): Promise<void> {
+    try {
+      const discovered = await deps.discover(record.admission);
+      record.discovered = discovered;
+      record.registryFailure = discovered
+        ? undefined
+        : `${record.admission.label} is not available from the configured registry`;
+      // Discovery is advisory for a locally verified admission. Never let a late registry
+      // answer replace installed, activating, or ready local state.
+      if (discovered || record.state !== "available" || record.storage !== "none") {
+        publish();
+        return;
+      }
+      update(record, record.registryFailure === undefined ? { error: undefined } : {
         state: "failed",
-        storage: "none",
-        error:
-          registryResult.status === "rejected"
-            ? message(registryResult.reason)
-            : `${record.admission.label} is not available from the configured registry`,
+        error: record.registryFailure,
       });
+    } catch (error) {
+      record.discovered = false;
+      record.registryFailure = message(error);
+      if (record.state === "available" && record.storage === "none") {
+        update(record, { state: "failed", error: record.registryFailure });
+      } else {
+        publish();
+      }
     }
   }
 
@@ -158,7 +188,7 @@ export function createBrowserModelCatalog(deps: CatalogDeps): OssBrowserModelCat
 
   function once(
     id: string,
-    kind: "acquire" | "activate" | "remove",
+    kind: "initialize" | "acquire" | "activate" | "remove",
     operation: () => Promise<void>,
   ): Promise<void> {
     const current = operations.get(id);
@@ -169,12 +199,30 @@ export function createBrowserModelCatalog(deps: CatalogDeps): OssBrowserModelCat
         () => once(id, kind, operation),
       );
     }
-    const promise = operation().finally(() => operations.delete(id));
+    const promise = lifecycleTail === null ? operation() : lifecycleTail.then(operation);
+    const settled = promise.catch(() => undefined);
+    lifecycleTail = settled;
     operations.set(id, { kind, promise });
+    void promise.then(
+      () => {
+        if (operations.get(id)?.promise === promise) operations.delete(id);
+        if (lifecycleTail === settled) lifecycleTail = null;
+      },
+      () => {
+        if (operations.get(id)?.promise === promise) operations.delete(id);
+        if (lifecycleTail === settled) lifecycleTail = null;
+      },
+    );
     return promise;
   }
 
-  const initialized = Promise.all([...records.values()].map(initializeRecord)).then(() => undefined);
+  // Cache inspection must settle the public initialization boundary. Registry discovery is
+  // deliberately background metadata: an offline/hanging registry cannot strand an admitted
+  // cached model or delay server-independent browser activation.
+  const initialized = Promise.all(
+    [...records.values()].map((record) => once(record.admission.id, "initialize", () => initializeRecord(record))),
+  ).then(() => undefined);
+  for (const record of records.values()) void discoverRecord(record);
 
   const catalog: OssBrowserModelCatalog = {
     initialized,
@@ -191,6 +239,7 @@ export function createBrowserModelCatalog(deps: CatalogDeps): OssBrowserModelCat
         if (!record.discovered) {
           record.discovered = await deps.discover(record.admission, options?.signal);
           if (!record.discovered) throw new Error(`browser model "${id}" is not available from this registry`);
+          record.registryFailure = undefined;
         }
         update(record, { visible: true, state: "downloading", storage: "none", error: undefined });
         try {
@@ -198,8 +247,11 @@ export function createBrowserModelCatalog(deps: CatalogDeps): OssBrowserModelCat
           let storage: BrowserModelCatalogEntry["storage"] = "persistent";
           try {
             await deps.store.writeVerified(record.admission, artifacts);
-          } catch {
-            storage = "session";
+          } catch (error) {
+            // Verified bytes remain usable in memory even when persistence is refused. The
+            // artifact store rolls back partial writes before rejecting. If rollback itself
+            // failed, keep removal available because any subset of the revision may remain.
+            storage = error instanceof BrowserArtifactStorageIndeterminateError ? "unknown" : "session";
             record.sessionArtifacts = artifacts;
           }
           update(record, { state: "installed", storage, error: undefined });
@@ -224,7 +276,9 @@ export function createBrowserModelCatalog(deps: CatalogDeps): OssBrowserModelCat
         } catch (error) {
           record.sessionArtifacts = undefined;
           if (active?.id === id) active = null;
-          update(record, { visible: true, state: "failed", storage: "none", error: message(error) });
+          // `readVerified` may itself fail while removing a corrupt or partial entry. Preserve
+          // uncertainty so the UI still offers explicit removal instead of hiding remnants.
+          update(record, { visible: true, state: "failed", storage: "unknown", error: message(error) });
           throw error;
         }
         // `startRuntime` owns its failure state. At this point bytes have already passed the
@@ -237,18 +291,18 @@ export function createBrowserModelCatalog(deps: CatalogDeps): OssBrowserModelCat
       return once(id, "remove", async () => {
         const record = required(id);
         const previous = active?.id === id ? active.value : null;
-        const previousStorage = record.storage;
         if (previous !== null) active = null;
         record.sessionArtifacts = undefined;
-        update(record, { visible: true, state: "available", storage: "none", error: undefined });
         if (previous !== null) previous.runtime.dispose();
         try {
           await deps.store.remove(record.admission);
+          update(record, { visible: true, state: "available", storage: "none", error: undefined });
         } catch (error) {
           update(record, {
             visible: true,
             state: "failed",
-            storage: previousStorage === "persistent" ? "persistent" : "none",
+            // Cache deletion is multi-artifact. A failure can leave any subset behind.
+            storage: "unknown",
             error: message(error),
           });
           throw error;

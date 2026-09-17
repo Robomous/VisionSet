@@ -84,9 +84,15 @@ export interface BrowserModelCatalogEntry {
   readonly license: string;
   readonly source: { readonly label: string; readonly href: string };
   readonly state: BrowserModelCatalogState;
-  /** `session` means verified bytes are usable now but were not saved persistently. */
-  readonly storage: "none" | "persistent" | "session";
+  /**
+   * `session` means verified bytes are usable now but were not saved persistently. `unknown`
+   * means an operation could not inspect or clean browser storage, so the host must leave
+   * removal available rather than claiming no bytes remain.
+   */
+  readonly storage: "none" | "persistent" | "session" | "unknown";
   readonly error?: string;
+  /** Non-blocking metadata problem; verified local bytes may still be usable. */
+  readonly warning?: string;
 }
 
 /** A host-owned catalog. Remote metadata is data; implementations never execute values from it. */

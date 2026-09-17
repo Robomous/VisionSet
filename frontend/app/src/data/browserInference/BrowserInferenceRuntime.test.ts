@@ -6,12 +6,14 @@ import {
 } from "./BrowserInferenceRuntime.js";
 import { EFFICIENT_SAM_TI_REVISION } from "./manifest.js";
 import type { VisionSetBrowserInferenceRuntime } from "@visionset/ui-core";
-import type { BrowserModelArtifacts } from "./artifactStore.js";
+import type { BrowserArtifactStore, BrowserModelArtifacts } from "./artifactStore.js";
 
 function fakeDeps(overrides?: {
   acquire?: () => Promise<BrowserModelArtifacts>;
   ready?: () => Promise<never[]>;
   supported?: () => boolean;
+  store?: BrowserArtifactStore;
+  discover?: () => Promise<boolean>;
 }) {
   const prepareImage = vi.fn(async () => ({ width: 4, height: 4 }));
   const dispose = vi.fn();
@@ -22,7 +24,15 @@ function fakeDeps(overrides?: {
     dispose,
   }));
   const acquire = vi.fn(overrides?.acquire ?? (async () => ({ encoder: new Uint8Array(1), decoder: new Uint8Array(1) })));
-  return { acquire, createRuntime, supported: overrides?.supported ?? ((): boolean => true), prepareImage, dispose };
+  return {
+    acquire,
+    createRuntime,
+    supported: overrides?.supported ?? ((): boolean => true),
+    ...(overrides?.store === undefined ? {} : { store: overrides.store }),
+    ...(overrides?.discover === undefined ? {} : { discover: overrides.discover }),
+    prepareImage,
+    dispose,
+  };
 }
 
 async function acquisition(runtime: VisionSetBrowserInferenceRuntime) {
@@ -58,6 +68,26 @@ describe("createOssBrowserInferenceRuntime", () => {
     const runtime = createOssBrowserInferenceRuntime(deps);
     expect(await runtime.listTargets()).toEqual([]);
     expect(runtime.listAcquisitions?.()).toHaveLength(1);
+  });
+
+  it("does not wait for a hanging registry before exposing and activating an installed model", async () => {
+    const artifacts = { encoder: new Uint8Array(1), decoder: new Uint8Array(1) };
+    const store: BrowserArtifactStore = {
+      inspect: vi.fn(async () => true),
+      readVerified: vi.fn(async () => artifacts),
+      writeVerified: vi.fn(async () => undefined),
+      remove: vi.fn(async () => undefined),
+    };
+    const runtime = createOssBrowserInferenceRuntime(fakeDeps({
+      store,
+      discover: () => new Promise<boolean>(() => undefined),
+    }));
+
+    // This awaits cache inspection only. A mutable registry must not become a prerequisite for
+    // an already-admitted local model, including after an offline reload.
+    await expect(runtime.listTargets()).resolves.toEqual([]);
+    await runtime.modelCatalog!.activate("efficient-sam-ti");
+    await expect(runtime.listTargets()).resolves.toHaveLength(1);
   });
 
   it("lists the target and no acquisitions after acquiring", async () => {

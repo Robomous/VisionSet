@@ -774,6 +774,36 @@ describe("this device, once a browser runtime is wired", () => {
     expect(screen.getByTestId("suggest-device-acquire-efficient-sam-ti")).toBeTruthy();
   });
 
+  it("keeps removal available when browser storage could not be inspected", () => {
+    render(mount({
+      browserTargets: [],
+      browserModels: [catalogEntry({
+        state: "failed",
+        storage: "unknown",
+        error: "cache match failed",
+      })],
+      activeTarget: { kind: "browser", targetId: READY.id },
+      onChooseTarget: vi.fn(),
+      onRemoveBrowserModel: vi.fn(),
+    }));
+
+    expect(screen.getByTestId("suggest-device-remove-efficient-sam-ti")).toBeTruthy();
+    expect(screen.getByTestId("suggest-device-storage-unknown").textContent).toMatch(/could not be checked/i);
+  });
+
+  it("reports a registry problem without hiding a usable saved model", () => {
+    render(mount({
+      browserTargets: [READY],
+      browserModels: [catalogEntry({ state: "ready", storage: "persistent", warning: "registry unavailable" })],
+      activeTarget: { kind: "browser", targetId: READY.id },
+      onChooseTarget: vi.fn(),
+      onRemoveBrowserModel: vi.fn(),
+    }));
+
+    expect(screen.getByTestId("suggest-device-catalog-warning").textContent).toMatch(/registry could not be checked/i);
+    expect(screen.getByTestId("suggest-device-remove-efficient-sam-ti")).toBeTruthy();
+  });
+
   it("renders no device section, and no tab chooser, when no runtime is wired at all", () => {
     render(mount());
 

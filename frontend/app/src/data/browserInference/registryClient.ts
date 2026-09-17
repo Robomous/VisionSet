@@ -10,6 +10,8 @@ interface RegistryRow {
   readonly revision: string;
   readonly modelRef: string;
   readonly manifest: string;
+  /** Optional in the measured v1 registry schema; preserve it when supplied. */
+  readonly license?: string;
 }
 
 export interface AdmittedRegistryModel {
@@ -19,6 +21,8 @@ export interface AdmittedRegistryModel {
   readonly revision: string;
   readonly modelRef: string;
   readonly license: string;
+  /** The registry's matching license declaration, when its schema supplied one. */
+  readonly registryLicense?: string;
   readonly source: BrowserModelAdmission["source"];
   readonly manifestUrl: URL;
   readonly artifactUrls: Readonly<Record<ArtifactAdmission["role"], URL>>;
@@ -41,6 +45,11 @@ function text(value: unknown, at: string): string {
     throw new Error(`unexpected registry schema at ${at}`);
   }
   return value;
+}
+
+function optionalText(value: unknown, at: string): string | undefined {
+  if (value === undefined) return undefined;
+  return text(value, at);
 }
 
 function number(value: unknown, at: string): number {
@@ -72,6 +81,7 @@ function parseRegistry(value: unknown): readonly RegistryRow[] {
       revision: text(row["revision"], `models[${index}].revision`),
       modelRef: text(row["model_ref"], `models[${index}].model_ref`),
       manifest: text(row["manifest"], `models[${index}].manifest`),
+      license: optionalText(row["license"], `models[${index}].license`),
     };
   });
 }
@@ -84,17 +94,14 @@ function normalizedBase(baseUrl: string): URL {
   return base;
 }
 
-export function resolveModelPath(baseUrl: string, path: string): URL {
-  const base = normalizedBase(baseUrl);
-  if (
-    path.length === 0 ||
-    path.includes("\\") ||
-    path.includes("?") ||
-    path.includes("#") ||
-    path.startsWith("//") ||
-    /^[a-z][a-z\d+.-]*:/i.test(path) ||
-    /%2f|%5c/i.test(path)
-  ) {
+/**
+ * Registry paths identify objects inside a configured model source, rather than
+ * origin-root URLs. Canonicalize the accepted spelling so `/models/x` and
+ * `models/x` compare as the same admitted logical path, then resolve below the
+ * base's (possibly non-root) path prefix.
+ */
+export function normalizeModelPath(path: string): string {
+  if (path.length === 0 || /%2f|%5c/i.test(path)) {
     throw new Error(`unsafe model path: ${path}`);
   }
   let decoded: string;
@@ -103,14 +110,27 @@ export function resolveModelPath(baseUrl: string, path: string): URL {
   } catch {
     throw new Error(`unsafe model path: ${path}`);
   }
+  if (
+    decoded.includes("\\") ||
+    decoded.includes("?") ||
+    decoded.includes("#") ||
+    decoded.startsWith("//") ||
+    /^[a-z][a-z\d+.-]*:/i.test(decoded)
+  ) {
+    throw new Error(`unsafe model path: ${path}`);
+  }
   if (decoded.split("/").some((segment) => segment === "." || segment === "..")) {
     throw new Error(`unsafe model path: ${path}`);
   }
-  const resolved = new URL(path, base);
-  if (resolved.origin !== base.origin || !resolved.pathname.startsWith(base.pathname)) {
-    throw new Error(`unsafe model path outside configured base: ${path}`);
-  }
-  return resolved;
+  const relative = decoded.replace(/^\/+/, "");
+  if (relative.length === 0) throw new Error(`unsafe model path: ${path}`);
+  return `/${relative}`;
+}
+
+export function resolveModelPath(baseUrl: string, path: string): URL {
+  const base = normalizedBase(baseUrl);
+  const logicalPath = normalizeModelPath(path);
+  return new URL(logicalPath.slice(1), base);
 }
 
 function assertEqual(actual: unknown, expected: unknown, field: string): void {
@@ -136,7 +156,15 @@ function validateArtifact(
   return path;
 }
 
-function validateManifest(value: unknown, admission: BrowserModelAdmission): Record<ArtifactAdmission["role"], string> {
+/**
+ * Validates remote metadata against this build's admission record. The manifest
+ * describes a release but never becomes its trust anchor: artifact size and hash
+ * must still exactly equal the build-pinned admission values.
+ */
+export function validateManifestAgainstAdmission(
+  value: unknown,
+  admission: BrowserModelAdmission,
+): Record<ArtifactAdmission["role"], string> {
   const manifest = record(value, "manifest");
   assertEqual(number(manifest["schema_version"], "manifest.schema_version"), 1, "schema_version");
   assertEqual(text(manifest["id"], "manifest.id"), admission.id, "id");
@@ -161,6 +189,14 @@ function validateManifest(value: unknown, admission: BrowserModelAdmission): Rec
   assertEqual(boolean(capabilities["positive_points"], "manifest.capabilities.positive_points"), admission.capabilities.positivePoints, "capabilities.positive_points");
   assertEqual(boolean(capabilities["negative_points"], "manifest.capabilities.negative_points"), admission.capabilities.negativePoints, "capabilities.negative_points");
   assertEqual(number(capabilities["max_points"], "manifest.capabilities.max_points"), admission.capabilities.maxPoints, "capabilities.max_points");
+
+  const artifacts = record(manifest["artifacts"], "manifest.artifacts");
+  const expectedRoles = new Set(admission.artifacts.map((artifact) => artifact.role));
+  for (const role of Object.keys(artifacts)) {
+    if (!expectedRoles.has(role as ArtifactAdmission["role"])) {
+      throw new Error(`model admission mismatch at artifacts.${role}`);
+    }
+  }
 
   return Object.fromEntries(
     admission.artifacts.map((artifact) => [artifact.role, validateArtifact(manifest, artifact)]),
@@ -191,9 +227,10 @@ export async function fetchAdmittedBrowserModels(
     }
     assertEqual(row.name, admission.label, "registry.name");
     assertEqual(row.modelRef, admission.modelRef, "registry.model_ref");
-    assertEqual(row.manifest, admission.manifestPath, "registry.manifest");
+    assertEqual(normalizeModelPath(row.manifest), normalizeModelPath(admission.manifestPath), "registry.manifest");
+    if (row.license !== undefined) assertEqual(row.license, admission.license, "registry.license");
     const manifestUrl = resolveModelPath(baseUrl, row.manifest);
-    const artifactPaths = validateManifest(
+    const artifactPaths = validateManifestAgainstAdmission(
       await json(await fetcher(manifestUrl, { signal: options.signal }), "manifest"),
       admission,
     );
@@ -207,7 +244,8 @@ export async function fetchAdmittedBrowserModels(
       label: admission.label,
       revision: admission.revision,
       modelRef: admission.modelRef,
-      license: admission.license,
+      license: row.license ?? admission.license,
+      registryLicense: row.license,
       source: admission.source,
       manifestUrl,
       artifactUrls,

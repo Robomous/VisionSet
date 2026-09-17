@@ -5,6 +5,7 @@
  * of this same manifest layout.
  */
 import { EFFICIENT_SAM_TI_ADMISSION } from "./admissionCatalog.js";
+import { validateManifestAgainstAdmission } from "./registryClient.js";
 
 export const MODEL_CDN_BASE_URL: string = (
   (import.meta.env["VITE_MODEL_CDN_BASE_URL"] as string | undefined) ?? "https://models.robomous.ai"
@@ -39,8 +40,9 @@ export const EFFICIENT_SAM_TI_ARTIFACT_PATHS = Object.fromEntries(
 /**
  * Mirrors the real, already-deployed manifest shape (nested under `artifacts`,
  * with each `path` a bare filename relative to the manifest's own directory) — not
- * an assumed flat shape. Only `path` is read from this; `bytes`/`sha256` are never
- * trusted from the manifest itself (see `EFFICIENT_SAM_TI_EXPECTED`).
+ * an assumed flat shape. Before an acquisition may use it, every supported field
+ * is validated against the build admission record. The admission record remains
+ * the integrity anchor for the artifact verification that follows.
  */
 export interface EfficientSamManifest {
   readonly artifacts: {
@@ -66,5 +68,6 @@ export async function fetchEfficientSamManifest(signal?: AbortSignal): Promise<E
   if (!response.ok) throw new Error(`manifest fetch failed: ${response.status} ${response.statusText}`);
   const parsed: unknown = await response.json();
   assertManifestShape(parsed);
+  validateManifestAgainstAdmission(parsed, EFFICIENT_SAM_TI_ADMISSION);
   return parsed;
 }
