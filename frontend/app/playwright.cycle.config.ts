@@ -93,6 +93,11 @@ export default defineConfig({
       "pnpm --filter @visionset/media build",
       "pnpm --filter @visionset/annotator build",
       "pnpm --filter @visionset/ui-core build",
+      // `@visionset/browser-inference` has no workspace dependencies of its own,
+      // so its place in the order is free — but `app` imports it and its
+      // `/browser` subpath directly, both resolved through its `dist/`, so it
+      // still has to be built before `app` on the same clean clone.
+      "pnpm --filter @visionset/browser-inference build",
       "pnpm --filter @visionset/app build",
       "pnpm bundle:static",
       // `uv run`, which is what puts the virtualenv's `bin/` on PATH — so
