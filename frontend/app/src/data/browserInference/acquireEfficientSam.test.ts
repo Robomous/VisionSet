@@ -59,7 +59,12 @@ describe("acquireEfficientSam", () => {
     const decoderBytes = bytesOf("decoder-fixture");
     const fetchMock = vi.fn(async (url: string) => {
       if (url.endsWith("manifest.json")) {
-        return new Response(JSON.stringify({ encoder: { path: "/encoder.onnx" }, decoder: { path: "/decoder.onnx" } }));
+        // The real, already-deployed manifest shape: artifacts nested under
+        // `artifacts`, each `path` a bare filename relative to the manifest's own
+        // directory — not `{ encoder: { path: "/encoder.onnx" } }` at the top level.
+        return new Response(
+          JSON.stringify({ artifacts: { encoder: { path: "encoder.onnx" }, decoder: { path: "decoder.onnx" } } }),
+        );
       }
       if (url.endsWith("encoder.onnx")) return new Response(encoderBytes);
       if (url.endsWith("decoder.onnx")) return new Response(decoderBytes);
@@ -91,5 +96,14 @@ describe("acquireEfficientSam", () => {
     expect(result.decoder).toEqual(decoderBytes);
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[0]![0]).toMatch(/manifest\.json$/);
+    // The artifact URL is resolved relative to the manifest's own directory, not by
+    // naively appending the manifest's bare `path` onto the CDN base — this is the
+    // exact bug the real, live manifest exposed.
+    expect(fetchMock.mock.calls[1]![0]).toBe(
+      "https://models.robomous.ai/models/efficient-sam-ti/b19782d049c0-843761ca46f4/encoder.onnx",
+    );
+    expect(fetchMock.mock.calls[2]![0]).toBe(
+      "https://models.robomous.ai/models/efficient-sam-ti/b19782d049c0-843761ca46f4/decoder.onnx",
+    );
   });
 });

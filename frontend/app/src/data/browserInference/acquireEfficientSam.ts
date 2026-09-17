@@ -1,4 +1,17 @@
-import { EFFICIENT_SAM_TI_EXPECTED, MODEL_CDN_BASE_URL, fetchEfficientSamManifest } from "./manifest.js";
+import {
+  EFFICIENT_SAM_TI_EXPECTED,
+  EFFICIENT_SAM_TI_REVISION,
+  MODEL_CDN_BASE_URL,
+  fetchEfficientSamManifest,
+} from "./manifest.js";
+
+// The manifest's `artifacts.*.path` is a bare filename, resolved relative to the
+// manifest's own directory — not an absolute path safe to append directly to
+// `MODEL_CDN_BASE_URL`. This restates that same directory prefix, which is also how
+// `EFFICIENT_SAM_TI_MANIFEST_URL` itself is built.
+function artifactUrl(path: string): string {
+  return `${MODEL_CDN_BASE_URL}/models/efficient-sam-ti/${EFFICIENT_SAM_TI_REVISION}/${path}`;
+}
 
 // `Uint8Array<ArrayBuffer>`, not the bare `Uint8Array` (which now defaults to the
 // wider `Uint8Array<ArrayBufferLike>`) — TypeScript 6's `lib.dom.d.ts` types
@@ -35,12 +48,12 @@ export async function acquireEfficientSam(
 ): Promise<{ readonly encoder: Uint8Array; readonly decoder: Uint8Array }> {
   const manifest = await fetchEfficientSamManifest(signal);
   const encoder = await fetchVerified(
-    `${MODEL_CDN_BASE_URL}${manifest.encoder.path}`,
+    artifactUrl(manifest.artifacts.encoder.path),
     EFFICIENT_SAM_TI_EXPECTED.encoder,
     signal,
   );
   const decoder = await fetchVerified(
-    `${MODEL_CDN_BASE_URL}${manifest.decoder.path}`,
+    artifactUrl(manifest.artifacts.decoder.path),
     EFFICIENT_SAM_TI_EXPECTED.decoder,
     signal,
   );

@@ -18,9 +18,17 @@ export const EFFICIENT_SAM_TI_EXPECTED = {
   decoder: { sha256: "843761ca46f4aa00b09fdcf0c94271321f76eece092a744296c742d682a86172", bytes: 16_501_901 },
 } as const;
 
+/**
+ * Mirrors the real, already-deployed manifest shape (nested under `artifacts`,
+ * with each `path` a bare filename relative to the manifest's own directory) — not
+ * an assumed flat shape. Only `path` is read from this; `bytes`/`sha256` are never
+ * trusted from the manifest itself (see `EFFICIENT_SAM_TI_EXPECTED`).
+ */
 export interface EfficientSamManifest {
-  readonly encoder: { readonly path: string };
-  readonly decoder: { readonly path: string };
+  readonly artifacts: {
+    readonly encoder: { readonly path: string };
+    readonly decoder: { readonly path: string };
+  };
 }
 
 export async function fetchEfficientSamManifest(signal?: AbortSignal): Promise<EfficientSamManifest> {
