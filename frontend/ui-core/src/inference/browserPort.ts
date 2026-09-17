@@ -20,6 +20,7 @@
  * cannot answer yet, and it is answered elsewhere, later, by whatever seam the work that needs
  * it earns.
  */
+import type { RgbPixels } from "@visionset/annotator";
 import type { SuggestionExecutor } from "./suggestionExecutor.js";
 
 /** A model this browser can run a suggestion with, right now. */
@@ -38,6 +39,44 @@ export interface BrowserSuggestionTarget {
   readonly modelRef: string;
 }
 
+/**
+ * A lease on the currently displayed asset's pixels, host-built from `AnnotatorCanvas`'s
+ * `onImageReady`. Never persisted — a browser executor reads it once per `suggest()` call
+ * and must re-check `assetId` against its own request before trusting anything cached
+ * against it, because the active asset can change while a `readRgb`/`prepareImage` is
+ * still in flight.
+ */
+export interface BrowserSuggestionAssetSource {
+  readonly assetId: string;
+  readonly width: number;
+  readonly height: number;
+  readRgb(): RgbPixels;
+}
+
+/**
+ * One model this browser could run, once its bytes are fetched and verified.
+ *
+ * Deliberately not reactive — no `getState()`/`subscribe()`. Phase F ships exactly one
+ * acquirable model; the transient idle/acquiring/failed state around `acquire()` is the
+ * UI's own, not this port's.
+ */
+export interface BrowserModelAcquisition {
+  readonly id: string;
+  readonly label: string;
+  readonly approxBytes: number;
+  acquire(options?: { readonly signal?: AbortSignal }): Promise<void>;
+}
+
+/**
+ * Which kind of thing answers a suggestion now: a workspace connection, or a browser
+ * target. Never persisted as an `InferenceConnection` — a browser target answers
+ * questions a connection cannot ("can this browser run something now"), and the two
+ * are not interchangeable rows of the same table.
+ */
+export type ActiveSuggestionTarget =
+  | { readonly kind: "server"; readonly connectionId: string }
+  | { readonly kind: "browser"; readonly targetId: string };
+
 export interface VisionSetBrowserInferenceRuntime {
   /**
    * The targets that can answer *now*.
@@ -49,4 +88,8 @@ export interface VisionSetBrowserInferenceRuntime {
   listTargets(): Promise<readonly BrowserSuggestionTarget[]>;
   /** How to ask one of them. The same contract the server path answers through. */
   executorFor(targetId: string): SuggestionExecutor;
+  /** Models not yet ready, each with its own explicit `acquire()`. Absent hosts offer none. */
+  listAcquisitions?(): readonly BrowserModelAcquisition[];
+  /** The displayed asset, or `null` between assets. Feeds the executor's race-safety checks. */
+  setActiveAsset?(source: BrowserSuggestionAssetSource | null): void;
 }

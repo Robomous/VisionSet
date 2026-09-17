@@ -188,6 +188,10 @@ import { SuggestPanel } from "./SuggestPanel";
 import { useConnections, usableConnection } from "../data/inferenceQueries";
 import type { SuggestionOut } from "../data/inferenceQueries";
 import { useServerSuggestionExecutor } from "../inference/suggestionExecutor";
+import type { SuggestionExecutor } from "../inference/suggestionExecutor";
+import { useBrowserInferenceRuntime } from "../inference/VisionSetBrowserInferenceProvider.js";
+import type { ActiveSuggestionTarget, BrowserSuggestionAssetSource, BrowserSuggestionTarget } from "../inference/browserPort.js";
+import { computeSuggestBlocker } from "../inference/targetBlocker.js";
 import { readPref, writePref } from "../data/prefs";
 
 /**
@@ -200,6 +204,48 @@ import { readPref, writePref } from "../data/prefs";
  */
 function preferredConnectionKey(projectId: string): string {
   return `suggest.connection.${projectId}`;
+}
+
+/** Where a project's browser-vs-server suggest target is remembered — separate from,
+ * and never overwriting, `preferredConnectionKey`'s server-model preference. */
+function suggestTargetKey(projectId: string): string {
+  return `suggest.target.${projectId}`;
+}
+
+type StoredSuggestTarget = { readonly kind: "server" } | { readonly kind: "browser"; readonly targetId: string };
+
+function readStoredSuggestTarget(projectId: string): StoredSuggestTarget {
+  const raw = readPref(suggestTargetKey(projectId));
+  if (raw !== null && raw.startsWith("browser:")) {
+    return { kind: "browser", targetId: raw.slice("browser:".length) };
+  }
+  return { kind: "server" };
+}
+
+function writeStoredSuggestTarget(projectId: string, target: ActiveSuggestionTarget): void {
+  writePref(suggestTargetKey(projectId), target.kind === "browser" ? `browser:${target.targetId}` : "server");
+}
+
+/**
+ * Whether a stored browser-target preference is stale enough to fall back to Server
+ * silently.
+ *
+ * Acquired model bytes are never persisted across page loads, so "the stored browser
+ * target isn't in `listTargets()`'s answer" is the ordinary shape of every reload for
+ * someone who previously picked a browser target — not a rare failure, and it must not
+ * surface as a `blocker`. `explicitlyChosen` is what keeps this from also catching a
+ * target this *session* picked and which later drops out: that one is pinned, and stays
+ * pinned to `not-ready`/`refusal` rather than silently reverting.
+ */
+export function staleStoredBrowserTarget(
+  storedTarget: StoredSuggestTarget,
+  browserTargets: readonly BrowserSuggestionTarget[] | undefined,
+  explicitlyChosen: boolean,
+): boolean {
+  if (browserTargets === undefined) return false;
+  if (storedTarget.kind !== "browser") return false;
+  if (explicitlyChosen) return false;
+  return !browserTargets.some((row) => row.id === storedTarget.targetId);
 }
 
 /**
@@ -923,6 +969,12 @@ function Workspace({
    */
   const [adjusting, setAdjusting] = useState(false);
 
+  const browserRuntime = useBrowserInferenceRuntime();
+
+  useEffect(() => {
+    return () => browserRuntime?.setActiveAsset?.(null);
+  }, [browserRuntime]);
+
   /**
    * The connection list, fetched **only once the tool is armed**.
    *
@@ -950,13 +1002,78 @@ function Workspace({
   const [preferredConnection, setPreferredConnection] = useState<string | null>(() =>
     readPref(preferredConnectionKey(projectId)),
   );
-  const { connection, candidates, blocker } = usableConnection(
+  const { connection, candidates, blocker: serverBlocker } = usableConnection(
     connections.data?.items,
     preferredConnection,
   );
-  // Server-only today, and `null` is how "nowhere to send this" arrives — the same fact
-  // `usableConnection`'s blocker states, which is what the panel renders.
-  const executor = useServerSuggestionExecutor(connection?.id ?? null);
+  const serverExecutor = useServerSuggestionExecutor(connection?.id ?? null);
+
+  const [browserTargetsRefreshKey, setBrowserTargetsRefreshKey] = useState(0);
+  const [browserTargets, setBrowserTargets] = useState<readonly BrowserSuggestionTarget[] | undefined>(undefined);
+  useEffect(() => {
+    if (browserRuntime === null) {
+      setBrowserTargets([]);
+      return;
+    }
+    let cancelled = false;
+    setBrowserTargets(undefined);
+    void browserRuntime.listTargets().then((targets) => {
+      if (!cancelled) setBrowserTargets(targets);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [browserRuntime, browserTargetsRefreshKey]);
+
+  const [storedTarget, setStoredTarget] = useState<StoredSuggestTarget>(() => readStoredSuggestTarget(projectId));
+  // Whether *this session* picked a browser target through `chooseTarget`, as opposed to one
+  // merely read back from a persisted preference. Acquired model bytes are never persisted
+  // across page loads (a later phase's work), so "the stored browser target isn't in
+  // `listTargets()`'s answer" is the ordinary shape of every reload for someone who picked
+  // "This device" last time — not a rare failure. That case must fall back to Server
+  // silently. A target this session explicitly chose and which later drops out is a
+  // different thing (surfaced via `blocker`/`refusal`, never auto-switched), and this ref is
+  // what tells the two apart.
+  const explicitlyChosenBrowser = useRef(false);
+
+  // A stale/unavailable *stored* preference falls back to Server silently, once the browser
+  // target list has actually resolved enough to say the stored id isn't in it — not the
+  // in-memory `storedTarget` state read at mount, so it does not fire on a spurious first
+  // render before `listTargets()` has answered. It never rewrites the persisted
+  // `suggest.target.<projectId>` key, so a later reload re-checks the same id once that
+  // model has actually been re-acquired.
+  useEffect(() => {
+    if (staleStoredBrowserTarget(storedTarget, browserTargets, explicitlyChosenBrowser.current)) {
+      setStoredTarget({ kind: "server" });
+    }
+  }, [browserTargets, storedTarget]);
+
+  const activeTarget: ActiveSuggestionTarget =
+    browserRuntime !== null && storedTarget.kind === "browser"
+      ? { kind: "browser", targetId: storedTarget.targetId }
+      : { kind: "server", connectionId: connection?.id ?? "" };
+
+  const blocker = computeSuggestBlocker(activeTarget, serverBlocker, browserTargets);
+  // `executorFor` throws for a target that isn't actually ready yet — which is exactly the
+  // state selecting "This device" starts in, before a download ever completes — so this must
+  // check readiness itself rather than trust `browserRuntime !== null` alone. Derived from
+  // `blocker` rather than re-deriving "is this target in `browserTargets`" a second time:
+  // `computeSuggestBlocker`'s browser case is exactly that check, and re-spelling it here
+  // would let this guard and that one silently drift apart. `null` here is this file's
+  // existing "nothing to send through" convention, already handled by `suggestAt`'s guard.
+  const executor: SuggestionExecutor | null =
+    activeTarget.kind === "browser"
+      ? browserRuntime !== null && blocker === null
+        ? browserRuntime.executorFor(activeTarget.targetId)
+        : null
+      : serverExecutor;
+
+  function chooseTarget(target: ActiveSuggestionTarget): void {
+    if (target.kind === "browser") explicitlyChosenBrowser.current = true;
+    setStoredTarget(target.kind === "browser" ? { kind: "browser", targetId: target.targetId } : { kind: "server" });
+    writeStoredSuggestTarget(projectId, target);
+    if (target.kind === "server") setPreferredConnection(connection?.id ?? preferredConnection);
+  }
 
   /**
    * One clock over the wait, read by the canvas and by the panel alike.
@@ -2549,6 +2666,33 @@ function Workspace({
                 // its own and lose it on every navigation.
                 clipboard={clipboard}
                 onHostAction={hostAction}
+                onImageReady={(image) => {
+                  /*
+                    The **descriptor's** frame, never the decoded image's
+                    `naturalWidth`/`naturalHeight` — the same rule
+                    `AnnotatorCanvas` lays the picture out under, one layer on.
+
+                    Everything this source meets is already in the descriptor's
+                    pixels: the click points `suggestAt` sends, the geometry
+                    `shapesFromMask` hands back, and the annotations already on
+                    the frame. A decode that disagrees — EXIF orientation
+                    swapping the axes, a preview served in place of the
+                    original — would have the executor bound-check clicks and
+                    extract pixels against a second, private frame, and produce
+                    suggestions that are individually plausible and uniformly
+                    wrong. `readRgb` scales the decode into the frame asked for,
+                    so naming the descriptor here is also what makes a
+                    disagreeing decode harmless rather than silent.
+                  */
+                  const { width, height } = store.document.asset;
+                  const source: BrowserSuggestionAssetSource = {
+                    assetId: asset.id,
+                    width,
+                    height,
+                    readRgb: () => image.readRgb(width, height),
+                  };
+                  browserRuntime?.setActiveAsset?.(source);
+                }}
                 // A right-click on a shape: select it, then open its class
                 // picker over it. Selecting is what makes the picker's
                 // subject unambiguous — it anchors to the selection, and a menu
@@ -2754,6 +2898,11 @@ function Workspace({
                 // matching while parked — the one reading that has to name it.
                 heldClass={activeClass}
                 blocker={blocker}
+                browserTargets={browserRuntime === null ? undefined : browserTargets}
+                browserAcquisitions={browserRuntime?.listAcquisitions?.()}
+                activeTarget={activeTarget}
+                onChooseTarget={chooseTarget}
+                onAcquired={() => setBrowserTargetsRefreshKey((key) => key + 1)}
                 refusal={suggesting.refusal}
                 candidates={candidates}
                 connectionId={connection?.id ?? null}

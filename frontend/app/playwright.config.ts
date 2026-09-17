@@ -145,6 +145,9 @@ export default defineConfig({
       // all, which fails the build outright rather than quietly.
       "pnpm --filter @visionset/media build && " +
       "pnpm --filter @visionset/ui-core build && " +
+      // Unrelated to the three above, but resolved through its `dist/` just as they are,
+      // so an unbuilt change here is invisible in the browser rather than a compile error.
+      "pnpm --filter @visionset/browser-inference build && " +
       `vite --port ${PORT.e2e} --strictPort`,
     url: `http://localhost:${PORT.e2e}`,
     reuseExistingServer: !process.env.CI,

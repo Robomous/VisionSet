@@ -123,6 +123,9 @@ export {
   type VisionSetBrowserInferenceProviderProps,
 } from "./inference/VisionSetBrowserInferenceProvider.js";
 export type {
+  ActiveSuggestionTarget,
+  BrowserModelAcquisition,
+  BrowserSuggestionAssetSource,
   BrowserSuggestionTarget,
   VisionSetBrowserInferenceRuntime,
 } from "./inference/browserPort.js";

@@ -19,6 +19,7 @@
   "dependencies": {
     "@robomous/ui-core": "^0.2.1",
     "@visionset/annotator": "workspace:*",
+    "@visionset/browser-inference": "workspace:*",
     "@visionset/media": "workspace:*",
     "@visionset/ui-core": "workspace:*",
     "lucide-react": "^1.44.0",

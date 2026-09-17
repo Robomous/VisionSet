@@ -64,11 +64,28 @@ import {
   type SuggestionState,
 } from "@visionset/annotator";
 import { Check, Loader2, Sparkles, TriangleAlert, X } from "lucide-react";
-import type { JSX, ReactNode } from "react";
+import { useState, type JSX, type ReactNode } from "react";
 
 import { EditorNotice } from "./EditorNotice";
-import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
+import {
+  Badge,
+  Button,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@robomous/ui-core";
 import type { Connection, SuggestBlocker } from "../data/inferenceQueries";
+import type {
+  ActiveSuggestionTarget,
+  BrowserModelAcquisition,
+  BrowserSuggestionTarget,
+} from "../inference/browserPort.js";
 
 export interface SuggestPanelProps {
   /** The session, whose status decides which sentence this card carries. */
@@ -113,6 +130,14 @@ export interface SuggestPanelProps {
   readonly onChooseConnection?: (connectionId: string) => void;
   /** Where a person goes to make or finish a connection, if the host has one. */
   readonly onConfigure?: () => void;
+  /** Browser targets ready right now. `undefined` when no browser runtime is wired at all. */
+  readonly browserTargets?: readonly BrowserSuggestionTarget[];
+  /** Models not yet acquired. `undefined` when no browser runtime is wired at all. */
+  readonly browserAcquisitions?: readonly BrowserModelAcquisition[];
+  readonly activeTarget?: ActiveSuggestionTarget;
+  readonly onChooseTarget?: (target: ActiveSuggestionTarget) => void;
+  /** Called once an `acquire()` this panel started resolves, so the host can re-read `listTargets()`. */
+  readonly onAcquired?: () => void;
   readonly onAccept: () => void;
   readonly onDiscard: () => void;
   /** Whether the adjustments are open. Owned by the host, because `Esc` layers on it. */
@@ -195,6 +220,11 @@ export function SuggestPanel({
   connectionId = null,
   onChooseConnection,
   onConfigure,
+  browserTargets,
+  browserAcquisitions,
+  activeTarget,
+  onChooseTarget,
+  onAcquired,
   onAccept,
   onDiscard,
   adjusting,
@@ -202,6 +232,13 @@ export function SuggestPanel({
   onTolerance,
   pendingEscalated = false,
 }: SuggestPanelProps): JSX.Element {
+  // The one place this fact is decided. Repeating this condition at both the
+  // early-return guard below and the idle-card render risked them drifting
+  // apart — which is exactly the shape of the bug fixed alongside this line:
+  // the guard used to fire on a wired runtime's own "not-ready" and blank out
+  // the chooser it should have deferred to instead.
+  const runtimeWired = browserTargets !== undefined || browserAcquisitions !== undefined;
+
   /*
     Parked outranks even the blocker. A connection this tool will not use
     is not the thing standing in the way, and "getting the model ready" over a
@@ -244,7 +281,14 @@ export function SuggestPanel({
 
   // The blocker outranks everything else: a session over a workspace with no
   // usable connection has nothing to report about a request it never made.
-  if (blocker !== null && blocker !== undefined) {
+  //
+  // Only when no browser runtime is wired at all. Once one is, a server-side
+  // blocker (typically "not-ready" for a browser target still sitting in
+  // `browserAcquisitions`) is a fact about the *server* tab, not the whole
+  // panel — the panel still has a working "This device" tab to offer, and
+  // this early return must not hide it. See `TargetChooser`, which renders
+  // this same `BLOCKER_COPY` message scoped to its server tab instead.
+  if (!runtimeWired && blocker !== null && blocker !== undefined) {
     const copy = BLOCKER_COPY[blocker];
     return (
       <EditorNotice
@@ -258,23 +302,7 @@ export function SuggestPanel({
           )
         }
       >
-        <p className="font-medium text-foreground" data-testid={`suggest-${blocker}`}>
-          {copy.title}
-        </p>
-        <p className="text-muted-foreground">{copy.body}</p>
-        {/* The action's *destination* is the host's, so its absence removes the
-            control and leaves the explanation — never a dead button. */}
-        {copy.action !== null && onConfigure !== undefined && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-1 self-start"
-            data-testid="suggest-configure"
-            onClick={onConfigure}
-          >
-            {copy.action}
-          </Button>
-        )}
+        <BlockedMessage blocker={blocker} {...(onConfigure === undefined ? {} : { onConfigure })} />
       </EditorNotice>
     );
   }
@@ -390,15 +418,47 @@ export function SuggestPanel({
     );
   }
 
+  // Whether the tab a person is looking at (server, absent a choice) is the
+  // one `blocker` is about. Only then is "Click the thing you want" false —
+  // the browser tab's own readiness never depends on `blocker`, so this stays
+  // `false` whenever "This device" is the active tab, however unready it is.
+  const serverTabBlocked =
+    runtimeWired &&
+    (activeTarget?.kind ?? "server") === "server" &&
+    blocker !== null &&
+    blocker !== undefined;
+
+  // "This device" is the active target and has no model to answer with yet. The click
+  // this card would otherwise invite is a silent no-op — `AnnotationPage` holds no
+  // executor for an unready browser target — so the invitation is replaced by the one
+  // thing that is actually available: the Download control the tab below already draws.
+  const browserTabUnacquired =
+    runtimeWired && activeTarget?.kind === "browser" && blocker === "not-ready";
+
   return (
     <EditorNotice testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
-      <p className="font-medium text-foreground" data-testid="suggest-idle">
-        Click the thing you want
-      </p>
-      <p className="text-muted-foreground">
-        One click proposes a shape for “{session.labelClass}”. Alt-click marks something
-        that is not part of it.
-      </p>
+      {!serverTabBlocked &&
+        (browserTabUnacquired ? (
+          <>
+            <p className="font-medium text-foreground" data-testid="suggest-idle-unacquired">
+              Download the model first
+            </p>
+            <p className="text-muted-foreground">
+              “This device” has nothing to answer with yet, so a click does nothing. Download
+              it below, or switch back to Server.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="font-medium text-foreground" data-testid="suggest-idle">
+              Click the thing you want
+            </p>
+            <p className="text-muted-foreground">
+              One click proposes a shape for “{session.labelClass}”. Alt-click marks something
+              that is not part of it.
+            </p>
+          </>
+        ))}
       {/*
         Here and in no other reading. This is the state where nothing is in
         flight and nothing is waiting to be accepted, so it is the only one where
@@ -411,14 +471,33 @@ export function SuggestPanel({
         genuinely out. Stating the rule where it is enforced is what makes the
         branch ordering an implementation detail rather than the guarantee.
       */}
-      {!hasPending(session) && (
-        <Through
+      {!runtimeWired ? (
+        <>
+          {!hasPending(session) && (
+            <Through
+              candidates={candidates}
+              connectionId={connectionId}
+              {...(onChooseConnection === undefined ? {} : { onChoose: onChooseConnection })}
+            />
+          )}
+          {hasPending(session) && <Discard onDiscard={onDiscard} />}
+        </>
+      ) : (
+        <TargetChooser
           candidates={candidates}
           connectionId={connectionId}
           {...(onChooseConnection === undefined ? {} : { onChoose: onChooseConnection })}
+          pending={hasPending(session)}
+          onDiscard={onDiscard}
+          browserTargets={browserTargets ?? []}
+          browserAcquisitions={browserAcquisitions ?? []}
+          activeTarget={activeTarget}
+          {...(onChooseTarget === undefined ? {} : { onChooseTarget })}
+          {...(onAcquired === undefined ? {} : { onAcquired })}
+          blocker={blocker ?? null}
+          {...(onConfigure === undefined ? {} : { onConfigure })}
         />
       )}
-      {hasPending(session) && <Discard onDiscard={onDiscard} />}
     </EditorNotice>
   );
 }
@@ -477,6 +556,230 @@ function Through({
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+/**
+ * Server or this device, once a browser runtime is wired in at all.
+ *
+ * `Tabs` rather than a picker: the choice is binary and always available once a
+ * runtime exists, so a segmented control reads better than a `Select` built for
+ * an open-ended candidate list. The server tab holds exactly what rendered
+ * before this component existed — `Through`/`Discard`, untouched — so choosing
+ * "Server" is never a behavior change from the pre-Task-6 panel, *except* that
+ * a server-side `blocker` now renders inside this tab rather than replacing
+ * the whole card: `computeSuggestBlocker` answers "not-ready" for a browser
+ * target that has not been acquired yet, and that answer must never hide the
+ * "This device" tab's own download control (the bug this component's second
+ * revision exists to fix — a person who picked "This device" could never
+ * reach `DeviceTab`'s button, because picking it made `blocker` fire and blank
+ * the whole panel out from under the tabs).
+ */
+function TargetChooser({
+  candidates,
+  connectionId,
+  onChoose,
+  pending,
+  onDiscard,
+  browserTargets,
+  browserAcquisitions,
+  activeTarget,
+  onChooseTarget,
+  onAcquired,
+  blocker,
+  onConfigure,
+}: {
+  readonly candidates: readonly Connection[];
+  readonly connectionId: string | null;
+  readonly onChoose?: (connectionId: string) => void;
+  readonly pending: boolean;
+  readonly onDiscard: () => void;
+  readonly browserTargets: readonly BrowserSuggestionTarget[];
+  readonly browserAcquisitions: readonly BrowserModelAcquisition[];
+  readonly activeTarget: ActiveSuggestionTarget | undefined;
+  readonly onChooseTarget?: (target: ActiveSuggestionTarget) => void;
+  readonly onAcquired?: () => void;
+  readonly blocker: SuggestBlocker | null;
+  readonly onConfigure?: () => void;
+}): JSX.Element {
+  const value = activeTarget?.kind ?? "server";
+
+  return (
+    <Tabs
+      value={value}
+      onValueChange={(next) => {
+        if (next === "server") {
+          onChooseTarget?.({ kind: "server", connectionId: connectionId ?? "" });
+          return;
+        }
+        const targetId = browserTargets[0]?.id ?? browserAcquisitions[0]?.id;
+        if (targetId !== undefined) {
+          onChooseTarget?.({ kind: "browser", targetId });
+        }
+      }}
+    >
+      <TabsList>
+        <TabsTrigger value="server" data-testid="suggest-target-server">
+          Server
+        </TabsTrigger>
+        <TabsTrigger value="browser" data-testid="suggest-target-browser">
+          This device
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="server">
+        {blocker !== null ? (
+          <BlockedMessage
+            blocker={blocker}
+            icon
+            {...(onConfigure === undefined ? {} : { onConfigure })}
+          />
+        ) : (
+          <>
+            {!pending && (
+              <Through
+                candidates={candidates}
+                connectionId={connectionId}
+                {...(onChoose === undefined ? {} : { onChoose })}
+              />
+            )}
+            {pending && <Discard onDiscard={onDiscard} />}
+          </>
+        )}
+      </TabsContent>
+      {/*
+        Never gated on `blocker` — a server-side "not-ready"/"no-connections"
+        is a fact about the server tab and says nothing about whether this
+        device can run something. `DeviceTab` reads only `browserTargets`/
+        `browserAcquisitions`, which is its own, independent readiness.
+      */}
+      <TabsContent value="browser" data-testid="suggest-device-section">
+        <DeviceTab
+          targets={browserTargets}
+          acquisitions={browserAcquisitions}
+          {...(onAcquired === undefined ? {} : { onAcquired })}
+        />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+/**
+ * The blocker copy, wherever it is read: the whole card once, or scoped to one tab.
+ *
+ * `icon` defaults to off, which is what keeps the unwired early return byte-for-byte
+ * unchanged: its own `EditorNotice` already carries the tone icon in its fixed slot,
+ * driven by this same `copy.tone`. `TargetChooser`'s idle card has no such slot — its
+ * `EditorNotice` is fixed to `Sparkles`/calm regardless of which tab is showing what —
+ * so it opts into drawing the icon here instead, inline with the title.
+ */
+function BlockedMessage({
+  blocker,
+  onConfigure,
+  icon = false,
+}: {
+  readonly blocker: SuggestBlocker;
+  readonly onConfigure?: () => void;
+  readonly icon?: boolean;
+}): JSX.Element {
+  const copy = BLOCKER_COPY[blocker];
+  return (
+    <>
+      <p
+        className={
+          icon ? "flex items-center gap-1.5 font-medium text-foreground" : "font-medium text-foreground"
+        }
+        data-testid={`suggest-${blocker}`}
+      >
+        {icon &&
+          (copy.tone === "warn" ? (
+            <TriangleAlert className="size-4 shrink-0" aria-hidden="true" />
+          ) : (
+            <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" />
+          ))}
+        {copy.title}
+      </p>
+      <p className="text-muted-foreground">{copy.body}</p>
+      {/* The action's *destination* is the host's, so its absence removes the
+          control and leaves the explanation — never a dead button. */}
+      {copy.action !== null && onConfigure !== undefined && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-1 self-start"
+          data-testid="suggest-configure"
+          onClick={onConfigure}
+        >
+          {copy.action}
+        </Button>
+      )}
+    </>
+  );
+}
+
+/**
+ * What "this device" has to say: a ready target's name and a success pill, or
+ * an unacquired model's size and a download button.
+ *
+ * Phase F ships exactly one browser-suggestible model, so this never has to
+ * choose between several targets or several acquisitions — it reads the first
+ * of whichever list is non-empty. The acquiring/failed state is local and
+ * transient, on `BrowserModelAcquisition`'s own contract: `acquire()` is not
+ * reactive, so the UI owns the story of one attempt in flight.
+ */
+function DeviceTab({
+  targets,
+  acquisitions,
+  onAcquired,
+}: {
+  readonly targets: readonly BrowserSuggestionTarget[];
+  readonly acquisitions: readonly BrowserModelAcquisition[];
+  readonly onAcquired?: () => void;
+}): JSX.Element | null {
+  const [acquiring, setAcquiring] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const target = targets[0];
+  if (target !== undefined) {
+    return (
+      <p className="flex items-center gap-2 text-muted-foreground">
+        {target.label}
+        <Badge variant="success">Ready</Badge>
+      </p>
+    );
+  }
+
+  const acquisition = acquisitions[0];
+  if (acquisition === undefined) return null;
+
+  return (
+    <div className="flex flex-col items-start gap-2">
+      <p className="text-muted-foreground">
+        {acquisition.label} — ~{Math.round(acquisition.approxBytes / 1_000_000)} MB
+      </p>
+      <Button
+        variant="outline"
+        size="sm"
+        data-testid={`suggest-device-acquire-${acquisition.id}`}
+        disabled={acquiring}
+        onClick={() => {
+          setAcquiring(true);
+          setFailed(false);
+          acquisition.acquire().then(
+            () => {
+              setAcquiring(false);
+              onAcquired?.();
+            },
+            () => {
+              setAcquiring(false);
+              setFailed(true);
+            },
+          );
+        }}
+      >
+        {acquiring ? "Downloading…" : "Download to this browser"}
+      </Button>
+      {failed && <p role="alert">Download failed. Try again.</p>}
+    </div>
   );
 }
 

@@ -28,7 +28,7 @@ import { userEvent } from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
-import { useApiClient, Async, unwrap, checks } from "@visionset/ui-core";
+import { useApiClient, useBrowserInferenceRuntime, Async, unwrap, checks } from "@visionset/ui-core";
 import { readToken, writeToken } from "./token";
 import { OssSessionProvider, useOssSession } from "./OssSession";
 import { TokenGate } from "../shell/TokenGate";
@@ -115,6 +115,29 @@ describe("the client carries the credential", () => {
     // client cannot drift.
     expect(stub.calls[0].headers.get("authorization")).toBe("Bearer secret-token");
     expect(stub.calls[0].url).toBe(`${API}/projects`);
+
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("the browser inference runtime", () => {
+  it("provides a browser inference runtime to descendants", async () => {
+    const stub = stubFetch([[200, { items: [], total: 0 }]]);
+    vi.stubGlobal("fetch", stub.fetch);
+
+    let seen: unknown;
+    function Probe(): null {
+      seen = useBrowserInferenceRuntime();
+      return null;
+    }
+
+    render(
+      <OssSessionProvider baseUrl={API} makeQueryClient={silentClient}>
+        <Probe />
+      </OssSessionProvider>,
+    );
+
+    await waitFor(() => expect(seen).not.toBeNull());
 
     vi.unstubAllGlobals();
   });

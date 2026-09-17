@@ -209,6 +209,22 @@ export const REFUSAL_PROSE: Record<string, string> = {
   // this" would be wrong about where the problem is.
   NETWORK_ERROR: "The server could not be reached — check the connection and try again.",
   MALFORMED_RESPONSE: "The server answered with something this app does not recognise.",
+
+  // Browser-local suggestion. EfficientSAM-Ti has no true negative point; this is the
+  // executor's own pre-flight refusal, never the model's internal throw, so the message
+  // a person sees is contract-tested at this boundary rather than assumed to propagate.
+  BROWSER_NEGATIVE_POINTS_UNSUPPORTED:
+    "This device supports positive-point refinement only. Choose Server to add a negative point.",
+  // The other three are the same rule as the entries above and one more: **none of
+  // these sentences may mention the server**, because nothing about them is a request.
+  // A browser-target refusal that fell through to `asApiError` would be stamped
+  // `NETWORK_ERROR` and read "the server could not be reached", which is false about a
+  // failure that never left the tab. `refusals.test.ts` holds that.
+  BROWSER_ASSET_CHANGED:
+    "The displayed asset changed before this device could answer — try again.",
+  BROWSER_INFERENCE_UNAVAILABLE:
+    "This device could not start the model. Choose Server, or reload and try again.",
+  BROWSER_INFERENCE_FAILED: "This device could not answer — try again, or choose Server.",
 };
 
 /**
