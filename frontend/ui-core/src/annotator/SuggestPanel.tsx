@@ -443,6 +443,14 @@ export function SuggestPanel({
   // thing that is actually available: the Download control the tab below already draws.
   const browserTabUnacquired =
     runtimeWired && activeTarget?.kind === "browser" && blocker === "not-ready";
+  const activeBrowserModel =
+    activeTarget?.kind === "browser"
+      ? browserModels?.find((model) => model.id === activeTarget.targetId)
+      : undefined;
+  const browserModelBusy =
+    activeBrowserModel?.state === "downloading" ||
+    activeBrowserModel?.state === "installed" ||
+    activeBrowserModel?.state === "activating";
 
   return (
     <EditorNotice testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
@@ -450,11 +458,16 @@ export function SuggestPanel({
         (browserTabUnacquired ? (
           <>
             <p className="font-medium text-foreground" data-testid="suggest-idle-unacquired">
-              Download the model first
+              {activeBrowserModel?.state === "downloading"
+                ? "Downloading the model…"
+                : browserModelBusy
+                  ? "Loading the model…"
+                  : "Download the model first"}
             </p>
             <p className="text-muted-foreground">
-              “This device” has nothing to answer with yet, so a click does nothing. Download
-              it below, or switch back to Server.
+              {browserModelBusy
+                ? "“This device” is getting the selected model ready. A click will work once loading finishes."
+                : "“This device” has nothing to answer with yet, so a click does nothing. Download it below, or switch back to Server."}
             </p>
           </>
         ) : (

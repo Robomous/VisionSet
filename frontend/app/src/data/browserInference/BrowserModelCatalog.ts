@@ -193,16 +193,21 @@ export function createBrowserModelCatalog(deps: CatalogDeps): OssBrowserModelCat
       return once(id, async () => {
         const record = required(id);
         if (record.state === "ready") return;
+        let artifacts: BrowserModelArtifacts;
         try {
-          const artifacts = record.sessionArtifacts ?? (await deps.store.readVerified(record.admission));
-          if (artifacts === null) throw new Error(`${record.admission.label} is not installed in this browser`);
-          await startRuntime(record, artifacts);
+          const stored = record.sessionArtifacts ?? (await deps.store.readVerified(record.admission));
+          if (stored === null) throw new Error(`${record.admission.label} is not installed in this browser`);
+          artifacts = stored;
         } catch (error) {
           record.sessionArtifacts = undefined;
           if (active?.id === id) active = null;
           update(record, { visible: true, state: "failed", storage: "none", error: message(error) });
           throw error;
         }
+        // `startRuntime` owns its failure state. At this point bytes have already passed the
+        // cache integrity check, so a worker/session failure must not pretend persistent
+        // storage disappeared or was corrupt.
+        await startRuntime(record, artifacts);
       });
     },
     remove(id) {

@@ -716,6 +716,20 @@ describe("this device, once a browser runtime is wired", () => {
     expect(screen.getByTestId("suggest-device-section").textContent).toContain(label);
   });
 
+  it("describes a cached model as loading instead of asking for another download", () => {
+    render(mount({
+      blocker: "not-ready",
+      browserTargets: [],
+      browserModels: [catalogEntry({ state: "installed", storage: "persistent" })],
+      activeTarget: { kind: "browser", targetId: READY.id },
+      onChooseTarget: vi.fn(),
+      onRemoveBrowserModel: vi.fn(),
+    }));
+
+    expect(screen.getByTestId("suggest-idle-unacquired").textContent).toMatch(/loading/i);
+    expect(screen.getByTestId("suggest-panel").textContent).not.toContain("Download the model first");
+  });
+
   it("removes an installed model through an explicit packaged control", async () => {
     const remove = vi.fn().mockResolvedValue(undefined);
     const user = userEvent.setup();

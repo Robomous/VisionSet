@@ -148,6 +148,19 @@ describe("createBrowserModelCatalog", () => {
     expect(catalog.listTargets()).toEqual([]);
   });
 
+  it("keeps persistent storage truthful when runtime startup fails after verified cache read", async () => {
+    const { catalog, download } = harness({
+      installed: true,
+      ready: async () => Promise.reject(new Error("runtime startup failed")),
+    });
+    await settles(catalog);
+
+    await expect(catalog.activate(ADMISSION.id)).rejects.toThrow(/runtime startup failed/i);
+
+    expect(download).not.toHaveBeenCalled();
+    expect(catalog.snapshot()[0]).toMatchObject({ state: "failed", storage: "persistent" });
+  });
+
   it("does not treat a missing decoder as installed or ready", async () => {
     const { catalog, download } = harness({ installed: false, discover: async () => true });
     await settles(catalog);
