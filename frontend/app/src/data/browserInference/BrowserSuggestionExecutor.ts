@@ -63,11 +63,20 @@ export function createBrowserSuggestionExecutor(deps: Deps): SuggestionExecutor 
 
       let preparing = prepared.get(source);
       if (preparing === undefined) {
-        preparing = deps.runtime.prepareImage({
-          width: source.width,
-          height: source.height,
-          rgb: source.readRgb().rgb,
-        });
+        // Only a *settled* embedding is worth keeping. A rejected promise left in the cache
+        // would answer every later click on this asset with the same dead error, so one
+        // transient encoder failure would break suggestion here until the host re-leased the
+        // pixels — evicting on rejection is what makes the next click a retry.
+        preparing = deps.runtime
+          .prepareImage({
+            width: source.width,
+            height: source.height,
+            rgb: source.readRgb().rgb,
+          })
+          .catch((error: unknown) => {
+            prepared.delete(source);
+            throw error;
+          });
         prepared.set(source, preparing);
       }
       const preparedImage = await preparing;

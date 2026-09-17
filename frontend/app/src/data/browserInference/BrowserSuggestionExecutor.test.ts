@@ -119,6 +119,38 @@ describe("createBrowserSuggestionExecutor", () => {
     expect(prepareImage).toHaveBeenCalledTimes(2);
   });
 
+  it("retries the encode after a failed prepareImage instead of replaying the rejection", async () => {
+    const source = sourceFor("a1");
+    const prepareImage = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("the encoder gave out"))
+      .mockResolvedValue({ width: 4, height: 4 });
+    const suggest = vi
+      .fn()
+      .mockResolvedValue({ width: 4, height: 4, mask: new Uint8Array(16).fill(1), confidence: 0.6 });
+    const executor = createBrowserSuggestionExecutor({
+      modelRef: "efficient-sam-ti@rev",
+      runtime: runtimeWith({ prepareImage, suggest }),
+      getActiveSource: () => source,
+    });
+
+    await expect(executor.suggest(requestFor("a1"))).rejects.toThrow("the encoder gave out");
+    expect(prepareImage).toHaveBeenCalledTimes(1);
+    expect(suggest).not.toHaveBeenCalled();
+
+    // The same still-active source, so a cached rejection would answer this without a second
+    // encode. It gets a fresh one, and the click succeeds.
+    const out = await executor.suggest(requestFor("a1"));
+    expect(prepareImage).toHaveBeenCalledTimes(2);
+    expect(suggest).toHaveBeenCalledTimes(1);
+    expect(out.confidence).toBe(0.6);
+
+    // ...and the retry's embedding is cached in its turn: a third click re-decodes only.
+    await executor.suggest(requestFor("a1"));
+    expect(prepareImage).toHaveBeenCalledTimes(2);
+    expect(suggest).toHaveBeenCalledTimes(2);
+  });
+
   it("never lets a stale in-flight prepareImage answer for a source that changed underneath it", async () => {
     let resolvePrepare!: (value: { width: number; height: number }) => void;
     const prepareImage = vi
