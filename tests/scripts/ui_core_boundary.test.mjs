@@ -330,6 +330,9 @@ test("the gate fires on a violation", () => {
   const cdnViolations = [
     { path: "frontend/ui-core/src/inference/BadCdn.ts", text: 'const url = "https://models.robomous.ai/registry/v1.json";\n' },
     { path: "frontend/ui-core/src/inference/BadVendor.ts", text: "// served from Cloudflare\n" },
+    { path: "frontend/ui-core/src/inference/BadCloudfront.ts", text: 'const url = "https://d123.cloudfront.net/x";\n' },
+    { path: "frontend/ui-core/src/inference/BadAmazon.ts", text: 'const url = "https://bucket.s3.amazonaws.com/x";\n' },
+    { path: "frontend/ui-core/src/inference/BadR2.ts", text: 'const url = "https://abc.r2.cloudflarestorage.com/x";\n' },
   ];
   assert.equal(violations(cdnViolations, CDN_VENDOR_LITERALS).length, cdnViolations.length);
 
