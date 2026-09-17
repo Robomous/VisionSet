@@ -64,20 +64,45 @@ const DECODER_BYTES = HAS_ARTIFACTS ? readFileSync(DECODER_PATH) : Buffer.alloc(
  * transform and would throw under this suite's plain Node/tsx loader.
  */
 const REAL_ENCODER_BYTE_LENGTH = 24_799_777;
+const REVISION = "b19782d049c0-843761ca46f4";
+const REGISTRY_MODEL_REF = `robomous/efficient-sam-ti@${REVISION}`;
+const REGISTRY = {
+  schema_version: 1,
+  models: [
+    { id: "efficient-sam-ti", name: "EfficientSAM-Ti", revision: REVISION, model_ref: REGISTRY_MODEL_REF, manifest: `/models/efficient-sam-ti/${REVISION}/manifest.json` },
+    { id: "mobile-sam", name: "MobileSAM", revision: "359e37f2b168-7983079ab060", model_ref: "robomous/mobile-sam@359e37f2b168-7983079ab060", manifest: "/models/mobile-sam/359e37f2b168-7983079ab060/manifest.json" },
+    { id: "efficientvit-sam-l0", name: "EfficientViT-SAM-L0", revision: "e48dd681ba4b-1d3ba86d781b", model_ref: "robomous/efficientvit-sam-l0@e48dd681ba4b-1d3ba86d781b", manifest: "/models/efficientvit-sam-l0/e48dd681ba4b-1d3ba86d781b/manifest.json" },
+    { id: "slimsam-77-uniform", name: "SlimSAM-77-uniform", revision: "7f2c646efd21-e6eb3c03cdbd", model_ref: "robomous/slimsam-77-uniform@7f2c646efd21-e6eb3c03cdbd", manifest: "/models/slimsam-77-uniform/7f2c646efd21-e6eb3c03cdbd/manifest.json" },
+    { id: "sam2.1-hiera-tiny", name: "SAM2.1-hiera-tiny", revision: "7f000e65546d-6dbe21e6e60e", model_ref: "robomous/sam2.1-hiera-tiny@7f000e65546d-6dbe21e6e60e", manifest: "/models/sam2.1-hiera-tiny/7f000e65546d-6dbe21e6e60e/manifest.json" },
+  ],
+};
+const MANIFEST = {
+  schema_version: 1,
+  id: "efficient-sam-ti",
+  name: "EfficientSAM-Ti",
+  revision: REVISION,
+  model_ref: REGISTRY_MODEL_REF,
+  source: { repository: "https://github.com/yformer/EfficientSAM", revision: "d525f622e6f640acf5a0fc37c7ca1f243da5bde0" },
+  runtime: { format: "onnx", opset: 17, onnxruntime_web: "1.29.0" },
+  capabilities: { point_suggest: true, positive_points: true, negative_points: false, max_points: 6 },
+  artifacts: {
+    encoder: { path: "encoder.onnx", bytes: 24_799_777, sha256: "b19782d049c09a8f1cc36ccc6029264ca23c8ac35e6379fd9ef9f1bc6d81e7f2", content_type: "application/octet-stream" },
+    decoder: { path: "decoder.onnx", bytes: 16_501_901, sha256: "843761ca46f4aa00b09fdcf0c94271321f76eece092a744296c742d682a86172", content_type: "application/octet-stream" },
+  },
+};
 
 /** Routes the CDN manifest + artifacts to the local fixture — no network call ever leaves the page. */
 async function mockCdn(page: Page, encoderBytes = ENCODER_BYTES, decoderBytes = DECODER_BYTES): Promise<void> {
   // Registered first, so it is matched *last* (Playwright tries the most-recently-added
-  // handler first): anything at this host the three specific routes below don't
+  // handler first): anything at this host the specific routes below don't
   // recognise is hard-aborted rather than silently reaching the real CDN — including if
   // `VITE_MODEL_CDN_BASE_URL` or the manifest layout ever drifts out from under this stub.
   await page.route("**/models.robomous.ai/**", (route) => route.abort());
-  // The real, live manifest shape (fixed in manifest.ts/acquireEfficientSam.ts after a
-  // production incident): artifacts nest under `artifacts`, and each `path` is a bare
-  // filename resolved relative to the manifest's own revision directory — never a
-  // leading-slash, top-level path.
+  await page.route("**/models.robomous.ai/registry/v1.json", (route) => route.fulfill({ json: REGISTRY }));
+  // The complete deployed v1 shape: registry admission validates every field before
+  // acquisition, while the pinned build record remains the integrity anchor.
   await page.route("**/models.robomous.ai/models/efficient-sam-ti/**/manifest.json", (route) =>
-    route.fulfill({ json: { artifacts: { encoder: { path: "encoder.onnx" }, decoder: { path: "decoder.onnx" } } } }),
+    route.fulfill({ json: MANIFEST }),
   );
   await page.route("**/models.robomous.ai/models/efficient-sam-ti/**/encoder.onnx", (route) =>
     route.fulfill({ body: encoderBytes, contentType: "application/octet-stream" }),
@@ -161,8 +186,9 @@ async function openJobWithBrowserRuntime(
   page: Page,
   sent: Request[],
   suggestible: boolean,
+  modelSource: "fixture" | "live" = "fixture",
 ): Promise<void> {
-  await mockCdn(page);
+  if (modelSource === "fixture") await mockCdn(page);
   await serveApi(page, sent, undefined, undefined, undefined, undefined, suggestible);
   await mockAssetImage(page);
   await page.goto(`/jobs/${JOB}`);
@@ -185,7 +211,7 @@ function suggestCallsOf(sent: Request[]): Request[] {
 function countModelRequestsFromNow(page: Page): () => number {
   let count = 0;
   page.on("request", (request) => {
-    if (request.url().includes("models.robomous.ai")) count += 1;
+    if (/models\.robomous\.ai\/.*\/(encoder|decoder)\.onnx$/.test(request.url())) count += 1;
   });
   return () => count;
 }
@@ -211,10 +237,22 @@ async function armSuggestTool(page: Page): Promise<void> {
 async function acquireAndSelectBrowserTarget(page: Page): Promise<void> {
   await page.getByTestId("suggest-target-browser").click();
   await page.getByTestId("suggest-device-acquire-efficient-sam-ti").click();
-  await expect(page.getByTestId("suggest-device-section").getByText(/ready/i)).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("suggest-device-section").getByText("Ready", { exact: true })).toBeVisible({
+    timeout: 60_000,
+  });
+}
+
+async function makeBrowserSuggestion(page: Page): Promise<void> {
+  const picture = (await page.getByTestId("annotator-canvas").boundingBox())!;
+  await page.mouse.click(picture.x + picture.width / 2, picture.y + picture.height / 2);
+  await expect(page.getByTestId("suggestion-shape")).toBeVisible({ timeout: 30_000 });
 }
 
 test.describe("browser suggestion", () => {
+  // Real ONNX work competes with the rest of the fully-parallel app suite on local machines.
+  // This is a functional ceiling, not a performance assertion; measured timings are reported
+  // by the opt-in live smoke instead of turning shared-runner wall clock into a gate.
+  test.setTimeout(60_000);
   test.skip(!HAS_ARTIFACTS, MISSING_MESSAGE);
 
   test("Server target: a click issues exactly one /inference/suggest HTTP request", async ({ page }) => {
@@ -237,6 +275,173 @@ test.describe("browser suggestion", () => {
     await page.mouse.click(picture.x + picture.width / 2, picture.y + picture.height / 2);
     await expect(page.getByTestId("suggestion-shape")).toBeVisible({ timeout: 30_000 });
     expect(suggestCallsOf(sent)).toHaveLength(0);
+  });
+
+  test("an installed model survives reload and suggests again without an artifact GET", async ({ page }) => {
+    const sent: Request[] = [];
+    const artifactRequests = countModelRequestsFromNow(page);
+    await openJobWithBrowserRuntime(page, sent, true);
+    await armSuggestTool(page);
+    await acquireAndSelectBrowserTarget(page);
+    await makeBrowserSuggestion(page);
+    expect(artifactRequests()).toBe(2);
+
+    await page.reload();
+    await expect(page.getByTestId("annotation-page")).toBeVisible();
+    await armSuggestTool(page);
+    await expect(page.getByTestId("suggest-device-section").getByText(/ready/i)).toBeVisible({ timeout: 60_000 });
+    expect(artifactRequests()).toBe(2);
+    await makeBrowserSuggestion(page);
+    expect(suggestCallsOf(sent)).toHaveLength(0);
+  });
+
+  test("live CDN smoke: admitted artifacts persist and reactivate without a second download", async ({ page }) => {
+    test.skip(process.env.VISIONSET_LIVE_MODEL_SMOKE !== "1", "manual smoke against models.robomous.ai");
+    test.setTimeout(120_000);
+    const sent: Request[] = [];
+    const responses: { url: string; bytes: number; milliseconds: number }[] = [];
+    page.on("request", (request) => {
+      if (request.url().startsWith("https://models.robomous.ai/")) {
+        console.info("VISIONSET_LIVE_MODEL_REQUEST", request.url());
+      }
+    });
+    page.on("requestfailed", (request) => {
+      if (request.url().startsWith("https://models.robomous.ai/")) {
+        console.info("VISIONSET_LIVE_MODEL_REQUEST_FAILED", request.url(), request.failure()?.errorText);
+      }
+    });
+    page.on("response", async (response) => {
+      if (!response.url().startsWith("https://models.robomous.ai/")) return;
+      console.info("VISIONSET_LIVE_MODEL_RESPONSE", response.status(), response.url());
+      await response.finished();
+      console.info("VISIONSET_LIVE_MODEL_RESPONSE_FINISHED", response.url());
+      const timing = response.request().timing();
+      const declaredBytes = Number(response.headers()["content-length"] ?? 0);
+      const bytes = declaredBytes > 0 ? declaredBytes : (await response.body()).byteLength;
+      responses.push({ url: response.url(), bytes, milliseconds: timing.responseEnd });
+    });
+    await openJobWithBrowserRuntime(page, sent, true, "live");
+    await armSuggestTool(page);
+    // Registry discovery is deliberately asynchronous and does not block the editor. Wait for
+    // its immutable manifest validation before selecting the controlled This device tab; a
+    // machine-speed click before the catalog has any target is intentionally a no-op.
+    await expect.poll(() => responses.some(({ url }) => url.endsWith("/manifest.json"))).toBe(true);
+    const coldStarted = Date.now();
+    await acquireAndSelectBrowserTarget(page);
+    const coldMilliseconds = Date.now() - coldStarted;
+    await makeBrowserSuggestion(page);
+
+    const cacheMeasurements = await page.evaluate(async () => {
+      const cache = await caches.open("visionset-browser-models-v1");
+      const keys = await cache.keys();
+      let bytes = 0;
+      let readMilliseconds = 0;
+      let shaMilliseconds = 0;
+      const lookupStarted = performance.now();
+      await Promise.all(keys.map((key) => cache.match(key)));
+      const lookupMilliseconds = performance.now() - lookupStarted;
+      for (const key of keys) {
+        const response = await cache.match(key);
+        if (response === undefined) continue;
+        const readStarted = performance.now();
+        const body = await response.arrayBuffer();
+        readMilliseconds += performance.now() - readStarted;
+        bytes += body.byteLength;
+        const shaStarted = performance.now();
+        await crypto.subtle.digest("SHA-256", body);
+        shaMilliseconds += performance.now() - shaStarted;
+      }
+      return { entries: keys.length, bytes, lookupMilliseconds, readMilliseconds, shaMilliseconds };
+    });
+
+    const artifactRequests = countModelRequestsFromNow(page);
+    const reloadStarted = Date.now();
+    await page.reload();
+    await expect(page.getByTestId("annotation-page")).toBeVisible();
+    await armSuggestTool(page);
+    await expect(page.getByTestId("suggest-device-section").getByText("Ready", { exact: true })).toBeVisible({
+      timeout: 60_000,
+    });
+    const reloadActivationMilliseconds = Date.now() - reloadStarted;
+    expect(artifactRequests()).toBe(0);
+    await makeBrowserSuggestion(page);
+
+    console.info("VISIONSET_LIVE_MODEL_SMOKE", JSON.stringify({
+      responses,
+      coldMilliseconds,
+      reloadActivationMilliseconds,
+      ...cacheMeasurements,
+    }));
+  });
+
+  test("an installed model remains usable when registry and artifact routes fail", async ({ page }) => {
+    const sent: Request[] = [];
+    await openJobWithBrowserRuntime(page, sent, true);
+    await armSuggestTool(page);
+    await acquireAndSelectBrowserTarget(page);
+    await makeBrowserSuggestion(page);
+
+    await page.route("**/models.robomous.ai/registry/v1.json", (route) =>
+      route.fulfill({ status: 503, body: "offline fixture" }),
+    );
+    await page.route("**/models.robomous.ai/**/*.onnx", (route) =>
+      route.fulfill({ status: 503, body: "offline fixture" }),
+    );
+    const artifactRequests = countModelRequestsFromNow(page);
+    await page.reload();
+    await expect(page.getByTestId("annotation-page")).toBeVisible();
+    await armSuggestTool(page);
+    await expect(page.getByTestId("suggest-device-section").getByText(/ready/i)).toBeVisible({ timeout: 60_000 });
+    expect(artifactRequests()).toBe(0);
+    await makeBrowserSuggestion(page);
+    expect(suggestCallsOf(sent)).toHaveLength(0);
+  });
+
+  test("Remove from this browser clears artifacts, disposes readiness, and survives reload", async ({ page }) => {
+    const sent: Request[] = [];
+    await openJobWithBrowserRuntime(page, sent, true);
+    await armSuggestTool(page);
+    await acquireAndSelectBrowserTarget(page);
+
+    await page.getByTestId("suggest-device-remove-efficient-sam-ti").click();
+    await expect(page.getByTestId("suggest-device-acquire-efficient-sam-ti")).toBeVisible();
+    expect(await page.evaluate(async () => (await caches.open("visionset-browser-models-v1")).keys().then((keys) => keys.length))).toBe(0);
+
+    const artifactRequests = countModelRequestsFromNow(page);
+    await page.reload();
+    await expect(page.getByTestId("annotation-page")).toBeVisible();
+    await armSuggestTool(page);
+    await expect(page.getByTestId("suggest-device-acquire-efficient-sam-ti")).toBeVisible();
+    expect(artifactRequests()).toBe(0);
+  });
+
+  test("a persistent storage refusal is reported as session-only readiness", async ({ page }) => {
+    await page.addInitScript(() => {
+      const nativeOpen = caches.open.bind(caches);
+      caches.open = async (name: string): Promise<Cache> => {
+        const cache = await nativeOpen(name);
+        return {
+          add: cache.add.bind(cache),
+          addAll: cache.addAll.bind(cache),
+          match: cache.match.bind(cache),
+          matchAll: cache.matchAll.bind(cache),
+          delete: cache.delete.bind(cache),
+          keys: cache.keys.bind(cache),
+          put: async () => { throw new DOMException("fixture quota", "QuotaExceededError"); },
+        };
+      };
+    });
+    const sent: Request[] = [];
+    await openJobWithBrowserRuntime(page, sent, true);
+    await armSuggestTool(page);
+    await acquireAndSelectBrowserTarget(page);
+    await expect(page.getByTestId("suggest-device-session-only")).toBeVisible();
+    await makeBrowserSuggestion(page);
+
+    await page.reload();
+    await expect(page.getByTestId("annotation-page")).toBeVisible();
+    await armSuggestTool(page);
+    await expect(page.getByTestId("suggest-device-acquire-efficient-sam-ti")).toBeVisible();
   });
 
   test("a ready browser target is never blocked by a server-connection blocker", async ({ page }) => {

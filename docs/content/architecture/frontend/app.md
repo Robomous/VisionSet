@@ -40,6 +40,37 @@ managed host replaces only the `FrameSink`'s destination, the same way it replac
 `ossClient.ts` today, which is what proves the boundary actually sits where
 [ui-core.md](ui-core.md) says it does.
 
+The browser-model acquisition system is composed here for the same reason. The public
+registry and immutable manifests are discovery data, **not a trust anchor**. The app validates
+their schema and intersects them with a build-owned admission catalog that pins the model ID,
+revision, graph contract, source and license metadata, artifact roles, byte counts and SHA-256
+digests. Registry entries the build cannot execute are not offered. Registry metadata cannot
+name code, dynamic imports, preprocessing functions, or paths outside the configured public
+model base.
+
+An explicit Download action fetches admitted artifacts. Every complete download is checked for
+its pinned size and digest before any byte is written to the versioned Cache Storage namespace;
+unverified or partial models are never installed. Storage keys include the model revision and
+artifact digest, so mirrors of identical immutable content share an identity without confusing
+different revisions. Activation reads the whole admitted set back and repeats both checks. A
+missing or corrupt entry is removed and leaves the model unavailable; activation never turns
+that failure into a network download.
+
+The catalog and the execution port deliberately answer different questions. Catalog states
+describe known, downloading, installed, activating, ready, and failed models. `listTargets()`
+continues to list only models that can answer now. Startup inspects storage but creates no ONNX
+Runtime worker or session. A cached model activates lazily when the armed Suggest surface needs
+the selected target; runtime sessions and image embeddings remain memory-only. Removal first
+invalidates and disposes that runtime, then deletes only the admitted revision's model
+artifacts.
+
+Cache Storage is a browser-managed persistence layer, not a permanence guarantee. If a verified
+download cannot be written, the app may run it for that session while stating that it was not
+saved. An admitted cached model can be verified and activated when registry and artifact routes
+are unavailable, while Server inference remains independent of the catalog and public model
+source. No service worker, Python-side browser cache, or automatic revision update participates
+in this flow.
+
 ## What a route does
 
 ```mermaid

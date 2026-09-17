@@ -124,6 +124,9 @@ export {
 } from "./inference/VisionSetBrowserInferenceProvider.js";
 export type {
   ActiveSuggestionTarget,
+  BrowserModelCatalog,
+  BrowserModelCatalogEntry,
+  BrowserModelCatalogState,
   BrowserModelAcquisition,
   BrowserSuggestionAssetSource,
   BrowserSuggestionTarget,

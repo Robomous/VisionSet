@@ -37,7 +37,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { VisionSetBrowserInferenceProvider, VisionSetDataProvider, VisionSetMediaProvider } from "@visionset/ui-core";
 import { MediabunnyVideoMaterializer } from "@visionset/media/mediabunny";
 
-import { createOssBrowserInferenceRuntime } from "./browserInference/BrowserInferenceRuntime";
+import { getSharedOssBrowserInferenceRuntime } from "./browserInference/BrowserInferenceRuntime";
 import { createOssDataClient, requestSession } from "./ossClient";
 import { createLocalApiFrameSink } from "./frameSink";
 import { clearToken, readToken, writeToken } from "./token";
@@ -164,7 +164,7 @@ export function OssSessionProvider({
    * and SHA-256 verification. Built once per session — its acquisition state (unacquired
    * vs. ready) must survive across asset navigation, not reset on every render.
    */
-  const browserInferenceRuntime = useMemo(() => createOssBrowserInferenceRuntime(), []);
+  const browserInferenceRuntime = useMemo(() => getSharedOssBrowserInferenceRuntime(), []);
 
   const signIn = useCallback((next: string) => {
     writeToken(next);

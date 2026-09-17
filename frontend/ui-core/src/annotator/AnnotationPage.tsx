@@ -137,6 +137,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type JSX,
   type ReactNode,
 } from "react";
@@ -190,7 +191,12 @@ import type { SuggestionOut } from "../data/inferenceQueries";
 import { useServerSuggestionExecutor } from "../inference/suggestionExecutor";
 import type { SuggestionExecutor } from "../inference/suggestionExecutor";
 import { useBrowserInferenceRuntime } from "../inference/VisionSetBrowserInferenceProvider.js";
-import type { ActiveSuggestionTarget, BrowserSuggestionAssetSource, BrowserSuggestionTarget } from "../inference/browserPort.js";
+import type {
+  ActiveSuggestionTarget,
+  BrowserModelCatalogEntry,
+  BrowserSuggestionAssetSource,
+  BrowserSuggestionTarget,
+} from "../inference/browserPort.js";
 import { computeSuggestBlocker } from "../inference/targetBlocker.js";
 import { readPref, writePref } from "../data/prefs";
 
@@ -230,23 +236,41 @@ function writeStoredSuggestTarget(projectId: string, target: ActiveSuggestionTar
  * Whether a stored browser-target preference is stale enough to fall back to Server
  * silently.
  *
- * Acquired model bytes are never persisted across page loads, so "the stored browser
- * target isn't in `listTargets()`'s answer" is the ordinary shape of every reload for
- * someone who previously picked a browser target — not a rare failure, and it must not
- * surface as a `blocker`. `explicitlyChosen` is what keeps this from also catching a
- * target this *session* picked and which later drops out: that one is pinned, and stays
- * pinned to `not-ready`/`refusal` rather than silently reverting.
+ * A catalog-known target may be installed, activating, or awaiting an explicit download;
+ * none of those make its preference stale. Only an ID unknown to the build falls back.
+ * `explicitlyChosen` separately keeps a target picked in this session pinned if it later
+ * drops out, so failure stays visible instead of silently switching to Server.
  */
 export function staleStoredBrowserTarget(
   storedTarget: StoredSuggestTarget,
   browserTargets: readonly BrowserSuggestionTarget[] | undefined,
   explicitlyChosen: boolean,
+  knownByCatalog = false,
 ): boolean {
   if (browserTargets === undefined) return false;
   if (storedTarget.kind !== "browser") return false;
   if (explicitlyChosen) return false;
+  if (knownByCatalog) return false;
   return !browserTargets.some((row) => row.id === storedTarget.targetId);
 }
+
+/**
+ * Reconciles the asynchronously resolved Phase F target list with the catalog's synchronous
+ * lifecycle snapshot. Removal and corruption invalidate an executor before the next
+ * `listTargets()` promise settles, so a target is answerable only while both views say ready.
+ */
+export function readyBrowserTargets(
+  browserTargets: readonly BrowserSuggestionTarget[] | undefined,
+  browserModels: readonly BrowserModelCatalogEntry[],
+): readonly BrowserSuggestionTarget[] | undefined {
+  if (browserTargets === undefined) return browserTargets;
+  const readyIds = new Set(browserModels.filter((entry) => entry.state === "ready").map((entry) => entry.id));
+  return browserTargets.filter((target) => readyIds.has(target.id));
+}
+
+const EMPTY_BROWSER_MODELS = Object.freeze([]);
+const emptyBrowserModels = () => EMPTY_BROWSER_MODELS;
+const subscribeToNothing = () => () => {};
 
 /**
  * Where "a trackpad has been seen on this browser" is remembered.
@@ -970,6 +994,12 @@ function Workspace({
   const [adjusting, setAdjusting] = useState(false);
 
   const browserRuntime = useBrowserInferenceRuntime();
+  const browserCatalog = browserRuntime?.modelCatalog;
+  const browserModels = useSyncExternalStore(
+    browserCatalog?.subscribe ?? subscribeToNothing,
+    browserCatalog?.snapshot ?? emptyBrowserModels,
+    browserCatalog?.snapshot ?? emptyBrowserModels,
+  );
 
   useEffect(() => {
     return () => browserRuntime?.setActiveAsset?.(null);
@@ -1023,17 +1053,15 @@ function Workspace({
     return () => {
       cancelled = true;
     };
-  }, [browserRuntime, browserTargetsRefreshKey]);
+  }, [browserRuntime, browserTargetsRefreshKey, browserModels]);
+  const answerableBrowserTargets =
+    browserCatalog === undefined ? browserTargets : readyBrowserTargets(browserTargets, browserModels);
 
   const [storedTarget, setStoredTarget] = useState<StoredSuggestTarget>(() => readStoredSuggestTarget(projectId));
-  // Whether *this session* picked a browser target through `chooseTarget`, as opposed to one
-  // merely read back from a persisted preference. Acquired model bytes are never persisted
-  // across page loads (a later phase's work), so "the stored browser target isn't in
-  // `listTargets()`'s answer" is the ordinary shape of every reload for someone who picked
-  // "This device" last time — not a rare failure. That case must fall back to Server
-  // silently. A target this session explicitly chose and which later drops out is a
-  // different thing (surfaced via `blocker`/`refusal`, never auto-switched), and this ref is
-  // what tells the two apart.
+  // Whether this session picked a browser target through `chooseTarget`, as opposed to one
+  // merely read back from a preference. The catalog distinguishes a known uninstalled model
+  // from a genuinely unknown stale ID; this ref still prevents an explicit in-session failure
+  // from silently switching to Server.
   const explicitlyChosenBrowser = useRef(false);
 
   // A stale/unavailable *stored* preference falls back to Server silently, once the browser
@@ -1043,17 +1071,39 @@ function Workspace({
   // `suggest.target.<projectId>` key, so a later reload re-checks the same id once that
   // model has actually been re-acquired.
   useEffect(() => {
-    if (staleStoredBrowserTarget(storedTarget, browserTargets, explicitlyChosenBrowser.current)) {
+    const knownByCatalog =
+      storedTarget.kind === "browser" && browserCatalog?.isKnown(storedTarget.targetId) === true;
+    if (
+      staleStoredBrowserTarget(
+        storedTarget,
+        browserTargets,
+        explicitlyChosenBrowser.current,
+        knownByCatalog,
+      )
+    ) {
       setStoredTarget({ kind: "server" });
     }
-  }, [browserTargets, storedTarget]);
+  }, [browserCatalog, browserTargets, browserModels, storedTarget]);
 
   const activeTarget: ActiveSuggestionTarget =
     browserRuntime !== null && storedTarget.kind === "browser"
       ? { kind: "browser", targetId: storedTarget.targetId }
       : { kind: "server", connectionId: connection?.id ?? "" };
+  const activeBrowserTargetId = activeTarget.kind === "browser" ? activeTarget.targetId : null;
+  const suggestArmed = session !== null;
 
-  const blocker = computeSuggestBlocker(activeTarget, serverBlocker, browserTargets);
+  useEffect(() => {
+    if (!suggestArmed || activeBrowserTargetId === null || browserCatalog === undefined) return;
+    const selected = browserModels.find((entry) => entry.id === activeBrowserTargetId);
+    if (selected?.state !== "installed") return;
+    // This reads verified local bytes only. `acquire()` remains the sole operation allowed to
+    // fetch a missing artifact, and the catalog publishes any activation failure for the panel.
+    void browserCatalog
+      .activate(activeBrowserTargetId)
+      .catch(() => setBrowserTargetsRefreshKey((key) => key + 1));
+  }, [activeBrowserTargetId, browserCatalog, browserModels, suggestArmed]);
+
+  const blocker = computeSuggestBlocker(activeTarget, serverBlocker, answerableBrowserTargets);
   // `executorFor` throws for a target that isn't actually ready yet — which is exactly the
   // state selecting "This device" starts in, before a download ever completes — so this must
   // check readiness itself rather than trust `browserRuntime !== null` alone. Derived from
@@ -2898,8 +2948,15 @@ function Workspace({
                 // matching while parked — the one reading that has to name it.
                 heldClass={activeClass}
                 blocker={blocker}
-                browserTargets={browserRuntime === null ? undefined : browserTargets}
+                browserTargets={browserRuntime === null ? undefined : answerableBrowserTargets}
                 browserAcquisitions={browserRuntime?.listAcquisitions?.()}
+                {...(browserCatalog === undefined
+                  ? {}
+                  : {
+                      browserModels,
+                      onAcquireBrowserModel: (id: string) => browserCatalog.acquire(id),
+                      onRemoveBrowserModel: (id: string) => browserCatalog.remove(id),
+                    })}
                 activeTarget={activeTarget}
                 onChooseTarget={chooseTarget}
                 onAcquired={() => setBrowserTargetsRefreshKey((key) => key + 1)}

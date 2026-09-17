@@ -100,7 +100,19 @@ FORBIDDEN = (
 #: Media suffixes. `_static/` legitimately holds none today — the app ships as
 #: HTML, CSS, JavaScript and one WebAssembly runtime — so any of these is
 #: something nobody meant to ship.
-FORBIDDEN_SUFFIXES = (".mp4", ".mov", ".avi", ".jpg", ".jpeg", ".tiff", ".bmp")
+FORBIDDEN_SUFFIXES = (
+    ".mp4",
+    ".mov",
+    ".avi",
+    ".jpg",
+    ".jpeg",
+    ".tiff",
+    ".bmp",
+    # Browser model weights belong to the explicit CDN/cache acquisition flow.
+    # ONNX Runtime's own `.wasm` payload remains the deliberately packaged exception.
+    ".onnx",
+    ".pt",
+)
 
 #: How long the freshly installed server gets to bind a socket.
 #:

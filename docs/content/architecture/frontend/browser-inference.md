@@ -17,10 +17,11 @@ that is supposed to be *injected with* runtimes - the dependency arrow pointing 
 through the seam it exists to serve. A host that holds both adapts one to the other, which is
 what [host composition](../decisions/browser-inference-is-host-injected.md) is for.
 
-Nothing in this repository composes that adapter yet, and nothing imports this package.
-**A package existing is not the product offering a browser target.** There is no "This device"
-control and no user-visible change - a caller who wants EfficientSAM-Ti running still has to
-supply the weights and wire the adapter itself.
+The OSS app composes that adapter at its host boundary. **A package existing is still not the
+product offering a browser target:** the app supplies admitted, verified graph bytes and adapts
+the resulting runtime to `ui-core`; this package neither discovers models nor decides which
+ones VisionSet trusts. Another host can omit browser inference or provide a different
+implementation of the same optional port.
 
 ## Core and adapter are two entrypoints, for the same reason as media
 

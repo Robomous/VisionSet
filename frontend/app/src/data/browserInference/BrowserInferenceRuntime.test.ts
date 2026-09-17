@@ -1,12 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SuggestionRequest } from "@visionset/ui-core";
-import { createOssBrowserInferenceRuntime } from "./BrowserInferenceRuntime.js";
-import { EFFICIENT_SAM_TI_REVISION } from "./manifest.js";
+import {
+  createOssBrowserInferenceRuntime,
+  getSharedOssBrowserInferenceRuntime,
+} from "./BrowserInferenceRuntime.js";
+import type { VisionSetBrowserInferenceRuntime } from "@visionset/ui-core";
+import type {
+  BrowserArtifactStore,
+  BrowserModelArtifacts,
+  VerifiedBrowserModelArtifacts,
+} from "./artifactStore.js";
 
 function fakeDeps(overrides?: {
-  acquire?: () => Promise<{ encoder: Uint8Array; decoder: Uint8Array }>;
+  acquire?: () => Promise<BrowserModelArtifacts>;
   ready?: () => Promise<never[]>;
   supported?: () => boolean;
+  store?: BrowserArtifactStore;
+  discover?: () => Promise<boolean>;
 }) {
   const prepareImage = vi.fn(async () => ({ width: 4, height: 4 }));
   const dispose = vi.fn();
@@ -17,10 +27,52 @@ function fakeDeps(overrides?: {
     dispose,
   }));
   const acquire = vi.fn(overrides?.acquire ?? (async () => ({ encoder: new Uint8Array(1), decoder: new Uint8Array(1) })));
-  return { acquire, createRuntime, supported: overrides?.supported ?? ((): boolean => true), prepareImage, dispose };
+  const store: BrowserArtifactStore = overrides?.store ?? {
+    inspect: vi.fn(async () => false),
+    readVerified: vi.fn(async () => null),
+    verifyModelArtifacts: vi.fn(async (_model, artifacts) => artifacts as VerifiedBrowserModelArtifacts),
+    persistVerifiedArtifacts: vi.fn(async () => undefined),
+    remove: vi.fn(async () => undefined),
+  };
+  return {
+    acquire,
+    createRuntime,
+    supported: overrides?.supported ?? ((): boolean => true),
+    store,
+    ...(overrides?.discover === undefined ? {} : { discover: overrides.discover }),
+    prepareImage,
+    dispose,
+  };
+}
+
+async function acquisition(runtime: VisionSetBrowserInferenceRuntime) {
+  // Registry/cache initialization is asynchronous in Phase G. `listTargets()` waits for that
+  // initial pass, after which the synchronous Phase F compatibility view is populated.
+  await runtime.listTargets();
+  const available = runtime.listAcquisitions?.()[0];
+  if (available === undefined) throw new Error("expected an available browser model fixture");
+  return available;
 }
 
 describe("createOssBrowserInferenceRuntime", () => {
+  it("shares the host runtime across repeated composition calls", () => {
+    const runtime = createOssBrowserInferenceRuntime(fakeDeps());
+    const factory = vi.fn(() => runtime);
+
+    expect(getSharedOssBrowserInferenceRuntime(factory)).toBe(runtime);
+    expect(getSharedOssBrowserInferenceRuntime(factory)).toBe(runtime);
+    expect(factory).toHaveBeenCalledTimes(1);
+  });
+
+  it("exposes the additive model catalog while preserving the Phase F runtime members", () => {
+    const runtime = createOssBrowserInferenceRuntime(fakeDeps());
+    expect(runtime.modelCatalog).toBeDefined();
+    expect(runtime.listTargets).toBeTypeOf("function");
+    expect(runtime.executorFor).toBeTypeOf("function");
+    expect(runtime.listAcquisitions).toBeTypeOf("function");
+    expect(runtime.setActiveAsset).toBeTypeOf("function");
+  });
+
   it("lists no targets and one acquisition before acquiring", async () => {
     const deps = fakeDeps();
     const runtime = createOssBrowserInferenceRuntime(deps);
@@ -28,10 +80,31 @@ describe("createOssBrowserInferenceRuntime", () => {
     expect(runtime.listAcquisitions?.()).toHaveLength(1);
   });
 
+  it("does not wait for a hanging registry before exposing and activating an installed model", async () => {
+    const artifacts = { encoder: new Uint8Array(1), decoder: new Uint8Array(1) };
+    const store: BrowserArtifactStore = {
+      inspect: vi.fn(async () => true),
+      readVerified: vi.fn(async () => artifacts),
+      verifyModelArtifacts: vi.fn(async () => artifacts as VerifiedBrowserModelArtifacts),
+      persistVerifiedArtifacts: vi.fn(async () => undefined),
+      remove: vi.fn(async () => undefined),
+    };
+    const runtime = createOssBrowserInferenceRuntime(fakeDeps({
+      store,
+      discover: () => new Promise<boolean>(() => undefined),
+    }));
+
+    // This awaits cache inspection only. A mutable registry must not become a prerequisite for
+    // an already-admitted local model, including after an offline reload.
+    await expect(runtime.listTargets()).resolves.toEqual([]);
+    await runtime.modelCatalog!.activate("efficient-sam-ti");
+    await expect(runtime.listTargets()).resolves.toHaveLength(1);
+  });
+
   it("lists the target and no acquisitions after acquiring", async () => {
     const deps = fakeDeps();
     const runtime = createOssBrowserInferenceRuntime(deps);
-    await runtime.listAcquisitions?.()[0]!.acquire();
+    await (await acquisition(runtime)).acquire();
     expect(await runtime.listTargets()).toHaveLength(1);
     expect(runtime.listAcquisitions?.()).toEqual([]);
     expect(deps.acquire).toHaveBeenCalledTimes(1);
@@ -41,28 +114,29 @@ describe("createOssBrowserInferenceRuntime", () => {
   it("leaves the model unacquired (retryable) when acquire() rejects", async () => {
     const deps = fakeDeps({ acquire: () => Promise.reject(new Error("network down")) });
     const runtime = createOssBrowserInferenceRuntime(deps);
-    await expect(runtime.listAcquisitions?.()[0]!.acquire()).rejects.toThrow("network down");
+    await expect((await acquisition(runtime)).acquire()).rejects.toThrow("network down");
     expect(await runtime.listTargets()).toEqual([]);
     expect(runtime.listAcquisitions?.()).toHaveLength(1);
   });
 
   it("dedupes a second acquire() call while the first is still in flight", async () => {
-    let resolveAcquire!: (value: { encoder: Uint8Array; decoder: Uint8Array }) => void;
+    let resolveAcquire!: (value: BrowserModelArtifacts) => void;
     const deps = fakeDeps({ acquire: () => new Promise((resolve) => (resolveAcquire = resolve)) });
     const runtime = createOssBrowserInferenceRuntime(deps);
-    const first = runtime.listAcquisitions?.()[0]!.acquire();
-    const second = runtime.listAcquisitions?.()[0]!.acquire();
+    const available = await acquisition(runtime);
+    const first = available.acquire();
+    const second = available.acquire();
     resolveAcquire({ encoder: new Uint8Array(1), decoder: new Uint8Array(1) });
     await Promise.all([first, second]);
     expect(deps.acquire).toHaveBeenCalledTimes(1);
   });
 
-  it("carries the pinned revision in the acquired target's modelRef", async () => {
+  it("preserves the Phase F annotation model_ref for the acquired target", async () => {
     const deps = fakeDeps();
     const runtime = createOssBrowserInferenceRuntime(deps);
-    await runtime.listAcquisitions?.()[0]!.acquire();
+    await (await acquisition(runtime)).acquire();
     const targets = await runtime.listTargets();
-    expect(targets[0]!.modelRef).toBe(`efficient-sam-ti@${EFFICIENT_SAM_TI_REVISION}`);
+    expect(targets[0]!.modelRef).toBe("efficient-sam-ti@b19782d049c0-843761ca46f4");
   });
 
   it("throws from executorFor before any acquisition has succeeded", () => {
@@ -88,7 +162,7 @@ describe("createOssBrowserInferenceRuntime", () => {
       const deps = fakeDeps({ ready: () => Promise.reject(new Error("graph load failed")) });
       const runtime = createOssBrowserInferenceRuntime(deps);
 
-      await expect(runtime.listAcquisitions?.()[0]!.acquire()).rejects.toThrow("graph load failed");
+      await expect((await acquisition(runtime)).acquire()).rejects.toThrow("graph load failed");
 
       expect(await runtime.listTargets()).toEqual([]);
       expect(runtime.listAcquisitions?.()).toHaveLength(1);
@@ -100,7 +174,7 @@ describe("createOssBrowserInferenceRuntime", () => {
   describe("one encode per asset survives composition", () => {
     it("hands out the same executor on every executorFor call", async () => {
       const runtime = createOssBrowserInferenceRuntime(fakeDeps());
-      await runtime.listAcquisitions?.()[0]!.acquire();
+      await (await acquisition(runtime)).acquire();
       expect(runtime.executorFor("efficient-sam-ti")).toBe(runtime.executorFor("efficient-sam-ti"));
     });
 
@@ -113,7 +187,7 @@ describe("createOssBrowserInferenceRuntime", () => {
       // refinements", proved where the composition actually happens.
       const deps = fakeDeps();
       const runtime = createOssBrowserInferenceRuntime(deps);
-      await runtime.listAcquisitions?.()[0]!.acquire();
+      await (await acquisition(runtime)).acquire();
 
       const rgb = new Uint8Array(4 * 4 * 3);
       runtime.setActiveAsset?.({
@@ -132,9 +206,11 @@ describe("createOssBrowserInferenceRuntime", () => {
         adjustments: { tolerance: 2 },
       };
 
-      await runtime.executorFor("efficient-sam-ti").suggest(request);
+      const first = await runtime.executorFor("efficient-sam-ti").suggest(request);
       await runtime.executorFor("efficient-sam-ti").suggest(request);
 
+      // This is the exact field the annotator copies into accepted model provenance.
+      expect(first.model_ref).toBe("efficient-sam-ti@b19782d049c0-843761ca46f4");
       expect(deps.prepareImage).toHaveBeenCalledTimes(1);
     });
   });

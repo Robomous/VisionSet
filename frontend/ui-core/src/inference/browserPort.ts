@@ -15,10 +15,10 @@
  * mechanism, because a host that answers these two questions is the whole of what the UI needs
  * and everything else would be this package guessing at an implementation it does not own.
  *
- * It is an *execution* contract, not a catalog: it says what can answer now, and says nothing
- * about what could be obtained. Finding and acquiring a model is a question about things that
- * cannot answer yet, and it is answered elsewhere, later, by whatever seam the work that needs
- * it earns.
+ * The execution members remain narrower than the optional catalog: `listTargets()` says what
+ * can answer now, while `modelCatalog` says what this host can acquire, activate, or remove.
+ * Keeping those answers separate prevents a downloaded-but-not-running model from becoming a
+ * target a click cannot actually use.
  */
 import type { RgbPixels } from "@visionset/annotator";
 import type { SuggestionExecutor } from "./suggestionExecutor.js";
@@ -67,6 +67,46 @@ export interface BrowserModelAcquisition {
   acquire(options?: { readonly signal?: AbortSignal }): Promise<void>;
 }
 
+export type BrowserModelCatalogState =
+  | "available"
+  | "downloading"
+  | "installed"
+  | "activating"
+  | "ready"
+  | "failed";
+
+export interface BrowserModelCatalogEntry {
+  readonly id: string;
+  readonly label: string;
+  readonly modelRef: string;
+  readonly revision: string;
+  readonly bytes: number;
+  readonly license: string;
+  readonly source: { readonly label: string; readonly href: string };
+  readonly state: BrowserModelCatalogState;
+  /**
+   * `session` means verified bytes are usable now but were not saved persistently. `unknown`
+   * means an operation could not inspect or clean browser storage, so the host must leave
+   * removal available rather than claiming no bytes remain.
+   */
+  readonly storage: "none" | "persistent" | "session" | "unknown";
+  readonly error?: string;
+  /** Non-blocking metadata problem; verified local bytes may still be usable. */
+  readonly warning?: string;
+}
+
+/** A host-owned catalog. Remote metadata is data; implementations never execute values from it. */
+export interface BrowserModelCatalog {
+  /** Stable by identity until a subscribed change is published; suitable for useSyncExternalStore. */
+  snapshot(): readonly BrowserModelCatalogEntry[];
+  subscribe(listener: () => void): () => void;
+  /** Whether this build admits an ID, including while registry discovery is still pending. */
+  isKnown(id: string): boolean;
+  acquire(id: string, options?: { readonly signal?: AbortSignal }): Promise<void>;
+  activate(id: string, options?: { readonly signal?: AbortSignal }): Promise<void>;
+  remove(id: string): Promise<void>;
+}
+
 /**
  * Which kind of thing answers a suggestion now: a workspace connection, or a browser
  * target. Never persisted as an `InferenceConnection` — a browser target answers
@@ -88,6 +128,8 @@ export interface VisionSetBrowserInferenceRuntime {
   listTargets(): Promise<readonly BrowserSuggestionTarget[]>;
   /** How to ask one of them. The same contract the server path answers through. */
   executorFor(targetId: string): SuggestionExecutor;
+  /** Reactive discovery/acquisition state. Additive: Phase F hosts may omit it. */
+  readonly modelCatalog?: BrowserModelCatalog;
   /** Models not yet ready, each with its own explicit `acquire()`. Absent hosts offer none. */
   listAcquisitions?(): readonly BrowserModelAcquisition[];
   /** The displayed asset, or `null` between assets. Feeds the executor's race-safety checks. */

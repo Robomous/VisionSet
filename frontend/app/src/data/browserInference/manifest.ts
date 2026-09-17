@@ -4,11 +4,16 @@
  * Self-hosted deployments override VITE_MODEL_CDN_BASE_URL to point at their own mirror
  * of this same manifest layout.
  */
+import { EFFICIENT_SAM_TI_ADMISSION } from "./admissionCatalog.js";
+import { validateManifestAgainstAdmission } from "./registryClient.js";
+
 export const MODEL_CDN_BASE_URL: string = (
   (import.meta.env["VITE_MODEL_CDN_BASE_URL"] as string | undefined) ?? "https://models.robomous.ai"
 ).replace(/\/+$/, "");
 
-export const EFFICIENT_SAM_TI_REVISION = "b19782d049c0-843761ca46f4";
+export const MODEL_REGISTRY_URL = `${MODEL_CDN_BASE_URL}/registry/v1.json`;
+
+export const EFFICIENT_SAM_TI_REVISION = EFFICIENT_SAM_TI_ADMISSION.revision;
 
 /**
  * Shared by the manifest URL and every artifact URL, so the CDN's directory layout
@@ -19,17 +24,25 @@ export const EFFICIENT_SAM_TI_BASE_URL = `${MODEL_CDN_BASE_URL}/models/efficient
 
 export const EFFICIENT_SAM_TI_MANIFEST_URL = `${EFFICIENT_SAM_TI_BASE_URL}/manifest.json`;
 
-/** Verified 2026-09-16 against the live models.robomous.ai release — see the design doc §5. */
-export const EFFICIENT_SAM_TI_EXPECTED = {
-  encoder: { sha256: "b19782d049c09a8f1cc36ccc6029264ca23c8ac35e6379fd9ef9f1bc6d81e7f2", bytes: 24_799_777 },
-  decoder: { sha256: "843761ca46f4aa00b09fdcf0c94271321f76eece092a744296c742d682a86172", bytes: 16_501_901 },
-} as const;
+/** Phase F compatibility view; the build admission record is the single trust anchor. */
+export const EFFICIENT_SAM_TI_EXPECTED = Object.fromEntries(
+  EFFICIENT_SAM_TI_ADMISSION.artifacts.map((artifact) => [
+    artifact.role,
+    { sha256: artifact.sha256, bytes: artifact.bytes },
+  ]),
+) as Record<"encoder" | "decoder", { readonly sha256: string; readonly bytes: number }>;
+
+/** Admitted filenames used to bind the actual artifact request to the build's trust record. */
+export const EFFICIENT_SAM_TI_ARTIFACT_PATHS = Object.fromEntries(
+  EFFICIENT_SAM_TI_ADMISSION.artifacts.map((artifact) => [artifact.role, artifact.path]),
+) as Record<"encoder" | "decoder", string>;
 
 /**
  * Mirrors the real, already-deployed manifest shape (nested under `artifacts`,
  * with each `path` a bare filename relative to the manifest's own directory) — not
- * an assumed flat shape. Only `path` is read from this; `bytes`/`sha256` are never
- * trusted from the manifest itself (see `EFFICIENT_SAM_TI_EXPECTED`).
+ * an assumed flat shape. Before an acquisition may use it, every supported field
+ * is validated against the build admission record. The admission record remains
+ * the integrity anchor for the artifact verification that follows.
  */
 export interface EfficientSamManifest {
   readonly artifacts: {
@@ -55,5 +68,6 @@ export async function fetchEfficientSamManifest(signal?: AbortSignal): Promise<E
   if (!response.ok) throw new Error(`manifest fetch failed: ${response.status} ${response.statusText}`);
   const parsed: unknown = await response.json();
   assertManifestShape(parsed);
+  validateManifestAgainstAdmission(parsed, EFFICIENT_SAM_TI_ADMISSION);
   return parsed;
 }
