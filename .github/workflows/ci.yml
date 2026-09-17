@@ -126,6 +126,7 @@ jobs:
         if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true'
         uses: astral-sh/setup-uv@v7
         with:
+          version: "0.12.3"
           enable-cache: true
 
       # `--locked`, not a bare `uv sync`, and it does two jobs. It refuses to
@@ -217,6 +218,7 @@ jobs:
         if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true'
         uses: astral-sh/setup-uv@v7
         with:
+          version: "0.12.3"
           enable-cache: true
 
       - name: Sync environment
@@ -548,6 +550,7 @@ jobs:
         if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true' || needs.changes.outputs.frontend == 'true'
         uses: astral-sh/setup-uv@v7
         with:
+          version: "0.12.3"
           enable-cache: true
 
       - name: Sync environment
@@ -641,6 +644,7 @@ jobs:
         if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true' || needs.changes.outputs.frontend == 'true'
         uses: astral-sh/setup-uv@v7
         with:
+          version: "0.12.3"
           enable-cache: true
 
       - name: Install
@@ -715,6 +719,7 @@ jobs:
         if: needs.wheel.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.python == 'true' || needs.changes.outputs.frontend == 'true')
         uses: astral-sh/setup-uv@v7
         with:
+          version: "0.12.3"
           enable-cache: true
 
       - name: Download the distribution the `wheel` job already built
@@ -776,6 +781,7 @@ jobs:
         if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true' || needs.changes.outputs.frontend == 'true'
         uses: astral-sh/setup-uv@v7
         with:
+          version: "0.12.3"
           enable-cache: true
 
       - name: Install
@@ -882,6 +888,7 @@ jobs:
         if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true'
         uses: astral-sh/setup-uv@v7
         with:
+          version: "0.12.3"
           enable-cache: true
 
       - name: Sync environment with the local-inference extra
@@ -948,6 +955,7 @@ jobs:
         if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true'
         uses: astral-sh/setup-uv@v7
         with:
+          version: "0.12.3"
           enable-cache: true
 
       - name: Sync environment with the format groups
@@ -1017,6 +1025,7 @@ jobs:
         if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
         uses: astral-sh/setup-uv@v7
         with:
+          version: "0.12.3"
           enable-cache: true
 
       # The sparse upstream checkout and the checkpoint download, never the exported
@@ -1031,9 +1040,8 @@ jobs:
 
       # `--group browser-models` is repeated on every `uv run` below rather than left to
       # this sync. `uv run` performs its own sync first, and whether that prunes a group the
-      # command did not name is behaviour this workflow should not have to know: `setup-uv`
-      # is not version-pinned, so the uv deciding it is whichever one is current on the day.
-      # Naming the group each time costs nothing and makes the step say what it needs.
+      # command did not name is behaviour this workflow should not have to know. Naming the
+      # group each time costs nothing and makes the step say what it needs.
       - name: Sync environment with the browser-models group
         if: needs.changes.result != 'success' || needs.changes.outputs['browser-models'] == 'true'
         run: uv sync --locked --group browser-models
@@ -1238,6 +1246,7 @@ jobs:
         if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true'
         uses: astral-sh/setup-uv@v7
         with:
+          version: "0.12.3"
           enable-cache: true
 
       - name: Sync environment
