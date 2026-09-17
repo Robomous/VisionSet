@@ -240,6 +240,18 @@ describe("createBrowserModelCatalog", () => {
     expect(catalog.isKnown(ADMISSION.id)).toBe(true);
   });
 
+  it("does not strand an admitted preference when a valid registry omits its release", async () => {
+    const { catalog } = harness({ discover: async () => false });
+    await settles(catalog);
+
+    expect(catalog.snapshot()[0]).toMatchObject({
+      state: "failed",
+      storage: "none",
+      error: expect.stringMatching(/not available.*registry/i),
+    });
+    expect(catalog.isKnown(ADMISSION.id)).toBe(true);
+  });
+
   it("knows an admitted but uninstalled preference without fabricating a ready target", async () => {
     const { catalog } = harness();
     expect(catalog.isKnown(ADMISSION.id)).toBe(true);

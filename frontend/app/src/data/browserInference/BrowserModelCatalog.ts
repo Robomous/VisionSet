@@ -121,12 +121,15 @@ export function createBrowserModelCatalog(deps: CatalogDeps): OssBrowserModelCat
       update(record, { visible: true, state: "installed", storage: "persistent", error: undefined });
     } else if (discovered) {
       update(record, { visible: true, state: "available", storage: "none", error: undefined });
-    } else if (registryResult.status === "rejected") {
+    } else {
       update(record, {
         visible: true,
         state: "failed",
         storage: "none",
-        error: message(registryResult.reason),
+        error:
+          registryResult.status === "rejected"
+            ? message(registryResult.reason)
+            : `${record.admission.label} is not available from the configured registry`,
       });
     }
   }
