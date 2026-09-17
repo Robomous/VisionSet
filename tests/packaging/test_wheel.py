@@ -68,6 +68,20 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 #: in a directory listing.
 MAX_WHEEL_BYTES = 2 * 1024 * 1024
 
+#: The one deliberately enormous thing inside, measured separately so the guard
+#: above keeps its teeth.
+#:
+#: `_static/ort/` is ONNX Runtime's WebAssembly runtime, ~25 MB uncompressed and
+#: ~6.4 MB deflated, and it has to be in the wheel: browser inference runs the
+#: model on the user's machine, and the wheel is the only thing that serves the
+#: app. Folding it into `MAX_WHEEL_BYTES` would have meant raising that ceiling
+#: past 8 MB, which is the same as deleting it — the accidents it exists to catch
+#: are megabyte-sized. So the rest of the wheel is still held to 2 MB and this
+#: payload is bounded on its own, where a version bump that doubles it is a
+#: sentence about ONNX Runtime rather than a mystery about the wheel.
+ORT_PREFIX = "visionset/_static/ort/"
+MAX_ORT_BYTES = 10 * 1024 * 1024
+
 #: Nothing matching these may be inside. Each is something that has ended up in
 #: somebody's wheel: a dependency tree, a test corpus, a virtualenv, a workspace.
 FORBIDDEN = (
@@ -80,7 +94,8 @@ FORBIDDEN = (
 )
 
 #: Media suffixes. `_static/` legitimately holds none today — the app ships as
-#: HTML, CSS and JavaScript — so any of these is something nobody meant to ship.
+#: HTML, CSS, JavaScript and one WebAssembly runtime — so any of these is
+#: something nobody meant to ship.
 FORBIDDEN_SUFFIXES = (".mp4", ".mov", ".avi", ".jpg", ".jpeg", ".tiff", ".bmp")
 
 #: How long the freshly installed server gets to bind a socket.
@@ -139,6 +154,21 @@ def test_the_compiled_app_travels_inside_the_wheel(names: list[str]) -> None:
     assert any(name.startswith("visionset/_static/assets/") for name in names)
     assert any(name.endswith(".js") for name in names)
     assert any(name.endswith(".css") for name in names)
+
+
+def test_the_browser_inference_runtime_travels_inside_the_wheel(names: list[str]) -> None:
+    """The same failure as above, one directory over and with no 404 to read.
+
+    ONNX Runtime's WebAssembly runtime is fetched by the inference worker at the
+    moment a user first asks this device for a suggestion — not at page load — so a
+    wheel without it serves an app that looks entirely healthy until that click,
+    and then fails inside a worker where the SPA fallback has already answered the
+    404 with HTML. `frontend/app/vite.config.ts` copies the directory out of
+    `@visionset/browser-inference`'s build output for exactly this reason, and
+    nothing else in the suite would notice if that plugin were removed.
+    """
+    assert any(name.startswith(ORT_PREFIX) for name in names)
+    assert any(name.endswith(".wasm") for name in names)
 
 
 def test_the_bundle_was_built_for_the_ui_prefix(names: list[str]) -> None:
@@ -202,9 +232,29 @@ def test_nothing_enormous_came_along_for_the_ride(names: list[str]) -> None:
 
 
 def test_the_wheel_stays_under_its_ceiling() -> None:
-    """A guard, not a budget. See `MAX_WHEEL_BYTES`."""
-    size = WHEEL.stat().st_size
-    assert size < MAX_WHEEL_BYTES, f"{WHEEL.name} is {size} bytes"
+    """A guard, not a budget. See `MAX_WHEEL_BYTES`.
+
+    Everything but the ORT runtime, which has its own ceiling — see `MAX_ORT_BYTES`
+    for why the two are counted apart.
+    """
+    with zipfile.ZipFile(WHEEL) as archive:
+        size = sum(
+            entry.compress_size
+            for entry in archive.infolist()
+            if not entry.filename.startswith(ORT_PREFIX)
+        )
+    assert size < MAX_WHEEL_BYTES, f"{WHEEL.name} is {size} bytes without the ORT runtime"
+
+
+def test_the_ort_runtime_stays_under_its_own_ceiling() -> None:
+    """See `MAX_ORT_BYTES`."""
+    with zipfile.ZipFile(WHEEL) as archive:
+        size = sum(
+            entry.compress_size
+            for entry in archive.infolist()
+            if entry.filename.startswith(ORT_PREFIX)
+        )
+    assert size < MAX_ORT_BYTES, f"{ORT_PREFIX} is {size} bytes"
 
 
 def test_no_source_maps_ship(names: list[str]) -> None:

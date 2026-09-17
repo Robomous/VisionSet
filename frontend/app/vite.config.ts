@@ -37,7 +37,11 @@ function ortAssets(): Plugin {
 
   let files: readonly string[];
   try {
-    files = readdirSync(directory);
+    // `withFileTypes` so a subdirectory ever appearing here fails as the empty case
+    // below rather than as an opaque `EISDIR` from `readFile` half a build later.
+    files = readdirSync(directory, { withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name);
   } catch (cause) {
     throw new Error(
       `browser-inference's ORT assets are missing from ${directory}. ` +
@@ -60,7 +64,10 @@ function ortAssets(): Plugin {
           return;
         }
         response.setHeader("Content-Type", name.endsWith(".wasm") ? "application/wasm" : "text/javascript");
-        createReadStream(join(directory, name)).pipe(response);
+        // `tsup` builds with `clean: true`, so rebuilding browser-inference while this
+        // server is up deletes these files under an in-flight request. Unhandled, that
+        // stream's `error` event takes down the whole dev server.
+        createReadStream(join(directory, name)).on("error", next).pipe(response);
       });
     },
     async generateBundle() {
