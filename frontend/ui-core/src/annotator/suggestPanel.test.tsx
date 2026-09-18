@@ -243,12 +243,12 @@ describe("what the panel says while the tool is working", () => {
 
     await userEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(toggle.getAttribute("aria-label")).toBe("Show suggest panel");
+    expect(toggle.getAttribute("aria-label")).toBe("Show suggestion panel");
     expect(content?.hasAttribute("hidden")).toBe(true);
 
     await userEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(toggle.getAttribute("aria-label")).toBe("Hide suggest panel");
+    expect(toggle.getAttribute("aria-label")).toBe("Hide suggestion panel");
     expect(content?.hasAttribute("hidden")).toBe(false);
   });
 
@@ -259,6 +259,9 @@ describe("what the panel says while the tool is working", () => {
 
     await userEvent.click(screen.getByTestId("suggest-panel-collapse"));
     expect(screen.getByTestId("suggest-shown-reduced")).toBeTruthy();
+    expect(screen.getByTestId("suggest-panel-collapse").getAttribute("aria-label")).toBe(
+      "Expand suggestion panel",
+    );
     expect(screen.getByText("Click again to refine it — alt-click to take a part away.")).toBeTruthy();
 
     await userEvent.click(screen.getByTestId("suggest-accept"));

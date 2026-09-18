@@ -39,11 +39,15 @@ async function expectContainedBy(notice: Locator, control: Locator): Promise<voi
 test("a minimal suggest notice contains its reopen control after reducing and restoring", async ({ page }) => {
   await arm(page);
   const notice = page.getByTestId("suggest-panel");
+  const icon = page.getByTestId("suggest-panel-icon");
   const toggle = page.getByTestId("suggest-panel-collapse");
   const expanded = await notice.boundingBox();
 
+  await page.getByTestId("annotator-root").focus();
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("annotator-root")).toBeFocused();
+  await expectContainedBy(notice, icon);
   await expectContainedBy(notice, toggle);
   const minimal = await notice.boundingBox();
   expect(expanded).not.toBeNull();
@@ -56,9 +60,22 @@ test("a minimal suggest notice contains its reopen control after reducing and re
   await expectContainedBy(notice, toggle);
 });
 
+test("minimal notice controls remain contained at the supported narrow viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 768, height: 720 });
+  await arm(page);
+  const notice = page.getByTestId("suggest-panel");
+  const icon = page.getByTestId("suggest-panel-icon");
+  const toggle = page.getByTestId("suggest-panel-collapse");
+
+  await toggle.click();
+  await expectContainedBy(notice, icon);
+  await expectContainedBy(notice, toggle);
+});
+
 test("a reduced proposal keeps its decisions contained through restore", async ({ page }) => {
   await showProposal(page);
   const notice = page.getByTestId("suggest-panel");
+  const icon = page.getByTestId("suggest-panel-icon");
   const toggle = page.getByTestId("suggest-panel-collapse");
   const expanded = await notice.boundingBox();
 
@@ -68,6 +85,7 @@ test("a reduced proposal keeps its decisions contained through restore", async (
   await expect(accept).toBeVisible();
   await expect(discard).toBeVisible();
   await expect(page.getByText("Click again to refine it — alt-click to take a part away.")).toBeVisible();
+  await expectContainedBy(notice, icon);
   await expectContainedBy(notice, toggle);
   await expectContainedBy(notice, accept);
   await expectContainedBy(notice, discard);

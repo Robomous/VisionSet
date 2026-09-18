@@ -111,6 +111,11 @@ export interface EditorNoticeProps {
   readonly title?: string;
 }
 
+/** Keep editor shortcuts on the annotator root after a pointer activation. */
+function preserveCanvasFocus(event: { preventDefault: () => void }): void {
+  event.preventDefault();
+}
+
 export function EditorNotice({
   testId,
   tone,
@@ -124,6 +129,13 @@ export function EditorNotice({
   const contentId = useId();
   const reduced = collapsed && reducedContent !== undefined;
   const minimal = collapsed && !reduced;
+  const toggleLabel = collapsed
+    ? reduced
+      ? "Expand suggestion panel"
+      : "Show suggestion panel"
+    : reducedContent === undefined
+      ? "Hide suggestion panel"
+      : "Reduce suggestion panel";
   return (
     <div
       data-testid={testId}
@@ -141,6 +153,7 @@ export function EditorNotice({
       <span
         className={`mt-0.5 shrink-0 ${tone === "warn" ? "text-destructive" : "text-muted-foreground"}`}
         aria-hidden="true"
+        data-testid={`${testId}-icon`}
       >
         {icon}
       </span>
@@ -166,8 +179,9 @@ export function EditorNotice({
           data-testid={`${testId}-collapse`}
           aria-expanded={!collapsed}
           aria-controls={contentId}
-          aria-label={collapsed ? "Show suggest panel" : "Hide suggest panel"}
-          title={collapsed ? "Show suggest panel" : "Hide suggest panel"}
+          aria-label={toggleLabel}
+          title={toggleLabel}
+          onMouseDown={preserveCanvasFocus}
           onClick={() => setCollapsed((open) => !open)}
         >
           {collapsed ? (
