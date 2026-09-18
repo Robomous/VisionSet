@@ -123,33 +123,36 @@ export function EditorNotice({
   const [collapsed, setCollapsed] = useState(false);
   const contentId = useId();
   const reduced = collapsed && reducedContent !== undefined;
+  const minimal = collapsed && !reduced;
   return (
     <div
       data-testid={testId}
       data-tone={tone}
       role="status"
       {...(title === undefined ? {} : { title })}
-      className={`pointer-events-auto relative rounded-lg border p-3 text-xs shadow-lg ${
-        collapsed ? (reduced ? "w-auto" : "w-16") : "w-full"
+      className={`pointer-events-auto grid items-start gap-2 rounded-lg border p-3 text-xs shadow-lg ${
+        minimal ? "w-auto grid-cols-[auto_auto]" : "grid-cols-[auto_minmax(0,1fr)_auto]"
+      } ${
+        collapsed ? "w-auto" : "w-full"
       } ${
         tone === "warn" ? "border-destructive/40 bg-destructive/5" : "border-border bg-card"
       }`}
     >
       <span
-        className={`absolute left-3 top-3.5 ${tone === "warn" ? "text-destructive" : "text-muted-foreground"}`}
+        className={`mt-0.5 shrink-0 ${tone === "warn" ? "text-destructive" : "text-muted-foreground"}`}
         aria-hidden="true"
       >
         {icon}
       </span>
       {/*
-        The icon and control are positioned, not flex siblings: the content owns
-        the notice's width while its padding reserves both fixed affordances.
-        That keeps the control at the actual top-right corner rather than after a
-        short line of copy.
+        The three-column layout is explicit: icon, content, control. The middle
+        track absorbs the full width when expanded, so the control is truly at
+        the right edge; reduced and minimal forms size themselves to their live
+        controls instead of depending on an absent content column.
       */}
       <div
         id={contentId}
-        className="flex min-w-0 flex-col gap-1 pl-6 pr-8 wrap-anywhere"
+        className="flex min-w-0 flex-col gap-1 wrap-anywhere"
         hidden={collapsible && collapsed && !reduced}
       >
         {reduced ? reducedContent : children}
@@ -159,7 +162,7 @@ export function EditorNotice({
           type="button"
           variant="ghost"
           size="icon-xs"
-          className="absolute right-3 top-3"
+          className="self-start"
           data-testid={`${testId}-collapse`}
           aria-expanded={!collapsed}
           aria-controls={contentId}
