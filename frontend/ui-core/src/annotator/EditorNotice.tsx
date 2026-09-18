@@ -48,7 +48,9 @@
  * desktop; see `MAX_WIDTH` below.
  */
 
-import type { JSX, ReactNode } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { Button } from "@robomous/ui-core";
+import { useId, useState, type JSX, type ReactNode } from "react";
 
 /**
  * The surface's width, stated here because the number is a measurement rather
@@ -96,6 +98,8 @@ export interface EditorNoticeProps {
   readonly tone: "calm" | "warn";
   readonly icon: ReactNode;
   readonly children: ReactNode;
+  /** Adds a compact, open-by-default toggle for notices that can obstruct the canvas. */
+  readonly collapsible?: boolean;
   /** The kernel's identifier, where a bug report can quote it. Never the message. */
   readonly title?: string;
 }
@@ -106,14 +110,19 @@ export function EditorNotice({
   icon,
   children,
   title,
+  collapsible = false,
 }: EditorNoticeProps): JSX.Element {
+  const [collapsed, setCollapsed] = useState(false);
+  const contentId = useId();
   return (
     <div
       data-testid={testId}
       data-tone={tone}
       role="status"
       {...(title === undefined ? {} : { title })}
-      className={`pointer-events-auto flex w-full gap-2 rounded-lg border p-3 text-xs shadow-lg ${
+      className={`pointer-events-auto flex gap-2 rounded-lg border p-3 text-xs shadow-lg ${
+        collapsed ? "w-auto items-center" : "w-full"
+      } ${
         tone === "warn" ? "border-destructive/40 bg-destructive/5" : "border-border bg-card"
       }`}
     >
@@ -126,7 +135,32 @@ export function EditorNotice({
       {/* `min-w-0` lets the column shrink below its content's intrinsic width,
           which is the half of the wrap rule flexbox owns — without it a long
           token widens the flex item instead of breaking. */}
-      <div className="flex min-w-0 flex-col gap-1 wrap-anywhere">{children}</div>
+      <div
+        id={contentId}
+        className="flex min-w-0 flex-col gap-1 wrap-anywhere"
+        hidden={collapsible && collapsed}
+      >
+        {children}
+      </div>
+      {collapsible && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          data-testid={`${testId}-collapse`}
+          aria-expanded={!collapsed}
+          aria-controls={contentId}
+          aria-label={collapsed ? "Show suggest panel" : "Hide suggest panel"}
+          title={collapsed ? "Show suggest panel" : "Hide suggest panel"}
+          onClick={() => setCollapsed((open) => !open)}
+        >
+          {collapsed ? (
+            <ChevronRight className="size-4" aria-hidden="true" />
+          ) : (
+            <ChevronDown className="size-4" aria-hidden="true" />
+          )}
+        </Button>
+      )}
     </div>
   );
 }

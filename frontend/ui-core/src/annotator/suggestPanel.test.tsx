@@ -233,6 +233,25 @@ describe("what the panel says while the tool is working", () => {
     expect(screen.getByTestId("suggest-panel").textContent).toContain("vehicle");
   });
 
+  it("can collapse the notice to clear the canvas and reopen it in place", async () => {
+    render(mount());
+
+    const toggle = screen.getByTestId("suggest-panel-collapse");
+    const content = screen.getByTestId("suggest-idle").parentElement;
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(content?.hasAttribute("hidden")).toBe(false);
+
+    await userEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.getAttribute("aria-label")).toBe("Show suggest panel");
+    expect(content?.hasAttribute("hidden")).toBe(true);
+
+    await userEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(toggle.getAttribute("aria-label")).toBe("Hide suggest panel");
+    expect(content?.hasAttribute("hidden")).toBe(false);
+  });
+
   it("says a request is in flight, in the async vocabulary and not a new spinner", () => {
     render(mount({ session: asked() }));
     expect(screen.getByTestId("suggest-asking")).toBeTruthy();

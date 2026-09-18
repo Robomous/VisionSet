@@ -257,7 +257,7 @@ export function SuggestPanel({
   */
   if (isParked(session)) {
     return (
-      <EditorNotice testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
+      <EditorNotice collapsible testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
         <p className="font-medium text-foreground" data-testid="suggest-parked">
           {heldClass === null
             ? "Nothing selected to suggest for"
@@ -301,6 +301,7 @@ export function SuggestPanel({
     const copy = BLOCKER_COPY[blocker];
     return (
       <EditorNotice
+        collapsible
         testId="suggest-panel"
         tone={copy.tone}
         icon={
@@ -318,7 +319,7 @@ export function SuggestPanel({
 
   if (session.status === "refused") {
     return (
-      <EditorNotice testId="suggest-panel" tone="warn" icon={<TriangleAlert className="size-4" />}>
+      <EditorNotice collapsible testId="suggest-panel" tone="warn" icon={<TriangleAlert className="size-4" />}>
         <p className="font-medium text-foreground">That suggestion could not be made</p>
         {/* The server's sentence, verbatim. It is the one that carries the
             install command when the cause is a missing extra. */}
@@ -339,7 +340,7 @@ export function SuggestPanel({
   // lives in `usePendingIndicator` rather than here.
   if (session.status === "asking") {
     return (
-      <EditorNotice testId="suggest-panel" tone="calm" icon={<Loader2 className="size-4 animate-spin" />}>
+      <EditorNotice collapsible testId="suggest-panel" tone="calm" icon={<Loader2 className="size-4 animate-spin" />}>
         <p className="font-medium text-foreground" data-testid="suggest-asking">
           Looking at that…
         </p>
@@ -358,7 +359,7 @@ export function SuggestPanel({
 
   if (session.status === "none") {
     return (
-      <EditorNotice testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
+      <EditorNotice collapsible testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
         <p className="font-medium text-foreground" data-testid="suggest-none">
           Nothing to suggest there
         </p>
@@ -399,7 +400,7 @@ export function SuggestPanel({
   */
   if (isAcceptable(session)) {
     return (
-      <EditorNotice testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
+      <EditorNotice collapsible testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
         <p className="font-medium text-foreground" data-testid="suggest-shown">
           A shape for “{session.labelClass}”
         </p>
@@ -453,7 +454,7 @@ export function SuggestPanel({
     activeBrowserModel?.state === "activating";
 
   return (
-    <EditorNotice testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
+    <EditorNotice collapsible testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
       {!serverTabBlocked &&
         (browserTabUnacquired ? (
           <>
