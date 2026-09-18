@@ -100,6 +100,13 @@ export interface EditorNoticeProps {
   readonly children: ReactNode;
   /** Adds a compact, open-by-default toggle for notices that can obstruct the canvas. */
   readonly collapsible?: boolean;
+  /**
+   * The essential controls that remain when a collapsible notice is reduced.
+   *
+   * A reduced notice clears most of the canvas without making an active decision
+   * unreachable.
+   */
+  readonly reducedContent?: ReactNode;
   /** The kernel's identifier, where a bug report can quote it. Never the message. */
   readonly title?: string;
 }
@@ -111,9 +118,11 @@ export function EditorNotice({
   children,
   title,
   collapsible = false,
+  reducedContent,
 }: EditorNoticeProps): JSX.Element {
   const [collapsed, setCollapsed] = useState(false);
   const contentId = useId();
+  const reduced = collapsed && reducedContent !== undefined;
   return (
     <div
       data-testid={testId}
@@ -138,9 +147,9 @@ export function EditorNotice({
       <div
         id={contentId}
         className="flex min-w-0 flex-col gap-1 wrap-anywhere"
-        hidden={collapsible && collapsed}
+        hidden={collapsible && collapsed && !reduced}
       >
-        {children}
+        {reduced ? reducedContent : children}
       </div>
       {collapsible && (
         <Button

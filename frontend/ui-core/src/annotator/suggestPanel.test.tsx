@@ -252,6 +252,20 @@ describe("what the panel says while the tool is working", () => {
     expect(content?.hasAttribute("hidden")).toBe(false);
   });
 
+  it("keeps accept and discard available while a shown suggestion is reduced", async () => {
+    const onAccept = vi.fn();
+    const onDiscard = vi.fn();
+    render(mount({ session: shown(), onAccept, onDiscard }));
+
+    await userEvent.click(screen.getByTestId("suggest-panel-collapse"));
+    expect(screen.getByTestId("suggest-shown-reduced")).toBeTruthy();
+
+    await userEvent.click(screen.getByTestId("suggest-accept"));
+    await userEvent.click(screen.getByTestId("suggest-discard"));
+    expect(onAccept).toHaveBeenCalledTimes(1);
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+  });
+
   it("says a request is in flight, in the async vocabulary and not a new spinner", () => {
     render(mount({ session: asked() }));
     expect(screen.getByTestId("suggest-asking")).toBeTruthy();

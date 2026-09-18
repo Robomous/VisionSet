@@ -400,24 +400,27 @@ export function SuggestPanel({
   */
   if (isAcceptable(session)) {
     return (
-      <EditorNotice collapsible testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
+      <EditorNotice
+        collapsible
+        testId="suggest-panel"
+        tone="calm"
+        icon={<Sparkles className="size-4" />}
+        reducedContent={
+          <>
+            <p className="font-medium text-foreground" data-testid="suggest-shown-reduced">
+              A shape for “{session.labelClass}”
+            </p>
+            <SuggestionActions onAccept={onAccept} onDiscard={onDiscard} reduced />
+          </>
+        }
+      >
         <p className="font-medium text-foreground" data-testid="suggest-shown">
           A shape for “{session.labelClass}”
         </p>
         <p className="text-muted-foreground">
           Click again to refine it — alt-click to take a part away.
         </p>
-        <div className="mt-1 flex gap-2">
-          <Button variant="default" size="sm" data-testid="suggest-accept" onClick={onAccept}>
-            <Check className="size-4" aria-hidden="true" />
-            Accept
-            <Chip>↵</Chip>
-          </Button>
-          <Button variant="ghost" size="sm" data-testid="suggest-discard" onClick={onDiscard}>
-            Discard
-            <Chip>Esc</Chip>
-          </Button>
-        </div>
+        <SuggestionActions onAccept={onAccept} onDiscard={onDiscard} />
         <Adjustments
           session={session}
           open={adjusting === true}
@@ -525,6 +528,31 @@ export function SuggestPanel({
         />
       )}
     </EditorNotice>
+  );
+}
+
+/** The proposal decisions remain reachable in the notice's reduced form. */
+function SuggestionActions({
+  onAccept,
+  onDiscard,
+  reduced = false,
+}: {
+  readonly onAccept: () => void;
+  readonly onDiscard: () => void;
+  readonly reduced?: boolean;
+}): JSX.Element {
+  return (
+    <div className={reduced ? "flex gap-2" : "mt-1 flex gap-2"}>
+      <Button variant="default" size="sm" data-testid="suggest-accept" onClick={onAccept}>
+        <Check className="size-4" aria-hidden="true" />
+        Accept
+        <Chip>↵</Chip>
+      </Button>
+      <Button variant="ghost" size="sm" data-testid="suggest-discard" onClick={onDiscard}>
+        Discard
+        <Chip>Esc</Chip>
+      </Button>
+    </div>
   );
 }
 
