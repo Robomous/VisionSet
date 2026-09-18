@@ -130,7 +130,7 @@ export function EditorNotice({
       role="status"
       {...(title === undefined ? {} : { title })}
       className={`pointer-events-auto flex gap-2 rounded-lg border p-3 text-xs shadow-lg ${
-        collapsed ? "w-auto items-center" : "w-full"
+        collapsed ? "w-auto items-start" : "w-full"
       } ${
         tone === "warn" ? "border-destructive/40 bg-destructive/5" : "border-border bg-card"
       }`}
