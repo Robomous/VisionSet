@@ -130,13 +130,13 @@ export function EditorNotice({
       role="status"
       {...(title === undefined ? {} : { title })}
       className={`pointer-events-auto flex gap-2 rounded-lg border p-3 text-xs shadow-lg ${
-        collapsed ? "w-auto items-start" : "w-full"
+        collapsed ? "w-auto" : "w-full"
       } ${
         tone === "warn" ? "border-destructive/40 bg-destructive/5" : "border-border bg-card"
       }`}
     >
       <span
-        className={`mt-0.5 shrink-0 ${tone === "warn" ? "text-destructive" : "text-muted-foreground"}`}
+        className={`mt-0.5 shrink-0 self-start ${tone === "warn" ? "text-destructive" : "text-muted-foreground"}`}
         aria-hidden="true"
       >
         {icon}
@@ -156,6 +156,7 @@ export function EditorNotice({
           type="button"
           variant="ghost"
           size="icon-xs"
+          className="self-start"
           data-testid={`${testId}-collapse`}
           aria-expanded={!collapsed}
           aria-controls={contentId}
