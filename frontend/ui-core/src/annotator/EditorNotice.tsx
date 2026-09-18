@@ -129,24 +129,27 @@ export function EditorNotice({
       data-tone={tone}
       role="status"
       {...(title === undefined ? {} : { title })}
-      className={`pointer-events-auto flex gap-2 rounded-lg border p-3 text-xs shadow-lg ${
-        collapsed ? "w-auto" : "w-full"
+      className={`pointer-events-auto relative rounded-lg border p-3 text-xs shadow-lg ${
+        collapsed ? (reduced ? "w-auto" : "w-16") : "w-full"
       } ${
         tone === "warn" ? "border-destructive/40 bg-destructive/5" : "border-border bg-card"
       }`}
     >
       <span
-        className={`mt-0.5 shrink-0 self-start ${tone === "warn" ? "text-destructive" : "text-muted-foreground"}`}
+        className={`absolute left-3 top-3.5 ${tone === "warn" ? "text-destructive" : "text-muted-foreground"}`}
         aria-hidden="true"
       >
         {icon}
       </span>
-      {/* `min-w-0` lets the column shrink below its content's intrinsic width,
-          which is the half of the wrap rule flexbox owns — without it a long
-          token widens the flex item instead of breaking. */}
+      {/*
+        The icon and control are positioned, not flex siblings: the content owns
+        the notice's width while its padding reserves both fixed affordances.
+        That keeps the control at the actual top-right corner rather than after a
+        short line of copy.
+      */}
       <div
         id={contentId}
-        className="flex min-w-0 flex-col gap-1 wrap-anywhere"
+        className="flex min-w-0 flex-col gap-1 pl-6 pr-8 wrap-anywhere"
         hidden={collapsible && collapsed && !reduced}
       >
         {reduced ? reducedContent : children}
@@ -156,7 +159,7 @@ export function EditorNotice({
           type="button"
           variant="ghost"
           size="icon-xs"
-          className="self-start"
+          className="absolute right-3 top-3"
           data-testid={`${testId}-collapse`}
           aria-expanded={!collapsed}
           aria-controls={contentId}
