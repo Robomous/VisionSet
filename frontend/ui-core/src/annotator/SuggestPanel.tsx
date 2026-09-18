@@ -216,6 +216,8 @@ const BLOCKER_COPY: Readonly<
   },
 };
 
+const REFINEMENT_GUIDANCE = "Click again to refine it — alt-click to take a part away.";
+
 export function SuggestPanel({
   session,
   heldClass,
@@ -257,7 +259,7 @@ export function SuggestPanel({
   */
   if (isParked(session)) {
     return (
-      <EditorNotice testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
+      <EditorNotice collapsible testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
         <p className="font-medium text-foreground" data-testid="suggest-parked">
           {heldClass === null
             ? "Nothing selected to suggest for"
@@ -301,6 +303,7 @@ export function SuggestPanel({
     const copy = BLOCKER_COPY[blocker];
     return (
       <EditorNotice
+        collapsible
         testId="suggest-panel"
         tone={copy.tone}
         icon={
@@ -318,7 +321,7 @@ export function SuggestPanel({
 
   if (session.status === "refused") {
     return (
-      <EditorNotice testId="suggest-panel" tone="warn" icon={<TriangleAlert className="size-4" />}>
+      <EditorNotice collapsible testId="suggest-panel" tone="warn" icon={<TriangleAlert className="size-4" />}>
         <p className="font-medium text-foreground">That suggestion could not be made</p>
         {/* The server's sentence, verbatim. It is the one that carries the
             install command when the cause is a missing extra. */}
@@ -339,7 +342,7 @@ export function SuggestPanel({
   // lives in `usePendingIndicator` rather than here.
   if (session.status === "asking") {
     return (
-      <EditorNotice testId="suggest-panel" tone="calm" icon={<Loader2 className="size-4 animate-spin" />}>
+      <EditorNotice collapsible testId="suggest-panel" tone="calm" icon={<Loader2 className="size-4 animate-spin" />}>
         <p className="font-medium text-foreground" data-testid="suggest-asking">
           Looking at that…
         </p>
@@ -358,7 +361,7 @@ export function SuggestPanel({
 
   if (session.status === "none") {
     return (
-      <EditorNotice testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
+      <EditorNotice collapsible testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
         <p className="font-medium text-foreground" data-testid="suggest-none">
           Nothing to suggest there
         </p>
@@ -399,24 +402,26 @@ export function SuggestPanel({
   */
   if (isAcceptable(session)) {
     return (
-      <EditorNotice testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
+      <EditorNotice
+        collapsible
+        testId="suggest-panel"
+        tone="calm"
+        icon={<Sparkles className="size-4" />}
+        reducedContent={
+          <>
+            <p className="font-medium text-foreground" data-testid="suggest-shown-reduced">
+              A shape for “{session.labelClass}”
+            </p>
+            <p className="text-muted-foreground">{REFINEMENT_GUIDANCE}</p>
+            <SuggestionActions onAccept={onAccept} onDiscard={onDiscard} reduced />
+          </>
+        }
+      >
         <p className="font-medium text-foreground" data-testid="suggest-shown">
           A shape for “{session.labelClass}”
         </p>
-        <p className="text-muted-foreground">
-          Click again to refine it — alt-click to take a part away.
-        </p>
-        <div className="mt-1 flex gap-2">
-          <Button variant="default" size="sm" data-testid="suggest-accept" onClick={onAccept}>
-            <Check className="size-4" aria-hidden="true" />
-            Accept
-            <Chip>↵</Chip>
-          </Button>
-          <Button variant="ghost" size="sm" data-testid="suggest-discard" onClick={onDiscard}>
-            Discard
-            <Chip>Esc</Chip>
-          </Button>
-        </div>
+        <p className="text-muted-foreground">{REFINEMENT_GUIDANCE}</p>
+        <SuggestionActions onAccept={onAccept} onDiscard={onDiscard} />
         <Adjustments
           session={session}
           open={adjusting === true}
@@ -453,7 +458,7 @@ export function SuggestPanel({
     activeBrowserModel?.state === "activating";
 
   return (
-    <EditorNotice testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
+    <EditorNotice collapsible testId="suggest-panel" tone="calm" icon={<Sparkles className="size-4" />}>
       {!serverTabBlocked &&
         (browserTabUnacquired ? (
           <>
@@ -524,6 +529,31 @@ export function SuggestPanel({
         />
       )}
     </EditorNotice>
+  );
+}
+
+/** The proposal decisions remain reachable in the notice's reduced form. */
+function SuggestionActions({
+  onAccept,
+  onDiscard,
+  reduced = false,
+}: {
+  readonly onAccept: () => void;
+  readonly onDiscard: () => void;
+  readonly reduced?: boolean;
+}): JSX.Element {
+  return (
+    <div className={reduced ? "flex gap-2" : "mt-1 flex gap-2"}>
+      <Button variant="default" size="sm" data-testid="suggest-accept" onClick={onAccept}>
+        <Check className="size-4" aria-hidden="true" />
+        Accept
+        <Chip>↵</Chip>
+      </Button>
+      <Button variant="ghost" size="sm" data-testid="suggest-discard" onClick={onDiscard}>
+        Discard
+        <Chip>Esc</Chip>
+      </Button>
+    </div>
   );
 }
 

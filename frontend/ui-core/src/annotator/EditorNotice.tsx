@@ -48,7 +48,9 @@
  * desktop; see `MAX_WIDTH` below.
  */
 
-import type { JSX, ReactNode } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { Button } from "@robomous/ui-core";
+import { useId, useState, type JSX, type ReactNode } from "react";
 
 /**
  * The surface's width, stated here because the number is a measurement rather
@@ -96,8 +98,22 @@ export interface EditorNoticeProps {
   readonly tone: "calm" | "warn";
   readonly icon: ReactNode;
   readonly children: ReactNode;
+  /** Adds a compact, open-by-default toggle for notices that can obstruct the canvas. */
+  readonly collapsible?: boolean;
+  /**
+   * The essential controls that remain when a collapsible notice is reduced.
+   *
+   * A reduced notice clears most of the canvas without making an active decision
+   * unreachable.
+   */
+  readonly reducedContent?: ReactNode;
   /** The kernel's identifier, where a bug report can quote it. Never the message. */
   readonly title?: string;
+}
+
+/** Keep editor shortcuts on the annotator root after a pointer activation. */
+function preserveCanvasFocus(event: { preventDefault: () => void }): void {
+  event.preventDefault();
 }
 
 export function EditorNotice({
@@ -106,27 +122,75 @@ export function EditorNotice({
   icon,
   children,
   title,
+  collapsible = false,
+  reducedContent,
 }: EditorNoticeProps): JSX.Element {
+  const [collapsed, setCollapsed] = useState(false);
+  const contentId = useId();
+  const reduced = collapsed && reducedContent !== undefined;
+  const minimal = collapsed && !reduced;
+  const toggleLabel = collapsed
+    ? reduced
+      ? "Expand suggestion panel"
+      : "Show suggestion panel"
+    : reducedContent === undefined
+      ? "Hide suggestion panel"
+      : "Reduce suggestion panel";
   return (
     <div
       data-testid={testId}
       data-tone={tone}
       role="status"
       {...(title === undefined ? {} : { title })}
-      className={`pointer-events-auto flex w-full gap-2 rounded-lg border p-3 text-xs shadow-lg ${
+      className={`pointer-events-auto grid items-start gap-2 rounded-lg border p-3 text-xs shadow-lg ${
+        minimal ? "w-auto grid-cols-[auto_auto]" : "grid-cols-[auto_minmax(0,1fr)_auto]"
+      } ${
+        collapsed ? "w-auto" : "w-full"
+      } ${
         tone === "warn" ? "border-destructive/40 bg-destructive/5" : "border-border bg-card"
       }`}
     >
       <span
         className={`mt-0.5 shrink-0 ${tone === "warn" ? "text-destructive" : "text-muted-foreground"}`}
         aria-hidden="true"
+        data-testid={`${testId}-icon`}
       >
         {icon}
       </span>
-      {/* `min-w-0` lets the column shrink below its content's intrinsic width,
-          which is the half of the wrap rule flexbox owns — without it a long
-          token widens the flex item instead of breaking. */}
-      <div className="flex min-w-0 flex-col gap-1 wrap-anywhere">{children}</div>
+      {/*
+        The three-column layout is explicit: icon, content, control. The middle
+        track absorbs the full width when expanded, so the control is truly at
+        the right edge; reduced and minimal forms size themselves to their live
+        controls instead of depending on an absent content column.
+      */}
+      <div
+        id={contentId}
+        className="flex min-w-0 flex-col gap-1 wrap-anywhere"
+        hidden={collapsible && collapsed && !reduced}
+      >
+        {reduced ? reducedContent : children}
+      </div>
+      {collapsible && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          className="self-start"
+          data-testid={`${testId}-collapse`}
+          aria-expanded={!collapsed}
+          aria-controls={contentId}
+          aria-label={toggleLabel}
+          title={toggleLabel}
+          onMouseDown={preserveCanvasFocus}
+          onClick={() => setCollapsed((open) => !open)}
+        >
+          {collapsed ? (
+            <ChevronRight className="size-4" aria-hidden="true" />
+          ) : (
+            <ChevronDown className="size-4" aria-hidden="true" />
+          )}
+        </Button>
+      )}
     </div>
   );
 }

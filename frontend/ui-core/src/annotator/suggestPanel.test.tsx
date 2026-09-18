@@ -233,6 +233,43 @@ describe("what the panel says while the tool is working", () => {
     expect(screen.getByTestId("suggest-panel").textContent).toContain("vehicle");
   });
 
+  it("can collapse the notice to clear the canvas and reopen it in place", async () => {
+    render(mount());
+
+    const toggle = screen.getByTestId("suggest-panel-collapse");
+    const content = screen.getByTestId("suggest-idle").parentElement;
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(content?.hasAttribute("hidden")).toBe(false);
+
+    await userEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.getAttribute("aria-label")).toBe("Show suggestion panel");
+    expect(content?.hasAttribute("hidden")).toBe(true);
+
+    await userEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(toggle.getAttribute("aria-label")).toBe("Hide suggestion panel");
+    expect(content?.hasAttribute("hidden")).toBe(false);
+  });
+
+  it("keeps accept and discard available while a shown suggestion is reduced", async () => {
+    const onAccept = vi.fn();
+    const onDiscard = vi.fn();
+    render(mount({ session: shown(), onAccept, onDiscard }));
+
+    await userEvent.click(screen.getByTestId("suggest-panel-collapse"));
+    expect(screen.getByTestId("suggest-shown-reduced")).toBeTruthy();
+    expect(screen.getByTestId("suggest-panel-collapse").getAttribute("aria-label")).toBe(
+      "Expand suggestion panel",
+    );
+    expect(screen.getByText("Click again to refine it — alt-click to take a part away.")).toBeTruthy();
+
+    await userEvent.click(screen.getByTestId("suggest-accept"));
+    await userEvent.click(screen.getByTestId("suggest-discard"));
+    expect(onAccept).toHaveBeenCalledTimes(1);
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+  });
+
   it("says a request is in flight, in the async vocabulary and not a new spinner", () => {
     render(mount({ session: asked() }));
     expect(screen.getByTestId("suggest-asking")).toBeTruthy();
