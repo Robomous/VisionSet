@@ -259,6 +259,7 @@ describe("what the panel says while the tool is working", () => {
 
     await userEvent.click(screen.getByTestId("suggest-panel-collapse"));
     expect(screen.getByTestId("suggest-shown-reduced")).toBeTruthy();
+    expect(screen.getByText("Click again to refine it — alt-click to take a part away.")).toBeTruthy();
 
     await userEvent.click(screen.getByTestId("suggest-accept"));
     await userEvent.click(screen.getByTestId("suggest-discard"));

@@ -216,6 +216,8 @@ const BLOCKER_COPY: Readonly<
   },
 };
 
+const REFINEMENT_GUIDANCE = "Click again to refine it — alt-click to take a part away.";
+
 export function SuggestPanel({
   session,
   heldClass,
@@ -410,6 +412,7 @@ export function SuggestPanel({
             <p className="font-medium text-foreground" data-testid="suggest-shown-reduced">
               A shape for “{session.labelClass}”
             </p>
+            <p className="text-muted-foreground">{REFINEMENT_GUIDANCE}</p>
             <SuggestionActions onAccept={onAccept} onDiscard={onDiscard} reduced />
           </>
         }
@@ -417,9 +420,7 @@ export function SuggestPanel({
         <p className="font-medium text-foreground" data-testid="suggest-shown">
           A shape for “{session.labelClass}”
         </p>
-        <p className="text-muted-foreground">
-          Click again to refine it — alt-click to take a part away.
-        </p>
+        <p className="text-muted-foreground">{REFINEMENT_GUIDANCE}</p>
         <SuggestionActions onAccept={onAccept} onDiscard={onDiscard} />
         <Adjustments
           session={session}

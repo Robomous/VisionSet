@@ -67,6 +67,7 @@ test("a reduced proposal keeps its decisions contained through restore", async (
   const discard = page.getByTestId("suggest-discard");
   await expect(accept).toBeVisible();
   await expect(discard).toBeVisible();
+  await expect(page.getByText("Click again to refine it — alt-click to take a part away.")).toBeVisible();
   await expectContainedBy(notice, toggle);
   await expectContainedBy(notice, accept);
   await expectContainedBy(notice, discard);
