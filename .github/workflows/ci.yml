@@ -724,7 +724,7 @@ jobs:
 
       - name: Download the distribution the `wheel` job already built
         if: needs.wheel.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.python == 'true' || needs.changes.outputs.frontend == 'true')
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: visionset-dist
           path: dist
