@@ -35,6 +35,7 @@ from visionset.kernel.adapters.sqlite_metadata_store import DEFAULT_BUSY_TIMEOUT
 from visionset.kernel.domain import (
     Annotation,
     AnnotationJob,
+    AnnotationJobState,
     Asset,
     AssetProgress,
     Batch,
@@ -428,6 +429,123 @@ def test_two_writers_making_the_same_move_are_both_answered_yes(tmp_path: Path) 
 
     assert not [outcome for outcome in outcomes if isinstance(outcome, BaseException)]
     assert _stored(root, job_id)[assets[0]] is AssetProgress.SKIPPED
+
+
+def _pending_job(root: Path) -> UUID:
+    """A workspace whose one job is open but not yet started. `_open_job` minus
+    the final `.start()`, for the one test that needs the job still `pending`.
+    """
+    workspace = WorkspaceService.init(root)
+    try:
+        project = ProjectService(workspace).create("p")
+        SchemaService(workspace).create_version(
+            project.id, [LabelClass(name="sign", geometries=(GeometryType.BBOX,))]
+        )
+        content_hash = workspace.blob_store.put(BytesIO(b"a"))
+        with workspace.unit_of_work() as uow:
+            asset_id = uow.assets.add(
+                Asset(project_id=project.id, content_hash=content_hash, uri="/tmp/a.png")
+            ).id
+        batches = BatchService(workspace)
+        batch = batches.create(project.id, "first", [asset_id])
+        batches.approve(batch.id)
+        batches.start(batch.id)
+        return batches.jobs(batch.id)[0].id
+    finally:
+        workspace.close()
+
+
+class _GatedOnFirstReadJobService(JobService):
+    """A `JobService` that stops right after reading the job, before deciding
+    anything about it.
+
+    `start_if_pending` calls `require_job` exactly once, at the top, before it
+    has looked at the state it got back — the seam that puts the gate on the
+    same side of the read the old two-call auto-start's race actually lived
+    on. Gating `require_open_batch` instead (later in the same call) would put
+    the gate after `start_if_pending` has already committed, in memory, to
+    what it read — too late to tell the fixed one-read version apart from the
+    old read-then-start version, which also does its deciding read before
+    that point.
+    """
+
+    def __init__(
+        self,
+        workspace: WorkspaceService,
+        *,
+        arrived: threading.Event,
+        go: threading.Event,
+    ) -> None:
+        super().__init__(workspace)
+        self._arrived = arrived
+        self._go = go
+
+    def require_job(self, uow: UnitOfWork, job_id: UUID) -> AnnotationJob:
+        job = super().require_job(uow, job_id)
+        self._arrived.set()
+        assert self._go.wait(TIMEOUT_SECONDS), "the gate was never opened"
+        return job
+
+
+def test_the_autostart_check_racing_an_explicit_start_reports_rather_than_raises(
+    tmp_path: Path,
+) -> None:
+    """The gap MCP's auto-start used to leave open, closed by deciding once.
+
+    Before `JobService.start_if_pending` existed, the adapter read the job's
+    state (`get`) and moved it (`start`) as two separate calls. A `start()`
+    landing in the gap between them left the second call re-reading the job as
+    `in_progress` and raising `InvalidTransition` for a job an agent had every
+    right to write into — the crash `mcp/_autostart.py`'s own tests guard
+    against not happening on the *agent's* side of the race, and this is the
+    other side. (Verified: swapping `start_if_pending`'s body back to
+    `get`-then-`start` under this same gate reproduces the raise; this test
+    fails on that version and passes on the fixed one.)
+
+    `start_if_pending` reads once and decides from that read, so it never
+    re-reads and never disagrees with itself — an explicit `start()` landing
+    in the same gap changes only whose write is a no-op, and the gated caller
+    still reports a plain `True` rather than raising.
+    """
+    root = tmp_path / "ws"
+    job_id = _pending_job(root)
+
+    arrived = threading.Event()
+    go = threading.Event()
+    outcome: list[object] = [None]
+
+    def run() -> None:
+        workspace = WorkspaceService.open(root)
+        try:
+            service = _GatedOnFirstReadJobService(workspace, arrived=arrived, go=go)
+            outcome[0] = service.start_if_pending(job_id)
+        except BaseException as exc:  # noqa: BLE001 - reported on the main thread
+            outcome[0] = exc
+        finally:
+            arrived.set()
+            workspace.close()
+
+    thread = threading.Thread(target=run, name="autostart-check")
+    thread.start()
+    try:
+        assert arrived.wait(TIMEOUT_SECONDS), "the gated call never reached the gate"
+
+        workspace = WorkspaceService.open(root)
+        try:
+            JobService(workspace).start(job_id)
+        finally:
+            workspace.close()
+    finally:
+        go.set()
+    thread.join(TIMEOUT_SECONDS)
+    assert not thread.is_alive(), "the gated call never finished"
+
+    assert outcome[0] is True, outcome[0]
+    workspace = WorkspaceService.open(root)
+    try:
+        assert JobService(workspace).get(job_id).state is AnnotationJobState.IN_PROGRESS
+    finally:
+        workspace.close()
 
 
 # --- a narrowing decision, and a label written while it was being made --------
