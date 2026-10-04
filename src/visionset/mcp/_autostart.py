@@ -27,17 +27,24 @@ alternative, writing first and starting after, turns a concurrent start into a
 refusal *for a write that already succeeded*, which is worse than a job marked as
 being worked on by somebody who is working on it.
 
-Only ``pending`` is moved. A job that is already ``in_progress`` reports no start,
-and one that is ``completed`` is left alone for the write's own gate to answer —
-``JobFinished`` — the guard being a state check rather than a swallowed
-``InvalidTransition``, so no refusal anybody wrote is hidden.
+Only ``pending`` is moved, and the check and the move are one call
+(``JobService.start_if_pending``) that decides from a single read, rather than
+a read followed by a separate ``start`` call that re-read and could disagree
+with what the read before it had already decided. Two calls left a gap where a
+concurrent starter (another surface, or another agent call) moving the job in
+between made the second call re-read it as already ``in_progress`` and raise
+``InvalidTransition`` instead of quietly reporting no start; deciding once
+closes that gap without claiming the read and the write are otherwise
+serialized against a concurrent writer. A job that is already ``in_progress``
+reports no start, and one that is ``completed`` is left alone for the write's
+own gate to answer — ``JobFinished`` — the guard being a state check rather
+than a swallowed ``InvalidTransition``, so no refusal anybody wrote is hidden.
 """
 
 from __future__ import annotations
 
 from uuid import UUID
 
-from visionset.kernel.domain import AnnotationJobState
 from visionset.kernel.services import JobService, WorkspaceService
 
 
@@ -55,8 +62,4 @@ def autostarted(workspace: WorkspaceService, job_id: UUID) -> bool:
             the write's own gate, and worded once in ``JobService``, so a closed
             batch refuses exactly as it did before this ran at all.
     """
-    service = JobService(workspace)
-    if service.get(job_id).state is not AnnotationJobState.PENDING:
-        return False
-    service.start(job_id)
-    return True
+    return JobService(workspace).start_if_pending(job_id)

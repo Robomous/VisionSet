@@ -243,6 +243,46 @@ class JobService:
         """
         return self._move(job_id, AnnotationJobState.IN_PROGRESS)
 
+    def start_if_pending(self, job_id: UUID) -> bool:
+        """Start the job, if it is still ``pending`` — deciding once, not twice.
+
+        For the MCP auto-start adapter, which used to read the state
+        (``get``) and then move it (``start``) as two separate calls. A
+        concurrent starter (another surface, or another call racing this one)
+        landing between those two calls left the second one re-reading the
+        job as already ``in_progress`` and raising ``InvalidTransition`` for
+        a job whose write should have been allowed. This method reads the
+        state once and decides from that single read — it never re-reads
+        before writing, so it cannot disagree with itself the way two
+        separate calls could. It gives no stronger guarantee than that: the
+        read is not a snapshot and nothing here is serialized against a
+        concurrent writer, so a start landing in the gap between this read
+        and this write no longer raises, but does not preserve any invariant
+        that the underlying blind ``update`` did not already guarantee.
+
+        Returns ``False``, without raising, for any state other than
+        ``pending`` — including ``completed`` — so the caller's own write gate
+        is what names the refusal (``JobFinished``), exactly as it would if
+        this were never called.
+
+        Raises:
+            JobNotFound: no such job in this workspace.
+            BatchNotInAnnotation: the job's batch is not open for annotation,
+                and the job was ``pending``.
+        """
+        with self._workspace.unit_of_work() as uow:
+            job = self.require_job(uow, job_id)
+            if job.state is not AnnotationJobState.PENDING:
+                return False
+            self.require_open_batch(uow, job)
+            require_move(
+                JOB_TRANSITIONS, job.state, AnnotationJobState.IN_PROGRESS, f"job {job.id}"
+            )
+            uow.annotation_jobs.update(
+                job.model_copy(update={"state": AnnotationJobState.IN_PROGRESS})
+            )
+            return True
+
     def complete(self, job_id: UUID) -> AnnotationJob:
         """Close the job, if every asset in it has been dealt with.
 
