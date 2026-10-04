@@ -393,8 +393,8 @@ def test_nothing_may_be_written_into_a_batch_nobody_opened(
     A job in an `approved` batch is `pending`, which is the state the auto-start
     moves — so the batch gate is the one thing standing between a closed batch
     and a job silently marked as being worked on. `autostarted` goes through
-    `JobService.start`, which asks `require_open_batch` first, so the refusal is
-    the same sentence and nothing moved.
+    `JobService.start_if_pending`, which asks `require_open_batch` before moving
+    anything, so the refusal is the same sentence and nothing moved.
     """
     _, batch_id = ingested(monkeypatch, tmp_path, count=1)
     approved = payload(call("approve_batch", batch_id=batch_id))
