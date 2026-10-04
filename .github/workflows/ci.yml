@@ -98,7 +98,7 @@ jobs:
         run: node scripts/check_ci_path_coverage.mjs
 
       - id: filter
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           filters: .github/path-filters.yml
 
@@ -724,7 +724,7 @@ jobs:
 
       - name: Download the distribution the `wheel` job already built
         if: needs.wheel.result == 'success' && (needs.changes.result != 'success' || needs.changes.outputs.python == 'true' || needs.changes.outputs.frontend == 'true')
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: visionset-dist
           path: dist
