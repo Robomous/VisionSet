@@ -79,7 +79,7 @@ it, and what twelve real agent runs did with it - see
 
 ## The tools
 
-Fifty-eight tools are offered by default, in the order an agent meets them, plus the four
+Sixty tools are offered by default, in the order an agent meets them, plus the four
 below that are offered only on request — see
 [above](#destructive-tools-are-not-offered-unless-you-ask).
 [mcp-tools.md](mcp-tools.md) is the complete listing, generated from the server itself; this
@@ -154,6 +154,7 @@ wants the steps apart.
 | `get_job` | State, counts, the batch and schema it answers to, and its own most recent pre-label run. |
 | `next_pending_assets` | The loop primitive: what is left to annotate. |
 | `pre_label_job` | Ask a model to label every untouched asset of the one job you hold. Blocks until it is done. |
+| `list_project_assets` | Every asset in the project, paged - including one removed from every batch. |
 | `get_asset_image` | **Look at the pixels.** See below. |
 | `list_asset_annotations` | What is already on an asset, with ids for editing. |
 | `add_annotations` | Write labels. All or none. |
@@ -366,7 +367,7 @@ The API's upload staging exists because HTTP has bytes where the kernel has path
 beside the workspace and has the filesystem.
 
 **One workspace per server.** No tool takes a workspace parameter — threading one through
-fifty-eight tools would put a path an agent has no way to know into every call. The workspace is
+sixty tools would put a path an agent has no way to know into every call. The workspace is
 opened and closed per tool call rather than held, so the file is never kept from `visionset server`
 or a second agent between calls.
 
@@ -378,7 +379,7 @@ out of the object to pick the variant, and omitting it fails. Always send
 ## What is not here, and why
 
 Fifty candidate tools were recorded across the four REST tasks; thirty of them shipped and
-twenty did not. Thirty have been added since, every one of them because a surface grew a
+twenty did not. Tools have been added since, every one of them because a surface grew a
 capability an agent had no way to reach. The larger groups say what that looks like: the four
 batch-composition tools above; the seven inference-connection tools, closing the Models page's
 SDK-first parity; the four schema-draft tools above, because composing a schema across several
@@ -388,8 +389,9 @@ closing the last capability declared with no consumer; `check_export`, the plan-
 half of an export on the `preview_schema_change` precedent; `list_export_targets`, because
 `export_release` takes a target name and an agent has to be able to read the catalog it comes
 from; and the five recipe tools, because `export_release` takes a recipe by name and an agent
-has to be able to write one, read it back and edit it on the same terms as REST and the CLI. That
-is fifty-eight offered by default and sixty-two in all. The parity rule means
+has to be able to write one, read it back and edit it on the same terms as REST and the CLI; and
+`list_project_assets`, because `list_batch_assets` cannot show an asset no batch holds. That is
+sixty offered by default and sixty-four in all. The parity rule means
 *evaluated*, not *implemented* — tool-selection accuracy degrades with count, so a tool ships
 only when an agent has a reason to reach for it that no neighbour covers.
 
@@ -415,11 +417,59 @@ trunk), `list_dataset_changes` (an audit record a person reads), `remove_dataset
 usable), `get_release_assignment` (`export_release` puts the folds on disk in the form anything
 downstream actually consumes), `rename_project`.
 
-**Never offered**: anything to do with tokens.
+**Never offered**: anything to do with tokens, and workspace creation - `init` is a CLI command
+only (`visionset init`); every tool assumes the workspace it was started on exists.
 
-Three tools are not on the parity list at all: `ingest` (one tool standing for three candidates),
-`preview_schema_change` and `backfill_thumbnails` - the last because it is the remedy
-`get_asset_image` names, and a refusal naming an unreachable remedy is worse than no refusal.
+Three of the tools were not among the fifty candidates and are offered all the same: `ingest` (one tool
+standing for three candidates), `preview_schema_change` and `backfill_thumbnails` - the last
+because it is the remedy `get_asset_image` names, and a refusal naming an unreachable remedy is
+worse than no refusal. `backfill_thumbnails` has no REST route; it is on the CLI and here.
+
+### Reachable over REST, not here
+
+| REST | What it does |
+| --- | --- |
+| `PUT /jobs/{id}/assignee` | Sets the informational assignee of a job. |
+| `GET /projects/{id}/stats` | Project-wide counts, overall and per class. `dataset_stats` counts the trunk, which is not the same set. |
+| `GET /projects/{id}/assets/{asset_id}/batches` | The batches an asset belongs to. |
+| `GET /datasets/{id}/assets/{asset_id}/annotations` | An asset's annotations on the dataset trunk. `list_asset_annotations` reads them through a job. |
+| `POST /projects/{id}/preprocessing-preview` | Renders one asset through a recipe spec. The CLI has no equivalent either. |
+| `POST /inference/suggest` | Model-suggested bounds for the annotator. Not offered. |
+| `POST /projects/{id}/schema/blocking-assets` | Which assets keep a schema change from applying. Not offered. |
+| `POST /jobs/{job_id}/start` | Takes a pending job; see [below](#actions-with-no-matching-tool). |
+| `GET /background-jobs`, `/background-jobs/{id}`, `/background-jobs/{id}/artifact`, `POST /background-jobs/{id}/cancel` | Long-running work the browser follows. Not offered. |
+| `POST /projects/{id}/video-imports`, `/video-imports/{id}/frames`, `/video-imports/{id}/commit`, `GET` and `DELETE /video-imports/{id}` | Browser-side video import; see the dropped `register_video_source` above. |
+| `GET /home` | The landing-page summary for the UI. Not offered. |
+
+### Reachable here, not over REST
+
+`get_project` returns `progress`, the project's assets counted by state across every batch. No REST
+route publishes it; REST has job progress and `GET /projects/{id}/stats`.
+
+### Per-surface names and shapes
+
+The three surfaces share their JSON shapes except where listed. Parameter names are chosen per
+surface and are not renamed to match.
+
+| | REST | MCP | CLI |
+| --- | --- | --- | --- |
+| `create_project` result | the project | `{project, dataset}` | the project |
+| Pending-asset count | `n` | `count` | `--count` / `-n` |
+| Batch assets filtered by job | `job` | `job_id` | not available |
+| Pre-label plan connection | `connection_id` | `connection` | not available |
+
+### Actions with no matching tool
+
+`allowed_actions` is declared by the kernel, so a document can advertise an action this surface
+has no tool for:
+
+- A pending job lists `start`: there is no `start_job`, though REST has `POST /jobs/{job_id}/start`. A job moves to `in_progress` on the first
+  write that touches it; `pre_label` is offered as `pre_label_job`.
+- A batch lists `delete` only as `delete_batch`, which is registered with `--allow-destructive`
+  alone.
+
+Every other `BatchAction` has a tool; `tests/architecture/test_capability_reachability.py` checks
+that for REST and MCP.
 
 ## For contributors
 

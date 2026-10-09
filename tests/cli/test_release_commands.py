@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from io import BytesIO
 from pathlib import Path
 
@@ -172,6 +173,16 @@ def test_seed_reaches_the_recipe(root: Path, tmp_path: Path) -> None:
         "42",
     )
     assert document["split"]["seed"] == 42
+
+
+@pytest.mark.parametrize("seed", ["0", "42"])
+def test_a_seed_without_a_split_exits_two_naming_split(
+    root: Path, tmp_path: Path, seed: str
+) -> None:
+    name = promoted_project(root, tmp_path)
+    result = run(root, "release", "publish", "--tag", "v1.0", "-p", name, "--seed", seed)
+    assert result.exit_code == 2, result.output
+    assert "hasnoeffectwithoutsplit" in re.sub(r"\x1b\[[0-9;]*m|[^a-z]", "", result.output)
 
 
 def test_no_split_leaves_it_null(root: Path, tmp_path: Path) -> None:
