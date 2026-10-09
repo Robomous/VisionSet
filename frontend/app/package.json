@@ -17,7 +17,7 @@
     "cycle": "playwright test -c playwright.cycle.config.ts"
   },
   "dependencies": {
-    "@robomous/ui-core": "^0.5.0",
+    "@robomous/ui-core": "^0.2.1",
     "@visionset/annotator": "workspace:*",
     "@visionset/browser-inference": "workspace:*",
     "@visionset/media": "workspace:*",
