@@ -209,7 +209,7 @@ browser-models = [
     # measured against was produced by a different implementation of the same graph,
     # so a genuine browser regression and an ORT-version difference would arrive
     # looking identical. Move the two together or not at all.
-    "onnxruntime==1.29.0",
+    "onnxruntime==1.30.0",
     "onnxscript>=0.7.2",
     "torch>=2.14.0",
 ]
