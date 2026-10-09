@@ -198,6 +198,7 @@ that is the half an interface has to render.
 
 | Family (`model_type`) | Capability | Curated checkpoints | License |
 | --- | --- | --- | --- |
+| `sam` | `point_suggest` | `Zigeng/SlimSAM-uniform-77` | Apache-2.0 |
 | `sam2`, `sam2_video` | `point_suggest` | `facebook/sam2.1-hiera-{tiny,small,base-plus,large}` | Apache-2.0 |
 | `sam3_video` | `point_suggest` | `facebook/sam3` | SAM License, access granted by request |
 | `grounding-dino` | `text_detect` | `IDEA-Research/grounding-dino-{tiny,base}` | Apache-2.0 |

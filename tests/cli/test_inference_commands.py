@@ -34,6 +34,7 @@ from visionset.kernel.services import (
     InferenceConnectionService,
     WorkspaceService,
 )
+from visionset.server.models import ProviderOut
 
 LOCAL = (
     "inference",
@@ -679,3 +680,41 @@ def test_test_endpoint_reports_an_unreachable_endpoint_as_a_sentence(root: Path)
     result = run(root, "inference", "test-endpoint", "remote")
     assert result.exit_code == 1, result.output
     assert url in result.stderr
+
+
+# --- ``providers``, which opens no workspace either ----------------------------
+
+
+def test_providers_table_lists_the_curated_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(WORKSPACE_ENV_VAR, raising=False)
+    monkeypatch.chdir(tmp_path)
+    result = sized("inference", "providers")
+    assert result.exit_code == 0, result.output
+    header, *rows = result.stdout.splitlines()
+    assert header.split()[:2] == ["PROVIDER", "FAMILIES"]
+    document = json.loads(sized("inference", "providers", "--json").stdout)
+    curated = [entry for item in document["items"] for entry in item["curated"]]
+    assert curated
+    for entry in curated:
+        short = f"{entry['model_id']}@{entry['model_revision'][:12]}"
+        line = next(row for row in rows if short in row)
+        assert line.startswith(entry["provider_id"])
+        assert ("[gated]" in line) == bool(entry["access_note"])
+
+
+def test_providers_json_validates_against_the_wire_model() -> None:
+    result = sized("inference", "providers", "--json")
+    assert result.exit_code == 0, result.output
+    document = json.loads(result.stdout)
+    assert document["total"] == len(document["items"]) > 0
+    for item in document["items"]:
+        ProviderOut.model_validate(item)
+
+
+@without_the_extra
+def test_providers_needs_no_local_inference_extra() -> None:
+    result = sized("inference", "providers")
+    assert result.exit_code == 0, result.output
+    assert "sam" in result.stdout

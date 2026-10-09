@@ -1,10 +1,11 @@
 # usage: from visionset.cli.inference import inference_app
 """``visionset inference`` — configuring where a model may be asked to predict.
 
-Nine commands, so a workspace can be made ready for auto-labeling without a
-browser. Eight are one call to ``InferenceConnectionService``; ``size`` is the
-exception and says so — it is about a published model rather than about a
-configured row, so it opens no workspace at all. Four reach a network:
+Ten commands, so a workspace can be made ready for auto-labeling without a
+browser. Eight are one call to ``InferenceConnectionService``; ``size`` and
+``providers`` are the exceptions and say so — they are about published models and
+installed drivers rather than about a configured row, so they open no workspace
+at all. Four reach a network:
 ``download``, which fetches; ``size``, which reads a listing so that
 ``download`` can be an informed decision; ``check-integrity``, which reads the
 digests a snapshot on disk is compared against; and ``test-endpoint``, which
@@ -24,7 +25,7 @@ job handler for the same reason.
 
 from __future__ import annotations
 
-from typing import Annotated, Final
+from typing import Annotated, Any, Final
 from uuid import UUID
 
 import typer
@@ -33,7 +34,13 @@ from visionset import wire
 from visionset.cli._errors import domain_errors
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
-from visionset.inference import ask_endpoint, check_integrity, download_size, fetch_weights
+from visionset.inference import (
+    ask_endpoint,
+    check_integrity,
+    download_size,
+    fetch_weights,
+    registered,
+)
 from visionset.kernel.domain import ConnectionType, InferenceConnection, Precision
 from visionset.kernel.services import InferenceConnectionService
 
@@ -41,6 +48,10 @@ inference_app = typer.Typer(
     help="Configure where inference runs. Nothing is downloaded on your behalf.",
     no_args_is_help=True,
 )
+
+_PROVIDER_COLUMNS: Final = ("PROVIDER", "FAMILIES", "MODEL", "HINT")
+_SHORT_REVISION: Final = 12
+_GATED: Final = "[gated] "
 
 _COLUMNS: Final = ("ID", "NAME", "TYPE", "MODEL", "SETUP")
 """Every column always has a value, so there is no absent-value placeholder here:
@@ -248,6 +259,39 @@ def inference_size(
         return
     note(f"{size.file_count} files in {size.model_id} at {size.model_revision}.")
     typer.echo(str(size.total_bytes))
+
+
+def _provider_rows(
+    providers: list[dict[str, Any]],
+) -> list[tuple[str, str, str, str]]:
+    """One row per curated model; a driver that curates nothing still gets its own row."""
+    rows: list[tuple[str, str, str, str]] = []
+    for one in providers:
+        families = ", ".join(f"{name}->{kind}" for name, kind in one["families"].items())
+        if not one["curated"]:
+            rows.append((one["provider_id"], families, "-", ""))
+        for entry in one["curated"]:
+            gate = _GATED if entry["access_note"] else ""
+            model = f"{entry['model_id']}@{entry['model_revision'][:_SHORT_REVISION]}"
+            rows.append((one["provider_id"], families, model, f"{gate}{entry['hint']}"))
+    return rows
+
+
+@inference_app.command("providers")
+def inference_providers(json_out: JsonOption = False) -> None:
+    """The installed drivers, and the models each offers by name.
+
+    A ``provider_id`` here is what ``create --provider`` takes, and a model and
+    revision shown are a pinned pair ``create`` accepts as given. Curation guides
+    and never restricts: any model id stays typeable. Installing a driver
+    downloads nothing, and no workspace is opened.
+    """
+    installed = registered().providers
+    items = [wire.provider(installed[provider_id]) for provider_id in sorted(installed)]
+    if json_out:
+        document(wire.page(items))
+        return
+    table(_PROVIDER_COLUMNS, _provider_rows(items))
 
 
 @inference_app.command("download")

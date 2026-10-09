@@ -248,3 +248,139 @@ def test_an_all_dark_mask_tensor_is_an_answer_with_nothing_in_it(
 
     (segment,) = answer.segments
     assert not any(any(row) for row in segment.mask), "nothing lit, and still a mask"
+
+
+def _tiny_slimsam(directory: Path) -> Path:
+    """A randomly initialised ``sam`` checkpoint, written out and read back by the real loader.
+
+    The weights mean nothing; the architecture is the real one, only small enough
+    for a CI runner, so the adapter's load, encode, prompt scaling and mask lift
+    all run against ``transformers`` itself.
+    """
+    from transformers import SamConfig, SamImageProcessor, SamModel, SamProcessor
+
+    config = SamConfig(
+        vision_config={
+            "hidden_size": 16,
+            "output_channels": 8,
+            "num_hidden_layers": 2,
+            "num_attention_heads": 2,
+            "mlp_dim": 32,
+            "image_size": 64,
+            "patch_size": 16,
+            "window_size": 2,
+            "global_attn_indexes": [1],
+            "num_pos_feats": 4,
+        },
+        prompt_encoder_config={
+            "hidden_size": 8,
+            "image_size": 64,
+            "patch_size": 16,
+            "mask_input_channels": 2,
+            "image_embedding_size": 4,
+        },
+        mask_decoder_config={
+            "hidden_size": 8,
+            "num_hidden_layers": 1,
+            "num_attention_heads": 2,
+            "mlp_dim": 16,
+            "attention_downsample_rate": 1,
+            "iou_head_hidden_dim": 8,
+        },
+    )
+    SamModel(config).save_pretrained(directory)
+    SamProcessor(
+        image_processor=SamImageProcessor(
+            size={"longest_edge": 64}, pad_size={"height": 64, "width": 64}
+        )
+    ).save_pretrained(directory)
+    return directory
+
+
+def test_a_sam_family_click_runs_end_to_end_through_the_real_loader(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``sam`` cannot be prompted without an image, so its path is its own.
+
+    Nothing is stubbed; the model's forward is only observed. The asset is
+    deliberately not square, which is what gives the comparisons teeth: the
+    prompt the model receives must equal the one the library's own processor
+    builds for the same clicks, and the returned mask must equal the library's
+    own ``post_process_masks`` on the very same logits with the correct resized
+    extent. Scaling the clicks wrongly, or transposing the extent, changes one of
+    the two.
+    """
+    require_local_inference()
+    import torch
+    from PIL import Image
+    from transformers import SamModel, SamProcessor
+
+    checkpoint = _tiny_slimsam(tmp_path / "slimsam")
+    seen: dict[str, Any] = {}
+    forward = SamModel.forward
+
+    def spy(self: Any, *args: Any, **kwargs: Any) -> Any:
+        output = forward(self, *args, **kwargs)
+        if "input_points" in kwargs:
+            seen["input_points"] = kwargs["input_points"]
+            seen["input_labels"] = kwargs["input_labels"]
+            seen["pred_masks"] = output.pred_masks
+            seen["iou_scores"] = output.iou_scores
+        return output
+
+    monkeypatch.setattr(SamModel, "forward", spy)
+    provider = LocalSamProvider(
+        str(checkpoint),
+        "main",
+        family="sam",
+        device="cpu",
+        precision=None,
+        cache_dir=tmp_path / "cache",
+        connection_name="local",
+    )
+    content = write_image(tmp_path / "asset.png", size=ASSET_SIZE).read_bytes()
+    positive = ((3.0, 5.0), (15.0, 20.0))
+    negative = ((18.0, 2.0),)
+    request = PredictionRequest(
+        targets=(PredictionTarget(asset_id=uuid4(), content=content, media_type="image/png"),),
+        prompt=PointPrompt(positive=positive, negative=negative),
+    )
+    width, height = ASSET_SIZE
+
+    (answer,) = list(provider.segment(request))
+
+    (segment,) = answer.segments
+    assert len(segment.mask) == height
+    assert len(segment.mask[0]) == width
+    held = provider._embeddings.get(request.targets[0].asset_id)
+    assert held is not None
+    embedding, size = held
+    assert size == (height, width)
+    assert embedding.reshaped_size == (64, round(width * 64 / height))
+
+    processor = SamProcessor.from_pretrained(str(checkpoint))
+    clicks = [list(point) for point in positive + negative]
+    labels = [1] * len(positive) + [0] * len(negative)
+    expected = processor(
+        images=Image.open(tmp_path / "asset.png").convert("RGB"),
+        input_points=[[clicks]],
+        input_labels=[[labels]],
+        return_tensors="pt",
+    )
+    assert seen["input_points"].shape == expected["input_points"].shape
+    assert torch.allclose(seen["input_points"], expected["input_points"].float())
+    assert torch.equal(seen["input_labels"], expected["input_labels"])
+
+    lifted = processor.post_process_masks(
+        seen["pred_masks"],
+        original_sizes=expected["original_sizes"],
+        reshaped_input_sizes=expected["reshaped_input_sizes"],
+        binarize=True,
+    )[0]
+    chosen = int(seen["iou_scores"].flatten().argmax())
+    reference = lifted.reshape(-1, *lifted.shape[-2:])[chosen]
+    assert [list(map(bool, row)) for row in segment.mask] == reference.tolist()
+
+    assert provider.encodes == 1
+    list(provider.segment(request))
+    assert provider.encodes == 1, "the second click reuses the cached embedding"
