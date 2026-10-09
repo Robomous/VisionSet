@@ -22,6 +22,7 @@ from visionset.kernel import (
     BatchNotComplete,
     BatchNotFound,
     DatasetNotFound,
+    ProjectNotFound,
     WorkspaceCorrupt,
 )
 from visionset.kernel.domain import (
@@ -783,6 +784,24 @@ def test_it_answers_the_same_set_assets_does_without_resolving_them(tmp_path: Pa
     assert fixture.datasets.member_asset_ids(fixture.dataset.id) == {
         asset.id for asset in fixture.datasets.assets(fixture.dataset.id)
     }
+
+
+def test_promoted_asset_ids_is_the_trunk_of_the_projects_dataset(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    assert fixture.datasets.promoted_asset_ids(fixture.project.id) == frozenset()
+    fixture.completed(AssetProgress.ANNOTATED, AssetProgress.SKIPPED, AssetProgress.ANNOTATED)
+    promoted = fixture.datasets.promote(fixture.batch.id)
+
+    ids = fixture.datasets.promoted_asset_ids(fixture.project.id)
+
+    assert ids == {asset.id for asset in promoted}
+    assert ids == fixture.datasets.member_asset_ids(fixture.dataset.id)
+
+
+def test_promoted_asset_ids_of_an_unknown_project_is_refused(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    with pytest.raises(ProjectNotFound):
+        fixture.datasets.promoted_asset_ids(uuid4())
 
 
 def test_a_removed_asset_leaves_the_set(tmp_path: Path) -> None:

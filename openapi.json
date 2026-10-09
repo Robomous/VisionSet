@@ -6719,7 +6719,7 @@
     },
     "/batches/{batch_id}/approve": {
       "post": {
-        "description": "Freeze the batch: pin the project's active schema version and cut it into jobs.\n\nEverything after this is judged against the version pinned here, so a new\nschema version created while annotators are working does not change the rules\nunder them. Membership stops being editable at the same moment \u2014 an asset\nthat should not be labeled is marked `skipped` from here on, which keeps the\ndecision on the record instead of erasing it.\n\nThe partition defaults to one job for the whole batch. `by_size` cuts jobs of\na fixed length with the last taking the remainder; `by_segments` says exactly\nwhich assets go together, and is refused unless it reproduces the batch with\nnothing missing, repeated or foreign.\n\nA batch that is not a draft is 409 `INVALID_TRANSITION`; an empty one is 409\n`EMPTY_BATCH`, because it would have no jobs and could never complete; a\nproject with no schema is 404 `SCHEMA_NOT_FOUND`, since there is nothing to\npin, and an unknown batch is 404 `BATCH_NOT_FOUND`.",
+        "description": "Freeze the batch: pin the project's active schema version and cut it into jobs.\n\nEverything after this is judged against the version pinned here, so a new\nschema version created while annotators are working does not change the rules\nunder them. Membership stops being editable at the same moment \u2014 an asset\nthat should not be labeled is marked `skipped` from here on, which keeps the\ndecision on the record instead of erasing it.\n\nThe partition defaults to one job for the whole batch. `by_size` cuts jobs of\na fixed length with the last taking the remainder; `by_segments` says exactly\nwhich assets go together, and is refused unless it reproduces the batch with\nnothing missing, repeated or foreign.\n\nA batch that is not a draft is 409 `INVALID_TRANSITION`; an empty one is 409\n`EMPTY_BATCH`, because it would have no jobs and could never complete; a\nproject with no schema is 404 `SCHEMA_NOT_FOUND`, since there is nothing to\npin, an unknown batch is 404 `BATCH_NOT_FOUND`, and a project that has vanished\nsince is 404 `PROJECT_NOT_FOUND`.",
         "operationId": "approve_batch",
         "parameters": [
           {
@@ -13479,6 +13479,95 @@
         ]
       }
     },
+    "/projects/{project_id}/progress": {
+      "get": {
+        "description": "How many of the project's assets sit in each annotation state, across every batch.\n\nThe project-wide sibling of `GET /jobs/{job_id}/progress`; `unannotated` is\nwhat is left to do. Every state is a field, including the ones nobody is in,\nand a project with no batches reports zeros. An unknown project is 404\n`PROJECT_NOT_FOUND`.",
+        "operationId": "get_project_progress",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgressCounts"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Project Progress",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
     "/projects/{project_id}/schema": {
       "get": {
         "description": "The version in force: the highest one.\n\nA project that has no schema yet answers 404 `SCHEMA_NOT_FOUND`, which is a\ndifferent code from the 404 `PROJECT_NOT_FOUND` an unknown project gets.\nSame status, two situations.",
@@ -16188,7 +16277,7 @@
     },
     "/video-imports/{import_id}/commit": {
       "post": {
-        "description": "Turn every staged frame into an asset, in one transaction, and answer the batch.\n\nRefused with 409 `VIDEO_IMPORT_INCOMPLETE` while any expected frame is still\nmissing. That gate is the point of the session: a materialization that died\npartway would otherwise produce a batch silently short of a stretch of its\nclip, and nothing downstream could detect it \u2014 the assets are perfectly good\nimages and the batch looks like any other.\n\nThe staged rows are disposed of here, exactly as an abort disposes of them:\nthey are assets now, and the session is terminal either way.\n\n**Idempotent.** A repeated commit answers the batch the first one created and\nwrites nothing, so a client that retried a timed-out request never gets a\nsecond batch. Committing an import that was aborted is 409\n`VIDEO_IMPORT_NOT_OPEN`, and an import this workspace does not hold is 404\n`VIDEO_IMPORT_NOT_FOUND`.\n\nThe batch is the draft the import named with `batch_id`, if it named one, and\notherwise one created here \u2014 called by the import's `batch_name` if it\ndeclared one and after its source if not. A target batch that has since been\ndeleted is 404 `BATCH_NOT_FOUND` and one approved while the clip was decoding\nis 409 `BATCH_NOT_EDITABLE`; neither falls back to a batch of its own, which\nwould put the frames somewhere nobody chose. Two frames with identical bytes\ncollapse into one asset \u2014 a static shot at 1 fps genuinely yields the same image twice, and\ncontent addressing has always said so \u2014 so `asset_count` can be shorter than\nthe frame count, which is the honest report.",
+        "description": "Turn every staged frame into an asset, in one transaction, and answer the batch.\n\nRefused with 409 `VIDEO_IMPORT_INCOMPLETE` while any expected frame is still\nmissing. That gate is the point of the session: a materialization that died\npartway would otherwise produce a batch silently short of a stretch of its\nclip, and nothing downstream could detect it \u2014 the assets are perfectly good\nimages and the batch looks like any other.\n\nThe staged rows are disposed of here, exactly as an abort disposes of them:\nthey are assets now, and the session is terminal either way.\n\n**Idempotent.** A repeated commit answers the batch the first one created and\nwrites nothing, so a client that retried a timed-out request never gets a\nsecond batch. Committing an import that was aborted is 409\n`VIDEO_IMPORT_NOT_OPEN`, and an import this workspace does not hold is 404\n`VIDEO_IMPORT_NOT_FOUND`, and a project that has vanished since is 404 `PROJECT_NOT_FOUND`.\n\nThe batch is the draft the import named with `batch_id`, if it named one, and\notherwise one created here \u2014 called by the import's `batch_name` if it\ndeclared one and after its source if not. A target batch that has since been\ndeleted is 404 `BATCH_NOT_FOUND` and one approved while the clip was decoding\nis 409 `BATCH_NOT_EDITABLE`; neither falls back to a batch of its own, which\nwould put the frames somewhere nobody chose. Two frames with identical bytes\ncollapse into one asset \u2014 a static shot at 1 fps genuinely yields the same image twice, and\ncontent addressing has always said so \u2014 so `asset_count` can be shorter than\nthe frame count, which is the honest report.",
         "operationId": "commit_video_import",
         "parameters": [
           {

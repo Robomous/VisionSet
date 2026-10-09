@@ -28,6 +28,7 @@ from visionset.kernel import (
     InvalidName,
     LossyExportNotConsented,
     NoSplitRecipe,
+    ProjectNotFound,
     ReleaseContentWouldViolateSchema,
     ReleaseNotFound,
     ReleaseTagTaken,
@@ -473,6 +474,24 @@ def test_a_tag_is_matched_case_sensitively(tmp_path: Path) -> None:
     with pytest.raises(ReleaseNotFound):
         fixture.releases.get_by_tag(fixture.dataset_id, "v1")
     assert fixture.releases.get_by_tag(fixture.dataset_id, "V1") == upper
+    fixture.close()
+
+
+def test_a_release_resolves_through_a_project_id_or_name(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    assert fixture.releases.resolve(str(fixture.project.id), "v1") == release
+    assert fixture.releases.resolve(fixture.project.name.upper(), "v1") == release
+    fixture.close()
+
+
+def test_resolving_a_release_names_the_missing_half(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    fixture.releases.publish(fixture.ready(), "v1")
+    with pytest.raises(ProjectNotFound):
+        fixture.releases.resolve("no-such-project", "v1")
+    with pytest.raises(ReleaseNotFound):
+        fixture.releases.resolve(fixture.project.name, "V1")
     fixture.close()
 
 

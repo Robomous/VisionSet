@@ -68,32 +68,16 @@ from visionset.kernel.domain import (
 from visionset.kernel.services import (
     BatchService,
     DatasetService,
+    InferenceConnectionService,
     JobService,
     ProjectService,
     WorkspaceService,
 )
-from visionset.mcp._resolve import (
-    ConnectionRef,
-    ProjectRef,
-    identifier,
-    resolve_connection,
-    resolve_project,
-)
+from visionset.mcp._resolve import ConnectionRef, ProjectRef, identifier
 from visionset.mcp._workspace import opened_workspace
 
 BatchRef = Annotated[str, Field(description="The batch, by id. Batch names are not unique.")]
 """The batch a tool acts on. Module-level for the ``inspect.signature`` reason."""
-
-
-def _promoted(workspace: WorkspaceService, project_id: UUID) -> frozenset[UUID]:
-    """The trunk's current membership, read once for the whole answer.
-
-    The same cost model the REST routes use: one query per call rather than one
-    per batch, because ``asset_ids`` is already in memory and the rest is a set
-    intersection.
-    """
-    dataset = ProjectService(workspace).get_dataset(project_id)
-    return DatasetService(workspace).member_asset_ids(dataset.id)
 
 
 def _batch_payload(workspace: WorkspaceService, batch_id: UUID) -> dict[str, Any]:
@@ -108,7 +92,7 @@ def _batch_payload(workspace: WorkspaceService, batch_id: UUID) -> dict[str, Any
         **wire.batch(
             batch,
             counts,
-            promoted=_promoted(workspace, batch.project_id),
+            promoted=DatasetService(workspace).promoted_asset_ids(batch.project_id),
             pre_labeled=batches.latest_pre_label_job(batch.id),
         ),
         "jobs": [
@@ -137,7 +121,7 @@ def create_batch(
     `create_correction_batch` instead: that one records the lineage.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         created = BatchService(workspace).create(
             resolved.id,
             name,
@@ -215,12 +199,12 @@ def list_batches(project: ProjectRef) -> dict[str, Any]:
     `in_annotation` with unannotated assets is what `next_pending_assets` is for.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         batches = BatchService(workspace)
         found = batches.list(resolved.id)
         jobs = JobService(workspace)
         counts = [jobs.batch_progress(b.id) for b in found]
-        promoted = _promoted(workspace, resolved.id)
+        promoted = DatasetService(workspace).promoted_asset_ids(resolved.id)
         # One queue read for the whole listing rather than one per batch.
         pre_label_runs = batches.pre_label_runs()
     return wire.page(
@@ -354,7 +338,7 @@ which it would leave out, and what shapes it would write.
     that is not `in_annotation`, and a schema with nothing askable at all.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_connection(workspace, connection)
+        resolved = InferenceConnectionService(workspace).resolve(connection)
         return wire.pre_label_plan(
             planned(
                 workspace,
@@ -497,7 +481,7 @@ def pre_label_batch(
     without the local runtime — with the install command in the message.
     """
     with opened_workspace() as workspace:
-        resolved_connection = resolve_connection(workspace, connection)
+        resolved_connection = InferenceConnectionService(workspace).resolve(connection)
         batch_uuid = identifier(batch_id, what="batch_id")
         BatchService(workspace).require_pre_labelable(batch_uuid)
         items: list[dict[str, Any]] = []
@@ -564,8 +548,8 @@ def pre_label_project(
     still untouched.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
-        resolved_connection = resolve_connection(workspace, connection)
+        resolved = ProjectService(workspace).resolve(project)
+        resolved_connection = InferenceConnectionService(workspace).resolve(connection)
         declared = served_for(workspace, resolved_connection.id)
         produces = effective_produces(declared.produces, _selection(geometries))
         selected = select_pre_labelable(

@@ -30,10 +30,13 @@ import typer
 from visionset import wire
 from visionset.cli._errors import EXIT_ANSWER_IS_NO
 from visionset.cli._output import JsonOption, document, moment, note, table
-from visionset.cli._resolve import ProjectOption, resolve_project, resolve_release
+from visionset.cli._resolve import ProjectOption
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
 from visionset.kernel.domain import SplitRecipe
-from visionset.kernel.services import ProjectService, ReleaseService
+from visionset.kernel.services import (
+    ProjectService,
+    ReleaseService,
+)
 
 release_app = typer.Typer(help="Publish and verify releases.", no_args_is_help=True)
 
@@ -97,7 +100,7 @@ def release_publish(
     """
     recipe = _split_of(split, seed)
     with opened_workspace(workspace) as service:
-        resolved = resolve_project(service, project)
+        resolved = ProjectService(service).resolve(project)
         dataset = ProjectService(service).get_dataset(resolved.id)
         published = ReleaseService(service).publish(dataset.id, tag, split=recipe)
     if json_out:
@@ -119,7 +122,7 @@ def release_list(
 ) -> None:
     """List a project's releases, oldest first."""
     with opened_workspace(workspace) as service:
-        resolved = resolve_project(service, project)
+        resolved = ProjectService(service).resolve(project)
         dataset = ProjectService(service).get_dataset(resolved.id)
         releases = ReleaseService(service).list(dataset.id)
     if json_out:
@@ -160,7 +163,7 @@ def release_verify(
     on the strength of a tampered inventory would be worse than saying nothing.
     """
     with opened_workspace(workspace) as service:
-        release = resolve_release(service, project, tag)
+        release = ReleaseService(service).resolve(project, tag)
         report = ReleaseService(service).verify(release.id)
     if json_out:
         document(wire.release_verification(report))

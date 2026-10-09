@@ -211,7 +211,8 @@ export interface paths {
          *     A batch that is not a draft is 409 `INVALID_TRANSITION`; an empty one is 409
          *     `EMPTY_BATCH`, because it would have no jobs and could never complete; a
          *     project with no schema is 404 `SCHEMA_NOT_FOUND`, since there is nothing to
-         *     pin, and an unknown batch is 404 `BATCH_NOT_FOUND`.
+         *     pin, an unknown batch is 404 `BATCH_NOT_FOUND`, and a project that has vanished
+         *     since is 404 `PROJECT_NOT_FOUND`.
          */
         post: operations["approve_batch"];
         delete?: never;
@@ -2281,6 +2282,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project Progress
+         * @description How many of the project's assets sit in each annotation state, across every batch.
+         *
+         *     The project-wide sibling of `GET /jobs/{job_id}/progress`; `unannotated` is
+         *     what is left to do. Every state is a field, including the ones nobody is in,
+         *     and a project with no batches reports zeros. An unknown project is 404
+         *     `PROJECT_NOT_FOUND`.
+         */
+        get: operations["get_project_progress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/schema": {
         parameters: {
             query?: never;
@@ -3146,7 +3172,7 @@ export interface paths {
          *     writes nothing, so a client that retried a timed-out request never gets a
          *     second batch. Committing an import that was aborted is 409
          *     `VIDEO_IMPORT_NOT_OPEN`, and an import this workspace does not hold is 404
-         *     `VIDEO_IMPORT_NOT_FOUND`.
+         *     `VIDEO_IMPORT_NOT_FOUND`, and a project that has vanished since is 404 `PROJECT_NOT_FOUND`.
          *
          *     The batch is the draft the import named with `batch_id`, if it named one, and
          *     otherwise one created here — called by the import's `batch_name` if it
@@ -11501,6 +11527,73 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_project_progress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProgressCounts"];
+                };
             };
             /** @description Missing or invalid bearer token */
             401: {

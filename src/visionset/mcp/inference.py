@@ -54,8 +54,10 @@ from visionset.inference import (
 )
 from visionset.kernel import ConfirmationRequired
 from visionset.kernel.domain import ConnectionType, Precision
-from visionset.kernel.services import InferenceConnectionService
-from visionset.mcp._resolve import ConnectionRef, resolve_connection
+from visionset.kernel.services import (
+    InferenceConnectionService,
+)
+from visionset.mcp._resolve import ConnectionRef
 from visionset.mcp._workspace import opened_workspace
 
 
@@ -177,7 +179,7 @@ def update_inference_connection(
     with opened_workspace() as workspace:
         connections = InferenceConnectionService(workspace)
         edited = connections.update(
-            resolve_connection(workspace, connection).id,
+            InferenceConnectionService(workspace).resolve(connection).id,
             name=name,
             model_id=model_id,
             model_revision=model_revision,
@@ -244,7 +246,7 @@ def download_connection_weights(connection: ConnectionRef) -> dict[str, Any]:
     not installed.
     """
     with opened_workspace() as workspace:
-        found = resolve_connection(workspace, connection)
+        found = InferenceConnectionService(workspace).resolve(connection)
         ready = fetch_weights(workspace, found.id)
     return wire.connection(ready)
 
@@ -268,7 +270,7 @@ def check_connection_integrity(connection: ConnectionRef) -> dict[str, Any]:
     of its own, and a local one whose weights never arrived has none yet.
     """
     with opened_workspace() as workspace:
-        found = resolve_connection(workspace, connection)
+        found = InferenceConnectionService(workspace).resolve(connection)
         report = check_integrity(workspace, found.id)
     return report.counts()
 
@@ -286,7 +288,7 @@ def test_inference_connection(connection: ConnectionRef) -> dict[str, Any]:
     and nothing is recorded.
     """
     with opened_workspace() as workspace:
-        found = resolve_connection(workspace, connection)
+        found = InferenceConnectionService(workspace).resolve(connection)
         answered = ask_endpoint(workspace, found.id)
     return wire.connection(answered)
 
@@ -315,7 +317,7 @@ def delete_inference_connection(
     """
     with opened_workspace() as workspace:
         connections = InferenceConnectionService(workspace)
-        found = resolve_connection(workspace, connection)
+        found = InferenceConnectionService(workspace).resolve(connection)
         # The kernel's delete takes no ``confirm`` — a configuration is not
         # work — so the gate is this surface's, the CLI's own prompt in the
         # idiom of a tool call. Raised rather than returned so the envelope

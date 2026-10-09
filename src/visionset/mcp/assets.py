@@ -54,8 +54,12 @@ from pydantic import Field
 from visionset import wire
 from visionset.kernel.domain import Asset, ImageFormat
 from visionset.kernel.ports import THUMBNAIL_FORMAT
-from visionset.kernel.services import IngestService, WorkspaceService
-from visionset.mcp._resolve import ProjectRef, identifier, resolve_project
+from visionset.kernel.services import (
+    IngestService,
+    ProjectService,
+    WorkspaceService,
+)
+from visionset.mcp._resolve import ProjectRef, identifier
 from visionset.mcp._workspace import opened_workspace
 
 SUFFIXES: Final[dict[ImageFormat, str]] = {ImageFormat.JPEG: "jpeg", ImageFormat.PNG: "png"}
@@ -171,7 +175,7 @@ def get_asset_image(
     type, so its measurements come back with an explanation instead of pixels.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         asset = IngestService(workspace).asset(resolved.id, identifier(asset_id, what="asset_id"))
         return _original(workspace, asset) if full else _preview(workspace, asset)
 
@@ -196,7 +200,7 @@ def list_project_assets(
     `get_asset_image` to see its pixels.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         found = IngestService(workspace).assets(resolved.id)
         end = None if limit is None else offset + limit
         return {"items": [wire.asset(asset) for asset in found[offset:end]], "total": len(found)}

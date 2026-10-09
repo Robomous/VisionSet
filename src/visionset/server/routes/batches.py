@@ -45,7 +45,6 @@ from visionset.kernel.services import (
     BatchService,
     DatasetService,
     JobService,
-    ProjectService,
 )
 from visionset.server.dependencies import RunnerDep, WorkspaceDep, protected_router
 from visionset.server.errors import documented
@@ -83,21 +82,6 @@ project_router = protected_router(prefix="/projects/{project_id}/batches", tags=
 router = protected_router(prefix="/batches", tags=["batches"])
 
 
-def _promoted(workspace: WorkspaceDep, project_id: UUID) -> frozenset[UUID]:
-    """The trunk's current membership, read once for the whole response.
-
-    Every ``BatchOut`` needs it and none of them needs a different one, so a
-    listing of twenty batches costs one query rather than twenty — the batch's
-    own ``asset_ids`` are already in memory and the rest is a set intersection.
-
-    A project's dataset is 1:1 and created in the same transaction as the
-    project, so this cannot fail for a project that exists; a project that does
-    not is already a 404 from whatever resolved it.
-    """
-    dataset = ProjectService(workspace).get_dataset(project_id)
-    return DatasetService(workspace).member_asset_ids(dataset.id)
-
-
 @project_router.post("", status_code=201, responses=documented(404))
 def create_batch(workspace: WorkspaceDep, project_id: UUID, body: BatchCreate) -> BatchOut:
     """Start a draft batch over a chosen set of the project's assets.
@@ -118,7 +102,7 @@ def create_batch(workspace: WorkspaceDep, project_id: UUID, body: BatchCreate) -
     return BatchOut.of(
         created,
         JobService(workspace).batch_progress(created.id),
-        promoted=_promoted(workspace, project_id),
+        promoted=DatasetService(workspace).promoted_asset_ids(project_id),
         pre_label_run=batches.latest_pre_label_job(created.id),
     )
 
@@ -129,8 +113,8 @@ def list_batches(workspace: WorkspaceDep, project_id: UUID) -> BatchPage:
     jobs = JobService(workspace)
     batches = BatchService(workspace)
     found = batches.list(project_id)
-    promoted = _promoted(workspace, project_id)
-    # One queue read for the whole page, `_promoted`'s cost model: without it a
+    promoted = DatasetService(workspace).promoted_asset_ids(project_id)
+    # One queue read for the whole page: without it a
     # page of twenty batches would ask the queue once per row.
     pre_label_runs = batches.pre_label_runs()
     return BatchPage(
@@ -161,7 +145,7 @@ def get_batch(workspace: WorkspaceDep, batch_id: UUID) -> BatchOut:
     return BatchOut.of(
         batch,
         JobService(workspace).batch_progress(batch.id),
-        promoted=_promoted(workspace, batch.project_id),
+        promoted=DatasetService(workspace).promoted_asset_ids(batch.project_id),
         pre_label_run=batches.latest_pre_label_job(batch_id),
     )
 
@@ -186,7 +170,8 @@ def approve_batch(
     A batch that is not a draft is 409 `INVALID_TRANSITION`; an empty one is 409
     `EMPTY_BATCH`, because it would have no jobs and could never complete; a
     project with no schema is 404 `SCHEMA_NOT_FOUND`, since there is nothing to
-    pin, and an unknown batch is 404 `BATCH_NOT_FOUND`.
+    pin, an unknown batch is 404 `BATCH_NOT_FOUND`, and a project that has vanished
+    since is 404 `PROJECT_NOT_FOUND`.
     """
     partition = None if body is None else body.to_domain()
     batches = BatchService(workspace)
@@ -194,7 +179,7 @@ def approve_batch(
     return BatchOut.of(
         batch,
         JobService(workspace).batch_progress(batch.id),
-        promoted=_promoted(workspace, batch.project_id),
+        promoted=DatasetService(workspace).promoted_asset_ids(batch.project_id),
         pre_label_run=batches.latest_pre_label_job(batch_id),
     )
 
@@ -207,7 +192,7 @@ def start_batch(workspace: WorkspaceDep, batch_id: UUID) -> BatchOut:
     return BatchOut.of(
         batch,
         JobService(workspace).batch_progress(batch.id),
-        promoted=_promoted(workspace, batch.project_id),
+        promoted=DatasetService(workspace).promoted_asset_ids(batch.project_id),
         pre_label_run=batches.latest_pre_label_job(batch_id),
     )
 
@@ -242,7 +227,7 @@ def repin_batch(
     return BatchOut.of(
         batch,
         JobService(workspace).batch_progress(batch.id),
-        promoted=_promoted(workspace, batch.project_id),
+        promoted=DatasetService(workspace).promoted_asset_ids(batch.project_id),
         pre_label_run=batches.latest_pre_label_job(batch_id),
     )
 
@@ -264,7 +249,7 @@ def complete_batch(workspace: WorkspaceDep, batch_id: UUID) -> BatchOut:
     return BatchOut.of(
         batch,
         JobService(workspace).batch_progress(batch.id),
-        promoted=_promoted(workspace, batch.project_id),
+        promoted=DatasetService(workspace).promoted_asset_ids(batch.project_id),
         pre_label_run=batches.latest_pre_label_job(batch_id),
     )
 
@@ -299,7 +284,7 @@ def create_correction_batch(
     return BatchOut.of(
         created,
         JobService(workspace).batch_progress(created.id),
-        promoted=_promoted(workspace, created.project_id),
+        promoted=DatasetService(workspace).promoted_asset_ids(created.project_id),
         pre_label_run=batches.latest_pre_label_job(created.id),
     )
 
@@ -649,7 +634,7 @@ def _membership(workspace: WorkspaceDep, change: MembershipChange) -> BatchMembe
     return BatchMembershipOut.of(
         change,
         JobService(workspace).batch_progress(change.batch.id),
-        promoted=_promoted(workspace, change.batch.project_id),
+        promoted=DatasetService(workspace).promoted_asset_ids(change.batch.project_id),
         pre_label_run=BatchService(workspace).latest_pre_label_job(change.batch.id),
     )
 

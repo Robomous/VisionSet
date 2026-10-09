@@ -22,8 +22,11 @@ from pydantic import Field
 from visionset import wire
 from visionset.kernel.domain import RecipeSpec
 from visionset.kernel.errors import ConfirmationRequired
-from visionset.kernel.services import PreprocessingRecipeService
-from visionset.mcp._resolve import ProjectRef, resolve_project
+from visionset.kernel.services import (
+    PreprocessingRecipeService,
+    ProjectService,
+)
+from visionset.mcp._resolve import ProjectRef
 from visionset.mcp._workspace import opened_workspace
 
 NameRef = Annotated[
@@ -72,7 +75,7 @@ def create_preprocessing_recipe(
     split.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         created = PreprocessingRecipeService(workspace).create(resolved.id, name, spec)
     return wire.preprocessing_recipe(created)
 
@@ -85,7 +88,7 @@ def get_preprocessing_recipe(project: ProjectRef, name: NameRef) -> dict[str, An
     recipe is reported as missing.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         found = PreprocessingRecipeService(workspace).get(resolved.id, name)
     return wire.preprocessing_recipe(found)
 
@@ -113,7 +116,7 @@ def update_preprocessing_recipe(
     `create_preprocessing_recipe` describes.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         updated = PreprocessingRecipeService(workspace).update(
             resolved.id, name, spec=spec, new_name=new_name
         )
@@ -128,7 +131,7 @@ def list_preprocessing_recipes(project: ProjectRef) -> dict[str, Any]:
     the spec it ran with whatever happens to the recipe afterwards.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         found = PreprocessingRecipeService(workspace).list(resolved.id)
     return wire.page([wire.preprocessing_recipe(one) for one in found])
 
@@ -153,7 +156,7 @@ def delete_preprocessing_recipe(
     recipe is reported as missing whether or not `confirm` was passed.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         recipes = PreprocessingRecipeService(workspace)
         if not confirm:
             stored = recipes.get(resolved.id, name)

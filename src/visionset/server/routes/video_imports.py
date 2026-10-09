@@ -40,7 +40,6 @@ from visionset.kernel.services import (
     BatchService,
     DatasetService,
     JobService,
-    ProjectService,
     VideoImportService,
 )
 from visionset.server.dependencies import WorkspaceDep, protected_router
@@ -74,17 +73,6 @@ weight before it is read, in ``VideoImportService._stage``.
 """
 
 _DESCRIPTORS: Final = TypeAdapter(tuple[FrameDescriptor, ...])
-
-
-def _promoted(workspace: WorkspaceDep, project_id: UUID) -> frozenset[UUID]:
-    """The trunk's current membership, for the batch a commit answers with.
-
-    A third spelling of `routes/batches.py`'s helper rather than an import, on
-    the terms `routes/assets.py` states: a route module reaches for
-    `dependencies`, `errors` and `models`, never for another route module.
-    """
-    dataset = ProjectService(workspace).get_dataset(project_id)
-    return DatasetService(workspace).member_asset_ids(dataset.id)
 
 
 def _stream(upload: UploadFile) -> BinaryIO:
@@ -330,7 +318,7 @@ def commit_video_import(workspace: WorkspaceDep, import_id: UUID) -> BatchOut:
     writes nothing, so a client that retried a timed-out request never gets a
     second batch. Committing an import that was aborted is 409
     `VIDEO_IMPORT_NOT_OPEN`, and an import this workspace does not hold is 404
-    `VIDEO_IMPORT_NOT_FOUND`.
+    `VIDEO_IMPORT_NOT_FOUND`, and a project that has vanished since is 404 `PROJECT_NOT_FOUND`.
 
     The batch is the draft the import named with `batch_id`, if it named one, and
     otherwise one created here — called by the import's `batch_name` if it
@@ -346,7 +334,7 @@ def commit_video_import(workspace: WorkspaceDep, import_id: UUID) -> BatchOut:
     return BatchOut.of(
         batch,
         JobService(workspace).batch_progress(batch.id),
-        promoted=_promoted(workspace, batch.project_id),
+        promoted=DatasetService(workspace).promoted_asset_ids(batch.project_id),
         pre_label_run=BatchService(workspace).latest_pre_label_job(batch.id),
     )
 

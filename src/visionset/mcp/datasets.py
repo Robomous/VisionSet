@@ -19,8 +19,11 @@ from __future__ import annotations
 from typing import Any
 
 from visionset import wire
-from visionset.kernel.services import DatasetService, ProjectService
-from visionset.mcp._resolve import ProjectRef, resolve_project
+from visionset.kernel.services import (
+    DatasetService,
+    ProjectService,
+)
+from visionset.mcp._resolve import ProjectRef
 from visionset.mcp._workspace import opened_workspace
 
 
@@ -39,7 +42,7 @@ def dataset_stats(project: ProjectRef) -> dict[str, Any]:
     carry no labels.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         dataset = ProjectService(workspace).get_dataset(resolved.id)
         stats = DatasetService(workspace).stats(dataset.id)
     return wire.dataset_stats(stats)

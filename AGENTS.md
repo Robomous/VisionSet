@@ -38,7 +38,7 @@ rule can be enforced by code, config or a test, enforce it there rather than wri
 **Architecture** — two boundaries are machine-enforced, and a change that fights one is wrong:
 
 1. **Kernel purity** — `visionset.kernel` imports no delivery package and no framework.
-   Four import-linter contracts in `pyproject.toml` plus a fresh-process test in
+   Six import-linter contracts in `pyproject.toml` plus a fresh-process test in
    `tests/architecture/`. Delivery packages (`server`, `cli`, `mcp`) never import each other;
    shared logic moves down into the kernel, never sideways.
 2. **Headless annotator** — `frontend/annotator/src/core/` never imports React and never

@@ -18,11 +18,12 @@ from uuid import UUID
 
 from fastapi import status
 
-from visionset.kernel.services import ProjectService
+from visionset.kernel.services import JobService, ProjectService
 from visionset.server.dependencies import WorkspaceDep, protected_router
 from visionset.server.errors import documented
 from visionset.server.models import (
     ConfirmQuery,
+    ProgressCounts,
     ProjectCreate,
     ProjectOut,
     ProjectPage,
@@ -75,6 +76,18 @@ def get_project_stats(workspace: WorkspaceDep, project_id: UUID) -> ProjectStats
     `classes` lists only classes somebody has actually used, ordered by name.
     """
     return ProjectStatsOut.of(ProjectService(workspace).stats(project_id))
+
+
+@router.get("/{project_id}/progress", responses=documented(404))
+def get_project_progress(workspace: WorkspaceDep, project_id: UUID) -> ProgressCounts:
+    """How many of the project's assets sit in each annotation state, across every batch.
+
+    The project-wide sibling of `GET /jobs/{job_id}/progress`; `unannotated` is
+    what is left to do. Every state is a field, including the ones nobody is in,
+    and a project with no batches reports zeros. An unknown project is 404
+    `PROJECT_NOT_FOUND`.
+    """
+    return ProgressCounts.of(JobService(workspace).project_progress(project_id))
 
 
 @router.patch("/{project_id}", responses=documented(404, 409))

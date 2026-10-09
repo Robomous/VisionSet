@@ -599,8 +599,15 @@ write no labels.
 
 ### Not on REST or MCP
 
-`init` and `token` are CLI commands only. REST and MCP assume a workspace and, for REST, a token
-issued from the CLI. `backfill-thumbnails` is on the CLI and MCP and has no REST route.
+`init` and `token` (`create`, `list`, `revoke`) are CLI commands only. REST and MCP assume a
+workspace and, for REST, a token issued from the CLI.
+
+Machine-local operations are CLI-and-MCP-only **by design**, because REST has no filesystem to
+point at: `ingest` (a directory on this machine) and `export` (a destination directory) have no
+REST route that takes a path. REST does the same work through uploaded sources and ingest jobs,
+and through a release export job whose archive is downloaded. `backfill-thumbnails` takes only a
+project and has no REST route either; a thumbnail missing from the cache answers
+`THUMBNAIL_NOT_CACHED` there until a CLI or MCP backfill fills it.
 
 ### Declared actions with no command
 
@@ -628,7 +635,7 @@ Four private modules and one shared package carry everything a command needs:
 | `cli/_errors.py` | the exit codes and `domain_errors()` |
 | `cli/_workspace.py` | `WorkspaceOption` and `opened_workspace()` |
 | `cli/_output.py` | `JsonOption`, the column formatter, `document()`, `note()` |
-| `cli/_resolve.py` | `ProjectOption`, and turning a name or a tag into the thing it names |
+| `cli/_resolve.py` | `ProjectOption`; name-or-id resolution is the kernel's `ProjectService.resolve` |
 | `visionset/wire/` | one hand-written projection per resource - **shared with the MCP surface**, which publishes the same shapes (see `docs/content/mcp.md`) |
 
 A new command is a module beside them and one registration line in `cli/main.py` - groups by

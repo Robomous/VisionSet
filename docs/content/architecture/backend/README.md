@@ -65,7 +65,7 @@ upward, and the three surfaces do not point at each other.
 
 ## What the rules are, and where they live
 
-Four import-linter contracts in [`pyproject.toml`](../../../../pyproject.toml) hold
+Six import-linter contracts in [`pyproject.toml`](../../../../pyproject.toml) hold
 the graph above. They are run by `uv run lint-imports`, which
 [`scripts/check.sh`](../../../../scripts/check.sh) invokes.
 
@@ -73,8 +73,10 @@ the graph above. They are run by `uv run lint-imports`, which
 | --- | --- |
 | Kernel purity | `visionset.kernel` importing `server`, `cli`, `mcp`, `formats`, `wire`, `jobs`, `inference`, `preprocessing`, or `fastapi` / `typer` / `mcp` / `uvicorn` |
 | Delivery clients are siblings | `server`, `cli` and `mcp` importing each other |
-| Job handlers are below the surfaces | `visionset.jobs` importing any delivery package or web framework |
-| Inference adapters are below the surfaces | `visionset.inference` importing any delivery package, or `visionset.jobs` |
+| Job handlers are below the surfaces | `visionset.jobs` importing any delivery package or web framework (`fastapi` / `typer` / `mcp` / `uvicorn`) |
+| Inference adapters are below the surfaces | `visionset.inference` importing any delivery package, web framework (`fastapi` / `typer` / `mcp` / `uvicorn`), or `visionset.jobs` |
+| Shared libraries are below the surfaces | `wire`, `formats` and `preprocessing` importing `server`, `cli`, `mcp`, or `fastapi` / `starlette` / `typer` / `click` / `mcp` / `uvicorn` |
+| Shared libraries never touch the database driver | `wire`, `formats` and `preprocessing` importing `sqlalchemy` directly |
 
 The first is the load-bearing one, and it has a second enforcement:
 [`tests/architecture/test_kernel_purity.py`](../../../../tests/architecture/test_kernel_purity.py)

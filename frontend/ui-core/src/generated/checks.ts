@@ -464,6 +464,7 @@ export const checkGetJobProgress = checkProgressCounts;
 export const checkGetPreprocessingRecipe = checkPreprocessingRecipeOut;
 export const checkGetProject = checkProjectOut;
 export const checkGetProjectDataset = checkDatasetOut;
+export const checkGetProjectProgress = checkProgressCounts;
 export const checkGetProjectStats = checkProjectStatsOut;
 export const checkGetRelease = checkReleaseOut;
 export const checkGetReleaseAssignment = checkSplitAssignmentOut;

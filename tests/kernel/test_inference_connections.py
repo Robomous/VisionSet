@@ -344,6 +344,21 @@ def test_a_connection_resolves_by_name_case_insensitively(connections) -> None: 
     assert connections.get_by_name("lOcAl").id == made.id
 
 
+def test_a_connection_resolves_by_id_or_by_name(connections) -> None:  # noqa: ANN001
+    made = connections.create("Local", **LOCAL)
+    assert connections.resolve(str(made.id)) == made
+    assert connections.resolve("lOcAl") == made
+
+
+def test_resolving_an_unknown_connection_is_refused(connections) -> None:  # noqa: ANN001
+    with pytest.raises(InferenceConnectionNotFound):
+        connections.resolve(str(uuid4()))
+    with pytest.raises(InferenceConnectionNotFound):
+        connections.resolve("nothing")
+    with pytest.raises(InvalidName):
+        connections.resolve("   ")
+
+
 # --- setup state --------------------------------------------------------------
 
 

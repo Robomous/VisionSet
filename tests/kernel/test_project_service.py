@@ -52,6 +52,23 @@ def _service(tmp_path: Path, name: str = "ws") -> tuple[WorkspaceService, Projec
     return workspace, ProjectService(workspace)
 
 
+def test_a_project_resolves_by_id_or_by_name(tmp_path: Path) -> None:
+    _, projects = _service(tmp_path)
+    made = projects.create("Road Signs")
+    assert projects.resolve(str(made.id)) == made
+    assert projects.resolve("road signs") == made
+
+
+def test_resolving_an_unknown_project_is_refused(tmp_path: Path) -> None:
+    _, projects = _service(tmp_path)
+    with pytest.raises(ProjectNotFound):
+        projects.resolve(str(uuid4()))
+    with pytest.raises(ProjectNotFound):
+        projects.resolve("nothing")
+    with pytest.raises(InvalidName):
+        projects.resolve("   ")
+
+
 def _datasets_of(workspace: WorkspaceService, project_id: UUID) -> list[Dataset]:
     """The dataset rows a project owns, read past the service's 1:1 assertion."""
     with workspace.unit_of_work() as uow:

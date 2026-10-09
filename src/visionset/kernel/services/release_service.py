@@ -111,6 +111,7 @@ from visionset.kernel.ports import (
     driver_for,
 )
 from visionset.kernel.services.dataset_service import DatasetService, assets_of
+from visionset.kernel.services.project_service import ProjectService
 from visionset.kernel.services.schema_service import SchemaService
 from visionset.kernel.services.workspace_service import WorkspaceService
 
@@ -126,6 +127,7 @@ class ReleaseService:
     def __init__(self, workspace: WorkspaceService) -> None:
         self._workspace = workspace
         self._datasets = DatasetService(workspace)
+        self._projects = ProjectService(workspace)
         self._schemas = SchemaService(workspace)
 
     # --- publishing --------------------------------------------------------
@@ -255,6 +257,21 @@ class ReleaseService:
         """
         with self._workspace.unit_of_work() as uow:
             return self._require_release(uow, release_id)
+
+    def resolve(self, project_reference: str, tag: str) -> Release:
+        """The release under ``tag`` in the dataset of the project a reference names.
+
+        Two lookups, because a tag is unique per dataset and a dataset is reached
+        through its project; the project read is what makes an unknown project
+        say so instead of reporting a good tag as missing.
+
+        Raises:
+            InvalidName: the reference or the tag is blank once stripped.
+            ProjectNotFound: no project in this workspace matches.
+            ReleaseNotFound: that project's dataset has no release under that tag.
+        """
+        project = self._projects.resolve(project_reference)
+        return self.get_by_tag(self._projects.get_dataset(project.id).id, tag)
 
     def get_by_tag(self, dataset_id: UUID, tag: str) -> Release:
         """The release published under that tag in that dataset.

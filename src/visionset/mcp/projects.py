@@ -24,8 +24,11 @@ from typing import Annotated, Any
 from pydantic import Field
 
 from visionset import wire
-from visionset.kernel.services import JobService, ProjectService
-from visionset.mcp._resolve import ProjectRef, resolve_project
+from visionset.kernel.services import (
+    JobService,
+    ProjectService,
+)
+from visionset.mcp._resolve import ProjectRef
 from visionset.mcp._workspace import opened_workspace
 
 
@@ -77,7 +80,7 @@ def get_project(project: ProjectRef) -> dict[str, Any]:
     `dataset_stats`, `publish_release` and `list_releases` take.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         projects = ProjectService(workspace)
         dataset = projects.get_dataset(resolved.id)
         preview = projects.preview(resolved.id)
@@ -112,7 +115,7 @@ def delete_project(
     project is reported as missing whether or not `confirm` was passed.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         projects = ProjectService(workspace)
         # Resolved before the delete, which takes the batches with it: the echo
         # names what was destroyed, and a null read after the fact could not.
