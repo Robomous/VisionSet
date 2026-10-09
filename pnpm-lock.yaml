@@ -230,7 +230,7 @@ importers:
         specifier: workspace:*
         version: link:../ui-core
       lucide-react:
-        specifier: ^1.49.0
+        specifier: ^1.52.0
         version: 1.52.0(@types/react@19.3.0)(react@19.3.0)
       openapi-fetch:
         specifier: ^0.17.0
@@ -255,7 +255,7 @@ importers:
         specifier: ^4.3.3
         version: 4.3.3(vite@8.3.3(@types/node@26.6.4)(esbuild@0.28.1)(jiti@2.7.0))
       '@tanstack/react-query':
-        specifier: ^5.104.0
+        specifier: ^5.104.1
         version: 5.104.1(react@19.3.0)
       '@testing-library/dom':
         specifier: ^10.4.2
@@ -368,7 +368,7 @@ importers:
         specifier: ^0.2.1
         version: 0.2.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(tailwindcss@4.3.3)
       '@tanstack/react-query':
-        specifier: ^5.104.0
+        specifier: ^5.104.1
         version: 5.104.1(react@19.3.0)
       '@tanstack/react-virtual':
         specifier: ^3.14.13
@@ -383,7 +383,7 @@ importers:
         specifier: ^0.7.1
         version: 0.7.1
       lucide-react:
-        specifier: ^1.49.0
+        specifier: ^1.52.0
         version: 1.52.0(@types/react@19.3.0)(react@19.3.0)
       openapi-fetch:
         specifier: ^0.17.0
