@@ -113,6 +113,7 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     (batches.remove_batch_assets, WRITES),
     (jobs.get_job, READS),
     (jobs.next_pending_assets, READS),
+    (assets.list_project_assets, READS),
     (assets.get_asset_image, READS),
     (annotations.list_asset_annotations, READS),
     (annotations.add_annotations, WRITES),

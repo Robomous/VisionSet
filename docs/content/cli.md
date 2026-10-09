@@ -33,7 +33,7 @@ visionset job progress|start|complete JOB_ID
 visionset job mark JOB_ID ASSET_ID --progress STATE
 visionset job pre-label JOB_ID CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels] [--geometry SHAPE]...
 
-visionset release publish --tag T --project P [--split TRAIN,VAL,TEST] [--seed N]
+visionset release publish --tag T --project P [--split TRAIN,VAL,TEST [--seed N]]
 visionset release list --project P
 visionset release verify TAG --project P
 visionset export --project P --release TAG --target T|--format F --out DIR [--allow-lossy] [--recipe NAME]
@@ -439,7 +439,7 @@ lifecycle must be drivable from a script, not because this is how labelling happ
 
 ### `visionset release` and `visionset export`
 
-`release publish --tag T --project P [--split TRAIN,VAL,TEST] [--seed N]` → `ReleaseService.publish`.
+`release publish --tag T --project P [--split TRAIN,VAL,TEST] [--seed N]` → `ReleaseService.publish`. `--seed` needs `--split`; alone it is exit 2.
 `release list --project P`, and `release verify TAG --project P`, whose **exit code is the answer**.
 
 `export --project P --release TAG --target T|--format F --out DIR [--allow-lossy]` resolves the
@@ -556,6 +556,57 @@ uvicorn's app by import string - import-linter forbids `visionset.cli` importing
 The subprocess inherits stdin and stdout, because those two streams *are* the transport, which is
 also why this is the one command that prints **nothing at all** on stdout: a stray line would
 corrupt the JSON-RPC stream before the first message.
+
+## Surface differences
+
+Every command above is one SDK call; the CLI is not the whole SDK. What follows is what the REST
+API or the MCP server reaches and the CLI does not.
+
+### Not on the CLI
+
+| Capability | Reachable over |
+| --- | --- |
+| `batch get`, a batch by id | REST, MCP |
+| `project show`, `source list`, asset listings and asset images | REST, MCP |
+| Dataset stats | REST, MCP |
+| Schema compare and schema preview | REST, MCP |
+| Re-pinning a batch's schema (`repin`) | REST, MCP |
+| Correction batches | REST, MCP |
+| The pre-label plan (the classes a run would ask about, before it runs) | REST, MCP |
+| Building a batch from assets already ingested, adding and removing its assets, and deleting a batch or a project (`visionset ingest` does create a batch, from a new directory) | REST, MCP (the MCP deletions only with `--allow-destructive`) |
+| Renaming a project | REST |
+| A dataset's change log, and removing an asset from a dataset | REST |
+| A release's manifest and fold assignment | REST |
+| Writing, editing or deleting annotations | REST, MCP |
+| Job assignee, project stats, an asset's batches, a trunk asset's annotations | REST |
+| Model-suggested bounds, and the assets blocking a schema change | REST |
+| Ingest jobs, video imports, background jobs, and the home summary | REST |
+| Preprocessing preview | REST |
+
+The CLI does not expose these. Annotation-state commands such as `job mark` move progress and
+write no labels.
+
+### Not on REST or MCP
+
+`init` and `token` are CLI commands only. REST and MCP assume a workspace and, for REST, a token
+issued from the CLI. `backfill-thumbnails` is on the CLI and MCP and has no REST route.
+
+### Declared actions with no command
+
+`--json` documents carry `allowed_actions`, which the kernel declares for every surface:
+
+- `batch list --json` can list `repin`, `create_correction`, `edit_membership` and `delete`; there
+  is no CLI command for any of them.
+- `job` documents list `start`, `pre_label` and `complete`; all three are commands.
+
+On MCP a pending job also lists `start`, for which there is no tool - see
+[mcp.md](mcp.md#actions-with-no-matching-tool).
+
+### Names and shapes
+
+`project create --json` prints the project alone, as REST does; the MCP tool `create_project`
+returns `{project, dataset}`. `job next --count` (`-n`) is MCP's `count` and REST's `n`. Parameter names are
+per surface; see [mcp.md](mcp.md#per-surface-names-and-shapes).
 
 ## For contributors
 

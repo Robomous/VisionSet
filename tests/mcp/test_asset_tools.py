@@ -175,3 +175,50 @@ def test_the_description_states_the_cap_the_port_actually_pins() -> None:
     from visionset.mcp.assets import get_asset_image
 
     assert str(DEFAULT_THUMBNAIL_MAX_EDGE) in (get_asset_image.__doc__ or "")
+
+
+def test_list_project_assets_includes_one_removed_from_its_batch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named, batch_id = ingested(monkeypatch, tmp_path, count=3)
+    members = payload(call("list_batch_assets", batch_id=batch_id))["items"]
+    removed = str(members[0]["id"])
+    call("remove_batch_assets", batch_id=batch_id, asset_ids=[removed])
+
+    listed = payload(call("list_project_assets", project=named))
+
+    assert listed["total"] == 3
+    assert removed in {item["id"] for item in listed["items"]}
+    assert removed not in {
+        item["id"] for item in payload(call("list_batch_assets", batch_id=batch_id))["items"]
+    }
+
+
+def test_list_project_assets_pages_with_a_stable_total(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named, _ = ingested(monkeypatch, tmp_path, count=3)
+    everything = payload(call("list_project_assets", project=named))["items"]
+
+    page = payload(call("list_project_assets", project=named, limit=2, offset=1))
+    past = payload(call("list_project_assets", project=named, offset=9))
+
+    assert page["total"] == 3
+    assert page["items"] == everything[1:3]
+    assert past == {"items": [], "total": 3}
+
+
+def test_list_project_assets_puts_the_newest_ingest_first(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named, first_batch = ingested(monkeypatch, tmp_path, count=2)
+    write_images(tmp_path / "later", count=2, first_seed=100)
+    second_batch = payload(call("ingest", project=named, path=str(tmp_path / "later")))["batch_id"]
+
+    def ids(batch_id: str) -> set[str]:
+        return {i["id"] for i in payload(call("list_batch_assets", batch_id=batch_id))["items"]}
+
+    listed = [item["id"] for item in payload(call("list_project_assets", project=named))["items"]]
+
+    assert set(listed[:2]) == ids(second_batch)
+    assert set(listed[2:]) == ids(first_batch)

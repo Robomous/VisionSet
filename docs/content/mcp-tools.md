@@ -11,7 +11,7 @@ error envelope, and the three gate words.
 
 ## Always offered
 
-59 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
+60 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
 
 | Tool | Takes | What it does |
 | --- | --- | --- |
@@ -44,6 +44,7 @@ error envelope, and the three gate words.
 | `remove_batch_assets` | `batch_id`, `asset_ids` | Take assets out of a draft batch. This does not delete anything. |
 | `get_job` | `job_id` | Read a job: its state, its counts, and the batch and schema it answers to. |
 | `next_pending_assets` | `job_id`, `count`? | Get the next assets in a job that nobody has annotated yet. |
+| `list_project_assets` | `project`, `limit`?, `offset`? | List every asset ingested into a project, whether or not any batch holds it. |
 | `get_asset_image` | `project`, `asset_id`, `full`? | Look at an asset's pixels, so you can annotate what is actually there. |
 | `list_asset_annotations` | `job_id`, `asset_id` | List the annotations already written on one asset of a job. |
 | `add_annotations` | `job_id`, `annotations` | Write new annotations into a job. All succeed together or none are written. |
