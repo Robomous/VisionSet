@@ -222,6 +222,8 @@ export const REFUSAL_PROSE: Record<string, string> = {
   // failure that never left the tab. `refusals.test.ts` holds that.
   BROWSER_ASSET_CHANGED:
     "The displayed asset changed before this device could answer — try again.",
+  BROWSER_ASSET_FRAME_INVALID:
+    "This asset has no usable pixel size, so this device cannot suggest on it. Choose Server, or re-ingest the asset.",
   BROWSER_INFERENCE_UNAVAILABLE:
     "This device could not start the model. Choose Server, or reload and try again.",
   BROWSER_INFERENCE_FAILED: "This device could not answer — try again, or choose Server.",

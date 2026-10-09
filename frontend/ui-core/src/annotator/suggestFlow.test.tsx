@@ -146,14 +146,15 @@ function aDetector(): Record<string, unknown> {
   });
 }
 
+let assetSize: { width: number | null; height: number | null } = { width: 640, height: 480 };
+
 function assetRow(id: string, hash: string): Record<string, unknown> {
   return {
     id,
     project_id: PROJECT,
     modality: "image",
     content_hash: hash.padEnd(64, "0"),
-    width: 640,
-    height: 480,
+    ...assetSize,
     format: "png",
     thumbnail_hash: null,
     frame_index: null,
@@ -219,6 +220,7 @@ beforeEach(() => {
   // that inherited the last one's would pass alone and fail in a suite.
   clearPrefs();
   connections = [connectionRow("ready")];
+  assetSize = { width: 640, height: 480 };
   suggestion = {
     model_ref: MODEL_REF,
     confidence: 0.9125,
@@ -332,6 +334,18 @@ function asks(): readonly Record<string, unknown>[] {
     .filter((row) => row.path === "/inference/suggest")
     .map((row) => JSON.parse(row.body) as Record<string, unknown>);
 }
+
+describe("an asset with no usable pixel frame", () => {
+  it.each([
+    ["unmeasured", { width: null, height: null }],
+    ["zero-sized", { width: 0, height: 0 }],
+  ])("refuses a %s asset instead of annotating a 0 × 0 frame", async (_name, size) => {
+    assetSize = size;
+    renderWithData(mount(<AnnotationPage jobId={JOB} />));
+    await screen.findByText("ASSET_FRAME_INVALID");
+    expect(screen.queryByTestId("annotation-page")).toBeNull();
+  });
+});
 
 describe("arming the tool", () => {
   it("asks for the connection list only once somebody arms it", async () => {
