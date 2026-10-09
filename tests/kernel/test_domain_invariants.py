@@ -27,6 +27,20 @@ def test_asset_content_hash_must_be_sha256_hex() -> None:
             Asset(project_id=uuid4(), content_hash=bad, uri="file:///img.png")
 
 
+@pytest.mark.parametrize("dimension", [0, -1])
+def test_asset_dimensions_are_unmeasured_or_positive(dimension: int) -> None:
+    unmeasured = Asset(project_id=uuid4(), content_hash="a" * 64, uri="file:///img.png")
+    assert (unmeasured.width, unmeasured.height) == (None, None)
+    for field in ("width", "height"):
+        with pytest.raises(ValidationError):
+            Asset(
+                project_id=uuid4(),
+                content_hash="a" * 64,
+                uri="file:///img.png",
+                **{field: dimension},
+            )
+
+
 def test_geometry_enum_includes_3d_values_today() -> None:
     values = {g.value for g in GeometryType}
     assert values == {

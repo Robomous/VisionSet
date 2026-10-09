@@ -214,6 +214,14 @@ function requireNumber(value: unknown, what: string): number {
   return value;
 }
 
+function requirePixelCount(value: unknown, what: string): number {
+  const count = requireNumber(value, what);
+  if (!Number.isInteger(count) || count < 1) {
+    throw new WireFormatError(`${what} must be a positive whole number of pixels`);
+  }
+  return count;
+}
+
 function requireString(value: unknown, what: string): string {
   if (typeof value !== "string") {
     throw new WireFormatError(`${what} must be a string`);
@@ -527,8 +535,8 @@ export function parseAssetDescriptor(value: unknown): AssetDescriptor {
   }
   return {
     id,
-    width: requireNumber(value["width"], "asset.width"),
-    height: requireNumber(value["height"], "asset.height"),
+    width: requirePixelCount(value["width"], "asset.width"),
+    height: requirePixelCount(value["height"], "asset.height"),
   };
 }
 

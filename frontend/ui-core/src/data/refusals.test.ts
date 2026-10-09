@@ -18,6 +18,7 @@ describe("refusalProse — browser target refusals", () => {
   // this assertion, or that regression reopens silently.
   it.each([
     ["BROWSER_ASSET_CHANGED", /asset changed/i],
+    ["BROWSER_ASSET_FRAME_INVALID", /no usable pixel size/i],
     ["BROWSER_INFERENCE_UNAVAILABLE", /could not start the model/i],
     ["BROWSER_INFERENCE_FAILED", /could not answer/i],
   ])("says what happened on this device for %s, never that a server was unreachable", (code, expected) => {
