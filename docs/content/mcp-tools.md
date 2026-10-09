@@ -73,7 +73,7 @@ error envelope, and the three gate words.
 | `download_connection_weights` | `connection` | Fetch a local connection's weights. This is the only tool that downloads a model. |
 | `check_connection_integrity` | `connection` | Re-read a local connection's weights and prove they are undamaged. |
 | `test_inference_connection` | `connection` | Ask an http connection's endpoint what it answers, and record the answer. |
-| `update_inference_connection` | `connection`, `name`?, `model_id`?, `model_revision`?, `device`?, `precision`?, `endpoint_url`?, `credential_env`? | Edit a connection. Parameters you omit are left alone; the type cannot change. |
+| `update_inference_connection` | `connection`, `name`?, `model_id`?, `model_revision`?, `device`?, `precision`?, `endpoint_url`?, `provider_id`?, `credential_env`? | Edit a connection. Parameters you omit are left alone; the type cannot change. |
 
 ## Offered only with `--allow-destructive`
 

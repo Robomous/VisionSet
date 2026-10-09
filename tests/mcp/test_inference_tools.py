@@ -196,6 +196,33 @@ def test_update_resolves_by_id_as_well_as_by_name(root: Path) -> None:
     assert edited["id"] == created["id"]
 
 
+def test_update_names_the_driver_and_persists_it(root: Path) -> None:
+    created = payload(call("create_inference_connection", **LOCAL))
+    edited = payload(
+        call("update_inference_connection", connection=created["id"], provider_id="sam")
+    )
+    assert edited["provider_id"] == "sam"
+    listed = payload(call("list_inference_connections"))["items"]
+    assert [row["provider_id"] for row in listed] == ["sam"]
+
+
+def test_update_moving_the_model_forgets_the_driver_unless_one_is_named(root: Path) -> None:
+    created = payload(call("create_inference_connection", **LOCAL, provider_id="sam"))
+    moved = payload(
+        call("update_inference_connection", connection=created["id"], model_id="acme/other")
+    )
+    assert moved["provider_id"] is None
+    renamed = payload(
+        call(
+            "update_inference_connection",
+            connection=created["id"],
+            model_id="acme/third",
+            provider_id="sam",
+        )
+    )
+    assert renamed["provider_id"] == "sam"
+
+
 def test_updating_an_unknown_connection_is_a_refusal(root: Path) -> None:
     refusal = error(call("update_inference_connection", connection="nothing-here", name="x"))
     assert "nothing-here" in refusal["message"]
