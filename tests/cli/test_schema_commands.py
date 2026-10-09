@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 from tests.cli._flow import (
@@ -19,11 +20,20 @@ from tests.cli._flow import (
     payload,
     run,
     schema_file,
+    started_batch,
     usage_error,
     workspace,
 )
 
-from visionset.kernel.services import WORKSPACE_ENV_VAR
+from visionset.kernel.domain import Annotation, BboxGeometry
+from visionset.kernel.services import (
+    WORKSPACE_ENV_VAR,
+    AnnotationService,
+    BatchService,
+    JobService,
+    WorkspaceService,
+)
+from visionset.server import models
 from visionset.server.models import SchemaVersionCreate
 
 
@@ -201,3 +211,74 @@ def test_list_json_is_the_envelope(root: Path, tmp_path: Path) -> None:
     document = payload(root, "schema", "list", "-p", "road-signs")
     assert document["total"] == 1
     assert document["items"][0]["version"] == 1
+
+
+def _orphaning_project(root: Path, tmp_path: Path) -> tuple[str, str, list[str]]:
+    name, batch = started_batch(root, tmp_path)
+    with WorkspaceService.open(root) as service:
+        (job,) = BatchService(service).jobs(UUID(batch))
+        JobService(service).start(job.id)
+        assets = list(BatchService(service).get(UUID(batch)).asset_ids)[:2]
+        AnnotationService(service).add(
+            job.id,
+            [
+                Annotation(
+                    asset_id=asset,
+                    label_class="sign",
+                    schema_version=1,
+                    geometry=BboxGeometry(x=1, y=2, width=30, height=40),
+                    provenance="human",
+                )
+                for asset in assets
+            ],
+        )
+    return name, batch, [str(a) for a in assets]
+
+
+def _lane_only(tmp_path: Path) -> Path:
+    return _document(tmp_path, [{"name": "lane", "geometries": ["polyline"]}])
+
+
+def test_blocking_assets_lists_the_frames_a_narrowing_would_orphan(
+    tmp_path: Path,
+) -> None:
+    root = workspace(tmp_path)
+    name, batch, labeled = _orphaning_project(root, tmp_path)
+    proposal = _lane_only(tmp_path)
+
+    result = run(root, "schema", "blocking-assets", str(proposal), "-p", name)
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout.splitlines()[0].split() == ["ASSET", "ANNOTATIONS", "CLASSES", "BATCHES"]
+    rows = [line.split() for line in result.stdout.splitlines()[1:]]
+    assert {row[0] for row in rows} == set(labeled)
+    assert all(row[1:] == ["1", "sign", batch] for row in rows)
+
+    listed = payload(root, "schema", "blocking-assets", str(proposal), "-p", name)
+    assert listed["total"] == 2
+    assert {item["asset"]["id"] for item in listed["items"]} == set(labeled)
+    assert models.BlockingAssetPage.model_validate(listed).total == 2
+
+
+def test_blocking_assets_pages_with_a_stable_total(tmp_path: Path) -> None:
+    root = workspace(tmp_path)
+    name, _, _ = _orphaning_project(root, tmp_path)
+    proposal = str(_lane_only(tmp_path))
+    args = ("schema", "blocking-assets", proposal, "-p", name)
+
+    everything = payload(root, *args)
+    first = payload(root, *args, "--limit", "1")
+    second = payload(root, *args, "--limit", "1", "--offset", "1")
+
+    assert first["total"] == second["total"] == 2
+    assert [first["items"][0], second["items"][0]] == everything["items"]
+    assert payload(root, *args, "--offset", "9") == {"items": [], "total": 2}
+
+
+def test_an_additive_proposal_blocks_nothing(tmp_path: Path) -> None:
+    root = workspace(tmp_path)
+    name, _, _ = _orphaning_project(root, tmp_path)
+
+    listed = payload(root, "schema", "blocking-assets", str(schema_file(tmp_path)), "-p", name)
+
+    assert listed == {"items": [], "total": 0}

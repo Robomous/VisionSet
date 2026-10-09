@@ -50,6 +50,7 @@ from visionset.kernel.domain.capabilities import (
 from visionset.kernel.domain.dataset import (
     ClassCount,
     Dataset,
+    DatasetActor,
     DatasetChange,
     DatasetMember,
     DatasetOperation,
@@ -415,6 +416,7 @@ __all__ = [
     "Dataset",
     "DatasetChange",
     "DatasetMember",
+    "DatasetActor",
     "DatasetOperation",
     "DatasetStats",
     "DecodedStill",

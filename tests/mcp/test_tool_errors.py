@@ -16,6 +16,7 @@ making every refusal look like a protocol failure.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from tests.mcp._flow import (
@@ -35,22 +36,64 @@ from visionset.kernel import (
     LossyExportNotConsented,
     SchemaChangeWouldOrphan,
 )
-from visionset.mcp._errors import RETRY_WITH, refused
+from visionset.kernel.domain import ClassCount
+from visionset.kernel.error_codes import error_code, error_detail
+from visionset.mcp._errors import RETRY_WITH, guarded, refused
+
+ENVELOPE_KEYS = {"message", "retry_with", "hint", "index", "code", "detail"}
 
 
-def test_the_envelope_always_carries_the_same_four_keys(
+def test_the_envelope_always_carries_the_same_keys(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # A caller that has to test for a key before reading it is a caller writing
     # two branches for one answer.
     workspace(monkeypatch, tmp_path)
-    assert set(error(call("get_project", project="nope"))) == {
-        "message",
-        "retry_with",
-        "hint",
-        "index",
-    }
-    assert set(refused("anything")["error"]) == {"message", "retry_with", "hint", "index"}
+    assert set(error(call("get_project", project="nope"))) == ENVELOPE_KEYS
+    assert set(refused("anything")["error"]) == ENVELOPE_KEYS
+
+
+def test_a_refusal_carries_the_code_rest_answers_with(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    workspace(monkeypatch, tmp_path)
+    refusal = error(call("get_project", project="nope"))
+    assert refusal["code"] == "PROJECT_NOT_FOUND"
+    assert refusal["detail"] is None
+    assert refused("anything")["error"]["code"] is None
+
+
+def test_a_refusal_carries_the_detail_rest_answers_with(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named = schema(monkeypatch, tmp_path)
+    refusal = error(
+        call(
+            "create_schema_version",
+            project=named,
+            classes=[{"name": "car", "geometries": ["bbox"]}],
+        )
+    )
+    assert refusal["code"] == "DESTRUCTIVE_SCHEMA_CHANGE"
+    assert refusal["detail"] == {"classes": ["sign"]}
+
+
+def test_the_envelope_is_built_from_the_kernel_table() -> None:
+    blockers = (ClassCount(label_class="car", annotations=3, assets=2),)
+    exc = SchemaChangeWouldOrphan("annotations depend on 'car'", blockers=blockers)
+
+    @guarded
+    def refusing() -> dict[str, Any]:
+        raise exc
+
+    envelope = refusing()
+    assert isinstance(envelope, dict)
+    body = envelope["error"]
+    assert body["code"] == error_code(exc) == "SCHEMA_CHANGE_WOULD_ORPHAN"
+    assert body["detail"] == error_detail(exc)
+    assert body["detail"] == {"blockers": [{"label_class": "car", "annotations": 3, "assets": 2}]}
+    assert body["retry_with"] is None
+    assert "delete" not in (body["hint"] or "")
 
 
 def test_a_domain_refusal_is_a_result_and_not_a_protocol_error(
@@ -184,6 +227,6 @@ def test_the_one_tool_returning_image_content_still_refuses_in_the_envelope(
     named, _ = ingested(monkeypatch, tmp_path, count=1)
     result = call("get_asset_image", project=named, asset_id=str(uuid4()))
     assert result.structured_content is not None
-    assert set(result.structured_content["error"]) == {"message", "retry_with", "hint", "index"}
+    assert set(result.structured_content["error"]) == ENVELOPE_KEYS
     # And the text half says the same thing, for a client that reads only content.
     assert "error" in result.content[0].text

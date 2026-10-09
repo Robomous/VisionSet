@@ -344,6 +344,58 @@ def schema_apply(
     typer.echo(str(published.published.version))
 
 
+_BLOCKING_COLUMNS: Final = ("ASSET", "ANNOTATIONS", "CLASSES", "BATCHES")
+
+
+@schema_app.command("blocking-assets")
+def schema_blocking_assets(
+    file: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help='The proposed schema, a JSON document: {"classes": [...]}.',
+        ),
+    ],
+    project: ProjectOption,
+    limit: Annotated[
+        int | None, typer.Option("--limit", min=1, help="How many frames to list.")
+    ] = None,
+    offset: Annotated[int, typer.Option("--offset", min=0, help="How many frames to skip.")] = 0,
+    json_out: JsonOption = False,
+    workspace: WorkspaceOption = None,
+) -> None:
+    """List the frames whose annotations a proposed schema would orphan.
+
+    The listing behind `schema apply`'s refusal: a change that drops a class or
+    shape still carrying annotations has no override, and these are the frames to
+    clean up first. Writes nothing. An additive proposal lists nothing.
+    """
+    classes = _read_classes(file)
+    with opened_workspace(workspace) as service:
+        resolved = resolve_project(service, project)
+        found = SchemaService(service).blocking_assets(resolved.id, classes)
+    end = None if limit is None else offset + limit
+    shown = found[offset:end]
+    if json_out:
+        document({"items": [wire.blocking_asset(one) for one in shown], "total": len(found)})
+        return
+    note(f"{len(found)} frame(s) block this schema; showing {len(shown)}.")
+    table(
+        _BLOCKING_COLUMNS,
+        [
+            (
+                str(one.asset.id),
+                str(one.annotations),
+                ",".join(one.label_classes),
+                ",".join(str(batch_id) for batch_id in one.batches),
+            )
+            for one in shown
+        ],
+    )
+
+
 @schema_app.command("list")
 def schema_list(
     project: ProjectOption,

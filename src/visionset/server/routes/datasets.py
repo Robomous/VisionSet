@@ -27,6 +27,7 @@ from uuid import UUID
 
 from fastapi import Response, status
 
+from visionset.kernel.domain import DatasetActor
 from visionset.kernel.services import DatasetService, ProjectService
 from visionset.server.dependencies import WorkspaceDep, protected_router
 from visionset.server.errors import documented
@@ -159,7 +160,7 @@ def remove_dataset_asset(workspace: WorkspaceDep, dataset_id: UUID, asset_id: UU
     Not permanent, either: re-promoting the batch the asset came from puts it
     back, because the trunk keeps no memory of removals.
     """
-    DatasetService(workspace).remove_asset(dataset_id, asset_id)
+    DatasetService(workspace).remove_asset(dataset_id, asset_id, actor=DatasetActor.REST)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

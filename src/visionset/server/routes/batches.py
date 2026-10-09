@@ -40,7 +40,7 @@ from visionset.inference import (
     require_detectable_schema,
     select_pre_labelable,
 )
-from visionset.kernel.domain import AssetSort, MembershipChange
+from visionset.kernel.domain import AssetSort, DatasetActor, MembershipChange
 from visionset.kernel.services import (
     BatchService,
     DatasetService,
@@ -724,7 +724,7 @@ def promote_batch(workspace: WorkspaceDep, batch_id: UUID) -> AssetPage:
 
     A batch that has not reached `completed` is 409 `BATCH_NOT_COMPLETE`.
     """
-    promoted = DatasetService(workspace).promote(batch_id)
+    promoted = DatasetService(workspace).promote(batch_id, actor=DatasetActor.REST)
     return AssetPage(items=[AssetOut.of(asset) for asset in promoted], total=len(promoted))
 
 

@@ -28,7 +28,7 @@ class VisionSetError(Exception):
     It is a kernel fact, not a delivery one: "the third annotation you gave me"
     is about the call, and a surface reporting a bulk write cannot recover the
     position afterwards because the refusal is raised before anything is
-    written. ``server/errors.py`` publishes it as ``detail.index``.
+    written. ``error_codes.error_detail`` publishes it as ``detail.index``.
     """
 
 

@@ -18,9 +18,12 @@ Three exit codes, and no others:
     2  a usage error, raised and formatted by Click itself
 =====  =========================================================================
 
-**Nothing here prints to stdout.** Stdout is the command's *output* — the secret
-from ``token create``, the rows from ``token list`` — so that redirecting it
-captures data and nothing else.
+**The sentence never goes to stdout.** Stdout is the command's *output* — the
+secret from ``token create``, the rows from ``token list`` — so that redirecting
+it captures data and nothing else. The one exception is the data a refusal *is*:
+under ``--json``, stdout carries ``{"error": {"code", "message", "detail"}}``,
+with the code and detail REST answers for the same refusal, so a program
+branches on the code without parsing stderr.
 """
 
 from __future__ import annotations
@@ -31,6 +34,7 @@ from typing import Final
 
 import typer
 
+from visionset.cli._output import document, json_requested
 from visionset.kernel import (
     DestructiveSchemaChange,
     LossyExportNotConsented,
@@ -39,6 +43,7 @@ from visionset.kernel import (
     SchemaChangeWouldOrphan,
     VisionSetError,
 )
+from visionset.kernel.error_codes import error_code, error_detail
 from visionset.kernel.services import WORKSPACE_ENV_VAR
 
 EXIT_DOMAIN_ERROR: Final = 1
@@ -118,6 +123,8 @@ def _hint_for(exc: VisionSetError) -> str | None:
 def domain_errors() -> Iterator[None]:
     """Turn any kernel refusal into a readable line and a non-zero exit.
 
+    Under ``--json`` the refusal is also printed as a JSON document on stdout.
+
     ``typer.Exit`` rather than ``sys.exit``: Click catches it and ``CliRunner``
     records it as ``result.exit_code``, which is what makes the exit status
     assertable from a test instead of only from a subprocess.
@@ -129,6 +136,16 @@ def domain_errors() -> Iterator[None]:
     try:
         yield
     except VisionSetError as exc:
+        if json_requested():
+            document(
+                {
+                    "error": {
+                        "code": error_code(exc),
+                        "message": str(exc),
+                        "detail": error_detail(exc),
+                    }
+                }
+            )
         typer.secho(f"Error: {exc}", err=True, fg=typer.colors.RED)
         hint = _hint_for(exc)
         if hint is not None:

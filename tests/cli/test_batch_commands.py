@@ -63,6 +63,13 @@ def _trunk_size(root: Path, name: str) -> int:
         return len(DatasetService(service).assets(dataset.id))
 
 
+def _change_actors(root: Path, name: str) -> list[str | None]:
+    with WorkspaceService.open(root) as service:
+        project = ProjectService(service).get_by_name(name)
+        dataset = ProjectService(service).get_dataset(project.id)
+        return [change.actor for change in DatasetService(service).changes(dataset.id)]
+
+
 class _FakePredictor:
     """A detector that returns one confident sign box for every requested asset —
     and, asked to, a sign polygon beside it."""
@@ -779,6 +786,12 @@ def test_promote_moves_the_finished_assets_into_the_trunk(root: Path, tmp_path: 
     ids = ok(root, "batch", "promote", batch).splitlines()
     assert len(ids) == 6
     assert _trunk_size(root, name) == 6
+
+
+def test_promote_logs_the_cli_as_the_actor(root: Path, tmp_path: Path) -> None:
+    name, batch = completed_batch(root, tmp_path)
+    ok(root, "batch", "promote", batch)
+    assert _change_actors(root, name) == ["cli"]
 
 
 def test_promoting_twice_adds_nothing(root: Path, tmp_path: Path) -> None:

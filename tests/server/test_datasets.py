@@ -416,6 +416,11 @@ def test_removing_an_asset_takes_it_out_of_the_trunk(
     remaining = client.get(f"/datasets/{dataset_id}/assets").json()
     assert remaining["total"] == 2
     assert removed not in {asset["id"] for asset in remaining["items"]}
+    entries = client.get(f"/datasets/{dataset_id}/changes").json()["items"]
+    assert [(e["operation"], e["actor"]) for e in entries] == [
+        ("promote", "rest"),
+        ("remove_asset", "rest"),
+    ]
 
 
 def test_removing_an_asset_that_was_never_a_member_is_still_a_204(
@@ -480,6 +485,7 @@ def test_promoting_writes_one_entry_naming_the_batch_and_the_assets(
     (entry,) = client.get(f"/datasets/{dataset_id}/changes").json()["items"]
 
     assert entry["operation"] == "promote"
+    assert entry["actor"] == "rest"
     assert entry["subject_ids"][0] == batch_id
     assert len(entry["subject_ids"]) == 4
     assert entry["occurred_at"]

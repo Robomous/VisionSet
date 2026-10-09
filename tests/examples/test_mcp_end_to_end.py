@@ -142,7 +142,7 @@ def test_the_recipe_export_reports_its_hash_and_wrote_a_train_variant(summary: A
 
 
 def test_a_domain_refusal_arrives_as_a_result_and_names_no_retry(summary: Any) -> None:
-    """The two-failure-shape rule, and the reason `retry_with` replaced a code.
+    """The two-failure-shape rule, and why `retry_with` is null.
 
     Reusing a tag is refused because a release is immutable — there is no flag
     that makes it work, so `retry_with` is null rather than absent. A client

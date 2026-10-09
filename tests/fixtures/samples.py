@@ -30,6 +30,7 @@ from visionset.kernel.domain import (
     Batch,
     BatchState,
     BboxGeometry,
+    BlockingAsset,
     ChangeKind,
     ClassCompatibility,
     ClassCount,
@@ -261,6 +262,13 @@ ASSET = Asset(
     # (`_output.moment` is human, `wire._moment` is parity) are exactly the pair
     # a key-set comparison cannot tell apart.
     ingested_at=datetime(2026, 8, 3, 12, 30, 45, 123456, tzinfo=UTC),
+)
+
+BLOCKING_ASSET = BlockingAsset(
+    asset=ASSET,
+    label_classes=("lane", "sign"),
+    annotations=3,
+    batches=(uuid4(), uuid4()),
 )
 
 COUNTS = {

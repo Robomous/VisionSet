@@ -295,9 +295,8 @@ moved; the second is the case a capability list makes visible - a format declari
 lossless still cannot silently drop a geometry it never claimed to write.
 
 The refusal carries the report, so a caller can say what it is consenting to without asking
-twice: `LossyExportNotConsented.compatibility` in Python, `detail.compatibility` on the API's 409,
-and - because the MCP envelope is four keys and stays four keys - a hint naming `check_export` for
-an agent.
+twice: `LossyExportNotConsented.compatibility` in Python, and `detail.compatibility` on the API's
+409, in the MCP error envelope and in the CLI's `--json` refusal.
 
 ### Every export writes its own report
 

@@ -352,9 +352,9 @@ and nothing downstream could detect it: every number would be in range and every
 **A refusal is a result, not an error.** There are two failure shapes over MCP. A malformed
 *request* comes back with `isError` set and the validator's field path; a domain refusal comes back
 as an ordinary result whose payload is an error envelope, because the call was well formed and the
-answer is no. The example ends on the second kind and checks all four keys - and that `retry_with`
-is **null**, because a release is immutable and no flag makes a reused tag work. That is the
-distinction a status code could not carry, and the reason the envelope has no `code`.
+answer is no. The example ends on the second kind and checks every key - that the `code` is
+`RELEASE_TAG_TAKEN`, as over REST, and that `retry_with` is **null**, because a release is immutable
+and no flag makes a reused tag work. That is the distinction a status code could not carry.
 
 ## What it deliberately does not need
 

@@ -234,7 +234,8 @@ the same `recipe` answers the consent question without writing anything.
 ```
 publish_release project=... tag="v1.0"
 ->  {"error": {"message": "release tag 'v1.0' already exists ...",
-               "retry_with": null, "hint": null, "index": null}}
+               "retry_with": null, "hint": null, "index": null,
+               "code": "RELEASE_TAG_TAKEN", "detail": null}}
 ```
 
 `isError` is **false**. A domain refusal is an ordinary successful call whose payload happens to be

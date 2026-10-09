@@ -6,24 +6,22 @@ The third spelling of a contract ``server/errors.py`` keeps over HTTP and
 REST client branches on a machine-readable ``code`` because it is a program; a
 shell branches on zero versus non-zero because a person reads the sentence. An
 agent is both — it reads, and it decides — so it gets the kernel's own sentence
-**and** one machine-readable field:
+**and** the machine-readable fields:
 
 .. code-block:: json
 
     {"error": {"message": "...", "retry_with": "allow_destructive",
-               "hint": null, "index": null}}
+               "hint": null, "index": null,
+               "code": "DESTRUCTIVE_SCHEMA_CHANGE", "detail": {"classes": ["car"]}}}
 
-**There is deliberately no ``code``.** The codes live in ``server/errors.py``'s
-``ERROR_RULES``, which this package may not import, and deriving one from a class
-name is forbidden — a public contract keyed to a Python identifier breaks
-silently on a refactor and passes every test. What a code was
-actually needed for here is one question, "may I retry this, and with what?", and
-:data:`RETRY_WITH` answers it directly. ``DESTRUCTIVE_SCHEMA_CHANGE`` is
-retryable with a flag and ``SCHEMA_CHANGE_WOULD_ORPHAN`` is not; publishing the
-flag rather than the code is what keeps an agent out of the retry loop
-``SchemaChangeWouldOrphan``'s own docstring warns about. If a caller ever needs
-the full table, ``ERROR_RULES``' code column gets promoted beside
-``visionset.wire`` — it is not re-spelled here.
+``code`` and ``detail`` are the values REST publishes for the same refusal, read
+from ``visionset.kernel.error_codes`` rather than re-spelled here; ``detail`` is
+``null`` when the refusal carries no structure. :data:`RETRY_WITH` still answers
+the question an agent most often has — "may I retry this, and with what?" —
+without a code table: ``DESTRUCTIVE_SCHEMA_CHANGE`` is retryable with a flag and
+``SCHEMA_CHANGE_WOULD_ORPHAN`` is not, and publishing the flag is what keeps an
+agent out of the retry loop ``SchemaChangeWouldOrphan``'s own docstring warns
+about.
 
 **Every tool is wrapped once, in ``main.py``'s registration table**, rather than
 each body decorating itself. One spelling that cannot be forgotten, and
@@ -59,6 +57,7 @@ from visionset.kernel import (
     ThumbnailNotCached,
     VisionSetError,
 )
+from visionset.kernel.error_codes import error_code, error_detail
 from visionset.kernel.services import WORKSPACE_ENV_VAR
 
 RETRY_WITH: Final[dict[type[BaseException], str]] = {
@@ -93,10 +92,8 @@ _HINTS: Final[dict[type[BaseException], str]] = {
         "Call `backfill_thumbnails` for this project to render the missing "
         "previews, or ask for `full=true` to read the original bytes."
     ),
-    # The envelope stays four keys — see the module docstring — so the report
-    # itself is not folded into it. What an agent needs is where to read it, and
-    # `check_export` answers with the exact document this refusal was computed
-    # from, for the same release and the same format.
+    # The report itself is the envelope's `detail`; `check_export` answers with
+    # the same document for the same release and format.
     LossyExportNotConsented: (
         "Call `check_export` with the same release and format to see exactly "
         "which classes would be dropped and how many annotations that is, then "
@@ -129,7 +126,16 @@ def refused(message: str, *, hint: str | None = None) -> dict[str, Any]:
     ``VisionSetError`` tree — a missing path, a non-positive rate — so the shape
     a caller parses does not depend on which layer said no.
     """
-    return {"error": {"message": message, "retry_with": None, "hint": hint, "index": None}}
+    return {
+        "error": {
+            "message": message,
+            "retry_with": None,
+            "hint": hint,
+            "index": None,
+            "code": None,
+            "detail": None,
+        }
+    }
 
 
 def _envelope(exc: VisionSetError) -> dict[str, Any]:
@@ -143,6 +149,8 @@ def _envelope(exc: VisionSetError) -> dict[str, Any]:
             # the write is all-or-nothing, so nothing landed and there is no
             # partial result to count from.
             "index": exc.index,
+            "code": error_code(exc),
+            "detail": error_detail(exc),
         }
     }
 

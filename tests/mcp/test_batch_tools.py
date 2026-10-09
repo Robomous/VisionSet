@@ -32,6 +32,7 @@ from visionset.kernel.domain import (
     PredictedRegion,
     ServedFamily,
 )
+from visionset.kernel.services import DatasetService, ProjectService, WorkspaceService
 
 
 def test_a_freshly_ingested_batch_is_a_draft_with_no_jobs_and_no_pin(
@@ -171,6 +172,20 @@ def test_completing_with_promote_fills_the_trunk_and_counts_what_moved(
     assert completed["promoted"] == 2
     assert completed["promoted_asset_count"] == 2
     assert payload(call("promote_batch", batch_id=batch_id)) == {"items": [], "total": 0}
+
+
+def test_promote_batch_logs_mcp_as_the_actor(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    name, batch_id, job_id = open_batch(monkeypatch, tmp_path, count=2)
+    _finished(job_id)
+    payload(call("complete_batch", batch_id=batch_id))
+    payload(call("promote_batch", batch_id=batch_id))
+
+    with WorkspaceService.open(tmp_path / "ws") as service:
+        dataset = ProjectService(service).get_dataset(ProjectService(service).get_by_name(name).id)
+        actors = [change.actor for change in DatasetService(service).changes(dataset.id)]
+    assert actors == ["mcp"]
 
 
 def test_completing_without_promote_moves_nothing_into_the_trunk(
@@ -385,7 +400,7 @@ def test_a_narrowing_repin_names_the_flag_that_retries_it(
 def test_a_repin_that_would_orphan_this_batchs_labels_offers_no_retry(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """`retry_with` is null, which is the whole reason it is published instead of a code."""
+    """`retry_with` is null: no confirmation argument exists, though code and detail ride along."""
     project, batch_id, job_id = open_batch(monkeypatch, tmp_path, count=1)
     asset_id = payload(call("next_pending_assets", job_id=job_id))["items"][0]["id"]
     payload(

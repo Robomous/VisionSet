@@ -425,13 +425,13 @@ async def _walk(root: Path, incoming: Path, export: Path) -> Summary:
         _say(f"exported for yolo11 under recipe {recipe_hash[:12]}…: {augmented_label} written")
 
         # (8) And the walk ends on a refusal it also asserts. A release is
-        # immutable, so the tag cannot be reused — and the envelope carries
-        # `retry_with` rather than a code, because "which flag would make this
-        # work?" is the only question a code was ever needed for. Here the
+        # immutable, so the tag cannot be reused — and `retry_with` answers
+        # "which flag would make this work?" without a code table. Here the
         # answer is null: nothing makes it work, and a client that retried in a
         # loop would loop forever.
         reused = refusal(await tool("publish_release", project=PROJECT, tag=TAG))
-        assert set(reused) == {"message", "retry_with", "hint", "index"}, reused
+        assert set(reused) == {"message", "retry_with", "hint", "index", "code", "detail"}, reused
+        assert reused["code"] == "RELEASE_TAG_TAKEN", reused
         assert reused["retry_with"] is None, reused
         _say(f"reusing the tag is refused with retry_with={reused['retry_with']}, as it should be")
 

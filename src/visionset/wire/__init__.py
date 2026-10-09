@@ -77,6 +77,7 @@ from visionset.kernel.domain import (
     Batch,
     BatchState,
     BboxGeometry,
+    BlockingAsset,
     ClassCompatibility,
     ClassCount,
     ClassificationGeometry,
@@ -315,6 +316,16 @@ def schema_change_preview(value: SchemaChangePreview) -> dict[str, Any]:
         "diff": schema_diff(value.diff),
         "blockers": [class_count(c) for c in value.blockers],
         "is_refused": value.is_refused,
+    }
+
+
+def blocking_asset(value: BlockingAsset) -> dict[str, Any]:
+    """One frame a narrowing would orphan annotations on, and the batches holding it."""
+    return {
+        "asset": asset(value.asset),
+        "label_classes": list(value.label_classes),
+        "annotations": value.annotations,
+        "batch_ids": [str(batch_id) for batch_id in value.batches],
     }
 
 
