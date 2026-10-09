@@ -27,6 +27,7 @@ SHIPPED = {
     "get_schema",
     "compare_schema_versions",
     "preview_schema_change",
+    "list_blocking_assets",
     "create_schema_version",
     "get_schema_draft",
     "set_schema_draft",
@@ -257,12 +258,19 @@ def server_tool(name: str) -> object:
 
 
 def test_the_error_envelope_has_one_shape_everywhere() -> None:
-    # Four keys, always present, null where they do not apply. A caller that has
+    # Six keys, always present, null where they do not apply. A caller that has
     # to test for a key's existence before reading it is a caller writing two
     # branches for one answer.
     from visionset.mcp._errors import refused
 
-    assert set(refused("x")["error"]) == {"message", "retry_with", "hint", "index"}
+    assert set(refused("x")["error"]) == {
+        "message",
+        "retry_with",
+        "hint",
+        "index",
+        "code",
+        "detail",
+    }
 
 
 def test_guarded_preserves_the_signature_the_input_schema_is_built_from() -> None:

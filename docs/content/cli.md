@@ -14,6 +14,7 @@ visionset project create NAME [--description TEXT]
 visionset project list
 visionset schema apply FILE --project P [--allow-destructive]
 visionset schema list --project P
+visionset schema blocking-assets FILE --project P [--limit N] [--offset N]
 visionset schema draft show --project P [--kind curated|annotation]
 visionset schema draft set FILE --project P [--kind K] [--note TEXT] [--revision N]
 visionset schema draft clear --project P [--kind K]
@@ -94,7 +95,8 @@ still in it, and it runs in CI on every change.
 One non-zero code for the whole `VisionSetError` family, rather than a table mapping each error to
 its own. That is the deliberate difference from [the REST surface](api.md), where a client branches
 on a machine-readable `code` because it is a program; a shell branches on zero versus non-zero, and
-a person reads the sentence.
+a person reads the sentence. A program that needs the code passes `--json`, and the refusal arrives
+on stdout carrying it.
 
 Where the kernel's own message names a Python API - `NotAWorkspace` ends in "use
 `WorkspaceService.init` to create one" - the CLI adds a second line naming something a terminal can
@@ -178,6 +180,11 @@ The contract:
   `{"items": [], "total": 0}` rather than an error. The same envelope, and the same argument for it,
   as [the REST API's](api.md#conventions).
 - **A single resource or report is the bare object.**
+- **A refusal is `{"error": {"code": ..., "message": ..., "detail": ...}}`** on stdout, still with
+  exit 1 and the sentence on stderr. `code` and `detail` are exactly what
+  [the REST API](api.md#the-full-table) answers for the same refusal - `detail.blockers` on
+  `SCHEMA_CHANGE_WOULD_ORPHAN`, for one - and `detail` is `null` when there is none, so a script
+  branches on the code instead of parsing stderr.
 - `--json` changes what stdout *is*. It does not silence stderr: a warning is still a warning.
 
 **The shapes deliberately agree, key for key, with the REST API's**, so a script moves between
@@ -316,7 +323,11 @@ are administration rather than flow, and both want the cascade explained. See
 
 `apply FILE --project P [--allow-destructive]` → `SchemaService.create_version`. The file is JSON
 and is **the same document** `POST /projects/{id}/schema/versions` takes. `list --project P` →
-`SchemaService.list_versions`; the last one is active.
+`SchemaService.list_versions`; the last one is active. `blocking-assets FILE --project P [--limit N] [--offset N]` →
+`SchemaService.blocking_assets`: reads the same JSON document as a *proposal* and lists the frames
+whose annotations it would orphan - the remedy behind `apply`'s no-override refusal. `--json`
+prints the REST page, `{items, total}`, with `total` every blocking frame; the order is stable, so
+`--offset` pages safely.
 
 Versions are 1..N and none of them changes, so `apply` always *adds* one. A change that removes or
 narrows something is refused until `--allow-destructive`; one that would orphan existing annotations
@@ -579,7 +590,7 @@ API or the MCP server reaches and the CLI does not.
 | A release's manifest and fold assignment | REST |
 | Writing, editing or deleting annotations | REST, MCP |
 | Job assignee, project stats, an asset's batches, a trunk asset's annotations | REST |
-| Model-suggested bounds, and the assets blocking a schema change | REST |
+| Model-suggested bounds | REST |
 | Ingest jobs, video imports, background jobs, and the home summary | REST |
 | Preprocessing preview | REST |
 

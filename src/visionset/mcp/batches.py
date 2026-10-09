@@ -40,7 +40,7 @@ refusals, and handing a model the chance to meet all four buys nothing.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Final
+from typing import Annotated, Any
 from uuid import UUID
 
 from pydantic import Field
@@ -57,7 +57,14 @@ from visionset.inference import (
     select_pre_labelable,
     served_for,
 )
-from visionset.kernel.domain import AssetProgress, AssetSort, BySize, GeometryType, Partition
+from visionset.kernel.domain import (
+    AssetProgress,
+    AssetSort,
+    BySize,
+    DatasetActor,
+    GeometryType,
+    Partition,
+)
 from visionset.kernel.services import (
     BatchService,
     DatasetService,
@@ -76,9 +83,6 @@ from visionset.mcp._workspace import opened_workspace
 
 BatchRef = Annotated[str, Field(description="The batch, by id. Batch names are not unique.")]
 """The batch a tool acts on. Module-level for the ``inspect.signature`` reason."""
-
-_ACTOR: Final = "mcp"
-"""Who the dataset change log records for a promotion made by an agent."""
 
 
 def _promoted(workspace: WorkspaceService, project_id: UUID) -> frozenset[UUID]:
@@ -658,7 +662,11 @@ def complete_batch(
     """
     with opened_workspace() as workspace:
         completed = BatchService(workspace).complete(identifier(batch_id, what="batch_id"))
-        entered = DatasetService(workspace).promote(completed.id, actor=_ACTOR) if promote else []
+        entered = (
+            DatasetService(workspace).promote(completed.id, actor=DatasetActor.MCP)
+            if promote
+            else []
+        )
         return {**_batch_payload(workspace, completed.id), "promoted": len(entered)}
 
 
@@ -776,7 +784,7 @@ def promote_batch(batch_id: BatchRef) -> dict[str, Any]:
     """
     with opened_workspace() as workspace:
         promoted = DatasetService(workspace).promote(
-            identifier(batch_id, what="batch_id"), actor=_ACTOR
+            identifier(batch_id, what="batch_id"), actor=DatasetActor.MCP
         )
     return wire.page([wire.asset(a) for a in promoted])
 

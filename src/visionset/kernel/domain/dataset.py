@@ -45,6 +45,20 @@ class DatasetOperation(StrEnum):
     REMOVE_ASSET = "remove_asset"
 
 
+class DatasetActor(StrEnum):
+    """The surface a Dataset mutation came through, written into ``DatasetChange.actor``.
+
+    Names the delivery surface, not a person: ``AuthProvider`` verifies tokens
+    and resolves no identity, and a credential must never be recorded here.
+    Like ``DatasetOperation`` it is what a writer picks from, not the type of
+    the field, so a log written by a build with another surface still loads.
+    """
+
+    REST = "rest"
+    CLI = "cli"
+    MCP = "mcp"
+
+
 class DatasetChange(BaseModel):
     """One append-only entry in a Dataset's mutation log.
 
@@ -76,9 +90,10 @@ class DatasetChange(BaseModel):
     ``occurred_at`` is timezone-aware UTC, and that is the convention for every
     timestamp in the domain: a naive datetime is rejected outright rather than
     read as local time and silently misfiled once it crosses a machine boundary.
-    ``actor`` is a placeholder until identities exist — ``AuthProvider`` verifies
-    tokens and does not yet resolve anyone, so the kernel records what a surface
-    hands it rather than inventing a name.
+    ``actor`` is whatever the caller passed: REST, the CLI and MCP pass their
+    surface name, a ``DatasetActor`` value, and a direct SDK call that passes
+    none writes ``None``. It is not a person: ``AuthProvider`` verifies tokens and
+    does not yet resolve anyone.
     """
 
     id: UUID = Field(default_factory=uuid4)

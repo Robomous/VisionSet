@@ -82,6 +82,7 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     (schemas.get_schema, READS),
     (schemas.compare_schema_versions, READS),
     (schemas.preview_schema_change, READS),
+    (schemas.list_blocking_assets, READS),
     (schemas.create_schema_version, WRITES),
     (schemas.get_schema_draft, READS),
     (schemas.set_schema_draft, WRITES),

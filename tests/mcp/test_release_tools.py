@@ -608,7 +608,7 @@ def test_a_format_that_carries_everything_reports_compatible(
 def test_a_lossless_format_that_would_drop_a_class_still_asks_for_consent(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The refusal names `check_export`, because the envelope's four keys hold no report."""
+    """The refusal carries the report and names `check_export`, which answers the same."""
     plugin = PolygonsOnlyExporter()
     named = promoted(monkeypatch, tmp_path, count=1)
     payload(call("publish_release", project=named, tag="v1.0"))
@@ -626,6 +626,8 @@ def test_a_lossless_format_that_would_drop_a_class_still_asks_for_consent(
     )
 
     assert refusal["retry_with"] == "allow_lossy"
+    assert refusal["code"] == "LOSSY_EXPORT_NOT_CONSENTED"
+    assert refusal["detail"]["compatibility"]["format"] == "polygons-probe"
     assert refusal["hint"] is not None
     assert "check_export" in refusal["hint"]
     assert not dest.exists()

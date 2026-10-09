@@ -13,7 +13,7 @@ flowchart LR
     Cmd --> Svc["one kernel service call"]
     Svc --> Ok{"accepted?"}
     Ok -->|yes| Out["stdout: the datum\nstderr: the prose"]
-    Ok -->|no| Err["_errors.py\nsentence on stderr, exit code"]
+    Ok -->|no| Err["_errors.py\nsentence on stderr, exit code\n--json: the refusal on stdout"]
 ```
 
 Two rules make the output composable, and both are held by tests:

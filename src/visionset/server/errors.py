@@ -147,8 +147,7 @@ from visionset.kernel import (
     WorkspaceNotEmpty,
     WorkspaceSchemaMismatch,
 )
-from visionset.kernel.domain import ClassCount, ExportCompatibility
-from visionset.server.models import ClassCountOut, ExportCompatibilityOut
+from visionset.kernel.error_codes import ERROR_CODES, error_code, error_detail
 
 _logger = logging.getLogger(__name__)
 """Never call ``logging.basicConfig`` here — records propagate to root, which
@@ -204,36 +203,40 @@ class ErrorRule:
     """5xx only: let ``str(exc)`` reach the client instead of the opaque sentence."""
 
 
+@dataclass(frozen=True, slots=True)
+class _Http:
+    status: int
+    retry_after: int | None = None
+    expose_message: bool = False
+
+
 # The table is complete: one entry per concrete subclass declared in
 # ``kernel/errors.py``. ``VisionSetError`` itself is deliberately absent, and
 # ``tests/server/test_errors.py`` asserts exact equality against that module —
 # so a new kernel error fails the suite until somebody maps it on purpose.
 #
-# Codes are written out rather than derived from the class name. Derivation
-# cannot drift, but a code is a public contract keyed to a Python identifier: a
-# pure refactor rename would silently break every client and pass every test.
-# A test asserts each literal equals the SCREAMING_SNAKE of its class today, so
-# the drift protection survives without the fragility.
-ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
+# Only the HTTP half is decided here. The code is the kernel's
+# (``visionset.kernel.error_codes``), so REST, the CLI and MCP publish one value.
+_HTTP: Final[dict[type[VisionSetError], _Http]] = {
     # --- 404: the caller named something that is not there ----------------
-    ProjectNotFound: ErrorRule(404, "PROJECT_NOT_FOUND"),
-    SchemaNotFound: ErrorRule(404, "SCHEMA_NOT_FOUND"),
-    SchemaDraftNotFound: ErrorRule(404, "SCHEMA_DRAFT_NOT_FOUND"),
-    BatchNotFound: ErrorRule(404, "BATCH_NOT_FOUND"),
-    JobNotFound: ErrorRule(404, "JOB_NOT_FOUND"),
-    IngestJobNotFound: ErrorRule(404, "INGEST_JOB_NOT_FOUND"),
-    VideoImportNotFound: ErrorRule(404, "VIDEO_IMPORT_NOT_FOUND"),
-    BackgroundJobNotFound: ErrorRule(404, "BACKGROUND_JOB_NOT_FOUND"),
-    AssetNotFound: ErrorRule(404, "ASSET_NOT_FOUND"),
-    SourceNotFound: ErrorRule(404, "SOURCE_NOT_FOUND"),
-    DatasetNotFound: ErrorRule(404, "DATASET_NOT_FOUND"),
-    AnnotationNotFound: ErrorRule(404, "ANNOTATION_NOT_FOUND"),
-    ReleaseNotFound: ErrorRule(404, "RELEASE_NOT_FOUND"),
+    ProjectNotFound: _Http(404),
+    SchemaNotFound: _Http(404),
+    SchemaDraftNotFound: _Http(404),
+    BatchNotFound: _Http(404),
+    JobNotFound: _Http(404),
+    IngestJobNotFound: _Http(404),
+    VideoImportNotFound: _Http(404),
+    BackgroundJobNotFound: _Http(404),
+    AssetNotFound: _Http(404),
+    SourceNotFound: _Http(404),
+    DatasetNotFound: _Http(404),
+    AnnotationNotFound: _Http(404),
+    ReleaseNotFound: _Http(404),
     # Administering a token an operator named, never failing to authenticate
     # with one: a token that does not verify raises nothing at all, so this 404
     # can never become an oracle for which secrets exist.
-    TokenNotFound: ErrorRule(404, "TOKEN_NOT_FOUND"),
-    InferenceConnectionNotFound: ErrorRule(404, "INFERENCE_CONNECTION_NOT_FOUND"),
+    TokenNotFound: _Http(404),
+    InferenceConnectionNotFound: _Http(404),
     # A job's assets are fixed at approval, so an asset outside the segment is
     # a sub-resource that does not exist — the "reads as missing, not as
     # forbidden" rule one scope down. A route that takes the asset id in a
@@ -243,207 +246,207 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # name assets that batch carried. Its sibling `AssetNotInJob` is a 404 because
     # it is usually reached through a path segment; this one only ever arrives in
     # a list, which is a payload problem. The `docs/content/api.md` rule, applied.
-    AssetNotInBatch: ErrorRule(422, "ASSET_NOT_IN_BATCH"),
+    AssetNotInBatch: _Http(422),
     # 422 and not 409: the ordinal is a field of the payload and the session
     # did not move under the caller — the grid it was opened with has not
     # changed and will not, so there is no conflict to re-read and resolve.
-    FrameOrdinalOutOfRange: ErrorRule(422, "FRAME_ORDINAL_OUT_OF_RANGE"),
+    FrameOrdinalOutOfRange: _Http(422),
     # 422 for the same reason as its neighbour: the timestamp is a field of the
     # descriptor, and the grid it contradicts was fixed when the session opened.
-    FrameTimestampOffGrid: ErrorRule(422, "FRAME_TIMESTAMP_OFF_GRID"),
+    FrameTimestampOffGrid: _Http(422),
     # 422 for the same reason, one level up: the cut is a field of the payload
     # and nothing about the project refuses it, so there is no state to re-read.
-    VideoImportTooLarge: ErrorRule(422, "VIDEO_IMPORT_TOO_LARGE"),
-    AssetNotInJob: ErrorRule(404, "ASSET_NOT_IN_JOB"),
-    AssetNotInDataset: ErrorRule(404, "ASSET_NOT_IN_DATASET"),
+    VideoImportTooLarge: _Http(422),
+    AssetNotInJob: _Http(404),
+    AssetNotInDataset: _Http(404),
     # Not a 409: a release is immutable, so its state will never change and
     # "resolve the conflict and resubmit" is a promise that cannot be kept. The
     # docstring's remedy is a *different* release. The code is what tells this
     # apart from RELEASE_NOT_FOUND, which is the case codes exist for.
-    NoSplitRecipe: ErrorRule(404, "NO_SPLIT_RECIPE"),
+    NoSplitRecipe: _Http(404),
     # The caller named a format nothing is installed for — the SOURCE_NOT_FOUND
     # reading, not "the machine is missing a tool it should have". It is "there
     # is no such thing here", and ``GET /formats`` says which things there are.
-    ExportFormatNotFound: ErrorRule(404, "EXPORT_FORMAT_NOT_FOUND"),
+    ExportFormatNotFound: _Http(404),
     # The same reading one vocabulary over: the caller named a target no
     # installed exporter declares. No route raises it yet — the target routes are
     # not built — mapped anyway for BATCH_IMMUTABLE's reason: the
     # exact-correspondence test keeps this table total, and an unmapped kernel
     # error would answer 500 the day a route appears.
-    ExportTargetNotFound: ErrorRule(404, "EXPORT_TARGET_NOT_FOUND"),
+    ExportTargetNotFound: _Http(404),
     # A preview that was never rendered, which is not damage: a thumbnail hash is
     # a cache key, so NULL is an ordinary state with three causes and one remedy.
     # A 404 rather than an empty 200 because the caller asked for a specific
     # thing that is not there, and because the remedy is real — a backfill.
-    ThumbnailNotCached: ErrorRule(404, "THUMBNAIL_NOT_CACHED"),
-    PreprocessingRecipeNotFound: ErrorRule(404, "PREPROCESSING_RECIPE_NOT_FOUND"),
+    ThumbnailNotCached: _Http(404),
+    PreprocessingRecipeNotFound: _Http(404),
     # --- 409: well-formed request, the resource's state refuses it ---------
-    ProjectNameTaken: ErrorRule(409, "PROJECT_NAME_TAKEN"),
-    ReleaseTagTaken: ErrorRule(409, "RELEASE_TAG_TAKEN"),
-    TokenNameTaken: ErrorRule(409, "TOKEN_NAME_TAKEN"),
-    InferenceConnectionNameTaken: ErrorRule(409, "INFERENCE_CONNECTION_NAME_TAKEN"),
-    PreprocessingRecipeNameTaken: ErrorRule(409, "PREPROCESSING_RECIPE_NAME_TAKEN"),
-    WorkspaceAlreadyExists: ErrorRule(409, "WORKSPACE_ALREADY_EXISTS"),
-    WorkspaceNotEmpty: ErrorRule(409, "WORKSPACE_NOT_EMPTY"),
+    ProjectNameTaken: _Http(409),
+    ReleaseTagTaken: _Http(409),
+    TokenNameTaken: _Http(409),
+    InferenceConnectionNameTaken: _Http(409),
+    PreprocessingRecipeNameTaken: _Http(409),
+    WorkspaceAlreadyExists: _Http(409),
+    WorkspaceNotEmpty: _Http(409),
     # Retryable, but immediately rather than after a wait — a re-read lands on
     # N + 2 — so no Retry-After. Which codes are retryable is documented in
     # docs/content/api.md; a `retryable` field on the public body would widen it for one case.
-    SchemaVersionConflict: ErrorRule(409, "SCHEMA_VERSION_CONFLICT"),
-    InvalidTransition: ErrorRule(409, "INVALID_TRANSITION"),
+    SchemaVersionConflict: _Http(409),
+    InvalidTransition: _Http(409),
     # Retryable immediately, like SCHEMA_VERSION_CONFLICT above and for the same
     # reason: the request was well formed and was refused by a state that moved
     # under it, so a re-read and a resubmit is the whole remedy. It has no flag,
     # deliberately — a "write anyway" would be the lost update this closes.
-    StaleWrite: ErrorRule(409, "STALE_WRITE"),
+    StaleWrite: _Http(409),
     # The three video-import refusals a caller resolves by looking at the
     # session again: it is finished, it is short, or that ordinal is taken by
     # something else. None is retryable as sent, and none has a flag — see
     # their kernel docstrings for why a "commit anyway" cannot exist.
-    VideoImportNotOpen: ErrorRule(409, "VIDEO_IMPORT_NOT_OPEN"),
-    VideoImportIncomplete: ErrorRule(409, "VIDEO_IMPORT_INCOMPLETE"),
-    FrameContentConflict: ErrorRule(409, "FRAME_CONTENT_CONFLICT"),
+    VideoImportNotOpen: _Http(409),
+    VideoImportIncomplete: _Http(409),
+    FrameContentConflict: _Http(409),
     # 409 rather than 429: nothing is rate-limited here and no wait is being
     # asked for. The project holds as many open sessions as it may, which is a
     # state the caller resolves by committing or aborting one of its own.
-    TooManyOpenVideoImports: ErrorRule(409, "TOO_MANY_OPEN_VIDEO_IMPORTS"),
-    BatchNotEditable: ErrorRule(409, "BATCH_NOT_EDITABLE"),
+    TooManyOpenVideoImports: _Http(409),
+    BatchNotEditable: _Http(409),
     # No route reaches this yet — batch delete is SDK-only. Mapped anyway,
     # because the exact-correspondence test is what keeps the table honest, and
     # an unmapped kernel error would answer 500 the day a route appears.
-    BatchImmutable: ErrorRule(409, "BATCH_IMMUTABLE"),
-    BatchNotInAnnotation: ErrorRule(409, "BATCH_NOT_IN_ANNOTATION"),
+    BatchImmutable: _Http(409),
+    BatchNotInAnnotation: _Http(409),
     # 409 rather than 422 for the reason at the top of this block: the annotation
     # is well formed and would be accepted a moment earlier or after a progress
     # move. What refuses it is the asset's state, and the remedy is to change that
     # state and resubmit — which is exactly what 409 is for here.
-    AssetNotWritable: ErrorRule(409, "ASSET_NOT_WRITABLE"),
+    AssetNotWritable: _Http(409),
     # 422 rather than 409: this is a malformed payload rather than a resource in
     # the wrong state. A hand-made label sent through this door is never made
     # legal by a later state change, so there is nothing here to resubmit.
-    AnnotationNotFromModel: ErrorRule(422, "ANNOTATION_NOT_FROM_MODEL"),
+    AnnotationNotFromModel: _Http(422),
     # The job-level sibling of the two above, and 409 for their reason. Its
     # remedy is the one that is not a retry: nothing re-opens a completed job, so
     # a client that reads this code offers a correction batch rather than a
     # resubmit. Which is why it is its own code and not folded into either.
-    JobFinished: ErrorRule(409, "JOB_FINISHED"),
-    BatchNotComplete: ErrorRule(409, "BATCH_NOT_COMPLETE"),
-    JobNotComplete: ErrorRule(409, "JOB_NOT_COMPLETE"),
-    EmptyBatch: ErrorRule(409, "EMPTY_BATCH"),
-    EmptyRelease: ErrorRule(409, "EMPTY_RELEASE"),
-    ReleaseContentWouldViolateSchema: ErrorRule(409, "RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA"),
-    ConfirmationRequired: ErrorRule(409, "CONFIRMATION_REQUIRED"),
-    DestructiveSchemaChange: ErrorRule(409, "DESTRUCTIVE_SCHEMA_CHANGE"),
-    SchemaChangeWouldOrphan: ErrorRule(409, "SCHEMA_CHANGE_WOULD_ORPHAN"),
+    JobFinished: _Http(409),
+    BatchNotComplete: _Http(409),
+    JobNotComplete: _Http(409),
+    EmptyBatch: _Http(409),
+    EmptyRelease: _Http(409),
+    ReleaseContentWouldViolateSchema: _Http(409),
+    ConfirmationRequired: _Http(409),
+    DestructiveSchemaChange: _Http(409),
+    SchemaChangeWouldOrphan: _Http(409),
     # The batch is well formed to pre-label; the pinned schema is what refuses —
     # no class it declares is one a detection can be written as. The remedy is to
     # pin a schema with a detectable class and resubmit, which is what 409 is for.
-    SchemaHasNoDetectableClass: ErrorRule(409, "SCHEMA_HAS_NO_DETECTABLE_CLASS"),
+    SchemaHasNoDetectableClass: _Http(409),
     # Not a 422: the request body is valid, and the defect is in state that was
     # written and stored long before — a NaN coordinate only surfaces when a
     # release tries to freeze it. The remedy is "fix the annotation and publish
     # again", which is change-the-state-and-resubmit.
-    UnserializableManifest: ErrorRule(409, "UNSERIALIZABLE_MANIFEST"),
+    UnserializableManifest: _Http(409),
     # Retryable with a flag, like DESTRUCTIVE_SCHEMA_CHANGE and unlike
     # SCHEMA_CHANGE_WOULD_ORPHAN — which is precisely why a client must branch on
     # the code and never on the 409. Not a 422: the request is well formed and the
     # format is genuinely installed; what refuses is the pairing of this format
     # with a caller who has not said the loss is acceptable.
-    LossyExportNotConsented: ErrorRule(409, "LOSSY_EXPORT_NOT_CONSENTED"),
+    LossyExportNotConsented: _Http(409),
     # A release naming bytes that are gone or will not decode. 409 for
     # ``UnserializableManifest``'s reason — the request is fine and the stored
     # state is not — and the message is exposed by being a 4xx at all, which is
     # the point: it names the asset, and the remedy is `GET /releases/{id}/verify`
     # followed by restoring the blob.
-    ExportSourceUnreadable: ErrorRule(409, "EXPORT_SOURCE_UNREADABLE"),
+    ExportSourceUnreadable: _Http(409),
     # The `download_weights` gate, refusing what `allowed_actions` had already
     # declined to declare. 409 rather than 404 because both readings are about
     # the resource as it stands — already set up, or a kind with no weights of
     # its own — and neither is a missing thing. Only the first is retryable after
     # a state change, which is why the *message* separates them and the code does
     # not: both answers say stop asking.
-    InferenceConnectionNotDownloadable: ErrorRule(409, "INFERENCE_CONNECTION_NOT_DOWNLOADABLE"),
+    InferenceConnectionNotDownloadable: _Http(409),
     # The same shape one action over, and it earns its own code because
     # the remedies differ: an `http` connection is told to stop asking, while a
     # `local` one at `not_set_up` is told to download first — a state change that
     # makes the identical request succeed. Folding it into NOT_DOWNLOADABLE would
     # give a client one code for two different next steps.
-    InferenceConnectionNotCheckable: ErrorRule(409, "INFERENCE_CONNECTION_NOT_CHECKABLE"),
+    InferenceConnectionNotCheckable: _Http(409),
     # The mirror of NOT_CHECKABLE: a `local` connection has no endpoint to ask,
     # and no state change gives it one. Its own code because the remedy — use
     # an http connection — is nothing NOT_CHECKABLE's reader would guess.
-    InferenceConnectionNotTestable: ErrorRule(409, "INFERENCE_CONNECTION_NOT_TESTABLE"),
-    InferenceConnectionModelFixed: ErrorRule(409, "INFERENCE_CONNECTION_MODEL_FIXED"),
+    InferenceConnectionNotTestable: _Http(409),
+    InferenceConnectionModelFixed: _Http(409),
     # Raised by the integrity job rather than by a request, and it has a rule
     # because every declared error does — the table is total by test. 409 is the
     # honest status if a synchronous surface ever raises it: the resource is in a
     # state that refuses the request, and the state has already been corrected.
-    WeightsDamaged: ErrorRule(409, "WEIGHTS_DAMAGED"),
+    WeightsDamaged: _Http(409),
     # Change-the-state-and-resubmit in its purest form: the state is
     # `setup_state`, the change is `download_weights`, and the identical request
     # then succeeds. Distinct from INFERENCE_CONNECTION_NOT_RUNNABLE below, which
     # no state change can fix — precisely the pair that proves a client must
     # branch on the code and never on the status.
-    InferenceConnectionNotSetUp: ErrorRule(409, "INFERENCE_CONNECTION_NOT_SET_UP"),
+    InferenceConnectionNotSetUp: _Http(409),
     # An augmenting recipe against a release published without a split recipe.
     # Change-the-state-and-resubmit: publish a release with a split and the
     # identical export succeeds.
-    AugmentationRequiresSplit: ErrorRule(409, "AUGMENTATION_REQUIRES_SPLIT"),
+    AugmentationRequiresSplit: _Http(409),
     # A recipe step meeting a geometry this release carries and the step cannot
     # move. LOSSY_EXPORT_NOT_CONSENTED's reading — a well-formed request refused
     # by the release's content — without the consent flag, because a label that
     # cannot follow its image is never something to consent to.
-    PreprocessingStepUnsupportedGeometry: ErrorRule(409, "PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY"),
+    PreprocessingStepUnsupportedGeometry: _Http(409),
     # --- 422: the payload itself is wrong ----------------------------------
-    InvalidName: ErrorRule(422, "INVALID_NAME"),
-    InferenceConnectionInvalid: ErrorRule(422, "INFERENCE_CONNECTION_INVALID"),
-    InvalidSchema: ErrorRule(422, "INVALID_SCHEMA"),
-    UnsupportedGeometry: ErrorRule(422, "UNSUPPORTED_GEOMETRY"),
-    InvalidAnnotation: ErrorRule(422, "INVALID_ANNOTATION"),
-    LabelClassNotInSchema: ErrorRule(422, "LABEL_CLASS_NOT_IN_SCHEMA"),
-    DisallowedGeometry: ErrorRule(422, "DISALLOWED_GEOMETRY"),
-    AnnotationGeometryOutOfBounds: ErrorRule(422, "ANNOTATION_GEOMETRY_OUT_OF_BOUNDS"),
+    InvalidName: _Http(422),
+    InferenceConnectionInvalid: _Http(422),
+    InvalidSchema: _Http(422),
+    UnsupportedGeometry: _Http(422),
+    InvalidAnnotation: _Http(422),
+    LabelClassNotInSchema: _Http(422),
+    DisallowedGeometry: _Http(422),
+    AnnotationGeometryOutOfBounds: _Http(422),
     # 422 like its five siblings, not 409, and the split is the one this table is
     # built on. A 409 says "the resource's state refuses this; change the state
     # and resubmit" — but the state to change is the annotation set, and removing
     # the existing tag to add an identical one is not a remedy anybody wants. The
     # payload is what is wrong: it asks for something already true.
-    DuplicateClassificationTag: ErrorRule(422, "DUPLICATE_CLASSIFICATION_TAG"),
-    MissingRequiredAttribute: ErrorRule(422, "MISSING_REQUIRED_ATTRIBUTE"),
-    UnknownAttribute: ErrorRule(422, "UNKNOWN_ATTRIBUTE"),
-    InvalidAttributeValue: ErrorRule(422, "INVALID_ATTRIBUTE_VALUE"),
-    InvalidPartition: ErrorRule(422, "INVALID_PARTITION"),
+    DuplicateClassificationTag: _Http(422),
+    MissingRequiredAttribute: _Http(422),
+    UnknownAttribute: _Http(422),
+    InvalidAttributeValue: _Http(422),
+    InvalidPartition: _Http(422),
     # 422 rather than 404: the type is part of the *payload* a surface built, so
     # a request naming one nothing runs is a malformed request rather than a
     # reference to something missing. In practice a route never lets one through
     # — every enqueue site names a type from the registry it imported — so this
     # exists for the dispatcher's sake and for a stale row written by a build
     # that knew one more handler.
-    UnknownJobType: ErrorRule(422, "UNKNOWN_JOB_TYPE"),
-    MediaError: ErrorRule(422, "MEDIA_ERROR"),
+    UnknownJobType: _Http(422),
+    MediaError: _Http(422),
     # Not a 415: every raise site reads a file *on disk* during ingest, and 415
     # is about the request's own Content-Type. On a future direct-upload route
     # 415 becomes right for one of this error's three readings and 413 for
     # another — which is what ``error_response(exc, status=...)`` is for.
-    UnsupportedMedia: ErrorRule(422, "UNSUPPORTED_MEDIA"),
-    CorruptMedia: ErrorRule(422, "CORRUPT_MEDIA"),
+    UnsupportedMedia: _Http(422),
+    CorruptMedia: _Http(422),
     # A detector asked by pointing, or a segmenter asked in words. The payload is
     # what is wrong — `DuplicateClassificationTag`'s reading — because nothing
     # about the connection needs to change and no wait helps: the remedy is a
     # different prompt or a different connection. No route reaches this yet;
     # mapped anyway, because the exact-correspondence test is what keeps this
     # table honest and an unmapped kernel error answers 500 the day one appears.
-    UnsupportedPrompt: ErrorRule(422, "UNSUPPORTED_PROMPT"),
+    UnsupportedPrompt: _Http(422),
     # A pre-label selection naming a shape the model does not answer in, or no
     # shape at all. 422 beside UNSUPPORTED_PROMPT for its reason: the request is
     # what is wrong, and the remedy is a different selection or none.
-    GeometryNotProduced: ErrorRule(422, "GEOMETRY_NOT_PRODUCED"),
+    GeometryNotProduced: _Http(422),
     # A click past the edge of the picture. 422 beside UNSUPPORTED_PROMPT and
     # not 404 with the asset's own code: the asset is real and was found, and
     # what is wrong is a coordinate in the body. Its own code rather than that
     # one because the remedies are opposites — UNSUPPORTED_PROMPT wants another
     # kind of prompt or another connection, this wants the same request with a
     # different point — and a client cannot tell them apart from a shared 422.
-    PromptPointOutOfBounds: ErrorRule(422, "PROMPT_POINT_OUT_OF_BOUNDS"),
+    PromptPointOutOfBounds: _Http(422),
     # --- 502: the other end did not answer the contract ---------------------
     # The first 502 in this table, and the only honest status for it: the
     # request was fine and this program is fine; the upstream an `http`
@@ -451,74 +454,71 @@ ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
     # 503 — nothing here promises a wait will help — and not a 500, because
     # nothing on this machine is wrong. Exposed because the message names the
     # endpoint and what it did, which is the whole remedy.
-    InferenceEndpointUnavailable: ErrorRule(
-        502, "INFERENCE_ENDPOINT_UNAVAILABLE", expose_message=True
-    ),
+    InferenceEndpointUnavailable: _Http(502, expose_message=True),
     # --- 503: transient, and a wait genuinely helps ------------------------
-    WorkspaceBusy: ErrorRule(
-        503, "WORKSPACE_BUSY", retry_after=RETRY_AFTER_SECONDS, expose_message=True
-    ),
+    WorkspaceBusy: _Http(503, retry_after=RETRY_AFTER_SECONDS, expose_message=True),
     # --- 5xx: nothing the caller can fix -----------------------------------
-    WorkspaceCorrupt: ErrorRule(500, "WORKSPACE_CORRUPT"),
+    WorkspaceCorrupt: _Http(500),
     # Deployment conditions, not client errors, and neither is transient — the
     # only licence for a 503 in the kernel is WorkspaceBusy's "transient, unlike
     # WorkspaceCorrupt … where corruption gets a hard failure".
-    NotAWorkspace: ErrorRule(500, "NOT_A_WORKSPACE"),  # messages embed the server's own path
-    WorkspaceFormatTooNew: ErrorRule(500, "WORKSPACE_FORMAT_TOO_NEW", expose_message=True),
+    NotAWorkspace: _Http(500),  # messages embed the server's own path
+    WorkspaceFormatTooNew: _Http(500, expose_message=True),
     # Exposed for the reason the two above it are: the message *is* the remedy,
     # and it is one nobody can reconstruct. Opaque, this arrives as a 500 naming
     # no cause on a route with no connection to the real problem, and finding it
     # takes reading the server's log — which was the whole complaint.
-    WorkspaceSchemaMismatch: ErrorRule(500, "WORKSPACE_SCHEMA_MISMATCH", expose_message=True),
+    WorkspaceSchemaMismatch: _Http(500, expose_message=True),
     # A row missing where the store required one, or a primary-key collision on
     # a kernel-generated UUID: a programming error, per ProjectNotFound's
     # docstring ("a delivery surface turns it into a 404, not a 500" — said of
     # the *other* one).
-    EntityNotFound: ErrorRule(500, "ENTITY_NOT_FOUND"),
-    EntityAlreadyExists: ErrorRule(500, "ENTITY_ALREADY_EXISTS"),
+    EntityNotFound: _Http(500),
+    EntityAlreadyExists: _Http(500),
     # Services pre-check rather than relying on the write to fail, and the two
     # that translate a constraint each own exactly one index — so anything
     # reaching here is a guard nobody wrote. Opaque as well as 500: the message
     # is ``str(exc.orig)``, raw SQLite text naming our own tables and columns.
-    ConstraintViolated: ErrorRule(500, "CONSTRAINT_VIOLATED"),
+    ConstraintViolated: _Http(500),
     # An optional runtime that is not installed. Not a 503 despite being about
     # availability: 503 promises transience, and retrying never succeeds until
     # somebody installs the extra. The message is exposed because it carries the
     # exact `pip install`, which *is* the remedy — nobody can reconstruct it
     # from "unavailable".
-    LocalInferenceUnavailable: ErrorRule(500, "LOCAL_INFERENCE_UNAVAILABLE", expose_message=True),
+    LocalInferenceUnavailable: _Http(500, expose_message=True),
     # The neighbour of LOCAL_INFERENCE_UNAVAILABLE, exposed for the same reason:
     # the message is the remedy, and this one names the device that filled up
     # along with the ways off it. Not a 503 despite sounding transient —
     # WorkspaceBusy holds the only licence for that in this table, and retrying
     # the same model on the same device fails the same way.
-    InferenceOutOfMemory: ErrorRule(500, "INFERENCE_OUT_OF_MEMORY", expose_message=True),
+    InferenceOutOfMemory: _Http(500, expose_message=True),
     # A deployment condition too, and the distance from
     # INFERENCE_CONNECTION_NOT_SET_UP is the whole reason it is not a 409: there
     # is no state to change and no flag to pass. The remedy is a version of this
     # program that ships the adapter, so the message says which kind was asked
     # for rather than inviting a retry that cannot work.
-    InferenceConnectionNotRunnable: ErrorRule(
-        500, "INFERENCE_CONNECTION_NOT_RUNNABLE", expose_message=True
-    ),
+    InferenceConnectionNotRunnable: _Http(500, expose_message=True),
     # A deployment condition on NOT_RUNNABLE's reading: two installed
     # distributions claim one target name, and no edit to the request changes
     # what is installed. No route raises it yet; mapped for BATCH_IMMUTABLE's
     # reason.
-    ExportTargetConflict: ErrorRule(500, "EXPORT_TARGET_CONFLICT"),
+    ExportTargetConflict: _Http(500),
     # A defective installed plugin — a target promising geometries its own
     # exporter never writes — which is nothing a caller can fix. No route
     # raises it yet; mapped for BATCH_IMMUTABLE's reason.
-    InvalidExportTarget: ErrorRule(500, "INVALID_EXPORT_TARGET"),
+    InvalidExportTarget: _Http(500),
     # A recipe step kind with no installed driver. The grammar admits only the
     # kinds this distribution ships drivers for, so a caller cannot reach this
     # by naming something wrong — the installation is missing a plugin it was
     # built with. LOCAL_INFERENCE_UNAVAILABLE's status and its exposed message,
     # which lists what is installed. No route raises it yet; mapped for
     # BATCH_IMMUTABLE's reason.
-    PreprocessingDriverNotFound: ErrorRule(
-        500, "PREPROCESSING_DRIVER_NOT_FOUND", expose_message=True
-    ),
+    PreprocessingDriverNotFound: _Http(500, expose_message=True),
+}
+
+ERROR_RULES: Final[dict[type[VisionSetError], ErrorRule]] = {
+    cls: ErrorRule(http.status, ERROR_CODES[cls], http.retry_after, http.expose_message)
+    for cls, http in _HTTP.items()
 }
 
 ERROR_RESPONSES: Final[dict[int | str, dict[str, Any]]] = {
@@ -607,69 +607,11 @@ def code_for(exc: BaseException) -> str | None:
     exception: on the request path that is a 500 with an incident id, and on a
     job row a code nobody declared would be a fiction a client branched on.
     """
-    rule = rule_for(exc)
-    return None if rule is None else rule.code
+    return error_code(exc)
 
 
 def _detail_for(exc: BaseException) -> dict[str, Any] | None:
-    if isinstance(exc, MediaError):
-        # ``reason`` only. ``name`` is "a path for a file on disk" from a
-        # directory the *operator* pointed at, not the client — putting it in a
-        # response body hands out server filesystem layout. Do not add it back.
-        return {"reason": exc.reason}
-    if isinstance(exc, LossyExportNotConsented) and isinstance(
-        exc.compatibility, ExportCompatibility
-    ):
-        # The report, on the refusal itself.
-        # A client that gets this 409 has everything it needs to render a consent
-        # dialog without a second round trip, and it is the *same document*
-        # ``GET /releases/{id}/export-compatibility`` returns and the export
-        # writes into its own output. The ``isinstance`` is not defensive
-        # padding: ``LossyExportNotConsented.compatibility`` is typed ``object |
-        # None`` because ``kernel/errors.py`` may not import a domain model, so
-        # this is where the type comes back.
-        return {
-            "compatibility": ExportCompatibilityOut.of(exc.compatibility).model_dump(mode="json")
-        }
-    if isinstance(exc, SchemaChangeWouldOrphan) and isinstance(exc.blockers, tuple):
-        # The per-class report, on the refusal itself — `LossyExportNotConsented`'s
-        # bargain, and the same one: a client that gets this 409 has everything it
-        # needs to say *what* is in the way and *how much of it* without a second
-        # round trip. It is the same structure `POST .../schema/preview` returns,
-        # so one renderer serves the warning and the refusal.
-        #
-        # The `isinstance` is not defensive padding: `blockers` is typed
-        # `object | None` because `kernel/errors.py` may not import a domain
-        # model, so this is where the type comes back.
-        return {
-            "blockers": [
-                ClassCountOut.of(count).model_dump(mode="json")
-                for count in exc.blockers
-                if isinstance(count, ClassCount)
-            ]
-        }
-    if isinstance(exc, ReleaseContentWouldViolateSchema) and isinstance(exc.blockers, tuple):
-        return {
-            "blockers": [
-                ClassCountOut.of(count).model_dump(mode="json")
-                for count in exc.blockers
-                if isinstance(count, ClassCount)
-            ]
-        }
-    if isinstance(exc, DestructiveSchemaChange) and isinstance(exc.classes, tuple):
-        # Names only. This refusal is raised before anything on disk is consulted
-        # — see the field's own note — so there are no counts to publish, and a
-        # client wanting them asks `POST .../schema/preview`, which is what it is
-        # for. What a confirmation needs from *here* is the blast radius: which
-        # classes go, in an order that does not depend on a set's iteration.
-        return {"classes": [name for name in exc.classes if isinstance(name, str)]}
-    if isinstance(exc, VisionSetError) and exc.index is not None:
-        # Which item of a bulk request was refused. The kernel sets this on the
-        # way out of a per-item loop; everything else leaves it ``None``, so the
-        # key appears only where it means something. The *reason* is already the
-        # message — repeating it here would be two spellings of one sentence.
-        return {"index": exc.index}
-    return None
+    return error_detail(exc)
 
 
 def _message_for(exc: BaseException) -> str:

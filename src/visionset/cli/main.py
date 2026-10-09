@@ -7,6 +7,7 @@ from typing import Annotated
 import typer
 
 from visionset import __version__
+from visionset.cli._output import reset_json_requested
 from visionset.cli.batches import batch_app
 from visionset.cli.export import export
 from visionset.cli.formats import format_app
@@ -80,3 +81,4 @@ def main(
     ] = False,
 ) -> None:
     """Robomous VisionSet CLI."""
+    reset_json_requested()

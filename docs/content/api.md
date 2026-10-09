@@ -643,7 +643,9 @@ argument for branching on `code`.
 Every row but `VALIDATION_ERROR`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `UNAUTHORIZED` and
 `INTERNAL_ERROR` — the five the framework and the auth guard raise — comes from `ERROR_RULES`
 in `server/errors.py`, which `tests/server/test_errors.py` holds in exact correspondence with
-`kernel/errors.py`. A new kernel error fails that suite until somebody maps it.
+`kernel/errors.py`. A new kernel error fails that suite until somebody maps it. The code itself is
+the kernel's, from `ERROR_CODES` in `kernel/error_codes.py`, so the CLI's `--json` refusal and the
+MCP error envelope carry the same code and `detail` for the same refusal.
 
 **That same suite reads this table.** It parses the rows above and holds them to `ERROR_RULES`
 in both directions — a code that ships without a row here fails, and so does a row naming a code
@@ -746,9 +748,12 @@ Raise the kernel's domain error and stop. The handlers registered by `create_app
 and a route that catches a domain error to translate it itself is how a second error shape gets
 into the contract.
 
-`server/errors.py` holds one table, `ERROR_RULES`, with one entry per error class declared in
-`kernel/errors.py`. `tests/server/test_errors.py` asserts that correspondence is **exact**, so a
-new kernel error fails the suite until somebody maps it deliberately - which is the point.
+A new kernel error needs two entries. Its **code** goes in `ERROR_CODES` in
+`kernel/error_codes.py` - the one table REST, the CLI and MCP all read, beside `error_detail`, which
+builds any structured `detail` the refusal carries. Its **HTTP status** goes in `server/errors.py`,
+with one entry per error class declared in `kernel/errors.py`. `tests/kernel/test_error_codes.py`
+and `tests/server/test_errors.py` assert both correspondences are **exact**, so a new kernel error
+fails the suite until somebody maps it deliberately - which is the point.
 
 Codes are written out as literals rather than derived from the class name. A code is a public
 contract keyed to a Python identifier, and deriving it means a pure refactor rename silently

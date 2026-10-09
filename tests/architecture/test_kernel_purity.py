@@ -11,6 +11,7 @@ import visionset.kernel.domain
 import visionset.kernel.ports
 import visionset.kernel.adapters
 import visionset.kernel.services
+import visionset.kernel.error_codes
 forbidden = {"fastapi", "typer", "mcp", "uvicorn", "visionset.formats", "visionset.preprocessing"}
 loaded = forbidden & set(sys.modules)
 assert not loaded, f"kernel import pulled in forbidden modules: {loaded}"

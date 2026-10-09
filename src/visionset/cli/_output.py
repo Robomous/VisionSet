@@ -27,14 +27,41 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Annotated, Any, Final
 
 import typer
 
+_JSON_REQUESTED: ContextVar[bool] = ContextVar("json_requested", default=False)
+
+
+def _remember_json(ctx: typer.Context, value: bool) -> bool:
+    # Lets ``domain_errors`` answer a refusal in JSON without every command
+    # threading its flag through. Reset when the command's context closes, so
+    # one invocation never leaks into the next in the same process.
+    token = _JSON_REQUESTED.set(bool(value))
+    ctx.call_on_close(lambda: _JSON_REQUESTED.reset(token))
+    return value
+
+
+def reset_json_requested() -> None:
+    """Start an invocation clean; a usage error never reaches the close hook."""
+    _JSON_REQUESTED.set(False)
+
+
+def json_requested() -> bool:
+    """Whether the running command was given ``--json``."""
+    return _JSON_REQUESTED.get()
+
+
 JsonOption = Annotated[
     bool,
-    typer.Option("--json", help="Print one JSON document on stdout instead of columns."),
+    typer.Option(
+        "--json",
+        help="Print one JSON document on stdout instead of columns.",
+        callback=_remember_json,
+    ),
 ]
 """``--json``, for a command whose output a program might read.
 

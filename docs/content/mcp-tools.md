@@ -11,7 +11,7 @@ error envelope, and the three gate words.
 
 ## Always offered
 
-60 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
+61 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
 
 | Tool | Takes | What it does |
 | --- | --- | --- |
@@ -21,6 +21,7 @@ error envelope, and the three gate words.
 | `get_schema` | `project`, `version`? | Read a project's annotation schema — which classes exist and what each may carry. |
 | `compare_schema_versions` | `project`, `from_version`, `to_version` | Say what one schema version did to another. Writes nothing. |
 | `preview_schema_change` | `project`, `classes` | Say what applying these classes would change, without applying anything. |
+| `list_blocking_assets` | `project`, `classes`, `limit`?, `offset`? | List the frames that make `preview_schema_change` report `is_refused`. |
 | `create_schema_version` | `project`, `classes`, `description`?, `provenance`?, `allow_destructive`? | Create the next schema version from a complete list of classes. |
 | `get_schema_draft` | `project`, `kind`? | Read the schema version this project is still writing. |
 | `set_schema_draft` | `project`, `classes`, `kind`?, `note`?, `revision`? | Write the whole draft, creating it when there is none. |

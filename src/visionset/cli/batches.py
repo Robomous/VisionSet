@@ -63,6 +63,7 @@ from visionset.kernel.domain import (
     AssetProgress,
     Batch,
     BySize,
+    DatasetActor,
     GeometryType,
     Partition,
 )
@@ -101,9 +102,6 @@ _COLUMNS: Final = ("ID", "NAME", "STATE", "SCHEMA", "ASSETS", "ANNOTATED", "SETT
 
 _NO_SCHEMA: Final = "-"
 """What a draft shows: approval is what pins a version, and only ``repin`` moves it."""
-
-_ACTOR: Final = "cli"
-"""Who the dataset change log records for a promotion made at a terminal."""
 
 
 def _echo(batch_id: UUID, state: str, json_out: bool, payload: dict[str, object]) -> None:
@@ -414,7 +412,7 @@ def batch_complete(
         entered: list[Asset] = []
         if promote:
             with second_step("promote", completed.id, completed.state.value):
-                entered = DatasetService(service).promote(completed.id, actor=_ACTOR)
+                entered = DatasetService(service).promote(completed.id, actor=DatasetActor.CLI)
         payload = batch_document(service, completed)
     if json_out:
         if promote:
@@ -440,7 +438,7 @@ def batch_promote(
     was a decision, and it is honoured.
     """
     with opened_workspace(workspace) as service:
-        promoted = DatasetService(service).promote(batch, actor=_ACTOR)
+        promoted = DatasetService(service).promote(batch, actor=DatasetActor.CLI)
     if json_out:
         document(wire.page([wire.asset(a) for a in promoted]))
         return

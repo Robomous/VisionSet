@@ -79,7 +79,7 @@ it, and what twelve real agent runs did with it - see
 
 ## The tools
 
-Sixty tools are offered by default, in the order an agent meets them, plus the four
+Sixty-one tools are offered by default, in the order an agent meets them, plus the four
 below that are offered only on request — see
 [above](#destructive-tools-are-not-offered-unless-you-ask).
 [mcp-tools.md](mcp-tools.md) is the complete listing, generated from the server itself; this
@@ -95,6 +95,7 @@ page groups them by what they are for.
 | `get_schema` | The classes, the active version, and every version that exists. |
 | `compare_schema_versions` | What one version did to another. Writes nothing. |
 | `preview_schema_change` | What a proposed change would do. Writes nothing. |
+| `list_blocking_assets` | The frames whose annotations a proposed change would orphan, paged. Writes nothing. |
 | `create_schema_version` | Apply one. `allow_destructive` for a narrowing change. |
 | `get_schema_draft` | The version a project is still writing, shared and revision-stamped. |
 | `set_schema_draft` | Write the whole draft, creating it when none exists. `revision` refuses a stale write. |
@@ -288,7 +289,8 @@ as an MCP error carrying the validating library's own message, which names the o
 A **domain refusal** is an ordinary successful call whose payload is the error envelope:
 
 ```json
-{ "error": { "message": "…", "retry_with": "allow_destructive", "hint": null, "index": null } }
+{ "error": { "message": "…", "retry_with": "allow_destructive", "hint": null, "index": null,
+             "code": "DESTRUCTIVE_SCHEMA_CHANGE", "detail": { "classes": ["car"] } } }
 ```
 
 - `message` is the kernel's own sentence. It is written to be read, and an agent reads.
@@ -301,11 +303,10 @@ A **domain refusal** is an ordinary successful call whose payload is the error e
 - `index` names which item of a list you sent is at fault, for the three annotation writes. They
   are all-or-nothing, so nothing landed and there is no partial result to count from - the
   position is the only thing identifying it.
-
-There is deliberately **no `code` field**. The REST API's codes live in `server/errors.py`, which
-this package may not import, and deriving one from a class name would make a refactor a silent
-breaking change. What a code was needed for here is one question - "may I retry this, and with
-what?" - and `retry_with` answers it directly.
+- `code` and `detail` are exactly what the REST API answers for the same refusal - the stable code
+  and the structure it carries (`detail.blockers` on `SCHEMA_CHANGE_WOULD_ORPHAN`,
+  `detail.compatibility` on `LOSSY_EXPORT_NOT_CONSENTED`, …). `detail` is `null` when there is
+  none. Both come from one kernel table, so the two surfaces cannot disagree.
 
 ### The three gate words
 
@@ -367,7 +368,7 @@ The API's upload staging exists because HTTP has bytes where the kernel has path
 beside the workspace and has the filesystem.
 
 **One workspace per server.** No tool takes a workspace parameter — threading one through
-sixty tools would put a path an agent has no way to know into every call. The workspace is
+sixty-one tools would put a path an agent has no way to know into every call. The workspace is
 opened and closed per tool call rather than held, so the file is never kept from `visionset server`
 or a second agent between calls.
 
@@ -391,7 +392,7 @@ half of an export on the `preview_schema_change` precedent; `list_export_targets
 from; and the five recipe tools, because `export_release` takes a recipe by name and an agent
 has to be able to write one, read it back and edit it on the same terms as REST and the CLI; and
 `list_project_assets`, because `list_batch_assets` cannot show an asset no batch holds. That is
-sixty offered by default and sixty-four in all. The parity rule means
+sixty-one offered by default and sixty-five in all. The parity rule means
 *evaluated*, not *implemented* — tool-selection accuracy degrades with count, so a tool ships
 only when an agent has a reason to reach for it that no neighbour covers.
 
@@ -420,8 +421,9 @@ downstream actually consumes), `rename_project`.
 **Never offered**: anything to do with tokens, and workspace creation - `init` is a CLI command
 only (`visionset init`); every tool assumes the workspace it was started on exists.
 
-Three of the tools were not among the fifty candidates and are offered all the same: `ingest` (one tool
-standing for three candidates), `preview_schema_change` and `backfill_thumbnails` - the last
+Four of the tools were not among the fifty candidates and are offered all the same: `ingest` (one tool
+standing for three candidates), `preview_schema_change`, `list_blocking_assets` (the listing behind
+the preview's `blockers`) and `backfill_thumbnails` - the last
 because it is the remedy `get_asset_image` names, and a refusal naming an unreachable remedy is
 worse than no refusal. `backfill_thumbnails` has no REST route; it is on the CLI and here.
 
@@ -435,7 +437,6 @@ worse than no refusal. `backfill_thumbnails` has no REST route; it is on the CLI
 | `GET /datasets/{id}/assets/{asset_id}/annotations` | An asset's annotations on the dataset trunk. `list_asset_annotations` reads them through a job. |
 | `POST /projects/{id}/preprocessing-preview` | Renders one asset through a recipe spec. The CLI has no equivalent either. |
 | `POST /inference/suggest` | Model-suggested bounds for the annotator. Not offered. |
-| `POST /projects/{id}/schema/blocking-assets` | Which assets keep a schema change from applying. Not offered. |
 | `POST /jobs/{job_id}/start` | Takes a pending job; see [below](#actions-with-no-matching-tool). |
 | `GET /background-jobs`, `/background-jobs/{id}`, `/background-jobs/{id}/artifact`, `POST /background-jobs/{id}/cancel` | Long-running work the browser follows. Not offered. |
 | `POST /projects/{id}/video-imports`, `/video-imports/{id}/frames`, `/video-imports/{id}/commit`, `GET` and `DELETE /video-imports/{id}` | Browser-side video import; see the dropped `register_video_source` above. |

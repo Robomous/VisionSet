@@ -29,10 +29,12 @@ sequenceDiagram
 
 The refusal path is the point. A route never catches a domain error and never
 translates one: it raises, and the handlers `create_app()` installed turn every
-`VisionSetError` into an `ErrorBody` with a stable `code`. The mapping is one
-table, `ERROR_RULES` in
-[`errors.py`](../../../../src/visionset/server/errors.py), so a code cannot be
-invented at a call site.
+`VisionSetError` into an `ErrorBody` with a stable `code`. The status mapping is
+one table, `ERROR_RULES` in
+[`errors.py`](../../../../src/visionset/server/errors.py), and the code and
+`detail` come from the kernel's
+[`error_codes.py`](../../../../src/visionset/kernel/error_codes.py), so a code
+cannot be invented at a call site and the CLI and MCP publish the same one.
 
 ## What is in the package
 
@@ -41,7 +43,7 @@ invented at a call site.
 | [`main.py`](../../../../src/visionset/server/main.py) | `create_app()`, the static bundle mount, the SPA deep-link fallback |
 | [`routes/`](../../../../src/visionset/server/routes/) | one module per resource - projects, schemas, sources, ingest, video imports, batches, jobs, annotations, assets, datasets, releases, formats and export targets, preprocessing recipes, background jobs, inference |
 | [`models.py`](../../../../src/visionset/server/models.py) | the pydantic request and response models `openapi.json` is generated from |
-| [`errors.py`](../../../../src/visionset/server/errors.py) | `ERROR_RULES` - every domain error's status and code |
+| [`errors.py`](../../../../src/visionset/server/errors.py) | `ERROR_RULES` - every domain error's status, with its code from the kernel |
 | [`dependencies.py`](../../../../src/visionset/server/dependencies.py) | which workspace a request serves, and the bearer-token gate |
 | [`session.py`](../../../../src/visionset/server/session.py) | the cookie the server issues to the page it served |
 | [`settings.py`](../../../../src/visionset/server/settings.py) | the executor's three environment variables, and the only `pydantic-settings` object in the repository |

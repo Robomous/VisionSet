@@ -8,9 +8,11 @@ established: mounting routes that raise on the real ``app`` would put them in
 from __future__ import annotations
 
 import inspect
+import json
 import re
 from collections.abc import Iterator
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 from fastapi import FastAPI
@@ -23,12 +25,22 @@ from visionset.kernel import (
     AssetNotInJob,
     CorruptMedia,
     LocalInferenceUnavailable,
+    LossyExportNotConsented,
     ProjectNotFound,
+    SchemaChangeWouldOrphan,
     VisionSetError,
     WorkspaceBusy,
     WorkspaceCorrupt,
 )
 from visionset.kernel import errors as kernel_errors
+from visionset.kernel.domain import (
+    ClassCompatibility,
+    ClassCount,
+    ClassExportStatus,
+    ExportCompatibility,
+    GeometryType,
+)
+from visionset.kernel.error_codes import ERROR_CODES, error_detail
 from visionset.server.errors import (
     ERROR_RESPONSES,
     ERROR_RULES,
@@ -43,6 +55,7 @@ from visionset.server.errors import (
     rule_for,
 )
 from visionset.server.main import app
+from visionset.server.models import ClassCountOut, ExportCompatibilityOut
 
 # --- the table ------------------------------------------------------------
 
@@ -270,6 +283,50 @@ def test_rule_for_declines_an_exception_it_does_not_know() -> None:
 
 def _rules_by_name() -> dict[str, ErrorRule]:
     return {cls.__name__: rule for cls, rule in ERROR_RULES.items()}
+
+
+def test_every_rule_takes_its_code_from_the_kernel() -> None:
+    assert {cls: rule.code for cls, rule in ERROR_RULES.items()} == dict(ERROR_CODES)
+
+
+def test_the_kernel_detail_is_what_the_wire_models_render() -> None:
+    """The kernel builds the detail without the server's models; prove it agrees."""
+    count = ClassCount(label_class="car", annotations=3, assets=2)
+    report = ExportCompatibility(
+        release_id=UUID(int=7),
+        format_name="yolo",
+        target="ultralytics",
+        compatible=False,
+        format_is_lossy=True,
+        excluded_annotations=4,
+        excluded_assets=2,
+        degraded_annotations=1,
+        degraded_assets=1,
+        classes=(
+            ClassCompatibility(
+                label_class="road",
+                geometry=GeometryType.POLYGON,
+                status=ClassExportStatus.DROPPED,
+                annotations=4,
+                assets=2,
+                reason="not written",
+            ),
+            ClassCompatibility(
+                label_class="car",
+                geometry=GeometryType.BBOX,
+                status=ClassExportStatus.SUPPORTED,
+                annotations=9,
+                assets=5,
+            ),
+        ),
+    )
+    orphan = error_detail(SchemaChangeWouldOrphan("no", blockers=(count,)))
+    assert orphan == {"blockers": [ClassCountOut.of(count).model_dump(mode="json")]}
+    lossy = error_detail(LossyExportNotConsented("no", compatibility=report))
+    assert lossy == {"compatibility": ExportCompatibilityOut.of(report).model_dump(mode="json")}
+    assert json.dumps(lossy) == json.dumps(
+        {"compatibility": ExportCompatibilityOut.of(report).model_dump(mode="json")}
+    )
 
 
 # --- the table, as the document publishes it ------------------------------

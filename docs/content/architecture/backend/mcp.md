@@ -45,19 +45,21 @@ startup puts it somewhere the agent cannot reach.
 
 ## The error envelope
 
-An agent both reads and decides, so it gets the kernel's own sentence **and** one
-machine-readable field:
+An agent both reads and decides, so it gets the kernel's own sentence **and** the
+machine-readable fields:
 
 ```json
-{"error": {"message": "…", "retry_with": "allow_destructive", "hint": null, "index": null}}
+{"error": {"message": "…", "retry_with": "allow_destructive", "hint": null, "index": null,
+           "code": "DESTRUCTIVE_SCHEMA_CHANGE", "detail": {"classes": ["car"]}}}
 ```
 
-There is deliberately no `code`. The codes live in `server/errors.py`, which this
-package may not import - the `Delivery clients are siblings` contract - and
-deriving one from a class name would key a public contract to a Python identifier.
-What a code was actually needed for here is one question, *may I retry this, and
-with what?*, and `RETRY_WITH` in
-[`_errors.py`](../../../../src/visionset/mcp/_errors.py) answers it directly.
+`code` and `detail` are what REST answers for the same refusal, read from the
+kernel's [`error_codes.py`](../../../../src/visionset/kernel/error_codes.py) -
+this package may not import `server/errors.py`, under the `Delivery clients are
+siblings` contract, so the table lives below all three surfaces. The question an
+agent most often has, *may I retry this, and with what?*, is still answered
+directly by `RETRY_WITH` in
+[`_errors.py`](../../../../src/visionset/mcp/_errors.py).
 
 ## Two generated artifacts
 

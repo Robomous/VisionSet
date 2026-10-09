@@ -11,7 +11,17 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from tests.mcp._flow import SCHEMA_CLASSES, call, error, payload, project, schema, tool_schemas
+from tests.mcp._flow import (
+    BBOX,
+    SCHEMA_CLASSES,
+    call,
+    error,
+    open_batch,
+    payload,
+    project,
+    schema,
+    tool_schemas,
+)
 
 CAR_ONLY: list[dict[str, Any]] = [{"name": "car", "geometries": ["bbox"]}]
 BOTH: list[dict[str, Any]] = [*SCHEMA_CLASSES, {"name": "car", "geometries": ["bbox"]}]
@@ -331,3 +341,52 @@ def test_a_provenance_the_enum_does_not_declare_is_a_malformed_request(
     result = call("create_schema_version", project=named, classes=BOTH, provenance="invented")
 
     assert result.is_error
+
+
+def _orphaning_project(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> tuple[str, str, list[str]]:
+    named, batch_id, job_id = open_batch(monkeypatch, tmp_path, count=3)
+    assets = [
+        a["id"] for a in payload(call("next_pending_assets", job_id=job_id, count=3))["items"]
+    ]
+    labels = [
+        {"asset_id": asset, "label_class": "sign", "geometry": BBOX, "provenance": "human"}
+        for asset in assets[:2]
+    ]
+    payload(call("add_annotations", job_id=job_id, annotations=labels))
+    return named, batch_id, assets[:2]
+
+
+def test_the_frames_behind_a_refused_change_are_listed_and_paged(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named, batch_id, labeled = _orphaning_project(monkeypatch, tmp_path)
+    assert payload(call("preview_schema_change", project=named, classes=CAR_ONLY))["is_refused"]
+
+    everything = payload(call("list_blocking_assets", project=named, classes=CAR_ONLY))
+    assert everything["total"] == 2
+    assert {item["asset"]["id"] for item in everything["items"]} == set(labeled)
+    assert all(item["label_classes"] == ["sign"] for item in everything["items"])
+    assert all(item["annotations"] == 1 for item in everything["items"])
+    assert all(item["batch_ids"] == [batch_id] for item in everything["items"])
+
+    first = payload(call("list_blocking_assets", project=named, classes=CAR_ONLY, limit=1))
+    second = payload(
+        call("list_blocking_assets", project=named, classes=CAR_ONLY, limit=1, offset=1)
+    )
+    assert first["total"] == second["total"] == 2
+    assert [first["items"][0], second["items"][0]] == everything["items"]
+    past = payload(call("list_blocking_assets", project=named, classes=CAR_ONLY, offset=5))
+    assert past == {"items": [], "total": 2}
+
+
+def test_an_additive_change_blocks_on_no_frame(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named, _, _ = _orphaning_project(monkeypatch, tmp_path)
+    both = [*SCHEMA_CLASSES, {"name": "car", "geometries": ["bbox"]}]
+    assert payload(call("list_blocking_assets", project=named, classes=both)) == {
+        "items": [],
+        "total": 0,
+    }

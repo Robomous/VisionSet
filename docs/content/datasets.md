@@ -16,7 +16,7 @@ with WorkspaceService.open("./road-signs") as workspace:
     datasets = DatasetService(workspace)
     dataset = ProjectService(workspace).get_dataset(project.id)
 
-    datasets.promote(batch.id, actor="ana")  # the batch must be `completed`
+    datasets.promote(batch.id)  # the batch must be `completed`
     datasets.assets(dataset.id)  # what is in the trunk, in arrival order
     datasets.remove_asset(dataset.id, asset.id)  # curate it back out
     datasets.changes(dataset.id)  # everything that was done, oldest first
@@ -151,8 +151,10 @@ not only *what changed* - without a column that only one of the two operations c
 that wrote it, and narrowing the field would make an entry naming an operation this build has
 never heard of fail to load - turning a forward-compatible record into an unreadable one.
 
-`actor` is a placeholder until identities exist. `AuthProvider` verifies tokens and does not yet
-resolve anyone, so the kernel records what a surface hands it rather than inventing a name.
+`actor` is whatever the caller passes. REST, the CLI and MCP pass their surface name - `rest`,
+`cli` or `mcp`, the values of `DatasetActor` - not a person: `AuthProvider` verifies tokens and
+does not yet resolve anyone, and a credential is never recorded. A direct SDK call that passes
+none writes `null`.
 
 ## What the trunk does not depend on
 

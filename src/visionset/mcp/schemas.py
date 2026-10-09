@@ -207,7 +207,7 @@ def preview_schema_change(project: ProjectRef, classes: ClassesParam) -> dict[st
     annotations and how many assets it carries. Do not retry with
     `allow_destructive=true` — that flag answers a different refusal, and retrying
     is a loop. Either keep the class, or delete the annotations `blockers` counts
-    and preview again.
+    and preview again. `list_blocking_assets` pages through the assets that carry them.
 
     Advisory: nothing is locked. Somebody can label a class between this call and
     the publish, in which case the publish refuses and that refusal is the
@@ -222,6 +222,42 @@ def preview_schema_change(project: ProjectRef, classes: ClassesParam) -> dict[st
         resolved = resolve_project(workspace, project)
         preview = SchemaService(workspace).preview(resolved.id, classes)
     return wire.schema_change_preview(preview)
+
+
+def list_blocking_assets(
+    project: ProjectRef,
+    classes: ClassesParam,
+    limit: Annotated[
+        int | None,
+        Field(ge=1, description="How many frames to return. Omit for all of them."),
+    ] = None,
+    offset: Annotated[int, Field(ge=0, description="How many frames to skip.")] = 0,
+) -> dict[str, Any]:
+    """List the frames that make `preview_schema_change` report `is_refused`.
+
+    `preview_schema_change` says how many annotations block a proposal and under
+    which classes; this names the frames carrying them, so you can open each and
+    delete or relabel the annotations, then preview again. Writes nothing.
+
+    Pass the same `classes` you previewed: which `(class, shape)` pairs are
+    guarded is derived from the proposal, not supplied. Each item names the
+    `asset`, how many of its `annotations` the change would orphan, which
+    `label_classes` they carry, and every batch holding it in `batch_ids`. A frame
+    blocking under two classes is one item.
+
+    `total` is every blocking frame and does not change as you page; an offset
+    past the end is an empty page. An additive proposal blocks on nothing and
+    answers an empty page. Order is insertion order of the assets, stable between
+    calls.
+    """
+    with opened_workspace() as workspace:
+        resolved = resolve_project(workspace, project)
+        found = SchemaService(workspace).blocking_assets(resolved.id, classes)
+    end = None if limit is None else offset + limit
+    return {
+        "items": [wire.blocking_asset(one) for one in found[offset:end]],
+        "total": len(found),
+    }
 
 
 def create_schema_version(
@@ -279,7 +315,7 @@ def create_schema_version(
     pass `allow_destructive=true`. And a narrowing change that would orphan
     annotations already written under an affected class is rejected with **no**
     override at all — the remedy there is to keep the class, not to force the
-    change.
+    change. `list_blocking_assets` finds which assets block it.
     """
     with opened_workspace() as workspace:
         resolved = resolve_project(workspace, project)

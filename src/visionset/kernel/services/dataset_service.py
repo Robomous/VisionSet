@@ -293,8 +293,9 @@ class DatasetService:
 
         Args:
             batch_id: the batch to promote from. It must be ``completed``.
-            actor: recorded on the log entry. A placeholder until identities
-                exist — the kernel writes down what a surface hands it.
+            actor: recorded on the log entry as given; ``None`` when the
+                caller passes none. Surfaces pass a ``DatasetActor``. Not a person,
+                and never a credential.
 
         Returns:
             The assets this call added, empty if there was nothing new.

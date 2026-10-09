@@ -33,6 +33,7 @@ from tests.fixtures.samples import (
     ASSET,
     BATCH,
     BBOX,
+    BLOCKING_ASSET,
     CLASSIFICATION,
     CORRUPT_FAILURE,
     COUNTS,
@@ -118,6 +119,7 @@ PAIRS: list[tuple[str, dict[str, Any], type[BaseModel]]] = [
         wire.schema_change_preview(SCHEMA_CHANGE_PREVIEW),
         models.SchemaChangePreviewOut,
     ),
+    ("blocking_asset", wire.blocking_asset(BLOCKING_ASSET), models.BlockingAssetOut),
     # ``changes[1]`` rather than ``[0]``: it is the one carrying a non-null
     # ``attribute``, and a sample holding ``None`` there would leave that half of
     # the projection unchecked. The diff pair above covers both, since it
@@ -264,6 +266,11 @@ def test_a_listing_is_an_object_with_items_and_a_total() -> None:
         "items": [{"id": "a"}, {"id": "b"}],
         "total": 2,
     }
+
+
+def test_a_blocking_asset_page_validates_against_the_rest_page() -> None:
+    page = {"items": [wire.blocking_asset(BLOCKING_ASSET)], "total": 7}
+    assert models.BlockingAssetPage.model_validate(page).total == 7
 
 
 def test_an_empty_listing_is_still_an_object() -> None:
