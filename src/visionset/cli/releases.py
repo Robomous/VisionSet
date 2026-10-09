@@ -43,7 +43,7 @@ _SPLIT_PARTS: Final = 3
 """``--split`` is train, val and test — exactly three numbers, in that order."""
 
 
-def _split_of(value: str | None, seed: int) -> SplitRecipe | None:
+def _split_of(value: str | None, seed: int | None) -> SplitRecipe | None:
     """``"0.7,0.15,0.15"`` as a recipe, or a usage error saying what is wrong.
 
     ``SplitRecipe`` refuses fractions that do not add up, with a pydantic
@@ -52,6 +52,8 @@ def _split_of(value: str | None, seed: int) -> SplitRecipe | None:
     which is what exit 2 is for.
     """
     if value is None:
+        if seed is not None:
+            raise typer.BadParameter("--seed has no effect without --split")
         return None
     parts = value.split(",")
     if len(parts) != _SPLIT_PARTS:
@@ -61,7 +63,7 @@ def _split_of(value: str | None, seed: int) -> SplitRecipe | None:
     except ValueError as exc:
         raise typer.BadParameter(f"--split takes three numbers, not {value!r}") from exc
     try:
-        return SplitRecipe(train=train, val=val, test=test, seed=seed)
+        return SplitRecipe(train=train, val=val, test=test, seed=0 if seed is None else seed)
     except ValueError as exc:
         raise typer.BadParameter(f"--split {value!r}: {exc}") from exc
 
@@ -78,7 +80,10 @@ def release_publish(
             help="Fractions adding up to 1.0, e.g. 0.7,0.15,0.15.",
         ),
     ] = None,
-    seed: Annotated[int, typer.Option("--seed", help="Fixes the fold assignment.")] = 0,
+    seed: Annotated[
+        int | None,
+        typer.Option("--seed", help="Fixes the fold assignment (default 0). Needs --split."),
+    ] = None,
     json_out: JsonOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:

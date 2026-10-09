@@ -683,7 +683,7 @@ visionset target list
 
 `--split` is **one** option rather than three, because a split is one concept, `0.7,0.15,0.15` is
 how it is written everywhere, and one flag means one refusal to word. `--seed` stays separate; it is
-not a fraction. Fractions that do not add up are exit 2 - `SplitRecipe` refuses them with a pydantic
+not a fraction, and without `--split` it is refused as exit 2 because it would change nothing. Fractions that do not add up are exit 2 - `SplitRecipe` refuses them with a pydantic
 error, which is not a `VisionSetError` - so the CLI parses the recipe before the call.
 
 **A tag is case-sensitive where a project name is not.** Both comparisons live in the kernel beside

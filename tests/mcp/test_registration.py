@@ -59,6 +59,7 @@ SHIPPED = {
     "add_annotations",
     "update_annotations",
     "delete_annotations",
+    "list_project_assets",
     "get_asset_image",
     "dataset_stats",
     "publish_release",

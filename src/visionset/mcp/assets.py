@@ -51,6 +51,7 @@ from mcp.server.mcpserver.utilities.types import Image
 from mcp.types import CallToolResult, TextContent
 from pydantic import Field
 
+from visionset import wire
 from visionset.kernel.domain import Asset, ImageFormat
 from visionset.kernel.ports import THUMBNAIL_FORMAT
 from visionset.kernel.services import IngestService, WorkspaceService
@@ -173,3 +174,29 @@ def get_asset_image(
         resolved = resolve_project(workspace, project)
         asset = IngestService(workspace).asset(resolved.id, identifier(asset_id, what="asset_id"))
         return _original(workspace, asset) if full else _preview(workspace, asset)
+
+
+def list_project_assets(
+    project: ProjectRef,
+    limit: Annotated[
+        int | None,
+        Field(ge=1, description="How many assets to return. Omit for all of them."),
+    ] = None,
+    offset: Annotated[int, Field(ge=0, description="How many assets to skip.")] = 0,
+) -> dict[str, Any]:
+    """List every asset ingested into a project, whether or not any batch holds it.
+
+    The project-level view: `list_batch_assets` only shows what a batch holds, so
+    an asset removed from every draft batch is reachable here and nowhere else.
+    Newest ingest first; within one ingest, by source, then path, then frame
+    index, then id. The order is stable between calls. `total` is every asset in
+    the project and does not change as you page; an offset past the end is an
+    empty page, not an error.
+    Pass an `id` to `add_batch_assets` to put it back in a draft, or to
+    `get_asset_image` to see its pixels.
+    """
+    with opened_workspace() as workspace:
+        resolved = resolve_project(workspace, project)
+        found = IngestService(workspace).assets(resolved.id)
+        end = None if limit is None else offset + limit
+        return {"items": [wire.asset(asset) for asset in found[offset:end]], "total": len(found)}
