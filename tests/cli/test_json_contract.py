@@ -65,7 +65,12 @@ from tests.fixtures.samples import (
 from visionset import wire
 from visionset.formats._dummy import DummyExporter
 from visionset.formats.ultralytics import UltralyticsExporter
-from visionset.inference import PreLabelExcludedClass, PreLabelExclusionReason, PreLabelPlan
+from visionset.inference import (
+    PreLabelExcludedClass,
+    PreLabelExclusionReason,
+    PreLabelPlan,
+    registered,
+)
 from visionset.kernel.domain import (
     AnnotationSummary,
     AssetProgress,
@@ -189,6 +194,7 @@ PAIRS: list[tuple[str, dict[str, Any], type[BaseModel]]] = [
         models.ReleaseVerificationOut,
     ),
     ("export_format", wire.export_format(DummyExporter()), models.FormatOut),
+    ("provider", wire.provider(registered().providers["sam"]), models.ProviderOut),
     (
         "export_target",
         wire.export_target(next(iter(DummyExporter().targets)), DummyExporter()),

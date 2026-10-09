@@ -45,7 +45,13 @@ from typing import Annotated, Any
 from pydantic import Field
 
 from visionset import wire
-from visionset.inference import ask_endpoint, check_integrity, download_size, fetch_weights
+from visionset.inference import (
+    ask_endpoint,
+    check_integrity,
+    download_size,
+    fetch_weights,
+    registered,
+)
 from visionset.kernel import ConfirmationRequired
 from visionset.kernel.domain import ConnectionType, Precision
 from visionset.kernel.services import InferenceConnectionService
@@ -172,6 +178,23 @@ def update_inference_connection(
             credential_env=credential_env,
         )
     return wire.connection(edited)
+
+
+def list_providers() -> dict[str, Any]:
+    """List the inference drivers installed here, and the models each offers by name.
+
+    Call this before `create_inference_connection`: a `provider_id` here is the
+    string that tool's `provider_id` takes, and a `curated` entry's `model_id` and
+    `model_revision` are a pinned pair it accepts as given. `families` maps a model
+    type onto what it can be asked for; `capability` on a curated entry is that
+    family's. Curation guides and never restricts — any model id stays typeable.
+
+    An entry carries no size: call `model_download_size` for the exact pair. An
+    `access_note` and `access_url`, when present, say what must be cleared before
+    the weights can be fetched. Installing a driver downloads nothing.
+    """
+    installed = registered().providers
+    return wire.page([wire.provider(installed[provider_id]) for provider_id in sorted(installed)])
 
 
 def model_download_size(

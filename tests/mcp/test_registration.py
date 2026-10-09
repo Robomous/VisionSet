@@ -73,6 +73,7 @@ SHIPPED = {
     "update_preprocessing_recipe",
     "list_formats",
     "list_inference_connections",
+    "list_providers",
     "model_download_size",
     "create_inference_connection",
     "download_connection_weights",

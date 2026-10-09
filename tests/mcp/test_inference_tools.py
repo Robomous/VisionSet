@@ -88,6 +88,37 @@ def fetched(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[str]:
     return seen
 
 
+# --- providers ----------------------------------------------------------------
+
+
+def test_list_providers_publishes_the_curated_catalog(root: Path) -> None:
+    items = payload(call("list_providers"))["items"]
+    by_id = {row["provider_id"]: row for row in items}
+    assert items == sorted(items, key=lambda row: row["provider_id"])
+    curated = [entry for row in items for entry in row["curated"]]
+    assert "sam" in by_id
+    assert "grounding-dino" in {entry["family"] for entry in curated}
+    assert any(entry["provider_id"] == "sam" for entry in curated)
+    for entry in curated:
+        assert set(entry) == {
+            "provider_id",
+            "model_id",
+            "model_revision",
+            "family",
+            "capability",
+            "hint",
+            "access_note",
+            "access_url",
+        }
+        assert entry["capability"] == by_id[entry["provider_id"]]["families"][entry["family"]]
+
+
+@without_the_extra
+def test_list_providers_needs_no_local_inference_extra(root: Path) -> None:
+    items = payload(call("list_providers"))["items"]
+    assert any(row["curated"] for row in items)
+
+
 # --- create -------------------------------------------------------------------
 
 

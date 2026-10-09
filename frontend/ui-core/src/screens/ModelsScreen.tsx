@@ -1301,8 +1301,15 @@ function ConnectionForm({
                                 <SelectItem key={entry.model_id} value={entry.model_id}>
                                   <span className="flex flex-col items-start">
                                     <span>{entry.model_id}</span>
-                                    <span className="text-xs text-muted-foreground">
-                                      {entry.hint}
+                                    <span className="flex items-center gap-2">
+                                      <span className="text-xs text-muted-foreground">
+                                        {entry.hint}
+                                      </span>
+                                      {entry.access_note != null && (
+                                        <Badge variant="quiet" data-testid="gated-badge">
+                                          Gated
+                                        </Badge>
+                                      )}
                                     </span>
                                   </span>
                                 </SelectItem>

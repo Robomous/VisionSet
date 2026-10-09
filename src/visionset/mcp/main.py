@@ -141,6 +141,7 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     # configured, price a download, configure, fetch, verify, ask the endpoint,
     # edit.
     (inference.list_inference_connections, READS),
+    (inference.list_providers, READS),
     (inference.model_download_size, READS),
     (inference.create_inference_connection, WRITES),
     (inference.download_connection_weights, WRITES),

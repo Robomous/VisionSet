@@ -217,6 +217,7 @@ call until the end. #439 has since added a job gate, but it changes none of this
 | | |
 | --- | --- |
 | `list_inference_connections` | Every configured connection, with setup state and actions. |
+| `list_providers` | The installed inference drivers and the checkpoints each offers by name, to pick a `provider_id` and a pinned model from. |
 | `model_download_size` | What fetching a model would cost, before anything fetches it. |
 | `create_inference_connection` | Configure one. Downloads nothing, contacts nothing. |
 | `download_connection_weights` | Fetch a local connection's weights. Synchronous. |

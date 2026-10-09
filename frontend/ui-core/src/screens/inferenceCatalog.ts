@@ -98,8 +98,8 @@ export function precisionOn(device: string, current: Precision): Precision {
  * never how that ability is named on screen.
  */
 const CAPABILITY_GROUP: Record<KnownMembers["ModelCapability"], string> = {
-  point_suggest: "Interactive segmentation (point prompts)",
-  text_detect: "Text-prompt detection",
+  point_suggest: "Segment — click to mask",
+  text_detect: "Detect — describe in text",
 };
 
 /** One heading in the select, and the offers under it. */

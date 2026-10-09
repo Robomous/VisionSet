@@ -11,7 +11,7 @@ error envelope, and the three gate words.
 
 ## Always offered
 
-58 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
+59 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
 
 | Tool | Takes | What it does |
 | --- | --- | --- |
@@ -67,6 +67,7 @@ error envelope, and the three gate words.
 | `create_preprocessing_recipe` | `project`, `name`, `spec` | Store a named pre-processing recipe on a project, for `export_release` to apply. |
 | `update_preprocessing_recipe` | `project`, `name`, `spec`, `new_name`? | Replace a pre-processing recipe's spec whole, and rename it when `new_name` is given. |
 | `list_inference_connections` | — | List this workspace's model connections, oldest first. |
+| `list_providers` | — | List the inference drivers installed here, and the models each offers by name. |
 | `model_download_size` | `model_id`, `model_revision` | How big fetching that model's weights would be. Nothing is downloaded. |
 | `create_inference_connection` | `name`, `connection_type`, `model_id`, `model_revision`, `device`?, `precision`?, `endpoint_url`?, `provider_id`?, `credential_env`? | Configure a connection. Nothing is downloaded and nothing is contacted. |
 | `download_connection_weights` | `connection` | Fetch a local connection's weights. This is the only tool that downloads a model. |
