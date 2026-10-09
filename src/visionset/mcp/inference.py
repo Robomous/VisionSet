@@ -146,6 +146,15 @@ def update_inference_connection(
         Field(description="Local only. fp16 needs a cuda device; cpu and mps run in fp32."),
     ] = None,
     endpoint_url: Annotated[str | None, Field(description="HTTP only.")] = None,
+    provider_id: Annotated[
+        str | None,
+        Field(
+            description=(
+                "Which installed driver serves it, as `list_providers` names them. "
+                "Moving the model without naming one forgets the recorded driver."
+            )
+        ),
+    ] = None,
     credential_env: Annotated[
         str | None,
         Field(
@@ -175,6 +184,7 @@ def update_inference_connection(
             device=device,
             precision=precision,
             endpoint_url=endpoint_url,
+            provider_id=provider_id,
             credential_env=credential_env,
         )
     return wire.connection(edited)
