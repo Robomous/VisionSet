@@ -480,7 +480,7 @@ def test_the_project_listing_carries_the_run_too(
     client: TestClient, in_annotation_batch: OpenBatch
 ) -> None:
     """The listing and the single-batch read agree, at the one-query cost model
-    `_promoted` already pays for `promoted_asset_count`."""
+    `promoted_asset_ids` already pays for `promoted_asset_count`."""
     client.post(
         f"/batches/{in_annotation_batch.id}/pre-label",
         json={"connection_id": in_annotation_batch.connection_id, "minimum_confidence": 0.35},

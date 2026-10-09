@@ -66,7 +66,7 @@ Module-level for the ``get_type_hints`` reason ``WorkspaceOption`` is.
 
 
 def _resolve(service: InferenceConnectionService, reference: str) -> UUID:
-    """The id behind a name or an id, on ``_resolve.resolve_project``'s terms."""
+    """The id behind a name or an id; an id is returned without being read."""
     try:
         return UUID(reference)
     except ValueError:

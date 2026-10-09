@@ -123,6 +123,22 @@ class ProjectService:
             return ProjectPreview(asset_id=asset.id, thumbnail_hash=asset.thumbnail_hash)
         return None
 
+    def resolve(self, reference: str) -> Project:
+        """The project a reference names, by id if it parses as one, else by name.
+
+        A project whose name is a well-formed UUID string is unreachable by name;
+        the same string reaches it as an id.
+
+        Raises:
+            InvalidName: the reference is not a UUID and is blank once stripped.
+            ProjectNotFound: no project in this workspace matches.
+        """
+        try:
+            project_id = UUID(reference)
+        except ValueError:
+            return self.get_by_name(reference)
+        return self.get(project_id)
+
     def get_dataset(self, project_id: UUID) -> Dataset:
         """The one dataset belonging to that project.
 

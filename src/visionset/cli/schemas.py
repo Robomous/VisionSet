@@ -47,10 +47,14 @@ from pydantic import TypeAdapter, ValidationError
 
 from visionset import wire
 from visionset.cli._output import JsonOption, document, note, table
-from visionset.cli._resolve import ProjectOption, resolve_project
+from visionset.cli._resolve import ProjectOption
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
 from visionset.kernel.domain import DraftLabelClass, LabelClass, SchemaProvenance
-from visionset.kernel.services import SchemaDraftService, SchemaService
+from visionset.kernel.services import (
+    ProjectService,
+    SchemaDraftService,
+    SchemaService,
+)
 
 schema_app = typer.Typer(help="Apply and inspect annotation schemas.", no_args_is_help=True)
 
@@ -134,7 +138,7 @@ def schema_draft_show(
     access to the workspace. `revision` is what `set` and `publish` must name.
     """
     with opened_workspace(workspace) as service:
-        resolved = resolve_project(service, project)
+        resolved = ProjectService(service).resolve(project)
         draft = SchemaDraftService(service).get(resolved.id, kind)
     if draft is None:
         if json_out:
@@ -188,7 +192,7 @@ def schema_draft_set(
     """
     classes = _read_draft_classes(file)
     with opened_workspace(workspace) as service:
-        resolved = resolve_project(service, project)
+        resolved = ProjectService(service).resolve(project)
         saved = SchemaDraftService(service).save(
             resolved.id,
             kind,
@@ -211,7 +215,7 @@ def schema_draft_clear(
 ) -> None:
     """Throw the draft away. Clearing one that is not there is not an error."""
     with opened_workspace(workspace) as service:
-        resolved = resolve_project(service, project)
+        resolved = ProjectService(service).resolve(project)
         removed = SchemaDraftService(service).discard(resolved.id, kind)
     note(
         f"Cleared the {kind.value} draft of {resolved.name!r}."
@@ -253,7 +257,7 @@ def schema_draft_publish(
     orphan refusal that no flag overrides.
     """
     with opened_workspace(workspace) as service:
-        resolved = resolve_project(service, project)
+        resolved = ProjectService(service).resolve(project)
         drafts = SchemaDraftService(service)
         # Read to learn the revision when the caller did not name one. Publishing
         # "whatever is there now" is the ordinary script, and making every script
@@ -318,7 +322,7 @@ def schema_apply(
     """
     classes = _read_classes(file)
     with opened_workspace(workspace) as service:
-        resolved = resolve_project(service, project)
+        resolved = ProjectService(service).resolve(project)
         published = SchemaService(service).create_version(
             resolved.id,
             classes,
@@ -374,7 +378,7 @@ def schema_blocking_assets(
     """
     classes = _read_classes(file)
     with opened_workspace(workspace) as service:
-        resolved = resolve_project(service, project)
+        resolved = ProjectService(service).resolve(project)
         found = SchemaService(service).blocking_assets(resolved.id, classes)
     end = None if limit is None else offset + limit
     shown = found[offset:end]
@@ -404,7 +408,7 @@ def schema_list(
 ) -> None:
     """List a project's schema versions, oldest first. The last one is active."""
     with opened_workspace(workspace) as service:
-        resolved = resolve_project(service, project)
+        resolved = ProjectService(service).resolve(project)
         versions = SchemaService(service).list_versions(resolved.id)
     if json_out:
         document(wire.page([wire.schema_version(v) for v in versions]))

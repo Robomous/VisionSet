@@ -38,9 +38,13 @@ from visionset import wire
 from visionset.formats import registry
 from visionset.kernel.domain import ExportTarget, SplitRecipe
 from visionset.kernel.ports import Exporter, resolve_target
-from visionset.kernel.services import PreprocessingRecipeService, ProjectService, ReleaseService
+from visionset.kernel.services import (
+    PreprocessingRecipeService,
+    ProjectService,
+    ReleaseService,
+)
 from visionset.mcp._errors import refused
-from visionset.mcp._resolve import ProjectRef, resolve_project, resolve_release
+from visionset.mcp._resolve import ProjectRef
 from visionset.mcp._workspace import opened_workspace
 from visionset.preprocessing import registry as preprocessing_registry
 
@@ -78,7 +82,7 @@ def publish_release(
     and `V1.0` are two different releases.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         dataset = ProjectService(workspace).get_dataset(resolved.id)
         published = ReleaseService(workspace).publish(dataset.id, tag, split=split)
     return wire.release(published)
@@ -92,7 +96,7 @@ def list_releases(project: ProjectRef) -> dict[str, Any]:
     published and what is in it" without a second call per release.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         dataset = ProjectService(workspace).get_dataset(resolved.id)
         found = ReleaseService(workspace).list(dataset.id)
     return wire.page([wire.release(r) for r in found])
@@ -116,7 +120,7 @@ def verify_release(project: ProjectRef, tag: TagRef) -> dict[str, Any]:
     `manifest_intact` is false and `checked` is 0.
     """
     with opened_workspace() as workspace:
-        release = resolve_release(workspace, project, tag)
+        release = ReleaseService(workspace).resolve(project, tag)
         report = ReleaseService(workspace).verify(release.id)
     return wire.release_verification(report)
 
@@ -225,7 +229,7 @@ def check_export(
     if (target is None) == (format is None):
         return refused("give exactly one of target and format")
     with opened_workspace() as workspace:
-        release = resolve_release(workspace, project, tag)
+        release = ReleaseService(workspace).resolve(project, tag)
         plugin, addressed = _addressed(target, format)
         spec = (
             None
@@ -308,7 +312,7 @@ def export_release(
         return refused("give exactly one of target and format")
 
     with opened_workspace() as workspace:
-        release = resolve_release(workspace, project, tag)
+        release = ReleaseService(workspace).resolve(project, tag)
         plugin, addressed = _addressed(target, format)
         spec = (
             None

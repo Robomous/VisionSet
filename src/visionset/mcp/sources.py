@@ -36,9 +36,13 @@ from typing import Annotated, Any, Final
 from pydantic import Field
 
 from visionset import wire
-from visionset.kernel.services import IngestService, SourceService
+from visionset.kernel.services import (
+    IngestService,
+    ProjectService,
+    SourceService,
+)
 from visionset.mcp._errors import refused
-from visionset.mcp._resolve import ProjectRef, resolve_project
+from visionset.mcp._resolve import ProjectRef
 from visionset.mcp._workspace import opened_workspace
 
 #: What ``ingest`` answers when it is handed anything but a directory.
@@ -103,7 +107,7 @@ def ingest(
         return refused(f"{path} is not a directory. {VIDEO_IS_A_BROWSER_IMPORT}")
 
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         registered = SourceService(workspace).register_images(resolved.id, source_path)
         result = IngestService(workspace).ingest(registered.id, batch_name=batch_name)
     return {
@@ -130,7 +134,7 @@ def list_sources(project: ProjectRef) -> dict[str, Any]:
     clip and the rate it was decomposed at, under `video`.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         registered = SourceService(workspace).list(resolved.id)
     return wire.page([wire.source(s) for s in registered])
 
@@ -149,6 +153,6 @@ def backfill_thumbnails(project: ProjectRef) -> dict[str, Any]:
     and will not decode. Neither is a failure of this call.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         report = IngestService(workspace).backfill_thumbnails(resolved.id)
     return wire.thumbnail_backfill(report)

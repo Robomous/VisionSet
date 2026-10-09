@@ -37,7 +37,6 @@ from visionset.kernel.services import (
     DatasetService,
     IngestService,
     JobService,
-    ProjectService,
 )
 from visionset.server.dependencies import WorkspaceDep, protected_router
 from visionset.server.errors import documented
@@ -57,19 +56,6 @@ router = protected_router(prefix="/projects/{project_id}/assets", tags=["assets"
 #: a gamble. One year is the maximum ``max-age`` anything honours, and
 #: ``immutable`` tells a browser not to revalidate even on a reload.
 _IMMUTABLE: Final = "public, max-age=31536000, immutable"
-
-
-def _promoted(workspace: WorkspaceDep, project_id: UUID) -> frozenset[UUID]:
-    """The trunk's current membership, read once for the whole response.
-
-    The same helper `routes/batches.py` has, and deliberately a second spelling
-    rather than an import: a route module reaches for `dependencies`, `errors`
-    and `models`, never for another route module, and three lines is a smaller
-    price than the first edge between two of them. `DatasetService` is the one
-    place the rule actually lives.
-    """
-    dataset = ProjectService(workspace).get_dataset(project_id)
-    return DatasetService(workspace).member_asset_ids(dataset.id)
 
 
 # FastAPI documents a 200 as ``application/json`` unless told otherwise — the
@@ -177,7 +163,7 @@ def list_asset_batches(workspace: WorkspaceDep, project_id: UUID, asset_id: UUID
     asset = IngestService(workspace).asset(project_id, asset_id)
     batches = BatchService(workspace)
     jobs = JobService(workspace)
-    promoted = _promoted(workspace, project_id)
+    promoted = DatasetService(workspace).promoted_asset_ids(project_id)
     found = batches.holding(asset.id)
     pre_label_runs = batches.pre_label_runs()
     return BatchPage(

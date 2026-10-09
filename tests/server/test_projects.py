@@ -425,6 +425,55 @@ def test_stats_for_a_malformed_project_id_is_422_not_404(client: TestClient) -> 
     assert client.get("/projects/not-a-uuid/stats").status_code == 422
 
 
+# --- project-wide progress ----------------------------------------------------
+
+
+def test_a_project_with_no_batches_reports_every_state_as_zero(client: TestClient) -> None:
+    project_id = created(client, "road-signs")["id"]
+
+    response = client.get(f"/projects/{project_id}/progress")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "unannotated": 0,
+        "pre_labeled": 0,
+        "annotated": 0,
+        "skipped": 0,
+        "review_pending": 0,
+        "accepted": 0,
+        "total": 0,
+    }
+
+
+def test_project_progress_counts_the_assets_of_an_approved_batch(
+    flow_client: TestClient, stats_runner: InlineDispatcher, tmp_path: Path
+) -> None:
+    project_id = project_with_schema(flow_client)
+    batch_id = batch_from_ingest(flow_client, stats_runner, tmp_path, project_id, images=3)
+    flow_client.post(f"/batches/{batch_id}/approve")
+    flow_client.post(f"/batches/{batch_id}/start")
+    job_id = flow_client.get(f"/batches/{batch_id}/jobs").json()["items"][0]["id"]
+    flow_client.post(f"/jobs/{job_id}/start")
+    first = flow_client.get(f"/jobs/{job_id}/next", params={"n": 1}).json()["items"][0]["id"]
+    flow_client.put(f"/jobs/{job_id}/assets/{first}/progress", json={"progress": "skipped"})
+
+    body = flow_client.get(f"/projects/{project_id}/progress").json()
+
+    assert (body["unannotated"], body["skipped"], body["total"]) == (2, 1, 3)
+    assert body == flow_client.get(f"/jobs/{job_id}/progress").json()
+
+
+def test_progress_for_an_unknown_project_is_404_project_not_found(client: TestClient) -> None:
+    response = client.get(f"/projects/{uuid4()}/progress")
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "PROJECT_NOT_FOUND"
+
+
+def test_progress_for_a_malformed_project_id_is_422_not_404(client: TestClient) -> None:
+    assert client.get("/projects/not-a-uuid/progress").status_code == 422
+
+
 # --- the preview each row carries ---------------------------------------------
 
 

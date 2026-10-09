@@ -32,9 +32,12 @@ from pydantic import Field
 from visionset import wire
 from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE, PreLabelPlan, pre_label
 from visionset.kernel.domain import AssetProgress
-from visionset.kernel.services import JobService
+from visionset.kernel.services import (
+    InferenceConnectionService,
+    JobService,
+)
 from visionset.mcp._autostart import autostarted
-from visionset.mcp._resolve import ConnectionRef, identifier, resolve_connection
+from visionset.mcp._resolve import ConnectionRef, identifier
 from visionset.mcp._workspace import opened_workspace
 from visionset.mcp.batches import Geometries, _pre_label_outcome, _selection
 
@@ -194,7 +197,7 @@ def pre_label_job(
     """
     seen: list[PreLabelPlan] = []
     with opened_workspace() as workspace:
-        resolved_connection = resolve_connection(workspace, connection)
+        resolved_connection = InferenceConnectionService(workspace).resolve(connection)
         resolved_job = identifier(job_id, what="job_id")
         outcome = pre_label(
             workspace,

@@ -54,7 +54,7 @@ import typer
 from visionset import wire
 from visionset.cli._errors import EXIT_ANSWER_IS_NO
 from visionset.cli._output import JsonOption, document, note, table
-from visionset.cli._resolve import ProjectOption, resolve_release
+from visionset.cli._resolve import ProjectOption
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
 from visionset.formats import registry
 from visionset.kernel.domain import ExportCompatibility, ExportTarget
@@ -158,7 +158,7 @@ def export(
         # ``ExportTargetNotFound`` are ``VisionSetError``s naming every installed
         # name, and ``opened_workspace`` is what turns one into a sentence and exit 1.
         plugin, addressed = _resolve(target, format_name)
-        found = resolve_release(service, project, release)
+        found = ReleaseService(service).resolve(project, release)
         spec = (
             None
             if recipe is None

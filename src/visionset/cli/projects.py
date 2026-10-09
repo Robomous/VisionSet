@@ -31,7 +31,6 @@ import typer
 
 from visionset import wire
 from visionset.cli._output import JsonOption, document, note, table
-from visionset.cli._resolve import resolve_project
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
 from visionset.cli.batches import GeometryOption, announce_plan, selected_geometries
 from visionset.cli.inference import ConnectionArgument, _resolve
@@ -43,7 +42,10 @@ from visionset.inference import (
     select_pre_labelable,
     served_for,
 )
-from visionset.kernel.services import InferenceConnectionService, ProjectService
+from visionset.kernel.services import (
+    InferenceConnectionService,
+    ProjectService,
+)
 
 project_app = typer.Typer(help="Create and list projects.", no_args_is_help=True)
 
@@ -135,7 +137,7 @@ def project_pre_label(
     this run writes can be written as.
     """
     with opened_workspace(workspace) as service:
-        resolved = resolve_project(service, project)
+        resolved = ProjectService(service).resolve(project)
         connection_id = _resolve(InferenceConnectionService(service), connection)
         declared = served_for(service, connection_id)
         geometries = selected_geometries(geometry)

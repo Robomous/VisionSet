@@ -31,7 +31,7 @@ from pydantic import ValidationError
 
 from visionset import wire
 from visionset.cli._output import JsonOption, document, moment, note, table
-from visionset.cli._resolve import ProjectOption, resolve_project
+from visionset.cli._resolve import ProjectOption
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
 from visionset.kernel.domain import (
     AugmentOp,
@@ -42,7 +42,10 @@ from visionset.kernel.domain import (
     ResizeStrategy,
     Step,
 )
-from visionset.kernel.services import PreprocessingRecipeService
+from visionset.kernel.services import (
+    PreprocessingRecipeService,
+    ProjectService,
+)
 
 recipe_app = typer.Typer(help="Manage a project's pre-processing recipes.", no_args_is_help=True)
 
@@ -225,7 +228,7 @@ def recipe_create(
         target=target,
     )
     with opened_workspace(workspace) as service:
-        resolved = resolve_project(service, project)
+        resolved = ProjectService(service).resolve(project)
         created = PreprocessingRecipeService(service).create(resolved.id, name, built)
     _print(created, json_out=json_out, verb="Created")
 
@@ -238,7 +241,7 @@ def recipe_list(
 ) -> None:
     """List a project's recipes, oldest first."""
     with opened_workspace(workspace) as service:
-        resolved = resolve_project(service, project)
+        resolved = ProjectService(service).resolve(project)
         recipes = PreprocessingRecipeService(service).list(resolved.id)
     if json_out:
         document(wire.page([wire.preprocessing_recipe(one) for one in recipes]))
@@ -257,7 +260,7 @@ def recipe_show(
 ) -> None:
     """Print one recipe. `--json` is the shape `--spec` reads back, under `spec`."""
     with opened_workspace(workspace) as service:
-        resolved = resolve_project(service, project)
+        resolved = ProjectService(service).resolve(project)
         recipe = PreprocessingRecipeService(service).get(resolved.id, name)
     if json_out:
         document(wire.preprocessing_recipe(recipe))
@@ -297,7 +300,7 @@ def recipe_update(
         target=target,
     )
     with opened_workspace(workspace) as service:
-        resolved = resolve_project(service, project)
+        resolved = ProjectService(service).resolve(project)
         updated = PreprocessingRecipeService(service).update(
             resolved.id, name, spec=built, new_name=rename
         )
@@ -313,7 +316,7 @@ def recipe_delete(
 ) -> None:
     """Remove a recipe. No prompt: every export that used it kept its own copy."""
     with opened_workspace(workspace) as service:
-        resolved = resolve_project(service, project)
+        resolved = ProjectService(service).resolve(project)
         removed = PreprocessingRecipeService(service).delete(resolved.id, name)
     if json_out:
         document({"deleted": wire.preprocessing_recipe(removed)})

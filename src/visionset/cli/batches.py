@@ -44,7 +44,7 @@ import typer
 
 from visionset import wire
 from visionset.cli._output import JsonOption, document, note, table
-from visionset.cli._resolve import ProjectOption, resolve_project
+from visionset.cli._resolve import ProjectOption
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
 from visionset.cli.inference import ConnectionArgument, _resolve
 from visionset.inference import (
@@ -113,23 +113,15 @@ def _echo(batch_id: UUID, state: str, json_out: bool, payload: dict[str, object]
     typer.echo(str(batch_id))
 
 
-def _promoted(service: WorkspaceService, project_id: UUID) -> frozenset[UUID]:
-    """The trunk's current membership, read once for the whole answer.
-
-    The same cost model REST and MCP use: one query per invocation rather than
-    one per batch, because ``asset_ids`` is already in hand and the rest is a set
-    intersection.
-    """
-    dataset = ProjectService(service).get_dataset(project_id)
-    return DatasetService(service).member_asset_ids(dataset.id)
-
-
 def batch_document(service: WorkspaceService, batch: Batch) -> dict[str, Any]:
     """One batch as ``--json`` prints it, with its progress and its trunk membership read."""
     counts = JobService(service).batch_progress(batch.id)
     pre_labeled = BatchService(service).latest_pre_label_job(batch.id)
     return wire.batch(
-        batch, counts, promoted=_promoted(service, batch.project_id), pre_labeled=pre_labeled
+        batch,
+        counts,
+        promoted=DatasetService(service).promoted_asset_ids(batch.project_id),
+        pre_labeled=pre_labeled,
     )
 
 
@@ -170,7 +162,7 @@ def batch_list(
 ) -> None:
     """List a project's batches with where their assets have got to."""
     with opened_workspace(workspace) as service:
-        resolved = resolve_project(service, project)
+        resolved = ProjectService(service).resolve(project)
         batch_service = BatchService(service)
         batches = batch_service.list(resolved.id)
         jobs = JobService(service)
@@ -178,7 +170,7 @@ def batch_list(
         # does. The counts are the point of the listing: a batch's name and state
         # do not say whether anybody has started on it.
         counts = [jobs.batch_progress(batch.id) for batch in batches]
-        promoted = _promoted(service, resolved.id)
+        promoted = DatasetService(service).promoted_asset_ids(resolved.id)
         # One queue read for the whole listing rather than one per batch — the
         # same cost model REST's listing uses.
         pre_label_runs = batch_service.pre_label_runs()
@@ -270,7 +262,7 @@ def batch_start(
     with opened_workspace(workspace) as service:
         started = BatchService(service).start(batch)
         counts = JobService(service).batch_progress(started.id)
-        promoted = _promoted(service, started.project_id)
+        promoted = DatasetService(service).promoted_asset_ids(started.project_id)
     _echo(started.id, started.state.value, json_out, wire.batch(started, counts, promoted=promoted))
 
 

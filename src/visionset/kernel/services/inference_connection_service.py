@@ -179,6 +179,19 @@ class InferenceConnectionService:
         with self._workspace.unit_of_work() as uow:
             return self.require_connection_named(uow, name)
 
+    def resolve(self, reference: str) -> InferenceConnection:
+        """The connection a reference names, by id if it parses as one, else by name.
+
+        Raises:
+            InvalidName: the reference is not a UUID and is blank once stripped.
+            InferenceConnectionNotFound: no connection here matches.
+        """
+        try:
+            connection_id = UUID(reference)
+        except ValueError:
+            return self.get_by_name(reference)
+        return self.get(connection_id)
+
     # --- writing -----------------------------------------------------------
 
     def create(

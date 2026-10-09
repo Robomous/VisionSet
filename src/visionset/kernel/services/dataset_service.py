@@ -176,6 +176,18 @@ class DatasetService:
         with self._workspace.unit_of_work() as uow:
             return member_asset_ids_of(uow, self.require_dataset(uow, dataset_id))
 
+    def promoted_asset_ids(self, project_id: UUID) -> frozenset[UUID]:
+        """The trunk's membership for a project, read once for a whole answer.
+
+        One query per response rather than one per batch: a batch's own
+        ``asset_ids`` are already in hand and the rest is a set intersection.
+
+        Raises:
+            ProjectNotFound: no such project in this workspace.
+            WorkspaceCorrupt: the project has no dataset, or more than one.
+        """
+        return self.member_asset_ids(self._projects.get_dataset(project_id).id)
+
     def changes(self, dataset_id: UUID) -> list[DatasetChange]:
         """The mutation log, oldest entry first.
 

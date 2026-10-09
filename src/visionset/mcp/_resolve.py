@@ -1,31 +1,15 @@
-# usage: from visionset.mcp._resolve import resolve_connection, resolve_project, resolve_release
-"""Turning what an agent said into the thing it meant.
+# usage: from visionset.mcp._resolve import ConnectionRef, ProjectRef, identifier
+"""Parameter types and id parsing for tools that name a project or a connection.
 
-The same resources the CLI can name, for the same reason and with the same
-opposite rules:
-
-- a **project**, whose name is unique per workspace **case-insensitively**;
-- a **release**, whose tag is unique per dataset and **case-sensitive**;
-- an **inference connection**, whose name is unique per workspace
-  **case-insensitively**, the project rule.
-
-Neither comparison is spelled here. ``ProjectService.get_by_name`` and
-``ReleaseService.get_by_tag`` are kernel reads precisely so the rule lives beside
-the index that enforces it — a surface re-deriving one from prose is a second
-spelling free to drift, and it would eventually pick the wrong one. What this
-module owns is only the dispatch: a well-formed UUID is an id, anything else is a
-name.
-
-Name resolution matters more here than at a terminal, not less. A person reads an
-id off the previous command's output; an agent carries it in a context window and
-will paraphrase one given the chance. ``"road-signs"`` survives that and
-``9f2c…`` does not.
+Name-or-id resolution is the kernel's: ``ProjectService.resolve``,
+``InferenceConnectionService.resolve`` and ``ReleaseService.resolve``. A person
+reads an id off the previous command's output; an agent carries it in a context
+window and will paraphrase one, so ``"road-signs"`` survives where ``9f2c...``
+does not.
 
 **Batches, jobs and assets are addressed by id and nothing else.** A batch has a
-name but it is not unique — an ingest names one after its source, and re-ingesting
-the same folder makes a second batch with a name just as good — so resolving one
-by name would have to pick, and picking is worse than refusing. Their ids come
-back from the tool that created them.
+name but it is not unique, so resolving one by name would have to pick, and
+picking is worse than refusing.
 
 Unlike the CLI, a malformed UUID cannot arrive as a usage error at exit 2: an id
 parameter is typed ``str`` on the wire either way. Each tool parses one through
@@ -40,14 +24,7 @@ from uuid import UUID
 
 from pydantic import Field
 
-from visionset.kernel.domain import InferenceConnection, Project, Release
 from visionset.kernel.errors import VisionSetError
-from visionset.kernel.services import (
-    InferenceConnectionService,
-    ProjectService,
-    ReleaseService,
-    WorkspaceService,
-)
 
 ProjectRef = Annotated[
     str,
@@ -96,45 +73,3 @@ def identifier(value: str, *, what: str) -> UUID:
             f"{what} must be a UUID, and {value!r} is not one; "
             f"ids come back from the tool that created the thing"
         ) from None
-
-
-def resolve_project(workspace: WorkspaceService, reference: str) -> Project:
-    """The project that reference names, by id if it parses as one, else by name.
-
-    A project whose *name* is a well-formed UUID string is unreachable by name.
-    That is harmless: the same string reaches it as an id, and it is the same
-    string either way.
-    """
-    projects = ProjectService(workspace)
-    try:
-        project_id = UUID(reference)
-    except ValueError:
-        return projects.get_by_name(reference)
-    return projects.get(project_id)
-
-
-def resolve_connection(workspace: WorkspaceService, reference: str) -> InferenceConnection:
-    """The connection that reference names, on ``resolve_project``'s terms.
-
-    ``InferenceConnectionService.get_by_name`` is the kernel read that owns the
-    case rule, exactly as ``ProjectService.get_by_name`` owns the project's.
-    """
-    connections = InferenceConnectionService(workspace)
-    try:
-        connection_id = UUID(reference)
-    except ValueError:
-        return connections.get_by_name(reference)
-    return connections.get(connection_id)
-
-
-def resolve_release(workspace: WorkspaceService, reference: str, tag: str) -> Release:
-    """The release under that tag, in the dataset of the project reference names.
-
-    Two lookups rather than one, because a release tag is unique per *dataset*
-    and a dataset is reached through its project. The intermediate read is not
-    waste: it is what makes an unknown project say so, instead of reporting a
-    perfectly good tag as missing.
-    """
-    project = resolve_project(workspace, reference)
-    dataset = ProjectService(workspace).get_dataset(project.id)
-    return ReleaseService(workspace).get_by_tag(dataset.id, tag)

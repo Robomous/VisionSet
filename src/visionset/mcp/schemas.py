@@ -36,8 +36,12 @@ from pydantic import Field
 
 from visionset import wire
 from visionset.kernel.domain import DraftLabelClass, LabelClass, SchemaProvenance
-from visionset.kernel.services import SchemaDraftService, SchemaService
-from visionset.mcp._resolve import ProjectRef, resolve_project
+from visionset.kernel.services import (
+    ProjectService,
+    SchemaDraftService,
+    SchemaService,
+)
+from visionset.mcp._resolve import ProjectRef
 from visionset.mcp._workspace import opened_workspace
 
 ClassesParam = Annotated[
@@ -146,7 +150,7 @@ def get_schema(
     schema at all, and this reports that rather than inventing an empty one.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         service = SchemaService(workspace)
         versions = service.list_versions(resolved.id)
         found = (
@@ -183,7 +187,7 @@ def compare_schema_versions(
     a version with itself is an empty diff.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         diff = SchemaService(workspace).compare(resolved.id, from_version, to_version)
     return wire.schema_diff(diff)
 
@@ -219,7 +223,7 @@ def preview_schema_change(project: ProjectRef, classes: ClassesParam) -> dict[st
     here as one removal plus one addition.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         preview = SchemaService(workspace).preview(resolved.id, classes)
     return wire.schema_change_preview(preview)
 
@@ -251,7 +255,7 @@ def list_blocking_assets(
     calls.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         found = SchemaService(workspace).blocking_assets(resolved.id, classes)
     end = None if limit is None else offset + limit
     return {
@@ -318,7 +322,7 @@ def create_schema_version(
     change. `list_blocking_assets` finds which assets block it.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         published = SchemaService(workspace).create_version(
             resolved.id,
             classes,
@@ -352,7 +356,7 @@ def get_schema_draft(
     the draft in between and your copy is stale.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         draft = SchemaDraftService(workspace).get(resolved.id, kind)
     return {"draft": None if draft is None else wire.schema_draft(draft)}
 
@@ -386,7 +390,7 @@ def set_schema_draft(
     whatever note the draft carried, like `classes` does.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         saved = SchemaDraftService(workspace).save(
             resolved.id, kind, classes=classes, note=note, expected_revision=revision
         )
@@ -403,7 +407,7 @@ def clear_schema_draft(
     `cleared` says which happened.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         removed = SchemaDraftService(workspace).discard(resolved.id, kind)
     return {"cleared": removed}
 
@@ -436,7 +440,7 @@ def publish_schema_draft(
     existing schema.
     """
     with opened_workspace() as workspace:
-        resolved = resolve_project(workspace, project)
+        resolved = ProjectService(workspace).resolve(project)
         published = SchemaDraftService(workspace).publish(
             resolved.id, kind, expected_revision=revision, allow_destructive=allow_destructive
         )

@@ -40,6 +40,7 @@ GET    /projects/{project_id}
 PATCH  /projects/{project_id}
 DELETE /projects/{project_id}
 GET    /projects/{project_id}/stats                       everything ingested
+GET    /projects/{project_id}/progress                    assets by annotation state, every batch
 GET    /projects/{project_id}/assets                      paged, every asset
 GET    /projects/{project_id}/schema                      the version in force
 POST   /projects/{project_id}/schema/versions

@@ -52,7 +52,7 @@ import typer
 
 from visionset import wire
 from visionset.cli._output import JsonOption, document, note, table
-from visionset.cli._resolve import ProjectOption, resolve_project
+from visionset.cli._resolve import ProjectOption
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
 from visionset.cli.batches import (
     approved_note,
@@ -61,7 +61,12 @@ from visionset.cli.batches import (
     start_after_approval,
 )
 from visionset.kernel.domain import BatchState, IngestResult
-from visionset.kernel.services import BatchService, IngestService, SourceService
+from visionset.kernel.services import (
+    BatchService,
+    IngestService,
+    ProjectService,
+    SourceService,
+)
 
 _FAILURE_COLUMNS: Final = ("FILE", "KIND", "REASON")
 
@@ -144,7 +149,7 @@ def ingest(
         raise typer.BadParameter(f"{source} is not a directory. {VIDEO_IS_A_BROWSER_IMPORT}")
 
     with opened_workspace(workspace) as service:
-        resolved = resolve_project(service, project)
+        resolved = ProjectService(service).resolve(project)
         registered = SourceService(service).register_images(resolved.id, source)
         note(f"Reading {registered.kind.value.replace('_', ' ')} {source}…")
         result = IngestService(service).ingest(registered.id, batch_name=batch_name)
@@ -199,7 +204,7 @@ def backfill_thumbnails(
     there and will not decode.
     """
     with opened_workspace(workspace) as service:
-        resolved = resolve_project(service, project)
+        resolved = ProjectService(service).resolve(project)
         report = IngestService(service).backfill_thumbnails(resolved.id)
     if json_out:
         document(wire.thumbnail_backfill(report))

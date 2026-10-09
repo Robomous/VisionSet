@@ -335,6 +335,7 @@ forbidden_modules = [
     "visionset.mcp",
     "fastapi",
     "typer",
+    "mcp",
     "uvicorn",
 ]
 
@@ -355,5 +356,37 @@ forbidden_modules = [
     "visionset.jobs",
     "fastapi",
     "typer",
+    "mcp",
     "uvicorn",
 ]
+
+# The three packages that sit beside the kernel and below every surface: the JSON
+# shapes, the format plugins and the pre-processing drivers. Each is imported by
+# more than one surface, so a delivery import here would make one surface
+# reachable from another through it — the independence contract's wall, climbed
+# from underneath. Pillow is deliberately not listed: formats and preprocessing
+# exist to touch pixels.
+[[tool.importlinter.contracts]]
+name = "Shared libraries are below the surfaces: wire, formats and preprocessing import no delivery package"
+type = "forbidden"
+source_modules = ["visionset.wire", "visionset.formats", "visionset.preprocessing"]
+forbidden_modules = [
+    "visionset.server",
+    "visionset.cli",
+    "visionset.mcp",
+    "fastapi",
+    "starlette",
+    "typer",
+    "click",
+    "mcp",
+    "uvicorn",
+]
+
+# Persistence is the kernel adapters' business. Direct imports only: these
+# packages reach the kernel, and the kernel's own adapters import sqlalchemy.
+[[tool.importlinter.contracts]]
+name = "Shared libraries never touch the database driver: wire, formats and preprocessing import no sqlalchemy"
+type = "forbidden"
+source_modules = ["visionset.wire", "visionset.formats", "visionset.preprocessing"]
+forbidden_modules = ["sqlalchemy"]
+allow_indirect_imports = true

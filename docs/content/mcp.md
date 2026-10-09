@@ -444,8 +444,15 @@ worse than no refusal. `backfill_thumbnails` has no REST route; it is on the CLI
 
 ### Reachable here, not over REST
 
-`get_project` returns `progress`, the project's assets counted by state across every batch. No REST
-route publishes it; REST has job progress and `GET /projects/{id}/stats`.
+`get_project`'s `progress`, the project's assets counted by state across every batch, is `GET /projects/{id}/progress` over REST, in the same shape.
+
+Some operations are machine-local by design and have no REST route that takes a path, because REST
+has no filesystem to point at: `ingest` reads a directory on this machine and `export_release`
+writes into one. REST reaches the same kernel work through uploaded sources
+(`POST /projects/{id}/sources/images`, then an ingest job) and a release export job whose archive
+is downloaded. `backfill_thumbnails` takes only a project and has no REST route; a thumbnail
+missing from the cache answers `THUMBNAIL_NOT_CACHED` over REST until a CLI or MCP backfill fills
+it. `init` and `token` are CLI-only, as stated above.
 
 ### Per-surface names and shapes
 
@@ -475,8 +482,9 @@ that for REST and MCP.
 ## For contributors
 
 Tool modules live in `src/visionset/mcp/`, one per noun, beside three private ones: `_errors.py`
-(the envelope and `guarded`), `_workspace.py` (`opened_workspace()`) and `_resolve.py` (turning a
-name or a tag into the thing it names).
+(the envelope and `guarded`), `_workspace.py` (`opened_workspace()`) and `_resolve.py` (the
+project and connection parameter types, and `identifier`'s malformed-id refusal; name-or-id
+resolution is the kernel's `resolve`).
 
 A new tool is a plain function in the module for its noun plus one row in `main.py`'s `TOOLS`
 table. Registration lives there rather than at the definition site - a decorator in `projects.py`
