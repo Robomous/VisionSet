@@ -18,6 +18,7 @@ import type { ExecutionProvider } from "../capabilities.js";
 import { InferenceRuntimeError, isInferenceRuntimeError } from "../errors.js";
 import type { InferenceRuntimeErrorCode } from "../errors.js";
 import type { PromptableModelDefinition } from "../models/definition.js";
+import { EFFICIENTVIT_SAM_L0_DEFINITION } from "../models/efficientVitSam.js";
 import { EFFICIENT_SAM_TI_DEFINITION } from "../models/efficientSam.js";
 import { createModelHost } from "../models/host.js";
 import { MOBILE_SAM_DEFINITION } from "../models/mobileSam.js";
@@ -55,6 +56,7 @@ let host: ModelHost | null = null;
 const MODEL_DEFINITIONS: Readonly<Record<string, PromptableModelDefinition>> = {
   [EFFICIENT_SAM_TI_DEFINITION.id]: EFFICIENT_SAM_TI_DEFINITION,
   [MOBILE_SAM_DEFINITION.id]: MOBILE_SAM_DEFINITION,
+  [EFFICIENTVIT_SAM_L0_DEFINITION.id]: EFFICIENTVIT_SAM_L0_DEFINITION,
 };
 
 /**

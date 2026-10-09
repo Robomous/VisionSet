@@ -118,16 +118,25 @@ export function createModelHost(
         height,
       );
       const decoderNames = definition.decoder;
-      const sizeTensor: ModelTensor =
-        decoderNames.sizeDtype === "int64"
-          ? { type: "int64", data: BigInt64Array.from([BigInt(height), BigInt(width)]), dims: [2] }
-          : { type: "float32", data: Float32Array.from([height, width]), dims: [2] };
       const feeds: Record<string, ModelTensor> = {
         [decoderNames.embeddings]: embedding,
         [decoderNames.coords]: { type: "float32", data: coords, dims: coordsDims },
         [decoderNames.labels]: { type: "float32", data: labels, dims: labelsDims },
-        [decoderNames.size]: sizeTensor,
       };
+      // Not every decoder takes an original-image-size input: EfficientViT-SAM-L0's does
+      // the upscale-to-original-resolution step entirely outside the graph instead (see
+      // `DecoderTensorNames.size`'s docstring).
+      if (decoderNames.size !== undefined) {
+        const sizeTensor: ModelTensor =
+          decoderNames.sizeDtype === "int64"
+            ? {
+                type: "int64",
+                data: BigInt64Array.from([BigInt(height), BigInt(width)]),
+                dims: [2],
+              }
+            : { type: "float32", data: Float32Array.from([height, width]), dims: [2] };
+        feeds[decoderNames.size] = sizeTensor;
+      }
       // A decoder that takes the SAM-family "previous low-res mask" refinement pair
       // always gets "there is no previous mask" (`hasMaskInput` zeroed) -- see
       // `DecoderTensorNames.maskInput`'s docstring for why this package never threads a

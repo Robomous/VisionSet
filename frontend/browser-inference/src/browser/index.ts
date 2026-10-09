@@ -15,6 +15,7 @@ import {
 import { createRuntimeClient, type BrowserInferenceRuntime, type InferenceRuntimeOptions } from "../client.js";
 import { InferenceRuntimeError } from "../errors.js";
 import { createModelClient } from "../models/client.js";
+import { EFFICIENTVIT_SAM_L0_DEFINITION } from "../models/efficientVitSam.js";
 import { EFFICIENT_SAM_TI_DEFINITION } from "../models/efficientSam.js";
 import { MOBILE_SAM_DEFINITION } from "../models/mobileSam.js";
 import type { PromptableSegmentationRuntime } from "../models/promptable.js";
@@ -170,5 +171,20 @@ export function createMobileSamRuntime(
     configuration,
     { encoder: options.encoder, decoder: options.decoder },
     MOBILE_SAM_DEFINITION,
+  );
+}
+
+/**
+ * Start a persistent EfficientViT-SAM-L0 worker. Same shape as `createEfficientSamRuntime`.
+ */
+export function createEfficientVitSamRuntime(
+  options: PromptableRuntimeOptions,
+): PromptableSegmentationRuntime {
+  const { channel, configuration } = startWorker(options);
+  return createModelClient(
+    channel,
+    configuration,
+    { encoder: options.encoder, decoder: options.decoder },
+    EFFICIENTVIT_SAM_L0_DEFINITION,
   );
 }
