@@ -94,28 +94,6 @@ docs:
   - ".github/workflows/ci.yml"
   - ".github/path-filters.yml"
 
-# The browser model export and the package that runs what it produces. Both paths
-# already belong to other groups -- `frontend/**` to `frontend`, `scripts/**` to
-# `python` -- and this file says outright that a path may appear in several.
-browser-models:
-  - "frontend/browser-inference/**"
-  - "frontend/app/e2e/browserSuggestion.spec.ts"
-  # Everything that suite actually exercises. Naming only the spec would have been
-  # the usual trap: `browserSuggestion.spec.ts` is the one place a real ONNX model
-  # runs in a real browser, and it self-skips in the `frontend` job (no artifacts, no
-  # `VISIONSET_REQUIRE_BROWSER_MODELS`), so a change to the composition root or to the
-  # panel it drives would have been "covered" by a job that ran nothing.
-  - "frontend/app/src/data/browserInference/**"
-  - "frontend/app/vite.config.ts"
-  - "frontend/app/playwright.config.ts"
-  - "frontend/ui-core/src/inference/**"
-  - "frontend/ui-core/src/annotator/SuggestPanel.tsx"
-  - "frontend/ui-core/src/annotator/AnnotationPage.tsx"
-  - "scripts/browser_models/**"
-  - "tests/browser_models/**"
-  - ".github/workflows/ci.yml"
-  - ".github/path-filters.yml"
-
 # Tracked paths that no job reads, declared so the coverage checker can tell
 # "deliberately inert" apart from "nobody classified this yet". Adding a file
 # here is a claim that changing it cannot break a check — if that stops being
