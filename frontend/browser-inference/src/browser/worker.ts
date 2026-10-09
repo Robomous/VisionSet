@@ -17,7 +17,11 @@ import * as ort from "onnxruntime-web/webgpu";
 import type { ExecutionProvider } from "../capabilities.js";
 import { InferenceRuntimeError, isInferenceRuntimeError } from "../errors.js";
 import type { InferenceRuntimeErrorCode } from "../errors.js";
+import type { PromptableModelDefinition } from "../models/definition.js";
+import { EFFICIENTVIT_SAM_L0_DEFINITION } from "../models/efficientVitSam.js";
+import { EFFICIENT_SAM_TI_DEFINITION } from "../models/efficientSam.js";
 import { createModelHost } from "../models/host.js";
+import { MOBILE_SAM_DEFINITION } from "../models/mobileSam.js";
 import type { ModelHost } from "../models/host.js";
 import type { PointPrompt } from "../models/promptable.js";
 import type {
@@ -41,6 +45,19 @@ const sessions = new Map<GraphId, ort.InferenceSession>();
  * convention (encode once, decode many) and the encoder/decoder feed names.
  */
 let host: ModelHost | null = null;
+
+/**
+ * Every promptable-segmentation model this worker knows how to host, keyed by the
+ * `modelId` a `model-load` message names. Adding a model to this package is: write its
+ * `PromptableModelDefinition` (a `<model>.ts` beside `efficientSam.ts`), add it here, and
+ * add a `create<Model>Runtime` factory in `browser/index.ts` -- nothing in this file's
+ * message handling changes.
+ */
+const MODEL_DEFINITIONS: Readonly<Record<string, PromptableModelDefinition>> = {
+  [EFFICIENT_SAM_TI_DEFINITION.id]: EFFICIENT_SAM_TI_DEFINITION,
+  [MOBILE_SAM_DEFINITION.id]: MOBILE_SAM_DEFINITION,
+  [EFFICIENTVIT_SAM_L0_DEFINITION.id]: EFFICIENTVIT_SAM_L0_DEFINITION,
+};
 
 /**
  * Ids the main thread has asked us to forget.
@@ -235,16 +252,30 @@ function requireHost(): ModelHost {
   return host;
 }
 
-async function modelLoad(id: OperationId, encoder: Uint8Array, decoder: Uint8Array): Promise<void> {
+async function modelLoad(
+  id: OperationId,
+  modelId: string,
+  encoder: Uint8Array,
+  decoder: Uint8Array,
+): Promise<void> {
   try {
     if (cancelled.delete(id)) return;
+    const definition = MODEL_DEFINITIONS[modelId];
+    if (definition === undefined) {
+      fail(
+        id,
+        "graph-load-failed",
+        new Error(`No model is registered under modelId ${JSON.stringify(modelId)}.`),
+      );
+      return;
+    }
     // Tracked outside the inner try so a failure partway through `load()` — the
     // realistic one is the decoder create throwing after the encoder create already
     // succeeded — still has a reference to release, rather than leaking whatever `load()`
     // managed to create before it threw.
     let created: ModelHost | null = null;
     try {
-      created = createModelHost(ortSessions(providers));
+      created = createModelHost(ortSessions(providers), definition);
       await created.load(encoder, decoder);
       if (cancelled.delete(id)) {
         await created.release();
@@ -384,7 +415,7 @@ self.addEventListener("message", (event: MessageEvent<ToWorker>) => {
       return;
     case "model-load":
       known.add(message.id);
-      queue = queue.then(() => modelLoad(message.id, message.encoder, message.decoder));
+      queue = queue.then(() => modelLoad(message.id, message.modelId, message.encoder, message.decoder));
       return;
     case "model-prepare":
       known.add(message.id);

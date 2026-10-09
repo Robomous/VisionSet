@@ -68,6 +68,11 @@ export type ToWorker =
   | {
       readonly kind: "model-load";
       readonly id: OperationId;
+      /** Which `PromptableModelDefinition` in `browser/worker.ts`'s registry these two
+       * graphs belong to -- the worker is a separate realm and cannot receive functions
+       * over `postMessage`, so this id is how it learns which model's tensor names and
+       * arithmetic to run them against. */
+      readonly modelId: string;
       readonly encoder: Uint8Array;
       readonly decoder: Uint8Array;
     }

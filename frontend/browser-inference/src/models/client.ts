@@ -1,7 +1,8 @@
 import { InferenceRuntimeError } from "../errors.js";
 import { createOperationCore, type RuntimeConfiguration } from "../operations.js";
 import type { WorkerChannel } from "../protocol.js";
-import { requireAnswerablePrompt, requireUsableImage } from "./efficientSam.js";
+import type { PromptableModelDefinition } from "./definition.js";
+import { EFFICIENT_SAM_TI_DEFINITION } from "./efficientSam.js";
 import type { PreparedImage, PromptableSegmentationRuntime, RawSegmentation } from "./promptable.js";
 
 /**
@@ -23,15 +24,24 @@ export function createModelClient(
   channel: WorkerChannel,
   configuration: RuntimeConfiguration,
   artifacts: { readonly encoder: Uint8Array; readonly decoder: Uint8Array },
+  definition: PromptableModelDefinition = EFFICIENT_SAM_TI_DEFINITION,
 ): PromptableSegmentationRuntime {
   const core = createOperationCore(channel, configuration);
   const generations = new WeakMap<PreparedImage, number>();
 
   // Loading is this client's first operation, right after `configure`: every later
   // call waits on it, and it happens exactly once regardless of how many images this
-  // runtime ends up preparing.
+  // runtime ends up preparing. `modelId` tells the worker -- a separate JS realm that
+  // cannot receive this module's functions over `postMessage` -- which definition from
+  // its own registry to run these graphs against.
   const loaded = core.request<undefined>(
-    (id) => ({ kind: "model-load", id, encoder: artifacts.encoder, decoder: artifacts.decoder }),
+    (id) => ({
+      kind: "model-load",
+      id,
+      modelId: definition.id,
+      encoder: artifacts.encoder,
+      decoder: artifacts.decoder,
+    }),
     { transfer: [artifacts.encoder.buffer, artifacts.decoder.buffer] },
   );
   void loaded.catch(() => {});
@@ -42,7 +52,7 @@ export function createModelClient(
     async prepareImage(image, options) {
       // Validated here, synchronously and before any `await`: a malformed image costs
       // a throw, never a round trip to the worker.
-      requireUsableImage(image);
+      definition.requireUsableImage(image);
       await loaded;
       const answer = await core.request<{ generation: number; width: number; height: number }>(
         (id) => ({ kind: "model-prepare", id, width: image.width, height: image.height, rgb: image.rgb }),
@@ -54,7 +64,7 @@ export function createModelClient(
     },
 
     async suggest(image, prompt, options) {
-      requireAnswerablePrompt(prompt, image.width, image.height);
+      definition.requireAnswerablePrompt(prompt, image.width, image.height);
       const generation = generations.get(image);
       if (generation === undefined) {
         throw new InferenceRuntimeError(

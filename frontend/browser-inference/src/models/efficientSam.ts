@@ -1,5 +1,17 @@
 import { InferenceRuntimeError } from "../errors.js";
+import type { PromptableModelDefinition } from "./definition.js";
 import type { PixelImage, PointPrompt } from "./promptable.js";
+
+// This model's own ONNX tensor names -- not universal, just what this checkpoint's
+// exporter named its graphs' inputs and outputs. A different model names its own.
+const ENCODER_INPUT = "batched_images";
+const ENCODER_OUTPUT = "image_embeddings";
+const DECODER_EMBEDDINGS = "image_embeddings";
+const DECODER_COORDS = "batched_point_coords";
+const DECODER_LABELS = "batched_point_labels";
+const DECODER_SIZE = "orig_im_size";
+const DECODER_MASKS = "output_masks";
+const DECODER_IOU = "iou_predictions";
 
 /**
  * The arithmetic EfficientSAM-Ti needs around its two ONNX graphs, and nothing that
@@ -136,7 +148,20 @@ export function encoderInput(image: PixelImage): { data: Float32Array; dims: rea
   return { data, dims: [1, 3, height, width] };
 }
 
-export function decoderPrompt(prompt: PointPrompt): { coords: Float32Array; labels: Float32Array } {
+/**
+ * `PromptableModelDefinition.decoderPrompt`'s shared signature also takes the image's
+ * width/height, for a model whose decoder needs points pre-rescaled into its own frame
+ * (see `MOBILE_SAM_DEFINITION` for one that does). This model's decoder rescales points
+ * into its own frame itself (upstream's own `get_rescaled_pts`), so this function simply
+ * does not declare those parameters -- assignable to that wider signature regardless,
+ * same as any callback with fewer parameters than the type it satisfies.
+ */
+export function decoderPrompt(prompt: PointPrompt): {
+  coords: Float32Array;
+  coordsDims: readonly number[];
+  labels: Float32Array;
+  labelsDims: readonly number[];
+} {
   const { maxPoints, positiveLabel, paddingLabel } = EFFICIENT_SAM_TI;
   const coords = new Float32Array(maxPoints * 2).fill(PADDING_COORDINATE);
   const labels = new Float32Array(maxPoints).fill(paddingLabel);
@@ -145,7 +170,12 @@ export function decoderPrompt(prompt: PointPrompt): { coords: Float32Array; labe
     coords[slot * 2 + 1] = y;
     labels[slot] = positiveLabel;
   });
-  return { coords, labels };
+  return {
+    coords,
+    coordsDims: [1, 1, maxPoints, 2],
+    labels,
+    labelsDims: [1, 1, maxPoints],
+  };
 }
 
 export function bestCandidate(iou: ArrayLike<number>): { index: number; confidence: number } {
@@ -170,3 +200,31 @@ export function binaryMask(
   }
   return mask;
 }
+
+/**
+ * This model's `PromptableModelDefinition` -- the value `createModelHost`/`createModelClient`
+ * default to, and the one `browser/worker.ts`'s definition registry maps `"efficient-sam-ti"`
+ * to. Bundles the functions above with this model's own tensor names, so neither the host
+ * nor the client needs to import this module's individual exports by name.
+ */
+export const EFFICIENT_SAM_TI_DEFINITION: PromptableModelDefinition = Object.freeze({
+  id: "efficient-sam-ti",
+  maxPoints: EFFICIENT_SAM_TI.maxPoints,
+  encoderInputName: ENCODER_INPUT,
+  encoderOutputName: ENCODER_OUTPUT,
+  decoder: Object.freeze({
+    embeddings: DECODER_EMBEDDINGS,
+    coords: DECODER_COORDS,
+    labels: DECODER_LABELS,
+    size: DECODER_SIZE,
+    sizeDtype: "int64",
+    masks: DECODER_MASKS,
+    iou: DECODER_IOU,
+  }),
+  requireUsableImage,
+  requireAnswerablePrompt,
+  encoderInput,
+  decoderPrompt,
+  bestCandidate,
+  binaryMask,
+});
