@@ -1159,3 +1159,24 @@ def test_pre_labeling_a_project_with_no_open_batch_is_refused(
     refusal = error(call("pre_label_project", project=project, connection=connection_id))
 
     assert "has no batch open for annotation" in refusal["message"]
+
+
+def test_pre_labeling_a_project_reports_one_item_per_job_with_its_own_plan(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    project, batch_id = ingested(monkeypatch, tmp_path, count=4)
+    approved = payload(call("approve_batch", batch_id=batch_id, jobs_of=2))
+    payload(call("start_batch", batch_id=batch_id))
+    second = _another_open_batch(monkeypatch, tmp_path, project)
+    connection_id = _connection()
+    _predicting(monkeypatch, label="sign")
+
+    outcome = payload(call("pre_label_project", project=project, connection=connection_id))
+
+    assert [(item["batch_id"], item["job_id"]) for item in outcome["items"][:2]] == [
+        (batch_id, job["id"]) for job in approved["jobs"]
+    ]
+    assert outcome["items"][2]["batch_id"] == second
+    assert [item["batch_name"] for item in outcome["items"]] == ["incoming"] * 2 + ["more"]
+    assert all(item["plan"]["asked_classes"] == ["sign"] for item in outcome["items"])
+    assert outcome["annotations_written"] == 6

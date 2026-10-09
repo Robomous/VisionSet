@@ -46,12 +46,13 @@ from visionset import wire
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._resolve import ProjectOption
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
-from visionset.cli.inference import ConnectionArgument, _resolve
+from visionset.cli.inference import ConnectionArgument
 from visionset.inference import (
     DEFAULT_MINIMUM_CONFIDENCE,
     PreLabelExclusionReason,
     PreLabelOutcome,
     PreLabelPlan,
+    geometry_selection,
     open_jobs_of,
     pre_label,
     shapes_prose,
@@ -274,11 +275,6 @@ _EXCLUSION_PROSE: Final = {
 }
 
 
-def selected_geometries(geometry: list[GeometryType] | None) -> frozenset[GeometryType] | None:
-    """A repeated ``--geometry`` as the selection the run takes; unrepeated, every shape."""
-    return None if geometry is None else frozenset(geometry)
-
-
 def announce_plan(plan: PreLabelPlan) -> None:
     """Say what the run is about to ask for, and what it is leaving out.
 
@@ -331,9 +327,9 @@ def batch_pre_label(
     This blocks because a terminal has no dispatcher to claim an enqueued run.
     """
     with opened_workspace(workspace) as service:
-        connection_id = _resolve(InferenceConnectionService(service), connection)
+        connection_id = InferenceConnectionService(service).resolve(connection).id
         BatchService(service).require_pre_labelable(batch)
-        geometries = selected_geometries(geometry)
+        geometries = geometry_selection(geometry)
         items: list[tuple[UUID, PreLabelOutcome]] = []
         for job in open_jobs_of(service, batch):
             note(f"Job {job.id}:")

@@ -26,7 +26,6 @@ job handler for the same reason.
 from __future__ import annotations
 
 from typing import Annotated, Any, Final
-from uuid import UUID
 
 import typer
 
@@ -63,14 +62,6 @@ ConnectionArgument = Annotated[str, typer.Argument(help="The connection, by name
 
 Module-level for the ``get_type_hints`` reason ``WorkspaceOption`` is.
 """
-
-
-def _resolve(service: InferenceConnectionService, reference: str) -> UUID:
-    """The id behind a name or an id; an id is returned without being read."""
-    try:
-        return UUID(reference)
-    except ValueError:
-        return service.get_by_name(reference).id
 
 
 @inference_app.command("create")
@@ -150,7 +141,7 @@ def inference_show(
     """One connection, by name or by id."""
     with opened_workspace(workspace) as service:
         connections = InferenceConnectionService(service)
-        found = connections.get(_resolve(connections, connection))
+        found = connections.resolve(connection)
         # Either run happens in the server's worker against this same workspace,
         # so a terminal can watch one it did not start — the property the REST
         # listing has, published by the surface that shares its projection.
@@ -214,7 +205,7 @@ def inference_update(
     with opened_workspace(workspace) as service:
         connections = InferenceConnectionService(service)
         edited = connections.update(
-            _resolve(connections, connection),
+            connections.resolve(connection).id,
             name=name,
             model_id=model_id,
             model_revision=model_revision,
@@ -316,7 +307,7 @@ def inference_download(
     """
     with opened_workspace(workspace) as service:
         connections = InferenceConnectionService(service)
-        connection_id = _resolve(connections, connection)
+        connection_id = connections.resolve(connection).id
         # Inside the block: every refusal below is a ``VisionSetError`` —
         # already set up, no weights of its own, the extra not installed — and
         # ``opened_workspace`` is what turns one into a sentence and exit 1
@@ -358,7 +349,7 @@ def inference_check_integrity(
     """
     with opened_workspace(workspace) as service:
         connections = InferenceConnectionService(service)
-        connection_id = _resolve(connections, connection)
+        connection_id = connections.resolve(connection).id
         # Inside the block, ``download``'s reason: every refusal below is a
         # ``VisionSetError`` — nothing to check, the extra missing, the hub
         # unreachable, and the damage verdict itself — and this is what turns
@@ -390,7 +381,7 @@ def inference_test_endpoint(
     """
     with opened_workspace(workspace) as service:
         connections = InferenceConnectionService(service)
-        connection_id = _resolve(connections, connection)
+        connection_id = connections.resolve(connection).id
         answered = ask_endpoint(service, connection_id)
         jobs = connections.connection_jobs()
     if json_out:
@@ -416,7 +407,7 @@ def inference_delete(
     """
     with opened_workspace(workspace) as service:
         connections = InferenceConnectionService(service)
-        found = connections.get(_resolve(connections, connection))
+        found = connections.resolve(connection)
         if not yes:
             typer.confirm(
                 f"Delete connection {found.name!r}? Annotations keep their model "

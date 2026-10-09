@@ -22,7 +22,6 @@ landing them together is how that gets documented once instead of twice.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import asdict
 from typing import Annotated, Final
 from uuid import UUID
@@ -32,13 +31,13 @@ import typer
 from visionset import wire
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
-from visionset.cli.batches import GeometryOption, announce_plan, selected_geometries
-from visionset.cli.inference import ConnectionArgument, _resolve
+from visionset.cli.batches import GeometryOption, announce_plan
+from visionset.cli.inference import ConnectionArgument
 from visionset.inference import (
     DEFAULT_MINIMUM_CONFIDENCE,
     effective_produces,
-    open_jobs_of,
-    pre_label,
+    geometry_selection,
+    pre_label_selection,
     select_pre_labelable,
     served_for,
 )
@@ -94,13 +93,6 @@ def project_list(
         note(f"No projects in {root}.")
 
 
-def _progress_note(batch_name: str) -> Callable[[int, int], None]:
-    def report(done: int, total: int) -> None:
-        note(f"Pre-labeling {batch_name!r} {done}/{total} asset(s).")
-
-    return report
-
-
 @project_app.command("pre-label")
 def project_pre_label(
     project: Annotated[str, typer.Argument(help="The project, by name or by id.")],
@@ -138,47 +130,45 @@ def project_pre_label(
     """
     with opened_workspace(workspace) as service:
         resolved = ProjectService(service).resolve(project)
-        connection_id = _resolve(InferenceConnectionService(service), connection)
+        connection_id = InferenceConnectionService(service).resolve(connection).id
         declared = served_for(service, connection_id)
-        geometries = selected_geometries(geometry)
+        geometries = geometry_selection(geometry)
         produces = effective_produces(declared.produces, geometries)
         selected = select_pre_labelable(service, resolved.id, produces, batch)
-        outcomes = []
-        for one in selected:
-            note(f"Batch {one.name!r}:")
-            progress = _progress_note(one.name)
-            for index, job in enumerate(open_jobs_of(service, one.id)):
-                outcome = pre_label(
-                    service,
-                    job_id=job.id,
-                    connection_id=connection_id,
-                    minimum_confidence=minimum_confidence,
-                    geometries=geometries,
-                    on_plan=announce_plan if index == 0 else None,
-                    on_progress=progress,
-                )
-                outcomes.append((one, job.id, outcome))
-    written = sum(outcome.annotations_written for _, _, outcome in outcomes)
+        ran = pre_label_selection(
+            service,
+            selected,
+            connection_id=connection_id,
+            minimum_confidence=minimum_confidence,
+            geometries=geometries,
+            on_batch=lambda one: note(f"Batch {one.name!r}:"),
+            on_plan=lambda _one, index, plan: announce_plan(plan) if index == 0 else None,
+            on_progress=lambda one, done, total: note(
+                f"Pre-labeling {one.name!r} {done}/{total} asset(s)."
+            ),
+        )
+    written = sum(job.outcome.annotations_written for job in ran)
     if json_out:
         document(
             {
                 "items": [
                     {
-                        "batch_id": str(one.id),
-                        "batch_name": one.name,
-                        "job_id": str(job_id),
-                        **asdict(outcome),
+                        "batch_id": str(job.batch.id),
+                        "batch_name": job.batch.name,
+                        "job_id": str(job.job_id),
+                        **asdict(job.outcome),
                     }
-                    for one, job_id, outcome in outcomes
+                    for job in ran
                 ],
                 "annotations_written": written,
             }
         )
         return
-    for one, job_id, outcome in outcomes:
+    for job in ran:
         note(
-            f"Batch {one.name!r} job {job_id}: pre-labeled {outcome.assets_labeled} asset(s), "
-            f"wrote {outcome.annotations_written} annotation(s)."
+            f"Batch {job.batch.name!r} job {job.job_id}: pre-labeled "
+            f"{job.outcome.assets_labeled} asset(s), "
+            f"wrote {job.outcome.annotations_written} annotation(s)."
         )
     note(f"Pre-labeled {len(selected)} batch(es), wrote {written} annotation(s).")
     typer.echo(str(written))

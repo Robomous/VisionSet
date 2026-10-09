@@ -2043,7 +2043,8 @@ export interface paths {
          *     A preview is a cache, so this reads one and never renders one. An asset with
          *     no preview is 404 `THUMBNAIL_NOT_CACHED` — which has three causes with one
          *     remedy: the asset predates the cache, its bytes would not render, or no run
-         *     has reached it yet. A backfill fills what it can. The other two 404s are the
+         *     has reached it yet. `POST /projects/{project_id}/thumbnail-backfill-jobs`
+         *     fills what it can. The other two 404s are the
          *     ordinary ones, resolved before the cache is consulted: 404 `PROJECT_NOT_FOUND`
          *     and 404 `ASSET_NOT_FOUND`, which say the thing itself is not here rather than
          *     that its preview is missing.
@@ -2733,6 +2734,43 @@ export interface paths {
         get: operations["get_project_stats"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/thumbnail-backfill-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Launch Thumbnail Backfill
+         * @description Queue a preview pass over the project, and answer at once with the job to poll.
+         *
+         *     Renders a preview for every asset that has none: the remedy for the
+         *     thumbnail route's `THUMBNAIL_NOT_CACHED`. An unknown project is 404
+         *     `PROJECT_NOT_FOUND`, answered before any job is queued.
+         *     The `Location` header names the job; poll `GET /background-jobs/{id}` until
+         *     `state` is `succeeded`, and read what the pass found from `result`: `examined`,
+         *     the ids `filled`, the ids `missing` (no bytes left in the workspace) and the
+         *     `unreadable` assets that will not render, each with its reason. Those are the
+         *     fields the CLI and MCP backfill report.
+         *
+         *     **One live pass per project.** A launch while one is queued or running answers
+         *     with that same job rather than starting a second, and a pass over a healthy
+         *     project examines nothing.
+         *
+         *     Raises:
+         *         ProjectNotFound: no such project in this workspace, answered before any
+         *             job is queued.
+         */
+        post: operations["launch_thumbnail_backfill"];
         delete?: never;
         options?: never;
         head?: never;
@@ -12606,6 +12644,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectStatsOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    launch_thumbnail_backfill: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundJobOut"];
                 };
             };
             /** @description Missing or invalid bearer token */

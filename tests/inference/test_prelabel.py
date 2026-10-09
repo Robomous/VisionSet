@@ -21,6 +21,7 @@ from visionset.inference.prelabel import (
     open_jobs_of,
     planned,
     pre_label,
+    pre_label_selection,
     prompt_plan,
     select_pre_labelable,
     served_for,
@@ -42,6 +43,7 @@ from visionset.kernel.domain import (
     AssetPrediction,
     AssetProgress,
     Attribute,
+    Batch,
     BboxGeometry,
     BySize,
     ConnectionType,
@@ -1613,3 +1615,119 @@ def test_an_unflagged_second_run_still_never_touches_a_pre_labeled_frame(
     )
     assert again.assets_considered == 0
     assert again.annotations_replaced == 0
+
+
+# --- running a selection -------------------------------------------------------
+
+
+def _open_batch_of_jobs(fixture: Fixture, name: str, count: int, *, per_job: int) -> UUID:
+    assets = [fixture._asset(f"{name}-{seed}") for seed in range(count)]
+    batch = fixture.batches.create(fixture.project.id, name, assets)
+    fixture.batches.approve(batch.id, BySize(size=per_job))
+    fixture.batches.start(batch.id)
+    return batch.id
+
+
+def _selection_of(fixture: Fixture, *batch_ids: UUID) -> list[Batch]:
+    return select_pre_labelable(fixture.workspace, fixture.project.id, BOXES, list(batch_ids))
+
+
+def test_a_selection_runs_each_batch_and_each_job_in_order(prelabel_fixture: Fixture) -> None:
+    second = _open_batch_of_jobs(prelabel_fixture, "second", 4, per_job=2)
+    selected = _selection_of(prelabel_fixture, second, prelabel_fixture.batch.id)
+    events: list[tuple[str, str, int]] = []
+
+    ran = pre_label_selection(
+        prelabel_fixture.workspace,
+        selected,
+        connection_id=prelabel_fixture.connection.id,
+        on_batch=lambda one: events.append(("batch", one.name, 0)),
+        on_plan=lambda one, index, _plan: events.append(("plan", one.name, index)),
+        pool=prelabel_fixture.pool,
+    )
+
+    second_jobs = [job.id for job in open_jobs_of(prelabel_fixture.workspace, second)]
+    assert [(job.batch.name, job.job_id) for job in ran] == [
+        ("second", second_jobs[0]),
+        ("second", second_jobs[1]),
+        ("first", prelabel_fixture.job_id),
+    ]
+    assert [job.outcome.annotations_written for job in ran] == [2, 2, 3]
+    assert events == [
+        ("batch", "second", 0),
+        ("plan", "second", 0),
+        ("plan", "second", 1),
+        ("batch", "first", 0),
+        ("plan", "first", 0),
+    ]
+
+
+def test_progress_reports_the_batch_it_belongs_to(prelabel_fixture: Fixture) -> None:
+    second = _open_batch_of_jobs(prelabel_fixture, "second", 2, per_job=2)
+    reports: list[tuple[str, int, int]] = []
+
+    pre_label_selection(
+        prelabel_fixture.workspace,
+        _selection_of(prelabel_fixture, prelabel_fixture.batch.id, second),
+        connection_id=prelabel_fixture.connection.id,
+        on_progress=lambda one, done, total: reports.append((one.name, done, total)),
+        pool=prelabel_fixture.pool,
+    )
+
+    assert reports == [("first", n, 3) for n in (1, 2, 3)] + [("second", n, 2) for n in (1, 2)]
+
+
+def test_every_job_keeps_its_plan_whether_or_not_anyone_listens(
+    prelabel_fixture: Fixture,
+) -> None:
+    second = _open_batch_of_jobs(prelabel_fixture, "second", 4, per_job=2)
+
+    ran = pre_label_selection(
+        prelabel_fixture.workspace,
+        _selection_of(prelabel_fixture, prelabel_fixture.batch.id, second),
+        connection_id=prelabel_fixture.connection.id,
+        pool=prelabel_fixture.pool,
+    )
+
+    assert len(ran) == 3
+    assert all(job.plan.asked == ("post",) and job.plan.produces == BOXES for job in ran)
+
+
+def test_a_failure_part_way_propagates_and_keeps_what_earlier_jobs_entered(
+    prelabel_fixture: Fixture,
+) -> None:
+    second = _open_batch_of_jobs(prelabel_fixture, "second", 2, per_job=2)
+    second_job = open_jobs_of(prelabel_fixture.workspace, second)[0]
+    selected = _selection_of(prelabel_fixture, prelabel_fixture.batch.id, second)
+
+    class Interrupted(Exception):
+        pass
+
+    def fail_in_the_second_batch(asset_id: UUID) -> None:
+        if asset_id in prelabel_fixture.jobs.get(second_job.id).progress:
+            raise Interrupted
+
+    prelabel_fixture.pool.on_asset = fail_in_the_second_batch
+
+    with pytest.raises(Interrupted):
+        pre_label_selection(
+            prelabel_fixture.workspace,
+            selected,
+            connection_id=prelabel_fixture.connection.id,
+            pool=prelabel_fixture.pool,
+        )
+
+    entered = prelabel_fixture.job().progress
+    assert set(entered.values()) == {AssetProgress.PRE_LABELED}
+    assert set(prelabel_fixture.jobs.get(second_job.id).progress.values()) == {
+        AssetProgress.UNANNOTATED
+    }
+
+    prelabel_fixture.pool.on_asset = None
+    resumed = pre_label_selection(
+        prelabel_fixture.workspace,
+        selected,
+        connection_id=prelabel_fixture.connection.id,
+        pool=prelabel_fixture.pool,
+    )
+    assert [job.outcome.annotations_written for job in resumed] == [0, 2]

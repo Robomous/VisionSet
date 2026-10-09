@@ -61,6 +61,7 @@ ROUTERS: Final[tuple[APIRouter, ...]] = (
     video_imports.project_router,
     video_imports.router,
     assets.router,
+    assets.project_router,
     batches.project_router,
     batches.router,
     jobs.router,

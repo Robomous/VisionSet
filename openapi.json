@@ -12386,7 +12386,7 @@
     },
     "/projects/{project_id}/assets/{asset_id}/thumbnail": {
       "get": {
-        "description": "The asset's cached preview, streamed. Always JPEG.\n\nA preview is a cache, so this reads one and never renders one. An asset with\nno preview is 404 `THUMBNAIL_NOT_CACHED` \u2014 which has three causes with one\nremedy: the asset predates the cache, its bytes would not render, or no run\nhas reached it yet. A backfill fills what it can. The other two 404s are the\nordinary ones, resolved before the cache is consulted: 404 `PROJECT_NOT_FOUND`\nand 404 `ASSET_NOT_FOUND`, which say the thing itself is not here rather than\nthat its preview is missing.\n\nCached the same way `content` is, and for the same reason. The `ETag` is the\nthumbnail hash, which is a cache key and not an identity: two machines may\nhold different preview bytes for one image, so never compare these across\nworkspaces.",
+        "description": "The asset's cached preview, streamed. Always JPEG.\n\nA preview is a cache, so this reads one and never renders one. An asset with\nno preview is 404 `THUMBNAIL_NOT_CACHED` \u2014 which has three causes with one\nremedy: the asset predates the cache, its bytes would not render, or no run\nhas reached it yet. `POST /projects/{project_id}/thumbnail-backfill-jobs`\nfills what it can. The other two 404s are the\nordinary ones, resolved before the cache is consulted: 404 `PROJECT_NOT_FOUND`\nand 404 `ASSET_NOT_FOUND`, which say the thing itself is not here rather than\nthat its preview is missing.\n\nCached the same way `content` is, and for the same reason. The `ETag` is the\nthumbnail hash, which is a cache key and not an identity: two machines may\nhold different preview bytes for one image, so never compare these across\nworkspaces.",
         "operationId": "get_asset_thumbnail",
         "parameters": [
           {
@@ -15020,6 +15020,95 @@
         "summary": "Get Project Stats",
         "tags": [
           "projects"
+        ]
+      }
+    },
+    "/projects/{project_id}/thumbnail-backfill-jobs": {
+      "post": {
+        "description": "Queue a preview pass over the project, and answer at once with the job to poll.\n\nRenders a preview for every asset that has none: the remedy for the\nthumbnail route's `THUMBNAIL_NOT_CACHED`. An unknown project is 404\n`PROJECT_NOT_FOUND`, answered before any job is queued.\nThe `Location` header names the job; poll `GET /background-jobs/{id}` until\n`state` is `succeeded`, and read what the pass found from `result`: `examined`,\nthe ids `filled`, the ids `missing` (no bytes left in the workspace) and the\n`unreadable` assets that will not render, each with its reason. Those are the\nfields the CLI and MCP backfill report.\n\n**One live pass per project.** A launch while one is queued or running answers\nwith that same job rather than starting a second, and a pass over a healthy\nproject examines nothing.\n\nRaises:\n    ProjectNotFound: no such project in this workspace, answered before any\n        job is queued.",
+        "operationId": "launch_thumbnail_backfill",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackgroundJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Launch Thumbnail Backfill",
+        "tags": [
+          "assets"
         ]
       }
     },

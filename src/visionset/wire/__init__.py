@@ -447,7 +447,7 @@ def batch_asset(
 
 
 def thumbnail_backfill(value: ThumbnailBackfill) -> dict[str, Any]:
-    """A preview pass over a project. **Surface-defined**: no route reaches this."""
+    """A preview pass over a project: the backfill job's result, and what the CLI and MCP print."""
     return {
         "project_id": str(value.project_id),
         "examined": value.examined,

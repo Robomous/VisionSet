@@ -51,9 +51,11 @@ from visionset.inference import (
     PreLabelOutcome,
     PreLabelPlan,
     effective_produces,
+    geometry_selection,
     open_jobs_of,
     planned,
     pre_label,
+    pre_label_selection,
     select_pre_labelable,
     served_for,
 )
@@ -301,10 +303,6 @@ Geometries = Annotated[
 ]
 
 
-def _selection(geometries: list[GeometryType] | None) -> frozenset[GeometryType] | None:
-    return None if geometries is None else frozenset(geometries)
-
-
 def get_pre_label_plan(
     batch_id: BatchRef, connection: ConnectionRef, geometries: Geometries = None
 ) -> dict[str, Any]:
@@ -344,7 +342,7 @@ which it would leave out, and what shapes it would write.
                 workspace,
                 batch_id=identifier(batch_id, what="batch_id"),
                 connection_id=resolved.id,
-                geometries=_selection(geometries),
+                geometries=geometry_selection(geometries),
             )
         )
 
@@ -493,7 +491,7 @@ def pre_label_batch(
                 connection_id=resolved_connection.id,
                 minimum_confidence=minimum_confidence,
                 replace_model_labels=replace_model_labels,
-                geometries=_selection(geometries),
+                geometries=geometry_selection(geometries),
                 on_plan=seen.append,
             )
             items.append({"job_id": str(job.id), **_pre_label_outcome(outcome, seen[0])})
@@ -551,33 +549,29 @@ def pre_label_project(
         resolved = ProjectService(workspace).resolve(project)
         resolved_connection = InferenceConnectionService(workspace).resolve(connection)
         declared = served_for(workspace, resolved_connection.id)
-        produces = effective_produces(declared.produces, _selection(geometries))
+        produces = effective_produces(declared.produces, geometry_selection(geometries))
         selected = select_pre_labelable(
             workspace,
             resolved.id,
             produces,
             None if batch_ids is None else [identifier(one, what="batch_id") for one in batch_ids],
         )
-        items: list[dict[str, Any]] = []
-        for batch in selected:
-            for job in open_jobs_of(workspace, batch.id):
-                seen: list[PreLabelPlan] = []
-                outcome = pre_label(
-                    workspace,
-                    job_id=job.id,
-                    connection_id=resolved_connection.id,
-                    minimum_confidence=minimum_confidence,
-                    geometries=_selection(geometries),
-                    on_plan=seen.append,
-                )
-                items.append(
-                    {
-                        "batch_id": str(batch.id),
-                        "batch_name": batch.name,
-                        "job_id": str(job.id),
-                        **_pre_label_outcome(outcome, seen[0]),
-                    }
-                )
+        ran = pre_label_selection(
+            workspace,
+            selected,
+            connection_id=resolved_connection.id,
+            minimum_confidence=minimum_confidence,
+            geometries=geometry_selection(geometries),
+        )
+        items: list[dict[str, Any]] = [
+            {
+                "batch_id": str(job.batch.id),
+                "batch_name": job.batch.name,
+                "job_id": str(job.job_id),
+                **_pre_label_outcome(job.outcome, job.plan),
+            }
+            for job in ran
+        ]
     return {
         "items": items,
         "annotations_written": sum(item["annotations_written"] for item in items),

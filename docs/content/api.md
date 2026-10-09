@@ -68,6 +68,7 @@ DELETE /video-imports/{import_id}                         throw the session away
 GET    /projects/{project_id}/assets/{asset_id}
 GET    /projects/{project_id}/assets/{asset_id}/content   bytes
 GET    /projects/{project_id}/assets/{asset_id}/thumbnail bytes
+POST   /projects/{project_id}/thumbnail-backfill-jobs     launch; renders missing previews
 GET    /projects/{project_id}/assets/{asset_id}/batches    which batches carry it
 GET    /projects/{project_id}/batches
 POST   /projects/{project_id}/batches                     curate one by hand
@@ -409,7 +410,9 @@ hash ships as the `ETag` instead, which is where it was doing the real work anyw
 before the pipeline recorded a format is served as `application/octet-stream`, because inventing
 one would be worse than admitting it. A thumbnail is always `image/jpeg`. An asset with no
 cached preview is `404 THUMBNAIL_NOT_CACHED` rather than an empty success - a preview is a cache
-and reading one never renders one, so the remedy is a backfill and the code says so.
+and reading one never renders one, so the remedy is a backfill and the code says so:
+`POST /projects/{id}/thumbnail-backfill-jobs` queues one as a background job (202, `Location` names the
+job), and joins the pass already live for that project rather than starting a second.
 
 **Request bodies forbid unknown fields.** A misspelled key is a 422 `VALIDATION_ERROR`, never a
 silently ignored one - a typo that looked like it worked is worse than a refusal.

@@ -516,7 +516,8 @@ source and augmented counts; `--json` carries them as `source_file_count` and
 
 `--project P` → `IngestService.backfill_thumbnails`. Renders the previews of assets that have none -
 a preview is a cache, not an identity, so an asset whose bytes will not render keeps a null one and
-is reported here rather than having failed its ingest. Idempotent. See
+is reported here rather than having failed its ingest. Idempotent. Over REST the same pass is a
+background job, `POST /projects/{id}/thumbnail-backfill-jobs`, whose `result` is this report. See
 [ingest.md](ingest.md#the-backfill).
 
 ## `visionset token`
@@ -606,8 +607,7 @@ Machine-local operations are CLI-and-MCP-only **by design**, because REST has no
 point at: `ingest` (a directory on this machine) and `export` (a destination directory) have no
 REST route that takes a path. REST does the same work through uploaded sources and ingest jobs,
 and through a release export job whose archive is downloaded. `backfill-thumbnails` takes only a
-project and has no REST route either; a thumbnail missing from the cache answers
-`THUMBNAIL_NOT_CACHED` there until a CLI or MCP backfill fills it.
+project, so REST has it too, as the background job `POST /projects/{id}/thumbnail-backfill-jobs`.
 
 ### Declared actions with no command
 
