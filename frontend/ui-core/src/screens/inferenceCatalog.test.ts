@@ -61,7 +61,7 @@ it("groups the offers under the heading this build has for each ability", () => 
   ]);
 
   expect(groups.map((one) => one.key)).toEqual(["point_suggest", "text_detect"]);
-  expect(groups[0]!.label).toBe("Interactive segmentation (point prompts)");
+  expect(groups[0]!.label).toBe("Segment — click to mask");
 });
 
 it("renders no heading over an ability nothing offers a model for", () => {
@@ -84,6 +84,21 @@ it("shows an ability this build has never heard of under its own name", () => {
 
   expect(groups.map((one) => one.key)).toEqual(["point_suggest", "depth_estimate"]);
   expect(groups[1]!.label).toBe("depth_estimate");
+});
+
+it("keeps the catalog's size ladder within a group and the group order across them", () => {
+  const groups = groupsOf([
+    entry({ model_id: "det-tiny", capability: "text_detect" }),
+    entry({ model_id: "seg-tiny" }),
+    entry({ model_id: "seg-large" }),
+    entry({ model_id: "det-base", capability: "text_detect" }),
+  ]);
+
+  expect(groups.map((one) => one.entries.map((e) => e.model_id))).toEqual([
+    ["seg-tiny", "seg-large"],
+    ["det-tiny", "det-base"],
+  ]);
+  expect(groups[1]!.label).toBe("Detect — describe in text");
 });
 
 it("opens on the preferred model when the installation offers it", () => {

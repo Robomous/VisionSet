@@ -1139,9 +1139,25 @@ it("builds the model list from what the wire served, under this build's own head
   await userEvent.click(screen.getByTestId("choose-local"));
   await userEvent.click(await screen.findByTestId("connection-model"));
 
-  expect(screen.getByText("Interactive segmentation (point prompts)")).not.toBeNull();
-  expect(screen.getByText("Text-prompt detection")).not.toBeNull();
+  expect(screen.getByText("Segment — click to mask")).not.toBeNull();
+  expect(screen.getByText("Detect — describe in text")).not.toBeNull();
   expect(screen.getByRole("option", { name: new RegExp(DINO_TINY) })).not.toBeNull();
+});
+
+it("marks only the gated offers in the model list", async () => {
+  listing([]);
+  catalog();
+  renderWithData(<ModelsScreen />);
+
+  await userEvent.click(await screen.findByTestId("new-connection"));
+  await userEvent.click(screen.getByTestId("choose-local"));
+  await userEvent.click(await screen.findByTestId("connection-model"));
+
+  const gated = screen.getAllByTestId("gated-badge");
+  expect(gated).toHaveLength(1);
+  expect(
+    screen.getByRole("option", { name: new RegExp(SAM3) }).contains(gated[0]!),
+  ).toBe(true);
 });
 
 it("says the catalog is being read rather than showing a dead control", async () => {

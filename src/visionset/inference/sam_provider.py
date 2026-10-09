@@ -38,6 +38,7 @@ reused rather than respelled — same ``_fp16.forward_guard``, same
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Mapping
+from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Final
@@ -65,6 +66,7 @@ from visionset.kernel.domain import (
 from visionset.kernel.errors import UnsupportedPrompt
 
 _CLASSES: Final[Mapping[str, tuple[str, str]]] = {
+    "sam": ("SamProcessor", "SamModel"),
     "sam2": ("AutoProcessor", "Sam2Model"),
     "sam2_video": ("AutoProcessor", "Sam2Model"),
     "sam3_video": ("Sam3TrackerProcessor", "Sam3TrackerModel"),
@@ -307,12 +309,23 @@ class LocalSamProvider:
                 target, processor=processor, model=model, device=device, torch=torch, half=half
             )
             height, width = size
-            inputs = processor(
-                original_sizes=[[height, width]],
-                input_points=[[points]],
-                input_labels=[[labels]],
-                return_tensors="pt",
-            ).to(device)
+            reshaped: tuple[int, int] | None = None
+            if isinstance(embedding, _SamEmbedding):
+                embedding, reshaped = embedding.features, embedding.reshaped_size
+                inputs = _sam_prompt(
+                    torch,
+                    points,
+                    labels,
+                    scale=(reshaped[1] / width, reshaped[0] / height),
+                    device=device,
+                )
+            else:
+                inputs = processor(
+                    original_sizes=[[height, width]],
+                    input_points=[[points]],
+                    input_labels=[[labels]],
+                    return_tensors="pt",
+                ).to(device)
             with _fp16.forward_guard(torch, device_type=device.split(":")[0], half=half):
                 outputs = model(
                     input_points=inputs["input_points"],
@@ -324,7 +337,11 @@ class LocalSamProvider:
                 asset_id=target.asset_id,
                 model_ref=self.model_ref,
                 segments=self._segments(
-                    outputs, processor=processor, size=size, minimum_confidence=minimum_confidence
+                    outputs,
+                    processor=processor,
+                    size=size,
+                    reshaped=reshaped,
+                    minimum_confidence=minimum_confidence,
                 ),
             )
 
@@ -334,6 +351,7 @@ class LocalSamProvider:
         *,
         processor: Any,
         size: tuple[int, int],
+        reshaped: tuple[int, int] | None = None,
         minimum_confidence: float,
     ) -> tuple[SegmentedMask, ...]:
         """The chosen mask and its score, or nothing at all.
@@ -352,9 +370,17 @@ class LocalSamProvider:
         what chose the geometry kinds — so a name invented here would be a
         second, worse source for something the caller already holds.
         """
-        lifted = processor.post_process_masks(
-            outputs.pred_masks, original_sizes=[list(size)], binarize=True
-        )[0]
+        if reshaped is None:
+            lifted = processor.post_process_masks(
+                outputs.pred_masks, original_sizes=[list(size)], binarize=True
+            )[0]
+        else:
+            lifted = processor.post_process_masks(
+                outputs.pred_masks,
+                original_sizes=[list(size)],
+                reshaped_input_sizes=[list(reshaped)],
+                binarize=True,
+            )[0]
         scores = [float(value) for value in outputs.iou_scores.flatten().tolist()]
         chosen, confidence = best_of(scores)
         if confidence < minimum_confidence:
@@ -424,6 +450,10 @@ class LocalSamProvider:
             self._encodes += 1
             with _fp16.forward_guard(torch, device_type=device.split(":")[0], half=half):
                 embedding = model.get_image_embeddings(inputs["pixel_values"])
+            if self._family == "sam":
+                embedding = _SamEmbedding(
+                    embedding, tuple(inputs["reshaped_input_sizes"][0].tolist())
+                )
             return self._embeddings.put(target.asset_id, (embedding, size))
 
     def _ready(self) -> tuple[Any, Any, str, bool]:
@@ -493,6 +523,30 @@ class LocalSamProvider:
             return processor, model.to(device).eval(), device, half
 
 
+@dataclass(frozen=True)
+class _SamEmbedding:
+    """``sam``'s cached encode: its processor cannot be called without an image, so the
+    resized extent the prompt must be scaled to and the mask lifted from is kept here."""
+
+    features: Any
+    reshaped_size: tuple[int, int]
+
+
+def _sam_prompt(
+    torch: Any,
+    points: list[list[float]],
+    labels: list[int],
+    *,
+    scale: tuple[float, float],
+    device: str,
+) -> dict[str, Any]:
+    scaled = [[x * scale[0], y * scale[1]] for x, y in points]
+    return {
+        "input_points": torch.tensor([[scaled]], dtype=torch.float32, device=device),
+        "input_labels": torch.tensor([[labels]], dtype=torch.long, device=device),
+    }
+
+
 # A mask is turned into an outline or into the box around it — ``masks.py`` does
 # both — so a caller may write either shape from one answer.
 _SEGMENTS: Final = ServedFamily(
@@ -501,6 +555,7 @@ _SEGMENTS: Final = ServedFamily(
 )
 
 SAM_FAMILIES: Final[Mapping[str, ServedFamily]] = {
+    "sam": _SEGMENTS,
     "sam2": _SEGMENTS,
     "sam2_video": _SEGMENTS,
     "sam3_video": _SEGMENTS,
@@ -526,6 +581,12 @@ nests rather than checkpoints anything can prompt.
 """
 
 CURATED: Final[tuple[CuratedModel, ...]] = (
+    CuratedModel(
+        model_id="Zigeng/SlimSAM-uniform-77",
+        model_revision="79c09c1ce6b4ae51f00634ed171d9b8e888f6911",
+        family="sam",
+        hint="SlimSAM — about 47 MB, the lightest point model here",
+    ),
     CuratedModel(
         model_id="facebook/sam2.1-hiera-tiny",
         model_revision="de431c4043854a71d8101e17995dfe596bf101a5",

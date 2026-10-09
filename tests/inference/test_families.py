@@ -83,11 +83,11 @@ def test_every_published_checkpoint_this_build_curates_is_named() -> None:
 
     A checkpoint declares the variant it was *published* as rather than the half
     this build asks for, so these are the spellings a resolver actually meets:
-    the SAM 2.1 ladder says ``sam2_video`` and ``facebook/sam3`` says
+    SlimSAM says ``sam``, the SAM 2.1 ladder says ``sam2_video`` and ``facebook/sam3`` says
     ``sam3_video``. Missing one sends that model to the detector adapter, which
     then refuses a click with a sentence about text prompts.
     """
-    assert {"sam2", "sam2_video", "sam3_video"} <= frozenset(SAM_FAMILIES)
+    assert {"sam", "sam2", "sam2_video", "sam3_video"} <= frozenset(SAM_FAMILIES)
 
 
 @pytest.mark.parametrize(

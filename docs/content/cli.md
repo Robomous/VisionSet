@@ -53,6 +53,7 @@ visionset inference create NAME --type local|http --model ID --revision REV
 visionset inference list
 visionset inference show|update|delete NAME_OR_ID          # update: the model only while not set up
 visionset inference size MODEL_ID --revision REV         # no --workspace: it opens none
+visionset inference providers                            # no --workspace: it opens none
 visionset inference download NAME_OR_ID
 visionset inference check-integrity NAME_OR_ID
 visionset inference test-endpoint NAME_OR_ID             # http only: what it answers
@@ -203,10 +204,10 @@ the callback would have to *precede* the subcommand - `visionset --workspace X t
 ci` would work and `visionset token create --name ci --workspace X` would fail with "No such
 option". Nobody types the first one.
 
-`--json` is per command for the identical reason, and so is every other option here. Four
+`--json` is per command for the identical reason, and so is every other option here. Five
 commands do without `--workspace`, each because it needs none: `visionset format list` and
 `visionset target list` read installed distributions, which is a fact about the process, and
-`visionset inference size` asks
+`visionset inference providers` reads the installed drivers too; `visionset inference size` asks
 the publishing hub about a model that no row has to name yet; `visionset init` takes a positional
 `PATH`,
 because it names where to *make* a workspace rather than which one to use — and for that reason it

@@ -423,7 +423,7 @@ whole of what a connection can declare, and each exists because a surface render
 driver declares the families it serves, what each may be asked for and the shapes it answers in,
 and drivers are found
 through an entry-point group, so one somebody `pip`-installed serves families this repository
-has never heard of. What this distribution ships serves the SAM 2 and SAM 3 families for
+has never heard of. What this distribution ships serves the SAM (SlimSAM), SAM 2 and SAM 3 families for
 `point_suggest` and the Grounding DINO families for `text_detect`.
 
 **Read from the model, never from its name.** The value comes from the `model_type` the
@@ -916,10 +916,12 @@ downloaded, or nothing of the right kind - and each names a different thing to d
 ## At a terminal
 
 ```bash
+visionset inference providers
 visionset inference size some/model --revision abc123
 visionset inference create local-detector \
     --type local --model some/model --revision abc123 --device cuda --precision fp16
 # --device takes cpu, mps, cuda or cuda:N; --precision takes fp16 or fp32, and fp16 needs a cuda device
+# providers lists the installed drivers and the models each offers by name; it opens no workspace
 # --provider names the installed driver that serves it; omitted, the model's declared type decides
 # --credential-env names the environment variable holding an http endpoint's credential; "" clears it
 visionset inference list

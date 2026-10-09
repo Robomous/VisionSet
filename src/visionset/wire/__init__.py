@@ -125,7 +125,7 @@ from visionset.kernel.domain import (
     connection_actions,
     job_actions,
 )
-from visionset.kernel.ports import Exporter
+from visionset.kernel.ports import Exporter, Provider
 
 
 def _moment(when: datetime) -> str:
@@ -712,6 +712,30 @@ def export_format(value: Exporter) -> dict[str, Any]:
         "degraded_geometries": sorted(one.value for one in value.degraded_geometries),
         "modalities": sorted(value.supported_modalities),
         "targets": sorted(one.name for one in value.targets),
+    }
+
+
+def provider(value: Provider) -> dict[str, Any]:
+    """One installed inference driver: its families, and the checkpoints it offers by name."""
+    return {
+        "provider_id": value.provider_id,
+        "families": {
+            family: declared.capability.value for family, declared in sorted(value.families.items())
+        },
+        "curated": [
+            {
+                "provider_id": value.provider_id,
+                "model_id": entry.model_id,
+                "model_revision": entry.model_revision,
+                "family": entry.family,
+                "capability": value.families[entry.family].capability.value,
+                "hint": entry.hint,
+                "access_note": entry.access_note,
+                "access_url": entry.access_url,
+            }
+            for entry in value.curated
+            if entry.family in value.families
+        ],
     }
 
 
