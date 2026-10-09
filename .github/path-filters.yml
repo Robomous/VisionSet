@@ -113,8 +113,6 @@ browser-models:
   - "frontend/ui-core/src/annotator/AnnotationPage.tsx"
   - "scripts/browser_models/**"
   - "tests/browser_models/**"
-  - "pyproject.toml"
-  - "uv.lock"
   - ".github/workflows/ci.yml"
   - ".github/path-filters.yml"
 

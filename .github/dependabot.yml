@@ -24,9 +24,7 @@
 # `ignore` is for a version this repository cannot take *yet* — a major whose
 # ecosystem has not caught up. Every entry must name the blocker and the
 # condition that retires it, because an ignore with no expiry is a pin nobody
-# remembers choosing. The uv ecosystem has no such entry: nothing on the Python
-# side is held back today, and inventing a rule with no blocker behind it would
-# be exactly that unowned pin.
+# remembers choosing.
 version: 2
 updates:
   - package-ecosystem: "uv"
@@ -41,6 +39,15 @@ updates:
         applies-to: version-updates
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      # `onnxruntime` (Python) and `onnxruntime-web` (npm) are one version: the
+      # export's parity reference is only meaningful if the browser runs the same
+      # runtime, and `scripts/browser_models/efficientsam/export.py` refuses to run
+      # when they differ. Dependabot bumps one ecosystem per PR, so any offer here
+      # fails the `browser models` job by construction.
+      #
+      # Remove this when the two can move in one PR, or the lockstep check goes.
+      - dependency-name: "onnxruntime"
     open-pull-requests-limit: 10
     commit-message:
       prefix: "chore(deps)"
@@ -76,6 +83,9 @@ updates:
       # list, both now committed — are the same ones 7 wants. See #264.
       - dependency-name: "typescript"
         versions: [">= 7"]
+
+      # Moves in lockstep with Python `onnxruntime`; see the uv entry above.
+      - dependency-name: "onnxruntime-web"
     open-pull-requests-limit: 10
     commit-message:
       prefix: "chore(deps)"
