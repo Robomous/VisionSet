@@ -38,7 +38,8 @@ allowBuilds:
   esbuild: true
   sharp: true
 
-# lodash-es: a published security advisory, reached transitively through the site's
-# toolchain.
+# lodash-es, katex: published security advisories, reached transitively through the
+# site's toolchain. mermaid caps katex at ^0.16.47, which has no fixed release.
 overrides:
   lodash-es: 4.18.1
+  katex: 0.18.2
