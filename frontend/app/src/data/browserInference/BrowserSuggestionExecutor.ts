@@ -125,6 +125,12 @@ export function createBrowserSuggestionExecutor(deps: Deps): SuggestionExecutor 
           message: `no active browser asset source for asset ${request.assetId}`,
         });
       }
+      if (!(source.width >= 1 && source.height >= 1)) {
+        throw new ApiError({
+          code: "BROWSER_ASSET_FRAME_INVALID",
+          message: `asset ${source.assetId} has no usable pixel frame (${source.width}×${source.height})`,
+        });
+      }
 
       let preparing: Promise<PreparedImage>;
       if (source === currentSource && currentPrepared !== null) {

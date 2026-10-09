@@ -393,6 +393,11 @@ describe("parsing the asset the kernel produced", () => {
     expect(asset.height).toBeGreaterThan(0);
   });
 
+  it.each([0, -3, 640.5])("refuses an asset whose width is %s", (width) => {
+    expect(() => parseAssetDescriptor({ id: "a", width, height: 480 })).toThrow(/positive whole number/);
+    expect(() => parseAssetDescriptor({ id: "a", width: 640, height: width })).toThrow(/positive whole number/);
+  });
+
   it("refuses an asset whose dimensions were never measured", () => {
     // `AssetOut.width`/`height` are `int | None` because a pre-pipeline row has
     // never been probed. There is no honest default: geometry here is native

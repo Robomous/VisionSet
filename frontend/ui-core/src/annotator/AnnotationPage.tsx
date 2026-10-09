@@ -129,7 +129,7 @@ import {
   type Tool,
   type Viewport,
 } from "@visionset/annotator";
-import { AnnotatorStore as Store } from "@visionset/annotator";
+import { AnnotatorStore as Store, WireFormatError, parseAssetDescriptor } from "@visionset/annotator";
 import { ArrowLeft, Check, CheckCheck, ChevronLeft, ChevronRight, CircleHelp, Eye, Grid3x3, MonitorSmartphone, MoreHorizontal, SkipForward, TriangleAlert, Undo2 } from "lucide-react";
 import {
   useCallback,
@@ -706,6 +706,13 @@ function JobScreen({
     return <LoadingState rows={6} label="Loading the job" />;
   }
 
+  try {
+    parseAssetDescriptor({ id: asset.id, width: asset.width, height: asset.height });
+  } catch (error) {
+    if (!(error instanceof WireFormatError)) throw error;
+    return <ErrorState code="ASSET_FRAME_INVALID" message={error.message} onRetry={() => void assets.refetch()} />;
+  }
+
   return (
     <Workspace
       key={asset.id}
@@ -873,7 +880,7 @@ function Workspace({
     () =>
       new Store(
         documentFromWire({
-          asset: { id: asset.id, width: asset.width ?? 0, height: asset.height ?? 0 },
+          asset: parseAssetDescriptor({ id: asset.id, width: asset.width, height: asset.height }),
           schema,
           annotations: loaded,
         }),

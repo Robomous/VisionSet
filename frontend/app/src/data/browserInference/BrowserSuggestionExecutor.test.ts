@@ -110,6 +110,19 @@ describe("createBrowserSuggestionExecutor", () => {
     expect(prepareImage).not.toHaveBeenCalled();
   });
 
+  it("refuses a source whose frame is 0 × 0 before the model is touched", async () => {
+    const prepareImage = vi.fn();
+    const executor = createBrowserSuggestionExecutor({
+      modelRef: "efficient-sam-ti@rev",
+      runtime: runtimeWith({ prepareImage }),
+      getActiveSource: () => sourceFor("a1", { width: 0, height: 0 }),
+    });
+    await expect(executor.suggest(requestFor("a1"))).rejects.toMatchObject({
+      code: "BROWSER_ASSET_FRAME_INVALID",
+    });
+    expect(prepareImage).not.toHaveBeenCalled();
+  });
+
   it("refuses when there is no active source at all", async () => {
     const prepareImage = vi.fn();
     const executor = createBrowserSuggestionExecutor({
