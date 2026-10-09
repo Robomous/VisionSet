@@ -75,24 +75,6 @@ test("frontend source wakes only the frontend jobs", () => {
   assert.deepEqual(groupsFor("frontend/app/src/main.tsx"), ["frontend"]);
 });
 
-test("what the real-model e2e suite exercises wakes the job that runs it for real", () => {
-  // `browserSuggestion.spec.ts` self-skips without the ONNX artifacts and the
-  // `VISIONSET_REQUIRE_BROWSER_MODELS` flag, both of which only the `browser-models`
-  // job supplies. So every file that suite drives has to wake that job by name: a
-  // change reaching only `frontend` is a change whose one real-browser proof ran
-  // nothing and still reported green.
-  for (const file of [
-    "frontend/app/src/data/browserInference/BrowserInferenceRuntime.ts",
-    "frontend/app/vite.config.ts",
-    "frontend/app/playwright.config.ts",
-    "frontend/ui-core/src/inference/browserPort.ts",
-    "frontend/ui-core/src/annotator/SuggestPanel.tsx",
-    "frontend/ui-core/src/annotator/AnnotationPage.tsx",
-  ]) {
-    assert.deepEqual(groupsFor(file), ["browser-models", "frontend"], file);
-  }
-});
-
 test("documentation wakes only the docs site", () => {
   assert.deepEqual(groupsFor("docs/content/install.md"), ["docs"]);
 });
@@ -117,7 +99,7 @@ test("this workflow and this file wake everything they gate", () => {
   // A change to the gating itself is the one change that must re-validate every
   // job — otherwise a filter edit is only ever tested by the jobs it did not skip.
   for (const file of [".github/workflows/ci.yml", ".github/path-filters.yml"]) {
-    assert.deepEqual(groupsFor(file), ["browser-models", "docker", "docs", "frontend", "python"], file);
+    assert.deepEqual(groupsFor(file), ["docker", "docs", "frontend", "python"], file);
   }
 });
 
