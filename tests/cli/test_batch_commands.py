@@ -850,6 +850,22 @@ def test_project_pre_label_runs_every_open_batch(
     assert listed[second]["progress"]["pre_labeled"] == 2
 
 
+def test_project_pre_label_announces_the_plan_once_per_batch_and_names_each_batch(
+    root: Path, tmp_path: Path, predicting: _FakePredictor
+) -> None:
+    name, _first = started_batch(root, tmp_path, jobs_of=3)
+    _second_started_batch(root, tmp_path, name)
+
+    result = run(root, "project", "pre-label", name, _connection(root))
+
+    assert result.exit_code == 0, result.output
+    assert result.stderr.count("Asking for 1 class(es)") == 2
+    assert result.stderr.count("Batch 'stills':") == 1
+    assert result.stderr.count("Batch 'more':") == 1
+    assert result.stderr.index("Batch 'stills':") < result.stderr.index("Batch 'more':")
+    assert result.stdout == "8\n"
+
+
 def test_project_pre_label_narrows_to_the_named_batch(
     root: Path, tmp_path: Path, predicting: _FakePredictor
 ) -> None:

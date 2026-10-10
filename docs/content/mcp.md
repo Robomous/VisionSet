@@ -425,7 +425,7 @@ Four of the tools were not among the fifty candidates and are offered all the sa
 standing for three candidates), `preview_schema_change`, `list_blocking_assets` (the listing behind
 the preview's `blockers`) and `backfill_thumbnails` - the last
 because it is the remedy `get_asset_image` names, and a refusal naming an unreachable remedy is
-worse than no refusal. `backfill_thumbnails` has no REST route; it is on the CLI and here.
+worse than no refusal. `backfill_thumbnails` is `POST /projects/{id}/thumbnail-backfill-jobs` over REST, a background job.
 
 ### Reachable over REST, not here
 
@@ -450,9 +450,8 @@ Some operations are machine-local by design and have no REST route that takes a 
 has no filesystem to point at: `ingest` reads a directory on this machine and `export_release`
 writes into one. REST reaches the same kernel work through uploaded sources
 (`POST /projects/{id}/sources/images`, then an ingest job) and a release export job whose archive
-is downloaded. `backfill_thumbnails` takes only a project and has no REST route; a thumbnail
-missing from the cache answers `THUMBNAIL_NOT_CACHED` over REST until a CLI or MCP backfill fills
-it. `init` and `token` are CLI-only, as stated above.
+is downloaded. `backfill_thumbnails` takes only a project, so REST has it as a
+background job, `POST /projects/{id}/thumbnail-backfill-jobs`. `init` and `token` are CLI-only, as stated above.
 
 ### Per-surface names and shapes
 

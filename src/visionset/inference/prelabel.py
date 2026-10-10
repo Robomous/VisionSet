@@ -29,7 +29,7 @@ judged in this batch.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final
 from uuid import UUID
@@ -648,6 +648,102 @@ def pre_label(
         regions_out_of_bounds=out_of_bounds,
         annotations_replaced=replaced,
     )
+
+
+def geometry_selection(
+    geometries: Iterable[GeometryType] | None,
+) -> frozenset[GeometryType] | None:
+    """A caller's repeated shape choice as the selection a run takes; unset, every shape."""
+    return None if geometries is None else frozenset(geometries)
+
+
+@dataclass(frozen=True, slots=True)
+class PreLabeledJob:
+    """One job a selection run finished, with its batch and the plan it asked under."""
+
+    batch: Batch
+    job_id: UUID
+    outcome: PreLabelOutcome
+    plan: PreLabelPlan
+
+
+def _pre_label_one(
+    workspace: WorkspaceService,
+    batch: Batch,
+    index: int,
+    job_id: UUID,
+    *,
+    connection_id: UUID,
+    minimum_confidence: float,
+    geometries: frozenset[GeometryType] | None,
+    on_plan: Callable[[Batch, int, PreLabelPlan], None] | None,
+    on_progress: Callable[[Batch, int, int], None] | None,
+    pool: ProviderPool | None,
+) -> PreLabeledJob:
+    plans: list[PreLabelPlan] = []
+
+    def record(plan: PreLabelPlan) -> None:
+        plans.append(plan)
+        if on_plan is not None:
+            on_plan(batch, index, plan)
+
+    def progress(done: int, total: int) -> None:
+        if on_progress is not None:
+            on_progress(batch, done, total)
+
+    outcome = pre_label(
+        workspace,
+        job_id=job_id,
+        connection_id=connection_id,
+        minimum_confidence=minimum_confidence,
+        geometries=geometries,
+        on_plan=record,
+        on_progress=progress,
+        pool=pool,
+    )
+    return PreLabeledJob(batch, job_id, outcome, plans[0])
+
+
+def pre_label_selection(
+    workspace: WorkspaceService,
+    selected: Sequence[Batch],
+    *,
+    connection_id: UUID,
+    minimum_confidence: float = DEFAULT_MINIMUM_CONFIDENCE,
+    geometries: frozenset[GeometryType] | None = None,
+    on_batch: Callable[[Batch], None] | None = None,
+    on_plan: Callable[[Batch, int, PreLabelPlan], None] | None = None,
+    on_progress: Callable[[Batch, int, int], None] | None = None,
+    pool: ProviderPool | None = None,
+) -> list[PreLabeledJob]:
+    """Run every open job of every selected batch, in order, one after another.
+
+    ``selected`` is what ``select_pre_labelable`` returned: the refusals that
+    must precede the first forward pass belong to the caller that builds it.
+    ``on_plan`` receives the job's index within its batch. A failure part-way
+    propagates, and what earlier jobs entered stays entered, so calling again
+    resumes over what is still untouched.
+    """
+    ran: list[PreLabeledJob] = []
+    for batch in selected:
+        if on_batch is not None:
+            on_batch(batch)
+        for index, job in enumerate(open_jobs_of(workspace, batch.id)):
+            ran.append(
+                _pre_label_one(
+                    workspace,
+                    batch,
+                    index,
+                    job.id,
+                    connection_id=connection_id,
+                    minimum_confidence=minimum_confidence,
+                    geometries=geometries,
+                    on_plan=on_plan,
+                    on_progress=on_progress,
+                    pool=pool,
+                )
+            )
+    return ran
 
 
 def _targets(

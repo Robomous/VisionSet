@@ -33,9 +33,9 @@ import typer
 from visionset import wire
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
-from visionset.cli.batches import GeometryOption, announce_plan, selected_geometries
-from visionset.cli.inference import ConnectionArgument, _resolve
-from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE, pre_label
+from visionset.cli.batches import GeometryOption, announce_plan
+from visionset.cli.inference import ConnectionArgument
+from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE, geometry_selection, pre_label
 from visionset.kernel.domain import AssetProgress
 from visionset.kernel.services import BatchService, InferenceConnectionService, JobService
 
@@ -246,10 +246,10 @@ def job_pre_label(
         outcome = pre_label(
             service,
             job_id=job,
-            connection_id=_resolve(InferenceConnectionService(service), connection),
+            connection_id=InferenceConnectionService(service).resolve(connection).id,
             minimum_confidence=minimum_confidence,
             replace_model_labels=replace_model_labels,
-            geometries=selected_geometries(geometry),
+            geometries=geometry_selection(geometry),
             on_plan=announce_plan,
             on_progress=lambda done, total: note(f"Pre-labeling {done}/{total} asset(s)."),
         )

@@ -30,7 +30,12 @@ from typing import Annotated, Any
 from pydantic import Field
 
 from visionset import wire
-from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE, PreLabelPlan, pre_label
+from visionset.inference import (
+    DEFAULT_MINIMUM_CONFIDENCE,
+    PreLabelPlan,
+    geometry_selection,
+    pre_label,
+)
 from visionset.kernel.domain import AssetProgress
 from visionset.kernel.services import (
     InferenceConnectionService,
@@ -39,7 +44,7 @@ from visionset.kernel.services import (
 from visionset.mcp._autostart import autostarted
 from visionset.mcp._resolve import ConnectionRef, identifier
 from visionset.mcp._workspace import opened_workspace
-from visionset.mcp.batches import Geometries, _pre_label_outcome, _selection
+from visionset.mcp.batches import Geometries, _pre_label_outcome
 
 JobRef = Annotated[str, Field(description="The annotation job, by id.")]
 """The job a tool acts on. Module-level for the ``inspect.signature`` reason."""
@@ -205,7 +210,7 @@ def pre_label_job(
             connection_id=resolved_connection.id,
             minimum_confidence=minimum_confidence,
             replace_model_labels=replace_model_labels,
-            geometries=_selection(geometries),
+            geometries=geometry_selection(geometries),
             on_plan=seen.append,
         )
     return {"job_id": str(resolved_job), **_pre_label_outcome(outcome, seen[0])}

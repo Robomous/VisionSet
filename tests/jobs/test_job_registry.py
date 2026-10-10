@@ -23,6 +23,7 @@ SHIPPED = {
     "inference.download_weights",
     "inference.check_integrity",
     "annotation.pre_label",
+    "assets.backfill_thumbnails",
 }
 
 

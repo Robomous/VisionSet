@@ -476,6 +476,7 @@ export const checkGetVideoImport = checkVideoImportOut;
 export const checkHealth: Check<operations["health"]["responses"][200]["content"]["application/json"]> =
   /*#__PURE__*/ mapOf(isString);
 export const checkInferenceDownloadSize = checkDownloadSizeOut;
+export const checkLaunchThumbnailBackfill = checkBackgroundJobOut;
 export const checkListAssetAnnotations = checkAnnotationPage;
 export const checkListAssetBatches = checkBatchPage;
 export const checkListBackgroundJobs = checkBackgroundJobPage;

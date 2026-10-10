@@ -28,21 +28,35 @@ from __future__ import annotations
 from typing import Any, Final
 from uuid import UUID
 
+from fastapi import Response, status
 from fastapi.responses import StreamingResponse
 
-from visionset.kernel.domain import MEDIA_TYPES, OCTET_STREAM, Asset, media_type_of
+from visionset.jobs.thumbnails import JOB_TYPE as backfill_job_type
+from visionset.jobs.thumbnails import PROJECT_KEY as backfill_project_key
+from visionset.jobs.thumbnails import payload_for as backfill_payload_for
+from visionset.kernel.domain import (
+    LIVE_JOB_STATES,
+    MEDIA_TYPES,
+    OCTET_STREAM,
+    Asset,
+    BackgroundJob,
+    BackgroundJobSpec,
+    media_type_of,
+)
 from visionset.kernel.ports import THUMBNAIL_FORMAT
 from visionset.kernel.services import (
     BatchService,
     DatasetService,
     IngestService,
     JobService,
+    ProjectService,
 )
-from visionset.server.dependencies import WorkspaceDep, protected_router
+from visionset.server.dependencies import RunnerDep, WorkspaceDep, protected_router
 from visionset.server.errors import documented
 from visionset.server.models import (
     AssetOut,
     AssetPage,
+    BackgroundJobOut,
     BatchOut,
     BatchPage,
     LimitQuery,
@@ -51,6 +65,7 @@ from visionset.server.models import (
 )
 
 router = protected_router(prefix="/projects/{project_id}/assets", tags=["assets"])
+project_router = protected_router(prefix="/projects/{project_id}", tags=["assets"])
 
 #: Content is immutable by identity, so the strongest caching HTTP offers is not
 #: a gamble. One year is the maximum ``max-age`` anything honours, and
@@ -231,7 +246,8 @@ def get_asset_thumbnail(
     A preview is a cache, so this reads one and never renders one. An asset with
     no preview is 404 `THUMBNAIL_NOT_CACHED` — which has three causes with one
     remedy: the asset predates the cache, its bytes would not render, or no run
-    has reached it yet. A backfill fills what it can. The other two 404s are the
+    has reached it yet. `POST /projects/{project_id}/thumbnail-backfill-jobs`
+    fills what it can. The other two 404s are the
     ordinary ones, resolved before the cache is consulted: 404 `PROJECT_NOT_FOUND`
     and 404 `ASSET_NOT_FOUND`, which say the thing itself is not here rather than
     that its preview is missing.
@@ -249,3 +265,53 @@ def get_asset_thumbnail(
         media_type=MEDIA_TYPES[THUMBNAIL_FORMAT],
         headers={"ETag": f'"{asset.thumbnail_hash}"', "Cache-Control": _IMMUTABLE},
     )
+
+
+def _live_backfill(workspace: WorkspaceDep, project_id: UUID) -> BackgroundJob | None:
+    for row in workspace.job_queue.list(states=LIVE_JOB_STATES, types={backfill_job_type}):
+        if row.payload.get(backfill_project_key) == str(project_id):
+            return row
+    return None
+
+
+@project_router.post(
+    "/thumbnail-backfill-jobs",
+    status_code=status.HTTP_202_ACCEPTED,
+    responses=documented(404),
+)
+def launch_thumbnail_backfill(
+    workspace: WorkspaceDep,
+    runner: RunnerDep,
+    response: Response,
+    project_id: UUID,
+) -> BackgroundJobOut:
+    """Queue a preview pass over the project, and answer at once with the job to poll.
+
+    Renders a preview for every asset that has none: the remedy for the
+    thumbnail route's `THUMBNAIL_NOT_CACHED`. An unknown project is 404
+    `PROJECT_NOT_FOUND`, answered before any job is queued.
+    The `Location` header names the job; poll `GET /background-jobs/{id}` until
+    `state` is `succeeded`, and read what the pass found from `result`: `examined`,
+    the ids `filled`, the ids `missing` (no bytes left in the workspace) and the
+    `unreadable` assets that will not render, each with its reason. Those are the
+    fields the CLI and MCP backfill report.
+
+    **One live pass per project.** A launch while one is queued or running answers
+    with that same job rather than starting a second, and a pass over a healthy
+    project examines nothing.
+
+    Raises:
+        ProjectNotFound: no such project in this workspace, answered before any
+            job is queued.
+    """
+    ProjectService(workspace).get(project_id)
+    job = _live_backfill(workspace, project_id) or workspace.job_queue.enqueue(
+        BackgroundJobSpec(
+            type=backfill_job_type,
+            payload=backfill_payload_for(project_id),
+            idempotent=True,
+        )
+    )
+    runner.wake()
+    response.headers["Location"] = f"/background-jobs/{job.id}"
+    return BackgroundJobOut.of(job)
