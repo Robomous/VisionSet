@@ -7,17 +7,17 @@
 // to npm and must work against any self-hosted mirror. Mirrors ui_core_boundary.test.mjs's
 // CDN_VENDOR_LITERALS rule, scoped to the two packages that rule does not cover.
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
+import { trackedFiles } from "./tracked.mjs";
+
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
 
 function shippedSourceUnder(dir) {
-  return execFileSync("git", ["ls-files", dir], { cwd: REPO, encoding: "utf8" })
-    .split("\n")
+  return trackedFiles([dir])
     .filter((file) => /\.[cm]?[jt]sx?$/.test(file))
     .filter((file) => !/\.test\.[jt]sx?$/.test(file))
     .map((file) => ({ path: file, text: readFileSync(path.join(REPO, file), "utf8") }));

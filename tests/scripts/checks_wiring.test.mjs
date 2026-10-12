@@ -26,12 +26,12 @@
 // corpus, so this file demonstrates a violation without containing one. It reads
 // `git ls-files` (the index) so a merely staged file is gated before any commit lands.
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 
 import { operationCheckName, repoRoot, responsesOf } from "../../scripts/generate_client.mjs";
+import { trackedFiles } from "./tracked.mjs";
 
 /** The definition site: its prose quotes `unwrap(` verbatim, and it never calls it. */
 const DEFINITION = "frontend/ui-core/src/data/errors.ts";
@@ -89,8 +89,7 @@ export function wrongChecks(files, expected) {
 }
 
 const corpus = () =>
-  execFileSync("git", ["ls-files", "frontend"], { cwd: repoRoot(), encoding: "utf8" })
-    .split("\n")
+  trackedFiles(["frontend"], repoRoot())
     .filter((line) => /\.[jt]sx?$/.test(line))
     .map((file) => ({ path: file, text: readFileSync(path.join(repoRoot(), file), "utf8") }));
 

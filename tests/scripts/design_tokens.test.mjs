@@ -24,6 +24,8 @@ import { test } from "node:test";
 
 import { brandUsagesIn, colouredClassesIn } from "@robomous/ui-core/gates";
 
+import { trackedFiles } from "./tracked.mjs";
+
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 const SOURCE = /\.(?:ts|tsx|css)$/;
@@ -31,11 +33,9 @@ const SOURCE = /\.(?:ts|tsx|css)$/;
 const GENERATED = /^frontend\/ui-core\/src\/generated\//;
 
 test("no frontend source puts a colour inside a class name", () => {
-  const listed = spawnSync("git", ["ls-files", "-z", "frontend"], { cwd: REPO, encoding: "utf8" });
-  assert.equal(listed.status, 0, `git ls-files failed: ${listed.stderr}`);
-  const tracked = listed.stdout
-    .split("\0")
-    .filter((name) => SOURCE.test(name) && !GENERATED.test(name));
+  const tracked = trackedFiles(["frontend"]).filter(
+    (name) => SOURCE.test(name) && !GENERATED.test(name),
+  );
   assert.ok(tracked.length > 0, "the scan found no frontend sources, so it proves nothing");
 
   const offenders = tracked.flatMap((file) =>
@@ -63,11 +63,9 @@ const BRAND_SITES = [
 ];
 
 test("the brand colour paints identity only — the wordmark and its styleguide swatch", () => {
-  const listed = spawnSync("git", ["ls-files", "-z", "frontend"], { cwd: REPO, encoding: "utf8" });
-  assert.equal(listed.status, 0, `git ls-files failed: ${listed.stderr}`);
-  const tracked = listed.stdout
-    .split("\0")
-    .filter((name) => SOURCE.test(name) && !GENERATED.test(name));
+  const tracked = trackedFiles(["frontend"]).filter(
+    (name) => SOURCE.test(name) && !GENERATED.test(name),
+  );
   assert.ok(tracked.length > 0, "the scan found no frontend sources, so it proves nothing");
 
   const usages = tracked.flatMap((file) =>
@@ -106,9 +104,7 @@ test("the brand colour paints identity only — the wordmark and its styleguide 
 const RETIRED_ICON_PACKAGE = ["@tabler", "icons-react"].join("/");
 
 test("no package declares a second icon set, and no source imports one", () => {
-  const listed = spawnSync("git", ["ls-files", "-z"], { cwd: REPO, encoding: "utf8" });
-  assert.equal(listed.status, 0, `git ls-files failed: ${listed.stderr}`);
-  const tracked = listed.stdout.split("\0").filter(Boolean);
+  const tracked = trackedFiles();
 
   const manifests = tracked.filter((name) => /(?:^|\/)package\.json$/.test(name));
   assert.ok(manifests.length > 0, "no manifests were read, so this proves nothing");
