@@ -51,3 +51,59 @@ export async function inspectImage(blob) {
   bitmap.close();
   return { ...size, rgb: [r, g, b], head: hex(0, 2), tail: hex(bytes.length - 2, 2) };
 }
+
+/**
+ * Eight solid-colour VP8 frames at 8 fps with key frames at 0 and 4, cut by dropping the
+ * first packet. Mediabunny's muxer refuses a first packet that is not labelled key, so
+ * the delta frame that now leads is labelled key — what a naive cutter writes. The
+ * decoder sees through the label (`verifyKeyPackets`), so the frames before the next
+ * real key frame have nothing to decode from and come back `null`.
+ */
+export async function cutMidGop(colours) {
+  const mb = await import("/mediabunny.mjs");
+  const canvas = new OffscreenCanvas(64, 64);
+  const context = canvas.getContext("2d");
+  const whole = new mb.Output({ format: new mb.WebMOutputFormat(), target: new mb.BufferTarget() });
+  const source = new mb.CanvasSource(canvas, {
+    codec: "vp8",
+    bitrate: mb.QUALITY_VERY_HIGH,
+    keyFrameInterval: 0.5,
+  });
+  whole.addVideoTrack(source, { frameRate: 8 });
+  await whole.start();
+  for (const [index, colour] of colours.entries()) {
+    context.fillStyle = colour;
+    context.fillRect(0, 0, 64, 64);
+    await source.add(index / 8, 1 / 8);
+  }
+  source.close();
+  await whole.finalize();
+
+  const input = new mb.Input({
+    source: new mb.BufferSource(whole.target.buffer),
+    formats: mb.ALL_FORMATS,
+  });
+  const track = await input.getPrimaryVideoTrack();
+  const decoderConfig = await track.getDecoderConfig();
+  const packets = [];
+  for await (const packet of new mb.EncodedPacketSink(track).packets()) packets.push(packet);
+
+  const cut = new mb.Output({ format: new mb.WebMOutputFormat(), target: new mb.BufferTarget() });
+  const passthrough = new mb.EncodedVideoPacketSource("vp8");
+  cut.addVideoTrack(passthrough, { frameRate: 8 });
+  await cut.start();
+  for (const [index, packet] of packets.slice(1).entries()) {
+    const type = index === 0 ? "key" : packet.type;
+    await passthrough.add(
+      new mb.EncodedPacket(packet.data, type, packet.timestamp, packet.duration),
+      index === 0 ? { decoderConfig } : undefined,
+    );
+  }
+  passthrough.close();
+  await cut.finalize();
+  input.dispose();
+  return {
+    encodedTypes: packets.map((packet) => packet.type),
+    file: new File([cut.target.buffer], "cut-mid-gop.webm"),
+  };
+}
