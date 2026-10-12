@@ -89,6 +89,10 @@ test("these script tests wake the job that actually runs them", () => {
   );
 });
 
+test("a server file a script gate reads wakes the job that runs the gate", () => {
+  assert.deepEqual(groupsFor("src/visionset/server/routes/video_imports.py"), ["docker", "frontend", "python"]);
+});
+
 test("the API contract wakes both sides of it", () => {
   // Python regenerates it and fails on drift; the frontend regenerates its client
   // from it and fails on drift. A change here has to face both.

@@ -19,14 +19,11 @@ import { describe, expect, it } from "vitest";
 
 import type { MaterializedFrame } from "@visionset/media";
 
-import { createLocalApiFrameSink } from "./frameSink";
+import { createLocalApiFrameSink, FRAMES_PER_REQUEST } from "./frameSink";
 import { createOssDataClient } from "./ossClient";
 
 const BASE = "http://visionset.test";
 const TARGET = { projectId: "p", importId: "i" };
-
-/** The bound the sink slices at, restated so a change to it fails here loudly. */
-const FRAMES_PER_REQUEST = 32;
 
 const IMPORT = {
   id: "i",
@@ -117,7 +114,9 @@ describe("what one append puts on the wire", () => {
     // did not slice with its files would attach every frame's metadata to the wrong
     // frame, and every part would still be well-formed.
     expect(first.descriptors).toHaveLength(FRAMES_PER_REQUEST);
-    expect(second.descriptors.map((one) => one.ordinal)).toEqual([32, 33, 34, 35, 36]);
+    expect(second.descriptors.map((one) => one.ordinal)).toEqual(
+      Array.from({ length: 5 }, (_, at) => FRAMES_PER_REQUEST + at),
+    );
   });
 
   it("sends nothing at all for an empty chunk", async () => {

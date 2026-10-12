@@ -20,11 +20,12 @@ import type { AbortSignal as AbortLike, FrameSink, MaterializedFrame } from "@vi
 /**
  * How many frame parts one request may carry — the server's own bound
  * (`routes/video_imports.py`), restated here because exceeding it is a 422 rather
- * than something a type could catch. The materializer's `FRAME_CHUNK_SIZE` is
- * smaller, so the loop below normally runs once; it exists because the sink's
- * contract takes an array of any length, not because the current caller needs it.
+ * than something a type could catch. `tests/scripts/frames_per_request.test.mjs`
+ * holds the two equal. The materializer's `FRAME_CHUNK_SIZE` is smaller, so the
+ * loop below normally runs once; it exists because the sink's contract takes an
+ * array of any length, not because the current caller needs it.
  */
-const FRAMES_PER_REQUEST = 32;
+export const FRAMES_PER_REQUEST = 32;
 
 /** The parallel array the frames route reads, one entry per uploaded part. */
 function descriptorsOf(frames: readonly MaterializedFrame[]): string {
