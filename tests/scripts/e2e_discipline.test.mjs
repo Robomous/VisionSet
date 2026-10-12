@@ -27,9 +27,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+
+import { trackedFiles } from "./tracked.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 // Both browser-driven suites. `bench/` is under the rule rather than being
@@ -83,9 +84,7 @@ test("the scan finds v1's sync points, and nothing that merely mentions them", (
 test("no end-to-end scenario waits on a clock", () => {
   const offenders = [];
   for (const suite of SUITES) {
-    const listed = spawnSync("git", ["ls-files", "-z", suite], { cwd: REPO, encoding: "utf8" });
-    assert.equal(listed.status, 0, `git ls-files failed: ${listed.stderr}`);
-    const tracked = listed.stdout.split("\0").filter((name) => SOURCE.test(name));
+    const tracked = trackedFiles([suite]).filter((name) => SOURCE.test(name));
     // Asserted per suite, not over the union: a renamed or emptied directory would
     // otherwise be covered by its neighbour and the scan would quietly prove less
     // than it says.

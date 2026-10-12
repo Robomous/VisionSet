@@ -10,11 +10,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 import { competingStatusPaletteIn, statusPaletteIn } from "@robomous/ui-core/gates";
+
+import { trackedFiles } from "./tracked.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SOURCE = /\.(?:ts|tsx|css)$/;
@@ -22,9 +23,7 @@ const GENERATED = /^frontend\/ui-core\/src\/generated\//;
 
 /** Every tracked `frontend` source, minus the generated client. */
 function frontendSources() {
-  const listed = spawnSync("git", ["ls-files", "-z", "frontend"], { cwd: REPO, encoding: "utf8" });
-  assert.equal(listed.status, 0, `git ls-files failed: ${listed.stderr}`);
-  return listed.stdout.split("\0").filter((name) => SOURCE.test(name) && !GENERATED.test(name));
+  return trackedFiles(["frontend"]).filter((name) => SOURCE.test(name) && !GENERATED.test(name));
 }
 
 const scan = (fn) =>

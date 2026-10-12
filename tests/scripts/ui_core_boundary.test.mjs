@@ -23,11 +23,12 @@
 // proven only by its positive case has not been proven against the case it exists
 // to distinguish from.
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+
+import { trackedFiles } from "./tracked.mjs";
 
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -35,8 +36,7 @@ const REPO = fileURLToPath(new URL("../../", import.meta.url));
  * source too — `tsc` compiles them, and a filter that only knew `.ts`/`.tsx`/`.js`/`.jsx`
  * would silently stop covering a file the moment one appeared. */
 function shippedSource() {
-  return execFileSync("git", ["ls-files", "frontend/ui-core/src"], { cwd: REPO, encoding: "utf8" })
-    .split("\n")
+  return trackedFiles(["frontend/ui-core/src"])
     .filter((file) => /\.[cm]?[jt]sx?$/.test(file))
     .filter((file) => !/\.test\.[jt]sx?$/.test(file))
     .filter((file) => !file.startsWith("frontend/ui-core/src/testing/"))

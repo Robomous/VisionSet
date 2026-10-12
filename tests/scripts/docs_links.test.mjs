@@ -61,9 +61,10 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+
+import { trackedFiles } from "./tracked.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -80,11 +81,7 @@ export const MARKDOWN = [".md", ".mdx"];
  * the headings other documents point at.
  */
 function markdownFiles() {
-  const listed = spawnSync("git", ["-C", REPO, "ls-files", ...MARKDOWN.map((e) => `*${e}`)], {
-    encoding: "utf8",
-  });
-  assert.equal(listed.status, 0, "git ls-files must succeed");
-  return listed.stdout.split("\n").filter(Boolean);
+  return trackedFiles(MARKDOWN.map((e) => `*${e}`), REPO);
 }
 
 /** Is this a document whose headings this gate can read? */
@@ -195,9 +192,7 @@ export function linksIn(source) {
 }
 
 test("every internal Markdown link resolves to a tracked file", () => {
-  const tracked = new Set(
-    spawnSync("git", ["-C", REPO, "ls-files"], { encoding: "utf8" }).stdout.split("\n"),
-  );
+  const tracked = new Set(trackedFiles([], REPO));
   const broken = [];
 
   for (const file of markdownFiles()) {
