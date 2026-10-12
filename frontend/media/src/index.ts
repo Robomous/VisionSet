@@ -212,7 +212,11 @@ export interface VideoImportProgress {
 export interface VideoImportResult {
   readonly materialized: number;
   readonly expected: number;
-  /** Grid ordinals with no sample — requested past the last frame, not faked. */
+  /**
+   * Grid ordinals with no sample — requested past the last frame, not faked. A run
+   * that was not cancelled accounts for its whole grid:
+   * `materialized + skipped.length === expected`.
+   */
   readonly skipped: number[];
 }
 
