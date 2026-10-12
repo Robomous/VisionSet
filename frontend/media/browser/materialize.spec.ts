@@ -221,3 +221,37 @@ test("a sink that rejects fails the import with the sink's own error", async ({ 
   }, HELPERS);
   expect(message).toBe("the batch is closed");
 });
+
+test("a clip cut mid-GOP skips the frames before its first real key frame", async ({ page }) => {
+  const outcome = await page.evaluate(
+    async ({ helpers, colours }) => {
+      const h = await import(helpers);
+      const { encodedTypes, file } = await h.cutMidGop(colours);
+      const sink = h.collecting();
+      const result = await (
+        await h.materializer()
+      ).materialize(file, { extractionFps: 8, ranges: [], scalePercent: 100 }, sink);
+      const frames = [];
+      for (const frame of sink.frames) {
+        frames.push({ ordinal: frame.ordinal, rgb: (await h.inspectImage(frame.bytes)).rgb });
+      }
+      return { encodedTypes, result, frames };
+    },
+    { helpers: HELPERS, colours: MANIFEST.colours },
+  );
+  // The precondition, so a change in the encoder's key-frame placement fails here
+  // rather than quietly turning this into a clip with nothing to skip.
+  expect(outcome.encodedTypes).toEqual([
+    "key", "delta", "delta", "delta", "key", "delta", "delta", "delta",
+  ]);
+  // The cut starts at source frame 1, so the grid is seven ordinals long and ordinal
+  // k asks for source frame k + 1. Frames 1-3 have no key frame to decode from.
+  expect(outcome.result).toEqual({ materialized: 4, expected: 7, skipped: [0, 1, 2] });
+  expect(outcome.result.materialized + outcome.result.skipped.length).toBe(
+    outcome.result.expected,
+  );
+  expect(outcome.frames.map((frame) => frame.ordinal)).toEqual([3, 4, 5, 6]);
+  outcome.frames.forEach((frame) => {
+    expectColour(frame.rgb as [number, number, number], MANIFEST.colours[frame.ordinal + 1]);
+  });
+});

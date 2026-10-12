@@ -19,6 +19,7 @@ import {
   type VideoInspection,
   type VideoSelection,
 } from "../index.js";
+import { walkGrid } from "../grid-walk.js";
 import { refusedInspection, type FromWorker, type ToWorker } from "./protocol.js";
 
 /**
@@ -122,7 +123,6 @@ async function materialize(file: File, selection: VideoSelection): Promise<numbe
       grid.map((clipRelative) => first + clipRelative),
     ) as AsyncGenerator<{ canvas: OffscreenCanvas; timestamp: number } | null>;
 
-    const skipped: number[] = [];
     let chunk: MaterializedFrame[] = [];
 
     // Never after a cancel: the decode loop can be several awaits deep when one
@@ -134,31 +134,28 @@ async function materialize(file: File, selection: VideoSelection): Promise<numbe
       await awaitAck();
     }
 
-    for (let position = 0; position < grid.length && !cancelled; position++) {
-      const next = await frames.next();
-      if (next.done === true) break;
-      const requestedTimestamp = grid[position];
-      // `gridTimestamps` yields `i / fps`; the ordinal a frame carries is that `i`.
-      const ordinal = Math.round(requestedTimestamp * selection.extractionFps);
-      if (next.value === null) {
-        skipped.push(ordinal);
-        continue;
-      }
-      const bytes = await next.value.canvas.convertToBlob({
-        type: VIDEO_FRAME_MEDIA_TYPE,
-        quality: VIDEO_FRAME_QUALITY,
-      });
-      chunk.push({
-        ordinal,
-        requestedTimestamp,
-        sourceTimestamp: next.value.timestamp - first,
-        width,
-        height,
-        format: "jpeg",
-        bytes,
-      });
-      if (chunk.length === FRAME_CHUNK_SIZE) await flush();
-    }
+    const skipped = await walkGrid(
+      grid,
+      selection.extractionFps,
+      frames,
+      async (sample, ordinal, requestedTimestamp) => {
+        const bytes = await sample.canvas.convertToBlob({
+          type: VIDEO_FRAME_MEDIA_TYPE,
+          quality: VIDEO_FRAME_QUALITY,
+        });
+        chunk.push({
+          ordinal,
+          requestedTimestamp,
+          sourceTimestamp: sample.timestamp - first,
+          width,
+          height,
+          format: "jpeg",
+          bytes,
+        });
+        if (chunk.length === FRAME_CHUNK_SIZE) await flush();
+      },
+      () => cancelled,
+    );
 
     await flush();
     return skipped;
