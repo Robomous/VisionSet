@@ -239,6 +239,10 @@ async function watch(page: Page): Promise<Log> {
         // silently counted as a body with nothing in it.
         unreadable = true;
       }
+      const signal = init?.signal ?? (input instanceof Request ? input.signal : null);
+      // Aborted while the clone was being read: fetch rejects without a request ever
+      // reaching Chromium, so it did not travel and the wire count cannot include it.
+      if (signal?.aborted) return native(input, init);
       sent.push({
         method: probe.method,
         path: new URL(probe.url, location.href).pathname,
