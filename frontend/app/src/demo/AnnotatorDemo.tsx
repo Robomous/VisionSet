@@ -36,11 +36,9 @@
  */
 
 import {
-  AnnotatorCanvas,
   DEFAULT_BINDINGS,
   TOGGLE_HELP,
   annotationsInDrawOrder,
-  classColor,
   hotkeyForClass,
   drawableGeometries,
   isTaggableClass,
@@ -50,9 +48,13 @@ import {
   toAnnotationCreate,
   toggleTagCommand,
   toolFor,
+} from "@visionset/annotator";
+import {
+  AnnotatorCanvas,
+  classColor,
   useAnnotatorSnapshot,
   useAnnotatorStore,
-} from "@visionset/annotator";
+} from "@visionset/annotator/react";
 import type { LabelClass, Viewport } from "@visionset/annotator";
 import { useCallback, useState } from "react";
 import type { CSSProperties, JSX, MouseEvent, ReactNode } from "react";

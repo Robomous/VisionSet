@@ -51,8 +51,8 @@ import {
   polygonBbox,
   replaceAnnotationCommand,
   selectedAnnotations,
-  useAnnotatorSnapshot,
 } from "@visionset/annotator";
+import { useAnnotatorSnapshot } from "@visionset/annotator/react";
 import type { AnnotatorStore, Geometry, Viewport } from "@visionset/annotator";
 import { Tag } from "lucide-react";
 import type { JSX } from "react";

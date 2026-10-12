@@ -37,10 +37,10 @@ Arrows are `dependencies` in each `package.json`. The interesting part is what i
 
 | Package | Depends on | Never |
 | --- | --- | --- |
-| [`annotator`](annotator.md) | nothing at runtime; `react` is an optional peer | HTTP, a design system, a router |
+| [`annotator`](annotator.md) | nothing at runtime; the root entrypoint is headless, and the optional `react` peer is touched only by the `./react` subpath | HTTP, a design system, a router |
 | [`media`](media.md) | nothing at runtime (core); its own `./mediabunny` subpath depends on `mediabunny` and the browser | React, HTTP, routing, a host — and the core entrypoint never touches `window`, `Worker` or `VideoDecoder` at module scope |
-| [`ui-core`](ui-core.md) | `@visionset/annotator`, `@visionset/media` **root entrypoint only**, Radix, TanStack Query; `openapi-fetch` is a dependency for consumer-resolvable type references in emitted declarations, never a runtime/value import | a router, HTTP, `@visionset/media/mediabunny`, or which transport a `FrameSink` uses |
-| [`app`](app.md) | all three of the above (`media`'s root **and** its `/mediabunny` subpath), `react-router`, `openapi-fetch` as an actual client | domain logic |
+| [`ui-core`](ui-core.md) | `@visionset/annotator` (root and `./react`), `@visionset/media` **root entrypoint only**, Radix, TanStack Query; `openapi-fetch` is a dependency for consumer-resolvable type references in emitted declarations, never a runtime/value import | a router, HTTP, `@visionset/media/mediabunny`, or which transport a `FrameSink` uses |
+| [`app`](app.md) | all three of the above (`annotator`'s root and `./react`; `media`'s root **and** its `/mediabunny` subpath), `react-router`, `openapi-fetch` as an actual client | domain logic |
 | [`browser-inference`](browser-inference.md) | `onnxruntime-web`, and nothing else — **no VisionSet package at all** | React, a host, HTTP, a model, or the `ui-core` port it deliberately does not implement |
 
 Read down the right-hand column and the architecture falls out. The annotator

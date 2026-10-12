@@ -16,12 +16,8 @@
  * unchanged by this file.
  */
 
-import {
-  AnnotationLayer,
-  EMPTY_SELECTION,
-  documentFromWire,
-  selectionOf,
-} from "@visionset/annotator";
+import { EMPTY_SELECTION, documentFromWire, selectionOf } from "@visionset/annotator";
+import { AnnotationLayer } from "@visionset/annotator/react";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { JSX } from "react";

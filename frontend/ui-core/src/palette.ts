@@ -28,7 +28,7 @@
  * function.
  */
 
-export { classColor } from "@visionset/annotator";
+export { classColor } from "@visionset/annotator/react";
 export type { LabelClass } from "@visionset/annotator";
 
 /**

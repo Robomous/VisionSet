@@ -33,13 +33,15 @@
  */
 
 import {
-  AnnotatorCanvas,
   annotationsInDrawOrder,
   selectedAnnotations,
   toAnnotationCreate,
+} from "@visionset/annotator";
+import {
+  AnnotatorCanvas,
   useAnnotatorSnapshot,
   useAnnotatorStore,
-} from "@visionset/annotator";
+} from "@visionset/annotator/react";
 import { useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 

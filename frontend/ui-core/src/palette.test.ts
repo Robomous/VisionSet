@@ -12,7 +12,7 @@
  * export, which is the only thing that can catch a well-meaning re-port.
  */
 
-import { classColor as fromEngine } from "@visionset/annotator";
+import { classColor as fromEngine } from "@visionset/annotator/react";
 import { describe, expect, it } from "vitest";
 
 import { CLASS_FILL_OPACITY, classColor, hexColor, type LabelClass } from "./palette";

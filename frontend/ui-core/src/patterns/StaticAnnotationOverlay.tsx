@@ -15,14 +15,8 @@
  */
 
 import type { CSSProperties, JSX } from "react";
-import {
-  BboxShape,
-  PolygonShape,
-  PolylineShape,
-  STROKE_PX,
-  parseGeometry,
-  type Geometry,
-} from "@visionset/annotator";
+import { parseGeometry, type Geometry } from "@visionset/annotator";
+import { BboxShape, PolygonShape, PolylineShape, STROKE_PX } from "@visionset/annotator/react";
 
 import type { WireAnnotation } from "../annotator/jobQueries";
 import { classColor, type LabelClass } from "../palette";

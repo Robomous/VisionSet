@@ -5,7 +5,7 @@
  * lands on the image's box is a browser fact and lives in `e2e/dataset.spec.ts`.
  */
 
-import { classColor } from "@visionset/annotator";
+import { classColor } from "@visionset/annotator/react";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 

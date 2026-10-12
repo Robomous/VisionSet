@@ -16,7 +16,8 @@
  * standing as `/demo` and `/styleguide`.
  */
 
-import { AnnotatorCanvas, AnnotatorStore, documentFromWire } from "@visionset/annotator";
+import { AnnotatorStore, documentFromWire } from "@visionset/annotator";
+import { AnnotatorCanvas } from "@visionset/annotator/react";
 import { AssetImage, VisionSetDataProvider } from "@visionset/ui-core";
 import type { DataResult, VisionSetDataClient } from "@visionset/ui-core";
 import { useEffect, useMemo, useState, type JSX } from "react";

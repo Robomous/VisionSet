@@ -73,7 +73,6 @@
 
 import {
   ACCEPT_SUGGESTION,
-  AnnotatorCanvas,
   DISCARD_SUGGESTION,
   MAX_ZOOM,
   MIN_ZOOM,
@@ -113,14 +112,11 @@ import {
   suggestGeometriesFor,
   suggestibleClassIn,
   toolFor,
-  useAnnotatorSnapshot,
-  usePendingIndicator,
   withClass,
   withPoint,
   withTolerance,
   type Answer,
   type AnnotatorStore,
-  type AnnotatorView,
   type Clipboard,
   type Point,
   type Polarity,
@@ -129,6 +125,12 @@ import {
   type Tool,
   type Viewport,
 } from "@visionset/annotator";
+import {
+  AnnotatorCanvas,
+  useAnnotatorSnapshot,
+  usePendingIndicator,
+  type AnnotatorView,
+} from "@visionset/annotator/react";
 import { AnnotatorStore as Store, WireFormatError, parseAssetDescriptor } from "@visionset/annotator";
 import { ArrowLeft, Check, CheckCheck, ChevronLeft, ChevronRight, CircleHelp, Eye, Grid3x3, MonitorSmartphone, MoreHorizontal, SkipForward, TriangleAlert, Undo2 } from "lucide-react";
 import {
