@@ -559,6 +559,136 @@ test("a clip is inspected, cut and imported here, and never uploaded", async ({ 
   });
 });
 
+test("a mid-clip selection keeps the clip's grid indices end to end", async ({
+  page,
+  request,
+}) => {
+  // Driven below the screen: its timeline selects whole seconds and the fixtures
+  // are one second long, so no mid-clip range is reachable by clicking. The decoder
+  // is still the built materializer, run in this page against the real server.
+  const MEDIA = path.resolve(import.meta.dirname, "..", "..", "media");
+  await page.route("**/__media/**", async (route) => {
+    const relative = new URL(route.request().url()).pathname.replace(/^\/__media\//, "");
+    await route.fulfill({
+      path: path.join(MEDIA, relative),
+      contentType: relative.endsWith(".js") ? "text/javascript" : "application/octet-stream",
+    });
+  });
+  const projectId = await projectAtIngest(page, request, "mid-clip-video-import");
+
+  const range = { startSeconds: 0.25, endSeconds: 0.5 };
+  const rate = MANIFEST.fps;
+  const materialized = await page.evaluate(
+    async ({ entry, range, rate }) => {
+      const { MediabunnyVideoMaterializer } = await import(entry);
+      const materializer = new MediabunnyVideoMaterializer();
+      const response = await fetch("/__media/test-fixtures/vp8.webm");
+      const file = new File([await response.arrayBuffer()], "vp8.webm");
+      const inspection = await materializer.inspect(file);
+      const frames: Record<string, unknown>[] = [];
+      await materializer.materialize(
+        file,
+        { extractionFps: rate, ranges: [range], scalePercent: 100 },
+        {
+          async append(chunk: { bytes: Blob; [key: string]: unknown }[]) {
+            for (const { bytes, ...frame } of chunk) {
+              const raw = new Uint8Array(await bytes.arrayBuffer());
+              frames.push({ ...frame, base64: btoa(String.fromCharCode(...raw)) });
+            }
+          },
+        },
+      );
+      return { durationSeconds: inspection.durationSeconds as number, frames };
+    },
+    { entry: "/__media/dist/mediabunny/index.js", range, rate },
+  );
+  const frames = materialized.frames as unknown as {
+    ordinal: number;
+    requestedTimestamp: number;
+    sourceTimestamp: number;
+    width: number;
+    height: number;
+    base64: string;
+  }[];
+  expect(materialized.durationSeconds).toBeCloseTo(DURATION, 3);
+
+  const first = Math.ceil(range.startSeconds * rate);
+  const grid = Array.from(
+    { length: expectedFrames([range], DURATION, rate) },
+    (_, index) => first + index,
+  );
+  expect(first).toBeGreaterThan(0);
+  expect(frames.map((frame) => frame.ordinal)).toEqual(grid);
+
+  const opened = await request.post(`/projects/${projectId}/video-imports`, {
+    headers: bearer(),
+    data: {
+      display_name: "vp8.webm",
+      metadata: {
+        width: MANIFEST.width,
+        height: MANIFEST.height,
+        fps: MANIFEST.fps,
+        duration_seconds: materialized.durationSeconds,
+        codec: "vp8",
+      },
+      extraction_fps: rate,
+      ranges: [{ start_seconds: range.startSeconds, end_seconds: range.endSeconds }],
+      scale_percent: 100,
+      batch_name: "mid-clip-batch",
+    },
+  });
+  expect(opened.ok(), `opening the import answered ${opened.status()}`).toBe(true);
+  const session = (await opened.json()) as { id: string; source_id: string };
+
+  const form = new FormData();
+  for (const frame of frames) {
+    form.append(
+      "files",
+      new Blob([Buffer.from(frame.base64, "base64")], { type: "image/jpeg" }),
+      `${frame.ordinal}.jpg`,
+    );
+  }
+  form.append(
+    "descriptors",
+    JSON.stringify(
+      frames.map((frame) => ({
+        ordinal: frame.ordinal,
+        requested_timestamp: frame.requestedTimestamp,
+        source_timestamp: frame.sourceTimestamp,
+        width: frame.width,
+        height: frame.height,
+      })),
+    ),
+  );
+  const appended = await request.post(`/video-imports/${session.id}/frames`, {
+    headers: bearer(),
+    multipart: form,
+  });
+  expect(appended.ok(), `appending frames answered ${appended.status()}`).toBe(true);
+
+  const committed = await request.post(`/video-imports/${session.id}/commit`, {
+    headers: bearer(),
+  });
+  expect(committed.ok(), `committing answered ${committed.status()}`).toBe(true);
+  const batch = (await committed.json()) as { id: string };
+
+  const assets = await request.get(`/batches/${batch.id}/assets`, { headers: bearer() });
+  const listed = (await assets.json()) as {
+    items: { frame_index: number; frame_timestamp: number }[];
+  };
+  const stored = [...listed.items].sort((a, b) => a.frame_index - b.frame_index);
+  expect(stored.map((asset) => asset.frame_index)).toEqual(grid);
+  stored.forEach((asset, index) => {
+    expect(asset.frame_timestamp).toBeCloseTo(grid[index] / rate, 6);
+  });
+
+  const source = await request.get(`/sources/${session.source_id}`, { headers: bearer() });
+  const provenance = (await source.json()) as { video: { ranges: unknown } | null };
+  expect(provenance.video?.ranges).toEqual([
+    { start_seconds: range.startSeconds, end_seconds: range.endSeconds },
+  ]);
+});
+
 test("an extraction larger than the server's ceiling arrives in bounded chunks", async ({
   page,
   request,
