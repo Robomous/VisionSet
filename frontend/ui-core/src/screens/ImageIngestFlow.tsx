@@ -82,6 +82,7 @@ import {
   type JSX,
 } from "react";
 
+import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
 import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardContent, Progress, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
 import { formatBytes, formatCount } from "../lib/format";
@@ -208,9 +209,12 @@ export function ImageIngestFlow({
     void queries.invalidateQueries({ queryKey: ["projects", projectId] });
   }, [settled, projectId, queries]);
 
-  // Only a draft batch may take an ingest. Anything else is refused at the launch
-  // with 409 `BATCH_NOT_EDITABLE`, so offering one would be offering a refusal.
-  const draftBatches = (batches.data?.items ?? []).filter((batch) => batch.state === "draft");
+  // Only a batch declaring `edit_membership` may take an ingest. Anything else is
+  // refused at the launch with 409 `BATCH_NOT_EDITABLE`, so offering one would be
+  // offering a refusal.
+  const editableBatches = (batches.data?.items ?? []).filter((batch) =>
+    declares(batch, BATCH_ACTION.editMembership),
+  );
 
   // What the source is called unless the user types otherwise.
   // Without a stated name the server calls the source by its staged directory,
@@ -305,7 +309,7 @@ export function ImageIngestFlow({
       ? batchName.trim() === ""
         ? (source?.name ?? "")
         : batchName.trim()
-      : (draftBatches.find((batch) => batch.id === batchChoice)?.name ?? "the batch");
+      : (editableBatches.find((batch) => batch.id === batchChoice)?.name ?? "the batch");
 
   return (
     <ol className="flex flex-col">
@@ -385,7 +389,7 @@ export function ImageIngestFlow({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value={NEW_BATCH}>New batch</SelectItem>
-                        {draftBatches.map((batch) => (
+                        {editableBatches.map((batch) => (
                           <SelectItem key={batch.id} value={batch.id}>
                             {batch.name} ({batch.asset_count})
                           </SelectItem>
