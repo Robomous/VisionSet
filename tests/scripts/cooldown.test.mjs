@@ -31,6 +31,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
+import { trackedFiles } from "./tracked.mjs";
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const read = (rel) => readFileSync(path.join(root, rel), "utf8");
 
@@ -192,10 +194,7 @@ test("pnpm is the only Node package manager invoked anywhere", () => {
   // file's `//` prose about `npx`. What survives is deliberately shape-based
   // rather than word-based: a manager named as the first argument of a call, or
   // opening a command string with arguments after it.
-  const listed = (...globs) =>
-    execFileSync("git", ["ls-files", ...globs], { cwd: root, encoding: "utf8" })
-      .split("\n")
-      .filter(Boolean);
+  const listed = (...globs) => trackedFiles(globs, root);
 
   const offenders = [];
   const flag = (file, i, line) => offenders.push(`${file}:${i + 1}: ${line.trim()}`);

@@ -15,6 +15,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
+import { trackedFiles } from "./tracked.mjs";
+
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
 const PACKAGE = fileURLToPath(new URL("../../frontend/annotator/", import.meta.url));
 const TSC = path.join(PACKAGE, "node_modules", ".bin", "tsc");
@@ -192,9 +194,7 @@ test("the scan finds the line v1 shipped, and nothing that merely names the type
 });
 
 test("no module builds a synthetic DOM event to talk to another module", () => {
-  const listed = spawnSync("git", ["ls-files", "-z", "frontend"], { cwd: REPO, encoding: "utf8" });
-  assert.equal(listed.status, 0, `git ls-files failed: ${listed.stderr}`);
-  const tracked = listed.stdout.split("\0").filter((name) => SOURCE.test(name));
+  const tracked = trackedFiles(["frontend"]).filter((name) => SOURCE.test(name));
   assert.ok(tracked.length > 0, "the scan found no frontend sources, so it proves nothing");
 
   const offenders = tracked.flatMap((file) =>
