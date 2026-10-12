@@ -20,7 +20,7 @@
  * Keeping those answers separate prevents a downloaded-but-not-running model from becoming a
  * target a click cannot actually use.
  */
-import type { RgbPixels } from "@visionset/annotator";
+import type { RgbPixels } from "@visionset/annotator/react";
 import type { SuggestionExecutor } from "./suggestionExecutor.js";
 
 /** A model this browser can run a suggestion with, right now. */

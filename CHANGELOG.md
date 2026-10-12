@@ -11,6 +11,13 @@ nothing was being distributed. This is the first version that is.
 
 ## [Unreleased]
 
+### Changed
+
+- **`@visionset/annotator` is headless at its root; the React adapter moved to `@visionset/annotator/react`.**
+  Importing the root no longer pulls in `react`, so the optional peer is genuinely optional. Breaking for
+  anything that imported a React adapter name (`AnnotatorCanvas`, `useAnnotatorSnapshot`, `classColor`, …)
+  from the root: import it from `@visionset/annotator/react` instead (#843).
+
 ## [0.0.1b4] — 2026-09-15
 
 ### Changed

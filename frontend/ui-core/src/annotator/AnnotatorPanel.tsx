@@ -75,13 +75,13 @@ import {
   selectOnly,
   taggedClassNames,
   toggleTagCommand,
-  useAnnotatorSnapshot,
   type Annotation,
   type AnnotationSchema,
   type AnnotatorStore,
   type LabelClass,
   type Tool,
 } from "@visionset/annotator";
+import { useAnnotatorSnapshot } from "@visionset/annotator/react";
 import { Check, Eye, EyeOff, Sparkles, Tag, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, type JSX, type RefObject } from "react";
 

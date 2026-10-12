@@ -1,10 +1,9 @@
+import { AnnotatorStore, documentFromWire } from "@visionset/annotator";
 import {
   AnnotatorCanvas,
-  AnnotatorStore,
-  documentFromWire,
   type DecodedAssetImage,
   type RgbPixels,
-} from "@visionset/annotator";
+} from "@visionset/annotator/react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 

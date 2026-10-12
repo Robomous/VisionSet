@@ -92,9 +92,10 @@ could set and never observe is a lie in the schema.
 
 ## Zero runtime dependencies
 
-`package.json` has no `dependencies` at all, and `react` is an optional
-`peerDependency` used only by the adapter. An application embedding the engine
-inherits nothing - which is also why the styled annotation panel lives in
+`package.json` has no `dependencies` at all. The root entrypoint is headless and never
+imports `react`; the React adapter is the separate `@visionset/annotator/react` subpath, and
+`react` is an optional `peerDependency` needed only by that subpath. `ui-core` and the app
+consume both. An application embedding the engine inherits nothing - which is also why the styled annotation panel lives in
 `ui-core` and not here: a design system inside `adapters/react` would be the first
 thing an embedder had to fight.
 

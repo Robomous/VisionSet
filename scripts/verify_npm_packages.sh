@@ -107,6 +107,42 @@ if grep -qE "$model_artifact_pattern" <<<"$inference_listing"; then
 fi
 echo "@visionset/browser-inference tarball carries no model weights (guard proved against three decoys)"
 
+# The annotator root is headless: it must install and evaluate with no `react` anywhere
+# in the tree. `react` is an optional peer, so a root import that reaches for it breaks
+# every non-React embedder — and the React-carrying consumer below cannot notice,
+# because it has `react` installed.
+headless="$work/headless"
+mkdir -p "$headless"
+cd "$headless"
+cat > package.json <<JSON
+{
+  "name": "visionset-headless-consumer",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@visionset/annotator": "file:$annotator_tgz"
+  }
+}
+JSON
+cat > pnpm-workspace.yaml <<YAML
+packages:
+  - "."
+YAML
+pnpm install --no-frozen-lockfile --reporter=silent
+if [ -e node_modules/react ] || [ -e node_modules/.pnpm/node_modules/react ]; then
+  echo "error: react was installed for a consumer of @visionset/annotator alone" >&2
+  exit 1
+fi
+cat > headless-check.mjs <<'JS'
+import assert from "node:assert";
+import { shapesFromMask } from "@visionset/annotator";
+const mask = { width: 1, height: 1, mask: Uint8Array.from([1]) };
+assert.equal(shapesFromMask(mask, { allowed: ["bbox"] }).length, 1);
+console.log("Node ESM import OK without react: @visionset/annotator (root, shapesFromMask)");
+JS
+node headless-check.mjs
+cd "$work"
+
 consumer="$work/consumer"
 mkdir -p "$consumer"
 cd "$consumer"
@@ -174,6 +210,7 @@ echo "no dependency resolved back into the workspace"
 cat > esm-check.mjs <<'JS'
 import assert from "node:assert";
 import "@visionset/annotator";
+import "@visionset/annotator/react";
 import "@visionset/ui-core";
 // The core entrypoint on its own: plain Node has no browser globals, so an
 // import that touches one (window, document, self, …) throws here rather than
@@ -222,6 +259,8 @@ JSON
 
 cat > ts-check.ts <<'TS'
 import { shapesFromMask, type BinaryMask, type ShapedGeometry } from "@visionset/annotator";
+import { AnnotatorStore } from "@visionset/annotator";
+import { useAnnotatorSnapshot } from "@visionset/annotator/react";
 import "@visionset/ui-core";
 import "@visionset/media";
 import type { MediabunnyVideoMaterializer } from "@visionset/media/mediabunny";
@@ -248,6 +287,11 @@ export type CreateEfficientSamRuntime = typeof createEfficientSamRuntime;
 const packedMask: BinaryMask = { width: 1, height: 1, mask: new Uint8Array([1]) };
 const packedShaped: readonly ShapedGeometry[] = shapesFromMask(packedMask, { allowed: ["bbox"] });
 void packedShaped;
+
+// A store built from the root must be accepted by the adapter's hook: if the two entries
+// each carried their own copy of the declarations, the private members would differ.
+declare const rootStore: AnnotatorStore;
+export const snapshotFromRootStore = () => useAnnotatorSnapshot(rootStore);
 
 type Equal<Left, Right> =
   (<Value>() => Value extends Left ? 1 : 2) extends

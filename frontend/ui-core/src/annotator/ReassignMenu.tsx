@@ -45,7 +45,8 @@
  * is the same argument the disabled rows exist for, applied one column over.
  */
 
-import { digitFromCode, hotkeyForClass } from "@visionset/annotator";
+import { hotkeyForClass } from "@visionset/annotator";
+import { digitFromCode } from "@visionset/annotator/react";
 import type { Annotation, AnnotationSchema, LabelClass } from "@visionset/annotator";
 import { Check } from "lucide-react";
 import type { JSX, KeyboardEvent } from "react";
