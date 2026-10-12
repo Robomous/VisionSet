@@ -53,13 +53,13 @@
     "vitest": "^5.0.3"
   },
   "dependencies": {
-    "@robomous/ui-core": "^0.2.1",
+    "@robomous/ui-core": "^0.5.0",
     "@tanstack/react-query": "^5.104.1",
     "@tanstack/react-virtual": "^3.14.13",
     "@visionset/annotator": "workspace:*",
     "@visionset/media": "workspace:*",
     "class-variance-authority": "^0.7.1",
-    "lucide-react": "^1.52.0",
+    "lucide-react": "^1.54.0",
     "openapi-fetch": "^0.17.0",
     "sonner": "^2.0.8"
   },
