@@ -67,6 +67,10 @@ frontend:
   # to `python`, whose pytest never collects them. Without this line, editing one
   # of those tests would run every suite except the one being edited.
   - "tests/scripts/**"
+  # Read as text by `tests/scripts/frames_per_request.test.mjs`, which holds the
+  # browser's upload chunk to this route's bound; a change to the bound alone has
+  # to wake the job that runs it.
+  - "src/visionset/server/routes/video_imports.py"
   - ".github/workflows/ci.yml"
   - ".github/path-filters.yml"
 
