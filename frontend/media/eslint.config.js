@@ -28,6 +28,12 @@ const BROWSER_HOST = [
   "Worker",
   "VideoDecoder",
   "OffscreenCanvas",
+  "fetch",
+  "Blob",
+  "File",
+  "URL",
+  "self",
+  "caches",
 ];
 
 const NO_BROWSER_HOST =
