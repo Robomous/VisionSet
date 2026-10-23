@@ -266,7 +266,7 @@ function ProjectPreLabelDialog({
               <li key={item.annotation_job_id} className="flex items-center justify-between gap-2">
                 <Button
                   variant="link"
-                  size="inline"
+                  className="h-auto p-0"
                   onClick={() => onOpenBatch(item.batch_id)}
                 >
                   {label}

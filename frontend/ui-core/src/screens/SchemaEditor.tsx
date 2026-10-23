@@ -804,8 +804,7 @@ export function SchemaEditor({
           )}
           <Button
             variant="link"
-            size="inline"
-            className="align-baseline text-xs"
+            className="h-auto p-0 align-baseline text-xs"
             data-testid="schema-reload"
             disabled={draftLocked}
             onClick={() => {
@@ -837,8 +836,7 @@ export function SchemaEditor({
           {refusalProse(staleDraftError)}{" "}
           <Button
             variant="link"
-            size="inline"
-            className="align-baseline text-xs"
+            className="h-auto p-0 align-baseline text-xs"
             data-testid="schema-reload-draft"
             disabled={draftLocked}
             onClick={() => {

@@ -54,7 +54,6 @@
  */
 
 import type { AssetProgress } from "../annotator/jobQueries.js";
-import { TONE_BORDER, TONE_FILL, type StatusTone } from "@robomous/ui-core";
 
 /**
  * The semantic tokens a status may wear, and the whole list of them.
@@ -65,11 +64,29 @@ import { TONE_BORDER, TONE_FILL, type StatusTone } from "@robomous/ui-core";
  * than a diff nobody notices. `outline` is on `BadgeTone` alone: it is a chip
  * treatment (a `card` fill on a hairline) rather than a colour, so nothing can
  * paint a dot or a timeline cell with it.
- *
- * Defined in `patterns/statusTone.ts` now, and re-exported here so `PROGRESS_TONE`
- * and the rest of this module's callers are unchanged.
  */
-export type { StatusTone };
+export type StatusTone = "neutral" | "accent" | "success" | "warning" | "destructive";
+
+/**
+ * A tone as the whole class names that draw it. `@robomous/ui-core` no longer
+ * ships these lookups — the roles are in its stylesheet and the class name is
+ * the API — so they are written out here, whole, for Tailwind to see.
+ */
+export const TONE_FILL = {
+  neutral: "bg-muted-foreground",
+  accent: "bg-primary",
+  success: "bg-success",
+  warning: "bg-warning",
+  destructive: "bg-destructive",
+} as const satisfies Record<StatusTone, string>;
+
+export const TONE_BORDER = {
+  neutral: "border-border",
+  accent: "border-primary",
+  success: "border-success",
+  warning: "border-warning",
+  destructive: "border-destructive",
+} as const satisfies Record<StatusTone, string>;
 
 /**
  * `StatusTone` translated into the shadcn `Badge` component's own variant

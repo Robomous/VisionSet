@@ -35,7 +35,7 @@ import { GalleryScreen, columnsFor } from "./GalleryScreen";
 import { renderWithData } from "../testing/dataHarness";
 import { assetActions, batchActions, jobActions, datasetOf } from "../testing/wire.fixtures.js";
 import type { components } from "../generated/api.js";
-import { TONE_BORDER, TONE_FILL } from "@robomous/ui-core";
+import { TONE_BORDER, TONE_FILL } from "./batchState";
 
 type BatchState = components["schemas"]["BatchState"];
 type JobState = components["schemas"]["AnnotationJobState"];

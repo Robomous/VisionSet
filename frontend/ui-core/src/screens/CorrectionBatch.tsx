@@ -285,8 +285,7 @@ export function CorrectionOf({
       ) : (
         <Button
           variant="link"
-          size="inline"
-          className="text-xs"
+          className="h-auto p-0 text-xs"
           data-testid="open-parent-batch"
           onClick={onOpenParent}
         >

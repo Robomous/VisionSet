@@ -5,15 +5,27 @@
  * runs in Robomous/ui-core; asserted here is VisionSet's extension layer:
  * `styles.css` declares exactly the `EXTENSIONS`, their values match the
  * token module in both themes, no extension shadows a foundation name, and
- * the merged view loses nothing.
+ * and `brand` stays the foundation's.
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { blockBody, declarations, foundationTokenNames, rawDeclarations } from "@robomous/ui-core/gates";
 import { describe, expect, it } from "vitest";
 
-import { DARK_THEME, EXTENSION_DARK, EXTENSION_LIGHT, EXTENSIONS, LIGHT_THEME } from "./tokens";
+import { blockBody, declarations, rawDeclarations } from "./testing/stylesheet";
+import { EXTENSION_DARK, EXTENSION_LIGHT, EXTENSIONS } from "./tokens";
+
+// The foundation's role vocabulary, written out so a name the package adds or
+// drops fails here rather than quietly changing what "shadowing" means.
+const FOUNDATION_NAMES = [
+  "background", "foreground", "card", "card-foreground", "popover", "popover-foreground",
+  "primary", "primary-foreground", "secondary", "secondary-foreground", "muted",
+  "muted-foreground", "accent", "accent-foreground", "success", "success-surface", "warning",
+  "warning-surface", "info", "info-surface", "destructive", "destructive-foreground", "border",
+  "input", "ring", "overlay", "sidebar", "sidebar-foreground", "sidebar-primary",
+  "sidebar-primary-foreground", "sidebar-accent", "sidebar-accent-foreground", "sidebar-border",
+  "sidebar-ring", "brand", "radius",
+];
 
 const STYLESHEET = readFileSync(fileURLToPath(new URL("./styles.css", import.meta.url)), "utf8");
 
@@ -42,23 +54,7 @@ describe("extension declarations", () => {
 
 describe("foundation boundary", () => {
   it("no extension shadows a foundation token name", () => {
-    const foundation = new Set(foundationTokenNames());
-    expect(EXTENSIONS.filter((name) => foundation.has(name))).toEqual([]);
-  });
-
-  it("the merged view is the foundation plus exactly the extensions — the split lost nothing", () => {
-    const merged = [...foundationTokenNames(), ...EXTENSIONS].sort();
-    expect(Object.keys(LIGHT_THEME).sort()).toEqual(merged);
-    expect(Object.keys(DARK_THEME).sort()).toEqual(merged);
-  });
-
-  // The literal is the point: `foundationTokenNames()` publishes the names and
-  // not the values, so pinning it here is the only way to state that `brand`
-  // arrives from the foundation and is never redeclared in this repository. It
-  // also means a foundation brand change lands as a failing test rather than as
-  // a silent repaint, which is why it is updated in the commit that adopts one.
-  it("brand stayed in the foundation", () => {
-    expect(LIGHT_THEME.brand).toBe("oklch(0.663 0.205 39.9)");
+    expect(EXTENSIONS.filter((name) => FOUNDATION_NAMES.includes(name))).toEqual([]);
   });
 });
 

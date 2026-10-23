@@ -63,7 +63,6 @@ import {
   FieldLegend,
   FieldSet,
   Input,
-  LIGHT_THEME,
   LoadingState,
   Progress,
   PROJECT_SECTIONS,
@@ -103,7 +102,8 @@ import {
   toast,
 } from "@visionset/ui-core";
 import { Info, MousePointer2, Plus, Square, Trash2 } from "lucide-react";
-import type { JSX, ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { CSSProperties, JSX, ReactNode } from "react";
 
 /** The demo schema, borrowed so the swatches show the real palette rule. */
 const CLASSES = [
@@ -156,7 +156,7 @@ export function Styleguide(): JSX.Element {
 
         <Section
           title="Colour"
-          description="Intent, never a value. The shadcn preset's own vocabulary, plus the foundation's brand and VisionSet's four justified extensions. Every caption is LIGHT_THEME's value for that name."
+          description="Intent, never a value. The shadcn preset's own vocabulary, plus the foundation's brand and VisionSet's four justified extensions. Every caption is the value the browser resolves for that swatch."
         >
           <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-2">
@@ -175,17 +175,6 @@ export function Styleguide(): JSX.Element {
                 <Swatch name="border" className="bg-border" />
                 <Swatch name="input" className="bg-input" />
                 <Swatch name="ring" className="bg-ring" />
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <h3 className="text-xs font-medium text-muted-foreground">Chart palette</h3>
-              <div className="flex flex-wrap gap-3">
-                <Swatch name="chart-1" className="bg-chart-1" />
-                <Swatch name="chart-2" className="bg-chart-2" />
-                <Swatch name="chart-3" className="bg-chart-3" />
-                <Swatch name="chart-4" className="bg-chart-4" />
-                <Swatch name="chart-5" className="bg-chart-5" />
               </div>
             </div>
 
@@ -212,7 +201,7 @@ export function Styleguide(): JSX.Element {
                 {/* The brand, shown here because a styleguide is where a value is
                     inspected rather than used. Its two product sites are the rail's
                     wordmark and the progress fill. */}
-                <Swatch name="brand" className="bg-brand" />
+                <Swatch name="brand" style={{ backgroundColor: "var(--brand)" }} />
                 <Swatch name="origin-hub" className="bg-origin-hub" />
                 <Swatch name="origin-custom" className="bg-origin-custom" />
                 <Swatch name="origin-robomous" className="bg-origin-robomous" />
@@ -241,7 +230,7 @@ export function Styleguide(): JSX.Element {
               <Trash2 className="size-4" aria-hidden="true" />
               Delete
             </Button>
-            <Button variant="link" size="inline">
+            <Button variant="link" className="h-auto p-0">
               Learn more
             </Button>
             <Button disabled>Disabled</Button>
@@ -788,12 +777,26 @@ function ComboboxDemo(): JSX.Element {
   );
 }
 
-function Swatch({ name, className }: { readonly name: string; readonly className: string }): JSX.Element {
+function Swatch({
+  name,
+  className = "",
+  style,
+}: {
+  readonly name: string;
+  readonly className?: string;
+  readonly style?: CSSProperties;
+}): JSX.Element {
+  const box = useRef<HTMLDivElement>(null);
+  const [value, setValue] = useState("");
+  // The stylesheet is the only copy of a token, so the caption asks the browser.
+  useEffect(() => {
+    if (box.current !== null) setValue(getComputedStyle(box.current).backgroundColor);
+  }, []);
   return (
     <div className="flex flex-col gap-1">
-      <div className={`size-16 rounded-md border border-border ${className}`} />
+      <div ref={box} className={`size-16 rounded-md border border-border ${className}`} style={style} />
       <span className="text-xs text-muted-foreground">{name}</span>
-      <span className="font-mono text-xs text-muted-foreground">{LIGHT_THEME[name]}</span>
+      <span className="font-mono text-xs text-muted-foreground">{value}</span>
     </div>
   );
 }

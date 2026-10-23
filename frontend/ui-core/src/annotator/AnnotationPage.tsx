@@ -2676,8 +2676,7 @@ function Workspace({
             declares({ allowed_actions: batchActions }, BATCH_ACTION.createCorrection) && (
               <Button
                 variant="link"
-                size="inline"
-                className="text-xs"
+                className="h-auto p-0 text-xs"
                 data-testid="banner-create-correction"
                 onClick={onOpenGallery}
               >

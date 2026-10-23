@@ -155,7 +155,7 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
                   <TableCell>
                     <Button
                       variant="link"
-                      size="inline"
+                      className="h-auto p-0"
                       data-testid={`open-${project.name}`}
                       onClick={() => onOpenProject(project.id)}
                     >
