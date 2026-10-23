@@ -153,7 +153,7 @@ export function PromoteButton({
       {promote.isSuccess && onOpenDataset !== undefined && (
         <Button
           variant="link"
-          size="inline"
+          className="h-auto p-0"
           data-testid={`promoted-open-dataset-${batch.name}`}
           onClick={onOpenDataset}
         >

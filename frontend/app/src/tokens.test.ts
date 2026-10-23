@@ -17,8 +17,31 @@ import { readFileSync } from "node:fs";
 // @ts-expect-error -- node-only import; see the file-level note above.
 import { fileURLToPath } from "node:url";
 
-import { blockBody, rawDeclarations } from "@robomous/ui-core/gates";
 import { describe, expect, it } from "vitest";
+
+/** The `{ … }` body of the block whose header appears first, matched by brace depth. */
+function blockBody(css: string, header: string): string {
+  const headerAt = css.indexOf(header);
+  if (headerAt === -1) throw new Error(`styles.css has no ${JSON.stringify(header)} block`);
+  const braceAt = css.indexOf("{", headerAt);
+  let depth = 1;
+  let i = braceAt + 1;
+  while (depth > 0 && i < css.length) {
+    if (css[i] === "{") depth++;
+    else if (css[i] === "}") depth--;
+    i++;
+  }
+  return css.slice(braceAt + 1, i - 1);
+}
+
+/** Every `--name: value;` declaration in a block, keyed with the leading `--`. */
+function rawDeclarations(block: string): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const match of block.matchAll(/(--[\w-]+):\s*([^;]+);/g)) {
+    map.set(match[1], match[2].replace(/\s+/g, " ").replace(/"/g, "'").trim());
+  }
+  return map;
+}
 
 const STYLESHEET = readFileSync(fileURLToPath(new URL("./styles.css", import.meta.url)), "utf8");
 

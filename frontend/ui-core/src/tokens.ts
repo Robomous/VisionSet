@@ -1,18 +1,13 @@
 /**
  * VisionSet's design-token extensions, layered over `@robomous/ui-core`.
  *
- * The foundation (shadcn preset + `brand`) lives in the package; VisionSet
- * keeps `stage` (the annotator's surround) and the three `origin-*` marks a
- * Models card's accent edge takes. `styles.css` here declares them following
- * shadcn's own extension convention, and `tokens.test.ts` asserts the two
- * agree, declaration for declaration. `LIGHT_THEME`/`DARK_THEME` re-export
- * the *merged* view so a caller reading `LIGHT_THEME.stage` — the styleguide's
- * swatch captions — keeps working unchanged.
+ * The foundation (shadcn preset + `brand`) lives in the package, whose
+ * stylesheet is the only copy of its values. VisionSet keeps `stage` (the
+ * annotator's surround) and the three `origin-*` marks a Models card's accent
+ * edge takes. `styles.css` here declares them following shadcn's own extension
+ * convention, and `tokens.test.ts` asserts the two agree, declaration for
+ * declaration.
  */
-import {
-  DARK_THEME as FOUNDATION_DARK,
-  LIGHT_THEME as FOUNDATION_LIGHT,
-} from "@robomous/ui-core";
 
 /** The variable names VisionSet keeps beyond the foundation's vocabulary. */
 export const EXTENSIONS = [
@@ -36,13 +31,4 @@ export const EXTENSION_DARK: Readonly<Record<string, string>> = Object.freeze({
   "origin-hub": "oklch(0.8 0.16 85)",
   "origin-custom": "oklch(0.65 0.15 250)",
   "origin-robomous": "oklch(0.68 0.17 35)",
-});
-
-export const LIGHT_THEME: Readonly<Record<string, string>> = Object.freeze({
-  ...FOUNDATION_LIGHT,
-  ...EXTENSION_LIGHT,
-});
-export const DARK_THEME: Readonly<Record<string, string>> = Object.freeze({
-  ...FOUNDATION_DARK,
-  ...EXTENSION_DARK,
 });

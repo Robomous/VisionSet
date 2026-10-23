@@ -46,7 +46,7 @@ import type { JSX } from "react";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
 import { classColor } from "../palette";
-import { cn, STATUS_INK, Button, Skeleton } from "@robomous/ui-core";
+import { Button, Skeleton } from "@robomous/ui-core";
 import { formatCount, formatPercent } from "../lib/format";
 import { EmptyState, ErrorState } from "../patterns/AsyncStates";
 import { DistributionBar, StatCard, ThumbnailGrid } from "../patterns/DataDisplay";
@@ -409,8 +409,7 @@ function FirstRun({
                 Or{" "}
                 <Button
                   variant="link"
-                  size="inline"
-                  className="text-xs"
+                  className="h-auto p-0 text-xs"
                   data-testid="first-run-alt"
                   onClick={onOpenSchema}
                 >
@@ -491,7 +490,7 @@ function Distribution({
           </div>
           {note !== null && (
             <p
-              className={cn("flex items-center gap-1.5 text-xs", STATUS_INK.warning)}
+              className="flex items-center gap-1.5 text-xs text-warning"
               data-testid="imbalance-note"
             >
               <TriangleAlert className="size-3.5 shrink-0" aria-hidden="true" />
@@ -550,8 +549,7 @@ function Samples({
       {onBrowseDataset !== undefined && (
         <Button
           variant="link"
-          size="inline"
-          className="self-start"
+          className="h-auto p-0 self-start"
           data-testid="browse-dataset"
           onClick={onBrowseDataset}
         >

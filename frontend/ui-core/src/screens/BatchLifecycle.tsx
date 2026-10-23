@@ -280,7 +280,7 @@ export function ApproveDialog({
                 {onOpenSchema !== undefined && (
                   <Button
                     variant="link"
-                    size="inline"
+                    className="h-auto p-0"
                     data-testid="approve-go-schema"
                     onClick={() => {
                       onClose();

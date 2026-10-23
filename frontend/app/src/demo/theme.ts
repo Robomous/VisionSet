@@ -5,8 +5,8 @@
  * ## Why this file exists beside the design system
  *
  * The design system replaced the *values*, which is the
- * half that mattered: every colour and radius below is read off
- * `@visionset/ui-core`'s `cssVar`/`THEME`, so there is one home for the
+ * half that mattered: every colour below is a `var(--role)` into
+ * `@visionset/ui-core`'s stylesheet, so there is one home for the
  * contract and this is a projection of it. What is left is a shape adapter —
  * `COLOR.primary` as a `var(--primary)` string for a `style={{}}` object, not
  * `bg-primary` as a class.
@@ -45,22 +45,20 @@
  * the only two values this file owns.
  */
 
-import { cssVar, THEME } from "@visionset/ui-core";
-
 /** `DESIGN.md` → colors. Intent names, never the value, at the call site. */
 export const COLOR = {
-  primary: cssVar("primary"),
+  primary: "var(--primary)",
   /** The Nova hover idiom (`hover:bg-primary/80`), as a `style={{}}` string. */
   primaryHover: "color-mix(in oklch, var(--primary) 80%, transparent)",
   /** The accent at 10% — chips and selected rows. */
   primarySoft: "color-mix(in oklch, var(--primary) 10%, transparent)",
-  background: cssVar("background"),
-  card: cssVar("card"),
-  muted: cssVar("muted"),
-  foreground: cssVar("foreground"),
-  mutedForeground: cssVar("muted-foreground"),
-  border: cssVar("border"),
-  destructive: cssVar("destructive"),
+  background: "var(--background)",
+  card: "var(--card)",
+  muted: "var(--muted)",
+  foreground: "var(--foreground)",
+  mutedForeground: "var(--muted-foreground)",
+  border: "var(--border)",
+  destructive: "var(--destructive)",
   /** The mat. See the exception above — the two values not in the contract. */
   well: "#0d1117",
   wellBorder: "#30363d",
@@ -92,7 +90,7 @@ export const RADIUS = {
  */
 export const SPACE = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 } as const;
 
-export const FONT_STACK = THEME.fontSans;
+export const FONT_STACK = "'Geist Variable', sans-serif";
 
 /** The type scale this showcase always used, kept as literals — see the note above. */
 export const TEXT = {

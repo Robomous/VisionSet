@@ -1,18 +1,14 @@
 /**
- * `DESIGN.md`'s first principle, machine-enforced: **never a colour in a class
- * string.**
+ * `DESIGN.md`'s first principle is *never a colour in a class string*. The
+ * coloured-class sweep that used to live here is two `no-restricted-syntax`
+ * selectors in the `ui-core` and `app` ESLint configs now, and `@robomous/ui-core`
+ * closes Tailwind's default palette, so a stray `bg-white` produces no CSS at all.
+ * What this file keeps is the repo scans over VisionSet's own tracked sources:
+ * the brand-sites gate, the one-icon-set rule, and the tailwind-config refusal.
  *
- * The scan helpers live in `@robomous/ui-core/gates` now — one spelling,
- * versioned with the primitives they describe, with their fabricated-input
- * self-tests running in that repo. What this file keeps is the repo scans
- * over VisionSet's own tracked sources: the coloured-classes sweep, the
- * brand-sites gate, the retired-declarations check on the extension
- * stylesheet, the one-icon-set rule, and the tailwind-config refusal.
- *
- * The bargain is `annotator_boundary.test.mjs`'s: the rules are pure
- * functions, proven with fabricated input where they live. These scans read
- * `git ls-files` — the **index** — so a merely staged file is checked before
- * any commit lands, and `node_modules/` and `dist/` stay out for free.
+ * These scans read `git ls-files` — the **index** — so a merely staged file is
+ * checked before any commit lands, and `node_modules/` and `dist/` stay out for
+ * free.
  */
 
 import assert from "node:assert/strict";
@@ -22,8 +18,6 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-import { brandUsagesIn, colouredClassesIn } from "@robomous/ui-core/gates";
-
 import { trackedFiles } from "./tracked.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -31,23 +25,6 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".
 const SOURCE = /\.(?:ts|tsx|css)$/;
 // The generated client is 6,000 machine-written lines and contains no class name.
 const GENERATED = /^frontend\/ui-core\/src\/generated\//;
-
-test("no frontend source puts a colour inside a class name", () => {
-  const tracked = trackedFiles(["frontend"]).filter(
-    (name) => SOURCE.test(name) && !GENERATED.test(name),
-  );
-  assert.ok(tracked.length > 0, "the scan found no frontend sources, so it proves nothing");
-
-  const offenders = tracked.flatMap((file) =>
-    colouredClassesIn(file, readFileSync(path.join(REPO, file), "utf8")),
-  );
-  assert.deepEqual(
-    offenders,
-    [],
-    "colour belongs to the token contract — add a token to " +
-      `frontend/ui-core/src/styles.css and name the intent:\n${offenders.join("\n")}`,
-  );
-});
 
 /**
  * The whole allowance: identity, and nowhere else. The rail's wordmark and the
@@ -57,6 +34,7 @@ test("no frontend source puts a colour inside a class name", () => {
  * number drifting. Sorted so the assertion is stable against `git ls-files`
  * ordering.
  */
+const BRAND_VARIABLE = /var\(--brand\)/;
 const BRAND_SITES = [
   "frontend/app/src/shell/AppShell.tsx",
   "frontend/app/src/styleguide/Styleguide.tsx",
@@ -68,16 +46,18 @@ test("the brand colour paints identity only — the wordmark and its styleguide 
   );
   assert.ok(tracked.length > 0, "the scan found no frontend sources, so it proves nothing");
 
-  const usages = tracked.flatMap((file) =>
-    brandUsagesIn(file, readFileSync(path.join(REPO, file), "utf8")),
+  // `@robomous/ui-core` exposes no `bg-brand` utility, so the only way to paint
+  // with it is to read the variable.
+  const usages = tracked.filter((file) =>
+    BRAND_VARIABLE.test(readFileSync(path.join(REPO, file), "utf8")),
   );
   assert.deepEqual(
-    usages.map((u) => u.file).sort(),
+    usages.sort(),
     BRAND_SITES,
     "DESIGN.md 'Where the brand is': brand is identity, never a functional control — " +
       "a new brand-coloured site is a design decision, not a widened list. Raise it in review " +
       "and update DESIGN.md and BRAND_SITES together:\n" +
-      usages.map((u) => `${u.file}:${u.at}: ${u.text}`).join("\n"),
+      usages.join("\n"),
   );
 });
 

@@ -136,7 +136,7 @@ export function BatchesScreen({
                     <div className="flex flex-col items-start">
                       <Button
                         variant="link"
-                        size="inline"
+                        className="h-auto p-0"
                         data-testid={`open-batch-${batch.name}`}
                         onClick={() => onOpenBatch(batch.id)}
                       >

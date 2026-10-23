@@ -34,7 +34,8 @@ a design decision and a PR against Robomous/ui-core, with the justification writ
 ## Where the brand is
 
 Robomous coral is identity: the `AppShell` wordmark and its styleguide swatch. Two sites,
-enumerated in `tests/scripts/design_tokens.test.mjs`. A functional control reaching for `brand`
+enumerated in `tests/scripts/design_tokens.test.mjs` (the package exposes no `bg-brand`, so a site
+paints with `var(--brand)`). A functional control reaching for `brand`
 is a semantic-colour violation however many other sites already use it correctly, and the gate
 and this section move together or not at all.
 
@@ -42,9 +43,8 @@ and this section move together or not at all.
 
 | Gate | Holds |
 | --- | --- |
-| `frontend/ui-core/src/tokens.test.ts` | The extension stylesheet and token module agree declaration for declaration; no extension shadows a foundation name; the merged `LIGHT_THEME`/`DARK_THEME` view lost nothing |
-| `tests/scripts/design_system.test.mjs` | Vocabulary discipline over VisionSet's own sources: no status colour outside the packaged Badge/statusTone, and no rival palette |
-| `tests/scripts/design_tokens.test.mjs` | No colour in a class string; `brand` confined to its two identity sites; one icon library; no `tailwind.config.js` |
+| `frontend/ui-core/src/tokens.test.ts` | The extension stylesheet and token module agree declaration for declaration; no extension shadows a foundation name |
+| `frontend/{ui-core,app}/eslint.config.js` | No colour inside a class string (`bg-[#fff]`, `ring-[var(--x)]`); the package closes Tailwind's default palette, so a named one produces no CSS |
+| `tests/scripts/design_tokens.test.mjs` | `brand` confined to its two identity sites; one icon library; no `tailwind.config.js` |
 
-The scan helpers those gates run come from `@robomous/ui-core/gates`, versioned with the
-primitives they describe. A rule no gate holds is a rule under review, not an exemption.
+The foundation's own token and palette gates run in `Robomous/ui-core`. A rule no gate holds is a rule under review, not an exemption.

@@ -125,7 +125,7 @@ export function AppShell(): JSX.Element {
           {!collapsed && (
             <span className="truncate text-base font-semibold">
               {/* The wordmark, and one of only two places `brand` is allowed. */}
-              Robomous <span className="text-brand">VisionSet</span>
+              Robomous <span style={{ color: "var(--brand)" }}>VisionSet</span>
             </span>
           )}
           <RailButton

@@ -26,7 +26,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
 import { AnnotationPage } from "./AnnotationPage";
-import { TooltipProvider, TONE_BORDER, TONE_FILL } from "@robomous/ui-core";
+import { TooltipProvider } from "@robomous/ui-core";
+import { TONE_BORDER, TONE_FILL } from "../screens/batchState";
 import { renderWithData } from "../testing/dataHarness";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";

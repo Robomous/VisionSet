@@ -1721,37 +1721,25 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     /*
      * **The aborted API calls, pinned rather than filtered away.**
      *
-     * Every entry answers `204 No Content`, and Chromium reports every such
-     * request as `net::ERR_ABORTED` — there is no body for the renderer to read,
-     * so the network stack tears the stream down and files it as cancelled.
-     * Measured, not assumed, for the first one: the deletion is committed (the
-     * `vehicle` class disappeared from the trunk two steps up), `save-state`
-     * read `Saved`, and the POST that follows it in `useSaveAnnotations` only
-     * fires after the DELETE's `await` resolves. It is bookkeeping, not a
-     * failure.
+     * The walk's `204 No Content` answers — `DELETE /batches/{id}`, the
+     * annotation delete and the recipe delete — used to be reported by Chromium
+     * as `net::ERR_ABORTED`, because there is no body for the renderer to read
+     * and the network stack filed the torn-down stream as cancelled. The
+     * Chromium that Playwright 1.64 ships reports them as completed, so the list
+     * is empty. Measured, not assumed: the server still logs all three as
+     * `204`, and the steps that send them assert the effect (the batch gone from
+     * the table, the `vehicle` class gone from the trunk, the recipe view back at
+     * its invitation).
      *
-     * `DELETE /batches/{id}` is the second `204` this client
-     * sends; the step that calls it asserts the batch is gone from the table and
-     * the trunk did not move, which is what "committed" means there. The
-     * annotation delete had no coverage before this walk at all, because nothing
-     * in the browser had ever deleted an annotation. The recipe delete is the
-     * third, committed the same way: the view was back at its invitation and
-     * the tab had stopped counting before the walk moved on.
-     *
-     * Asserted as an exact list, in walk order: a *fourth* aborted call, or one on
-     * another route, is the shape of a request the app really did abandon, and
-     * that is worth failing on.
+     * Asserted as an exact list: an aborted call is the shape of a request the
+     * app really did abandon, and that is worth failing on.
      *
      * Deliberate cancellations are the one exclusion, made at the collection
      * site: image-byte GETs (`/content`, `/thumbnail`) are aborted on unmount
      * on purpose (#572), and how many of them a walk produces is a matter of
      * navigation timing, not correctness.
      */
-    expect(abortedApiCalls).toEqual([
-      expect.stringMatching(/^DELETE .*\/batches\/[0-9a-f-]+$/),
-      expect.stringMatching(/^DELETE .*\/annotations$/),
-      expect.stringMatching(/^DELETE .*\/preprocessing-recipes\/[^/]+$/),
-    ]);
+    expect(abortedApiCalls).toEqual([]);
     /*
      * **The refused API calls, pinned rather than merely tolerated.**
      *

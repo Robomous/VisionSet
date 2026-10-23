@@ -37,14 +37,12 @@
  * package promises stays auditable — the rule `generated/api.ts` already follows.
  */
 
-// The design system, whole: primitives, lib helpers, statusTone, foundation
-// tokens. Everything it exports is re-exported here.
+// The design system, whole: primitives, lib helpers, foundation tokens.
+// Everything it exports is re-exported here.
 export * from "@robomous/ui-core";
 
-// The merged token view — foundation plus VisionSet's extensions, so
-// `LIGHT_THEME.stage` keeps answering. Explicit local exports take precedence
-// over the star. (`cssVar`/`THEME` arrive via the star.)
-export { DARK_THEME, EXTENSIONS, LIGHT_THEME } from "./tokens.js";
+// VisionSet's own token extensions, over the foundation's.
+export { EXTENSIONS } from "./tokens.js";
 
 // The class palette. Re-exported from the annotator, never respelled — see the
 // argument in `palette.ts`.
