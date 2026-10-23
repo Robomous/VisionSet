@@ -34,6 +34,12 @@
 //   - **a transitive dependency that decodes without saying so.** Lockfiles are scanned by name,
 //     which catches a decoder that arrives under its own, and nothing else.
 //
+// The first, second and fourth of those are closed at run time rather than here:
+// `tests/architecture/test_no_server_video_decoder.py` imports every module the distribution
+// ships in a fresh interpreter and asserts that no decoder module is loaded and no decoder
+// program is started — it sees the executable a call was actually given, after any assembly.
+// What stays open is a code path that decodes only given real input, which neither gate drives.
+//
 // So this is a tripwire against the *convenient* reintroduction — the one that arrives as a
 // one-line install, a new dependency, or an import somebody reached for without thinking — and
 // not a sandbox. Deliberate evasion is out of scope; review is what covers that.
@@ -45,7 +51,12 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
-const SELF = "tests/scripts/no_server_video_decode.test.mjs";
+// This file and its runtime counterpart are the two places the banned names are *listed*, so
+// they are the two the scan skips.
+const EXEMPT = new Set([
+  "tests/scripts/no_server_video_decode.test.mjs",
+  "tests/architecture/test_no_server_video_decoder.py",
+]);
 
 /** Every tracked file, from the index rather than the working tree. */
 function trackedFiles() {
@@ -124,7 +135,7 @@ const BANNED = [
 test("nothing that runs, installs or resolves can bring back a server-side video decoder", () => {
   const offences = [];
   for (const file of trackedFiles()) {
-    if (file === SELF) continue;
+    if (EXEMPT.has(file)) continue;
     if (SKIPPED_EXTENSIONS.has(path.extname(file).toLowerCase())) continue;
 
     let text;
