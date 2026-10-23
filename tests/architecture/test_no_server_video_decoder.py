@@ -128,7 +128,14 @@ import subprocess
 import sys
 
 spawned = []
-sys.addaudithook(lambda event, args: spawned.append(str(args[0])) if event == "subprocess.Popen" else None)
+
+
+def hook(event, args):
+    if event == "subprocess.Popen":
+        spawned.append(str(args[0]))
+
+
+sys.addaudithook(hook)
 
 name = "ff" + "mpeg"
 try:
