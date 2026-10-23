@@ -409,6 +409,29 @@ describe("launching a run", () => {
     expect(screen.queryByRole("option", { name: /frozen/ })).toBeNull();
   });
 
+  it("reads the offer off `edit_membership`, not off the batch's state", async () => {
+    on("GET", /\/batches$/, {
+      status: 200,
+      body: {
+        items: [
+          { id: "b1", project_id: PROJECT, name: "declared", state: "in_annotation", schema_version: 1, asset_count: 4, progress: NO_PROGRESS, allowed_actions: ["edit_membership"], promoted_asset_count: 0, parent_batch_id: null, pre_label_run: null },
+          { id: "b2", project_id: PROJECT, name: "withheld", state: "draft", schema_version: null, asset_count: 9, progress: NO_PROGRESS, allowed_actions: [], promoted_asset_count: 0, parent_batch_id: null, pre_label_run: null },
+        ],
+        total: 2,
+      },
+    });
+    on("POST", /\/sources\/images$/, { status: 201, body: IMAGE_SOURCE });
+
+    renderWithData(<IngestScreen projectId={PROJECT} />);
+    await choose([pick("a.png", "image/png")]);
+    await userEvent.click(screen.getByTestId("register-source"));
+    await screen.findByTestId("source-card");
+
+    await userEvent.click(screen.getByTestId("target-batch"));
+    expect(screen.queryByRole("option", { name: /declared/ })).not.toBeNull();
+    expect(screen.queryByRole("option", { name: /withheld/ })).toBeNull();
+  });
+
   it("names a new batch after the source when nobody typed one", async () => {
     on("GET", /\/batches$/, { status: 200, body: { items: [], total: 0 } });
     on("POST", /\/sources\/images$/, { status: 201, body: IMAGE_SOURCE });

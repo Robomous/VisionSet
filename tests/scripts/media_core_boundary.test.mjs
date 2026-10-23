@@ -7,17 +7,17 @@
 // the way `ui_core_boundary.test.mjs` backs ui-core. Type-level mentions of `Blob` and
 // `File` (`BlobLike`, `FileLike`) are legitimate and pass: only value uses are caught.
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
+import { trackedFiles } from "./tracked.mjs";
+
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
 
 function coreSource() {
-  return execFileSync("git", ["ls-files", "frontend/media/src"], { cwd: REPO, encoding: "utf8" })
-    .split("\n")
+  return trackedFiles(["frontend/media/src"])
     .filter((file) => /\.[cm]?[jt]sx?$/.test(file))
     .filter((file) => !/\.test\.[jt]sx?$/.test(file))
     .filter((file) => !file.startsWith("frontend/media/src/mediabunny/"))

@@ -38,9 +38,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+
+import { trackedFiles } from "./tracked.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -319,9 +320,7 @@ const RENDERED_INSIDE_FORMS = {
 
 /** Every tracked `frontend/**\/*.tsx`, read from the index. */
 function trackedTsx() {
-  const listed = spawnSync("git", ["ls-files", "-z", "frontend"], { cwd: REPO, encoding: "utf8" });
-  assert.equal(listed.status, 0, `git ls-files failed: ${listed.stderr}`);
-  const tracked = listed.stdout.split("\0").filter((name) => TSX.test(name));
+  const tracked = trackedFiles(["frontend"]).filter((name) => TSX.test(name));
   assert.ok(tracked.length > 0, "the scan found no frontend components, so it proves nothing");
   return tracked;
 }
