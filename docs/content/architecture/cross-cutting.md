@@ -53,7 +53,9 @@ account to hold either. `tests/scripts/no_server_video_decode.test.mjs` holds th
 negative side of this - no VisionSet code, image, workflow or dependency may name
 `ffmpeg`, `ffprobe`, or a server-side decoding library - because an optional decoder
 reintroduced "just for one case" is a decoder the OSS distribution now depends on
-again.
+again. Its runtime counterpart, `tests/architecture/test_no_server_video_decoder.py`, covers
+what a name cannot: in a fresh interpreter it imports the whole distribution and asserts no
+decoder module is loaded and no decoder program is started, however the name was assembled.
 
 > Reusable VisionSet packages declare ports; the standalone application and other
 > hosts supply adapters.
