@@ -281,6 +281,27 @@ test("componentRange covers a declaration with a destructured parameter, and sto
   assert.equal(componentRange(text, "Missing"), null);
 });
 
+test("the non-vacuity guard wants a button in every listed component, and a chain does not supply one", () => {
+  const sources = new Map([
+    ["holds.tsx", "export function Holds() {\n  return <Button type=\"button\">Go</Button>;\n}\n"],
+    ["empty.tsx", "export function Empty() {\n  return <span />;\n}\n"],
+    ["chain.tsx", "export function Chain() {\n  return <Holds />;\n}\n"],
+  ]);
+  assert.deepEqual(listedWithoutButton({ Holds: "holds.tsx" }, sources), []);
+  assert.deepEqual(listedWithoutButton({ Empty: "empty.tsx" }, sources), ["Empty"]);
+  // Rendering a listed component that does hold one is not holding one.
+  assert.deepEqual(
+    listedWithoutButton({ Holds: "holds.tsx", Chain: "chain.tsx" }, sources),
+    ["Chain"],
+  );
+  // Two components that only render each other: no link holds a button.
+  const loop = new Map([
+    ["a.tsx", "function A() {\n  return <B />;\n}\n"],
+    ["b.tsx", "function B() {\n  return <A />;\n}\n"],
+  ]);
+  assert.deepEqual(listedWithoutButton({ A: "a.tsx", B: "b.tsx" }, loop), ["A", "B"]);
+});
+
 test("formRanges spans the form and stops at its close", () => {
   const text = "x\n<form>\n  y\n</form>\nz\n";
   const [[from, to]] = formRanges(text);
@@ -305,18 +326,51 @@ test("formRanges spans the form and stops at its close", () => {
  * than quietly widening it, which is the failure mode an allow-list normally has.
  */
 const RENDERED_INSIDE_FORMS = {
-  // The chosen-files summary inside `ImageIngestFlow`'s upload form. It holds no
-  // `<Button>` of its own any more — it renders `ClearSelection`, below.
-  SelectionPanel: "frontend/ui-core/src/screens/ImageIngestFlow.tsx",
-  // The "Clear" control that summary renders. It lives in `ingestSteps.tsx` rather
-  // than beside the form because the ingest screen split into an image flow and a
-  // video flow and both offer it, so it became one spelling instead of two that
-  // could drift apart on a test id or an aria-label.
+  // The "Clear" control the chosen-files summary renders. It lives in `ingestSteps.tsx`
+  // rather than beside the form because the ingest screen split into an image flow and
+  // a video flow and both offer it, so it became one spelling instead of two that could
+  // drift apart on a test id or an aria-label. It reaches the image flow's upload form
+  // through `SelectionPanel`, below.
   ClearSelection: "frontend/ui-core/src/screens/ingestSteps.tsx",
   // `AsyncStates`' error card carries a Retry, and `ModelsScreen`'s connection
   // form renders one when the connection list fails to load.
   ErrorState: "frontend/ui-core/src/patterns/AsyncStates.tsx",
 };
+
+/**
+ * Components that sit between a form and a listed component and hold no `<Button>`
+ * themselves. They carry no allowance: nothing in them is scanned, and they are not
+ * required to contain a button. They exist so reachability can pass *through* them —
+ * `ClearSelection` is rendered by `SelectionPanel`, which the upload form renders.
+ *
+ * Kept apart from `RENDERED_INSIDE_FORMS` so that list's non-vacuity guard can stay
+ * strict: every name there holds a `<Button>` of its own, and a chain of components
+ * cannot vouch for one another without any of them holding the thing the gate is about.
+ */
+const FORM_PASS_THROUGH = {
+  SelectionPanel: "frontend/ui-core/src/screens/ImageIngestFlow.tsx",
+};
+
+/**
+ * The listed components whose own span holds no `<Button>`. A listed component is
+ * listed *because* it holds a button, so a span with none means the span is wrong
+ * (an earlier `componentRange` stopped at the destructured parameter list and every
+ * scan ran over JSX-free text) or the entry is dead. Rendering another listed
+ * component does not count: that is how a chain of them could pass with no button in
+ * any link.
+ */
+export function listedWithoutButton(listed, sources) {
+  return Object.entries(listed)
+    .filter(([name, file]) => {
+      const text = sources.get(file);
+      assert.ok(text !== undefined, `${name}'s file ${file} is not tracked`);
+      const range = componentRange(text, name);
+      assert.ok(range !== null, `${file} does not declare ${name}`);
+      return !/<Button(?=[\s/>])/.test(text.slice(...range));
+    })
+    .map(([name]) => name);
+}
+
 
 /** Every tracked `frontend/**\/*.tsx`, read from the index. */
 function trackedTsx() {
@@ -343,33 +397,17 @@ test("a form's buttons that live in another file are typed too, and the list nam
     trackedTsx().map((file) => [file, readFileSync(path.join(REPO, file), "utf8")]),
   );
 
+  assert.deepEqual(
+    listedWithoutButton(RENDERED_INSIDE_FORMS, sources),
+    [],
+    "a name in RENDERED_INSIDE_FORMS holds no <Button> of its own — either componentRange is " +
+      "not covering its JSX, or it belongs in FORM_PASS_THROUGH, or it should be dropped",
+  );
+
   const offenders = Object.entries(RENDERED_INSIDE_FORMS).flatMap(([name, file]) => {
     const text = sources.get(file);
     assert.ok(text !== undefined, `RENDERED_INSIDE_FORMS names ${file}, which is not tracked`);
-
-    // The non-vacuity guard, and it has already earned its place: an earlier
-    // `componentRange` stopped at the destructured parameter list, so this scan
-    // ran over a span with no JSX in it and reported nothing wrong. A component
-    // listed here is listed *because* it holds a button, so a span with none in
-    // it means the span is wrong, not that the code is clean.
-    const [from, to] = componentRange(text, name);
-    const span = text.slice(from, to);
-    // A listed component earns its place either by holding a button itself or by
-    // rendering another listed component that does — one hop, resolved through this
-    // list and never by following imports, which is the line the docstring above
-    // draws. Both halves still have to be true of every name: this one, and being
-    // reachable from a form below. What the second form admits is a component that
-    // is shared by two flows rather than declared beside the form it serves.
-    const rendersListed = Object.keys(RENDERED_INSIDE_FORMS).some(
-      (other) => other !== name && new RegExp(`<${other}(?=[\\s/>])`).test(span),
-    );
-    assert.ok(
-      /<Button(?=[\s/>])/.test(span) || rendersListed,
-      `${name} is listed as holding a button and the scanned span of ${file} has none, ` +
-        "and renders no other listed component either — componentRange is not covering " +
-        "the component's JSX",
-    );
-
+    // The non-vacuity guard is `listedWithoutButton`, asserted once below.
     return typelessButtonsInComponent(file, text, name);
   });
   assert.deepEqual(
@@ -382,10 +420,10 @@ test("a form's buttons that live in another file are typed too, and the list nam
   // The half that keeps the list honest: a name that no longer renders inside a
   // form is an allowance nobody is using, and it would go on excusing the file
   // from nothing while reading as though it meant something.
-  // Reachability, with the same single hop the button check allows: a name counts if
-  // it is used inside a `<form>`, or inside the span of another listed component that
-  // is itself used inside one. `seen` bounds it to one pass per name, so a pair of
-  // listed components rendering each other cannot vouch for itself in a cycle.
+  // Reachability, followed transitively: a name counts if it is used inside a `<form>`,
+  // or inside the span of a listed or pass-through component that is itself reachable.
+  // `seen` visits each name once, so components rendering each other cannot vouch for
+  // themselves in a cycle.
   const usedInside = (name, [from, to], text) => {
     const uses = new RegExp(`<${name}(?=[\\s/>])`, "g");
     let use;
@@ -395,12 +433,13 @@ test("a form's buttons that live in another file are typed too, and the list nam
     return false;
   };
 
+  const HOSTS = { ...RENDERED_INSIDE_FORMS, ...FORM_PASS_THROUGH };
   const insideSomeForm = (name, seen = new Set()) => {
     if (seen.has(name)) return false;
     seen.add(name);
     return [...sources].some(([, text]) =>
       formRanges(text).some((range) => usedInside(name, range, text)),
-    ) || Object.entries(RENDERED_INSIDE_FORMS).some(([host, hostFile]) => {
+    ) || Object.entries(HOSTS).some(([host, hostFile]) => {
       if (host === name) return false;
       const text = sources.get(hostFile);
       return (
