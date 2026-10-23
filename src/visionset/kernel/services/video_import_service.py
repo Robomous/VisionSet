@@ -604,6 +604,27 @@ class VideoImportService:
             BatchNotEditable: the target batch is no longer a draft.
             InvalidName: the resolved batch name is blank once stripped.
         """
+        try:
+            return self._commit_once(import_id)
+        except ConstraintViolated:
+            # Two commits that both read the session as open both materialize the
+            # same frames, and the second insert of an asset is refused by the
+            # ``(project_id, content_hash)`` index rather than settled by the
+            # state rule above. The refusal ends the transaction it happened in,
+            # so nothing the loser wrote survives it; the re-run reads the
+            # winner's ``COMMITTED`` row and answers its batch, which is what a
+            # repeated commit is documented to do.
+            #
+            # One retry, not a loop, for :meth:`append_frames`'s reason.
+            return self._commit_once(import_id)
+
+    def _commit_once(self, import_id: UUID) -> Batch:
+        """One pass of :meth:`commit`, in one transaction.
+
+        Raises:
+            ConstraintViolated: another commit materialized the same frames
+                between this one's read of the session and its write.
+        """
         with self._workspace.unit_of_work() as uow:
             session = self.require_import(uow, import_id)
             if session.state is VideoImportState.COMMITTED:
