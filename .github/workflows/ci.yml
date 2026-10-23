@@ -244,7 +244,7 @@ jobs:
       - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
         if: needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true'
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.1.0
         if: needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true'
         with:
           node-version-file: .nvmrc
@@ -321,7 +321,7 @@ jobs:
       - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
         if: needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true'
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.1.0
         if: needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true'
         with:
           node-version-file: .nvmrc
@@ -419,7 +419,7 @@ jobs:
       - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
         if: needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true'
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.1.0
         if: needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true'
         with:
           node-version-file: .nvmrc
@@ -484,7 +484,7 @@ jobs:
       - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
         if: needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true'
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.1.0
         if: needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true'
         with:
           node-version-file: .nvmrc
@@ -559,7 +559,7 @@ jobs:
       - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
         if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true' || needs.changes.outputs.frontend == 'true'
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.1.0
         if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true' || needs.changes.outputs.frontend == 'true'
         with:
           node-version-file: .nvmrc
@@ -633,7 +633,7 @@ jobs:
       - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
         if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true' || needs.changes.outputs.frontend == 'true'
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.1.0
         if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true' || needs.changes.outputs.frontend == 'true'
         with:
           node-version-file: .nvmrc
@@ -770,7 +770,7 @@ jobs:
       - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
         if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true' || needs.changes.outputs.frontend == 'true'
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.1.0
         if: needs.changes.result != 'success' || needs.changes.outputs.python == 'true' || needs.changes.outputs.frontend == 'true'
         with:
           node-version-file: .nvmrc
@@ -995,7 +995,7 @@ jobs:
 
       - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -1139,7 +1139,7 @@ jobs:
       - uses: pnpm/action-setup@v6.1.0 # reads packageManager from package.json
         if: needs.changes.result != 'success' || needs.changes.outputs.docs == 'true'
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.1.0
         if: needs.changes.result != 'success' || needs.changes.outputs.docs == 'true'
         with:
           node-version-file: .nvmrc
