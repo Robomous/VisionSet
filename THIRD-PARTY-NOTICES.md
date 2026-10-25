@@ -13,7 +13,7 @@ and under what terms, not legal advice.
 | | |
 | --- | --- |
 | Package | [`mediabunny`](https://www.npmjs.com/package/mediabunny) |
-| Licence | Mozilla Public License 2.0 |
+| Licence | [Mozilla Public License 2.0](https://www.mozilla.org/en-US/MPL/2.0/) |
 | Source | <https://github.com/Vanilagy/mediabunny> |
 | Used by | `@visionset/media`, and through it the browser bundle in the Python wheel |
 | Modified | **No.** Consumed as an unmodified published package. |
