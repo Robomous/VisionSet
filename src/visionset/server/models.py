@@ -41,7 +41,7 @@ import base64
 from collections.abc import Iterable
 from collections.abc import Set as AbstractSet
 from datetime import datetime
-from typing import Annotated, Generic, Literal, Self, TypeVar
+from typing import Annotated, Final, Generic, Literal, Self, TypeVar
 from uuid import UUID, uuid4
 
 from fastapi import Query
@@ -166,6 +166,13 @@ from visionset.kernel.domain import (
 from visionset.kernel.ports import Exporter, Provider
 
 T = TypeVar("T")
+
+# Client-supplied labels on the wire. The domain refuses a blank name and
+# nothing longer, so without this a client could store a megabyte as a batch
+# name. 255 is the common ceiling on a filename, which is what a display name
+# usually is, and no label a person types comes near it.
+WIRE_TEXT_MAX_LENGTH: Final = 255
+WireText = Annotated[str, Field(max_length=WIRE_TEXT_MAX_LENGTH)]
 
 # A gate is a query parameter and never a body field, so a client that gets a 409
 # resubmits the *identical* request with one extra parameter — which is what
@@ -859,7 +866,7 @@ class VideoMetadataBody(BaseModel):
     height: int = Field(ge=1)
     fps: float | None = Field(default=None, gt=0)
     duration_seconds: float = Field(gt=0)
-    codec: str = Field(min_length=1)
+    codec: WireText = Field(min_length=1)
 
     def to_domain(self) -> VideoMetadata:
         return VideoMetadata(
@@ -885,17 +892,17 @@ class VideoImportStart(BaseModel):
 
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
-    display_name: str
+    display_name: WireText
     metadata: VideoMetadataBody
     extraction_fps: float = Field(default=DEFAULT_EXTRACTION_FPS, gt=0)
     ranges: tuple[ClipRange, ...] = ()
     scale_percent: int = Field(default=100, ge=1, le=100)
     batch_id: UUID | None = None
-    batch_name: str | None = None
+    batch_name: WireText | None = None
     #: What decoded the frames, recorded as provenance beside the sampling policy
     #: — ``"mediabunny/1.56.1"`` and the like. Frame bytes are not reproducible
     #: across decoders, so the honest record is which one produced them.
-    materializer: str | None = None
+    materializer: WireText | None = None
 
     @model_validator(mode="after")
     def _one_destination_at_most(self) -> Self:
@@ -1027,7 +1034,7 @@ class IngestStart(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     batch_id: UUID | None = None
-    batch_name: str | None = None
+    batch_name: WireText | None = None
 
 
 # --- background jobs ----------------------------------------------------------

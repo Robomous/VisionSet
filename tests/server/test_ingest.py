@@ -29,6 +29,7 @@ from tests.server._api import api_client
 from tests.server._jobs import JOIN_TIMEOUT, InlineDispatcher, ManualDispatcher
 
 from visionset.kernel.services import WorkspaceService
+from visionset.server.models import WIRE_TEXT_MAX_LENGTH
 
 
 @pytest.fixture()
@@ -219,6 +220,19 @@ def test_a_blank_batch_name_is_the_domains_own_422_not_a_500(
     assert response.status_code == 422
     assert response.json()["code"] == "INVALID_NAME"
     assert queued_jobs(client) == 0
+
+
+def test_a_batch_name_is_bounded_at_the_wire(
+    client: TestClient, project: str, tmp_path: Path, runner: InlineDispatcher
+) -> None:
+    source = registered_images(client, project, png_part(tmp_path))
+
+    at_limit = launch(client, source, batch_name="x" * WIRE_TEXT_MAX_LENGTH)
+    over = launch(client, source, batch_name="x" * (WIRE_TEXT_MAX_LENGTH + 1))
+
+    assert at_limit.status_code == 202, at_limit.text
+    assert over.status_code == 422, over.text
+    assert over.json()["code"] == "VALIDATION_ERROR"
 
 
 def test_launching_over_an_unknown_source_is_404_and_starts_nothing(

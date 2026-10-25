@@ -381,7 +381,10 @@ to answer.
 means sending the bytes: one `files` part per image. A clip is never one of them - the server has
 no decoder, so no route takes a video file; `POST /video-imports/{id}/frames` takes the JPEG frames
 a browser already cut the clip into, one `files` part each beside a `descriptors` form field
-naming, in the same order, the grid ordinal and timestamps of every part. VisionSet sets **no size limit of its own** - parts are spooled to disk past 1 MiB
+naming, in the same order, the grid ordinal and timestamps of every part. That route takes at most
+32 parts per request, and the multipart parser itself refuses the 33rd - a 422 `VALIDATION_ERROR`
+answered before the part is written anywhere, not after every part was spooled and counted.
+VisionSet sets **no size limit of its own** - parts are spooled to disk past 1 MiB
 and streamed from there, so memory does not grow with the file - which means the real ceilings
 are your reverse proxy's (`client_max_body_size` in nginx) and free disk. Uploaded bytes are
 staged under `<workspace>/uploads/<digest>/` and, like blobs, are **never deleted**: a workspace
@@ -548,7 +551,8 @@ promote something into the dataset, pass `confirm=true`. Name and tag collisions
 `UNSERIALIZABLE_MANIFEST` and `RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA` - the request body is fine
 and the defect is in stored content, so reconcile the annotations and publish again.
 
-**422 - the payload itself is wrong.** A blank name, a schema that declares two classes with one
+**422 - the payload itself is wrong.** A blank name, an uploaded source's `name`, a video import's
+strings or an ingest run's `batch_name` longer than 255 characters, a schema that declares two classes with one
 name, an annotation that names a class the batch's pinned version does not have. Media failures
 are here as well: `UNSUPPORTED_MEDIA` and `CORRUPT_MEDIA` describe bytes that cannot become an
 asset - a file on disk the operator pointed at, or a video-import frame a client posted. They are

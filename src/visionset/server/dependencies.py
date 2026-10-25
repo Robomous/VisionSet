@@ -26,6 +26,7 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Annotated, Final
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.routing import APIRoute
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.requests import Request
 
@@ -393,7 +394,12 @@ that wants to *read* what it was given.
 """
 
 
-def protected_router(*, prefix: str = "", tags: Sequence[str] | None = None) -> APIRouter:
+def protected_router(
+    *,
+    prefix: str = "",
+    tags: Sequence[str] | None = None,
+    route_class: type[APIRoute] = APIRoute,
+) -> APIRouter:
     """A router whose every route requires a valid bearer token.
 
     The guard and the documented 401 travel together because a route that
@@ -414,4 +420,5 @@ def protected_router(*, prefix: str = "", tags: Sequence[str] | None = None) -> 
         tags=list(tags or []),
         dependencies=[Depends(require_token)],
         responses={401: ERROR_RESPONSES[401]},
+        route_class=route_class,
     )

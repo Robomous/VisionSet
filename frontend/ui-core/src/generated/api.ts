@@ -2700,7 +2700,9 @@ export interface paths {
          *
          *     `name` exists because the staged path's basename is a digest; a blank one is
          *     422 `INVALID_NAME`, refused by the kernel's own `InvalidName` — the domain
-         *     already refuses with a mapped error, so no wire validator restates it.
+         *     already refuses with a mapped error, so no wire validator restates it. One
+         *     longer than 255 characters is 422 `VALIDATION_ERROR`, a bound the domain
+         *     does not have.
          */
         post: operations["register_image_source"];
         delete?: never;
@@ -2819,6 +2821,9 @@ export interface paths {
          *     `BATCH_NOT_EDITABLE`. Every one of them is answered *here* rather than at
          *     commit: the alternative is telling somebody their target was unusable after
          *     they have spent minutes decoding a clip.
+         *
+         *     `display_name`, `batch_name`, `materializer` and `metadata.codec` are each
+         *     at most 255 characters, and a longer one is 422 `VALIDATION_ERROR`.
          *
          *     Every import registers a source of its own, so starting twice over one file
          *     is two sources and never a collision. Identical frames still deduplicate by
@@ -3136,8 +3141,8 @@ export interface paths {
          *     409 `BATCH_NOT_EDITABLE` — and an unknown one is 404 `BATCH_NOT_FOUND`. Both
          *     are answered here, before the job row is written, as is 404
          *     `SOURCE_NOT_FOUND` for the source this run would read. `batch_name` names a new batch instead,
-         *     and one that is blank once stripped is 422 `INVALID_NAME`;
-         *     passing neither uses the source's own name.
+         *     and one that is blank once stripped is 422 `INVALID_NAME`, one longer than
+         *     255 characters 422 `VALIDATION_ERROR`; passing neither uses the source's own name.
          */
         post: operations["start_ingest"];
         delete?: never;
@@ -3243,8 +3248,10 @@ export interface paths {
          * @description Stage a chunk of materialized frames, and answer the session's progress.
          *
          *     **A chunk, not a whole extraction**: at most 32 parts per request, and
-         *     beyond that is 422. Send as many requests as the clip needs; they may be
-         *     sent in any order, and the session's frame count is what tracks them.
+         *     beyond that is 422 — refused while the body is still being read, so the
+         *     part past the cap is never written anywhere. Send as many requests as the
+         *     clip needs; they may be sent in any order, and the session's frame count is
+         *     what tracks them.
          *
          *     A descriptor count that does not match the part count is 422 — the two
          *     arrays have drifted apart, and nothing here could pick which to believe.
