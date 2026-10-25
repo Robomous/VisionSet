@@ -17,6 +17,8 @@ from fastapi.testclient import TestClient
 from tests.fixtures.media import write_image
 from tests.server._api import api_client
 
+from visionset.server.models import WIRE_TEXT_MAX_LENGTH
+
 
 @pytest.fixture()
 def client(tmp_path: Path) -> Iterator[TestClient]:
@@ -175,6 +177,26 @@ def test_a_blank_name_is_422_with_the_kernel_wording(
 
     assert response.status_code == 422, response.text
     assert response.json()["code"] == "INVALID_NAME"
+
+
+def test_a_stated_name_is_bounded_at_the_wire(
+    client: TestClient, project: str, tmp_path: Path
+) -> None:
+    at_limit = client.post(
+        f"/projects/{project}/sources/images",
+        files=[image_part(tmp_path, "a.png", 1)],
+        data={"name": "x" * WIRE_TEXT_MAX_LENGTH},
+    )
+    over = client.post(
+        f"/projects/{project}/sources/images",
+        files=[image_part(tmp_path, "b.png", 2)],
+        data={"name": "x" * (WIRE_TEXT_MAX_LENGTH + 1)},
+    )
+
+    assert at_limit.status_code == 201, at_limit.text
+    assert over.status_code == 422, over.text
+    assert over.json()["code"] == "VALIDATION_ERROR"
+    assert over.json()["detail"]["errors"][0]["type"] == "string_too_long"
 
 
 # --- the route that used to take a clip --------------------------------------

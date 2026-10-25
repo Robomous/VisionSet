@@ -429,7 +429,8 @@ geometry and hold assets of another. Those are display dimensions, so a clip the
 needs nothing special, and a part is refused off its **weight** before any of that: the ceiling is
 that geometry's own raster, which no honest encoding of it exceeds, and it is read off the handle
 rather than after a decode. Parts are streamed, never read whole - `FRAMES_PER_REQUEST` bounds how
-many arrive and never how big one is. It is also **idempotent by content**: the same ordinal carrying the same
+many arrive and never how big one is, and the multipart parser enforces it, so the part past the
+cap is refused before it is spooled. It is also **idempotent by content**: the same ordinal carrying the same
 bytes is an ordinary retry and writes nothing; the same ordinal carrying different bytes is
 `FRAME_CONTENT_CONFLICT`, which a session cannot resolve on its own and has to be aborted and
 restarted - and that adjudication holds under two genuinely concurrent appends at one ordinal,

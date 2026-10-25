@@ -17,12 +17,15 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
+from starlette import formparsers
 from tests.fixtures.media import write_image
 from tests.server._api import api_client
 from tests.server._openapi import operations
 
+from visionset.kernel.services import VideoImportService
 from visionset.kernel.services.video_import_service import MAX_OPEN_IMPORTS
 from visionset.server.main import app
+from visionset.server.models import WIRE_TEXT_MAX_LENGTH
 from visionset.server.routes.video_imports import FRAMES_PER_REQUEST
 
 FRAME_SIZE = (32, 24)
@@ -333,6 +336,25 @@ def test_a_blank_name_is_the_kernels_own_422(client: TestClient, project: str) -
     assert response.json()["code"] == "INVALID_NAME"
 
 
+def _declared_with(field: str, value: str) -> dict[str, Any]:
+    if field == "codec":
+        return {"metadata": {**METADATA, "codec": value}}
+    return {field: value}
+
+
+@pytest.mark.parametrize("field", ["display_name", "batch_name", "materializer", "codec"])
+def test_a_declared_string_is_bounded_at_the_wire(
+    client: TestClient, project: str, field: str
+) -> None:
+    at_limit = start(client, project, **_declared_with(field, "x" * WIRE_TEXT_MAX_LENGTH))
+    over = start(client, project, **_declared_with(field, "x" * (WIRE_TEXT_MAX_LENGTH + 1)))
+
+    assert at_limit.status_code == 201, at_limit.text
+    assert over.status_code == 422, over.text
+    assert over.json()["code"] == "VALIDATION_ERROR"
+    assert over.json()["detail"]["errors"][0]["type"] == "string_too_long"
+
+
 def test_naming_a_batch_twice_over_is_a_422(client: TestClient, project: str) -> None:
     """A body that names a batch and asks for a new one says two different things."""
     response = start(client, project, batch_id=str(uuid4()), batch_name="drive")
@@ -536,7 +558,53 @@ def test_more_parts_than_the_cap_are_refused(
 
     assert response.status_code == 422, response.text
     assert response.json()["code"] == "VALIDATION_ERROR"
+    assert response.json()["detail"]["errors"][0]["loc"] == ["body", "files"]
     assert str(FRAMES_PER_REQUEST) in response.text
+
+
+def test_the_part_past_the_cap_is_refused_before_it_is_spooled(
+    client: TestClient, session: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The parser stops at the cap, rather than spooling every part for the handler to count."""
+    spooled: list[object] = []
+    real = formparsers.SpooledTemporaryFile
+
+    def counting(*args: Any, **kwargs: Any) -> Any:
+        spooled.append(None)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(formparsers, "SpooledTemporaryFile", counting)
+    appended: list[object] = []
+    monkeypatch.setattr(
+        VideoImportService, "append_frames", lambda *args, **kwargs: appended.append(args)
+    )
+    over = FRAMES_PER_REQUEST + 8
+    frame = jpeg(tmp_path, seed=0)
+
+    response = post_frames(
+        client, session, [frame] * over, [described(index) for index in range(over)]
+    )
+
+    assert response.status_code == 422, response.text
+    assert len(spooled) == FRAMES_PER_REQUEST
+    assert appended == []
+
+
+def test_exactly_the_cap_is_accepted_by_the_parser(
+    client: TestClient, session: str, tmp_path: Path
+) -> None:
+    """At the cap the request reaches the session, which then judges the frames themselves."""
+    frame = jpeg(tmp_path, seed=0)
+
+    response = post_frames(
+        client,
+        session,
+        [frame] * FRAMES_PER_REQUEST,
+        [described(index) for index in range(FRAMES_PER_REQUEST)],
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "FRAME_ORDINAL_OUT_OF_RANGE"
 
 
 def test_fewer_descriptors_than_parts_is_refused(

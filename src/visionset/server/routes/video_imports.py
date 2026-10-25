@@ -27,13 +27,15 @@ Reading a spooled upload is blocking I/O too.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import Annotated, BinaryIO, Final
+from collections.abc import Callable, Coroutine, Sequence
+from typing import Annotated, Any, BinaryIO, Final
 from uuid import UUID
 
-from fastapi import File, Form, UploadFile, status
+from fastapi import File, Form, Request, Response, UploadFile, params, status
 from fastapi.exceptions import RequestValidationError
+from fastapi.routing import APIRoute
 from pydantic import TypeAdapter, ValidationError
+from starlette.exceptions import HTTPException
 
 from visionset.kernel.domain import IncomingFrame
 from visionset.kernel.services import (
@@ -51,11 +53,6 @@ from visionset.server.models import (
     VideoImportStart,
 )
 
-project_router = protected_router(
-    prefix="/projects/{project_id}/video-imports", tags=["video imports"]
-)
-router = protected_router(prefix="/video-imports", tags=["video imports"])
-
 FRAMES_PER_REQUEST: Final = 32
 """How many frame parts one request may carry.
 
@@ -70,7 +67,55 @@ progress bar moves.
 It bounds the **count** and never the size, which is a different question with a
 different answer: parts arrive as streams and each one is refused off its own
 weight before it is read, in ``VideoImportService._stage``.
+
+The multipart parser enforces it — see ``_ChunkRoute`` — so the part past the
+cap is refused before it is spooled, rather than counted after all of them were.
 """
+
+_FIELDS_PER_REQUEST: Final = 8
+"""How many non-file parts the parser accepts. The route reads one, ``descriptors``."""
+
+
+class _ChunkRoute(APIRoute):
+    """A route whose multipart body is parsed under this module's caps.
+
+    FastAPI parses a form body with Starlette's defaults — a thousand files — and
+    caches the result on the request, so parsing it here first, with the caps, is
+    the parse the handler then reads. Starlette answers a cap it hits with a bare
+    400; the part cap is translated into the 422 the route documents, and any
+    other refusal is left as it was.
+    """
+
+    def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
+        handle = super().get_route_handler()
+        if not isinstance(getattr(self.body_field, "field_info", None), params.Form):
+            return handle
+
+        async def bounded(request: Request) -> Response:
+            try:
+                await request.form(max_files=FRAMES_PER_REQUEST, max_fields=_FIELDS_PER_REQUEST)
+            except HTTPException as exc:
+                if not str(exc.detail).startswith("Too many files."):
+                    raise
+                raise RequestValidationError(
+                    [
+                        {
+                            "type": "too_long",
+                            "loc": ("body", "files"),
+                            "msg": f"send at most {FRAMES_PER_REQUEST} frames per request",
+                            "input": None,
+                        }
+                    ]
+                ) from exc
+            return await handle(request)
+
+        return bounded
+
+
+project_router = protected_router(
+    prefix="/projects/{project_id}/video-imports", tags=["video imports"]
+)
+router = protected_router(prefix="/video-imports", tags=["video imports"], route_class=_ChunkRoute)
 
 _DESCRIPTORS: Final = TypeAdapter(tuple[FrameDescriptor, ...])
 
@@ -103,17 +148,6 @@ def _incoming(files: Sequence[UploadFile], descriptors: str) -> list[IncomingFra
     kernel has an opinion about. The same goes for the two counts disagreeing —
     nothing downstream could pick which array to believe.
     """
-    if len(files) > FRAMES_PER_REQUEST:
-        raise RequestValidationError(
-            [
-                {
-                    "type": "too_long",
-                    "loc": ("body", "files"),
-                    "msg": f"send at most {FRAMES_PER_REQUEST} frames per request",
-                    "input": len(files),
-                }
-            ]
-        )
     try:
         described = _DESCRIPTORS.validate_json(descriptors)
     except ValidationError as exc:
@@ -170,6 +204,9 @@ def start_video_import(
     `BATCH_NOT_EDITABLE`. Every one of them is answered *here* rather than at
     commit: the alternative is telling somebody their target was unusable after
     they have spent minutes decoding a clip.
+
+    `display_name`, `batch_name`, `materializer` and `metadata.codec` are each
+    at most 255 characters, and a longer one is 422 `VALIDATION_ERROR`.
 
     Every import registers a source of its own, so starting twice over one file
     is two sources and never a collision. Identical frames still deduplicate by
@@ -245,8 +282,10 @@ def append_video_import_frames(
     """Stage a chunk of materialized frames, and answer the session's progress.
 
     **A chunk, not a whole extraction**: at most 32 parts per request, and
-    beyond that is 422. Send as many requests as the clip needs; they may be
-    sent in any order, and the session's frame count is what tracks them.
+    beyond that is 422 — refused while the body is still being read, so the
+    part past the cap is never written anywhere. Send as many requests as the
+    clip needs; they may be sent in any order, and the session's frame count is
+    what tracks them.
 
     A descriptor count that does not match the part count is 422 — the two
     arrays have drifted apart, and nothing here could pick which to believe.

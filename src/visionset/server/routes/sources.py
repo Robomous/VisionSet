@@ -38,6 +38,7 @@ from visionset.kernel.services import IngestService, SourceService
 from visionset.server.dependencies import RunnerDep, WorkspaceDep, protected_router
 from visionset.server.errors import documented
 from visionset.server.models import (
+    WIRE_TEXT_MAX_LENGTH,
     IngestJobOut,
     IngestJobPage,
     IngestStart,
@@ -58,6 +59,7 @@ def register_image_source(
     name: Annotated[
         str | None,
         Form(
+            max_length=WIRE_TEXT_MAX_LENGTH,
             description=(
                 "What to call the source. Without one it is named by its staged "
                 "directory, whose basename is a content digest — 64 hex characters "
@@ -79,7 +81,9 @@ def register_image_source(
 
     `name` exists because the staged path's basename is a digest; a blank one is
     422 `INVALID_NAME`, refused by the kernel's own `InvalidName` — the domain
-    already refuses with a mapped error, so no wire validator restates it.
+    already refuses with a mapped error, so no wire validator restates it. One
+    longer than 255 characters is 422 `VALIDATION_ERROR`, a bound the domain
+    does not have.
     """
     # ``capture_params`` is not on the wire. It is an opaque operator-supplied
     # mapping, and threading a JSON object through a multipart form is a
@@ -139,8 +143,8 @@ def start_ingest(
     409 `BATCH_NOT_EDITABLE` — and an unknown one is 404 `BATCH_NOT_FOUND`. Both
     are answered here, before the job row is written, as is 404
     `SOURCE_NOT_FOUND` for the source this run would read. `batch_name` names a new batch instead,
-    and one that is blank once stripped is 422 `INVALID_NAME`;
-    passing neither uses the source's own name.
+    and one that is blank once stripped is 422 `INVALID_NAME`, one longer than
+    255 characters 422 `VALIDATION_ERROR`; passing neither uses the source's own name.
     """
     job = IngestService(workspace).enqueue(
         source_id,
