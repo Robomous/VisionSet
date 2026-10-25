@@ -14,7 +14,7 @@ would resolve to nothing for exactly the reader who needs this.
 | | |
 | --- | --- |
 | Package | [`mediabunny`](https://www.npmjs.com/package/mediabunny) |
-| Licence | Mozilla Public License 2.0 |
+| Licence | [Mozilla Public License 2.0](https://www.mozilla.org/en-US/MPL/2.0/) |
 | Source | <https://github.com/Vanilagy/mediabunny> |
 | Modified | **No.** Consumed as an unmodified published package. |
 
