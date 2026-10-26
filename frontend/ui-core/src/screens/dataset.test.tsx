@@ -261,6 +261,7 @@ const RECIPES = [
     },
     created_at: "2026-08-20T10:00:00.000000Z",
     updated_at: "2026-08-20T10:00:00.000000Z",
+    used_by: null,
   },
 ];
 

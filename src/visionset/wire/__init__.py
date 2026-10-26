@@ -106,6 +106,7 @@ from visionset.kernel.domain import (
     Project,
     ProjectPreview,
     RecipeSpec,
+    RecipeUsage,
     Release,
     ReleaseVerification,
     ResizeStep,
@@ -850,8 +851,26 @@ def recipe_spec(value: RecipeSpec) -> dict[str, Any]:
     }
 
 
-def preprocessing_recipe(value: PreprocessingRecipe) -> dict[str, Any]:
-    """A named recipe of a project. Binds at export by ``name``; the export keeps the spec."""
+def recipe_usage(value: RecipeUsage) -> dict[str, Any]:
+    """How many succeeded exports ran a recipe, and the newest one's release and target."""
+    return {
+        "export_count": value.export_count,
+        "release_id": str(value.release_id),
+        "release_tag": value.release_tag,
+        "target": value.target,
+        "format": value.format,
+    }
+
+
+def preprocessing_recipe(
+    value: PreprocessingRecipe, *, used_by: RecipeUsage | None
+) -> dict[str, Any]:
+    """A named recipe of a project. Binds at export by ``name``; the export keeps the spec.
+
+    ``used_by`` is required so no surface can forget it: a caller reads it from
+    ``PreprocessingRecipeService.usage`` and passes ``None`` for a name no
+    export ran.
+    """
     return {
         "id": str(value.id),
         "project_id": str(value.project_id),
@@ -859,6 +878,7 @@ def preprocessing_recipe(value: PreprocessingRecipe) -> dict[str, Any]:
         "spec": recipe_spec(value.spec),
         "created_at": _moment(value.created_at),
         "updated_at": _moment(value.updated_at),
+        "used_by": None if used_by is None else recipe_usage(used_by),
     }
 
 
@@ -883,6 +903,10 @@ def preprocessing_preview(value: PreprocessingPreview) -> dict[str, Any]:
         "variant": value.variant,
         "width": value.width,
         "height": value.height,
+        "original_width": value.original_width,
+        "original_height": value.original_height,
+        "frame_index": value.frame_index,
+        "source_name": value.source_name,
         "annotations": [transformed_annotation(one) for one in value.annotations],
         "image_base64": base64.b64encode(value.image).decode("ascii"),
         "media_type": value.media_type,

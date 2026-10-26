@@ -27,7 +27,9 @@ from typing import Final
 from uuid import UUID
 
 from visionset.kernel.domain import (
+    EXPORT_JOB_TYPE,
     Annotation,
+    BackgroundJobState,
     Manifest,
     ManifestAnnotation,
     ManifestAsset,
@@ -35,11 +37,13 @@ from visionset.kernel.domain import (
     PreprocessingRecipe,
     Project,
     RecipeSpec,
+    RecipeUsage,
     ResizeStep,
     ResizeStrategy,
     SplitAssignment,
     fit_within,
     normalize_name,
+    recipe_usage,
     transform_manifest,
 )
 from visionset.kernel.errors import (
@@ -246,6 +250,7 @@ class PreprocessingRecipeService:
                     _manifest_annotation(one) for one in uow.annotations.list(asset.id)
                 ),
             )
+            source = None if asset.source_id is None else uow.sources.get(asset.source_id)
         manifest = Manifest(schema_version=1, assets=(manifest_asset,))
         view = transform_manifest(
             manifest, spec, SplitAssignment(train=(asset.id,)), showcase=showcase
@@ -253,7 +258,7 @@ class PreprocessingRecipeService:
         file = next(one for one in view.files if one.variant == variant)
         try:
             with self._workspace.blob_store.get(asset.content_hash) as stream:
-                source = stream.read()
+                pixels = stream.read()
         except FileNotFoundError as exc:
             raise ExportSourceUnreadable(
                 f"asset {asset.id} ({asset.content_hash}) is not in the blob store"
@@ -261,7 +266,7 @@ class PreprocessingRecipeService:
         image = transformed_bytes(
             spec,
             drivers,
-            source,
+            pixels,
             content_hash=asset.content_hash,
             variant=variant,
             showcase=showcase,
@@ -278,10 +283,39 @@ class PreprocessingRecipeService:
             variant=variant,
             width=fitted.width,
             height=fitted.height,
+            original_width=asset.width,
+            original_height=asset.height,
+            frame_index=asset.frame_index,
+            source_name=None if source is None else source.name,
             annotations=fitted.annotations,
             image=image,
             media_type=_media_type(image),
         )
+
+    def usage(self, project_id: UUID) -> dict[str, RecipeUsage]:
+        """Which succeeded exports of the project's releases ran each recipe, keyed by name.
+
+        Read once for the whole project — the queue's export jobs and the
+        project's releases, two reads whatever the number of recipes — so a
+        recipe listing pays nothing per row. A name with no export is absent.
+        Matched by the name the export's snapshot carries; see
+        ``visionset.kernel.domain.export_job`` for what that does and does not
+        follow.
+
+        Raises:
+            ProjectNotFound: no such project in this workspace.
+        """
+        with self._workspace.unit_of_work() as uow:
+            self._require_project(uow, project_id)
+            releases = {
+                release.id: release
+                for dataset in uow.datasets.list(project_id)
+                for release in uow.releases.list(dataset.id)
+            }
+        jobs = self._workspace.job_queue.list(
+            states={BackgroundJobState.SUCCEEDED}, types={EXPORT_JOB_TYPE}
+        )
+        return recipe_usage(jobs, releases)
 
     def list(self, project_id: UUID) -> list[PreprocessingRecipe]:
         """Every recipe of the project, oldest first.

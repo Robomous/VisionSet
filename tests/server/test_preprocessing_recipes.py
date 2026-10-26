@@ -198,6 +198,21 @@ def test_the_preview_renders_the_asset_through_the_spec(
     assert body["annotations"] == []
 
 
+def test_the_preview_names_its_source_and_the_size_the_asset_recorded(
+    client: TestClient, asset: tuple[str, str]
+) -> None:
+    project_id, asset_id = asset
+    stored = client.get(f"/projects/{project_id}/assets/{asset_id}").json()
+    source = client.get(f"/sources/{stored['source_id']}").json()
+
+    body = _preview(client, project_id, {"spec": AUGMENTED, "asset_id": asset_id}).json()
+
+    assert (body["original_width"], body["original_height"]) == (stored["width"], stored["height"])
+    assert (body["original_width"], body["original_height"]) != (body["width"], body["height"])
+    assert body["source_name"] == source["name"]
+    assert body["frame_index"] is None
+
+
 def test_a_showcase_preview_renders_and_the_default_is_the_seeded_draw(
     client: TestClient, asset: tuple[str, str]
 ) -> None:

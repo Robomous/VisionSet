@@ -2,18 +2,33 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import Path
+from typing import Any
+from uuid import UUID, uuid4
 
 import pytest
+from tests.fixtures.media import write_image
+from tests.fixtures.samples import SOURCE
 from tests.kernel.test_release_service import SIGN, Fixture
 
 from visionset.kernel.domain import (
+    EXPORT_JOB_TYPE,
+    Asset,
     AugmentOp,
     AugmentStep,
+    BackgroundJob,
+    BackgroundJobOutcome,
+    BackgroundJobSpec,
+    BackgroundJobState,
     RecipeSpec,
+    RecipeUsage,
+    Release,
     ResizeStep,
     ResizeStrategy,
     SplitRecipe,
+    export_job_payload,
+    recipe_usage,
 )
 from visionset.kernel.errors import (
     InvalidName,
@@ -28,6 +43,7 @@ from visionset.kernel.services import (
     ReleaseService,
     WorkspaceService,
 )
+from visionset.preprocessing.registry import drivers
 
 LETTERBOX = RecipeSpec(
     target="yolo11",
@@ -209,3 +225,161 @@ def test_release_service_is_untouched_by_recipes(tmp_path: Path) -> None:
     after = ReleaseService(fixture.workspace).publish(dataset_id, "v2").manifest_hash
     assert before == after
     fixture.close()
+
+
+# --- the preview's provenance -------------------------------------------------------
+
+
+def _stored_asset(
+    workspace: WorkspaceService, project_id: UUID, tmp_path: Path, **fields: Any
+) -> UUID:
+    image = write_image(tmp_path / f"{uuid4()}.png", size=(96, 48))
+    content_hash = workspace.blob_store.put(BytesIO(image.read_bytes()))
+    with workspace.unit_of_work() as uow:
+        return uow.assets.add(
+            Asset(
+                project_id=project_id,
+                content_hash=content_hash,
+                uri=str(image),
+                width=96,
+                height=48,
+                **fields,
+            )
+        ).id
+
+
+def test_the_preview_names_its_frame_its_source_and_its_recorded_size(
+    workspace: WorkspaceService, tmp_path: Path
+) -> None:
+    project = ProjectService(workspace).create("p")
+    source = SOURCE.model_copy(
+        update={"id": uuid4(), "project_id": project.id, "display_name": "Highway — August"}
+    )
+    with workspace.unit_of_work() as uow:
+        uow.sources.add(source)
+    asset_id = _stored_asset(
+        workspace,
+        project.id,
+        tmp_path,
+        source_id=source.id,
+        frame_index=1188,
+        frame_timestamp=118.8,
+    )
+
+    preview = PreprocessingRecipeService(workspace).preview(
+        project.id, LETTERBOX, asset_id, variant=0, drivers=drivers()
+    )
+
+    assert (preview.width, preview.height) == (512, 512)
+    assert (preview.original_width, preview.original_height) == (96, 48)
+    assert (preview.frame_index, preview.source_name) == (1188, "Highway — August")
+
+
+def test_a_still_with_no_recorded_source_previews_with_null_provenance(
+    workspace: WorkspaceService, tmp_path: Path
+) -> None:
+    project = ProjectService(workspace).create("p")
+    asset_id = _stored_asset(workspace, project.id, tmp_path)
+
+    preview = PreprocessingRecipeService(workspace).preview(
+        project.id, LETTERBOX, asset_id, variant=0, drivers=drivers()
+    )
+
+    assert (preview.original_width, preview.original_height) == (96, 48)
+    assert (preview.frame_index, preview.source_name) == (None, None)
+
+
+# --- usage ------------------------------------------------------------------------
+
+
+def _ran(
+    workspace: WorkspaceService,
+    release_id: UUID,
+    recipe: str | None,
+    *,
+    state: BackgroundJobState = BackgroundJobState.SUCCEEDED,
+    target: str | None = None,
+) -> None:
+    spec = None if recipe is None else (recipe, LETTERBOX)
+    queue = workspace.job_queue
+    queue.enqueue(
+        BackgroundJobSpec(
+            type=EXPORT_JOB_TYPE,
+            payload=export_job_payload(
+                release_id, "yolov8", target=target, allow_lossy=False, recipe=spec
+            ),
+        )
+    )
+    claimed = queue.claim("test")
+    assert claimed is not None
+    queue.finish(
+        claimed.id,
+        BackgroundJobOutcome(
+            state=state, error=None if state is BackgroundJobState.SUCCEEDED else "boom"
+        ),
+    )
+
+
+def test_usage_counts_the_projects_succeeded_exports_by_recipe_name(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    dataset_id = fixture.ready()
+    first = fixture.releases.publish(dataset_id, "v1")
+    second = fixture.releases.publish(dataset_id, "v2")
+    recipes = PreprocessingRecipeService(fixture.workspace)
+    assert recipes.usage(fixture.project.id) == {}
+
+    _ran(fixture.workspace, first.id, "lb")
+    _ran(fixture.workspace, second.id, "lb", target="ultralytics-yolo11")
+    _ran(fixture.workspace, second.id, "lb", state=BackgroundJobState.FAILED)
+    _ran(fixture.workspace, second.id, None)
+    _ran(fixture.workspace, uuid4(), "lb")
+
+    usage = recipes.usage(fixture.project.id)
+
+    assert usage == {
+        "lb": RecipeUsage(
+            export_count=2,
+            release_id=second.id,
+            release_tag="v2",
+            target="ultralytics-yolo11",
+            format="yolov8",
+        )
+    }
+    with pytest.raises(ProjectNotFound):
+        recipes.usage(uuid4())
+    fixture.close()
+
+
+def test_recipe_usage_reads_only_succeeded_exports_newest_first() -> None:
+    release = Release(
+        dataset_id=uuid4(),
+        tag="v1",
+        manifest_hash="0" * 64,
+        schema_version=1,
+        asset_count=0,
+        annotation_count=0,
+    )
+
+    def job(
+        state: BackgroundJobState, *, kind: str = EXPORT_JOB_TYPE, fmt: str = "coco"
+    ) -> BackgroundJob:
+        payload = export_job_payload(
+            release.id, fmt, target=None, allow_lossy=False, recipe=("lb", LETTERBOX)
+        )
+        return BackgroundJob(type=kind, payload=payload, state=state)
+
+    usage = recipe_usage(
+        [
+            job(BackgroundJobState.FAILED, fmt="newest-but-failed"),
+            job(BackgroundJobState.SUCCEEDED, kind="annotation.pre_label", fmt="not-an-export"),
+            job(BackgroundJobState.SUCCEEDED, fmt="yolov8"),
+            job(BackgroundJobState.SUCCEEDED),
+        ],
+        {release.id: release},
+    )
+
+    assert usage == {
+        "lb": RecipeUsage(
+            export_count=2, release_id=release.id, release_tag="v1", target=None, format="yolov8"
+        )
+    }

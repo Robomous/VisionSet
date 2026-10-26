@@ -51,6 +51,7 @@ from tests.fixtures.samples import (
     PREPROCESSING_RECIPE,
     PROJECT,
     PROJECT_PREVIEW,
+    RECIPE_USAGE,
     RELEASE,
     SCHEMA_CHANGE_PREVIEW,
     SCHEMA_DIFF,
@@ -134,9 +135,15 @@ PAIRS: list[tuple[str, dict[str, Any], type[BaseModel]]] = [
     ("schema_draft", wire.schema_draft(SCHEMA_DRAFT), models.SchemaDraftOut),
     (
         "preprocessing_recipe",
-        wire.preprocessing_recipe(PREPROCESSING_RECIPE),
+        wire.preprocessing_recipe(PREPROCESSING_RECIPE, used_by=None),
         models.PreprocessingRecipeOut,
     ),
+    (
+        "preprocessing_recipe_used",
+        wire.preprocessing_recipe(PREPROCESSING_RECIPE, used_by=RECIPE_USAGE),
+        models.PreprocessingRecipeOut,
+    ),
+    ("recipe_usage", wire.recipe_usage(RECIPE_USAGE), models.RecipeUsageOut),
     (
         "preprocessing_preview",
         wire.preprocessing_preview(PREPROCESSING_PREVIEW),

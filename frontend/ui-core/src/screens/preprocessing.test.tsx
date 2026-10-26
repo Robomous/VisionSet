@@ -89,6 +89,7 @@ function recipeRow(name: string, spec: RecipeSpec) {
     spec,
     created_at: "2026-08-20T10:00:00.000000Z",
     updated_at: "2026-08-20T10:00:00.000000Z",
+    used_by: null,
   };
 }
 
@@ -116,6 +117,10 @@ function previewRow(assetId: string, variant: number) {
     variant,
     width: 512,
     height: 384,
+    original_width: 640,
+    original_height: 480,
+    frame_index: null,
+    source_name: null,
     annotations: [
       {
         id: variant === 0 ? "box-1" : `box-1-aug${variant}`,
