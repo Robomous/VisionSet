@@ -159,6 +159,13 @@ const ASSET_ROW = {
   ingested_at: "2026-07-31T09:00:00.000000Z",
   annotation_count: 2,
   label_classes: ["lane", "vehicle"],
+  class_counts: [
+    { label_class: "lane", annotations: 1 },
+    { label_class: "vehicle", annotations: 1 },
+  ],
+  promoted_at: "2026-08-01T09:00:00.000000Z",
+  promoted_by_batch_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  release_tags: ["v0.1"],
 };
 
 const BOX = "66666666-6666-4666-8666-666666666666";

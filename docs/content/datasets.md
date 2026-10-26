@@ -197,6 +197,13 @@ fifty thousand items. The same caveat applies: `limit`/`offset` bound the **resp
 read** - `total` is the size of the whole trunk, so a client pages until it has seen `total`
 items rather than until `total` moves, and an offset past the end is `200` with an empty list.
 
+**Each listed member says where it came from.** `class_counts` is the per-class label count on
+that asset (`label_classes` stays as the bare names). `promoted_by_batch_id` and `promoted_at` are
+read off the `promote` entry in the change log that brought the asset in - the latest one, for an
+asset removed and promoted again - and are `null` when no entry names it, since a member row
+carries no timestamp of its own. `release_tags` lists, oldest first, the releases whose manifest
+names the asset; the cost is one manifest read per release of the dataset, not one per member.
+
 **`DELETE` answers 204 whether or not the asset was a member.** An id that was never in the
 trunk leaves it in exactly the state the caller asked for, and reporting that as a 404 would
 make a retry of a successful request look like a failure. It is also the one delete in the API

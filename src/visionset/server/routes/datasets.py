@@ -118,6 +118,8 @@ def list_dataset_assets(
     Each member carries `annotation_count` and `label_classes` so a gallery can
     caption a tile without a request per frame; the labels themselves are one
     level down, at `GET /datasets/{dataset_id}/assets/{asset_id}/annotations`.
+    Each also names where it came from: the batch and moment of the promotion that
+    brought it in, and the tags of the releases that hold it.
     """
     service = DatasetService(workspace)
     service.get(dataset_id)
@@ -133,12 +135,17 @@ def list_dataset_assets(
             else ReleaseService(workspace).member_asset_ids(dataset_id, release_id)
         ),
     )
+    tags = ReleaseService(workspace).tags_naming(dataset_id, [one.asset.id for one in found])
     return DatasetAssetPage(
         items=[
             DatasetAssetOut.in_trunk(
                 one.asset,
                 annotation_count=one.annotation_count,
                 label_classes=one.label_classes,
+                class_counts=one.class_counts,
+                promoted_at=one.promoted_at,
+                promoted_by_batch_id=one.promoted_by_batch_id,
+                release_tags=tags.get(one.asset.id, ()),
             )
             for one in found
         ],

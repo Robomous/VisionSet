@@ -41,7 +41,7 @@ open :class:`WorkspaceService` and nothing else, and never names an adapter.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
@@ -679,6 +679,29 @@ class ReleaseService:
         if release.dataset_id != dataset_id:
             raise ReleaseNotFound(f"dataset {dataset_id} has no release {release_id}")
         return frozenset(asset.asset_id for asset in self._read_manifest(release).assets)
+
+    def tags_naming(
+        self, dataset_id: UUID, asset_ids: Collection[UUID]
+    ) -> dict[UUID, tuple[str, ...]]:
+        """For each asset asked about, the tags of the releases that name it, oldest first.
+
+        An asset no release names is absent from the answer. One manifest read per
+        release of the dataset, never per asset, so the cost of a page is the
+        number of releases rather than the size of the page.
+
+        Raises:
+            DatasetNotFound: no such dataset in this workspace.
+            WorkspaceCorrupt: a manifest blob is gone, or is not a manifest.
+        """
+        wanted = frozenset(asset_ids)
+        tags: dict[UUID, list[str]] = {}
+        if not wanted:
+            return {}
+        for release in self.list(dataset_id):
+            for asset in self._read_manifest(release).assets:
+                if asset.asset_id in wanted:
+                    tags.setdefault(asset.asset_id, []).append(release.tag)
+        return {asset_id: tuple(found) for asset_id, found in tags.items()}
 
     def _read_manifest(self, release: Release) -> Manifest:
         """The document this release names, parsed."""

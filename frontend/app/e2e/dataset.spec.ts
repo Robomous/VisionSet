@@ -78,6 +78,10 @@ function assetRow(asset: { id: string; frame_index: number }): Wire["DatasetAsse
     ingested_at: "2026-07-31T09:00:00.000000Z",
     annotation_count: 1,
     label_classes: ["sign"],
+    class_counts: [{ label_class: "sign", annotations: 1 }],
+    promoted_at: "2026-08-01T09:00:00.000000Z",
+    promoted_by_batch_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    release_tags: ["v0.1"],
   };
 }
 
