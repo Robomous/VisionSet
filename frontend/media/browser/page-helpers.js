@@ -6,7 +6,8 @@
 
 /** The adapter under test, loaded from `dist/` exactly as a consumer would load it. */
 export async function materializer() {
-  const { MediabunnyVideoMaterializer } = await import("/dist/mediabunny/index.js");
+  const { MediabunnyVideoMaterializer } =
+    await import("/dist/mediabunny/index.js");
   return new MediabunnyVideoMaterializer();
 }
 
@@ -18,6 +19,60 @@ export async function materializer() {
 export async function fixture(name) {
   const response = await fetch(`/test-fixtures/${name}`);
   return new File([await response.arrayBuffer()], name);
+}
+
+/**
+ * An MP4 holding one HEVC packet, as a `File`. The Playwright Chromium neither encodes
+ * nor decodes HEVC, so no fixture can be encoded for it — but a container does not need
+ * a codec to write down packets. The packet bytes are never decoded: `inspect` only
+ * asks the real `VideoDecoder` whether it would take this configuration, and it will not.
+ */
+export async function hevcClip(name) {
+  const mb = await import("/mediabunny.mjs");
+  const output = new mb.Output({
+    format: new mb.Mp4OutputFormat(),
+    target: new mb.BufferTarget(),
+  });
+  const source = new mb.EncodedVideoPacketSource("hevc");
+  output.addVideoTrack(source, { frameRate: 8 });
+  await output.start();
+  // `HEVCDecoderConfigurationRecord`: version 1, Main profile, level 3.1, no parameter-set arrays.
+  const description = Uint8Array.of(
+    1,
+    1,
+    0x60,
+    0,
+    0,
+    0,
+    0x90,
+    0,
+    0,
+    0,
+    0,
+    0,
+    93,
+    0xf0,
+    0,
+    0xfc,
+    0xfd,
+    0xf8,
+    0xf8,
+    0,
+    0,
+    0x0f,
+    0,
+  );
+  await source.add(new mb.EncodedPacket(new Uint8Array(16), "key", 0, 1 / 8), {
+    decoderConfig: {
+      codec: "hev1.1.6.L93.B0",
+      codedWidth: 64,
+      codedHeight: 64,
+      description,
+    },
+  });
+  source.close();
+  await output.finalize();
+  return new File([output.target.buffer], name, { type: "video/mp4" });
 }
 
 /** Every frame, in order, with no back-pressure of its own. */
@@ -41,15 +96,27 @@ export function collecting() {
 export async function inspectImage(blob) {
   const bytes = new Uint8Array(await blob.arrayBuffer());
   const hex = (at, count) =>
-    [...bytes.slice(at, at + count)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    [...bytes.slice(at, at + count)]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
   const bitmap = await createImageBitmap(blob);
   const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
   const context = canvas.getContext("2d");
   context.drawImage(bitmap, 0, 0);
-  const [r, g, b] = context.getImageData(bitmap.width >> 1, bitmap.height >> 1, 1, 1).data;
+  const [r, g, b] = context.getImageData(
+    bitmap.width >> 1,
+    bitmap.height >> 1,
+    1,
+    1,
+  ).data;
   const size = { width: bitmap.width, height: bitmap.height };
   bitmap.close();
-  return { ...size, rgb: [r, g, b], head: hex(0, 2), tail: hex(bytes.length - 2, 2) };
+  return {
+    ...size,
+    rgb: [r, g, b],
+    head: hex(0, 2),
+    tail: hex(bytes.length - 2, 2),
+  };
 }
 
 /**
@@ -63,7 +130,10 @@ export async function cutMidGop(colours) {
   const mb = await import("/mediabunny.mjs");
   const canvas = new OffscreenCanvas(64, 64);
   const context = canvas.getContext("2d");
-  const whole = new mb.Output({ format: new mb.WebMOutputFormat(), target: new mb.BufferTarget() });
+  const whole = new mb.Output({
+    format: new mb.WebMOutputFormat(),
+    target: new mb.BufferTarget(),
+  });
   const source = new mb.CanvasSource(canvas, {
     codec: "vp8",
     bitrate: mb.QUALITY_VERY_HIGH,
@@ -86,16 +156,25 @@ export async function cutMidGop(colours) {
   const track = await input.getPrimaryVideoTrack();
   const decoderConfig = await track.getDecoderConfig();
   const packets = [];
-  for await (const packet of new mb.EncodedPacketSink(track).packets()) packets.push(packet);
+  for await (const packet of new mb.EncodedPacketSink(track).packets())
+    packets.push(packet);
 
-  const cut = new mb.Output({ format: new mb.WebMOutputFormat(), target: new mb.BufferTarget() });
+  const cut = new mb.Output({
+    format: new mb.WebMOutputFormat(),
+    target: new mb.BufferTarget(),
+  });
   const passthrough = new mb.EncodedVideoPacketSource("vp8");
   cut.addVideoTrack(passthrough, { frameRate: 8 });
   await cut.start();
   for (const [index, packet] of packets.slice(1).entries()) {
     const type = index === 0 ? "key" : packet.type;
     await passthrough.add(
-      new mb.EncodedPacket(packet.data, type, packet.timestamp, packet.duration),
+      new mb.EncodedPacket(
+        packet.data,
+        type,
+        packet.timestamp,
+        packet.duration,
+      ),
       index === 0 ? { decoderConfig } : undefined,
     );
   }

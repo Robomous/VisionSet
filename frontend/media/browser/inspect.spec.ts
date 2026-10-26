@@ -17,7 +17,9 @@ function inspect(page: Page, file: string) {
 }
 
 for (const fixture of MANIFEST.clips) {
-  test(`inspect reports ${fixture.file} as it was encoded`, async ({ page }) => {
+  test(`inspect reports ${fixture.file} as it was encoded`, async ({
+    page,
+  }) => {
     const rotated = fixture.rotation === 90 || fixture.rotation === 270;
     expect(await inspect(page, fixture.file)).toMatchObject({
       fileName: fixture.file,
@@ -34,12 +36,17 @@ for (const fixture of MANIFEST.clips) {
 
 test("inspect measures duration and source frame rate", async ({ page }) => {
   const inspection = await inspect(page, "vp8.webm");
-  expect(inspection.durationSeconds).toBeCloseTo(MANIFEST.frames / MANIFEST.fps, 3);
+  expect(inspection.durationSeconds).toBeCloseTo(
+    MANIFEST.frames / MANIFEST.fps,
+    3,
+  );
   expect(inspection.sourceFps).toBeCloseTo(MANIFEST.fps, 1);
   expect(inspection.refusal).toBeUndefined();
 });
 
-test("a file that is not a container is refused, whatever it is called", async ({ page }) => {
+test("a file that is not a container is refused, whatever it is called", async ({
+  page,
+}) => {
   expect(await inspect(page, "garbage.webm")).toMatchObject({
     fileName: "garbage.webm",
     refusal: "unparsable-container",
@@ -47,7 +54,37 @@ test("a file that is not a container is refused, whatever it is called", async (
   });
 });
 
-test("an insecure origin has no WebCodecs, and that is a refusal not a crash", async ({ page }) => {
+test("a clip the container holds but the decoder will not open is undecodable, with its codec named", async ({
+  page,
+}) => {
+  const decodesHevc = await page.evaluate(
+    async () =>
+      (await VideoDecoder.isConfigSupported({ codec: "hev1.1.6.L93.B0" }))
+        .supported,
+  );
+  test.skip(
+    decodesHevc === true,
+    "this Chromium decodes HEVC, so there is no refusal to observe",
+  );
+
+  const inspection = await page.evaluate(async (helpers) => {
+    const h = await import(helpers);
+    return (await h.materializer()).inspect(await h.hevcClip("hevc.mp4"));
+  }, HELPERS);
+  expect(inspection).toMatchObject({
+    fileName: "hevc.mp4",
+    container: "MP4",
+    codec: "hevc",
+    displayWidth: 64,
+    displayHeight: 64,
+    decodable: false,
+    refusal: "undecodable-codec",
+  });
+});
+
+test("an insecure origin has no WebCodecs, and that is a refusal not a crash", async ({
+  page,
+}) => {
   await page.goto(await serveInsecure(page));
   // `OffscreenCanvas` survives an insecure origin; WebCodecs does not, and one missing
   // primitive is enough — which is exactly the situation the refusal is for.
@@ -64,17 +101,25 @@ test("an insecure origin has no WebCodecs, and that is a refusal not a crash", a
     const { MediabunnyVideoMaterializer } = await import(adapter);
     return new MediabunnyVideoMaterializer().inspect({ name: "vp8.webm" });
   });
-  expect(inspection).toMatchObject({ fileName: "vp8.webm", refusal: "unsupported-browser" });
+  expect(inspection).toMatchObject({
+    fileName: "vp8.webm",
+    refusal: "unsupported-browser",
+  });
 });
 
-test("an abort during inspection ends it, and takes the worker with it", async ({ page }) => {
+test("an abort during inspection ends it, and takes the worker with it", async ({
+  page,
+}) => {
   // Reading a container is not free — duration and frame-rate metrics can walk the
   // whole thing — so a signal that is only read once, at the door, is a signal the
   // caller cannot actually back out with.
   const outcome = await page.evaluate(async (helpers) => {
     const h = await import(helpers);
     const controller = new AbortController();
-    const run = (await h.materializer()).inspect(await h.fixture("vp8.webm"), controller.signal);
+    const run = (await h.materializer()).inspect(
+      await h.fixture("vp8.webm"),
+      controller.signal,
+    );
     controller.abort();
     return run.then(
       () => "resolved",
