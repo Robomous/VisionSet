@@ -16,6 +16,7 @@ from uuid import UUID
 from visionset.kernel.domain import (
     Annotation,
     AnnotationJob,
+    AnnotationJobState,
     AnnotationSchema,
     AnnotationSummary,
     AnnotationTotals,
@@ -280,6 +281,30 @@ class UnitOfWork(Protocol):
 
         Raises ``EntityNotFound`` if the job does not carry that asset at all,
         matching ``Repository.update`` on an id that is not stored.
+        """
+        ...
+
+    def set_job_state(
+        self,
+        job_id: UUID,
+        *,
+        expected: AnnotationJobState,
+        state: AnnotationJobState,
+    ) -> AnnotationJobState | None:
+        """Move a job's own state, and only if it is still where it was read.
+
+        :meth:`set_asset_progress`'s sibling for the job row. ``Repository.update``
+        replaces the whole job, so a ``start`` decided against a stale read could
+        put a ``completed`` job back to ``in_progress`` and answer success.
+
+        ``expected`` is checked in the statement that writes. Only the ``state``
+        column is written, so the assignee and the per-asset progress, which other
+        writers own, are never put back as they were read.
+
+        Returns ``None`` when the write landed, and the **stored** state when it
+        did not.
+
+        Raises ``EntityNotFound`` if there is no such job.
         """
         ...
 

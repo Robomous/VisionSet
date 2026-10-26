@@ -504,8 +504,8 @@ def test_the_autostart_check_racing_an_explicit_start_reports_rather_than_raises
 
     `start_if_pending` reads once and decides from that read, so it never
     re-reads and never disagrees with itself — an explicit `start()` landing
-    in the same gap changes only whose write is a no-op, and the gated caller
-    still reports a plain `True` rather than raising.
+    in the same gap makes the guarded write refuse, and the gated caller
+    reports a plain `False` rather than raising: someone else started it.
     """
     root = tmp_path / "ws"
     job_id = _pending_job(root)
@@ -540,10 +540,84 @@ def test_the_autostart_check_racing_an_explicit_start_reports_rather_than_raises
     thread.join(TIMEOUT_SECONDS)
     assert not thread.is_alive(), "the gated call never finished"
 
-    assert outcome[0] is True, outcome[0]
+    assert outcome[0] is False, outcome[0]
     workspace = WorkspaceService.open(root)
     try:
         assert JobService(workspace).get(job_id).state is AnnotationJobState.IN_PROGRESS
+    finally:
+        workspace.close()
+
+
+class _AfterFirstReadJobService(JobService):
+    """Runs `after_read` once, right after the call's first read of the job.
+
+    Single-threaded: the transaction has not yet written, so a second connection
+    can still commit in the gap, which is all the race needs.
+    """
+
+    def __init__(self, workspace: WorkspaceService, after_read: Callable[[], None]) -> None:
+        super().__init__(workspace)
+        self._after_read: Callable[[], None] | None = after_read
+
+    def require_job(self, uow: UnitOfWork, job_id: UUID) -> AnnotationJob:
+        job = super().require_job(uow, job_id)
+        hook, self._after_read = self._after_read, None
+        if hook is not None:
+            hook()
+        return job
+
+
+def _complete_elsewhere(root: Path, job_id: UUID) -> None:
+    workspace = WorkspaceService.open(root)
+    try:
+        jobs = JobService(workspace)
+        jobs.start(job_id)
+        for asset_id in jobs.get(job_id).progress:
+            jobs.mark(job_id, asset_id, AssetProgress.SKIPPED)
+        jobs.complete(job_id)
+    finally:
+        workspace.close()
+
+
+@pytest.mark.parametrize("operation", ["start", "start_if_pending"])
+def test_a_completed_job_is_not_reopened_by_a_start_decided_before_it_completed(
+    tmp_path: Path, operation: str
+) -> None:
+    root = tmp_path / "ws"
+    job_id = _pending_job(root)
+
+    workspace = WorkspaceService.open(root)
+    try:
+        service = _AfterFirstReadJobService(workspace, lambda: _complete_elsewhere(root, job_id))
+        if operation == "start":
+            with pytest.raises(StaleWrite):
+                service.start(job_id)
+        else:
+            assert service.start_if_pending(job_id) is False
+        assert JobService(workspace).get(job_id).state is AnnotationJobState.COMPLETED
+    finally:
+        workspace.close()
+
+
+def test_a_complete_decided_against_a_stale_read_is_refused(tmp_path: Path) -> None:
+    root = tmp_path / "ws"
+    job_id, assets = _open_job(root)
+
+    def complete_elsewhere() -> None:
+        workspace = WorkspaceService.open(root)
+        try:
+            JobService(workspace).complete(job_id)
+        finally:
+            workspace.close()
+
+    workspace = WorkspaceService.open(root)
+    try:
+        for asset_id in assets:
+            JobService(workspace).mark(job_id, asset_id, AssetProgress.SKIPPED)
+        service = _AfterFirstReadJobService(workspace, complete_elsewhere)
+        with pytest.raises(StaleWrite):
+            service.complete(job_id)
+        assert JobService(workspace).get(job_id).state is AnnotationJobState.COMPLETED
     finally:
         workspace.close()
 
