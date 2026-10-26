@@ -38,6 +38,7 @@ import { parseLabelClass, type LabelClass } from "@visionset/annotator";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { RecipeEditor } from "../patterns/RecipeEditor";
 import { RecipeList } from "../patterns/RecipeList";
+import { formatCount } from "../lib/format";
 import { StaticAnnotationOverlay } from "../patterns/StaticAnnotationOverlay";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FieldError } from "@robomous/ui-core";
 import {
@@ -52,6 +53,7 @@ import {
   useReleases,
   useUpdatePreprocessingRecipe,
   type ExportTarget,
+  type PreprocessingPreview,
   type PreprocessingRecipe,
   type Release,
 } from "./queries";
@@ -81,6 +83,7 @@ interface Editing {
 }
 
 const NO_TRANSFORM: RecipeSpec = { target: null, steps: [], variants_per_asset: 0 };
+const NO_TRANSFORM_KEY = canonicalSpec(NO_TRANSFORM);
 
 export function PreprocessingTab({ projectId, datasetId }: PreprocessingTabProps): JSX.Element {
   const recipes = usePreprocessingRecipes(projectId);
@@ -117,6 +120,15 @@ export function PreprocessingTab({ projectId, datasetId }: PreprocessingTabProps
 
   function labelFor(target: string): string {
     return catalog.find((one) => one.name === target)?.label ?? target;
+  }
+
+  /** The stored recipe's export usage, in a sentence; `undefined` for a draft or one no export ran. */
+  function usedBy(name: string | null): string | undefined {
+    const usage = items.find((one) => one.name === name)?.used_by;
+    if (usage == null) return undefined;
+    const exporter = usage.target === null ? usage.format : labelFor(usage.target);
+    const earlier = usage.export_count - 1;
+    return `Used by the ${usage.release_tag} ${exporter} export${earlier > 0 ? ` and ${formatCount(earlier)} earlier` : ""}`;
   }
 
   if (recipes.isError) {
@@ -186,6 +198,7 @@ export function PreprocessingTab({ projectId, datasetId }: PreprocessingTabProps
           projectId={projectId}
           datasetId={datasetId}
           editing={editing}
+          usedBy={usedBy(editing.name)}
           onDraftChange={(draft) => setEditing({ ...editing, draft })}
           catalog={catalog}
           targetsNotice={
@@ -303,6 +316,7 @@ function Editor({
   projectId,
   datasetId,
   editing,
+  usedBy,
   onDraftChange,
   catalog,
   targetsNotice,
@@ -316,6 +330,7 @@ function Editor({
   readonly projectId: string;
   readonly datasetId: string | undefined;
   readonly editing: Editing;
+  readonly usedBy: string | undefined;
   readonly onDraftChange: (draft: RecipeDraft) => void;
   readonly catalog: readonly ExportTarget[];
   readonly targetsNotice: JSX.Element | undefined;
@@ -339,6 +354,7 @@ function Editor({
       draft={editing.draft}
       onDraftChange={onDraftChange}
       targets={catalog}
+      {...(usedBy === undefined ? {} : { usedBy })}
       {...(targetsNotice === undefined ? {} : { targetsNotice })}
       {...(classCount === undefined ? {} : { classCount })}
       preview={
@@ -417,6 +433,16 @@ function PreviewGrid({
   readonly onReady: (ready: boolean) => void;
 }): JSX.Element {
   const sample = useSampleAsset(projectId, datasetId);
+  // The original cell's own query, read again for what the sample is: the
+  // same key, so it costs no second request.
+  const original = usePreprocessingPreview(
+    projectId,
+    sample ?? undefined,
+    0,
+    NO_TRANSFORM,
+    NO_TRANSFORM_KEY,
+  );
+  const described = original.data?.asset_id === sample ? original.data : undefined;
   const settled = useSettledSpec(spec);
   const resizeSteps = settled === null ? [] : settled.steps.filter((step) => step.kind === "resize");
   const resizeOnly: RecipeSpec | null =
@@ -437,10 +463,11 @@ function PreviewGrid({
     );
   }
 
+  const caption = sampleCaption(sample, described);
   return (
     <div className="flex flex-col gap-2" data-testid="preview-grid">
       <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
-        <span>Original</span>
+        <span data-testid="preview-original-heading">{originalHeading(described)}</span>
         <span>After resize</span>
         <span data-testid="preview-augment-heading">
           {lastAugment === undefined ? "After augmentation" : `After ${opLabel(lastAugment.op)}`}
@@ -449,7 +476,7 @@ function PreviewGrid({
       <div
         className="grid grid-cols-3 items-center gap-2"
         data-testid="preview-row-0"
-        title={`Sample ${sample.slice(0, 8)}`}
+        title={caption}
       >
         <PreviewCell
           projectId={projectId}
@@ -457,6 +484,7 @@ function PreviewGrid({
           variant={0}
           spec={NO_TRANSFORM}
           classes={classes}
+          caption={caption}
           testId="preview-0-original"
           onReady={onReady}
         />
@@ -467,6 +495,7 @@ function PreviewGrid({
             variant={0}
             spec={resizeOnly}
             classes={classes}
+            caption={caption}
             testId="preview-0-resize"
           />
         ) : (
@@ -479,6 +508,7 @@ function PreviewGrid({
             variant={1}
             spec={showcase}
             classes={classes}
+            caption={caption}
             testId="preview-0-augment"
             showcase
           />
@@ -486,8 +516,30 @@ function PreviewGrid({
           <Placeholder text="No augmentation" testId="preview-0-augment" />
         )}
       </div>
+      <p className="text-xs text-muted-foreground" data-testid="preview-caption">
+        {caption}
+      </p>
     </div>
   );
+}
+
+/**
+ * What the sample is, in the response's own words: its frame and the source it
+ * came from, either alone when the other is absent, and its id when neither is.
+ */
+function sampleCaption(assetId: string, described: PreprocessingPreview | undefined): string {
+  const parts = [
+    described?.frame_index == null ? null : `Frame ${formatCount(described.frame_index)}`,
+    described?.source_name ?? null,
+  ].filter((part): part is string => part !== null);
+  return parts.length > 0 ? parts.join(" · ") : `Sample ${assetId.slice(0, 8)}`;
+}
+
+function originalHeading(described: PreprocessingPreview | undefined): string {
+  if (described == null || described.original_width === null || described.original_height === null) {
+    return "Original";
+  }
+  return `Original · ${described.original_width} × ${described.original_height}`;
 }
 
 /** The augmentation the preview shows: the last one the draft holds, in the editor's own order. */
@@ -518,6 +570,7 @@ function PreviewCell({
   variant,
   spec,
   classes,
+  caption,
   testId,
   onReady,
   showcase = false,
@@ -527,6 +580,7 @@ function PreviewCell({
   readonly variant: number;
   readonly spec: RecipeSpec | null;
   readonly classes: readonly LabelClass[] | undefined;
+  readonly caption: string;
   readonly testId: string;
   readonly onReady?: (ready: boolean) => void;
   readonly showcase?: boolean;
@@ -558,7 +612,7 @@ function PreviewCell({
   if (preview.data === undefined) return <Placeholder testId={testId} pending />;
   const rendered = preview.data;
   const src = `data:${rendered.media_type};base64,${rendered.image_base64}`;
-  const alt = `Sample ${rendered.asset_id.slice(0, 8)}, variant ${rendered.variant}`;
+  const alt = `${caption}, variant ${rendered.variant}`;
   const placed: readonly WireAnnotation[] = rendered.annotations.map((one) => ({
     ...one,
     asset_id: rendered.asset_id,

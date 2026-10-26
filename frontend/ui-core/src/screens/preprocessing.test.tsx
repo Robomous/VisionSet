@@ -81,7 +81,15 @@ const LETTERBOX: RecipeSpec = {
   variants_per_asset: 2,
 };
 
-function recipeRow(name: string, spec: RecipeSpec) {
+interface RecipeUsage {
+  readonly export_count: number;
+  readonly release_id: string;
+  readonly release_tag: string;
+  readonly target: string | null;
+  readonly format: string;
+}
+
+function recipeRow(name: string, spec: RecipeSpec, usedBy: RecipeUsage | null = null) {
   return {
     id: `cccccccc-0000-4000-8000-${name.padStart(12, "0")}`,
     project_id: PROJECT,
@@ -89,7 +97,7 @@ function recipeRow(name: string, spec: RecipeSpec) {
     spec,
     created_at: "2026-08-20T10:00:00.000000Z",
     updated_at: "2026-08-20T10:00:00.000000Z",
-    used_by: null,
+    used_by: usedBy,
   };
 }
 
@@ -343,6 +351,38 @@ describe("the recipe list", () => {
     expect(screen.getByTestId("resize-width")).toHaveProperty("value", "640");
     expect(screen.getByTestId("augment-hflip")).toHaveProperty("checked", true);
     expect(screen.getByTestId("augment-variants")).toHaveProperty("value", "2");
+  });
+
+  it("says which export used the open recipe, and nothing for one no export ran", async () => {
+    baseline([
+      recipeRow("yolo-640", LETTERBOX, {
+        export_count: 3,
+        release_id: RELEASE,
+        release_tag: "v0.5",
+        target: "yolo11",
+        format: "ultralytics",
+      }),
+      recipeRow("by-format", LETTERBOX, {
+        export_count: 1,
+        release_id: RELEASE,
+        release_tag: "v1",
+        target: null,
+        format: "coco",
+      }),
+      recipeRow("plain", { target: null, steps: [], variants_per_asset: 0 }),
+    ]);
+    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
+
+    expect((await screen.findByTestId("recipe-used-by")).textContent).toBe(
+      "Used by the v0.5 YOLO11 export and 2 earlier",
+    );
+    await userEvent.click(within(screen.getByTestId("recipe-by-format")).getByText("by-format"));
+    await waitFor(() =>
+      expect(screen.getByTestId("recipe-used-by").textContent).toBe("Used by the v1 coco export"),
+    );
+    await userEvent.click(within(screen.getByTestId("recipe-plain")).getByText("plain"));
+    await waitFor(() => expect(screen.getByTestId("recipe-name")).toHaveProperty("value", "plain"));
+    expect(screen.queryByTestId("recipe-used-by")).toBeNull();
   });
 
   it("is an invitation with one verb-first action while there are none", async () => {
@@ -649,6 +689,37 @@ describe("the preview", () => {
     expect(within(original).getByTestId("preview-shape-box-1")).not.toBeNull();
     expect(within(screen.getByTestId("preview-0-augment")).getByTestId("preview-shape-box-1-aug1")).not.toBeNull();
     expect(screen.getByTestId("recipe-step-preview").getAttribute("data-state")).toBe("complete");
+    // A still with no recorded source is named by its id.
+    expect(screen.getByTestId("preview-caption").textContent).toBe("Sample aaaaaaaa");
+  });
+
+  it("captions the sample by its frame and source, and heads the original with its recorded size", async () => {
+    baseline([recipeRow("yolo-640", LETTERBOX)]);
+    handlers.unshift((request) => {
+      if (request.method !== "POST" || !pathOf(request).endsWith("/preprocessing-preview")) return undefined;
+      const body = bodyOf(request);
+      return {
+        status: 200,
+        body: {
+          ...previewRow(String(body["asset_id"]), Number(body["variant"])),
+          original_width: 1920,
+          original_height: 1080,
+          frame_index: 1188,
+          source_name: "Highway — August",
+        },
+      };
+    });
+    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("preview-caption").textContent).toBe("Frame 1,188 · Highway — August"),
+    );
+    // The response's own size, not the asset listing's 640 × 480.
+    expect(screen.getByTestId("preview-original-heading").textContent).toBe("Original · 1920 × 1080");
+    expect(screen.getByTestId("preview-row-0").getAttribute("title")).toBe("Frame 1,188 · Highway — August");
+    expect(screen.getByTestId("preview-0-original").querySelector("img")?.getAttribute("alt")).toBe(
+      "Frame 1,188 · Highway — August, variant 0",
+    );
   });
 
   it("names the step the third column shows, and follows the draft's last augmentation", async () => {

@@ -47,6 +47,8 @@ export interface RecipeEditorProps {
   readonly draft: RecipeDraft;
   readonly onDraftChange: (draft: RecipeDraft) => void;
   readonly targets: readonly ExportTarget[];
+  /** Which exports ran the stored recipe, in a sentence; absent when none did. */
+  readonly usedBy?: string;
   /** Rendered in the target step's place when the catalog could not be offered. */
   readonly targetsNotice?: ReactNode;
   /** How many classes the active schema declares; absent while unknown. */
@@ -67,6 +69,7 @@ export function RecipeEditor({
   draft,
   onDraftChange,
   targets,
+  usedBy,
   targetsNotice,
   classCount,
   preview,
@@ -128,6 +131,11 @@ export function RecipeEditor({
           Lowercase letters, digits, dots, hyphens and underscores; unique in this project. This is
           what an export names.
         </FieldDescription>
+        {usedBy !== undefined && (
+          <p className="text-xs text-muted-foreground" data-testid="recipe-used-by">
+            {usedBy}
+          </p>
+        )}
       </div>
 
       <ol className="flex flex-col">
