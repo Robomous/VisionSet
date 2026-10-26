@@ -46,6 +46,7 @@
  */
 
 import { Braces, Check, Download, ShieldCheck, Tag, Trash2, Upload } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
@@ -69,6 +70,7 @@ import { saveBlob } from "./download";
 import { PreprocessingTab } from "./PreprocessingTab";
 import { describeRecipeSpec } from "./recipeDraft";
 import {
+  recipeKeys,
   TRUNK_PAGE_SIZE,
   useBackgroundJob,
   useDatasetAssets,
@@ -965,6 +967,7 @@ function ExportDialog({
   const recipes = usePreprocessingRecipes(projectId);
   const exportRelease = useExportRelease(releaseId);
   const artifact = useJobArtifact();
+  const queries = useQueryClient();
   const [target, setTarget] = useState("");
   const [recipe, setRecipe] = useState(NO_RECIPE);
   const [consented, setConsented] = useState(false);
@@ -1021,13 +1024,16 @@ function ExportDialog({
     if (saved || jobId === null || job.data?.state !== "succeeded") return;
     setSaved(true);
     setOutcome("succeeded");
+    // The recipe's `used_by` is read off succeeded export jobs, so this one
+    // changed it.
+    if (recipe !== NO_RECIPE) void queries.invalidateQueries({ queryKey: recipeKeys.recipes(projectId) });
     artifact.mutate(jobId, {
       onSuccess: (blob) => {
         saveBlob(blob, `${tag}-${target}.zip`);
         setJobId(null);
       },
     });
-  }, [saved, jobId, job.data?.state, artifact, tag, target]);
+  }, [saved, jobId, job.data?.state, artifact, tag, target, recipe, queries, projectId]);
 
   // The badge's subject: the live job while there is one, the outcome once the
   // archive has been handed over and the poll has stopped.

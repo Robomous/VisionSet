@@ -243,7 +243,8 @@ action. The first recipe opens on arrival, so the editor is on screen whenever t
 something to edit. Under the open recipe's name, a line says which export used it — *Used by
 the v0.5 YOLO11 export and 2 earlier* — read from the recipe's `used_by`, with the target's
 catalog label or, for an export that named a format, the format; a recipe no export ran has
-no line. The match is by name, so the line follows the caveats
+no line. The Export dialog reads the recipes again when an export through one succeeds, so
+the line is current by the time the view is reopened. The match is by name, so the line follows the caveats
 [preprocessing.md](preprocessing.md#which-exports-ran-a-recipe) states.
 
 The editor is **four steps, always visible, each settled or not** — not the ingest flow's
