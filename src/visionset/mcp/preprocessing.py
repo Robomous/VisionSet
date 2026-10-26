@@ -76,8 +76,10 @@ def create_preprocessing_recipe(
     """
     with opened_workspace() as workspace:
         resolved = ProjectService(workspace).resolve(project)
-        created = PreprocessingRecipeService(workspace).create(resolved.id, name, spec)
-    return wire.preprocessing_recipe(created)
+        recipes = PreprocessingRecipeService(workspace)
+        created = recipes.create(resolved.id, name, spec)
+        used_by = recipes.usage(resolved.id).get(created.name)
+    return wire.preprocessing_recipe(created, used_by=used_by)
 
 
 def get_preprocessing_recipe(project: ProjectRef, name: NameRef) -> dict[str, Any]:
@@ -89,8 +91,10 @@ def get_preprocessing_recipe(project: ProjectRef, name: NameRef) -> dict[str, An
     """
     with opened_workspace() as workspace:
         resolved = ProjectService(workspace).resolve(project)
-        found = PreprocessingRecipeService(workspace).get(resolved.id, name)
-    return wire.preprocessing_recipe(found)
+        recipes = PreprocessingRecipeService(workspace)
+        found = recipes.get(resolved.id, name)
+        used_by = recipes.usage(resolved.id).get(found.name)
+    return wire.preprocessing_recipe(found, used_by=used_by)
 
 
 def update_preprocessing_recipe(
@@ -117,10 +121,10 @@ def update_preprocessing_recipe(
     """
     with opened_workspace() as workspace:
         resolved = ProjectService(workspace).resolve(project)
-        updated = PreprocessingRecipeService(workspace).update(
-            resolved.id, name, spec=spec, new_name=new_name
-        )
-    return wire.preprocessing_recipe(updated)
+        recipes = PreprocessingRecipeService(workspace)
+        updated = recipes.update(resolved.id, name, spec=spec, new_name=new_name)
+        used_by = recipes.usage(resolved.id).get(updated.name)
+    return wire.preprocessing_recipe(updated, used_by=used_by)
 
 
 def list_preprocessing_recipes(project: ProjectRef) -> dict[str, Any]:
@@ -128,12 +132,16 @@ def list_preprocessing_recipes(project: ProjectRef) -> dict[str, Any]:
 
     `name` is exactly what `export_release` and `check_export` take as `recipe`.
     The spec is the value an export snapshots; an export that already ran keeps
-    the spec it ran with whatever happens to the recipe afterwards.
+    the spec it ran with whatever happens to the recipe afterwards. `used_by`
+    counts the succeeded queued exports whose snapshot carries this name, with
+    the newest one's release tag, target and format; null when there are none.
     """
     with opened_workspace() as workspace:
         resolved = ProjectService(workspace).resolve(project)
-        found = PreprocessingRecipeService(workspace).list(resolved.id)
-    return wire.page([wire.preprocessing_recipe(one) for one in found])
+        recipes = PreprocessingRecipeService(workspace)
+        found = recipes.list(resolved.id)
+        usage = recipes.usage(resolved.id)
+    return wire.page([wire.preprocessing_recipe(one, used_by=usage.get(one.name)) for one in found])
 
 
 def delete_preprocessing_recipe(
@@ -164,4 +172,5 @@ def delete_preprocessing_recipe(
                 f"deleting recipe {stored.name!r} needs confirm=true; nothing was changed"
             )
         removed = recipes.delete(resolved.id, name)
-    return {"deleted": wire.preprocessing_recipe(removed)}
+        used_by = recipes.usage(resolved.id).get(removed.name)
+    return {"deleted": wire.preprocessing_recipe(removed, used_by=used_by)}

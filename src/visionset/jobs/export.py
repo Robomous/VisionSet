@@ -36,12 +36,24 @@ from pydantic import JsonValue
 from visionset.formats import registry
 from visionset.jobs.context import workspace_for
 from visionset.jobs.registry import HandlerRef, register
-from visionset.kernel.domain import RecipeSpec
+from visionset.kernel.domain import (
+    EXPORT_ALLOW_LOSSY_KEY,
+    EXPORT_FORMAT_KEY,
+    EXPORT_JOB_TYPE,
+    EXPORT_RECIPE_KEY,
+    EXPORT_RECIPE_NAME_KEY,
+    EXPORT_RECIPE_SPEC_KEY,
+    EXPORT_RELEASE_KEY,
+    EXPORT_TARGET_KEY,
+    RecipeSpec,
+    export_job_payload,
+)
 from visionset.kernel.ports import ProgressReporter, resolve_target
 from visionset.kernel.services import ReleaseService
 from visionset.preprocessing import registry as preprocessing_registry
 
-JOB_TYPE = "export.release"
+JOB_TYPE = EXPORT_JOB_TYPE
+"""This handler's type, taken from the domain: a recipe reads its usage off these jobs."""
 
 HANDLER = register(HandlerRef(type=JOB_TYPE, func=f"{__name__}:run", idempotent=True))
 
@@ -60,29 +72,10 @@ def payload_for(
     allow_lossy: bool,
     recipe: tuple[str | None, RecipeSpec] | None = None,
 ) -> dict[str, JsonValue]:
-    """The payload this handler expects, built where the type is known.
-
-    One place names these five keys and the same place reads them — a route
-    spelling them by hand would be free to spell them differently, and the
-    mismatch would surface as a ``KeyError`` inside a worker. ``format`` is
-    the resolved format's own name even when the caller addressed a target,
-    so the worker resolves the same plugin the request was refused or
-    accepted against.
-
-    ``recipe`` is carried as a **snapshot** — the stored recipe's name beside
-    the spec as it stood at the request — never as a name to look up again:
-    an edit or a delete between the request and the worker's run must not
-    change what the worker applies.
-    """
-    return {
-        "release_id": str(release_id),
-        "format": format_name,
-        "target": target,
-        "allow_lossy": allow_lossy,
-        "recipe": None
-        if recipe is None
-        else {"name": recipe[0], "spec": recipe[1].model_dump(mode="json")},
-    }
+    """The payload this handler expects. See ``export_job_payload``, which builds it."""
+    return export_job_payload(
+        release_id, format_name, target=target, allow_lossy=allow_lossy, recipe=recipe
+    )
 
 
 def archive_path(workspace_root: Path, release_id: UUID, format_name: str) -> Path:
@@ -118,16 +111,18 @@ def run(
     if reporter.is_cancelled():
         return {}
 
-    release_id = UUID(str(payload["release_id"]))
-    format_name = str(payload["format"])
-    target_name = None if payload.get("target") is None else str(payload["target"])
-    allow_lossy = bool(payload["allow_lossy"])
-    snapshot = payload.get("recipe")
+    release_id = UUID(str(payload[EXPORT_RELEASE_KEY]))
+    format_name = str(payload[EXPORT_FORMAT_KEY])
+    target_value = payload.get(EXPORT_TARGET_KEY)
+    target_name = None if target_value is None else str(target_value)
+    allow_lossy = bool(payload[EXPORT_ALLOW_LOSSY_KEY])
+    snapshot = payload.get(EXPORT_RECIPE_KEY)
     recipe_name: str | None = None
     spec: RecipeSpec | None = None
     if isinstance(snapshot, dict):
-        recipe_name = None if snapshot.get("name") is None else str(snapshot["name"])
-        spec = RecipeSpec.model_validate(snapshot["spec"])
+        named = snapshot.get(EXPORT_RECIPE_NAME_KEY)
+        recipe_name = None if named is None else str(named)
+        spec = RecipeSpec.model_validate(snapshot[EXPORT_RECIPE_SPEC_KEY])
 
     workspace = workspace_for(workspace_root)
     # Through the *module*, never ``from ... import exporters``: a module global

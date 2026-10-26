@@ -847,6 +847,36 @@ def test_a_recipe_is_carried_to_the_job_as_a_snapshot_and_recorded_in_the_report
     assert report["preprocessing"]["mapping"] == []
 
 
+def test_a_recipe_names_its_succeeded_exports_and_the_newest_one(
+    tmp_path: Path, client: TestClient, release: str, dataset: str
+) -> None:
+    with_exporters(client.app, WritingExporter())
+    _recipe(tmp_path, client, release, "lb", LETTERBOX)
+    _recipe(tmp_path, client, release, "idle", LETTERBOX)
+    project_id = _project_of(client, release)
+    recipes = f"/projects/{project_id}/preprocessing-recipes"
+    assert client.get(f"{recipes}/lb").json()["used_by"] is None
+
+    first = client.post(f"/releases/{release}/export", params={"format": "writing", "recipe": "lb"})
+    assert first.status_code == 202, first.text
+    later = client.post(f"/datasets/{dataset}/releases", json={"tag": "v2"}).json()["id"]
+    second = client.post(f"/releases/{later}/export", params={"target": "writing", "recipe": "lb"})
+    assert second.status_code == 202, second.text
+    plain = client.post(f"/releases/{later}/export", params={"format": "writing"})
+    assert plain.status_code == 202, plain.text
+
+    expected = {
+        "export_count": 2,
+        "release_id": later,
+        "release_tag": "v2",
+        "target": "writing",
+        "format": "writing",
+    }
+    assert client.get(f"{recipes}/lb").json()["used_by"] == expected
+    listed = {row["name"]: row["used_by"] for row in client.get(recipes).json()["items"]}
+    assert listed == {"lb": expected, "idle": None}
+
+
 def test_the_compatibility_report_is_unchanged_by_a_recipe(
     tmp_path: Path, client: TestClient, release: str
 ) -> None:

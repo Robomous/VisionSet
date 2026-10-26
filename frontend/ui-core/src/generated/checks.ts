@@ -280,7 +280,7 @@ export const checkPreviewAnnotationOut: Check<Schemas["PreviewAnnotationOut"]> =
   /*#__PURE__*/ object({ "attributes": [true, mapOf(either([isBoolean, isNumber, isString] as const))], "confidence": [true, either([isNumber, isNull] as const)], "geometry": [true, tagged("type", { "bbox": checkBboxBody, "classification_tag": checkClassificationBody, "polygon": checkPolygonBody, "polyline": checkPolylineBody })], "id": [true, isString], "label_class": [true, isString], "model_ref": [true, either([isString, isNull] as const)], "provenance": [true, oneOf(["human", "model", "import"] as const)], "schema_version": [true, isInteger] } as const);
 
 export const checkPreprocessingPreviewOut: Check<Schemas["PreprocessingPreviewOut"]> =
-  /*#__PURE__*/ object({ "annotations": [true, arrayOf(checkPreviewAnnotationOut)], "asset_id": [true, isString], "height": [true, either([isInteger, isNull] as const)], "image_base64": [true, isString], "media_type": [true, isString], "variant": [true, isInteger], "width": [true, either([isInteger, isNull] as const)] } as const);
+  /*#__PURE__*/ object({ "annotations": [true, arrayOf(checkPreviewAnnotationOut)], "asset_id": [true, isString], "frame_index": [true, either([isInteger, isNull] as const)], "height": [true, either([isInteger, isNull] as const)], "image_base64": [true, isString], "media_type": [true, isString], "original_height": [true, either([isInteger, isNull] as const)], "original_width": [true, either([isInteger, isNull] as const)], "source_name": [true, either([isString, isNull] as const)], "variant": [true, isInteger], "width": [true, either([isInteger, isNull] as const)] } as const);
 
 export const checkAugmentOp: Check<Schemas["AugmentOp"]> =
   /*#__PURE__*/ oneOf(["hflip", "brightness_contrast", "rot90"] as const);
@@ -297,8 +297,11 @@ export const checkResizeStepBody: Check<Schemas["ResizeStepBody"]> =
 export const checkRecipeSpecBody: Check<Schemas["RecipeSpecBody"]> =
   /*#__PURE__*/ object({ "steps": [true, arrayOf(tagged("kind", { "augment": checkAugmentStepBody, "resize": checkResizeStepBody }))], "target": [false, either([isString, isNull] as const)], "variants_per_asset": [true, isInteger] } as const);
 
+export const checkRecipeUsageOut: Check<Schemas["RecipeUsageOut"]> =
+  /*#__PURE__*/ object({ "export_count": [true, isInteger], "format": [true, isString], "release_id": [true, isString], "release_tag": [true, isString], "target": [true, either([isString, isNull] as const)] } as const);
+
 export const checkPreprocessingRecipeOut: Check<Schemas["PreprocessingRecipeOut"]> =
-  /*#__PURE__*/ object({ "created_at": [true, isString], "id": [true, isString], "name": [true, isString], "project_id": [true, isString], "spec": [true, checkRecipeSpecBody], "updated_at": [true, isString] } as const);
+  /*#__PURE__*/ object({ "created_at": [true, isString], "id": [true, isString], "name": [true, isString], "project_id": [true, isString], "spec": [true, checkRecipeSpecBody], "updated_at": [true, isString], "used_by": [true, either([checkRecipeUsageOut, isNull] as const)] } as const);
 
 export const checkPreprocessingRecipePage: Check<Schemas["PreprocessingRecipePage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkPreprocessingRecipeOut)], "total": [true, isInteger] } as const);
