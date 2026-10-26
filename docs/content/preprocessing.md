@@ -54,8 +54,8 @@ Every recipe a surface returns carries `used_by`: how many succeeded exports ran
 (`export_count`), and the newest one's `release_id`, `release_tag`, `target` and `format` -
 `target` is null for an export that named a format rather than a target. `used_by` is null when
 no export ran it. `PreprocessingRecipeService.usage(project_id)` reads it once for the whole
-project, from the queue's succeeded `export.release` jobs and the project's releases, so a
-listing pays nothing per row.
+project, from the workspace's succeeded `export.release` jobs and the project's releases, so
+its cost does not grow with the number of recipes listed.
 
 The relation exists only on the job side, and it is **matched by name**: the job's recipe
 snapshot keeps the name the recipe had when the export was asked for, and nothing else

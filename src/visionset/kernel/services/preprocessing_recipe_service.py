@@ -295,9 +295,10 @@ class PreprocessingRecipeService:
     def usage(self, project_id: UUID) -> dict[str, RecipeUsage]:
         """Which succeeded exports of the project's releases ran each recipe, keyed by name.
 
-        Read once for the whole project — the queue's export jobs and the
-        project's releases, two reads whatever the number of recipes — so a
-        recipe listing pays nothing per row. A name with no export is absent.
+        Read once for the whole project — the workspace's succeeded export jobs
+        and the project's releases — so the cost does not grow with the number
+        of recipes listed. It does grow with the workspace's export history,
+        since every succeeded export job is read. A name with no export is absent.
         Matched by the name the export's snapshot carries; see
         ``visionset.kernel.domain.export_job`` for what that does and does not
         follow.

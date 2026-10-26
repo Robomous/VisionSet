@@ -93,8 +93,10 @@ def recipe_usage(
 
     ``jobs`` is read newest first — the queue's own order — so the first match
     for a name is its newest export. A job that did not succeed, is not an
-    export, ran no named recipe, or names a release outside ``releases`` is
-    skipped: the last is how a project's usage stays the project's own.
+    export, ran no named recipe, or names a release outside ``releases`` — or
+    no readable release id at all — is skipped: the release filter is how a
+    project's usage stays the project's own, and a recipe listing is the wrong
+    place to discover a malformed row.
     """
     counts: dict[str, int] = {}
     newest: dict[str, tuple[Release, str | None, str]] = {}
@@ -108,7 +110,10 @@ def recipe_usage(
         release_id = job.payload.get(EXPORT_RELEASE_KEY)
         if not isinstance(name, str) or not isinstance(release_id, str):
             continue
-        release = releases.get(UUID(release_id))
+        try:
+            release = releases.get(UUID(release_id))
+        except ValueError:
+            continue
         if release is None:
             continue
         counts[name] = counts.get(name, 0) + 1

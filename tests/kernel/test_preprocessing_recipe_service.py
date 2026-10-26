@@ -372,6 +372,11 @@ def test_recipe_usage_reads_only_succeeded_exports_newest_first() -> None:
         [
             job(BackgroundJobState.FAILED, fmt="newest-but-failed"),
             job(BackgroundJobState.SUCCEEDED, kind="annotation.pre_label", fmt="not-an-export"),
+            BackgroundJob(
+                type=EXPORT_JOB_TYPE,
+                state=BackgroundJobState.SUCCEEDED,
+                payload={"release_id": "not-a-uuid", "format": "x", "recipe": {"name": "lb"}},
+            ),
             job(BackgroundJobState.SUCCEEDED, fmt="yolov8"),
             job(BackgroundJobState.SUCCEEDED),
         ],
