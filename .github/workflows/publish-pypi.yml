@@ -84,4 +84,4 @@ jobs:
       # `packages-dir` is `dist/`, which `build_dist.sh` empties before `uv build`
       # so both files there are from this run.
       - name: Publish
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1

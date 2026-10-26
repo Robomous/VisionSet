@@ -173,6 +173,12 @@ class PreprocessingPreview(BaseModel):
     ``image`` is the transformed bytes — the same bytes an export would write
     for that variant, capped to a preview size — and ``annotations`` are placed
     on them. ``media_type`` says what the bytes are encoded as.
+
+    ``width``/``height`` are the rendered size; ``original_width``/
+    ``original_height`` are the size the asset recorded, null when it recorded
+    none. ``frame_index`` and ``source_name`` say where the sample came from —
+    a frame of a clip, from a named source — and are null for a still or an
+    asset that predates source tracking.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -181,6 +187,10 @@ class PreprocessingPreview(BaseModel):
     variant: int = Field(ge=0)
     width: int | None
     height: int | None
+    original_width: int | None = None
+    original_height: int | None = None
+    frame_index: int | None = Field(default=None, ge=0)
+    source_name: str | None = None
     annotations: tuple[TransformedAnnotation, ...] = ()
     image: bytes
     media_type: str

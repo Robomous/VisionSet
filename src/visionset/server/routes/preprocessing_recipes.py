@@ -20,6 +20,7 @@ from uuid import UUID
 
 from fastapi import Path, Response, status
 
+from visionset.kernel.domain import PreprocessingRecipe
 from visionset.kernel.services import PreprocessingRecipeService
 from visionset.server.dependencies import DriversDep, WorkspaceDep, protected_router
 from visionset.server.errors import documented
@@ -56,20 +57,27 @@ def create_preprocessing_recipe(
     slug is 422 `INVALID_NAME`, and a spec that breaks the recipe grammar is a
     422 `VALIDATION_ERROR` naming the rule.
     """
-    created = PreprocessingRecipeService(workspace).create(
-        project_id, body.name, body.spec.to_domain()
-    )
-    return PreprocessingRecipeOut.of(created)
+    recipes = PreprocessingRecipeService(workspace)
+    created = recipes.create(project_id, body.name, body.spec.to_domain())
+    return _out(recipes, created)
 
 
 @router.get("", responses=documented(404))
 def list_preprocessing_recipes(
     workspace: WorkspaceDep, project_id: UUID
 ) -> PreprocessingRecipePage:
-    """Every recipe of the project, oldest first. An unknown project is 404 `PROJECT_NOT_FOUND`."""
-    found = PreprocessingRecipeService(workspace).list(project_id)
+    """Every recipe of the project, oldest first. An unknown project is 404 `PROJECT_NOT_FOUND`.
+
+    Each row's `used_by` is read from the queue once for the whole page, not per row.
+    """
+    recipes = PreprocessingRecipeService(workspace)
+    found = recipes.list(project_id)
+    usage = recipes.usage(project_id)
     return PreprocessingRecipePage(
-        items=[PreprocessingRecipeOut.of(recipe) for recipe in found], total=len(found)
+        items=[
+            PreprocessingRecipeOut.of(recipe, used_by=usage.get(recipe.name)) for recipe in found
+        ],
+        total=len(found),
     )
 
 
@@ -82,7 +90,8 @@ def get_preprocessing_recipe(
     An unknown project is 404 `PROJECT_NOT_FOUND` and an unknown name 404
     `PREPROCESSING_RECIPE_NOT_FOUND`.
     """
-    return PreprocessingRecipeOut.of(PreprocessingRecipeService(workspace).get(project_id, name))
+    recipes = PreprocessingRecipeService(workspace)
+    return _out(recipes, recipes.get(project_id, name))
 
 
 @router.put("/{name}", responses=documented(404, 409))
@@ -99,10 +108,9 @@ def update_preprocessing_recipe(
     uses is 409 `PREPROCESSING_RECIPE_NAME_TAKEN`, and a new name that is not
     a slug is 422 `INVALID_NAME`.
     """
-    updated = PreprocessingRecipeService(workspace).update(
-        project_id, name, spec=body.spec.to_domain(), new_name=body.name
-    )
-    return PreprocessingRecipeOut.of(updated)
+    recipes = PreprocessingRecipeService(workspace)
+    updated = recipes.update(project_id, name, spec=body.spec.to_domain(), new_name=body.name)
+    return _out(recipes, updated)
 
 
 @router.delete("/{name}", status_code=status.HTTP_204_NO_CONTENT, responses=documented(404))
@@ -152,3 +160,11 @@ def preview_preprocessing(
     )
     response.headers["Cache-Control"] = _NO_STORE
     return PreprocessingPreviewOut.of(preview)
+
+
+def _out(
+    recipes: PreprocessingRecipeService, recipe: PreprocessingRecipe
+) -> PreprocessingRecipeOut:
+    return PreprocessingRecipeOut.of(
+        recipe, used_by=recipes.usage(recipe.project_id).get(recipe.name)
+    )

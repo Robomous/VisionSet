@@ -48,6 +48,24 @@ unconditional - the one resource here that a schema draft's revision protocol do
 manifest uses, so two exports carrying the same spec carry the same hash whatever order the
 fields were written in.
 
+## Which exports ran a recipe
+
+Every recipe a surface returns carries `used_by`: how many succeeded exports ran it
+(`export_count`), and the newest one's `release_id`, `release_tag`, `target` and `format` -
+`target` is null for an export that named a format rather than a target. `used_by` is null when
+no export ran it. `PreprocessingRecipeService.usage(project_id)` reads it once for the whole
+project, from the workspace's succeeded `export.release` jobs and the project's releases, so
+its cost does not grow with the number of recipes listed.
+
+The relation exists only on the job side, and it is **matched by name**: the job's recipe
+snapshot keeps the name the recipe had when the export was asked for, and nothing else
+identifies it. Three consequences follow, and all three are by design:
+
+- a renamed recipe leaves the exports it ran under its old name behind;
+- a new recipe created under a deleted recipe's name inherits that recipe's exports;
+- only queued exports count - `POST /releases/{id}/export` leaves a job behind, while the CLI's
+  `export` and MCP's `export_release` write straight to a directory and leave no record.
+
 ## The grammar
 
 | Step | Fields | What it does |
@@ -166,7 +184,10 @@ its own way is matched by digest.
 the image and its placed annotations, rendered on the export's own kernel path over a one-asset
 manifest with the asset in the train fold - so every variant a spec declares can be looked at
 whether or not a release exists. The image is capped to 512 pixels on its longer side, labels
-scaled to match, and the response is never cached: the spec is the request's own.
+scaled to match, and the response is never cached: the spec is the request's own. `width` and
+`height` are the rendered size; `original_width` and `original_height` are the size the asset
+recorded, and `frame_index` and `source_name` say where the sample came from - the frame of a
+clip, and the name of the source it was ingested from. Each is null when the asset recorded none.
 
 The body also takes `showcase`, false by default. With it true the variant's draws are fixed at
 each step's declared strength - `hflip` mirrors, `rot90` makes one quarter turn, brightness and

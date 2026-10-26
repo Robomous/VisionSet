@@ -452,6 +452,25 @@
         "type": "string",
         "x-visionset-open": true
       },
+      "AssetClassCountOut": {
+        "description": "How many labels of one class sit on a single asset.",
+        "properties": {
+          "annotations": {
+            "title": "Annotations",
+            "type": "integer"
+          },
+          "label_class": {
+            "title": "Label Class",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label_class",
+          "annotations"
+        ],
+        "title": "AssetClassCountOut",
+        "type": "object"
+      },
       "AssetOut": {
         "description": "One ingested item.",
         "properties": {
@@ -2319,11 +2338,18 @@
         "type": "object"
       },
       "DatasetAssetOut": {
-        "description": "One member of the trunk, with its labels summarised.\n\n`annotation_count` is every label on this asset and `label_classes` the\ndistinct classes among them, sorted by name \u2014 what a tile shows before anyone\nasks for the labels themselves, which `GET\n/datasets/{dataset_id}/assets/{asset_id}/annotations` serves.",
+        "description": "One member of the trunk, with its labels summarised and its provenance.\n\n`annotation_count` is every label on this asset and `label_classes` the\ndistinct classes among them, sorted by name \u2014 what a tile shows before anyone\nasks for the labels themselves, which `GET\n/datasets/{dataset_id}/assets/{asset_id}/annotations` serves. `class_counts`\nis the same classes with how many labels each holds on this asset.\n\n`promoted_at` and `promoted_by_batch_id` come from the `promote` entry in the\ndataset's change log that brought the asset in \u2014 the latest, for an asset\nremoved and promoted again \u2014 and are null when no entry names it.\n`release_tags` lists the releases whose manifest names the asset, oldest\nfirst; empty for an asset no release has captured.",
         "properties": {
           "annotation_count": {
             "title": "Annotation Count",
             "type": "integer"
+          },
+          "class_counts": {
+            "items": {
+              "$ref": "#/components/schemas/AssetClassCountOut"
+            },
+            "title": "Class Counts",
+            "type": "array"
           },
           "content_hash": {
             "title": "Content Hash",
@@ -2406,6 +2432,37 @@
             "title": "Project Id",
             "type": "string"
           },
+          "promoted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promoted At"
+          },
+          "promoted_by_batch_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promoted By Batch Id"
+          },
+          "release_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Release Tags",
+            "type": "array"
+          },
           "source_id": {
             "anyOf": [
               {
@@ -2455,7 +2512,11 @@
           "thumbnail_hash",
           "ingested_at",
           "annotation_count",
-          "label_classes"
+          "label_classes",
+          "class_counts",
+          "promoted_at",
+          "promoted_by_batch_id",
+          "release_tags"
         ],
         "title": "DatasetAssetOut",
         "type": "object"
@@ -4055,7 +4116,7 @@
         "type": "object"
       },
       "PreprocessingPreviewOut": {
-        "description": "One asset through a recipe, rendered for a screen.\n\n`image_base64` is the transformed image, encoded as `media_type`, capped to\n512 pixels on its longer side with `annotations` scaled to match. `width`\nand `height` are the rendered size; they are null only when the asset never\nrecorded a size and no resize step decided one.",
+        "description": "One asset through a recipe, rendered for a screen.\n\n`image_base64` is the transformed image, encoded as `media_type`, capped to\n512 pixels on its longer side with `annotations` scaled to match. `width`\nand `height` are the rendered size; they are null only when the asset never\nrecorded a size and no resize step decided one. `original_width` and\n`original_height` are the size the asset recorded, null when it recorded\nnone. `frame_index` and `source_name` say where the sample came from \u2014 the\nframe of a clip, and the name of the source it was ingested from \u2014 and are\nnull for a still image or an asset with no recorded source.",
         "properties": {
           "annotations": {
             "items": {
@@ -4068,6 +4129,17 @@
             "format": "uuid",
             "title": "Asset Id",
             "type": "string"
+          },
+          "frame_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frame Index"
           },
           "height": {
             "anyOf": [
@@ -4087,6 +4159,39 @@
           "media_type": {
             "title": "Media Type",
             "type": "string"
+          },
+          "original_height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Height"
+          },
+          "original_width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Width"
+          },
+          "source_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Name"
           },
           "variant": {
             "title": "Variant",
@@ -4109,6 +4214,10 @@
           "variant",
           "width",
           "height",
+          "original_width",
+          "original_height",
+          "frame_index",
+          "source_name",
           "annotations",
           "image_base64",
           "media_type"
@@ -4136,7 +4245,7 @@
         "type": "object"
       },
       "PreprocessingRecipeOut": {
-        "description": "A named pre-processing recipe of a project.\n\nA recipe binds at export time \u2014 `POST /releases/{release_id}/export?recipe=`\ntakes `name` \u2014 and the export keeps the spec by value, so editing or\ndeleting a recipe never alters a past export. There is no state and no\n`allowed_actions`: every operation is always offered.",
+        "description": "A named pre-processing recipe of a project.\n\nA recipe binds at export time \u2014 `POST /releases/{release_id}/export?recipe=`\ntakes `name` \u2014 and the export keeps the spec by value, so editing or\ndeleting a recipe never alters a past export. There is no state and no\n`allowed_actions`: every operation is always offered. `used_by` is null\nwhen no succeeded export ran a recipe of this name.",
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -4164,6 +4273,16 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "used_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecipeUsageOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -4172,7 +4291,8 @@
           "name",
           "spec",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "used_by"
         ],
         "title": "PreprocessingRecipeOut",
         "type": "object"
@@ -4738,6 +4858,48 @@
           }
         },
         "title": "RecipeSpecBody",
+        "type": "object"
+      },
+      "RecipeUsageOut": {
+        "description": "Which succeeded exports ran a recipe: how many, and the newest one.\n\nMatched by the name the export's recipe snapshot carries, so a renamed\nrecipe leaves its earlier exports behind and a new recipe under a deleted\none's name inherits them. Only exports queued through\n`POST /releases/{release_id}/export` are counted. `target` is null for an\nexport that named a format rather than a target.",
+        "properties": {
+          "export_count": {
+            "title": "Export Count",
+            "type": "integer"
+          },
+          "format": {
+            "title": "Format",
+            "type": "string"
+          },
+          "release_id": {
+            "format": "uuid",
+            "title": "Release Id",
+            "type": "string"
+          },
+          "release_tag": {
+            "title": "Release Tag",
+            "type": "string"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          }
+        },
+        "required": [
+          "export_count",
+          "release_id",
+          "release_tag",
+          "target",
+          "format"
+        ],
+        "title": "RecipeUsageOut",
         "type": "object"
       },
       "ReleaseCreate": {
@@ -8163,7 +8325,7 @@
     },
     "/datasets/{dataset_id}/assets": {
       "get": {
-        "description": "Everything in the trunk, in the order it was promoted, each with its labels summarised.\n\nPaged, and the second route in the API that is \u2014 the trunk accumulates every\nbatch a project ever completed, so it is the other collection that can hold\nfifty thousand items. `total` is the size of the whole trunk and not of the\npage; an offset past the end is an empty list and a 200, never a 404. The\n404 is the dataset itself: an unknown one is `DATASET_NOT_FOUND`.\n\nOrder is the stored insertion order, so reading twice gives the same sequence\nand promoting a new batch appends rather than reshuffles.\n\nEach member carries `annotation_count` and `label_classes` so a gallery can\ncaption a tile without a request per frame; the labels themselves are one\nlevel down, at `GET /datasets/{dataset_id}/assets/{asset_id}/annotations`.",
+        "description": "Everything in the trunk, in the order it was promoted, each with its labels summarised.\n\nPaged, and the second route in the API that is \u2014 the trunk accumulates every\nbatch a project ever completed, so it is the other collection that can hold\nfifty thousand items. `total` is the size of the whole trunk and not of the\npage; an offset past the end is an empty list and a 200, never a 404. The\n404 is the dataset itself: an unknown one is `DATASET_NOT_FOUND`.\n\nOrder is the stored insertion order, so reading twice gives the same sequence\nand promoting a new batch appends rather than reshuffles.\n\nRead-only filters narrow the same page and compose: `q` keeps members whose\nfile name contains it (case-insensitive), `label_class` (repeatable) keeps\nmembers carrying a label of any class named, and `release_id` keeps members\nthat release names \u2014 one of this dataset's, else `RELEASE_NOT_FOUND`. `total`\nis then the size of the narrowed set.\n\nEach member carries `annotation_count` and `label_classes` so a gallery can\ncaption a tile without a request per frame; the labels themselves are one\nlevel down, at `GET /datasets/{dataset_id}/assets/{asset_id}/annotations`.\nEach also names where it came from: the batch and moment of the promotion that\nbrought it in, and the tags of the releases that hold it.",
         "operationId": "list_dataset_assets",
         "parameters": [
           {
@@ -8206,6 +8368,65 @@
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Keep only assets whose file name contains this text.",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Keep only assets whose file name contains this text.",
+              "title": "Q"
+            }
+          },
+          {
+            "description": "Keep only assets carrying a label of any class named. Repeatable.",
+            "in": "query",
+            "name": "label_class",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Keep only assets carrying a label of any class named. Repeatable.",
+              "title": "Label Class"
+            }
+          },
+          {
+            "description": "Keep only the assets this release of the dataset names.",
+            "in": "query",
+            "name": "release_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Keep only the assets this release of the dataset names.",
+              "title": "Release Id"
             }
           }
         ],
@@ -12982,7 +13203,7 @@
     },
     "/projects/{project_id}/preprocessing-recipes": {
       "get": {
-        "description": "Every recipe of the project, oldest first. An unknown project is 404 `PROJECT_NOT_FOUND`.",
+        "description": "Every recipe of the project, oldest first. An unknown project is 404 `PROJECT_NOT_FOUND`.\n\nEach row's `used_by` is read from the queue once for the whole page, not per row.",
         "operationId": "list_preprocessing_recipes",
         "parameters": [
           {

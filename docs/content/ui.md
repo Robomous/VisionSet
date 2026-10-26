@@ -240,7 +240,12 @@ the target its hints came from as a `quiet` chip, a small `New`, and the line th
 a recipe acts: *Applied at export. Choose a recipe in the Export dialog; exports without one
 apply no transform.* With no recipe yet the panel is an invitation with one verb-first
 action. The first recipe opens on arrival, so the editor is on screen whenever there is
-something to edit.
+something to edit. Under the open recipe's name, a line says which export used it — *Used by
+the v0.5 YOLO11 export and 2 earlier* — read from the recipe's `used_by`, with the target's
+catalog label or, for an export that named a format, the format; a recipe no export ran has
+no line. The Export dialog reads the recipes again when an export through one succeeds, so
+the line is current by the time the view is reopened. The match is by name, so the line follows the caveats
+[preprocessing.md](preprocessing.md#which-exports-ran-a-recipe) states.
 
 The editor is **four steps, always visible, each settled or not** — not the ingest flow's
 one-step-at-a-time stepper, because a recipe's choices have no order between them. The
@@ -269,8 +274,13 @@ form did not build.
 *Preview* renders one sample asset through `POST /projects/{id}/preprocessing-preview`,
 the export's own kernel path over a one-asset manifest: the first train-fold member of the
 newest release with a split — variants are the train fold's — or the project's first asset
-when no release has one. Three columns: the asset as it is, after the resize step alone, and
-the last augmentation step ticked, headed by its name (*After horizontal flip*) and asked for
+when no release has one. A caption beneath names the sample from the rendering's own
+response — *Frame 1,188 · Highway — August*, its `frame_index` and `source_name`, either
+alone when the other is null, and *Sample* with the id's first eight characters when both
+are — and the first column is headed with the size the asset recorded (*Original · 1920 ×
+1080*), from `original_width` and `original_height` rather than the asset listing, so a
+sample outside the page the view fetched still has one. Three columns: the asset as it is,
+after the resize step alone, and the last augmentation step ticked, headed by its name (*After horizontal flip*) and asked for
 in `showcase` mode — the draws fixed at the step's declared strength, so the cell shows what
 the step does rather than one seeded draw of it; an export still takes the seeded path. A
 stage the recipe does not have says so (*No resize step*) rather than repeating the

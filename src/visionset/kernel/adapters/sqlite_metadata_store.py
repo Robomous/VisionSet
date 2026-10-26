@@ -50,6 +50,7 @@ from visionset.kernel.adapters import _tables as t
 from visionset.kernel.adapters._tables import META_TABLE, Base, MetaRow
 from visionset.kernel.adapters.migrations import FORMAT_VERSION, MIGRATIONS
 from visionset.kernel.domain import (
+    AnnotationJobState,
     AnnotationSchema,
     AnnotationSummary,
     AnnotationTotals,
@@ -484,6 +485,38 @@ class SqlUnitOfWork:
         if stored is None:
             raise EntityNotFound(f"job {job_id} does not carry asset {asset_id}")
         return AssetProgress(stored)
+
+    def set_job_state(
+        self,
+        job_id: UUID,
+        *,
+        expected: AnnotationJobState,
+        state: AnnotationJobState,
+    ) -> AnnotationJobState | None:
+        """One guarded ``UPDATE`` on the job's ``state`` — see the port's docstring.
+
+        Same shape as :meth:`set_asset_progress`: the ``WHERE state = :expected``
+        term is evaluated under SQLite's write lock, and ``rowcount`` is the
+        answer. The ``SELECT`` after a miss only reports where the job is.
+        """
+        result = cast(
+            "CursorResult[Any]",
+            self._session.execute(
+                update(t.AnnotationJobRow)
+                .where(t.AnnotationJobRow.id == job_id)
+                .where(t.AnnotationJobRow.state == expected)
+                .values(state=state)
+            ),
+        )
+        if result.rowcount == 1:
+            return None
+
+        stored = self._session.scalar(
+            select(t.AnnotationJobRow.state).where(t.AnnotationJobRow.id == job_id)
+        )
+        if stored is None:
+            raise EntityNotFound(f"no job {job_id}")
+        return AnnotationJobState(stored)
 
     def last_touched(self, job_id: UUID) -> datetime | None:
         """One ``max()`` over the job's rows — see the port's docstring.

@@ -159,6 +159,13 @@ const ASSET_ROW = {
   ingested_at: "2026-07-31T09:00:00.000000Z",
   annotation_count: 2,
   label_classes: ["lane", "vehicle"],
+  class_counts: [
+    { label_class: "lane", annotations: 1 },
+    { label_class: "vehicle", annotations: 1 },
+  ],
+  promoted_at: "2026-08-01T09:00:00.000000Z",
+  promoted_by_batch_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  release_tags: ["v0.1"],
 };
 
 const BOX = "66666666-6666-4666-8666-666666666666";
@@ -254,6 +261,7 @@ const RECIPES = [
     },
     created_at: "2026-08-20T10:00:00.000000Z",
     updated_at: "2026-08-20T10:00:00.000000Z",
+    used_by: null,
   },
 ];
 
@@ -708,6 +716,30 @@ describe("export, and the third gate word", () => {
 
     return await screen.findByTestId("export-job-state");
   }
+
+  it("reads the recipes again once an export through one has succeeded, for its usage", async () => {
+    baseline();
+    handlers.push((request) =>
+      request.method === "POST" && request.url.includes("/export")
+        ? { status: 200, body: backgroundJob({ state: "queued" }) }
+        : undefined,
+    );
+    on("GET", /\/background-jobs\/[^/]+$/, { status: 200, body: backgroundJob({ state: "succeeded" }) });
+    const recipeReads = () =>
+      sent.filter((r) => r.method === "GET" && r.url.includes("/preprocessing-recipes")).length;
+
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
+    await userEvent.click(await screen.findByTestId("export-v1"));
+    await userEvent.click(screen.getByTestId("export-target"));
+    await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
+    await userEvent.click(screen.getByTestId("export-recipe"));
+    await userEvent.click(await screen.findByRole("option", { name: /yolo-640/ }));
+    const before = recipeReads();
+    await userEvent.click(screen.getByTestId("export-submit"));
+
+    expect((await screen.findByTestId("export-job-state")).textContent).toContain("Done");
+    await waitFor(() => expect(recipeReads()).toBeGreaterThan(before));
+  });
 
   it("says the export is running, in the colour work-in-flight wears (#391)", async () => {
     const badge = await exportWith("running");
