@@ -38,6 +38,7 @@ from visionset.kernel.domain import (
     AugmentStep,
     PreprocessingRecipe,
     RecipeSpec,
+    RecipeUsage,
     ResizeStep,
     ResizeStrategy,
     Step,
@@ -188,9 +189,11 @@ def _row(recipe: PreprocessingRecipe) -> tuple[str, ...]:
     )
 
 
-def _print(recipe: PreprocessingRecipe, *, json_out: bool, verb: str) -> None:
+def _print(
+    recipe: PreprocessingRecipe, *, used_by: RecipeUsage | None, json_out: bool, verb: str
+) -> None:
     if json_out:
-        document(wire.preprocessing_recipe(recipe))
+        document(wire.preprocessing_recipe(recipe, used_by=used_by))
         return
     note(
         f"{verb} recipe {recipe.name!r}: {_steps_summary(recipe.spec)}, "
@@ -229,8 +232,10 @@ def recipe_create(
     )
     with opened_workspace(workspace) as service:
         resolved = ProjectService(service).resolve(project)
-        created = PreprocessingRecipeService(service).create(resolved.id, name, built)
-    _print(created, json_out=json_out, verb="Created")
+        recipes = PreprocessingRecipeService(service)
+        created = recipes.create(resolved.id, name, built)
+        used_by = recipes.usage(resolved.id).get(created.name)
+    _print(created, used_by=used_by, json_out=json_out, verb="Created")
 
 
 @recipe_app.command("list")
@@ -242,9 +247,15 @@ def recipe_list(
     """List a project's recipes, oldest first."""
     with opened_workspace(workspace) as service:
         resolved = ProjectService(service).resolve(project)
-        recipes = PreprocessingRecipeService(service).list(resolved.id)
+        service_recipes = PreprocessingRecipeService(service)
+        recipes = service_recipes.list(resolved.id)
+        usage = service_recipes.usage(resolved.id)
     if json_out:
-        document(wire.page([wire.preprocessing_recipe(one) for one in recipes]))
+        document(
+            wire.page(
+                [wire.preprocessing_recipe(one, used_by=usage.get(one.name)) for one in recipes]
+            )
+        )
         return
     table(_COLUMNS, [_row(one) for one in recipes])
     if not recipes:
@@ -261,9 +272,11 @@ def recipe_show(
     """Print one recipe. `--json` is the shape `--spec` reads back, under `spec`."""
     with opened_workspace(workspace) as service:
         resolved = ProjectService(service).resolve(project)
-        recipe = PreprocessingRecipeService(service).get(resolved.id, name)
+        recipes = PreprocessingRecipeService(service)
+        recipe = recipes.get(resolved.id, name)
+        used_by = recipes.usage(resolved.id).get(recipe.name)
     if json_out:
-        document(wire.preprocessing_recipe(recipe))
+        document(wire.preprocessing_recipe(recipe, used_by=used_by))
         return
     table(_COLUMNS, [_row(recipe)])
 
@@ -301,10 +314,10 @@ def recipe_update(
     )
     with opened_workspace(workspace) as service:
         resolved = ProjectService(service).resolve(project)
-        updated = PreprocessingRecipeService(service).update(
-            resolved.id, name, spec=built, new_name=rename
-        )
-    _print(updated, json_out=json_out, verb="Updated")
+        recipes = PreprocessingRecipeService(service)
+        updated = recipes.update(resolved.id, name, spec=built, new_name=rename)
+        used_by = recipes.usage(resolved.id).get(updated.name)
+    _print(updated, used_by=used_by, json_out=json_out, verb="Updated")
 
 
 @recipe_app.command("delete")
@@ -317,8 +330,10 @@ def recipe_delete(
     """Remove a recipe. No prompt: every export that used it kept its own copy."""
     with opened_workspace(workspace) as service:
         resolved = ProjectService(service).resolve(project)
-        removed = PreprocessingRecipeService(service).delete(resolved.id, name)
+        recipes = PreprocessingRecipeService(service)
+        removed = recipes.delete(resolved.id, name)
+        used_by = recipes.usage(resolved.id).get(removed.name)
     if json_out:
-        document({"deleted": wire.preprocessing_recipe(removed)})
+        document({"deleted": wire.preprocessing_recipe(removed, used_by=used_by)})
         return
     note(f"Deleted recipe {removed.name!r}.")
