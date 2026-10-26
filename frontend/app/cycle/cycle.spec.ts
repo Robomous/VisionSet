@@ -1581,6 +1581,12 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
       });
     }
     await expect(page.getByTestId("recipe-step-preview")).toHaveAttribute("data-state", "complete");
+    // The sample named from the preview response itself: the size it recorded,
+    // and the source it was ingested from rather than its id.
+    await expect(page.getByTestId("preview-original-heading")).toHaveText(/^Original · \d+ × \d+$/);
+    await expect(page.getByTestId("preview-caption")).not.toContainText("Sample ");
+    // Not yet exported, so nothing says it was.
+    await expect(page.getByTestId("recipe-used-by")).toHaveCount(0);
 
     await page.getByTestId("recipe-save").click();
     await expect(page.getByTestId("recipe-footer-note")).toContainText("No unsaved changes");
@@ -1638,6 +1644,8 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 
     await page.getByTestId("dataset-tab-preprocessing").click();
     await expect(page.getByTestId("recipe-editor")).toBeVisible();
+    // The export that just ran, read back from the queue as the recipe's usage.
+    await expect(page.getByTestId("recipe-used-by")).toHaveText(`Used by the ${TAG} YOLO11 export`);
     await page.getByTestId(`recipe-delete-${RECIPE}`).click();
     await expect(page.getByTestId("delete-recipe-dialog")).toContainText(`Delete ${RECIPE}?`);
     await page.getByTestId("delete-recipe-submit").click();

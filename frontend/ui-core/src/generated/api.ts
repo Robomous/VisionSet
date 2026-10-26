@@ -2228,6 +2228,8 @@ export interface paths {
         /**
          * List Preprocessing Recipes
          * @description Every recipe of the project, oldest first. An unknown project is 404 `PROJECT_NOT_FOUND`.
+         *
+         *     Each row's `used_by` is read from the queue once for the whole page, not per row.
          */
         get: operations["list_preprocessing_recipes"];
         put?: never;
@@ -5212,7 +5214,11 @@ export interface components {
          *     `image_base64` is the transformed image, encoded as `media_type`, capped to
          *     512 pixels on its longer side with `annotations` scaled to match. `width`
          *     and `height` are the rendered size; they are null only when the asset never
-         *     recorded a size and no resize step decided one.
+         *     recorded a size and no resize step decided one. `original_width` and
+         *     `original_height` are the size the asset recorded, null when it recorded
+         *     none. `frame_index` and `source_name` say where the sample came from — the
+         *     frame of a clip, and the name of the source it was ingested from — and are
+         *     null for a still image or an asset with no recorded source.
          */
         PreprocessingPreviewOut: {
             /** Annotations */
@@ -5222,12 +5228,20 @@ export interface components {
              * Format: uuid
              */
             asset_id: string;
+            /** Frame Index */
+            frame_index: number | null;
             /** Height */
             height: number | null;
             /** Image Base64 */
             image_base64: string;
             /** Media Type */
             media_type: string;
+            /** Original Height */
+            original_height: number | null;
+            /** Original Width */
+            original_width: number | null;
+            /** Source Name */
+            source_name: string | null;
             /** Variant */
             variant: number;
             /** Width */
@@ -5253,7 +5267,8 @@ export interface components {
          *     A recipe binds at export time — `POST /releases/{release_id}/export?recipe=`
          *     takes `name` — and the export keeps the spec by value, so editing or
          *     deleting a recipe never alters a past export. There is no state and no
-         *     `allowed_actions`: every operation is always offered.
+         *     `allowed_actions`: every operation is always offered. `used_by` is null
+         *     when no succeeded export ran a recipe of this name.
          */
         PreprocessingRecipeOut: {
             /**
@@ -5279,6 +5294,7 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            used_by: components["schemas"]["RecipeUsageOut"] | null;
         };
         /**
          * PreprocessingRecipePage
@@ -5524,6 +5540,31 @@ export interface components {
              * @default 0
              */
             variants_per_asset: number;
+        };
+        /**
+         * RecipeUsageOut
+         * @description Which succeeded exports ran a recipe: how many, and the newest one.
+         *
+         *     Matched by the name the export's recipe snapshot carries, so a renamed
+         *     recipe leaves its earlier exports behind and a new recipe under a deleted
+         *     one's name inherits them. Only exports queued through
+         *     `POST /releases/{release_id}/export` are counted. `target` is null for an
+         *     export that named a format rather than a target.
+         */
+        RecipeUsageOut: {
+            /** Export Count */
+            export_count: number;
+            /** Format */
+            format: string;
+            /**
+             * Release Id
+             * Format: uuid
+             */
+            release_id: string;
+            /** Release Tag */
+            release_tag: string;
+            /** Target */
+            target: string | null;
         };
         /**
          * ReleaseCreate

@@ -4116,7 +4116,7 @@
         "type": "object"
       },
       "PreprocessingPreviewOut": {
-        "description": "One asset through a recipe, rendered for a screen.\n\n`image_base64` is the transformed image, encoded as `media_type`, capped to\n512 pixels on its longer side with `annotations` scaled to match. `width`\nand `height` are the rendered size; they are null only when the asset never\nrecorded a size and no resize step decided one.",
+        "description": "One asset through a recipe, rendered for a screen.\n\n`image_base64` is the transformed image, encoded as `media_type`, capped to\n512 pixels on its longer side with `annotations` scaled to match. `width`\nand `height` are the rendered size; they are null only when the asset never\nrecorded a size and no resize step decided one. `original_width` and\n`original_height` are the size the asset recorded, null when it recorded\nnone. `frame_index` and `source_name` say where the sample came from \u2014 the\nframe of a clip, and the name of the source it was ingested from \u2014 and are\nnull for a still image or an asset with no recorded source.",
         "properties": {
           "annotations": {
             "items": {
@@ -4129,6 +4129,17 @@
             "format": "uuid",
             "title": "Asset Id",
             "type": "string"
+          },
+          "frame_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frame Index"
           },
           "height": {
             "anyOf": [
@@ -4148,6 +4159,39 @@
           "media_type": {
             "title": "Media Type",
             "type": "string"
+          },
+          "original_height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Height"
+          },
+          "original_width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Width"
+          },
+          "source_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Name"
           },
           "variant": {
             "title": "Variant",
@@ -4170,6 +4214,10 @@
           "variant",
           "width",
           "height",
+          "original_width",
+          "original_height",
+          "frame_index",
+          "source_name",
           "annotations",
           "image_base64",
           "media_type"
@@ -4197,7 +4245,7 @@
         "type": "object"
       },
       "PreprocessingRecipeOut": {
-        "description": "A named pre-processing recipe of a project.\n\nA recipe binds at export time \u2014 `POST /releases/{release_id}/export?recipe=`\ntakes `name` \u2014 and the export keeps the spec by value, so editing or\ndeleting a recipe never alters a past export. There is no state and no\n`allowed_actions`: every operation is always offered.",
+        "description": "A named pre-processing recipe of a project.\n\nA recipe binds at export time \u2014 `POST /releases/{release_id}/export?recipe=`\ntakes `name` \u2014 and the export keeps the spec by value, so editing or\ndeleting a recipe never alters a past export. There is no state and no\n`allowed_actions`: every operation is always offered. `used_by` is null\nwhen no succeeded export ran a recipe of this name.",
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -4225,6 +4273,16 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "used_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecipeUsageOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -4233,7 +4291,8 @@
           "name",
           "spec",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "used_by"
         ],
         "title": "PreprocessingRecipeOut",
         "type": "object"
@@ -4799,6 +4858,48 @@
           }
         },
         "title": "RecipeSpecBody",
+        "type": "object"
+      },
+      "RecipeUsageOut": {
+        "description": "Which succeeded exports ran a recipe: how many, and the newest one.\n\nMatched by the name the export's recipe snapshot carries, so a renamed\nrecipe leaves its earlier exports behind and a new recipe under a deleted\none's name inherits them. Only exports queued through\n`POST /releases/{release_id}/export` are counted. `target` is null for an\nexport that named a format rather than a target.",
+        "properties": {
+          "export_count": {
+            "title": "Export Count",
+            "type": "integer"
+          },
+          "format": {
+            "title": "Format",
+            "type": "string"
+          },
+          "release_id": {
+            "format": "uuid",
+            "title": "Release Id",
+            "type": "string"
+          },
+          "release_tag": {
+            "title": "Release Tag",
+            "type": "string"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          }
+        },
+        "required": [
+          "export_count",
+          "release_id",
+          "release_tag",
+          "target",
+          "format"
+        ],
+        "title": "RecipeUsageOut",
         "type": "object"
       },
       "ReleaseCreate": {
@@ -13102,7 +13203,7 @@
     },
     "/projects/{project_id}/preprocessing-recipes": {
       "get": {
-        "description": "Every recipe of the project, oldest first. An unknown project is 404 `PROJECT_NOT_FOUND`.",
+        "description": "Every recipe of the project, oldest first. An unknown project is 404 `PROJECT_NOT_FOUND`.\n\nEach row's `used_by` is read from the queue once for the whole page, not per row.",
         "operationId": "list_preprocessing_recipes",
         "parameters": [
           {

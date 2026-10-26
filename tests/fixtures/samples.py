@@ -62,6 +62,7 @@ from visionset.kernel.domain import (
     Project,
     ProjectPreview,
     RecipeSpec,
+    RecipeUsage,
     Release,
     ReleaseVerification,
     ResizeStep,
@@ -452,6 +453,18 @@ PREPROCESSING_PREVIEW = PreprocessingPreview(
     ),
     image=b"\x89PNG\r\n\x1a\n" + b"\x00" * 8,
     media_type="image/png",
+    original_width=1920,
+    original_height=1080,
+    frame_index=1188,
+    source_name="clip.mp4",
+)
+
+RECIPE_USAGE = RecipeUsage(
+    export_count=2,
+    release_id=RELEASE.id,
+    release_tag=RELEASE.tag,
+    target="ultralytics-yolo11",
+    format="yolov8",
 )
 
 EXPORT_PREPROCESSING = ExportPreprocessing(
