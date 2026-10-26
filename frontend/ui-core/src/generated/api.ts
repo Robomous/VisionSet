@@ -651,6 +651,12 @@ export interface paths {
          *     Order is the stored insertion order, so reading twice gives the same sequence
          *     and promoting a new batch appends rather than reshuffles.
          *
+         *     Read-only filters narrow the same page and compose: `q` keeps members whose
+         *     file name contains it (case-insensitive), `label_class` (repeatable) keeps
+         *     members carrying a label of any class named, and `release_id` keeps members
+         *     that release names — one of this dataset's, else `RELEASE_NOT_FOUND`. `total`
+         *     is then the size of the narrowed set.
+         *
          *     Each member carries `annotation_count` and `label_classes` so a gallery can
          *     caption a tile without a request per frame; the labels themselves are one
          *     level down, at `GET /datasets/{dataset_id}/assets/{asset_id}/annotations`.
@@ -7686,6 +7692,12 @@ export interface operations {
                 limit?: number | null;
                 /** @description How many items to skip. Counts from the start of the collection. */
                 offset?: number;
+                /** @description Keep only assets whose file name contains this text. */
+                q?: string | null;
+                /** @description Keep only assets carrying a label of any class named. Repeatable. */
+                label_class?: string[] | null;
+                /** @description Keep only the assets this release of the dataset names. */
+                release_id?: string | null;
             };
             header?: never;
             path: {
