@@ -2026,24 +2026,59 @@ class ClassCountOut(BaseModel):
 # so the shape that stays honest is a row per class.
 # Inherits ``AssetOut`` for ``BatchAssetOut``'s reason: the same asset seen from
 # inside the trunk, so a field published there is published here.
+class AssetClassCountOut(BaseModel):
+    """How many labels of one class sit on a single asset."""
+
+    label_class: str
+    annotations: int
+
+
 class DatasetAssetOut(AssetOut):
-    """One member of the trunk, with its labels summarised.
+    """One member of the trunk, with its labels summarised and its provenance.
 
     `annotation_count` is every label on this asset and `label_classes` the
     distinct classes among them, sorted by name — what a tile shows before anyone
     asks for the labels themselves, which `GET
-    /datasets/{dataset_id}/assets/{asset_id}/annotations` serves.
+    /datasets/{dataset_id}/assets/{asset_id}/annotations` serves. `class_counts`
+    is the same classes with how many labels each holds on this asset.
+
+    `promoted_at` and `promoted_by_batch_id` come from the `promote` entry in the
+    dataset's change log that brought the asset in — the latest, for an asset
+    removed and promoted again — and are null when no entry names it.
+    `release_tags` lists the releases whose manifest names the asset, oldest
+    first; empty for an asset no release has captured.
     """
 
     annotation_count: int
     label_classes: list[str]
+    class_counts: list[AssetClassCountOut]
+    promoted_at: datetime | None
+    promoted_by_batch_id: UUID | None
+    release_tags: list[str]
 
     @classmethod
-    def in_trunk(cls, asset: Asset, *, annotation_count: int, label_classes: Iterable[str]) -> Self:
+    def in_trunk(
+        cls,
+        asset: Asset,
+        *,
+        annotation_count: int,
+        label_classes: Iterable[str],
+        class_counts: Iterable[tuple[str, int]],
+        promoted_at: datetime | None,
+        promoted_by_batch_id: UUID | None,
+        release_tags: Iterable[str],
+    ) -> Self:
         return cls(
             **AssetOut.of(asset).model_dump(),
             annotation_count=annotation_count,
             label_classes=list(label_classes),
+            class_counts=[
+                AssetClassCountOut(label_class=name, annotations=count)
+                for name, count in class_counts
+            ],
+            promoted_at=promoted_at,
+            promoted_by_batch_id=promoted_by_batch_id,
+            release_tags=list(release_tags),
         )
 
 

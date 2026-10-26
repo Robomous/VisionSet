@@ -452,6 +452,25 @@
         "type": "string",
         "x-visionset-open": true
       },
+      "AssetClassCountOut": {
+        "description": "How many labels of one class sit on a single asset.",
+        "properties": {
+          "annotations": {
+            "title": "Annotations",
+            "type": "integer"
+          },
+          "label_class": {
+            "title": "Label Class",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label_class",
+          "annotations"
+        ],
+        "title": "AssetClassCountOut",
+        "type": "object"
+      },
       "AssetOut": {
         "description": "One ingested item.",
         "properties": {
@@ -2319,11 +2338,18 @@
         "type": "object"
       },
       "DatasetAssetOut": {
-        "description": "One member of the trunk, with its labels summarised.\n\n`annotation_count` is every label on this asset and `label_classes` the\ndistinct classes among them, sorted by name \u2014 what a tile shows before anyone\nasks for the labels themselves, which `GET\n/datasets/{dataset_id}/assets/{asset_id}/annotations` serves.",
+        "description": "One member of the trunk, with its labels summarised and its provenance.\n\n`annotation_count` is every label on this asset and `label_classes` the\ndistinct classes among them, sorted by name \u2014 what a tile shows before anyone\nasks for the labels themselves, which `GET\n/datasets/{dataset_id}/assets/{asset_id}/annotations` serves. `class_counts`\nis the same classes with how many labels each holds on this asset.\n\n`promoted_at` and `promoted_by_batch_id` come from the `promote` entry in the\ndataset's change log that brought the asset in \u2014 the latest, for an asset\nremoved and promoted again \u2014 and are null when no entry names it.\n`release_tags` lists the releases whose manifest names the asset, oldest\nfirst; empty for an asset no release has captured.",
         "properties": {
           "annotation_count": {
             "title": "Annotation Count",
             "type": "integer"
+          },
+          "class_counts": {
+            "items": {
+              "$ref": "#/components/schemas/AssetClassCountOut"
+            },
+            "title": "Class Counts",
+            "type": "array"
           },
           "content_hash": {
             "title": "Content Hash",
@@ -2406,6 +2432,37 @@
             "title": "Project Id",
             "type": "string"
           },
+          "promoted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promoted At"
+          },
+          "promoted_by_batch_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promoted By Batch Id"
+          },
+          "release_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Release Tags",
+            "type": "array"
+          },
           "source_id": {
             "anyOf": [
               {
@@ -2455,7 +2512,11 @@
           "thumbnail_hash",
           "ingested_at",
           "annotation_count",
-          "label_classes"
+          "label_classes",
+          "class_counts",
+          "promoted_at",
+          "promoted_by_batch_id",
+          "release_tags"
         ],
         "title": "DatasetAssetOut",
         "type": "object"
@@ -8163,7 +8224,7 @@
     },
     "/datasets/{dataset_id}/assets": {
       "get": {
-        "description": "Everything in the trunk, in the order it was promoted, each with its labels summarised.\n\nPaged, and the second route in the API that is \u2014 the trunk accumulates every\nbatch a project ever completed, so it is the other collection that can hold\nfifty thousand items. `total` is the size of the whole trunk and not of the\npage; an offset past the end is an empty list and a 200, never a 404. The\n404 is the dataset itself: an unknown one is `DATASET_NOT_FOUND`.\n\nOrder is the stored insertion order, so reading twice gives the same sequence\nand promoting a new batch appends rather than reshuffles.\n\nRead-only filters narrow the same page and compose: `q` keeps members whose\nfile name contains it (case-insensitive), `label_class` (repeatable) keeps\nmembers carrying a label of any class named, and `release_id` keeps members\nthat release names \u2014 one of this dataset's, else `RELEASE_NOT_FOUND`. `total`\nis then the size of the narrowed set.\n\nEach member carries `annotation_count` and `label_classes` so a gallery can\ncaption a tile without a request per frame; the labels themselves are one\nlevel down, at `GET /datasets/{dataset_id}/assets/{asset_id}/annotations`.",
+        "description": "Everything in the trunk, in the order it was promoted, each with its labels summarised.\n\nPaged, and the second route in the API that is \u2014 the trunk accumulates every\nbatch a project ever completed, so it is the other collection that can hold\nfifty thousand items. `total` is the size of the whole trunk and not of the\npage; an offset past the end is an empty list and a 200, never a 404. The\n404 is the dataset itself: an unknown one is `DATASET_NOT_FOUND`.\n\nOrder is the stored insertion order, so reading twice gives the same sequence\nand promoting a new batch appends rather than reshuffles.\n\nRead-only filters narrow the same page and compose: `q` keeps members whose\nfile name contains it (case-insensitive), `label_class` (repeatable) keeps\nmembers carrying a label of any class named, and `release_id` keeps members\nthat release names \u2014 one of this dataset's, else `RELEASE_NOT_FOUND`. `total`\nis then the size of the narrowed set.\n\nEach member carries `annotation_count` and `label_classes` so a gallery can\ncaption a tile without a request per frame; the labels themselves are one\nlevel down, at `GET /datasets/{dataset_id}/assets/{asset_id}/annotations`.\nEach also names where it came from: the batch and moment of the promotion that\nbrought it in, and the tags of the releases that hold it.",
         "operationId": "list_dataset_assets",
         "parameters": [
           {
