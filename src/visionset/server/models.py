@@ -232,6 +232,18 @@ ProgressQuery = Annotated[
     list[AssetProgress] | None,
     Query(description="Keep only assets in these states. Repeat the parameter per state."),
 ]
+AssetSearchQuery = Annotated[
+    str | None,
+    Query(min_length=1, description="Keep only assets whose file name contains this text."),
+]
+LabelClassQuery = Annotated[
+    list[str] | None,
+    Query(description="Keep only assets carrying a label of any class named. Repeatable."),
+]
+ReleaseFilterQuery = Annotated[
+    UUID | None,
+    Query(description="Keep only the assets this release of the dataset names."),
+]
 JobQuery = Annotated[
     UUID | None,
     Query(description="Keep only the assets this job carries. Omit for the whole batch."),

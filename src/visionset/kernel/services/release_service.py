@@ -668,6 +668,18 @@ class ReleaseService:
                 f"{_manifest_subject(release)} is not in the blob store"
             ) from exc
 
+    def member_asset_ids(self, dataset_id: UUID, release_id: UUID) -> frozenset[UUID]:
+        """The asset ids a release of that dataset names.
+
+        Raises:
+            ReleaseNotFound: no such release, or it belongs to another dataset.
+            WorkspaceCorrupt: the manifest blob is gone, or is not a manifest.
+        """
+        release = self.get(release_id)
+        if release.dataset_id != dataset_id:
+            raise ReleaseNotFound(f"dataset {dataset_id} has no release {release_id}")
+        return frozenset(asset.asset_id for asset in self._read_manifest(release).assets)
+
     def _read_manifest(self, release: Release) -> Manifest:
         """The document this release names, parsed."""
         subject = _manifest_subject(release)

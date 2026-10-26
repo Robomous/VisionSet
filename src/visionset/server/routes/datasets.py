@@ -28,20 +28,23 @@ from uuid import UUID
 from fastapi import Response, status
 
 from visionset.kernel.domain import DatasetActor
-from visionset.kernel.services import DatasetService, ProjectService
+from visionset.kernel.services import DatasetService, ProjectService, ReleaseService
 from visionset.server.dependencies import WorkspaceDep, protected_router
 from visionset.server.errors import documented
 from visionset.server.models import (
     AnnotationOut,
     AnnotationPage,
+    AssetSearchQuery,
     DatasetAssetOut,
     DatasetAssetPage,
     DatasetChangeOut,
     DatasetChangePage,
     DatasetOut,
     DatasetStatsOut,
+    LabelClassQuery,
     LimitQuery,
     OffsetQuery,
+    ReleaseFilterQuery,
 )
 
 project_router = protected_router(prefix="/projects/{project_id}/dataset", tags=["datasets"])
@@ -91,6 +94,9 @@ def list_dataset_assets(
     dataset_id: UUID,
     limit: LimitQuery = None,
     offset: OffsetQuery = 0,
+    q: AssetSearchQuery = None,
+    label_class: LabelClassQuery = None,
+    release_id: ReleaseFilterQuery = None,
 ) -> DatasetAssetPage:
     """Everything in the trunk, in the order it was promoted, each with its labels summarised.
 
@@ -103,11 +109,30 @@ def list_dataset_assets(
     Order is the stored insertion order, so reading twice gives the same sequence
     and promoting a new batch appends rather than reshuffles.
 
+    Read-only filters narrow the same page and compose: `q` keeps members whose
+    file name contains it (case-insensitive), `label_class` (repeatable) keeps
+    members carrying a label of any class named, and `release_id` keeps members
+    that release names — one of this dataset's, else `RELEASE_NOT_FOUND`. `total`
+    is then the size of the narrowed set.
+
     Each member carries `annotation_count` and `label_classes` so a gallery can
     caption a tile without a request per frame; the labels themselves are one
     level down, at `GET /datasets/{dataset_id}/assets/{asset_id}/annotations`.
     """
-    found, total = DatasetService(workspace).asset_page(dataset_id, limit=limit, offset=offset)
+    service = DatasetService(workspace)
+    service.get(dataset_id)
+    found, total = service.asset_page(
+        dataset_id,
+        limit=limit,
+        offset=offset,
+        name=q,
+        label_classes=label_class or (),
+        only=(
+            None
+            if release_id is None
+            else ReleaseService(workspace).member_asset_ids(dataset_id, release_id)
+        ),
+    )
     return DatasetAssetPage(
         items=[
             DatasetAssetOut.in_trunk(

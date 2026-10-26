@@ -22,6 +22,7 @@ from tests.server._flow import (
     a_box,
     annotated_batch,
     asset_ids,
+    batch_from_ingest,
     dataset_of,
     open_job,
     project_with_schema,
@@ -527,3 +528,105 @@ def test_a_removal_that_changed_nothing_writes_no_entry(
     client.delete(f"/datasets/{dataset_id}/assets/{uuid4()}")
 
     assert client.get(f"/datasets/{dataset_id}/changes").json()["total"] == 0
+
+
+# --- narrowing the trunk listing ---------------------------------------------
+
+
+def promoted(client: TestClient, finished: tuple[str, str]) -> str:
+    project_id, batch_id = finished
+    client.post(f"/batches/{batch_id}/promote")
+    return dataset_of(client, project_id)
+
+
+def test_q_keeps_members_whose_file_name_contains_it_and_total_follows(
+    client: TestClient, finished: tuple[str, str]
+) -> None:
+    dataset_id = promoted(client, finished)
+
+    page = client.get(f"/datasets/{dataset_id}/assets", params={"q": "1.PNG"}).json()
+
+    assert page["total"] == 1
+    assert len(page["items"]) == 1
+
+
+def test_q_matching_nothing_is_an_empty_200(client: TestClient, finished: tuple[str, str]) -> None:
+    dataset_id = promoted(client, finished)
+
+    response = client.get(f"/datasets/{dataset_id}/assets", params={"q": "no-such-file"})
+
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "total": 0}
+
+
+def test_label_class_keeps_members_carrying_any_class_named(
+    client: TestClient, finished: tuple[str, str]
+) -> None:
+    dataset_id = promoted(client, finished)
+
+    hit = client.get(
+        f"/datasets/{dataset_id}/assets", params=[("label_class", "nope"), ("label_class", "sign")]
+    ).json()
+    miss = client.get(f"/datasets/{dataset_id}/assets", params={"label_class": "nope"}).json()
+
+    assert hit["total"] == 3
+    assert miss == {"items": [], "total": 0}
+
+
+def test_filters_compose_with_paging_and_total_counts_the_narrowed_set(
+    client: TestClient, finished: tuple[str, str]
+) -> None:
+    dataset_id = promoted(client, finished)
+
+    page = client.get(
+        f"/datasets/{dataset_id}/assets", params={"label_class": "sign", "limit": 2, "offset": 2}
+    ).json()
+
+    assert page["total"] == 3
+    assert len(page["items"]) == 1
+
+
+def test_release_id_keeps_the_members_that_release_names(
+    client: TestClient, finished: tuple[str, str]
+) -> None:
+    dataset_id = promoted(client, finished)
+    release_id = client.post(f"/datasets/{dataset_id}/releases", json={"tag": "v1"}).json()["id"]
+
+    page = client.get(f"/datasets/{dataset_id}/assets", params={"release_id": release_id}).json()
+
+    assert page["total"] == 3
+
+
+def test_an_unknown_release_is_a_404(client: TestClient, finished: tuple[str, str]) -> None:
+    dataset_id = promoted(client, finished)
+
+    response = client.get(f"/datasets/{dataset_id}/assets", params={"release_id": str(uuid4())})
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "RELEASE_NOT_FOUND"
+
+
+def test_another_datasets_release_is_a_404(
+    client: TestClient, finished: tuple[str, str], runner: InlineDispatcher, tmp_path: Path
+) -> None:
+    dataset_id = promoted(client, finished)
+    other_project = project_with_schema(client, "other")
+    other_batch = batch_from_ingest(client, runner, tmp_path / "other", other_project)
+    client.post(f"/batches/{other_batch}/approve")
+    client.post(f"/batches/{other_batch}/start")
+    other_job = client.get(f"/batches/{other_batch}/jobs").json()["items"][0]["id"]
+    client.post(f"/jobs/{other_job}/start")
+    client.post(
+        f"/jobs/{other_job}/annotations",
+        json=[a_box(asset_id) for asset_id in asset_ids(client, other_batch)],
+    )
+    client.post(f"/jobs/{other_job}/complete")
+    client.post(f"/batches/{other_batch}/complete")
+    client.post(f"/batches/{other_batch}/promote")
+    other_release = client.post(
+        f"/datasets/{dataset_of(client, other_project)}/releases", json={"tag": "v1"}
+    ).json()["id"]
+
+    response = client.get(f"/datasets/{dataset_id}/assets", params={"release_id": other_release})
+
+    assert response.status_code == 404
