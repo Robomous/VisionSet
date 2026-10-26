@@ -36,7 +36,9 @@ open :class:`WorkspaceService` and nothing else, and never names an adapter.
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Collection, Iterable
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -133,13 +135,19 @@ class DatasetService:
             if only is not None:
                 ids = [asset_id for asset_id in ids if asset_id in only]
             hydrated: dict[UUID, TrunkAsset] = {}
+            promoted = _promotions(uow.dataset_changes.list(dataset.id))
 
             def trunk_asset(asset_id: UUID) -> TrunkAsset:
                 labels = uow.annotations.list(asset_id)
+                tally = Counter(one.label_class for one in labels)
+                batch_id, promoted_at = promoted.get(asset_id, (None, None))
                 return TrunkAsset(
                     asset=_require_asset(uow, dataset, asset_id),
                     annotation_count=len(labels),
-                    label_classes=tuple(sorted({one.label_class for one in labels})),
+                    label_classes=tuple(sorted(tally)),
+                    class_counts=tuple(sorted(tally.items())),
+                    promoted_at=promoted_at,
+                    promoted_by_batch_id=batch_id,
                 )
 
             if needle is not None or wanted:
@@ -463,6 +471,26 @@ class TrunkAsset(BaseModel):
     asset: Asset
     annotation_count: int
     label_classes: tuple[str, ...]
+    class_counts: tuple[tuple[str, int], ...] = ()
+    promoted_at: datetime | None = None
+    promoted_by_batch_id: UUID | None = None
+
+
+def _promotions(log: Iterable[DatasetChange]) -> dict[UUID, tuple[UUID, datetime]]:
+    """Which batch's promotion put each asset in the trunk, and when.
+
+    Read off the log, oldest first, so an asset removed and promoted again names
+    its latest promotion. An asset with no entry — a log that predates the
+    column, or one that lost it — is simply absent, and its caller shows null.
+    """
+    found: dict[UUID, tuple[UUID, datetime]] = {}
+    for change in log:
+        if change.operation != DatasetOperation.PROMOTE or not change.subject_ids:
+            continue
+        batch_id, *contributed = change.subject_ids
+        for asset_id in contributed:
+            found[asset_id] = (batch_id, change.occurred_at)
+    return found
 
 
 def file_name_of(asset: Asset) -> str:

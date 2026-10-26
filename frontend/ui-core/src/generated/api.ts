@@ -660,6 +660,8 @@ export interface paths {
          *     Each member carries `annotation_count` and `label_classes` so a gallery can
          *     caption a tile without a request per frame; the labels themselves are one
          *     level down, at `GET /datasets/{dataset_id}/assets/{asset_id}/annotations`.
+         *     Each also names where it came from: the batch and moment of the promotion that
+         *     brought it in, and the tags of the releases that hold it.
          */
         get: operations["list_dataset_assets"];
         put?: never;
@@ -3494,6 +3496,16 @@ export interface components {
          */
         AssetAction: "annotate" | "skip" | "restore" | "confirm" | "submit_for_review" | "accept" | "return_to_annotator" | (string & {});
         /**
+         * AssetClassCountOut
+         * @description How many labels of one class sit on a single asset.
+         */
+        AssetClassCountOut: {
+            /** Annotations */
+            annotations: number;
+            /** Label Class */
+            label_class: string;
+        };
+        /**
          * AssetOut
          * @description One ingested item.
          */
@@ -4250,16 +4262,25 @@ export interface components {
         };
         /**
          * DatasetAssetOut
-         * @description One member of the trunk, with its labels summarised.
+         * @description One member of the trunk, with its labels summarised and its provenance.
          *
          *     `annotation_count` is every label on this asset and `label_classes` the
          *     distinct classes among them, sorted by name — what a tile shows before anyone
          *     asks for the labels themselves, which `GET
-         *     /datasets/{dataset_id}/assets/{asset_id}/annotations` serves.
+         *     /datasets/{dataset_id}/assets/{asset_id}/annotations` serves. `class_counts`
+         *     is the same classes with how many labels each holds on this asset.
+         *
+         *     `promoted_at` and `promoted_by_batch_id` come from the `promote` entry in the
+         *     dataset's change log that brought the asset in — the latest, for an asset
+         *     removed and promoted again — and are null when no entry names it.
+         *     `release_tags` lists the releases whose manifest names the asset, oldest
+         *     first; empty for an asset no release has captured.
          */
         DatasetAssetOut: {
             /** Annotation Count */
             annotation_count: number;
+            /** Class Counts */
+            class_counts: components["schemas"]["AssetClassCountOut"][];
             /** Content Hash */
             content_hash: string;
             format: components["schemas"]["ImageFormat"] | null;
@@ -4288,6 +4309,12 @@ export interface components {
              * Format: uuid
              */
             project_id: string;
+            /** Promoted At */
+            promoted_at: string | null;
+            /** Promoted By Batch Id */
+            promoted_by_batch_id: string | null;
+            /** Release Tags */
+            release_tags: string[];
             /** Source Id */
             source_id: string | null;
             /** Thumbnail Hash */

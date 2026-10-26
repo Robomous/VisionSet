@@ -597,6 +597,27 @@ def test_release_id_keeps_the_members_that_release_names(
     assert page["total"] == 3
 
 
+def test_members_carry_class_counts_promotion_and_release_tags(
+    client: TestClient, finished: tuple[str, str]
+) -> None:
+    dataset_id = promoted(client, finished)
+    before = client.get(f"/datasets/{dataset_id}/assets").json()["items"]
+    client.post(f"/datasets/{dataset_id}/releases", json={"tag": "v1"})
+    client.post(f"/datasets/{dataset_id}/releases", json={"tag": "v2"})
+    log = client.get(f"/datasets/{dataset_id}/changes").json()["items"]
+    (entry,) = [one for one in log if one["operation"] == "promote"]
+
+    after = client.get(f"/datasets/{dataset_id}/assets").json()["items"]
+
+    assert [one["release_tags"] for one in before] == [[], [], []]
+    assert [one["release_tags"] for one in after] == [["v1", "v2"]] * 3
+    assert {one["promoted_by_batch_id"] for one in after} == {entry["subject_ids"][0]}
+    assert {one["promoted_at"] for one in after} == {entry["occurred_at"]}
+    assert [one["class_counts"] for one in after] == [
+        [{"label_class": "sign", "annotations": 1}]
+    ] * 3
+
+
 def test_an_unknown_release_is_a_404(client: TestClient, finished: tuple[str, str]) -> None:
     dataset_id = promoted(client, finished)
 
