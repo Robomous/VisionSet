@@ -36,7 +36,9 @@ open :class:`WorkspaceService` and nothing else, and never names an adapter.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections import Counter
+from collections.abc import Collection, Iterable
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -102,35 +104,66 @@ class DatasetService:
             return assets_of(uow, self.require_dataset(uow, dataset_id))
 
     def asset_page(
-        self, dataset_id: UUID, *, limit: int | None = None, offset: int = 0
+        self,
+        dataset_id: UUID,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+        name: str | None = None,
+        label_classes: Collection[str] = (),
+        only: frozenset[UUID] | None = None,
     ) -> tuple[list[TrunkAsset], int]:
-        """A window of the trunk with each member's labels summarised, and the trunk's size.
+        """A window of the trunk with each member's labels summarised, and the narrowed size.
 
-        Membership order, as :meth:`assets`. Only the window's assets are
-        hydrated and only their labels are read — the count and the class names
-        are what a gallery tile shows on first sight, and reading them for the
-        whole trunk to show one page would be the N+1 :meth:`stats` knowingly
-        pays, paid for nothing.
+        Membership order, as :meth:`assets`. `name` keeps members whose file
+        name contains it, ignoring case; `label_classes` keeps members carrying
+        at least one label of any class named; `only` keeps members whose id is
+        in the set — what a release names, resolved by the caller. The filters
+        compose, and the returned total counts the narrowed set, never the whole
+        trunk. With no filter only the window's labels are read; a class filter
+        has to read every candidate's labels to decide.
 
         Raises:
             DatasetNotFound: no such dataset in this workspace.
             WorkspaceCorrupt: a member names an asset that is not stored.
         """
+        wanted = frozenset(label_classes)
+        needle = name.casefold() if name else None
         with self._workspace.unit_of_work() as uow:
             dataset = self.require_dataset(uow, dataset_id)
             ids = [member.asset_id for member in uow.dataset_members.list(dataset.id)]
-            window = ids[offset:] if limit is None else ids[offset : offset + limit]
-            items = []
-            for asset_id in window:
+            if only is not None:
+                ids = [asset_id for asset_id in ids if asset_id in only]
+            hydrated: dict[UUID, TrunkAsset] = {}
+            promoted = _promotions(uow.dataset_changes.list(dataset.id))
+
+            def trunk_asset(asset_id: UUID) -> TrunkAsset:
                 labels = uow.annotations.list(asset_id)
-                items.append(
-                    TrunkAsset(
-                        asset=_require_asset(uow, dataset, asset_id),
-                        annotation_count=len(labels),
-                        label_classes=tuple(sorted({one.label_class for one in labels})),
-                    )
+                tally = Counter(one.label_class for one in labels)
+                batch_id, promoted_at = promoted.get(asset_id, (None, None))
+                return TrunkAsset(
+                    asset=_require_asset(uow, dataset, asset_id),
+                    annotation_count=len(labels),
+                    label_classes=tuple(sorted(tally)),
+                    class_counts=tuple(sorted(tally.items())),
+                    promoted_at=promoted_at,
+                    promoted_by_batch_id=batch_id,
                 )
-            return items, len(ids)
+
+            if needle is not None or wanted:
+                for asset_id in ids:
+                    asset = _require_asset(uow, dataset, asset_id)
+                    if needle is not None and needle not in file_name_of(asset).casefold():
+                        continue
+                    one = trunk_asset(asset_id)
+                    if wanted and wanted.isdisjoint(one.label_classes):
+                        continue
+                    hydrated[asset_id] = one
+                ids = list(hydrated)
+            window = ids[offset:] if limit is None else ids[offset : offset + limit]
+            return [hydrated.get(asset_id) or trunk_asset(asset_id) for asset_id in window], len(
+                ids
+            )
 
     def annotations_for(self, dataset_id: UUID, asset_id: UUID) -> list[Annotation]:
         """Every label on one trunk member, in the order they were added.
@@ -438,6 +471,31 @@ class TrunkAsset(BaseModel):
     asset: Asset
     annotation_count: int
     label_classes: tuple[str, ...]
+    class_counts: tuple[tuple[str, int], ...] = ()
+    promoted_at: datetime | None = None
+    promoted_by_batch_id: UUID | None = None
+
+
+def _promotions(log: Iterable[DatasetChange]) -> dict[UUID, tuple[UUID, datetime]]:
+    """Which batch's promotion put each asset in the trunk, and when.
+
+    Read off the log, oldest first, so an asset removed and promoted again names
+    its latest promotion. An asset with no entry — a log that predates the
+    column, or one that lost it — is simply absent, and its caller shows null.
+    """
+    found: dict[UUID, tuple[UUID, datetime]] = {}
+    for change in log:
+        if change.operation != DatasetOperation.PROMOTE or not change.subject_ids:
+            continue
+        batch_id, *contributed = change.subject_ids
+        for asset_id in contributed:
+            found[asset_id] = (batch_id, change.occurred_at)
+    return found
+
+
+def file_name_of(asset: Asset) -> str:
+    """The last path segment of the asset's uri, which is what a person searches for."""
+    return asset.uri.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
 
 
 def assets_of(uow: UnitOfWork, dataset: Dataset) -> list[Asset]:
