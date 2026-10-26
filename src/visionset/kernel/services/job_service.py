@@ -252,13 +252,10 @@ class JobService:
         landing between those two calls left the second one re-reading the
         job as already ``in_progress`` and raising ``InvalidTransition`` for
         a job whose write should have been allowed. This method reads the
-        state once and decides from that single read — it never re-reads
-        before writing, so it cannot disagree with itself the way two
-        separate calls could. It gives no stronger guarantee than that: the
-        read is not a snapshot and nothing here is serialized against a
-        concurrent writer, so a start landing in the gap between this read
-        and this write no longer raises, but does not preserve any invariant
-        that the underlying blind ``update`` did not already guarantee.
+        state once and decides from that single read, then writes guarded on
+        it: a start landing between the read and the write makes the write
+        refuse, and the answer is ``False``, as it would be had that start
+        landed first.
 
         Returns ``False``, without raising, for any state other than
         ``pending`` — including ``completed`` — so the caller's own write gate
@@ -278,10 +275,10 @@ class JobService:
             require_move(
                 JOB_TRANSITIONS, job.state, AnnotationJobState.IN_PROGRESS, f"job {job.id}"
             )
-            uow.annotation_jobs.update(
-                job.model_copy(update={"state": AnnotationJobState.IN_PROGRESS})
+            stored = uow.set_job_state(
+                job.id, expected=job.state, state=AnnotationJobState.IN_PROGRESS
             )
-            return True
+            return stored is None
 
     def complete(self, job_id: UUID) -> AnnotationJob:
         """Close the job, if every asset in it has been dealt with.
@@ -316,9 +313,8 @@ class JobService:
                     f"still unsettled ({detail}); every asset must be annotated, skipped or "
                     f"accepted first"
                 )
-            return uow.annotation_jobs.update(
-                job.model_copy(update={"state": AnnotationJobState.COMPLETED})
-            )
+            self._require_state_write(uow, job, AnnotationJobState.COMPLETED)
+            return self.require_job(uow, job_id)
 
     def assign(self, job_id: UUID, assignee: str | None) -> AnnotationJob:
         """Name who is working this job, or clear it with ``None``.
@@ -417,7 +413,19 @@ class JobService:
             job = self.require_job(uow, job_id)
             self.require_open_batch(uow, job)
             require_move(JOB_TRANSITIONS, job.state, to, f"job {job.id}")
-            return uow.annotation_jobs.update(job.model_copy(update={"state": to}))
+            self._require_state_write(uow, job, to)
+            return self.require_job(uow, job_id)
+
+    def _require_state_write(
+        self, uow: UnitOfWork, job: AnnotationJob, to: AnnotationJobState
+    ) -> None:
+        stored = uow.set_job_state(job.id, expected=job.state, state=to)
+        if stored is not None:
+            raise StaleWrite(
+                f"job {job.id} was {job.state.value!r} when this move was decided and is "
+                f"{stored.value!r} now, so moving it to {to.value!r} would overwrite a change "
+                f"nobody here saw; read it again and decide again"
+            )
 
     def _require_project(self, uow: UnitOfWork, project_id: UUID) -> None:
         project = uow.projects.get(project_id)

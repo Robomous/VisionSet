@@ -100,7 +100,7 @@ DELETE /jobs/{job_id}/annotations                         ?id=&id=
 GET    /projects/{project_id}/dataset                     the one trunk
 GET    /datasets/{dataset_id}
 GET    /datasets/{dataset_id}/stats
-GET    /datasets/{dataset_id}/assets                      paged
+GET    /datasets/{dataset_id}/assets                      paged; q, label_class, release_id narrow it
 GET    /datasets/{dataset_id}/assets/{asset_id}/annotations  the trunk's view of one member
 DELETE /datasets/{dataset_id}/assets/{asset_id}           curation, not deletion
 GET    /datasets/{dataset_id}/changes

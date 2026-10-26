@@ -878,6 +878,40 @@ def test_the_asset_page_counts_each_members_labels_and_names_their_classes(
     fixture.close()
 
 
+def test_the_asset_page_counts_labels_per_class_on_each_member(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    fixture.schemas.create_version(fixture.project.id, [SIGN, LANE])
+    (job,) = fixture.working()
+    first, second, third = fixture.assets
+    fixture.annotations.add(job.id, [_box(first), _box(first), _lane(first)])
+    fixture.jobs.mark(job.id, second, ANNOTATED)
+    fixture.jobs.mark(job.id, third, ANNOTATED)
+    fixture.jobs.complete(job.id)
+    fixture.batches.complete(fixture.batch.id)
+    fixture.datasets.promote(fixture.batch.id)
+
+    page, _ = fixture.datasets.asset_page(fixture.dataset.id)
+
+    assert [one.class_counts for one in page] == [(("lane", 1), ("sign", 2)), (), ()]
+    fixture.close()
+
+
+def test_the_asset_page_names_the_promotion_that_brought_each_member_in(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    fixture.completed(ANNOTATED, ANNOTATED, ANNOTATED)
+    fixture.datasets.promote(fixture.batch.id)
+    (entry,) = fixture.datasets.changes(fixture.dataset.id)
+
+    page, _ = fixture.datasets.asset_page(fixture.dataset.id)
+
+    assert {(one.promoted_by_batch_id, one.promoted_at) for one in page} == {
+        (fixture.batch.id, entry.occurred_at)
+    }
+    fixture.close()
+
+
 def test_the_asset_page_windows_the_trunk_and_total_stays_the_whole_of_it(
     tmp_path: Path,
 ) -> None:
@@ -943,4 +977,51 @@ def test_the_annotations_of_an_unknown_dataset_are_refused(tmp_path: Path) -> No
     fixture = Fixture(tmp_path)
     with pytest.raises(DatasetNotFound):
         fixture.datasets.annotations_for(uuid4(), fixture.assets[0])
+    fixture.close()
+
+
+def test_the_asset_page_narrows_by_class_and_membership_and_total_follows(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    fixture.schemas.create_version(fixture.project.id, [SIGN, LANE])
+    (job,) = fixture.working()
+    first, second, third = fixture.assets
+    fixture.annotations.add(job.id, [_box(first), _lane(first)])
+    fixture.annotations.add(job.id, [_box(second)])
+    fixture.jobs.mark(job.id, third, ANNOTATED)
+    fixture.jobs.complete(job.id)
+    fixture.batches.complete(fixture.batch.id)
+    fixture.datasets.promote(fixture.batch.id)
+    service = fixture.datasets
+
+    lanes, lane_total = service.asset_page(fixture.dataset.id, label_classes=["lane"])
+    both, both_total = service.asset_page(fixture.dataset.id, label_classes=["lane", "sign"])
+    named, named_total = service.asset_page(fixture.dataset.id, only=frozenset({second, third}))
+    paged, paged_total = service.asset_page(
+        fixture.dataset.id, label_classes=["sign"], limit=1, offset=1
+    )
+
+    assert ([one.asset.id for one in lanes], lane_total) == ([first], 1)
+    assert both_total == 2 and [one.asset.id for one in both] == [first, second]
+    assert ([one.asset.id for one in named], named_total) == ([second, third], 2)
+    assert ([one.asset.id for one in paged], paged_total) == ([second], 2)
+    fixture.close()
+
+
+def test_the_asset_page_name_filter_ignores_case_and_matches_the_file_name_only(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    fixture.completed(ANNOTATED, ANNOTATED, ANNOTATED)
+    fixture.datasets.promote(fixture.batch.id)
+    uri = fixture.datasets.assets(fixture.dataset.id)[0].uri
+    name = uri.replace("\\", "/").rsplit("/", 1)[-1]
+    directory = uri[: len(uri) - len(name)]
+
+    by_name, total = fixture.datasets.asset_page(fixture.dataset.id, name=name.upper())
+
+    assert total >= 1 and fixture.assets[0] in [one.asset.id for one in by_name]
+    if directory:
+        assert fixture.datasets.asset_page(fixture.dataset.id, name=directory) == ([], 0)
     fixture.close()
