@@ -8163,7 +8163,7 @@
     },
     "/datasets/{dataset_id}/assets": {
       "get": {
-        "description": "Everything in the trunk, in the order it was promoted, each with its labels summarised.\n\nPaged, and the second route in the API that is \u2014 the trunk accumulates every\nbatch a project ever completed, so it is the other collection that can hold\nfifty thousand items. `total` is the size of the whole trunk and not of the\npage; an offset past the end is an empty list and a 200, never a 404. The\n404 is the dataset itself: an unknown one is `DATASET_NOT_FOUND`.\n\nOrder is the stored insertion order, so reading twice gives the same sequence\nand promoting a new batch appends rather than reshuffles.\n\nEach member carries `annotation_count` and `label_classes` so a gallery can\ncaption a tile without a request per frame; the labels themselves are one\nlevel down, at `GET /datasets/{dataset_id}/assets/{asset_id}/annotations`.",
+        "description": "Everything in the trunk, in the order it was promoted, each with its labels summarised.\n\nPaged, and the second route in the API that is \u2014 the trunk accumulates every\nbatch a project ever completed, so it is the other collection that can hold\nfifty thousand items. `total` is the size of the whole trunk and not of the\npage; an offset past the end is an empty list and a 200, never a 404. The\n404 is the dataset itself: an unknown one is `DATASET_NOT_FOUND`.\n\nOrder is the stored insertion order, so reading twice gives the same sequence\nand promoting a new batch appends rather than reshuffles.\n\nRead-only filters narrow the same page and compose: `q` keeps members whose\nfile name contains it (case-insensitive), `label_class` (repeatable) keeps\nmembers carrying a label of any class named, and `release_id` keeps members\nthat release names \u2014 one of this dataset's, else `RELEASE_NOT_FOUND`. `total`\nis then the size of the narrowed set.\n\nEach member carries `annotation_count` and `label_classes` so a gallery can\ncaption a tile without a request per frame; the labels themselves are one\nlevel down, at `GET /datasets/{dataset_id}/assets/{asset_id}/annotations`.",
         "operationId": "list_dataset_assets",
         "parameters": [
           {
@@ -8206,6 +8206,65 @@
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Keep only assets whose file name contains this text.",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Keep only assets whose file name contains this text.",
+              "title": "Q"
+            }
+          },
+          {
+            "description": "Keep only assets carrying a label of any class named. Repeatable.",
+            "in": "query",
+            "name": "label_class",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Keep only assets carrying a label of any class named. Repeatable.",
+              "title": "Label Class"
+            }
+          },
+          {
+            "description": "Keep only the assets this release of the dataset names.",
+            "in": "query",
+            "name": "release_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Keep only the assets this release of the dataset names.",
+              "title": "Release Id"
             }
           }
         ],
