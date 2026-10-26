@@ -167,9 +167,13 @@ put back each other's progress. That service is all-or-nothing, so a guard that 
 the labels back with it - which is the honest outcome, since the move they implied was derived
 from a state nobody is in.
 
-A consequence worth stating: **no write of a job touches its assets' progress.**
-`JobService.complete` reads a job, changes `state` and saves it, and that save no longer rebuilds
-the per-asset rows from the map it read.
+The job's own `state` takes the same guard: `start`, `complete` and `start_if_pending` write
+through `UnitOfWork.set_job_state`, which updates only the `state` column and only if it is still
+what the call read. A job that was completed while one of them was deciding is not reopened; the
+call raises `StaleWrite` (`start_if_pending` answers `False`).
+
+A consequence worth stating: **no write of a job touches its assets' progress.** The state write
+changes one column and never rebuilds the per-asset rows from the map it read.
 
 ## What a job and an asset say they allow
 
