@@ -8,7 +8,7 @@ the kernel is the part that must not do any. So resolving a *name* to a plugin i
 the surface's job, and this module does it the one supported way:
 ``registry.pick`` for a format and ``resolve_target`` for a target, never a dict
 lookup, because a ``KeyError`` is outside the ``VisionSetError`` tree and would
-answer a typo with a traceback.
+answer a typo with a generic failure instead of the names that are installed.
 
 **``--target`` and ``--format`` are one choice, not two flags.** A target is the
 model the release will train and resolves to the format that writes for it; a

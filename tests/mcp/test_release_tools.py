@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -315,6 +317,31 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
         ],
         "total": 11,
     }
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root writes anywhere")
+def test_an_uncreatable_destination_is_refused_with_the_reason(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named = promoted(monkeypatch, tmp_path, count=1)
+    payload(call("publish_release", project=named, tag="v1.0"))
+    sealed = tmp_path / "sealed"
+    sealed.mkdir(mode=0o555)
+    try:
+        refusal = error(
+            call(
+                "export_release",
+                project=named,
+                tag="v1.0",
+                format="dummy",
+                dest=str(sealed / "out"),
+            )
+        )
+    finally:
+        sealed.chmod(0o755)
+    assert refusal["code"] == "INTERNAL_ERROR"
+    assert re.fullmatch(r"Permission denied(: [^/]+)?", refusal["message"])
+    assert str(tmp_path) not in json.dumps(refusal)
 
 
 def test_export_writes_into_the_directory_it_was_given(

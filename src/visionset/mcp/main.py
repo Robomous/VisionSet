@@ -16,9 +16,8 @@ that module import this one, which imports it. Doing it here also puts every
 shipped tool on one screen, and gives the three cross-cutting decisions exactly
 one place to live —
 
-* ``guarded`` wraps every body, so a kernel refusal arrives as the error envelope
-  rather than as an exception whose text MCPServer would ship to the client anyway,
-  prefixed and unstructured;
+* ``guarded`` wraps every body, so any failure arrives as the error envelope
+  rather than as MCPServer's bare ``Error executing tool <name>``;
 * ``inspect.cleandoc`` is passed as ``description=`` because MCPServer otherwise
   ships ``__doc__`` **raw** — indentation and all — into the listing an agent
   reads;

@@ -8,6 +8,8 @@ a sentence an agent can act on rather than one it will try to work around.
 
 from __future__ import annotations
 
+import os
+import re
 from pathlib import Path
 from uuid import UUID
 
@@ -88,11 +90,29 @@ def test_a_missing_path_is_refused_before_any_work(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # `canonical_path` resolves strictly and would raise FileNotFoundError, which
-    # is outside the VisionSetError tree and would reach the client as a
-    # traceback's text rather than as a refusal.
+    # is outside the VisionSetError tree and would reach the client only as a
+    # generic INTERNAL_ERROR.
     named = schema(monkeypatch, tmp_path)
     refusal = error(call("ingest", project=named, path=str(tmp_path / "nowhere")))
     assert "no such path" in refusal["message"]
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads any directory")
+def test_an_unreadable_directory_is_refused_with_the_reason(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named = schema(monkeypatch, tmp_path)
+    locked = tmp_path / "locked"
+    write_images(locked, count=1)
+    locked.chmod(0)
+    try:
+        refusal = error(call("ingest", project=named, path=str(locked)))
+    finally:
+        locked.chmod(0o755)
+    assert refusal["code"] == "INTERNAL_ERROR"
+    # Which call trips first is the platform's business; that no directory leaks is ours.
+    assert re.fullmatch(r"Permission denied(: [^/]+)?", refusal["message"])
+    assert str(tmp_path) not in str(refusal)
 
 
 def test_a_video_is_refused_and_told_where_import_actually_lives(

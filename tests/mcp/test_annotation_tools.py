@@ -185,17 +185,23 @@ def test_an_attribute_the_class_does_not_declare_is_refused(
     )["message"]
 
 
-def test_provenance_model_without_a_reference_is_a_malformed_request(
+def test_provenance_model_without_a_reference_is_refused_with_the_reason(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # A domain model validator on `AnnotationInput`'s own fields, so it fires
-    # during argument parsing rather than reaching the service.
+    # The domain model is built in the tool body, so its `ValidationError` reaches
+    # `guarded` rather than argument parsing — and before the job is started.
     job_id, assets = _job_with_assets(monkeypatch, tmp_path)
-    assert call(
-        "add_annotations",
-        job_id=job_id,
-        annotations=[{**_label(assets[0]), "model_ref": None}],
-    ).is_error
+    refusal = error(
+        call(
+            "add_annotations",
+            job_id=job_id,
+            annotations=[{**_label(assets[0]), "model_ref": None}],
+        )
+    )
+    assert refusal["code"] == "VALIDATION_ERROR"
+    assert refusal["message"] == "provenance='model' requires model_ref"
+    assert refusal["detail"] is None
+    assert payload(call("get_job", job_id=job_id))["state"] == "pending"
 
 
 def test_a_geometry_with_no_type_cannot_pick_a_variant(

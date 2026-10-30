@@ -18,7 +18,10 @@ SCREAMING_SNAKE of its class, so the drift protection survives.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from pathlib import PurePath
 from typing import Any, Final
+
+from pydantic import ValidationError
 
 from visionset.kernel import errors
 from visionset.kernel.domain import ClassCount, ExportCompatibility
@@ -132,6 +135,39 @@ ERROR_CODES: Final[Mapping[type[errors.VisionSetError], str]] = {
 inherit an answer; ``tests/kernel/test_error_codes.py`` asserts the table is
 total.
 """
+
+
+INTERNAL_ERROR: Final = "INTERNAL_ERROR"
+"""The code for an exception no rule covers — a bug, or the machine refusing."""
+
+VALIDATION_ERROR: Final = "VALIDATION_ERROR"
+"""The code for input a domain model refused, the REST surface's 422."""
+
+
+def unexpected_error(exc: BaseException) -> tuple[str, str]:
+    """The code and a publishable sentence for an exception outside ``VisionSetError``.
+
+    Never ``str(exc)``: an arbitrary exception's text can carry a secret or a
+    path describing this machine. An ``OSError`` contributes its reason and the
+    last component of the path it names — the rule ``wire.source`` applies to a
+    source's path. A pydantic ``ValidationError`` reaching here is a model the
+    *system* built failing, so it is internal like any other bug; a surface that
+    builds a model from its caller's input reports that refusal itself, with
+    :func:`validation_message`.
+    """
+    if isinstance(exc, OSError) and exc.strerror:
+        named = f": {PurePath(exc.filename).name}" if isinstance(exc.filename, str) else ""
+        return INTERNAL_ERROR, f"{exc.strerror}{named}"
+    return INTERNAL_ERROR, f"An unexpected {type(exc).__name__} stopped the operation."
+
+
+def validation_message(exc: ValidationError) -> str:
+    """A model's refusal of the caller's own input, as one line without the input."""
+    problems = (
+        f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}".removeprefix(": ")
+        for error in exc.errors(include_url=False, include_input=False, include_context=False)
+    )
+    return "; ".join(problems).replace("Value error, ", "")
 
 
 def error_code(exc: BaseException) -> str | None:

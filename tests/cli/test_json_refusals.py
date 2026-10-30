@@ -3,11 +3,21 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 from pathlib import Path
 from uuid import UUID
 
 import pytest
-from tests.cli._flow import run, started_batch, workspace
+from tests.cli._flow import (
+    plain,
+    published_release,
+    run,
+    schemad_project,
+    started_batch,
+    stills,
+    workspace,
+)
 
 from visionset.kernel import SchemaChangeWouldOrphan
 from visionset.kernel.domain import Annotation, BboxGeometry, GeometryType, LabelClass
@@ -137,3 +147,86 @@ def test_a_usage_error_under_json_does_not_make_the_next_refusal_json(tmp_path: 
     after = run(root, "schema", "draft", "clear", "-p", "nope")
     assert after.exit_code == 1
     assert after.stdout == ""
+
+
+_DENIED = r"Permission denied(: [^/]+)?"
+"""Which call trips first is the platform's business; that no directory leaks is ours."""
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads any directory")
+def test_an_unreadable_directory_is_one_sentence_and_no_traceback(tmp_path: Path) -> None:
+    root = workspace(tmp_path)
+    name = schemad_project(root, tmp_path)
+    locked = stills(tmp_path)
+    # Listable but not searchable: past Click's `readable=True`, failing in the kernel.
+    locked.chmod(0o444)
+    try:
+        plain_run = run(root, "ingest", str(locked), "-p", name)
+        json_run = run(root, "ingest", str(locked), "-p", name, "--json")
+    finally:
+        locked.chmod(0o755)
+
+    assert plain_run.exit_code == 1
+    assert plain_run.stdout == ""
+    last_line = plain(plain_run.stderr).splitlines()[-1]
+    assert re.fullmatch(rf"Error: {_DENIED}", last_line)
+    assert "Traceback" not in plain_run.output
+    assert json_run.exit_code == 1
+    refusal = json.loads(json_run.stdout)["error"]
+    assert refusal["code"] == "INTERNAL_ERROR"
+    assert re.fullmatch(_DENIED, refusal["message"])
+    assert str(tmp_path) not in refusal["message"]
+    assert refusal["detail"] is None
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root writes anywhere")
+def test_an_uncreatable_destination_is_one_sentence_and_honours_json(tmp_path: Path) -> None:
+    root = workspace(tmp_path)
+    name = published_release(root, tmp_path)
+    sealed = tmp_path / "sealed"
+    sealed.mkdir(mode=0o555)
+    out = str(sealed / "out")
+    try:
+        result = run(
+            root,
+            "export",
+            "-p",
+            name,
+            "--release",
+            "v1.0",
+            "--format",
+            "dummy",
+            "--out",
+            out,
+            "--json",
+        )
+    finally:
+        sealed.chmod(0o755)
+
+    assert result.exit_code == 1
+    assert re.fullmatch(_DENIED, json.loads(result.stdout)["error"]["message"])
+    assert str(tmp_path) not in result.output
+
+
+def test_visionset_debug_adds_the_traceback_on_stderr_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import visionset.cli.projects as projects
+
+    def crash(*_: object, **__: object) -> None:
+        raise RuntimeError("boom")
+
+    root = workspace(tmp_path)
+    monkeypatch.setattr(projects, "opened_workspace", crash)
+    quiet = run(root, "project", "list", "--json")
+    monkeypatch.setenv("VISIONSET_DEBUG", "1")
+    loud = run(root, "project", "list", "--json")
+
+    for result in (quiet, loud):
+        assert result.exit_code == 1
+        assert json.loads(result.stdout)["error"]["message"] == (
+            "An unexpected RuntimeError stopped the operation."
+        )
+    assert "Traceback" not in quiet.stderr
+    assert "Traceback" in loud.stderr
+    assert "RuntimeError: boom" in loud.stderr

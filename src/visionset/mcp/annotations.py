@@ -38,6 +38,7 @@ from visionset import wire
 from visionset.kernel.domain import Annotation, AttributeValue, Geometry, Provenance
 from visionset.kernel.services import AnnotationService
 from visionset.mcp._autostart import autostarted
+from visionset.mcp._errors import from_arguments
 from visionset.mcp._resolve import identifier
 from visionset.mcp._workspace import opened_workspace
 
@@ -168,10 +169,12 @@ def add_annotations(
     bad the refusal names its position in `index` — nothing was written, so that
     position is the only thing that identifies it.
     """
+    with from_arguments():
+        domain = [a.to_domain() for a in annotations]
     with opened_workspace() as workspace:
         resolved = identifier(job_id, what="job_id")
         started = autostarted(workspace, resolved)
-        written = AnnotationService(workspace).add(resolved, [a.to_domain() for a in annotations])
+        written = AnnotationService(workspace).add(resolved, domain)
     return {**wire.page([wire.annotation(a) for a in written]), "job_started": started}
 
 
@@ -195,12 +198,12 @@ def update_annotations(
     Same validation and the same all-or-nothing rule as `add_annotations`, and
     the same `job_started` in the answer.
     """
+    with from_arguments():
+        domain = [a.to_domain() for a in annotations]
     with opened_workspace() as workspace:
         resolved = identifier(job_id, what="job_id")
         started = autostarted(workspace, resolved)
-        written = AnnotationService(workspace).update(
-            resolved, [a.to_domain() for a in annotations]
-        )
+        written = AnnotationService(workspace).update(resolved, domain)
     return {**wire.page([wire.annotation(a) for a in written]), "job_started": started}
 
 

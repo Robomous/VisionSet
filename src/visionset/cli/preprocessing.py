@@ -109,8 +109,8 @@ def spec_of(
     """The spec the command line describes, or a usage error saying what is wrong.
 
     ``RecipeSpec`` refuses a spec that breaks the grammar with a pydantic
-    ``ValidationError`` — not a ``VisionSetError``, so it would print a traceback
-    rather than a sentence. Caught here and re-raised as Click's own refusal,
+    ``ValidationError`` — not a ``VisionSetError``, so it would surface only as a
+    generic failure rather than the reason. Caught here and re-raised as Click's own refusal,
     which is what exit 2 is for.
     """
     flagged = any(one is not None for one in (resize, augment, variants, target))
