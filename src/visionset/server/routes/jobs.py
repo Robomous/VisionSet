@@ -270,11 +270,12 @@ def set_asset_progress(
     """Record where one asset of this job has got to.
 
     One route rather than five verbs, because the legal moves are a table in the
-    kernel and a second spelling of it would drift: `unannotated` to `annotated`,
-    `pre_labeled` or `skipped`; `pre_labeled` to `annotated`, `unannotated` or
-    `skipped`; `annotated` to `review_pending` or back; `review_pending` to
-    `accepted` or back to `annotated`; and `accepted` nowhere at all. Anything
-    else is 409 `INVALID_TRANSITION`.
+    kernel and a second spelling of it would drift: `unannotated` to `annotated`
+    or `skipped`; `pre_labeled` to `annotated`, `unannotated` or `skipped`;
+    `annotated` to `review_pending` or back; `review_pending` to `accepted` or
+    back to `annotated`; and `accepted` nowhere at all. Nothing here lands
+    `pre_labeled`: only an unjudged write (a pre-label run) or a batch cut over
+    all-model-labeled assets does. Anything else is 409 `INVALID_TRANSITION`.
 
     Setting the state an asset is already in is a no-op rather than a refusal —
     but the batch gate fires first, so writing into a closed batch is refused

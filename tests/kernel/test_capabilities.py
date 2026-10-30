@@ -196,6 +196,12 @@ class Fixture:
         """One asset taken to ``progress``. Returns ``(job_id, asset_id)``."""
         job = self.batches.jobs(self.batch.id)[0]
         asset_id = next(iter(job.progress))
+        if progress is PRE_LABELED:
+            model_box = _box(asset_id).model_copy(
+                update={"provenance": "model", "model_ref": "acme/detector@abc123"}
+            )
+            self.annotations.enter_unreviewed(job.id, [model_box])
+            return job.id, asset_id
         for step in _ROUTE_TO[progress]:
             self.jobs.mark(job.id, asset_id, step)
         return job.id, asset_id
@@ -207,10 +213,10 @@ class Fixture:
         self.workspace.close()
 
 
-#: The shortest legal walk from ``unannotated`` to each progress state.
+#: The shortest legal ``mark`` walk from ``unannotated`` to each progress state.
+#: ``pre_labeled`` has none: only a model's unattended write lands there.
 _ROUTE_TO: dict[AssetProgress, tuple[AssetProgress, ...]] = {
     UNANNOTATED: (),
-    PRE_LABELED: (PRE_LABELED,),
     ANNOTATED: (ANNOTATED,),
     SKIPPED: (SKIPPED,),
     REVIEW_PENDING: (ANNOTATED, REVIEW_PENDING),
@@ -641,7 +647,8 @@ def _landed(
     """Did the action do what its name promises, not merely return?"""
     assert job_id is not None
     if action is AssetAction.ANNOTATE:
-        return len(fixture.annotations.for_asset(job_id, asset_id)) == 1
+        stored = fixture.annotations.for_asset(job_id, asset_id)
+        return [a.provenance for a in stored].count("human") == 1
     return fixture.state_of(job_id, asset_id) is ASSET_MOVES[action].to
 
 

@@ -284,7 +284,9 @@ def set_asset_progress(
     need this for the ordinary case.
 
     Not every move is legal — `accepted` is terminal, and `review_pending` can
-    only be reached from `annotated`. Marking an asset with the state it already
+    only be reached from `annotated`, and `pre_labeled` is never reachable here:
+    only an unjudged write (a pre-label run) or a batch cut over
+    all-model-labeled assets lands an asset there. Marking an asset with the state it already
     holds does nothing and is not an error. Refuses if the job's batch is not
     `in_annotation`.
 

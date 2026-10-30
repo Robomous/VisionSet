@@ -11,7 +11,8 @@ Three things shape this module:
 
 - **Two state machines, both tables.** ``JOB_TRANSITIONS`` and
   ``ASSET_PROGRESS_TRANSITIONS`` live in ``domain/task.py``; this service
-  consults them through ``domain.require_move`` and never restates them.
+  consults them — ``mark`` through ``MARK_TRANSITIONS``, the asset table
+  derived — through ``domain.require_move`` and never restates them.
   Adding a state is one edit there.
 - **Work only happens inside an open batch, and inside an open job.** Every
   write here requires the job's batch to be ``in_annotation`` and the job itself
@@ -40,10 +41,10 @@ from uuid import UUID
 
 from visionset.kernel.domain import (
     ANNOTATION_JOB_KEY,
-    ASSET_PROGRESS_TRANSITIONS,
     BATCH_JOB_KEY,
     JOB_TRANSITIONS,
     LIVE_JOB_STATES,
+    MARK_TRANSITIONS,
     OPEN_JOB_STATES,
     PRE_LABEL_JOB_TYPE,
     PRE_LABELABLE_STATES,
@@ -344,9 +345,12 @@ class JobService:
         somebody working the frame.
 
         One method rather than five intent-named ones, because
-        ``ASSET_PROGRESS_TRANSITIONS`` is the whole of what is legal and a second
+        ``MARK_TRANSITIONS`` is the whole of what is legal and a second
         spelling of it would only drift. Friendlier wrappers belong on the
-        surfaces — a CLI ``visionset job skip`` maps onto this.
+        surfaces — a CLI ``visionset job skip`` maps onto this. It is
+        ``ASSET_PROGRESS_TRANSITIONS`` without the entry into ``pre_labeled``,
+        which only an unjudged write (a pre-label run) or a batch cut over
+        all-model-labeled assets makes.
 
         Raises:
             JobNotFound: no such job in this workspace.
@@ -372,9 +376,7 @@ class JobService:
             if current is progress:
                 return job
 
-            require_move(
-                ASSET_PROGRESS_TRANSITIONS, current, progress, f"asset {asset_id} in job {job.id}"
-            )
+            require_move(MARK_TRANSITIONS, current, progress, f"asset {asset_id} in job {job.id}")
             self.hold_open_job(uow, job)
             # One asset's row, guarded on the value this transition was judged
             # against — never ``annotation_jobs.update``, which replaces the whole

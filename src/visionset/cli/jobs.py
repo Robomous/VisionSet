@@ -36,7 +36,7 @@ from visionset.cli._workspace import WorkspaceOption, opened_workspace
 from visionset.cli.batches import GeometryOption, announce_plan
 from visionset.cli.inference import ConnectionArgument
 from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE, geometry_selection, pre_label
-from visionset.kernel.domain import AssetProgress
+from visionset.kernel.domain import MARK_TRANSITIONS, AssetProgress
 from visionset.kernel.services import BatchService, InferenceConnectionService, JobService
 
 job_app = typer.Typer(help="Drive annotation jobs.", no_args_is_help=True)
@@ -50,6 +50,20 @@ _ASSET_COLUMNS: Final = ("ID", "CONTENT_HASH", "WIDTH", "HEIGHT")
 
 _PROGRESS_COLUMNS: Final = tuple(state.value.upper() for state in AssetProgress) + ("TOTAL",)
 """Read off the enum, so a sixth state cannot be silently missing from the table."""
+
+_MARKABLE: Final = [
+    state.value
+    for state in AssetProgress
+    if any(state in landed for landed in MARK_TRANSITIONS.values())
+]
+"""Only the states ``mark`` can land, read off the kernel's table."""
+
+
+def _markable(value: str) -> AssetProgress:
+    if value not in _MARKABLE:
+        raise typer.BadParameter(f"{value!r} is not one of {', '.join(_MARKABLE)}")
+    return AssetProgress(value)
+
 
 _UNKNOWN: Final = "-"
 """What an asset with no recorded dimensions — or a job with no assignee — shows."""
@@ -170,7 +184,12 @@ def job_mark(
     asset: Annotated[UUID, typer.Argument(help="The asset in that job.")],
     progress: Annotated[
         AssetProgress,
-        typer.Option("--progress", help="Where the asset has got to."),
+        typer.Option(
+            "--progress",
+            help="Where the asset has got to.",
+            parser=_markable,
+            metavar=f"[{'|'.join(_MARKABLE)}]",
+        ),
     ],
     json_out: JsonOption = False,
     workspace: WorkspaceOption = None,

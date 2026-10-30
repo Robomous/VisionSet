@@ -294,6 +294,7 @@ from visionset.kernel.domain.summary import (
 from visionset.kernel.domain.task import (
     ASSET_PROGRESS_TRANSITIONS,
     JOB_TRANSITIONS,
+    MARK_TRANSITIONS,
     OPEN_JOB_STATES,
     PROMOTABLE_PROGRESS,
     SETTLED_PROGRESS,
@@ -381,6 +382,7 @@ __all__ = [
     "JOB_TRANSITIONS",
     "LIVE_JOB_STATES",
     "MANIFEST_VERSION",
+    "MARK_TRANSITIONS",
     "MEDIA_TYPES",
     "OCTET_STREAM",
     "OPEN_JOB_STATES",

@@ -121,6 +121,20 @@ ASSET_PROGRESS_TRANSITIONS: Final[Mapping[AssetProgress, frozenset[AssetProgress
 """
 
 
+MARK_TRANSITIONS: Final[Mapping[AssetProgress, frozenset[AssetProgress]]] = {
+    current: landed - {AssetProgress.PRE_LABELED}
+    for current, landed in ASSET_PROGRESS_TRANSITIONS.items()
+}
+"""The edges ``JobService.mark`` may ride: the whole table except entry into ``pre_labeled``.
+
+``pre_labeled`` says a model wrote labels nobody has judged, so only the labels can
+make it true: an unjudged write (``AnnotationService.enter_unreviewed``, in the same
+transaction), or a batch cut over an asset whose labels are all model-made
+(:func:`initial_progress`). A bare marker move there would claim model output that
+does not exist.
+"""
+
+
 SETTLED_PROGRESS: Final[frozenset[AssetProgress]] = frozenset(
     {AssetProgress.ANNOTATED, AssetProgress.SKIPPED, AssetProgress.ACCEPTED}
 )
@@ -220,7 +234,7 @@ def progress_after_annotating(
     ``skipped`` says a person chose not to label this; ``accepted`` says a
     reviewer took it. Neither is contradicted by an annotation being drawn or
     erased, so annotations never move them — ``JobService.mark`` is the door for
-    a decision, and it consults ``ASSET_PROGRESS_TRANSITIONS`` the same way.
+    a decision, and it consults ``MARK_TRANSITIONS`` the same way.
 
     Pure, and separate from ``AnnotationService`` on purpose: "what does this
     mean for progress" is a domain question, and keeping it here is what lets

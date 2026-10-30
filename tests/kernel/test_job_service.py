@@ -30,16 +30,19 @@ from visionset.kernel.domain import (
     ASSET_PROGRESS_TRANSITIONS,
     JOB_TRANSITIONS,
     SETTLED_PROGRESS,
+    Annotation,
     AnnotationJob,
     AnnotationJobState,
     Asset,
     AssetProgress,
     BatchState,
+    BboxGeometry,
     BySize,
     GeometryType,
     LabelClass,
 )
 from visionset.kernel.services import (
+    AnnotationService,
     BatchService,
     JobService,
     ProjectService,
@@ -101,6 +104,9 @@ class Fixture:
     def asset_in(self, job: AnnotationJob, progress: AssetProgress) -> UUID:
         """The first asset, walked to ``progress`` through the real transitions."""
         asset_id = self.assets[0]
+        if progress is PRE_LABELED:
+            AnnotationService(self.workspace).enter_unreviewed(job.id, [_prediction(asset_id)])
+            return asset_id
         for step in _route_to(progress):
             self.jobs.mark(job.id, asset_id, step)
         return asset_id
@@ -109,10 +115,21 @@ class Fixture:
         self.workspace.close()
 
 
-#: The shortest legal walk from ``unannotated`` to each state.
+def _prediction(asset_id: UUID) -> Annotation:
+    return Annotation(
+        asset_id=asset_id,
+        label_class="sign",
+        schema_version=1,
+        geometry=BboxGeometry(x=1.0, y=2.0, width=30.0, height=40.0),
+        provenance="model",
+        model_ref="acme/detector@abc123",
+    )
+
+
+#: The shortest legal ``mark`` walk from ``unannotated`` to each state. ``pre_labeled``
+#: has none: only a model's unattended write lands there (see ``Fixture.asset_in``).
 _ROUTES: dict[AssetProgress, tuple[AssetProgress, ...]] = {
     UNANNOTATED: (),
-    PRE_LABELED: (PRE_LABELED,),
     ANNOTATED: (ANNOTATED,),
     SKIPPED: (SKIPPED,),
     REVIEW_PENDING: (ANNOTATED, REVIEW_PENDING),
@@ -176,7 +193,7 @@ def test_the_asset_progress_table_is_the_whole_of_what_is_legal(
 
     if origin is target:
         assert fixture.jobs.mark(job.id, asset_id, target).progress[asset_id] is origin
-    elif target in ASSET_PROGRESS_TRANSITIONS[origin]:
+    elif target in ASSET_PROGRESS_TRANSITIONS[origin] and target is not PRE_LABELED:
         assert fixture.jobs.mark(job.id, asset_id, target).progress[asset_id] is target
     else:
         with pytest.raises(InvalidTransition, match="cannot become"):

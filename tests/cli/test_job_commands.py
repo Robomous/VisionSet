@@ -161,12 +161,22 @@ def test_mark_records_the_state(root: Path, tmp_path: Path) -> None:
 def test_an_unknown_progress_state_exits_two_listing_the_real_ones(
     root: Path, tmp_path: Path
 ) -> None:
-    # Typer renders the ``StrEnum`` as a Click choice, so the refusal names every
-    # legal value without this module restating them.
+    # The choices are read off the kernel's ``MARK_TRANSITIONS``, so the refusal
+    # names every legal value without this module restating them.
     _, batch = started_batch(root, tmp_path)
     result = run(root, "job", "mark", jobs_of(root, batch)[0], str(uuid4()), "--progress", "bogus")
     assert result.exit_code == 2, result.output
     assert "annotated" in usage_error(result)
+
+
+def test_pre_labeled_is_not_a_progress_choice(root: Path, tmp_path: Path) -> None:
+    # Only a model's labels land an asset there, never a marker move (#953).
+    _, batch = started_batch(root, tmp_path)
+    job = jobs_of(root, batch)[0]
+    result = run(root, "job", "mark", job, str(uuid4()), "--progress", "pre_labeled")
+    assert result.exit_code == 2, result.output
+    assert "'pre_labeled' is not one of" in usage_error(result)
+    assert "pre_labeled" not in run(root, "job", "mark", "--help").output
 
 
 def test_marking_an_asset_that_is_not_in_the_job_exits_one(root: Path, tmp_path: Path) -> None:
