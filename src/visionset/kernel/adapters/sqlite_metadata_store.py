@@ -57,6 +57,7 @@ from visionset.kernel.domain import (
     AssetProgress,
     BackgroundJob,
     BackgroundJobState,
+    BatchState,
     OrphanGuard,
 )
 from visionset.kernel.errors import (
@@ -517,6 +518,31 @@ class SqlUnitOfWork:
         if stored is None:
             raise EntityNotFound(f"no job {job_id}")
         return AnnotationJobState(stored)
+
+    def set_batch_state(
+        self,
+        batch_id: UUID,
+        *,
+        expected: BatchState,
+        state: BatchState,
+    ) -> BatchState | None:
+        """One guarded ``UPDATE`` on the batch's ``state`` — :meth:`set_job_state`'s shape."""
+        result = cast(
+            "CursorResult[Any]",
+            self._session.execute(
+                update(t.BatchRow)
+                .where(t.BatchRow.id == batch_id)
+                .where(t.BatchRow.state == expected)
+                .values(state=state)
+            ),
+        )
+        if result.rowcount == 1:
+            return None
+
+        stored = self._session.scalar(select(t.BatchRow.state).where(t.BatchRow.id == batch_id))
+        if stored is None:
+            raise EntityNotFound(f"no batch {batch_id}")
+        return BatchState(stored)
 
     def last_touched(self, job_id: UUID) -> datetime | None:
         """One ``max()`` over the job's rows — see the port's docstring.

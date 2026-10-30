@@ -24,6 +24,7 @@ from visionset.kernel.domain import (
     AssetProgress,
     BackgroundJob,
     Batch,
+    BatchState,
     Dataset,
     DatasetChange,
     DatasetMember,
@@ -305,6 +306,27 @@ class UnitOfWork(Protocol):
         did not.
 
         Raises ``EntityNotFound`` if there is no such job.
+        """
+        ...
+
+    def set_batch_state(
+        self,
+        batch_id: UUID,
+        *,
+        expected: BatchState,
+        state: BatchState,
+    ) -> BatchState | None:
+        """Move a batch's state, and only if it is still where it was read.
+
+        :meth:`set_job_state` for the batch row. ``expected == state`` is a
+        deliberate use: it writes nothing new, but holds the write lock on a
+        state that has just been confirmed, so a membership edit or a delete
+        decided against that state cannot land after somebody else moved it.
+
+        Returns ``None`` when the write landed, and the **stored** state when it
+        did not.
+
+        Raises ``EntityNotFound`` if there is no such batch.
         """
         ...
 

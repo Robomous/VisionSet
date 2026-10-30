@@ -172,6 +172,14 @@ through `UnitOfWork.set_job_state`, which updates only the `state` column and on
 what the call read. A job that was completed while one of them was deciding is not reopened; the
 call raises `StaleWrite` (`start_if_pending` answers `False`).
 
+A guard on the row a call writes cannot see a row it only read, so the two decisions that span
+rows are held explicitly. Once its own checks pass, a write into a job - `mark` and every label
+write - rewrites the job's state onto itself, guarded, which takes the write lock on a job
+confirmed open; a `complete` that committed in between makes it raise `JobFinished`. A `mark` that
+changes nothing returns before that and takes no lock. `complete` re-reads the progress after
+its own guarded write, under that lock, and raises `JobNotComplete` if an asset was moved back
+in the meantime. Either way a completed job never holds an unsettled asset.
+
 A consequence worth stating: **no write of a job touches its assets' progress.** The state write
 changes one column and never rebuilds the per-asset rows from the map it read.
 

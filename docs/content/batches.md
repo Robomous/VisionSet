@@ -40,6 +40,12 @@ invalidate work already done. Making another batch is cheap; un-freezing one is 
 approval the batch has been cut into jobs: adding an asset would leave it in no job, and
 removing one would leave a job describing work that no longer exists.
 
+That holds against a concurrent approval too. A membership edit holds the batch's `draft` state
+until it commits (`UnitOfWork.set_batch_state`, guarded on the state it read), and `approve`
+moves the state first and only then reads the members it partitions. Whichever commits second
+sees the other: an edit after approval raises `BatchNotEditable`, and an approval after an edit
+partitions the asset it added.
+
 Membership is a **set** - adding an asset the batch already holds changes nothing, and
 removing one it does not hold is a no-op. Order is the order assets were first added. Every
 asset must belong to the batch's project, else `AssetNotFound`.
@@ -497,6 +503,10 @@ that.
 
 The state check runs **before** the confirmation one, so the refusal never names `confirm=True`
 as a remedy that would not work.
+
+The state is checked again where the delete is written, under the write lock: a batch completed
+after the delete read it raises `BatchImmutable` rather than disappearing, and a `complete` that
+finds its batch deleted raises `BatchNotFound` and announces nothing.
 
 `ConfirmationRequired` and `BatchImmutable` are two errors on purpose, and the second is not a
 subclass of the first: a caller catching "you need a flag" and retrying with the flag would

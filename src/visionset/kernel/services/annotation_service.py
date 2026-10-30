@@ -171,7 +171,7 @@ class AnnotationService:
         with self._workspace.unit_of_work() as uow:
             job = self._jobs.require_job(uow, job_id)
             batch = self._jobs.require_open_batch(uow, job)
-            self._jobs.require_open_job(job)
+            self._jobs.hold_open_job(uow, job)
             schema = self._pinned_schema(batch)
 
             # `job_id` is stamped exactly like `schema_version`, and for the same
@@ -252,7 +252,7 @@ class AnnotationService:
         with self._workspace.unit_of_work() as uow:
             job = self._jobs.require_job(uow, job_id)
             batch = self._jobs.require_open_batch(uow, job)
-            self._jobs.require_open_job(job)
+            self._jobs.hold_open_job(uow, job)
             schema = self._pinned_schema(batch)
 
             superseded = tuple(dict.fromkeys(replacing))
@@ -317,7 +317,7 @@ class AnnotationService:
         with self._workspace.unit_of_work() as uow:
             job = self._jobs.require_job(uow, job_id)
             batch = self._jobs.require_open_batch(uow, job)
-            self._jobs.require_open_job(job)
+            self._jobs.hold_open_job(uow, job)
             schema = self._pinned_schema(batch)
 
             replacements = []
@@ -385,7 +385,7 @@ class AnnotationService:
         with self._workspace.unit_of_work() as uow:
             job = self._jobs.require_job(uow, job_id)
             batch = self._jobs.require_open_batch(uow, job)
-            self._jobs.require_open_job(job)
+            self._jobs.hold_open_job(uow, job)
 
             # No schema is read: removing a label never has to satisfy a
             # contract, and a version that has since been narrowed must not stop
