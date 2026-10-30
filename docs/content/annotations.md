@@ -162,6 +162,19 @@ be constructed, so it never reaches a service to be reported. That is the divisi
 [schemas.md](schemas.md) already draws: per-value validity is pydantic's, validity that needs
 another object is the service's.
 
+**An edit keeps who made the label.** A replacement whose `provenance` differs from the stored
+one is refused with `InvalidAnnotation` (422 `INVALID_ANNOTATION`, `detail.index` naming it), and
+`update` stamps `model_ref` and `confidence` from the stored annotation over whatever the
+replacement carries, the way it keeps the stored `asset_id`: a box a person moved is still a
+model's box, and a person's box cannot be re-stamped as a model's (#952). An edit changes what a
+label says, never who made it - which is what lets a later batch read an asset whose labels are
+all model-made as `pre_labeled`.
+
+The trade-off is deliberate: a model box a person corrected stays `model`, so when a later batch
+is cut over that asset it opens `pre_labeled` again, and a replacing pre-label run in that batch
+can delete the correction. Every "never touched" promise a replacing run makes is scoped to its
+own batch - see [batches.md](batches.md#corrections-open-on-the-labels-that-are-already-there).
+
 An annotation accepted from the editor's suggest tool is written this way and no other: an
 ordinary `add` carrying `provenance="model"`, the `model_ref` the suggestion named, and its
 `confidence`. There is no separate route for it, no relaxed validation, and no link back to the

@@ -128,7 +128,10 @@ def update_annotations(
     index or position. There is no `asset_id` on the body because the stored one
     wins: moving a label from one asset to another is a delete and an add, not an
     edit, and doing it silently would take an asset's last annotation away
-    without anything saying so.
+    without anything saying so. Who made a label is kept the same way: a
+    `provenance` other than the stored one is 422 `INVALID_ANNOTATION`, and
+    `model_ref` and `confidence` are taken from the stored annotation. An edit
+    changes what a label says, never who made it.
 
     All-or-nothing, and `detail.index` names the culprit, exactly as on the POST.
     An asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST,

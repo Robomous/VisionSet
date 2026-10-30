@@ -101,7 +101,9 @@ class AnnotationEdit(BaseModel):
         description="The replacement shape, in the asset's own pixel coordinates."
     )
     attributes: dict[str, AttributeValue] = Field(default_factory=dict)
-    provenance: Provenance = Field(description="Who produced this version of it.")
+    provenance: Provenance = Field(
+        description="Must equal the stored annotation's provenance; an edit cannot change it."
+    )
     model_ref: str | None = Field(default=None)
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
 
@@ -185,7 +187,10 @@ def update_annotations(
     A whole-value replace, not a patch: what you send is what the annotation
     becomes, so send every field you want to keep. The asset an annotation is on
     cannot be changed — the stored one always wins — and the schema version is
-    re-stamped from the batch's pin.
+    re-stamped from the batch's pin. Who made the label cannot be changed either:
+    send the `provenance` `list_asset_annotations` returned — any other value is
+    refused as `INVALID_ANNOTATION` — and `model_ref` and `confidence` are kept
+    from the stored annotation, so a model's box you adjust is still the model's.
 
     Same validation and the same all-or-nothing rule as `add_annotations`, and
     the same `job_started` in the answer.

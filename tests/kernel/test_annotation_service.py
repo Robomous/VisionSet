@@ -601,6 +601,76 @@ def test_update_addresses_by_uuid_and_keeps_the_stored_asset(tmp_path: Path) -> 
     fixture.close()
 
 
+_MODEL_MADE: dict[str, Any] = {
+    "provenance": "model",
+    "model_ref": "acme/detector@abc123",
+    "confidence": 0.62,
+}
+_CLAIMED_MODEL: dict[str, Any] = {
+    "provenance": "model",
+    "model_ref": "other/model@1",
+    "confidence": 0.9,
+}
+_MOVED = BboxGeometry(x=5.0, y=5.0, width=10.0, height=10.0)
+
+
+@pytest.mark.parametrize(
+    "made_by, claimed",
+    [(_MODEL_MADE, {}), ({}, _CLAIMED_MODEL)],
+    ids=["model-box-claimed-human", "human-box-claimed-model"],
+)
+def test_an_edit_claiming_another_provenance_is_refused(
+    tmp_path: Path, made_by: dict[str, Any], claimed: dict[str, Any]
+) -> None:
+    """Who made a label is not the editor's to change, and the culprit is named."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    honest, stored = fixture.annotations.add(
+        job.id, [_box(fixture.assets[0]), _box(fixture.assets[0], **made_by)]
+    )
+
+    with pytest.raises(InvalidAnnotation, match="edit cannot make it") as refused:
+        fixture.annotations.update(
+            job.id,
+            [
+                _box(fixture.assets[0], id=honest.id, geometry=_MOVED),
+                _box(fixture.assets[0], id=stored.id, geometry=_MOVED, **claimed),
+            ],
+        )
+
+    assert refused.value.index == 1
+    assert fixture.annotations.get(stored.id) == stored
+    assert fixture.annotations.get(honest.id) == honest
+    fixture.close()
+
+
+@pytest.mark.parametrize(
+    "made_by, claimed",
+    [
+        (_MODEL_MADE, {**_CLAIMED_MODEL}),
+        ({}, {"confidence": 0.9}),
+    ],
+    ids=["model-box", "human-box"],
+)
+def test_an_edit_keeps_who_made_the_label(
+    tmp_path: Path, made_by: dict[str, Any], claimed: dict[str, Any]
+) -> None:
+    """A box a person moved is still a model's box, with the model's own ref and score."""
+    fixture = Fixture(tmp_path)
+    job = fixture.working()
+    (stored,) = fixture.annotations.add(job.id, [_box(fixture.assets[0], **made_by)])
+
+    (replaced,) = fixture.annotations.update(
+        job.id, [_box(fixture.assets[0], id=stored.id, geometry=_MOVED, **claimed)]
+    )
+
+    kept = (stored.provenance, stored.model_ref, stored.confidence)
+    assert (replaced.provenance, replaced.model_ref, replaced.confidence) == kept
+    assert replaced.geometry == _MOVED
+    assert fixture.annotations.get(stored.id) == replaced
+    fixture.close()
+
+
 def test_an_update_the_version_rejects_leaves_the_stored_one_alone(tmp_path: Path) -> None:
     fixture = Fixture(tmp_path)
     job = fixture.working()

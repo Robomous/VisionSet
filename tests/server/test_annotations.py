@@ -393,6 +393,32 @@ def test_an_update_that_is_refused_leaves_the_stored_one_alone(
     assert stored(client, job_id, assets[0]) == [written]
 
 
+def test_an_update_cannot_restamp_who_made_the_label(
+    client: TestClient, working: tuple[str, str], assets: list[str]
+) -> None:
+    _, job_id = working
+    (written,) = client.post(f"/jobs/{job_id}/annotations", json=[a_box(assets[0])]).json()["items"]
+
+    response = client.patch(
+        f"/jobs/{job_id}/annotations",
+        json=[
+            {
+                "id": written["id"],
+                "label_class": "sign",
+                "geometry": written["geometry"],
+                "attributes": written["attributes"],
+                "provenance": "model",
+                "model_ref": "acme/detector@abc123",
+            }
+        ],
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "INVALID_ANNOTATION"
+    assert response.json()["detail"] == {"index": 0}
+    assert stored(client, job_id, assets[0]) == [written]
+
+
 def test_one_unknown_id_deletes_none_of_them(
     client: TestClient, working: tuple[str, str], assets: list[str]
 ) -> None:

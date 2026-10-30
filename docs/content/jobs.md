@@ -50,6 +50,12 @@ Underneath it, each asset moves through `ASSET_PROGRESS_TRANSITIONS`:
 
 Anything outside the table raises `InvalidTransition`, naming what the asset *can* become.
 
+`mark` rides every edge of that table but one: it cannot move an asset **into** `pre_labeled`.
+That state says a model wrote labels nobody has judged, and only the labels can make it true -
+an unjudged write (a pre-label run), or a batch cut over an asset whose labels are all
+model-made ([batches.md](batches.md)) - so `mark` reads `MARK_TRANSITIONS` - the same table without that entry
+edge - and refuses it with `InvalidTransition` on every surface (#953).
+
 ### Five of those edges are derived from the annotations
 
 Progress is still deliberately not the annotations - the paragraph at the top of this page
@@ -127,8 +133,8 @@ jobs.mark(job.id, asset.id, AssetProgress.ANNOTATED)  # fine, changes nothing
 Progress is a marker driven by what annotators do, and re-stating it is not a move. This is
 deliberately unlike `BatchService.approve`, where a second call would re-partition the batch.
 
-`mark` is one method rather than five intent-named ones because the table is the whole of what
-is legal, and a second spelling of it would only drift. Friendlier wrappers belong on the
+`mark` is one method rather than five intent-named ones because `MARK_TRANSITIONS`, derived from
+the table, is the whole of what is legal, and a second spelling of it would only drift. Friendlier wrappers belong on the
 surfaces - a CLI `visionset job skip` would map onto this.
 
 ## Two writers on one job, and what a success means (#302)

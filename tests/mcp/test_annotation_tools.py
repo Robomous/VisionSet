@@ -222,22 +222,26 @@ def test_an_update_replaces_the_whole_value_and_keeps_the_stored_asset(
     written = payload(call("add_annotations", job_id=job_id, annotations=[_label(assets[0])]))
     annotation_id = written["items"][0]["id"]
     moved = {"type": "bbox", "x": 5.0, "y": 5.0, "width": 2.0, "height": 2.0}
+    edit = {"id": annotation_id, "label_class": "sign", "geometry": moved}
+
+    # Who made it is the stored row's fact: claiming otherwise is refused (#952)...
+    refused = error(
+        call("update_annotations", job_id=job_id, annotations=[{**edit, "provenance": "human"}])
+    )
+    assert (refused["code"], refused["index"]) == ("INVALID_ANNOTATION", 0)
+
+    # ...and the model's own reference and score are kept.
     updated = payload(
         call(
             "update_annotations",
             job_id=job_id,
-            annotations=[
-                {
-                    "id": annotation_id,
-                    "label_class": "sign",
-                    "geometry": moved,
-                    "provenance": "human",
-                }
-            ],
+            annotations=[{**edit, "provenance": "model", "model_ref": "other@2"}],
         )
     )
     assert updated["items"][0]["geometry"] == moved
-    assert updated["items"][0]["provenance"] == "human"
+    assert updated["items"][0]["provenance"] == "model"
+    assert updated["items"][0]["model_ref"] == "probe@1"
+    assert updated["items"][0]["confidence"] == 0.9
     # The stored asset always wins — there is no way to move a label to another
     # image, which is why `AnnotationEdit` has no `asset_id` at all.
     assert updated["items"][0]["asset_id"] == assets[0]

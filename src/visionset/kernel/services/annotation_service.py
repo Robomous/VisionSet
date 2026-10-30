@@ -96,6 +96,7 @@ from visionset.kernel.errors import (
     AssetNotInJob,
     AssetNotWritable,
     DuplicateClassificationTag,
+    InvalidAnnotation,
     StaleWrite,
     VisionSetError,
     WorkspaceCorrupt,
@@ -300,7 +301,11 @@ class AnnotationService:
         by index or by position. The stored ``asset_id`` wins over whatever the
         replacement carries: moving a label from one asset to another is not an
         edit, it is a delete and an add, and doing it silently would take an
-        asset's last annotation away without anything saying so.
+        asset's last annotation away without anything saying so. ``provenance``,
+        ``model_ref`` and ``confidence`` are kept from the stored annotation the
+        same way: an edit changes what a label says, never who made it. A
+        replacement claiming a different ``provenance`` is refused rather than
+        silently corrected, so a caller that meant to re-stamp hears about it.
 
         All-or-nothing, like :meth:`add`.
 
@@ -311,7 +316,8 @@ class AnnotationService:
             AnnotationNotFound: an id is not stored in this workspace.
             AssetNotInJob: a stored annotation sits on an asset outside this job.
             AssetNotWritable: an asset's progress says its labeling is over.
-            InvalidAnnotation: a replacement does not satisfy the pinned version.
+            InvalidAnnotation: a replacement does not satisfy the pinned version,
+                or claims a ``provenance`` other than the stored one.
             WorkspaceCorrupt: the open batch has no pinned schema version.
         """
         with self._workspace.unit_of_work() as uow:
@@ -325,6 +331,7 @@ class AnnotationService:
                 with _blaming(index):
                     current = self._require_annotation(uow, annotation.id)
                     _require_writable(job, current.asset_id)
+                    _require_same_provenance(current, annotation)
                     # `job_id` is stamped with the job doing the replacing, not
                     # carried over from `current` the way `asset_id` is — and the
                     # two go opposite ways on purpose. `asset_id` answers *what
@@ -334,11 +341,16 @@ class AnnotationService:
                     # Preserving the original would make the field mean "first
                     # written in", which is a different fact and the less useful
                     # one: it goes stale the moment a correction round edits.
+                    # Who made a label is a fact about the stored row, so an edit
+                    # keeps it: a box a person moved is still a model's box.
                     replacement = annotation.model_copy(
                         update={
                             "asset_id": current.asset_id,
                             "schema_version": schema.version,
                             "job_id": job.id,
+                            "provenance": current.provenance,
+                            "model_ref": current.model_ref,
+                            "confidence": current.confidence,
                         }
                     )
                     _validate(replacement, schema)
@@ -566,6 +578,15 @@ def _require_geometry_on_asset(uow: UnitOfWork, annotation: Annotation) -> None:
         raise AnnotationGeometryOutOfBounds(
             f"a {annotation.geometry.type.value} annotation on asset {asset.id} has no overlap "
             f"with its {asset.width} by {asset.height} pixel frame"
+        )
+
+
+def _require_same_provenance(current: Annotation, replacement: Annotation) -> None:
+    """Refuse an edit that claims a label was made by something else."""
+    if replacement.provenance != current.provenance:
+        raise InvalidAnnotation(
+            f"annotation {current.id} is {current.provenance!r} and an edit cannot make it "
+            f"{replacement.provenance!r}; who made a label is kept, so send the stored provenance"
         )
 
 

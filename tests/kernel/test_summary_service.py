@@ -115,6 +115,22 @@ class Fixture:
         for asset_id in asset_ids:
             self.jobs.mark(job_id, asset_id, AssetProgress.ANNOTATED)
 
+    def pre_label(self, job_id: UUID, asset_id: UUID) -> None:
+        """A model's unattended labels — the only door into ``pre_labeled``."""
+        self.annotations.enter_unreviewed(
+            job_id,
+            [
+                Annotation(
+                    asset_id=asset_id,
+                    label_class="sign",
+                    geometry=BboxGeometry(x=1.0, y=1.0, width=2.0, height=2.0),
+                    schema_version=1,
+                    provenance="model",
+                    model_ref="acme/detector@abc123",
+                )
+            ],
+        )
+
     def forget_touches(self) -> None:
         """Make every frame look like one nobody has worked since the column existed.
 
@@ -567,8 +583,8 @@ def test_a_batch_of_only_pre_labeled_frames_is_still_something_to_carry_on_with(
         project = fixture.project("p")
         assets = fixture.assets(project, 2)
         batch, job = fixture.open_batch(project, "b", assets)
-        fixture.jobs.mark(job, assets[0], AssetProgress.PRE_LABELED)
-        fixture.jobs.mark(job, assets[1], AssetProgress.PRE_LABELED)
+        fixture.pre_label(job, assets[0])
+        fixture.pre_label(job, assets[1])
 
         resume = fixture.summary().resume
 
@@ -588,7 +604,7 @@ def test_the_landing_asset_is_the_first_of_either_kind_in_batch_order(tmp_path: 
         project = fixture.project("p")
         assets = fixture.assets(project, 3)
         _, job = fixture.open_batch(project, "b", assets)
-        fixture.jobs.mark(job, assets[0], AssetProgress.PRE_LABELED)
+        fixture.pre_label(job, assets[0])
 
         resume = fixture.summary().resume
 
@@ -829,7 +845,7 @@ def test_a_batch_a_model_labeled_and_nobody_has_read_asks_for_an_annotator(
         assets = fixture.assets(project, 3)
         batch, job = fixture.open_batch(project, "pre-labeled", assets)
         for asset_id in assets[:2]:
-            fixture.jobs.mark(job, asset_id, AssetProgress.PRE_LABELED)
+            fixture.pre_label(job, asset_id)
 
         rows = [row for row in fixture.summary().attention if row.kind is AttentionKind.PRE_LABELED]
 
@@ -851,7 +867,7 @@ def test_a_batch_waiting_on_both_gets_a_row_for_each(tmp_path: Path) -> None:
         batch, job = fixture.open_batch(project, "both", assets)
         fixture.annotate(job, assets[:1])
         fixture.jobs.mark(job, assets[0], AssetProgress.REVIEW_PENDING)
-        fixture.jobs.mark(job, assets[1], AssetProgress.PRE_LABELED)
+        fixture.pre_label(job, assets[1])
 
         rows = [row for row in fixture.summary().attention if row.subject_id == batch]
 
