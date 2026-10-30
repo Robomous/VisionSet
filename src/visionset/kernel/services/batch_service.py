@@ -33,7 +33,7 @@ open :class:`WorkspaceService` and nothing else, and never names an adapter.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import NoReturn
 from uuid import UUID
 
@@ -88,9 +88,11 @@ from visionset.kernel.errors import (
     ConfirmationRequired,
     DestructiveSchemaChange,
     EmptyBatch,
+    EntityNotFound,
     JobNotFound,
     ProjectNotFound,
     SchemaChangeWouldOrphan,
+    StaleWrite,
     WorkspaceCorrupt,
 )
 from visionset.kernel.ports import UnitOfWork
@@ -398,7 +400,7 @@ class BatchService:
             AssetNotFound: an asset id is not in this project.
         """
         with self._workspace.unit_of_work() as uow:
-            batch = self.require_draft(uow, batch_id)
+            batch = self.hold_draft(uow, batch_id)
             wanted = _require_assets(uow, batch.project_id, asset_ids)
             added = uow.add_batch_assets(batch.id, _deduplicated(wanted))
             return MembershipChange(batch=self.require_batch(uow, batch_id), changed=tuple(added))
@@ -424,7 +426,7 @@ class BatchService:
             BatchNotEditable: the batch is past ``draft``.
         """
         with self._workspace.unit_of_work() as uow:
-            batch = self.require_draft(uow, batch_id)
+            batch = self.hold_draft(uow, batch_id)
             removed = uow.remove_batch_assets(batch.id, list(asset_ids))
             return MembershipChange(batch=self.require_batch(uow, batch_id), changed=tuple(removed))
 
@@ -468,6 +470,10 @@ class BatchService:
         with self._workspace.unit_of_work() as uow:
             batch = self.require_batch(uow, batch_id)
             require_move(BATCH_TRANSITIONS, batch.state, BatchState.APPROVED, _subject(batch))
+            # State first, then membership: re-read under the write lock that
+            # move took, so no asset added after the first read is left unpartitioned.
+            self._move_guarded(uow, batch, BatchState.APPROVED)
+            batch = self.require_batch(uow, batch_id)
             if not batch.asset_ids:
                 raise EmptyBatch(
                     f"batch {batch.name!r} has no assets; an approved empty batch has no jobs "
@@ -476,7 +482,7 @@ class BatchService:
 
             # Not created here if it is missing: SchemaService is the only door to
             # a schema version, and inventing one would be a second.
-            pinned = self._schemas.get_active(batch.project_id).version
+            pinned = self._schemas.require_active(uow, batch.project_id).version
             segments = partition_assets(
                 batch.asset_ids, SingleJob() if partition is None else partition
             )
@@ -498,9 +504,7 @@ class BatchService:
                 ).id
                 for segment in segments
             ]
-            approved = uow.batches.update(
-                batch.model_copy(update={"state": BatchState.APPROVED, "schema_version": pinned})
-            )
+            approved = uow.batches.update(batch.model_copy(update={"schema_version": pinned}))
 
         self._workspace.event_bus.publish(
             BatchApproved(
@@ -594,12 +598,7 @@ class BatchService:
         """
         with self._workspace.unit_of_work() as uow:
             batch = self.require_batch(uow, batch_id)
-            require_state(
-                REPINNABLE_STATES,
-                batch.state,
-                _subject(batch),
-                refusal="its schema pin cannot move",
-            )
+            _require_repinnable(batch)
 
             active = self._schemas.require_active(uow, batch.project_id)
             # A draft cannot reach here, so the pin is set — but the read is a
@@ -618,6 +617,7 @@ class BatchService:
                 # survive a version that only takes `car`'s polygon away.
                 guarded = diff.guards
 
+            self._hold_state(uow, batch, _require_repinnable)
             if not uow.repin_batch_unless_annotated(batch.id, active.version, guarded):
                 self._refuse_orphaning(uow, batch, guarded)
             return batch.model_copy(update={"schema_version": active.version})
@@ -646,7 +646,8 @@ class BatchService:
                     f"batch {batch.name!r} has {len(outstanding)} of {len(jobs)} jobs still "
                     f"unfinished; a batch completes only when all of its jobs do"
                 )
-            completed = uow.batches.update(batch.model_copy(update={"state": BatchState.COMPLETED}))
+            self._move_guarded(uow, batch, BatchState.COMPLETED)
+            completed = self.require_batch(uow, batch_id)
 
         self._workspace.event_bus.publish(
             BatchCompleted(
@@ -677,17 +678,13 @@ class BatchService:
         """
         with self._workspace.unit_of_work() as uow:
             batch = self.require_batch(uow, batch_id)
-            if batch.state not in DELETABLE_STATES:
-                raise BatchImmutable(
-                    f"batch {batch.name!r} is {batch.state.value!r} and cannot be deleted; a "
-                    f"completed batch is the record of what was labeled, against which schema "
-                    f"version, and what was deliberately skipped"
-                )
+            _require_deletable(batch)
             if not confirm:
                 raise ConfirmationRequired(
                     f"deleting batch {batch.name!r} destroys its task groups and jobs, including "
                     f"their progress; pass confirm=True to proceed"
                 )
+            self._hold_state(uow, batch, _require_deletable)
             uow.batches.delete(batch.id)
 
     # --- the re-pin gates, mirroring SchemaService's ------------------------
@@ -759,7 +756,45 @@ class BatchService:
         with self._workspace.unit_of_work() as uow:
             batch = self.require_batch(uow, batch_id)
             require_move(BATCH_TRANSITIONS, batch.state, to, _subject(batch))
-            return uow.batches.update(batch.model_copy(update={"state": to}))
+            self._move_guarded(uow, batch, to)
+            return self.require_batch(uow, batch_id)
+
+    def _move_guarded(self, uow: UnitOfWork, batch: Batch, to: BatchState) -> None:
+        """Write ``to`` only if the batch is still in the state it was read in.
+
+        A lost guard is judged against the stored state, so the refusal is the
+        one a serial run would have given.
+        """
+        stored = self._set_state(uow, batch, expected=batch.state, state=to)
+        if stored is None:
+            return
+        require_move(BATCH_TRANSITIONS, stored, to, _subject(batch))
+        raise StaleWrite(
+            f"batch {batch.name!r} was {batch.state.value!r} when this move was decided and "
+            f"is {stored.value!r} now; read it again and decide again"
+        )
+
+    def _hold_state(self, uow: UnitOfWork, batch: Batch, judge: Callable[[Batch], None]) -> None:
+        """Keep the batch in a state ``judge`` accepts until this transaction ends.
+
+        Rewrites the stored state onto itself, guarded, which takes the write
+        lock; a state that moved since the read is judged again rather than
+        trusted.
+        """
+        state = batch.state
+        while (stored := self._set_state(uow, batch, expected=state, state=state)) is not None:
+            judge(batch.model_copy(update={"state": stored}))
+            state = stored
+
+    def _set_state(
+        self, uow: UnitOfWork, batch: Batch, *, expected: BatchState, state: BatchState
+    ) -> BatchState | None:
+        try:
+            return uow.set_batch_state(batch.id, expected=expected, state=state)
+        except EntityNotFound as exc:
+            raise BatchNotFound(
+                f"no batch {batch.id} in workspace {self._workspace.workspace.name!r}"
+            ) from exc
 
     # --- lookups shared by the operations above ----------------------------
 
@@ -808,12 +843,46 @@ class BatchService:
             BatchNotEditable: the batch is past ``draft``.
         """
         batch = self.require_batch(uow, batch_id)
-        if batch.state not in EDITABLE_STATES:
-            raise BatchNotEditable(
-                f"batch {batch.name!r} is {batch.state.value!r}, so its membership is frozen; "
-                f"after approval an asset is excluded by marking it skipped, never by removing it"
-            )
+        _require_editable(batch)
         return batch
+
+    def hold_draft(self, uow: UnitOfWork, batch_id: UUID) -> Batch:
+        """:meth:`require_draft` for a caller about to change membership.
+
+        Also takes the write lock on the ``draft`` state just confirmed, so an
+        approval committing between that read and the membership write refuses
+        the write instead of leaving an asset outside every job.
+
+        Raises:
+            BatchNotFound: no such batch in this workspace.
+            BatchNotEditable: the batch is past ``draft``.
+        """
+        batch = self.require_draft(uow, batch_id)
+        self._hold_state(uow, batch, _require_editable)
+        return batch
+
+
+def _require_editable(batch: Batch) -> None:
+    if batch.state not in EDITABLE_STATES:
+        raise BatchNotEditable(
+            f"batch {batch.name!r} is {batch.state.value!r}, so its membership is frozen; "
+            f"after approval an asset is excluded by marking it skipped, never by removing it"
+        )
+
+
+def _require_repinnable(batch: Batch) -> None:
+    require_state(
+        REPINNABLE_STATES, batch.state, _subject(batch), refusal="its schema pin cannot move"
+    )
+
+
+def _require_deletable(batch: Batch) -> None:
+    if batch.state not in DELETABLE_STATES:
+        raise BatchImmutable(
+            f"batch {batch.name!r} is {batch.state.value!r} and cannot be deleted; a "
+            f"completed batch is the record of what was labeled, against which schema "
+            f"version, and what was deliberately skipped"
+        )
 
 
 def _subject(batch: Batch) -> str:

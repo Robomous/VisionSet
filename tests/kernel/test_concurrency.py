@@ -24,7 +24,14 @@ import pytest
 from sqlalchemy import text
 
 from visionset.kernel import (
+    BatchImmutable,
+    BatchNotEditable,
+    BatchNotFound,
     ConstraintViolated,
+    InvalidTransition,
+    JobFinished,
+    JobNotComplete,
+    JobNotFound,
     SchemaChangeWouldOrphan,
     StaleWrite,
     WorkspaceBusy,
@@ -39,6 +46,8 @@ from visionset.kernel.domain import (
     Asset,
     AssetProgress,
     Batch,
+    BatchCompleted,
+    BatchState,
     BboxGeometry,
     GeometryType,
     LabelClass,
@@ -830,3 +839,317 @@ def test_a_repin_cannot_drop_a_class_labeled_while_it_was_counting(tmp_path: Pat
 
     assert isinstance(outcome, SchemaChangeWouldOrphan), outcome
     assert fixture.pinned() == 1, "the pin moved over a label written while it counted"
+
+
+# --- two decisions on two rows, each guarded only on its own -------------------
+#
+# Write skew: each call checks one row and writes another, so a guard on the row
+# it writes cannot see the row the other call changed. Same single-threaded seam
+# as above: the other call commits from a second workspace after the first read.
+
+
+class _AfterFirstReadBatchService(BatchService):
+    """Runs `after_read` once, right after the call's first read of the batch."""
+
+    def __init__(self, workspace: WorkspaceService, after_read: Callable[[], None]) -> None:
+        super().__init__(workspace)
+        self._after_read: Callable[[], None] | None = after_read
+
+    def require_batch(self, uow: UnitOfWork, batch_id: UUID) -> Batch:
+        batch = super().require_batch(uow, batch_id)
+        hook, self._after_read = self._after_read, None
+        if hook is not None:
+            hook()
+        return batch
+
+
+def _elsewhere(root: Path, act: Callable[[WorkspaceService], object]) -> Callable[[], None]:
+    def run() -> None:
+        workspace = WorkspaceService.open(root)
+        try:
+            act(workspace)
+        finally:
+            workspace.close()
+
+    return run
+
+
+def _all_skipped(root: Path) -> tuple[UUID, list[UUID]]:
+    job_id, assets = _open_job(root)
+    workspace = WorkspaceService.open(root)
+    try:
+        for asset_id in assets:
+            JobService(workspace).mark(job_id, asset_id, AssetProgress.SKIPPED)
+    finally:
+        workspace.close()
+    return job_id, assets
+
+
+def test_a_mark_decided_before_its_job_completed_is_refused(tmp_path: Path) -> None:
+    root = tmp_path / "ws"
+    job_id, assets = _all_skipped(root)
+
+    workspace = WorkspaceService.open(root)
+    try:
+        service = _AfterFirstReadJobService(
+            workspace, _elsewhere(root, lambda ws: JobService(ws).complete(job_id))
+        )
+        with pytest.raises(JobFinished):
+            service.mark(job_id, assets[0], AssetProgress.UNANNOTATED)
+        job = JobService(workspace).get(job_id)
+        assert job.state is AnnotationJobState.COMPLETED
+        assert job.progress[assets[0]] is AssetProgress.SKIPPED
+    finally:
+        workspace.close()
+
+
+def test_a_complete_decided_before_a_mark_is_refused(tmp_path: Path) -> None:
+    root = tmp_path / "ws"
+    job_id, assets = _all_skipped(root)
+
+    workspace = WorkspaceService.open(root)
+    try:
+        service = _AfterFirstReadJobService(
+            workspace,
+            _elsewhere(
+                root,
+                lambda ws: JobService(ws).mark(job_id, assets[0], AssetProgress.UNANNOTATED),
+            ),
+        )
+        with pytest.raises(JobNotComplete):
+            service.complete(job_id)
+        job = JobService(workspace).get(job_id)
+        assert job.state is AnnotationJobState.IN_PROGRESS
+        assert job.progress[assets[0]] is AssetProgress.UNANNOTATED
+    finally:
+        workspace.close()
+
+
+@pytest.mark.parametrize("operation", ["add", "update", "delete"])
+def test_a_label_decided_before_its_job_completed_is_refused(
+    tmp_path: Path, operation: str
+) -> None:
+    root = tmp_path / "ws"
+    job_id, assets = _open_job(root)
+
+    def box() -> Annotation:
+        return Annotation(
+            asset_id=assets[0],
+            label_class="sign",
+            schema_version=1,
+            geometry=BboxGeometry(x=1.0, y=2.0, width=30.0, height=40.0),
+            provenance="human",
+        )
+
+    workspace = WorkspaceService.open(root)
+    try:
+        (stored,) = AnnotationService(workspace).add(job_id, [box()])
+        for asset_id in assets[1:]:
+            JobService(workspace).mark(job_id, asset_id, AssetProgress.SKIPPED)
+
+        service = AnnotationService(workspace)
+        service._jobs = _AfterFirstReadJobService(
+            workspace, _elsewhere(root, lambda ws: JobService(ws).complete(job_id))
+        )
+        with pytest.raises(JobFinished):
+            if operation == "add":
+                service.add(job_id, [box()])
+            elif operation == "update":
+                moved = stored.geometry.model_copy(update={"x": 5.0})
+                service.update(job_id, [stored.model_copy(update={"geometry": moved})])
+            else:
+                service.delete(job_id, [stored.id])
+        assert AnnotationService(workspace).for_asset(job_id, assets[0]) == [stored]
+    finally:
+        workspace.close()
+
+
+def _finished_batch(root: Path) -> UUID:
+    """An `in_annotation` batch whose one job is completed."""
+    job_id, _ = _all_skipped(root)
+    workspace = WorkspaceService.open(root)
+    try:
+        JobService(workspace).complete(job_id)
+        return JobService(workspace).batch(job_id).id
+    finally:
+        workspace.close()
+
+
+def test_a_delete_decided_before_its_batch_completed_is_refused(tmp_path: Path) -> None:
+    root = tmp_path / "ws"
+    batch_id = _finished_batch(root)
+
+    workspace = WorkspaceService.open(root)
+    try:
+        service = _AfterFirstReadBatchService(
+            workspace, _elsewhere(root, lambda ws: BatchService(ws).complete(batch_id))
+        )
+        with pytest.raises(BatchImmutable):
+            service.delete(batch_id, confirm=True)
+        assert BatchService(workspace).get(batch_id).state is BatchState.COMPLETED
+    finally:
+        workspace.close()
+
+
+def test_a_complete_decided_before_its_batch_was_deleted_reports_it_missing(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "ws"
+    batch_id = _finished_batch(root)
+    completed: list[BatchCompleted] = []
+
+    workspace = WorkspaceService.open(root)
+    try:
+        workspace.event_bus.subscribe(BatchCompleted, completed.append)
+        service = _AfterFirstReadBatchService(
+            workspace,
+            _elsewhere(root, lambda ws: BatchService(ws).delete(batch_id, confirm=True)),
+        )
+        with pytest.raises(BatchNotFound):
+            service.complete(batch_id)
+        assert completed == []
+    finally:
+        workspace.close()
+
+
+def _draft(root: Path) -> tuple[UUID, UUID, UUID]:
+    """A draft batch holding one asset, and a second asset of the same project."""
+    workspace = WorkspaceService.init(root)
+    try:
+        project = ProjectService(workspace).create("p")
+        SchemaService(workspace).create_version(
+            project.id, [LabelClass(name="sign", geometries=(GeometryType.BBOX,))]
+        )
+        ids = []
+        for seed in ("a", "b"):
+            content_hash = workspace.blob_store.put(BytesIO(seed.encode()))
+            with workspace.unit_of_work() as uow:
+                ids.append(
+                    uow.assets.add(
+                        Asset(project_id=project.id, content_hash=content_hash, uri=f"/{seed}.png")
+                    ).id
+                )
+        batch = BatchService(workspace).create(project.id, "draft", [ids[0]])
+        return batch.id, ids[0], ids[1]
+    finally:
+        workspace.close()
+
+
+def _partitioned(workspace: WorkspaceService, batch_id: UUID) -> set[UUID]:
+    return {asset for job in BatchService(workspace).jobs(batch_id) for asset in job.progress}
+
+
+@pytest.mark.parametrize("operation", ["add", "remove"])
+def test_a_membership_edit_decided_before_approval_is_refused(
+    tmp_path: Path, operation: str
+) -> None:
+    root = tmp_path / "ws"
+    batch_id, held, spare = _draft(root)
+
+    workspace = WorkspaceService.open(root)
+    try:
+        service = _AfterFirstReadBatchService(
+            workspace, _elsewhere(root, lambda ws: BatchService(ws).approve(batch_id))
+        )
+        with pytest.raises(BatchNotEditable):
+            if operation == "add":
+                service.add_assets(batch_id, [spare])
+            else:
+                service.remove_assets(batch_id, [held])
+        batch = BatchService(workspace).get(batch_id)
+        assert batch.asset_ids == [held]
+        assert _partitioned(workspace, batch_id) == {held}
+    finally:
+        workspace.close()
+
+
+def test_an_approval_partitions_a_member_added_while_it_was_deciding(tmp_path: Path) -> None:
+    root = tmp_path / "ws"
+    batch_id, held, spare = _draft(root)
+
+    workspace = WorkspaceService.open(root)
+    try:
+        service = _AfterFirstReadBatchService(
+            workspace, _elsewhere(root, lambda ws: BatchService(ws).add_assets(batch_id, [spare]))
+        )
+        approved = service.approve(batch_id)
+        assert approved.asset_ids == [held, spare]
+        assert _partitioned(workspace, batch_id) == {held, spare}
+    finally:
+        workspace.close()
+
+
+class _AfterOpenBatchJobService(JobService):
+    """Runs `after_read` once, after the batch gate: the last read before the write."""
+
+    def __init__(self, workspace: WorkspaceService, after_read: Callable[[], None]) -> None:
+        super().__init__(workspace)
+        self._after_read: Callable[[], None] | None = after_read
+
+    def require_open_batch(self, uow: UnitOfWork, job: AnnotationJob) -> Batch:
+        batch = super().require_open_batch(uow, job)
+        hook, self._after_read = self._after_read, None
+        if hook is not None:
+            hook()
+        return batch
+
+
+def test_a_mark_decided_before_its_batch_was_deleted_reports_the_job_missing(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "ws"
+    job_id, assets = _open_job(root)
+
+    workspace = WorkspaceService.open(root)
+    try:
+        batch_id = JobService(workspace).batch(job_id).id
+        service = _AfterOpenBatchJobService(
+            workspace,
+            _elsewhere(root, lambda ws: BatchService(ws).delete(batch_id, confirm=True)),
+        )
+        with pytest.raises(JobNotFound):
+            service.mark(job_id, assets[0], AssetProgress.SKIPPED)
+    finally:
+        workspace.close()
+
+
+def test_an_approval_decided_before_its_batch_was_deleted_reports_it_missing(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "ws"
+    batch_id, _, _ = _draft(root)
+
+    workspace = WorkspaceService.open(root)
+    try:
+        service = _AfterFirstReadBatchService(
+            workspace,
+            _elsewhere(root, lambda ws: BatchService(ws).delete(batch_id, confirm=True)),
+        )
+        with pytest.raises(BatchNotFound):
+            service.approve(batch_id)
+    finally:
+        workspace.close()
+
+
+def test_a_repin_decided_before_its_batch_completed_is_refused(tmp_path: Path) -> None:
+    root = tmp_path / "ws"
+    batch_id = _finished_batch(root)
+
+    workspace = WorkspaceService.open(root)
+    try:
+        project_id = BatchService(workspace).get(batch_id).project_id
+        SchemaService(workspace).create_version(
+            project_id,
+            [LabelClass(name="other", geometries=(GeometryType.BBOX,))],
+            allow_destructive=True,
+        )
+        service = _AfterFirstReadBatchService(
+            workspace, _elsewhere(root, lambda ws: BatchService(ws).complete(batch_id))
+        )
+        with pytest.raises(InvalidTransition):
+            service.repin(batch_id, allow_destructive=True)
+        batch = BatchService(workspace).get(batch_id)
+        assert batch.state is BatchState.COMPLETED
+        assert batch.schema_version == 1
+    finally:
+        workspace.close()

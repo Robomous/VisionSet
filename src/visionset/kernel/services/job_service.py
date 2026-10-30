@@ -62,6 +62,7 @@ from visionset.kernel.domain import (
 from visionset.kernel.errors import (
     AssetNotInJob,
     BatchNotInAnnotation,
+    EntityNotFound,
     JobFinished,
     JobNotComplete,
     JobNotFound,
@@ -275,8 +276,8 @@ class JobService:
             require_move(
                 JOB_TRANSITIONS, job.state, AnnotationJobState.IN_PROGRESS, f"job {job.id}"
             )
-            stored = uow.set_job_state(
-                job.id, expected=job.state, state=AnnotationJobState.IN_PROGRESS
+            stored = self._set_state(
+                uow, job.id, expected=job.state, state=AnnotationJobState.IN_PROGRESS
             )
             return stored is None
 
@@ -303,18 +304,13 @@ class JobService:
             self.require_open_batch(uow, job)
             require_move(JOB_TRANSITIONS, job.state, AnnotationJobState.COMPLETED, f"job {job.id}")
 
-            unsettled = _unsettled(job)
-            if unsettled:
-                detail = ", ".join(
-                    f"{count} {state.value}" for state, count in sorted(unsettled.items())
-                )
-                raise JobNotComplete(
-                    f"job {job.id} has {sum(unsettled.values())} of {len(job.progress)} assets "
-                    f"still unsettled ({detail}); every asset must be annotated, skipped or "
-                    f"accepted first"
-                )
+            _require_settled(job)
             self._require_state_write(uow, job, AnnotationJobState.COMPLETED)
-            return self.require_job(uow, job_id)
+            # Judged again under the write lock just taken: a mark that committed
+            # after the first read would otherwise complete a job holding it.
+            completed = self.require_job(uow, job_id)
+            _require_settled(completed)
+            return completed
 
     def assign(self, job_id: UUID, assignee: str | None) -> AnnotationJob:
         """Name who is working this job, or clear it with ``None``.
@@ -379,6 +375,7 @@ class JobService:
             require_move(
                 ASSET_PROGRESS_TRANSITIONS, current, progress, f"asset {asset_id} in job {job.id}"
             )
+            self.hold_open_job(uow, job)
             # One asset's row, guarded on the value this transition was judged
             # against — never ``annotation_jobs.update``, which replaces the whole
             # job and would put back every *other* asset as it was read. A
@@ -419,13 +416,45 @@ class JobService:
     def _require_state_write(
         self, uow: UnitOfWork, job: AnnotationJob, to: AnnotationJobState
     ) -> None:
-        stored = uow.set_job_state(job.id, expected=job.state, state=to)
+        stored = self._set_state(uow, job.id, expected=job.state, state=to)
         if stored is not None:
             raise StaleWrite(
                 f"job {job.id} was {job.state.value!r} when this move was decided and is "
                 f"{stored.value!r} now, so moving it to {to.value!r} would overwrite a change "
                 f"nobody here saw; read it again and decide again"
             )
+
+    def hold_open_job(self, uow: UnitOfWork, job: AnnotationJob) -> None:
+        """:meth:`require_open_job`, held until the caller's transaction ends.
+
+        For a caller about to write into the job. A guarded write of the state
+        just read takes the write lock, so a ``complete`` committing between the
+        read and the caller's write refuses that write instead of finishing a job
+        that then changes under it.
+
+        Raises:
+            JobFinished: the job is ``completed``.
+        """
+        self.require_open_job(job)
+        state = job.state
+        while (stored := self._set_state(uow, job.id, expected=state, state=state)) is not None:
+            self.require_open_job(job.model_copy(update={"state": stored}))
+            state = stored
+
+    def _set_state(
+        self,
+        uow: UnitOfWork,
+        job_id: UUID,
+        *,
+        expected: AnnotationJobState,
+        state: AnnotationJobState,
+    ) -> AnnotationJobState | None:
+        try:
+            return uow.set_job_state(job_id, expected=expected, state=state)
+        except EntityNotFound as exc:
+            raise JobNotFound(
+                f"no job {job_id} in workspace {self._workspace.workspace.name!r}"
+            ) from exc
 
     def _require_project(self, uow: UnitOfWork, project_id: UUID) -> None:
         project = uow.projects.get(project_id)
@@ -544,6 +573,17 @@ def _tally(jobs: list[AnnotationJob]) -> dict[AssetProgress, int]:
         for progress in job.progress.values():
             counts[progress] += 1
     return counts
+
+
+def _require_settled(job: AnnotationJob) -> None:
+    unsettled = _unsettled(job)
+    if unsettled:
+        detail = ", ".join(f"{count} {state.value}" for state, count in sorted(unsettled.items()))
+        raise JobNotComplete(
+            f"job {job.id} has {sum(unsettled.values())} of {len(job.progress)} assets "
+            f"still unsettled ({detail}); every asset must be annotated, skipped or "
+            f"accepted first"
+        )
 
 
 def _unsettled(job: AnnotationJob) -> dict[AssetProgress, int]:

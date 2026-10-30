@@ -947,7 +947,7 @@ class VideoImportService:
                     asset_ids=asset_ids,
                 )
             )
-        target = self._batches.require_draft(uow, session.target_batch_id)
+        target = self._batches.hold_draft(uow, session.target_batch_id)
         uow.add_batch_assets(target.id, asset_ids)
         return self._batches.require_batch(uow, target.id)
 

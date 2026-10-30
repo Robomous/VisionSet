@@ -28,6 +28,7 @@ from pydantic import ValidationError
 
 from visionset.kernel.domain import (
     SAMPLING_POLICY_VERSION,
+    Batch,
     BatchState,
     GeometryType,
     ImageFormat,
@@ -56,6 +57,7 @@ from visionset.kernel.errors import (
     VideoImportNotOpen,
     VideoImportTooLarge,
 )
+from visionset.kernel.ports import UnitOfWork
 from visionset.kernel.services import (
     BatchService,
     IngestService,
@@ -1154,6 +1156,41 @@ def test_a_target_batch_deleted_while_the_clip_decoded_is_refused_at_commit(
 
     assert fixture.imports.get(import_id).state is VideoImportState.OPEN
     assert fixture.batches.list(fixture.project.id) == []
+
+
+class _ApprovedAfterFirstRead(BatchService):
+    """Approves `batch_id` from a second workspace right after the first read of a batch."""
+
+    def __init__(self, workspace: WorkspaceService, root: Path, batch_id: UUID) -> None:
+        super().__init__(workspace)
+        self._pending: tuple[Path, UUID] | None = (root, batch_id)
+
+    def require_batch(self, uow: UnitOfWork, batch_id: UUID) -> Batch:
+        batch = super().require_batch(uow, batch_id)
+        pending, self._pending = self._pending, None
+        if pending is not None:
+            other = WorkspaceService.open(pending[0])
+            try:
+                BatchService(other).approve(pending[1])
+            finally:
+                other.close()
+        return batch
+
+
+def test_a_target_approved_while_the_commit_was_deciding_is_refused(fixture: Fixture) -> None:
+    """Every frame already stored, so nothing is written before the batch is read."""
+    first = fixture.batches.get(fixture.filled_batch())
+    target = fixture.batches.create(fixture.project.id, "target", first.asset_ids[:1])
+    SchemaService(fixture.workspace).create_version(
+        fixture.project.id, [LabelClass(name="thing", geometries=(GeometryType.BBOX,))]
+    )
+    import_id = fixture.start(batch_id=target.id, display_name="again.webm")
+    fixture.imports.append_frames(import_id, [_frame(0), _frame(1), _frame(2)])
+    fixture.imports._batches = _ApprovedAfterFirstRead(fixture.workspace, fixture.root, target.id)
+
+    with pytest.raises(BatchNotEditable):
+        fixture.imports.commit(import_id)
+    assert fixture.batches.get(target.id).asset_ids == first.asset_ids[:1]
 
 
 def test_committing_twice_answers_the_same_batch_and_writes_nothing(fixture: Fixture) -> None:
