@@ -11,6 +11,7 @@ counted on disk because that is the acceptance criterion in the issue, and "the
 same asset" compares ids rather than row counts.
 """
 
+import os
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from io import BytesIO
@@ -337,7 +338,7 @@ def test_a_still_records_its_source_and_no_frame_position(tmp_path: Path) -> Non
     fixture.close()
 
 
-def test_a_subdirectory_is_stepped_over_and_reported_nowhere(tmp_path: Path) -> None:
+def test_a_subdirectory_is_stepped_over_and_reported_as_skipped(tmp_path: Path) -> None:
     """Top level only — recursion is a question about what the source *is*."""
     fixture = Fixture(tmp_path)
     write_images(fixture.stills, count=2)
@@ -347,19 +348,125 @@ def test_a_subdirectory_is_stepped_over_and_reported_nowhere(tmp_path: Path) -> 
     result = fixture.ingest.ingest(source.id)
 
     assert result.created == 2
-    assert result.failed == 0
+    assert [(f.name, f.kind) for f in result.failures] == [("nested", IngestFailureKind.SKIPPED)]
+    assert fixture.ingest.get(result.job_id).total == 3
     fixture.close()
 
 
-def test_an_empty_directory_produces_an_empty_draft_batch(tmp_path: Path) -> None:
+def test_an_entry_that_is_not_a_regular_file_is_reported_as_skipped(tmp_path: Path) -> None:
     fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=1)
+    (fixture.stills / "dangling.png").symlink_to(tmp_path / "gone.png")
+    os.mkfifo(fixture.stills / "pipe")
     source = fixture.sources.register_images(fixture.project.id, fixture.stills)
 
     result = fixture.ingest.ingest(source.id)
 
-    assert result.assets == ()
-    assert fixture.batches.get(result.batch_id).asset_ids == []
+    assert result.created == 1
+    assert {f.name: f.kind for f in result.failures} == {
+        "dangling.png": IngestFailureKind.SKIPPED,
+        "pipe": IngestFailureKind.SKIPPED,
+    }
+    fixture.close()
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads a mode-000 file anyway")
+def test_a_file_the_system_will_not_open_is_reported_and_the_run_carries_on(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    write_image(fixture.stills / "a.png", seed=1)
+    write_image(fixture.stills / "b.png", seed=2)
+    (fixture.stills / "a.png").chmod(0)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+
+    try:
+        result = fixture.ingest.ingest(source.id)
+    finally:
+        (fixture.stills / "a.png").chmod(0o644)
+
+    assert result.created == 1
+    assert [(f.name, f.kind) for f in result.failures] == [("a.png", IngestFailureKind.UNREADABLE)]
+    assert str(tmp_path) not in result.failures[0].reason
     assert fixture.ingest.get(result.job_id).state is IngestState.COMPLETED
+    fixture.close()
+
+
+def test_a_symbolic_link_loop_is_reported_as_a_loop(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=1)
+    (fixture.stills / "loop").symlink_to(fixture.stills / "loop")
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+
+    result = fixture.ingest.ingest(source.id)
+
+    assert [(f.name, f.kind, f.reason) for f in result.failures] == [
+        ("loop", IngestFailureKind.SKIPPED, "a symbolic link that loops back on itself")
+    ]
+    fixture.close()
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads any directory")
+@pytest.mark.parametrize("mode", [0, 0o444], ids=["unlistable", "unsearchable"])
+def test_an_unreadable_directory_fails_the_run_without_naming_its_path(
+    tmp_path: Path, mode: int
+) -> None:
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=1)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    fixture.stills.chmod(mode)
+    try:
+        with pytest.raises(PermissionError):
+            fixture.ingest.ingest(source.id)
+    finally:
+        fixture.stills.chmod(0o755)
+
+    job = fixture.ingest.list(source.id)[0]
+    assert job.state is IngestState.FAILED
+    assert job.error is not None
+    assert "Permission denied" in job.error
+    assert str(tmp_path) not in job.error
+    fixture.close()
+
+
+def test_a_missing_directory_fails_the_run_without_naming_its_path(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    fixture.stills.rmdir()
+
+    with pytest.raises(FileNotFoundError):
+        fixture.ingest.ingest(source.id)
+
+    error = fixture.ingest.list(source.id)[0].error
+    assert error is not None
+    assert str(tmp_path) not in error
+    fixture.close()
+
+
+def test_a_video_in_the_directory_is_told_where_clips_go(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    write_unsupported_file(fixture.stills / "drive.mp4")
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+
+    result = fixture.ingest.ingest(source.id)
+
+    assert result.failures[0].kind is IngestFailureKind.UNSUPPORTED
+    assert "browser" in result.failures[0].reason
+    fixture.close()
+
+
+def test_an_empty_directory_creates_no_batch(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+
+    result = fixture.ingest.ingest(source.id, batch_name="named")
+
+    assert result.assets == ()
+    assert result.batch_id is None
+    assert fixture.batches.list(fixture.project.id) == []
+    job = fixture.ingest.get(result.job_id)
+    assert job.state is IngestState.COMPLETED
+    assert job.batch_id is None
     fixture.close()
 
 
@@ -413,8 +520,9 @@ def test_a_duplicate_still_joins_the_batch_of_the_run_that_found_it(tmp_path: Pa
     second = fixture.sources.register_images(fixture.project.id, other)
     original = fixture.ingest.ingest(first.id)
 
-    again = fixture.ingest.ingest(second.id)
+    again = fixture.ingest.ingest(second.id, batch_name="second")
 
+    assert again.batch_id is not None
     assert fixture.batches.get(again.batch_id).asset_ids == list(original.asset_ids)
     fixture.close()
 
@@ -429,6 +537,7 @@ def test_two_identical_files_in_one_directory_become_one_asset(tmp_path: Path) -
     result = fixture.ingest.ingest(source.id)
 
     assert result.created == 1
+    assert result.deduplicated == 1
     assert len(result.assets) == 1
     assert fixture.content_blob_count() == 1
     fixture.close()
@@ -446,6 +555,79 @@ def test_re_ingesting_one_source_creates_nothing(tmp_path: Path) -> None:
     assert again.deduplicated == 3
     assert again.asset_ids == first.asset_ids
     assert fixture.content_blob_count() == 3
+    fixture.close()
+
+
+def test_re_ingesting_with_nothing_new_creates_no_second_batch(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=2)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    first = fixture.ingest.ingest(source.id)
+
+    again = fixture.ingest.ingest(source.id)
+
+    assert again.batch_id is None
+    assert [b.id for b in fixture.batches.list(fixture.project.id)] == [first.batch_id]
+    assert fixture.ingest.get(again.job_id).batch_name is None
+    fixture.close()
+
+
+def _interrupted_before_batching(fixture: Fixture, monkeypatch: pytest.MonkeyPatch) -> UUID:
+    """Store the assets, then die before they reach a batch. Returns the source id."""
+    write_images(fixture.stills, count=2)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+
+    def dies(*_: object) -> None:
+        raise RuntimeError("interrupted")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(fixture.ingest, "_materialize", dies)
+        with pytest.raises(RuntimeError):
+            fixture.ingest.ingest(source.id)
+    assert len(fixture.assets()) == 2
+    assert fixture.batches.list(fixture.project.id) == []
+    return source.id
+
+
+def test_re_running_an_ingest_interrupted_before_batching_heals_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = Fixture(tmp_path)
+    source_id = _interrupted_before_batching(fixture, monkeypatch)
+
+    again = fixture.ingest.ingest(source_id)
+
+    assert again.created == 0
+    assert again.batch_id is not None
+    assert len(fixture.batches.get(again.batch_id).asset_ids) == 2
+    fixture.close()
+
+
+def test_resuming_an_ingest_interrupted_before_batching_heals_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = Fixture(tmp_path)
+    source_id = _interrupted_before_batching(fixture, monkeypatch)
+    failed = fixture.ingest.list(source_id)[0]
+
+    resumed = fixture.ingest.resume(failed.id)
+
+    assert resumed.batch_id is not None
+    assert len(fixture.batches.get(resumed.batch_id).asset_ids) == 2
+    fixture.close()
+
+
+def test_re_ingesting_into_a_named_batch_still_creates_it(tmp_path: Path) -> None:
+    """Naming the batch is asking for one, whatever is already known."""
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=2)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    first = fixture.ingest.ingest(source.id)
+
+    again = fixture.ingest.ingest(source.id, batch_name="second-pass")
+
+    assert again.batch_id is not None
+    assert fixture.batches.get(again.batch_id).asset_ids == list(first.asset_ids)
     fixture.close()
 
 
@@ -500,6 +682,7 @@ def test_the_store_refuses_a_second_source_for_one_origin(tmp_path: Path) -> Non
 
 def test_a_created_batch_is_named_after_its_source_by_default(tmp_path: Path) -> None:
     fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=1)
     source = fixture.sources.register_images(fixture.project.id, fixture.stills)
 
     result = fixture.ingest.ingest(source.id)
@@ -511,6 +694,7 @@ def test_a_created_batch_is_named_after_its_source_by_default(tmp_path: Path) ->
 def test_a_source_name_stored_before_the_rules_still_names_a_batch(tmp_path: Path) -> None:
     """The default is derived, so it is made storable rather than refused (#969)."""
     fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=1)
     source = fixture.sources.register_images(fixture.project.id, fixture.stills)
     with fixture.workspace.unit_of_work() as uow:
         uow.sources.update(source.model_copy(update={"display_name": "dash\tcam" + "x" * 300}))
@@ -525,6 +709,7 @@ def test_a_source_name_stored_before_the_rules_still_names_a_batch(tmp_path: Pat
 
 def test_a_caller_may_name_the_batch_the_run_creates(tmp_path: Path) -> None:
     fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=1)
     source = fixture.sources.register_images(fixture.project.id, fixture.stills)
 
     result = fixture.ingest.ingest(source.id, batch_name="monday-dashcam")

@@ -549,6 +549,26 @@ describe("watching a run", () => {
     );
   });
 
+  it("lists entries that could not be opened or were not files, not only refused images", async () => {
+    on("GET", /\/ingest-jobs\//, {
+      status: 200,
+      body: job({
+        processed: 2,
+        total: 2,
+        failures: [
+          { name: "locked.png", kind: "unreadable", reason: "Permission denied" },
+          { name: "nested", kind: "skipped", reason: "a subdirectory" },
+        ],
+      }),
+    });
+    await launch();
+
+    const failures = await screen.findByTestId("failures");
+    expect(failures.textContent).toContain("2 files could not be read");
+    expect(within(failures).getByTestId("failure-0").textContent).toContain("Could not open");
+    expect(within(failures).getByTestId("failure-1").textContent).toContain("Not a file");
+  });
+
   it("says nothing at all about a run in which everything was read", async () => {
     // Silence is the ok-state: surfacing a clean run again would only be noise,
     // and the first place that holds is here.
@@ -688,6 +708,28 @@ describe("what a settled run offers next", () => {
     await screen.findByTestId("run-progress");
     expect(screen.queryByTestId("run-outcome")).toBeNull();
     expect(screen.queryByTestId("open-batch")).toBeNull();
+  });
+
+  it("says so when a completed run made no batch because everything was batched already", async () => {
+    on("GET", /\/ingest-jobs\//, {
+      status: 200,
+      body: job({ state: "completed", batch_id: null, batch_name: null }),
+    });
+    await launch(<IngestScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
+
+    const outcome = await screen.findByTestId("run-outcome");
+    expect(outcome.textContent).toContain("already in a batch");
+    expect(screen.queryByTestId("open-batch")).toBeNull();
+  });
+
+  it("names an unnamed run's batch with a phrase, not a null", async () => {
+    on("GET", /\/ingest-jobs\//, {
+      status: 200,
+      body: job({ batch_name: null }),
+    });
+    await launch(<IngestScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
+
+    expect((await screen.findByTestId("run-outcome")).textContent).toContain("this run's batch");
   });
 
   it("degrades to no button when the run reached no batch", async () => {

@@ -144,7 +144,9 @@ def start_ingest(
     are answered here, before the job row is written, as is 404
     `SOURCE_NOT_FOUND` for the source this run would read. `batch_name` names a new batch instead,
     and one that is blank once stripped is 422 `INVALID_NAME`, one longer than
-    255 characters 422 `VALIDATION_ERROR`; passing neither uses the source's own name.
+    255 characters 422 `VALIDATION_ERROR`; passing neither uses the source's own name,
+    and then a run that finds nothing new creates no batch. A run that read nothing
+    never creates one. Either way the completed job's `batch_id` stays null.
     """
     job = IngestService(workspace).enqueue(
         source_id,

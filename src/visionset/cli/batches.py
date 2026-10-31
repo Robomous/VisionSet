@@ -204,6 +204,70 @@ def batch_list(
         note(f"Project {resolved.name!r} has no batches yet.")
 
 
+_ASSET_COLUMNS: Final = ("ID", "PROGRESS", "JOB", "ANNOTATIONS")
+
+
+@batch_app.command("assets")
+def batch_assets(
+    batch: BatchArgument,
+    job: Annotated[
+        UUID | None,
+        typer.Option("--job", help="Keep only the assets this job carries."),
+    ] = None,
+    progress: Annotated[
+        list[AssetProgress] | None,
+        typer.Option(
+            "--progress",
+            help="Keep only assets in this state; repeat for several.",
+        ),
+    ] = None,
+    json_out: JsonOption = False,
+    workspace: WorkspaceOption = None,
+) -> None:
+    """List a batch's assets with the job and progress each carries.
+
+    What `job mark` takes: an asset left `pre_labeled`, `skipped` or
+    `review_pending` is found here by `--progress`. A draft has no jobs, so its
+    assets show no job and no progress, and either filter matches nothing there.
+    """
+    with opened_workspace(workspace) as service:
+        batch_service = BatchService(service)
+        found = batch_service.get(batch)
+        placed, total = batch_service.asset_page(
+            batch, job=job, progress=frozenset(progress) if progress else None
+        )
+    if json_out:
+        document(
+            {
+                "items": [
+                    wire.batch_asset(
+                        one.asset,
+                        job_id=one.job_id,
+                        job_state=one.job_state,
+                        progress=one.progress,
+                        batch_state=found.state,
+                        summary=one.summary,
+                    )
+                    for one in placed
+                ],
+                "total": total,
+            }
+        )
+        return
+    table(
+        _ASSET_COLUMNS,
+        [
+            (
+                str(one.asset.id),
+                "-" if one.progress is None else one.progress.value,
+                "-" if one.job_id is None else str(one.job_id),
+                str(one.summary.count),
+            )
+            for one in placed
+        ],
+    )
+
+
 @batch_app.command("approve")
 def batch_approve(
     batch: BatchArgument,

@@ -80,17 +80,21 @@ class IngestFailureKind(StrEnum):
     report unable to separate the kinds would bury real data loss under ordinary
     operator noise, and a reason sentence cannot be grouped on.
 
-    Two members, and there is no partial read: a run reads one file at a time and
-    a file either decoded or did not. The kind that used to say "some of this
-    clip reached your batch" went with server-side video decoding — a clip is
-    materialized by a client now, and a materialization that stops halfway leaves
-    an uncommitted ``VideoImport`` rather than a half-filled batch.
+    There is no partial read: a run reads one file at a time and a file either
+    decoded or did not. The kind that used to say "some of this clip reached your
+    batch" went with server-side video decoding — a clip is materialized by a
+    client now, and a materialization that stops halfway leaves an uncommitted
+    ``VideoImport`` rather than a half-filled batch.
     """
 
     #: Intact, and not something VisionSet accepts. Operator noise, usually.
     UNSUPPORTED = "unsupported"
     #: A format we do accept, whose bytes will not decode. Data loss.
     CORRUPT = "corrupt"
+    #: The operating system refused to open it — permissions, usually.
+    UNREADABLE = "unreadable"
+    #: Not a regular file: a subdirectory, a broken link, a pipe or a device.
+    SKIPPED = "skipped"
 
 
 class IngestFailure(BaseModel):
@@ -205,12 +209,16 @@ class IngestResult(BaseModel):
     job_id: UUID
     project_id: UUID
     source_id: UUID
-    batch_id: UUID
+    #: NULL when the run created no batch: nothing new was read and no batch
+    #: was named or targeted, or nothing was read at all.
+    batch_id: UUID | None
     #: Everything this run put in the batch, in ingest order.
     assets: tuple[Asset, ...] = ()
     #: The subset of ``assets`` that was new to the project.
     created_asset_ids: tuple[UUID, ...] = ()
     failures: tuple[IngestFailure, ...] = ()
+    #: Items read whole, a repeat of one already read in this run included.
+    read: int = Field(ge=0)
 
     @property
     def asset_ids(self) -> tuple[UUID, ...]:
@@ -224,8 +232,8 @@ class IngestResult(BaseModel):
 
     @property
     def deduplicated(self) -> int:
-        """How many items resolved to content the project already held."""
-        return len(self.assets) - len(self.created_asset_ids)
+        """How many items resolved to content the project, or this run, already held."""
+        return self.read - len(self.created_asset_ids)
 
     @property
     def failed(self) -> int:

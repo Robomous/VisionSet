@@ -24,12 +24,14 @@ stdio server has no background worker: something has to do the decode, and
 "resume" done by the agent would block for exactly as long as doing it in the
 first place. The finished job comes back in the answer. If a call is cut off part
 way, the remedy is to call ``ingest`` again — registration is idempotent on the
-directory and content addressing means the re-run creates nothing it created
-before. That is the same argument that gave the CLI no ``--resume``.
+directory, content addressing means the re-run creates no asset it created
+before, and a run that finds nothing new creates no batch. That is the same
+argument that gave the CLI no ``--resume``.
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Annotated, Any, Final
 
@@ -63,7 +65,9 @@ def ingest(
     project: ProjectRef,
     path: Annotated[
         str,
-        Field(description="An absolute path on this machine to a directory of still images."),
+        Field(
+            description="A path on this machine to a directory of still images; `~` is expanded."
+        ),
     ],
     batch_name: Annotated[
         str | None,
@@ -73,8 +77,9 @@ def ingest(
     """Register a directory of images and read it into one batch. Blocks until done.
 
     The directory is read top level only, in filename order, with no filter on
-    the suffix — anything that is not a usable image is reported in `failures`
-    and the run carries on.
+    the suffix — anything that is not a usable image, cannot be opened, or is not
+    a regular file (a subdirectory, a broken link) is reported in `failures`, by
+    `kind`, and the run carries on.
 
     **Video is not ingested here.** A clip is imported through the browser, which
     decodes it on the user's machine and uploads the frames; pointed at one, this
@@ -82,29 +87,32 @@ def ingest(
 
     Assets are addressed by content, so ingesting the same bytes twice yields one
     asset. `created` counts new assets and `deduplicated` counts ones already
-    known; both went into the batch. That is also why re-running this after an
-    interrupted call is safe and nearly free.
+    known — a repeat within the run included; both went into the batch. That is
+    also why re-running this after an interrupted call is safe and nearly free.
 
-    The `batch_id` it returns is what `approve_batch` takes next.
+    A run that finds nothing new creates no batch unless `batch_name` asks for
+    one, and a run that read nothing never does: `batch_id` is then null. The
+    `batch_id` it returns otherwise is what `approve_batch` takes next.
 
     `ingest_job_id` names *this run* and nothing else — there is no tool that
     reads it back, and it is not an annotation job. Annotation jobs do not exist
     yet at this point: `approve_batch` is what cuts them, and the ids it returns
     are the ones `get_job` and the rest of the loop take.
 
-    Refuses before doing any work if the path does not exist or is not a
-    directory.
+    Refuses before doing any work if the path does not exist, is not a
+    directory, or cannot be read.
     """
-    source_path = Path(path)
-    # Two refusals the kernel raises *outside* the VisionSetError tree, which
-    # `guarded` would only report as a generic INTERNAL_ERROR without the video
-    # remedy: `canonical_path` resolves strictly
-    # (FileNotFoundError) and `register_images` wants a directory
-    # (NotADirectoryError).
+    source_path = Path(path).expanduser()
+    # Refusals the kernel raises *outside* the VisionSetError tree, which
+    # `guarded` would only report as a generic INTERNAL_ERROR: `canonical_path`
+    # resolves strictly (FileNotFoundError), `register_images` wants a directory
+    # (NotADirectoryError), and listing an unreadable one is a PermissionError.
     if not source_path.exists():
         return refused(f"no such path: {path}")
     if not source_path.is_dir():
         return refused(f"{path} is not a directory. {VIDEO_IS_A_BROWSER_IMPORT}")
+    if not os.access(source_path, os.R_OK | os.X_OK):
+        return refused("permission denied: this process cannot read that directory")
 
     with opened_workspace() as workspace:
         resolved = ProjectService(workspace).resolve(project)
@@ -116,7 +124,7 @@ def ingest(
         # refused, because the two words name different things and only one of
         # them is reachable. Observed on a real agent run.
         "ingest_job_id": str(result.job_id),
-        "batch_id": str(result.batch_id),
+        "batch_id": None if result.batch_id is None else str(result.batch_id),
         "created": result.created,
         "deduplicated": result.deduplicated,
         "failed": result.failed,

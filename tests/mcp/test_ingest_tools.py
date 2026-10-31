@@ -9,7 +9,6 @@ a sentence an agent can act on rather than one it will try to work around.
 from __future__ import annotations
 
 import os
-import re
 from pathlib import Path
 from uuid import UUID
 
@@ -65,6 +64,16 @@ def test_ingesting_the_same_directory_again_creates_nothing_new(
     assert second["created"] == 0
     assert second["deduplicated"] == 2
     assert second["source"]["id"] == first["source"]["id"]
+    assert second["batch_id"] is None
+    assert len(payload(call("list_batches", project=named))["items"]) == 1
+
+
+def test_a_home_relative_path_is_expanded(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    named = schema(monkeypatch, tmp_path)
+    write_images(tmp_path / "incoming", count=1)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    result = payload(call("ingest", project=named, path="~/incoming"))
+    assert result["created"] == 1
 
 
 def test_a_file_that_is_not_an_image_is_reported_and_the_run_carries_on(
@@ -109,9 +118,7 @@ def test_an_unreadable_directory_is_refused_with_the_reason(
         refusal = error(call("ingest", project=named, path=str(locked)))
     finally:
         locked.chmod(0o755)
-    assert refusal["code"] == "INTERNAL_ERROR"
-    # Which call trips first is the platform's business; that no directory leaks is ours.
-    assert re.fullmatch(r"Permission denied(: [^/]+)?", refusal["message"])
+    assert refusal["message"].startswith("permission denied")
     assert str(tmp_path) not in str(refusal)
 
 

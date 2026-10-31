@@ -74,10 +74,13 @@ that itself.
 
 from __future__ import annotations
 
+import errno
+import mimetypes
+import os
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, Final
 from uuid import UUID
 
 from visionset.kernel.domain import (
@@ -113,6 +116,10 @@ from visionset.kernel.ports import BlobStore, UnitOfWork
 from visionset.kernel.services.batch_service import BatchService
 from visionset.kernel.services.source_service import SourceService
 from visionset.kernel.services.workspace_service import WorkspaceService
+
+VIDEO_IS_A_BROWSER_IMPORT: Final = (
+    "a video; clips are imported in the browser, which decodes them locally and uploads the frames"
+)
 
 
 class IngestService:
@@ -306,8 +313,13 @@ class IngestService:
                 )
             self._require_project(uow, source.project_id)
             name = self._target_name(uow, source, batch_id, batch_name)
+            named = batch_id is not None or bool(batch_name)
             return uow.ingest_jobs.add(
-                IngestJob(source_id=source.id, batch_id=batch_id, batch_name=name)
+                IngestJob(
+                    source_id=source.id,
+                    batch_id=batch_id,
+                    batch_name=name if named else None,
+                )
             )
 
     def ingest(
@@ -329,6 +341,14 @@ class IngestService:
         Its membership is everything this run ingested, the assets that were
         already in the project included: a duplicate is not new data, but it is
         part of what this run was asked to gather.
+
+        **A run whose every asset already sits in a batch creates no batch**
+        unless the caller named one, and a run that read nothing at all never
+        creates one: re-running an ingest on an unchanged directory must not
+        leave a second draft holding the same assets, and an empty draft is one
+        approval refuses anyway. The result's ``batch_id`` is then NULL. An asset
+        in no batch — new, or stored by a run interrupted before it batched —
+        gets one, which is what makes the re-run the remedy.
 
         ``UnsupportedMedia`` and ``CorruptMedia`` are collected rather than
         raised — see ``IngestResult.failures``, where each keeps the item's name
@@ -386,7 +406,7 @@ class IngestService:
             job, source = self._resolve_for_run(uow, job_id)
             name = self._target_name(uow, source, job.batch_id, job.batch_name)
 
-        return self._run(job.id, source, name, job.batch_id)
+        return self._run(job.id, source, name, job.batch_id, named=job.batch_name is not None)
 
     def resumable(self, job_id: UUID) -> IngestJob:
         """The job, if :meth:`resume` would take it — otherwise refuse now.
@@ -512,7 +532,9 @@ class IngestService:
 
     # --- the run, phase by phase -------------------------------------------
 
-    def _run(self, job_id: UUID, source: Source, name: str, batch_id: UUID | None) -> IngestResult:
+    def _run(
+        self, job_id: UUID, source: Source, name: str, batch_id: UUID | None, *, named: bool
+    ) -> IngestResult:
         """The work itself, shared by a first attempt and by a resumed one.
 
         Takes ``job_id`` rather than an ``IngestJob`` on purpose: the row is
@@ -523,13 +545,20 @@ class IngestService:
         try:
             candidates, failures = self._read(source, job_id)
             assets, created = self._store(source.project_id, candidates)
-            batch = self._materialize(source.project_id, name, batch_id, assets)
+            batch = (
+                self._materialize(source.project_id, name, batch_id, assets)
+                if batch_id is not None or (assets and (named or self._unbatched(assets)))
+                else None
+            )
             with self._workspace.unit_of_work() as uow:
                 job = self.require_job(uow, job_id)
                 require_move(INGEST_TRANSITIONS, job.state, IngestState.COMPLETED, _subject(job_id))
                 uow.ingest_jobs.update(
                     job.model_copy(
-                        update={"state": IngestState.COMPLETED, "batch_id": batch.id},
+                        update={
+                            "state": IngestState.COMPLETED,
+                            "batch_id": None if batch is None else batch.id,
+                        },
                     )
                 )
         except Exception as exc:
@@ -550,10 +579,11 @@ class IngestService:
             job_id=job_id,
             project_id=source.project_id,
             source_id=source.id,
-            batch_id=batch.id,
+            batch_id=None if batch is None else batch.id,
             assets=tuple(assets),
             created_asset_ids=tuple(created),
             failures=tuple(failures),
+            read=len(candidates),
         )
 
     def _begin(self, job_id: UUID) -> None:
@@ -578,20 +608,24 @@ class IngestService:
             )
 
     def _read(self, source: Source, job_id: UUID) -> tuple[list[Asset], list[IngestFailure]]:
-        """Every file at the top of the source's directory, in filename order.
+        """Every entry at the top of the source's directory, in filename order.
 
         Returns candidate assets in the order the source offered them, plus one
-        entry per item that could not be read at all. Outside any transaction.
+        entry per item that did not become one. Outside any transaction.
 
         Top level only. Recursion is not a per-run option but a question about
         what *the source is* — "the same source yields the same assets" — so it
         belongs to a future ``register_images(..., recursive=True)`` rather than
         here, where it would silently change what an already-registered source
-        means. Subdirectories are stepped over and recorded nowhere.
+        means. A subdirectory, like a broken link or a pipe, is reported as
+        ``skipped`` rather than passed over in silence.
 
         No suffix filter either: a ``notes.txt`` is reported as unsupported
         rather than skipped, because guessing which files an operator meant to
-        offer is a policy the kernel would be inventing.
+        offer is a policy the kernel would be inventing. A file the operating
+        system will not open is reported as ``unreadable``; only failing to open
+        the *source file* is per-item — an ``OSError`` anywhere else is the
+        machine, and still fails the run.
 
         A ``total`` is stated up front, because listing a directory is cheap and
         exact. The write before the loop is what publishes it — and what makes an
@@ -600,68 +634,79 @@ class IngestService:
         candidates: list[Asset] = []
         failures: list[IngestFailure] = []
         directory = Path(source.locator)
-        paths = sorted(item for item in directory.iterdir() if item.is_file())
+        # Re-raised without the filename: the message becomes the job's
+        # ``error``, which travels to clients and must not carry a server path.
+        # A directory that lists but cannot be searched would otherwise turn every
+        # entry into its own ``unreadable`` line; one refusal is the honest answer.
+        try:
+            paths = sorted(directory.iterdir())
+            if not os.access(directory, os.X_OK):
+                raise PermissionError(errno.EACCES, os.strerror(errno.EACCES))
+        except OSError as exc:
+            raise OSError(exc.errno, exc.strerror) from None
         total = len(paths)
         self._record_progress(job_id, processed=0, total=total, failures=failures)
-        for files_dealt_with, path in enumerate(paths, start=1):
-            try:
-                with path.open("rb") as handle:
-                    # A file that is going to be refused never leaves a blob
-                    # behind: ``stills`` has decoded the whole file — every
-                    # frame of an animation included — before it yields its
-                    # first item, so a refusal arrives before anything below
-                    # stores a byte.
-                    for still in self._workspace.image_processor.stills(handle, name=str(path)):
-                        uri = (
-                            str(path)
-                            if still.frame_index is None
-                            else f"{path}#frame={still.frame_index}"
-                        )
-                        if still.payload is None:
-                            # The rewind is the caller's job: ``BlobStore.put``
-                            # promises nothing about position, where
-                            # ``ImageProcessor`` seeks to 0 itself — which is
-                            # what lets one handle serve both calls.
-                            handle.seek(0)
-                            content_hash = self._workspace.blob_store.put(handle)
-                            thumbnail_hash = self._cache_thumbnail(handle, name=uri)
-                        else:
-                            content = BytesIO(still.payload)
-                            content_hash = self._workspace.blob_store.put(content)
-                            thumbnail_hash = self._cache_thumbnail(content, name=uri)
-                        candidates.append(
-                            Asset(
-                                project_id=source.project_id,
-                                content_hash=content_hash,
-                                uri=uri,
-                                width=still.metadata.width,
-                                height=still.metadata.height,
-                                format=still.metadata.format,
-                                source_id=source.id,
-                                frame_index=still.frame_index,
-                                frame_timestamp=still.frame_timestamp,
-                                thumbnail_hash=thumbnail_hash,
-                            )
-                        )
-            except MediaError as exc:
-                # Relative to the directory being read, never the absolute path
-                # the loop is holding — see ``report_name``. The walk is top
-                # level today, so the two differ only for a root a future
-                # ``recursive=True`` would introduce; the rule is applied here
-                # rather than left for that task to remember.
-                failures.append(_failure(report_name(path, root=directory), exc))
-            # After every file, read or refused alike: ``processed`` counts the
-            # files the run has dealt with — not the assets they became, which
+        for entries_dealt_with, path in enumerate(paths, start=1):
+            # Relative to the directory being read, never the absolute path the
+            # loop is holding — see ``report_name``.
+            name = report_name(path, root=directory)
+            opened = _open_entry(path, name)
+            if isinstance(opened, IngestFailure):
+                failures.append(opened)
+            else:
+                try:
+                    with opened:
+                        candidates.extend(self._read_file(source, path, opened))
+                except MediaError as exc:
+                    failures.append(_failure(name, exc))
+            # After every entry, read or refused alike: ``processed`` counts the
+            # entries the run has dealt with — not the assets they became, which
             # a decomposed animation would inflate past ``total`` — and a
             # report that only appeared at the end would be invisible for
             # exactly as long as it is interesting.
             self._record_progress(
                 job_id,
-                processed=files_dealt_with,
+                processed=entries_dealt_with,
                 total=total,
                 failures=failures,
             )
         return candidates, failures
+
+    def _read_file(self, source: Source, path: Path, handle: BinaryIO) -> list[Asset]:
+        """The candidate assets one open file holds: one per still or frame."""
+        read: list[Asset] = []
+        # A file that is going to be refused never leaves a blob behind:
+        # ``stills`` has decoded the whole file — every frame of an animation
+        # included — before it yields its first item, so a refusal arrives
+        # before anything below stores a byte.
+        for still in self._workspace.image_processor.stills(handle, name=str(path)):
+            uri = str(path) if still.frame_index is None else f"{path}#frame={still.frame_index}"
+            if still.payload is None:
+                # The rewind is the caller's job: ``BlobStore.put`` promises
+                # nothing about position, where ``ImageProcessor`` seeks to 0
+                # itself — which is what lets one handle serve both calls.
+                handle.seek(0)
+                content_hash = self._workspace.blob_store.put(handle)
+                thumbnail_hash = self._cache_thumbnail(handle, name=uri)
+            else:
+                content = BytesIO(still.payload)
+                content_hash = self._workspace.blob_store.put(content)
+                thumbnail_hash = self._cache_thumbnail(content, name=uri)
+            read.append(
+                Asset(
+                    project_id=source.project_id,
+                    content_hash=content_hash,
+                    uri=uri,
+                    width=still.metadata.width,
+                    height=still.metadata.height,
+                    format=still.metadata.format,
+                    source_id=source.id,
+                    frame_index=still.frame_index,
+                    frame_timestamp=still.frame_timestamp,
+                    thumbnail_hash=thumbnail_hash,
+                )
+            )
+        return read
 
     def _cache_thumbnail(self, content: BinaryIO, *, name: str) -> str | None:
         """Render a preview and store it, or hand back NULL and carry on.
@@ -718,6 +763,20 @@ class IngestService:
         # through `IngestResult`, and a second, narrower count of what membership
         # happened to gain would be a different number for the same run.
         return self._batches.add_assets(batch_id, asset_ids).batch
+
+    def _unbatched(self, assets: list[Asset]) -> bool:
+        """Whether any of these assets sits in no batch of the project.
+
+        A new asset always does, and so does one a previous run stored but was
+        interrupted before batching — which is how re-running heals that run.
+        """
+        with self._workspace.unit_of_work() as uow:
+            held = {
+                asset_id
+                for batch in uow.batches.list(assets[0].project_id)
+                for asset_id in batch.asset_ids
+            }
+        return any(asset.id not in held for asset in assets)
 
     def _record_progress(
         self, job_id: UUID, *, processed: int, total: int | None, failures: list[IngestFailure]
@@ -956,6 +1015,41 @@ def _open_blob(blobs: BlobStore, content_hash: str, subject: str) -> BinaryIO:
         ) from exc
 
 
+def _open_entry(path: Path, name: str) -> BinaryIO | IngestFailure:
+    """One directory entry opened for reading, or the report line saying why not.
+
+    Only the stat and the open are per-item here. ``is_dir`` and ``is_file``
+    follow a link, so a link to an image is read and a link to a directory is a
+    subdirectory. ``strerror`` is the reason because the exception's own text
+    carries the absolute path, which a report must not publish.
+    """
+    try:
+        if path.is_dir():
+            reason = "a subdirectory; only the top level of the directory is read"
+        elif path.is_file():
+            return path.open("rb")
+        elif path.is_symlink():
+            try:
+                path.stat()
+            except OSError as exc:
+                reason = (
+                    "a symbolic link that loops back on itself"
+                    if exc.errno == errno.ELOOP
+                    else "a symbolic link whose target does not exist"
+                )
+            else:
+                reason = "a symbolic link to something that is not a regular file"
+        else:
+            reason = "not a regular file"
+    except OSError as exc:
+        return IngestFailure(
+            name=name,
+            kind=IngestFailureKind.UNREADABLE,
+            reason=exc.strerror or exc.__class__.__name__,
+        )
+    return IngestFailure(name=name, kind=IngestFailureKind.SKIPPED, reason=reason)
+
+
 def _failure(name: str, exc: MediaError) -> IngestFailure:
     """One report line, with the item's name kept apart from the remedy.
 
@@ -965,14 +1059,15 @@ def _failure(name: str, exc: MediaError) -> IngestFailure:
     it through ``report_name`` first, which is what keeps the server's own
     directory layout out of a report that travels to a client.
 
-    The two branches are the whole of what an item can be — ``UnsupportedMedia``
-    is "intact and not for us", ``CorruptMedia`` is "for us and broken" — and
-    nothing read one file at a time can be read in part, which is why the report
-    has no third kind.
+    The two branches are the whole of what a file that opened can be —
+    ``UnsupportedMedia`` is "intact and not for us", ``CorruptMedia`` is "for us
+    and broken" — and nothing read one file at a time can be read in part.
+
+    A video is the unsupported file people will actually hand an ingest, so it
+    is told where clips go rather than that it is not an image.
     """
-    kind = (
-        IngestFailureKind.CORRUPT
-        if isinstance(exc, CorruptMedia)
-        else IngestFailureKind.UNSUPPORTED
-    )
-    return IngestFailure(name=name, kind=kind, reason=exc.reason)
+    if isinstance(exc, CorruptMedia):
+        return IngestFailure(name=name, kind=IngestFailureKind.CORRUPT, reason=exc.reason)
+    guessed, _ = mimetypes.guess_type(name)
+    reason = VIDEO_IS_A_BROWSER_IMPORT if guessed and guessed.startswith("video/") else exc.reason
+    return IngestFailure(name=name, kind=IngestFailureKind.UNSUPPORTED, reason=reason)

@@ -101,7 +101,9 @@ def test_approving_an_empty_batch_is_refused(
     (tmp_path / "incoming").mkdir()
     write_unsupported_file(tmp_path / "incoming" / "notes.txt")
     result = payload(call("ingest", project=named, path=str(tmp_path / "incoming")))
-    assert error(call("approve_batch", batch_id=result["batch_id"]))["message"]
+    assert result["batch_id"] is None
+    empty = str(payload(call("create_batch", project=named, name="hand-cut"))["id"])
+    assert error(call("approve_batch", batch_id=empty))["message"]
 
 
 def test_a_batch_cannot_be_completed_while_a_job_is_outstanding(
@@ -211,7 +213,9 @@ def test_completing_with_promote_over_assets_already_in_the_trunk_counts_zero(
     named, first, job_id = open_batch(monkeypatch, tmp_path, count=2)
     _finished(job_id)
     payload(call("complete_batch", batch_id=first, promote=True))
-    again = payload(call("ingest", project=named, path=str(tmp_path / "incoming")))
+    again = payload(
+        call("ingest", project=named, path=str(tmp_path / "incoming"), batch_name="again")
+    )
     second = str(again["batch_id"])
     opened = payload(call("approve_batch", batch_id=second, start=True))
     _finished(str(opened["jobs"][0]["id"]))

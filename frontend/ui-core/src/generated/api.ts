@@ -3156,7 +3156,9 @@ export interface paths {
          *     are answered here, before the job row is written, as is 404
          *     `SOURCE_NOT_FOUND` for the source this run would read. `batch_name` names a new batch instead,
          *     and one that is blank once stripped is 422 `INVALID_NAME`, one longer than
-         *     255 characters 422 `VALIDATION_ERROR`; passing neither uses the source's own name.
+         *     255 characters 422 `VALIDATION_ERROR`; passing neither uses the source's own name,
+         *     and then a run that finds nothing new creates no batch. A run that read nothing
+         *     never creates one. Either way the completed job's `batch_id` stays null.
          */
         post: operations["start_ingest"];
         delete?: never;
@@ -4669,14 +4671,14 @@ export interface components {
          *     report unable to separate the kinds would bury real data loss under ordinary
          *     operator noise, and a reason sentence cannot be grouped on.
          *
-         *     Two members, and there is no partial read: a run reads one file at a time and
-         *     a file either decoded or did not. The kind that used to say "some of this
-         *     clip reached your batch" went with server-side video decoding — a clip is
-         *     materialized by a client now, and a materialization that stops halfway leaves
-         *     an uncommitted ``VideoImport`` rather than a half-filled batch.
+         *     There is no partial read: a run reads one file at a time and a file either
+         *     decoded or did not. The kind that used to say "some of this clip reached your
+         *     batch" went with server-side video decoding — a clip is materialized by a
+         *     client now, and a materialization that stops halfway leaves an uncommitted
+         *     ``VideoImport`` rather than a half-filled batch.
          * @enum {string}
          */
-        IngestFailureKind: "unsupported" | "corrupt";
+        IngestFailureKind: "unsupported" | "corrupt" | "unreadable" | "skipped";
         /**
          * IngestFailureOut
          * @description What became of one item the run could not simply read.

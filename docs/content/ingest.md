@@ -49,7 +49,11 @@ loses the second. A join table is the honest upgrade if that information is ever
 be its own migration and is not needed by anything today.
 
 Re-running an ingest is therefore not an error and not a no-op worth avoiding: it creates nothing,
-reports every item as deduplicated, and is how a folder that grew by three files is caught up.
+reports every item as deduplicated, and is how a folder that grew by three files is caught up. A
+run whose every asset already sits in a batch creates **no batch** - a second draft over the same
+assets is work nobody asked for - unless the caller named or targeted one; a run that read nothing
+never creates one. Its job completes with `batch_id` null. An asset in no batch - new, or stored by
+a run interrupted before it reached its batch - does get one, so re-running heals that run.
 
 ## What an image-directory ingest does
 
@@ -57,9 +61,13 @@ Every file at the **top level** is read, in filename order, decoded by `ImagePro
 anything Pillow reads, normalized to JPEG/PNG. `uri` is the file's absolute path, or
 `/path/anim.gif#frame=3` for a decomposed animation frame, which is also the one case where
 `frame_index`/`frame_timestamp` are set for a still ingest. Damage is one report line per file,
-the whole file refused, and the run carries on.
+the whole file refused, and the run carries on. A report line's `kind` is `unsupported` (not an
+image; a video's reason points at the browser import), `corrupt` (an image that will not decode),
+`unreadable` (the operating system would not open it) or `skipped` (not a regular file). A
+directory this process cannot list or search fails the run instead. A file whose bytes repeat one
+already read in the run is one asset, counted as deduplicated.
 
-Subdirectories are stepped over and recorded nowhere. Recursion is not a per-run option but a
+Subdirectories are stepped over and reported as `skipped`. Recursion is not a per-run option but a
 question about what *the source is* - "the same source yields the same assets" - so it belongs to
 a future `register_images(..., recursive=True)` rather than here, where it would silently change
 what an already-registered source means. There is no suffix filter either: a `notes.txt` is

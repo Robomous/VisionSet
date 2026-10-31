@@ -22,6 +22,7 @@ visionset schema draft publish --project P [--kind K] [--revision N] [--allow-de
 
 visionset ingest DIRECTORY --project P [--batch-name NAME] [--start]
 visionset batch list --project P
+visionset batch assets BATCH_ID [--job JOB_ID] [--progress STATE]...
 visionset batch approve BATCH_ID [--jobs-of N] [--start]
 visionset batch pre-label BATCH_ID CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels] [--geometry SHAPE]...
 visionset project pre-label PROJECT CONNECTION [--batch BATCH_ID]... [--minimum-confidence FLOAT] [--geometry SHAPE]...
@@ -371,7 +372,18 @@ name, no geometry, a select with no options - is refused there, named by its pos
 `DIRECTORY --project P [--batch-name NAME]` - **the one command that is two SDK calls**:
 `SourceService.register_images` then `IngestService.ingest`. Registration is idempotent, so
 re-running the same line registers once; content addressing means it also creates no asset it
-created before, which is the remedy for an interrupted run. The batch id goes to stdout.
+created before, which is the remedy for an interrupted run. The batch id goes to stdout. A run
+that finds nothing new creates **no batch** unless `--batch-name` asks for one, and a run that
+read nothing never creates one: stdout is then empty, stderr says so, `--json` carries
+`"batch_id": null`, and `--start` has nothing to start and says that too.
+
+Every entry of the directory that did not become an asset is reported on stderr, and in
+`failures` under `--json`, with a `kind`: `unsupported` (not an image, a video included - its
+reason points at the browser import), `corrupt` (an image whose bytes will not decode),
+`unreadable` (the operating system would not open it) or `skipped` (a subdirectory, a broken
+link or another entry that is not a regular file). The run carries on past each one.
+`deduplicated` counts a repeat of a file already read in the same run as well as content the
+project held before.
 
 It takes a directory and only a directory. Pointed at anything else - a video file included - it
 is a usage error (exit 2) naming where video actually goes:
@@ -387,8 +399,8 @@ no `--resume`: polling needs a second process, which is what `visionset server` 
 
 ### `visionset batch`
 
-`list --project P`, then the one-way walk `approve [--jobs-of N]` → `start` → `complete`, then
-`promote`. Each maps to the `BatchService` method of the same name, except `promote`, which is
+`list --project P`, `assets BATCH [--job JOB] [--progress STATE]...`, then the one-way walk
+`approve [--jobs-of N]` → `start` → `complete`, then `promote`. Each maps to the `BatchService` method of the same name, except `promote`, which is
 `DatasetService.promote` - it takes a *batch* id and derives the dataset, which is why it lives here.
 
 **Two of the walk's steps carry the next one as a flag.** `approve --start` approves and then
@@ -434,6 +446,12 @@ whole before the first forward pass: a batch outside the project, a named batch 
 a project with no open batch, or a pin with no class a shape the run writes can be written as (the
 message names the batch). With `--json`, `items` holds one outcome per job, each carrying its
 `batch_id`, `batch_name` and `job_id`, and `annotations_written` the total.
+
+`assets` is `BatchService.asset_page`: one row per asset with its id, progress, job and annotation
+count, `--json` the same items as `GET /batches/{id}/assets`. `--progress`, repeated for several,
+keeps only those states and `--job` only that job's assets, which is how a script finds the ids
+`job mark` needs after a pre-label - `pre_labeled`, `skipped` and `review_pending` assets are not
+offered by `job next`. A draft has no jobs, so either filter matches nothing there.
 
 `--jobs-of N` is the `BySize` partition; with no flag the batch becomes one job. There is no
 `batch create` and no membership editing: a batch is born from an ingest. See
@@ -593,7 +611,7 @@ API or the MCP server reaches and the CLI does not.
 | Capability | Reachable over |
 | --- | --- |
 | `batch get`, a batch by id | REST, MCP |
-| `project show`, `source list`, asset listings and asset images | REST, MCP |
+| `project show`, `source list`, a project's asset listing and asset images (a batch's is `batch assets`) | REST, MCP |
 | Dataset stats | REST, MCP |
 | Schema compare and schema preview | REST, MCP |
 | Re-pinning a batch's schema (`repin`) | REST, MCP |

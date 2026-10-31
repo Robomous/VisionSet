@@ -127,12 +127,17 @@ def test_a_report_name_never_carries_the_directory_it_was_read_from() -> None:
 def test_a_report_entry_says_only_what_became_of_one_item() -> None:
     """Three fields, and the kind is the whole of what a reader branches on.
 
-    There is no count beside it and no third kind: a run reads one file at a time,
-    so an entry means the item did not become an asset. Extra fields are refused
+    There is no count beside it: a run reads one file at a time, so an entry
+    means the item did not become an asset. Extra fields are refused
     rather than ignored, which is what keeps a report groupable on its kind.
     """
     for kind in (IngestFailureKind.UNSUPPORTED, IngestFailureKind.CORRUPT):
         assert IngestFailure(name="notes.txt", kind=kind, reason="not an image")
         with pytest.raises(ValidationError):
             IngestFailure(name="notes.txt", kind=kind, reason="not an image", frames_produced=8)
-    assert [kind.value for kind in IngestFailureKind] == ["unsupported", "corrupt"]
+    assert [kind.value for kind in IngestFailureKind] == [
+        "unsupported",
+        "corrupt",
+        "unreadable",
+        "skipped",
+    ]

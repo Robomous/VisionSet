@@ -91,10 +91,13 @@ says to open the project's Ingest screen. Re-encoding the file first is not a wa
 There is no job to poll and no `resume_ingest`, and that is a stated limit rather than an omission:
 a stdio server has no background worker, so an agent driving a resume loop would block for exactly
 as long as doing the work. If a call is cut off, call `ingest` again - registration is idempotent
-and content addressing means the re-run creates nothing.
+and content addressing means the re-run creates nothing: no asset it created before, and no batch
+when nothing is new (`batch_id` comes back null).
 
 `failed` and `failures` are how a run reports the files it could not read *while still succeeding*.
-An unreadable JPEG in a folder of five thousand is not a reason to refuse the other 4,999.
+An unreadable JPEG in a folder of five thousand is not a reason to refuse the other 4,999. Each
+entry has a `kind`: `unsupported`, `corrupt`, `unreadable` (the file would not open) or `skipped`
+(a subdirectory, a broken link, anything that is not a regular file).
 
 The answer also carries `ingest_job_id`, which names *this run* and nothing else. No tool reads it
 back, and it is emphatically not an annotation job - those do not exist until `approve_batch` cuts
