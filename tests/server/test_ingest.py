@@ -296,7 +296,7 @@ def test_listing_the_runs_of_a_source(
 def test_re_ingesting_a_source_creates_nothing(
     client: TestClient, project: str, tmp_path: Path, runner: InlineDispatcher
 ) -> None:
-    """Content is addressed by hash, so a second run reports the same items as already held."""
+    """Content is addressed by hash, so a second run finds nothing new and makes no batch."""
     source = registered_images(client, project, png_part(tmp_path))
     first = launch(client, source).json()
     runner.wait()
@@ -304,12 +304,12 @@ def test_re_ingesting_a_source_creates_nothing(
     runner.wait()
 
     first_batch = client.get(f"/ingest-jobs/{first['id']}").json()["batch_id"]
-    second_batch = client.get(f"/ingest-jobs/{second['id']}").json()["batch_id"]
+    second_job = client.get(f"/ingest-jobs/{second['id']}").json()
 
-    assert first_batch != second_batch
-    left = client.get(f"/batches/{first_batch}/assets").json()["items"]
-    right = client.get(f"/batches/{second_batch}/assets").json()["items"]
-    assert [a["id"] for a in left] == [a["id"] for a in right]
+    assert first_batch is not None
+    assert second_job["state"] == "completed"
+    assert second_job["batch_id"] is None
+    assert client.get(f"/projects/{project}/batches").json()["total"] == 1
 
 
 # --- polling and resuming ----------------------------------------------------

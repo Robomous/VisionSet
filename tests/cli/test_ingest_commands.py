@@ -110,7 +110,23 @@ def test_ingesting_the_same_folder_twice_creates_no_new_assets(root: Path, tmp_p
     document = payload(root, "ingest", str(folder), "-p", "road-signs")
     assert document["created"] == 0
     assert document["deduplicated"] == 6
+    assert document["batch_id"] is None
     assert _sources(root) == [SourceKind.IMAGE_DIRECTORY]
+
+
+def test_a_re_run_with_nothing_new_creates_no_batch_and_prints_no_id(
+    root: Path, tmp_path: Path
+) -> None:
+    folder = stills(tmp_path)
+    ok(root, "ingest", str(folder), "-p", "road-signs")
+
+    again = run(root, "ingest", str(folder), "-p", "road-signs", "--start")
+
+    assert again.exit_code == 0, again.output
+    assert again.stdout == ""
+    assert "no batch was created" in again.stderr
+    assert "No batch to start." in again.stderr
+    assert len(payload(root, "batch", "list", "-p", "road-signs")["items"]) == 1
 
 
 # --- --start: ingest, approve, start, in one line ----------------------------

@@ -172,6 +172,42 @@ def test_list_leads_with_the_id_and_names_the_state(root: Path, tmp_path: Path) 
     assert rows[1].split()[:5] == [batch, "stills", "draft", "-", "6"]
 
 
+def test_assets_lists_each_asset_with_its_job_and_progress(root: Path, tmp_path: Path) -> None:
+    _, batch = started_batch(root, tmp_path)
+    job = jobs_of(root, batch)[0]
+
+    rows = ok(root, "batch", "assets", batch).splitlines()
+
+    assert rows[0].split() == ["ID", "PROGRESS", "JOB", "ANNOTATIONS"]
+    assert len(rows) == 7
+    assert all(row.split()[1:] == ["unannotated", job, "0"] for row in rows[1:])
+
+
+def test_assets_progress_filter_finds_what_job_mark_needs(root: Path, tmp_path: Path) -> None:
+    _, batch = started_batch(root, tmp_path)
+    job = jobs_of(root, batch)[0]
+    ok(root, "job", "start", job)
+    first = payload(root, "batch", "assets", batch)["items"][0]["id"]
+    ok(root, "job", "mark", job, first, "--progress", "skipped")
+
+    skipped = payload(root, "batch", "assets", batch, "--job", job, "--progress", "skipped")
+
+    assert skipped["total"] == 1
+    assert [(a["id"], a["progress"], a["job_id"]) for a in skipped["items"]] == [
+        (first, "skipped", job)
+    ]
+
+
+def test_assets_of_a_draft_carry_no_job(root: Path, tmp_path: Path) -> None:
+    _, batch = ingested_batch(root, tmp_path)
+
+    document = payload(root, "batch", "assets", batch)
+
+    assert document["total"] == 6
+    assert {(a["job_id"], a["progress"]) for a in document["items"]} == {(None, None)}
+    assert payload(root, "batch", "assets", batch, "--progress", "annotated")["total"] == 0
+
+
 def test_settled_counts_the_settled_states_and_not_everything_touched(
     root: Path, tmp_path: Path
 ) -> None:

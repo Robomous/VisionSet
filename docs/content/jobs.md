@@ -317,6 +317,7 @@ method on the port, never a SQLAlchemy import in a service.
 
 ```bash
 visionset job list --batch "$BATCH"
+visionset batch assets "$BATCH" --job "$JOB" --progress pre_labeled
 visionset job start "$JOB"
 visionset job next "$JOB" -n 50
 visionset job mark "$JOB" "$ASSET" --progress annotated
@@ -330,6 +331,8 @@ terminal has no dispatcher to claim a queued run - `visionset batch pre-label`'s
 level down, and the one command here that writes labels rather than recording that somebody
 else did. `next` and `mark` are what make the lifecycle drivable from a script
 at all - a batch cannot be completed until every asset has settled, and nothing else settles one.
+`job next` offers only untouched assets, so the ids of `pre_labeled`, `skipped` or
+`review_pending` ones come from `batch assets --progress`.
 `JobService.mark`'s own docstring invites the second by name.
 
 **Say the wart out loud: `--progress annotated` records that somebody labeled an asset, and no

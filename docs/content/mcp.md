@@ -106,7 +106,7 @@ page groups them by what they are for.
 
 | | |
 | --- | --- |
-| `ingest` | A local directory of stills in, one batch out. Synchronous. Refuses a video by name - there is no tool that ingests one; see below. |
+| `ingest` | A local directory of stills in, one batch out - none when nothing new was read and no `batch_name` was given. Synchronous. `~` is expanded. Refuses a video by name - there is no tool that ingests one; see below. |
 | `list_sources` | The folders a project was built from, and the clips a browser import declared for it - read-only, both kinds. |
 | `backfill_thumbnails` | Render previews that are missing. |
 
@@ -374,8 +374,9 @@ named, it writes only those, a region in any other shape counts as discarded, an
 the plan is the selection. A shape the model does not produce is refused before anything runs.
 
 There is therefore no ingest polling, and no `resume_ingest`. If a call is cut off part way, call
-`ingest` again - registration is idempotent on the directory and content addressing means the
-re-run creates nothing it created before. That is the same argument that gave the CLI no
+`ingest` again - registration is idempotent on the directory, content addressing means the
+re-run creates no asset it created before, and a run that finds nothing new creates no batch
+(`batch_id` is null) unless `batch_name` asks for one. That is the same argument that gave the CLI no
 `--resume`.
 
 **Paths are local.** `ingest` and `export_release` take paths on the machine the server runs on.

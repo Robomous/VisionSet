@@ -235,7 +235,7 @@ export const checkHomeOut: Check<Schemas["HomeOut"]> =
   /*#__PURE__*/ object({ "activity": [true, arrayOf(checkActivityEntryOut)], "attention": [true, arrayOf(checkAttentionItemOut)], "projects": [true, arrayOf(checkProjectSummaryOut)], "resume": [true, either([checkResumeTargetOut, isNull] as const)], "totals": [true, checkWorkspaceTotalsOut] } as const);
 
 export const checkIngestFailureKind: Check<Schemas["IngestFailureKind"]> =
-  /*#__PURE__*/ oneOf(["unsupported", "corrupt"] as const);
+  /*#__PURE__*/ oneOf(["unsupported", "corrupt", "unreadable", "skipped"] as const);
 
 export const checkIngestFailureOut: Check<Schemas["IngestFailureOut"]> =
   /*#__PURE__*/ object({ "kind": [true, checkIngestFailureKind], "name": [true, isString], "reason": [true, isString] } as const);

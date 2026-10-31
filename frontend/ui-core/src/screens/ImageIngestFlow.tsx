@@ -68,9 +68,10 @@
  * `enqueue` stores the batch id it was *handed* — null for the common case of a
  * run creating its own batch — and the row learns the real id in the same
  * transaction that marks the job `completed`. So a run in flight has nothing to
- * open, and a run that `failed` before it materialized a batch never gets one.
- * `batch_name` is resolved at enqueue either way, which is what lets a partial
- * run still say which batch holds what it managed to read.
+ * open, and a run that `failed` before it materialized a batch never gets one;
+ * nor does a completed run whose assets were all already batched. `batch_name`
+ * is stored at enqueue when the launch named or targeted a batch — this screen
+ * always does — and is null otherwise, so the outcome falls back to a phrase.
  */
 
 import { ArrowLeft, Image, RefreshCw, RotateCw, TriangleAlert, Upload } from "lucide-react";
@@ -147,6 +148,8 @@ function runStateVariant(state: string): BadgeTone {
 const FAILURE_KIND_LABEL: Record<string, string> = {
   unsupported: "Unsupported format",
   corrupt: "Corrupt file",
+  unreadable: "Could not open",
+  skipped: "Not a file",
 };
 
 function failureKindLabel(kind: string): string {
@@ -699,7 +702,7 @@ function Outcome({
 }): JSX.Element {
   const batchId = job.batch_id ?? null;
   // Resolved at enqueue, so it survives a run that never reached the batch.
-  const batchName = job.batch_name ?? "the batch";
+  const batchName = job.batch_name ?? "this run's batch";
   // Anything the run did not read whole — a fatal stop, a refused file, or a
   // file that ran out partway. All three make "everything this run read" a
   // sentence the outcome must not say.
@@ -711,9 +714,14 @@ function Outcome({
         {batchId === null ? (
           // `enqueue` only stores an id it was handed, and one is handed only
           // when the launch targeted an existing draft. A run that died before
-          // it materialized a batch therefore has nothing to open — and
-          // saying so is more use than a button that cannot work.
-          <>This run never reached a batch, so there is nothing to open yet.</>
+          // it materialized a batch, or one whose assets were all batched
+          // already, has nothing to open — and saying so is more use than a
+          // button that cannot work.
+          job.state === "completed" ? (
+            <>Everything this run read was already in a batch, so no new batch was made.</>
+          ) : (
+            <>This run never reached a batch, so there is nothing to open yet.</>
+          )
         ) : incomplete ? (
           <>
             What this run managed to read is in{" "}
@@ -772,7 +780,10 @@ function Failures({
 }): JSX.Element | null {
   const corrupt = failures.filter((failure) => failure.kind === "corrupt");
   const unsupported = failures.filter((failure) => failure.kind === "unsupported");
-  const refused = corrupt.length + unsupported.length;
+  const rest = failures.filter(
+    (failure) => failure.kind !== "corrupt" && failure.kind !== "unsupported",
+  );
+  const refused = failures.length;
   if (refused === 0) return null;
 
   return (
@@ -798,7 +809,7 @@ function Failures({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {[...corrupt, ...unsupported].map((failure, index) => (
+          {[...corrupt, ...unsupported, ...rest].map((failure, index) => (
             <TableRow key={`${failure.name}-${index}`} data-testid={`failure-${index}`}>
               <TableCell className="font-mono text-xs" title={failure.name}>
                 {basename(failure.name)}

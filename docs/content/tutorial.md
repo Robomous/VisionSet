@@ -80,10 +80,10 @@ source rather than a second one.
 Identical bytes are one asset, so re-running the same ingest creates nothing and costs nothing:
 
 ```bash
-visionset ingest ./photos --project road-signs   # created: 0
+visionset ingest ./photos --project road-signs   # Ingested 0 new and 6 already-known assets. Nothing new, so no batch was created.
 ```
 
-The command prints a batch id. A **batch** is a unit of work: the assets one ingest produced,
+The first run prints a batch id. A **batch** is a unit of work: the assets one ingest produced,
 which somebody is going to label.
 
 > **Starting from a video instead?** `visionset ingest` takes a directory of stills only, and

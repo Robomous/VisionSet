@@ -337,6 +337,9 @@ GET  /ingest-jobs/{job_id}       →  200 { "state": "running",   "processed": 1
 GET  /ingest-jobs/{job_id}       →  200 { "state": "completed", "batch_id": …,   … }
 ```
 
+A completed run's `batch_id` is null when it created no batch: nothing new was read and the launch
+named no batch, or nothing was read at all. See [ingest.md](ingest.md).
+
 Export follows the same shape, over the generic surface #328 added:
 
 ```

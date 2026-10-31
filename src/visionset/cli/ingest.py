@@ -14,8 +14,8 @@ decoder where a refusal from the product belongs.
 Registering twice is free: registration is idempotent on the directory, so
 running this again on the same folder finds the same source. Ingesting again is
 nearly free too —
-content addressing means a re-run creates no assets it created before — which
-is also the remedy for the one
+content addressing means a re-run creates no assets it created before, and a
+run with nothing new creates no batch either — which is also the remedy for the one
 gap this command has: interrupting it leaves the job row at ``running``, and
 there is no ``--resume``, because re-running does the right thing and needs no
 new vocabulary.
@@ -92,10 +92,11 @@ def _report(result: IngestResult) -> None:
     with one unreadable file still fills a batch, so
     ``BATCH=$(visionset ingest …)`` has to keep working through the report.
     """
-    note(
-        f"Ingested {result.created} new and {result.deduplicated} already-known "
-        f"assets into batch {result.batch_id}."
-    )
+    counts = f"Ingested {result.created} new and {result.deduplicated} already-known assets"
+    if result.batch_id is None:
+        note(f"{counts}. Nothing new, so no batch was created.")
+    else:
+        note(f"{counts} into batch {result.batch_id}.")
     if result.failures:
         note(f"{result.failed} file(s) could not be used:")
         for failure in result.failures:
@@ -133,13 +134,16 @@ def ingest(
     """Register a directory of images and ingest it, into one batch.
 
     The directory is read top level only, sorted, with no filter on the suffix —
-    anything that is not an image is reported per file and the run carries on.
+    anything that is not an image, cannot be opened, or is not a regular file
+    (a subdirectory, a broken link) is reported per file and the run carries on.
 
     A video file is refused: importing one happens in the browser, which decodes
     it locally and uploads the frames.
 
     Files are addressed by content, so ingesting the same bytes twice gives one
-    asset. That is what makes re-running this safe after an interruption.
+    asset. That is what makes re-running this safe after an interruption. A run
+    that finds nothing new creates no batch unless `--batch-name` asks for one,
+    and prints no batch id.
 
     `--start` follows with `batch approve` (one job) and `batch start`. The
     ingest is committed before approval is attempted, so a refused approval — a
@@ -153,11 +157,15 @@ def ingest(
         registered = SourceService(service).register_images(resolved.id, source)
         note(f"Reading {registered.kind.value.replace('_', ' ')} {source}…")
         result = IngestService(service).ingest(registered.id, batch_name=batch_name)
-        if start:
+        batch_id = result.batch_id
+        if start and batch_id is None:
+            note("No batch to start.")
+            start = False
+        if start and batch_id is not None:
             if not json_out:
                 _report(result)
-            with second_step("approve", result.batch_id, BatchState.DRAFT.value):
-                approved = BatchService(service).approve(result.batch_id, None)
+            with second_step("approve", batch_id, BatchState.DRAFT.value):
+                approved = BatchService(service).approve(batch_id, None)
             if not json_out:
                 approved_note(service, approved)
             started = start_after_approval(service, approved)
@@ -175,7 +183,7 @@ def ingest(
             {
                 "source": wire.source(registered),
                 "job_id": str(result.job_id),
-                "batch_id": str(result.batch_id),
+                "batch_id": None if result.batch_id is None else str(result.batch_id),
                 "created": result.created,
                 "deduplicated": result.deduplicated,
                 "failed": result.failed,
@@ -184,7 +192,8 @@ def ingest(
         )
         return
     _report(result)
-    typer.echo(str(result.batch_id))
+    if result.batch_id is not None:
+        typer.echo(str(result.batch_id))
 
 
 def backfill_thumbnails(

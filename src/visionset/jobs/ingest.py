@@ -78,7 +78,7 @@ def run(
     result = IngestService(workspace).resume(ingest_job_id)
     return {
         "ingest_job_id": str(result.job_id),
-        "batch_id": str(result.batch_id),
+        "batch_id": None if result.batch_id is None else str(result.batch_id),
         "asset_count": len(result.assets),
         "created": result.created,
         "failed": result.failed,

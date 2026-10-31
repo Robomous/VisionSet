@@ -86,17 +86,26 @@ def test_an_asset_carries_its_hashes_but_not_its_path(client: TestClient, ingest
     assert asset["format"] == "png"
 
 
-def test_a_batch_an_ingest_could_not_fill_is_an_empty_page_not_a_404(
+def test_an_ingest_that_read_nothing_reaches_no_batch(
     client: TestClient, runner: InlineDispatcher, project: str
 ) -> None:
-    """A run whose every item was unreadable still makes a batch. It is just empty."""
+    """A run whose every item was unreadable leaves no empty draft behind."""
     source = client.post(
         f"/projects/{project}/sources/images",
         files=[("files", ("notes.txt", b"not an image", "text/plain"))],
     ).json()["id"]
-    job = client.post(f"/sources/{source}/ingest-jobs").json()
+    job = client.post(f"/sources/{source}/ingest-jobs", json={"batch_name": "named"}).json()
     runner.wait()
-    batch_id = client.get(f"/ingest-jobs/{job['id']}").json()["batch_id"]
+
+    finished = client.get(f"/ingest-jobs/{job['id']}").json()
+
+    assert finished["state"] == "completed"
+    assert finished["batch_id"] is None
+    assert client.get(f"/projects/{project}/batches").json()["total"] == 0
+
+
+def test_an_empty_batch_is_an_empty_page_not_a_404(client: TestClient, project: str) -> None:
+    batch_id = client.post(f"/projects/{project}/batches", json={"name": "empty"}).json()["id"]
 
     response = client.get(f"/batches/{batch_id}/assets")
 
@@ -351,17 +360,9 @@ def test_a_batch_with_an_unfinished_job_will_not_complete(
     assert response.json()["code"] == "BATCH_NOT_COMPLETE"
 
 
-def test_an_empty_batch_cannot_be_approved(
-    client: TestClient, runner: InlineDispatcher, project: str
-) -> None:
+def test_an_empty_batch_cannot_be_approved(client: TestClient, project: str) -> None:
     """It would have no jobs, so it could never complete."""
-    source = client.post(
-        f"/projects/{project}/sources/images",
-        files=[("files", ("notes.txt", b"not an image", "text/plain"))],
-    ).json()["id"]
-    job = client.post(f"/sources/{source}/ingest-jobs").json()
-    runner.wait()
-    batch_id = client.get(f"/ingest-jobs/{job['id']}").json()["batch_id"]
+    batch_id = client.post(f"/projects/{project}/batches", json={"name": "empty"}).json()["id"]
 
     response = client.post(f"/batches/{batch_id}/approve")
 
