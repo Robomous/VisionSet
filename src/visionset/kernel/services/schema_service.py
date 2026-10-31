@@ -33,6 +33,7 @@ open :class:`WorkspaceService` and nothing else, and never names an adapter.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
 from itertools import groupby
@@ -294,7 +295,7 @@ class SchemaService:
 
         Raises:
             ProjectNotFound: no such project in this workspace.
-            InvalidSchema: two classes share a name.
+            InvalidSchema: two classes share a name, or a colour is not a hex value.
             UnsupportedGeometry: a class names a geometry with no implementation.
             DestructiveSchemaChange: the change narrows the contract and
                 ``allow_destructive`` was not ``True``.
@@ -315,6 +316,7 @@ class SchemaService:
                     return SchemaPublication(published=active)
 
                 previous = () if active is None else active.classes
+                _require_hex_colors(proposed, previous)
                 diff = diff_classes(previous, proposed)
                 guarded: frozenset[OrphanGuard] = frozenset()
                 if diff.is_destructive:
@@ -360,14 +362,16 @@ class SchemaService:
     ) -> None:
         """Let a narrowing change through only if it was asked for.
 
-        The first of the two refusals, and it is about *intent*: being told "you
-        must pass a flag" before being told "the flag would not have helped" is
-        the more useful sequence. The second — whether labels already depend on
-        what this drops — is :meth:`_refuse_orphaning`, and it is asked by the
-        insert itself rather than here, because a question answered before the
-        write can be answered again by somebody else before the write lands.
+        A refusal asking for the flag must not be followed by a certain second
+        refusal once the flag is passed, so when labels already depend on what
+        this drops, the orphan refusal is reported first (#963). This read is
+        advisory — the insert's guard stays the authoritative orphan check, since
+        a question answered before the write can be answered again by somebody
+        else before the write lands.
         """
         if not allow_destructive:
+            if _annotated_classes(uow, project_id, diff.guards):
+                self._refuse_orphaning(uow, project_id, diff.guards)
             raise DestructiveSchemaChange(
                 f"this version narrows the schema "
                 f"({diff.describe(ChangeKind.DESTRUCTIVE)}); pass allow_destructive=True "
@@ -380,12 +384,11 @@ class SchemaService:
     ) -> NoReturn:
         """Name the classes the guarded insert refused over, and their counts.
 
-        Reached only when ``add_schema_version_unless_annotated`` wrote nothing,
-        so the verdict is already in and this is not a second opinion — it is the
-        report. Counting here rather than before the insert is what keeps the
-        walk off the path where the publish succeeds, and it is the only place
-        the count is still true of a decision already made: this read runs after
-        the guard, inside the same transaction.
+        Reached two ways. Either ``add_schema_version_unless_annotated`` wrote
+        nothing, so the verdict is already in and this is the report, read after
+        the guard inside the same transaction. Or ``_refuse_narrowing`` found
+        labels at risk before a flag was given (#963), and nothing is written at
+        all. The walk never runs on a path where the publish succeeds.
 
         A count that comes back empty is not a contradiction. The labels can have
         been deleted between the guard and this read, and the refusal still
@@ -487,6 +490,27 @@ class SchemaService:
                 f"retry to take the next one"
             )
         return exc
+
+
+_HEX_COLOR = re.compile(r"#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})")
+
+
+def _require_hex_colors(classes: Sequence[LabelClass], previous: Sequence[LabelClass]) -> None:
+    """Refuse a colour that is not hex, unless the class already had it.
+
+    Checked on publish rather than on ``LabelClass``, and a colour carried
+    forward unchanged is exempt, so a version stored before the rule still loads
+    and can still be widened.
+    """
+    kept = {(label_class.name, label_class.color) for label_class in previous}
+    for label_class in classes:
+        color = label_class.color
+        if color is None or _HEX_COLOR.fullmatch(color) or (label_class.name, color) in kept:
+            continue
+        raise InvalidSchema(
+            f"class {label_class.name!r} has color {color!r}; a color is a hex value such "
+            "as '#3355ff' or '#35f'"
+        )
 
 
 def _require_coherent(classes: Sequence[LabelClass]) -> None:

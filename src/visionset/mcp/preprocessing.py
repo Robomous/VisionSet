@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from pydantic import Field
+from pydantic import Field, StrictBool
 
 from visionset import wire
 from visionset.kernel.domain import RecipeSpec
@@ -148,7 +148,7 @@ def delete_preprocessing_recipe(
     project: ProjectRef,
     name: NameRef,
     confirm: Annotated[
-        bool,
+        StrictBool,
         Field(
             description=(
                 "Must be true to actually delete. False returns a refusal and changes nothing."

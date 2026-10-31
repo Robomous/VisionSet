@@ -29,11 +29,13 @@ saying which workspace that is.
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Mapping
 from collections.abc import Set as AbstractSet
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import ClassVar, Final, Self
+from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
@@ -234,6 +236,38 @@ absent at run time, which is a fact about the machine at the moment of the call
 and belongs there; a device nothing could ever address is a fact about the
 configuration and belongs here.
 """
+
+
+#: Revisions that name a branch or alias rather than a fixed set of files.
+MOVING_REVISIONS: Final = frozenset({"main", "master", "head", "latest"})
+
+
+def endpoint_url_problem(url: str) -> str | None:
+    """Why ``url`` cannot be an ``http`` connection's endpoint, or ``None``.
+
+    The sentence never quotes the URL: the one this exists to refuse carries a
+    credential, and a refusal is printed, logged and returned on the wire.
+    """
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "an endpoint URL could not be parsed"
+    if parts.scheme not in ("http", "https") or any(
+        char.isspace() or unicodedata.category(char).startswith("C") for char in url
+    ):
+        return "an endpoint is an http or https URL; nothing else is ever opened"
+    if "@" in parts.netloc:
+        return (
+            "an endpoint URL cannot carry a credential; set credential_env to the name of an "
+            "environment variable holding it instead"
+        )
+    try:
+        parts.port  # noqa: B018 - parsing it is the check
+    except ValueError:
+        return "an endpoint URL's port must be a number"
+    if not parts.hostname:
+        return "an endpoint URL needs a host"
+    return None
 
 
 def precisions_for(device: str) -> tuple[Precision, ...]:

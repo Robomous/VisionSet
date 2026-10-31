@@ -678,9 +678,10 @@ itself as structure rather than as prose:
 ```
 
 `classes` is the blast radius a confirmation has to name. It carries **no counts**, and that is the
-difference between the two: this refusal is about intent and is raised before anything on disk is
-consulted, so attaching counts would put a walk over every asset in the project in front of the one
-refusal that does not need it. A client that wants them asks the preview below.
+difference between the two: this refusal is about intent. It is raised only once the labels the
+change would orphan have been looked for and none were found — otherwise the response is
+`SCHEMA_CHANGE_WOULD_ORPHAN`, so a retry with the flag is never refused a second time for a reason
+that was already true. A client that wants the counts asks the preview below.
 
 `blockers` is why no flag helps, counted two ways — a thousand labels over a thousand images and the
 same thousand over ten are the same `annotations` and a very different problem. It counts and does

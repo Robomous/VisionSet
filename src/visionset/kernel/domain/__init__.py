@@ -113,6 +113,7 @@ from visionset.kernel.domain.inference import (
     EVERY_CONNECTION_TYPE,
     EVERY_SETUP_STATE,
     INTEGRITY_CHECK_JOB_TYPE,
+    MOVING_REVISIONS,
     MPS,
     OFFERED_DEVICES,
     PRE_LABEL_CONFIDENCE_KEY,
@@ -138,6 +139,7 @@ from visionset.kernel.domain.inference import (
     WeightDownload,
     connection_job_payload,
     default_origin,
+    endpoint_url_problem,
     pre_label_job_payload,
     precisions_for,
 )
@@ -171,7 +173,7 @@ from visionset.kernel.domain.media import (
     VideoMetadata,
     media_type_of,
 )
-from visionset.kernel.domain.names import normalize_name
+from visionset.kernel.domain.names import derived_name, normalize_name, normalize_release_tag
 from visionset.kernel.domain.partition import (
     BySegments,
     BySize,
@@ -364,8 +366,10 @@ __all__ = [
     "CUDA",
     "MPS",
     "DEVICE_PATTERN",
+    "MOVING_REVISIONS",
     "COMMIT_PATTERN",
     "OFFERED_DEVICES",
+    "endpoint_url_problem",
     "precisions_for",
     "connection_job_payload",
     "default_origin",
@@ -587,7 +591,9 @@ __all__ = [
     "hash_secret",
     "initial_progress",
     "media_type_of",
+    "derived_name",
     "normalize_name",
+    "normalize_release_tag",
     "partition_assets",
     "progress_after_annotating",
     "report_name",

@@ -32,7 +32,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from pydantic import Field
+from pydantic import Field, StrictBool
 
 from visionset import wire
 from visionset.kernel.domain import DraftLabelClass, LabelClass, SchemaProvenance
@@ -289,7 +289,7 @@ def create_schema_version(
         ),
     ] = SchemaProvenance.CURATED,
     allow_destructive: Annotated[
-        bool,
+        StrictBool,
         Field(
             description=(
                 "Must be true to apply a change that removes or narrows something. "

@@ -8,6 +8,7 @@ import base64
 import time
 from collections.abc import Iterator
 from pathlib import Path
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import pytest
@@ -133,7 +134,7 @@ def test_a_describe_outside_the_contract_names_the_endpoint_and_the_failure(
             setattr(endpoint, field, value)
         with pytest.raises(InferenceEndpointUnavailable) as refused:
             describe(hosted(endpoint.url))
-    assert endpoint.url in str(refused.value)
+    assert urlsplit(endpoint.url).netloc in str(refused.value)
     assert said in str(refused.value)
 
 
@@ -141,14 +142,31 @@ def test_an_endpoint_nothing_listens_on_is_unreachable_not_a_traceback() -> None
     url = closed_port()
     with pytest.raises(InferenceEndpointUnavailable, match="could not be reached") as refused:
         describe(hosted(url))
-    assert url in str(refused.value)
+    assert urlsplit(url).netloc in str(refused.value)
 
 
 def test_an_unparseable_ipv6_url_is_unreachable_not_a_traceback() -> None:
     url = "http://[::1"
-    with pytest.raises(InferenceEndpointUnavailable, match="could not be reached") as refused:
+    with pytest.raises(InferenceEndpointUnavailable, match="could not be parsed") as refused:
         describe(hosted(url))
-    assert url in str(refused.value)
+    assert "'hosted'" in str(refused.value)
+
+
+def test_a_key_in_the_query_string_never_reaches_a_message() -> None:
+    """Accepted, but only the host is ever printed (#961)."""
+    with serving_endpoint() as endpoint:
+        endpoint.describe_status = 500
+        with pytest.raises(InferenceEndpointUnavailable, match="answered 500") as refused:
+            describe(hosted(f"{endpoint.url}?api_key=NOT-A-REAL-SECRET"))
+    assert "NOT-A-REAL-SECRET" not in str(refused.value)
+    assert urlsplit(endpoint.url).netloc in str(refused.value)
+
+
+def test_a_stored_endpoint_with_a_credential_is_refused_without_echoing_it() -> None:
+    """#961: a row written before the write-time rule can still hold one."""
+    with pytest.raises(InferenceEndpointUnavailable, match="credential_env") as refused:
+        describe(hosted("https://someone:not-a-real-secret@example.invalid/"))
+    assert "not-a-real-secret" not in str(refused.value)
 
 
 def test_a_stalled_error_body_times_out_rather_than_hanging(
@@ -162,7 +180,7 @@ def test_a_stalled_error_body_times_out_rather_than_hanging(
         with pytest.raises(InferenceEndpointUnavailable, match="answered 500") as refused:
             describe(hosted(endpoint.url))
         elapsed = time.monotonic() - started
-    assert endpoint.url in str(refused.value)
+    assert urlsplit(endpoint.url).netloc in str(refused.value)
     assert elapsed < 1.5
 
 
@@ -171,7 +189,7 @@ def test_a_response_over_the_ceiling_is_refused_not_buffered_whole() -> None:
         endpoint.describe_body = "x" * (MAX_RESPONSE_BYTES + 10)
         with pytest.raises(InferenceEndpointUnavailable, match="more than") as refused:
             describe(hosted(endpoint.url))
-    assert endpoint.url in str(refused.value)
+    assert urlsplit(endpoint.url).netloc in str(refused.value)
 
 
 def test_only_http_and_https_are_ever_opened() -> None:
@@ -188,7 +206,7 @@ def test_a_redirect_to_a_foreign_scheme_is_refused_not_followed() -> None:
         endpoint.describe_location = "ftp://127.0.0.1/x"
         with pytest.raises(InferenceEndpointUnavailable, match="answered 302") as refused:
             describe(hosted(endpoint.url))
-    assert endpoint.url in str(refused.value)
+    assert urlsplit(endpoint.url).netloc in str(refused.value)
 
 
 def test_a_body_shorter_than_its_declared_length_is_one_sentence_not_a_traceback() -> None:
@@ -196,7 +214,7 @@ def test_a_body_shorter_than_its_declared_length_is_one_sentence_not_a_traceback
         endpoint.truncate_body = True
         with pytest.raises(InferenceEndpointUnavailable) as refused:
             describe(hosted(endpoint.url))
-    assert endpoint.url in str(refused.value)
+    assert urlsplit(endpoint.url).netloc in str(refused.value)
 
 
 # --- predict ----------------------------------------------------------------
@@ -299,7 +317,7 @@ def test_an_answer_outside_the_contract_is_one_sentence_naming_the_endpoint(
         runner = RemoteDetector(hosted(endpoint.url))
         with pytest.raises(InferenceEndpointUnavailable) as refused:
             list(runner.predict(a_request(tmp_path, WORDS, targets=2)))
-    assert endpoint.url in str(refused.value)
+    assert urlsplit(endpoint.url).netloc in str(refused.value)
     assert said in str(refused.value)
 
 

@@ -592,6 +592,18 @@ def test_a_release_tag_is_normalized_the_way_every_other_name_is(tmp_path: Path)
     fixture.close()
 
 
+def test_a_tag_that_would_be_a_path_is_refused_before_anything_is_written(
+    tmp_path: Path,
+) -> None:
+    """#969: a tag can become a path component in an export."""
+    fixture = Fixture(tmp_path)
+    dataset_id = fixture.ready()
+    with pytest.raises(InvalidName, match="release tag"):
+        fixture.releases.publish(dataset_id, "../../evil")
+    assert fixture.releases.list(dataset_id) == []
+    fixture.close()
+
+
 def test_a_published_release_cannot_be_edited(tmp_path: Path) -> None:
     """The refusal is the type's; there is no service method here to guard."""
     fixture = Fixture(tmp_path)

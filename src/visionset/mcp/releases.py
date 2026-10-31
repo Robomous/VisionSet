@@ -32,7 +32,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated, Any
 
-from pydantic import Field
+from pydantic import Field, StrictBool
 
 from visionset import wire
 from visionset.formats import registry
@@ -252,7 +252,7 @@ def export_release(
     target: TargetRef = None,
     format: FormatRef = None,
     allow_lossy: Annotated[
-        bool,
+        StrictBool,
         Field(
             description=(
                 "Must be true to export in a format that cannot carry everything "

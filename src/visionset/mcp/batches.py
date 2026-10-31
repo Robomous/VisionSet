@@ -43,7 +43,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, StrictBool
 
 from visionset import wire
 from visionset.inference import (
@@ -241,7 +241,7 @@ def approve_batch(
         ),
     ] = None,
     start: Annotated[
-        bool,
+        StrictBool,
         Field(
             description=(
                 "Also open the batch for annotation once it is approved — `start_batch` in "
@@ -378,7 +378,7 @@ def pre_label_batch(
         ),
     ] = DEFAULT_MINIMUM_CONFIDENCE,
     replace_model_labels: Annotated[
-        bool,
+        StrictBool,
         Field(
             description=(
                 "Also rewrite the model labels on frames still `pre_labeled` — labels a "
@@ -581,7 +581,7 @@ def pre_label_project(
 def repin_batch(
     batch_id: BatchRef,
     allow_destructive: Annotated[
-        bool,
+        StrictBool,
         Field(
             description=(
                 "Proceed even though the active version narrows what the pinned "
@@ -619,7 +619,7 @@ def repin_batch(
 def complete_batch(
     batch_id: BatchRef,
     promote: Annotated[
-        bool,
+        StrictBool,
         Field(
             description=(
                 "Also move the finished assets into the dataset once the batch is closed — "
@@ -770,7 +770,7 @@ def promote_batch(batch_id: BatchRef) -> dict[str, Any]:
 def delete_batch(
     batch_id: BatchRef,
     confirm: Annotated[
-        bool,
+        StrictBool,
         Field(
             description=(
                 "Must be true to actually delete. False returns a refusal and changes nothing."

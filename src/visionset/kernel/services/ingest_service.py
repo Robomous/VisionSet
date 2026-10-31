@@ -94,6 +94,7 @@ from visionset.kernel.domain import (
     Source,
     SourceKind,
     ThumbnailBackfill,
+    derived_name,
     normalize_name,
     report_name,
     require_move,
@@ -813,7 +814,9 @@ class IngestService:
             batch = self._batches.require_draft(uow, batch_id)
             self._require_project(uow, batch.project_id)
             return batch.name
-        return normalize_name(batch_name or source.name, what="batch")
+        if batch_name:
+            return normalize_name(batch_name, what="batch")
+        return derived_name(source.name, what="batch")
 
     def _require_project(self, uow: UnitOfWork, project_id: UUID) -> Project:
         """The project, or refuse because this workspace does not have it."""

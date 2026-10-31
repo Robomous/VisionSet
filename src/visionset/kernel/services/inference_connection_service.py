@@ -38,6 +38,7 @@ from visionset.kernel.domain import (
     CONNECTION_JOB_KEY,
     INTEGRITY_CHECK_JOB_TYPE,
     LIVE_JOB_STATES,
+    MOVING_REVISIONS,
     WEIGHT_DOWNLOAD_JOB_TYPE,
     WEIGHT_HOLDING_TYPES,
     BackgroundJob,
@@ -51,6 +52,7 @@ from visionset.kernel.domain import (
     ModelOrigin,
     WeightDownload,
     connection_actions,
+    endpoint_url_problem,
     normalize_name,
 )
 from visionset.kernel.errors import (
@@ -224,7 +226,9 @@ class InferenceConnectionService:
             InvalidName: the name is blank once stripped.
             InferenceConnectionNameTaken: another connection holds that name.
             InferenceConnectionInvalid: the parameters do not match the kind, or
-                the device or precision is outside what this build offers.
+                the device or precision is outside what this build offers, the
+                revision is a moving pointer, or the endpoint is not an http(s) URL
+                or carries a credential.
 
         ``origin`` absent means the one the kind implies (``default_origin``);
         a caller that knows better — a registry, a path that brings its own
@@ -237,6 +241,9 @@ class InferenceConnectionService:
         something tries to run it — which is the same treatment a model id
         pointing at nothing gets, and for the same reason.
         """
+        _refuse_new_values(
+            connection_type, model_revision=model_revision, endpoint_url=endpoint_url
+        )
         try:
             with self._workspace.unit_of_work() as uow:
                 resolved = self._require_name_free(uow, name)
@@ -305,7 +312,9 @@ class InferenceConnectionService:
             InvalidName: a supplied name is blank once stripped.
             InferenceConnectionNameTaken: another connection holds that name.
             InferenceConnectionInvalid: the result would not match the kind, or
-                the device or precision is outside what this build offers.
+                the device or precision is outside what this build offers, or a
+                revision or endpoint this edit moves breaks the rules ``create``
+                applies.
             InferenceConnectionModelFixed: the model or revision would change on
                 a connection that does not declare ``update_model``.
         """
@@ -313,7 +322,14 @@ class InferenceConnectionService:
             with self._workspace.unit_of_work() as uow:
                 current = self.require_connection(uow, connection_id)
                 changes: dict[str, object] = {"updated_at": datetime.now(UTC)}
-                if name is not None:
+                # The form re-sends the stored name on every edit; one stored
+                # before the write-time rules must not block editing the rest.
+                unchanged_name = (
+                    name is not None
+                    and normalize_name(name, what="inference connection", lookup=True)
+                    == current.name
+                )
+                if name is not None and not unchanged_name:
                     changes["name"] = self._require_name_free(uow, name, exclude=connection_id)
                 for field, value in (
                     ("model_id", model_id),
@@ -362,6 +378,13 @@ class InferenceConnectionService:
                 # speaks the contract, whoever is on the other end.
                 if "endpoint_url" in changes and changes["endpoint_url"] != current.endpoint_url:
                     changes["model_family"] = None
+                # Only what this edit moves: a rename re-sends the stored values,
+                # and a row written before these rules must stay editable.
+                _refuse_new_values(
+                    current.connection_type,
+                    model_revision=_moved(changes, current, "model_revision"),
+                    endpoint_url=_moved(changes, current, "endpoint_url"),
+                )
                 # Rebuilt rather than mutated, so the cross-field rule runs on the
                 # result: ``model_copy`` does not validate, which is the whole
                 # reason ``Source`` had to turn on ``validate_assignment``.
@@ -621,7 +644,7 @@ class InferenceConnectionService:
         service is where the normalized string is in hand, so it is the stricter
         of the two.
         """
-        wanted = normalize_name(name, what="inference connection").casefold()
+        wanted = normalize_name(name, what="inference connection", lookup=True).casefold()
         for connection in uow.inference_connections.list():
             if connection.name.casefold() == wanted:
                 return connection
@@ -767,6 +790,31 @@ def _why_not_checkable(connection: InferenceConnection) -> str:
         f"connection {connection.name!r} has no weights on this machine yet, so there is "
         "nothing to check; download them first"
     )
+
+
+def _moved(changes: dict[str, object], current: InferenceConnection, field: str) -> str | None:
+    value = changes.get(field)
+    return value if isinstance(value, str) and value != getattr(current, field) else None
+
+
+def _refuse_new_values(
+    connection_type: ConnectionType, *, model_revision: str | None, endpoint_url: str | None
+) -> None:
+    """The write-time rules on a reference and an endpoint, never applied on read.
+
+    Raises:
+        InferenceConnectionInvalid: the revision is a moving pointer, or an
+            ``http`` endpoint is not an http(s) URL or carries a credential.
+    """
+    if model_revision is not None and model_revision.strip().casefold() in MOVING_REVISIONS:
+        raise InferenceConnectionInvalid(
+            f"model_revision {model_revision.strip()!r} is a moving pointer, not a pin; "
+            "name a commit or a release tag"
+        )
+    if connection_type is ConnectionType.HTTP and endpoint_url is not None:
+        problem = endpoint_url_problem(endpoint_url)
+        if problem is not None:
+            raise InferenceConnectionInvalid(problem)
 
 
 def _born_in(connection_type: ConnectionType) -> ConnectionSetupState:

@@ -141,6 +141,6 @@ Deleting a project therefore frees rows, not disk.
 | --- | --- |
 | `ProjectNotFound` | No project with that id in this workspace. A project belonging to a *different* workspace reads as missing too - this service speaks for one workspace, and anything outside it is not its to describe. |
 | `ProjectNameTaken` | Another project in this workspace holds the name. Also what the loser of a cross-process race gets: the unique index refuses the insert and the service re-raises it in this vocabulary. |
-| `InvalidName` | The name is empty, or blank once stripped. |
+| `InvalidName` | The name is empty, blank once stripped, longer than 255 characters, or holds a control character or line break. |
 | `ConfirmationRequired` | `delete` was called without `confirm=True`. |
 | `WorkspaceCorrupt` | The project does not have exactly one dataset. |

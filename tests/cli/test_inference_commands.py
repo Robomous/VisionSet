@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
 from click.testing import Result
@@ -679,7 +680,7 @@ def test_test_endpoint_reports_an_unreachable_endpoint_as_a_sentence(root: Path)
     ok(root, *_hosted_at(url))
     result = run(root, "inference", "test-endpoint", "remote")
     assert result.exit_code == 1, result.output
-    assert url in result.stderr
+    assert urlsplit(url).netloc in result.stderr
 
 
 # --- ``providers``, which opens no workspace either ----------------------------

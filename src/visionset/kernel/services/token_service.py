@@ -164,7 +164,7 @@ class TokenService:
         service is where the full normalized string is in hand, so it is the
         stricter of the two. Uniqueness makes "the" token well defined.
         """
-        wanted = normalize_name(name, what="token").casefold()
+        wanted = normalize_name(name, what="token", lookup=True).casefold()
         for token in uow.tokens.list(self._workspace.workspace_id):
             if token.name.casefold() == wanted:
                 return token

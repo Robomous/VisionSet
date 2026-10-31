@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from pydantic import Field
+from pydantic import Field, StrictBool
 
 from visionset import wire
 from visionset.inference import (
@@ -111,7 +111,7 @@ def pre_label_job(
         ),
     ] = DEFAULT_MINIMUM_CONFIDENCE,
     replace_model_labels: Annotated[
-        bool,
+        StrictBool,
         Field(
             description=(
                 "Also rewrite the model labels on frames still `pre_labeled` — labels a "

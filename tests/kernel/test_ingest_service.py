@@ -508,6 +508,21 @@ def test_a_created_batch_is_named_after_its_source_by_default(tmp_path: Path) ->
     fixture.close()
 
 
+def test_a_source_name_stored_before_the_rules_still_names_a_batch(tmp_path: Path) -> None:
+    """The default is derived, so it is made storable rather than refused (#969)."""
+    fixture = Fixture(tmp_path)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    with fixture.workspace.unit_of_work() as uow:
+        uow.sources.update(source.model_copy(update={"display_name": "dash\tcam" + "x" * 300}))
+
+    result = fixture.ingest.ingest(source.id)
+
+    assert fixture.batches.get(result.batch_id).name == ("dash cam" + "x" * 300)[:255]
+    with pytest.raises(InvalidName):
+        fixture.ingest.ingest(source.id, batch_name="dash\tcam")
+    fixture.close()
+
+
 def test_a_caller_may_name_the_batch_the_run_creates(tmp_path: Path) -> None:
     fixture = Fixture(tmp_path)
     source = fixture.sources.register_images(fixture.project.id, fixture.stills)

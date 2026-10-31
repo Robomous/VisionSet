@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from pydantic import Field
+from pydantic import Field, StrictBool
 
 from visionset import wire
 from visionset.kernel.services import (
@@ -95,7 +95,7 @@ def get_project(project: ProjectRef) -> dict[str, Any]:
 def delete_project(
     project: ProjectRef,
     confirm: Annotated[
-        bool,
+        StrictBool,
         Field(
             description=(
                 "Must be true to actually delete. False returns a refusal and changes nothing."

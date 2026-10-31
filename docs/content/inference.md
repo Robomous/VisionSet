@@ -22,7 +22,15 @@ Two kinds exist today:
 
 The model reference is a pair - an id and a **pinned revision**, both required. A moving pointer
 is not a provenance: "which model produced this label" is unanswerable if the answer names
-something that means something different next month.
+something that means something different next month. The well-known moving pointers - `main`,
+`master`, `HEAD` and `latest`, in any case - are refused as `INFERENCE_CONNECTION_INVALID` when a
+revision is written. Any other branch name cannot be told apart from a tag without asking the
+model's source, so it is not refused. A row stored before the check still loads.
+
+A `local` connection requires `device` and `precision`, and an `http` one requires `endpoint_url`.
+Each kind refuses the other kind's fields. Whether a valid device such as `cuda` is present on this
+machine is not checked when the connection is written: that is a fact about the machine when the
+model runs, and the run falls back to the CPU if the device is absent.
 
 ```python
 from visionset.kernel.domain import ConnectionType
@@ -565,6 +573,19 @@ request is made**, as `INFERENCE_ENDPOINT_UNAVAILABLE` naming the variable, from
 and from every prediction alike. The remedy is in the environment, not at the endpoint, and the
 message says so; a request sent without the credential would have been refused by the other end
 with a status that names nothing.
+
+**A credential inside the URL is refused.** `https://user:secret@host/` is the one form this
+indirection exists to replace, so `create` and `update` refuse an `endpoint_url` with a user or
+password in it, as `INFERENCE_CONNECTION_INVALID` pointing to `credential_env`. The refusal never
+quotes the URL. The same write-time check refuses an endpoint that is not an `http` or `https` URL
+with a host - `file://`, `javascript:` and free text included - so such a URL is no longer stored and
+found out only when the endpoint is tested. A row stored before these checks still loads and can
+still be edited. Asking it or predicting with it is refused, as `INFERENCE_ENDPOINT_UNAVAILABLE`,
+naming the connection and not the URL.
+
+A secret belongs in `credential_env`, **not in the URL's query string** either. A query string is
+accepted, because many ordinary endpoints carry harmless parameters there. However, every message
+about an endpoint prints only its host and port, never its path or query.
 
 **Clearing it.** On an edit, `null` leaves the field alone as it does every other; the **empty
 string** clears it, so an endpoint that stops wanting a credential can be told so. An emptied

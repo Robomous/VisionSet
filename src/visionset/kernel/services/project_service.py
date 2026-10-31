@@ -27,7 +27,14 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from visionset.kernel.domain import ClassCount, Dataset, Project, ProjectPreview, ProjectStats
+from visionset.kernel.domain import (
+    ClassCount,
+    Dataset,
+    Project,
+    ProjectPreview,
+    ProjectStats,
+    normalize_name,
+)
 from visionset.kernel.errors import (
     ConfirmationRequired,
     ConstraintViolated,
@@ -324,7 +331,7 @@ class ProjectService:
         is: a caller resolving a project inside its own transaction must not have
         to spell the comparison a second time.
         """
-        wanted = self._workspace.normalize_project_name(name).casefold()
+        wanted = normalize_name(name, what="project", lookup=True).casefold()
         for project in uow.projects.list(self._workspace.workspace_id):
             if project.name.casefold() == wanted:
                 return project
