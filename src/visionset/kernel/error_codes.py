@@ -53,6 +53,8 @@ ERROR_CODES: Final[Mapping[type[errors.VisionSetError], str]] = {
     errors.EmptyRelease: "EMPTY_RELEASE",
     errors.EntityAlreadyExists: "ENTITY_ALREADY_EXISTS",
     errors.EntityNotFound: "ENTITY_NOT_FOUND",
+    errors.ExportDestinationNotEmpty: "EXPORT_DESTINATION_NOT_EMPTY",
+    errors.ExportDestinationRefused: "EXPORT_DESTINATION_REFUSED",
     errors.ExportFormatNotFound: "EXPORT_FORMAT_NOT_FOUND",
     errors.ExportSourceUnreadable: "EXPORT_SOURCE_UNREADABLE",
     errors.ExportTargetConflict: "EXPORT_TARGET_CONFLICT",

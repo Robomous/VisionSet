@@ -22,9 +22,13 @@ import pytest
 
 from visionset import __version__, wire
 from visionset.kernel import (
+    AugmentationRequiresSplit,
     ConfirmationRequired,
     DatasetNotFound,
     EmptyRelease,
+    ExportDestinationNotEmpty,
+    ExportDestinationRefused,
+    ExportSourceUnreadable,
     InvalidName,
     LossyExportNotConsented,
     NoSplitRecipe,
@@ -41,6 +45,8 @@ from visionset.kernel.domain import (
     Asset,
     AssetProgress,
     Attribute,
+    AugmentOp,
+    AugmentStep,
     BboxGeometry,
     ClassCount,
     ExportCompatibility,
@@ -51,6 +57,7 @@ from visionset.kernel.domain import (
     ManifestAnnotation,
     PolygonGeometry,
     PreprocessingHints,
+    RecipeSpec,
     Release,
     SplitRecipe,
     TargetFamily,
@@ -61,6 +68,7 @@ from visionset.kernel.domain import (
 from visionset.kernel.ports import ContentReader
 from visionset.kernel.services import (
     EXPORT_REPORT_FILENAME,
+    EXPORTS_DIRNAME,
     AnnotationService,
     BatchService,
     DatasetService,
@@ -1029,7 +1037,9 @@ def test_exporting_twice_into_one_directory_agrees_with_itself(tmp_path: Path) -
     release = fixture.releases.publish(fixture.ready(), "v1")
 
     first = fixture.releases.export(release.id, _Recording(), tmp_path / "out")
-    second = fixture.releases.export(release.id, _Recording(), tmp_path / "out")
+    second = fixture.releases.export(
+        release.id, _Recording(), tmp_path / "out", allow_non_empty=True
+    )
 
     assert first == second
     assert fixture.releases.get(release.id) == release
@@ -1048,7 +1058,7 @@ def test_a_stale_file_in_the_destination_is_counted_and_not_deleted(tmp_path: Pa
     dest.mkdir()
     (dest / "left-over.txt").write_text("from an earlier format")
 
-    result = fixture.releases.export(release.id, _Recording(), dest)
+    result = fixture.releases.export(release.id, _Recording(), dest, allow_non_empty=True)
 
     assert result.file_count == 3
     assert (dest / "left-over.txt").is_file()
@@ -1318,7 +1328,7 @@ def test_exporting_twice_into_one_directory_still_agrees_with_itself(tmp_path: P
     dest = tmp_path / "out"
 
     first = fixture.releases.export(release.id, _BoxesOnly(), dest)
-    second = fixture.releases.export(release.id, _BoxesOnly(), dest)
+    second = fixture.releases.export(release.id, _BoxesOnly(), dest, allow_non_empty=True)
 
     assert (first.file_count, first.total_bytes) == (second.file_count, second.total_bytes)
     fixture.close()
@@ -1527,4 +1537,152 @@ def test_the_report_on_disk_names_the_target_it_answers_for(tmp_path: Path) -> N
 
     written = json.loads((dest / EXPORT_REPORT_FILENAME).read_text(encoding="utf-8"))
     assert (written["format"], written["target"]) == ("boxes-and-polygons", "narrow")
+    fixture.close()
+
+
+# --- what an export refuses before writing anything ------------------------------
+
+
+def test_export_refuses_a_blob_that_no_longer_matches_its_hash(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    victim = fixture.releases.manifest(release.id).assets[0].content_hash
+    with fixture.blob_path(victim).open("ab") as blob:
+        blob.write(b"\0")
+    exporter = _Recording()
+    dest = tmp_path / "out"
+
+    with pytest.raises(ExportSourceUnreadable, match="no longer matches its content hash"):
+        fixture.releases.export(release.id, exporter, dest)
+
+    assert victim in str(fixture.releases.verify(release.id).corrupt)
+    assert not dest.exists()
+    assert exporter.calls == []
+    fixture.close()
+
+
+def test_export_refuses_a_missing_blob_before_writing(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    victim = fixture.releases.manifest(release.id).assets[0].content_hash
+    fixture.blob_path(victim).unlink()
+    dest = tmp_path / "out"
+
+    with pytest.raises(ExportSourceUnreadable, match="not in the blob store"):
+        fixture.releases.export(release.id, _Recording(), dest)
+    assert not dest.exists()
+    fixture.close()
+
+
+def test_export_refuses_a_relative_destination(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    for relative in (Path("out"), Path("~/out")):
+        with pytest.raises(ExportDestinationRefused, match="absolute"):
+            fixture.releases.export(release.id, _Recording(), relative)
+    fixture.close()
+
+
+def test_export_refuses_the_workspace_its_subtree_and_its_ancestors(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    for inside in (fixture.root, fixture.root / "blobs", fixture.root / "new" / "dir"):
+        with pytest.raises(ExportDestinationRefused, match="inside the workspace"):
+            fixture.releases.export(release.id, _Recording(), inside, allow_non_empty=True)
+    for above in (tmp_path, Path(tmp_path.anchor)):
+        with pytest.raises(ExportDestinationRefused, match="contains the workspace"):
+            fixture.releases.export(release.id, _Recording(), above, allow_non_empty=True)
+    assert not (fixture.root / "new").exists()
+    assert not (fixture.root / "top.txt").exists()
+    fixture.close()
+
+
+def test_only_the_workspace_owned_export_writes_under_exports(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    dest = fixture.root / EXPORTS_DIRNAME / "one"
+
+    with pytest.raises(ExportDestinationRefused, match="inside the workspace"):
+        fixture.releases.export(release.id, _Recording(), dest)
+    assert fixture.releases.export(release.id, _Recording(), dest, owned_by_workspace=True)
+    again = fixture.releases.export(release.id, _Recording(), dest, owned_by_workspace=True)
+    assert again.file_count == 2
+    with pytest.raises(ExportDestinationRefused, match="not under the workspace's exports"):
+        fixture.releases.export(
+            release.id, _Recording(), tmp_path / "elsewhere", owned_by_workspace=True
+        )
+    fixture.close()
+
+
+def _respelled(path: Path) -> Path:
+    return path.with_name(path.name.swapcase())
+
+
+def test_another_spelling_of_the_workspace_is_refused(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    root = fixture.root.resolve()
+    if not _respelled(root).exists():
+        pytest.skip("the file system is case-sensitive")
+
+    for inside in (_respelled(root) / "new", _respelled(root) / "blobs"):
+        with pytest.raises(ExportDestinationRefused, match="inside the workspace"):
+            fixture.releases.export(release.id, _Recording(), inside, allow_non_empty=True)
+    with pytest.raises(ExportDestinationRefused, match="contains the workspace"):
+        fixture.releases.export(
+            release.id, _Recording(), _respelled(root.parent), allow_non_empty=True
+        )
+    assert not (root / "new").exists()
+    fixture.close()
+
+
+def test_a_symlink_into_the_workspace_is_refused(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    link = tmp_path / "link"
+    link.symlink_to(fixture.root, target_is_directory=True)
+
+    with pytest.raises(ExportDestinationRefused, match="inside the workspace"):
+        fixture.releases.export(release.id, _Recording(), link / "out")
+    fixture.close()
+
+
+def test_a_recipe_refusal_comes_before_the_destination_one(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    occupied = tmp_path / "occupied"
+    occupied.mkdir()
+    (occupied / "earlier.txt").write_text("x")
+    augmenting = RecipeSpec(
+        target=None, steps=(AugmentStep(op=AugmentOp.HFLIP),), variants_per_asset=1
+    )
+
+    with pytest.raises(AugmentationRequiresSplit):
+        fixture.releases.export(release.id, _Recording(), occupied, recipe=augmenting)
+    fixture.close()
+
+
+def test_export_refuses_a_non_empty_destination_without_consent(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    dest = tmp_path / "out"
+    fixture.releases.export(release.id, _Recording(), dest)
+    exporter = _Recording()
+
+    with pytest.raises(ExportDestinationNotEmpty, match="allow_non_empty"):
+        fixture.releases.export(release.id, exporter, dest)
+    assert exporter.calls == []
+    fixture.close()
+
+
+def test_export_refuses_a_file_and_an_uncreatable_destination(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = fixture.releases.publish(fixture.ready(), "v1")
+    a_file = tmp_path / "a-file"
+    a_file.write_text("x")
+
+    with pytest.raises(ExportDestinationRefused, match="is a file"):
+        fixture.releases.export(release.id, _Recording(), a_file)
+    with pytest.raises(ExportDestinationRefused, match="cannot create"):
+        fixture.releases.export(release.id, _Recording(), a_file / "below")
     fixture.close()

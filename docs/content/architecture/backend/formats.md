@@ -27,12 +27,11 @@ target - never through a dict, so a typo answers a `VisionSetError` rather than 
 
 ## What ships
 
-Eleven plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
+Ten plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
 `[project.entry-points."visionset.formats"]`:
 
 | Name | Module |
 | --- | --- |
-| `dummy` | [`_dummy.py`](../../../../src/visionset/formats/_dummy.py) - writes nothing; the registry's own test subject |
 | `ultralytics` | [`ultralytics/`](../../../../src/visionset/formats/ultralytics/) - `data.yaml` with `path` and `names` as a mapping; `yolo` is accepted as an alias for one release |
 | `yolov5-yaml` | [`yolov5_yaml/`](../../../../src/visionset/formats/yolov5_yaml/) - `data.yaml` with `nc` and `names` as a list; shares [`_yolo_writer.py`](../../../../src/visionset/formats/_yolo_writer.py) with `ultralytics` |
 | `coco` | [`coco/`](../../../../src/visionset/formats/coco/) |

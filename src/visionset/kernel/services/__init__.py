@@ -25,6 +25,7 @@ from visionset.kernel.services.video_import_service import VideoImportService
 from visionset.kernel.services.workspace_service import (
     BLOBS_DIRNAME,
     DB_FILENAME,
+    EXPORTS_DIRNAME,
     WORKSPACE_ENV_VAR,
     WorkspaceService,
     resolve_workspace_root,
@@ -33,6 +34,7 @@ from visionset.kernel.services.workspace_service import (
 __all__ = [
     "BLOBS_DIRNAME",
     "DB_FILENAME",
+    "EXPORTS_DIRNAME",
     "EXPORT_REPORT_FILENAME",
     "WORKSPACE_ENV_VAR",
     "AnnotationService",

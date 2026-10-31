@@ -204,8 +204,10 @@ def test_an_uncreatable_destination_is_one_sentence_and_honours_json(tmp_path: P
         sealed.chmod(0o755)
 
     assert result.exit_code == 1
-    assert re.fullmatch(_DENIED, json.loads(result.stdout)["error"]["message"])
-    assert str(tmp_path) not in result.output
+    refusal = json.loads(result.stdout)["error"]
+    assert refusal["code"] == "EXPORT_DESTINATION_REFUSED"
+    assert refusal["message"] == f"cannot create the export directory {out}: Permission denied"
+    assert "Traceback" not in result.output
 
 
 def test_visionset_debug_adds_the_traceback_on_stderr_only(

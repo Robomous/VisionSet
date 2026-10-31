@@ -231,8 +231,9 @@ def test_the_entry_points_ship_so_the_command_and_the_plugins_exist(
 
     assert "visionset = visionset.cli.main:app" in declared
     assert "[visionset.formats]" in declared
-    for plugin in ("dummy", "ultralytics", "yolov5-yaml", "coco", "voc"):
+    for plugin in ("ultralytics", "yolov5-yaml", "coco", "voc"):
         assert f"{plugin} = visionset.formats." in declared
+    assert "dummy" not in declared
     assert "[visionset.preprocessing]" in declared
     for plugin in ("pillow-resize", "pillow-augment"):
         assert f"{plugin} = visionset.preprocessing.pillow:" in declared
@@ -320,9 +321,16 @@ def installed(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return venv
 
 
+def _clean_env() -> dict[str, str]:
+    """The environment without PYTHONPATH, so nothing outside the venv is importable."""
+    return {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
+
+
 def _command(venv: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
     binary = venv / ("Scripts" if sys.platform == "win32" else "bin") / "visionset"
-    return subprocess.run([str(binary), *arguments], capture_output=True, text=True, check=False)
+    return subprocess.run(
+        [str(binary), *arguments], capture_output=True, text=True, check=False, env=_clean_env()
+    )
 
 
 def test_the_installed_command_reports_the_version_the_wheel_claims(
@@ -346,7 +354,6 @@ def test_the_installed_command_finds_every_exporter(installed: Path) -> None:
         "coco",
         "culane",
         "curvelanes",
-        "dummy",
         "openlane-2d",
         "tusimple",
         "ultralytics",
@@ -429,6 +436,7 @@ class _Server:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            env=_clean_env(),
         )
         base = f"http://127.0.0.1:{self._port}"
         # Polled against a deadline rather than a fixed number of tries: a

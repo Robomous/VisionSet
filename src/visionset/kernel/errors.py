@@ -849,6 +849,24 @@ class ExportSourceUnreadable(VisionSetError):
     """
 
 
+class ExportDestinationRefused(VisionSetError):
+    """The directory an export was asked to write into cannot take one.
+
+    Relative, inside or containing the workspace, a file, or impossible to
+    create. Nothing
+    overrides it: the remedy is a different path.
+    """
+
+
+class ExportDestinationNotEmpty(VisionSetError):
+    """The export directory already holds files, and the caller has not said that is fine.
+
+    Writing into it would mix two exports — files the new one does not
+    overwrite stay beside it and are counted with it. Overridable with
+    ``allow_non_empty``; clearing the directory is the caller's business.
+    """
+
+
 class LossyExportNotConsented(VisionSetError):
     """The chosen format cannot carry everything this release holds.
 

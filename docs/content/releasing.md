@@ -228,7 +228,7 @@ The acceptance criterion, and it is not satisfied by the upload succeeding:
 cd $(mktemp -d)
 uv venv && uv pip install --no-cache "visionset==0.0.1b3"
 visionset --version          # the version you tagged
-visionset format list        # eleven rows: ultralytics, yolov5-yaml, coco, voc, classification, dummy and the five lane formats
+visionset format list        # ten rows: ultralytics, yolov5-yaml, coco, voc, classification and the five lane formats
 ```
 
 And the npm half, which has its own failure mode - a package that installs and then cannot

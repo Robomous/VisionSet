@@ -219,7 +219,7 @@ first and get byte-identical overlap without copying a file.
 | Annotate | per job: `start`, `GET /jobs/{j}/next?n=10`, `POST …/annotations`, read them back, `PUT …/progress`, `complete` |
 | Trunk | `complete` → `promote` → `GET /datasets/{d}/stats` |
 | Release | `POST /datasets/{d}/releases`, `GET …/manifest`, `GET …/verify` |
-| Export | `GET /formats` → `POST /releases/{r}/export?format=dummy` → a zip on disk |
+| Export | `GET /formats` → `POST /releases/{r}/export?format=coco` → a zip on disk |
 | Recipe | `POST /projects/{p}/preprocessing-recipes`, then `POST /releases/{r}/export?target=yolo11&recipe=yolo-640` - refused **409 `LOSSY_EXPORT_NOT_CONSENTED`** until `allow_lossy=true` - and the archive is opened for `preprocessing.recipe_hash` in `visionset-export-report.json` and a `labels/train/<hash>-aug1.txt` beside its image |
 | Pixels | `GET /projects/{p}/assets/{a}/content`, hashed against the asset's `content_hash` |
 | Refusal | the same request with no `Authorization` header → **401 `UNAUTHORIZED`** |
@@ -322,7 +322,7 @@ quietly leaving the impression that a terminal can label images.
 | Annotate | `add_annotations` with every edge multiplied by `scale`, then `set_asset_progress` for the rest, then `complete_job` |
 | Trunk | `complete_batch` → `promote_batch` → `dataset_stats` |
 | Release | `publish_release`, `list_releases`, `verify_release` |
-| Export | `list_formats` → `export_release(format="dummy", dest=…)` - a directory, not an archive; a `format` addresses no trainer, so this is the plain-format call and the Recipe row below is the same release addressed by `target` |
+| Export | `list_formats` → `export_release(format="coco", dest=…)` - a directory, not an archive; a `format` addresses no trainer, so this is the plain-format call and the Recipe row below is the same release addressed by `target` |
 | Recipe | `create_preprocessing_recipe`, `list_preprocessing_recipes`, then `export_release(target="yolo11", recipe="yolo-640", allow_lossy=True, dest=…)` - the result's `preprocessing` names the recipe under its hash and maps the train fold's `-aug1` variant to its source, and both files are on disk |
 | Refusal | `publish_release` on the same tag → a **result** carrying an error envelope, `retry_with` null |
 

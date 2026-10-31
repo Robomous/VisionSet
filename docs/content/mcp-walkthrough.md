@@ -193,8 +193,8 @@ classes exist is a question for `get_schema`.
 ```
 publish_release project=... tag="v1.0" split={"train":0.5,"val":0.25,"test":0.25,"seed":7}
 verify_release  project=... tag="v1.0"  ->  {"ok": true, "checked": 2, ...}
-list_formats                            ->  {"items": [{"name": "dummy", "lossy": false}]}
-export_release  project=... tag="v1.0" format="dummy" dest="/abs/out"
+list_formats                            ->  {"items": [{"name": "coco", "lossy": false}, ...]}
+export_release  project=... tag="v1.0" format="coco" dest="/abs/out"
 ```
 
 A release is immutable and its manifest is a pure function of content, so publishing an unchanged
@@ -203,8 +203,7 @@ the manifest names - it does not consult an index, because an index agreeing wit
 nothing.
 
 `list_formats` exists because the installed set is a property of *this* installation, not of the
-API: `dummy` writes nothing, so a `file_count` of 0 is an
-export that ran. `export_release` takes a **local `dest`**, not an archive: an agent runs beside the
+API. `export_release` takes a **local `dest`**, not an archive: an agent runs beside the
 workspace and has a filesystem, and a zip travelling base64 through a JSON-RPC message is a token
 bill nobody should pay.
 
@@ -361,10 +360,8 @@ tools; it does mean a generated clip is a poor instrument for measuring a cycle 
 labelled data, which is why the labelling half was measured separately against a target the agent
 could actually see.
 
-**`allow_lossy` was never exercised by an agent.** At the time of this transcript `dummy` was the
-only installed exporter and it is
-not lossy, and installing a second one for the run would have changed the surface under test. It
-stays covered by `tests/mcp/test_release_tools.py`.
+**`allow_lossy` was never exercised by an agent.** The transcript exports through `coco`, which
+is not lossy, so the consent gate never fired. It stays covered by `tests/mcp/test_release_tools.py`.
 
 **Twelve runs is twelve runs.** Every number above is a small sample against two models on one day.
 The failures are the durable part - a thing that went wrong once will go wrong again - and the

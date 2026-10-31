@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
-from typing import Final
 from uuid import UUID
 
 from pydantic import JsonValue
@@ -49,19 +48,13 @@ from visionset.kernel.domain import (
     export_job_payload,
 )
 from visionset.kernel.ports import ProgressReporter, resolve_target
-from visionset.kernel.services import ReleaseService
+from visionset.kernel.services import EXPORTS_DIRNAME, ReleaseService
 from visionset.preprocessing import registry as preprocessing_registry
 
 JOB_TYPE = EXPORT_JOB_TYPE
 """This handler's type, taken from the domain: a recipe reads its usage off these jobs."""
 
 HANDLER = register(HandlerRef(type=JOB_TYPE, func=f"{__name__}:run", idempotent=True))
-
-#: Where an export lands, under the workspace root. A sibling of ``uploads/`` and
-#: server-owned in the same way: the kernel writes neither, and
-#: ``WorkspaceService.open`` tolerates both because it only ever refuses a
-#: *non-empty* directory at ``init``.
-EXPORTS_DIRNAME: Final = "exports"
 
 
 def payload_for(
@@ -145,6 +138,7 @@ def run(
         exporter,
         destination,
         allow_lossy=allow_lossy,
+        owned_by_workspace=True,
         target=target,
         recipe=spec,
         recipe_name=recipe_name,

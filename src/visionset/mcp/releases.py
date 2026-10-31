@@ -260,6 +260,15 @@ def export_release(
             )
         ),
     ] = False,
+    allow_non_empty: Annotated[
+        StrictBool,
+        Field(
+            description=(
+                "Must be true to write into a directory that already holds files; "
+                "they are kept and counted with this export's."
+            )
+        ),
+    ] = False,
     recipe: RecipeRef = None,
 ) -> dict[str, Any]:
     """Write a release to a local directory, for a target or in one of the installed formats.
@@ -274,10 +283,17 @@ def export_release(
     a task for, and the report names the target. A format addresses no trainer.
     Both or neither is refused.
 
-    `dest` is created if it does not exist and is **not emptied first**, so
-    `file_count` and `total_bytes` describe the directory afterwards, which
-    equals what this run wrote only when the directory was fresh. Point separate
-    exports at separate directories.
+    `dest` must be an absolute path outside the workspace, and either missing or
+    an empty directory; it is created if missing. Anything else is refused with
+    `EXPORT_DESTINATION_REFUSED` — a relative or `~` path, the workspace or a
+    directory inside or above it, a file, or a directory that cannot be created.
+    A directory that already holds files is refused with
+    `EXPORT_DESTINATION_NOT_EMPTY` unless `allow_non_empty=true`, and is never
+    emptied: its files are then counted in `file_count` and `total_bytes`.
+
+    Every image the release names is checked against its content hash before
+    anything is written; a missing or altered one refuses the export with
+    `EXPORT_SOURCE_UNREADABLE` — `verify_release` says which.
 
     A format that cannot express everything the release holds — one that carries
     boxes but not polygons, say — refuses until you pass `allow_lossy=true`. That
@@ -302,12 +318,6 @@ def export_release(
     without a split, and a step refuses a geometry it cannot move — call
     `check_export` with the same `recipe` to find out first.
     """
-    destination = Path(dest)
-    # An exporter writes into `dest` and creates it if missing, so a path that
-    # exists as a *file* is the one shape that cannot work and would surface as a
-    # bare OSError from inside a plugin rather than as a refusal.
-    if destination.exists() and not destination.is_dir():
-        return refused(f"dest must be a directory, and {dest} is a file")
     if (target is None) == (format is None):
         return refused("give exactly one of target and format")
 
@@ -322,8 +332,9 @@ def export_release(
         result = ReleaseService(workspace).export(
             release.id,
             plugin,
-            destination,
+            Path(dest),
             allow_lossy=allow_lossy,
+            allow_non_empty=allow_non_empty,
             target=addressed,
             recipe=spec,
             recipe_name=recipe,

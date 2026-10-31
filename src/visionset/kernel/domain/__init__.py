@@ -237,6 +237,7 @@ from visionset.kernel.domain.release import (
     assign_split,
     canonical_bytes,
     sha256_hex,
+    sha256_hex_of_stream,
 )
 from visionset.kernel.domain.schema import (
     AnnotationSchema,
@@ -602,4 +603,5 @@ __all__ = [
     "require_state",
     "scaled_dimension",
     "sha256_hex",
+    "sha256_hex_of_stream",
 ]

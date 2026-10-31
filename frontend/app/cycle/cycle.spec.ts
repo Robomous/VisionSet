@@ -604,11 +604,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * prompt are gigabytes and one of them is gated, so no scenario could fetch
      * one on a runner.
      *
-     * `visionset/stub-segmenter` is the shipped no-op that closes it — the
-     * `dummy` exporter's decision, which this same walk already exports
-     * through. Every hop below is the product's own: the form, the download
-     * action, the connection's lifecycle. Only the thing at the far end
-     * predicts nothing.
+     * `visionset/stub-segmenter` is the shipped no-op that closes it. Every
+     * hop below is the product's own: the form, the download action, the
+     * connection's lifecycle. Only the thing at the far end predicts nothing.
      */
     await page.getByTestId("rail-models").click();
     await expect(page.getByTestId("models-screen")).toBeVisible();

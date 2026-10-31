@@ -22,9 +22,9 @@ a format is lossy is declared by the format, once, by whoever knows what it can
 express — not asked per release, which would give a different answer as the data
 drifts.
 
-The destination is the caller's. It is created if missing and **never emptied**,
-so a second export into the same directory leaves the first run's files there and
-the counts describe the directory afterwards rather than this run alone.
+The destination is the caller's. It is created if missing and **never emptied**;
+one that already holds files is refused unless ``--allow-non-empty``, and the
+counts then describe the directory afterwards rather than this run alone.
 
 **``--check`` answers the question without committing to it.** Without it the
 only way to find out what an export would cost at a terminal is to attempt one
@@ -95,7 +95,10 @@ def export(
             "--out",
             "-o",
             file_okay=False,
-            help="Where to write. Created if missing; never emptied. Not used by --check.",
+            help=(
+                "Where to write: an empty or missing directory outside the workspace. "
+                "Created if missing; never emptied. Not used by --check."
+            ),
         ),
     ] = None,
     check: Annotated[
@@ -110,6 +113,13 @@ def export(
         typer.Option(
             "--allow-lossy",
             help="Accept a format that cannot carry everything the release holds.",
+        ),
+    ] = False,
+    allow_non_empty: Annotated[
+        bool,
+        typer.Option(
+            "--allow-non-empty",
+            help="Write into an --out that already holds files, keeping them.",
         ),
     ] = False,
     recipe: Annotated[
@@ -186,8 +196,9 @@ def export(
         result = ReleaseService(service).export(
             found.id,
             plugin,
-            out,
+            out.expanduser().absolute(),
             allow_lossy=allow_lossy,
+            allow_non_empty=allow_non_empty,
             target=addressed,
             recipe=spec,
             recipe_name=recipe,

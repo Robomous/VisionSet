@@ -37,7 +37,7 @@ visionset job pre-label JOB_ID CONNECTION [--minimum-confidence FLOAT] [--replac
 visionset release publish --tag T --project P [--split TRAIN,VAL,TEST [--seed N]]
 visionset release list --project P
 visionset release verify TAG --project P
-visionset export --project P --release TAG --target T|--format F --out DIR [--allow-lossy] [--recipe NAME]
+visionset export --project P --release TAG --target T|--format F --out DIR [--allow-lossy] [--allow-non-empty] [--recipe NAME]
 visionset export --project P --release TAG --target T|--format F --check   # writes nothing; exit 1 = it loses something
 visionset recipe create NAME --project P --spec FILE | --resize letterbox:640x640 --augment hflip --variants 2 --target T
 visionset recipe list|show NAME|update NAME|delete NAME --project P
@@ -78,7 +78,7 @@ visionset batch complete "$BATCH" --promote
 
 visionset release publish --tag v1.0 --project road-signs --split 0.7,0.15,0.15
 visionset release verify v1.0 --project road-signs && \
-  visionset export --project road-signs --release v1.0 --format dummy --out ./out
+  visionset export --project road-signs --release v1.0 --format coco --out ./out
 ```
 
 [`examples/cli_end_to_end.sh`](../../examples/cli_end_to_end.sh) is that walk with its assertions
@@ -470,6 +470,11 @@ trainer. Exactly one of the two: both or neither is a usage error at exit 2. `fo
 which formats are installed and `target list` which models can be trained on their output, each
 with the format it resolves to; both take `--json`, whose shape is the wire's. `--format yolo`, the
 former name of `ultralytics`, still works for one release and prints a deprecation line on stderr.
+
+`--out` is resolved against the working directory and must lie outside the workspace; a directory
+that already holds files is refused unless `--allow-non-empty`, and a release whose image blobs no
+longer match their hashes is refused before anything is written. See
+[releases.md](releases.md#the-destination-is-the-callers) for the full rules.
 
 A release tag is **case-sensitive** where a project name is not: a tag is an identifier, not a label
 somebody reads. `--allow-lossy` is a third gate word beside `--yes` and `--allow-destructive`, never

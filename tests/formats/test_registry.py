@@ -61,7 +61,7 @@ class _AnExporter:
         return None
 
 
-def test_the_shipped_dummy_exporter_is_discovered() -> None:
+def test_the_test_only_dummy_exporter_is_discovered() -> None:
     assert "dummy" in exporters()
 
 

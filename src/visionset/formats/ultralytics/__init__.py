@@ -170,13 +170,17 @@ class UltralyticsExporter:
 
     #: Boxes and polygons arrive intact — a box in a segment export is its own
     #: four corners, which loses nothing — and a tag arrives intact in the class
-    #: tree a tags-only release is written as.
+    #: tree a tags-only release is written as (see ``solitary_geometries``).
     supported_geometries = _EVERYTHING
 
     #: Nothing is written in a reduced form: a polygon in this dialect is
     #: always written as its vertices, because its presence is what selects
     #: the segment layout.
     degraded_geometries: frozenset[GeometryType] = frozenset()
+
+    #: A tag is written only as the class tree of a tags-only export; beside a
+    #: box or polygon it has no layout and is dropped, and the report says so.
+    solitary_geometries = frozenset({GeometryType.CLASSIFICATION_TAG})
 
     #: A YOLO dataset is a directory of pictures.
     supported_modalities = frozenset({"image"})

@@ -109,7 +109,7 @@ def test_the_same_request_without_a_token_is_refused(summary: Any) -> None:
 
 
 def test_the_export_produced_an_archive(summary: Any) -> None:
-    """`dummy` writes no files, so the zip is empty — but it is still a zip."""
+    """A real format, so the archive holds the export."""
     assert summary.export_bytes > 0
 
 

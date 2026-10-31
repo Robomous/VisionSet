@@ -63,7 +63,7 @@ error envelope, and the three gate words.
 | `list_formats` | — | List the export formats installed in this VisionSet, and whether each is lossy. |
 | `list_export_targets` | — | List the models a release can be exported for, each with the format that writes for it. |
 | `check_export` | `project`, `tag`, `target`?, `format`?, `recipe`? | Say what a target or a format would drop from a release, without writing anything. |
-| `export_release` | `project`, `tag`, `dest`, `target`?, `format`?, `allow_lossy`?, `recipe`? | Write a release to a local directory, for a target or in one of the installed formats. |
+| `export_release` | `project`, `tag`, `dest`, `target`?, `format`?, `allow_lossy`?, `allow_non_empty`?, `recipe`? | Write a release to a local directory, for a target or in one of the installed formats. |
 | `list_preprocessing_recipes` | `project` | List a project's pre-processing recipes, oldest first, each with its whole spec. |
 | `get_preprocessing_recipe` | `project`, `name` | Read one pre-processing recipe by name, with its whole spec. |
 | `create_preprocessing_recipe` | `project`, `name`, `spec` | Store a named pre-processing recipe on a project, for `export_release` to apply. |

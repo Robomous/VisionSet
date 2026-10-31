@@ -58,6 +58,7 @@ from pydantic import ValidationError
 from visionset.kernel import (
     ConfirmationRequired,
     DestructiveSchemaChange,
+    ExportDestinationNotEmpty,
     LossyExportNotConsented,
     NotAWorkspace,
     ReleaseContentWouldViolateSchema,
@@ -82,6 +83,7 @@ RETRY_WITH: Final[dict[type[BaseException], str]] = {
     ConfirmationRequired: "confirm",
     DestructiveSchemaChange: "allow_destructive",
     LossyExportNotConsented: "allow_lossy",
+    ExportDestinationNotEmpty: "allow_non_empty",
 }
 """The parameter that turns this refusal into the same call, succeeding.
 

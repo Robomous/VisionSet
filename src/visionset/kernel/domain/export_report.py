@@ -69,8 +69,7 @@ class ExportResult(BaseModel):
     after the plugin returns rather than reported by the plugin itself: an
     exporter that miscounts its own output would then be trusted about it, and
     the whole point of the number is to be checkable. It also means a plugin
-    that writes nothing — ``DummyExporter`` does exactly that — reports zero
-    rather than lying.
+    that writes nothing reports zero rather than lying.
 
     The four source/augmented counts separate what the release held from what
     a recipe added. ``source_file_count`` and ``augmented_file_count`` count
