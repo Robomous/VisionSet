@@ -1617,7 +1617,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 
     await page.getByTestId("export-submit").click();
     const consent = page.getByTestId("lossy-consent");
-    await expect(consent).toContainText("1 polyline would be dropped.");
+    await expect(consent).toContainText("1 polyline would be dropped");
     await consent.getByTestId("lossy-checkbox").check();
 
     const [download] = await Promise.all([
