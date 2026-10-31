@@ -47,6 +47,7 @@ from visionset.kernel.domain import (
     VideoMetadata,
     VideoProvenance,
     canonical_ranges,
+    derived_name,
     expected_frames,
     normalize_name,
 )
@@ -943,7 +944,11 @@ class VideoImportService:
             return uow.batches.add(
                 Batch(
                     project_id=session.project_id,
-                    name=normalize_name(session.batch_name or source.name, what="batch"),
+                    name=(
+                        normalize_name(session.batch_name, what="batch")
+                        if session.batch_name
+                        else derived_name(source.name, what="batch")
+                    ),
                     asset_ids=asset_ids,
                 )
             )

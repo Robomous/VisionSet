@@ -8,6 +8,7 @@ is `tests/kernel/test_inference_connections.py`'s subject.
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
 import pytest
@@ -1646,5 +1647,5 @@ def test_an_endpoint_that_does_not_answer_is_a_502_naming_it(client: TestClient)
     response = client.post(f"/inference/connections/{made['id']}/test-endpoint")
     assert response.status_code == 502, response.text
     assert response.json()["code"] == "INFERENCE_ENDPOINT_UNAVAILABLE"
-    assert url in response.json()["message"]
+    assert urlsplit(url).netloc in response.json()["message"]
     assert client.get(f"/inference/connections/{made['id']}").json()["capabilities"] == []

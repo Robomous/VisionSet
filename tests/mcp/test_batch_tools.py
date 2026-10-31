@@ -532,6 +532,43 @@ def test_deleting_without_confirming_changes_nothing(
     assert payload(call("get_batch", batch_id=batch_id))["state"] == "draft"
 
 
+def test_a_word_is_not_a_confirmation(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """#969: `confirm` takes a JSON boolean, never a string coerced into one."""
+    _, batch_id = ingested(monkeypatch, tmp_path, count=1)
+
+    assert call_destructive("delete_batch", batch_id=batch_id, confirm="yes").is_error
+
+    assert payload(call("get_batch", batch_id=batch_id))["state"] == "draft"
+
+
+@pytest.mark.parametrize(
+    ("tool", "flag"),
+    [
+        ("approve_batch", "start"),
+        ("complete_batch", "promote"),
+        ("pre_label_batch", "replace_model_labels"),
+        ("pre_label_job", "replace_model_labels"),
+    ],
+)
+def test_a_word_is_not_consent_to_a_side_effect(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, tool: str, flag: str
+) -> None:
+    """A flag that moves state or replaces labels is refused unless it is a JSON boolean."""
+    _, batch_id = ingested(monkeypatch, tmp_path, count=1)
+    target = (
+        {"job_id": str(uuid4()), "connection": str(uuid4())}
+        if tool == "pre_label_job"
+        else {"batch_id": batch_id}
+        | ({"connection": str(uuid4())} if tool == "pre_label_batch" else {})
+    )
+
+    refused = call(tool, **target, **{flag: "yes"})
+
+    assert refused.is_error
+    assert flag in str(refused.content)
+    assert payload(call("get_batch", batch_id=batch_id))["state"] == "draft"
+
+
 def test_a_completed_batch_refuses_and_names_no_flag_that_would_work(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

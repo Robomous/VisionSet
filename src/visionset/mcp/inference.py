@@ -42,7 +42,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from pydantic import Field
+from pydantic import Field, StrictBool
 
 from visionset import wire
 from visionset.inference import (
@@ -73,14 +73,17 @@ def create_inference_connection(
     ],
     device: Annotated[
         str | None,
-        Field(description="Local only. cpu, mps, cuda, or cuda:N for a second GPU."),
+        Field(description="Required for local. cpu, mps, cuda, or cuda:N for a second GPU."),
     ] = None,
     precision: Annotated[
         Precision | None,
-        Field(description="Local only. fp16 needs a cuda device; cpu and mps run in fp32."),
+        Field(description="Required for local. fp16 needs a cuda device; cpu and mps run in fp32."),
     ] = None,
     endpoint_url: Annotated[
-        str | None, Field(description="HTTP only. Where to send predictions.")
+        str | None,
+        Field(
+            description="Required for http. An http(s) URL, no credential in it (credential_env)."
+        ),
     ] = None,
     provider_id: Annotated[
         str | None,
@@ -296,7 +299,7 @@ def test_inference_connection(connection: ConnectionRef) -> dict[str, Any]:
 def delete_inference_connection(
     connection: ConnectionRef,
     confirm: Annotated[
-        bool,
+        StrictBool,
         Field(
             description=(
                 "Must be true to actually delete. False returns a refusal and changes nothing."

@@ -139,7 +139,8 @@ class WorkspaceSchemaMismatch(VisionSetError):
 
 
 class InvalidName(VisionSetError):
-    """A name was empty, or blank once surrounding whitespace was removed."""
+    """A name was blank once surrounding whitespace was removed, too long, held a
+    control character, or — for a release tag — was not a slug."""
 
 
 class ProjectNameTaken(VisionSetError):

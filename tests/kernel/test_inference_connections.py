@@ -864,3 +864,83 @@ def test_changing_the_credential_variable_forgets_nothing(connections) -> None: 
     edited = connections.update(hosted.id, credential_env="ACME_TOKEN")
     assert (edited.model_family, edited.provider_id) == ("point_suggest", "http")
     assert edited.setup_state is ConnectionSetupState.READY
+
+
+# --- write-time rules on the reference and the endpoint (#961) -----------------
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "file:///etc/hosts",
+        "not a url",
+        "javascript:alert(1)",
+        "ftp://example.invalid/",
+        "https://",
+        "https://example.invalid:port/",
+        "http://h\x00",
+    ],
+)
+def test_an_endpoint_that_is_not_an_http_url_is_refused_on_create(
+    connections,  # noqa: ANN001
+    url: str,
+) -> None:
+    with pytest.raises(InferenceConnectionInvalid, match="endpoint"):
+        connections.create("remote", **(HTTP | {"endpoint_url": url}))
+    assert connections.list() == []
+
+
+def test_a_credential_in_the_endpoint_is_refused_and_never_echoed(connections) -> None:  # noqa: ANN001
+    url = "https://someone:not-a-real-secret@example.invalid/predict"
+    with pytest.raises(InferenceConnectionInvalid, match="credential_env") as refusal:
+        connections.create("remote", **(HTTP | {"endpoint_url": url}))
+    assert "not-a-real-secret" not in str(refusal.value)
+
+    made = connections.create("remote", **HTTP)
+    with pytest.raises(InferenceConnectionInvalid) as refusal:
+        connections.update(made.id, endpoint_url=url)
+    assert "not-a-real-secret" not in str(refusal.value)
+    assert connections.get(made.id).endpoint_url == HTTP["endpoint_url"]
+
+
+@pytest.mark.parametrize("revision", ["main", "MAIN", "master", "HEAD", "latest"])
+def test_a_moving_pointer_is_not_a_pinned_revision(connections, revision: str) -> None:  # noqa: ANN001
+    with pytest.raises(InferenceConnectionInvalid, match="moving pointer"):
+        connections.create("local", **(LOCAL | {"model_revision": revision}))
+    made = connections.create("local", **LOCAL)
+    with pytest.raises(InferenceConnectionInvalid, match="moving pointer"):
+        connections.update(made.id, model_revision=revision)
+
+
+def test_a_row_stored_before_the_rules_still_loads_and_can_be_renamed(
+    connections,  # noqa: ANN001
+) -> None:
+    """The rules judge what an edit moves, never what a stored row already holds."""
+    legacy = InferenceConnection(
+        name="legacy",
+        **(HTTP | {"model_revision": "main", "endpoint_url": "not a url"}),
+        setup_state=ConnectionSetupState.READY,
+    )
+    with connections._workspace.unit_of_work() as uow:  # noqa: SLF001 - a pre-rule row
+        uow.inference_connections.add(legacy)
+
+    renamed = connections.update(
+        legacy.id, name="renamed", model_revision="main", endpoint_url="not a url"
+    )
+    assert (renamed.name, renamed.endpoint_url) == ("renamed", "not a url")
+
+
+@pytest.mark.parametrize("name", ["x" * 300, "tab\there"])
+def test_a_name_stored_before_the_rules_does_not_block_another_edit(
+    connections,  # noqa: ANN001
+    name: str,
+) -> None:
+    """The form re-sends the name on every edit; only a *moved* name is judged."""
+    legacy = InferenceConnection(name=name, **LOCAL)
+    with connections._workspace.unit_of_work() as uow:  # noqa: SLF001 - a pre-rule row
+        uow.inference_connections.add(legacy)
+
+    edited = connections.update(legacy.id, name=name, device="mps")
+    assert (edited.name, edited.device) == (name, "mps")
+    with pytest.raises(InvalidName):
+        connections.update(legacy.id, name=name + "\nmore")

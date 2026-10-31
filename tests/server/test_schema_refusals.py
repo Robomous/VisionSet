@@ -140,16 +140,14 @@ def test_the_flag_never_gets_a_labeled_class_removed(
 ) -> None:
     """Pinning the audit's Q2 finding as a contract rather than an observation.
 
-    With the flag the refusal is the orphan one; without it, the flag refusal
-    fires first. Neither publishes anything — which is the half worth asserting,
-    because a client that read only the status would see 409 twice and could not
-    tell that one of them has no way forward.
+    With or without the flag the refusal is the orphan one: asking for a flag
+    that cannot help would be a retry doomed before it is sent (#963). Neither
+    publishes anything.
     """
     response = post_version(client, labeled, a_class("lane"), allow_destructive=allow_destructive)
 
     assert response.status_code == 409
-    expected = "SCHEMA_CHANGE_WOULD_ORPHAN" if allow_destructive else "DESTRUCTIVE_SCHEMA_CHANGE"
-    assert response.json()["code"] == expected
+    assert response.json()["code"] == "SCHEMA_CHANGE_WOULD_ORPHAN"
     assert client.get(f"/projects/{labeled}/schema").json()["version"] == 1
 
 

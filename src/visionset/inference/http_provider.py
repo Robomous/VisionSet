@@ -50,6 +50,7 @@ from pathlib import Path
 from typing import IO, Any, Final, TypeVar
 from urllib import error
 from urllib import request as urllib_request
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from PIL import Image
@@ -70,6 +71,7 @@ from visionset.kernel.domain import (
     SegmentedMask,
     ServedFamily,
     TextPrompt,
+    endpoint_url_problem,
 )
 from visionset.kernel.errors import (
     InferenceConnectionNotRunnable,
@@ -146,12 +148,24 @@ class _RemoteSegmentation(BaseModel):
 
 def _url_of(connection: InferenceConnection) -> str:
     url = connection.endpoint_url or ""
-    if not url.startswith(("http://", "https://")):
-        raise InferenceEndpointUnavailable(
-            f"connection {connection.name!r} names {url!r} as its endpoint, which is not an "
-            "http or https URL; nothing else is ever opened"
-        )
+    # A row stored before the write-time rule can still hold such a URL; the
+    # refusal names the connection and never the URL, which may carry a credential.
+    problem = endpoint_url_problem(url)
+    if problem is not None:
+        raise InferenceEndpointUnavailable(f"connection {connection.name!r}: {problem}")
     return url
+
+
+def _shown(url: str) -> str:
+    """The endpoint's host and port, the only part of its URL a message prints.
+
+    A query string can carry a key that never belonged in the URL, and a
+    refusal is printed, logged and returned on the wire.
+    """
+    try:
+        return urlsplit(url).netloc.rpartition("@")[2] or "(unparseable URL)"
+    except ValueError:
+        return "(unparseable URL)"
 
 
 class _NoForeignRedirects(urllib_request.HTTPRedirectHandler):
@@ -221,23 +235,24 @@ def _exchange(
         except (http.client.HTTPException, OSError):
             detail = ""
         raise InferenceEndpointUnavailable(
-            f"endpoint {url} answered {exc.code}" + (f": {detail}" if detail else "")
+            f"endpoint {_shown(url)} answered {exc.code}" + (f": {detail}" if detail else "")
         ) from exc
     except (error.URLError, TimeoutError, OSError, http.client.HTTPException, ValueError) as exc:
         reason = exc.reason if isinstance(exc, error.URLError) else exc
         raise InferenceEndpointUnavailable(
-            f"endpoint {url} could not be reached: {reason}"
+            f"endpoint {_shown(url)} could not be reached: {reason}"
         ) from exc
     if len(raw) > MAX_RESPONSE_BYTES:
         raise InferenceEndpointUnavailable(
-            f"endpoint {url} answered more than {MAX_RESPONSE_BYTES} bytes; an answer is never "
+            f"endpoint {_shown(url)} answered more than {MAX_RESPONSE_BYTES} bytes; "
+            "an answer is never "
             "that large"
         )
     try:
         return json.loads(raw)
     except ValueError as exc:
         raise InferenceEndpointUnavailable(
-            f"endpoint {url} answered something that is not JSON"
+            f"endpoint {_shown(url)} answered something that is not JSON"
         ) from exc
 
 
@@ -262,7 +277,8 @@ def describe(connection: InferenceConnection) -> EndpointAnswer:
         described = _Description.model_validate(body)
     except ValidationError as exc:
         raise InferenceEndpointUnavailable(
-            f"endpoint {url} described itself in a shape this build cannot read — it must answer "
+            f"endpoint {_shown(url)} described itself in a shape this build cannot read — "
+            "it must answer "
             f'{{"model_ref": …, "capability": …}} ({_first_reason(exc)})'
         ) from exc
     return EndpointAnswer(model_ref=described.model_ref, capability=described.capability)
@@ -304,7 +320,9 @@ class _Remote:
         )
         answers = body.get("answers") if isinstance(body, dict) else None
         if not isinstance(answers, list):
-            raise InferenceEndpointUnavailable(f'endpoint {url} answered without an "answers" list')
+            raise InferenceEndpointUnavailable(
+                f'endpoint {_shown(url)} answered without an "answers" list'
+            )
         return url, answers
 
 
@@ -316,7 +334,7 @@ def _require_one_per_target(
     its symptom."""
     if len(parsed) != len(targets):
         raise InferenceEndpointUnavailable(
-            f"endpoint {url} answered for {len(parsed)} of {len(targets)} targets"
+            f"endpoint {_shown(url)} answered for {len(parsed)} of {len(targets)} targets"
         )
 
 
@@ -325,7 +343,7 @@ def _not_the_targets_asked(url: str) -> InferenceEndpointUnavailable:
     raised from both the segmenter's per-item check and the shared reordering,
     so there is one wording rather than two that could drift apart."""
     return InferenceEndpointUnavailable(
-        f"endpoint {url} answered for targets it was not asked about, or missed some it was"
+        f"endpoint {_shown(url)} answered for targets it was not asked about, or missed some it was"
     )
 
 
@@ -366,7 +384,7 @@ class RemoteDetector(_Remote):
                 remote = _RemotePrediction.model_validate(raw)
             except ValidationError as exc:
                 raise InferenceEndpointUnavailable(
-                    f"endpoint {url} answered a prediction this build cannot read "
+                    f"endpoint {_shown(url)} answered a prediction this build cannot read "
                     f"({_first_reason(exc)})"
                 ) from exc
             parsed.append(
@@ -401,7 +419,7 @@ class RemoteSegmenter(_Remote):
                 remote = _RemoteSegmentation.model_validate(raw)
             except ValidationError as exc:
                 raise InferenceEndpointUnavailable(
-                    f"endpoint {url} answered a segmentation this build cannot read "
+                    f"endpoint {_shown(url)} answered a segmentation this build cannot read "
                     f"({_first_reason(exc)})"
                 ) from exc
             size = sizes.get(remote.asset_id)
@@ -438,7 +456,8 @@ def _rows_of(encoded: str, *, url: str, size: tuple[int, int]) -> list[bytes]:
             width, height = image.size
             if (width, height) != size:
                 raise InferenceEndpointUnavailable(
-                    f"endpoint {url} answered a {width} by {height} mask for a {size[0]} by "
+                    f"endpoint {_shown(url)} answered a {width} by {height} mask "
+                    f"for a {size[0]} by "
                     f"{size[1]} asset; a mask is the asset's own size"
                 )
             lit = image.convert("L").point(lambda value: 1 if value else 0)
@@ -447,7 +466,7 @@ def _rows_of(encoded: str, *, url: str, size: tuple[int, int]) -> list[bytes]:
         raise
     except Exception as exc:  # anything Pillow or base64 raises is one answer
         raise InferenceEndpointUnavailable(
-            f"endpoint {url} answered a mask this build cannot decode; a mask is a base64 "
+            f"endpoint {_shown(url)} answered a mask this build cannot decode; a mask is a base64 "
             f"PNG ({exc})"
         ) from exc
     return [flat[row * width : (row + 1) * width] for row in range(height)]
@@ -494,7 +513,8 @@ def ask_endpoint(workspace: WorkspaceService, connection_id: UUID) -> InferenceC
     answer = describe(connection)
     if answer.capability not in HTTP_FAMILIES:
         raise InferenceEndpointUnavailable(
-            f"endpoint {connection.endpoint_url} declares it answers {answer.capability!r}, which "
+            f"endpoint {_shown(connection.endpoint_url or '')} declares it answers "
+            f"{answer.capability!r}, which "
             f"this build does not know; it knows {', '.join(sorted(HTTP_FAMILIES))}"
         )
     return connections.record_endpoint_answer(

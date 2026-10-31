@@ -955,6 +955,19 @@ def test_the_repin_refusal_counts_only_what_it_would_orphan(tmp_path: Path) -> N
     fixture.close()
 
 
+def test_a_certain_orphan_refusal_comes_before_the_missing_flag(tmp_path: Path) -> None:
+    """#963, batch scope: the first refusal is the final one when labels are at stake."""
+    fixture = Fixture(tmp_path)
+    fixture.schemas.create_version(fixture.project.id, [SIGN, _CAR_BOTH])
+    batch_id = fixture.in_state(BatchState.IN_ANNOTATION)
+    fixture.schemas.create_version(fixture.project.id, [SIGN, _CAR_BOX], allow_destructive=True)
+    _annotate(fixture, fixture.assets[0], "car", version=2, geometry=_A_POLYGON)
+
+    with pytest.raises(SchemaChangeWouldOrphan, match="'car' \\(1\\)"):
+        fixture.batches.repin(batch_id)
+    fixture.close()
+
+
 def test_a_label_in_another_batch_does_not_block_this_one(tmp_path: Path) -> None:
     """The scope is what makes this different from ``SchemaService``'s refusal.
 

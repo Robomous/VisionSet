@@ -60,8 +60,10 @@ export const CLASS_FILL_OPACITY = 0.2;
  * re-implements; this only changes the notation.
  *
  * `null` for anything else, and that is honest rather than lazy: the kernel
- * accepts any CSS spelling in `LabelClass.color`, so a schema authored elsewhere
- * may legitimately hold `rgb(255 0 0)` or `rebeccapurple`. Guessing a hex for
+ * accepts only hex (`#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`) in a newly
+ * published `LabelClass.color`, but a version stored before that rule may still
+ * hold `rgb(255 0 0)` or `rebeccapurple`, and `#rgba` is not what the input
+ * takes either. Guessing a hex for
  * those would mean shipping a CSS colour parser to fill in one input. A caller
  * shows its own neutral and the dot beside it still shows the truth.
  */

@@ -711,14 +711,16 @@ class BatchService:
     ) -> None:
         """Let a narrowing re-pin through only if it was asked for.
 
-        ``SchemaService._refuse_narrowing``'s sibling, and split the same way:
-        intent is asked here, facts on disk are asked by the write itself. What
-        differs between the two is only the scope of the second question — there
-        it is every annotation in the project, here only the ones written into
-        this batch, since a re-pin cannot orphan a label that is not judged by
-        this pin.
+        ``SchemaService._refuse_narrowing``'s sibling, and ordered the same way:
+        a certain orphan refusal is reported before the missing flag, and the
+        write's guard stays authoritative. What differs between the two is only
+        the scope of the orphan question — there it is every annotation in the
+        project, here only the ones written into this batch, since a re-pin
+        cannot orphan a label that is not judged by this pin.
         """
         if not allow_destructive:
+            if _annotated_classes(uow, batch, diff.guards):
+                self._refuse_orphaning(uow, batch, diff.guards)
             raise DestructiveSchemaChange(
                 f"re-pinning batch {batch.name!r} onto the active schema version narrows what "
                 f"it allows ({diff.describe(ChangeKind.DESTRUCTIVE)}); pass "
@@ -731,9 +733,10 @@ class BatchService:
     ) -> NoReturn:
         """Name the classes the guarded re-pin refused over, and their counts.
 
-        ``SchemaService._refuse_orphaning`` over one batch's labels — see it for
-        why the counting happens after the guard rather than before it, and why
-        an empty count still refuses.
+        ``SchemaService._refuse_orphaning`` over one batch's labels, and reached
+        the same two ways — after the guarded re-pin wrote nothing, or from
+        ``_refuse_narrowing`` before any flag was given. See it for why an empty
+        count still refuses.
         """
         annotated = _annotated_classes(uow, batch, guarded)
         affected = sorted(annotated.keys()) or sorted({guard.label_class for guard in guarded})

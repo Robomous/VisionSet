@@ -374,8 +374,11 @@ describes. `SchemaChangeWouldOrphan` is deliberately **not** a subclass of
 `DestructiveSchemaChange`: a caller that caught the base class and retried with the flag
 would loop forever.
 
-The order matters - the missing flag is reported before the labels are counted. The first
-refusal is about intent, the second about facts on disk, and they have different fixes.
+The order matters - the labels are counted before the missing flag is reported. A refusal
+that asks for `allow_destructive` is never followed by a certain `SchemaChangeWouldOrphan`
+once the flag is passed: when labels already depend on what the change drops, the first
+refusal is the orphan one, and it offers no flag. The guard inside the write stays the
+authoritative check, so a label written between the two calls still refuses the retry.
 Only classes named by a *destructive* change are checked, so labels under a class the
 version merely widened never block anything, and neither do labels in another project.
 
@@ -422,6 +425,13 @@ attribute cannot be constructed at all and never reaches a service:
 Rules that need the *whole* version - duplicate class names, an unimplemented geometry -
 are `SchemaService`'s, and both raise `InvalidSchema` (`UnsupportedGeometry` is a subclass,
 so one `except` covers every way a version can be malformed).
+
+A class `color` is a hex value - `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa` - or absent. It is
+checked by `SchemaService` when a version is published, not by `LabelClass`, and a colour
+a class already carries in the active version passes unchanged - so a version stored before
+the rule still loads and can still be widened. The exemption is keyed on the pair of class name
+and colour, so renaming a class checks its colour again. Any other colour is refused with
+`InvalidSchema`.
 
 What is validated here is attribute **definitions**. Attribute **values** are validated
 somewhere else and at a different time: at annotation write time, by `AnnotationService`,

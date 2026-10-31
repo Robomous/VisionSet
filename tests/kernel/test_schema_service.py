@@ -395,6 +395,43 @@ def test_every_implemented_geometry_is_accepted(tmp_path: Path, geometry: Geomet
     workspace.close()
 
 
+@pytest.mark.parametrize("color", ["notacolor", "red", "#12", "#12345", "3355ff", "#33 55ff"])
+def test_a_color_that_is_not_hex_is_refused(tmp_path: Path, color: str) -> None:
+    """#969, checked on publish rather than on ``LabelClass`` so stored versions still load."""
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("signs")
+    with pytest.raises(InvalidSchema, match="hex"):
+        schemas.create_version(project.id, [SIGN.model_copy(update={"color": color})])
+    assert schemas.list_versions(project.id) == []
+    workspace.close()
+
+
+def test_a_color_stored_before_the_rule_still_loads_and_can_be_widened(tmp_path: Path) -> None:
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("signs")
+    legacy = SIGN.model_copy(update={"color": "notacolor"})
+    with workspace.unit_of_work() as uow:
+        uow.add_schema_version_unless_annotated(
+            AnnotationSchema(
+                project_id=project.id, version=1, classes=(legacy,), created_at=datetime.now(UTC)
+            ),
+            frozenset(),
+        )
+
+    assert schemas.get_active(project.id).classes == (legacy,)
+    assert schemas.create_version(project.id, [legacy, LANE]).published.version == 2
+    workspace.close()
+
+
+@pytest.mark.parametrize("color", ["#f00", "#ff0000", "#FF0000", "#ff000080", "#f008"])
+def test_a_hex_color_is_accepted(tmp_path: Path, color: str) -> None:
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("signs")
+    published = schemas.create_version(project.id, [SIGN.model_copy(update={"color": color})])
+    assert published.published.classes[0].color == color
+    workspace.close()
+
+
 def test_an_unsupported_geometry_is_reported_as_an_invalid_schema(tmp_path: Path) -> None:
     """One ``except InvalidSchema`` covers every way a version can be malformed."""
     workspace, projects, schemas = _services(tmp_path)
@@ -751,6 +788,23 @@ def test_a_required_attribute_added_is_refused_whatever_shape_was_drawn(tmp_path
     workspace.close()
 
 
+def test_a_certain_orphan_refusal_comes_first_without_the_flag(tmp_path: Path) -> None:
+    """#963: asking for ``allow_destructive`` only to be refused again with it is
+    the wasted retry the flag's refusal exists to prevent.
+    """
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("signs")
+    schemas.create_version(project.id, [_CAR_BOTH])
+    _annotate(workspace, project.id, "car", _LANE_SHAPE)
+
+    demanding = _CAR_BOTH.model_copy(
+        update={"attributes": (Attribute(name="occluded", kind="boolean", required=True),)}
+    )
+    with pytest.raises(SchemaChangeWouldOrphan, match="'car' \\(1\\)"):
+        schemas.create_version(project.id, [demanding])
+    workspace.close()
+
+
 #: A class with two optional attributes, for the gate that asks which labels set them.
 _VEHICLE = LabelClass(
     name="vehicle",
@@ -916,14 +970,18 @@ def test_labels_in_another_project_do_not_block_the_change(tmp_path: Path) -> No
     workspace.close()
 
 
-def test_the_missing_flag_is_reported_before_the_labels_are_counted(tmp_path: Path) -> None:
-    """Intent first, facts on disk second — the two refusals have different fixes."""
+def test_the_labels_are_counted_before_the_missing_flag_is_reported(tmp_path: Path) -> None:
+    """A flag that could not help is never asked for (#963); with nothing labelled,
+    the same narrowing still asks for it."""
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
     schemas.create_version(project.id, [SIGN, LANE])
-    _annotate(workspace, project.id, "lane", _LANE_SHAPE)
 
     with pytest.raises(DestructiveSchemaChange):
+        schemas.create_version(project.id, [SIGN])
+
+    _annotate(workspace, project.id, "lane", _LANE_SHAPE)
+    with pytest.raises(SchemaChangeWouldOrphan, match="'lane' \\(1\\)"):
         schemas.create_version(project.id, [SIGN])
     workspace.close()
 

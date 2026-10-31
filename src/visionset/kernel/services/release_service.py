@@ -82,7 +82,7 @@ from visionset.kernel.domain import (
     TransformedView,
     assign_split,
     canonical_bytes,
-    normalize_name,
+    normalize_release_tag,
     plugin_manifest,
     recipe_hash,
     sha256_hex,
@@ -182,7 +182,7 @@ class ReleaseService:
                 coordinate, which canonical JSON cannot express.
             WorkspaceCorrupt: the trunk holds an asset that is not stored.
         """
-        cleaned = normalize_name(tag, what="release tag")
+        cleaned = normalize_release_tag(tag)
         try:
             with self._workspace.unit_of_work() as uow:
                 dataset = self._datasets.require_dataset(uow, dataset_id)
@@ -287,7 +287,7 @@ class ReleaseService:
             InvalidName: the tag is blank once stripped.
             ReleaseNotFound: that dataset has no release under that tag.
         """
-        cleaned = normalize_name(tag, what="release tag")
+        cleaned = normalize_release_tag(tag, lookup=True)
         with self._workspace.unit_of_work() as uow:
             dataset = self._datasets.require_dataset(uow, dataset_id)
             for release in uow.releases.list(dataset.id):

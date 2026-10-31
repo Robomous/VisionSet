@@ -847,7 +847,7 @@ carries the identical body under `detail.compatibility`.
 | `ReleaseNotFound` | No release with that id in this workspace. |
 | `SchemaNotFound` | The project has no schema, so there is no version to pin. Checked before emptiness. |
 | `EmptyRelease` | The dataset has no assets. A release of nothing is an artifact nobody can train on. Zero *annotations* is fine - unlabeled images are legitimate training data. |
-| `InvalidName` | The tag is blank once stripped. Tags go through `normalize_name` like every other name. |
+| `InvalidName` | The tag is blank once stripped, longer than 128 characters, or not a slug: it must start with a letter or digit and hold only letters, digits, `.`, `_`, `+` and `-`, because a tag can become a path component in an export. Checked on publish only; looking up a tag never refuses it for its shape. Tags stay case-sensitive. |
 | `ReleaseTagTaken` | This dataset already has a release under that tag. **Case-sensitive**: a tag is an identifier like a git tag, so `v1.0` and `V1.0` are two releases. Enforced by a pre-check and by a unique index, the second so a race cannot slip past the first. |
 | `NoSplitRecipe` | `assignment` was asked of a release published without one. Not an error in the release: no recipe means one undivided set, and inventing an all-train answer would be indistinguishable from a real one. |
 | `UnserializableManifest` | An annotation carries a NaN or infinite coordinate. `Geometry` accepts any float, so such a label can be stored; canonical JSON cannot express it, and writing `null` or the bare token `NaN` would lose data or produce a document no other tool can parse. |

@@ -305,12 +305,18 @@ Normalization, and where each layer applies:
 | case-insensitive comparison (Unicode `casefold`) | service |
 | case-insensitive comparison (ASCII, `COLLATE NOCASE`) | the index |
 | blank name rejected (`InvalidName`) | service |
+| longer than 255 characters, or holding a control character, tab or line break, rejected (`InvalidName`) | service, on write only |
 
 NFC matters concretely: macOS filesystems hand out decomposed strings, so `café` typed in
 Finder and `café` typed in a terminal are different byte sequences that must not become two
 projects. Internal whitespace is left alone - `road signs` and `road  signs` are distinct,
-because collapsing runs of spaces would rewrite the user's input for no invariant. There is
-no length limit.
+because collapsing runs of spaces would rewrite the user's input for no invariant.
+
+The length and control-character rules hold for every name the kernel stores - project,
+batch, source, token, inference connection, assignee - and apply when a name is written, never
+when a stored one is read or looked up, so a name stored before the rule existed still loads
+and still resolves. 255 is the common ceiling on a filename and the wire's own limit on a
+name; a control character or line break would split a row of every listing that prints it.
 
 The two comparison rules differ in reach (Unicode vs ASCII), and that split is deliberate:
 the index catches the collision users actually make at the storage layer, while the service
