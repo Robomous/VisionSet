@@ -1502,14 +1502,16 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByRole("option", { name: /YOLO11/ }).click();
     await expect(page.getByTestId("lossy-hint")).toContainText("YOLO11");
 
-    // The release holds a `centerline` polyline and YOLO11 takes boxes, tags
-    // and polygons, so the launch is refused with the report and the banner
+    // The release holds a `centerline` polyline and a tag beside its boxes;
+    // YOLO11 writes a tag only when nothing else is exported, so both are
+    // dropped and the launch is refused with the report and the banner
     // says what the target accepts and what this release loses — the kernel's
     // counts, in the kernel's order, not the browser's.
     await page.getByTestId("export-submit").click();
     const consent = page.getByTestId("lossy-consent");
     await expect(consent).toContainText("YOLO11 accepts boxes, tags and polygons");
-    await expect(consent).toContainText("1 polyline would be dropped.");
+    await expect(consent).toContainText("1 polyline would be dropped");
+    await expect(consent).toContainText("1 tag would be dropped");
     await expect(consent.getByTestId("lossy-classes")).toContainText("centerline");
     await expect(page.getByTestId("export-submit")).toBeDisabled();
     await consent.getByTestId("lossy-checkbox").check();
