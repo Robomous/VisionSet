@@ -147,7 +147,13 @@ from visionset.kernel import (
     WorkspaceNotEmpty,
     WorkspaceSchemaMismatch,
 )
-from visionset.kernel.error_codes import ERROR_CODES, error_code, error_detail
+from visionset.kernel.error_codes import (
+    ERROR_CODES,
+    INTERNAL_ERROR,
+    VALIDATION_ERROR,
+    error_code,
+    error_detail,
+)
 
 _logger = logging.getLogger(__name__)
 """Never call ``logging.basicConfig`` here — records propagate to root, which
@@ -162,7 +168,7 @@ already waited out that timeout losing to another writer, so a shorter hint
 would aim a retry storm at the exact contention being reported.
 """
 
-UNMAPPED_CODE: Final = "INTERNAL_ERROR"
+UNMAPPED_CODE: Final = INTERNAL_ERROR
 """The code for an exception no rule covers — a bug, by definition.
 
 A *mapped* 5xx keeps its own code (``WORKSPACE_CORRUPT``), so the two are told
@@ -690,7 +696,7 @@ async def _validation_error_handler(request: Request, exc: Exception) -> Respons
     # jsonable_encoder is not cosmetic: pydantic's ``ctx`` can hold objects json
     # cannot serialize. FastAPI's own handler does exactly this.
     body = ErrorBody(
-        code="VALIDATION_ERROR",
+        code=VALIDATION_ERROR,
         message="The request payload is not processable.",
         detail={"errors": jsonable_encoder(exc.errors())},
     )

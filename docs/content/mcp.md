@@ -308,6 +308,17 @@ A **domain refusal** is an ordinary successful call whose payload is the error e
   `detail.compatibility` on `LOSSY_EXPORT_NOT_CONSENTED`, …). `detail` is `null` when there is
   none. Both come from one kernel table, so the two surfaces cannot disagree.
 
+**Anything else a tool body raises arrives in the same envelope**, never as a bare protocol error.
+An annotation the write tools build from your arguments and that the domain refuses is
+`VALIDATION_ERROR`, with the model's own messages (`provenance='model' requires model_ref`) and
+nothing written or started. Every other failure - including a model the server built itself
+failing to validate - is `INTERNAL_ERROR`: a filesystem refusal says why and names only the last
+component of the path (`Permission denied: out`), and anything else says only which kind of
+exception stopped the call.
+Neither repeats the exception's own text, which can carry a secret or describe this machine's
+disk. An `INTERNAL_ERROR` carries `detail.incident_id`, and the server logs the traceback to its
+stderr under that id.
+
 ### The three gate words
 
 Never merged into one, because they guard different things:
@@ -504,9 +515,12 @@ the CLI and gated key-for-key against the REST wire models by
 
 **Mirror every domain bound in the parameter.** A kernel call that raises outside the
 `VisionSetError` tree - a bare `ValueError` from a non-positive rate, a `FileNotFoundError` from a
-missing path, a pydantic `ValidationError` from constructing a `BySize` - never reaches `guarded`,
-and would arrive at the client as an exception's text. Either bound the parameter (`ge=1`) or
-refuse in the body with `_errors.refused`.
+missing path - still reaches `guarded`, but only as `INTERNAL_ERROR` with a generic sentence,
+because MCPServer itself would ship nothing but `Error executing tool <name>`. Where the failure is
+foreseeable, bound the parameter (`ge=1`) or refuse in the body with `_errors.refused`, so the
+agent reads the real reason. A domain model a body builds from its arguments goes inside
+`_errors.from_arguments()`, which is what makes its `ValidationError` the caller's
+`VALIDATION_ERROR`; outside it, the same error is internal.
 
 Tests are in `tests/mcp/`, and every one drives the **real protocol** through
 `create_connected_server_and_client_session` rather than calling the Python function. `_flow.py`

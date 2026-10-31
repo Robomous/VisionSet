@@ -15,10 +15,12 @@ making every refusal look like a protocol failure.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import BaseModel
 from tests.mcp._flow import (
     call,
     call_destructive,
@@ -38,7 +40,7 @@ from visionset.kernel import (
 )
 from visionset.kernel.domain import ClassCount
 from visionset.kernel.error_codes import error_code, error_detail
-from visionset.mcp._errors import RETRY_WITH, guarded, refused
+from visionset.mcp._errors import RETRY_WITH, from_arguments, guarded, refused
 
 ENVELOPE_KEYS = {"message", "retry_with", "hint", "index", "code", "detail"}
 
@@ -96,6 +98,65 @@ def test_the_envelope_is_built_from_the_kernel_table() -> None:
     assert "delete" not in (body["hint"] or "")
 
 
+def test_an_unexpected_exception_is_an_internal_error_that_repeats_nothing(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    @guarded
+    def crashing() -> dict[str, Any]:
+        raise RuntimeError("token=s3cret at /home/someone/private")
+
+    body = crashing()["error"]
+    assert set(body) == ENVELOPE_KEYS
+    assert body["code"] == "INTERNAL_ERROR"
+    assert body["message"] == "An unexpected RuntimeError stopped the operation."
+    assert "s3cret" not in json.dumps(body)
+    incident = body["detail"]["incident_id"]
+    assert incident in caplog.text
+    assert "s3cret" in caplog.text
+
+
+def test_an_os_error_names_its_reason_and_only_the_last_path_component() -> None:
+    @guarded
+    def denied() -> dict[str, Any]:
+        raise PermissionError(13, "Permission denied", "/home/someone/private/photos")
+
+    body = denied()["error"]
+    assert body["code"] == "INTERNAL_ERROR"
+    assert body["message"] == "Permission denied: photos"
+
+
+class _Stored(BaseModel):
+    secret_column: int
+
+
+def test_a_model_built_from_the_arguments_is_the_callers_validation_error() -> None:
+    @guarded
+    def building() -> dict[str, Any]:
+        with from_arguments():
+            _Stored.model_validate({"secret_column": "x"})
+        return {}
+
+    body = building()["error"]
+    assert body["code"] == "VALIDATION_ERROR"
+    assert body["message"].startswith("secret_column: ")
+    assert body["detail"] is None
+
+
+def test_a_model_the_system_built_is_an_internal_error_without_its_field_paths(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    @guarded
+    def reading() -> dict[str, Any]:
+        _Stored.model_validate({"secret_column": "x"})
+        return {}
+
+    body = reading()["error"]
+    assert body["code"] == "INTERNAL_ERROR"
+    assert body["message"] == "An unexpected ValidationError stopped the operation."
+    assert "secret_column" not in json.dumps(body)
+    assert body["detail"]["incident_id"] in caplog.text
+
+
 def test_a_domain_refusal_is_a_result_and_not_a_protocol_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -125,10 +186,8 @@ def test_an_unknown_tool_is_a_protocol_error() -> None:
 
 
 def test_nothing_leaks_a_traceback(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    # `guarded` catches only `VisionSetError`; every kernel call that raises
-    # outside the family is guarded at its own call site instead. If one were
-    # missed, MCPServer would ship the exception's text prefixed with
-    # "Error executing tool", which is what this looks for.
+    # Anything that escaped `guarded` would come back as MCPServer's bare
+    # "Error executing tool" with `isError` set.
     named = schema(monkeypatch, tmp_path)
     for result in (
         call("ingest", project=named, path=str(tmp_path / "nowhere")),

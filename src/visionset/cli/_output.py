@@ -38,10 +38,11 @@ _JSON_REQUESTED: ContextVar[bool] = ContextVar("json_requested", default=False)
 
 def _remember_json(ctx: typer.Context, value: bool) -> bool:
     # Lets ``domain_errors`` answer a refusal in JSON without every command
-    # threading its flag through. Reset when the command's context closes, so
-    # one invocation never leaks into the next in the same process.
+    # threading its flag through. Reset when the *root* context closes, so one
+    # invocation never leaks into the next in the same process, yet the root
+    # group's handler for an unexpected failure still sees it.
     token = _JSON_REQUESTED.set(bool(value))
-    ctx.call_on_close(lambda: _JSON_REQUESTED.reset(token))
+    ctx.find_root().call_on_close(lambda: _JSON_REQUESTED.reset(token))
     return value
 
 

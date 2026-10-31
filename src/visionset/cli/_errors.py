@@ -14,7 +14,7 @@ Three exit codes, and no others:
 
 =====  =========================================================================
     0  the command did what it said
-    1  a ``VisionSetError`` — one sentence on stderr, no traceback
+    1  a ``VisionSetError``, or any other failure — one sentence on stderr, no traceback
     2  a usage error, raised and formatted by Click itself
 =====  =========================================================================
 
@@ -28,9 +28,11 @@ branches on the code without parsing stderr.
 
 from __future__ import annotations
 
+import os
+import traceback
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Final
+from typing import Any, Final
 
 import typer
 
@@ -43,8 +45,11 @@ from visionset.kernel import (
     SchemaChangeWouldOrphan,
     VisionSetError,
 )
-from visionset.kernel.error_codes import error_code, error_detail
+from visionset.kernel.error_codes import error_code, error_detail, unexpected_error
 from visionset.kernel.services import WORKSPACE_ENV_VAR
+
+DEBUG_ENV_VAR: Final = "VISIONSET_DEBUG"
+"""Set to anything non-empty to also print an unexpected failure's traceback."""
 
 EXIT_DOMAIN_ERROR: Final = 1
 """Every ``VisionSetError``. See the module docstring for why it is not a table."""
@@ -129,25 +134,36 @@ def domain_errors() -> Iterator[None]:
     records it as ``result.exit_code``, which is what makes the exit status
     assertable from a test instead of only from a subprocess.
 
-    **Only ``VisionSetError`` is caught.** An ``OSError``, a ``KeyboardInterrupt``
-    or a bug is not a refusal the CLI understands, and folding one into
-    ``Error: [Errno 2] ...`` would hide the traceback that identifies it.
+    **Only ``VisionSetError`` is caught here.** Anything else reaches
+    :func:`unexpected_failure`, which the root group calls for every command.
     """
     try:
         yield
     except VisionSetError as exc:
-        if json_requested():
-            document(
-                {
-                    "error": {
-                        "code": error_code(exc),
-                        "message": str(exc),
-                        "detail": error_detail(exc),
-                    }
-                }
-            )
-        typer.secho(f"Error: {exc}", err=True, fg=typer.colors.RED)
+        _report(error_code(exc), str(exc), error_detail(exc))
         hint = _hint_for(exc)
         if hint is not None:
             typer.echo(hint, err=True)
         raise typer.Exit(code=EXIT_DOMAIN_ERROR) from exc
+
+
+def unexpected_failure(exc: Exception) -> typer.Exit:
+    """Report an exception outside ``VisionSetError`` the way a refusal is reported.
+
+    No traceback: it names the install's own paths and, for a person at a
+    terminal, says less than the sentence does. The sentence never repeats
+    ``str(exc)``, for the reason ``unexpected_error`` gives. With
+    ``VISIONSET_DEBUG`` set, the traceback goes to stderr as well, ahead of the
+    sentence; stdout and the exit code do not change.
+    """
+    code, message = unexpected_error(exc)
+    if os.environ.get(DEBUG_ENV_VAR):
+        typer.echo("".join(traceback.format_exception(exc)).rstrip(), err=True)
+    _report(code, message, None)
+    return typer.Exit(code=EXIT_DOMAIN_ERROR)
+
+
+def _report(code: str | None, message: str, detail: dict[str, Any] | None) -> None:
+    if json_requested():
+        document({"error": {"code": code, "message": message, "detail": detail}})
+    typer.secho(f"Error: {message}", err=True, fg=typer.colors.RED)

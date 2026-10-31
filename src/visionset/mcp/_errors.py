@@ -26,16 +26,19 @@ about.
 **Every tool is wrapped once, in ``main.py``'s registration table**, rather than
 each body decorating itself. One spelling that cannot be forgotten, and
 ``test_registration.py`` asserts every registered tool went through it. Letting
-an exception escape instead is not neutral: MCPServer catches it, prepends
-``"Error executing tool X: "`` and ships ``str(exc)`` to the client anyway — the
-same disclosure with none of the structure.
+an exception escape instead is not neutral: MCPServer answers a crash with the
+bare text ``"Error executing tool X"`` and keeps the reason on its own stderr,
+so the agent learns nothing it can act on.
 
-**Only ``VisionSetError`` is caught**, the CLI's rule. A ``FileNotFoundError``, a
-bare ``ValueError`` from a non-positive rate, or a pydantic ``ValidationError``
-from a geometry built out of tool arguments are not refusals this surface
-understands, and each is guarded at the one call site that can raise it —
-:func:`refused` is how a tool body reports one in the same envelope without
-pretending it came from the kernel.
+**Anything else is answered in the same envelope.** A domain model a tool body
+builds from its arguments inside :func:`from_arguments` and that refuses them is
+``VALIDATION_ERROR`` with the model's own messages; any other exception —
+including a ``ValidationError`` from a model the system built — is
+``INTERNAL_ERROR`` with a sentence that never repeats ``str(exc)``, and is logged
+with its traceback under the ``incident_id`` the envelope's ``detail`` carries —
+the REST surface's 500, one transport over. :func:`refused` is still how a tool
+body reports a refusal it can see coming without pretending it came from the
+kernel.
 """
 
 from __future__ import annotations
@@ -43,10 +46,14 @@ from __future__ import annotations
 import functools
 import inspect
 import json
-from collections.abc import Callable
+import logging
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Any, Final, ParamSpec, TypeVar
+from uuid import uuid4
 
 from mcp.types import CallToolResult, TextContent
+from pydantic import ValidationError
 
 from visionset.kernel import (
     ConfirmationRequired,
@@ -57,8 +64,16 @@ from visionset.kernel import (
     ThumbnailNotCached,
     VisionSetError,
 )
-from visionset.kernel.error_codes import error_code, error_detail
+from visionset.kernel.error_codes import (
+    VALIDATION_ERROR,
+    error_code,
+    error_detail,
+    unexpected_error,
+    validation_message,
+)
 from visionset.kernel.services import WORKSPACE_ENV_VAR
+
+_logger = logging.getLogger(__name__)
 
 RETRY_WITH: Final[dict[type[BaseException], str]] = {
     # The three gate words, never merged into one. Each guards a different thing:
@@ -155,12 +170,46 @@ def _envelope(exc: VisionSetError) -> dict[str, Any]:
     }
 
 
+class _ArgumentsRefused(Exception):
+    def __init__(self, cause: ValidationError) -> None:
+        super().__init__(validation_message(cause))
+
+
+@contextmanager
+def from_arguments() -> Iterator[None]:
+    """Mark a domain model built from the tool's own arguments.
+
+    Its ``ValidationError`` is the caller's mistake and answers ``VALIDATION_ERROR``
+    with the model's messages. Unmarked, the same error is a model the system
+    built failing — internal, logged, and published without its field paths.
+    """
+    try:
+        yield
+    except ValidationError as exc:
+        raise _ArgumentsRefused(exc) from exc
+
+
+def _coded(code: str, message: str, detail: dict[str, Any] | None) -> dict[str, Any]:
+    envelope = refused(message)
+    envelope["error"].update(code=code, detail=detail)
+    return envelope
+
+
+def _unexpected_envelope(exc: Exception, tool: str) -> dict[str, Any]:
+    if isinstance(exc, _ArgumentsRefused):
+        return _coded(VALIDATION_ERROR, str(exc), None)
+    code, message = unexpected_error(exc)
+    incident_id = uuid4().hex
+    _logger.exception("%s failed tool %s (incident %s)", type(exc).__name__, tool, incident_id)
+    return _coded(code, message, {"incident_id": incident_id})
+
+
 P = ParamSpec("P")
 T = TypeVar("T")
 
 
 def guarded(fn: Callable[P, T]) -> Callable[P, T | dict[str, Any]]:
-    """Turn any kernel refusal raised by ``fn`` into the error envelope.
+    """Turn any exception raised by ``fn`` into the error envelope.
 
     ``functools.wraps`` is load-bearing rather than cosmetic: MCPServer builds a
     tool's ``inputSchema`` from ``inspect.signature(fn, eval_str=True)`` and its
@@ -183,8 +232,12 @@ def guarded(fn: Callable[P, T]) -> Callable[P, T | dict[str, Any]]:
     def guard(*args: P.args, **kwargs: P.kwargs) -> T | dict[str, Any]:
         try:
             return fn(*args, **kwargs)
-        except VisionSetError as exc:
-            envelope = _envelope(exc)
+        except Exception as exc:
+            envelope = (
+                _envelope(exc)
+                if isinstance(exc, VisionSetError)
+                else _unexpected_envelope(exc, fn.__name__)
+            )
             if not returns_result:
                 return envelope
             rendered = CallToolResult(

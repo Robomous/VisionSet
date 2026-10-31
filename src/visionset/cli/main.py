@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
+from typer.core import TyperGroup
 
 from visionset import __version__
+from visionset.cli._errors import unexpected_failure
 from visionset.cli._output import reset_json_requested
 from visionset.cli.batches import batch_app
 from visionset.cli.export import export
@@ -24,10 +26,25 @@ from visionset.cli.server import server
 from visionset.cli.targets import target_app
 from visionset.cli.tokens import token_app
 
+
+class _Root(TyperGroup):
+    """The root group: the one place every command's unexpected failure passes."""
+
+    # `Any`: the base's `Context` is Typer's vendored Click, which it does not export.
+    def invoke(self, ctx: Any) -> Any:
+        try:
+            return super().invoke(ctx)
+        except (typer.TyperException, typer.Exit, typer.Abort):
+            raise
+        except Exception as exc:
+            raise unexpected_failure(exc) from exc
+
+
 app = typer.Typer(
     name="visionset",
     help="Robomous VisionSet — local-first dataset creation for computer vision.",
     no_args_is_help=True,
+    cls=_Root,
 )
 
 # Registration is in cycle order — make a workspace, make a project, give it a

@@ -119,7 +119,7 @@ def job_next(
     the next ten get the same ten.
     """
     # ``min=1`` because ``next_pending`` refuses a non-positive count with a bare
-    # ``ValueError``, which would print a traceback rather than a sentence.
+    # ``ValueError``, which would surface only as a generic failure, not a reason.
     with opened_workspace(workspace) as service:
         assets = JobService(service).next_pending(job, count)
     if json_out:

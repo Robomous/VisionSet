@@ -96,9 +96,9 @@ def ingest(
     directory.
     """
     source_path = Path(path)
-    # Two refusals the kernel raises *outside* the VisionSetError tree, so
-    # `guarded` would not catch them and the client would get a traceback's text
-    # instead of an envelope: `canonical_path` resolves strictly
+    # Two refusals the kernel raises *outside* the VisionSetError tree, which
+    # `guarded` would only report as a generic INTERNAL_ERROR without the video
+    # remedy: `canonical_path` resolves strictly
     # (FileNotFoundError) and `register_images` wants a directory
     # (NotADirectoryError).
     if not source_path.exists():

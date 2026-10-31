@@ -89,7 +89,7 @@ still in it, and it runs in CI on every change.
 | | Meaning |
 | --- | --- |
 | **0** | the command did what it said |
-| **1** | a domain refusal - one sentence on stderr, no traceback - **or the answer is no** |
+| **1** | a domain refusal or any other failure - one sentence on stderr, no traceback - **or the answer is no** |
 | **2** | a usage error, raised and formatted by Click itself |
 
 One non-zero code for the whole `VisionSetError` family, rather than a table mapping each error to
@@ -111,11 +111,18 @@ $ echo $?
 1
 ```
 
-Only `VisionSetError` is caught. An `OSError`, a `KeyboardInterrupt` or a bug keeps its traceback,
-because folding one into `Error: [Errno 2] ...` would hide the thing that identifies it. Where a
-kernel call refuses with something outside that family - a `--split` whose fractions do not add
-up, a schema file that is not JSON - the CLI catches it **before** the call and raises Click's own
-usage error, so it lands at 2 rather than as a traceback.
+No failure prints a traceback; one names the install's own paths and tells a person less than a
+sentence does. Anything outside `VisionSetError` - an unreadable directory, a destination that
+cannot be created, a bug - is caught once, at the root command, and exits 1 like a refusal. Its
+sentence never repeats the exception's text: a filesystem refusal says why and names only the
+last component of the path (`Error: Permission denied: out`), and anything else names only the
+kind of exception. Under `--json` it is the same document as a refusal, with `code` set to
+`INTERNAL_ERROR` and `detail` `null`. Set `VISIONSET_DEBUG=1` to have the traceback printed on
+stderr ahead of that sentence, for a bug report; stdout and the exit code stay the same.
+`Ctrl-C` is not caught. Where a kernel call refuses with something outside that family
+for a reason the command line can name - a `--split` whose fractions do not add up, a schema file
+that is not JSON - the CLI catches it **before** the call and raises Click's own usage error, so
+it lands at 2 with the real reason.
 
 **Code 1 also means "the answer is no".** `visionset release verify` runs, finds damage, and exits 1
 with one sentence naming it; nothing refused, and nothing about the command failed. That is what
@@ -184,7 +191,9 @@ The contract:
   exit 1 and the sentence on stderr. `code` and `detail` are exactly what
   [the REST API](api.md#the-full-table) answers for the same refusal - `detail.blockers` on
   `SCHEMA_CHANGE_WOULD_ORPHAN`, for one - and `detail` is `null` when there is none, so a script
-  branches on the code instead of parsing stderr.
+  branches on the code instead of parsing stderr. A command that fails after it has already
+  printed part of its output leaves that output in place, with the error document after it, so a
+  script should check the exit code before parsing stdout.
 - `--json` changes what stdout *is*. It does not silence stderr: a warning is still a warning.
 
 **The shapes deliberately agree, key for key, with the REST API's**, so a script moves between

@@ -50,8 +50,8 @@ def _split_of(value: str | None, seed: int | None) -> SplitRecipe | None:
     """``"0.7,0.15,0.15"`` as a recipe, or a usage error saying what is wrong.
 
     ``SplitRecipe`` refuses fractions that do not add up, with a pydantic
-    ``ValidationError`` — not a ``VisionSetError``, so it would print a traceback
-    rather than a sentence. Caught here and re-raised as Click's own refusal,
+    ``ValidationError`` — not a ``VisionSetError``, so it would surface only as a
+    generic failure rather than the reason. Caught here and re-raised as Click's own refusal,
     which is what exit 2 is for.
     """
     if value is None:

@@ -265,8 +265,8 @@ def approve_batch(
     batch that `start_batch` can still open.
     """
     # `ge=1` on the parameter rather than a check in the body: `BySize.size` is
-    # `gt=0`, and constructing one with zero raises a pydantic ValidationError,
-    # which is not a VisionSetError and would never reach the error envelope.
+    # `gt=0`, and refusing at argument parsing names the parameter the caller
+    # actually sent, which a `BySize` ValidationError in the body would not.
     partition: Partition | None = None if jobs_of is None else BySize(size=jobs_of)
     with opened_workspace() as workspace:
         batches = BatchService(workspace)
