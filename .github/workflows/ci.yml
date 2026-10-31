@@ -1222,8 +1222,8 @@ jobs:
       #
       # Bind-mounted so it exercises the image the way
       # docker/compose.yaml runs it. `tests/formats/test_entry_points.py` is here
-      # deliberately as well as in the `python` job: it was already the discovery
-      # test, and *where* it ran was the whole of what it was missing.
+      # deliberately as well as in the `python` job: it asserts the formats come
+      # from the installed `visionset` distribution itself.
       - name: The image can see its own distribution metadata
         if: needs.changes.result != 'success' || needs.changes.outputs.docker == 'true'
         run: |

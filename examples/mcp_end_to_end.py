@@ -369,7 +369,7 @@ async def _walk(root: Path, incoming: Path, export: Path) -> Summary:
         verified = ok(await tool("verify_release", project=PROJECT, tag=TAG))["ok"]
         formats = tuple(row["name"] for row in ok(await tool("list_formats"))["items"])
         exported = ok(
-            await tool("export_release", project=PROJECT, tag=TAG, format="dummy", dest=str(export))
+            await tool("export_release", project=PROJECT, tag=TAG, format="coco", dest=str(export))
         )
         assert Path(exported["directory"]).is_dir(), exported
         _say(f"release {TAG} verified {verified}, exported to {exported['directory']}")

@@ -35,6 +35,7 @@ from tests.mcp._flow import (
 from visionset.kernel import (
     ConfirmationRequired,
     DestructiveSchemaChange,
+    ExportDestinationNotEmpty,
     LossyExportNotConsented,
     SchemaChangeWouldOrphan,
 )
@@ -229,17 +230,19 @@ def test_the_orphan_refusal_offers_nothing_and_that_is_the_whole_point() -> None
     assert SchemaChangeWouldOrphan not in RETRY_WITH
 
 
-def test_the_three_gate_words_are_three_and_are_never_merged() -> None:
+def test_the_retry_words_are_distinct_and_are_never_merged() -> None:
     # `confirm` guards destroying data, `allow_destructive` guards narrowing a
     # contract, `allow_lossy` guards emitting an incomplete copy of something that
-    # stays intact. Different words, different errors, never one `except`.
+    # stays intact, `allow_non_empty` guards mixing two exports in one directory.
+    # Different words, different errors, never one `except`.
     expected = {
         ConfirmationRequired: "confirm",
         DestructiveSchemaChange: "allow_destructive",
         LossyExportNotConsented: "allow_lossy",
+        ExportDestinationNotEmpty: "allow_non_empty",
     }
     assert expected == RETRY_WITH
-    assert len(set(RETRY_WITH.values())) == 3
+    assert len(set(RETRY_WITH.values())) == len(RETRY_WITH)
 
 
 def test_most_refusals_are_not_retryable_at_all(

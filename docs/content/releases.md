@@ -157,7 +157,7 @@ Coordinate normalization a format requires happens in the exporter, never in the
 
 ### The kernel takes a plugin; it does not find one
 
-`ReleaseService.export(release_id, exporter, dest, *, allow_lossy=False)` takes an **`Exporter`
+`ReleaseService.export(release_id, exporter, dest, *, allow_lossy=False, allow_non_empty=False)` takes an **`Exporter`
 instance**, never a format name, and that is structural rather than stylistic: import-linter
 forbids `visionset.kernel` from importing `visionset.formats` at all. Resolving a name to an
 implementation therefore belongs to whoever composed the call.
@@ -245,8 +245,7 @@ The fix is vocabulary rather than capability. `Exporter` declares two geometry s
 
 - **`supported_geometries`** - written as they stand.
 - **`degraded_geometries`** - written, having lost something the kernel could represent. `{polygon}`
-  for `yolov5-yaml` and `voc`; empty for `coco`, which writes a polygon as a polygon, and empty for
-  `dummy`, which writes nothing at all. The two sets are disjoint, and `supported` wins if a plugin
+  for `yolov5-yaml` and `voc`; and empty for `coco`, which writes a polygon as a polygon. The two sets are disjoint, and `supported` wins if a plugin
   says both, because resolving a contradiction towards the weaker claim would report a loss that
   does not happen.
 
@@ -346,7 +345,6 @@ The catalog this build ships, generated from the declarations by
 | `coco` | coco | `other` | `coco` | — | bbox, polygon | — | — |
 | `culane` | culane | `other` | `culane` | — | polyline | — | — |
 | `curvelanes` | curvelanes | `other` | `curvelanes` | — | polyline | — | — |
-| `dummy` | dummy | `other` | `dummy` | — | bbox, classification_tag, cuboid_3d, keypoints, mask, polygon, polyline, polyline_3d | — | — |
 | `openlane-2d` | openlane-2d | `other` | `openlane-2d` | — | polyline | — | — |
 | `tusimple` | tusimple | `other` | `tusimple` | — | polyline | — | — |
 | `voc` | voc | `other` | `voc` | — | bbox | — | — |
@@ -467,8 +465,10 @@ trainer's tasks:
 - `detect` otherwise - `class cx cy w h` per box, clamped into the image.
 
 `supported_geometries` is `{bbox, polygon, classification_tag}` and `degraded_geometries` is
-empty. A tag beside a located label has no layout to land in and is not written; `lossy = True`,
-so consent is always asked. An asset with nothing on it gets an **empty** label file rather than
+empty. A tag beside a located label has no layout to land in and is not written, so the format
+also declares `solitary_geometries = {classification_tag}`: whenever a box or polygon reaches the
+output, the report lists every tag row as **dropped** and counts it in `excluded_annotations`,
+which is what the label files hold. `lossy = True`, so consent is always asked. An asset with nothing on it gets an **empty** label file rather than
 none: ultralytics reads a missing file as "nobody looked" and an empty one as "somebody looked and
 there is nothing here", and a detector needs the second.
 
@@ -658,11 +658,35 @@ polyline class as **dropped**, and their label files contain no trace of one.
 
 ### The destination is the caller's
 
-`dest` is created if it is not there and is **not** emptied if it is - deleting files under a
-path a caller named is not the kernel's to do. So `ExportResult`'s counts describe the directory
-once the plugin has run, which is the same thing as "this run" for a fresh directory and not for
-one holding an older export. A caller that needs the stricter reading clears the directory
-first; the REST route does, because it built the path itself.
+`ReleaseService.export` checks `dest` before anything is written, so every surface refuses the
+same paths with the same codes:
+
+- it must be **absolute** - a relative or `~` path is `EXPORT_DESTINATION_REFUSED`. The CLI
+  resolves `--out` against its working directory first; MCP passes `dest` as given;
+- it must be **outside the workspace** - the workspace root, anything under it, and any directory
+  containing it are refused, so an export can neither write beside `visionset.db` and `blobs/`
+  nor walk them when counting. Paths are compared by file identity, so a different spelling of
+  the same directory on a case-insensitive file system is refused too. Only the REST surface's
+  export job, passing `owned_by_workspace`, writes inside the workspace - under its own
+  `exports/`, which it clears first;
+- a **file**, or a directory that cannot be created or read, is `EXPORT_DESTINATION_REFUSED`
+  naming the operating system's reason;
+- a directory that **already holds files** is `EXPORT_DESTINATION_NOT_EMPTY` unless the caller
+  passes `allow_non_empty` (`--allow-non-empty` on the CLI; MCP's envelope carries
+  `retry_with: "allow_non_empty"`). Two exports in one directory would otherwise mix - a split
+  release's `val`/`test` files beside an unsplit one's `train` - under a report naming only the
+  second.
+
+Even with consent the directory is **not** emptied - deleting files under a path a caller named
+is not the kernel's to do - so `ExportResult`'s counts then describe the directory once the
+plugin has run rather than this run alone. The REST route clears its own path first, because it
+built the path itself.
+
+Every image blob the release names is then **hash-checked**, the check `verify` makes, and a
+missing, unreadable or altered one is `EXPORT_SOURCE_UNREADABLE` naming the asset - before `dest`
+is created, so a refused export writes nothing. The recipe is checked before `dest`, so retrying
+with `allow_non_empty` does not then meet a recipe refusal. The hash check precedes the copy
+rather than covering it: a blob rewritten in between is not caught.
 
 Counting is `ReleaseService`'s rather than the plugin's, deliberately: a number reported by the
 thing it describes is not checkable, and an exporter that writes nothing must report zero rather
@@ -675,7 +699,7 @@ visionset release publish --tag v1.0 --project road-signs --split 0.7,0.15,0.15 
 visionset release list --project road-signs
 visionset release verify v1.0 --project road-signs
 visionset export --project road-signs --release v1.0 --target yolo11 --out ./out
-visionset export --project road-signs --release v1.0 --format dummy --out ./out
+visionset export --project road-signs --release v1.0 --format coco --out ./out
 visionset export --project road-signs --release v1.0 --target yolo11 --recipe yolo-640 --out ./out
 visionset target list
 ```
@@ -710,9 +734,8 @@ is a usage error at exit 2, because the mistake is on the command line and nothi
 yet. `--format yolo`, the former name of `ultralytics`, still works for one release and prints a
 deprecation line on stderr naming the current name.
 
-`--allow-lossy` is the third gate word, never folded into `--yes` or `--allow-destructive`. And
-`dummy` writes nothing, so a `file_count` of 0 in its report is an export that ran, not one that
-failed. The real ones are [the YOLO dialects](#the-yolo-dialects), [COCO](#the-coco-format) and
+`--allow-lossy` is the third gate word, never folded into `--yes` or `--allow-destructive`. The
+formats are [the YOLO dialects](#the-yolo-dialects), [COCO](#the-coco-format) and
 [VOC](#the-pascal-voc-format) below.
 
 When an export does leave something behind, the names go to **stderr** with the rest of the prose,
@@ -852,7 +875,9 @@ carries the identical body under `detail.compatibility`.
 | `NoSplitRecipe` | `assignment` was asked of a release published without one. Not an error in the release: no recipe means one undivided set, and inventing an all-train answer would be indistinguishable from a real one. |
 | `UnserializableManifest` | An annotation carries a NaN or infinite coordinate. `Geometry` accepts any float, so such a label can be stored; canonical JSON cannot express it, and writing `null` or the bare token `NaN` would lose data or produce a document no other tool can parse. |
 | `WorkspaceCorrupt` | The manifest blob is gone, or is not a readable manifest, or the trunk holds an asset that is not stored. All are guarantees failing rather than entities missing. |
-| `ExportSourceUnreadable` | The release names bytes an export cannot use - the blob is gone, or is not an image the format can write. **409, not 500**: the request is fine and the stored state is not, so the message names the asset and reaches the caller. The remedy is `verify` and then restoring the blob. A previous generation of this tool swallowed this and shipped a training set one image short. |
+| `ExportSourceUnreadable` | The release names bytes an export cannot use - the blob is gone, no longer matches its content hash, or is not an image the format can write. **409, not 500**: the request is fine and the stored state is not, so the message names the asset and reaches the caller. The remedy is `verify` and then restoring the blob. A previous generation of this tool swallowed this and shipped a training set one image short. |
+| `ExportDestinationRefused` | The export directory is relative, inside or containing the workspace, a file, or cannot be created or read. Not overridable; the remedy is another path. |
+| `ExportDestinationNotEmpty` | The export directory already holds files and the caller has not passed `allow_non_empty`. Overridable; the files are then kept and counted. |
 | `ExportFormatNotFound` | Nothing is installed under that format name. Raised by the registry in `visionset.formats`, not by this service - the kernel never sees a name. |
 | `ExportTargetNotFound` | No installed format declares a target under that name. Raised by `resolve_target` on the port, over the exporters the surface passed in; the message names the installed targets. |
 | `ExportTargetConflict` | Two installed formats declare one target name. A defect of the installation rather than of the request - 500 over HTTP - and the remedy is removing one of the distributions, or exporting by format name. |

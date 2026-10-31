@@ -604,11 +604,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * prompt are gigabytes and one of them is gated, so no scenario could fetch
      * one on a runner.
      *
-     * `visionset/stub-segmenter` is the shipped no-op that closes it — the
-     * `dummy` exporter's decision, which this same walk already exports
-     * through. Every hop below is the product's own: the form, the download
-     * action, the connection's lifecycle. Only the thing at the far end
-     * predicts nothing.
+     * `visionset/stub-segmenter` is the shipped no-op that closes it. Every
+     * hop below is the product's own: the form, the download action, the
+     * connection's lifecycle. Only the thing at the far end predicts nothing.
      */
     await page.getByTestId("rail-models").click();
     await expect(page.getByTestId("models-screen")).toBeVisible();
@@ -1504,14 +1502,16 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByRole("option", { name: /YOLO11/ }).click();
     await expect(page.getByTestId("lossy-hint")).toContainText("YOLO11");
 
-    // The release holds a `centerline` polyline and YOLO11 takes boxes, tags
-    // and polygons, so the launch is refused with the report and the banner
+    // The release holds a `centerline` polyline and a tag beside its boxes;
+    // YOLO11 writes a tag only when nothing else is exported, so both are
+    // dropped and the launch is refused with the report and the banner
     // says what the target accepts and what this release loses — the kernel's
     // counts, in the kernel's order, not the browser's.
     await page.getByTestId("export-submit").click();
     const consent = page.getByTestId("lossy-consent");
     await expect(consent).toContainText("YOLO11 accepts boxes, tags and polygons");
-    await expect(consent).toContainText("1 polyline would be dropped.");
+    await expect(consent).toContainText("1 polyline would be dropped");
+    await expect(consent).toContainText("1 tag would be dropped");
     await expect(consent.getByTestId("lossy-classes")).toContainText("centerline");
     await expect(page.getByTestId("export-submit")).toBeDisabled();
     await consent.getByTestId("lossy-checkbox").check();
@@ -1617,7 +1617,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 
     await page.getByTestId("export-submit").click();
     const consent = page.getByTestId("lossy-consent");
-    await expect(consent).toContainText("1 polyline would be dropped.");
+    await expect(consent).toContainText("1 polyline would be dropped");
     await consent.getByTestId("lossy-checkbox").check();
 
     const [download] = await Promise.all([

@@ -63,9 +63,9 @@ from tests.fixtures.samples import (
     THUMBNAIL_BACKFILL,
     VERIFICATION,
 )
+from visionset_test_formats import DummyExporter
 
 from visionset import wire
-from visionset.formats._dummy import DummyExporter
 from visionset.formats.ultralytics import UltralyticsExporter
 from visionset.inference import (
     PreLabelExcludedClass,

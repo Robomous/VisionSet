@@ -39,6 +39,7 @@ import typer
 from visionset.cli._output import document, json_requested
 from visionset.kernel import (
     DestructiveSchemaChange,
+    ExportDestinationNotEmpty,
     LossyExportNotConsented,
     NotAWorkspace,
     ReleaseContentWouldViolateSchema,
@@ -106,6 +107,9 @@ _HINTS: Final[dict[type[BaseException], str]] = {
     ),
     ReleaseContentWouldViolateSchema: (
         "Reconcile the annotations or restore a compatible active schema."
+    ),
+    ExportDestinationNotEmpty: (
+        "Choose an empty --out, or re-run with --allow-non-empty to write beside what is there."
     ),
 }
 """A remedy a *terminal* can act on, printed under the error's own sentence.

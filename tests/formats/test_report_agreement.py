@@ -47,7 +47,7 @@ from visionset.kernel.domain import (
     PolygonGeometry,
     PolylineGeometry,
 )
-from visionset.kernel.ports import Exporter
+from visionset.kernel.ports import Exporter, resolve_target
 
 #: Formats that write no annotations at all, and are therefore outside the
 #: report-versus-output comparison.
@@ -714,18 +714,10 @@ def test_ultralytics_classify_export_agrees_with_its_report(tmp_path: Path) -> N
     _assert_agrees(report, written)
 
 
-def test_ultralytics_drops_a_tag_beside_a_box_though_its_declaration_carries_tags(
+def test_ultralytics_reports_a_tag_beside_a_box_as_dropped(
     tmp_path: Path, labelled: Fixture
 ) -> None:
-    """The one shape a static declaration cannot describe, pinned as what it is.
-
-    ``DRAWING`` holds a tag beside boxes and polygons, so the derived task is
-    segment and the tag has no layout to land in — it is not written. The
-    declaration still lists ``classification_tag`` as supported, because a
-    tags-only release is written as a class tree, so the report calls the tag
-    supported here and the output does not carry it. Consent is still asked,
-    because the format is lossy; what the report misstates is the one row.
-    """
+    """A tag beside located labels has no layout to land in, and the report says so."""
     release_id = labelled.publish()
     dest = tmp_path / "out"
     report = _export(labelled, release_id, _installed()["ultralytics"], dest)
@@ -734,9 +726,21 @@ def test_ultralytics_drops_a_tag_beside_a_box_though_its_declaration_carries_tag
 
     assert written == Counter({"sign": 3, "lane": 2})
     (tag,) = [one for one in report.classes if one.label_class == "weather"]
-    assert tag.status is ClassExportStatus.SUPPORTED
-    assert tag.annotations == 1
-    assert _installed()["ultralytics"].lossy
+    assert tag.status is ClassExportStatus.DROPPED
+    assert tag.reason is not None and "nothing else" in tag.reason
+    assert not report.compatible
+    _assert_agrees(report, written)
+
+
+def test_a_target_keeping_tags_reports_the_same_drop(tmp_path: Path, labelled: Fixture) -> None:
+    installed = _installed()
+    plugin, target = resolve_target(installed, "yolo11")
+    release_id = labelled.publish()
+    report = labelled.releases.check_export(release_id, plugin, target=target)
+    labelled.close()
+
+    (tag,) = [one for one in report.classes if one.label_class == "weather"]
+    assert tag.status is ClassExportStatus.DROPPED
 
 
 # --- a recipe at export ---------------------------------------------------------

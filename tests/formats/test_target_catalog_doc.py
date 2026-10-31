@@ -29,7 +29,11 @@ def script() -> ModuleType:
     return module
 
 
-def test_the_committed_table_matches_the_installed_catalog(script: ModuleType) -> None:
+def test_the_committed_table_matches_the_installed_catalog(
+    script: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    production = {name: one for name, one in exporters().items() if name != "dummy"}
+    monkeypatch.setattr(script, "exporters", lambda: production)
     document = script.DOCUMENT_PATH.read_text(encoding="utf-8")
     _, current, _ = script._split(document)
     assert current == script.render()

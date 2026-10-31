@@ -120,9 +120,14 @@ class Exporter(Protocol):
     #: doubt.
     #:
     #: Empty is the right answer for most formats, and for both reasons: COCO
-    #: writes a polygon as a polygon, and ``DummyExporter`` writes nothing at all.
+    #: writes a polygon as a polygon, and a format writing nothing reduces nothing.
     #: A format that converts silently is the one this field exists to stop.
     degraded_geometries: frozenset[GeometryType]
+
+    # Optional, read with ``getattr`` so existing plugins need not declare it:
+    # ``solitary_geometries: frozenset[GeometryType]`` names supported geometries
+    # written only when the export carries no other geometry. The compatibility
+    # report counts them dropped whenever anything else is written.
 
     #: Which asset modalities this format can write.
     #:

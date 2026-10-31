@@ -788,8 +788,6 @@ you want when you are asking *is my setup working, or is it the model?*. It also
 It is deliberately absent from the model list. Nobody choosing a model should be offered a
 segmenter that cannot segment; typing the id is the whole of how you reach it.
 
-This is the same decision as the `dummy` export format, and taken for the same reason.
-
 ## What a connection is not
 
 It is **not a credential store**. An HTTP connection names the environment variable holding its

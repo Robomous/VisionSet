@@ -117,10 +117,10 @@ visionset release publish --tag v1.0 --project road-signs --split 0.5,0.25,0.25
 visionset release verify v1.0 --project road-signs
 
 say "8. export in an installed format"
-# `dummy` writes nothing, so a file_count of 0 below is the honest report of an
-# export that ran.
+# The release carries no labels, so `coco` writes the images and an empty annotation
+# list; the report counts the files it wrote.
 visionset format list
-visionset export --project road-signs --release v1.0 --format dummy --out "$DEST/export" --json
+visionset export --project road-signs --release v1.0 --format coco --out "$DEST/export" --json
 
 say "9. a recipe, and the same release exported for a model through it"
 # A recipe is a project resource named on the export; the export keeps the spec

@@ -70,6 +70,8 @@ from visionset.kernel import (
     EmptyRelease,
     EntityAlreadyExists,
     EntityNotFound,
+    ExportDestinationNotEmpty,
+    ExportDestinationRefused,
     ExportFormatNotFound,
     ExportSourceUnreadable,
     ExportTargetConflict,
@@ -364,6 +366,10 @@ _HTTP: Final[dict[type[VisionSetError], _Http]] = {
     # the point: it names the asset, and the remedy is `GET /releases/{id}/verify`
     # followed by restoring the blob.
     ExportSourceUnreadable: _Http(409),
+    # A route never names the directory; the export job writes under the
+    # workspace's own `exports/`, so these reach a client only as a failed job.
+    ExportDestinationNotEmpty: _Http(409),
+    ExportDestinationRefused: _Http(422),
     # The `download_weights` gate, refusing what `allowed_actions` had already
     # declined to declare. 409 rather than 404 because both readings are about
     # the resource as it stands — already set up, or a kind with no weights of

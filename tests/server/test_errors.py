@@ -96,6 +96,8 @@ EXPECTED: dict[str, tuple[int, str]] = {
     # `UnserializableManifest`'s reason — the request is fine, the stored state is
     # not — so the message naming the asset reaches the caller.
     "ExportSourceUnreadable": (409, "EXPORT_SOURCE_UNREADABLE"),
+    "ExportDestinationNotEmpty": (409, "EXPORT_DESTINATION_NOT_EMPTY"),
+    "ExportDestinationRefused": (422, "EXPORT_DESTINATION_REFUSED"),
     "InferenceConnectionNotDownloadable": (409, "INFERENCE_CONNECTION_NOT_DOWNLOADABLE"),
     "InferenceConnectionNotCheckable": (409, "INFERENCE_CONNECTION_NOT_CHECKABLE"),
     "InferenceConnectionNotTestable": (409, "INFERENCE_CONNECTION_NOT_TESTABLE"),

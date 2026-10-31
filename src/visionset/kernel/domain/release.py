@@ -40,6 +40,7 @@ import math
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import BinaryIO
 from uuid import UUID, uuid4
 
 from pydantic import (
@@ -228,6 +229,14 @@ def sha256_hex(data: bytes) -> str:
     writes ``hashlib`` itself.
     """
     return hashlib.sha256(data).hexdigest()
+
+
+def sha256_hex_of_stream(stream: BinaryIO) -> str:
+    """:func:`sha256_hex` over a stream, read in chunks rather than whole."""
+    digest = hashlib.sha256()
+    for chunk in iter(lambda: stream.read(1 << 20), b""):
+        digest.update(chunk)
+    return digest.hexdigest()
 
 
 class SplitRecipe(BaseModel):

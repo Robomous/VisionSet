@@ -1,0 +1,2 @@
+[visionset.formats]
+dummy = visionset_test_formats:DummyExporter

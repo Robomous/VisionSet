@@ -110,9 +110,7 @@ def test_it_carries_no_annotations_and_says_so(workspace: Path) -> None:
 
 
 def test_it_leaves_the_export_directory_it_was_given(destination: Path, workspace: Path) -> None:
-    # ``dummy`` writes nothing, so the directory is empty — but it exists, which
-    # is what proves the export ran rather than being skipped.
-    assert (destination / "export").is_dir()
+    assert any((destination / "export").rglob("*.json"))
     assert workspace.is_dir()
 
 

@@ -10,11 +10,6 @@ browser suite drives a real ``visionset server`` in its own process, where no
 test double can be injected. So the stand-in has to be something the shipped
 distribution can actually resolve.
 
-``DummyExporter`` is the same decision, taken earlier and for the same reason:
-an installed format that writes nothing, so that publish-and-export is walkable
-end to end without an exporter's own correctness entering the picture. The
-browser suite already exports through it.
-
 **It is reachable by naming it and it is not offered.** Nothing in the curated
 catalogue lists this id, so nobody choosing a model is shown a segmenter that
 cannot segment; typing it works, which is what the suite needs and what anybody

@@ -41,6 +41,7 @@ open :class:`WorkspaceService` and nothing else, and never names an adapter.
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from io import BytesIO
@@ -86,6 +87,7 @@ from visionset.kernel.domain import (
     plugin_manifest,
     recipe_hash,
     sha256_hex,
+    sha256_hex_of_stream,
     source_of_content_hash,
     transform_manifest,
     validate_schema_annotation,
@@ -94,6 +96,8 @@ from visionset.kernel.domain import (
 from visionset.kernel.errors import (
     ConstraintViolated,
     EmptyRelease,
+    ExportDestinationNotEmpty,
+    ExportDestinationRefused,
     ExportSourceUnreadable,
     InvalidAnnotation,
     LossyExportNotConsented,
@@ -113,7 +117,7 @@ from visionset.kernel.ports import (
 from visionset.kernel.services.dataset_service import DatasetService, assets_of
 from visionset.kernel.services.project_service import ProjectService
 from visionset.kernel.services.schema_service import SchemaService
-from visionset.kernel.services.workspace_service import WorkspaceService
+from visionset.kernel.services.workspace_service import EXPORTS_DIRNAME, WorkspaceService
 
 #: How SQLite words the tag index's refusal. Matched rather than parsed, and
 #: matched exactly, so that a different constraint failing is never mistaken for
@@ -507,6 +511,8 @@ class ReleaseService:
         dest: Path,
         *,
         allow_lossy: bool = False,
+        allow_non_empty: bool = False,
+        owned_by_workspace: bool = False,
         target: ExportTarget | None = None,
         recipe: RecipeSpec | None = None,
         recipe_name: str | None = None,
@@ -559,13 +565,18 @@ class ReleaseService:
         workspace's own files, so there is no state to keep in step. Re-running
         one is therefore free and always agrees with itself.
 
-        ``dest`` is created if it is not there and is **not** emptied if it is.
-        Deleting files under a path a caller named is not this service's to do,
-        so the counts describe the directory once the plugin has run rather than
-        the run alone — identical for a fresh directory, and different for one
-        holding an older export. A caller that needs the stricter reading clears
-        the directory first, which is what the REST surface does with the path it
-        owns.
+        ``dest`` must be absolute, neither inside the workspace nor containing
+        it, and either missing or an empty directory; it is created if missing.
+        A non-empty one is refused unless ``allow_non_empty``, and even then it
+        is **not** emptied: deleting files under a path a caller named is not
+        this service's to do, so the counts then describe the directory once the
+        plugin has run rather than the run alone. ``owned_by_workspace`` is the
+        server's export job and nobody else: its ``dest`` must instead lie under
+        the workspace's ``exports/`` directory, which it clears itself.
+
+        The recipe is checked first, then ``dest``, then every blob the release
+        names is hash-checked — all **before** ``dest`` is created, so a refused
+        export writes nothing.
 
         Raises:
             ReleaseNotFound: no such release in this workspace.
@@ -578,7 +589,13 @@ class ReleaseService:
             PreprocessingDriverNotFound: no driver in ``drivers`` applies a
                 step the recipe holds.
             ExportSourceUnreadable: a recipe step needs a source size the
-                manifest never recorded.
+                manifest never recorded, or a blob the release names is missing
+                or does not match its hash.
+            ExportDestinationRefused: ``dest`` is relative, inside or
+                containing the workspace (outside its ``exports/`` when
+                ``owned_by_workspace``), a file, or cannot be created or read.
+            ExportDestinationNotEmpty: ``dest`` holds files and
+                ``allow_non_empty`` is false.
             WorkspaceCorrupt: the manifest blob is gone, or is not a manifest.
         """
         release = self.get(release_id)
@@ -594,13 +611,22 @@ class ReleaseService:
             view = _transformed(release, manifest, target, recipe)
             handed = plugin_manifest(addressed, view)
             reader.transform(recipe, drivers or {})
-        dest.mkdir(parents=True, exist_ok=True)
+        self._require_destination(
+            dest, allow_non_empty=allow_non_empty, owned_by_workspace=owned_by_workspace
+        )
+        _require_intact_blobs(self._workspace.blob_store, manifest)
+        try:
+            dest.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise ExportDestinationRefused(
+                f"cannot create the export directory {dest}: {exc.strerror or exc}"
+            ) from exc
         exporter.export(release, handed, dest, content=reader.read)
         # The report is **excluded from the count**, on both sides: it is not
         # written until after the walk, and a report left by an earlier run into
         # the same directory is skipped. Both halves are needed for the same
         # property — ``file_count`` describes what the *exporter* produced, so
-        # ``DummyExporter`` still reports zero rather than lying, and exporting
+        # an exporter writing nothing reports zero rather than one, and exporting
         # twice into one directory still agrees with itself.
         written = [
             path
@@ -634,6 +660,51 @@ class ReleaseService:
             augmented_annotation_count=augmented_annotations,
             preprocessing=preprocessing,
         )
+
+    def _require_destination(
+        self, dest: Path, *, allow_non_empty: bool, owned_by_workspace: bool
+    ) -> None:
+        # Compared by file identity, not by spelling: on a case-insensitive file
+        # system ``<ws>/../WS/blobs`` names the workspace without matching it.
+        if not dest.is_absolute():
+            raise ExportDestinationRefused(
+                f"the export directory must be an absolute path, and {dest} is not"
+            )
+        root = self._workspace.root
+        exports = root / EXPORTS_DIRNAME
+        try:
+            if owned_by_workspace:
+                exports.mkdir(exist_ok=True)
+            resolved = dest.resolve()
+            existing = next(one for one in (resolved, *resolved.parents) if one.exists())
+            chain = (existing, *existing.parents)
+            if owned_by_workspace:
+                if not any(os.path.samefile(one, exports) for one in chain):
+                    raise ExportDestinationRefused(
+                        f"{dest} is not under the workspace's {EXPORTS_DIRNAME} directory"
+                    )
+            elif any(os.path.samefile(one, root) for one in chain):
+                raise ExportDestinationRefused(
+                    f"{dest} is inside the workspace; export somewhere outside it"
+                )
+            elif resolved.exists() and any(
+                os.path.samefile(one, resolved) for one in root.resolve().parents
+            ):
+                raise ExportDestinationRefused(
+                    f"{dest} contains the workspace; export somewhere outside it"
+                )
+            if resolved.exists() and not resolved.is_dir():
+                raise ExportDestinationRefused(f"the export directory {dest} is a file")
+            occupied = resolved.is_dir() and any(resolved.iterdir())
+        except OSError as exc:
+            raise ExportDestinationRefused(
+                f"cannot read the export directory {dest}: {exc.strerror or exc}"
+            ) from exc
+        if occupied and not (allow_non_empty or owned_by_workspace):
+            raise ExportDestinationNotEmpty(
+                f"{dest} is not empty; choose an empty directory, or re-run with "
+                f"allow_non_empty to write beside what is there"
+            )
 
     # --- the blob store side ----------------------------------------------
 
@@ -774,6 +845,31 @@ class ReleaseService:
         with self._workspace.unit_of_work() as uow:
             dataset = self._datasets.require_dataset(uow, dataset_id)
             return uow.releases.list(dataset.id)
+
+
+def _require_intact_blobs(blobs: BlobStore, manifest: Manifest) -> None:
+    """Refuse a release whose image blobs are missing or no longer match their hashes.
+
+    A check before the copy, not of it: a blob rewritten between the two is not caught.
+    """
+    for asset in manifest.assets:
+        try:
+            with blobs.get(asset.content_hash) as stream:
+                digest = sha256_hex_of_stream(stream)
+        except FileNotFoundError as exc:
+            raise ExportSourceUnreadable(
+                f"{_asset_subject(asset)} is not in the blob store; "
+                f"verify the release and restore it"
+            ) from exc
+        except OSError as exc:
+            raise ExportSourceUnreadable(
+                f"{_asset_subject(asset)} cannot be read: {exc.strerror or exc}"
+            ) from exc
+        if digest != asset.content_hash:
+            raise ExportSourceUnreadable(
+                f"{_asset_subject(asset)} no longer matches its content hash; "
+                f"verify the release and restore it"
+            )
 
 
 def _manifest_assets(uow: UnitOfWork, assets: list[Asset]) -> tuple[ManifestAsset, ...]:
@@ -1190,6 +1286,12 @@ def _compatibility(
     consent for it rides on ``allow_lossy`` like every other loss. A geometry
     no annotation can carry today is never a row, with or without a target:
     a target listing pose is describing a trainer, not a loss.
+
+    **A solitary geometry is dropped when it has company.** An exporter may
+    declare ``solitary_geometries`` — written only when the export carries no
+    other geometry, the way a YOLO dialect writes tags as a class tree but has
+    no place for one beside a box. When anything else reaches the output, those
+    rows are reported dropped, because that is what the plugin does.
     """
     # Keyed by class *and* geometry: a class accepting both boxes and polygons
     # gets one row per shape, because a boxes-only format writes one whole and
@@ -1200,6 +1302,29 @@ def _compatibility(
         for geometry in declared.geometries:
             if geometry in IMPLEMENTED_GEOMETRIES:
                 per_shape[(declared.name, geometry)] = (0, set())
+
+    solitary: frozenset[GeometryType] = getattr(exporter, "solitary_geometries", frozenset())
+    crowded = any(
+        GeometryType(annotation.geometry.type) not in solitary
+        and _status_of(GeometryType(annotation.geometry.type), exporter, target)
+        is not ClassExportStatus.DROPPED
+        for asset in manifest.assets
+        for annotation in asset.annotations
+    )
+
+    def status_of(geometry: GeometryType) -> ClassExportStatus:
+        if crowded and geometry in solitary:
+            return ClassExportStatus.DROPPED
+        return _status_of(geometry, exporter, target)
+
+    def reason_for(geometry: GeometryType) -> str | None:
+        status = status_of(geometry)
+        if crowded and geometry in solitary and status is ClassExportStatus.DROPPED:
+            return (
+                f"{exporter.format_name} writes a {geometry.value} only when the export "
+                f"holds nothing else, so it drops it here"
+            )
+        return _reason_for(status, geometry, exporter, target)
 
     counts = {status: 0 for status in ClassExportStatus}
     touched: dict[ClassExportStatus, set[UUID]] = {status: set() for status in ClassExportStatus}
@@ -1214,7 +1339,7 @@ def _compatibility(
                 count + 1,
                 assets | {asset.asset_id},
             )
-            status = _status_of(geometry, exporter, target)
+            status = status_of(geometry)
             counts[status] += 1
             touched[status].add(asset.asset_id)
 
@@ -1222,10 +1347,10 @@ def _compatibility(
         ClassCompatibility(
             label_class=name,
             geometry=geometry,
-            status=_status_of(geometry, exporter, target),
+            status=status_of(geometry),
             annotations=count,
             assets=len(assets),
-            reason=_reason_for(_status_of(geometry, exporter, target), geometry, exporter, target),
+            reason=reason_for(geometry),
         )
         for (name, geometry), (count, assets) in per_shape.items()
     )

@@ -99,6 +99,11 @@ DB_SIDECAR_FILENAMES = (f"{DB_FILENAME}-wal", f"{DB_FILENAME}-shm")
 #: Root of the content-addressed blob store, relative to the workspace directory.
 BLOBS_DIRNAME = "blobs"
 
+#: Where the server's export jobs write, relative to the workspace directory.
+#: ``ReleaseService.export`` writes here only for ``owned_by_workspace``; every
+#: other caller is refused anywhere under the root.
+EXPORTS_DIRNAME = "exports"
+
 #: Which workspace a surface operates on when its command line says nothing.
 #:
 #: Deliberately not a server- or CLI-specific name: the CLI writes the tokens the

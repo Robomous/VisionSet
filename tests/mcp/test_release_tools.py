@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from pathlib import Path
 from typing import Any
 
@@ -339,9 +338,9 @@ def test_an_uncreatable_destination_is_refused_with_the_reason(
         )
     finally:
         sealed.chmod(0o755)
-    assert refusal["code"] == "INTERNAL_ERROR"
-    assert re.fullmatch(r"Permission denied(: [^/]+)?", refusal["message"])
-    assert str(tmp_path) not in json.dumps(refusal)
+    assert refusal["code"] == "EXPORT_DESTINATION_REFUSED"
+    assert "Permission denied" in refusal["message"]
+    assert refusal["retry_with"] is None
 
 
 def test_export_writes_into_the_directory_it_was_given(
@@ -502,7 +501,78 @@ def test_a_dest_that_is_a_file_is_refused_before_a_plugin_runs(
     refusal = error(
         call("export_release", project=named, tag="v1.0", format="dummy", dest=str(occupied))
     )
-    assert "must be a directory" in refusal["message"]
+    assert refusal["code"] == "EXPORT_DESTINATION_REFUSED"
+    assert "is a file" in refusal["message"]
+
+
+@pytest.mark.parametrize("dest", ["relative/out", "~/out"])
+def test_a_dest_that_is_not_absolute_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, dest: str
+) -> None:
+    named = promoted(monkeypatch, tmp_path, count=1)
+    payload(call("publish_release", project=named, tag="v1.0"))
+    monkeypatch.chdir(tmp_path)
+    refusal = error(call("export_release", project=named, tag="v1.0", format="dummy", dest=dest))
+    assert refusal["code"] == "EXPORT_DESTINATION_REFUSED"
+    assert "absolute" in refusal["message"]
+    assert not (tmp_path / "relative").exists()
+    assert not (tmp_path / "~").exists()
+
+
+def test_the_workspace_is_refused_as_a_dest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named = promoted(monkeypatch, tmp_path, count=1)
+    payload(call("publish_release", project=named, tag="v1.0"))
+    root = Path(os.environ["VISIONSET_WORKSPACE"])
+    for dest in (root, root / "inside", root / "exports" / "mine", Path(root.anchor)):
+        refusal = error(
+            call(
+                "export_release",
+                project=named,
+                tag="v1.0",
+                format="dummy",
+                dest=str(dest),
+                allow_non_empty=True,
+            )
+        )
+        assert refusal["code"] == "EXPORT_DESTINATION_REFUSED", dest
+    assert not (root / "inside").exists()
+
+
+def test_a_non_empty_dest_is_refused_with_its_retry_flag(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named = promoted(monkeypatch, tmp_path, count=1)
+    payload(call("publish_release", project=named, tag="v1.0"))
+    dest = tmp_path / "out"
+    dest.mkdir()
+    (dest / "earlier.txt").write_text("x")
+    refusal = error(
+        call(
+            "export_release",
+            project=named,
+            tag="v1.0",
+            format="coco",
+            dest=str(dest),
+            allow_lossy=True,
+        )
+    )
+    assert refusal["code"] == "EXPORT_DESTINATION_NOT_EMPTY"
+    assert refusal["retry_with"] == "allow_non_empty"
+    result = payload(
+        call(
+            "export_release",
+            project=named,
+            tag="v1.0",
+            format="coco",
+            dest=str(dest),
+            allow_lossy=True,
+            allow_non_empty=True,
+        )
+    )
+    assert (dest / "earlier.txt").is_file()
+    assert result["file_count"] >= 2
 
 
 class LossyExporter:

@@ -471,16 +471,16 @@ def _walk(client: Client, base_url: str, downloads: Path) -> Summary:
     # artifact. A real exporter copies every image in the release, which is not
     # something a request can hold open.
     installed = client.json("GET", "/formats", 200)
-    assert "dummy" in {row["name"] for row in installed["items"]}, installed
+    assert "coco" in {row["name"] for row in installed["items"]}, installed
     status, export_headers, launched_export = client.request(
-        "POST", f"/releases/{release['id']}/export?format=dummy", 202
+        "POST", f"/releases/{release['id']}/export?format=coco", 202
     )
     export_job = json.loads(launched_export)
     assert export_headers["Location"] == f"/background-jobs/{export_job['id']}", export_headers
     assert export_job["state"] == "queued", export_job
 
     settled, export_polls = _poll_job(client, export_job["id"])
-    assert settled["result"]["format"] == "dummy", settled
+    assert settled["result"]["format"] == "coco", settled
     _, archive_headers, archive = client.request(
         "GET", f"/background-jobs/{export_job['id']}/artifact", 200
     )
