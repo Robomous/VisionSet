@@ -358,7 +358,7 @@ class WorkspaceService:
         if not db_path.is_file():
             raise NotAWorkspace(
                 f"{root} is not a VisionSet workspace (no {DB_FILENAME}); "
-                f"use WorkspaceService.init to create one"
+                f"create one with `visionset init`"
             )
         if blobs_dir.exists() and not blobs_dir.is_dir():
             raise WorkspaceCorrupt(f"{blobs_dir} is not a directory")

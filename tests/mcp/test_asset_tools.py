@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 from pathlib import Path
 
 import pytest
@@ -50,6 +51,10 @@ def test_a_preview_comes_back_as_image_content_with_the_rows_own_dimensions(
     assert (meta["width"], meta["height"]) == (listed["width"], listed["height"])
     assert meta["content_hash"] == listed["content_hash"]
     assert meta["resolution"] == "thumbnail"
+    # The measurements also travel as text, for a client that forwards `content`
+    # alone: without `scale` an unscaled preview coordinate is silently wrong.
+    texts = [json.loads(b.text) for b in result.content if getattr(b, "type", "") == "text"]
+    assert texts == [meta]
 
 
 def test_the_bytes_decode_to_an_image_of_the_size_the_answer_claims(

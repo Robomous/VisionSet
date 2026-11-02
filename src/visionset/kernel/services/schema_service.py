@@ -374,8 +374,8 @@ class SchemaService:
                 self._refuse_orphaning(uow, project_id, diff.guards)
             raise DestructiveSchemaChange(
                 f"this version narrows the schema "
-                f"({diff.describe(ChangeKind.DESTRUCTIVE)}); pass allow_destructive=True "
-                f"to proceed",
+                f"({diff.describe(ChangeKind.DESTRUCTIVE)}); retry with allow_destructive "
+                f"to accept that",
                 classes=tuple(sorted(diff.destructive_classes)),
             )
 
@@ -461,7 +461,8 @@ class SchemaService:
         active = self.active(uow, project_id)
         if active is None:
             raise SchemaNotFound(
-                f"project {project_id} has no schema yet; create version 1 with create_version"
+                f"project {project_id} has no schema yet; "
+                f"publish a first schema version before using it"
             )
         return active
 

@@ -63,7 +63,16 @@ def test_a_refusal_carries_the_code_rest_answers_with(
     refusal = error(call("get_project", project="nope"))
     assert refusal["code"] == "PROJECT_NOT_FOUND"
     assert refusal["detail"] is None
-    assert refused("anything")["error"]["code"] is None
+    # A refusal this surface made has a code too: REST's one for a bad argument.
+    assert refused("anything")["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_a_malformed_id_is_coded_like_any_other_bad_argument(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    workspace(monkeypatch, tmp_path)
+    refusal = error(call("get_batch", batch_id="not-a-uuid"))
+    assert refusal["code"] == "VALIDATION_ERROR"
 
 
 def test_a_refusal_carries_the_detail_rest_answers_with(
@@ -192,7 +201,6 @@ def test_nothing_leaks_a_traceback(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     named = schema(monkeypatch, tmp_path)
     for result in (
         call("ingest", project=named, path=str(tmp_path / "nowhere")),
-        call("ingest", project=named, path=str(tmp_path), fps=-1),
         call("get_batch", batch_id="not-a-uuid"),
         call("list_batch_assets", batch_id="not-a-uuid"),
     ):

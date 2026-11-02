@@ -1221,3 +1221,14 @@ def test_pre_labeling_a_project_reports_one_item_per_job_with_its_own_plan(
     assert [item["batch_name"] for item in outcome["items"]] == ["incoming"] * 2 + ["more"]
     assert all(item["plan"]["asked_classes"] == ["sign"] for item in outcome["items"])
     assert outcome["annotations_written"] == 6
+
+
+def test_a_misspelled_argument_is_refused_rather_than_dropped(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # `job` is REST's spelling of `job_id`; silently ignoring it answered the
+    # unfiltered list to a caller who believed it was filtered.
+    _, batch_id = ingested(monkeypatch, tmp_path, count=1)
+    result = call("list_batch_assets", batch_id=batch_id, job="x")
+    assert result.is_error
+    assert "job" in str(result.content)

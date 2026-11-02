@@ -257,7 +257,33 @@ def build_server(*, allow_destructive: bool | None = None) -> MCPServer:
         built.tool(description=inspect.cleandoc(tool.__doc__ or ""), annotations=hints)(
             guarded(tool)
         )
+    _forbid_unknown_arguments(built)
     return built
+
+
+def _forbid_unknown_arguments(built: MCPServer) -> None:
+    """Make a misspelled or extra argument a refusal instead of a silent no-op.
+
+    MCPServer builds each tool's argument model with pydantic's default, which
+    *drops* what it does not know: ``list_batch_assets {"batch_id": B, "job": "x"}``
+    would answer the unfiltered list while the caller believed it was filtered.
+    Forbidding extras makes the call fail, and the published ``inputSchema`` says
+    ``additionalProperties: false`` so a client can know before it asks.
+
+    The rejection is the SDK's own argument-validation error (``isError: true``,
+    naming the field) — the same answer a missing or mistyped argument already
+    gets — rather than a domain refusal in the envelope, because it is raised
+    before a tool body or :func:`guarded` runs.
+
+    Reaches the SDK's tool table, which has no public hook for this;
+    ``tests/mcp/test_registration.py`` asserts every tool came out closed, so an
+    SDK change that moves it fails the suite instead of silently reopening the door.
+    """
+    for registered in built._tool_manager.list_tools():
+        model = registered.fn_metadata.arg_model
+        model.model_config["extra"] = "forbid"
+        model.model_rebuild(force=True)
+        registered.parameters = model.model_json_schema(by_alias=True)
 
 
 server = build_server()

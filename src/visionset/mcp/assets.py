@@ -45,6 +45,7 @@ context window.
 from __future__ import annotations
 
 import io
+import json
 from typing import Annotated, Any, Final
 
 from mcp.server.mcpserver.utilities.types import Image
@@ -102,17 +103,28 @@ def _payload(
     }
 
 
+def _measurements(payload: dict[str, Any]) -> TextContent:
+    """The measurements as text, beside the pixels.
+
+    ``structuredContent`` alone is not enough: a client that forwards only
+    ``content`` to the model would lose ``scale``, which is the one number that
+    keeps a coordinate measured on a preview from being silently wrong in the
+    asset's own frame.
+    """
+    return TextContent(type="text", text=json.dumps(payload, indent=2))
+
+
 def _preview(workspace: WorkspaceService, asset: Asset) -> CallToolResult:
     with IngestService(workspace).open_thumbnail(asset) as handle:
         buffer = io.BytesIO(handle.read())
     measured = workspace.image_processor.probe(buffer)
+    payload = _payload(asset, sent=(measured.width, measured.height), resolution="thumbnail")
     return CallToolResult(
         content=[
-            Image(data=buffer.getvalue(), format=SUFFIXES[THUMBNAIL_FORMAT]).to_image_content()
+            Image(data=buffer.getvalue(), format=SUFFIXES[THUMBNAIL_FORMAT]).to_image_content(),
+            _measurements(payload),
         ],
-        structured_content=_payload(
-            asset, sent=(measured.width, measured.height), resolution="thumbnail"
-        ),
+        structured_content=payload,
     )
 
 
@@ -138,7 +150,10 @@ def _original(workspace: WorkspaceService, asset: Asset) -> CallToolResult:
             structured_content=payload,
         )
     return CallToolResult(
-        content=[Image(data=data, format=SUFFIXES[asset.format]).to_image_content()],
+        content=[
+            Image(data=data, format=SUFFIXES[asset.format]).to_image_content(),
+            _measurements(payload),
+        ],
         structured_content=payload,
     )
 
