@@ -107,6 +107,7 @@ from visionset.kernel import (
     LossyExportNotConsented,
     MediaError,
     MissingRequiredAttribute,
+    ModelNotFound,
     NoSplitRecipe,
     NotAWorkspace,
     PreprocessingDriverNotFound,
@@ -498,6 +499,11 @@ _HTTP: Final[dict[type[VisionSetError], _Http]] = {
     # exact `pip install`, which *is* the remedy — nobody can reconstruct it
     # from "unavailable".
     LocalInferenceUnavailable: _Http(500, expose_message=True),
+    # The reference is wrong, not the machine: a mistyped id, a revision that does
+    # not resolve, or a private repository. A 422 because the model named in the
+    # request (or the connection) is what is invalid. A 4xx publishes its message,
+    # and ours replaces the hub's own text, which carries a request id.
+    ModelNotFound: _Http(422),
     # The neighbour of LOCAL_INFERENCE_UNAVAILABLE, exposed for the same reason:
     # the message is the remedy, and this one names the device that filled up
     # along with the ways off it. Not a 503 despite sounding transient —

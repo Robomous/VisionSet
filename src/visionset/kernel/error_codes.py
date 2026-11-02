@@ -89,6 +89,7 @@ ERROR_CODES: Final[Mapping[type[errors.VisionSetError], str]] = {
     errors.LocalInferenceUnavailable: "LOCAL_INFERENCE_UNAVAILABLE",
     errors.LossyExportNotConsented: "LOSSY_EXPORT_NOT_CONSENTED",
     errors.MediaError: "MEDIA_ERROR",
+    errors.ModelNotFound: "MODEL_NOT_FOUND",
     errors.MissingRequiredAttribute: "MISSING_REQUIRED_ATTRIBUTE",
     errors.NoSplitRecipe: "NO_SPLIT_RECIPE",
     errors.NotAWorkspace: "NOT_A_WORKSPACE",

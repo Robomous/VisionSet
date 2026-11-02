@@ -1233,6 +1233,19 @@ class LocalInferenceUnavailable(VisionSetError):
     """
 
 
+class ModelNotFound(VisionSetError):
+    """The hub has no model under that id and revision.
+
+    ``LocalInferenceUnavailable``'s other neighbour: that one says the *machine*
+    cannot run models, and this says the *reference* is wrong — a mistyped or
+    malformed id, a revision that does not resolve, or a repository that is
+    private. The hub answers all three with one "not found", so the sentence
+    names all three. Raised from the same two calls (the size read and the
+    download), but it must not arrive as "the extra is not installed", which sends
+    a reader to install something they already have.
+    """
+
+
 class InferenceOutOfMemory(VisionSetError):
     """The device ran out of memory part-way through running a model.
 

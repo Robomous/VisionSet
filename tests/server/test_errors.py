@@ -152,6 +152,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "InvalidPartition": (422, "INVALID_PARTITION"),
     "UnknownJobType": (422, "UNKNOWN_JOB_TYPE"),
     "MediaError": (422, "MEDIA_ERROR"),
+    "ModelNotFound": (422, "MODEL_NOT_FOUND"),
     "UnsupportedMedia": (422, "UNSUPPORTED_MEDIA"),
     "CorruptMedia": (422, "CORRUPT_MEDIA"),
     "UnsupportedPrompt": (422, "UNSUPPORTED_PROMPT"),
