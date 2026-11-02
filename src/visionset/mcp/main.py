@@ -45,6 +45,7 @@ from typing import Any, Final
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
+from visionset import __version__
 from visionset.mcp import (
     annotations,
     assets,
@@ -60,6 +61,7 @@ from visionset.mcp import (
     sources,
 )
 from visionset.mcp._errors import guarded
+from visionset.mcp._guide import INSTRUCTIONS, WORKFLOW, WORKFLOW_URI
 
 READS: Final = ToolAnnotations(read_only_hint=True)
 """Reads rows and changes nothing."""
@@ -249,14 +251,17 @@ def build_server(*, allow_destructive: bool | None = None) -> MCPServer:
     documentation **here**, once, rather than at each definition — so neither can
     be forgotten by the next tool, and ``test_registration.py`` asserts it.
     """
-    built = MCPServer("visionset")
+    built = MCPServer("visionset", instructions=INSTRUCTIONS, version=__version__)
+    built.resource(WORKFLOW_URI, name="workflow", mime_type="text/markdown")(lambda: WORKFLOW)
     offered = TOOLS if allow_destructive is False else registered_tools()
     if allow_destructive is True:
         offered = TOOLS + DESTRUCTIVE_TOOLS
     for tool, hints in offered:
-        built.tool(description=inspect.cleandoc(tool.__doc__ or ""), annotations=hints)(
-            guarded(tool)
-        )
+        built.tool(
+            title=tool.__name__.replace("_", " ").capitalize(),
+            description=inspect.cleandoc(tool.__doc__ or ""),
+            annotations=hints,
+        )(guarded(tool))
     _forbid_unknown_arguments(built)
     return built
 

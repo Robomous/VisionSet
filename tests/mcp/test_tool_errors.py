@@ -300,3 +300,25 @@ def test_the_one_tool_returning_image_content_still_refuses_in_the_envelope(
     assert set(result.structured_content["error"]) == ENVELOPE_KEYS
     # And the text half says the same thing, for a client that reads only content.
     assert "error" in result.content[0].text
+
+
+def test_the_refusals_an_agent_meets_mid_workflow_say_what_to_call_next() -> None:
+    from visionset.kernel import (
+        BatchNotComplete,
+        EmptyRelease,
+        InferenceConnectionNotSetUp,
+        JobNotComplete,
+        ModelNotFound,
+        SchemaNotFound,
+    )
+    from visionset.mcp._errors import _envelope
+
+    for refusal in (
+        JobNotComplete,
+        BatchNotComplete,
+        EmptyRelease,
+        SchemaNotFound,
+        InferenceConnectionNotSetUp,
+        ModelNotFound,
+    ):
+        assert _envelope(refusal("x"))["error"]["hint"], refusal.__name__

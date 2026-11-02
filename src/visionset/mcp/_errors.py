@@ -56,10 +56,15 @@ from mcp.types import CallToolResult, TextContent
 from pydantic import ValidationError
 
 from visionset.kernel import (
+    BatchNotComplete,
     ConfirmationRequired,
     DestructiveSchemaChange,
+    EmptyRelease,
     ExportDestinationNotEmpty,
+    InferenceConnectionNotSetUp,
+    JobNotComplete,
     LossyExportNotConsented,
+    ModelNotFound,
     NotAWorkspace,
     ReleaseContentWouldViolateSchema,
     SchemaNotFound,
@@ -117,6 +122,29 @@ _HINTS: Final[dict[type[BaseException], str]] = {
         "Call `check_export` with the same release and format to see exactly "
         "which classes would be dropped and how many annotations that is, then "
         "re-run `export_release` with `allow_lossy=true` to accept the loss."
+    ),
+    # The kernel's sentence names the action in REST's vocabulary
+    # (`download_weights`, `test_endpoint`); here those are tools of other names.
+    InferenceConnectionNotSetUp: (
+        "On this server the action named above is a tool: `download_connection_weights` "
+        "for a local connection, `test_inference_connection` for an http one."
+    ),
+    ModelNotFound: (
+        "Check the model id and revision with `model_download_size` before creating "
+        "or downloading a connection; a private repository needs HF_TOKEN on the server."
+    ),
+    JobNotComplete: (
+        "Every asset of the job must be annotated or skipped first: list what is "
+        "left with `next_pending_assets`, settle each with `add_annotations` or "
+        "`set_asset_progress`, then call `complete_job` again."
+    ),
+    BatchNotComplete: (
+        "Call `complete_job` for each of the batch's jobs first (`get_batch` lists "
+        "them), then retry."
+    ),
+    EmptyRelease: (
+        "Nothing is in the dataset yet. Promote a completed batch with "
+        "`promote_batch` (or `complete_batch` with `promote=true`), then publish."
     ),
     SchemaNotFound: (
         "Publish a first schema version with `create_schema_version` (or "

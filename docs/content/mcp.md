@@ -313,6 +313,14 @@ A **domain refusal** is an ordinary successful call whose payload is the error e
   or neither of `target` and `format` - carries `VALIDATION_ERROR`, the code REST uses for an
   argument the caller got wrong, so `code` is never `null`.
 
+**A connection says how to start before any call.** `initialize` returns `instructions` - the order
+of the workflow, the error envelope and the coordinate trap, in a few lines - and the server
+advertises one resource, `visionset://workflow`, with the walk-through an agent reads on demand.
+`serverInfo.version` is the installed version and every tool has a `title`. A refusal that has a
+next step says so in `hint`: `JOB_NOT_COMPLETE`, `BATCH_NOT_COMPLETE`, `EMPTY_RELEASE`,
+`SCHEMA_NOT_FOUND`, `INFERENCE_CONNECTION_NOT_SET_UP` (which maps REST's `download_weights` and
+`test_endpoint` actions to this surface's tool names) and `MODEL_NOT_FOUND`.
+
 **An argument a tool does not declare is refused, not dropped.** Every tool's `inputSchema` says
 `additionalProperties: false`, and a misspelled name (`job` for `job_id`) fails the call with the
 SDK's own argument error - `isError: true`, naming the field, the same answer a missing or
