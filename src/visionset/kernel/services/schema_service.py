@@ -295,7 +295,7 @@ class SchemaService:
 
         Raises:
             ProjectNotFound: no such project in this workspace.
-            InvalidSchema: two classes share a name, or a colour is not a hex value.
+            InvalidSchema: no classes, two classes share a name, or a colour is not a hex value.
             UnsupportedGeometry: a class names a geometry with no implementation.
             DestructiveSchemaChange: the change narrows the contract and
                 ``allow_destructive`` was not ``True``.
@@ -524,7 +524,16 @@ def _require_coherent(classes: Sequence[LabelClass]) -> None:
     Class names are compared case-insensitively: ``Annotation.label_class``
     matches them exactly, so "Car" beside "car" is two classes that read as one
     to everybody except the code.
+
+    A version names at least one class: a schema with none describes nothing, and
+    publishing one — usually a mistaken ``[]`` — would pin every batch to a
+    contract no annotation can satisfy. A draft may still be empty; only
+    publishing is refused.
     """
+    if not classes:
+        raise InvalidSchema(
+            "a schema version needs at least one class; add a class before publishing"
+        )
     unsupported = sorted(
         {
             geometry.value

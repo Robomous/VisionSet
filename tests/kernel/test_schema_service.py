@@ -443,10 +443,13 @@ def test_an_unsupported_geometry_is_reported_as_an_invalid_schema(tmp_path: Path
     workspace.close()
 
 
-def test_a_version_with_no_classes_is_a_legitimate_starting_point(tmp_path: Path) -> None:
+def test_a_version_with_no_classes_is_refused(tmp_path: Path) -> None:
+    """An empty version describes nothing; a mistaken ``[]`` must not pin a batch to it."""
     workspace, projects, schemas = _services(tmp_path)
     project = projects.create("signs")
-    assert schemas.create_version(project.id, []).published.classes == ()
+    with pytest.raises(InvalidSchema, match="at least one class"):
+        schemas.create_version(project.id, [])
+    assert schemas.list_versions(project.id) == []
     workspace.close()
 
 
