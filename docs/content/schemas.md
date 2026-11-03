@@ -308,6 +308,9 @@ is matched by exact string too: a rename really does orphan every annotation und
 name. The kernel cannot see intent, and guessing at it would be guessing with somebody's
 labels.
 
+A published version needs at least one class: an empty one (usually a mistaken `[]`) is refused as
+`InvalidSchema`. A draft may still be empty; only publishing is refused.
+
 Within one version, class names must be unique ignoring case, for the same reason: `Car`
 beside `car` is two classes that read as one to everybody except the code. That rule is also
 what makes a re-casing the one rename whose intent is not a guess: a version cannot hold both,
