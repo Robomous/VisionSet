@@ -838,7 +838,7 @@ def test_a_narrowing_schema_needs_the_flag(tmp_path: Path) -> None:
     batch_id = fixture.in_state(BatchState.IN_ANNOTATION)
     fixture.schemas.create_version(fixture.project.id, [SIGN], allow_destructive=True)
 
-    with pytest.raises(DestructiveSchemaChange, match="allow_destructive=True"):
+    with pytest.raises(DestructiveSchemaChange, match="allow_destructive"):
         fixture.batches.repin(batch_id)
     assert fixture.batches.get(batch_id).schema_version == 2
 

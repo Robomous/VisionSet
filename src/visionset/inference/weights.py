@@ -72,6 +72,7 @@ from visionset.kernel.domain import (
 from visionset.kernel.errors import (
     InferenceConnectionNotDownloadable,
     LocalInferenceUnavailable,
+    ModelNotFound,
     VisionSetError,
 )
 from visionset.kernel.ports import WeightsSource
@@ -421,6 +422,35 @@ def _needs_approved_access(hub: Any, exc: BaseException) -> bool:
     return gated is not None and isinstance(exc, gated)
 
 
+def _model_missing(hub: Any, exc: BaseException) -> bool:
+    """Whether the hub has no such model: a bad id, a bad revision, or a private repo.
+
+    By class, like :func:`_needs_approved_access` and for its reason, and checked
+    **after** it because ``GatedRepoError`` inherits from
+    ``RepositoryNotFoundError``. A malformed id (``HFValidationError``) is the
+    same answer from the reader's side: the reference does not name anything.
+    """
+    errors = getattr(hub, "errors", None)
+    names = ("RepositoryNotFoundError", "RevisionNotFoundError", "HFValidationError")
+    missing = tuple(
+        cls for cls in (getattr(errors, name, None) for name in names) if isinstance(cls, type)
+    )
+    return bool(missing) and isinstance(exc, missing)
+
+
+def _missing_remedy(model_id: str, revision: str) -> str:
+    """What the hub's "not found" means, in a sentence somebody can act on.
+
+    The hub answers a mistyped id, an unknown revision and a private repository
+    alike, so the sentence names all three. Its own text is dropped: it opens with
+    a status line and a request id.
+    """
+    return (
+        f"the hub has no model {model_id!r} at revision {revision!r}: check the id and the "
+        "revision, and if the repository is private set HF_TOKEN to a token that can read it"
+    )
+
+
 def _access_remedy(model_id: str) -> str:
     """What happened and what to do about it, for a model behind an access gate.
 
@@ -507,6 +537,10 @@ def download(
         # status line and a request id.
         if _needs_approved_access(hub, exc):
             raise LocalInferenceUnavailable(_access_remedy(connection.model_id)) from exc
+        if _model_missing(hub, exc):
+            raise ModelNotFound(
+                _missing_remedy(connection.model_id, connection.model_revision)
+            ) from exc
         raise LocalInferenceUnavailable(
             f"could not fetch {connection.model_id} at {connection.model_revision}: {exc}"
         ) from exc
@@ -653,6 +687,8 @@ def measure(model_id: str, model_revision: str) -> DownloadSize:
         # where the same sentence is the same remedy.
         if _needs_approved_access(hub, exc):
             raise LocalInferenceUnavailable(_access_remedy(model_id)) from exc
+        if _model_missing(hub, exc):
+            raise ModelNotFound(_missing_remedy(model_id, model_revision)) from exc
         raise LocalInferenceUnavailable(
             f"could not read the size of {model_id} at {model_revision}: {exc}"
         ) from exc

@@ -45,6 +45,7 @@ from visionset.kernel.errors import (
     InferenceConnectionNotDownloadable,
     InferenceConnectionNotFound,
     LocalInferenceUnavailable,
+    ModelNotFound,
 )
 from visionset.kernel.services import InferenceConnectionService, WorkspaceService
 
@@ -711,13 +712,15 @@ def test_a_repository_that_is_not_there_is_not_reported_as_a_licence_to_accept(
     """
     missing = _HubErrors.RepositoryNotFoundError("401 Client Error. Repository Not Found")
     monkeypatch.setattr(weights_module, "imported", lambda name: _refusing(missing))
-    with pytest.raises(LocalInferenceUnavailable) as raised:
+    with pytest.raises(ModelNotFound) as raised:
         download(_a_connection(), into=tmp_path / MODELS_DIRNAME)
 
+    # Its own error, not "the extra is not installed": nothing here is missing.
+    assert not isinstance(raised.value, LocalInferenceUnavailable)
     message = str(raised.value)
-    assert "could not fetch somebody/gated-model at abc123" in message
+    assert "no model 'somebody/gated-model' at revision 'abc123'" in message
     assert "have to be accepted" not in message
-    assert "HF_TOKEN" not in message
+    assert "401" not in message
 
 
 def test_a_client_too_old_to_name_the_error_still_reports_the_failure(

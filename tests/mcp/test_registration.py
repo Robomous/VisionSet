@@ -283,3 +283,10 @@ def test_guarded_preserves_the_signature_the_input_schema_is_built_from() -> Non
     assert inspect.signature(guarded(projects.create_project)) == inspect.signature(
         projects.create_project
     )
+
+
+def test_every_tool_refuses_an_argument_it_does_not_declare() -> None:
+    # A misspelled argument used to be dropped, so `list_batch_assets` with `job`
+    # answered the unfiltered list. The schema is closed, and so is the model.
+    for name, tool in tool_schemas().items():
+        assert tool.input_schema.get("additionalProperties") is False, name

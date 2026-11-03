@@ -56,12 +56,18 @@ from mcp.types import CallToolResult, TextContent
 from pydantic import ValidationError
 
 from visionset.kernel import (
+    BatchNotComplete,
     ConfirmationRequired,
     DestructiveSchemaChange,
+    EmptyRelease,
     ExportDestinationNotEmpty,
+    InferenceConnectionNotSetUp,
+    JobNotComplete,
     LossyExportNotConsented,
+    ModelNotFound,
     NotAWorkspace,
     ReleaseContentWouldViolateSchema,
+    SchemaNotFound,
     ThumbnailNotCached,
     VisionSetError,
 )
@@ -73,6 +79,7 @@ from visionset.kernel.error_codes import (
     validation_message,
 )
 from visionset.kernel.services import WORKSPACE_ENV_VAR
+from visionset.mcp._resolve import MalformedIdentifier
 
 _logger = logging.getLogger(__name__)
 
@@ -96,10 +103,10 @@ override it.
 
 _HINTS: Final[dict[type[BaseException], str]] = {
     # A remedy an *agent* can act on, which is not the same set the CLI has. The
-    # kernel's own sentence for a missing workspace ends in "use
-    # WorkspaceService.init", a Python call; an agent cannot make one, and it
-    # cannot set an environment variable either — so the hint names the thing
-    # whoever configured the client has to fix.
+    # kernel's own sentence for a missing workspace points at `visionset init`,
+    # a command an agent cannot run, and it cannot set an environment variable
+    # either — so the hint names the thing whoever configured the client has to
+    # fix.
     NotAWorkspace: (
         f"No workspace is configured. Whoever runs this MCP server must set "
         f"{WORKSPACE_ENV_VAR} in its environment, or start it with "
@@ -115,6 +122,33 @@ _HINTS: Final[dict[type[BaseException], str]] = {
         "Call `check_export` with the same release and format to see exactly "
         "which classes would be dropped and how many annotations that is, then "
         "re-run `export_release` with `allow_lossy=true` to accept the loss."
+    ),
+    # The kernel's sentence names the action in REST's vocabulary
+    # (`download_weights`, `test_endpoint`); here those are tools of other names.
+    InferenceConnectionNotSetUp: (
+        "On this server the action named above is a tool: `download_connection_weights` "
+        "for a local connection, `test_inference_connection` for an http one."
+    ),
+    ModelNotFound: (
+        "Check the model id and revision with `model_download_size` before creating "
+        "or downloading a connection; a private repository needs HF_TOKEN on the server."
+    ),
+    JobNotComplete: (
+        "Every asset of the job must be annotated or skipped first: list what is "
+        "left with `next_pending_assets`, settle each with `add_annotations` or "
+        "`set_asset_progress`, then call `complete_job` again."
+    ),
+    BatchNotComplete: (
+        "Call `complete_job` for each of the batch's jobs first (`get_batch` lists "
+        "them), then retry."
+    ),
+    EmptyRelease: (
+        "Nothing is in the dataset yet. Promote a completed batch with "
+        "`promote_batch` (or `complete_batch` with `promote=true`), then publish."
+    ),
+    SchemaNotFound: (
+        "Publish a first schema version with `create_schema_version` (or "
+        "`set_schema_draft` then `publish_schema_draft`), then retry."
     ),
     ReleaseContentWouldViolateSchema: (
         "Reconcile the annotations or publish a schema that describes them, then "
@@ -136,12 +170,16 @@ def _walk(table: dict[type[BaseException], str], exc: BaseException) -> str | No
     return None
 
 
-def refused(message: str, *, hint: str | None = None) -> dict[str, Any]:
+def refused(
+    message: str, *, hint: str | None = None, code: str = VALIDATION_ERROR
+) -> dict[str, Any]:
     """The same envelope, for a refusal this surface made rather than the kernel.
 
     Used where a kernel call would otherwise raise something outside the
     ``VisionSetError`` tree — a missing path, a non-positive rate — so the shape
-    a caller parses does not depend on which layer said no.
+    a caller parses does not depend on which layer said no. The ``code`` defaults
+    to ``VALIDATION_ERROR``, the one REST publishes for an argument the caller got
+    wrong, so no refusal reaches an agent without a code to branch on.
     """
     return {
         "error": {
@@ -149,7 +187,7 @@ def refused(message: str, *, hint: str | None = None) -> dict[str, Any]:
             "retry_with": None,
             "hint": hint,
             "index": None,
-            "code": None,
+            "code": code,
             "detail": None,
         }
     }
@@ -166,7 +204,10 @@ def _envelope(exc: VisionSetError) -> dict[str, Any]:
             # the write is all-or-nothing, so nothing landed and there is no
             # partial result to count from.
             "index": exc.index,
-            "code": error_code(exc),
+            # A malformed id is the caller's argument, like any other this surface
+            # refuses; the kernel never sees it, so it has no code of its own.
+            "code": error_code(exc)
+            or (VALIDATION_ERROR if isinstance(exc, MalformedIdentifier) else None),
             "detail": error_detail(exc),
         }
     }
@@ -192,8 +233,8 @@ def from_arguments() -> Iterator[None]:
 
 
 def _coded(code: str, message: str, detail: dict[str, Any] | None) -> dict[str, Any]:
-    envelope = refused(message)
-    envelope["error"].update(code=code, detail=detail)
+    envelope = refused(message, code=code)
+    envelope["error"].update(detail=detail)
     return envelope
 
 

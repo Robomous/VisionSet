@@ -723,8 +723,8 @@ class BatchService:
                 self._refuse_orphaning(uow, batch, diff.guards)
             raise DestructiveSchemaChange(
                 f"re-pinning batch {batch.name!r} onto the active schema version narrows what "
-                f"it allows ({diff.describe(ChangeKind.DESTRUCTIVE)}); pass "
-                f"allow_destructive=True to proceed",
+                f"it allows ({diff.describe(ChangeKind.DESTRUCTIVE)}); retry "
+                f"with allow_destructive to accept that",
                 classes=tuple(sorted(diff.destructive_classes)),
             )
 
