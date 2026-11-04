@@ -299,3 +299,23 @@ def test_no_write_reaches_a_batch_that_is_not_open(
     batch_id = payload(call("get_job", job_id=job_id))["batch_id"]
     payload(call("complete_batch", batch_id=batch_id))
     assert error(call("add_annotations", job_id=job_id, annotations=[_label(assets[0])]))["message"]
+
+
+@pytest.mark.parametrize(
+    ("tool", "argument"),
+    [
+        ("add_annotations", "annotations"),
+        ("update_annotations", "annotations"),
+        ("delete_annotations", "annotation_ids"),
+    ],
+)
+def test_an_empty_list_is_refused_by_every_annotation_write(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, tool: str, argument: str
+) -> None:
+    """Nothing to write is not a write: no `job_started: true` for a no-op."""
+    _, _, job_id = open_batch(monkeypatch, tmp_path, count=1)
+
+    result = call(tool, job_id=job_id, **{argument: []})
+
+    assert result.is_error
+    assert payload(call("get_job", job_id=job_id))["state"] == "pending"

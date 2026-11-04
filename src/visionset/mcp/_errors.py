@@ -108,9 +108,10 @@ _HINTS: Final[dict[type[BaseException], str]] = {
     # either — so the hint names the thing whoever configured the client has to
     # fix.
     NotAWorkspace: (
-        f"No workspace is configured. Whoever runs this MCP server must set "
-        f"{WORKSPACE_ENV_VAR} in its environment, or start it with "
-        f"`visionset mcp --workspace <path>`."
+        f"This MCP server is not pointed at a VisionSet workspace (the directory in the "
+        f"message is the one it tried). Whoever runs it must set {WORKSPACE_ENV_VAR} in its "
+        f"environment to an existing workspace, or start it with "
+        f"`visionset mcp --workspace <path>`; `visionset init` creates one."
     ),
     ThumbnailNotCached: (
         "Call `backfill_thumbnails` for this project to render the missing "

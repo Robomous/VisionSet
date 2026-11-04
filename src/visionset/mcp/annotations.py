@@ -147,7 +147,7 @@ def add_annotations(
     job_id: JobRef,
     annotations: Annotated[
         list[AnnotationInput],
-        Field(description="The labels to write. All are written, or none are."),
+        Field(description="The labels to write. All are written, or none are.", min_length=1),
     ],
 ) -> dict[str, Any]:
     """Write new annotations into a job. All succeed together or none are written.
@@ -182,7 +182,7 @@ def update_annotations(
     job_id: JobRef,
     annotations: Annotated[
         list[AnnotationEdit],
-        Field(description="The replacements, each addressed by id. All or none."),
+        Field(description="The replacements, each addressed by id. All or none.", min_length=1),
     ],
 ) -> dict[str, Any]:
     """Replace existing annotations wholesale. All succeed together or none are written.
@@ -210,7 +210,8 @@ def update_annotations(
 def delete_annotations(
     job_id: JobRef,
     annotation_ids: Annotated[
-        list[str], Field(description="The annotations to remove, by id. All or none.")
+        list[str],
+        Field(description="The annotations to remove, by id. All or none.", min_length=1),
     ],
 ) -> dict[str, Any]:
     """Remove annotations from a job. All succeed together or none are removed.

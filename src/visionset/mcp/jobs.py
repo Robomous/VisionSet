@@ -234,8 +234,12 @@ def complete_job(job_id: JobRef) -> dict[str, Any]:
     """
     with opened_workspace() as workspace:
         resolved = identifier(job_id, what="job_id")
-        started = autostarted(workspace, resolved)
         service = JobService(workspace)
+        # Asked before the start, so a refusal leaves the job as it was found:
+        # starting a job and then refusing to complete it is a side effect the
+        # caller never asked for and the refusal does not mention.
+        service.require_settled(resolved)
+        started = autostarted(workspace, resolved)
         completed = service.complete(resolved)
         return _job_payload(service, completed.id, job_started=started)
 

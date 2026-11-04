@@ -172,6 +172,12 @@ the first move**. Every tool that writes - the three annotation tools, `set_asse
 **`job_started`** in its answer, so the move is a fact you are told rather than one that happens
 behind you. `job_started` is `false` on every later call.
 
+A write that is **refused** can still have started the job, because the start comes first - the
+annotator page works the same way. `complete_job` is the exception: it checks that every asset is
+settled *before* it starts anything, so a `JOB_NOT_COMPLETE` refusal leaves a `pending` job
+`pending`. The three annotation tools refuse an empty list rather than report a start for a write
+that wrote nothing.
+
 Only `pending` moves. A job that is already `in_progress` reports no start; a `completed` one is
 left alone here and then **refused by the write's own gate** - `JobFinished` (409
 `JOB_FINISHED`), since #439 - so the auto-start neither re-opens finished work nor hides the
@@ -276,8 +282,10 @@ number is in range and every shape is well formed.
 
 `full: true` returns the original bytes at the asset's own size, where `scale` is 1.
 
-An asset whose preview has never been rendered is refused, and the refusal names
-`backfill_thumbnails`. An asset with no recorded image format has no honest media type, so its
+An asset whose preview has never been rendered - or whose cached preview has gone from the blob
+store - is refused, and the refusal names `backfill_thumbnails`, which renders it again from the
+original. A relative `path` given to `ingest` is read against the server's working directory and
+reported back as an absolute one. An asset with no recorded image format has no honest media type, so its
 measurements come back with an explanation rather than pixels.
 
 ## How a tool refuses
