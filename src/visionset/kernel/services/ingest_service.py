@@ -249,16 +249,22 @@ class IngestService:
         exists to fill the gap deliberately.
 
         Raises:
-            ThumbnailNotCached: no preview has been rendered for this asset.
-            WorkspaceCorrupt: the blob the preview names is gone.
+            ThumbnailNotCached: no preview has been rendered for this asset, or
+                the one it names is no longer in the blob store.
         """
         if asset.thumbnail_hash is None:
             raise ThumbnailNotCached(
                 f"asset {asset.id} has no cached preview; run backfill_thumbnails on its project"
             )
-        return _open_blob(
-            self._workspace.blob_store, asset.thumbnail_hash, f"thumbnail of asset {asset.id}"
-        )
+        try:
+            return self._workspace.blob_store.get(asset.thumbnail_hash)
+        except FileNotFoundError as exc:
+            # A cache that lost an entry is not a damaged workspace: the original
+            # is still held, and the preview can be rendered again.
+            raise ThumbnailNotCached(
+                f"the cached preview of asset {asset.id} is no longer in the blob store; "
+                "run backfill_thumbnails on its project to render it again"
+            ) from exc
 
     # --- ingesting ---------------------------------------------------------
 
@@ -448,9 +454,10 @@ class IngestService:
     def backfill_thumbnails(self, project_id: UUID) -> ThumbnailBackfill:
         """Render a preview for every asset in the project that has none.
 
-        The remedy for the three things a NULL ``thumbnail_hash`` can mean: an
-        asset written before the cache existed, one whose preview a run could
-        not render, and one an import put there by another route. Idempotent
+        The remedy for the things a missing preview can mean: a NULL
+        ``thumbnail_hash`` (an asset written before the cache existed, one whose
+        preview a run could not render, one an import put there by another
+        route), and a hash whose blob has since gone from the store. Idempotent
         and re-runnable — a second pass over a healthy project examines nothing,
         because there is nothing left without a preview.
 
@@ -486,6 +493,7 @@ class IngestService:
                 (asset.id, asset.content_hash, asset.uri)
                 for asset in uow.assets.list(project_id)
                 if asset.thumbnail_hash is None
+                or not self._workspace.blob_store.exists(asset.thumbnail_hash)
             ]
 
         rendered: dict[UUID, str] = {}
@@ -514,7 +522,7 @@ class IngestService:
                 asset = uow.assets.get(asset_id)
                 if asset is None:
                     continue
-                if asset.thumbnail_hash is None:
+                if asset.thumbnail_hash != thumbnail_hash:
                     uow.assets.update(asset.model_copy(update={"thumbnail_hash": thumbnail_hash}))
                 # Counted as filled either way, because ``filled`` states an
                 # outcome rather than a write: an ingest that rendered this one

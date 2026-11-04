@@ -313,6 +313,24 @@ class JobService:
             _require_settled(completed)
             return completed
 
+    def require_settled(self, job_id: UUID) -> None:
+        """Refuse, writing nothing, unless every asset in the job is settled.
+
+        The check ``complete`` makes, available on its own so that a surface which
+        starts a job on the caller's behalf can ask *before* it moves anything: a
+        refused completion must not leave the job started.
+
+        Raises:
+            JobNotFound: no such job in this workspace.
+            BatchNotInAnnotation: the job's batch is not open for annotation, which
+                ``complete`` would refuse first.
+            JobNotComplete: an asset is still unsettled.
+        """
+        with self._workspace.unit_of_work() as uow:
+            job = self.require_job(uow, job_id)
+            self.require_open_batch(uow, job)
+            _require_settled(job)
+
     def assign(self, job_id: UUID, assignee: str | None) -> AnnotationJob:
         """Name who is working this job, or clear it with ``None``.
 

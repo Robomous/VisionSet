@@ -1563,6 +1563,29 @@ def test_the_backfill_renders_a_preview_for_every_asset_missing_one(tmp_path: Pa
     fixture.close()
 
 
+def test_a_preview_whose_blob_is_gone_is_a_cache_miss_and_the_backfill_renders_it_again(
+    tmp_path: Path,
+) -> None:
+    """A lost cache entry is not workspace damage: the original is still held."""
+    fixture = Fixture(tmp_path)
+    planted = _plant_unrendered(fixture, count=1)
+    fixture.ingest.backfill_thumbnails(fixture.project.id)
+    cached = _reread(fixture, planted[0].id)
+    assert cached.thumbnail_hash is not None
+    _blob_path(fixture, cached.thumbnail_hash).unlink()
+
+    with pytest.raises(ThumbnailNotCached, match="backfill_thumbnails"):
+        fixture.ingest.open_thumbnail(cached)
+
+    report = fixture.ingest.backfill_thumbnails(fixture.project.id)
+
+    assert report.examined == 1
+    assert report.filled == (planted[0].id,)
+    with fixture.ingest.open_thumbnail(_reread(fixture, planted[0].id)) as preview:
+        assert preview.read()
+    fixture.close()
+
+
 def test_a_second_backfill_pass_finds_nothing_left_to_do(tmp_path: Path) -> None:
     """Idempotent, and cheap to re-run: there is no state to reset between passes."""
     fixture = Fixture(tmp_path)

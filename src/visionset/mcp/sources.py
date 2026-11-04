@@ -66,7 +66,10 @@ def ingest(
     path: Annotated[
         str,
         Field(
-            description="A path on this machine to a directory of still images; `~` is expanded."
+            description=(
+                "A path on this machine to a directory of still images; `~` is expanded, "
+                "and a relative path is read against the server's working directory."
+            )
         ),
     ],
     batch_name: Annotated[
@@ -102,15 +105,18 @@ def ingest(
     Refuses before doing any work if the path does not exist, is not a
     directory, or cannot be read.
     """
-    source_path = Path(path).expanduser()
+    # Absolute before anything is said about it: a relative path means the server
+    # process's working directory, which is not the agent's, and an error echoing
+    # it unresolved would not say which directory was meant.
+    source_path = Path(path).expanduser().resolve()
     # Refusals the kernel raises *outside* the VisionSetError tree, which
     # `guarded` would only report as a generic INTERNAL_ERROR: `canonical_path`
     # resolves strictly (FileNotFoundError), `register_images` wants a directory
     # (NotADirectoryError), and listing an unreadable one is a PermissionError.
     if not source_path.exists():
-        return refused(f"no such path: {path}")
+        return refused(f"no such path: {source_path}")
     if not source_path.is_dir():
-        return refused(f"{path} is not a directory. {VIDEO_IS_A_BROWSER_IMPORT}")
+        return refused(f"{source_path} is not a directory. {VIDEO_IS_A_BROWSER_IMPORT}")
     if not os.access(source_path, os.R_OK | os.X_OK):
         return refused("permission denied: this process cannot read that directory")
 

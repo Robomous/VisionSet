@@ -388,6 +388,9 @@ def set_schema_draft(
 
     `note` is the version message the draft will publish under. It replaces
     whatever note the draft carried, like `classes` does.
+
+    Answers with the saved draft itself — not wrapped in `draft` the way
+    `get_schema_draft` is, since by now there is always one.
     """
     with opened_workspace() as workspace:
         resolved = ProjectService(workspace).resolve(project)

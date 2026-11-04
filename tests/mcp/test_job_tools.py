@@ -155,6 +155,19 @@ def test_a_job_cannot_be_completed_while_an_asset_is_unsettled(
     assert error(call("complete_job", job_id=job_id))["message"]
 
 
+def test_a_refused_completion_leaves_a_pending_job_pending(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The refusal must not start the job as a side effect."""
+    _, _, job_id = open_batch(monkeypatch, tmp_path, count=2)
+    assert payload(call("get_job", job_id=job_id))["state"] == "pending"
+
+    refusal = error(call("complete_job", job_id=job_id))
+
+    assert refusal["code"] == "JOB_NOT_COMPLETE"
+    assert payload(call("get_job", job_id=job_id))["state"] == "pending"
+
+
 def test_a_job_nobody_started_completes_anyway_because_the_first_write_started_it(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
