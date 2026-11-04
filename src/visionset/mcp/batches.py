@@ -54,7 +54,7 @@ from visionset.inference import (
     geometry_selection,
     open_jobs_of,
     planned,
-    pre_label,
+    pre_label_recorded,
     pre_label_selection,
     select_pre_labelable,
     served_for,
@@ -485,7 +485,7 @@ def pre_label_batch(
         items: list[dict[str, Any]] = []
         for job in open_jobs_of(workspace, batch_uuid):
             seen: list[PreLabelPlan] = []
-            outcome = pre_label(
+            outcome = pre_label_recorded(
                 workspace,
                 job_id=job.id,
                 connection_id=resolved_connection.id,

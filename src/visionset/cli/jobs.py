@@ -35,7 +35,7 @@ from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
 from visionset.cli.batches import GeometryOption, announce_plan
 from visionset.cli.inference import ConnectionArgument
-from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE, geometry_selection, pre_label
+from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE, geometry_selection, pre_label_recorded
 from visionset.kernel.domain import MARK_TRANSITIONS, AssetProgress
 from visionset.kernel.services import BatchService, InferenceConnectionService, JobService
 
@@ -262,7 +262,7 @@ def job_pre_label(
     Blocks because a terminal has no dispatcher to claim an enqueued run.
     """
     with opened_workspace(workspace) as service:
-        outcome = pre_label(
+        outcome = pre_label_recorded(
             service,
             job_id=job,
             connection_id=InferenceConnectionService(service).resolve(connection).id,

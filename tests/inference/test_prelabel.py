@@ -21,6 +21,7 @@ from visionset.inference.prelabel import (
     open_jobs_of,
     planned,
     pre_label,
+    pre_label_recorded,
     pre_label_selection,
     prompt_plan,
     select_pre_labelable,
@@ -43,6 +44,7 @@ from visionset.kernel.domain import (
     AssetPrediction,
     AssetProgress,
     Attribute,
+    BackgroundJobState,
     Batch,
     BboxGeometry,
     BySize,
@@ -1731,3 +1733,98 @@ def test_a_failure_part_way_propagates_and_keeps_what_earlier_jobs_entered(
         pool=prelabel_fixture.pool,
     )
     assert [job.outcome.annotations_written for job in resumed] == [0, 2]
+
+
+# --- a run with no dispatcher is still a run on the job's record --------------
+
+
+def test_an_inline_run_is_recorded_as_the_jobs_latest_run(prelabel_fixture: Fixture) -> None:
+    """The CLI and MCP block on the run, so no queue row is ever enqueued for it.
+
+    ``pre_label_recorded`` writes the row the queue would have, so the job reads
+    back the run it just had rather than null.
+    """
+    jobs = JobService(prelabel_fixture.workspace)
+    assert jobs.latest_pre_label_run(prelabel_fixture.job_id) is None
+
+    pre_label_recorded(
+        prelabel_fixture.workspace,
+        job_id=prelabel_fixture.job_id,
+        connection_id=prelabel_fixture.connection.id,
+        pool=prelabel_fixture.pool,
+    )
+
+    run = jobs.latest_pre_label_run(prelabel_fixture.job_id)
+    assert run is not None
+    assert run.state is BackgroundJobState.SUCCEEDED
+    assert run.annotation_job_id == prelabel_fixture.job_id
+    assert (run.assets_processed, run.assets_total, run.assets_labeled) == (3, 3, 3)
+    assert run.stopped_early is False
+    batch_runs = BatchService(prelabel_fixture.workspace).pre_label_runs()
+    assert batch_runs[run.batch_id].job_id == run.job_id
+
+
+def test_a_refused_inline_run_leaves_no_row(polygon_only_fixture: Fixture) -> None:
+    with pytest.raises(SchemaHasNoDetectableClass):
+        pre_label_recorded(
+            polygon_only_fixture.workspace,
+            job_id=polygon_only_fixture.job_id,
+            connection_id=polygon_only_fixture.connection.id,
+            pool=polygon_only_fixture.pool,
+        )
+
+    assert (
+        JobService(polygon_only_fixture.workspace).latest_pre_label_run(polygon_only_fixture.job_id)
+        is None
+    )
+
+
+def test_an_inline_run_stopped_by_its_cancel_flag_settles_cancelled(
+    prelabel_fixture: Fixture,
+) -> None:
+    """A server on the same workspace can cancel it, as it can a queued run.
+
+    Cancelled from ``on_plan``, the first moment the row exists: the reporter
+    re-reads the flag at most once per interval, but never skips the first read.
+    """
+    workspace = prelabel_fixture.workspace
+
+    def cancel(_: PreLabelPlan) -> None:
+        row = JobService(workspace).latest_pre_label_run(prelabel_fixture.job_id)
+        assert row is not None
+        workspace.job_queue.request_cancel(row.job_id)
+
+    outcome = pre_label_recorded(
+        workspace,
+        job_id=prelabel_fixture.job_id,
+        connection_id=prelabel_fixture.connection.id,
+        on_plan=cancel,
+        pool=prelabel_fixture.pool,
+    )
+
+    run = JobService(workspace).latest_pre_label_run(prelabel_fixture.job_id)
+    assert run is not None
+    assert outcome.stopped_early is True
+    assert run.state is BackgroundJobState.CANCELLED
+    assert run.stopped_early is True
+
+
+def test_an_inline_run_that_fails_settles_failed_with_its_reason(
+    prelabel_fixture: Fixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom(done: int, total: int) -> None:
+        raise RuntimeError("the model fell over")
+
+    with pytest.raises(RuntimeError):
+        pre_label_recorded(
+            prelabel_fixture.workspace,
+            job_id=prelabel_fixture.job_id,
+            connection_id=prelabel_fixture.connection.id,
+            on_progress=boom,
+            pool=prelabel_fixture.pool,
+        )
+
+    run = JobService(prelabel_fixture.workspace).latest_pre_label_run(prelabel_fixture.job_id)
+    assert run is not None
+    assert run.state is BackgroundJobState.FAILED
+    assert run.error == "the model fell over"
