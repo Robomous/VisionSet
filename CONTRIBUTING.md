@@ -244,6 +244,7 @@ a deliberate manual run, because each costs minutes or needs its own install.
 | Generated API client | `pnpm generate:client` (commit the diff) — writes **two** artifacts under `frontend/ui-core/src/generated/`: `api.ts` (the types) and `checks.ts` (the runtime response checks `unwrap` takes). CI diffs the whole directory. | `generated` |
 | Wire fixtures (annotator payloads, capability rosters) | `uv run python scripts/export_wire_fixtures.py` (commit the diff) — writes `tests/fixtures/wire_annotations.json` and `tests/fixtures/wire_capabilities.json`, the kernel's answers as bytes for the `frontend` job that installs no Python | part of `python` |
 | MCP tool reference | `uv run python scripts/export_mcp_tools.py` (commit the diff) — `docs/content/mcp-tools.md` is generated from the server's own tool listing, because a tool description *is* the interface an agent reads | `generated` |
+| Error code reference | `uv run python scripts/export_error_codes.py` (commit the diff) — `docs/content/error-codes.md` is generated from `ERROR_CODES`, the server's status rules, each error's own docstring and the surfaces' hint tables | `generated` |
 | Export target catalog | `uv run python scripts/export_target_catalog.py` (commit the diff) — the target table in `docs/content/releases.md` is generated from what the installed formats declare, the same catalog `GET /export-targets` serves | `generated` |
 
 **`scripts/check.sh` runs pytest under `pytest-xdist` with `-n auto`.** The suite is

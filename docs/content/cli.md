@@ -3,8 +3,23 @@
 Like the REST API and MCP server, `visionset` is a thin SDK client. It calls the kernel in the
 same process, without an HTTP hop, and exposes no capability that the SDK does not already have.
 
+**Two things the CLI does not do.** It cannot create annotations: `job mark` records progress only,
+so labels come from the browser app, from REST or MCP, or from a model with `pre-label`. And it
+cannot import video: `ingest` takes a directory of still images and refuses a clip, which is a
+browser feature. [surfaces.md](surfaces.md) lays out what each surface can do.
+
 Every command below takes `[--json]` and `[--workspace]` unless the table says otherwise, and both
 are omitted from this listing to keep it readable.
+
+**Identifiers.** A project is given by name or id. Batches, jobs and assets are given by UUID, which
+the commands that create or list them print. `--jobs-of N` on `batch approve` means N assets per job.
+
+**The schema file** given to `schema apply` and `schema draft set` is the same JSON document REST
+takes as a schema version, and the smallest one is:
+
+```json
+{ "classes": [{ "name": "sign", "geometries": ["bbox"] }] }
+```
 
 ```
 visionset --version

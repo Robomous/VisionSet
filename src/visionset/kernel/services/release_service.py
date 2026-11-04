@@ -497,7 +497,8 @@ class ReleaseService:
         if (exporter.lossy or not compatibility.compatible) and not allow_lossy:
             raise LossyExportNotConsented(
                 f"format {exporter.format_name!r} cannot carry everything release "
-                f"{release.tag!r} holds; re-run with allow_lossy to accept the loss",
+                f"{release.tag!r} holds ({_loss_reason(compatibility)}); "
+                "re-run with allow_lossy to accept the loss",
                 compatibility=compatibility,
             )
         if recipe is not None:
@@ -1454,3 +1455,20 @@ def _reason_for(
             f"the shape is lost"
         )
     return f"{exporter.format_name} writes a {geometry.value} in a reduced form; detail is lost"
+
+
+def _loss_reason(compatibility: ExportCompatibility) -> str:
+    """Why consent is being asked for, in the refusal's own sentence.
+
+    The per-class breakdown is ``check``'s; this is the headline, so the person
+    who hits the refusal does not have to run a second command to learn what it
+    is about.
+    """
+    parts = []
+    if compatibility.excluded_annotations:
+        parts.append(f"{compatibility.excluded_annotations} annotation(s) would be left out")
+    if compatibility.degraded_annotations:
+        parts.append(f"{compatibility.degraded_annotations} would be reduced")
+    if not parts:
+        parts.append("the format is lossy by declaration")
+    return "; ".join(parts)

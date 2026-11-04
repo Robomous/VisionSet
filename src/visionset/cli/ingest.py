@@ -131,7 +131,9 @@ def ingest(
     json_out: JsonOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
-    """Register a directory of images and ingest it, into one batch.
+    """Register a directory of still images and ingest it, into one batch. Not video.
+
+    Video import is a browser feature: this command refuses a video file.
 
     The directory is read top level only, sorted, with no filter on the suffix —
     anything that is not an image, cannot be opened, or is not a regular file

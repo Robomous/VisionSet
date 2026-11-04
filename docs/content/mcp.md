@@ -34,7 +34,7 @@ cannot run a console script.
 
 ### Destructive tools are not offered unless you ask
 
-`delete_project` and `delete_batch` are **absent from the listing** unless the server was started
+`delete_project`, `delete_batch`, `delete_inference_connection` and `delete_preprocessing_recipe` are **absent from the listing** unless the server was started
 with `--allow-destructive` (or, for the module form, `VISIONSET_MCP_ALLOW_DESTRUCTIVE=1`):
 
 ```json
