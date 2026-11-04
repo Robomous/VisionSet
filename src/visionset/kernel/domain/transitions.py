@@ -44,10 +44,10 @@ def require_move(transitions: Mapping[S, frozenset[S]], current: S, to: S, subje
     """
     if to in transitions[current]:
         return
-    legal = ", ".join(sorted(state.value for state in transitions[current])) or "nothing"
+    legal = ", ".join(sorted(state.value for state in transitions[current]))
+    onward = f"from here it can only become {legal}" if legal else "it is final and cannot change"
     raise InvalidTransition(
-        f"{subject} is {current.value!r} and cannot become {to.value!r}; "
-        f"from here it can only become {legal}"
+        f"{subject} is {current.value!r} and cannot become {to.value!r}; {onward}"
     )
 
 

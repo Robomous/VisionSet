@@ -419,7 +419,7 @@ def test_nothing_may_be_written_into_a_batch_nobody_opened(
             )
         ),
     ):
-        assert "no work happens in a batch nobody opened" in refusal["message"]
+        assert "work only happens in a batch that is in annotation" in refusal["message"]
 
     assert payload(call("get_job", job_id=job_id))["state"] == "pending"
 

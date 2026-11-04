@@ -197,7 +197,7 @@ def job_mark(
     """Record where one asset of a job has got to.
 
     Marking a state the asset already holds is a no-op — but the batch gate
-    fires first, so writing into a batch nobody opened is refused even when the
+    fires first, so writing into a batch that is not in annotation is refused even when the
     value would not change.
     """
     with opened_workspace(workspace) as service:

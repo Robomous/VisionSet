@@ -78,6 +78,39 @@ def test_create_from_a_spec_file_reads_the_shape_show_json_prints(
     assert listed["total"] == 2
 
 
+def test_create_from_the_whole_show_json_document_works_too(root: Path, tmp_path: Path) -> None:
+    name = project(root)
+    ok(root, "recipe", "create", "a", "-p", name, "--resize", "stretch:320x240")
+    shown = payload(root, "recipe", "show", "a", "-p", name)
+    spec_file = tmp_path / "whole.json"
+    spec_file.write_text(json.dumps(shown), encoding="utf-8")
+
+    ok(root, "recipe", "create", "b", "-p", name, "--spec", str(spec_file))
+
+    assert payload(root, "recipe", "show", "b", "-p", name)["spec"] == shown["spec"]
+
+
+def test_a_refusal_names_the_field_and_never_pydantics_own_rendering(
+    root: Path, tmp_path: Path
+) -> None:
+    name = project(root)
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps({"steps": [], "mystery": 1}), encoding="utf-8")
+
+    result = run(root, "recipe", "create", "x", "-p", name, "--spec", str(bad))
+
+    assert result.exit_code == 2
+    message = usage_error(result)
+    assert "mystery" in message
+    assert "errors.pydantic.dev" not in message
+    assert "[type=" not in message
+    too_many = run(
+        root, "recipe", "create", "x", "-p", name, "--augment", "hflip", "--variants", "9"
+    )
+    assert too_many.exit_code == 2
+    assert "--variants" in usage_error(too_many)
+
+
 def test_the_spec_file_and_the_flag_form_are_one_choice_at_exit_two(
     root: Path, tmp_path: Path
 ) -> None:

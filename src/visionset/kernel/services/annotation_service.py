@@ -58,7 +58,7 @@ Five things shape this module:
 
 Both gates above the asset are ``JobService``'s, reused rather than restated:
 this service calls ``require_job``, ``require_open_batch`` and
-``require_open_job``, so "no work happens in a batch nobody opened" and "a
+``require_open_job``, so "work only happens in a batch that is in annotation" and "a
 finished job is finished" each have exactly one wording. The second is not
 implied by the first: a job completing does not complete its batch, so the
 ordinary state of a finished job is inside an open one, and without its own gate

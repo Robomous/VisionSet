@@ -232,3 +232,15 @@ def test_visionset_debug_adds_the_traceback_on_stderr_only(
     assert "Traceback" not in quiet.stderr
     assert "Traceback" in loud.stderr
     assert "RuntimeError: boom" in loud.stderr
+
+
+def test_an_unknown_option_under_json_is_a_document_on_stdout() -> None:
+    from typer.testing import CliRunner
+
+    from visionset.cli.main import app
+
+    result = CliRunner().invoke(app, ["release", "list", "--project", "x", "--bogus", "--json"])
+    assert result.exit_code == 2
+    error = json.loads(result.stdout)["error"]
+    assert error["code"] == "USAGE_ERROR"
+    assert "--bogus" in error["message"]

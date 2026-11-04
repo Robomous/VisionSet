@@ -552,8 +552,8 @@ class BatchService:
         if batch.state not in PRE_LABELABLE_STATES:
             raise BatchNotInAnnotation(
                 f"batch {batch.name!r} is {batch.state.value!r}, not "
-                f"{BatchState.IN_ANNOTATION.value!r}; a model cannot pre-label a batch "
-                f"nobody opened"
+                f"{BatchState.IN_ANNOTATION.value!r}; a model can only pre-label a "
+                f"batch that is in annotation"
             )
         return batch
 

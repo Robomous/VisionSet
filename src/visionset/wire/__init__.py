@@ -696,6 +696,15 @@ def release(value: Release) -> dict[str, Any]:
     }
 
 
+def token(value: Any) -> dict[str, Any]:
+    """A token as a program reads it: the name and its lifetime, never a secret or a digest."""
+    return {
+        "name": value.name,
+        "created_at": _moment(value.created_at),
+        "revoked_at": None if value.revoked_at is None else _moment(value.revoked_at),
+    }
+
+
 def release_verification(value: ReleaseVerification) -> dict[str, Any]:
     """The result of re-hashing everything a release names. ``ok`` is derived."""
     return {

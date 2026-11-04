@@ -9,7 +9,7 @@ from typer.core import TyperGroup
 
 from visionset import __version__
 from visionset.cli._errors import unexpected_failure
-from visionset.cli._output import reset_json_requested
+from visionset.cli._output import document, reset_json_requested
 from visionset.cli.batches import batch_app
 from visionset.cli.export import export
 from visionset.cli.formats import format_app
@@ -32,9 +32,25 @@ class _Root(TyperGroup):
 
     # `Any`: the base's `Context` is Typer's vendored Click, which it does not export.
     def invoke(self, ctx: Any) -> Any:
+        # Read before Click consumes them: the group empties the list to hand
+        # the tokens to the subcommand it resolves.
+        asked_for_json = "--json" in ctx.args
         try:
             return super().invoke(ctx)
-        except (typer.TyperException, typer.Exit, typer.Abort):
+        except typer.TyperException as exc:
+            # Exit 2 with Click's own message, as ever - and, when the caller asked
+            # for ``--json``, the refusal on stdout too, so a program reads one
+            # shape for every failure instead of an empty stream. (Typer vendors
+            # Click, so a usage error is recognised by name, not by ``click``'s class.)
+            usage = any(c.__name__ == "UsageError" for c in type(exc).__mro__)
+            if asked_for_json and usage:
+                typer_exc: Any = exc
+                typer_exc.show()
+                message = typer_exc.format_message()
+                document({"error": {"code": "USAGE_ERROR", "message": message, "detail": None}})
+                raise typer.Exit(code=typer_exc.exit_code) from exc
+            raise
+        except (typer.Exit, typer.Abort):
             raise
         except Exception as exc:
             raise unexpected_failure(exc) from exc

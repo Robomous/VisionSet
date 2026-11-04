@@ -973,7 +973,7 @@ def test_the_refusal_says_where_the_run_can_actually_go(tmp_path: Path) -> None:
     fixture = Fixture(tmp_path)
     job = fixture.job_in(IngestState.COMPLETED)
 
-    with pytest.raises(InvalidTransition, match="can only become nothing"):
+    with pytest.raises(InvalidTransition, match="it is final and cannot change"):
         fixture.ingest.resume(job.id)
     fixture.close()
 

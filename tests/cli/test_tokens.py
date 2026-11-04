@@ -5,6 +5,7 @@ a token minted here authenticates against a server built by the real
 ``create_app()``, and a listing never shows a secret or a digest.
 """
 
+import json
 from pathlib import Path
 
 import pytest
@@ -265,3 +266,27 @@ def test_every_token_command_exits_zero_when_it_succeeds(
     result = runner.invoke(app, [*argv, "-w", str(workspace_root)])
 
     assert result.exit_code == 0, f"{label}: {result.output}"
+
+
+# --- --json -----------------------------------------------------------------
+
+
+def test_token_list_json_names_the_lifetime_and_never_a_secret(workspace_root: Path) -> None:
+    created = runner.invoke(app, ["token", "create", "--name", "ci", "-w", str(workspace_root)])
+    secret = created.stdout.strip()
+    listed = runner.invoke(app, ["token", "list", "--json", "-w", str(workspace_root)])
+    assert listed.exit_code == 0, listed.output
+    payload = json.loads(listed.stdout)
+    assert payload["total"] == 1
+    assert set(payload["items"][0]) == {"name", "created_at", "revoked_at"}
+    assert secret not in listed.stdout
+
+
+def test_token_create_json_carries_the_secret_once(workspace_root: Path) -> None:
+    result = runner.invoke(
+        app, ["token", "create", "--name", "ci", "--json", "-w", str(workspace_root)]
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["name"] == "ci"
+    assert payload["secret"].startswith(SECRET_PREFIX)

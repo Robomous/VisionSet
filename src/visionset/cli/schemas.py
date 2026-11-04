@@ -46,6 +46,7 @@ import typer
 from pydantic import TypeAdapter, ValidationError
 
 from visionset import wire
+from visionset.cli._errors import validation_summary
 from visionset.cli._output import JsonOption, document, note, table
 from visionset.cli._resolve import ProjectOption
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
@@ -77,11 +78,7 @@ def _read_classes(file: Path) -> tuple[LabelClass, ...]:
     try:
         return _CLASSES.validate_python(loaded["classes"])
     except ValidationError as exc:
-        details = "; ".join(
-            f"classes.{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
-            for error in exc.errors()
-        )
-        raise typer.BadParameter(f"{file}: {details}") from exc
+        raise typer.BadParameter(f"{file}: {validation_summary(exc, prefix='classes.')}") from exc
 
 
 draft_app = typer.Typer(
@@ -118,11 +115,7 @@ def _read_draft_classes(file: Path) -> tuple[DraftLabelClass, ...]:
     try:
         return _DRAFT_CLASSES.validate_python(loaded["classes"])
     except ValidationError as exc:
-        details = "; ".join(
-            f"classes.{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
-            for error in exc.errors()
-        )
-        raise typer.BadParameter(f"{file}: {details}") from exc
+        raise typer.BadParameter(f"{file}: {validation_summary(exc, prefix='classes.')}") from exc
 
 
 @draft_app.command("show")
@@ -149,7 +142,8 @@ def schema_draft_show(
     if json_out:
         document(wire.schema_draft(draft))
         return
-    note(f"Revision {draft.revision}, {len(draft.classes)} class(es), based on {draft.based_on}.")
+    seeded = "started empty" if draft.based_on is None else f"based on version {draft.based_on}"
+    note(f"Revision {draft.revision}, {len(draft.classes)} class(es), {seeded}.")
     table(_DRAFT_COLUMNS, [(str(draft.revision), str(len(draft.classes)), draft.note or "-")])
 
 

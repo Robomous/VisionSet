@@ -24,12 +24,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Annotated, Final
+from typing import Annotated, Any, Final
 
 import typer
 from pydantic import ValidationError
 
 from visionset import wire
+from visionset.cli._errors import validation_summary
 from visionset.cli._output import JsonOption, document, moment, note, table
 from visionset.cli._resolve import ProjectOption
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
@@ -88,7 +89,9 @@ AmountOption = Annotated[
 ]
 VariantsOption = Annotated[
     int | None,
-    typer.Option("--variants", help="Augmented variants per train-fold image, 0 to 8."),
+    typer.Option(
+        "--variants", min=0, max=8, help="Augmented variants per train-fold image, 0 to 8."
+    ),
 ]
 TargetOption = Annotated[
     str | None,
@@ -122,7 +125,7 @@ def spec_of(
         raise typer.BadParameter("Say what the recipe does: --spec FILE, or --resize/--augment.")
     try:
         if spec is not None:
-            return RecipeSpec.model_validate(json.loads(spec.read_text(encoding="utf-8")))
+            return RecipeSpec.model_validate(_spec_document(spec))
         steps: list[Step] = []
         if resize is not None:
             steps.append(_resize_of(resize, pad))
@@ -131,6 +134,18 @@ def spec_of(
         return RecipeSpec(target=target, steps=tuple(steps), variants_per_asset=variants or 0)
     except (ValidationError, ValueError) as exc:
         raise typer.BadParameter(_one_line(exc)) from exc
+
+
+def _spec_document(path: Path) -> Any:
+    """The file's spec: bare, or the whole ``recipe show --json`` document.
+
+    ``recipe show --json`` prints the recipe with its spec under ``spec``, and the
+    help says that output can be fed back, so both shapes are read.
+    """
+    loaded = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(loaded, dict) and isinstance(loaded.get("spec"), dict) and "steps" not in loaded:
+        return loaded["spec"]
+    return loaded
 
 
 def _resize_of(value: str, pad: int) -> ResizeStep:
@@ -165,7 +180,7 @@ def _augment_names(value: str | None) -> list[str]:
 
 def _one_line(exc: Exception) -> str:
     if isinstance(exc, ValidationError):
-        return "; ".join(str(error["msg"]).removeprefix("Value error, ") for error in exc.errors())
+        return validation_summary(exc)
     return str(exc)
 
 
