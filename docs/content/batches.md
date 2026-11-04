@@ -251,7 +251,8 @@ question here; what an earlier round's progress said about the frame is not read
 confirmed in one batch therefore opens `pre_labeled` in a later one cut over it, and is
 confirmed again there. An edit keeps a label's provenance — a box a person moved is still a
 model's box — so an asset whose labels are all model-made, adjusted or not, opens `pre_labeled`
-in a later batch and is within reach of a replacing run there.
+in a later batch. A replacing run there still leaves it alone while the asset is in the dataset: see
+[pre-labeling](#pre-labeling) for the rule.
 
 The honest consequence: `annotated` is in `SETTLED_PROGRESS`, so **a correction whose every
 asset seeded `annotated` can be completed with no edits at all**. That is the intended reading -
@@ -415,8 +416,10 @@ nothing on what already landed. `replace_model_labels` - the request field, the 
 and `--replace-model-labels` at a terminal - widens that reach to every frame still
 `pre_labeled`: the model's earlier labels there are deleted and the new ones land in the same
 transaction, one frame at a time, so no frame is ever briefly bare. A frame anybody edited,
-confirmed or skipped in this job is passed over whatever the flag says, and a `pre_labeled`
-frame the second run finds nothing on returns to `unannotated`. Both the outcome and
+confirmed or skipped in this job is passed over whatever the flag says, and so is a frame already
+in the dataset: its labels were confirmed in a completed batch, which a run on another batch must
+not delete, so the run leaves it untouched and does not count it. A `pre_labeled` frame the
+second run finds nothing on returns to `unannotated`. Both the outcome and
 `pre_label_run` carry `annotations_replaced`, the count of earlier model labels the run
 superseded.
 

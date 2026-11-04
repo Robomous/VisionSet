@@ -445,7 +445,8 @@ Before the first job's first forward pass it names the classes it is about to as
 or shapes what it finds will land as, and every class of the pinned schema it is leaving out with
 the reason - a class the prompt omits labels nothing, and afterwards there is only the silence to
 explain. `--replace-model-labels` widens the run to frames a previous run labeled and nobody has
-touched since, superseding those labels, and the summary then reads `, replaced K earlier model
+touched since, superseding those labels - except on an asset already in the dataset, whose confirmed labels
+are never replaced - and the summary then reads `, replaced K earlier model
 label(s)`. `--geometry SHAPE`, repeated for several, writes only those of the shapes the model
 produces - a model answering a box and a polygon for every region writes both unless told
 otherwise - and a shape the model does not produce is refused before anything runs; omitted, the

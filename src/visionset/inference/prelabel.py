@@ -87,6 +87,7 @@ from visionset.kernel.services import (
     SchemaService,
     WorkspaceService,
 )
+from visionset.kernel.services.dataset_service import member_asset_ids_of
 
 DEFAULT_MINIMUM_CONFIDENCE: Final = 0.35
 """The floor a run applies unless somebody sets one.
@@ -561,7 +562,9 @@ def pre_label(
         for label_class in schema.classes
     }
 
-    targets = _targets(workspace, job, replace_model_labels=replace_model_labels)
+    targets = _targets(
+        workspace, job, project_id=batch.project_id, replace_model_labels=replace_model_labels
+    )
     total = len(targets)
     annotations_service = AnnotationService(workspace)
     ingest = IngestService(workspace)
@@ -906,6 +909,7 @@ def _targets(
     workspace: WorkspaceService,
     job: AnnotationJob,
     *,
+    project_id: UUID,
     replace_model_labels: bool,
 ) -> tuple[tuple[UUID, bool], ...]:
     """Every ``(asset, replacing)`` this run will reach, in a stable order.
@@ -924,6 +928,13 @@ def _targets(
     A ``pre_labeled`` asset is a target only when the run was asked to replace,
     and is marked so: it goes through the door's replacing path, which is the
     only path that may remove what an earlier run wrote.
+
+    **A replacing target is never in the trunk.** A batch cut over an
+    already-promoted asset opens it ``pre_labeled`` — every label on it is a
+    model's, whoever confirmed it — so progress cannot tell an unjudged guess
+    from a confirmed box. A trunk member's labels were judged in a completed
+    batch, and replacing them would delete that work; such an asset is passed
+    over silently, as ``enter_unreviewed`` would refuse it.
     """
     candidates = [
         (asset_id, progress is AssetProgress.PRE_LABELED)
@@ -932,10 +943,15 @@ def _targets(
         or (replace_model_labels and progress is AssetProgress.PRE_LABELED)
     ]
     with workspace.unit_of_work() as uow:
+        trunk = (
+            member_asset_ids_of(uow, ProjectService(workspace).require_dataset(uow, project_id))
+            if replace_model_labels
+            else frozenset[UUID]()
+        )
         return tuple(
             (asset_id, replacing)
             for asset_id, replacing in candidates
-            if replacing or not uow.annotations.list(asset_id)
+            if (asset_id not in trunk if replacing else not uow.annotations.list(asset_id))
         )
 
 

@@ -28,6 +28,7 @@ from visionset.inference.prelabel import (
     served_for,
 )
 from visionset.kernel import (
+    AssetNotWritable,
     BatchNotFound,
     BatchNotInAnnotation,
     GeometryNotProduced,
@@ -62,6 +63,7 @@ from visionset.kernel.domain import (
 from visionset.kernel.services import (
     AnnotationService,
     BatchService,
+    DatasetService,
     InferenceConnectionService,
     JobService,
     ProjectService,
@@ -1828,3 +1830,97 @@ def test_an_inline_run_that_fails_settles_failed_with_its_reason(
     assert run is not None
     assert run.state is BackgroundJobState.FAILED
     assert run.error == "the model fell over"
+
+
+# --- #951: a confirmed label in the trunk is not replaceable from another batch --
+
+
+def _promoted_then_reopened(fixture: Fixture) -> tuple[UUID, dict[UUID, list[UUID]]]:
+    """Batch one pre-labeled, confirmed, completed and promoted; batch two cut over it.
+
+    Every label on those assets is a model's, so the second batch opens them
+    ``pre_labeled`` — and so within reach of a replacing run — although a person
+    confirmed each one in the first.
+    """
+    pre_label(
+        fixture.workspace,
+        job_id=fixture.job_id,
+        connection_id=fixture.connection.id,
+        pool=fixture.pool,
+    )
+    for asset_id in fixture.assets:
+        fixture.mark(asset_id, AssetProgress.ANNOTATED)
+    fixture.jobs.complete(fixture.job_id)
+    fixture.batches.complete(fixture.batch.id)
+    DatasetService(fixture.workspace).promote(fixture.batch.id)
+    confirmed = {a: [x.id for x in fixture.annotations_on(a)] for a in fixture.assets}
+
+    second = fixture.batches.create(fixture.project.id, "second", fixture.assets)
+    fixture.batches.approve(second.id)
+    job_id = fixture.batches.jobs(second.id)[0].id
+    fixture.batches.start(second.id)
+    fixture.jobs.start(job_id)
+    assert all(
+        progress is AssetProgress.PRE_LABELED
+        for progress in fixture.jobs.get(job_id).progress.values()
+    )
+    return job_id, confirmed
+
+
+def test_a_replacing_run_on_another_batch_leaves_the_trunks_confirmed_labels(
+    prelabel_fixture: Fixture,
+) -> None:
+    job_id, confirmed = _promoted_then_reopened(prelabel_fixture)
+
+    outcome = pre_label(
+        prelabel_fixture.workspace,
+        job_id=job_id,
+        connection_id=prelabel_fixture.connection.id,
+        replace_model_labels=True,
+        pool=prelabel_fixture.pool,
+    )
+
+    assert outcome.annotations_replaced == 0
+    assert outcome.annotations_written == 0
+    for asset_id, ids in confirmed.items():
+        assert [x.id for x in prelabel_fixture.annotations.for_asset(job_id, asset_id)] == ids
+
+
+def test_the_door_refuses_to_replace_a_trunk_members_labels(prelabel_fixture: Fixture) -> None:
+    """The run filters trunk members out; the door is the guard for any other caller."""
+    job_id, _ = _promoted_then_reopened(prelabel_fixture)
+    asset_id = prelabel_fixture.assets[0]
+
+    with pytest.raises(AssetNotWritable, match="already in the dataset"):
+        prelabel_fixture.annotations.enter_unreviewed(job_id, [], replacing={asset_id})
+
+    assert prelabel_fixture.annotations.for_asset(job_id, asset_id)
+
+
+def test_a_replacing_run_still_replaces_a_frame_outside_the_trunk(
+    prelabel_fixture: Fixture,
+) -> None:
+    """Only trunk members are protected; the ordinary replacing run is unchanged."""
+    job_id, _ = _promoted_then_reopened(prelabel_fixture)
+    fresh = prelabel_fixture._asset("fresh")
+    batch = prelabel_fixture.batches.create(prelabel_fixture.project.id, "third", [fresh])
+    prelabel_fixture.batches.approve(batch.id)
+    third_job = prelabel_fixture.batches.jobs(batch.id)[0].id
+    prelabel_fixture.batches.start(batch.id)
+    prelabel_fixture.jobs.start(third_job)
+    pre_label(
+        prelabel_fixture.workspace,
+        job_id=third_job,
+        connection_id=prelabel_fixture.connection.id,
+        pool=prelabel_fixture.pool,
+    )
+
+    again = pre_label(
+        prelabel_fixture.workspace,
+        job_id=third_job,
+        connection_id=prelabel_fixture.connection.id,
+        replace_model_labels=True,
+        pool=prelabel_fixture.pool,
+    )
+
+    assert again.annotations_replaced == 1
