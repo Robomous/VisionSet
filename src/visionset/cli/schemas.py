@@ -305,6 +305,9 @@ def schema_apply(
 ) -> None:
     """Add the next schema version from a JSON file.
 
+    The smallest file is {"classes": [{"name": "sign", "geometries": ["bbox"]}]}.
+    It is the same document REST takes as the body of a new schema version.
+
     Versions are 1..N and none of them ever changes, so this *adds* one — there
     is no edit and no rollback. Applying the document already in force adds
     nothing and prints the version that was already there, so re-running this in

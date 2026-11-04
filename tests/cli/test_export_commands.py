@@ -852,3 +852,11 @@ def test_target_list_json_is_the_catalog_the_other_surfaces_publish() -> None:
         },
     }
     assert [row["name"] for row in document["items"]] == sorted(rows)
+
+
+def test_a_format_name_given_as_a_target_is_told_which_flag_to_use() -> None:
+    from visionset.cli._errors import _hint_for
+    from visionset.kernel import ExportTargetNotFound
+
+    hint = _hint_for(ExportTargetNotFound("no installed exporter declares target 'yolo'"))
+    assert hint is not None and "--format yolo" in hint

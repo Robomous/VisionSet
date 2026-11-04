@@ -41,6 +41,7 @@ from visionset.cli._output import document, json_requested
 from visionset.kernel import (
     DestructiveSchemaChange,
     ExportDestinationNotEmpty,
+    ExportTargetNotFound,
     LossyExportNotConsented,
     NotAWorkspace,
     ReleaseContentWouldViolateSchema,
@@ -105,6 +106,13 @@ _HINTS: Final[dict[type[BaseException], str]] = {
     SchemaChangeWouldOrphan: (
         "There is no flag for this one. Delete or relabel those annotations "
         "first, or keep the class and change something else."
+    ),
+    # `--target yolo` is the commonest slip: `yolo` is a layout (a format), and a
+    # target names a trainer such as `yolo11`. The kernel's sentence lists the
+    # installed targets but cannot know which layout the caller meant.
+    ExportTargetNotFound: (
+        "A target names a trainer (see `visionset target list`); a file layout such as "
+        "`yolo` is a format - use --format yolo."
     ),
     ReleaseContentWouldViolateSchema: (
         "Reconcile the annotations or restore a compatible active schema."

@@ -5,6 +5,10 @@ hour. Starting from a video instead? Step 3 is the one that differs - a clip is 
 the browser, not the command line, because decoding it happens on your own machine rather than on
 the server; see the box at the end of that step. Everything after it is identical either way.
 
+Two limits to know before you start: the command line **cannot create annotations** (`job mark`
+records progress only, so you will draw the labels in the browser app), and **video import is
+browser-only**. [surfaces.md](surfaces.md) shows what each surface can do.
+
 You will need [VisionSet installed](install.md). No other binary - not even for a video, since
 nothing in this process decodes one.
 

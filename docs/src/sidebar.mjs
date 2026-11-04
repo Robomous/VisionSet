@@ -84,6 +84,7 @@ export const sidebar = [
     // jobs produce annotations, annotations are promoted and then released.
     label: "Concepts",
     items: [
+      { slug: "glossary" },
       { slug: "workspaces" },
       { slug: "projects" },
       { slug: "sources" },
@@ -105,7 +106,9 @@ export const sidebar = [
   {
     label: "Surfaces",
     items: [
+      { slug: "surfaces" },
       { slug: "api" },
+      { slug: "error-codes" },
       { slug: "auth" },
       { slug: "cli" },
       {
