@@ -26,9 +26,10 @@ from __future__ import annotations
 from typing import Annotated, Final
 
 import typer
+from pydantic import ValidationError
 
 from visionset import wire
-from visionset.cli._errors import EXIT_ANSWER_IS_NO
+from visionset.cli._errors import EXIT_ANSWER_IS_NO, validation_summary
 from visionset.cli._output import JsonOption, document, moment, note, table
 from visionset.cli._resolve import ProjectOption
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
@@ -67,6 +68,8 @@ def _split_of(value: str | None, seed: int | None) -> SplitRecipe | None:
         raise typer.BadParameter(f"--split takes three numbers, not {value!r}") from exc
     try:
         return SplitRecipe(train=train, val=val, test=test, seed=0 if seed is None else seed)
+    except ValidationError as exc:
+        raise typer.BadParameter(f"--split {value!r}: {validation_summary(exc)}") from exc
     except ValueError as exc:
         raise typer.BadParameter(f"--split {value!r}: {exc}") from exc
 

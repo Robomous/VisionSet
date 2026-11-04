@@ -25,7 +25,8 @@ from typing import Annotated, Final
 
 import typer
 
-from visionset.cli._output import moment, note, table
+from visionset import wire
+from visionset.cli._output import JsonOption, document, moment, note, table
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
 from visionset.kernel.services import TokenService
 
@@ -46,13 +47,17 @@ id-first rule for the flow listings.
 def token_create(
     name: Annotated[str, typer.Option("--name", help="Human-readable token name.")],
     workspace: WorkspaceOption = None,
+    json_out: JsonOption = False,
 ) -> None:
     """Issue an API token and print its secret — once."""
     with opened_workspace(workspace) as service:
         issued = TokenService(service).create(name)
         root = service.root
     note(f"Created token {issued.token.name!r} in {root}.")
-    typer.echo(issued.secret)
+    if json_out:
+        document({**wire.token(issued.token), "secret": issued.secret})
+    else:
+        typer.echo(issued.secret)
     typer.secho(
         "This secret is shown once and cannot be recovered. Store it now.",
         err=True,
@@ -66,15 +71,13 @@ def token_revoke(
     yes: Annotated[bool, typer.Option("--yes", "-y", help="Do not ask.")] = False,
     workspace: WorkspaceOption = None,
 ) -> None:
-    """Burn a token. Every client holding its secret stops working.
-
-    Resolved by name in two calls rather than by a ``revoke_by_name`` the service
-    does not have: the intermediate read is what lets this print the name it
-    actually matched — token names are unique case-**insensitively** — and
-    short-circuit one that is already dead. The window between the two calls is
-    harmless, because there is no rename and a concurrent revoke makes the second
-    call a no-op.
-    """
+    """Burn a token. Every client holding its secret stops working."""
+    # Resolved by name in two calls rather than by a service method that takes a
+    # name: the intermediate read is what lets this print the name it actually
+    # matched — token names are unique case-**insensitively** — and short-circuit
+    # one that is already dead. The window between the two calls is harmless,
+    # because there is no rename and a concurrent revoke makes the second call a
+    # no-op.
     with opened_workspace(workspace) as service:
         tokens = TokenService(service)
         token = tokens.get_by_name(name)
@@ -100,14 +103,15 @@ def token_revoke(
 
 
 @token_app.command("list")
-def token_list(workspace: WorkspaceOption = None) -> None:
+def token_list(workspace: WorkspaceOption = None, json_out: JsonOption = False) -> None:
     """List this workspace's tokens, revoked ones included. Never their secrets."""
     with opened_workspace(workspace) as service:
-        rows = [
-            (token.name, moment(token.created_at), moment(token.revoked_at))
-            for token in TokenService(service).list()
-        ]
+        tokens = TokenService(service).list()
         root = service.root
+    if json_out:
+        document(wire.page([wire.token(token) for token in tokens]))
+        return
+    rows = [(t.name, moment(t.created_at), moment(t.revoked_at)) for t in tokens]
     # The header prints whether or not there are rows, so ``| tail -n +2`` is
     # stable; the "none" note goes to stderr, where notes go.
     table(_COLUMNS, rows)

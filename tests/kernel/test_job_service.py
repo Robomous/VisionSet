@@ -293,7 +293,7 @@ def test_no_work_happens_before_the_batch_is_opened(tmp_path: Path) -> None:
     job = fixture.batches.jobs(fixture.batch.id)[0]
     assert fixture.batches.get(fixture.batch.id).state is BatchState.APPROVED
 
-    with pytest.raises(BatchNotInAnnotation, match="nobody opened"):
+    with pytest.raises(BatchNotInAnnotation, match="in annotation"):
         fixture.jobs.start(job.id)
     with pytest.raises(BatchNotInAnnotation):
         fixture.jobs.mark(job.id, fixture.assets[0], ANNOTATED)

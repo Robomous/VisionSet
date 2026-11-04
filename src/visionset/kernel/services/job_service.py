@@ -129,8 +129,8 @@ class JobService:
         if batch.state not in PRE_LABELABLE_STATES:
             raise BatchNotInAnnotation(
                 f"batch {batch.name!r} is {batch.state.value!r}, not "
-                f"{BatchState.IN_ANNOTATION.value!r}; a model cannot pre-label a job "
-                f"of a batch nobody opened"
+                f"{BatchState.IN_ANNOTATION.value!r}; a model can only pre-label a "
+                f"job of a batch that is in annotation"
             )
         self.require_open_job(job)
         return job, batch
@@ -513,7 +513,7 @@ class JobService:
 
         Public alongside :meth:`require_job`, and for the same reason: this is
         the gate ``AnnotationService`` has to pass too, and there should be one
-        wording of "no work happens in a batch nobody opened", not two.
+        wording of "work only happens in a batch that is in annotation", not two.
 
         Raises:
             BatchNotInAnnotation: the batch is not ``in_annotation``.
@@ -523,7 +523,8 @@ class JobService:
         if batch.state is not BatchState.IN_ANNOTATION:
             raise BatchNotInAnnotation(
                 f"batch {batch.name!r} is {batch.state.value!r}, not "
-                f"{BatchState.IN_ANNOTATION.value!r}; no work happens in a batch nobody opened"
+                f"{BatchState.IN_ANNOTATION.value!r}; "
+                "work only happens in a batch that is in annotation"
             )
         return batch
 

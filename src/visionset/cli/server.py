@@ -44,6 +44,7 @@ import typer
 import uvicorn
 
 from visionset import __version__
+from visionset.cli._errors import EXIT_DOMAIN_ERROR
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
 from visionset.kernel.services import WORKSPACE_ENV_VAR
 
@@ -86,7 +87,9 @@ def _package_dir() -> Path:
 
 def server(
     host: Annotated[str, typer.Option("--host", help="Address to bind.")] = DEFAULT_HOST,
-    port: Annotated[int, typer.Option("--port", help="Port to bind.")] = DEFAULT_PORT,
+    port: Annotated[
+        int, typer.Option("--port", min=1, max=65535, help="Port to bind.")
+    ] = DEFAULT_PORT,
     reload: Annotated[
         bool,
         typer.Option("--reload", help="Restart when the installed visionset package changes."),
@@ -99,10 +102,8 @@ def server(
     A browser on this machine needs nothing: the server signs in the page it
     served. Every other client needs a token — `visionset token create`.
 
-    No browser is opened: that is the wrong thing on a headless box or over SSH,
-    which is most of where a dataset tool runs, and uvicorn.run offers no
-    after-the-socket-binds callback to hang it on anyway. The URL is printed
-    instead, and `--open` can be added the day somebody asks for it.
+    No browser is opened: that is the wrong thing on a headless box or over SSH.
+    The URL is printed instead.
     """
     with opened_workspace(workspace) as service:
         root = service.root
@@ -118,6 +119,18 @@ def server(
     typer.echo("  API clients visionset token create --name <name>", err=True)
     typer.echo("Press Ctrl+C to stop.", err=True)
 
+    try:
+        _serve(host, port, reload)
+    except SystemExit as exc:
+        # uvicorn ends a failed start (port in use, no permission) with its own
+        # status 3, which is outside the 0/1/2 contract ``_errors`` documents.
+        # Its log has already said why; the exit code is this command's to set.
+        if exc.code in (0, None):
+            raise
+        raise typer.Exit(code=EXIT_DOMAIN_ERROR) from exc
+
+
+def _serve(host: str, port: int, reload: bool) -> None:
     uvicorn.run(
         APP_IMPORT_STRING,
         host=host,

@@ -247,3 +247,23 @@ def test_binding_every_interface_still_prints_a_url_a_browser_can_open(
     result = runner.invoke(app, ["server", "--host", "0.0.0.0", "--workspace", str(workspace_root)])
     assert "http://127.0.0.1:8000/" in result.stderr
     assert "http://0.0.0.0" not in result.stderr
+
+
+# --- the exit-code contract -----------------------------------------------------
+
+
+def test_a_port_that_cannot_be_bound_exits_one_not_uvicorns_three(
+    workspace_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise SystemExit(3)
+
+    monkeypatch.setattr(uvicorn, "run", refuse)
+    result = runner.invoke(app, ["server", "--workspace", str(workspace_root)])
+    assert result.exit_code == 1
+
+
+@pytest.mark.parametrize("port", ["0", "99999", "-1"])
+def test_a_port_outside_the_range_is_a_usage_error(workspace_root: Path, port: str) -> None:
+    result = runner.invoke(app, ["server", "--port", port, "--workspace", str(workspace_root)])
+    assert result.exit_code == 2

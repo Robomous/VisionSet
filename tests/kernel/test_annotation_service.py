@@ -887,7 +887,7 @@ def test_no_annotation_is_written_outside_an_open_batch(tmp_path: Path, closed: 
         job = fixture.approved()
         stored = _box(fixture.assets[0])
 
-    with pytest.raises(BatchNotInAnnotation, match="nobody opened"):
+    with pytest.raises(BatchNotInAnnotation, match="in annotation"):
         fixture.annotations.add(job.id, [_box(fixture.assets[0])])
     with pytest.raises(BatchNotInAnnotation):
         fixture.annotations.update(job.id, [_box(fixture.assets[0], id=stored.id)])

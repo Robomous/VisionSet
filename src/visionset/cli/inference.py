@@ -239,17 +239,13 @@ def inference_size(
 ) -> None:
     """How big fetching that model's weights would be. Nothing is downloaded.
 
-    The number to look at *before* running ``download``, read from the publishing
-    hub's file listing rather than from the files. It covers every file in the
-    revision, because that is what the download fetches.
-
-    Takes a model and a revision rather than a connection, and opens no
-    workspace: the moment the number is wanted is usually the moment before a
-    connection exists. ``domain_errors`` is therefore explicit here, where every
-    other command in this file inherits it from ``opened_workspace`` — a missing
-    extra is still a refusal and must still be a sentence rather than a
-    traceback.
+    Run it before a download. The size covers every file in the revision, read
+    from the publishing hub's listing, and needs a model and a revision rather
+    than a connection.
     """
+    # Opens no workspace: the moment the number is wanted is usually before a
+    # connection exists. ``domain_errors`` is therefore explicit here, where every
+    # other command in this file inherits it from ``opened_workspace``.
     with domain_errors():
         size = download_size(model_id, model_revision)
     if json_out:
@@ -408,10 +404,10 @@ def inference_delete(
 ) -> None:
     """Remove a connection. Annotations keep the model provenance they recorded.
 
-    Asks before acting even though the kernel takes no ``confirm``: what is
-    destroyed is a configuration rather than work, so the gate is this surface's
-    courtesy rather than a domain rule.
+    Asks first unless --yes is given.
     """
+    # The prompt is this surface's courtesy rather than a domain rule: what is
+    # destroyed is a configuration, not work, so the kernel takes no confirmation.
     with opened_workspace(workspace) as service:
         connections = InferenceConnectionService(service)
         found = connections.resolve(connection)

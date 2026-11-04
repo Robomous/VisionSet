@@ -79,11 +79,11 @@ def mcp(
     involved: an agent reaching this server is already inside the sandbox the
     workspace defines.
 
-    Destructive tools — `delete_project` today — are **not offered** unless
-    `--allow-destructive` is passed. A `confirm` parameter is documented in the
-    same listing an agent reads before choosing, so it is an instruction rather
-    than a gate; leaving the tool out of the listing is the only version of that
-    gate a model cannot clear by itself. See `docs/content/mcp.md`.
+    Tools that delete data (a project, a batch, an inference connection, a
+    preprocessing recipe) are **not offered** unless `--allow-destructive` is
+    passed. A `confirm` parameter an agent can read is an instruction rather than
+    a gate; leaving the tool out of the listing is the only version of that gate
+    a model cannot clear by itself.
     """
     with opened_workspace(workspace) as service:
         root = service.root

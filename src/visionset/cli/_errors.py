@@ -35,6 +35,7 @@ from contextlib import contextmanager
 from typing import Any, Final
 
 import typer
+from pydantic import ValidationError
 
 from visionset.cli._output import document, json_requested
 from visionset.kernel import (
@@ -118,6 +119,26 @@ Walked by MRO, like ``server/errors.py`` walks ``ERROR_RULES``, so a subclass
 inherits its nearest ancestor's hint. Sparse on purpose: most kernel messages
 already carry their own remedy, and a hint that restates the message is noise.
 """
+
+
+_SHOWN_PROBLEMS: Final = 5
+
+
+def validation_summary(exc: ValidationError, *, prefix: str = "") -> str:
+    """A pydantic refusal as a sentence a person can act on: ``field.path: what is wrong``.
+
+    Never pydantic's own rendering, which ends in a documentation URL and a
+    ``[type=...]`` tag, and never without the field: ``Field required`` says
+    nothing about which. Capped, so a spec wrong in forty places is not forty lines.
+    """
+    problems = []
+    for error in exc.errors():
+        where = ".".join(str(part) for part in error["loc"])
+        what = str(error["msg"]).removeprefix("Value error, ")
+        problems.append(f"{prefix}{where}: {what}" if where else what)
+    shown = "; ".join(problems[:_SHOWN_PROBLEMS])
+    extra = len(problems) - _SHOWN_PROBLEMS
+    return f"{shown} (and {extra} more)" if extra > 0 else shown
 
 
 def _hint_for(exc: VisionSetError) -> str | None:

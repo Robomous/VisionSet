@@ -59,7 +59,7 @@ visionset inference providers                            # no --workspace: it op
 visionset inference download NAME_OR_ID
 visionset inference check-integrity NAME_OR_ID
 visionset inference test-endpoint NAME_OR_ID             # http only: what it answers
-visionset server [--host] [--port] [--reload]            # no --json
+visionset server [--host] [--port 1-65535] [--reload]    # no --json; exit 1 if it cannot bind
 visionset mcp                                            # stdio; no --json
 ```
 
@@ -74,7 +74,7 @@ visionset schema apply schema.json --project road-signs
 BATCH=$(visionset ingest ./incoming --project road-signs)
 
 visionset batch approve "$BATCH" --jobs-of 100 --start
-# …annotate, in the app or through `visionset job mark`…
+# …label in the app (the CLI records progress with `job mark`, but draws no labels)…
 visionset batch complete "$BATCH" --promote
 
 visionset release publish --tag v1.0 --project road-signs --split 0.7,0.15,0.15
@@ -153,7 +153,10 @@ new version number. The "shown once" warning, the per-file ingest report and eve
 go to stderr, so they survive the redirection that most needs them.
 
 Every listing prints a header even with zero rows, so `tail -n +2` is stable, and **the first column
-of every listing is the id**, so `awk '{print $1}'` is too:
+of the flow listings (`project`, `batch`, `job`, `release`, ...) is the id**, so `awk '{print $1}'`
+is too. The listings of things that have no id - `recipe list`, `format list`, `target list`,
+`inference providers` (a name), `token list` (a name) and `schema list` (the version) - lead with
+what a person types to refer to the row:
 
 ```bash
 visionset job list --batch "$BATCH" | tail -n +2 | awk '{print $1}'
@@ -161,8 +164,8 @@ visionset job list --batch "$BATCH" | tail -n +2 | awk '{print $1}'
 
 That rule matters because a name may hold internal whitespace - `normalize_name` strips the outside
 and deliberately preserves the middle - so a name-first column would break the moment somebody typed
-`road signs east`. `token list` is the one listing that leads with a name, because a token has no id
-anybody types; use `--json` there instead.
+`road signs east`. Use `--json` where a name-first listing has to be parsed; `token list --json` and
+`token create --json` (which adds the `secret`) exist for that.
 
 Every listing names its columns one at a time rather than dumping a model, for the reason
 `token list` established: a field added to a domain model cannot leak into output nobody re-read.
