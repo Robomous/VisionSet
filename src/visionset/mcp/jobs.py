@@ -34,7 +34,7 @@ from visionset.inference import (
     DEFAULT_MINIMUM_CONFIDENCE,
     PreLabelPlan,
     geometry_selection,
-    pre_label,
+    pre_label_recorded,
 )
 from visionset.kernel.domain import AssetProgress
 from visionset.kernel.services import (
@@ -204,7 +204,7 @@ def pre_label_job(
     with opened_workspace() as workspace:
         resolved_connection = InferenceConnectionService(workspace).resolve(connection)
         resolved_job = identifier(job_id, what="job_id")
-        outcome = pre_label(
+        outcome = pre_label_recorded(
             workspace,
             job_id=resolved_job,
             connection_id=resolved_connection.id,

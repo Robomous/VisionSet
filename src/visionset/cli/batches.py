@@ -54,7 +54,7 @@ from visionset.inference import (
     PreLabelPlan,
     geometry_selection,
     open_jobs_of,
-    pre_label,
+    pre_label_recorded,
     shapes_prose,
 )
 from visionset.kernel import VisionSetError
@@ -397,7 +397,7 @@ def batch_pre_label(
         items: list[tuple[UUID, PreLabelOutcome]] = []
         for job in open_jobs_of(service, batch):
             note(f"Job {job.id}:")
-            outcome = pre_label(
+            outcome = pre_label_recorded(
                 service,
                 job_id=job.id,
                 connection_id=connection_id,

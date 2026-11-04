@@ -26,7 +26,7 @@ from uuid import UUID
 
 from pydantic import JsonValue
 
-from visionset.inference import pre_label
+from visionset.inference import outcome_result, pre_label
 from visionset.jobs.context import workspace_for
 from visionset.jobs.registry import HandlerRef, register
 from visionset.kernel.domain import (
@@ -143,16 +143,4 @@ def run(
         on_progress=lambda done, total: reporter.report(processed=done, total=total),
         should_stop=reporter.is_cancelled,
     )
-    return {
-        "annotation_job_id": str(job_id),
-        "batch_id": str(batch_id),
-        "assets_considered": outcome.assets_considered,
-        "assets_labeled": outcome.assets_labeled,
-        "annotations_written": outcome.annotations_written,
-        "model_ref": outcome.model_ref,
-        "stopped_early": outcome.stopped_early,
-        "assets_skipped": outcome.assets_skipped,
-        "regions_discarded": outcome.regions_discarded,
-        "regions_out_of_bounds": outcome.regions_out_of_bounds,
-        "annotations_replaced": outcome.annotations_replaced,
-    }
+    return outcome_result(outcome, job_id=job_id, batch_id=batch_id)

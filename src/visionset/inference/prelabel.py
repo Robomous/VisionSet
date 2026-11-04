@@ -30,19 +30,28 @@ judged in this batch.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from contextlib import suppress
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Final
 from uuid import UUID
 
+from pydantic import JsonValue
+
 from visionset.inference.providers import ProviderPool, resident
+from visionset.kernel.adapters.sqlite_progress_reporter import SqliteProgressReporter
 from visionset.kernel.domain import (
     OPEN_JOB_STATES,
+    PRE_LABEL_JOB_TYPE,
     PRE_LABELABLE_STATES,
     Annotation,
     AnnotationJob,
     AnnotationSchema,
     AssetPrediction,
     AssetProgress,
+    BackgroundJob,
+    BackgroundJobOutcome,
+    BackgroundJobState,
     Batch,
     GeometryType,
     LabelClass,
@@ -52,9 +61,11 @@ from visionset.kernel.domain import (
     ServedFamily,
     TextPrompt,
     media_type_of,
+    pre_label_job_payload,
 )
 from visionset.kernel.domain.geometry import geometry_intersects_asset
 from visionset.kernel.domain.vocabulary import OpenVocabulary
+from visionset.kernel.error_codes import error_code
 from visionset.kernel.errors import (
     AssetNotWritable,
     BatchNotFound,
@@ -62,6 +73,7 @@ from visionset.kernel.errors import (
     GeometryNotProduced,
     SchemaHasNoDetectableClass,
     UnsupportedPrompt,
+    VisionSetError,
     WorkspaceCorrupt,
 )
 from visionset.kernel.ports import ModelProvider
@@ -650,6 +662,150 @@ def pre_label(
     )
 
 
+def outcome_result(
+    outcome: PreLabelOutcome, *, job_id: UUID, batch_id: UUID
+) -> dict[str, JsonValue]:
+    """A run's outcome as the job row's ``result``.
+
+    One spelling for both writers of that row: the dispatcher's handler and
+    :func:`pre_label_recorded`. ``PreLabelRun.of`` reads these keys back, so two
+    copies would be two places for the reader's keys to drift from.
+    """
+    return {
+        "annotation_job_id": str(job_id),
+        "batch_id": str(batch_id),
+        "assets_considered": outcome.assets_considered,
+        "assets_labeled": outcome.assets_labeled,
+        "annotations_written": outcome.annotations_written,
+        "model_ref": outcome.model_ref,
+        "stopped_early": outcome.stopped_early,
+        "assets_skipped": outcome.assets_skipped,
+        "regions_discarded": outcome.regions_discarded,
+        "regions_out_of_bounds": outcome.regions_out_of_bounds,
+        "annotations_replaced": outcome.annotations_replaced,
+    }
+
+
+INLINE_WORKER: Final = "inline"
+"""The ``worker`` an inline run's row names: no dispatcher claimed it."""
+
+
+def pre_label_recorded(
+    workspace: WorkspaceService,
+    *,
+    job_id: UUID,
+    connection_id: UUID,
+    minimum_confidence: float = DEFAULT_MINIMUM_CONFIDENCE,
+    replace_model_labels: bool = False,
+    geometries: frozenset[GeometryType] | None = None,
+    on_plan: Callable[[PreLabelPlan], None] | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
+    pool: ProviderPool | None = None,
+) -> PreLabelOutcome:
+    """:func:`pre_label`, run in this process and written down as a job row.
+
+    **For the callers with no dispatcher** — the CLI and MCP block on the run
+    because nothing there would claim an enqueued row. Without a row, a run
+    started there is invisible to ``JobService.latest_pre_label_run`` and so to
+    every surface that reports ``pre_label_run``: the field was null after the
+    one run the tool description promised it for.
+
+    **The row is written once every refusal has passed**, at ``on_plan``'s
+    moment, so a refused call leaves nothing behind and the row's total is the
+    plan's. It is born ``running`` and never ``queued``, so a dispatcher in a
+    server sharing this workspace cannot claim it and run the work twice, and it
+    is not ``idempotent``, so a crash does not make the next server start re-run
+    work nobody asked it to. The orphan sweep settles it ``failed`` instead.
+
+    A cancel request on the row — ``POST /jobs/{id}/cancel`` from a server on the
+    same workspace — stops the run at its next asset, as it would a queued one.
+    """
+    store = workspace.metadata_store
+    row: list[BackgroundJob] = []
+    batch: list[UUID] = []
+    reporter: list[SqliteProgressReporter] = []
+
+    def begin(plan: PreLabelPlan) -> None:
+        batch.append(JobService(workspace).batch(job_id).id)
+        with store.unit_of_work() as uow:
+            created = uow.jobs.add(
+                BackgroundJob(
+                    type=PRE_LABEL_JOB_TYPE,
+                    payload=pre_label_job_payload(
+                        job_id,
+                        batch[0],
+                        connection_id,
+                        minimum_confidence,
+                        replace_model_labels,
+                        geometries,
+                    ),
+                    state=BackgroundJobState.RUNNING,
+                    idempotent=False,
+                    attempt=1,
+                    worker=INLINE_WORKER,
+                    started_at=datetime.now(UTC),
+                )
+            )
+        row.append(created)
+        reporter.append(SqliteProgressReporter(store, created.id))
+        if on_plan is not None:
+            on_plan(plan)
+
+    def progress(done: int, total: int) -> None:
+        if reporter:
+            reporter[0].report(processed=done, total=total)
+        if on_progress is not None:
+            on_progress(done, total)
+
+    def stop() -> bool:
+        return bool(reporter and reporter[0].is_cancelled()) or (
+            should_stop is not None and should_stop()
+        )
+
+    def settle(outcome: BackgroundJobOutcome) -> None:
+        # A row that will not take its receipt must not cost the run its result.
+        with suppress(VisionSetError):
+            workspace.job_queue.finish(row[0].id, outcome)
+
+    try:
+        outcome = pre_label(
+            workspace,
+            job_id=job_id,
+            connection_id=connection_id,
+            minimum_confidence=minimum_confidence,
+            replace_model_labels=replace_model_labels,
+            geometries=geometries,
+            on_plan=begin,
+            on_progress=progress,
+            should_stop=stop,
+            pool=pool,
+        )
+    except BaseException as exc:
+        if row:
+            settle(
+                BackgroundJobOutcome(
+                    state=BackgroundJobState.FAILED,
+                    error=str(exc) or type(exc).__name__,
+                    error_code=error_code(exc),
+                    processed=reporter[0].reported_processed,
+                    total=reporter[0].reported_total,
+                )
+            )
+        raise
+    if row:
+        cancelled = outcome.stopped_early and reporter[0].is_cancelled()
+        settle(
+            BackgroundJobOutcome(
+                state=BackgroundJobState.CANCELLED if cancelled else BackgroundJobState.SUCCEEDED,
+                result=outcome_result(outcome, job_id=job_id, batch_id=batch[0]),
+                processed=reporter[0].reported_processed,
+                total=reporter[0].reported_total,
+            )
+        )
+    return outcome
+
+
 def geometry_selection(
     geometries: Iterable[GeometryType] | None,
 ) -> frozenset[GeometryType] | None:
@@ -691,7 +847,7 @@ def _pre_label_one(
         if on_progress is not None:
             on_progress(batch, done, total)
 
-    outcome = pre_label(
+    outcome = pre_label_recorded(
         workspace,
         job_id=job_id,
         connection_id=connection_id,

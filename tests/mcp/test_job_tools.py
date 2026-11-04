@@ -100,6 +100,25 @@ def test_pre_labeling_a_job_blocks_and_returns_what_it_wrote(
     assert "plan" in out
 
 
+def test_get_job_and_get_batch_report_the_run_pre_label_job_just_had(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """#960: the tool description promises this job's own most recent run."""
+    _, batch_id, job_id = open_batch(monkeypatch, tmp_path, count=3)
+    assert payload(call("get_job", job_id=job_id))["pre_label_run"] is None
+    connection_id = _connection()
+    _predicting(monkeypatch, label="sign")
+    payload(call("pre_label_job", job_id=job_id, connection=connection_id))
+
+    run = payload(call("get_job", job_id=job_id))["pre_label_run"]
+    assert run is not None
+    assert run["state"] == "succeeded"
+    assert run["assets_labeled"] == 3
+    batch = payload(call("get_batch", batch_id=batch_id))
+    assert batch["pre_label_run"]["state"] == "succeeded"
+    assert batch["jobs"][0]["pre_label_run"]["state"] == "succeeded"
+
+
 def test_pre_labeling_a_completed_job_is_refused(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
