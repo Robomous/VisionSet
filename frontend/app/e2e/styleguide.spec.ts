@@ -188,7 +188,7 @@ test("the progress fill wears the functional primary colour, not the brand", asy
  * Those three are what this now asserts; a body-wide font-size is no longer
  * part of the claim because it is no longer part of the contract.
  *
- * Both hooks resolve to Geist under `b2iH`, which sets `--font-heading` to
+ * Both hooks resolve to Inter under `b2iH`, which sets `--font-heading` to
  * `--font-sans`. Each is still asserted by name rather than against the other: a
  * heading that had fallen back to the browser's default would satisfy "the two
  * agree" while proving the hook was never wired.
@@ -202,9 +202,9 @@ test("the base layer wires fonts and background, not a per-screen font-size", as
   const bodyBg = await rgbaOf(page, body, "background-color");
 
   // `html { @apply font-sans }` — every screen, not a class on each page.
-  expect(bodyFont).toContain("Geist");
+  expect(bodyFont).toContain("Inter");
   // `h1`–`h4` carry `font-heading` in the base layer, so a heading never repeats it.
-  expect(headingFont).toContain("Geist");
+  expect(headingFont).toContain("Inter");
   // `body { @apply bg-background }` — the preset's own white, applied once.
   expect(bodyBg.slice(0, 3)).toEqual(BACKGROUND);
 });
