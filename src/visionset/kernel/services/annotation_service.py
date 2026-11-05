@@ -102,7 +102,9 @@ from visionset.kernel.errors import (
     WorkspaceCorrupt,
 )
 from visionset.kernel.ports import UnitOfWork
+from visionset.kernel.services.dataset_service import member_asset_ids_of
 from visionset.kernel.services.job_service import JobService
+from visionset.kernel.services.project_service import ProjectService
 from visionset.kernel.services.schema_service import SchemaService
 from visionset.kernel.services.workspace_service import WorkspaceService
 
@@ -230,7 +232,9 @@ class AnnotationService:
         nothing" and "reviewed and found empty" are different facts.
 
         ``replacing`` names frames this door itself labeled earlier and
-        nobody has touched since — each must be ``pre_labeled`` — whose
+        nobody has touched since — each must be ``pre_labeled`` and **outside
+        the trunk**, because a label that reached the trunk was confirmed in
+        some batch and no run in another batch may delete it — whose
         ``provenance='model'`` rows go in the same transaction as the new
         ones land; an empty ``annotations`` with a non-empty ``replacing`` is
         a run that found nothing any more, and the frame returns to
@@ -244,7 +248,8 @@ class AnnotationService:
             AssetNotWritable: an asset is not ``unannotated``, or already
                 carries annotations from a skipped-and-restored round, or a
                 frame named in ``replacing`` is not ``pre_labeled`` —
-                somebody has taken it over.
+                somebody has taken it over — or is already in the dataset's
+                trunk, whose labels another batch confirmed.
             AnnotationNotFromModel: an annotation does not carry model provenance.
             InvalidAnnotation: an annotation does not satisfy the pinned version.
             StaleWrite: an asset moved between this call's read and its write.
@@ -259,6 +264,9 @@ class AnnotationService:
             superseded = tuple(dict.fromkeys(replacing))
             for asset_id in superseded:
                 _require_unjudged(job, asset_id)
+            if superseded:
+                dataset = ProjectService(self._workspace).require_dataset(uow, batch.project_id)
+                _require_outside_trunk(superseded, member_asset_ids_of(uow, dataset))
             outgoing = [
                 stored
                 for asset_id in superseded
@@ -641,6 +649,25 @@ def _require_unjudged(job: AnnotationJob, asset_id: UUID) -> None:
             f"asset {asset_id} in job {job.id} is {progress.value!r}, so somebody has judged "
             f"it; a model's labels only replace labels nobody has judged"
         )
+
+
+def _require_outside_trunk(asset_ids: Iterable[UUID], trunk: frozenset[UUID]) -> None:
+    """Refuse to supersede labels on a frame that is already in the trunk.
+
+    ``pre_labeled`` is read per job, and a batch cut over an already-promoted
+    asset opens it ``pre_labeled`` because every label on it is a model's — so
+    that progress alone cannot tell "a model's guess nobody judged" from "a
+    model's box a person confirmed in an earlier batch". Trunk membership can:
+    promotion is only ever from a completed batch, so a member's labels were
+    judged. Replacing them would delete confirmed work, and a release cut before
+    the next batch settles would carry what the replacement wrote instead.
+    """
+    for asset_id in asset_ids:
+        if asset_id in trunk:
+            raise AssetNotWritable(
+                f"asset {asset_id} is already in the dataset, so its labels were confirmed in "
+                f"a completed batch; a model's labels only replace labels nobody has judged"
+            )
 
 
 def _tags_already_on(

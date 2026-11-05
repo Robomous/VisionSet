@@ -383,7 +383,8 @@ def pre_label_batch(
             description=(
                 "Also rewrite the model labels on frames still `pre_labeled` — labels a "
                 "model wrote and nobody has edited, confirmed or skipped — superseding them "
-                "with this run's answer. Frames anyone touched in this batch are never "
+                "with this run's answer. Frames anyone touched in this batch, and frames "
+                "already in the dataset, are never "
                 "affected. This "
                 "cannot be undone; read `get_batch`'s `progress.pre_labeled` first."
             )
@@ -426,7 +427,8 @@ def pre_label_batch(
     call's answer, one frame per transaction — a frame the model now finds
     nothing on returns to `unannotated`, and `annotations_replaced` in the
     result says how many labels went. A frame anyone edited, confirmed or
-    skipped in this batch is never touched either way. What is written lands at
+    skipped in this batch is never touched either way, and neither is a frame already in the
+    dataset: its labels were confirmed in a completed batch. What is written lands at
     `pre_labeled`, never at `annotated` — nobody judged it, so it stays
     editable and out of the Dataset until somebody does. An asset somebody
     starts working while this call is still running is passed over the same
