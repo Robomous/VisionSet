@@ -24,6 +24,8 @@ import pytest
 from click.testing import Result
 from tests.cli._flow import NARROW, plain, run, usage_error
 
+from visionset.cli._errors import _hint_for
+from visionset.kernel import InferenceConnectionNotSetUp
 from visionset.kernel.services import WORKSPACE_ENV_VAR
 
 WRAPPED = "three fractions"
@@ -85,3 +87,13 @@ def test_the_panel_is_rendered_in_colour(tmp_path: Path) -> None:
 
 def test_usage_error_puts_the_split_phrase_back_together(tmp_path: Path) -> None:
     assert WRAPPED in usage_error(_refusal(tmp_path))
+
+
+def test_a_connection_that_is_not_set_up_gets_the_terminals_commands_not_rests_action_names() -> (
+    None
+):
+    hint = _hint_for(InferenceConnectionNotSetUp("x"))
+
+    assert hint is not None
+    assert "inference download" in hint
+    assert "inference test-endpoint" in hint

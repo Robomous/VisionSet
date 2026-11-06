@@ -2,7 +2,7 @@
 """``visionset schema`` — applying a schema version from a file.
 
 The document is **JSON**, read with the standard library, and it is
-byte-for-byte the same document ``POST /projects/{id}/schema/versions`` takes::
+the same document ``POST /projects/{id}/schema/versions`` takes::
 
     {"classes": [{"name": "sign", "geometries": ["bbox", "polygon"],
                   "color": "#ff0000",
@@ -13,7 +13,8 @@ byte-for-byte the same document ``POST /projects/{id}/schema/versions`` takes::
 ``geometries`` is a set: a class labeled as a box on some frames and as a polygon
 on others is one class. A document written before that was plural may still spell
 it ``"geometry": "bbox"``, and ``LabelClass`` reads one — so an old schema file
-still applies.
+still applies. That is the one place this file is more lenient than the REST body,
+which refuses the old key by name.
 
 No YAML, and the reason is not taste: a second file format means a runtime
 dependency in every wheel, a second parser to keep honest, and two shapes that
