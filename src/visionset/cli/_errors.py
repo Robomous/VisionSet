@@ -42,6 +42,7 @@ from visionset.kernel import (
     DestructiveSchemaChange,
     ExportDestinationNotEmpty,
     ExportTargetNotFound,
+    InferenceConnectionNotSetUp,
     LossyExportNotConsented,
     NotAWorkspace,
     ReleaseContentWouldViolateSchema,
@@ -119,6 +120,13 @@ _HINTS: Final[dict[type[BaseException], str]] = {
     ),
     ExportDestinationNotEmpty: (
         "Choose an empty --out, or re-run with --allow-non-empty to write beside what is there."
+    ),
+    # The kernel's sentence names the action in REST's vocabulary
+    # (`download_weights`, `test_endpoint`); a terminal types a command, and the
+    # two kinds of connection have different ones.
+    InferenceConnectionNotSetUp: (
+        "Run `visionset inference download <connection>` for a local connection, "
+        "or `visionset inference test-endpoint <connection>` for an http one."
     ),
 }
 """A remedy a *terminal* can act on, printed under the error's own sentence.

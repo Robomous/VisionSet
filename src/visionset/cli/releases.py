@@ -114,6 +114,11 @@ def release_publish(
         f"{published.annotation_count} annotation(s), schema version "
         f"{published.schema_version}."
     )
+    if published.annotation_count == 0:
+        note(
+            "Warning: this release has no annotations. The dataset's assets are in it, "
+            "but nothing was confirmed on them."
+        )
     typer.echo(str(published.id))
 
 

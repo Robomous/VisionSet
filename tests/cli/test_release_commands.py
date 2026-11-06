@@ -271,3 +271,15 @@ def test_an_unknown_tag_exits_one(root: Path, tmp_path: Path) -> None:
     result = run(root, "release", "verify", "v9.9", "-p", name)
     assert result.exit_code == 1, result.output
     assert "Error:" in result.stderr
+
+
+def test_publishing_a_dataset_with_no_annotations_warns_on_stderr_and_still_prints_the_id(
+    root: Path, tmp_path: Path
+) -> None:
+    name = promoted_project(root, tmp_path)
+
+    result = run(root, "release", "publish", "--tag", "bare", "--project", name)
+
+    assert result.exit_code == 0, result.output
+    assert "no annotations" in result.stderr
+    assert re.fullmatch(r"[0-9a-f-]{36}", result.stdout.strip())
