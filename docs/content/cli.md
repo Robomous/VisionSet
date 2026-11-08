@@ -350,7 +350,9 @@ are administration rather than flow, and both want the cascade explained. See
 ### `visionset schema`
 
 `apply FILE --project P [--allow-destructive]` → `SchemaService.create_version`. The file is JSON
-and is **the same document** `POST /projects/{id}/schema/versions` takes. `list --project P` →
+and is **the same document** `POST /projects/{id}/schema/versions` takes, with one leniency: a file
+that still spells a class's shape as the old singular `"geometry": "bbox"` is read as `"geometries": ["bbox"]`,
+where REST refuses the old key by name. `list --project P` →
 `SchemaService.list_versions`; the last one is active. `blocking-assets FILE --project P [--limit N] [--offset N]` →
 `SchemaService.blocking_assets`: reads the same JSON document as a *proposal* and lists the frames
 whose annotations it would orphan - the remedy behind `apply`'s no-override refusal. `--json`
@@ -496,7 +498,8 @@ lifecycle must be drivable from a script, not because this is how labelling happ
 
 ### `visionset release` and `visionset export`
 
-`release publish --tag T --project P [--split TRAIN,VAL,TEST] [--seed N]` → `ReleaseService.publish`. `--seed` needs `--split`; alone it is exit 2.
+`release publish --tag T --project P [--split TRAIN,VAL,TEST] [--seed N]` → `ReleaseService.publish`. `--seed` needs `--split`; alone it is exit 2. A dataset whose assets carry no annotations still publishes, and
+the command says so on stderr (`Warning: this release has no annotations`) — a warning, not a refusal.
 `release list --project P`, and `release verify TAG --project P`, whose **exit code is the answer**.
 
 `export --project P --release TAG --target T|--format F --out DIR [--allow-lossy]` resolves the
