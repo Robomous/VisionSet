@@ -104,7 +104,9 @@ describe("DistributionBar", () => {
     const { container } = render(
       <DistributionBar label="bicycle" count={515} max={4372} color="#ff0000" />,
     );
-    expect(fillWidth(container)).toBe(`${(515 / 4372) * 100}%`);
+    // jsdom rounds serialized style lengths, so compare the number, not the string.
+    expect(fillWidth(container)).toMatch(/%$/);
+    expect(Number.parseFloat(fillWidth(container))).toBeCloseTo((515 / 4372) * 100, 3);
   });
 
   it("draws a full bar for the largest class", () => {
