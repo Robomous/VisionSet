@@ -151,3 +151,53 @@ def test_a_commit_racing_an_abort_gets_a_typed_answer(
     else:
         assert session.state is VideoImportState.ABORTED
         assert not isinstance(by_name["abort"], BaseException)
+
+
+def test_a_commit_that_read_the_session_open_cannot_outlive_a_winner_that_already_finished(
+    full: Fixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The window the asset index does not cover.
+
+    Both callers read the session open. The first then commits completely. The
+    second only now reaches its assets, finds every one already stored (so no
+    insert, and no constraint to refuse it) and would hang a second batch off
+    them. It must answer the first batch instead.
+    """
+    original = SqlRepository.get
+    arrived = threading.Barrier(WRITERS, timeout=TIMEOUT_SECONDS)
+    winner_done = threading.Event()
+    order = threading.Lock()
+    seen = 0
+
+    def gated(self: SqlRepository[Any], entity_id: UUID) -> Any:
+        nonlocal seen
+        row = original(self, entity_id)
+        if self._mapping is m.VIDEO_IMPORTS:  # noqa: SLF001
+            with order:
+                mine = seen
+                seen += 1
+            if mine < WRITERS:
+                arrived.wait()
+                if mine == WRITERS - 1:
+                    assert winner_done.wait(TIMEOUT_SECONDS), "the winner never finished"
+        return row
+
+    monkeypatch.setattr(SqlRepository, "get", gated)
+    here, there = full.writers()
+    outcomes: list[Outcome] = []
+
+    def winner() -> object:
+        try:
+            return here.commit(full.import_id)
+        finally:
+            winner_done.set()
+
+    _run(
+        _call("here", winner, outcomes),
+        _call("there", lambda: there.commit(full.import_id), outcomes),
+    )
+
+    monkeypatch.undo()
+    failures = [value for _, value in outcomes if isinstance(value, BaseException)]
+    assert failures == []
+    assert len({value.id for _, value in outcomes}) == 1  # type: ignore[attr-defined]

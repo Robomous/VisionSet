@@ -40,6 +40,7 @@ from visionset.kernel.domain import (
     TaskGroup,
     Token,
     VideoImport,
+    VideoImportState,
     Workspace,
 )
 
@@ -327,6 +328,26 @@ class UnitOfWork(Protocol):
         did not.
 
         Raises ``EntityNotFound`` if there is no such batch.
+        """
+        ...
+
+    def set_video_import_state(
+        self,
+        import_id: UUID,
+        *,
+        expected: VideoImportState,
+        state: VideoImportState,
+    ) -> VideoImportState | None:
+        """Move a video import's state, and only if it is still where it was read.
+
+        :meth:`set_batch_state` for the session row, and for the same reason: two
+        terminal calls that both read the session ``open`` must not both act on
+        it, and the only place that is decided is the write, under the lock.
+
+        Returns ``None`` when the write landed, and the **stored** state when it
+        did not.
+
+        Raises ``EntityNotFound`` if there is no such session.
         """
         ...
 
