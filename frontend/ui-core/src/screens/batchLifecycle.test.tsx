@@ -188,7 +188,7 @@ describe("BatchProgressBar", () => {
     expect(bar.className).toContain("border");
     // The bar shows an amount, not a polarity, so it stays the primitive's
     // plain indicator, untouched by any call-site override.
-    expect(bar.firstElementChild?.className).toBe("size-full flex-1 bg-primary transition-all");
+    expect(bar.firstElementChild?.className).toBe("size-full flex-1 bg-primary transition-transform");
     expect(screen.getByText(/7 annotated · 0 skipped · 0 accepted · 4 to do/)).toBeTruthy();
   });
 
