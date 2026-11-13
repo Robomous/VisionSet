@@ -54,5 +54,12 @@ allowBuilds:
 # js-yaml: a published security advisory, reached transitively. The override is what
 # makes the fix reach every consumer of it in the tree rather than only the one that
 # happened to be updated.
+#
+# minimatch: GHSA-g3hv-75wg-m249 is fixed only in 11.0.1, with no 10.x backport, and
+# every consumer here (eslint, @eslint/config-array, @typescript-eslint/typescript-estree)
+# still declares ^10. Those three use nothing but `new Minimatch()`, `.match()` and
+# `.pattern`, all of which 11 keeps, so the major bump is safe for them. Drop the entry
+# once eslint declares ^11 itself.
 overrides:
   js-yaml@4.3.0: 4.3.2
+  minimatch@^10: ^11.0.1

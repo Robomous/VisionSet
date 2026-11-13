@@ -660,6 +660,19 @@ class VideoImportService:
             batch = self._destination(uow, session, source, [asset.id for asset in assets])
             for frame in frames:
                 uow.video_import_frames.delete(frame.id)
+            # The claim, and the last check before the session settles. The asset
+            # index cannot say who owns the session: a caller that arrives after
+            # the winner has finished finds every asset already stored, inserts
+            # nothing, trips no constraint, and would hang a second batch off
+            # them. This guarded write can — and refusing it rolls the whole
+            # transaction back, the batch just built included.
+            moved = uow.set_video_import_state(
+                import_id, expected=VideoImportState.OPEN, state=VideoImportState.COMMITTED
+            )
+            if moved is not None:
+                raise ConstraintViolated(
+                    f"video import {import_id} was {moved.value} by another call"
+                )
             session.state = VideoImportState.COMMITTED
             session.batch_id = batch.id
             session.updated_at = now
