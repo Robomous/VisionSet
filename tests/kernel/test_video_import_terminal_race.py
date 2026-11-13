@@ -166,20 +166,18 @@ def test_a_commit_that_read_the_session_open_cannot_outlive_a_winner_that_alread
     original = SqlRepository.get
     arrived = threading.Barrier(WRITERS, timeout=TIMEOUT_SECONDS)
     winner_done = threading.Event()
-    order = threading.Lock()
-    seen = 0
+    me = threading.local()
 
     def gated(self: SqlRepository[Any], entity_id: UUID) -> Any:
-        nonlocal seen
         row = original(self, entity_id)
-        if self._mapping is m.VIDEO_IMPORTS:  # noqa: SLF001
-            with order:
-                mine = seen
-                seen += 1
-            if mine < WRITERS:
-                arrived.wait()
-                if mine == WRITERS - 1:
-                    assert winner_done.wait(TIMEOUT_SECONDS), "the winner never finished"
+        if self._mapping is m.VIDEO_IMPORTS and not getattr(me, "held", False):  # noqa: SLF001
+            me.held = True
+            arrived.wait()
+            # The late caller is named by the test, not by arrival order: whichever
+            # thread got here second would otherwise be free to be the winner,
+            # waiting on its own finish.
+            if getattr(me, "late", False):
+                assert winner_done.wait(TIMEOUT_SECONDS), "the winner never finished"
         return row
 
     monkeypatch.setattr(SqlRepository, "get", gated)
@@ -192,9 +190,13 @@ def test_a_commit_that_read_the_session_open_cannot_outlive_a_winner_that_alread
         finally:
             winner_done.set()
 
+    def late() -> object:
+        me.late = True
+        return there.commit(full.import_id)
+
     _run(
         _call("here", winner, outcomes),
-        _call("there", lambda: there.commit(full.import_id), outcomes),
+        _call("there", late, outcomes),
     )
 
     monkeypatch.undo()
