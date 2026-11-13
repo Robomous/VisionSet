@@ -59,6 +59,7 @@ from visionset.kernel.domain import (
     BackgroundJobState,
     BatchState,
     OrphanGuard,
+    VideoImportState,
 )
 from visionset.kernel.errors import (
     ConstraintViolated,
@@ -543,6 +544,33 @@ class SqlUnitOfWork:
         if stored is None:
             raise EntityNotFound(f"no batch {batch_id}")
         return BatchState(stored)
+
+    def set_video_import_state(
+        self,
+        import_id: UUID,
+        *,
+        expected: VideoImportState,
+        state: VideoImportState,
+    ) -> VideoImportState | None:
+        """One guarded ``UPDATE`` on the session's ``state`` — :meth:`set_batch_state`'s shape."""
+        result = cast(
+            "CursorResult[Any]",
+            self._session.execute(
+                update(t.VideoImportRow)
+                .where(t.VideoImportRow.id == import_id)
+                .where(t.VideoImportRow.state == expected)
+                .values(state=state)
+            ),
+        )
+        if result.rowcount == 1:
+            return None
+
+        stored = self._session.scalar(
+            select(t.VideoImportRow.state).where(t.VideoImportRow.id == import_id)
+        )
+        if stored is None:
+            raise EntityNotFound(f"no video import {import_id}")
+        return VideoImportState(stored)
 
     def last_touched(self, job_id: UUID) -> datetime | None:
         """One ``max()`` over the job's rows — see the port's docstring.
