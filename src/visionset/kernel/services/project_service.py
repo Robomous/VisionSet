@@ -298,7 +298,7 @@ class ProjectService:
             if not confirm:
                 raise ConfirmationRequired(
                     f"deleting project {project.name!r} destroys its dataset, annotations and "
-                    f"releases; pass confirm=True to proceed"
+                    f"releases; confirm to proceed"
                 )
             uow.projects.delete(project.id)
 

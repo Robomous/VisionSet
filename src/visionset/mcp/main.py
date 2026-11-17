@@ -270,7 +270,7 @@ def _forbid_unknown_arguments(built: MCPServer) -> None:
     """Make a misspelled or extra argument a refusal instead of a silent no-op.
 
     MCPServer builds each tool's argument model with pydantic's default, which
-    *drops* what it does not know: ``list_batch_assets {"batch_id": B, "job": "x"}``
+    *drops* what it does not know: ``list_batch_assets {"batch_id": B, "job_id": "x"}``
     would answer the unfiltered list while the caller believed it was filtered.
     Forbidding extras makes the call fail, and the published ``inputSchema`` says
     ``additionalProperties: false`` so a client can know before it asks.

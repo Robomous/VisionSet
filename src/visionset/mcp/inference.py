@@ -343,7 +343,7 @@ def delete_inference_connection(
         if not confirm:
             raise ConfirmationRequired(
                 f"deleting connection {found.name!r} removes this configuration; "
-                f"annotations keep their model provenance; pass confirm=True to proceed"
+                f"annotations keep their model provenance; confirm to proceed"
             )
         connections.delete(found.id)
     return {"deleted": wire.connection(found)}

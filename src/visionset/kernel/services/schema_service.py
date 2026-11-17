@@ -374,8 +374,8 @@ class SchemaService:
                 self._refuse_orphaning(uow, project_id, diff.guards)
             raise DestructiveSchemaChange(
                 f"this version narrows the schema "
-                f"({diff.describe(ChangeKind.DESTRUCTIVE)}); retry with allow_destructive "
-                f"to accept that",
+                f"({diff.describe(ChangeKind.DESTRUCTIVE)}); retry "
+                f"and accept the destructive change to proceed",
                 classes=tuple(sorted(diff.destructive_classes)),
             )
 
