@@ -54,7 +54,9 @@ import os
 import threading
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
+from importlib import import_module
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Final
 from uuid import UUID
 
@@ -395,6 +397,15 @@ def _awaiting_a_family(connection: InferenceConnection) -> bool:
     )
 
 
+def _hub_errors(hub: Any) -> Any:
+    # huggingface_hub 2.x does not attach ``errors`` to the package until the
+    # submodule is imported, so ``hub.errors`` alone silently matches nothing.
+    errors = getattr(hub, "errors", None)
+    if errors is None and isinstance(hub, ModuleType):
+        errors = import_module(f"{hub.__name__}.errors")
+    return errors
+
+
 def _needs_approved_access(hub: Any, exc: BaseException) -> bool:
     """Whether the hub declined because nobody has cleared that model's terms.
 
@@ -418,7 +429,7 @@ def _needs_approved_access(hub: Any, exc: BaseException) -> bool:
     ``UnidentifiedImageError`` under ``OSError``, and the persistence adapter for
     ``IntegrityError`` under ``DatabaseError``.
     """
-    gated = getattr(getattr(hub, "errors", None), "GatedRepoError", None)
+    gated = getattr(_hub_errors(hub), "GatedRepoError", None)
     return gated is not None and isinstance(exc, gated)
 
 
@@ -430,7 +441,7 @@ def _model_missing(hub: Any, exc: BaseException) -> bool:
     ``RepositoryNotFoundError``. A malformed id (``HFValidationError``) is the
     same answer from the reader's side: the reference does not name anything.
     """
-    errors = getattr(hub, "errors", None)
+    errors = _hub_errors(hub)
     names = ("RepositoryNotFoundError", "RevisionNotFoundError", "HFValidationError")
     missing = tuple(
         cls for cls in (getattr(errors, name, None) for name in names) if isinstance(cls, type)

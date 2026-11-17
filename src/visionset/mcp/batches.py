@@ -406,7 +406,9 @@ def pre_label_batch(
     job id nothing was ever going to claim — the API queues it instead, because
     the API has a dispatcher. This call runs one forward pass per untouched
     asset, so the wait is roughly that many times one image's inference time;
-    for a batch of any size, expect minutes.
+    for a batch of any size, expect minutes. On a CPU a local model took about
+    a minute and a half per image, and this call sends no progress notifications:
+    set the client's request timeout accordingly.
 
     **Interrupting is safe.** A plain run only ever writes to an asset nothing
     has touched, and commits one asset's labels in the same transaction as its
