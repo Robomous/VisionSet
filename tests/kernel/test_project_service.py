@@ -419,7 +419,7 @@ def test_renaming_a_project_to_a_blank_name_is_rejected(tmp_path: Path, blank: s
 def test_deleting_without_confirmation_is_refused(tmp_path: Path) -> None:
     workspace, projects = _service(tmp_path)
     project = projects.create("signs")
-    with pytest.raises(ConfirmationRequired, match="confirm=True"):
+    with pytest.raises(ConfirmationRequired, match="confirm"):
         projects.delete(project.id)
     assert [p.name for p in projects.list()] == ["signs"]
     assert len(_datasets_of(workspace, project.id)) == 1

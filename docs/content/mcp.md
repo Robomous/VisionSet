@@ -122,10 +122,10 @@ page groups them by what they are for.
 | `approve_batch` | Freeze it, pin the schema, cut it into jobs. `start: true` opens it for annotation in the same call, and `started` in the answer says whether that happened. |
 | `start_batch` | Open it for annotation. |
 | `get_pre_label_plan` | Which classes a run of a connection would ask about, which it would leave out, and what shapes it writes. |
-| `pre_label_batch` | Ask a model to label every untouched asset of a batch, one run per open job; one outcome per job. Blocks until it is done. |
-| `pre_label_project` | The same, over every open batch of a project or the named ones; one outcome per open job. Blocks until done. |
+| `pre_label_batch` | Ask a model to label every untouched asset of a batch, one run per open job; one outcome per job. Blocks until it is done, sending progress notifications. |
+| `pre_label_project` | The same, over every open batch of a project or the named ones; one outcome per open job. Blocks until done, sending progress notifications. |
 | `repin_batch` | Move its schema pin onto the current active version. |
-| `list_batch_assets` | What is in it, paged, with each asset's job and progress. `job_id` narrows it to one job's frames. |
+| `list_batch_assets` | What is in it, paged, with each asset's job and progress. `job` narrows it to one job's frames. |
 | `complete_batch` | Close it, once every job is complete. `promote: true` moves the finished assets into the dataset in the same call, and `promoted` in the answer counts them. |
 | `promote_batch` | Move the finished assets into the dataset. |
 | `create_correction_batch` | Start a draft that corrects a completed one. |
@@ -154,7 +154,7 @@ wants the steps apart.
 | --- | --- |
 | `get_job` | State, counts, the batch and schema it answers to, and its own most recent pre-label run. |
 | `next_pending_assets` | The loop primitive: what is left to annotate. |
-| `pre_label_job` | Ask a model to label every untouched asset of the one job you hold. Blocks until it is done. |
+| `pre_label_job` | Ask a model to label every untouched asset of the one job you hold. Blocks until it is done, sending progress notifications. |
 | `list_project_assets` | Every asset in the project, paged - including one removed from every batch. |
 | `get_asset_image` | **Look at the pixels.** See below. |
 | `list_asset_annotations` | What is already on an asset, with ids for editing. |
@@ -228,7 +228,7 @@ call until the end. #439 has since added a job gate, but it changes none of this
 | `list_providers` | The installed inference drivers and the checkpoints each offers by name, to pick a `provider_id` and a pinned model from. |
 | `model_download_size` | What fetching a model would cost, before anything fetches it. |
 | `create_inference_connection` | Configure one. Downloads nothing, contacts nothing. |
-| `download_connection_weights` | Fetch a local connection's weights. Synchronous. |
+| `download_connection_weights` | Fetch a local connection's weights. Synchronous, sending progress notifications in bytes. |
 | `check_connection_integrity` | Re-read every byte against the hub's digests. Synchronous. |
 | `test_inference_connection` | Ask an http connection's endpoint what it answers, and record it. Synchronous. |
 | `update_inference_connection` | Edit one. The type cannot change, and neither can the model once the connection is set up. |
@@ -326,8 +326,10 @@ of the workflow, the error envelope and the coordinate trap, in a few lines - an
 advertises one resource, `visionset://workflow`, with the walk-through an agent reads on demand.
 `serverInfo.version` is the installed version and every tool has a `title`. A refusal that has a
 next step says so in `hint`: `JOB_NOT_COMPLETE`, `BATCH_NOT_COMPLETE`, `EMPTY_RELEASE`,
-`SCHEMA_NOT_FOUND`, `INFERENCE_CONNECTION_NOT_SET_UP` (which maps REST's `download_weights` and
-`test_endpoint` actions to this surface's tool names) and `MODEL_NOT_FOUND`.
+`SCHEMA_NOT_FOUND` and `MODEL_NOT_FOUND`. A kernel sentence that names a REST action names this
+surface's tool instead: `INFERENCE_CONNECTION_NOT_SET_UP` says to call
+`download_connection_weights` or `test_inference_connection` where REST and the CLI say
+`download_weights` or `test_endpoint`.
 
 **An argument a tool does not declare is refused, not dropped.** Every tool's `inputSchema` says
 `additionalProperties: false`, and a misspelled name (`job` for `job_id`) fails the call with the
@@ -376,8 +378,20 @@ stdio server has no background worker: something has to do the decode, and an ag
 directory makes `ingest` a long call, a large model makes `download_connection_weights` one, and a
 job of untouched assets makes `pre_label_job` one — minutes, with nothing to poll from here.
 `pre_label_batch` runs that once per open job of a batch and `pre_label_project` once per open
-job of every batch it selects, so the wait is that many jobs' worth of minutes. On a CPU a local model can take about a minute and a half per image — a 14-image batch measured ~22 minutes — and the server sends no progress notifications, so raise the client's request timeout to match, or queue the run through the REST API (`POST` pre-label answers `202`) where a job can be polled. A cut-off
-download changed nothing (the connection is only marked ready once every file is here) and the
+job of every batch it selects, so the wait is that many jobs' worth of minutes. On a CPU a local model can take about a minute and a half per image — a 14-image batch measured ~22 minutes.
+
+**The long calls report progress, and stay calls.** When the client's request carries a
+`progressToken`, `pre_label_batch`, `pre_label_project` and `pre_label_job` send a
+`notifications/progress` as assets are considered - one rising count across every job of the run,
+with the total once it is exact - and `download_connection_weights` sends one in bytes, with the
+total when the hub publishes it; at most about one a second, and always the last. A client that
+resets its request timeout on progress (the TypeScript SDK's `resetTimeoutOnProgress`, for one)
+keeps waiting for as long as the run advances. A client that sends no token, or ignores progress,
+gets the same answer and no notifications, and must still raise its request timeout for the whole
+run - or queue the run through the REST API (`POST` pre-label answers `202`) where a job can be
+polled. A notification that cannot be delivered never fails the call.
+
+A cut-off download changed nothing (the connection is only marked ready once every file is here) and the
 retry resumes the cache rather than starting over; a cut-off pre-labeling call has written only
 the assets it fully entered, one commit per asset, so calling it again resumes with whatever is
 still untouched - plus, where `replace_model_labels` is set, the frames still `pre_labeled`.

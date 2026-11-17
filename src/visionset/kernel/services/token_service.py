@@ -137,7 +137,7 @@ class TokenService:
             if not confirm:
                 raise ConfirmationRequired(
                     f"revoking token {token.name!r} immediately breaks every client holding "
-                    f"its secret, and cannot be undone; pass confirm=True to proceed"
+                    f"its secret, and cannot be undone; confirm to proceed"
                 )
             return uow.tokens.update(token.model_copy(update={"revoked_at": datetime.now(UTC)}))
 

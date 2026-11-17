@@ -43,6 +43,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 from uuid import UUID
 
+from mcp.server.mcpserver import Context
 from pydantic import Field, StrictBool
 
 from visionset import wire
@@ -75,6 +76,7 @@ from visionset.kernel.services import (
     ProjectService,
     WorkspaceService,
 )
+from visionset.mcp._progress import PreLabelProgress, reporting
 from visionset.mcp._resolve import ConnectionRef, ProjectRef, identifier
 from visionset.mcp._workspace import opened_workspace
 
@@ -391,6 +393,7 @@ def pre_label_batch(
         ),
     ] = False,
     geometries: Geometries = None,
+    ctx: Context[Any, Any] | None = None,
 ) -> dict[str, Any]:
     """Ask a model to label every untouched asset in a batch, one run per open job.
 
@@ -407,8 +410,11 @@ def pre_label_batch(
     the API has a dispatcher. This call runs one forward pass per untouched
     asset, so the wait is roughly that many times one image's inference time;
     for a batch of any size, expect minutes. On a CPU a local model took about
-    a minute and a half per image, and this call sends no progress notifications:
-    set the client's request timeout accordingly.
+    a minute and a half per image. The call stays synchronous, but a client that
+    sends a `progressToken` gets a progress notification as assets are
+    considered — a count across every job, with the total once it is exact — so
+    a client that resets its request timeout on progress keeps waiting; one that
+    ignores progress must set its request timeout for the whole run.
 
     **Interrupting is safe.** A plain run only ever writes to an asset nothing
     has touched, and commits one asset's labels in the same transaction as its
@@ -482,13 +488,14 @@ def pre_label_batch(
     connection whose model answers places rather than words, and a deployment
     without the local runtime — with the install command in the message.
     """
-    with opened_workspace() as workspace:
+    with opened_workspace() as workspace, reporting(ctx) as report:
         resolved_connection = InferenceConnectionService(workspace).resolve(connection)
         batch_uuid = identifier(batch_id, what="batch_id")
         BatchService(workspace).require_pre_labelable(batch_uuid)
         items: list[dict[str, Any]] = []
-        for job in open_jobs_of(workspace, batch_uuid):
-            seen: list[PreLabelPlan] = []
+        jobs = open_jobs_of(workspace, batch_uuid)
+        counted = PreLabelProgress(report, len(jobs))
+        for job in jobs:
             outcome = pre_label_recorded(
                 workspace,
                 job_id=job.id,
@@ -496,9 +503,11 @@ def pre_label_batch(
                 minimum_confidence=minimum_confidence,
                 replace_model_labels=replace_model_labels,
                 geometries=geometry_selection(geometries),
-                on_plan=seen.append,
+                on_plan=counted.planned,
+                on_progress=counted.asset_done,
             )
-            items.append({"job_id": str(job.id), **_pre_label_outcome(outcome, seen[0])})
+            items.append({"job_id": str(job.id), **_pre_label_outcome(outcome, counted.plans[-1])})
+        counted.finish()
     return {"items": items, "annotations_written": sum(i["annotations_written"] for i in items)}
 
 
@@ -522,6 +531,7 @@ def pre_label_project(
         ),
     ] = None,
     geometries: Geometries = None,
+    ctx: Context[Any, Any] | None = None,
 ) -> dict[str, Any]:
     """Ask a model to label untouched assets across a project's open batches. Blocks until done.
 
@@ -548,8 +558,12 @@ def pre_label_project(
     Interrupting is as safe as it is for one batch: some prefix of the
     selection is entered, asset by asset, and calling again resumes over what is
     still untouched.
+
+    Progress is reported as for `pre_label_batch`: one rising count of assets
+    considered across the whole selection, sent when the client supplies a
+    `progressToken`.
     """
-    with opened_workspace() as workspace:
+    with opened_workspace() as workspace, reporting(ctx) as report:
         resolved = ProjectService(workspace).resolve(project)
         resolved_connection = InferenceConnectionService(workspace).resolve(connection)
         declared = served_for(workspace, resolved_connection.id)
@@ -560,13 +574,17 @@ def pre_label_project(
             produces,
             None if batch_ids is None else [identifier(one, what="batch_id") for one in batch_ids],
         )
+        counted = PreLabelProgress(report, None)
         ran = pre_label_selection(
             workspace,
             selected,
             connection_id=resolved_connection.id,
             minimum_confidence=minimum_confidence,
             geometries=geometry_selection(geometries),
+            on_plan=lambda _batch, _index, plan: counted.planned(plan),
+            on_progress=lambda _batch, done, total: counted.asset_done(done, total),
         )
+        counted.finish()
         items: list[dict[str, Any]] = [
             {
                 "batch_id": str(job.batch.id),
@@ -708,9 +726,7 @@ def list_batch_assets(
             )
         ),
     ] = AssetSort.MEMBERSHIP,
-    job_id: Annotated[
-        str | None, Field(description="Keep only the assets this job carries.")
-    ] = None,
+    job: Annotated[str | None, Field(description="Keep only the assets this job carries.")] = None,
 ) -> dict[str, Any]:
     """List a batch's assets, with the job, progress and label summary each carries.
 
@@ -721,7 +737,7 @@ def list_batch_assets(
     score among the labels a model wrote, on that model's own scale, or null.
 
     `job_id` and `progress` on each item are both null exactly while the batch is
-    a draft. `job_id` narrows to that job's assets; a job this batch does not
+    a draft. `job` narrows to that job's assets; a job this batch does not
     have is refused, and over a draft — which has no jobs — it matches nothing,
     same as a `progress` filter. Use `get_asset_image` on any `id` here to see
     the pixels.
@@ -732,7 +748,7 @@ def list_batch_assets(
         batch = service.get(resolved)
         placed, total = service.asset_page(
             resolved,
-            job=None if job_id is None else identifier(job_id, what="job_id"),
+            job=None if job is None else identifier(job, what="job"),
             progress=frozenset(progress) if progress else None,
             sort=sort,
             limit=limit,

@@ -40,8 +40,10 @@ idiom.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Annotated, Any
 
+from mcp.server.mcpserver import Context
 from pydantic import Field, StrictBool
 
 from visionset import wire
@@ -57,6 +59,7 @@ from visionset.kernel.domain import ConnectionType, Precision
 from visionset.kernel.services import (
     InferenceConnectionService,
 )
+from visionset.mcp._progress import Progress, reporting
 from visionset.mcp._resolve import ConnectionRef
 from visionset.mcp._workspace import opened_workspace
 
@@ -231,13 +234,17 @@ def model_download_size(
     return wire.download_size(download_size(model_id, model_revision))
 
 
-def download_connection_weights(connection: ConnectionRef) -> dict[str, Any]:
+def download_connection_weights(
+    connection: ConnectionRef, ctx: Context[Any, Any] | None = None
+) -> dict[str, Any]:
     """Fetch a local connection's weights. This is the only tool that downloads a model.
 
     Nothing arrives on an agent's behalf: no install, no first run, and no other
     tool fetches anything. This one does, because you asked it to. It **blocks**
     until the transfer finishes — minutes for a large model, with nothing to
-    poll from here — and answers with the connection, now `ready`.
+    poll from here — and answers with the connection, now `ready`. A client
+    that sends a `progressToken` gets progress notifications in bytes, with the
+    total when the hub publishes one, at most about one a second.
 
     Safe to re-run: a connection is only marked ready once every file is here,
     so a cut-off call changed nothing and the retry resumes the cache rather
@@ -248,10 +255,18 @@ def download_connection_weights(connection: ConnectionRef) -> dict[str, Any]:
     its own. Refused with the install command when the local runtime extra is
     not installed.
     """
-    with opened_workspace() as workspace:
+    with opened_workspace() as workspace, reporting(ctx) as report:
         found = InferenceConnectionService(workspace).resolve(connection)
-        ready = fetch_weights(workspace, found.id)
+        ready = fetch_weights(workspace, found.id, on_bytes=_bytes_to(report))
     return wire.connection(ready)
+
+
+def _bytes_to(report: Progress) -> Callable[[int, int | None], None]:
+    def told(done: int, total: int | None) -> None:
+        so_far = f"downloaded {done / 1e6:,.0f}"
+        report(done, total, f"{so_far} of {total / 1e6:,.0f} MB" if total else f"{so_far} MB")
+
+    return told
 
 
 def check_connection_integrity(connection: ConnectionRef) -> dict[str, Any]:
@@ -328,7 +343,7 @@ def delete_inference_connection(
         if not confirm:
             raise ConfirmationRequired(
                 f"deleting connection {found.name!r} removes this configuration; "
-                f"annotations keep their model provenance; pass confirm=True to proceed"
+                f"annotations keep their model provenance; confirm to proceed"
             )
         connections.delete(found.id)
     return {"deleted": wire.connection(found)}

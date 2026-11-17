@@ -29,6 +29,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from mcp.server.mcpserver.utilities.context_injection import find_context_parameter
+
 from visionset.mcp.main import DESTRUCTIVE_TOOLS, TOOLS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -58,9 +60,13 @@ def _takes(tool: Callable[..., Any]) -> str:
 
     Read off the real signature rather than off the JSON schema: MCPServer builds
     the schema from exactly this, and going through the server would mean
-    starting one to document it.
+    starting one to document it. The `Context` parameter MCPServer injects is
+    left out, by the SDK's own rule, as it is left out of the schema.
     """
-    parameters = inspect.signature(tool).parameters
+    injected = find_context_parameter(tool)
+    parameters = {
+        name: one for name, one in inspect.signature(tool).parameters.items() if name != injected
+    }
     if not parameters:
         return "—"
     return ", ".join(

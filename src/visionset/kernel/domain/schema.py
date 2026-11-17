@@ -32,12 +32,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 class GeometryType(StrEnum):
-    """Every geometry the domain can address.
-
-    3D values exist today even though unimplemented: the domain never assumes
-    "image" anywhere — that is the Physical AI roadmap encoded as a type.
-    """
-
+    # 3D values exist today even though unimplemented: the domain never assumes
+    # "image" anywhere — that is the Physical AI roadmap encoded as a type.
     BBOX = "bbox"
     POLYGON = "polygon"
     MASK = "mask"
@@ -174,21 +170,13 @@ class Attribute(BaseModel):
 
 
 class LabelClass(BaseModel):
-    """One labelable class in a schema, and the geometries it may be drawn as.
+    """One labelable class in a schema, and the geometries it may be drawn as."""
 
-    ``geometries`` is a set in meaning and a **sorted tuple** in representation.
-    A class labelled as a box on some frames and as a polygon on others is one
-    class; splitting it in two would make every consumer downstream re-unify
-    them. Which of the allowed shapes a given label carries is the annotation's
-    own business, and ``AnnotationService`` tests it for membership here.
-
-    Sorted, deduplicated, and a tuple rather than a ``frozenset``, because
-    ``release.canonical_bytes`` hashes ``model_dump(mode='json')``: a set's
-    iteration order is not stable across processes, so a set-valued field would
-    make a release hash irreproducible. Sorting also means the order carries no
-    meaning and nobody can read one into it — unlike ``AnnotationSchema.classes``,
-    which is authored.
-    """
+    # ``geometries`` is a set in meaning and a sorted tuple in representation. A
+    # class labelled as a box on some frames and as a polygon on others is one
+    # class; ``AnnotationService`` tests membership here. A tuple rather than a
+    # ``frozenset`` because ``release.canonical_bytes`` hashes
+    # ``model_dump(mode='json')`` and a set's order is not stable across processes.
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 

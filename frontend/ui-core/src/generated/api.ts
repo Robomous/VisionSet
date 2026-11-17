@@ -4626,10 +4626,6 @@ export interface components {
         };
         /**
          * GeometryType
-         * @description Every geometry the domain can address.
-         *
-         *     3D values exist today even though unimplemented: the domain never assumes
-         *     "image" anywhere — that is the Physical AI roadmap encoded as a type.
          * @enum {string}
          */
         GeometryType: "bbox" | "polygon" | "mask" | "polyline" | "keypoints" | "cuboid_3d" | "polyline_3d" | "classification_tag";

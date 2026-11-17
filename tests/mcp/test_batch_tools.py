@@ -14,6 +14,7 @@ from tests.mcp._flow import (
     SCHEMA_CLASSES,
     call,
     call_destructive,
+    call_with_progress,
     error,
     ingested,
     open_batch,
@@ -33,6 +34,7 @@ from visionset.kernel.domain import (
     ServedFamily,
 )
 from visionset.kernel.services import DatasetService, ProjectService, WorkspaceService
+from visionset.mcp import _progress
 
 
 def test_a_freshly_ingested_batch_is_a_draft_with_no_jobs_and_no_pin(
@@ -1103,7 +1105,7 @@ def test_a_job_filter_lists_only_that_jobs_assets(
     payload(call("start_batch", batch_id=batch_id))
     first = approved["jobs"][0]["id"]
 
-    listed = payload(call("list_batch_assets", batch_id=batch_id, job_id=first))
+    listed = payload(call("list_batch_assets", batch_id=batch_id, job=first))
 
     assert listed["total"] == 2
     assert {a["job_id"] for a in listed["items"]} == {first}
@@ -1226,9 +1228,184 @@ def test_pre_labeling_a_project_reports_one_item_per_job_with_its_own_plan(
 def test_a_misspelled_argument_is_refused_rather_than_dropped(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # `job` is REST's spelling of `job_id`; silently ignoring it answered the
-    # unfiltered list to a caller who believed it was filtered.
+    # `job_id` is the old spelling of `list_batch_assets`' `job`; silently
+    # ignoring it answered the unfiltered list to a caller who believed it was
+    # filtered.
     _, batch_id = ingested(monkeypatch, tmp_path, count=1)
-    result = call("list_batch_assets", batch_id=batch_id, job="x")
+    result = call("list_batch_assets", batch_id=batch_id, job_id="x")
     assert result.is_error
-    assert "job" in str(result.content)
+    assert "job_id" in str(result.content)
+
+
+# --- pre-labeling: progress notifications --------------------------------------
+
+
+def test_a_run_reports_each_asset_it_considers_and_ends_at_the_total(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=3)
+    connection_id = _connection()
+    _predicting(monkeypatch, label="sign")
+    monkeypatch.setattr(_progress, "INTERVAL", 0.0)
+
+    result, heard = call_with_progress(
+        "pre_label_batch", batch_id=batch_id, connection=connection_id
+    )
+
+    assert payload(result)["annotations_written"] == 3
+    assert heard == [(n, 3, f"pre-labeled {n} of 3 assets") for n in (1, 2, 3)]
+
+
+def test_progress_rises_across_every_job_and_names_the_total_on_the_last(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, batch_id = ingested(monkeypatch, tmp_path, count=4)
+    payload(call("approve_batch", batch_id=batch_id, jobs_of=2))
+    payload(call("start_batch", batch_id=batch_id))
+    connection_id = _connection()
+    _predicting(monkeypatch, label="sign")
+    monkeypatch.setattr(_progress, "INTERVAL", 0.0)
+
+    _, heard = call_with_progress("pre_label_batch", batch_id=batch_id, connection=connection_id)
+
+    # A job's own last count waits for the next job, so the run's end can carry the total.
+    assert [(progress, total) for progress, total, _ in heard] == [(1, None), (3, 4), (4, 4)]
+    assert heard[0][2] == "job 1 of 2: pre-labeled 1 of 2 assets"
+
+
+def test_a_project_run_reports_one_rising_count_over_its_selection(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    project, _first, _job = open_batch(monkeypatch, tmp_path, count=2)
+    _another_open_batch(monkeypatch, tmp_path, project)
+    connection_id = _connection()
+    _predicting(monkeypatch, label="sign")
+    monkeypatch.setattr(_progress, "INTERVAL", 0.0)
+
+    _, heard = call_with_progress("pre_label_project", project=project, connection=connection_id)
+
+    # The kernel picks each batch's jobs as it reaches it, so no total until the end.
+    assert [(progress, total) for progress, total, _ in heard] == [(1, None), (3, None), (4, 4)]
+    assert heard[0][2] == "job 1: pre-labeled 1 of 2 assets"
+
+
+def _plan() -> Any:
+    return object()
+
+
+def test_a_run_whose_last_job_has_nothing_to_consider_still_ends_with_its_total() -> None:
+    heard: list[tuple[float, float | None, str]] = []
+    counted = _progress.PreLabelProgress(lambda *sent: heard.append(sent), 2)
+
+    counted.planned(_plan())
+    counted.asset_done(1, 2)
+    counted.asset_done(2, 2)
+    counted.planned(_plan())
+    counted.finish()
+
+    assert [(progress, total) for progress, total, _ in heard] == [(1, None), (2, 2)]
+
+
+def test_a_run_of_unknown_job_count_never_names_a_total_before_it_ends() -> None:
+    heard: list[tuple[float, float | None, str]] = []
+    counted = _progress.PreLabelProgress(lambda *sent: heard.append(sent), None)
+
+    for total in (2, 3):
+        counted.planned(_plan())
+        for done in range(1, total + 1):
+            counted.asset_done(done, total)
+    counted.finish()
+
+    assert [(progress, total) for progress, total, _ in heard] == [
+        (1, None),
+        (3, None),
+        (4, None),
+        (5, 5),
+    ]
+
+
+def test_pre_labeling_a_job_reports_its_assets(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, _batch, job_id = open_batch(monkeypatch, tmp_path, count=2)
+    connection_id = _connection()
+    _predicting(monkeypatch, label="sign")
+    monkeypatch.setattr(_progress, "INTERVAL", 0.0)
+
+    _, heard = call_with_progress("pre_label_job", job_id=job_id, connection=connection_id)
+
+    assert heard == [(1, 2, "pre-labeled 1 of 2 assets"), (2, 2, "pre-labeled 2 of 2 assets")]
+
+
+def test_throttled_progress_still_sends_the_last_count(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=3)
+    connection_id = _connection()
+    _predicting(monkeypatch, label="sign")
+    monkeypatch.setattr(_progress, "INTERVAL", 3600.0)
+
+    _, heard = call_with_progress("pre_label_batch", batch_id=batch_id, connection=connection_id)
+
+    assert [(progress, total) for progress, total, _ in heard] == [(1, 3), (3, 3)]
+
+
+@pytest.mark.parametrize("legacy", [False, True], ids=["direct", "json-rpc"])
+def test_a_client_that_asks_for_no_progress_gets_none_and_the_same_answer(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, legacy: bool
+) -> None:
+    _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2)
+    connection_id = _connection()
+    _predicting(monkeypatch, label="sign")
+    monkeypatch.setattr(_progress, "INTERVAL", 0.0)
+
+    result, heard = call_with_progress(
+        "pre_label_batch", token=False, legacy=legacy, batch_id=batch_id, connection=connection_id
+    )
+
+    assert payload(result)["annotations_written"] == 2
+    assert heard == []
+
+
+@pytest.mark.parametrize("legacy", [False, True], ids=["direct", "json-rpc"])
+def test_progress_reaches_a_client_over_either_transport(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, legacy: bool
+) -> None:
+    _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2)
+    connection_id = _connection()
+    _predicting(monkeypatch, label="sign")
+    monkeypatch.setattr(_progress, "INTERVAL", 0.0)
+
+    _, heard = call_with_progress(
+        "pre_label_batch", legacy=legacy, batch_id=batch_id, connection=connection_id
+    )
+
+    assert [(progress, total) for progress, total, _ in heard] == [(1, 2), (2, 2)]
+
+
+def test_a_notification_that_cannot_be_sent_does_not_fail_the_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import anyio
+    from mcp.server.mcpserver import Context
+
+    _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=2)
+    connection_id = _connection()
+    _predicting(monkeypatch, label="sign")
+    monkeypatch.setattr(_progress, "INTERVAL", 0.0)
+    attempts: list[float] = []
+
+    async def _gone(_self: object, progress: float, *_: object) -> None:
+        attempts.append(progress)
+        raise anyio.BrokenResourceError
+
+    monkeypatch.setattr(Context, "report_progress", _gone)
+
+    result, heard = call_with_progress(
+        "pre_label_batch", batch_id=batch_id, connection=connection_id
+    )
+
+    assert payload(result)["annotations_written"] == 2
+    assert heard == []
+    assert attempts == [1]
+    assert payload(call("get_batch", batch_id=batch_id))["progress"]["pre_labeled"] == 2

@@ -682,7 +682,7 @@ class BatchService:
             if not confirm:
                 raise ConfirmationRequired(
                     f"deleting batch {batch.name!r} destroys its task groups and jobs, including "
-                    f"their progress; pass confirm=True to proceed"
+                    f"their progress; confirm to proceed"
                 )
             self._hold_state(uow, batch, _require_deletable)
             uow.batches.delete(batch.id)
@@ -724,7 +724,7 @@ class BatchService:
             raise DestructiveSchemaChange(
                 f"re-pinning batch {batch.name!r} onto the active schema version narrows what "
                 f"it allows ({diff.describe(ChangeKind.DESTRUCTIVE)}); retry "
-                f"with allow_destructive to accept that",
+                f"and accept the destructive change to proceed",
                 classes=tuple(sorted(diff.destructive_classes)),
             )
 

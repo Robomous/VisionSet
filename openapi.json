@@ -3077,7 +3077,6 @@
         "type": "object"
       },
       "GeometryType": {
-        "description": "Every geometry the domain can address.\n\n3D values exist today even though unimplemented: the domain never assumes\n\"image\" anywhere \u2014 that is the Physical AI roadmap encoded as a type.",
         "enum": [
           "bbox",
           "polygon",

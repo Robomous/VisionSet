@@ -145,7 +145,8 @@ def _original(workspace: WorkspaceService, asset: Asset) -> CallToolResult:
                         f"{len(data)} bytes are {OCTET_STREAM} and cannot be sent as "
                         f"image content"
                     ),
-                )
+                ),
+                _measurements(payload),
             ],
             structured_content=payload,
         )
