@@ -1105,7 +1105,7 @@ def test_a_job_filter_lists_only_that_jobs_assets(
     payload(call("start_batch", batch_id=batch_id))
     first = approved["jobs"][0]["id"]
 
-    listed = payload(call("list_batch_assets", batch_id=batch_id, job_id=first))
+    listed = payload(call("list_batch_assets", batch_id=batch_id, job=first))
 
     assert listed["total"] == 2
     assert {a["job_id"] for a in listed["items"]} == {first}
@@ -1228,12 +1228,13 @@ def test_pre_labeling_a_project_reports_one_item_per_job_with_its_own_plan(
 def test_a_misspelled_argument_is_refused_rather_than_dropped(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # `job` is REST's spelling of `job_id`; silently ignoring it answered the
-    # unfiltered list to a caller who believed it was filtered.
+    # `job_id` is the old spelling of `list_batch_assets`' `job`; silently
+    # ignoring it answered the unfiltered list to a caller who believed it was
+    # filtered.
     _, batch_id = ingested(monkeypatch, tmp_path, count=1)
-    result = call("list_batch_assets", batch_id=batch_id, job="x")
+    result = call("list_batch_assets", batch_id=batch_id, job_id="x")
     assert result.is_error
-    assert "job" in str(result.content)
+    assert "job_id" in str(result.content)
 
 
 # --- pre-labeling: progress notifications --------------------------------------

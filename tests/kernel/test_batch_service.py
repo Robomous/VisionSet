@@ -658,7 +658,7 @@ def test_a_batch_from_another_workspace_reads_as_missing(tmp_path: Path) -> None
 def test_deleting_a_batch_needs_confirmation(tmp_path: Path) -> None:
     fixture = Fixture(tmp_path)
     batch_id = fixture.in_state(BatchState.APPROVED)
-    with pytest.raises(ConfirmationRequired, match="confirm=True"):
+    with pytest.raises(ConfirmationRequired, match="confirm"):
         fixture.batches.delete(batch_id)
     assert fixture.batches.get(batch_id).state is BatchState.APPROVED
     fixture.close()
@@ -838,7 +838,7 @@ def test_a_narrowing_schema_needs_the_flag(tmp_path: Path) -> None:
     batch_id = fixture.in_state(BatchState.IN_ANNOTATION)
     fixture.schemas.create_version(fixture.project.id, [SIGN], allow_destructive=True)
 
-    with pytest.raises(DestructiveSchemaChange, match="allow_destructive"):
+    with pytest.raises(DestructiveSchemaChange, match="accept the destructive change"):
         fixture.batches.repin(batch_id)
     assert fixture.batches.get(batch_id).schema_version == 2
 

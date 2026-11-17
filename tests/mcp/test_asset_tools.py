@@ -227,3 +227,27 @@ def test_list_project_assets_puts_the_newest_ingest_first(
 
     assert set(listed[:2]) == ids(second_batch)
     assert set(listed[2:]) == ids(first_batch)
+
+
+def test_an_asset_with_no_recorded_format_still_carries_its_measurements_as_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from visionset.mcp import assets
+
+    class _Ingest:
+        def __init__(self, _workspace: object) -> None:
+            pass
+
+        def open_content(self, _asset: object) -> io.BytesIO:
+            return io.BytesIO(b"raw")
+
+    monkeypatch.setattr(assets, "IngestService", _Ingest)
+    asset = SimpleNamespace(id=uuid4(), width=40, height=30, format=None, content_hash="h")
+    result = assets._original(object(), asset)  # type: ignore[arg-type]
+    measured = json.loads(result.content[-1].text)
+    assert measured["asset_id"] == str(asset.id)
+    assert measured["scale"] == 1.0
+    assert (measured["image_width"], measured["image_height"]) == (40, 30)

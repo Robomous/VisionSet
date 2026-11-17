@@ -726,9 +726,7 @@ def list_batch_assets(
             )
         ),
     ] = AssetSort.MEMBERSHIP,
-    job_id: Annotated[
-        str | None, Field(description="Keep only the assets this job carries.")
-    ] = None,
+    job: Annotated[str | None, Field(description="Keep only the assets this job carries.")] = None,
 ) -> dict[str, Any]:
     """List a batch's assets, with the job, progress and label summary each carries.
 
@@ -739,7 +737,7 @@ def list_batch_assets(
     score among the labels a model wrote, on that model's own scale, or null.
 
     `job_id` and `progress` on each item are both null exactly while the batch is
-    a draft. `job_id` narrows to that job's assets; a job this batch does not
+    a draft. `job` narrows to that job's assets; a job this batch does not
     have is refused, and over a draft — which has no jobs — it matches nothing,
     same as a `progress` filter. Use `get_asset_image` on any `id` here to see
     the pixels.
@@ -750,7 +748,7 @@ def list_batch_assets(
         batch = service.get(resolved)
         placed, total = service.asset_page(
             resolved,
-            job=None if job_id is None else identifier(job_id, what="job_id"),
+            job=None if job is None else identifier(job, what="job"),
             progress=frozenset(progress) if progress else None,
             sort=sort,
             limit=limit,

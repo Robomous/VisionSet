@@ -125,7 +125,7 @@ page groups them by what they are for.
 | `pre_label_batch` | Ask a model to label every untouched asset of a batch, one run per open job; one outcome per job. Blocks until it is done, sending progress notifications. |
 | `pre_label_project` | The same, over every open batch of a project or the named ones; one outcome per open job. Blocks until done, sending progress notifications. |
 | `repin_batch` | Move its schema pin onto the current active version. |
-| `list_batch_assets` | What is in it, paged, with each asset's job and progress. `job_id` narrows it to one job's frames. |
+| `list_batch_assets` | What is in it, paged, with each asset's job and progress. `job` narrows it to one job's frames. |
 | `complete_batch` | Close it, once every job is complete. `promote: true` moves the finished assets into the dataset in the same call, and `promoted` in the answer counts them. |
 | `promote_batch` | Move the finished assets into the dataset. |
 | `create_correction_batch` | Start a draft that corrects a completed one. |
