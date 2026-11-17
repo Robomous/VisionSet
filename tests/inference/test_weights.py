@@ -28,9 +28,9 @@ from visionset.inference import cache_root, fetch_weights, with_families
 from visionset.inference import weights as weights_module
 from visionset.inference.registry import Discovery
 from visionset.inference.weights import (
-    _model_missing,
     MODELS_DIRNAME,
     HuggingFaceWeights,
+    _model_missing,
     download,
     weights_source_for,
 )
