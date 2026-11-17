@@ -63,7 +63,7 @@ and `INTERNAL_ERROR` - are not raised by the kernel and are described in [api.md
 | `INFERENCE_CONNECTION_NOT_DOWNLOADABLE` | 409 | This connection cannot be asked to fetch weights. |  |  |
 | `INFERENCE_CONNECTION_NOT_FOUND` | 404 | No inference connection with that id or name lives in this workspace. |  |  |
 | `INFERENCE_CONNECTION_NOT_RUNNABLE` | 500 | Nothing in this build can run a connection of that kind. |  |  |
-| `INFERENCE_CONNECTION_NOT_SET_UP` | 409 | A connection was asked to predict before it was set up. | On this server the action named above is a tool: `download_connection_weights` for a local connection, `test_inference_connection` for an http one. |  |
+| `INFERENCE_CONNECTION_NOT_SET_UP` | 409 | A connection was asked to predict before it was set up. | Run `visionset inference download <connection>` for a local connection, or `visionset inference test-endpoint <connection>` for an http one. |  |
 | `INFERENCE_CONNECTION_NOT_TESTABLE` | 409 | This connection has no endpoint to ask. |  |  |
 | `INFERENCE_ENDPOINT_UNAVAILABLE` | 502 | An ``http`` connection's endpoint did not answer the contract. |  |  |
 | `INFERENCE_OUT_OF_MEMORY` | 500 | The device ran out of memory part-way through running a model. |  |  |

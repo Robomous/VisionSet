@@ -27,12 +27,12 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
+from mcp.server.mcpserver import Context
 from pydantic import Field, StrictBool
 
 from visionset import wire
 from visionset.inference import (
     DEFAULT_MINIMUM_CONFIDENCE,
-    PreLabelPlan,
     geometry_selection,
     pre_label_recorded,
 )
@@ -42,6 +42,7 @@ from visionset.kernel.services import (
     JobService,
 )
 from visionset.mcp._autostart import autostarted
+from visionset.mcp._progress import PreLabelProgress, reporting
 from visionset.mcp._resolve import ConnectionRef, identifier
 from visionset.mcp._workspace import opened_workspace
 from visionset.mcp.batches import Geometries, _pre_label_outcome
@@ -124,6 +125,7 @@ def pre_label_job(
         ),
     ] = False,
     geometries: Geometries = None,
+    ctx: Context[Any, Any] | None = None,
 ) -> dict[str, Any]:
     """Ask a model to label every untouched asset in one job. This blocks until it is done.
 
@@ -139,7 +141,10 @@ def pre_label_job(
     nothing left to write.
 
     This call runs one forward pass per untouched asset, so the wait is
-    roughly that many times one image's inference time.
+    roughly that many times one image's inference time. A client that sends a
+    `progressToken` gets a progress notification as each asset is considered,
+    with the job's total; one that ignores progress must set its request
+    timeout for the whole run.
 
     **Interrupting is safe.** A plain run only ever writes to an asset nothing
     has touched, and commits one asset's labels in the same transaction as its
@@ -202,10 +207,10 @@ def pre_label_job(
     than words, and a deployment without the local runtime — with the install
     command in the message.
     """
-    seen: list[PreLabelPlan] = []
-    with opened_workspace() as workspace:
+    with opened_workspace() as workspace, reporting(ctx) as report:
         resolved_connection = InferenceConnectionService(workspace).resolve(connection)
         resolved_job = identifier(job_id, what="job_id")
+        counted = PreLabelProgress(report, 1)
         outcome = pre_label_recorded(
             workspace,
             job_id=resolved_job,
@@ -213,9 +218,11 @@ def pre_label_job(
             minimum_confidence=minimum_confidence,
             replace_model_labels=replace_model_labels,
             geometries=geometry_selection(geometries),
-            on_plan=seen.append,
+            on_plan=counted.planned,
+            on_progress=counted.asset_done,
         )
-    return {"job_id": str(resolved_job), **_pre_label_outcome(outcome, seen[0])}
+        counted.finish()
+    return {"job_id": str(resolved_job), **_pre_label_outcome(outcome, counted.plans[0])}
 
 
 def complete_job(job_id: JobRef) -> dict[str, Any]:

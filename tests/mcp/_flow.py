@@ -37,7 +37,7 @@ from typing import Any
 
 import anyio
 from mcp.client import Client
-from mcp.types import CallToolResult
+from mcp.types import CallToolResult, ProgressNotification
 from tests.fixtures.media import write_images
 
 from visionset.kernel.services import WorkspaceService
@@ -82,6 +82,41 @@ def _call(target: Any, tool: str, arguments: dict[str, Any]) -> CallToolResult:
             return await client.call_tool(tool, arguments)
 
     return anyio.run(go)
+
+
+Progress = tuple[float, float | None, str | None]
+
+
+def call_with_progress(
+    tool: str, /, *, token: bool = True, legacy: bool = False, **arguments: Any
+) -> tuple[CallToolResult, list[Progress]]:
+    """:func:`call`, and every progress notification the client received.
+
+    ``token`` decides whether the request carries a ``progressToken`` at all.
+    ``legacy`` runs the JSON-RPC stream transport a stdio client actually
+    speaks, instead of the SDK's in-process direct dispatch, so a notification
+    sent without a token would be seen on the wire.
+    """
+    seen: list[Progress] = []
+
+    async def heard(progress: float, total: float | None, message: str | None) -> None:
+        seen.append((progress, total, message))
+
+    async def wire(message: Any) -> None:
+        # With a token the callback already hears it; without one, nothing should.
+        if not token and isinstance(message, ProgressNotification):
+            p = message.params
+            seen.append((p.progress, p.total, p.message))
+
+    async def go() -> CallToolResult:
+        async with Client(
+            server, message_handler=wire, mode="legacy" if legacy else "auto"
+        ) as client:
+            return await client.call_tool(
+                tool, arguments, progress_callback=heard if token else None
+            )
+
+    return anyio.run(go), seen
 
 
 def tool_names(*, allow_destructive: bool = False) -> list[str]:

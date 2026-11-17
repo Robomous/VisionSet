@@ -145,6 +145,18 @@ def test_every_parameter_of_every_tool_is_documented(name: str) -> None:
     assert undocumented == []
 
 
+@pytest.mark.parametrize(
+    "name",
+    ["pre_label_batch", "pre_label_project", "pre_label_job", "download_connection_weights"],
+)
+def test_the_progress_context_is_injected_never_published(name: str) -> None:
+    # These four take MCPServer's `Context` to send progress. It is the SDK's to
+    # fill, so a client must never see it as an argument it could pass.
+    tool = tool_schemas()[name]
+    assert "ctx" not in tool.input_schema.get("properties", {})
+    assert "ctx" not in tool.input_schema.get("required", [])
+
+
 def test_a_tool_that_can_destroy_data_says_so_and_takes_confirm() -> None:
     # `ToolAnnotations` are hints and enforce nothing; `confirm` is what enforces.
     # This is what keeps the two from drifting apart, in both directions.

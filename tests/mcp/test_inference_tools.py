@@ -12,13 +12,21 @@ projections are the shipped code and only the gigabytes are not.
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Any
 
 import pytest
 from tests.fixtures.endpoint import serving_endpoint
 from tests.fixtures.local_inference import without_the_extra
-from tests.mcp._flow import call, call_destructive, error, payload, workspace
+from tests.mcp._flow import (
+    call,
+    call_destructive,
+    call_with_progress,
+    error,
+    payload,
+    workspace,
+)
 
 from visionset.inference import weights as weights_module
 from visionset.inference.integrity import IntegrityReport
@@ -29,6 +37,7 @@ from visionset.kernel.services import (
     InferenceConnectionService,
     WorkspaceService,
 )
+from visionset.mcp import _progress
 from visionset.mcp import inference as mcp_inference
 
 LOCAL: dict[str, Any] = {
@@ -238,6 +247,53 @@ def test_download_fetches_and_answers_the_ready_connection(root: Path, fetched: 
     assert fetched == ["some/model@abc123"]
 
 
+def test_a_download_reports_its_bytes_against_the_published_total(
+    root: Path, fetched: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload(call("create_inference_connection", **LOCAL))
+    monkeypatch.setattr(_progress, "INTERVAL", 0.0)
+
+    result, heard = call_with_progress("download_connection_weights", connection="local-gd")
+
+    assert payload(result)["setup_state"] == "ready"
+    assert heard == [
+        (0, 4_000_000_000, "downloaded 0 of 4,000 MB"),
+        (4_000_000_000, 4_000_000_000, "downloaded 4,000 of 4,000 MB"),
+    ]
+
+
+def test_bytes_sampled_on_a_thread_of_the_download_s_own_reach_the_client(
+    root: Path, fetched: list[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The real sampler is a plain thread, not one anyio handed the tool."""
+
+    def _download(connection: Any, *, into: Path, on_bytes: Any = None) -> Path:
+        def sample() -> None:
+            for done in (1_000_000_000, 2_000_000_000, 3_000_000_000):
+                on_bytes(done)
+
+        sampler = threading.Thread(target=sample)
+        sampler.start()
+        sampler.join()
+        return tmp_path / "snapshot"
+
+    monkeypatch.setattr(weights_module, "download", _download)
+    payload(call("create_inference_connection", **LOCAL))
+    monkeypatch.setattr(_progress, "INTERVAL", 0.0)
+
+    result, heard = call_with_progress("download_connection_weights", connection="local-gd")
+
+    assert payload(result)["setup_state"] == "ready"
+    assert [progress for progress, _, _ in heard] == [
+        0,
+        1_000_000_000,
+        2_000_000_000,
+        3_000_000_000,
+        4_000_000_000,
+    ]
+    assert heard[-1][1] == 4_000_000_000
+
+
 def test_downloading_an_http_connection_is_a_refusal(root: Path, fetched: list[str]) -> None:
     payload(call("create_inference_connection", **HTTP))
     refusal = error(call("download_connection_weights", connection="remote"))
@@ -403,3 +459,42 @@ def test_test_inference_connection_refuses_a_local_connection(root: Path) -> Non
     payload(call("create_inference_connection", **LOCAL))
     refusal = error(call("test_inference_connection", connection="local-gd"))
     assert "no endpoint" in refusal["message"]
+
+
+# --- not set up: the refusal names this surface's tools ------------------------
+
+
+def test_a_connection_not_set_up_is_told_to_call_the_download_tool(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from tests.mcp._flow import open_batch
+
+    _, batch_id, _job = open_batch(monkeypatch, tmp_path, count=1)
+    payload(call("create_inference_connection", **LOCAL))
+
+    for refusal in (
+        error(call("get_pre_label_plan", batch_id=batch_id, connection="local-gd")),
+        error(call("pre_label_batch", batch_id=batch_id, connection="local-gd")),
+    ):
+        assert refusal["code"] == "INFERENCE_CONNECTION_NOT_SET_UP"
+        assert "call `download_connection_weights` first" in refusal["message"]
+        assert "download_weights" not in refusal["message"]
+        assert refusal["hint"] is None
+
+
+def test_an_http_connection_not_set_up_is_told_to_call_the_test_tool() -> None:
+    from types import SimpleNamespace
+
+    from visionset.inference import not_set_up_message
+    from visionset.kernel import InferenceConnectionNotSetUp
+    from visionset.kernel.domain import ConnectionType
+    from visionset.mcp._errors import _envelope
+
+    kernel = not_set_up_message(
+        SimpleNamespace(name="remote", connection_type=ConnectionType.HTTP)  # type: ignore[arg-type]
+    )
+    spoken = _envelope(InferenceConnectionNotSetUp(kernel))["error"]["message"]
+
+    assert "run its test_endpoint action" in kernel
+    assert "call `test_inference_connection` first" in spoken
+    assert "test_endpoint" not in spoken
