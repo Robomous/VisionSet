@@ -306,19 +306,20 @@ def test_the_refusals_an_agent_meets_mid_workflow_say_what_to_call_next() -> Non
     from visionset.kernel import (
         BatchNotComplete,
         EmptyRelease,
-        InferenceConnectionNotSetUp,
         JobNotComplete,
         ModelNotFound,
         SchemaNotFound,
     )
     from visionset.mcp._errors import _envelope
 
+    # `InferenceConnectionNotSetUp` is absent on purpose: its own message names
+    # the tool to call on this surface, so a hint would only repeat it
+    # (`test_inference_tools.py` holds the message to that).
     for refusal in (
         JobNotComplete,
         BatchNotComplete,
         EmptyRelease,
         SchemaNotFound,
-        InferenceConnectionNotSetUp,
         ModelNotFound,
     ):
         assert _envelope(refusal("x"))["error"]["hint"], refusal.__name__

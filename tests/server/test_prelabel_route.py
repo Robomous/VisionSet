@@ -633,6 +633,8 @@ def test_the_plan_refuses_a_not_set_up_connection(
 
     assert response.status_code == 409
     assert response.json()["code"] == "INFERENCE_CONNECTION_NOT_SET_UP"
+    # REST keeps the kernel's own action name; only MCP speaks in tool names.
+    assert "run its download_weights action first" in response.json()["message"]
 
 
 def test_the_plan_of_an_unknown_connection_is_not_found(

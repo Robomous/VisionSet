@@ -61,7 +61,6 @@ from visionset.kernel import (
     DestructiveSchemaChange,
     EmptyRelease,
     ExportDestinationNotEmpty,
-    InferenceConnectionNotSetUp,
     JobNotComplete,
     LossyExportNotConsented,
     ModelNotFound,
@@ -124,12 +123,6 @@ _HINTS: Final[dict[type[BaseException], str]] = {
         "which classes would be dropped and how many annotations that is, then "
         "re-run `export_release` with `allow_lossy=true` to accept the loss."
     ),
-    # The kernel's sentence names the action in REST's vocabulary
-    # (`download_weights`, `test_endpoint`); here those are tools of other names.
-    InferenceConnectionNotSetUp: (
-        "On this server the action named above is a tool: `download_connection_weights` "
-        "for a local connection, `test_inference_connection` for an http one."
-    ),
     ModelNotFound: (
         "Check the model id and revision with `model_download_size` before creating "
         "or downloading a connection; a private repository needs HF_TOKEN on the server."
@@ -161,6 +154,24 @@ _HINTS: Final[dict[type[BaseException], str]] = {
 Sparse for the reason the CLI's is: a hint that restates the message is noise,
 and most kernel sentences already carry their own remedy.
 """
+
+
+_SPOKEN_HERE: Final = (
+    ("run its download_weights action", "call `download_connection_weights`"),
+    ("run its test_endpoint action", "call `test_inference_connection`"),
+)
+"""Kernel sentences that name a REST action, and the tool this surface calls it.
+
+The message is rewritten rather than glossed by a hint: an agent told to "run
+its download_weights action" looks for a tool of that name and finds none.
+REST and the CLI keep the kernel's own sentence.
+"""
+
+
+def _spoken_here(message: str) -> str:
+    for rest, tool in _SPOKEN_HERE:
+        message = message.replace(rest, tool)
+    return message
 
 
 def _walk(table: dict[type[BaseException], str], exc: BaseException) -> str | None:
@@ -197,7 +208,7 @@ def refused(
 def _envelope(exc: VisionSetError) -> dict[str, Any]:
     return {
         "error": {
-            "message": str(exc),
+            "message": _spoken_here(str(exc)),
             "retry_with": _walk(RETRY_WITH, exc),
             "hint": _walk(_HINTS, exc),
             # Which item of a sequence the caller passed is at fault. Set by
