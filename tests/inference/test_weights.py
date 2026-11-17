@@ -13,9 +13,11 @@ job and the route; this file is the sequence itself.
 
 from __future__ import annotations
 
+import sys
 import time
 from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 from uuid import uuid4
 
@@ -26,6 +28,7 @@ from visionset.inference import cache_root, fetch_weights, with_families
 from visionset.inference import weights as weights_module
 from visionset.inference.registry import Discovery
 from visionset.inference.weights import (
+    _model_missing,
     MODELS_DIRNAME,
     HuggingFaceWeights,
     download,
@@ -1106,3 +1109,15 @@ def test_the_sampler_never_moves_backwards(tmp_path: Path, monkeypatch: pytest.M
 
     assert said and max(said) == 500
     assert said == sorted(said), f"progress went backwards: {said}"
+
+
+def test_hub_without_attached_errors_still_classifies_a_missing_model(monkeypatch):
+    package = ModuleType("fakehub")
+    errors = ModuleType("fakehub.errors")
+    errors.RepositoryNotFoundError = _HubErrors.RepositoryNotFoundError
+    errors.GatedRepoError = _HubErrors.GatedRepoError
+    monkeypatch.setitem(sys.modules, "fakehub", package)
+    monkeypatch.setitem(sys.modules, "fakehub.errors", errors)
+    missing = _HubErrors.RepositoryNotFoundError("404 Client Error. (Request ID: Root=1)")
+    assert _model_missing(package, missing)
+    assert not _model_missing(package, ValueError("x"))
