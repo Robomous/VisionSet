@@ -376,7 +376,7 @@ stdio server has no background worker: something has to do the decode, and an ag
 directory makes `ingest` a long call, a large model makes `download_connection_weights` one, and a
 job of untouched assets makes `pre_label_job` one — minutes, with nothing to poll from here.
 `pre_label_batch` runs that once per open job of a batch and `pre_label_project` once per open
-job of every batch it selects, so the wait is that many jobs' worth of minutes. A cut-off
+job of every batch it selects, so the wait is that many jobs' worth of minutes. On a CPU a local model can take about a minute and a half per image — a 14-image batch measured ~22 minutes — and the server sends no progress notifications, so raise the client's request timeout to match, or queue the run through the REST API (`POST` pre-label answers `202`) where a job can be polled. A cut-off
 download changed nothing (the connection is only marked ready once every file is here) and the
 retry resumes the cache rather than starting over; a cut-off pre-labeling call has written only
 the assets it fully entered, one commit per asset, so calling it again resumes with whatever is
