@@ -1810,9 +1810,10 @@ class PolygonBody(BaseModel):
 class PolylineBody(BaseModel):
     """An open path of at least two points, in order. Nothing joins the ends.
 
-    `visibility` is one state per point — 0 unlabeled, 1 occluded, 2 visible —
-    or absent when nobody said. A geometry is replaced whole, so an update that
-    leaves it out clears it, and one whose length differs from `points` is refused.
+    `visibility` is one state per point — the integer 0 unlabeled, 1 occluded,
+    2 visible — or absent when nobody said; never null. A geometry is replaced
+    whole, so an update that leaves it out clears it: resend it to keep it. One
+    whose length differs from `points` is refused.
     """
 
     model_config = ConfigDict(extra="forbid")

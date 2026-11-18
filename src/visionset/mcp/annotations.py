@@ -58,7 +58,9 @@ class AnnotationInput(BaseModel):
     geometry: Geometry = Field(
         description=(
             "The shape, in the asset's own pixel coordinates — never normalized. "
-            "Its 'type' field is required and selects the variant."
+            "Its 'type' field is required and selects the variant. A polyline's "
+            "optional 'visibility' is one integer per point (0 unlabeled, 1 occluded, "
+            "2 visible); omit it when unknown."
         )
     )
     attributes: dict[str, AttributeValue] = Field(
@@ -101,7 +103,10 @@ class AnnotationEdit(BaseModel):
     id: UUID = Field(description="The annotation to replace, by id.")
     label_class: str = Field(description="A class name the batch's pinned schema declares.")
     geometry: Geometry = Field(
-        description="The replacement shape, in the asset's own pixel coordinates."
+        description=(
+            "The replacement shape, in the asset's own pixel coordinates. It replaces "
+            "the stored geometry whole: a polyline's 'visibility' left out is cleared."
+        )
     )
     attributes: dict[str, AttributeValue] = Field(default_factory=dict)
     provenance: Provenance = Field(
@@ -186,6 +191,11 @@ def add_annotations(
     Refuses if the job's batch is not `in_annotation`, and if any single item is
     bad the refusal names its position in `index` — nothing was written, so that
     position is the only thing that identifies it.
+
+    A polyline may carry `visibility`, one integer per point: 0 unlabeled, 1
+    occluded, 2 visible. Omit it when unknown; never send `null`.
+
+    Details: visionset://annotation-geometry
     """
     with from_arguments():
         domain = [a.to_domain() for a in annotations]
@@ -213,8 +223,13 @@ def update_annotations(
     refused as `INVALID_ANNOTATION` — and `model_ref` and `confidence` are kept
     from the stored annotation, so a model's box you adjust is still the model's.
 
+    The geometry is replaced whole too: a polyline sent without `visibility`
+    loses the stored one, so resend it — one state per point — to keep it.
+
     Same validation and the same all-or-nothing rule as `add_annotations`, and
     the same `job_started` in the answer.
+
+    Details: visionset://annotation-geometry
     """
     with from_arguments():
         domain = [a.to_domain() for a in annotations]

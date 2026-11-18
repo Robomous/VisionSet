@@ -3663,7 +3663,7 @@
       },
       "PolylineBody": {
         "additionalProperties": false,
-        "description": "An open path of at least two points, in order. Nothing joins the ends.\n\n`visibility` is one state per point \u2014 0 unlabeled, 1 occluded, 2 visible \u2014\nor absent when nobody said. A geometry is replaced whole, so an update that\nleaves it out clears it, and one whose length differs from `points` is refused.",
+        "description": "An open path of at least two points, in order. Nothing joins the ends.\n\n`visibility` is one state per point \u2014 the integer 0 unlabeled, 1 occluded,\n2 visible \u2014 or absent when nobody said; never null. A geometry is replaced\nwhole, so an update that leaves it out clears it: resend it to keep it. One\nwhose length differs from `points` is refused.",
         "properties": {
           "points": {
             "items": {

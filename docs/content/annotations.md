@@ -165,6 +165,12 @@ point order. The three states are COCO keypoint visibility's, with COCO's intege
 | `1` | `occluded` | judged, and hidden |
 | `2` | `visible` | judged, and seen |
 
+**Only those integers.** A state is accepted only as the JSON integer `0`, `1` or `2`: `true`,
+`"2"` and `2.0` are refused rather than coerced - a boolean would otherwise read as `1`, storing
+`occluded` for a client that meant "visible". An explicit `null` for the whole list is refused
+too; unknown is the absent key. The same rule holds on REST (422 `VALIDATION_ERROR`), over MCP and
+on the kernel model itself.
+
 **Absent is its own answer.** A polyline with no `visibility` means nobody said - not "every vertex
 visible" - and the key is **omitted** from every response, stored row and release manifest rather
 than written as `null`. That is what keeps a polyline without it byte-identical to one stored
@@ -176,7 +182,10 @@ refused when the geometry is built - a 422 `VALIDATION_ERROR` over REST, an inpu
 and never padded or truncated to fit. An update replaces the geometry whole, so it is the caller's
 to send both lists together: an update that moves a point keeps whatever `visibility` it sends, an
 update that adds a point without extending `visibility` is refused, and an update that omits
-`visibility` clears it.
+`visibility` clears it. **To keep it, resend it** - copied from the stored annotation and adjusted
+with the points. Nothing in an update's answer warns that it was dropped, so the MCP
+`update_annotations` description and the `visionset://annotation-geometry` resource say so up
+front, as the REST `PolylineBody` schema does.
 
 Pre-processing keeps it aligned: a resize or a flip moves the points and carries the list
 unchanged, since neither reorders the vertices. A quarter turn never meets one - `rot90` refuses
