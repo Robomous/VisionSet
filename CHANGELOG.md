@@ -11,6 +11,11 @@ nothing was being distributed. This is the first version that is.
 
 ## [Unreleased]
 
+### Added
+
+- **A `darknet` export dialect.** Writes `obj.data`, `obj.names`, `train.txt` and `valid.txt` over the shared
+  images-and-labels layout, with `yolov4` as its target (#787).
+
 ### Changed
 
 - **`@visionset/annotator` is headless at its root; the React adapter moved to `@visionset/annotator/react`.**

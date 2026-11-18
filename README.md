@@ -120,7 +120,7 @@ src/visionset/          Single Python distribution (one wheel, one import namesp
   server/               FastAPI — exposes the SDK via REST; openapi.json is a committed contract
   cli/                  Typer CLI (`visionset` console script)
   mcp/                  MCP server (stdio) — 61 agent tools over the same SDK, four more on request
-  formats/              Exporter plugins: ultralytics, yolov5-yaml, coco, voc, classification and
+  formats/              Exporter plugins: ultralytics, yolov5-yaml, darknet, coco, voc, classification and
                         the five lane formats (entry-point group `visionset.formats`)
   preprocessing/        Pre-processing drivers: Pillow resize and augmentation behind the
                         `PreprocessingDriver` port (entry-point group `visionset.preprocessing`)
