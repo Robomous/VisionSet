@@ -323,7 +323,13 @@ A **domain refusal** is an ordinary successful call whose payload is the error e
 
 **A connection says how to start before any call.** `initialize` returns `instructions` - the order
 of the workflow, the error envelope and the coordinate trap, in a few lines - and the server
-advertises one resource, `visionset://workflow`, with the walk-through an agent reads on demand.
+advertises resources an agent reads on demand: `visionset://workflow`, the walk-through, and three
+references that hold the long prose behind the largest tools so their descriptions stay under 1500
+characters - `visionset://pre-labeling` (`get_pre_label_plan`, `pre_label_batch`, `pre_label_job`,
+`pre_label_project`), `visionset://export` (`check_export`, `export_release`) and
+`visionset://schema-changes` (`preview_schema_change`, `compare_schema_versions`). Each description
+ends with a `Details:` pointer to the one it relies on, and a test asserts every `visionset://` URI a
+description mentions is served.
 `serverInfo.version` is the installed version and every tool has a `title`. A refusal that has a
 next step says so in `hint`: `JOB_NOT_COMPLETE`, `BATCH_NOT_COMPLETE`, `EMPTY_RELEASE`,
 `SCHEMA_NOT_FOUND` and `MODEL_NOT_FOUND`. A kernel sentence that names a REST action names this
@@ -543,13 +549,14 @@ schemas and annotations, so a rename would break every client and every stored d
 
 ### Actions with no matching tool
 
-`allowed_actions` is declared by the kernel, so a document can advertise an action this surface
-has no tool for:
+`allowed_actions` is declared by the kernel, and REST, the CLI and the kernel return it whole. The
+MCP layer trims what it has no tool for, so an agent is never told to do something it cannot call:
 
-- A pending job lists `start`: there is no `start_job`, though REST has `POST /jobs/{job_id}/start`. A job moves to `in_progress` on the first
-  write that touches it; `pre_label` is offered as `pre_label_job`.
-- A batch lists `delete` only as `delete_batch`, which is registered with `--allow-destructive`
-  alone.
+- A job never lists `start`: there is no `start_job`, though REST has `POST /jobs/{job_id}/start`. A
+  job moves to `in_progress` on the first write that touches it; `pre_label` is offered as
+  `pre_label_job`.
+- A batch lists `delete` only when `delete_batch` is registered, which takes `--allow-destructive`
+  (`VISIONSET_MCP_ALLOW_DESTRUCTIVE=1`) alone.
 
 Every other `BatchAction` has a tool; `tests/architecture/test_capability_reachability.py` checks
 that for REST and MCP.

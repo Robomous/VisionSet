@@ -44,6 +44,7 @@ from visionset.kernel.services import (
 from visionset.mcp._autostart import autostarted
 from visionset.mcp._progress import PreLabelProgress, reporting
 from visionset.mcp._resolve import ConnectionRef, identifier
+from visionset.mcp._surface import mcp_job
 from visionset.mcp._workspace import opened_workspace
 from visionset.mcp.batches import Geometries, JobPreLabelOutcome, _pre_label_outcome
 from visionset.wire import shapes
@@ -77,11 +78,13 @@ def _job_payload(service: JobService, job_id: Any) -> JobDetail:
     job = service.get(job_id)
     batch = service.batch(job.id)
     return {
-        **wire.job(
-            job,
-            batch_id=batch.id,
-            batch_state=batch.state,
-            pre_labeled=service.latest_pre_label_run(job.id),
+        **mcp_job(
+            wire.job(
+                job,
+                batch_id=batch.id,
+                batch_state=batch.state,
+                pre_labeled=service.latest_pre_label_run(job.id),
+            )
         ),
         "batch_state": batch.state.value,
         "schema_version": batch.schema_version,
@@ -143,83 +146,22 @@ def pre_label_job(
 ) -> JobPreLabelOutcome:
     """Ask a model to label every untouched asset in one job. This blocks until it is done.
 
-    `pre_label_batch`'s run, narrowed to the one job you already hold: a
-    `batch_id` starts this from `open_jobs_of`'s whole list, this starts it
-    from one entry in that list. **The batch's pinned schema is still the
-    prompt** — the model is asked for each class the schema declares that the
-    shapes this run writes can be written as, exactly as a batch-wide run
-    would ask, because the schema is pinned to the batch, not chosen per job.
-    **A job already `completed` is refused, not passed over** — unlike
-    `pre_label_batch`, which skips a finished job on its way to the next one,
-    naming one job here is a decision to run that job, and a finished one has
-    nothing left to write.
+    `pre_label_batch`'s run narrowed to one job you already hold; the batch's pinned
+    schema is still the prompt. Unlike `pre_label_batch`, a job already `completed` is
+    refused rather than passed over.
 
-    This call runs one forward pass per untouched asset, so the wait is
-    roughly that many times one image's inference time. A client that sends a
-    `progressToken` gets a progress notification as each asset is considered,
-    with the job's total; one that ignores progress must set its request
-    timeout for the whole run.
+    One forward pass per untouched asset, so expect minutes (send a `progressToken`
+    to receive progress, or set a request timeout for the whole run). Only assets
+    nothing has touched are labeled, at `pre_labeled`. Interrupting is safe: calling
+    again resumes. `replace_model_labels` also rewrites model labels on frames still
+    `pre_labeled`, and cannot be undone. Read `plan` in the result whenever
+    `assets_labeled` is lower than expected; `get_pre_label_plan` answers the same
+    without running.
 
-    **Interrupting is safe.** A plain run only ever writes to an asset nothing
-    has touched, and commits one asset's labels in the same transaction as its
-    move to `pre_labeled` — so a cut-off call has entered some prefix of the
-    assets it was reaching and touched nothing else, and calling this again
-    resumes with whatever is still untouched — plus, where
-    `replace_model_labels` is set, the frames still `pre_labeled` — rather than
-    starting over or double-writing what already landed.
+    Also refused: a batch that is not `in_annotation`, a connection whose model
+    answers places rather than words, and a deployment without the local runtime.
 
-    **Only assets nothing has touched — not merely assets reading
-    `unannotated`.** An asset already `pre_labeled`, annotated, skipped,
-    awaiting review or accepted is passed over, and so is an `unannotated` one
-    that still carries annotations from a round that was skipped and later
-    restored, since that sequence deletes no labels. A frame this tool already
-    pre-labeled is therefore never re-asked about by a plain call, at any confidence.
-    **`replace_model_labels` is the deliberate exception**: it also reaches every
-    frame still `pre_labeled` and supersedes the model's labels there with this
-    call's answer, one frame per transaction — a frame the model now finds
-    nothing on returns to `unannotated`, and `annotations_replaced` in the
-    result says how many labels went. A frame anyone edited, confirmed or
-    skipped in this job is never touched either way, and neither is a frame already in the
-    dataset: its labels were confirmed in a completed batch. What is written lands at
-    `pre_labeled`, never at `annotated` — nobody judged it, so it stays
-    editable and out of the Dataset until somebody does. An asset somebody
-    starts working while this call is still running is passed over the same
-    way rather than failing the whole call; `assets_skipped` in the result
-    says how many.
-
-    **A region that could not be written as the class it named is discarded,
-    not fatal.** A label naming no phrase asked for, or a shape the class does
-    not admit or the model never declared, is passed over the same way. A
-    text-prompted detector answers with text decoded from spans over the
-    prompt, not a choice from the classes it was asked about, so a span
-    crossing the boundary between two phrases can answer with neither of
-    them; a model declaring two shapes may also answer in the one its class
-    does not take. `regions_discarded` in the result says how many.
-
-    **A mapped region with no overlap with a measured asset is discarded
-    separately.** `regions_out_of_bounds` in the result says how many; an
-    asset without dimensions remains eligible.
-
-    **What the run writes is every shape the model produces unless `geometries`
-    says which.** A model declaring both a box and a polygon writes both for
-    every region it answers with, unpaired; `geometries` filters that to the
-    shapes named, and a region in any other shape is counted in
-    `regions_discarded`. Naming a shape the model does not produce is refused
-    before anything runs.
-
-    `plan` in the result names both halves: `asked_classes` is what this run
-    actually asked about, and `excluded_classes` names every class of the pinned
-    schema it could not, each with every reason; `produces` says what shape the
-    run wrote. `schema_version` is the pin both were derived from. Read it
-    whenever `assets_labeled` is lower than expected — a run that asked about
-    two of a schema's five classes labels nothing under the other three, and
-    the counters alone cannot say so. `get_pre_label_plan` answers the same
-    thing without running anything.
-
-    Also refused before anything runs: a job that is `completed`, a batch that
-    is not `in_annotation`, a connection whose model answers places rather
-    than words, and a deployment without the local runtime — with the install
-    command in the message.
+    Details: visionset://pre-labeling
     """
     with opened_workspace() as workspace, reporting(ctx) as report:
         resolved_connection = InferenceConnectionService(workspace).resolve(connection)

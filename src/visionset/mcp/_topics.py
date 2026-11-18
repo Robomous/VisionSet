@@ -1,0 +1,264 @@
+# usage: from visionset.mcp._topics import TOPICS
+"""Long-form reference served as resources, so tool descriptions can stay short.
+
+Every tool description is read on every session; the rationale and edge cases
+behind pre-labeling, export and schema changes are read only when an agent needs
+them. Each description names the resource that holds the rest, and
+``tests/mcp/test_guide.py`` asserts every ``visionset://`` URI mentioned anywhere
+is served.
+"""
+
+from __future__ import annotations
+
+from typing import Final, NamedTuple
+
+
+class Topic(NamedTuple):
+    uri: str
+    name: str
+    text: str
+
+
+PRE_LABELING_URI: Final = "visionset://pre-labeling"
+EXPORT_URI: Final = "visionset://export"
+SCHEMA_CHANGES_URI: Final = "visionset://schema-changes"
+
+PRE_LABELING: Final = """\
+# Pre-labeling
+
+Applies to `get_pre_label_plan`, `pre_label_batch`, `pre_label_job` and
+`pre_label_project`. Pre-labeling asks a model connection to label assets and
+writes what it finds at `pre_labeled`, never at `annotated`: nobody judged it, so
+it stays editable and out of the dataset until somebody does.
+
+## Which classes a run asks about
+
+The batch's pinned schema is the prompt. A run does not ask about every class the
+schema declares, only the ones the model's answer can be written as: a class
+admitting a shape the run writes and demanding no attribute a prediction cannot
+supply. An answer naming one of those classes, matched case-insensitively, is
+written under the schema's own spelling. A schema with nothing askable is refused
+before anything runs.
+
+`get_pre_label_plan` is a single read that shows this before the long call:
+
+- `asked_classes` is the prompt itself, in the schema's own spelling.
+- `produces` is the shapes the run would write: every shape the connection's model
+  answers in, or exactly `geometries` when you name some. A schema of polygon
+  classes is askable of a model that answers polygons and refused for one that
+  answers boxes; a boxes-only selection of a model that answers both leaves every
+  polygon-only class out.
+- `excluded_classes` names the rest, each with every reason: `no_producible_geometry`
+  (the class admits no shape the model produces) and `required_attribute` (the class
+  demands an attribute value and a model's answer carries none). Both can hold at
+  once, which is why `reasons` is a list.
+- Every class of the pinned schema is in exactly one of the two lists;
+  `schema_version` is the pin both came from, and a re-pin changes both.
+
+Pass the same `geometries` to the plan as to the run. Every run result carries its
+own `plan`: read it whenever `assets_labeled` is lower than expected, because a run
+that asked about two of five classes labels nothing under the other three and the
+counters cannot say so.
+
+## Geometries
+
+A run writes every shape the model produces unless `geometries` says which. A model
+declaring both a box and a polygon writes both for every region it answers with,
+unpaired. `geometries` filters to the shapes named and a region in any other shape
+is counted in `regions_discarded`. Naming a shape the model does not produce is
+refused before anything runs.
+
+## Which assets a run touches
+
+Only assets nothing has touched, which is not the same as assets reading
+`unannotated`. An asset already `pre_labeled`, annotated, skipped, awaiting review
+or accepted is passed over, and so is an `unannotated` one that still carries
+annotations from a round that was skipped and later restored (that sequence deletes
+no labels). A frame already pre-labeled is never re-asked about by a plain call, at
+any confidence.
+
+`replace_model_labels` is the deliberate exception: it also reaches every frame
+still `pre_labeled` and supersedes the model's labels with this call's answer, one
+frame per transaction. A frame the model now finds nothing on returns to
+`unannotated`; `annotations_replaced` says how many labels went. A frame anyone
+edited, confirmed or skipped in the batch is never touched either way, and neither
+is a frame already in the dataset. This cannot be undone: read `progress.pre_labeled`
+on `get_batch` or `get_job` first.
+
+An asset somebody starts working while the call is running is passed over rather
+than failing the call; `assets_skipped` says how many.
+
+## What is discarded rather than fatal
+
+- A region that could not be written as the class it named (a label naming no phrase
+  asked for, or a shape the class does not admit or the model never declared) is
+  discarded and counted in `regions_discarded`. A text-prompted detector answers with
+  text decoded from spans over the prompt, so a span crossing the boundary between
+  two phrases can answer with neither; a model declaring two shapes may answer in
+  the one a class does not take.
+- A mapped region with no overlap with a measured asset is counted separately in
+  `regions_out_of_bounds`; an asset without dimensions remains eligible.
+
+## Blocking, progress and interruption
+
+These calls block until every job is done: a stdio server has no background worker,
+so a queued run would answer with a job id nothing would ever claim (the REST API
+queues it instead, because it has a dispatcher). The run does one forward pass per
+untouched asset, so expect minutes for a batch of any size; on a CPU a local model
+took about a minute and a half per image. A client that sends a `progressToken` gets
+a progress notification as assets are considered, with the total once it is exact; a
+client that resets its request timeout on progress keeps waiting, and one that
+ignores progress must set its request timeout for the whole run.
+
+Interrupting is safe. A plain run only writes to an asset nothing has touched and
+commits one asset's labels in the same transaction as its move to `pre_labeled`, so
+a cut-off call has entered some prefix of the assets and touched nothing else.
+Calling again resumes with whatever is still untouched (plus, with
+`replace_model_labels`, the frames still `pre_labeled`) rather than starting over or
+double-writing.
+
+## Batch versus job
+
+`pre_label_batch` runs once per open job and reports each as an item in `items`,
+with its own `job_id` and `plan`; a job already `completed` is passed over, since a
+batch finished half in the annotator is the ordinary case. `annotations_written` at
+the top is the total. `pre_label_job` is the same run for one job and refuses a
+`completed` one: naming a job is a decision to run it, and a finished one has
+nothing left to write. The schema is pinned to the batch, so both ask the same
+classes.
+
+## Refusals
+
+Before anything runs: a batch that is not `in_annotation`, a job that is
+`completed` (`pre_label_job`), a connection whose model answers places rather than
+words, a schema with nothing askable, and a deployment without the local runtime
+(the install command is in the message).
+"""
+
+EXPORT: Final = """\
+# Exporting a release
+
+Applies to `check_export` and `export_release`.
+
+## Target or format
+
+Give exactly one of `target` and `format`; both or neither is refused. A target is
+the model the release will train (`list_export_targets` names them) and resolves to
+the format that writes for it; the export then carries only the geometries that
+trainer has a task for, and the report names the target. A format addresses no
+trainer. So `target="yolov10"` can report a polygon class `dropped` where
+`format="ultralytics"` reports it `supported`.
+
+## What a check reports
+
+`check_export` reads the release's frozen manifest and judges every class against
+what the format declares it can write, so the numbers are exact. Each class has a
+`status`:
+
+- `supported`: written as it stands.
+- `dropped`: not in the output at all. `excluded_annotations` counts those labels and
+  `excluded_assets` the assets that arrive with at least one missing.
+- `degraded`: in the output, reduced (a polygon written as its axis-aligned bounding
+  box, as `yolov5-yaml` and `voc` do), counted by `degraded_annotations` and
+  `degraded_assets`. `reason` says which.
+
+`compatible` true means the format loses nothing from this release and
+`export_release` runs without `allow_lossy`. False means it refuses until you pass it;
+the same report comes back with that refusal and is written to the export directory
+as `visionset-export-report.json`, so checking first is a convenience.
+
+A class with zero annotations never makes a release incompatible, whatever its
+status; those rows are still listed with their zeros.
+
+`compatible` is not a format's `lossy` flag in `list_formats`. That flag covers what
+a geometry list cannot see (attributes, confidence, provenance) and is true of the
+format forever; `compatible` is about the labels this release holds.
+
+## Destination
+
+`dest` must be an absolute path outside the workspace, and either missing or an empty
+directory; it is created if missing. Anything else is refused with
+`EXPORT_DESTINATION_REFUSED`: a relative or `~` path, the workspace or a directory
+inside or above it, a file, or a directory that cannot be created. A directory that
+already holds files is refused with `EXPORT_DESTINATION_NOT_EMPTY` unless
+`allow_non_empty=true`, and is never emptied; its files are counted in `file_count`
+and `total_bytes`.
+
+## Integrity
+
+Every image the release names is checked against its content hash before anything is
+written. A missing or altered one refuses the export with `EXPORT_SOURCE_UNREADABLE`;
+`verify_release` says which.
+
+## Lossy exports
+
+A format that cannot express everything the release holds refuses until you pass
+`allow_lossy=true`. That is a different gate from `confirm`: nothing is destroyed, and
+what you consent to is an incomplete copy. Two things trigger it: a format that
+declares itself lossy, and a format whose declared capabilities cannot carry a class
+the release uses. Call `check_export` for the numbers, or read the report off the
+refusal.
+
+## Report file
+
+Every successful export writes `visionset-export-report.json` into `dest`, saying
+what was and was not carried. It is the kernel's file, not the format's, and is
+excluded from `file_count`.
+
+## Recipes
+
+`recipe` applies one of the project's pre-processing recipes (`list_preprocessing_recipes`):
+every image is resized as the recipe says and augmented variants are written for the
+train fold, named `<hash>-aug<k>` beside their source. The result separates
+`source_file_count` from `augmented_file_count`, and `preprocessing` carries the recipe
+as it ran, its hash, the Pillow version and a file-to-source mapping; the report on
+disk carries the same. An augmenting recipe refuses a release published without a
+split, and a step refuses a geometry it cannot move. `check_export` with the same
+`recipe` refuses what the export would, and its report is otherwise unchanged by it.
+"""
+
+SCHEMA_CHANGES: Final = """\
+# Changing a schema
+
+Applies to `preview_schema_change`, `compare_schema_versions`,
+`create_schema_version` and `repin_batch`.
+
+## Additive and destructive
+
+`diff.is_destructive` true means the proposal narrows the contract: a class or an
+attribute is gone, or a class lost one of its geometries. `diff.destructive_classes`
+names them, and applying it needs `allow_destructive=true`. Adding classes, optional
+attributes or another geometry to a class is additive and needs no flag. Matching
+against the current version is by exact class name, so a rename reads as one removal
+plus one addition.
+
+## `is_refused` is the answer no flag changes
+
+True means annotations already exist under a class the proposal drops, so
+`create_schema_version` refuses outright however you call it. `blockers` names each
+such class with how many annotations and assets it carries. Do not retry with
+`allow_destructive=true`: that flag answers a different refusal and retrying is a
+loop. Either keep the class, or delete the annotations `blockers` counts and preview
+again. `list_blocking_assets` pages through the assets that carry them.
+
+## Advisory
+
+A preview locks nothing. Somebody can label a class between the preview and the
+publish, in which case the publish refuses and that refusal is the authoritative one.
+
+## Comparing versions
+
+`compare_schema_versions` returns the same classification for two versions that
+already exist. Order matters (1 to 2 and 2 to 1 are different questions) and a version
+compared with itself is an empty diff. Its caller is `repin_batch`: a batch is judged
+against the version it pinned at approval, so compare the pinned version (`get_batch`)
+with the active one (`get_schema`) first. `is_destructive` false means the re-pin needs
+no flag.
+"""
+
+TOPICS: Final = (
+    Topic(PRE_LABELING_URI, "pre-labeling", PRE_LABELING),
+    Topic(EXPORT_URI, "export", EXPORT),
+    Topic(SCHEMA_CHANGES_URI, "schema-changes", SCHEMA_CHANGES),
+)
+"""Every extra resource :func:`visionset.mcp.main.build_server` serves."""
