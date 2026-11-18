@@ -167,7 +167,7 @@ export function HomeScreen({
         <aside className="flex min-w-0 flex-col gap-6">
           <div className="grid grid-cols-2 gap-3" data-testid="home-stats">
             <StatCard label="Projects" value={formatCount(page.totals.projects)} />
-            <StatCard label="Images" value={formatCount(page.totals.assets)} />
+            <StatCard label="Assets" value={formatCount(page.totals.assets)} />
             <StatCard label="Annotations" value={formatCount(page.totals.annotations)} />
             <StatCard label="Releases" value={formatCount(page.totals.releases)} />
           </div>
