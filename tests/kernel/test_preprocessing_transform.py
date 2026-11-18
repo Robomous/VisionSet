@@ -36,7 +36,6 @@ from visionset.kernel.domain import (
     transform_manifest,
     variant_seed,
 )
-from visionset.kernel.domain.preprocessing_transform import _rotated_once
 from visionset.kernel.errors import (
     AugmentationRequiresSplit,
     ExportSourceUnreadable,
@@ -228,12 +227,6 @@ def test_hflip_keeps_per_vertex_visibility_in_vertex_order() -> None:
     variant = _only_variant(spec, VISIBLE_POLYLINE)
     assert _geometry_of(variant, PolylineGeometry) == PolylineGeometry(
         points=[(95.0, 10.0), (40.0, 150.0), (20.0, 190.0)], visibility=SEEN
-    )
-
-
-def test_a_quarter_turn_keeps_per_vertex_visibility() -> None:
-    assert _rotated_once(VISIBLE_POLYLINE, 100.0) == PolylineGeometry(
-        points=[(10.0, 95.0), (150.0, 40.0), (190.0, 20.0)], visibility=SEEN
     )
 
 

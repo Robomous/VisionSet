@@ -70,7 +70,7 @@ images ingested on another machine produce a different manifest.
 ### The manifest's own format version
 
 `manifest_version` names the shape of the document itself, independent of the workspace
-database's format and of the package version. A build writes **3** and reads 1, 2 and 3:
+database's format and of the package version. A build writes **3**:
 
 | Version | Since | What changed |
 | --- | --- | --- |
@@ -81,9 +81,13 @@ database's format and of the package version. A build writes **3** and reads 1, 
 An older document keeps the version it was written with, so its bytes and its hash never move and
 `verify` still passes. Version 3 changes no existing bytes: a polyline with unknown visibility
 **omits** the key rather than writing `null`, so it serializes exactly as it did under version 2.
-What the bump announces is that a version-3 document *may* carry the key, which a version-2 build
-refuses - a manifest is read with unknown keys forbidden, because half-understanding hash-pinned
-evidence is worse than refusing it.
+What the bump announces is that a version-3 document *may* carry the key.
+
+**The number is a label, not a gate.** Loading a manifest does not compare `manifest_version`
+against anything; what a build refuses is a key it does not know, because a manifest is read with
+unknown keys forbidden - half-understanding hash-pinned evidence is worse than refusing it. So a
+version-2 build refuses a version-3 manifest only when that manifest carries a `visibility`; one
+with no visibility recorded anywhere loads there unchanged.
 
 Publishing the same content under a newer build still produces a different manifest hash than an
 older build did, because the version number is part of the document.

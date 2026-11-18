@@ -178,8 +178,9 @@ to send both lists together: an update that moves a point keeps whatever `visibi
 update that adds a point without extending `visibility` is refused, and an update that omits
 `visibility` clears it.
 
-Pre-processing keeps it aligned: a resize, a flip or a quarter turn moves the points and carries
-the list unchanged, since none of them reorders the vertices. Of the export formats only
+Pre-processing keeps it aligned: a resize or a flip moves the points and carries the list
+unchanged, since neither reorders the vertices. A quarter turn never meets one - `rot90` refuses
+polylines outright (see [pre-processing](preprocessing.md)). Of the export formats only
 `openlane-2d` has a per-vertex slot; see [releases](releases.md#the-lane-formats).
 
 ## Provenance is the model's own rule, not the service's
