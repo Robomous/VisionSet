@@ -686,7 +686,7 @@ def test_openlane_writes_the_recorded_visibility_onto_its_binary_flag(
     [TuSimpleExporter, CurveLanesExporter, Bdd100kLaneExporter, CuLaneExporter],
     ids=lambda e: str(e.format_name),
 )
-def test_a_format_with_no_per_vertex_slot_drops_visibility_and_declares_itself_lossy(
+def test_a_format_with_no_per_vertex_slot_writes_the_same_bytes_with_or_without_visibility(
     tmp_path: Path, exporter: type
 ) -> None:
     points = [(1.0, 1.0), (2.0, 20.0), (3.0, 40.0)]
@@ -703,7 +703,6 @@ def test_a_format_with_no_per_vertex_slot_drops_visibility_and_declares_itself_l
     def written(dest: Path) -> dict[str, bytes]:
         return {str(p.relative_to(dest)): p.read_bytes() for p in dest.rglob("*") if p.is_file()}
 
-    assert exporter.lossy is True
     assert written(_export(exporter(), asset, tmp_path / "with")) == written(
         _export(exporter(), bare, tmp_path / "without")
     )

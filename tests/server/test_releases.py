@@ -265,6 +265,14 @@ def test_the_manifest_is_served_as_json_and_parses(client: TestClient, release: 
     assert len(document["assets"]) == 3
 
 
+def test_a_release_published_now_writes_manifest_version_three(
+    client: TestClient, release: str
+) -> None:
+    """The literal, not the constant: reverting the #352 bump must fail here."""
+    document = client.get(f"/releases/{release}/manifest").json()
+    assert document["manifest_version"] == 3
+
+
 def test_the_manifest_is_cached_immutably_and_tagged_with_its_own_digest(
     client: TestClient, release: str
 ) -> None:

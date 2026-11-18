@@ -527,15 +527,20 @@ describe("polyline vertex visibility", () => {
 
   it("reads an absent key as unknown, and an unknown polyline goes back out without it", () => {
     const parsed = parseGeometry({ type: "polyline", points: POINTS });
-    expect(parsed).toMatchObject({ type: "polyline", visibility: undefined });
+    if (parsed.type !== "polyline") throw new Error("not a polyline");
+    expect(parsed.visibility).toBeUndefined();
 
-    const [annotation] = fixture.annotations
-      .map((one) => parseAnnotation(one))
-      .filter((one) => one.geometry.type === "polyline" && one.geometry.visibility === undefined);
+    // Selected on the raw payload, so a parser that invented a list for an absent
+    // key cannot make the case disappear.
+    const raw = (fixture.annotations as { geometry: Record<string, unknown> }[]).find(
+      (one) => one.geometry["type"] === "polyline" && !("visibility" in one.geometry),
+    );
+    expect(raw).toBeDefined();
+    const annotation = parseAnnotation(raw);
     const create = JSON.parse(JSON.stringify(toAnnotationCreate(annotation)));
     const update = JSON.parse(JSON.stringify(toAnnotationUpdate(annotation)));
-    expect(create.geometry).not.toHaveProperty("visibility");
-    expect(update.geometry).not.toHaveProperty("visibility");
+    expect(create.geometry).toStrictEqual(raw?.geometry);
+    expect(update.geometry).toStrictEqual(raw?.geometry);
   });
 
   it("reads a recorded list and sends it back", () => {

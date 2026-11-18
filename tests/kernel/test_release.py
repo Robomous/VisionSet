@@ -104,12 +104,7 @@ def test_a_manifest_says_which_format_it_is_in() -> None:
     assert document["manifest_version"] == MANIFEST_VERSION
 
 
-def test_this_build_writes_manifest_version_three() -> None:
-    assert MANIFEST_VERSION == 3
-
-
-# A version-2 document exactly as the build before per-vertex visibility wrote
-# it, and that build's hash of it.
+# A version-2 document exactly as the build before per-vertex visibility wrote it.
 VERSION_2_DOCUMENT = (
     b'{"assets":[{"annotations":[{"attributes":{},"confidence":null,'
     b'"geometry":{"points":[[1.0,2.0],[3.0,40.0]],"type":"polyline"},'
@@ -120,17 +115,16 @@ VERSION_2_DOCUMENT = (
     b'"classes":[{"attributes":[],"color":null,"geometries":["polyline"],"name":"lane"}],'
     b'"manifest_version":2,"schema_version":1}'
 )
-VERSION_2_HASH = "34c45243ed26279681ff597c0deb1970d109a1f55955d97184d9eb8a940fd404"
 
 
-def test_a_version_two_document_loads_and_keeps_its_bytes_and_its_hash() -> None:
+def test_a_version_two_document_loads_and_keeps_its_bytes() -> None:
     manifest = Manifest.model_validate_json(VERSION_2_DOCUMENT)
     assert manifest.manifest_version == 2
     (annotation,) = manifest.assets[0].annotations
     assert isinstance(annotation.geometry, PolylineGeometry)
     assert annotation.geometry.visibility is None
+    # Equal bytes are an equal hash; asserting the hash too would only restate this.
     assert canonical_bytes(manifest) == VERSION_2_DOCUMENT
-    assert sha256_hex(canonical_bytes(manifest)) == VERSION_2_HASH
 
 
 def test_a_polyline_without_visibility_serializes_exactly_as_before() -> None:
