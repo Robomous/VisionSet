@@ -247,6 +247,14 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "targets": ["curvelanes"],
             },
             {
+                "name": "darknet",
+                "lossy": True,
+                "geometries": ["bbox"],
+                "degraded_geometries": ["polygon"],
+                "modalities": ["image"],
+                "targets": ["yolov4"],
+            },
+            {
                 "name": "dummy",
                 "lossy": False,
                 # What the format can carry. `dummy` declares everything,
@@ -314,7 +322,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "targets": ["yolov7"],
             },
         ],
-        "total": 11,
+        "total": 12,
     }
 
 

@@ -353,6 +353,7 @@ The catalog this build ships, generated from the declarations by
 | `yolo26` | YOLO26 | `ultralytics-yolo` | `ultralytics` | classify, depth, detect, obb, pose, segment, semantic | bbox, classification_tag, polygon | 640×640 | letterbox |
 | `yolov10` | YOLOv10 | `ultralytics-yolo` | `ultralytics` | detect | bbox | 640×640 | letterbox |
 | `yolov3` | YOLOv3 | `ultralytics-yolo` | `ultralytics` | detect | bbox | 640×640 | letterbox |
+| `yolov4` | YOLOv4 | `community-yolo` | `darknet` | detect | bbox | 416×416 | stretch |
 | `yolov5` | YOLOv5 | `ultralytics-yolo` | `ultralytics` | classify, detect, segment | bbox, classification_tag, polygon | 640×640 | letterbox |
 | `yolov6` | YOLOv6 | `ultralytics-yolo` | `ultralytics` | detect | bbox | 640×640 | letterbox |
 | `yolov7` | YOLOv7 | `community-yolo` | `yolov5-yaml` | detect | bbox | 640×640 | letterbox |
@@ -385,11 +386,11 @@ a `detect` layout of its boxes, and the report says the polygons were dropped.
 
 ### The YOLO dialects
 
-Two formats write a YOLO dataset, and they differ only in the grammar of `data.yaml`. Each is a
+Three formats write a YOLO dataset, and they differ only in the descriptor grammar. Each is a
 *dialect*: the wire identifier `format_name` names the descriptor grammar, and the model a person
 will train - the *target* - resolves to exactly one dialect. `ultralytics` is what every trainer
 from YOLOv3 to YOLO26 in the Ultralytics line reads; `yolov5-yaml` is the older grammar YOLOv7
-reads. `yolo`, the former name of `ultralytics`, is accepted as an alias until the release after
+reads; `darknet` is the Darknet-framework layout YOLOv4 reads. `yolo`, the former name of `ultralytics`, is accepted as an alias until the release after
 next, and then removed. Every surface resolves it to the same plugin and reports `format_name` as
 `ultralytics`; only the CLI warns, because `visionset export --format yolo` has a stderr to say
 so on. `POST /releases/{id}/export?format=yolo` and `export_release(format="yolo")` accept it
@@ -489,6 +490,29 @@ Detection only, always. `supported_geometries` is `{bbox}` and `degraded_geometr
 `{polygon}`: a polygon is written as its axis-aligned bounding box, and the report counts it as
 written in a reduced form and says which classes and how many. A classification tag has no
 location and is dropped rather than given an invented box.
+
+#### `darknet`
+
+The descriptor is `obj.data`, a list of `key = value` lines, beside `obj.names` (one class per line, in
+the release's frozen schema order) and the image lists `train.txt` and `valid.txt`:
+
+```text
+classes = 2
+train = train.txt
+valid = valid.txt
+names = obj.names
+backup = backup/
+```
+
+The lists hold one image path per line, relative to the export root (`images/train/<hash>.jpg`),
+and Darknet finds each label by swapping `images` for `labels` in that path, which is the layout
+the other dialects already write. `valid.txt` is always written: a release with no validation fold
+points it at the training list, as `yolov5-yaml` points `val` at the training images. Darknet has
+no test key, so test images are written under `images/test` and listed in neither file.
+
+Detection only, always, with the same capabilities as `yolov5-yaml`: a polygon is written as its
+axis-aligned bounding box and reported as reduced, and a classification tag is dropped. The one
+target is `yolov4`; `yolov3` stays with `ultralytics`.
 
 ### The COCO format
 

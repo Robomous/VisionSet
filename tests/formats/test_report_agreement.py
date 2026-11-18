@@ -119,6 +119,17 @@ def _yolo_counts(root: Path) -> Counter[str]:
     return found
 
 
+def _darknet_counts(root: Path) -> Counter[str]:
+    """Every label row, by the line of ``obj.names`` its index points at."""
+    names = (root / "obj.names").read_text(encoding="utf-8").splitlines()
+    found: Counter[str] = Counter()
+    for path in sorted((root / LABELS_DIRNAME).rglob("*.txt")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                found[names[int(line.split()[0])]] += 1
+    return found
+
+
 def _voc_counts(root: Path) -> Counter[str]:
     """Every ``<object>``, by the ``<name>`` a devkit consumer reads it under."""
     found: Counter[str] = Counter()
@@ -155,6 +166,7 @@ def _classification_counts(root: Path) -> Counter[str]:
 COUNTERS: dict[str, Callable[[Path], Counter[str]]] = {
     "ultralytics": _yolo_counts,
     "yolov5-yaml": _yolo_counts,
+    "darknet": _darknet_counts,
     "voc": _voc_counts,
     "coco": _coco_counts,
     "classification": _classification_counts,
@@ -511,7 +523,7 @@ def test_tusimple_calls_the_lane_it_resamples_degraded_and_the_others_do_not(
         assert _installed()[name].lossy
 
 
-@pytest.mark.parametrize("format_name", ["ultralytics", "yolov5-yaml", "coco", "voc"])
+@pytest.mark.parametrize("format_name", ["ultralytics", "yolov5-yaml", "darknet", "coco", "voc"])
 def test_the_general_formats_declare_polyline_truthfully(
     tmp_path: Path, laned: Fixture, format_name: str
 ) -> None:

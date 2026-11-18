@@ -210,6 +210,7 @@ def test_the_package_itself_is_all_there(names: list[str]) -> None:
         "visionset/kernel/services/workspace_service.py",
         "visionset/formats/ultralytics/__init__.py",
         "visionset/formats/yolov5_yaml/__init__.py",
+        "visionset/formats/darknet/__init__.py",
         "visionset/formats/coco/__init__.py",
         "visionset/formats/voc/__init__.py",
     ):
@@ -231,7 +232,7 @@ def test_the_entry_points_ship_so_the_command_and_the_plugins_exist(
 
     assert "visionset = visionset.cli.main:app" in declared
     assert "[visionset.formats]" in declared
-    for plugin in ("ultralytics", "yolov5-yaml", "coco", "voc"):
+    for plugin in ("ultralytics", "yolov5-yaml", "darknet", "coco", "voc"):
         assert f"{plugin} = visionset.formats." in declared
     assert "dummy" not in declared
     assert "[visionset.preprocessing]" in declared
@@ -354,6 +355,7 @@ def test_the_installed_command_finds_every_exporter(installed: Path) -> None:
         "coco",
         "culane",
         "curvelanes",
+        "darknet",
         "openlane-2d",
         "tusimple",
         "ultralytics",

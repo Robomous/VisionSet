@@ -220,6 +220,7 @@ classification  yes
 coco            no
 culane          yes
 curvelanes      yes
+darknet         yes
 openlane-2d     yes
 tusimple        yes
 ultralytics     yes

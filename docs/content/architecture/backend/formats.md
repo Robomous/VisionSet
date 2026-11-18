@@ -27,13 +27,14 @@ target - never through a dict, so a typo answers a `VisionSetError` rather than 
 
 ## What ships
 
-Ten plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
+Eleven plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
 `[project.entry-points."visionset.formats"]`:
 
 | Name | Module |
 | --- | --- |
 | `ultralytics` | [`ultralytics/`](../../../../src/visionset/formats/ultralytics/) - `data.yaml` with `path` and `names` as a mapping; `yolo` is accepted as an alias for one release |
 | `yolov5-yaml` | [`yolov5_yaml/`](../../../../src/visionset/formats/yolov5_yaml/) - `data.yaml` with `nc` and `names` as a list; shares [`_yolo_writer.py`](../../../../src/visionset/formats/_yolo_writer.py) with `ultralytics` |
+| `darknet` | [`darknet/`](../../../../src/visionset/formats/darknet/) - `obj.data`, `obj.names` and `train.txt`/`valid.txt` image lists; shares [`_yolo_writer.py`](../../../../src/visionset/formats/_yolo_writer.py) with `ultralytics` |
 | `coco` | [`coco/`](../../../../src/visionset/formats/coco/) |
 | `voc` | [`voc/`](../../../../src/visionset/formats/voc/) |
 | `classification` | [`classification/`](../../../../src/visionset/formats/classification/) - `labels.csv`, one row per (image, tag) |
