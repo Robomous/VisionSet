@@ -99,6 +99,7 @@ YOLO_TARGETS = {
     "yolov7": {Task.DETECT},
     "yolov6": {Task.DETECT},
     "yolov5": {Task.DETECT, Task.SEGMENT, Task.CLASSIFY},
+    "yolov4": {Task.DETECT},
     "yolov3": {Task.DETECT},
 }
 
@@ -135,6 +136,7 @@ def test_every_installed_exporter_stays_discovered() -> None:
         "dummy",
         "ultralytics",
         "yolov5-yaml",
+        "darknet",
         "coco",
         "voc",
         "classification",
