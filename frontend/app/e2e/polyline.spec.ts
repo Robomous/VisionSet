@@ -39,6 +39,7 @@ import {
   expectCounts,
   focusCanvas,
   frameOf,
+  toggleClick,
   vertices,
   wire,
   type Frame,
@@ -226,4 +227,69 @@ test("delete removes the selected lane", async ({ page }) => {
   await page.keyboard.press("Delete");
 
   await expectCounts(page, 0, 0);
+});
+
+type Lane = { geometry: { points: number[][]; visibility?: number[] } };
+
+async function lastLane(page: Page): Promise<Lane> {
+  return (await wire(page)).at(-1) as Lane;
+}
+
+/** Mark one vertex of the selected lane occluded through its panel toggle, by keyboard. */
+async function occludeFromKeyboard(page: Page, index: number): Promise<void> {
+  const toggle = page.getByTestId(`vertex-toggle-${index}`);
+  await toggle.focus();
+  await page.keyboard.press("Space");
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+}
+
+test("a vertex marked occluded from the keyboard dashes its stretch, and undo takes it back", async ({
+  page,
+}) => {
+  const frame = await frameOf(page);
+  await drawLane(page, frame);
+  await expectCounts(page, 1, 1);
+  expect((await lastLane(page)).geometry.visibility).toEqual([2, 2, 2]);
+
+  await occludeFromKeyboard(page, 1);
+
+  expect((await lastLane(page)).geometry.visibility).toEqual([2, 1, 2]);
+  const layer = page.getByTestId("annotation-layer");
+  // The middle vertex touches both segments, so the whole lane is one dashed run.
+  await expect(layer.locator('polyline[data-occluded="true"]')).toHaveCount(1);
+  await expect(layer.locator('circle[data-occluded="true"]')).toHaveCount(1);
+
+  await focusCanvas(page);
+  await page.keyboard.press("ControlOrMeta+z");
+
+  await expect(page.getByTestId("vertex-toggle-1")).toHaveAttribute("aria-pressed", "false");
+  await expect(layer.locator('polyline[data-occluded="true"]')).toHaveCount(0);
+  expect((await lastLane(page)).geometry.visibility).toEqual([2, 2, 2]);
+});
+
+test("a vertex inserted after an occluded one is occluded too", async ({ page }) => {
+  const frame = await frameOf(page);
+  await drawLane(page, frame);
+  await page.keyboard.press("v");
+  await occludeFromKeyboard(page, 0);
+
+  const midpoint = frame.at(500, 440);
+  await page.mouse.dblclick(midpoint.x, midpoint.y);
+
+  await expect(vertices(page)).toHaveCount(4);
+  expect((await lastLane(page)).geometry.visibility).toEqual([1, 1, 2, 2]);
+  await expect(page.getByTestId("vertex-toggle-1")).toHaveAttribute("aria-pressed", "true");
+});
+
+test("deleting an occluded vertex takes its mark with it", async ({ page }) => {
+  const frame = await frameOf(page);
+  await drawLane(page, frame);
+  await page.keyboard.press("v");
+  await occludeFromKeyboard(page, 1);
+
+  await toggleClick(page, frame.at(LANE[1].x, LANE[1].y));
+
+  await expect(vertices(page)).toHaveCount(2);
+  expect((await lastLane(page)).geometry.visibility).toEqual([2, 2]);
+  await expect(page.getByTestId("annotation-layer").locator('[data-occluded="true"]')).toHaveCount(0);
 });
