@@ -22,12 +22,13 @@ defines those shapes first, because no route publishes them.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 from tests.fixtures.samples import (
     ANNOTATION,
     ASSET,
@@ -81,6 +82,7 @@ from visionset.kernel.domain import (
     PreLabelRun,
 )
 from visionset.server import models
+from visionset.wire import shapes
 
 #: A plan with both halves populated and one class carrying both reasons at
 #: once, so neither list nor either reason goes unprojected. It is derived from
@@ -104,7 +106,7 @@ PRE_LABEL_PLAN = PreLabelPlan(
 # One row per pair: a label, the projected payload, and the wire model it must
 # agree with. Built eagerly — every projection runs at import, so a leaf that
 # does not encode fails collection rather than one parametrized case.
-PAIRS: list[tuple[str, dict[str, Any], type[BaseModel]]] = [
+PAIRS: list[tuple[str, Mapping[str, Any], type[BaseModel]]] = [
     ("project", wire.project(PROJECT, PROJECT_PREVIEW), models.ProjectOut),
     ("connection", wire.connection(INFERENCE_CONNECTION), models.ConnectionOut),
     ("dataset", wire.dataset(DATASET), models.DatasetOut),
@@ -245,14 +247,14 @@ IDS = [label for label, _, _ in PAIRS]
 
 @pytest.mark.parametrize(("payload", "wire"), [(p, w) for _, p, w in PAIRS], ids=IDS)
 def test_the_projection_publishes_exactly_the_fields_the_wire_model_does(
-    payload: dict[str, Any], wire: type[BaseModel]
+    payload: Mapping[str, Any], wire: type[BaseModel]
 ) -> None:
     assert set(payload) == set(wire.model_fields)
 
 
 @pytest.mark.parametrize(("payload", "wire"), [(p, w) for _, p, w in PAIRS], ids=IDS)
 def test_the_wire_model_accepts_the_projection_verbatim(
-    payload: dict[str, Any], wire: type[BaseModel]
+    payload: Mapping[str, Any], wire: type[BaseModel]
 ) -> None:
     # Stronger than key-set parity and one line: it is what proves a UUID left as
     # a string, an enum left as its value, and a timestamp in pydantic's own
@@ -261,7 +263,7 @@ def test_the_wire_model_accepts_the_projection_verbatim(
 
 
 @pytest.mark.parametrize("payload", [p for _, p, _ in PAIRS], ids=IDS)
-def test_the_projection_serializes_with_no_default_encoder(payload: dict[str, Any]) -> None:
+def test_the_projection_serializes_with_no_default_encoder(payload: Mapping[str, Any]) -> None:
     json.dumps(payload)
 
 
@@ -322,18 +324,83 @@ def test_a_timestamp_keeps_its_microseconds_and_ends_in_z() -> None:
 # --- the three shapes with no wire partner -----------------------------------
 
 
+SURFACE_DEFINED: list[tuple[str, Mapping[str, Any]]] = [
+    ("export_result", wire.export_result(EXPORT_RESULT)),
+    ("export_result_with_recipe", wire.export_result(EXPORT_RESULT_WITH_RECIPE)),
+    ("thumbnail_backfill", wire.thumbnail_backfill(THUMBNAIL_BACKFILL)),
+    ("schema_diff", wire.schema_diff(SCHEMA_DIFF)),
+]
+
+
 @pytest.mark.parametrize(
-    "payload",
-    [
-        wire.export_result(EXPORT_RESULT),
-        wire.export_result(EXPORT_RESULT_WITH_RECIPE),
-        wire.thumbnail_backfill(THUMBNAIL_BACKFILL),
-        wire.schema_diff(SCHEMA_DIFF),
-    ],
-    ids=["export_result", "export_result_with_recipe", "thumbnail_backfill", "schema_diff"],
+    "payload", [p for _, p in SURFACE_DEFINED], ids=[n for n, _ in SURFACE_DEFINED]
 )
-def test_a_surface_defined_shape_still_serializes(payload: dict[str, Any]) -> None:
+def test_a_surface_defined_shape_still_serializes(payload: Mapping[str, Any]) -> None:
     # No route publishes any of the three, so there is nothing to be parity-gated
     # against. What still has to hold is that every leaf is encoded — which is the
     # failure they would otherwise be free to have.
     json.dumps(payload)
+
+
+SHAPES: dict[str, Any] = {
+    "project": shapes.Project,
+    "connection": shapes.Connection,
+    "dataset": shapes.Dataset,
+    "schema_version": shapes.SchemaVersion,
+    "schema_publication": shapes.SchemaPublication,
+    "schema_diff": shapes.SchemaDiff,
+    "schema_change_preview": shapes.SchemaChangePreview,
+    "blocking_asset": shapes.BlockingAsset,
+    "schema_change": shapes.SchemaChange,
+    "label_class": shapes.LabelClass,
+    "attribute": shapes.Attribute,
+    "schema_draft": shapes.SchemaDraft,
+    "preprocessing_recipe": shapes.PreprocessingRecipe,
+    "preprocessing_recipe_used": shapes.PreprocessingRecipe,
+    "recipe_usage": shapes.RecipeUsage,
+    "preprocessing_preview": shapes.PreprocessingPreview,
+    "draft_label_class": shapes.DraftLabelClass,
+    "draft_attribute": shapes.DraftAttribute,
+    "source": shapes.Source,
+    "video_provenance": shapes.VideoProvenance,
+    "ingest_job": shapes.IngestJob,
+    "ingest_failure": shapes.IngestFailure,
+    "ingest_failure_corrupt": shapes.IngestFailure,
+    "asset": shapes.Asset,
+    "batch_asset": shapes.BatchAsset,
+    "progress_counts": shapes.ProgressCounts,
+    "batch": shapes.Batch,
+    "job": shapes.Job,
+    "asset_progress": shapes.AssetProgress,
+    "annotation": shapes.Annotation,
+    "geometry_bbox": shapes.Geometry,
+    "geometry_polygon": shapes.Geometry,
+    "geometry_classification": shapes.Geometry,
+    "dataset_stats": shapes.DatasetStats,
+    "class_count": shapes.ClassCount,
+    "release": shapes.Release,
+    "split_recipe": shapes.SplitRecipe,
+    "release_verification": shapes.ReleaseVerification,
+    "export_format": shapes.ExportFormat,
+    "provider": shapes.Provider,
+    "export_target": shapes.ExportTarget,
+    "preprocessing_hints_empty": shapes.PreprocessingHints,
+    "preprocessing_hints_populated": shapes.PreprocessingHints,
+    "export_compatibility": shapes.ExportCompatibility,
+    "class_compatibility": shapes.ClassCompatibility,
+    "pre_label_plan": shapes.PreLabelPlan,
+    "export_result": shapes.ExportResult,
+    "export_result_with_recipe": shapes.ExportResult,
+    "thumbnail_backfill": shapes.ThumbnailBackfill,
+}
+
+EVERY_PAYLOAD = [(label, payload) for label, payload, _ in PAIRS] + SURFACE_DEFINED
+
+
+@pytest.mark.parametrize(
+    ("label", "payload"), EVERY_PAYLOAD, ids=[label for label, _ in EVERY_PAYLOAD]
+)
+def test_the_projection_validates_against_its_typed_shape(
+    label: str, payload: Mapping[str, Any]
+) -> None:
+    TypeAdapter(SHAPES[label]).validate_python(payload)

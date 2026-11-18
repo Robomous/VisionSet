@@ -19,9 +19,10 @@ and like its sibling it is registered only under ``--allow-destructive``.
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
-from pydantic import Field, StrictBool
+from pydantic import ConfigDict, Field, StrictBool, with_config
+from typing_extensions import TypedDict
 
 from visionset import wire
 from visionset.kernel.services import (
@@ -30,6 +31,25 @@ from visionset.kernel.services import (
 )
 from visionset.mcp._resolve import ProjectRef
 from visionset.mcp._workspace import opened_workspace
+from visionset.wire import shapes
+
+
+@with_config(ConfigDict(extra="forbid"))
+class ProjectCreated(TypedDict):
+    project: shapes.Project
+    dataset: shapes.Dataset
+
+
+@with_config(ConfigDict(extra="forbid"))
+class ProjectDetail(TypedDict):
+    project: shapes.Project
+    dataset: shapes.Dataset
+    progress: shapes.ProgressCounts
+
+
+@with_config(ConfigDict(extra="forbid"))
+class ProjectDeleted(TypedDict):
+    deleted: shapes.Project
 
 
 def create_project(
@@ -40,7 +60,7 @@ def create_project(
     description: Annotated[
         str | None, Field(description="Optional free text describing the project.")
     ] = None,
-) -> dict[str, Any]:
+) -> ProjectCreated:
     """Create a project, together with the empty dataset that is its trunk.
 
     Use this first: every other tool is scoped to a project. Returns the project
@@ -57,7 +77,7 @@ def create_project(
     return {"project": wire.project(created, None), "dataset": wire.dataset(dataset)}
 
 
-def list_projects() -> dict[str, Any]:
+def list_projects() -> shapes.Page[shapes.Project]:
     """List every project in this workspace, in creation order.
 
     Use this to discover what exists before naming one. Returns
@@ -71,7 +91,7 @@ def list_projects() -> dict[str, Any]:
     return wire.page([wire.project(p, previews.get(p.id)) for p in projects])
 
 
-def get_project(project: ProjectRef) -> dict[str, Any]:
+def get_project(project: ProjectRef) -> ProjectDetail:
     """Read a project, its dataset id, and how far its annotation work has got.
 
     The one call that answers "what is this and where does it stand". `progress`
@@ -102,7 +122,7 @@ def delete_project(
             )
         ),
     ] = False,
-) -> dict[str, Any]:
+) -> ProjectDeleted:
     """Delete a project and everything under it. Destructive; requires `confirm=true`.
 
     Takes with it the schema versions, sources, assets, annotations, batches,

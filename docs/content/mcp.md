@@ -331,6 +331,13 @@ surface's tool instead: `INFERENCE_CONNECTION_NOT_SET_UP` says to call
 `download_connection_weights` or `test_inference_connection` where REST and the CLI say
 `download_weights` or `test_endpoint`.
 
+**Every tool declares what it answers.** Each `outputSchema` is the tool's own result shape
+**or** the envelope above, as two `anyOf` alternatives, so a client validating
+`structuredContent` accepts a refusal and can still tell it from a result: a result never has a
+top-level `error` key. Both shapes are closed at the top level (`additionalProperties: false`; free-form maps such as `attributes` and `detail` stay open), and the server
+validates every answer against them before sending it. `get_asset_image` declares its
+measurements the same way; its image travels as content beside them.
+
 **An argument a tool does not declare is refused, not dropped.** Every tool's `inputSchema` says
 `additionalProperties: false`, and a misspelled name (`job` for `job_id`) fails the call with the
 SDK's own argument error - `isError: true`, naming the field, the same answer a missing or
@@ -428,10 +435,17 @@ sixty-one tools would put a path an agent has no way to know into every call. Th
 opened and closed per tool call rather than held, so the file is never kept from `visionset server`
 or a second agent between calls.
 
-**A discriminated union's `type` must be spelled out.** `geometry` and the partition variants
-carry a default on their tag, so the generated schema shows `type` as optional - but it is read
-out of the object to pick the variant, and omitting it fails. Always send
-`{"type": "bbox", …}`.
+**A discriminated union's `type` is required.** It is read out of the object to pick the variant
+(`{"type": "bbox", …}`), and the published input schema marks it required on every variant, the
+geometry and the pre-processing steps alike. The domain models give the tag a default, so the
+server corrects the schema it derives from them rather than publishing it as optional.
+
+**Only the geometries a class can use are offered.** `GeometryType` also names `mask`,
+`keypoints`, `cuboid_3d` and `polyline_3d`, reserved for geometries with no implementation yet.
+Every input schema here lists only `bbox`, `polygon`, `polyline` and `classification_tag`, and a
+reserved value that is sent anyway is refused by the kernel exactly as before
+(`UNSUPPORTED_GEOMETRY` when a version is published). The REST API keeps the full enum, because
+the browser groups and disables the reserved members rather than hiding them.
 
 ## What is not here, and why
 
@@ -520,6 +534,12 @@ surface and are not renamed to match.
 | Pending-asset count | `n` | `count` | `--count` / `-n` |
 | Batch assets filtered by job | `job` | `job_id` | not available |
 | Pre-label plan connection | `connection_id` | `connection` | not available |
+
+**`name` and `label_class` are one rule, not two spellings.** A class carries its own name as
+`name`, like every other named thing; any other object that *refers* to a class by that name
+calls the field `label_class` - an annotation, a class count, a schema change, a compatibility
+row. All three surfaces follow it, and neither is renamed: both are spelled the same way in stored
+schemas and annotations, so a rename would break every client and every stored document at once.
 
 ### Actions with no matching tool
 

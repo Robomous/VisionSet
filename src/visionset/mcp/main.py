@@ -16,8 +16,10 @@ that module import this one, which imports it. Doing it here also puts every
 shipped tool on one screen, and gives the three cross-cutting decisions exactly
 one place to live —
 
-* ``guarded`` wraps every body, so any failure arrives as the error envelope
-  rather than as MCPServer's bare ``Error executing tool <name>``;
+* ``guarded`` wraps every body, so a failure in the body arrives as the error
+  envelope rather than as MCPServer's bare ``Error executing tool <name>``. A
+  result that breaks its own output schema fails after ``guarded`` returns, and
+  does arrive as that bare error;
 * ``inspect.cleandoc`` is passed as ``description=`` because MCPServer otherwise
   ships ``__doc__`` **raw** — indentation and all — into the listing an agent
   reads;
@@ -39,13 +41,14 @@ in this module needs deferred evaluation.
 
 import inspect
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any, Final
 
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
 from visionset import __version__
+from visionset.kernel.domain import IMPLEMENTED_GEOMETRIES, GeometryType
 from visionset.mcp import (
     annotations,
     assets,
@@ -288,7 +291,49 @@ def _forbid_unknown_arguments(built: MCPServer) -> None:
         model = registered.fn_metadata.arg_model
         model.model_config["extra"] = "forbid"
         model.model_rebuild(force=True)
-        registered.parameters = model.model_json_schema(by_alias=True)
+        registered.parameters = _as_published(model.model_json_schema(by_alias=True))
+
+
+IMPLEMENTED: Final = sorted(geometry.value for geometry in IMPLEMENTED_GEOMETRIES)
+
+
+def _as_published(schema: dict[str, Any]) -> dict[str, Any]:
+    """Two corrections to what pydantic derives from the domain's own input models.
+
+    * A discriminated union's tag is **required**: pydantic needs it to pick a
+      variant, but the domain gives each variant's tag a default, so the derived
+      schema shows ``type`` as optional. The default is dropped and the tag added
+      to ``required`` on every variant a discriminator maps.
+    * ``GeometryType`` advertises only the geometries a class can actually use.
+      The enum keeps its other members so stored documents still load; anything
+      that still sends one is refused by the kernel, as before.
+    """
+    definitions = schema.get("$defs", {})
+    every = {geometry.value for geometry in GeometryType}
+    for definition in definitions.values():
+        if set(definition.get("enum", ())) == every:
+            definition["enum"] = IMPLEMENTED
+    for node in _nodes(schema):
+        discriminator = node.get("discriminator")
+        if not isinstance(discriminator, dict):
+            continue
+        tag = discriminator["propertyName"]
+        for reference in discriminator.get("mapping", {}).values():
+            variant = definitions[reference.removeprefix("#/$defs/")]
+            variant["properties"][tag].pop("default", None)
+            if tag not in variant.setdefault("required", []):
+                variant["required"].insert(0, tag)
+    return schema
+
+
+def _nodes(value: Any) -> Iterator[dict[str, Any]]:
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from _nodes(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _nodes(child)
 
 
 server = build_server()

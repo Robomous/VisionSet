@@ -15,9 +15,10 @@ follows — a recipe is small, but it is shared, named work.
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
-from pydantic import Field, StrictBool
+from pydantic import ConfigDict, Field, StrictBool, with_config
+from typing_extensions import TypedDict
 
 from visionset import wire
 from visionset.kernel.domain import RecipeSpec
@@ -28,6 +29,13 @@ from visionset.kernel.services import (
 )
 from visionset.mcp._resolve import ProjectRef
 from visionset.mcp._workspace import opened_workspace
+from visionset.wire import shapes
+
+
+@with_config(ConfigDict(extra="forbid"))
+class RecipeDeleted(TypedDict):
+    deleted: shapes.PreprocessingRecipe
+
 
 NameRef = Annotated[
     str,
@@ -57,7 +65,7 @@ def create_preprocessing_recipe(
             )
         ),
     ],
-) -> dict[str, Any]:
+) -> shapes.PreprocessingRecipe:
     """Store a named pre-processing recipe on a project, for `export_release` to apply.
 
     A recipe resizes every exported image and, with `variants_per_asset` above
@@ -82,7 +90,7 @@ def create_preprocessing_recipe(
     return wire.preprocessing_recipe(created, used_by=used_by)
 
 
-def get_preprocessing_recipe(project: ProjectRef, name: NameRef) -> dict[str, Any]:
+def get_preprocessing_recipe(project: ProjectRef, name: NameRef) -> shapes.PreprocessingRecipe:
     """Read one pre-processing recipe by name, with its whole spec.
 
     The same row `list_preprocessing_recipes` shows, addressed by the name
@@ -108,7 +116,7 @@ def update_preprocessing_recipe(
         str | None,
         Field(description="Rename the recipe. Omit to keep its name."),
     ] = None,
-) -> dict[str, Any]:
+) -> shapes.PreprocessingRecipe:
     """Replace a pre-processing recipe's spec whole, and rename it when `new_name` is given.
 
     Whole-value: the spec is one value with cross-field rules, so there is no
@@ -127,7 +135,7 @@ def update_preprocessing_recipe(
     return wire.preprocessing_recipe(updated, used_by=used_by)
 
 
-def list_preprocessing_recipes(project: ProjectRef) -> dict[str, Any]:
+def list_preprocessing_recipes(project: ProjectRef) -> shapes.Page[shapes.PreprocessingRecipe]:
     """List a project's pre-processing recipes, oldest first, each with its whole spec.
 
     `name` is exactly what `export_release` and `check_export` take as `recipe`.
@@ -155,7 +163,7 @@ def delete_preprocessing_recipe(
             )
         ),
     ] = False,
-) -> dict[str, Any]:
+) -> RecipeDeleted:
     """Delete a pre-processing recipe. Destructive; requires `confirm=true`.
 
     Removes the named recipe and nothing else: every export that used it kept

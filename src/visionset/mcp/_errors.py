@@ -49,11 +49,11 @@ import json
 import logging
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import Any, Final, ParamSpec, TypeVar
+from typing import Annotated, Any, Final, ParamSpec, TypedDict, TypeVar, get_args, get_origin
 from uuid import uuid4
 
 from mcp.types import CallToolResult, TextContent
-from pydantic import ValidationError
+from pydantic import ConfigDict, RootModel, ValidationError, with_config
 
 from visionset.kernel import (
     BatchNotComplete,
@@ -81,6 +81,29 @@ from visionset.kernel.services import WORKSPACE_ENV_VAR
 from visionset.mcp._resolve import MalformedIdentifier
 
 _logger = logging.getLogger(__name__)
+
+
+@with_config(ConfigDict(extra="forbid"))
+class RefusalBody(TypedDict):
+    message: str
+    retry_with: str | None
+    hint: str | None
+    index: int | None
+    code: str | None
+    detail: dict[str, Any] | None
+
+
+@with_config(ConfigDict(extra="forbid"))
+class Refusal(TypedDict):
+    """The call was refused or failed.
+
+    Delivered as an ordinary result (`isError` is false): branch on the presence
+    of `error`. `retry_with` names the flag that turns this refusal into the same
+    call succeeding, when one exists; `code` is the stable machine-readable reason.
+    """
+
+    error: RefusalBody
+
 
 RETRY_WITH: Final[dict[type[BaseException], str]] = {
     # The three gate words, never merged into one. Each guards a different thing:
@@ -182,9 +205,7 @@ def _walk(table: dict[type[BaseException], str], exc: BaseException) -> str | No
     return None
 
 
-def refused(
-    message: str, *, hint: str | None = None, code: str = VALIDATION_ERROR
-) -> dict[str, Any]:
+def refused(message: str, *, hint: str | None = None, code: str = VALIDATION_ERROR) -> Refusal:
     """The same envelope, for a refusal this surface made rather than the kernel.
 
     Used where a kernel call would otherwise raise something outside the
@@ -205,7 +226,7 @@ def refused(
     }
 
 
-def _envelope(exc: VisionSetError) -> dict[str, Any]:
+def _envelope(exc: VisionSetError) -> Refusal:
     return {
         "error": {
             "message": _spoken_here(str(exc)),
@@ -244,13 +265,13 @@ def from_arguments() -> Iterator[None]:
         raise _ArgumentsRefused(exc) from exc
 
 
-def _coded(code: str, message: str, detail: dict[str, Any] | None) -> dict[str, Any]:
+def _coded(code: str, message: str, detail: dict[str, Any] | None) -> Refusal:
     envelope = refused(message, code=code)
-    envelope["error"].update(detail=detail)
+    envelope["error"]["detail"] = detail
     return envelope
 
 
-def _unexpected_envelope(exc: Exception, tool: str) -> dict[str, Any]:
+def _unexpected_envelope(exc: Exception, tool: str) -> Refusal:
     if isinstance(exc, _ArgumentsRefused):
         return _coded(VALIDATION_ERROR, str(exc), None)
     code, message = unexpected_error(exc)
@@ -263,28 +284,57 @@ P = ParamSpec("P")
 T = TypeVar("T")
 
 
-def guarded(fn: Callable[P, T]) -> Callable[P, T | dict[str, Any]]:
-    """Turn any exception raised by ``fn`` into the error envelope.
+def _result_model(declared: Any, tool: str) -> type[RootModel[Any]]:
+    """``declared`` or :class:`Refusal`, as the one model the SDK validates and publishes.
+
+    A ``RootModel`` rather than the bare union, because MCPServer wraps a union
+    return type in ``{"result": ...}``; a model it passes through as itself.
+    ``type: object`` is added at the root because MCP requires an object schema
+    there and a bare ``anyOf`` does not say so.
+    """
+    title = "".join(part.capitalize() for part in tool.split("_")) + "Result"
+
+    class Result(RootModel[declared | Refusal]):  # type: ignore[valid-type]
+        model_config = ConfigDict(title=title, json_schema_extra={"type": "object"})
+
+    Result.__name__ = Result.__qualname__ = title
+    return Result
+
+
+def _declared_with_refusal(returns: Any, tool: str) -> Any:
+    if returns is CallToolResult:
+        return returns
+    if get_origin(returns) is Annotated:
+        result, declared = get_args(returns)[:2]
+        return Annotated[result, _result_model(declared, tool)]
+    return _result_model(returns, tool)
+
+
+def guarded(fn: Callable[P, T]) -> Callable[P, T | Refusal]:
+    """Turn any exception raised by ``fn`` into the error envelope, and declare it.
 
     ``functools.wraps`` is load-bearing rather than cosmetic: MCPServer builds a
     tool's ``inputSchema`` from ``inspect.signature(fn, eval_str=True)`` and its
-    description from ``fn.__doc__``, and the signature call follows ``__wrapped__``
-    back to the annotations' own module. Without it every tool would take
-    ``*args, **kwargs`` and document nothing.
+    description from ``fn.__doc__``. The wrapper carries its own ``__signature__``:
+    the tool's parameters unchanged, and its return type widened to "this, or a
+    :class:`Refusal`" — which is what MCPServer publishes as the ``outputSchema``
+    and validates every result against. A tool whose result drifts from its
+    declared shape therefore fails loudly rather than shipping an undeclared key.
 
     **A tool that returns ``CallToolResult`` gets its refusal wrapped in one too**,
     and that is not a detail. MCPServer puts a returned ``dict`` into
     ``structuredContent`` only when the declared return type is a mapping; from a
     tool declared ``-> CallToolResult`` the same dict comes back as JSON text with
-    ``structuredContent`` **null**. ``get_asset_image`` is the one such tool, and
-    without this its refusals would be the only answers in the whole surface a
-    client had to parse out of a text block. The check is done once, here, rather
-    than in that tool's body, so it cannot be forgotten by the next one.
+    ``structuredContent`` **null**. ``get_asset_image`` is the one such tool; it
+    declares its payload as ``Annotated[CallToolResult, Payload]``, and the
+    refusal joins that payload here like everywhere else.
     """
-    returns_result = inspect.signature(fn, eval_str=True).return_annotation is CallToolResult
+    signature = inspect.signature(fn, eval_str=True)
+    returns = signature.return_annotation
+    returns_result = CallToolResult in (returns, *get_args(returns)[:1])
 
     @functools.wraps(fn)
-    def guard(*args: P.args, **kwargs: P.kwargs) -> T | dict[str, Any]:
+    def guard(*args: P.args, **kwargs: P.kwargs) -> T | Refusal:
         try:
             return fn(*args, **kwargs)
         except Exception as exc:
@@ -297,8 +347,11 @@ def guarded(fn: Callable[P, T]) -> Callable[P, T | dict[str, Any]]:
                 return envelope
             rendered = CallToolResult(
                 content=[TextContent(type="text", text=json.dumps(envelope, indent=2))],
-                structured_content=envelope,
+                structured_content=dict(envelope),
             )
             return rendered  # type: ignore[return-value]
 
+    guard.__signature__ = signature.replace(  # type: ignore[attr-defined]
+        return_annotation=_declared_with_refusal(returns, fn.__name__)
+    )
     return guard
