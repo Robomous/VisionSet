@@ -55,11 +55,12 @@
  * matches what a user sees.
  */
 
-import type {
-  BboxGeometry,
-  PolygonGeometry,
-  PolylineGeometry,
-  Point,
+import {
+  VERTEX_VISIBILITY,
+  type BboxGeometry,
+  type PolygonGeometry,
+  type PolylineGeometry,
+  type Point,
 } from "../types";
 import { clamp } from "./clamp";
 import { clampPoint, closestPointOnSegment, type Bounds } from "./primitives";
@@ -176,7 +177,11 @@ export function translatePolyline(
   origin: Point,
   bounds: Bounds,
 ): PolylineGeometry {
-  return { type: "polyline", points: translatedPoints(polyline, origin, bounds) };
+  return {
+    type: "polyline",
+    points: translatedPoints(polyline, origin, bounds),
+    visibility: polyline.visibility,
+  };
 }
 
 /** The one clamp: the shape's bounding box moved to `origin`, pinned inside `bounds`. */
@@ -220,7 +225,11 @@ export function movePolylineVertex(
   point: Point,
   bounds: Bounds,
 ): PolylineGeometry {
-  return { type: "polyline", points: movedVertex(polyline, index, point, bounds) };
+  return {
+    type: "polyline",
+    points: movedVertex(polyline, index, point, bounds),
+    visibility: polyline.visibility,
+  };
 }
 
 function movedVertex(
@@ -272,7 +281,17 @@ export function insertPolylineVertex(
         `points has ${Math.max(0, polyline.points.length - 1)} edges`,
     );
   }
-  return { type: "polyline", points: insertedVertex(polyline, index, point) };
+  const visibility = polyline.visibility;
+  return {
+    type: "polyline",
+    points: insertedVertex(polyline, index, point),
+    // The new vertex takes the state of the one it follows, so inserting inside
+    // an occluded run leaves the run unbroken.
+    visibility:
+      visibility === undefined
+        ? undefined
+        : [...visibility.slice(0, index + 1), visibility[index], ...visibility.slice(index + 1)],
+  };
 }
 
 function insertedVertex(shape: PointList, index: number, point: Point): readonly Point[] {
@@ -315,7 +334,49 @@ export function removePolylineVertex(
   index: number,
 ): PolylineGeometry | null {
   const points = withoutVertex(polyline, index, MIN_POLYLINE_POINTS);
-  return points === null ? null : { type: "polyline", points };
+  if (points === null) return null;
+  return {
+    type: "polyline",
+    points,
+    visibility: polyline.visibility?.filter((_, at) => at !== index),
+  };
+}
+
+/**
+ * Vertex `index` marked occluded or not. A polyline nobody had judged becomes
+ * `UNLABELED` everywhere else, because marking one vertex says nothing about the
+ * rest; clearing a mark records `VISIBLE`, since a person just looked at it.
+ */
+export function setPolylineVertexOccluded(
+  polyline: PolylineGeometry,
+  index: number,
+  occluded: boolean,
+): PolylineGeometry {
+  requireIndex(polyline, index);
+  const current =
+    polyline.visibility ?? polyline.points.map(() => VERTEX_VISIBILITY.UNLABELED);
+  const state = occluded ? VERTEX_VISIBILITY.OCCLUDED : VERTEX_VISIBILITY.VISIBLE;
+  return {
+    type: "polyline",
+    points: polyline.points,
+    visibility: current.map((value, at) => (at === index ? state : value)),
+  };
+}
+
+/** Whether two polylines record the same visibility, unknown equal only to unknown. */
+export function sameVisibility(a: PolylineGeometry, b: PolylineGeometry): boolean {
+  if (a.visibility === undefined || b.visibility === undefined) {
+    return a.visibility === b.visibility;
+  }
+  const other = b.visibility;
+  return (
+    a.visibility.length === other.length && a.visibility.every((state, at) => state === other[at])
+  );
+}
+
+/** Whether vertex `index` is recorded as occluded. Unknown and unlabeled are not. */
+export function isVertexOccluded(polyline: PolylineGeometry, index: number): boolean {
+  return polyline.visibility?.[index] === VERTEX_VISIBILITY.OCCLUDED;
 }
 
 function withoutVertex(shape: PointList, index: number, floor: number): readonly Point[] | null {

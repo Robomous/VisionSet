@@ -322,6 +322,7 @@ describe("geometryContains, for an open path", () => {
       [100, 0],
       [100, 100],
     ],
+    visibility: undefined,
   };
 
   it("is under a point within tolerance of a segment", () => {
@@ -335,7 +336,7 @@ describe("geometryContains, for an open path", () => {
   });
 
   it("is reachable when it carries a single point, like a degenerate polygon", () => {
-    const dot: PolylineGeometry = { type: "polyline", points: [[40, 40]] };
+    const dot: PolylineGeometry = { type: "polyline", points: [[40, 40]], visibility: undefined };
     expect(geometryContains(dot, [42, 41], 5)).toBe(true);
     expect(geometryContains(dot, [60, 60], 5)).toBe(false);
   });

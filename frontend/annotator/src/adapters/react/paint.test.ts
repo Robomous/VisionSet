@@ -368,7 +368,7 @@ describe("a pending suggestion, drawn as a proposal (#424)", () => {
     // still refused here, because this function is exported from the package root
     // and a caller could hand it anything the type permits.
     const path = shown({
-      geometry: { type: "polyline", points: [[0, 0], [1, 1]] },
+      geometry: { type: "polyline", points: [[0, 0], [1, 1]], visibility: undefined },
       confidence: 0.5,
       modelRef: "m@1",
       contour: [],

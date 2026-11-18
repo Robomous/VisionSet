@@ -117,7 +117,22 @@ export interface PolygonGeometry {
 export interface PolylineGeometry {
   readonly type: "polyline";
   readonly points: readonly Point[];
+  /**
+   * One state per point, or `undefined` when nobody has said — the wire omits the
+   * key then, and `JSON.stringify` drops an `undefined` value, so an untouched
+   * polyline goes back out exactly as it came in. Required rather than optional so
+   * every edit that rebuilds a polyline has to decide what happens to it.
+   */
+  readonly visibility: readonly VertexVisibility[] | undefined;
 }
+
+/**
+ * The kernel's `VertexVisibility`: COCO's keypoint integers. `UNLABELED` is
+ * drawn as visible but is not a judgement that the vertex was seen.
+ */
+export const VERTEX_VISIBILITY = { UNLABELED: 0, OCCLUDED: 1, VISIBLE: 2 } as const;
+
+export type VertexVisibility = (typeof VERTEX_VISIBILITY)[keyof typeof VERTEX_VISIBILITY];
 
 /** A whole-asset tag: a class with no coordinates. */
 export interface ClassificationGeometry {

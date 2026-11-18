@@ -67,6 +67,7 @@ import {
   ATTRIBUTE_KINDS,
   GEOMETRY_TYPES,
   IMPLEMENTED_GEOMETRY_TYPES,
+  VERTEX_VISIBILITY,
   type Annotation,
   type AnnotationCreate,
   type AnnotationSchema,
@@ -79,6 +80,7 @@ import {
   type LabelClass,
   type Point,
   type Provenance,
+  type VertexVisibility,
 } from "./types";
 
 /** A payload that is not the wire contract. The message names the field. */
@@ -158,6 +160,9 @@ const BBOX_KEYS = ["type", "x", "y", "width", "height"] as const;
 const POLYGON_KEYS = ["type", "points"] as const;
 // A polyline carries the same two keys; the discriminator is the difference.
 const POLYLINE_KEYS = ["type", "points"] as const;
+// Declared but optional: the kernel omits it when nobody has said.
+const POLYLINE_OPTIONAL_KEYS = ["visibility"] as const;
+const VERTEX_VISIBILITIES: readonly number[] = Object.values(VERTEX_VISIBILITY);
 const CLASSIFICATION_KEYS = ["type"] as const;
 
 const PROVENANCES: readonly Provenance[] = ["human", "model", "import"];
@@ -171,10 +176,13 @@ function requireExactKeys(
   value: Record<string, unknown>,
   expected: readonly string[],
   what: string,
+  optional: readonly string[] = [],
 ): void {
   const present = new Set(Object.keys(value));
   const missing = expected.filter((key) => !present.has(key));
-  const unknown = [...present].filter((key) => !expected.includes(key));
+  const unknown = [...present].filter(
+    (key) => !expected.includes(key) && !optional.includes(key),
+  );
   if (missing.length > 0) {
     throw new WireFormatError(`${what} is missing ${missing.join(", ")}`);
   }
@@ -205,6 +213,26 @@ function allowUndeclaredKeys(
   if (missing.length > 0) {
     throw new WireFormatError(`${what} is missing ${missing.join(", ")}`);
   }
+}
+
+/** One state per point. The kernel refuses any other length, and so does this. */
+function requireVisibility(value: unknown, pointCount: number): VertexVisibility[] {
+  if (!Array.isArray(value)) {
+    throw new WireFormatError("geometry.visibility must be an array");
+  }
+  if (value.length !== pointCount) {
+    throw new WireFormatError(
+      `geometry.visibility names ${value.length} states for ${pointCount} points`,
+    );
+  }
+  return value.map((state, index) => {
+    if (typeof state !== "number" || !VERTEX_VISIBILITIES.includes(state)) {
+      throw new WireFormatError(
+        `geometry.visibility[${index}] ${JSON.stringify(state)} is not one of ${VERTEX_VISIBILITIES.join(", ")}`,
+      );
+    }
+    return state as VertexVisibility;
+  });
 }
 
 function requireNumber(value: unknown, what: string): number {
@@ -319,11 +347,11 @@ export function parseGeometry(value: unknown): Geometry {
       };
     case "polygon":
     case "polyline": {
-      requireExactKeys(
-        value,
-        type === "polygon" ? POLYGON_KEYS : POLYLINE_KEYS,
-        `${type} geometry`,
-      );
+      if (type === "polygon") {
+        requireExactKeys(value, POLYGON_KEYS, "polygon geometry");
+      } else {
+        requireExactKeys(value, POLYLINE_KEYS, "polyline geometry", POLYLINE_OPTIONAL_KEYS);
+      }
       const points = value["points"];
       if (!Array.isArray(points)) {
         throw new WireFormatError("geometry.points must be an array");
@@ -333,11 +361,17 @@ export function parseGeometry(value: unknown): Geometry {
       // a polyline under two, and neither bound is restated here — the wire is
       // what the API sent, and re-deriving a domain rule in the parser is how a
       // mirror starts refusing things the kernel accepts.
+      const parsed = points.map((point, index) =>
+        requirePoint(point, `geometry.points[${index}]`),
+      );
+      if (type === "polygon") return { type, points: parsed };
       return {
         type,
-        points: points.map((point, index) =>
-          requirePoint(point, `geometry.points[${index}]`),
-        ),
+        points: parsed,
+        visibility:
+          "visibility" in value
+            ? requireVisibility(value["visibility"], parsed.length)
+            : undefined,
       };
     }
     default:

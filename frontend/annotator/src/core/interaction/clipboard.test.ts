@@ -84,6 +84,7 @@ const LINE: Geometry = {
     [200, 200],
     [260, 240],
   ],
+  visibility: undefined,
 };
 
 describe("the clipboard is a holder and nothing else", () => {
@@ -428,5 +429,23 @@ describe("a tag the asset already carries is never pasted twice", () => {
       counter(),
     );
     expect(pasted).toHaveLength(1);
+  });
+});
+
+describe("a polyline's vertex visibility travels with it", () => {
+  const MARKED: Geometry = { ...LINE, visibility: [1, 2] } as Geometry;
+
+  it("survives a copy and a paste, and shares no array with the source", () => {
+    const [entry] = copiedEntries([annotationOf("a", "centerline", MARKED)]);
+    const [pasted] = pastedAnnotations(documentOf(), [entry], 12, counter());
+    expect(pasted.geometry).toMatchObject({ type: "polyline", visibility: [1, 2] });
+    if (MARKED.type !== "polyline" || entry.geometry.type !== "polyline") throw new Error();
+    expect(entry.geometry.visibility).not.toBe(MARKED.visibility);
+  });
+
+  it("stays unknown when the source never had any", () => {
+    const [entry] = copiedEntries([annotationOf("a", "centerline", LINE)]);
+    const [pasted] = pastedAnnotations(documentOf(), [entry], 12, counter());
+    expect(JSON.parse(JSON.stringify(pasted.geometry))).not.toHaveProperty("visibility");
   });
 });

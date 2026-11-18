@@ -125,6 +125,7 @@ export function path(): Annotation {
         [620, 300],
         [620, 400],
       ],
+      visibility: undefined,
     },
   };
 }

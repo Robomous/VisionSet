@@ -164,7 +164,11 @@ function copiedGeometry(geometry: Geometry): Geometry {
     case "polygon":
       return { type: "polygon", points: geometry.points.map(([x, y]) => [x, y] as const) };
     case "polyline":
-      return { type: "polyline", points: geometry.points.map(([x, y]) => [x, y] as const) };
+      return {
+        type: "polyline",
+        points: geometry.points.map(([x, y]) => [x, y] as const),
+        visibility: geometry.visibility === undefined ? undefined : [...geometry.visibility],
+      };
     case "classification_tag":
       return { type: "classification_tag" };
   }
