@@ -141,6 +141,57 @@ def test_an_agent_can_write_a_lane(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     assert stored["geometry"]["points"] == [[1.0, 2.0], [5.0, 9.0], [9.0, 20.0]]
 
 
+def test_an_agent_can_write_per_vertex_visibility_and_read_it_back(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    job_id, assets = _job_with_assets(monkeypatch, tmp_path, classes=[*SCHEMA_CLASSES, CENTERLINE])
+    lane = {"type": "polyline", "points": [[1, 2], [5, 9], [9, 20]]}
+
+    written = payload(
+        call(
+            "add_annotations",
+            job_id=job_id,
+            annotations=[
+                _label(assets[0], label_class="centerline", geometry=lane, attributes={}),
+                _label(
+                    assets[0],
+                    label_class="centerline",
+                    geometry={**lane, "visibility": [2, 1, 0]},
+                    attributes={},
+                ),
+            ],
+        )
+    )
+
+    geometries = sorted(
+        (item["geometry"] for item in written["items"]), key=lambda g: "visibility" in g
+    )
+    assert "visibility" not in geometries[0]
+    assert geometries[1]["visibility"] == [2, 1, 0]
+
+
+def test_a_visibility_that_does_not_match_the_points_is_refused_over_mcp(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    job_id, assets = _job_with_assets(monkeypatch, tmp_path, classes=[*SCHEMA_CLASSES, CENTERLINE])
+    result = call(
+        "add_annotations",
+        job_id=job_id,
+        annotations=[
+            _label(
+                assets[0],
+                label_class="centerline",
+                geometry={"type": "polyline", "points": [[0, 0], [4, 4]], "visibility": [2]},
+                attributes={},
+            )
+        ],
+    )
+
+    assert result.is_error
+    text = "".join(getattr(item, "text", "") for item in result.content)
+    assert "one state per point" in text
+
+
 def test_a_one_point_polyline_is_a_malformed_request_not_a_domain_refusal(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
