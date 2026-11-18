@@ -443,6 +443,23 @@ describe("a polyline's vertex visibility travels with it", () => {
     expect(entry.geometry.visibility).not.toBe(MARKED.visibility);
   });
 
+  it("cascades past a copy that records the same visibility, not one that records other states", () => {
+    const entry: ClipboardEntry = { label_class: "centerline", geometry: MARKED, attributes: {} };
+    const [first] = pastedAnnotations(documentOf(), [entry], 12, counter());
+    if (first.geometry.type !== "polyline") throw new Error("not a polyline");
+    const sameSlot = first.geometry;
+
+    const sameMarks = documentOf([{ ...first, id: "a2" }]);
+    const [cascaded] = pastedAnnotations(sameMarks, [entry], 12, counter());
+    expect(cascaded.geometry).toMatchObject({ points: [[224, 224], [284, 264]] });
+
+    const otherMarks = documentOf([
+      { ...first, id: "a2", geometry: { ...sameSlot, visibility: [2, 2] } },
+    ]);
+    const [landed] = pastedAnnotations(otherMarks, [entry], 12, counter());
+    expect(landed.geometry).toMatchObject({ points: sameSlot.points, visibility: [1, 2] });
+  });
+
   it("stays unknown when the source never had any", () => {
     const [entry] = copiedEntries([annotationOf("a", "centerline", LINE)]);
     const [pasted] = pastedAnnotations(documentOf(), [entry], 12, counter());
