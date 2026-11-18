@@ -31,12 +31,13 @@ formats has anywhere to put. The three lane attributes are mapped into each
 format's own vocabulary where one exists (:data:`._core.BDD100K_CATEGORIES`,
 :data:`._core.OPENLANE_CATEGORIES`) and dropped where none does.
 
-**The loss worth naming out loud is OpenLane's per-point visibility.** OpenLane
-2D marks each vertex visible or not, and VisionSet has nowhere to store that:
-``PolylineGeometry.points`` is a list of coordinates, and per-vertex data would be
-a change to the annotation model rather than to a format. So the ``visibility``
-array is written all-visible: extending the annotation model for one format was
-declined.
+**Per-vertex visibility reaches exactly one of them.** ``PolylineGeometry``
+carries an optional ``visibility``, one ``VertexVisibility`` per point. OpenLane
+2D has a per-point ``visibility`` array and writes it; :func:`_openlane_lines`
+says how three states land on its binary flag. TuSimple, CurveLanes, BDD100K
+and CULane have no per-vertex slot, so they drop it — a loss their
+``lossy = True`` already declares, the same way it covers the attributes,
+confidence and provenance none of them can store.
 """
 
 from __future__ import annotations
@@ -65,7 +66,13 @@ from visionset.formats.lanes._core import (
     lanes_of,
     refuse,
 )
-from visionset.kernel.domain import GeometryType, Manifest, ManifestAsset, Release
+from visionset.kernel.domain import (
+    GeometryType,
+    Manifest,
+    ManifestAsset,
+    Release,
+    VertexVisibility,
+)
 from visionset.kernel.ports import ContentReader
 
 #: Where per-image label files go, beside ``images/``.
@@ -374,6 +381,13 @@ def _openlane_lines(lanes: list[Lane]) -> list[dict[str, Any]]:
     Road edges take categories 13 and 14 — left and right — assigned by the order
     they appear, which is v1's rule and is why the ordering has to be settled
     before anything is numbered.
+
+    ``visibility`` is OpenLane's binary per-point flag, 1 visible and 0 not.
+    ``VISIBLE`` writes 1 and ``OCCLUDED`` writes 0. ``UNLABELED`` writes 1, and
+    so does a lane with no visibility at all: OpenLane has no "unknown", and an
+    unjudged vertex carries no claim that anything hid it, so it is written the
+    way the format reads a point nobody flagged rather than as an occlusion
+    nobody observed.
     """
     written = []
     edges = 0
@@ -388,15 +402,19 @@ def _openlane_lines(lanes: list[Lane]) -> list[dict[str, Any]]:
         written.append(
             {
                 "category": category,
-                # All visible: the domain has no per-vertex data, so this is what
-                # is known rather than what was measured. See the module docstring.
-                "visibility": [1] * len(lane.points),
+                "visibility": _openlane_visibility(lane),
                 "uv": [[round(x, PRECISION), round(y, PRECISION)] for x, y in lane.points],
                 "attribute": category,
                 "track_id": f"lane_{index}",
             }
         )
     return written
+
+
+def _openlane_visibility(lane: Lane) -> list[int]:
+    if lane.visibility is None:
+        return [1] * len(lane.points)
+    return [0 if state is VertexVisibility.OCCLUDED else 1 for state in lane.visibility]
 
 
 def _write_culane_mask(asset: ManifestAsset, lanes: list[Lane], into: Path) -> None:
