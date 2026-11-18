@@ -34,10 +34,10 @@ the same reason its route hangs off ``/batches/{id}``.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import asdict
-from typing import Annotated, Any, Final
+from typing import Annotated, Final
 from uuid import UUID
 
 import typer
@@ -77,6 +77,7 @@ from visionset.kernel.services import (
     ProjectService,
     WorkspaceService,
 )
+from visionset.wire import shapes
 
 batch_app = typer.Typer(help="Move batches through the annotation lifecycle.", no_args_is_help=True)
 
@@ -108,7 +109,7 @@ _NO_SCHEMA: Final = "-"
 """What a draft shows: approval is what pins a version, and only ``repin`` moves it."""
 
 
-def _echo(batch_id: UUID, state: str, json_out: bool, payload: dict[str, object]) -> None:
+def _echo(batch_id: UUID, state: str, json_out: bool, payload: Mapping[str, object]) -> None:
     """One shape for a lifecycle move: the batch, or a line and its id."""
     if json_out:
         document(payload)
@@ -117,7 +118,7 @@ def _echo(batch_id: UUID, state: str, json_out: bool, payload: dict[str, object]
     typer.echo(str(batch_id))
 
 
-def batch_document(service: WorkspaceService, batch: Batch) -> dict[str, Any]:
+def batch_document(service: WorkspaceService, batch: Batch) -> shapes.Batch:
     """One batch as ``--json`` prints it, with its progress and its trunk membership read."""
     counts = JobService(service).batch_progress(batch.id)
     pre_labeled = BatchService(service).latest_pre_label_job(batch.id)

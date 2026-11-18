@@ -8,13 +8,12 @@ cached: the alternative is a server that has to be restarted after an install.
 
 from __future__ import annotations
 
-from typing import Any
-
 from visionset import wire
 from visionset.formats.registry import exporters
+from visionset.wire import shapes
 
 
-def list_formats() -> dict[str, Any]:
+def list_formats() -> shapes.Page[shapes.ExportFormat]:
     """List the export formats installed in this VisionSet, and whether each is lossy.
 
     Call this before `export_release` — the `name` here is exactly the string
@@ -30,7 +29,7 @@ def list_formats() -> dict[str, Any]:
     return wire.page([wire.export_format(installed[name]) for name in sorted(installed)])
 
 
-def list_export_targets() -> dict[str, Any]:
+def list_export_targets() -> shapes.Page[shapes.ExportTarget]:
     """List the models a release can be exported for, each with the format that writes for it.
 
     Call this before `export_release` when you know what will be trained — the

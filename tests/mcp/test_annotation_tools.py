@@ -207,10 +207,8 @@ def test_provenance_model_without_a_reference_is_refused_with_the_reason(
 def test_a_geometry_with_no_type_cannot_pick_a_variant(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # The wart the domain union brings with it, pinned rather than hidden: the
-    # discriminator carries a default, so the generated schema shows `type` as
-    # optional, but pydantic reads the tag out of the input dict to select the
-    # variant and fails without it. The tool description says to spell it out.
+    # The published schema marks `type` required (test_registration pins that);
+    # this pins that the server agrees: without the tag no variant can be chosen.
     job_id, assets = _job_with_assets(monkeypatch, tmp_path)
     result = call(
         "add_annotations",
