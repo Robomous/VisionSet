@@ -46,6 +46,7 @@ from visionset.kernel.domain import (
     IngestState,
     LabelClass,
     PolygonGeometry,
+    PolylineGeometry,
     Project,
     Release,
     Source,
@@ -293,6 +294,8 @@ def test_annotation_round_trips_every_geometry_variant(tmp_path: Path) -> None:
     geometries = [
         BboxGeometry(x=1.0, y=2.0, width=10.0, height=20.0),
         PolygonGeometry(points=[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)]),
+        PolylineGeometry(points=[(0.0, 0.0), (10.0, 5.0)]),
+        PolylineGeometry(points=[(0.0, 0.0), (10.0, 5.0)], visibility=(2, 1)),
         ClassificationGeometry(),
     ]
     with store.unit_of_work() as uow:
@@ -312,6 +315,52 @@ def test_annotation_round_trips_every_geometry_variant(tmp_path: Path) -> None:
             assert read == written
             assert type(read.geometry) is type(geometry)
             assert isinstance(read.geometry.type, GeometryType)
+    store.close()
+
+
+def test_a_polyline_row_written_before_visibility_existed_still_reads(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    with store.unit_of_work() as uow:
+        asset_id = _seed(uow)[4][1]
+        written = uow.annotations.add(
+            Annotation(
+                asset_id=asset_id,
+                label_class="legacy",
+                schema_version=1,
+                geometry=PolylineGeometry(points=[(9.0, 9.0), (1.0, 1.0)], visibility=(1, 2)),
+                provenance="human",
+            )
+        )
+    with store.engine.begin() as conn:
+        conn.execute(
+            text("update annotation set geometry = :old where label_class = 'legacy'"),
+            {"old": '{"type": "polyline", "points": [[0.0, 0.0], [10.0, 5.0]]}'},
+        )
+    with store.unit_of_work() as uow:
+        read = uow.annotations.get(written.id)
+    assert read is not None
+    assert read.geometry == PolylineGeometry(points=[(0.0, 0.0), (10.0, 5.0)])
+    store.close()
+
+
+def test_a_polyline_with_unknown_visibility_stores_no_visibility_key(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    with store.unit_of_work() as uow:
+        asset_id = _seed(uow)[4][1]
+        uow.annotations.add(
+            Annotation(
+                asset_id=asset_id,
+                label_class="unknown",
+                schema_version=1,
+                geometry=PolylineGeometry(points=[(0.0, 0.0), (10.0, 5.0)]),
+                provenance="human",
+            )
+        )
+    with store.engine.connect() as conn:
+        stored = conn.execute(
+            text("select geometry from annotation where label_class = 'unknown'")
+        ).scalar_one()
+    assert "visibility" not in stored
     store.close()
 
 
