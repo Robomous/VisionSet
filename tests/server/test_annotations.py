@@ -256,6 +256,32 @@ def test_a_visibility_that_does_not_match_the_points_is_422(
     assert "one state per point" in response.text
 
 
+@pytest.mark.parametrize(
+    "visibility",
+    [[True, 2, 2], ["2", 2, 2], [1.0, 2, 2], None],
+    ids=["bool", "string", "float", "null"],
+)
+def test_a_visibility_that_is_not_integer_states_is_422(
+    client: TestClient, working: tuple[str, str], assets: list[str], visibility: object
+) -> None:
+    """`true` must not coerce to 1, which would store OCCLUDED for "visible"."""
+    _, job_id = working
+    response = client.post(
+        f"/jobs/{job_id}/annotations",
+        json=[
+            a_box(
+                assets[0],
+                label_class="centerline",
+                geometry={"type": "polyline", "points": PATH, "visibility": visibility},
+                attributes={},
+            )
+        ],
+    )
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "VALIDATION_ERROR"
+    assert stored(client, job_id, assets[0]) == []
+
+
 def test_an_update_whose_visibility_no_longer_matches_the_points_is_refused(
     client: TestClient, working: tuple[str, str], assets: list[str]
 ) -> None:

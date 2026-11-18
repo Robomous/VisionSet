@@ -412,7 +412,7 @@ export const checkPolygonGeometry: Check<Schemas["PolygonGeometry"]> =
   /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("polygon")] } as const);
 
 export const checkPolylineGeometry: Check<Schemas["PolylineGeometry"]> =
-  /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("polyline")], "visibility": [false, either([arrayOf(checkVertexVisibility), isNull] as const)] } as const);
+  /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("polyline")], "visibility": [false, arrayOf(checkVertexVisibility)] } as const);
 
 export const checkSuggestedRegion: Check<Schemas["SuggestedRegion"]> =
   /*#__PURE__*/ object({ "contour": [true, arrayOf(tuple([isNumber, isNumber] as const))], "geometry": [true, tagged("type", { "bbox": checkBboxGeometry, "classification_tag": checkClassificationGeometry, "polygon": checkPolygonGeometry, "polyline": checkPolylineGeometry })] } as const);

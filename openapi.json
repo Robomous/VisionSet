@@ -3731,18 +3731,11 @@
             "type": "string"
           },
           "visibility": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/VertexVisibility"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Visibility"
+            "items": {
+              "$ref": "#/components/schemas/VertexVisibility"
+            },
+            "title": "Visibility",
+            "type": "array"
           }
         },
         "required": [

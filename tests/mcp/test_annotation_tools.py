@@ -192,6 +192,42 @@ def test_a_visibility_that_does_not_match_the_points_is_refused_over_mcp(
     assert "one state per point" in text
 
 
+@pytest.mark.parametrize(
+    ("visibility", "reason"),
+    [
+        ([True, 2, 2], "integer 0, 1 or 2"),
+        (["2", 2, 2], "integer 0, 1 or 2"),
+        ([1.0, 2, 2], "integer 0, 1 or 2"),
+        (None, "never null"),
+    ],
+    ids=["bool", "string", "float", "null"],
+)
+def test_a_visibility_that_is_not_integer_states_is_refused_over_mcp(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, visibility: object, reason: str
+) -> None:
+    job_id, assets = _job_with_assets(monkeypatch, tmp_path, classes=[*SCHEMA_CLASSES, CENTERLINE])
+    result = call(
+        "add_annotations",
+        job_id=job_id,
+        annotations=[
+            _label(
+                assets[0],
+                label_class="centerline",
+                geometry={
+                    "type": "polyline",
+                    "points": [[1, 2], [5, 9], [9, 20]],
+                    "visibility": visibility,
+                },
+                attributes={},
+            )
+        ],
+    )
+
+    assert result.is_error
+    text = "".join(getattr(item, "text", "") for item in result.content)
+    assert reason in text
+
+
 def test_a_one_point_polyline_is_a_malformed_request_not_a_domain_refusal(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

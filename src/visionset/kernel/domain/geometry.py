@@ -22,9 +22,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import IntEnum
 from math import isfinite
-from typing import Annotated, Final, Literal, get_args
+from typing import Annotated, Any, Final, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+from pydantic.json_schema import JsonDict, SkipJsonSchema
 
 from visionset.kernel.domain.schema import GeometryType
 
@@ -50,6 +51,44 @@ class VertexVisibility(IntEnum):
 
 def _omitted_when_unknown(value: object) -> bool:
     return value is None
+
+
+def _integer_state(value: object) -> object:
+    # bool is an int subclass, so `true` would otherwise store 1 — OCCLUDED —
+    # for a client that meant "visible". Only an integer names a state.
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(
+            f"a vertex visibility is the integer 0, 1 or 2, not {type(value).__name__} {value!r}"
+        )
+    return value
+
+
+def _never_null(value: object) -> object:
+    if value is None:
+        raise ValueError(
+            "visibility is omitted when unknown, never null; leave the key out instead"
+        )
+    return value
+
+
+def _absent_not_null(schema: JsonDict) -> None:
+    # Unknown is an absent key, so the schema advertises neither null nor a default.
+    schema.pop("default", None)
+
+
+StrictVertexVisibility = Annotated[VertexVisibility, BeforeValidator(_integer_state)]
+"""A :class:`VertexVisibility` accepted only from an integer: no bool, string or float."""
+
+VertexVisibilities = Annotated[
+    tuple[StrictVertexVisibility, ...] | SkipJsonSchema[None],
+    BeforeValidator(_never_null),
+]
+"""One strict state per vertex. ``None`` is the unset default only: an explicit null is refused."""
+
+
+def optional_visibility_field() -> Any:
+    """The ``visibility`` field: absent when unknown, never ``null`` on input or output."""
+    return Field(default=None, exclude_if=_omitted_when_unknown, json_schema_extra=_absent_not_null)
 
 
 def check_vertex_visibility(
@@ -142,9 +181,7 @@ class PolylineGeometry(BaseModel):
 
     type: Literal[GeometryType.POLYLINE] = GeometryType.POLYLINE
     points: list[tuple[float, float]] = Field(min_length=2)
-    visibility: tuple[VertexVisibility, ...] | None = Field(
-        default=None, exclude_if=_omitted_when_unknown
-    )
+    visibility: VertexVisibilities = optional_visibility_field()
 
     @model_validator(mode="after")
     def _has_length(self) -> PolylineGeometry:
@@ -152,6 +189,12 @@ class PolylineGeometry(BaseModel):
             raise ValueError("a polyline whose points are all the same point has no length")
         check_vertex_visibility(self.visibility, self.points)
         return self
+
+    def through(self, points: list[tuple[float, float]]) -> PolylineGeometry:
+        """The same path moved onto ``points``, its visibility carried in order."""
+        if self.visibility is None:
+            return PolylineGeometry(points=points)
+        return PolylineGeometry(points=points, visibility=self.visibility)
 
 
 class ClassificationGeometry(BaseModel):

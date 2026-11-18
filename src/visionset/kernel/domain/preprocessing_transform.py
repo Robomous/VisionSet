@@ -27,7 +27,6 @@ from visionset.kernel.domain.geometry import (
     ClassificationGeometry,
     Geometry,
     PolygonGeometry,
-    PolylineGeometry,
 )
 from visionset.kernel.domain.preprocessing import (
     SHOWCASE_SEED,
@@ -408,7 +407,7 @@ def _scaled(
     points = [(x * scale_x + offset_x, y * scale_y + offset_y) for x, y in geometry.points]
     if isinstance(geometry, PolygonGeometry):
         return PolygonGeometry(points=points)
-    return PolylineGeometry(points=points, visibility=geometry.visibility)
+    return geometry.through(points)
 
 
 def _mirrored(geometry: Geometry, width: float) -> Geometry:
@@ -424,7 +423,7 @@ def _mirrored(geometry: Geometry, width: float) -> Geometry:
     points = [(width - x, y) for x, y in geometry.points]
     if isinstance(geometry, PolygonGeometry):
         return PolygonGeometry(points=points)
-    return PolylineGeometry(points=points, visibility=geometry.visibility)
+    return geometry.through(points)
 
 
 def _rotated_once(geometry: Geometry, width: float) -> Geometry:
@@ -446,7 +445,7 @@ def _rotated_once(geometry: Geometry, width: float) -> Geometry:
     points = [(y, width - x) for x, y in geometry.points]
     if isinstance(geometry, PolygonGeometry):
         return PolygonGeometry(points=points)
-    return PolylineGeometry(points=points, visibility=geometry.visibility)
+    return geometry.through(points)
 
 
 def variant_content_hash(content_hash: str, variant: int) -> str:

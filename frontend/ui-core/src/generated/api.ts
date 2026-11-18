@@ -4989,7 +4989,7 @@ export interface components {
              */
             type: "polyline";
             /** Visibility */
-            visibility?: components["schemas"]["VertexVisibility"][] | null;
+            visibility?: components["schemas"]["VertexVisibility"][];
         };
         /**
          * PreLabelExclusionOut

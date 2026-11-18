@@ -1,3 +1,4 @@
+import json
 from uuid import uuid4
 
 import pytest
@@ -173,11 +174,55 @@ def test_unknown_visibility_is_not_all_visible() -> None:
 
 
 def test_unknown_visibility_is_omitted_from_every_dump() -> None:
-    line = PolylineGeometry(points=PATH, visibility=None)
+    line = PolylineGeometry(points=PATH)
     assert "visibility" not in line.model_dump()
     assert "visibility" not in line.model_dump(mode="json")
     assert "visibility" not in line.model_dump_json()
     assert "visibility" not in _annotation(line).model_dump(mode="json")["geometry"]
+
+
+@pytest.mark.parametrize(
+    "states",
+    ["[true, 2, 2]", '["2", 2, 2]', "[1.0, 2, 2]", '["visible", 2, 2]'],
+    ids=["bool", "numeric-string", "float", "name"],
+)
+def test_a_vertex_state_is_only_ever_an_integer(states: str) -> None:
+    # `true` would otherwise coerce to 1, storing OCCLUDED for "visible".
+    payload = (
+        f'{{"type": "polyline", "points": [[0, 0], [10, 5], [20, 30]], "visibility": {states}}}'
+    )
+    with pytest.raises(ValidationError, match="is the integer 0, 1 or 2"):
+        geometry_adapter.validate_json(payload)
+    with pytest.raises(ValidationError, match="is the integer 0, 1 or 2"):
+        geometry_adapter.validate_python(json.loads(payload))
+
+
+def test_an_explicit_null_visibility_is_refused_and_an_absent_one_is_unknown() -> None:
+    absent = {"type": "polyline", "points": [[0, 0], [10, 5], [20, 30]]}
+    with pytest.raises(ValidationError, match="never null"):
+        geometry_adapter.validate_python({**absent, "visibility": None})
+    with pytest.raises(ValidationError, match="never null"):
+        PolylineGeometry(points=PATH, visibility=None)
+    line = geometry_adapter.validate_python(absent)
+    assert isinstance(line, PolylineGeometry)
+    assert line.visibility is None
+
+
+def test_the_published_schema_never_offers_null_for_visibility() -> None:
+    schema = PolylineGeometry.model_json_schema()
+    assert schema["properties"]["visibility"] == {
+        "items": {"$ref": "#/$defs/VertexVisibility"},
+        "title": "Visibility",
+        "type": "array",
+    }
+    assert "visibility" not in schema.get("required", [])
+
+
+def test_a_moved_polyline_keeps_its_states_in_order() -> None:
+    line = PolylineGeometry(points=PATH, visibility=(2, 1, 0))
+    moved = line.through([(1.0, 1.0), (2.0, 2.0), (3.0, 4.0)])
+    assert moved.visibility == line.visibility
+    assert PolylineGeometry(points=PATH).through(PATH).visibility is None
 
 
 def test_a_polyline_payload_written_before_visibility_existed_still_parses() -> None:

@@ -107,7 +107,9 @@ def _lane(
         id=uuid4(),
         label_class=label_class,
         schema_version=1,
-        geometry=PolylineGeometry(points=points, visibility=visibility),
+        geometry=PolylineGeometry(points=points)
+        if visibility is None
+        else PolylineGeometry(points=points, visibility=visibility),
         attributes=attributes,
         provenance="human",
     )

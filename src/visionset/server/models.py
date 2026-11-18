@@ -46,7 +46,6 @@ from uuid import UUID, uuid4
 
 from fastapi import Query
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
-from pydantic.json_schema import JsonDict, SkipJsonSchema
 
 from visionset.inference import (
     DEFAULT_MINIMUM_CONFIDENCE,
@@ -153,7 +152,7 @@ from visionset.kernel.domain import (
     Task,
     TimeRange,
     TransformedAnnotation,
-    VertexVisibility,
+    VertexVisibilities,
     VideoImport,
     VideoImportState,
     VideoMetadata,
@@ -165,6 +164,7 @@ from visionset.kernel.domain import (
     batch_actions,
     connection_actions,
     job_actions,
+    optional_visibility_field,
 )
 from visionset.kernel.ports import Exporter, Provider
 
@@ -1807,12 +1807,6 @@ class PolygonBody(BaseModel):
         return cls(type=GeometryType.POLYGON, points=list(geometry.points))
 
 
-def _optional_and_absent(schema: JsonDict) -> None:
-    # The field is omitted rather than sent as null, so it must not carry the
-    # `default` the generated client reads as "always present in a response".
-    schema.pop("default", None)
-
-
 class PolylineBody(BaseModel):
     """An open path of at least two points, in order. Nothing joins the ends.
 
@@ -1825,24 +1819,21 @@ class PolylineBody(BaseModel):
 
     type: Literal[GeometryType.POLYLINE]
     points: list[tuple[float, float]]
-    visibility: list[VertexVisibility] | SkipJsonSchema[None] = Field(
-        default=None,
-        exclude_if=lambda value: value is None,
-        json_schema_extra=_optional_and_absent,
-    )
+    visibility: VertexVisibilities = optional_visibility_field()
 
     def to_domain(self) -> PolylineGeometry:
-        return PolylineGeometry(
-            points=self.points,
-            visibility=None if self.visibility is None else tuple(self.visibility),
-        )
+        if self.visibility is None:
+            return PolylineGeometry(points=self.points)
+        return PolylineGeometry(points=self.points, visibility=self.visibility)
 
     @classmethod
     def of(cls, geometry: PolylineGeometry) -> Self:
+        if geometry.visibility is None:
+            return cls(type=GeometryType.POLYLINE, points=list(geometry.points))
         return cls(
             type=GeometryType.POLYLINE,
             points=list(geometry.points),
-            visibility=None if geometry.visibility is None else list(geometry.visibility),
+            visibility=geometry.visibility,
         )
 
 
