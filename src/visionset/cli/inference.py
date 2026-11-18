@@ -25,7 +25,7 @@ job handler for the same reason.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Final
+from typing import Annotated, Final
 
 import typer
 
@@ -42,6 +42,7 @@ from visionset.inference import (
 )
 from visionset.kernel.domain import ConnectionType, InferenceConnection, Precision
 from visionset.kernel.services import InferenceConnectionService
+from visionset.wire import shapes
 
 inference_app = typer.Typer(
     help="Configure where inference runs. Nothing is downloaded on your behalf.",
@@ -256,7 +257,7 @@ def inference_size(
 
 
 def _provider_rows(
-    providers: list[dict[str, Any]],
+    providers: list[shapes.Provider],
 ) -> list[tuple[str, str, str, str]]:
     """One row per curated model; a driver that curates nothing still gets its own row."""
     rows: list[tuple[str, str, str, str]] = []

@@ -33,9 +33,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Annotated, Any, Final
+from typing import Annotated, Final
 
-from pydantic import Field
+from pydantic import ConfigDict, Field, with_config
+from typing_extensions import TypedDict
 
 from visionset import wire
 from visionset.kernel.services import (
@@ -43,9 +44,10 @@ from visionset.kernel.services import (
     ProjectService,
     SourceService,
 )
-from visionset.mcp._errors import refused
+from visionset.mcp._errors import Refusal, refused
 from visionset.mcp._resolve import ProjectRef
 from visionset.mcp._workspace import opened_workspace
+from visionset.wire import shapes
 
 #: What ``ingest`` answers when it is handed anything but a directory.
 #:
@@ -59,6 +61,20 @@ VIDEO_IS_A_BROWSER_IMPORT: Final = (
     "to open the project's Ingest screen in the VisionSet UI. No tool here decodes "
     "video, and re-encoding the clip yourself is not a substitute."
 )
+
+
+closed = with_config(ConfigDict(extra="forbid"))
+
+
+@closed
+class Ingested(TypedDict):
+    source: shapes.Source
+    ingest_job_id: str
+    batch_id: str | None
+    created: int
+    deduplicated: int
+    failed: int
+    failures: list[shapes.IngestFailure]
 
 
 def ingest(
@@ -76,7 +92,7 @@ def ingest(
         str | None,
         Field(description="Name the batch this run fills. Defaults to the source's own name."),
     ] = None,
-) -> dict[str, Any]:
+) -> Ingested | Refusal:
     """Register a directory of images and read it into one batch. Blocks until done.
 
     The directory is read top level only, in filename order, with no filter on
@@ -138,7 +154,7 @@ def ingest(
     }
 
 
-def list_sources(project: ProjectRef) -> dict[str, Any]:
+def list_sources(project: ProjectRef) -> shapes.Page[shapes.Source]:
     """List the origins registered in a project — the folders and clips it was built from.
 
     Use it to see what has already been ingested before ingesting again. `name`
@@ -153,7 +169,7 @@ def list_sources(project: ProjectRef) -> dict[str, Any]:
     return wire.page([wire.source(s) for s in registered])
 
 
-def backfill_thumbnails(project: ProjectRef) -> dict[str, Any]:
+def backfill_thumbnails(project: ProjectRef) -> shapes.ThumbnailBackfill:
     """Render the previews that are missing for a project's assets.
 
     `get_asset_image` serves a cached preview and refuses rather than rendering

@@ -28,14 +28,12 @@ importing Pillow here is what keeps a decoder out of a delivery module.
 row publishes, so a separate metadata tool would be a second round trip for
 something this one has to send anyway.
 
-**Bare ``CallToolResult``, not ``Annotated[CallToolResult, Model]``.** The
-annotated form declares an output schema and validates ``structuredContent``
-against it — which would reject the error envelope on the refusal path, since a
-refusal cannot also be a valid image result. Verified against mcp 1.28.1: bare
-``CallToolResult`` passes ``structuredContent`` through untouched with no schema
-declared, so both paths travel in one shape. Returning ``[Image(...), {...}]``
-instead is the trap that looks right and silently produces **no**
-``structuredContent`` at all.
+**``Annotated[CallToolResult, AssetImage]``.** The tool builds its own result,
+because it sends an image block; the annotation is what declares the structured
+half as its ``outputSchema`` and has the SDK validate it. ``guarded`` widens that
+declaration with the refusal envelope, which is what lets a refusal travel in the
+same shape. Returning ``[Image(...), {...}]`` instead is the trap that looks right
+and silently produces **no** ``structuredContent`` at all.
 
 Previews rather than originals by default because the bytes are base64-encoded
 into a single JSON-RPC message: a 12-megapixel original costs an agent its
@@ -46,11 +44,11 @@ from __future__ import annotations
 
 import io
 import json
-from typing import Annotated, Any, Final
+from typing import Annotated, Final, Literal, TypedDict
 
 from mcp.server.mcpserver.utilities.types import Image
 from mcp.types import CallToolResult, TextContent
-from pydantic import Field
+from pydantic import ConfigDict, Field, with_config
 
 from visionset import wire
 from visionset.kernel.domain import Asset, ImageFormat
@@ -62,6 +60,7 @@ from visionset.kernel.services import (
 )
 from visionset.mcp._resolve import ProjectRef, identifier
 from visionset.mcp._workspace import opened_workspace
+from visionset.wire import shapes
 
 SUFFIXES: Final[dict[ImageFormat, str]] = {ImageFormat.JPEG: "jpeg", ImageFormat.PNG: "png"}
 """What ``Image`` wants: the suffix it turns into ``image/<suffix>``.
@@ -80,9 +79,25 @@ call ``docs/content/api.md`` already made for the download route.
 """
 
 
+@with_config(ConfigDict(extra="forbid"))
+class AssetImage(TypedDict):
+    asset_id: str
+    width: int | None
+    height: int | None
+    format: str | None
+    content_hash: str
+    image_width: int | None
+    image_height: int | None
+    resolution: Literal["thumbnail", "full"]
+    scale: float | None
+
+
 def _payload(
-    asset: Asset, *, sent: tuple[int | None, int | None], resolution: str
-) -> dict[str, Any]:
+    asset: Asset,
+    *,
+    sent: tuple[int | None, int | None],
+    resolution: Literal["thumbnail", "full"],
+) -> AssetImage:
     """The asset's own frame, the frame that was sent, and the factor between them."""
     image_width, image_height = sent
     scale = (
@@ -103,7 +118,7 @@ def _payload(
     }
 
 
-def _measurements(payload: dict[str, Any]) -> TextContent:
+def _measurements(payload: AssetImage) -> TextContent:
     """The measurements as text, beside the pixels.
 
     ``structuredContent`` alone is not enough: a client that forwards only
@@ -124,7 +139,7 @@ def _preview(workspace: WorkspaceService, asset: Asset) -> CallToolResult:
             Image(data=buffer.getvalue(), format=SUFFIXES[THUMBNAIL_FORMAT]).to_image_content(),
             _measurements(payload),
         ],
-        structured_content=payload,
+        structured_content=dict(payload),
     )
 
 
@@ -148,14 +163,14 @@ def _original(workspace: WorkspaceService, asset: Asset) -> CallToolResult:
                 ),
                 _measurements(payload),
             ],
-            structured_content=payload,
+            structured_content=dict(payload),
         )
     return CallToolResult(
         content=[
             Image(data=data, format=SUFFIXES[asset.format]).to_image_content(),
             _measurements(payload),
         ],
-        structured_content=payload,
+        structured_content=dict(payload),
     )
 
 
@@ -171,7 +186,7 @@ def get_asset_image(
             )
         ),
     ] = False,
-) -> CallToolResult:
+) -> Annotated[CallToolResult, AssetImage]:
     """Look at an asset's pixels, so you can annotate what is actually there.
 
     Returns the image itself plus its measurements. By default it serves the
@@ -203,7 +218,7 @@ def list_project_assets(
         Field(ge=1, description="How many assets to return. Omit for all of them."),
     ] = None,
     offset: Annotated[int, Field(ge=0, description="How many assets to skip.")] = 0,
-) -> dict[str, Any]:
+) -> shapes.Page[shapes.Asset]:
     """List every asset ingested into a project, whether or not any batch holds it.
 
     The project-level view: `list_batch_assets` only shows what a batch holds, so

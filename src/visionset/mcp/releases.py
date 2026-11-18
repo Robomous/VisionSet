@@ -30,7 +30,7 @@ poll needs a row to poll, a row needs a table, and a table needs a migration.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated
 
 from pydantic import Field, StrictBool
 
@@ -43,10 +43,11 @@ from visionset.kernel.services import (
     ProjectService,
     ReleaseService,
 )
-from visionset.mcp._errors import refused
+from visionset.mcp._errors import Refusal, refused
 from visionset.mcp._resolve import ProjectRef
 from visionset.mcp._workspace import opened_workspace
 from visionset.preprocessing import registry as preprocessing_registry
+from visionset.wire import shapes
 
 TagRef = Annotated[str, Field(description="The release tag. Compared case-sensitively.")]
 """Module-level for the ``inspect.signature`` reason."""
@@ -64,7 +65,7 @@ def publish_release(
             )
         ),
     ] = None,
-) -> dict[str, Any]:
+) -> shapes.Release:
     """Freeze the project's dataset as an immutable, tagged release.
 
     Snapshots whatever is in the dataset right now — every promoted asset and a
@@ -88,7 +89,7 @@ def publish_release(
     return wire.release(published)
 
 
-def list_releases(project: ProjectRef) -> dict[str, Any]:
+def list_releases(project: ProjectRef) -> shapes.Page[shapes.Release]:
     """List a project's releases, newest last, with everything each one publishes.
 
     Each row carries its `manifest_hash`, the schema version it froze, its asset
@@ -102,7 +103,7 @@ def list_releases(project: ProjectRef) -> dict[str, Any]:
     return wire.page([wire.release(r) for r in found])
 
 
-def verify_release(project: ProjectRef, tag: TagRef) -> dict[str, Any]:
+def verify_release(project: ProjectRef, tag: TagRef) -> shapes.ReleaseVerification:
     """Re-read and re-hash everything a release names, and report what is wrong.
 
     The integrity check: it re-hashes the manifest and then every asset blob the
@@ -184,7 +185,7 @@ def check_export(
     target: TargetRef = None,
     format: FormatRef = None,
     recipe: RecipeRef = None,
-) -> dict[str, Any]:
+) -> shapes.ExportCompatibility | Refusal:
     """Say what a target or a format would drop from a release, without writing anything.
 
     Call this before `export_release` when the answer matters. It reads the
@@ -212,9 +213,9 @@ def check_export(
     calling this first is a convenience, never a requirement.
 
     A class with zero annotations never makes a release incompatible, whatever
-    its status: a schema that declares `mask` and holds no masks loses nothing.
+    its status: a schema that declares `polyline` and holds no polylines loses nothing.
     Those rows are still listed, with their zeros, because "this format cannot
-    write masks and you have none" is worth being able to read.
+    write polylines and you have none" is worth being able to read.
 
     `compatible` is not the same question as a format's `lossy` flag in
     `list_formats`. That flag covers everything a geometry list cannot see —
@@ -270,7 +271,7 @@ def export_release(
         ),
     ] = False,
     recipe: RecipeRef = None,
-) -> dict[str, Any]:
+) -> shapes.ExportResult | Refusal:
     """Write a release to a local directory, for a target or in one of the installed formats.
 
     Blocks until the export finishes and returns a description of what landed —

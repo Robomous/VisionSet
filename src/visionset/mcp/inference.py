@@ -41,10 +41,11 @@ idiom.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from mcp.server.mcpserver import Context
-from pydantic import Field, StrictBool
+from pydantic import ConfigDict, Field, StrictBool, with_config
+from typing_extensions import TypedDict
 
 from visionset import wire
 from visionset.inference import (
@@ -62,6 +63,18 @@ from visionset.kernel.services import (
 from visionset.mcp._progress import Progress, reporting
 from visionset.mcp._resolve import ConnectionRef
 from visionset.mcp._workspace import opened_workspace
+from visionset.wire import shapes
+
+
+@with_config(ConfigDict(extra="forbid"))
+class IntegrityCounts(TypedDict):
+    files_checked: int
+    bytes_read: int
+
+
+@with_config(ConfigDict(extra="forbid"))
+class ConnectionDeleted(TypedDict):
+    deleted: shapes.Connection
 
 
 def create_inference_connection(
@@ -108,7 +121,7 @@ def create_inference_connection(
             )
         ),
     ] = None,
-) -> dict[str, Any]:
+) -> shapes.Connection:
     """Configure a connection. Nothing is downloaded and nothing is contacted.
 
     A `local` connection lands at `not_set_up` with `download_weights` among its
@@ -172,7 +185,7 @@ def update_inference_connection(
             )
         ),
     ] = None,
-) -> dict[str, Any]:
+) -> shapes.Connection:
     """Edit a connection. Parameters you omit are left alone; the type cannot change.
 
     Which model it names is fixed once it is set up: a local connection may move
@@ -198,7 +211,7 @@ def update_inference_connection(
     return wire.connection(edited)
 
 
-def list_providers() -> dict[str, Any]:
+def list_providers() -> shapes.Page[shapes.Provider]:
     """List the inference drivers installed here, and the models each offers by name.
 
     Call this before `create_inference_connection`: a `provider_id` here is the
@@ -220,7 +233,7 @@ def model_download_size(
     model_revision: Annotated[
         str, Field(description="Pinned. A size is a fact about one revision.")
     ],
-) -> dict[str, Any]:
+) -> shapes.DownloadSize:
     """How big fetching that model's weights would be. Nothing is downloaded.
 
     The number to look at *before* calling `download_connection_weights`, read
@@ -236,7 +249,7 @@ def model_download_size(
 
 def download_connection_weights(
     connection: ConnectionRef, ctx: Context[Any, Any] | None = None
-) -> dict[str, Any]:
+) -> shapes.Connection:
     """Fetch a local connection's weights. This is the only tool that downloads a model.
 
     Nothing arrives on an agent's behalf: no install, no first run, and no other
@@ -269,7 +282,7 @@ def _bytes_to(report: Progress) -> Callable[[int, int | None], None]:
     return told
 
 
-def check_connection_integrity(connection: ConnectionRef) -> dict[str, Any]:
+def check_connection_integrity(connection: ConnectionRef) -> IntegrityCounts:
     """Re-read a local connection's weights and prove they are undamaged.
 
     Not the same check as re-running the download. That one establishes the
@@ -290,10 +303,10 @@ def check_connection_integrity(connection: ConnectionRef) -> dict[str, Any]:
     with opened_workspace() as workspace:
         found = InferenceConnectionService(workspace).resolve(connection)
         report = check_integrity(workspace, found.id)
-    return report.counts()
+    return cast(IntegrityCounts, report.counts())
 
 
-def test_inference_connection(connection: ConnectionRef) -> dict[str, Any]:
+def test_inference_connection(connection: ConnectionRef) -> shapes.Connection:
     """Ask an http connection's endpoint what it answers, and record the answer.
 
     One request to the endpoint, which answers this project's contract —
@@ -321,7 +334,7 @@ def delete_inference_connection(
             )
         ),
     ] = False,
-) -> dict[str, Any]:
+) -> ConnectionDeleted:
     """Remove a connection. Annotations keep the model provenance they recorded.
 
     Provenance stores model identity denormalized — id and revision copied at
@@ -351,7 +364,7 @@ def delete_inference_connection(
 
 # ``list``-named tools stay last, the CLI's rule for the class-body reason —
 # and here simply because the listing is the fold target the docstring argues.
-def list_inference_connections() -> dict[str, Any]:
+def list_inference_connections() -> shapes.Page[shapes.Connection]:
     """List this workspace's model connections, oldest first.
 
     A connection is one configured place a model can be asked to predict; the

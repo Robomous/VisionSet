@@ -53,7 +53,7 @@ import base64
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, TypeVar
 from uuid import UUID
 
 # The one import here that is not the kernel's, and it is the same direction as
@@ -128,6 +128,9 @@ from visionset.kernel.domain import (
     job_actions,
 )
 from visionset.kernel.ports import Exporter, Provider
+from visionset.wire import shapes
+
+T = TypeVar("T")
 
 
 def _moment(when: datetime) -> str:
@@ -135,7 +138,7 @@ def _moment(when: datetime) -> str:
     return when.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
-def page(items: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+def page(items: Sequence[T]) -> shapes.Page[T]:
     """The collection envelope, identical to the REST API's.
 
     ``{"items": [...], "total": n}`` and never a bare array — an array cannot
@@ -150,7 +153,7 @@ def page(items: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
 # --- projects and schemas ----------------------------------------------------
 
 
-def project(value: Project, preview: ProjectPreview | None) -> dict[str, Any]:
+def project(value: Project, preview: ProjectPreview | None) -> shapes.Project:
     """A project. ``workspace_id`` is absent: a command speaks for one workspace."""
     return {
         "id": str(value.id),
@@ -162,7 +165,7 @@ def project(value: Project, preview: ProjectPreview | None) -> dict[str, Any]:
     }
 
 
-def dataset(value: Dataset) -> dict[str, Any]:
+def dataset(value: Dataset) -> shapes.Dataset:
     """A project's one dataset."""
     return {
         "id": str(value.id),
@@ -172,7 +175,7 @@ def dataset(value: Dataset) -> dict[str, Any]:
     }
 
 
-def attribute(value: Attribute) -> dict[str, Any]:
+def attribute(value: Attribute) -> shapes.Attribute:
     """One attribute of a label class. Also the *input* shape ``schema apply`` reads."""
     return {
         "name": value.name,
@@ -183,7 +186,7 @@ def attribute(value: Attribute) -> dict[str, Any]:
     }
 
 
-def label_class(value: LabelClass) -> dict[str, Any]:
+def label_class(value: LabelClass) -> shapes.LabelClass:
     """One class of a schema version. Also the *input* shape ``schema apply`` reads."""
     return {
         "name": value.name,
@@ -195,7 +198,7 @@ def label_class(value: LabelClass) -> dict[str, Any]:
     }
 
 
-def schema_version(value: AnnotationSchema) -> dict[str, Any]:
+def schema_version(value: AnnotationSchema) -> shapes.SchemaVersion:
     """One version of a project's schema. Its own UUID is absent: nothing addresses it.
 
     ``description``, ``created_at`` and ``provenance`` are all null for a version
@@ -211,7 +214,7 @@ def schema_version(value: AnnotationSchema) -> dict[str, Any]:
     }
 
 
-def draft_attribute(value: DraftAttribute) -> dict[str, Any]:
+def draft_attribute(value: DraftAttribute) -> shapes.DraftAttribute:
     """One attribute of a class still being written. Every field may be unset."""
     return {
         "name": value.name,
@@ -222,7 +225,7 @@ def draft_attribute(value: DraftAttribute) -> dict[str, Any]:
     }
 
 
-def draft_label_class(value: DraftLabelClass) -> dict[str, Any]:
+def draft_label_class(value: DraftLabelClass) -> shapes.DraftLabelClass:
     """One class still being written: a name that may be blank, shapes that may be none."""
     return {
         "name": value.name,
@@ -232,7 +235,7 @@ def draft_label_class(value: DraftLabelClass) -> dict[str, Any]:
     }
 
 
-def schema_draft(value: SchemaDraft) -> dict[str, Any]:
+def schema_draft(value: SchemaDraft) -> shapes.SchemaDraft:
     """The schema version a project is still writing, of one kind.
 
     ``revision`` is what the next write must name. ``based_on`` is the version the
@@ -250,7 +253,7 @@ def schema_draft(value: SchemaDraft) -> dict[str, Any]:
     }
 
 
-def schema_publication(value: SchemaPublication) -> dict[str, Any]:
+def schema_publication(value: SchemaPublication) -> shapes.SchemaPublication:
     """What one publish did: the version, and the open batches that moved onto it.
 
     A shape of its own rather than two more keys on ``schema_version``, because
@@ -268,7 +271,7 @@ def schema_publication(value: SchemaPublication) -> dict[str, Any]:
     }
 
 
-def schema_change(value: SchemaChange) -> dict[str, Any]:
+def schema_change(value: SchemaChange) -> shapes.SchemaChange:
     """One difference between two schema versions, and which kind it is."""
     return {
         "kind": value.kind.value,
@@ -278,7 +281,7 @@ def schema_change(value: SchemaChange) -> dict[str, Any]:
     }
 
 
-def schema_diff(value: SchemaDiff) -> dict[str, Any]:
+def schema_diff(value: SchemaDiff) -> shapes.SchemaDiff:
     """A proposed or actual schema change, classified.
 
     Not surface-defined: ``SchemaService.compare`` has a route, so
@@ -297,7 +300,7 @@ def schema_diff(value: SchemaDiff) -> dict[str, Any]:
     }
 
 
-def schema_change_preview(value: SchemaChangePreview) -> dict[str, Any]:
+def schema_change_preview(value: SchemaChangePreview) -> shapes.SchemaChangePreview:
     """What publishing these classes would do, and what would stop it.
 
     ``diff`` answers whether the change needs ``allow_destructive``; ``blockers``
@@ -320,7 +323,7 @@ def schema_change_preview(value: SchemaChangePreview) -> dict[str, Any]:
     }
 
 
-def blocking_asset(value: BlockingAsset) -> dict[str, Any]:
+def blocking_asset(value: BlockingAsset) -> shapes.BlockingAsset:
     """One frame a narrowing would orphan annotations on, and the batches holding it."""
     return {
         "asset": asset(value.asset),
@@ -333,7 +336,7 @@ def blocking_asset(value: BlockingAsset) -> dict[str, Any]:
 # --- sources, ingest and assets ----------------------------------------------
 
 
-def video_provenance(value: VideoProvenance) -> dict[str, Any]:
+def video_provenance(value: VideoProvenance) -> shapes.VideoProvenance:
     """What a clip turned out to be, flattened the way the wire flattens it."""
     return {
         "width": value.metadata.width,
@@ -351,7 +354,7 @@ def video_provenance(value: VideoProvenance) -> dict[str, Any]:
     }
 
 
-def source(value: Source) -> dict[str, Any]:
+def source(value: Source) -> shapes.Source:
     """A registered origin. ``locator`` is absent; ``name`` is the domain's resolution.
 
     ``Source.name`` is the stated display name when one exists, else the locator's
@@ -367,7 +370,7 @@ def source(value: Source) -> dict[str, Any]:
     }
 
 
-def ingest_failure(value: IngestFailure) -> dict[str, Any]:
+def ingest_failure(value: IngestFailure) -> shapes.IngestFailure:
     """What became of one file the run could not read."""
     return {
         "name": value.name,
@@ -376,7 +379,7 @@ def ingest_failure(value: IngestFailure) -> dict[str, Any]:
     }
 
 
-def ingest_job(value: IngestJob) -> dict[str, Any]:
+def ingest_job(value: IngestJob) -> shapes.IngestJob:
     """One run of one source, counters and per-item report included."""
     return {
         "id": str(value.id),
@@ -391,7 +394,7 @@ def ingest_job(value: IngestJob) -> dict[str, Any]:
     }
 
 
-def asset(value: Asset) -> dict[str, Any]:
+def asset(value: Asset) -> shapes.Asset:
     """One image. ``uri`` is absent: it is a path on this machine."""
     return {
         "id": str(value.id),
@@ -420,7 +423,7 @@ def batch_asset(
     progress: AssetProgress | None,
     batch_state: BatchState,
     summary: AnnotationSummary,
-) -> dict[str, Any]:
+) -> shapes.BatchAsset:
     """One asset seen from inside a batch: the asset, plus where the work stands.
 
     Widens :func:`asset` rather than replacing it, which is what the wire model
@@ -447,7 +450,7 @@ def batch_asset(
     }
 
 
-def thumbnail_backfill(value: ThumbnailBackfill) -> dict[str, Any]:
+def thumbnail_backfill(value: ThumbnailBackfill) -> shapes.ThumbnailBackfill:
     """A preview pass over a project: the backfill job's result, and what the CLI and MCP print."""
     return {
         "project_id": str(value.project_id),
@@ -461,7 +464,7 @@ def thumbnail_backfill(value: ThumbnailBackfill) -> dict[str, Any]:
 # --- batches and jobs --------------------------------------------------------
 
 
-def progress_counts(counts: Mapping[AssetProgress, int]) -> dict[str, Any]:
+def progress_counts(counts: Mapping[AssetProgress, int]) -> shapes.ProgressCounts:
     """Six named fields and a total, not an open map — the wire model's own reason."""
     return {
         "unannotated": counts[AssetProgress.UNANNOTATED],
@@ -474,7 +477,7 @@ def progress_counts(counts: Mapping[AssetProgress, int]) -> dict[str, Any]:
     }
 
 
-def pre_label_run(value: PreLabelRun) -> dict[str, Any]:
+def pre_label_run(value: PreLabelRun) -> shapes.PreLabelRun:
     """An annotation job's most recent pre-labeling run: how far it got, and what it found.
 
     Assets, on ``weight_download``'s and ``integrity_check``'s terms: the
@@ -499,7 +502,7 @@ def pre_label_run(value: PreLabelRun) -> dict[str, Any]:
     }
 
 
-def pre_label_plan(value: PreLabelPlan) -> dict[str, Any]:
+def pre_label_plan(value: PreLabelPlan) -> shapes.PreLabelPlan:
     """The prompt a pre-labeling run asks under, and every class left out of it.
 
     One spelling for the tool that answers the plan on its own and for the run
@@ -525,7 +528,7 @@ def batch(
     *,
     promoted: AbstractSet[UUID],
     pre_labeled: PreLabelRun | None = None,
-) -> dict[str, Any]:
+) -> shapes.Batch:
     """A batch and where its assets have got to. ``asset_ids`` is absent.
 
     ``promoted`` is the trunk's current membership, passed in rather than read
@@ -560,7 +563,7 @@ def job(
     batch_id: UUID,
     batch_state: BatchState,
     pre_labeled: PreLabelRun | None = None,
-) -> dict[str, Any]:
+) -> shapes.Job:
     """One segment of a batch. ``task_group_id`` and the per-asset map are absent.
 
     ``batch_state`` is not published here — ``BatchOut`` owns it — but nothing can
@@ -588,7 +591,7 @@ def job(
     }
 
 
-def asset_progress(asset_id: UUID, progress: AssetProgress) -> dict[str, Any]:
+def asset_progress(asset_id: UUID, progress: AssetProgress) -> shapes.AssetProgress:
     """Where one asset of a job has got to."""
     return {"asset_id": str(asset_id), "progress": progress.value}
 
@@ -596,7 +599,7 @@ def asset_progress(asset_id: UUID, progress: AssetProgress) -> dict[str, Any]:
 # --- annotations -------------------------------------------------------------
 
 
-def geometry(value: Geometry) -> dict[str, Any]:
+def geometry(value: Geometry) -> shapes.Geometry:
     """One shape, tagged by ``type``. Coordinates are the asset's own pixels.
 
     Never normalized, at any surface — the domain's rule, and the one thing a
@@ -607,19 +610,21 @@ def geometry(value: Geometry) -> dict[str, Any]:
     match value:
         case BboxGeometry():
             return {
-                "type": value.type.value,
+                "type": "bbox",
                 "x": value.x,
                 "y": value.y,
                 "width": value.width,
                 "height": value.height,
             }
-        case PolygonGeometry() | PolylineGeometry():
-            return {"type": value.type.value, "points": [list(p) for p in value.points]}
+        case PolygonGeometry():
+            return {"type": "polygon", "points": [list(p) for p in value.points]}
+        case PolylineGeometry():
+            return {"type": "polyline", "points": [list(p) for p in value.points]}
         case ClassificationGeometry():
-            return {"type": value.type.value}
+            return {"type": "classification_tag"}
 
 
-def annotation(value: Annotation) -> dict[str, Any]:
+def annotation(value: Annotation) -> shapes.Annotation:
     """One label on one asset. ``schema_version`` is published on the way out only.
 
     A caller never sets it — the service stamps the batch's pinned version over
@@ -643,7 +648,7 @@ def annotation(value: Annotation) -> dict[str, Any]:
 # --- datasets ----------------------------------------------------------------
 
 
-def class_count(value: ClassCount) -> dict[str, Any]:
+def class_count(value: ClassCount) -> shapes.ClassCount:
     """How much of one class a dataset holds — both totals, deliberately.
 
     A thousand labels over a thousand images and the same thousand over ten are
@@ -656,7 +661,7 @@ def class_count(value: ClassCount) -> dict[str, Any]:
     }
 
 
-def dataset_stats(value: DatasetStats) -> dict[str, Any]:
+def dataset_stats(value: DatasetStats) -> shapes.DatasetStats:
     """What is in the trunk right now. Derived per call; a release freezes its own.
 
     ``classes`` rather than the domain's ``per_class``, matching the wire model:
@@ -675,12 +680,12 @@ def dataset_stats(value: DatasetStats) -> dict[str, Any]:
 # --- releases, exports and formats -------------------------------------------
 
 
-def split_recipe(value: SplitRecipe) -> dict[str, Any]:
+def split_recipe(value: SplitRecipe) -> shapes.SplitRecipe:
     """How a release is cut for training."""
     return {"train": value.train, "val": value.val, "test": value.test, "seed": value.seed}
 
 
-def release(value: Release) -> dict[str, Any]:
+def release(value: Release) -> shapes.Release:
     """A published snapshot of a dataset."""
     return {
         "id": str(value.id),
@@ -696,7 +701,7 @@ def release(value: Release) -> dict[str, Any]:
     }
 
 
-def token(value: Any) -> dict[str, Any]:
+def token(value: Any) -> shapes.Token:
     """A token as a program reads it: the name and its lifetime, never a secret or a digest."""
     return {
         "name": value.name,
@@ -705,7 +710,7 @@ def token(value: Any) -> dict[str, Any]:
     }
 
 
-def release_verification(value: ReleaseVerification) -> dict[str, Any]:
+def release_verification(value: ReleaseVerification) -> shapes.ReleaseVerification:
     """The result of re-hashing everything a release names. ``ok`` is derived."""
     return {
         "release_id": str(value.release_id),
@@ -719,7 +724,7 @@ def release_verification(value: ReleaseVerification) -> dict[str, Any]:
     }
 
 
-def export_format(value: Exporter) -> dict[str, Any]:
+def export_format(value: Exporter) -> shapes.ExportFormat:
     """One installed exporter, with the capabilities it declares."""
     return {
         "name": value.format_name,
@@ -736,7 +741,7 @@ def export_format(value: Exporter) -> dict[str, Any]:
     }
 
 
-def provider(value: Provider) -> dict[str, Any]:
+def provider(value: Provider) -> shapes.Provider:
     """One installed inference driver: its families, and the checkpoints it offers by name."""
     return {
         "provider_id": value.provider_id,
@@ -760,7 +765,7 @@ def provider(value: Provider) -> dict[str, Any]:
     }
 
 
-def preprocessing_hints(value: PreprocessingHints) -> dict[str, Any]:
+def preprocessing_hints(value: PreprocessingHints) -> shapes.PreprocessingHints:
     """What a target's trainer expects of its images. Hints, never requirements."""
     return {
         "recommended_size": None
@@ -774,7 +779,7 @@ def preprocessing_hints(value: PreprocessingHints) -> dict[str, Any]:
     }
 
 
-def export_target(value: ExportTarget, exporter: Exporter) -> dict[str, Any]:
+def export_target(value: ExportTarget, exporter: Exporter) -> shapes.ExportTarget:
     """One model a person can train on, flattened with the format that writes for it.
 
     ``format`` is the exporter's own name rather than a nested format row, so
@@ -792,7 +797,7 @@ def export_target(value: ExportTarget, exporter: Exporter) -> dict[str, Any]:
     }
 
 
-def export_targets(installed: Mapping[str, Exporter]) -> list[dict[str, Any]]:
+def export_targets(installed: Mapping[str, Exporter]) -> list[shapes.ExportTarget]:
     """The whole catalog, in name order, derived from what is installed."""
     return sorted(
         (
@@ -804,7 +809,7 @@ def export_targets(installed: Mapping[str, Exporter]) -> list[dict[str, Any]]:
     )
 
 
-def class_compatibility(value: ClassCompatibility) -> dict[str, Any]:
+def class_compatibility(value: ClassCompatibility) -> shapes.ClassCompatibility:
     """One class of a release, judged against one format."""
     return {
         "label_class": value.label_class,
@@ -820,7 +825,7 @@ def class_compatibility(value: ClassCompatibility) -> dict[str, Any]:
     }
 
 
-def export_compatibility(value: ExportCompatibility) -> dict[str, Any]:
+def export_compatibility(value: ExportCompatibility) -> shapes.ExportCompatibility:
     """What a format would drop from a release. The same document on all three
     surfaces — attached to a refusal, carried on a result, written into the
     output."""
@@ -838,7 +843,7 @@ def export_compatibility(value: ExportCompatibility) -> dict[str, Any]:
     }
 
 
-def recipe_step(value: Step) -> dict[str, Any]:
+def recipe_step(value: Step) -> shapes.RecipeStep:
     """One step of a recipe, tagged by ``kind``. Also the *input* shape a recipe body reads."""
     if isinstance(value, ResizeStep):
         return {
@@ -851,7 +856,7 @@ def recipe_step(value: Step) -> dict[str, Any]:
     return {"kind": "augment", "op": value.op.value, "amount": value.amount}
 
 
-def recipe_spec(value: RecipeSpec) -> dict[str, Any]:
+def recipe_spec(value: RecipeSpec) -> shapes.RecipeSpec:
     """What a recipe does to every exported image. Also the *input* shape a recipe body reads."""
     return {
         "target": value.target,
@@ -860,7 +865,7 @@ def recipe_spec(value: RecipeSpec) -> dict[str, Any]:
     }
 
 
-def recipe_usage(value: RecipeUsage) -> dict[str, Any]:
+def recipe_usage(value: RecipeUsage) -> shapes.RecipeUsage:
     """How many succeeded exports ran a recipe, and the newest one's release and target."""
     return {
         "export_count": value.export_count,
@@ -873,7 +878,7 @@ def recipe_usage(value: RecipeUsage) -> dict[str, Any]:
 
 def preprocessing_recipe(
     value: PreprocessingRecipe, *, used_by: RecipeUsage | None
-) -> dict[str, Any]:
+) -> shapes.PreprocessingRecipe:
     """A named recipe of a project. Binds at export by ``name``; the export keeps the spec.
 
     ``used_by`` is required so no surface can forget it: a caller reads it from
@@ -891,7 +896,7 @@ def preprocessing_recipe(
     }
 
 
-def transformed_annotation(value: TransformedAnnotation) -> dict[str, Any]:
+def transformed_annotation(value: TransformedAnnotation) -> shapes.TransformedAnnotation:
     """One label as an export writes it. ``id`` is a string: a variant's carries ``-aug{k}``."""
     return {
         "id": value.id,
@@ -905,7 +910,7 @@ def transformed_annotation(value: TransformedAnnotation) -> dict[str, Any]:
     }
 
 
-def preprocessing_preview(value: PreprocessingPreview) -> dict[str, Any]:
+def preprocessing_preview(value: PreprocessingPreview) -> shapes.PreprocessingPreview:
     """One asset through a recipe, rendered. **Surface-defined**: only the API answers it."""
     return {
         "asset_id": str(value.asset_id),
@@ -922,7 +927,7 @@ def preprocessing_preview(value: PreprocessingPreview) -> dict[str, Any]:
     }
 
 
-def export_file_mapping(value: ExportFileMapping) -> dict[str, Any]:
+def export_file_mapping(value: ExportFileMapping) -> shapes.ExportFileMapping:
     """One written image traced to the manifest asset it came from."""
     return {
         "file": value.file,
@@ -932,7 +937,7 @@ def export_file_mapping(value: ExportFileMapping) -> dict[str, Any]:
     }
 
 
-def export_preprocessing(value: ExportPreprocessing) -> dict[str, Any]:
+def export_preprocessing(value: ExportPreprocessing) -> shapes.ExportPreprocessing:
     """The recipe an export applied, by value, and what it produced."""
     return {
         "recipe_name": value.recipe_name,
@@ -943,7 +948,7 @@ def export_preprocessing(value: ExportPreprocessing) -> dict[str, Any]:
     }
 
 
-def export_result(value: ExportResult) -> dict[str, Any]:
+def export_result(value: ExportResult) -> shapes.ExportResult:
     """What an export left on disk. **Surface-defined**: the API returns the archive.
 
     ``directory`` is here where ``Asset.uri`` is not, and the difference is who
@@ -971,7 +976,7 @@ def export_result(value: ExportResult) -> dict[str, Any]:
 # --- inference connections ----------------------------------------------------
 
 
-def weight_download(value: WeightDownload) -> dict[str, Any]:
+def weight_download(value: WeightDownload) -> shapes.WeightDownload:
     """A connection's weight transfer: which job, how far, and how it ended.
 
     Bytes rather than a percentage or a formatted size, on ``download_size``'s
@@ -992,7 +997,7 @@ def weight_download(value: WeightDownload) -> dict[str, Any]:
     }
 
 
-def integrity_check(value: IntegrityCheck) -> dict[str, Any]:
+def integrity_check(value: IntegrityCheck) -> shapes.IntegrityCheck:
     """A connection's snapshot re-read: which job, how far, and how it ended.
 
     Files rather than bytes, on ``weight_download``'s terms and for the opposite
@@ -1013,7 +1018,7 @@ def connection(
     value: InferenceConnection,
     download: WeightDownload | None = None,
     check: IntegrityCheck | None = None,
-) -> dict[str, Any]:
+) -> shapes.Connection:
     """One configured place a model can be asked to predict.
 
     ``credential_env`` is the name of an environment variable, never its value:
@@ -1058,7 +1063,7 @@ def connection(
     }
 
 
-def download_size(value: DownloadSize) -> dict[str, Any]:
+def download_size(value: DownloadSize) -> shapes.DownloadSize:
     """What fetching a model's weights would cost, before anybody fetches them.
 
     Bytes rather than a formatted string, on ``export_result``'s terms: how to

@@ -16,8 +16,6 @@ in ``batches`` because ``DatasetService.promote`` takes a *batch* id.
 
 from __future__ import annotations
 
-from typing import Any
-
 from visionset import wire
 from visionset.kernel.services import (
     DatasetService,
@@ -25,9 +23,10 @@ from visionset.kernel.services import (
 )
 from visionset.mcp._resolve import ProjectRef
 from visionset.mcp._workspace import opened_workspace
+from visionset.wire import shapes
 
 
-def dataset_stats(project: ProjectRef) -> dict[str, Any]:
+def dataset_stats(project: ProjectRef) -> shapes.DatasetStats:
     """Count what is in a project's dataset, class by class.
 
     The "is this dataset ready to train on" question. `classes` gives both totals

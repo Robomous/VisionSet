@@ -44,7 +44,8 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from mcp.server.mcpserver import Context
-from pydantic import Field, StrictBool
+from pydantic import ConfigDict, Field, StrictBool, with_config
+from typing_extensions import TypedDict
 
 from visionset import wire
 from visionset.inference import (
@@ -79,12 +80,77 @@ from visionset.kernel.services import (
 from visionset.mcp._progress import PreLabelProgress, reporting
 from visionset.mcp._resolve import ConnectionRef, ProjectRef, identifier
 from visionset.mcp._workspace import opened_workspace
+from visionset.wire import shapes
 
 BatchRef = Annotated[str, Field(description="The batch, by id. Batch names are not unique.")]
 """The batch a tool acts on. Module-level for the ``inspect.signature`` reason."""
 
 
-def _batch_payload(workspace: WorkspaceService, batch_id: UUID) -> dict[str, Any]:
+closed = with_config(ConfigDict(extra="forbid"))
+
+
+@closed
+class BatchWithJobs(shapes.Batch):
+    jobs: list[shapes.Job]
+
+
+@closed
+class BatchMembershipChanged(BatchWithJobs):
+    changed: list[str]
+
+
+@closed
+class BatchApproved(BatchWithJobs):
+    started: bool
+
+
+@closed
+class BatchCompleted(BatchWithJobs):
+    promoted: int
+
+
+@closed
+class BatchDeleted(TypedDict):
+    deleted: BatchWithJobs
+
+
+@closed
+class PreLabelOutcomeReport(TypedDict):
+    assets_considered: int
+    assets_labeled: int
+    annotations_written: int
+    annotations_replaced: int
+    model_ref: str | None
+    assets_skipped: int
+    regions_discarded: int
+    regions_out_of_bounds: int
+    plan: shapes.PreLabelPlan
+
+
+@closed
+class JobPreLabelOutcome(PreLabelOutcomeReport):
+    job_id: str
+
+
+@closed
+class BatchPreLabeled(TypedDict):
+    items: list[JobPreLabelOutcome]
+    annotations_written: int
+
+
+@closed
+class ProjectBatchPreLabelOutcome(JobPreLabelOutcome):
+    batch_id: str
+    batch_name: str
+
+
+@closed
+class ProjectPreLabeled(TypedDict):
+    items: list[ProjectBatchPreLabelOutcome]
+    annotations_written: int
+
+
+def _batch_payload(workspace: WorkspaceService, batch_id: UUID) -> BatchWithJobs:
     """The batch, its progress and its jobs — the shape most tools return."""
     batches = BatchService(workspace)
     batch = batches.get(batch_id)
@@ -113,7 +179,7 @@ def create_batch(
         list[str] | None,
         Field(description="Which of the project's assets to put in it. Omit to start empty."),
     ] = None,
-) -> dict[str, Any]:
+) -> BatchWithJobs:
     """Start a draft batch over a chosen set of a project's assets.
 
     Most batches are born from an ingest run, which puts what it gathered into
@@ -140,7 +206,7 @@ def add_batch_assets(
         list[str],
         Field(description="Which of the project's assets to put in the batch.", min_length=1),
     ],
-) -> dict[str, Any]:
+) -> BatchMembershipChanged:
     """Put assets into a draft batch.
 
     Only while the batch is a draft: approval cuts it into jobs against a pinned
@@ -169,7 +235,7 @@ def remove_batch_assets(
         list[str],
         Field(description="Which assets to take out of the batch.", min_length=1),
     ],
-) -> dict[str, Any]:
+) -> BatchMembershipChanged:
     """Take assets out of a draft batch. This does not delete anything.
 
     The asset stays in its project, keeps its annotations, and stays in every
@@ -195,7 +261,7 @@ def remove_batch_assets(
         }
 
 
-def list_batches(project: ProjectRef) -> dict[str, Any]:
+def list_batches(project: ProjectRef) -> shapes.Page[shapes.Batch]:
     """List a project's batches with where each one's assets have got to.
 
     The overview of outstanding work: `state` says whether a batch is open, and
@@ -219,7 +285,7 @@ def list_batches(project: ProjectRef) -> dict[str, Any]:
     )
 
 
-def get_batch(batch_id: BatchRef) -> dict[str, Any]:
+def get_batch(batch_id: BatchRef) -> BatchWithJobs:
     """Read one batch: its state, its schema pin, its progress and its jobs.
 
     `schema_version` is the contract every annotation in this batch is judged
@@ -251,7 +317,7 @@ def approve_batch(
             )
         ),
     ] = False,
-) -> dict[str, Any]:
+) -> BatchApproved:
     """Freeze a batch, pin the project's active schema, and cut it into jobs.
 
     One-way: there is no route back to `draft`. Approval reads the project's
@@ -278,7 +344,7 @@ def approve_batch(
         return {**_batch_payload(workspace, approved.id), "started": start}
 
 
-def start_batch(batch_id: BatchRef) -> dict[str, Any]:
+def start_batch(batch_id: BatchRef) -> BatchWithJobs:
     """Open an approved batch for annotation.
 
     Nothing may be written into a batch until this has been called: every
@@ -307,7 +373,7 @@ Geometries = Annotated[
 
 def get_pre_label_plan(
     batch_id: BatchRef, connection: ConnectionRef, geometries: Geometries = None
-) -> dict[str, Any]:
+) -> shapes.PreLabelPlan:
     """Which classes a pre-labeling run of that connection over this batch would ask about, \
 which it would leave out, and what shapes it would write.
 
@@ -349,7 +415,7 @@ which it would leave out, and what shapes it would write.
         )
 
 
-def _pre_label_outcome(outcome: PreLabelOutcome, plan: PreLabelPlan) -> dict[str, Any]:
+def _pre_label_outcome(outcome: PreLabelOutcome, plan: PreLabelPlan) -> PreLabelOutcomeReport:
     """The one outcome shape ``pre_label_batch`` and ``pre_label_project`` both report."""
     return {
         "assets_considered": outcome.assets_considered,
@@ -394,7 +460,7 @@ def pre_label_batch(
     ] = False,
     geometries: Geometries = None,
     ctx: Context[Any, Any] | None = None,
-) -> dict[str, Any]:
+) -> BatchPreLabeled:
     """Ask a model to label every untouched asset in a batch, one run per open job.
 
     This blocks until every job is done. The job is the unit this runs over —
@@ -492,7 +558,7 @@ def pre_label_batch(
         resolved_connection = InferenceConnectionService(workspace).resolve(connection)
         batch_uuid = identifier(batch_id, what="batch_id")
         BatchService(workspace).require_pre_labelable(batch_uuid)
-        items: list[dict[str, Any]] = []
+        items: list[JobPreLabelOutcome] = []
         jobs = open_jobs_of(workspace, batch_uuid)
         counted = PreLabelProgress(report, len(jobs))
         for job in jobs:
@@ -532,7 +598,7 @@ def pre_label_project(
     ] = None,
     geometries: Geometries = None,
     ctx: Context[Any, Any] | None = None,
-) -> dict[str, Any]:
+) -> ProjectPreLabeled:
     """Ask a model to label untouched assets across a project's open batches. Blocks until done.
 
     The job is still the unit — `pre_label_batch` fanned out over every open
@@ -585,7 +651,7 @@ def pre_label_project(
             on_progress=lambda _batch, done, total: counted.asset_done(done, total),
         )
         counted.finish()
-        items: list[dict[str, Any]] = [
+        items: list[ProjectBatchPreLabelOutcome] = [
             {
                 "batch_id": str(job.batch.id),
                 "batch_name": job.batch.name,
@@ -611,7 +677,7 @@ def repin_batch(
             )
         ),
     ] = False,
-) -> dict[str, Any]:
+) -> BatchWithJobs:
     """Move a batch's schema pin onto the project's *current* active version.
 
     The pin does not follow the schema on its own, so a class you add with
@@ -649,7 +715,7 @@ def complete_batch(
             )
         ),
     ] = False,
-) -> dict[str, Any]:
+) -> BatchCompleted:
     """Close a batch, once every one of its jobs is complete.
 
     Derived means recomputed, not automatic: this reads the jobs and refuses
@@ -682,7 +748,7 @@ def create_correction_batch(
             )
         ),
     ] = None,
-) -> dict[str, Any]:
+) -> BatchWithJobs:
     """Start a draft batch that corrects a completed one.
 
     A completed batch cannot be reopened — there is no transition back — so this
@@ -727,7 +793,7 @@ def list_batch_assets(
         ),
     ] = AssetSort.MEMBERSHIP,
     job: Annotated[str | None, Field(description="Keep only the assets this job carries.")] = None,
-) -> dict[str, Any]:
+) -> shapes.Page[shapes.BatchAsset]:
     """List a batch's assets, with the job, progress and label summary each carries.
 
     The paged view of what is in a batch — a batch of fifty thousand frames is an
@@ -768,7 +834,7 @@ def list_batch_assets(
     return {"items": items, "total": total}
 
 
-def promote_batch(batch_id: BatchRef) -> dict[str, Any]:
+def promote_batch(batch_id: BatchRef) -> shapes.Page[shapes.Asset]:
     """Move a completed batch's finished assets into the project's dataset.
 
     The dataset is the trunk every release is cut from, so this is the step
@@ -797,7 +863,7 @@ def delete_batch(
             )
         ),
     ] = False,
-) -> dict[str, Any]:
+) -> BatchDeleted:
     """Delete a batch and how its work was organised. Destructive; requires `confirm=true`.
 
     **The annotations survive.** Labels hang off assets rather than off batches,

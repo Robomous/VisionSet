@@ -10,13 +10,12 @@ the same docstrings into ``$defs`` on the tool's ``inputSchema``, where they are
 the best guidance an agent gets about what a class *is*. Re-spelling the model
 here would throw that away and add a second definition to keep in step.
 
-**The one wart it inherits, stated rather than hidden**: a discriminated union's
-tag carries a default in the domain — ``LabelClass.geometries`` does not, but
-``Geometry`` and ``Partition`` do — so the generated schema shows ``type`` as
-optional while pydantic needs it in the input dict to pick a variant. The REST
-surface fixes that by dropping the defaults from its own bodies; here it is
-answered in the tool description and pinned by a test, because the alternative is
-the re-spelling this module exists to avoid.
+**Two corrections are applied to what it derives, once, in ``main.py``**: a
+discriminated union's tag carries a default in the domain, so the derived schema
+would show ``type`` as optional while pydantic needs it to pick a variant; and
+``GeometryType`` names geometries no class can use yet. The published schema
+marks the tag required and lists only the implemented geometries, which keeps the
+domain model as the one definition without advertising either wart.
 
 ``list_schema_versions`` folds into ``get_schema``: which versions exist is one
 list of integers, and shipping a tool to fetch it is a round trip for something
@@ -30,9 +29,10 @@ finding out *before* is the whole point.
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
-from pydantic import Field, StrictBool
+from pydantic import ConfigDict, Field, StrictBool, with_config
+from typing_extensions import TypedDict
 
 from visionset import wire
 from visionset.kernel.domain import DraftLabelClass, LabelClass, SchemaProvenance
@@ -43,6 +43,25 @@ from visionset.kernel.services import (
 )
 from visionset.mcp._resolve import ProjectRef
 from visionset.mcp._workspace import opened_workspace
+from visionset.wire import shapes
+
+
+@with_config(ConfigDict(extra="forbid"))
+class SchemaRead(TypedDict):
+    schema: shapes.SchemaVersion
+    active_version: int
+    available_versions: list[int]
+
+
+@with_config(ConfigDict(extra="forbid"))
+class SchemaDraftRead(TypedDict):
+    draft: shapes.SchemaDraft | None
+
+
+@with_config(ConfigDict(extra="forbid"))
+class SchemaDraftCleared(TypedDict):
+    cleared: bool
+
 
 ClassesParam = Annotated[
     list[LabelClass],
@@ -137,7 +156,7 @@ def get_schema(
         int | None,
         Field(ge=1, description="A specific version to read. Omit for the active (highest) one."),
     ] = None,
-) -> dict[str, Any]:
+) -> SchemaRead:
     """Read a project's annotation schema — which classes exist and what each may carry.
 
     Read this before writing any annotation: `add_annotations` judges every label
@@ -169,7 +188,7 @@ def compare_schema_versions(
     project: ProjectRef,
     from_version: Annotated[int, Field(ge=1, description="The version to compare from, 1..N.")],
     to_version: Annotated[int, Field(ge=1, description="The version to compare to, 1..N.")],
-) -> dict[str, Any]:
+) -> shapes.SchemaDiff:
     """Say what one schema version did to another. Writes nothing.
 
     The sibling of `preview_schema_change`, asked about two versions that already
@@ -192,7 +211,7 @@ def compare_schema_versions(
     return wire.schema_diff(diff)
 
 
-def preview_schema_change(project: ProjectRef, classes: ClassesParam) -> dict[str, Any]:
+def preview_schema_change(project: ProjectRef, classes: ClassesParam) -> shapes.SchemaChangePreview:
     """Say what applying these classes would change, without applying anything.
 
     Writes nothing. Use it before `create_schema_version` whenever you are
@@ -236,7 +255,7 @@ def list_blocking_assets(
         Field(ge=1, description="How many frames to return. Omit for all of them."),
     ] = None,
     offset: Annotated[int, Field(ge=0, description="How many frames to skip.")] = 0,
-) -> dict[str, Any]:
+) -> shapes.Page[shapes.BlockingAsset]:
     """List the frames that make `preview_schema_change` report `is_refused`.
 
     `preview_schema_change` says how many annotations block a proposal and under
@@ -297,7 +316,7 @@ def create_schema_version(
             )
         ),
     ] = False,
-) -> dict[str, Any]:
+) -> shapes.SchemaPublication:
     """Create the next schema version from a complete list of classes.
 
     Versions are 1..N and never edited or deleted; this inserts a new one and the
@@ -335,7 +354,7 @@ def create_schema_version(
 
 def get_schema_draft(
     project: ProjectRef, kind: KindParam = SchemaProvenance.CURATED
-) -> dict[str, Any]:
+) -> SchemaDraftRead:
     """Read the schema version this project is still writing.
 
     A project holds at most one draft per kind, and it is **shared**: everybody
@@ -367,7 +386,7 @@ def set_schema_draft(
     kind: KindParam = SchemaProvenance.CURATED,
     note: NoteParam = "",
     revision: RevisionParam = None,
-) -> dict[str, Any]:
+) -> shapes.SchemaDraft:
     """Write the whole draft, creating it when there is none.
 
     `classes` replaces the draft entirely — this is not an append. Read the draft
@@ -402,7 +421,7 @@ def set_schema_draft(
 
 def clear_schema_draft(
     project: ProjectRef, kind: KindParam = SchemaProvenance.CURATED
-) -> dict[str, Any]:
+) -> SchemaDraftCleared:
     """Throw the draft away without publishing it.
 
     Destroys work — possibly somebody else's, since the draft is shared — and
@@ -420,7 +439,7 @@ def publish_schema_draft(
     revision: PublishRevisionParam,
     kind: KindParam = SchemaProvenance.CURATED,
     allow_destructive: AllowDestructiveParam = False,
-) -> dict[str, Any]:
+) -> shapes.SchemaPublication:
     """Turn the draft into the next schema version, and clear it.
 
     The classes published are the draft's own — you cannot publish something

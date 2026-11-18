@@ -28,7 +28,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from mcp.server.mcpserver import Context
-from pydantic import Field, StrictBool
+from pydantic import ConfigDict, Field, StrictBool, with_config
 
 from visionset import wire
 from visionset.inference import (
@@ -45,23 +45,38 @@ from visionset.mcp._autostart import autostarted
 from visionset.mcp._progress import PreLabelProgress, reporting
 from visionset.mcp._resolve import ConnectionRef, identifier
 from visionset.mcp._workspace import opened_workspace
-from visionset.mcp.batches import Geometries, _pre_label_outcome
+from visionset.mcp.batches import Geometries, JobPreLabelOutcome, _pre_label_outcome
+from visionset.wire import shapes
 
 JobRef = Annotated[str, Field(description="The annotation job, by id.")]
 """The job a tool acts on. Module-level for the ``inspect.signature`` reason."""
 
 
-def _job_payload(
-    service: JobService, job_id: Any, *, job_started: bool | None = None
-) -> dict[str, Any]:
-    """The job, the batch it belongs to, and its counts — the shape two tools return.
+closed = with_config(ConfigDict(extra="forbid"))
 
-    ``job_started`` is omitted for a read and present for a write, because only a
-    write can have started anything. See :func:`autostarted`.
-    """
+
+@closed
+class JobDetail(shapes.Job):
+    batch_state: str
+    schema_version: int | None
+    progress: shapes.ProgressCounts
+
+
+@closed
+class JobDetailStarted(JobDetail):
+    job_started: bool
+
+
+@closed
+class AssetProgressSet(shapes.AssetProgress):
+    job_started: bool
+
+
+def _job_payload(service: JobService, job_id: Any) -> JobDetail:
+    """The job, the batch it belongs to, and its counts — the shape two tools return."""
     job = service.get(job_id)
     batch = service.batch(job.id)
-    payload = {
+    return {
         **wire.job(
             job,
             batch_id=batch.id,
@@ -72,10 +87,9 @@ def _job_payload(
         "schema_version": batch.schema_version,
         "progress": wire.progress_counts(service.job_progress(job.id)),
     }
-    return payload if job_started is None else {**payload, "job_started": job_started}
 
 
-def get_job(job_id: JobRef) -> dict[str, Any]:
+def get_job(job_id: JobRef) -> JobDetail:
     """Read a job: its state, its counts, and the batch and schema it answers to.
 
     `schema_version` is the contract annotations written here are judged against;
@@ -126,7 +140,7 @@ def pre_label_job(
     ] = False,
     geometries: Geometries = None,
     ctx: Context[Any, Any] | None = None,
-) -> dict[str, Any]:
+) -> JobPreLabelOutcome:
     """Ask a model to label every untouched asset in one job. This blocks until it is done.
 
     `pre_label_batch`'s run, narrowed to the one job you already hold: a
@@ -225,7 +239,7 @@ def pre_label_job(
     return {"job_id": str(resolved_job), **_pre_label_outcome(outcome, counted.plans[0])}
 
 
-def complete_job(job_id: JobRef) -> dict[str, Any]:
+def complete_job(job_id: JobRef) -> JobDetailStarted:
     """Close a job, once every one of its assets has been settled.
 
     Settled means `annotated`, `skipped` or `accepted`. An asset still
@@ -250,7 +264,7 @@ def complete_job(job_id: JobRef) -> dict[str, Any]:
         service.require_settled(resolved)
         started = autostarted(workspace, resolved)
         completed = service.complete(resolved)
-        return _job_payload(service, completed.id, job_started=started)
+        return {**_job_payload(service, completed.id), "job_started": started}
 
 
 def next_pending_assets(
@@ -258,7 +272,7 @@ def next_pending_assets(
     count: Annotated[
         int, Field(ge=1, description="How many assets to return. Must be at least 1.")
     ] = 10,
-) -> dict[str, Any]:
+) -> shapes.Page[shapes.Asset]:
     """Get the next assets in a job that nobody has annotated yet.
 
     The loop primitive: call it, annotate what comes back, call it again. It
@@ -288,7 +302,7 @@ def set_asset_progress(
             )
         ),
     ],
-) -> dict[str, Any]:
+) -> AssetProgressSet:
     """Record where one asset of a job has got to, without writing annotations.
 
     Chiefly how you say "there is nothing in this image to label": mark it

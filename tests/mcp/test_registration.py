@@ -8,15 +8,21 @@ ones that fail when a tool is added carelessly rather than wrongly.
 from __future__ import annotations
 
 import inspect
+import json
+from pathlib import Path
+from typing import Any
 
+import jsonschema
 import pytest
-from tests.mcp._flow import tool_names, tool_schemas
+from tests.mcp._flow import call, payload, tool_names, tool_schemas, workspace
 
+from visionset.kernel.domain import IMPLEMENTED_GEOMETRIES, GeometryType
 from visionset.mcp.main import (
     ALLOW_DESTRUCTIVE_ENV,
     DESTROYS,
     DESTRUCTIVE_TOOLS,
     TOOLS,
+    build_server,
     registered_tools,
 )
 
@@ -292,8 +298,10 @@ def test_guarded_preserves_the_signature_the_input_schema_is_built_from() -> Non
     from visionset.mcp import projects
     from visionset.mcp._errors import guarded
 
-    assert inspect.signature(guarded(projects.create_project)) == inspect.signature(
-        projects.create_project
+    wrapped = inspect.signature(guarded(projects.create_project))
+    original = inspect.signature(projects.create_project, eval_str=True)
+    assert list(map(str, wrapped.parameters.values())) == list(
+        map(str, original.parameters.values())
     )
 
 
@@ -302,3 +310,75 @@ def test_every_tool_refuses_an_argument_it_does_not_declare() -> None:
     # answered the unfiltered list. The schema is closed, and so is the model.
     for name, tool in tool_schemas().items():
         assert tool.input_schema.get("additionalProperties") is False, name
+
+
+PLACEHOLDER = {"type": "object", "additionalProperties": True}
+
+
+def _result_arms(schema: dict[str, Any]) -> list[dict[str, Any]]:
+    definitions = schema.get("$defs", {})
+    return [
+        definitions[arm["$ref"].removeprefix("#/$defs/")] if "$ref" in arm else arm
+        for arm in schema["anyOf"]
+    ]
+
+
+@pytest.mark.parametrize("allow_destructive", [False, True])
+def test_every_tool_declares_its_result_or_the_refusal_envelope(allow_destructive: bool) -> None:
+    # The placeholder object told a client nothing. Every tool now publishes its
+    # own shape, and the refusal as the alternative, because a refusal arrives as
+    # an ordinary result rather than with `isError`.
+    for tool in build_server(allow_destructive=allow_destructive)._tool_manager.list_tools():
+        schema = tool.output_schema
+        assert schema is not None, tool.name
+        assert schema["type"] == "object", tool.name
+        arms = _result_arms(schema)
+        titles = [arm.get("title") for arm in arms]
+        assert "Refusal" in titles, tool.name
+        for arm in arms:
+            assert arm != PLACEHOLDER, tool.name
+            assert arm.get("properties"), (tool.name, arm)
+
+
+def test_a_real_result_and_a_real_refusal_both_validate_against_the_published_schema(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The client this suite calls through validates every structured result
+    # against the published schema too, so every call in tests/mcp checks it; this
+    # one says so out loud for one success and one refusal.
+    workspace(monkeypatch, tmp_path)
+    schema = tool_schemas()["create_project"].output_schema
+    made = payload(call("create_project", name="roads"))
+    again = call("create_project", name="ROADS")
+    jsonschema.validate(made, schema)
+    jsonschema.validate(again.structured_content, schema)
+    assert again.structured_content["error"]["code"] == "PROJECT_NAME_TAKEN"
+
+
+def test_a_geometry_variant_publishes_its_type_as_required() -> None:
+    definitions = tool_schemas()["add_annotations"].input_schema["$defs"]
+    variants = [d for d in definitions.values() if d.get("title", "").endswith("Geometry")]
+    assert variants
+    for variant in variants:
+        assert "type" in variant["required"], variant["title"]
+        assert "default" not in variant["properties"]["type"], variant["title"]
+
+
+def test_no_tool_advertises_a_geometry_a_class_cannot_use() -> None:
+    implemented = sorted(g.value for g in IMPLEMENTED_GEOMETRIES)
+    unimplemented = {g.value for g in GeometryType} - set(implemented)
+    for name, tool in tool_schemas().items():
+        enum = tool.input_schema.get("$defs", {}).get("GeometryType", {}).get("enum")
+        if enum is not None:
+            assert enum == implemented, name
+        assert not unimplemented & set(json.dumps(tool.input_schema).split('"')), name
+
+
+def test_a_class_is_named_by_name_and_referred_to_by_label_class() -> None:
+    # One rule, not two spellings: the class itself carries `name`; anything
+    # pointing at a class calls the field `label_class`. No third spelling.
+    listing = json.dumps(
+        [(tool.input_schema, tool.output_schema) for tool in tool_schemas().values()]
+    )
+    for stray in ('"class_name"', '"class"', '"class_id"'):
+        assert stray not in listing, stray

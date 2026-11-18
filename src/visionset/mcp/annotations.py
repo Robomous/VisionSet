@@ -29,10 +29,11 @@ from ``confirm``, and the exemption is written down in the error's own docstring
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, with_config
+from typing_extensions import TypedDict
 
 from visionset import wire
 from visionset.kernel.domain import Annotation, AttributeValue, Geometry, Provenance
@@ -41,6 +42,7 @@ from visionset.mcp._autostart import autostarted
 from visionset.mcp._errors import from_arguments
 from visionset.mcp._resolve import identifier
 from visionset.mcp._workspace import opened_workspace
+from visionset.wire import shapes
 
 JobRef = Annotated[str, Field(description="The annotation job the write belongs to, by id.")]
 """Module-level for the ``inspect.signature`` reason."""
@@ -126,10 +128,26 @@ class AnnotationEdit(BaseModel):
         )
 
 
+closed = with_config(ConfigDict(extra="forbid"))
+
+
+@closed
+class AnnotationsWritten(TypedDict):
+    items: list[shapes.Annotation]
+    total: int
+    job_started: bool
+
+
+@closed
+class AnnotationsDeleted(TypedDict):
+    deleted: int
+    job_started: bool
+
+
 def list_asset_annotations(
     job_id: JobRef,
     asset_id: Annotated[str, Field(description="The asset within that job, by id.")],
-) -> dict[str, Any]:
+) -> shapes.Page[shapes.Annotation]:
     """List the annotations already written on one asset of a job.
 
     Read this before editing: `update_annotations` and `delete_annotations` both
@@ -149,7 +167,7 @@ def add_annotations(
         list[AnnotationInput],
         Field(description="The labels to write. All are written, or none are.", min_length=1),
     ],
-) -> dict[str, Any]:
+) -> AnnotationsWritten:
     """Write new annotations into a job. All succeed together or none are written.
 
     Each is judged against the schema version the job's batch pinned: the class
@@ -184,7 +202,7 @@ def update_annotations(
         list[AnnotationEdit],
         Field(description="The replacements, each addressed by id. All or none.", min_length=1),
     ],
-) -> dict[str, Any]:
+) -> AnnotationsWritten:
     """Replace existing annotations wholesale. All succeed together or none are written.
 
     A whole-value replace, not a patch: what you send is what the annotation
@@ -213,7 +231,7 @@ def delete_annotations(
         list[str],
         Field(description="The annotations to remove, by id. All or none.", min_length=1),
     ],
-) -> dict[str, Any]:
+) -> AnnotationsDeleted:
     """Remove annotations from a job. All succeed together or none are removed.
 
     No confirmation is required, unlike `delete_project`: deleting a label is the

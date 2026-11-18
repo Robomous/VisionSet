@@ -17,6 +17,7 @@ attempt left and touches nothing else.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 from uuid import UUID
 
 from pydantic import JsonValue
@@ -54,4 +55,5 @@ def run(
         return {}
     project_id = UUID(str(payload[PROJECT_KEY]))
     workspace = workspace_for(workspace_root)
-    return thumbnail_backfill(IngestService(workspace).backfill_thumbnails(project_id))
+    report = thumbnail_backfill(IngestService(workspace).backfill_thumbnails(project_id))
+    return cast("dict[str, JsonValue]", report)
