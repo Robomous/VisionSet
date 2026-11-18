@@ -40,7 +40,6 @@ in this module needs deferred evaluation.
 """
 
 import inspect
-import os
 from collections.abc import Callable, Iterator
 from typing import Any, Final
 
@@ -65,6 +64,9 @@ from visionset.mcp import (
 )
 from visionset.mcp._errors import guarded
 from visionset.mcp._guide import INSTRUCTIONS, WORKFLOW, WORKFLOW_URI
+from visionset.mcp._surface import ALLOW_DESTRUCTIVE_ENV as ALLOW_DESTRUCTIVE_ENV
+from visionset.mcp._surface import destructive_tools_allowed
+from visionset.mcp._topics import TOPICS
 
 READS: Final = ToolAnnotations(read_only_hint=True)
 """Reads rows and changes nothing."""
@@ -202,26 +204,6 @@ surface, the kernel's ``confirm=`` parameters are unchanged, and ``guarded`` and
 before — the decision is only whether an agent is shown them at all.
 """
 
-ALLOW_DESTRUCTIVE_ENV: Final = "VISIONSET_MCP_ALLOW_DESTRUCTIVE"
-"""Set to ``1`` to advertise :data:`DESTRUCTIVE_TOOLS`.
-
-An environment variable rather than an argument, because ``main()`` takes none:
-this server is started by ``visionset mcp`` as a subprocess whose transport *is*
-stdin and stdout, so configuration travels the same channel the workspace does.
-An agent cannot set it — it is read once, at import, in a process the agent did
-not start.
-"""
-
-
-def destructive_tools_allowed() -> bool:
-    """Whether this process advertises the destructive tools.
-
-    Read through a function rather than frozen into a constant so a test can
-    ``monkeypatch.setenv`` and rebuild a registry; ``static_root()`` in
-    ``server/main.py`` is the same seam for the same reason.
-    """
-    return os.environ.get(ALLOW_DESTRUCTIVE_ENV) == "1"
-
 
 def registered_tools() -> tuple[tuple[Callable[..., Any], ToolAnnotations], ...]:
     """The table this process will register, in the order an agent meets them.
@@ -256,6 +238,8 @@ def build_server(*, allow_destructive: bool | None = None) -> MCPServer:
     """
     built = MCPServer("visionset", instructions=INSTRUCTIONS, version=__version__)
     built.resource(WORKFLOW_URI, name="workflow", mime_type="text/markdown")(lambda: WORKFLOW)
+    for topic in TOPICS:
+        built.resource(topic.uri, name=topic.name, mime_type="text/markdown")(_served(topic.text))
     offered = TOOLS if allow_destructive is False else registered_tools()
     if allow_destructive is True:
         offered = TOOLS + DESTRUCTIVE_TOOLS
@@ -267,6 +251,10 @@ def build_server(*, allow_destructive: bool | None = None) -> MCPServer:
         )(guarded(tool))
     _forbid_unknown_arguments(built)
     return built
+
+
+def _served(text: str) -> Callable[[], str]:
+    return lambda: text
 
 
 def _forbid_unknown_arguments(built: MCPServer) -> None:

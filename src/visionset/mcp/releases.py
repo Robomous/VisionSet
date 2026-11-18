@@ -188,44 +188,17 @@ def check_export(
 ) -> shapes.ExportCompatibility | Refusal:
     """Say what a target or a format would drop from a release, without writing anything.
 
-    Call this before `export_release` when the answer matters. It reads the
-    release's frozen manifest and judges every class in it against what the
-    format declares it can write, so the numbers are exact rather than estimated.
+    Call this before `export_release` when the answer matters. It reads the release's
+    frozen manifest, so the numbers are exact. Exactly one of `target` and `format`;
+    a target narrows its format to the geometries its trainer has a task for.
 
-    Exactly one of `target` and `format`. A target narrows its format to the
-    geometries its trainer has a task for, so `target="yolov10"` can report a
-    polygon class `dropped` where `format="ultralytics"` reports it `supported`;
-    `target` on the report names which question it answers. Both or neither is
-    refused.
+    Each class gets a `status`: `supported`, `dropped` (absent from the output,
+    counted by `excluded_annotations`) or `degraded` (written reduced, e.g. a polygon
+    as its bounding box, counted by `degraded_annotations`). `compatible` true means
+    nothing is lost and `export_release` needs no `allow_lossy`. `recipe` also checks
+    what the export would refuse for that pre-processing recipe.
 
-    Every class gets a `status`, and there are three of them. `supported` is
-    written as it stands. `dropped` is **not in the output at all** —
-    `excluded_annotations` counts those labels and `excluded_assets` how many
-    assets arrive with at least one of them missing. `degraded` is **in the
-    output, reduced**: a polygon written as its axis-aligned bounding box, which
-    is what `yolov5-yaml` and `voc` do, counted by `degraded_annotations` and
-    `degraded_assets`. Read `reason` for the sentence that says which.
-
-    `compatible` true means this format loses nothing from this release, and
-    `export_release` will run without `allow_lossy`. False means it will refuse
-    until you pass it — and the same report comes back with that refusal and is
-    written into the export directory as `visionset-export-report.json`, so
-    calling this first is a convenience, never a requirement.
-
-    A class with zero annotations never makes a release incompatible, whatever
-    its status: a schema that declares `polyline` and holds no polylines loses nothing.
-    Those rows are still listed, with their zeros, because "this format cannot
-    write polylines and you have none" is worth being able to read.
-
-    `compatible` is not the same question as a format's `lossy` flag in
-    `list_formats`. That flag covers everything a geometry list cannot see —
-    attributes, confidence, provenance — and is true of the format forever;
-    this is about the labels this release actually holds.
-
-    `recipe` names a pre-processing recipe of the project, and the check then
-    also refuses what `export_release` would refuse for it: augmentation over a
-    release published without a split, or a step that cannot move a geometry
-    the release carries. The report itself is unchanged by a recipe.
+    Details: visionset://export
     """
     if (target is None) == (format is None):
         return refused("give exactly one of target and format")
@@ -274,50 +247,20 @@ def export_release(
 ) -> shapes.ExportResult | Refusal:
     """Write a release to a local directory, for a target or in one of the installed formats.
 
-    Blocks until the export finishes and returns a description of what landed —
-    the bytes stay on disk, which is the point: whatever trains on this reads the
-    directory, not this call's answer.
+    Blocks until the export finishes and returns what landed; the bytes stay on disk.
+    Exactly one of `target` (the model the release will train; `list_export_targets`)
+    and `format`. `dest` must be an absolute path outside the workspace, missing or an
+    empty directory, else `EXPORT_DESTINATION_REFUSED`; a non-empty one is refused
+    with `EXPORT_DESTINATION_NOT_EMPTY` unless `allow_non_empty=true`.
 
-    Exactly one of `target` and `format`. A target is the model the release will
-    train — `list_export_targets` names them — and resolves to the format that
-    writes for it; the export then carries only the geometries that trainer has
-    a task for, and the report names the target. A format addresses no trainer.
-    Both or neither is refused.
+    Every image is checked against its content hash first; a missing or altered one
+    refuses with `EXPORT_SOURCE_UNREADABLE` (`verify_release` says which). A format
+    that cannot carry everything the release holds refuses until `allow_lossy=true`;
+    call `check_export` for the numbers. `recipe` applies a pre-processing recipe
+    (`list_preprocessing_recipes`) and writes augmented variants for the train fold.
+    A report is written to `dest` as `visionset-export-report.json`.
 
-    `dest` must be an absolute path outside the workspace, and either missing or
-    an empty directory; it is created if missing. Anything else is refused with
-    `EXPORT_DESTINATION_REFUSED` — a relative or `~` path, the workspace or a
-    directory inside or above it, a file, or a directory that cannot be created.
-    A directory that already holds files is refused with
-    `EXPORT_DESTINATION_NOT_EMPTY` unless `allow_non_empty=true`, and is never
-    emptied: its files are then counted in `file_count` and `total_bytes`.
-
-    Every image the release names is checked against its content hash before
-    anything is written; a missing or altered one refuses the export with
-    `EXPORT_SOURCE_UNREADABLE` — `verify_release` says which.
-
-    A format that cannot express everything the release holds — one that carries
-    boxes but not polygons, say — refuses until you pass `allow_lossy=true`. That
-    is a different gate from `confirm`: nothing is destroyed, the release stays
-    exactly as it was, and what you are consenting to is an incomplete copy. Two
-    things trigger it: a format that declares itself lossy, and a format whose
-    declared capabilities cannot carry a class this release actually uses. Call
-    `check_export` for the exact numbers before deciding, or read the same report
-    off the refusal.
-
-    Every successful export also writes `visionset-export-report.json` into
-    `dest`, saying what was and was not carried. It is the kernel's file, not the
-    format's, and it is excluded from `file_count`.
-
-    `recipe` applies one of the project's pre-processing recipes — see
-    `list_preprocessing_recipes`: every image is resized as the recipe says and
-    augmented variants are written for the train fold, named `<hash>-aug<k>`
-    beside their source. The result separates `source_file_count` from
-    `augmented_file_count`, and `preprocessing` carries the recipe as it ran,
-    its hash, the Pillow version and a file-to-source mapping; the report on
-    disk carries the same. An augmenting recipe refuses a release published
-    without a split, and a step refuses a geometry it cannot move — call
-    `check_export` with the same `recipe` to find out first.
+    Details: visionset://export
     """
     if (target is None) == (format is None):
         return refused("give exactly one of target and format")

@@ -193,8 +193,8 @@ def compare_schema_versions(
 
     The sibling of `preview_schema_change`, asked about two versions that already
     exist rather than about classes you are proposing. Both return the same
-    classification, so read that tool's description for what additive and
-    destructive mean.
+    classification; visionset://schema-changes says what additive and destructive
+    mean.
 
     The caller this exists for is `repin_batch`. A batch is judged against the
     version it pinned at approval, so before moving that pin, compare the pinned
@@ -214,32 +214,18 @@ def compare_schema_versions(
 def preview_schema_change(project: ProjectRef, classes: ClassesParam) -> shapes.SchemaChangePreview:
     """Say what applying these classes would change, without applying anything.
 
-    Writes nothing. Use it before `create_schema_version` whenever you are
-    changing an existing schema rather than creating the first one — it is the
-    only way to find out that a change is destructive without attempting it.
+    Writes nothing. Use it before `create_schema_version` whenever you are changing an
+    existing schema; it is the only way to learn a change is destructive without
+    attempting it. Every class in `classes` must carry a non-empty `geometries` list.
 
-    `diff.is_destructive` true means the proposal narrows the contract: a class or
-    an attribute is gone, or a class lost one of its geometries.
-    `diff.destructive_classes` names them, and applying it then needs
-    `allow_destructive=true`. Adding classes, optional attributes, or another
-    geometry to a class is additive and needs no flag.
+    `diff.is_destructive` true means the change narrows the contract
+    (`diff.destructive_classes`) and applying it needs `allow_destructive=true`.
+    `is_refused` true means annotations exist under a class you drop, so
+    `create_schema_version` refuses however you call it: do not retry with
+    `allow_destructive`. `blockers` counts them and `list_blocking_assets` pages the
+    assets. Advisory only: nothing is locked.
 
-    **`is_refused` is the answer no flag changes.** True means annotations already
-    exist under a class this proposal drops, so `create_schema_version` refuses
-    outright however you call it; `blockers` names each such class with how many
-    annotations and how many assets it carries. Do not retry with
-    `allow_destructive=true` — that flag answers a different refusal, and retrying
-    is a loop. Either keep the class, or delete the annotations `blockers` counts
-    and preview again. `list_blocking_assets` pages through the assets that carry them.
-
-    Advisory: nothing is locked. Somebody can label a class between this call and
-    the publish, in which case the publish refuses and that refusal is the
-    authoritative one.
-
-    Each entry of `classes` must carry `geometries`, a non-empty list of declared
-    geometry types — a class may be labeled as more than one shape. Matching
-    against the current version is by exact class name, so renaming a class reads
-    here as one removal plus one addition.
+    Details: visionset://schema-changes
     """
     with opened_workspace() as workspace:
         resolved = ProjectService(workspace).resolve(project)

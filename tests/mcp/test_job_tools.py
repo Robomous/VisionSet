@@ -466,3 +466,14 @@ def test_an_asset_that_is_not_in_the_job_is_refused(
         call("set_asset_progress", job_id=job_id, asset_id=str(uuid4()), progress="skipped")
     )
     assert refusal["message"]
+
+
+def test_a_pending_job_is_not_offered_a_start_this_surface_has_no_tool_for(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, batch_id, job_id = open_batch(monkeypatch, tmp_path)
+    job = payload(call("get_job", job_id=job_id))
+    assert job["state"] == "pending"
+    assert job["allowed_actions"] == ["pre_label"]
+    in_batch = payload(call("get_batch", batch_id=batch_id))["jobs"][0]
+    assert "start" not in in_batch["allowed_actions"]

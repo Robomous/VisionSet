@@ -35,6 +35,7 @@ from visionset.kernel.domain import (
 )
 from visionset.kernel.services import DatasetService, ProjectService, WorkspaceService
 from visionset.mcp import _progress
+from visionset.mcp.main import ALLOW_DESTRUCTIVE_ENV
 
 
 def test_a_freshly_ingested_batch_is_a_draft_with_no_jobs_and_no_pin(
@@ -1409,3 +1410,18 @@ def test_a_notification_that_cannot_be_sent_does_not_fail_the_run(
     assert heard == []
     assert attempts == [1]
     assert payload(call("get_batch", batch_id=batch_id))["progress"]["pre_labeled"] == 2
+
+
+def test_batch_delete_is_listed_only_when_delete_batch_is_registered(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    project, batch_id = ingested(monkeypatch, tmp_path)
+
+    def offered() -> tuple[list[str], list[str]]:
+        one = payload(call("get_batch", batch_id=batch_id))["allowed_actions"]
+        many = payload(call("list_batches", project=project))["items"][0]["allowed_actions"]
+        return one, many
+
+    assert all("delete" not in actions for actions in offered())
+    monkeypatch.setenv(ALLOW_DESTRUCTIVE_ENV, "1")
+    assert all("delete" in actions for actions in offered())
