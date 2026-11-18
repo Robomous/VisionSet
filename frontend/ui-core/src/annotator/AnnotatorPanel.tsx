@@ -90,6 +90,7 @@ import { classColor } from "../palette";
 import { Badge, Button, DropdownMenu, DropdownMenuTrigger, Input, Tooltip, TooltipContent, TooltipTrigger, cn } from "@robomous/ui-core";
 import { ClassRegion } from "./ClassRegion";
 import { ReassignMenu } from "./ReassignMenu";
+import { VertexRegion } from "./VertexRegion";
 
 export interface AnnotatorPanelProps {
   readonly store: AnnotatorStore;
@@ -165,6 +166,11 @@ export function AnnotatorPanel({
     .filter((row) => row.annotation.label_class.toLowerCase().includes(query));
 
   const allHidden = drawn.length > 0 && drawn.every((one) => hiddenIds.has(one.id));
+
+  const lane =
+    snapshot.selection.size === 1
+      ? drawn.find((one) => snapshot.selection.has(one.id) && one.geometry.type === "polyline")
+      : undefined;
 
   function toggleHidden(id: string): void {
     const next = new Set(hiddenIds);
@@ -321,6 +327,15 @@ export function AnnotatorPanel({
           </ul>
         )}
       </div>
+
+      {lane !== undefined && lane.geometry.type === "polyline" && (
+        <VertexRegion
+          store={store}
+          annotationId={lane.id}
+          geometry={lane.geometry}
+          readOnly={readOnly}
+        />
+      )}
       </div>
     </section>
   );

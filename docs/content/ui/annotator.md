@@ -213,6 +213,23 @@ rendered, because a control that appears once a list is long enough is a control
 finds; then the object rows: meta-size `N. class`, selected = accent border + tint, hidden
 = 50% opacity, per-row tag / eye / trash as small ghost icon buttons.
 
+**Vertices, under the object rows, while exactly one polyline is selected.** A vertex has no
+selection of its own and every canvas gesture on one is already taken, so this is where a
+vertex is marked occluded. Header — the word `Vertices` and the occluded count, or
+`Not recorded` while the lane carries no visibility — then one toggle per vertex, numbered in
+point order, pressed (`aria-pressed`) when occluded. Each press is one undoable edit. In the
+read-only mode the toggles stay, **disabled rather than hidden**: what is recorded is still
+worth reading there.
+
+**Unknown stays unknown until somebody says.** A polyline loaded without `visibility` holds it
+as unknown, and saving it untouched sends no `visibility` key — so nothing is written that
+nobody judged. The first toggle records the whole list: the pressed vertex `occluded`, every
+other vertex `unlabeled`; clearing a mark records `visible`, since a person just looked at it.
+A newly drawn polyline records every vertex `visible`. Edits keep the list aligned with the
+points: a moved lane or vertex keeps it, an inserted vertex takes the state of the vertex
+before it — so a vertex added inside an occluded run stays occluded — and a deleted vertex
+takes its own state with it.
+
 The split between the regions is a **hairline, not a handle** — a draggable splitter would
 add per-user state to a surface whose whole value is being the same on every frame. The two
 regions' selected treatments are deliberately different — a class row is a left accent rule

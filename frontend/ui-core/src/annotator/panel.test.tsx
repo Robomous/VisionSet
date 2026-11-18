@@ -727,3 +727,54 @@ describe("what a model produced, on the row a reviewer accepts it from", () => {
     expect(screen.getByTestId("object-row-1").textContent).not.toContain("41");
   });
 });
+
+describe("the selected lane's vertices", () => {
+  function laneStore(): AnnotatorStore {
+    const store = storeWith([
+      annotation("a", "vehicle", "bbox"),
+      annotation("b", "centerline", "polyline"),
+    ]);
+    store.select(selectOnly("b"));
+    return store;
+  }
+
+  it("is absent until exactly one lane is selected", () => {
+    const store = storeWith([annotation("a", "vehicle", "bbox")]);
+    store.select(selectOnly("a"));
+    render(mount(store));
+    expect(screen.queryByTestId("vertex-region")).toBeNull();
+  });
+
+  it("lists one toggle per vertex, none pressed while nothing is recorded", () => {
+    render(mount(laneStore()));
+    expect(screen.getByTestId("vertex-occluded-count").textContent).toBe("Not recorded");
+    const toggles = within(screen.getByTestId("vertex-region")).getAllByRole("button");
+    expect(toggles).toHaveLength(3);
+    expect(toggles.map((one) => one.getAttribute("aria-pressed"))).toEqual(["false", "false", "false"]);
+    expect(screen.getByRole("button", { name: "Vertex 2 occluded" })).toBe(toggles[1]);
+  });
+
+  it("marks a vertex occluded from the keyboard, as one undoable edit", async () => {
+    const store = laneStore();
+    render(mount(store));
+    screen.getByTestId("vertex-toggle-1").focus();
+    await userEvent.keyboard(" ");
+
+    expect(screen.getByTestId("vertex-toggle-1").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("vertex-occluded-count").textContent).toBe("1 occluded");
+    const geometry = store.document.annotations.get("b")?.geometry;
+    expect(geometry).toMatchObject({ visibility: [0, 1, 0] });
+
+    await userEvent.click(screen.getByTestId("vertex-toggle-1"));
+    expect(store.document.annotations.get("b")?.geometry).toMatchObject({ visibility: [0, 2, 0] });
+    store.undo();
+    expect(store.document.annotations.get("b")?.geometry).toMatchObject({ visibility: [0, 1, 0] });
+  });
+
+  it("is disabled, not hidden, in the read-only mode", () => {
+    render(mount(laneStore(), { readOnly: true }));
+    const toggles = within(screen.getByTestId("vertex-region")).getAllByRole("button");
+    expect(toggles).toHaveLength(3);
+    for (const toggle of toggles) expect(toggle).toHaveProperty("disabled", true);
+  });
+});
