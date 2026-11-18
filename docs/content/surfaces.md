@@ -39,6 +39,21 @@ what each one exposes. This page says, step by step, which surface can do what.
 surface, and a dash means the step does not exist on that surface. The CLI and MCP columns name the command or tool. [cli.md](cli.md) and
 [mcp-tools.md](mcp-tools.md) are the complete listings.
 
+## Scope for 0.0.1: intended limits
+
+The gaps in the table above are decisions, not omissions awaiting a release. Each one follows from
+a rule the architecture states, and none is planned for 0.0.1. Reopening one is a product decision
+of its own, not a bug fix.
+
+| Gap | Why it is a limit | What to do instead |
+| --- | --- | --- |
+| **No video import from the CLI or MCP.** No fps, clip range or downscale option exists on either. | Nothing in the server process decodes video; a clip is demuxed and decoded in the browser, so its provenance (`frame_index`, `frame_timestamp`) is recorded by the one place that has the clip. | Import the clip in the browser. A script can drive the REST video-import session, but it must cut the frames itself. Frames extracted elsewhere and ingested as stills carry no video provenance. |
+| **No media upload over MCP.** `ingest` reads a directory on the machine the server runs on, top level only. | A stdio tool call carries JSON, not a file; media is a bulk transfer that REST (`multipart` upload, then an ingest job) already does. | Put the media on the server's machine, or upload over REST or the browser. |
+| **The CLI cannot create, edit or delete annotations.** | Drawing a label is an interactive judgement. `job mark` records progress only; annotation is a browser, REST or MCP step, or a model's with `pre-label`. | Use the browser, REST or MCP. |
+| **Workspace creation and API tokens are CLI-only.** | They act on the machine's own files and credentials, so there is no remote tool to call. | `visionset init`, `visionset token ...`. |
+| **MCP does not offer** a job assignee, project rename, dataset curation, release manifest and assignment reads, point-click suggestions, or background-job tracking. | Each is either a person's judgement, a read too large to hand an agent, or work a browser follows. [mcp.md](mcp.md#what-is-not-here-and-why) gives the reasoning per tool. | The REST route named there. |
+| **MCP asset listings carry no original filename.** | An asset is identified by its id and content hash; the name it arrived under is not part of its identity. | Identify an asset by `asset_id`. |
+
 ## An agent's quickstart
 
 Pick the surface your client speaks. Both run the same cycle.
