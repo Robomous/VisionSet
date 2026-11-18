@@ -46,7 +46,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { inflateRawSync } from "node:zlib";
 
-import { saveNow } from "../e2e/_frame";
+import { focusCanvas, saveNow } from "../e2e/_frame";
 import { emptyWorkspace } from "./_workspace";
 
 const CYCLE_DIR = process.env["VISIONSET_CYCLE_DIR"] ?? "";
@@ -887,6 +887,37 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // Back to select, so the rest of the walk starts where it used to.
     await page.getByTestId("tool-select").click();
 
+    // 3d — a person marks the lane's middle vertex occluded, saves, and the mark
+    // survives a reload: the visibility went to the server and came back, rather
+    // than living in the browser's document. The release exported further down
+    // carries it into OpenLane 2D.
+    await page.getByTestId("object-select-0").click();
+    await expect(page.getByTestId("vertex-occluded-count")).toHaveText("Not recorded");
+    await page.getByTestId("vertex-toggle-1").focus();
+    await page.keyboard.press("Space");
+    await expect(page.getByTestId("vertex-toggle-1")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator('[data-annotation-id] polyline[data-occluded="true"]')).toHaveCount(1);
+    await saveNow(page);
+    await expect(page.getByTestId("save-state")).toContainText("Saved");
+
+    await page.reload();
+    await expect(page.getByTestId("annotation-page")).toBeVisible();
+    await expect(page.locator('[data-annotation-id] polyline[data-occluded="true"]')).toHaveCount(1);
+    await page.getByTestId("object-select-0").click();
+    await expect(page.getByTestId("vertex-toggle-1")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("vertex-occluded-count")).toHaveText("1 occluded");
+    const stored = await page.request.get(`${origin}/jobs/${jobId}/assets/${assetId}/annotations`, {
+      headers: { Authorization: `Bearer ${token()}` },
+    });
+    expect(stored.status()).toBe(200);
+    const lane = (await stored.json()).items.find(
+      (one: { geometry: { type: string } }) => one.geometry.type === "polyline",
+    );
+    expect(lane.geometry.visibility).toEqual([0, 1, 0]);
+    await focusCanvas(page);
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("vertex-region")).toHaveCount(0);
+
     /*
      * 3a-bis — #381: **a version published anywhere moves this batch's pin, and
      * nobody presses re-pin.**
@@ -1656,6 +1687,37 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("dataset-tab-preprocessing")).toContainText("0");
   });
 
+  await test.step("export for openlane-2d, and find the occluded vertex in the archive", async () => {
+    // The one lane format with a per-point slot, so the mark set in the editor
+    // at 3d is read back out of the bytes the browser saved: OpenLane writes
+    // occluded as 0 and everything else as 1.
+    await page.getByTestId("dataset-tab-releases").click();
+    await page.getByTestId(`export-${TAG}`).click();
+    await page.getByTestId("export-target").click();
+    await page.getByRole("option", { name: /openlane-2d/ }).click();
+
+    // Everything but the lane is dropped, so the consent question comes first.
+    // Its list names every class this target drops, which grows the dialog past
+    // a 900px viewport with no scroll, so the checkbox and the submit are reached
+    // by keyboard rather than by a pointer that cannot get to them.
+    await page.getByTestId("export-submit").click();
+    const consent = page.getByTestId("lossy-consent");
+    await expect(consent).toContainText("openlane-2d accepts polylines only");
+    const checkbox = consent.getByTestId("lossy-checkbox");
+    await checkbox.focus();
+    await page.keyboard.press("Space");
+    await expect(checkbox).toBeChecked();
+
+    await page.getByTestId("export-submit").focus();
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.keyboard.press("Enter"),
+    ]);
+    await expectOpenLaneArchive(download);
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("export-dialog")).toHaveCount(0);
+  });
+
   await test.step("edit the connection, and watch the row answer for it", async () => {
     /*
      * A stub cannot referee this body, because it is written by whoever wrote
@@ -1770,13 +1832,13 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * wherever it is present. `curatedSizeRefused` carries what the form rendered,
      * so the expectation follows the installation instead of guessing at it.
      *
-     * The last two entries are the export's own 409, once per export: each
-     * first launch is addressed to `yolo11` without `allow_lossy`, and the
-     * release holds a polyline that target drops, so the refusal is the
-     * consent question itself — the one refusal in the walk a person is meant
-     * to see. Exactly one per export, because the retry carries the flag; the
-     * second export names a recipe, which changes nothing about what the
-     * target drops and so asks the same question again.
+     * The last three entries are the export's own 409, once per export: each
+     * first launch is made without `allow_lossy` — two to `yolo11`, which drops
+     * the release's polyline, and one to `openlane-2d`, which keeps only the
+     * polyline — so the refusal is the consent question itself, the one refusal
+     * in the walk a person is meant to see. Exactly one per export, because the
+     * retry carries the flag; the second export names a recipe, which changes
+     * nothing about what the target drops and so asks the same question again.
      *
      * Anything else — a route that starts refusing, a 404 that becomes a 500, a
      * second refusal from a route allowed one — fails here with its method, its
@@ -1796,6 +1858,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
       ...(curatedSizeRefused ? ["GET /inference/download-size 500"] : []),
       expect.stringMatching(annotationDraft),
       expect.stringMatching(annotationDraft),
+      expect.stringMatching(lossyLaunch),
       expect.stringMatching(lossyLaunch),
       expect.stringMatching(lossyLaunch),
     ]);
@@ -1979,6 +2042,26 @@ async function expectRecipeArchive(download: Download): Promise<void> {
   }
   expect([...entries.keys()].filter((name) => /^labels\/train\/[0-9a-f]{64}-aug1\.txt$/.test(name)))
     .toHaveLength(2);
+}
+
+/** The OpenLane 2D archive: the lane's middle vertex, occluded at 3d, is written 0. */
+async function expectOpenLaneArchive(download: Download): Promise<void> {
+  expect(download.suggestedFilename()).toBe(`${TAG}-openlane-2d.zip`);
+  const saved = await download.path();
+  expect(saved).not.toBeNull();
+  const archive = readFileSync(saved as string);
+  const labels = [...zipEntries(archive).keys()].filter((name) => /^labels\/.+\.json$/.test(name));
+  expect(labels.length).toBeGreaterThan(0);
+  const lines = labels.flatMap(
+    (name) =>
+      JSON.parse(zipEntry(archive, name).toString("utf8")).lane_lines as {
+        uv: number[][];
+        visibility: number[];
+      }[],
+  );
+  expect(lines).toHaveLength(1);
+  expect(lines[0].uv).toHaveLength(3);
+  expect(lines[0].visibility).toEqual([1, 0, 1]);
 }
 
 /** Where an entry's bytes are in a zip, and how they were written. */
