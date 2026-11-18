@@ -197,6 +197,115 @@ def test_a_polyline_lands_under_the_class_that_declares_one(
     assert written["points"] == [[0.0, 0.0], [4.0, 8.0], [9.0, 20.0]]
 
 
+PATH = [[0.0, 0.0], [4.0, 8.0], [9.0, 20.0]]
+
+
+def _write_lane(client: TestClient, job_id: str, asset_id: str, **geometry: object) -> dict:
+    response = client.post(
+        f"/jobs/{job_id}/annotations",
+        json=[
+            a_box(
+                asset_id,
+                label_class="centerline",
+                geometry={"type": "polyline", "points": PATH, **geometry},
+                attributes={},
+            )
+        ],
+    )
+    assert response.status_code == 201, response.text
+    written: dict = response.json()["items"][0]
+    return written
+
+
+def test_a_polyline_keeps_its_per_vertex_visibility(
+    client: TestClient, working: tuple[str, str], assets: list[str]
+) -> None:
+    _, job_id = working
+    written = _write_lane(client, job_id, assets[0], visibility=[2, 1, 0])
+    assert written["geometry"]["visibility"] == [2, 1, 0]
+    assert stored(client, job_id, assets[0])[0]["geometry"]["visibility"] == [2, 1, 0]
+
+
+def test_a_polyline_without_visibility_answers_without_the_key(
+    client: TestClient, working: tuple[str, str], assets: list[str]
+) -> None:
+    """Unknown is absent, not null and not all-visible."""
+    _, job_id = working
+    written = _write_lane(client, job_id, assets[0])
+    assert "visibility" not in written["geometry"]
+
+
+@pytest.mark.parametrize("visibility", [[2, 1], [2, 1, 0, 2]])
+def test_a_visibility_that_does_not_match_the_points_is_422(
+    client: TestClient, working: tuple[str, str], assets: list[str], visibility: list[int]
+) -> None:
+    _, job_id = working
+    response = client.post(
+        f"/jobs/{job_id}/annotations",
+        json=[
+            a_box(
+                assets[0],
+                label_class="centerline",
+                geometry={"type": "polyline", "points": PATH, "visibility": visibility},
+                attributes={},
+            )
+        ],
+    )
+    assert response.status_code == 422
+    assert response.json()["code"] == "VALIDATION_ERROR"
+    assert "one state per point" in response.text
+
+
+def test_an_update_whose_visibility_no_longer_matches_the_points_is_refused(
+    client: TestClient, working: tuple[str, str], assets: list[str]
+) -> None:
+    """A whole-geometry replace is never patched up to fit: the caller sends both or neither."""
+    _, job_id = working
+    written = _write_lane(client, job_id, assets[0], visibility=[2, 1, 0])
+
+    response = client.patch(
+        f"/jobs/{job_id}/annotations",
+        json=[
+            {
+                "id": written["id"],
+                "label_class": "centerline",
+                "geometry": {
+                    "type": "polyline",
+                    "points": [*PATH, [12.0, 30.0]],
+                    "visibility": [2, 1, 0],
+                },
+                "provenance": "human",
+            }
+        ],
+    )
+
+    assert response.status_code == 422
+    assert stored(client, job_id, assets[0])[0]["geometry"]["visibility"] == [2, 1, 0]
+
+
+def test_an_update_that_omits_visibility_clears_it(
+    client: TestClient, working: tuple[str, str], assets: list[str]
+) -> None:
+    _, job_id = working
+    written = _write_lane(client, job_id, assets[0], visibility=[2, 1, 0])
+
+    response = client.patch(
+        f"/jobs/{job_id}/annotations",
+        json=[
+            {
+                "id": written["id"],
+                "label_class": "centerline",
+                "geometry": {"type": "polyline", "points": PATH},
+                "provenance": "human",
+            }
+        ],
+    )
+
+    assert response.status_code == 200
+    assert "visibility" not in response.json()["items"][0]["geometry"]
+    assert "visibility" not in stored(client, job_id, assets[0])[0]["geometry"]
+
+
 def test_a_polyline_may_not_be_written_under_a_polygon_class(
     client: TestClient, working: tuple[str, str], assets: list[str]
 ) -> None:

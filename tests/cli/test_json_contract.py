@@ -48,6 +48,8 @@ from tests.fixtures.samples import (
     INGEST_JOB,
     JOB,
     POLYGON,
+    POLYLINE,
+    POLYLINE_WITH_VISIBILITY,
     PREPROCESSING_PREVIEW,
     PREPROCESSING_RECIPE,
     PROJECT,
@@ -79,6 +81,7 @@ from visionset.kernel.domain import (
     AssetProgress,
     BackgroundJobState,
     GeometryType,
+    PolylineGeometry,
     PreLabelRun,
 )
 from visionset.server import models
@@ -194,6 +197,9 @@ PAIRS: list[tuple[str, Mapping[str, Any], type[BaseModel]]] = [
     ("annotation", wire.annotation(ANNOTATION), models.AnnotationOut),
     ("geometry_bbox", wire.geometry(BBOX), models.BboxBody),
     ("geometry_polygon", wire.geometry(POLYGON), models.PolygonBody),
+    # With visibility, so the key-set parity below sees every field; the polyline
+    # that omits it is pinned by its own test.
+    ("geometry_polyline", wire.geometry(POLYLINE_WITH_VISIBILITY), models.PolylineBody),
     ("geometry_classification", wire.geometry(CLASSIFICATION), models.ClassificationBody),
     ("dataset_stats", wire.dataset_stats(DATASET_STATS), models.DatasetStatsOut),
     ("class_count", wire.class_count(DATASET_STATS.per_class[0]), models.ClassCountOut),
@@ -265,6 +271,19 @@ def test_the_wire_model_accepts_the_projection_verbatim(
 @pytest.mark.parametrize("payload", [p for _, p, _ in PAIRS], ids=IDS)
 def test_the_projection_serializes_with_no_default_encoder(payload: Mapping[str, Any]) -> None:
     json.dumps(payload)
+
+
+@pytest.mark.parametrize("geometry", [POLYLINE, POLYLINE_WITH_VISIBILITY])
+def test_a_polyline_projects_exactly_as_the_wire_model_serializes_it(
+    geometry: PolylineGeometry,
+) -> None:
+    assert wire.geometry(geometry) == models.PolylineBody.of(geometry).model_dump(mode="json")
+
+
+def test_unknown_visibility_is_absent_from_the_projection_not_null() -> None:
+    assert "visibility" not in wire.geometry(POLYLINE)
+    TypeAdapter(shapes.Geometry).validate_python(wire.geometry(POLYLINE))
+    assert wire.geometry(POLYLINE_WITH_VISIBILITY)["visibility"] == [2, 1, 0]  # type: ignore[typeddict-item]
 
 
 # --- the envelope ------------------------------------------------------------
@@ -375,6 +394,7 @@ SHAPES: dict[str, Any] = {
     "annotation": shapes.Annotation,
     "geometry_bbox": shapes.Geometry,
     "geometry_polygon": shapes.Geometry,
+    "geometry_polyline": shapes.Geometry,
     "geometry_classification": shapes.Geometry,
     "dataset_stats": shapes.DatasetStats,
     "class_count": shapes.ClassCount,

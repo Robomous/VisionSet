@@ -48,7 +48,7 @@ interface JsonSchema {
   readonly prefixItems?: readonly JsonSchema[];
   readonly anyOf?: readonly JsonSchema[];
   readonly oneOf?: readonly JsonSchema[];
-  readonly enum?: readonly string[];
+  readonly enum?: readonly (string | number)[];
   readonly const?: string;
   readonly additionalProperties?: JsonSchema | boolean;
   readonly default?: unknown;
@@ -79,7 +79,7 @@ function conforms(schema: JsonSchema, value: unknown): boolean {
     // argued in `./check.ts`. Read off the contract, not off the generator: an oracle that
     // learned this from the code it is checking would agree with it by construction.
     if (node["x-visionset-open"] === true) return typeof value === "string";
-    return typeof value === "string" && node.enum.includes(value);
+    return (typeof value === "string" || typeof value === "number") && node.enum.includes(value);
   }
 
   const branches = node.oneOf ?? node.anyOf;

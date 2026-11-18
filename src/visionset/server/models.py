@@ -46,6 +46,7 @@ from uuid import UUID, uuid4
 
 from fastapi import Query
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
+from pydantic.json_schema import JsonDict, SkipJsonSchema
 
 from visionset.inference import (
     DEFAULT_MINIMUM_CONFIDENCE,
@@ -152,6 +153,7 @@ from visionset.kernel.domain import (
     Task,
     TimeRange,
     TransformedAnnotation,
+    VertexVisibility,
     VideoImport,
     VideoImportState,
     VideoMetadata,
@@ -1805,20 +1807,43 @@ class PolygonBody(BaseModel):
         return cls(type=GeometryType.POLYGON, points=list(geometry.points))
 
 
+def _optional_and_absent(schema: JsonDict) -> None:
+    # The field is omitted rather than sent as null, so it must not carry the
+    # `default` the generated client reads as "always present in a response".
+    schema.pop("default", None)
+
+
 class PolylineBody(BaseModel):
-    """An open path of at least two points, in order. Nothing joins the ends."""
+    """An open path of at least two points, in order. Nothing joins the ends.
+
+    `visibility` is one state per point — 0 unlabeled, 1 occluded, 2 visible —
+    or absent when nobody said. A geometry is replaced whole, so an update that
+    leaves it out clears it, and one whose length differs from `points` is refused.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     type: Literal[GeometryType.POLYLINE]
     points: list[tuple[float, float]]
+    visibility: list[VertexVisibility] | SkipJsonSchema[None] = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        json_schema_extra=_optional_and_absent,
+    )
 
     def to_domain(self) -> PolylineGeometry:
-        return PolylineGeometry(points=self.points)
+        return PolylineGeometry(
+            points=self.points,
+            visibility=None if self.visibility is None else tuple(self.visibility),
+        )
 
     @classmethod
     def of(cls, geometry: PolylineGeometry) -> Self:
-        return cls(type=GeometryType.POLYLINE, points=list(geometry.points))
+        return cls(
+            type=GeometryType.POLYLINE,
+            points=list(geometry.points),
+            visibility=None if geometry.visibility is None else list(geometry.visibility),
+        )
 
 
 class ClassificationBody(BaseModel):

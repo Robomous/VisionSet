@@ -377,8 +377,13 @@ export function compile(schema, pointer = "#") {
   }
 
   if (schema.enum !== undefined) {
-    if (!schema.enum.every((member) => typeof member === "string")) {
-      throw new Error(`unsupported non-string enum at ${pointer}`);
+    const strings = schema.enum.every((member) => typeof member === "string");
+    const integers = schema.enum.every((member) => Number.isInteger(member));
+    if (!strings && !integers) {
+      throw new Error(`unsupported enum at ${pointer}: members must be all strings or all integers`);
+    }
+    if (integers && schema[OPEN_MARKER] === true) {
+      throw new Error(`unsupported open integer enum at ${pointer}`);
     }
     const members = schema.enum.map((member) => JSON.stringify(member)).join(", ");
     // A vocabulary the contract declares open tolerates a member this build never saw; a closed

@@ -5,7 +5,7 @@ domain classes it imports. Pydantic derives the JSON Schema an MCP tool publishe
 from these, so they carry no docstrings and every one forbids extra keys.
 """
 
-from typing import Any, Generic, Literal, TypeVar
+from typing import Any, Generic, Literal, NotRequired, TypeVar
 
 from pydantic import ConfigDict, with_config
 from typing_extensions import TypedDict
@@ -317,6 +317,7 @@ class PolygonGeometry(TypedDict):
 class PolylineGeometry(TypedDict):
     type: Literal["polyline"]
     points: list[list[float]]
+    visibility: NotRequired[list[Literal[0, 1, 2]]]
 
 
 @closed

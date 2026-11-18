@@ -162,6 +162,18 @@ test("an open vocabulary compiles to the tolerant combinator, a closed one does 
   assert.equal(compile(closed), 'oneOf(["draft", "approved"] as const)');
 });
 
+test("a closed integer enum compiles to the closed combinator", () => {
+  assert.equal(compile({ type: "integer", enum: [0, 1, 2] }), "oneOf([0, 1, 2] as const)");
+});
+
+test("an enum mixing strings and integers, or an open integer enum, is refused", () => {
+  assert.throws(() => compile({ enum: ["a", 1] }), /all strings or all integers/);
+  assert.throws(
+    () => compile({ type: "integer", enum: [0, 1], "x-visionset-open": true }),
+    /unsupported open integer enum/,
+  );
+});
+
 test("an extension the generator does not know is still refused", () => {
   // The keyword refusal is what stops a permissive check being emitted for something
   // nobody taught this file about. Opening one key must not open the door.

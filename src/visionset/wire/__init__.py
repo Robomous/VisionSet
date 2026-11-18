@@ -53,7 +53,7 @@ import base64
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from datetime import UTC, datetime
-from typing import Any, TypeVar
+from typing import Any, Literal, TypeVar
 from uuid import UUID
 
 # The one import here that is not the kernel's, and it is the same direction as
@@ -120,6 +120,7 @@ from visionset.kernel.domain import (
     Step,
     ThumbnailBackfill,
     TransformedAnnotation,
+    VertexVisibility,
     VideoProvenance,
     WeightDownload,
     asset_actions,
@@ -619,9 +620,25 @@ def geometry(value: Geometry) -> shapes.Geometry:
         case PolygonGeometry():
             return {"type": "polygon", "points": [list(p) for p in value.points]}
         case PolylineGeometry():
-            return {"type": "polyline", "points": [list(p) for p in value.points]}
+            polyline: shapes.PolylineGeometry = {
+                "type": "polyline",
+                "points": [list(p) for p in value.points],
+            }
+            if value.visibility is not None:
+                polyline["visibility"] = [_vertex_visibility(v) for v in value.visibility]
+            return polyline
         case ClassificationGeometry():
             return {"type": "classification_tag"}
+
+
+def _vertex_visibility(value: VertexVisibility) -> Literal[0, 1, 2]:
+    match value:
+        case VertexVisibility.UNLABELED:
+            return 0
+        case VertexVisibility.OCCLUDED:
+            return 1
+        case VertexVisibility.VISIBLE:
+            return 2
 
 
 def annotation(value: Annotation) -> shapes.Annotation:

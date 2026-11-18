@@ -192,12 +192,14 @@ export function lit<V extends string>(expected: V): Check<V> {
   };
 }
 
-/** A closed set of strings — the contract's enums. */
-export function oneOf<V extends string>(allowed: readonly V[]): Check<V> {
-  const permitted = new Set<string>(allowed);
+/** A closed set of strings or integers — the contract's enums. */
+export function oneOf<V extends string | number>(allowed: readonly V[]): Check<V> {
+  const permitted = new Set<unknown>(allowed);
   return (value, at, report): value is V => {
-    if (typeof value === "string" && permitted.has(value)) return true;
-    report(at, allowed.map((option) => `"${option}"`).join(" or "));
+    if ((typeof value === "string" || typeof value === "number") && permitted.has(value)) {
+      return true;
+    }
+    report(at, allowed.map((option) => JSON.stringify(option)).join(" or "));
     return false;
   };
 }
