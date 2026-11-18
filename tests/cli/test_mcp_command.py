@@ -47,6 +47,9 @@ class Spawn:
 
 @pytest.fixture(autouse=True)
 def _no_ambient_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The destructive switch is written by this command too and is read in-process by
+    # `visionset.mcp`, so a leaked `1` changes what later MCP tests are told.
+    monkeypatch.setenv(ALLOW_DESTRUCTIVE_ENV, "")
     # `setenv(..., "")`, never `delenv(..., raising=False)` — the latter records no
     # undo when the variable was already absent, and this command *writes* the
     # variable, so it would leak into every module collected after this one. An
