@@ -154,6 +154,34 @@ mirror rather than a compensation: `tagCommand` on an already-tagged class retur
 command that changes nothing, so a second tag is never *requested*, and `untagCommand`
 still removes every tag of the class.
 
+## A polyline may say which of its vertices are visible
+
+`PolylineGeometry.visibility` is optional per-vertex data: one `VertexVisibility` per point, in
+point order. The three states are COCO keypoint visibility's, with COCO's integers on the wire:
+
+| Value | State | Means |
+| --- | --- | --- |
+| `0` | `unlabeled` | nobody judged this vertex |
+| `1` | `occluded` | judged, and hidden |
+| `2` | `visible` | judged, and seen |
+
+**Absent is its own answer.** A polyline with no `visibility` means nobody said - not "every vertex
+visible" - and the key is **omitted** from every response, stored row and release manifest rather
+than written as `null`. That is what keeps a polyline without it byte-identical to one stored
+before the field existed, so no manifest hash moved (see
+[releases](releases.md#the-manifests-own-format-version)).
+
+**The length must match `points`.** A list naming more or fewer states than there are points is
+refused when the geometry is built - a 422 `VALIDATION_ERROR` over REST, an input error over MCP -
+and never padded or truncated to fit. An update replaces the geometry whole, so it is the caller's
+to send both lists together: an update that moves a point keeps whatever `visibility` it sends, an
+update that adds a point without extending `visibility` is refused, and an update that omits
+`visibility` clears it.
+
+Pre-processing keeps it aligned: a resize, a flip or a quarter turn moves the points and carries
+the list unchanged, since none of them reorders the vertices. Of the export formats only
+`openlane-2d` has a per-vertex slot; see [releases](releases.md#the-lane-formats).
+
 ## Provenance is the model's own rule, not the service's
 
 There is no `InvalidProvenance`. `provenance="model"` requiring a `model_ref`, and `confidence`

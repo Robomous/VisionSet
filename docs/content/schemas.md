@@ -231,7 +231,9 @@ union in #223 so that lane datasets work — the SDK, the REST API and MCP all a
 `visionset.formats.lanes` exports five lane formats from it — and its interactive drawing
 tool followed in #342, so a lane is drawn, hit-tested and edited on the canvas like any other
 shape. A polyline class is an ordinary class whichever way it is filled in: by hand, by a
-script, or by an agent with a person checking.
+script, or by an agent with a person checking. A polyline may also record per-vertex
+visibility (#352) - the schema declares nothing extra for it; see
+[annotations](annotations.md#a-polyline-may-say-which-of-its-vertices-are-visible).
 
 **`classification_tag` now has an export path too.** It could always be declared and labelled,
 but until `visionset.formats.classification` existed there was nowhere for it to go on export —
