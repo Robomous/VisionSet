@@ -113,9 +113,8 @@ describe("StaticAnnotationOverlay", () => {
     const runs = [...screen.getByTestId("preview-shape-centerline").querySelectorAll("polyline")];
     expect(runs.map((run) => run.getAttribute("data-occluded"))).toEqual([null, "true"]);
     expect(runs[0].style.strokeDasharray).toBe("");
-    expect(runs[1].style.strokeDasharray).toContain("--vs-occluded-dash");
+    expect(runs[1].style.strokeDasharray).toContain("var(--vs-stroke)");
     expect(runs[1].getAttribute("points")).toBe("10,0 20,0 30,0");
-    expect(screen.getByTestId("preview-overlay").style.getPropertyValue("--vs-occluded-dash")).toBe("4 12");
   });
 
   it("draws an unrecorded lane as the single solid line it always was", () => {

@@ -93,9 +93,12 @@ export const LABEL_LIFT_PX = 4;
 /**
  * An occluded polyline run's dash and gap, in screen pixels: short and widely
  * spaced, so it reads apart from the drawing preview's `6 4` and a suggestion's
- * `10 6`.
+ * `10 6`. Exactly one and three unselected strokes, which is what lets a run
+ * derive it from `--vs-stroke` rather than costing the stage another variable.
  */
-export const OCCLUDED_DASH_PX = [2, 6] as const;
+export const OCCLUDED_DASH_PX = [STROKE_PX, 3 * STROKE_PX] as const;
+
+const OCCLUDED_RUN_DASH = "var(--vs-stroke) calc(var(--vs-stroke) * 3)";
 
 /** `OCCLUDED_DASH_PX` as a `stroke-dasharray`, each length scaled by `perScreenPx`. */
 export function occludedDash(perScreenPx: number): string {
@@ -141,7 +144,6 @@ export function stageScreenSizes(zoom: number): Readonly<Record<string, string>>
   return {
     "--vs-stroke": ratio(STROKE_PX),
     "--vs-stroke-selected": ratio(SELECTED_STROKE_PX),
-    "--vs-occluded-dash": occludedDash(screenPx(1, zoom)),
     "--vs-label-size": length(LABEL_PX),
     "--vs-label-halo": ratio(LABEL_HALO_PX),
     // Negative: the label sits *above* its anchor, and the lift is applied with
@@ -362,7 +364,7 @@ export function PolylineShape({ geometry, color, hot, selected }: {
       strokeLinejoin="round"
       style={{
         strokeWidth: strokeOf(selected),
-        ...(occluded ? { strokeDasharray: `var(--vs-occluded-dash, ${occludedDash(1)})` } : {}),
+        ...(occluded ? { strokeDasharray: OCCLUDED_RUN_DASH } : {}),
       }}
     />
   );

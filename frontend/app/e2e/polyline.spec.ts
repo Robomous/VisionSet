@@ -258,6 +258,14 @@ test("a vertex marked occluded from the keyboard dashes its stretch, and undo ta
   // The middle vertex touches both segments, so the whole lane is one dashed run.
   await expect(layer.locator('polyline[data-occluded="true"]')).toHaveCount(1);
   await expect(layer.locator('circle[data-occluded="true"]')).toHaveCount(1);
+  // The dash is derived from the stage's stroke variable, so ask the browser
+  // whether it resolved rather than trusting the declaration.
+  const dash = await layer
+    .locator('polyline[data-occluded="true"]')
+    .evaluate((run) => getComputedStyle(run).strokeDasharray);
+  const [on, off] = (dash.match(/[\d.]+(?=px)/g) ?? []).map(Number);
+  expect(on).toBeGreaterThan(0);
+  expect(off / on).toBeCloseTo(3, 3);
 
   await focusCanvas(page);
   await page.keyboard.press("ControlOrMeta+z");
