@@ -333,9 +333,9 @@ describe("vertex visibility on the canvas", () => {
     const world = marked();
     const to: Point = [PATH_BODY[0] - 40, PATH_BODY[1] + 20];
     world.send(down(PATH_BODY), move(to), up(to));
-    expect(polylineOf(world.store.document, PATH_ID).visibility).toEqual([1, 0, 0]);
+    expect(polylineOf(world.store.document, PATH_ID).visibility).toEqual([1, 2, 2]);
     world.send(down([460, 320]), move([450, 310]), up([450, 310]));
-    expect(polylineOf(world.store.document, PATH_ID).visibility).toEqual([1, 0, 0]);
+    expect(polylineOf(world.store.document, PATH_ID).visibility).toEqual([1, 2, 2]);
   });
 
   it("gives an inserted vertex the state of the one before it", () => {
@@ -343,12 +343,12 @@ describe("vertex visibility on the canvas", () => {
     world.dispatch(doubleClick([560, 300]));
     const lane = polylineOf(world.store.document, PATH_ID);
     expect(lane.points).toHaveLength(4);
-    expect(lane.visibility).toEqual([1, 1, 0, 0]);
+    expect(lane.visibility).toEqual([1, 1, 2, 2]);
   });
 
   it("drops a deleted vertex's state with it", () => {
     const world = marked();
     world.dispatch(down(PATH_VERTEX, "secondary"));
-    expect(polylineOf(world.store.document, PATH_ID).visibility).toEqual([0, 0]);
+    expect(polylineOf(world.store.document, PATH_ID).visibility).toEqual([2, 2]);
   });
 });
