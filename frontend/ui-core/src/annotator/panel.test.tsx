@@ -763,12 +763,12 @@ describe("the selected lane's vertices", () => {
     expect(screen.getByTestId("vertex-toggle-1").getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByTestId("vertex-occluded-count").textContent).toBe("1 occluded");
     const geometry = store.document.annotations.get("b")?.geometry;
-    expect(geometry).toMatchObject({ visibility: [0, 1, 0] });
+    expect(geometry).toMatchObject({ visibility: [2, 1, 2] });
 
     await userEvent.click(screen.getByTestId("vertex-toggle-1"));
-    expect(store.document.annotations.get("b")?.geometry).toMatchObject({ visibility: [0, 2, 0] });
+    expect(store.document.annotations.get("b")?.geometry).toMatchObject({ visibility: [2, 2, 2] });
     store.undo();
-    expect(store.document.annotations.get("b")?.geometry).toMatchObject({ visibility: [0, 1, 0] });
+    expect(store.document.annotations.get("b")?.geometry).toMatchObject({ visibility: [2, 1, 2] });
   });
 
   it("is disabled, not hidden, in the read-only mode", () => {

@@ -344,8 +344,10 @@ export function removePolylineVertex(
 
 /**
  * Vertex `index` marked occluded or not. A polyline nobody had judged becomes
- * `UNLABELED` everywhere else, because marking one vertex says nothing about the
- * rest; clearing a mark records `VISIBLE`, since a person just looked at it.
+ * `VISIBLE` everywhere else: the person marking one vertex is looking at the
+ * whole lane drawn over the image, and leaving the rest unmarked is the judgement
+ * that they are seen. Clearing a mark records `VISIBLE` for the same reason, so
+ * this never writes `UNLABELED`.
  */
 export function setPolylineVertexOccluded(
   polyline: PolylineGeometry,
@@ -354,7 +356,7 @@ export function setPolylineVertexOccluded(
 ): PolylineGeometry {
   requireIndex(polyline, index);
   const current =
-    polyline.visibility ?? polyline.points.map(() => VERTEX_VISIBILITY.UNLABELED);
+    polyline.visibility ?? polyline.points.map(() => VERTEX_VISIBILITY.VISIBLE);
   const state = occluded ? VERTEX_VISIBILITY.OCCLUDED : VERTEX_VISIBILITY.VISIBLE;
   return {
     type: "polyline",

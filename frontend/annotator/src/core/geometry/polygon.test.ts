@@ -410,13 +410,18 @@ describe("per-vertex visibility follows the points", () => {
     expect(removePolylineVertex(unknown, 0)?.visibility).toBeUndefined();
   });
 
-  it("records a mark on an unknown polyline as unlabeled everywhere else", () => {
+  it("records a mark on an unknown polyline as visible everywhere else", () => {
     const unknown: PolylineGeometry = { ...MARKED, visibility: undefined };
     const marked = setPolylineVertexOccluded(unknown, 2, true);
-    expect(marked.visibility).toEqual([0, 0, 1]);
+    expect(marked.visibility).toEqual([2, 2, 1]);
     expect(isVertexOccluded(marked, 2)).toBe(true);
-    expect(setPolylineVertexOccluded(marked, 2, false).visibility).toEqual([0, 0, 2]);
+    expect(setPolylineVertexOccluded(marked, 2, false).visibility).toEqual([2, 2, 2]);
     expect(() => setPolylineVertexOccluded(unknown, 3, true)).toThrow(RangeError);
+  });
+
+  it("keeps a state it did not touch, unlabeled included", () => {
+    const recorded: PolylineGeometry = { ...MARKED, visibility: [0, 2, 0] };
+    expect(setPolylineVertexOccluded(recorded, 1, true).visibility).toEqual([0, 1, 0]);
   });
 
   it("compares lists by value, and unknown only equal to unknown", () => {

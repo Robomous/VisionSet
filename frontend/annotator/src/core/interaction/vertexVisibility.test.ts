@@ -22,22 +22,22 @@ describe("marking a vertex occluded", () => {
     const world = new World();
     const before = world.store.document;
     mark(world, 1, true);
-    expect(lane(world).visibility).toEqual([0, 1, 0]);
+    expect(lane(world).visibility).toEqual([2, 1, 2]);
 
     world.store.undo();
     expect(world.store.document).toBe(before);
     expect(lane(world).visibility).toBeUndefined();
     world.store.redo();
-    expect(lane(world).visibility).toEqual([0, 1, 0]);
+    expect(lane(world).visibility).toEqual([2, 1, 2]);
   });
 
   it("clears to visible, as its own step", () => {
     const world = new World();
     mark(world, 1, true);
     mark(world, 1, false);
-    expect(lane(world).visibility).toEqual([0, 2, 0]);
+    expect(lane(world).visibility).toEqual([2, 2, 2]);
     world.store.undo();
-    expect(lane(world).visibility).toEqual([0, 1, 0]);
+    expect(lane(world).visibility).toEqual([2, 1, 2]);
   });
 
   it("returns nothing to execute for a no-op, a missing annotation, or a non-polyline", () => {

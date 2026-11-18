@@ -913,7 +913,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     const lane = (await stored.json()).items.find(
       (one: { geometry: { type: string } }) => one.geometry.type === "polyline",
     );
-    expect(lane.geometry.visibility).toEqual([0, 1, 0]);
+    expect(lane.geometry.visibility).toEqual([2, 1, 2]);
     await focusCanvas(page);
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("vertex-region")).toHaveCount(0);

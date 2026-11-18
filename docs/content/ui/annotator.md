@@ -223,8 +223,12 @@ worth reading there.
 
 **Unknown stays unknown until somebody says.** A polyline loaded without `visibility` holds it
 as unknown, and saving it untouched sends no `visibility` key — so nothing is written that
-nobody judged. The first toggle records the whole list: the pressed vertex `occluded`, every
-other vertex `unlabeled`; clearing a mark records `visible`, since a person just looked at it.
+nobody judged. The first toggle is a judgement of the whole lane, and records the whole list:
+the pressed vertex `occluded`, every other vertex `visible`. The person pressing it is looking
+at the lane drawn over the image, and leaving a vertex unpressed is saying it is seen — the
+same reading a newly drawn polyline gets. Clearing a mark records `visible` too. The annotator
+therefore never writes `unlabeled`; a state that arrived from elsewhere (an import, an agent)
+is kept as it is until somebody presses that vertex.
 A newly drawn polyline records every vertex `visible`. Edits keep the list aligned with the
 points: a moved lane or vertex keeps it, an inserted vertex takes the state of the vertex
 before it — so a vertex added inside an occluded run stays occluded — and a deleted vertex
