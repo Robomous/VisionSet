@@ -37,7 +37,8 @@ argument the tool does not declare, or the wrong type, fails with `isError` true
 
 Geometry is in the asset's own pixels. `get_asset_image` sends a smaller preview: \
 multiply any coordinate you measured on it by `scale`. Video cannot be ingested \
-here. Read `visionset://workflow` for the full walk-through.
+here. Read `visionset://workflow` for the full walk-through; `visionset://pre-labeling`, \
+`visionset://export` and `visionset://schema-changes` hold the detail behind those tools.
 """
 
 WORKFLOW: Final = """\
@@ -67,5 +68,14 @@ parameter that turns the refusal into the same call succeeding, and is null when
 should be retried. `hint` names what to call next when the message does not.
 
 Read `allowed_actions` on a batch or job before acting: it lists what the state permits,
-including actions that have no tool on this surface.
+trimmed to actions that have a tool here. A job needs no start (the first write starts it),
+and a batch `delete` is listed only when the server was started with destructive tools.
+
+## Reference resources
+
+- `visionset://pre-labeling`: what `get_pre_label_plan`, `pre_label_batch` and
+  `pre_label_job` ask, touch, discard and refuse.
+- `visionset://export`: `check_export` and `export_release` statuses, destinations, lossy
+  gates and recipes.
+- `visionset://schema-changes`: additive versus destructive, and why `is_refused` ignores flags.
 """
