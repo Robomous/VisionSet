@@ -100,6 +100,8 @@ from visionset.kernel.domain.geometry import (
     Geometry,
     PolygonGeometry,
     PolylineGeometry,
+    VertexVisibility,
+    check_vertex_visibility,
 )
 from visionset.kernel.domain.inference import (
     ANNOTATION_JOB_KEY,
@@ -526,6 +528,8 @@ __all__ = [
     "PointPrompt",
     "PolygonGeometry",
     "PolylineGeometry",
+    "VertexVisibility",
+    "check_vertex_visibility",
     "PredictedRegion",
     "PredictionRequest",
     "PredictionTarget",

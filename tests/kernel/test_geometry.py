@@ -13,6 +13,7 @@ from visionset.kernel.domain import (
     LabelClass,
     PolygonGeometry,
     PolylineGeometry,
+    VertexVisibility,
 )
 from visionset.kernel.domain.geometry import geometry_intersects_asset
 
@@ -137,6 +138,51 @@ def test_polyline_point_order_is_part_of_the_value() -> None:
     # must not compare equal. Nothing sorts the points on the way in.
     forward = [(0.0, 0.0), (10.0, 5.0), (20.0, 30.0)]
     assert PolylineGeometry(points=forward) != PolylineGeometry(points=list(reversed(forward)))
+
+
+PATH = [(0.0, 0.0), (10.0, 5.0), (20.0, 30.0)]
+
+
+def test_polyline_visibility_must_name_one_state_per_point() -> None:
+    with pytest.raises(ValidationError, match="visibility names 2 vertices"):
+        PolylineGeometry(points=PATH, visibility=(2, 2))
+    with pytest.raises(ValidationError, match="visibility names 4 vertices"):
+        PolylineGeometry(points=PATH, visibility=(2, 2, 2, 2))
+
+
+def test_polyline_visibility_refuses_a_state_outside_the_three() -> None:
+    with pytest.raises(ValidationError):
+        PolylineGeometry(points=PATH, visibility=(0, 1, 3))
+
+
+def test_polyline_visibility_reads_the_coco_integers() -> None:
+    line = PolylineGeometry(points=PATH, visibility=(0, 1, 2))
+    assert line.visibility == (
+        VertexVisibility.UNLABELED,
+        VertexVisibility.OCCLUDED,
+        VertexVisibility.VISIBLE,
+    )
+    assert line.model_dump(mode="json")["visibility"] == [0, 1, 2]
+    assert geometry_adapter.validate_json(line.model_dump_json()) == line
+
+
+def test_unknown_visibility_is_not_all_visible() -> None:
+    unknown = PolylineGeometry(points=PATH)
+    assert unknown.visibility is None
+    assert unknown != PolylineGeometry(points=PATH, visibility=(2, 2, 2))
+
+
+def test_unknown_visibility_is_omitted_from_every_dump() -> None:
+    line = PolylineGeometry(points=PATH, visibility=None)
+    assert "visibility" not in line.model_dump()
+    assert "visibility" not in line.model_dump(mode="json")
+    assert "visibility" not in line.model_dump_json()
+    assert "visibility" not in _annotation(line).model_dump(mode="json")["geometry"]
+
+
+def test_a_polyline_payload_written_before_visibility_existed_still_parses() -> None:
+    old = '{"type": "polyline", "points": [[0.0, 0.0], [10.0, 5.0], [20.0, 30.0]]}'
+    assert geometry_adapter.validate_json(old) == PolylineGeometry(points=PATH)
 
 
 def test_the_domain_does_not_impose_one_format_s_ordering_rule() -> None:

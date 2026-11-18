@@ -18,13 +18,53 @@ exists.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import IntEnum
 from math import isfinite
 from typing import Annotated, Final, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from visionset.kernel.domain.schema import GeometryType
+
+
+class VertexVisibility(IntEnum):
+    """What is known about one vertex of a path: COCO keypoint visibility's three states.
+
+    The integers are COCO's own ``v`` values, so a keypoint exporter writes them
+    unchanged. ``UNLABELED`` is a vertex nobody judged, which is not the same
+    claim as ``OCCLUDED`` (judged, and hidden) — a format with a binary flag has
+    to decide what an unjudged vertex becomes, and each one says so where it
+    writes it.
+
+    Closed and integer on the wire: it is accepted in requests, so it can never
+    be an open vocabulary, and a client switching on three numbers needs no
+    string table.
+    """
+
+    UNLABELED = 0
+    OCCLUDED = 1
+    VISIBLE = 2
+
+
+def _omitted_when_unknown(value: object) -> bool:
+    return value is None
+
+
+def check_vertex_visibility(
+    visibility: Sequence[VertexVisibility] | None, points: Sequence[tuple[float, float]]
+) -> None:
+    """Refuse a per-vertex visibility that does not name exactly one state per point.
+
+    Shared rather than inlined, so the next geometry with ordered vertices
+    (keypoints, a 3D polyline) holds the same rule instead of a second spelling of it.
+    """
+    if visibility is not None and len(visibility) != len(points):
+        raise ValueError(
+            f"visibility names {len(visibility)} vertices and the geometry has "
+            f"{len(points)} points; send one state per point, or omit visibility"
+        )
 
 
 class BboxGeometry(BaseModel):
@@ -85,17 +125,32 @@ class PolylineGeometry(BaseModel):
     longer path are left alone — they arrive from real digitizers and from honest
     resampling, and they cost a renderer nothing — and self-intersection is not
     validated here for the same reason it is not validated for a polygon.
+
+    ``visibility`` is optional per-vertex data, one :class:`VertexVisibility` per
+    point and in the same order. ``None`` means *nobody said*, which is a
+    different claim from every vertex visible, and it is **omitted** from every
+    serialization rather than written as ``null`` — so a polyline without it
+    dumps to exactly the bytes it did before the field existed, and every
+    manifest hash over such content is unchanged. The omission depends on the
+    value, never on how the model was constructed, which is what keeps
+    :func:`~visionset.kernel.domain.release.canonical_bytes` stable across a
+    round trip. A transform that moves points keeps the list aligned; one that
+    reversed the path would have to reverse it too.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     type: Literal[GeometryType.POLYLINE] = GeometryType.POLYLINE
     points: list[tuple[float, float]] = Field(min_length=2)
+    visibility: tuple[VertexVisibility, ...] | None = Field(
+        default=None, exclude_if=_omitted_when_unknown
+    )
 
     @model_validator(mode="after")
     def _has_length(self) -> PolylineGeometry:
         if len(set(self.points)) == 1:
             raise ValueError("a polyline whose points are all the same point has no length")
+        check_vertex_visibility(self.visibility, self.points)
         return self
 
 
