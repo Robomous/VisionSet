@@ -34,6 +34,7 @@ export {
   Grips,
   HANDLE_PX,
   LABEL_PX,
+  OCCLUDED_DASH_PX,
   PolygonShape,
   PolylineShape,
   SELECTED_STROKE_PX,
@@ -41,6 +42,7 @@ export {
   ShapeLabel,
   VERTEX_PX,
   Vertices,
+  occludedDash,
 } from "./Shapes";
 export {
   SUGGESTION_DASH,
@@ -53,11 +55,13 @@ export {
   paintDocument,
   paintSuggestions,
   pendingPolygon,
+  polylineRuns,
   rubberBand,
   screenPx,
   type PaintedAnnotation,
   type PaintedSuggestion,
   type PendingPolygon,
+  type PolylineRun,
 } from "./paint";
 export {
   digitFromCode,

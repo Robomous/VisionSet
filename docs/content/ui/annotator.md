@@ -451,6 +451,15 @@ where precision was gained or lost *is* what the tolerance control is about. Its
 dashed and an accepted annotation's is solid, which is what tells proposed from committed
 at a glance.
 
+**An occluded stretch of a polyline is dashed, with a pattern of its own.** A segment is
+occluded when either of its vertices is recorded occluded, so the line reads hidden from the
+hidden vertex onward; consecutive occluded segments draw as one run, and the solid and dashed
+runs share their joining vertex. The dash is short and widely spaced — 2 on, 6 off, in screen
+pixels — so it is told apart from the drawing preview's `6 4` and a suggestion's `10 6`. An
+`unlabeled` vertex draws like a visible one. While the lane is selected an occluded vertex is
+hollow, its outline dashed. A polyline with nothing occluded is one solid line, exactly as
+before.
+
 **The cursor promises the common outcome, not the rare one.** In Select mode, hovering a
 shape — its body, its edge band, or a vertex — is the plain arrow: a press there *selects*,
 and only becomes a move if the pointer then travels. What reports which shape a press would

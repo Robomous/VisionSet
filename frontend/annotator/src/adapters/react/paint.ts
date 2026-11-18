@@ -46,13 +46,14 @@ import type { AnnotationDocument } from "../../core/state/document";
 import type { Selection } from "../../core/state/selection";
 import type { InteractionState } from "../../core/interaction/state";
 import type { PromptPoint, SuggestionState } from "../../core/interaction/suggestion";
-import type {
-  Annotation,
-  BboxGeometry,
-  LabelClass,
-  Point,
-  PolygonGeometry,
-  PolylineGeometry,
+import {
+  VERTEX_VISIBILITY,
+  type Annotation,
+  type BboxGeometry,
+  type LabelClass,
+  type Point,
+  type PolygonGeometry,
+  type PolylineGeometry,
 } from "../../core/types";
 
 /** A shape whose class the schema declares, ready to draw. */
@@ -355,4 +356,33 @@ export function confidencePercent(confidence: number): string {
 export function confidenceLabel(labelClass: string, confidence: number | null): string {
   if (confidence === null) return labelClass;
   return `${labelClass} ${confidencePercent(confidence)}`;
+}
+
+/** A stretch of a polyline drawn one way: solid, or dashed because it is occluded. */
+export interface PolylineRun {
+  readonly points: readonly Point[];
+  readonly occluded: boolean;
+}
+
+/**
+ * The polyline cut where its occlusion changes. A segment is occluded when
+ * either end is — the line is hidden from the hidden vertex onward — and an
+ * `UNLABELED` vertex draws like a visible one. Adjacent runs share their joining
+ * vertex, so the pieces meet with no gap.
+ */
+export function polylineRuns(geometry: PolylineGeometry): readonly PolylineRun[] {
+  const { points, visibility } = geometry;
+  if (visibility === undefined || points.length < 2) return [{ points, occluded: false }];
+  const hidden = (at: number): boolean => visibility[at] === VERTEX_VISIBILITY.OCCLUDED;
+  const runs: { points: Point[]; occluded: boolean }[] = [];
+  for (let at = 0; at < points.length - 1; at += 1) {
+    const occluded = hidden(at) || hidden(at + 1);
+    const last = runs[runs.length - 1];
+    if (last !== undefined && last.occluded === occluded) {
+      last.points.push(points[at + 1]);
+    } else {
+      runs.push({ points: [points[at], points[at + 1]], occluded });
+    }
+  }
+  return runs;
 }

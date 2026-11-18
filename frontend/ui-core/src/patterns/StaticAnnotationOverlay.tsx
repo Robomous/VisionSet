@@ -16,7 +16,7 @@
 
 import type { CSSProperties, JSX } from "react";
 import { parseGeometry, type Geometry } from "@visionset/annotator";
-import { BboxShape, PolygonShape, PolylineShape, STROKE_PX } from "@visionset/annotator/react";
+import { BboxShape, PolygonShape, PolylineShape, STROKE_PX, occludedDash } from "@visionset/annotator/react";
 
 import type { WireAnnotation } from "../annotator/jobQueries";
 import { classColor, type LabelClass } from "../palette";
@@ -51,6 +51,7 @@ export function StaticAnnotationOverlay({
   const strokeVars = {
     "--vs-stroke": `${stroke}px`,
     "--vs-stroke-selected": `${stroke}px`,
+    "--vs-occluded-dash": occludedDash(stroke / STROKE_PX),
   } as CSSProperties;
 
   return (

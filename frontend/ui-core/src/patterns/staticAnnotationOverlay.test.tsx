@@ -5,7 +5,7 @@
  * lands on the image's box is a browser fact and lives in `e2e/dataset.spec.ts`.
  */
 
-import { classColor } from "@visionset/annotator/react";
+import { Vertices, classColor } from "@visionset/annotator/react";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -94,5 +94,58 @@ describe("StaticAnnotationOverlay", () => {
     // The stage's shapes read `--vs-stroke`; without a zoom the value is a
     // fraction of the width, so a 4K frame does not draw hairline boxes.
     expect(screen.getByTestId("preview-overlay").style.getPropertyValue("--vs-stroke")).toBe("4px");
+  });
+
+  it("dashes the occluded stretch of a lane and draws the rest solid", () => {
+    const centerline = annotation("centerline", "centerline", {
+      type: "polyline",
+      points: [
+        [0, 0],
+        [10, 0],
+        [20, 0],
+        [30, 0],
+      ],
+      visibility: [2, 2, 1, 2],
+    });
+    render(
+      <StaticAnnotationOverlay width={1600} height={900} src="blob:picture" alt="lane" annotations={[centerline]} />,
+    );
+    const runs = [...screen.getByTestId("preview-shape-centerline").querySelectorAll("polyline")];
+    expect(runs.map((run) => run.getAttribute("data-occluded"))).toEqual([null, "true"]);
+    expect(runs[0].style.strokeDasharray).toBe("");
+    expect(runs[1].style.strokeDasharray).toContain("--vs-occluded-dash");
+    expect(runs[1].getAttribute("points")).toBe("10,0 20,0 30,0");
+    expect(screen.getByTestId("preview-overlay").style.getPropertyValue("--vs-occluded-dash")).toBe("4 12");
+  });
+
+  it("draws an unrecorded lane as the single solid line it always was", () => {
+    const centerline = annotation("centerline", "centerline", {
+      type: "polyline",
+      points: [
+        [0, 0],
+        [10, 0],
+      ],
+    });
+    render(
+      <StaticAnnotationOverlay width={800} height={600} src="blob:picture" alt="lane" annotations={[centerline]} />,
+    );
+    const runs = screen.getByTestId("preview-shape-centerline").querySelectorAll("polyline");
+    expect(runs).toHaveLength(1);
+    expect(runs[0].hasAttribute("data-occluded")).toBe(false);
+  });
+});
+
+describe("Vertices", () => {
+  it("draws an occluded vertex hollow with a dashed outline, and the others filled white", () => {
+    const { container } = render(
+      <svg>
+        <Vertices points={[[0, 0], [10, 0], [20, 0]]} color="#ff0000" zoom={1} hotIndex={null} visibility={[2, 1, 0]} />
+      </svg>,
+    );
+    const dots = [...container.querySelectorAll("circle")];
+    expect(dots.map((dot) => dot.getAttribute("fill"))).toEqual(["#ffffff", "none", "#ffffff"]);
+    expect(dots.map((dot) => dot.getAttribute("data-occluded"))).toEqual([null, "true", null]);
+    expect(dots[1].getAttribute("stroke-dasharray")).not.toBeNull();
+    expect(dots[0].getAttribute("stroke-dasharray")).toBeNull();
   });
 });
