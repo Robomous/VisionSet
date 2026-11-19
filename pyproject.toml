@@ -129,14 +129,19 @@ visionset = "visionset.cli.main:app"
 # `visionset-format-x` package) register their plugins in this same group.
 [project.entry-points."visionset.formats"]
 ultralytics = "visionset.formats.ultralytics:UltralyticsExporter"
+ultralytics-import = "visionset.formats.ultralytics:UltralyticsImporter"
 yolov5-yaml = "visionset.formats.yolov5_yaml:Yolov5YamlExporter"
+yolov5-yaml-import = "visionset.formats.yolov5_yaml:Yolov5YamlImporter"
 darknet = "visionset.formats.darknet:DarknetExporter"
+darknet-import = "visionset.formats.darknet:DarknetImporter"
 coco = "visionset.formats.coco:CocoExporter"
 coco-import = "visionset.formats.coco:CocoImporter"
 voc = "visionset.formats.voc:VocExporter"
+voc-import = "visionset.formats.voc:VocImporter"
 # The one format whose content is tags. One row per (image, tag), so a
 # multi-tagged image is written once and listed once per tag.
 classification = "visionset.formats.classification:ClassificationExporter"
+classification-import = "visionset.formats.classification:ClassificationImporter"
 # The lane family (#223). Five plugins over v1's six exporter functions: CULane's
 # annotation file and its segmentation mask are two artifacts of one format.
 tusimple = "visionset.formats.lanes:TuSimpleExporter"

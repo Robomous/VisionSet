@@ -1,4 +1,4 @@
-# usage: from visionset.formats.yolov5_yaml import Yolov5YamlExporter
+# usage: from visionset.formats.yolov5_yaml import Yolov5YamlExporter, Yolov5YamlImporter
 """The YOLOv5 descriptor dialect: ``data.yaml`` with ``nc``, a ``names`` list, and ``./`` paths.
 
 The same images-and-labels layout as the ``ultralytics`` dialect, under the
@@ -31,6 +31,7 @@ from visionset.formats._yolo_writer import (
     write_label_layout,
     yaml_scalar,
 )
+from visionset.formats.yolov5_yaml.reader import Yolov5YamlImporter
 from visionset.kernel.domain import (
     ExportTarget,
     GeometryType,
@@ -43,7 +44,7 @@ from visionset.kernel.domain import (
 )
 from visionset.kernel.ports import ContentReader
 
-__all__ = ["DATA_FILENAME", "LABELS_DIRNAME", "TARGETS", "Yolov5YamlExporter"]
+__all__ = ["DATA_FILENAME", "LABELS_DIRNAME", "TARGETS", "Yolov5YamlExporter", "Yolov5YamlImporter"]
 
 TARGETS: Final[frozenset[ExportTarget]] = frozenset(
     {
