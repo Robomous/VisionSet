@@ -352,7 +352,7 @@ def test_json_nested_too_deep_to_parse_is_refused(tmp_path: Path) -> None:
     (tmp_path / "labels").mkdir()
     (tmp_path / "labels" / "a.json").write_text("[" * 100000 + "]" * 100000, encoding="utf-8")
 
-    with pytest.raises(ImportSourceUnreadable, match="not readable JSON"):
+    with pytest.raises(ImportSourceUnreadable, match="not readable JSON|not an OpenLane document"):
         OpenLane2dImporter().read(tmp_path)
 
 

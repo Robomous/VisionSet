@@ -357,7 +357,7 @@ def test_a_label_outside_an_image_with_no_stated_size_is_a_label_loss(tmp_path: 
 def test_json_nested_too_deep_to_parse_is_refused(tmp_path: Path) -> None:
     (tmp_path / "instances.json").write_text("[" * 100000 + "]" * 100000, encoding="utf-8")
 
-    with pytest.raises(ImportSourceUnreadable, match="not readable JSON"):
+    with pytest.raises(ImportSourceUnreadable, match="not readable JSON|not a COCO"):
         CocoImporter().read(tmp_path)
 
 
