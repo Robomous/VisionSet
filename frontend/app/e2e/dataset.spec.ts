@@ -394,6 +394,7 @@ for (const viewport of [
   { width: 1440, height: 900 },
   { width: 1280, height: 720 },
   { width: 390, height: 844 },
+  { width: 390, height: 560 },
 ]) {
   test(`the lossy consent is reachable by pointer at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
@@ -407,6 +408,18 @@ for (const viewport of [
     const dialog = page.getByTestId("export-dialog");
     const consent = dialog.getByTestId("lossy-consent");
     await expect(consent.getByTestId("lossy-classes").getByRole("listitem")).toHaveCount(DROPPED.length);
+
+    // The box keeps the height its content needs: the body scrolls instead of
+    // squeezing it until the list and checkbox spill past its background.
+    const overflow = await consent.evaluate((node) => node.scrollHeight - node.clientHeight);
+    expect(overflow).toBeLessThanOrEqual(0);
+    const consentBox = await consent.boundingBox();
+    const checkboxBox = await consent.getByTestId("lossy-checkbox").boundingBox();
+    expect(consentBox).not.toBeNull();
+    expect(checkboxBox).not.toBeNull();
+    expect((checkboxBox?.y ?? Infinity) + (checkboxBox?.height ?? 0)).toBeLessThanOrEqual(
+      (consentBox?.y ?? 0) + (consentBox?.height ?? 0),
+    );
 
     // The dialog stays inside the viewport however long the list, so neither
     // its top nor its footer is off-screen where no scroll can reach them.
