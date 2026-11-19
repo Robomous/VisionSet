@@ -162,6 +162,7 @@ from visionset.kernel.domain import (
     WorkspaceTotals,
     asset_actions,
     batch_actions,
+    check_vertex_visibility,
     connection_actions,
     job_actions,
     optional_visibility_field,
@@ -1821,6 +1822,11 @@ class PolylineBody(BaseModel):
     type: Literal[GeometryType.POLYLINE]
     points: list[tuple[float, float]]
     visibility: VertexVisibilities = optional_visibility_field()
+
+    @model_validator(mode="after")
+    def _one_state_per_point(self) -> Self:
+        check_vertex_visibility(self.visibility, self.points)
+        return self
 
     def to_domain(self) -> PolylineGeometry:
         if self.visibility is None:

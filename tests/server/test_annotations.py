@@ -254,6 +254,9 @@ def test_a_visibility_that_does_not_match_the_points_is_422(
     assert response.status_code == 422
     assert response.json()["code"] == "VALIDATION_ERROR"
     assert "one state per point" in response.text
+    assert [e["loc"] for e in response.json()["detail"]["errors"]] == [
+        ["body", 0, "geometry", "polyline", "visibility"]
+    ]
 
 
 @pytest.mark.parametrize(
@@ -279,6 +282,10 @@ def test_a_visibility_that_is_not_integer_states_is_422(
     )
     assert response.status_code == 422, response.text
     assert response.json()["code"] == "VALIDATION_ERROR"
+    prefix = ["body", 0, "geometry", "polyline", "visibility"]
+    assert [e["loc"] for e in response.json()["detail"]["errors"]] == [
+        prefix if visibility is None else [*prefix, 0]
+    ]
     assert stored(client, job_id, assets[0]) == []
 
 

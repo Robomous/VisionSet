@@ -22,10 +22,18 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import IntEnum
 from math import isfinite
-from typing import Annotated, Any, Final, Literal, get_args
+from typing import TYPE_CHECKING, Annotated, Any, Final, Literal, get_args
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
-from pydantic.json_schema import JsonDict, SkipJsonSchema
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    ValidationError,
+    model_validator,
+)
+from pydantic.json_schema import JsonDict
+from pydantic_core import PydanticCustomError
 
 from visionset.kernel.domain.schema import GeometryType
 
@@ -79,10 +87,15 @@ def _absent_not_null(schema: JsonDict) -> None:
 StrictVertexVisibility = Annotated[VertexVisibility, BeforeValidator(_integer_state)]
 """A :class:`VertexVisibility` accepted only from an integer: no bool, string or float."""
 
-VertexVisibilities = Annotated[
-    tuple[StrictVertexVisibility, ...] | SkipJsonSchema[None],
-    BeforeValidator(_never_null),
-]
+if TYPE_CHECKING:
+    VertexVisibilities = tuple[StrictVertexVisibility, ...] | None
+else:
+    # No `| None` branch at runtime: a union reports each branch's failure and puts the
+    # tuple's repr in `loc`. The default is never validated, so unset still works.
+    VertexVisibilities = Annotated[
+        tuple[StrictVertexVisibility, ...],
+        BeforeValidator(_never_null),
+    ]
 """One strict state per vertex. ``None`` is the unset default only: an explicit null is refused."""
 
 
@@ -100,9 +113,21 @@ def check_vertex_visibility(
     (keypoints, a 3D polyline) holds the same rule instead of a second spelling of it.
     """
     if visibility is not None and len(visibility) != len(points):
-        raise ValueError(
+        message = (
             f"visibility names {len(visibility)} vertices and the geometry has "
             f"{len(points)} points; send one state per point, or omit visibility"
+        )
+        raise ValidationError.from_exception_data(
+            "PolylineGeometry",
+            [
+                {
+                    "type": PydanticCustomError(
+                        "value_error", "Value error, {error}", {"error": message}
+                    ),
+                    "loc": ("visibility",),
+                    "input": visibility,
+                }
+            ],
         )
 
 

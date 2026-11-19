@@ -151,6 +151,15 @@ def test_polyline_visibility_must_name_one_state_per_point() -> None:
         PolylineGeometry(points=PATH, visibility=(2, 2, 2, 2))
 
 
+def test_a_refused_visibility_is_located_at_the_field_and_the_offending_element() -> None:
+    with pytest.raises(ValidationError) as bad_state:
+        PolylineGeometry(points=PATH, visibility=(2, True, 2))
+    assert [e["loc"] for e in bad_state.value.errors()] == [("visibility", 1)]
+    with pytest.raises(ValidationError) as bad_length:
+        PolylineGeometry(points=PATH, visibility=(2, 2))
+    assert [e["loc"] for e in bad_length.value.errors()] == [("visibility",)]
+
+
 def test_polyline_visibility_refuses_a_state_outside_the_three() -> None:
     with pytest.raises(ValidationError):
         PolylineGeometry(points=PATH, visibility=(0, 1, 3))
