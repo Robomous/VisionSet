@@ -22,7 +22,9 @@ Five things shape this module:
   working does not change the rules under them. The service *stamps* that version
   onto what it stores, the way it lets ``id`` generate itself: whatever a caller
   put in the field is replaced, because the pin is a fact about the batch, not an
-  opinion of the writer.
+  opinion of the writer. The one exception is ``add_imported``: a draft has no
+  pin yet, so an import's labels are judged against the project's active
+  version, which is the one approval then pins.
 - **There is no ``InvalidProvenance``.** ``provenance='model'`` requiring a
   ``model_ref``, and ``confidence`` inside [0, 1], are validators on the model
   (``domain/annotation.py``). An ``Annotation`` that breaks either cannot be
@@ -93,6 +95,7 @@ from visionset.kernel.errors import (
     AnnotationGeometryOutOfBounds,
     AnnotationNotFound,
     AnnotationNotFromModel,
+    AssetNotInBatch,
     AssetNotInJob,
     AssetNotWritable,
     DuplicateClassificationTag,
@@ -102,6 +105,7 @@ from visionset.kernel.errors import (
     WorkspaceCorrupt,
 )
 from visionset.kernel.ports import UnitOfWork
+from visionset.kernel.services.batch_service import BatchService
 from visionset.kernel.services.dataset_service import member_asset_ids_of
 from visionset.kernel.services.job_service import JobService
 from visionset.kernel.services.project_service import ProjectService
@@ -116,6 +120,7 @@ class AnnotationService:
         self._workspace = workspace
         self._jobs = JobService(workspace)
         self._schemas = SchemaService(workspace)
+        self._batches = BatchService(workspace)
 
     # --- reading -----------------------------------------------------------
 
@@ -301,6 +306,74 @@ class AnnotationService:
         else:
             self._announce(job.id, batch.id, AnnotationOperation.DELETE, outgoing)
         return stored
+
+    def add_imported(self, batch_id: UUID, annotations: Sequence[Annotation]) -> list[Annotation]:
+        """Store labels an import brought, on assets of a batch nobody has approved yet.
+
+        The fifth write, and the only one with no job: a draft has none. It
+        exists so an imported dataset enters through the ordinary lifecycle —
+        labels first, then approval, which seeds each labeled asset
+        ``annotated`` — and never into a batch already being worked or into the
+        trunk. See ``an-import-is-a-labeled-batch``.
+
+        Kernel-only. Every annotation must carry ``provenance='import'``; each
+        is judged against the project's active schema and stamped with its
+        version and ``job_id=None``. All or nothing.
+
+        Raises:
+            BatchNotFound: no such batch in this workspace.
+            BatchNotEditable: the batch is past ``draft``.
+            AssetNotInBatch: an annotation names an asset the batch does not hold.
+            AssetNotWritable: an asset is in the dataset's trunk or in another batch.
+            InvalidAnnotation: an annotation is not an import's, or does not
+                satisfy the active schema.
+            SchemaNotFound: the project has no schema yet.
+        """
+        with self._workspace.unit_of_work() as uow:
+            return self.add_imported_in(uow, batch_id, annotations)
+
+    def add_imported_in(
+        self, uow: UnitOfWork, batch_id: UUID, annotations: Sequence[Annotation]
+    ) -> list[Annotation]:
+        """:meth:`add_imported` inside a caller's own transaction.
+
+        Raises:
+            BatchNotFound: no such batch in this workspace.
+            BatchNotEditable: the batch is past ``draft``.
+            AssetNotInBatch: an annotation names an asset the batch does not hold.
+            AssetNotWritable: an asset is in the dataset's trunk or in another batch.
+            InvalidAnnotation: an annotation is not an import's, or does not
+                satisfy the active schema.
+            SchemaNotFound: the project has no schema yet.
+        """
+        self._batches.hold_draft(uow, batch_id)
+        # Membership re-read under the lock hold_draft took, as approve_in does.
+        batch = self._batches.require_batch(uow, batch_id)
+        schema = self._schemas.require_active(uow, batch.project_id)
+        members = set(batch.asset_ids)
+        trunk = member_asset_ids_of(
+            uow, ProjectService(self._workspace).require_dataset(uow, batch.project_id)
+        )
+        elsewhere = {
+            asset_id
+            for other in uow.batches.list(batch.project_id)
+            if other.id != batch.id
+            for asset_id in other.asset_ids
+        }
+
+        proposed = [
+            annotation.model_copy(update={"schema_version": schema.version, "job_id": None})
+            for annotation in annotations
+        ]
+        tagged = _tags_already_on(uow, {a.asset_id for a in proposed})
+        for index, annotation in enumerate(proposed):
+            with _blaming(index):
+                _require_imported(annotation)
+                _require_held_only_here(annotation.asset_id, batch, members, trunk, elsewhere)
+                _validate(annotation, schema)
+                _require_geometry_on_asset(uow, annotation)
+                _require_untagged(tagged, annotation)
+        return [uow.annotations.add(annotation) for annotation in proposed]
 
     def update(self, job_id: UUID, annotations: Sequence[Annotation]) -> list[Annotation]:
         """Replace stored annotations, judged against the same pinned version.
@@ -604,6 +677,41 @@ def _require_model_made(annotation: Annotation) -> None:
         raise AnnotationNotFromModel(
             f"annotation {annotation.id} is {annotation.provenance!r}, and only a model's "
             f"labels enter unattended; a person's labels are written through add"
+        )
+
+
+def _require_imported(annotation: Annotation) -> None:
+    if annotation.provenance != "import":
+        raise InvalidAnnotation(
+            f"annotation {annotation.id} is {annotation.provenance!r}, and only an import's "
+            f"labels enter a batch before approval"
+        )
+
+
+def _require_held_only_here(
+    asset_id: UUID,
+    batch: Batch,
+    members: set[UUID],
+    trunk: frozenset[UUID],
+    elsewhere: set[UUID],
+) -> None:
+    """Refuse an asset whose labels another batch, or the trunk, already answers for.
+
+    Annotations hang off the asset, so a label written here would also appear
+    in every other batch holding it and, for a trunk member, in the dataset
+    itself without review.
+    """
+    if asset_id not in members:
+        raise AssetNotInBatch(f"asset {asset_id} is not in batch {batch.name!r}")
+    if asset_id in trunk:
+        raise AssetNotWritable(
+            f"asset {asset_id} is already in the dataset; an import never writes labels "
+            f"into the trunk"
+        )
+    if asset_id in elsewhere:
+        raise AssetNotWritable(
+            f"asset {asset_id} is also in another batch, so labels written here would land "
+            f"in that batch's work too; an import only labels assets no other batch holds"
         )
 
 

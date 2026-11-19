@@ -303,57 +303,102 @@ class SchemaService:
                 change would break. No flag overrides this.
             SchemaVersionConflict: another writer took this version number first.
         """
-        proposed = tuple(classes)
         try:
             with self._workspace.unit_of_work() as uow:
-                self._require_project(uow, project_id)
-                _require_coherent(proposed)
-
-                active = self.active(uow, project_id)
-                if active is not None and proposed == active.classes:
-                    # Nothing was written, so nothing follows it. A no-op that
-                    # caught a lagging batch up would be a no-op with an effect.
-                    return SchemaPublication(published=active)
-
-                previous = () if active is None else active.classes
-                _require_hex_colors(proposed, previous)
-                diff = diff_classes(previous, proposed)
-                guarded: frozenset[OrphanGuard] = frozenset()
-                if diff.is_destructive:
-                    self._refuse_narrowing(uow, project_id, diff, allow_destructive)
-                    guarded = diff.guards
-
-                stored = uow.add_schema_version_unless_annotated(
-                    AnnotationSchema(
-                        project_id=project_id,
-                        version=1 if active is None else active.version + 1,
-                        classes=proposed,
-                        description=description,
-                        created_at=datetime.now(UTC),
-                        provenance=provenance,
-                    ),
-                    guarded,
+                return self.publish_in(
+                    uow,
+                    project_id,
+                    classes,
+                    description=description,
+                    provenance=provenance,
+                    allow_destructive=allow_destructive,
                 )
-                if stored is None:
-                    self._refuse_orphaning(uow, project_id, guarded)
-
-                # Read once for the whole call: every open batch's pin is judged
-                # against this version, and a lagging batch's pin is a version the
-                # caller's own `diff` says nothing about.
-                #
-                # After the guarded insert, and that ordering is #589's rule rather
-                # than a convenience: the insert is the first *write*, so it is what
-                # opens the transaction. Reading the versions before it would leave
-                # this read in autocommit and reopen the window that fix closed, one
-                # scope over.
-                advanced = (
-                    ()
-                    if diff.is_destructive
-                    else _advance_pins(uow, project_id, stored, self._by_version(uow, project_id))
-                )
-                return SchemaPublication(published=stored, advanced_batches=advanced)
         except ConstraintViolated as exc:
             raise self._as_version_conflict(exc, project_id) from exc
+
+    @staticmethod
+    def require_coherent(classes: Sequence[LabelClass]) -> None:
+        """Refuse classes that could not be published together, writing nothing.
+
+        Raises:
+            InvalidSchema: no classes, or two names collide case-insensitively.
+            UnsupportedGeometry: a class names a geometry with no implementation.
+        """
+        _require_coherent(tuple(classes))
+
+    def publish_in(
+        self,
+        uow: UnitOfWork,
+        project_id: UUID,
+        classes: Sequence[LabelClass],
+        *,
+        description: str | None = None,
+        provenance: SchemaProvenance | None = None,
+        allow_destructive: bool = False,
+    ) -> SchemaPublication:
+        """:meth:`create_version` inside a caller's own transaction.
+
+        For a use case that publishes a version together with other writes and
+        must not leave the version behind when they roll back. The caller owns
+        translating ``ConstraintViolated`` the way :meth:`create_version` does.
+
+        Raises:
+            ProjectNotFound: no such project in this workspace.
+            InvalidSchema: no classes, two classes share a name, or a colour is not a hex value.
+            UnsupportedGeometry: a class names a geometry with no implementation.
+            DestructiveSchemaChange: the change narrows the contract and
+                ``allow_destructive`` was not ``True``.
+            SchemaChangeWouldOrphan: annotations already exist under a class the
+                change would break.
+            ConstraintViolated: another writer took this version number first.
+        """
+        proposed = tuple(classes)
+        self._require_project(uow, project_id)
+        _require_coherent(proposed)
+
+        active = self.active(uow, project_id)
+        if active is not None and proposed == active.classes:
+            # Nothing was written, so nothing follows it. A no-op that
+            # caught a lagging batch up would be a no-op with an effect.
+            return SchemaPublication(published=active)
+
+        previous = () if active is None else active.classes
+        _require_hex_colors(proposed, previous)
+        diff = diff_classes(previous, proposed)
+        guarded: frozenset[OrphanGuard] = frozenset()
+        if diff.is_destructive:
+            self._refuse_narrowing(uow, project_id, diff, allow_destructive)
+            guarded = diff.guards
+
+        stored = uow.add_schema_version_unless_annotated(
+            AnnotationSchema(
+                project_id=project_id,
+                version=1 if active is None else active.version + 1,
+                classes=proposed,
+                description=description,
+                created_at=datetime.now(UTC),
+                provenance=provenance,
+            ),
+            guarded,
+        )
+        if stored is None:
+            self._refuse_orphaning(uow, project_id, guarded)
+
+        # Read once for the whole call: every open batch's pin is judged
+        # against this version, and a lagging batch's pin is a version the
+        # caller's own `diff` says nothing about.
+        #
+        # After the guarded insert, and that ordering is #589's rule rather
+        # than a convenience: the insert is the first *write*, so it is what
+        # opens the transaction. Reading the versions before it would leave
+        # this read in autocommit and reopen the window that fix closed, one
+        # scope over.
+        advanced = (
+            ()
+            if diff.is_destructive
+            else _advance_pins(uow, project_id, stored, self._by_version(uow, project_id))
+        )
+        return SchemaPublication(published=stored, advanced_batches=advanced)
 
     # --- the two gates -----------------------------------------------------
 

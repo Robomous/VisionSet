@@ -57,7 +57,7 @@ upward, and the three surfaces do not point at each other.
 | [`server`](../../../../src/visionset/server/) | FastAPI. Routes, wire models, and the error mapping. | [server.md](server.md) |
 | [`cli`](../../../../src/visionset/cli/) | Typer. The whole cycle from a shell. | [cli.md](cli.md) |
 | [`mcp`](../../../../src/visionset/mcp/) | The MCP tool surface, for agents. | [mcp.md](mcp.md) |
-| [`formats`](../../../../src/visionset/formats/) | Exporter plugins, discovered by entry point. | [formats.md](formats.md) |
+| [`formats`](../../../../src/visionset/formats/) | Exporter and importer plugins, discovered by entry point. | [formats.md](formats.md) |
 | [`preprocessing`](../../../../src/visionset/preprocessing/) | Pre-processing drivers - the Pillow resize and augmentation engines behind the `PreprocessingDriver` port - discovered over the `visionset.preprocessing` entry-point group the way exporters are. | [preprocessing-drivers.md](preprocessing-drivers.md) |
 | [`wire`](../../../../src/visionset/wire/) | The JSON shapes the CLI and MCP publish. | [wire.md](wire.md) |
 | [`jobs`](../../../../src/visionset/jobs/) | Handlers for work that outlives a request. | [jobs.md](jobs.md) |
@@ -65,7 +65,7 @@ upward, and the three surfaces do not point at each other.
 
 ## What the rules are, and where they live
 
-Six import-linter contracts in [`pyproject.toml`](../../../../pyproject.toml) hold
+Seven import-linter contracts in [`pyproject.toml`](../../../../pyproject.toml) hold
 the graph above. They are run by `uv run lint-imports`, which
 [`scripts/check.sh`](../../../../scripts/check.sh) invokes.
 
@@ -77,6 +77,7 @@ the graph above. They are run by `uv run lint-imports`, which
 | Inference adapters are below the surfaces | `visionset.inference` importing any delivery package, web framework (`fastapi` / `typer` / `mcp` / `uvicorn`), or `visionset.jobs` |
 | Shared libraries are below the surfaces | `wire`, `formats` and `preprocessing` importing `server`, `cli`, `mcp`, or `fastapi` / `starlette` / `typer` / `click` / `mcp` / `uvicorn` |
 | Shared libraries never touch the database driver | `wire`, `formats` and `preprocessing` importing `sqlalchemy` directly |
+| Format plugins never reach a workspace | `formats` importing `visionset.kernel.services` or `visionset.kernel.adapters` directly - an importer reads a directory and returns a value |
 
 The first is the load-bearing one, and it has a second enforcement:
 [`tests/architecture/test_kernel_purity.py`](../../../../tests/architecture/test_kernel_purity.py)

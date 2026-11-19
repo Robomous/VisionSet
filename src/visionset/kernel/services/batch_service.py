@@ -468,54 +468,69 @@ class BatchService:
             InvalidPartition: the segments are not an exact partition.
         """
         with self._workspace.unit_of_work() as uow:
-            batch = self.require_batch(uow, batch_id)
-            require_move(BATCH_TRANSITIONS, batch.state, BatchState.APPROVED, _subject(batch))
-            # State first, then membership: re-read under the write lock that
-            # move took, so no asset added after the first read is left unpartitioned.
-            self._move_guarded(uow, batch, BatchState.APPROVED)
-            batch = self.require_batch(uow, batch_id)
-            if not batch.asset_ids:
-                raise EmptyBatch(
-                    f"batch {batch.name!r} has no assets; an approved empty batch has no jobs "
-                    f"and could never complete"
-                )
-
-            # Not created here if it is missing: SchemaService is the only door to
-            # a schema version, and inventing one would be a second.
-            pinned = self._schemas.require_active(uow, batch.project_id).version
-            segments = partition_assets(
-                batch.asset_ids, SingleJob() if partition is None else partition
-            )
-
-            seeding = _seeding(uow, batch.asset_ids)
-            group = uow.task_groups.add(TaskGroup(batch_id=batch.id, name=FIRST_ROUND))
-            job_ids = [
-                uow.annotation_jobs.add(
-                    AnnotationJob(
-                        task_group_id=group.id,
-                        progress={
-                            asset_id: initial_progress(
-                                has_annotations=asset_id in seeding,
-                                judged=not seeding.get(asset_id, False),
-                            )
-                            for asset_id in segment
-                        },
-                    )
-                ).id
-                for segment in segments
-            ]
-            approved = uow.batches.update(batch.model_copy(update={"schema_version": pinned}))
-
-        self._workspace.event_bus.publish(
-            BatchApproved(
-                batch_id=approved.id,
-                project_id=approved.project_id,
-                schema_version=pinned,
-                job_ids=tuple(job_ids),
-                asset_count=len(approved.asset_ids),
-            )
-        )
+            approved, announcement = self.approve_in(uow, batch_id, partition)
+        self._workspace.event_bus.publish(announcement)
         return approved
+
+    def approve_in(
+        self, uow: UnitOfWork, batch_id: UUID, partition: Partition | None = None
+    ) -> tuple[Batch, BatchApproved]:
+        """:meth:`approve` inside a caller's own transaction.
+
+        Returns the approved batch and the announcement, which the caller
+        publishes once its transaction has committed and never before.
+
+        Raises:
+            BatchNotFound: no such batch in this workspace.
+            InvalidTransition: the batch is not a ``draft``.
+            EmptyBatch: the batch holds no assets.
+            SchemaNotFound: the project has no schema to pin.
+            InvalidPartition: the segments are not an exact partition.
+        """
+        batch = self.require_batch(uow, batch_id)
+        require_move(BATCH_TRANSITIONS, batch.state, BatchState.APPROVED, _subject(batch))
+        # State first, then membership: re-read under the write lock that
+        # move took, so no asset added after the first read is left unpartitioned.
+        self._move_guarded(uow, batch, BatchState.APPROVED)
+        batch = self.require_batch(uow, batch_id)
+        if not batch.asset_ids:
+            raise EmptyBatch(
+                f"batch {batch.name!r} has no assets; an approved empty batch has no jobs "
+                f"and could never complete"
+            )
+
+        # Not created here if it is missing: SchemaService is the only door to
+        # a schema version, and inventing one would be a second.
+        pinned = self._schemas.require_active(uow, batch.project_id).version
+        segments = partition_assets(
+            batch.asset_ids, SingleJob() if partition is None else partition
+        )
+
+        seeding = _seeding(uow, batch.asset_ids)
+        group = uow.task_groups.add(TaskGroup(batch_id=batch.id, name=FIRST_ROUND))
+        job_ids = [
+            uow.annotation_jobs.add(
+                AnnotationJob(
+                    task_group_id=group.id,
+                    progress={
+                        asset_id: initial_progress(
+                            has_annotations=asset_id in seeding,
+                            judged=not seeding.get(asset_id, False),
+                        )
+                        for asset_id in segment
+                    },
+                )
+            ).id
+            for segment in segments
+        ]
+        approved = uow.batches.update(batch.model_copy(update={"schema_version": pinned}))
+        return approved, BatchApproved(
+            batch_id=approved.id,
+            project_id=approved.project_id,
+            schema_version=pinned,
+            job_ids=tuple(job_ids),
+            asset_count=len(approved.asset_ids),
+        )
 
     def start(self, batch_id: UUID) -> Batch:
         """Open the batch for annotation.

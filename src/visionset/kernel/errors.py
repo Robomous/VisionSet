@@ -896,6 +896,33 @@ class LossyExportNotConsented(VisionSetError):
             self.compatibility = compatibility
 
 
+class ImportNotConsented(VisionSetError):
+    """The import would drop something and the caller did not consent to that kind.
+
+    ``LossyExportNotConsented``'s sibling, with consent given per loss kind
+    rather than per format: whether an import is lossy depends on the file in
+    hand, so it is computed from the content. ``ImportService.inspect`` returns
+    the same report without writing anything.
+    """
+
+    #: The loss report, the full one rather than only the uncovered kinds.
+    losses: object | None = None
+
+    def __init__(self, message: str, *, losses: object | None = None) -> None:
+        super().__init__(message)
+        if losses is not None:
+            self.losses = losses
+
+
+class ImportSourceUnreadable(VisionSetError):
+    """The dataset to import is malformed, unsafe or not readable.
+
+    A file that does not parse, an image path that leaves the source directory,
+    or an image whose bytes disagree with what the annotation file says about
+    it. Nothing is written.
+    """
+
+
 class ThumbnailNotCached(VisionSetError):
     """No preview has been rendered for this asset.
 
