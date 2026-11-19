@@ -210,7 +210,7 @@ import { AnnotationLayer } from "./AnnotationLayer";
 import { createDecodedAssetImage, type DecodedAssetImage } from "./decodedAssetImage";
 import { useAnnotatorSnapshot } from "./hooks";
 import { digitFromCode, isComposing, isTextEntry } from "./keyboard";
-import { classColor, editedId, paintAnnotation, paintSuggestions } from "./paint";
+import { classColor, editedId, paintAnnotation, paintHighlightedVertex, paintSuggestions } from "./paint";
 import type { PaintedSuggestion } from "./paint";
 import { stageScreenSizes } from "./Shapes";
 import { withoutHidden } from "./visibility";
@@ -1393,6 +1393,7 @@ export function AnnotatorCanvas({
     skipId === null
       ? null
       : paintAnnotation(visibleRendered, snapshot.selection, skipId, hotBodyId);
+  const highlightedVertex = paintHighlightedVertex(visibleRendered, snapshot.highlightedVertex);
 
   const declared =
     activeClass === null ? undefined : schema.classes.find((row) => row.name === activeClass);
@@ -1575,6 +1576,7 @@ export function AnnotatorCanvas({
               crosshair={tool === "select" ? null : pointing}
               asset={asset}
               suggestions={painted}
+              highlightedVertex={highlightedVertex}
               {...(suggestion === null ? {} : { promptPoints: suggestion.points })}
             />
           </svg>

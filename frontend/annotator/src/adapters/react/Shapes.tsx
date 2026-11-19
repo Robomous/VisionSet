@@ -389,7 +389,9 @@ export function PolylineShape({ geometry, color, hot, selected }: {
  * annotations, so painting them on an unselected one would offer a grip that
  * cannot be taken. `handles` is the same mirror for the read-only mode:
  * a viewer's press cannot take a grip either, so none is painted — selection
- * there is the stroke and the label, nothing more.
+ * there is the stroke and the label. The one exception is a polyline's vertex
+ * dots, which carry its recorded visibility (the hollow occluded marker) and so
+ * are information a viewer reads, not only a grip.
  */
 export function AnnotationShape({ shape, zoom, handles }: ShapeProps): JSX.Element {
   return (
@@ -420,9 +422,8 @@ export function AnnotationShape({ shape, zoom, handles }: ShapeProps): JSX.Eleme
       {handles && shape.selected && shape.geometry.type === "bbox" && (
         <Grips geometry={shape.geometry} color={shape.color} zoom={zoom} hotHandle={null} />
       )}
-      {handles &&
-        shape.selected &&
-        (shape.geometry.type === "polygon" || shape.geometry.type === "polyline") && (
+      {shape.selected &&
+        ((handles && shape.geometry.type === "polygon") || shape.geometry.type === "polyline") && (
         <Vertices
           points={shape.geometry.points}
           color={shape.color}

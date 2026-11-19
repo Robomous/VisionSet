@@ -53,6 +53,7 @@ export {
   editedId,
   paintAnnotation,
   paintDocument,
+  paintHighlightedVertex,
   paintSuggestions,
   pendingPolygon,
   polylineRuns,
@@ -60,6 +61,7 @@ export {
   screenPx,
   type PaintedAnnotation,
   type PaintedSuggestion,
+  type PaintedVertex,
   type PendingPolygon,
   type PolylineRun,
 } from "./paint";

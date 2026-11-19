@@ -32,10 +32,12 @@ import {
   rubberBand,
   screenPx,
 } from "./paint";
-import type { PaintedAnnotation, PaintedSuggestion } from "./paint";
+import type { PaintedAnnotation, PaintedSuggestion, PaintedVertex } from "./paint";
 import {
   AnnotationShape,
   HANDLE_PX,
+  LABEL_HALO_PX,
+  LABEL_PX,
   STROKE_PX,
   VERTEX_PX,
   Vertices,
@@ -76,6 +78,12 @@ export interface TransientLayerProps {
    * press look like it had been dropped.
    */
   readonly promptPoints?: readonly PromptPoint[];
+  /**
+   * The vertex the side panel is pointing at, ringed and numbered so a toggle
+   * can be matched to its place on the lane. Drawn in the read-only mode too:
+   * it is a read.
+   */
+  readonly highlightedVertex?: PaintedVertex | null;
 }
 
 const DASH = "6 4";
@@ -99,6 +107,7 @@ export function TransientLayer({
   asset,
   suggestions = NO_SUGGESTIONS,
   promptPoints,
+  highlightedVertex = null,
 }: TransientLayerProps): JSX.Element {
   const band = rubberBand(state);
   const pending = pendingPolygon(state);
@@ -157,6 +166,8 @@ export function TransientLayer({
       )}
 
       <HotTarget hot={hot} zoom={zoom} />
+
+      {highlightedVertex !== null && <HighlightedVertex vertex={highlightedVertex} zoom={zoom} />}
     </g>
   );
 }
@@ -371,6 +382,53 @@ function PendingPolygonShape({ points, cursor, color, zoom, closeRing }: {
           strokeWidth={screenPx(1.5, zoom)}
         />
       ))}
+    </g>
+  );
+}
+
+/** A ring in the class colour around the vertex, and its 1-based number beside it. */
+function HighlightedVertex({
+  vertex,
+  zoom,
+}: {
+  readonly vertex: PaintedVertex;
+  readonly zoom: number;
+}): JSX.Element {
+  const [x, y] = vertex.point;
+  const radius = screenPx(VERTEX_PX * 2, zoom);
+  return (
+    <g data-testid="highlighted-vertex" data-vertex-index={vertex.index}>
+      <circle
+        cx={x}
+        cy={y}
+        r={radius}
+        fill="none"
+        stroke="#ffffff"
+        strokeWidth={screenPx(4, zoom)}
+      />
+      <circle
+        cx={x}
+        cy={y}
+        r={radius}
+        fill="none"
+        stroke={vertex.color}
+        strokeWidth={screenPx(2, zoom)}
+      />
+      <text
+        data-testid="highlighted-vertex-number"
+        x={x + radius + screenPx(3, zoom)}
+        y={y - radius}
+        fill="#ffffff"
+        fontFamily="system-ui, sans-serif"
+        fontWeight={700}
+        fontSize={screenPx(LABEL_PX, zoom)}
+        paintOrder="stroke"
+        stroke="#000000"
+        strokeOpacity={0.7}
+        strokeWidth={screenPx(LABEL_HALO_PX, zoom)}
+      >
+        {vertex.index + 1}
+      </text>
     </g>
   );
 }

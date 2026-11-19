@@ -57,6 +57,7 @@ export {
   AnnotatorStore,
   type Projection,
   type StoreSnapshot,
+  type VertexRef,
 } from "./core/state/store";
 // Geometry — asset-pixel math: predicates, hit-testing, transforms
 export { clamp } from "./core/geometry/clamp";

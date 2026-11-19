@@ -20,6 +20,7 @@ import {
   editedId,
   paintAnnotation,
   paintDocument,
+  paintHighlightedVertex,
   paintSuggestions,
   pendingPolygon,
   polylineRuns,
@@ -485,5 +486,25 @@ describe("an occluded stretch of a polyline is its own run", () => {
       { points: [POINTS[0], POINTS[1], POINTS[2]], occluded: false },
       { points: [POINTS[2], POINTS[3], POINTS[4]], occluded: true },
     ]);
+  });
+});
+
+describe("the vertex the panel points at", () => {
+  it("resolves to where the vertex is drawn, in its class colour", () => {
+    const document = sceneDocument();
+    const painted = paintHighlightedVertex(document, { id: PATH_ID, index: 1 });
+    expect(painted).toEqual({
+      index: 1,
+      point: [620, 300],
+      color: paintAnnotation(document, EMPTY_SELECTION, PATH_ID, null)?.color,
+    });
+  });
+
+  it("draws nothing for no highlight, a box, a missing shape or an index past the end", () => {
+    const document = sceneDocument();
+    expect(paintHighlightedVertex(document, null)).toBeNull();
+    expect(paintHighlightedVertex(document, { id: BOX_ID, index: 0 })).toBeNull();
+    expect(paintHighlightedVertex(document, { id: "gone", index: 0 })).toBeNull();
+    expect(paintHighlightedVertex(document, { id: PATH_ID, index: 3 })).toBeNull();
   });
 });
