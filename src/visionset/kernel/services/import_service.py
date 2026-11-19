@@ -46,10 +46,10 @@ from visionset.kernel.domain import (
     ImportRun,
     LabelClass,
     Project,
-    normalize_name,
     sha256_hex,
 )
 from visionset.kernel.domain.geometry import geometry_intersects_asset
+from visionset.kernel.domain.names import derived_name
 from visionset.kernel.domain.schema_validation import validate_schema_annotation
 from visionset.kernel.errors import (
     AssetNotWritable,
@@ -219,7 +219,7 @@ class ImportService:
             batch = uow.batches.add(
                 Batch(
                     project_id=project_id,
-                    name=normalize_name(
+                    name=derived_name(
                         f"{importer.format_name} import {planned.root.name}", what="batch"
                     ),
                     asset_ids=members,

@@ -102,8 +102,8 @@ def import_dataset(
 
     The images are ingested by content, the dataset's classes become schema
     version 1 when the project has none, and every label is written with
-    `import` provenance. The batch is approved and stops there: its assets
-    arrive `annotated`, and a person reviews and promotes them as with any
+    `import` provenance. The batch is approved and stops there: each labeled
+    asset arrives `annotated`, and a person reviews and promotes them as with any
     other batch. An existing schema is never changed by an import.
 
     Call `inspect_import` first: an import that would drop anything refuses

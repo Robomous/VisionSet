@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from uuid import UUID
 
+import pytest
 from tests.cli._flow import ok, payload, project, run, workspace
 from tests.fixtures.coco_source import write_coco_source
 
@@ -143,3 +144,18 @@ def test_an_unreadable_source_is_refused(tmp_path: Path) -> None:
         assert result.exit_code == 1, result.output
         assert json.loads(result.stdout)["error"]["code"] == "IMPORT_SOURCE_UNREADABLE"
     assert _state(root, name) == (0, 0, 0)
+
+
+@pytest.mark.parametrize("dirname", ["x" * 250, "bad\nname"])
+def test_a_source_directory_name_that_is_not_a_valid_batch_name_still_imports(
+    tmp_path: Path, dirname: str
+) -> None:
+    root = workspace(tmp_path)
+    name = project(root)
+    src = write_coco_source(tmp_path / dirname)
+
+    dry = run(root, "import", "coco", str(src), "--project", name, "--dry-run")
+    committed = run(root, "import", "coco", str(src), "--project", name)
+
+    assert dry.exit_code == 0
+    assert committed.exit_code == 0
