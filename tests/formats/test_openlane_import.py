@@ -343,3 +343,52 @@ def test_visionset_import_reads_openlane_and_a_dry_run_reports_the_loss(tmp_path
             (label,) = uow.annotations.list(asset.id)
     assert label.provenance == "import"
     assert label.geometry.visibility == (VISIBLE, OCCLUDED, VISIBLE)  # type: ignore[union-attr]
+
+
+# --- defects found in review ----------------------------------------------------
+
+
+def test_json_nested_too_deep_to_parse_is_refused(tmp_path: Path) -> None:
+    (tmp_path / "labels").mkdir()
+    (tmp_path / "labels" / "a.json").write_text("[" * 100000 + "]" * 100000, encoding="utf-8")
+
+    with pytest.raises(ImportSourceUnreadable, match="not readable JSON"):
+        OpenLane2dImporter().read(tmp_path)
+
+
+@pytest.mark.parametrize("inside", [True, False])
+def test_a_symlinked_directory_under_labels_is_refused(tmp_path: Path, inside: bool) -> None:
+    src = _write(tmp_path / "src", [_lane()])
+    target = _write(tmp_path / "elsewhere", [_lane()]) if not inside else src / "labels" / "train"
+    linked = target / "labels" / "train" if not inside else target
+    (src / "labels" / "more").symlink_to(linked, target_is_directory=True)
+
+    with pytest.raises(ImportSourceUnreadable, match="symbolic link"):
+        OpenLane2dImporter().read(src)
+
+
+def test_a_symlinked_labels_directory_is_refused(tmp_path: Path) -> None:
+    outside = _write(tmp_path / "outside", [_lane()])
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "labels").symlink_to(outside / "labels", target_is_directory=True)
+
+    with pytest.raises(ImportSourceUnreadable, match="symbolic link"):
+        OpenLane2dImporter().read(src)
+
+
+@pytest.mark.parametrize(
+    ("category", "attribute"),
+    [(1, 0), (1, True), (1, 1.0), (0, False), (2, 3)],
+)
+def test_a_lane_attribute_other_than_the_exporter_s_echo_is_an_attribute_loss(
+    tmp_path: Path, category: int, attribute: Any
+) -> None:
+    src = _write(tmp_path, [_lane(category=category, attribute=attribute)])
+
+    assert [(kind, count) for kind, _, count in _losses(src)] == [(ImportLossKind.ATTRIBUTE, 1)]
+
+
+@pytest.mark.parametrize("category", [0, 1, 13])
+def test_the_exporter_s_attribute_echo_is_not_a_loss(tmp_path: Path, category: int) -> None:
+    assert _losses(_write(tmp_path, [_lane(category=category, attribute=category)])) == []

@@ -134,7 +134,7 @@ def _label_files(src: Path, root: Path) -> list[Path]:
         raise ImportSourceUnreadable(
             f"the OpenLane source {src.name!r} has no {LABELS_DIRNAME}/ directory"
         )
-    found = sorted(path for path in labels.rglob("*.json") if path.is_file())
+    found = sorted(_json_files(src, labels))
     if not found:
         raise ImportSourceUnreadable(
             f"the OpenLane source {src.name!r} holds no JSON under {LABELS_DIRNAME}/"
@@ -147,6 +147,26 @@ def _label_files(src: Path, root: Path) -> list[Path]:
     return found
 
 
+def _json_files(src: Path, directory: Path) -> list[Path]:
+    """Every ``*.json`` file under ``directory``, refusing a linked directory.
+
+    Walked by hand because whether ``rglob`` follows a directory symlink differs
+    across Python versions; a link that is skipped on one would be a silent drop.
+    """
+    if directory.is_symlink():
+        raise ImportSourceUnreadable(
+            f"{directory.relative_to(src).as_posix()!r} is a symbolic link to a directory; "
+            "linked directories are not followed"
+        )
+    found = []
+    for entry in directory.iterdir():
+        if entry.is_dir():
+            found.extend(_json_files(src, entry))
+        elif entry.suffix == ".json" and entry.is_file():
+            found.append(entry)
+    return found
+
+
 def _refuse_constant(name: str) -> float:
     raise ImportSourceUnreadable(f"the OpenLane file holds the non-finite number {name}")
 
@@ -154,7 +174,7 @@ def _refuse_constant(name: str) -> float:
 def _load(path: Path) -> Mapping[str, Any]:
     try:
         document = json.loads(path.read_text(encoding="utf-8"), parse_constant=_refuse_constant)
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, RecursionError) as exc:
         raise ImportSourceUnreadable(f"{path.name} is not readable JSON: {exc}") from None
     if not isinstance(document, dict):
         raise ImportSourceUnreadable(f"{path.name} is not an OpenLane document")
@@ -240,7 +260,7 @@ def _label(
     if track_id is not None and track_id != f"lane_{position}":
         losses[(ImportLossKind.ATTRIBUTE, class_name, "track ids are not imported")] += 1
     attribute = lane.get("attribute")
-    if attribute is not None and attribute not in (0, category):
+    if attribute is not None and not (_is_integer(attribute) and attribute == category):
         losses[(ImportLossKind.ATTRIBUTE, class_name, "the lane attribute is not imported")] += 1
 
     categories.setdefault(class_name, category)
