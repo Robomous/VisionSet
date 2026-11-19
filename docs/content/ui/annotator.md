@@ -215,11 +215,27 @@ finds; then the object rows: meta-size `N. class`, selected = accent border + ti
 
 **Vertices, under the object rows, while exactly one polyline is selected.** A vertex has no
 selection of its own and every canvas gesture on one is already taken, so this is where a
-vertex is marked occluded. Header — the word `Vertices` and the occluded count, or
-`Not recorded` while the lane carries no visibility — then one toggle per vertex, numbered in
-point order, pressed (`aria-pressed`) when occluded. Each press is one undoable edit. In the
-read-only mode the toggles stay, **disabled rather than hidden**: what is recorded is still
-worth reading there.
+vertex is marked occluded. Header — the word `Vertices` and the occluded count, with
+`, N unlabeled` appended only when a vertex is recorded `unlabeled`, or `Not recorded` while
+the lane carries no visibility — then one toggle per vertex, numbered in point order, on a
+five-column grid of equal cells so three-digit numbers line up, inside a scroller capped at
+about eight rows. A toggle is pressed (`aria-pressed`) when occluded and stays binary; an
+`unlabeled` vertex is unpressed like a visible one but carries a question-mark glyph, muted
+ink, and `(unlabeled)` in its accessible name, so the two never read the same. Each press is
+one undoable edit, and the one-line hint above the grid says so.
+
+The toggles are **one `toolbar` with a roving tab stop**: Tab enters on the last toggle used
+and leaves in one press however long the lane is; Left and Right step one vertex, Up and
+Down one row, Home and End jump to the ends; Space or Enter toggles. Hovering or focusing a
+toggle **rings that vertex on the canvas and writes its number beside it** — the store's
+`highlightedVertex`, beside the selection and outside the history — which is how "vertex 23"
+is found on a lane. Only the pointed-at vertex is numbered: forty numbers over the picture
+would hide the lane they label. Ctrl/⌘+Z and Shift+Ctrl/⌘+Z on a focused toggle undo and
+redo; see the keyboard note under the pinned version badge.
+
+In the read-only mode the toggles stay, **disabled rather than hidden** — `aria-disabled`,
+so they keep the tab stop, the arrows and the canvas highlight — and the hint goes, because
+nothing can be pressed: what is recorded is still worth reading there.
 
 **Unknown stays unknown until somebody says.** A polyline loaded without `visibility` holds it
 as unknown, and saving it untouched sends no `visibility` key — so nothing is written that
@@ -270,7 +286,11 @@ arrived since, in the kernel's own words for the change. Nothing about the activ
 is fetched until it is opened: the editor is judged against the pin, and a page that read
 the active version on arrival would be one refactor from offering classes the API then
 refuses. A hand-built disclosure rather than a popover, because the annotator reads the
-keyboard off its own root and focus has to come back to the canvas.
+keyboard off its own root and focus has to come back to the canvas. The one forwarding
+exception is the Vertices toolbar: a person marking vertices from the keyboard is working
+the document from there, so its toggles answer the undo and redo chords themselves, with the
+same bindings and the same read-only refusal. Nothing else in the panel does — a chord in
+the filter field stays the field's.
 
 **Add-a-class dialog: one sitting is one published schema version.** `Create and add
 another` (⌘↵) banks the class and clears the form; the primary publishes everything banked
@@ -406,7 +426,9 @@ What a viewer is:
   `C` and the digits do nothing. *What may I draw* is not a question a viewer can ask.
 - **Selection highlights; it does not advertise.** A selected shape renders the selected
   treatment — stroke 3, the label — with no grips and no vertex dots, and the cursor is the
-  default arrow everywhere: no resize keywords, because no such gesture exists.
+  default arrow everywhere: no resize keywords, because no such gesture exists. A polyline
+  is the exception for dots: its vertices carry recorded visibility, so a selected lane
+  draws them, the hollow occluded marker included, as something to read rather than drag.
 - **The tool strip renders, carrying navigation and nothing else.** The hand is not a
   drawing tool — it is what a person reaches for when the picture is in the wrong place —
   and navigating a batch nobody may edit is most of what a viewer does, so the strip keeps

@@ -62,10 +62,23 @@ export interface StoreSnapshot {
   readonly rendered: AnnotationDocument;
   /** The picked ids. Beside the document, never in the history. */
   readonly selection: Selection;
+  /**
+   * The vertex another surface is pointing at — the side panel's hovered or
+   * focused toggle — for the canvas to draw. Beside the selection and, like it,
+   * never in the history. Resolved against the document by the reader, so an
+   * index the document no longer has draws nothing.
+   */
+  readonly highlightedVertex: VertexRef | null;
   readonly canUndo: boolean;
   readonly canRedo: boolean;
   readonly undoLabel: string | null;
   readonly redoLabel: string | null;
+}
+
+/** One vertex of one annotation, by position. */
+export interface VertexRef {
+  readonly id: string;
+  readonly index: number;
 }
 
 /** A transient view of the committed document — what a drag renders as. */
@@ -77,6 +90,7 @@ export class AnnotatorStore {
   private readonly listeners = new Set<() => void>();
   private staged: AnnotationDocument | null = null;
   private picked: Selection;
+  private highlighted: VertexRef | null = null;
   private snapshot: StoreSnapshot | null = null;
 
   constructor(document: AnnotationDocument, selection: Selection = EMPTY_SELECTION) {
@@ -95,6 +109,7 @@ export class AnnotatorStore {
         preview: this.staged,
         rendered: this.staged ?? document,
         selection: this.picked,
+        highlightedVertex: this.highlighted,
         canUndo: this.log.canUndo,
         canRedo: this.log.canRedo,
         undoLabel: this.log.undoLabel,
@@ -181,6 +196,16 @@ export class AnnotatorStore {
   select(selection: Selection): void {
     if (selection === this.picked) return;
     this.picked = selection;
+    this.changed();
+  }
+
+  /** Point at one vertex, or at none. Notifies only on a change; never touches the history. */
+  highlightVertex(vertex: VertexRef | null): void {
+    const current = this.highlighted;
+    if (vertex === null ? current === null : current?.id === vertex.id && current.index === vertex.index) {
+      return;
+    }
+    this.highlighted = vertex === null ? null : { id: vertex.id, index: vertex.index };
     this.changed();
   }
 

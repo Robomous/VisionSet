@@ -206,6 +206,38 @@ describe("the selection is here, and still not in the history", () => {
   });
 });
 
+describe("the highlighted vertex sits beside the selection", () => {
+  it("is null to start, and set without adding anything to undo", () => {
+    const store = new AnnotatorStore(documentOf("a"));
+    expect(store.getSnapshot().highlightedVertex).toBeNull();
+
+    store.highlightVertex({ id: "a", index: 2 });
+
+    expect(store.getSnapshot().highlightedVertex).toEqual({ id: "a", index: 2 });
+    expect(store.canUndo).toBe(false);
+  });
+
+  it("notifies on a change, and only on a change", () => {
+    const store = new AnnotatorStore(documentOf("a"));
+    let heard = 0;
+    store.subscribe(() => {
+      heard += 1;
+    });
+
+    store.highlightVertex({ id: "a", index: 1 });
+    const snapshot = store.getSnapshot();
+    store.highlightVertex({ id: "a", index: 1 });
+    expect(heard).toBe(1);
+    expect(store.getSnapshot()).toBe(snapshot);
+
+    store.highlightVertex({ id: "a", index: 0 });
+    store.highlightVertex(null);
+    store.highlightVertex(null);
+    expect(heard).toBe(3);
+    expect(store.getSnapshot().highlightedVertex).toBeNull();
+  });
+});
+
 describe("a drag writes nothing until release", () => {
   it("moves what is rendered and leaves the document exactly where it was", () => {
     // Acceptance criterion 3. Ten pointer-moves, and the committed document is

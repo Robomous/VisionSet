@@ -31,7 +31,7 @@
  * way a lane runs, and a tool that sorted would reverse half of them invisibly.
  */
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Request } from "@playwright/test";
 
 import {
   COORDINATE_SLACK,
@@ -45,6 +45,8 @@ import {
   type Frame,
   type Point,
 } from "./_frame";
+import type { Wire } from "./_wire";
+import { openJob } from "./_wireApiStub";
 
 test.beforeEach(async ({ page }) => {
   await page.goto(SHOWCASE);
@@ -300,4 +302,168 @@ test("deleting an occluded vertex takes its mark with it", async ({ page }) => {
   await expect(vertices(page)).toHaveCount(2);
   expect((await lastLane(page)).geometry.visibility).toEqual([2, 2]);
   await expect(page.getByTestId("annotation-layer").locator('[data-occluded="true"]')).toHaveCount(0);
+});
+
+/** Where screenshots for a reviewer land, when `VISIONSET_E2E_SHOTS` names a directory. */
+const SHOTS = process.env["VISIONSET_E2E_SHOTS"];
+
+/** Forty points zig-zagging across the frame, far enough apart to stay separate clicks. */
+const LONG_LANE: readonly Point[] = Array.from({ length: 40 }, (_, index) => ({
+  x: 100 + index * 27,
+  y: index % 2 === 0 ? 300 : 340,
+}));
+
+test("hovering or focusing a vertex toggle rings that vertex on the canvas and numbers it", async ({
+  page,
+}) => {
+  const frame = await frameOf(page);
+  await drawLane(page, frame);
+
+  const ring = page.getByTestId("highlighted-vertex");
+  await expect(ring).toHaveCount(0);
+
+  await page.getByTestId("vertex-toggle-1").hover();
+  await expect(ring).toHaveAttribute("data-vertex-index", "1");
+  await expect(page.getByTestId("highlighted-vertex-number")).toHaveText("2");
+  const box = (await ring.locator("circle").first().boundingBox())!;
+  const at = frame.at(LANE[1].x, LANE[1].y);
+  expect(Math.abs(box.x + box.width / 2 - at.x)).toBeLessThan(COORDINATE_SLACK);
+  expect(Math.abs(box.y + box.height / 2 - at.y)).toBeLessThan(COORDINATE_SLACK);
+
+  await page.mouse.move(5, 5);
+  await expect(ring).toHaveCount(0);
+
+  await page.getByTestId("vertex-toggle-2").focus();
+  await expect(page.getByTestId("highlighted-vertex-number")).toHaveText("3");
+});
+
+test("the vertex toggles are one tab stop, and the arrow keys move between them", async ({ page }) => {
+  const frame = await frameOf(page);
+  await drawLane(page, frame, LONG_LANE.slice(0, 12));
+
+  const toolbar = page.getByRole("toolbar", { name: "Vertex occlusion" });
+  await expect(toolbar.locator('[tabindex="0"]')).toHaveCount(1);
+
+  await page.getByTestId("vertex-toggle-0").focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByTestId("vertex-toggle-1")).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByTestId("vertex-toggle-6")).toBeFocused();
+  await expect(page.getByTestId("highlighted-vertex-number")).toHaveText("7");
+  await page.keyboard.press("End");
+  await expect(page.getByTestId("vertex-toggle-11")).toBeFocused();
+  await page.keyboard.press("Home");
+  await expect(page.getByTestId("vertex-toggle-0")).toBeFocused();
+
+  await page.keyboard.press("Tab");
+  const leftGroup = await page.evaluate(
+    () => document.activeElement?.closest('[role="toolbar"]') === null,
+  );
+  expect(leftGroup).toBe(true);
+  await page.keyboard.press("Shift+Tab");
+  await expect(page.getByTestId("vertex-toggle-0")).toBeFocused();
+});
+
+test("undo and redo work from a focused vertex toggle", async ({ page }) => {
+  const frame = await frameOf(page);
+  await drawLane(page, frame);
+  await occludeFromKeyboard(page, 1);
+  await expect(page.getByTestId("vertex-toggle-1")).toBeFocused();
+
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(page.getByTestId("vertex-toggle-1")).toHaveAttribute("aria-pressed", "false");
+  expect((await lastLane(page)).geometry.visibility).toEqual([2, 2, 2]);
+
+  await page.keyboard.press("ControlOrMeta+Shift+z");
+  await expect(page.getByTestId("vertex-toggle-1")).toHaveAttribute("aria-pressed", "true");
+  expect((await lastLane(page)).geometry.visibility).toEqual([2, 1, 2]);
+});
+
+test("a forty-vertex lane lays its toggles on an even five-column grid that scrolls", async ({
+  page,
+}) => {
+  const frame = await frameOf(page);
+  await drawLane(page, frame, LONG_LANE);
+  await expect(page.getByTestId("vertex-toggle-39")).toBeAttached();
+
+  const boxes = await page
+    .getByRole("toolbar", { name: "Vertex occlusion" })
+    .getByRole("button")
+    .evaluateAll((buttons) =>
+      buttons.map((button) => {
+        const rect = button.getBoundingClientRect();
+        return { x: Math.round(rect.x), width: Math.round(rect.width) };
+      }),
+    );
+  expect(boxes).toHaveLength(40);
+  expect(new Set(boxes.map((box) => box.x)).size).toBe(5);
+  expect(new Set(boxes.map((box) => box.width)).size).toBe(1);
+
+  const scroller = page.getByTestId("vertex-scroller");
+  const { client, scroll } = await scroller.evaluate((node) => ({
+    client: node.clientHeight,
+    scroll: node.scrollHeight,
+  }));
+  expect(client).toBeGreaterThan(200);
+  expect(scroll).toBeGreaterThan(client);
+
+  await page.getByTestId("vertex-toggle-22").hover();
+  await expect(page.getByTestId("highlighted-vertex-number")).toHaveText("23");
+  if (SHOTS !== undefined) {
+    await page.getByTestId("vertex-region").screenshot({ path: `${SHOTS}/vertices-panel-40.png` });
+    await page.getByTestId("annotator-canvas").screenshot({ path: `${SHOTS}/vertex-23-highlighted.png` });
+  }
+});
+
+function storedLane(visibility: readonly number[]): Wire["AnnotationOut"] {
+  return {
+    id: "seeded-lane",
+    asset_id: "asset-1",
+    label_class: "centerline",
+    schema_version: 3,
+    geometry: {
+      type: "polyline",
+      points: [
+        [40, 40],
+        [80, 60],
+        [120, 80],
+      ],
+      visibility: [...visibility] as Wire["VertexVisibility"][],
+    },
+    attributes: {},
+    provenance: "human",
+    model_ref: null,
+    confidence: null,
+    job_id: null,
+  };
+}
+
+test("a completed batch's viewer draws a selected lane's vertex dots, and the toggles stay readable", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openJob(
+    page,
+    sent,
+    undefined,
+    { batch: "completed", job: "completed" },
+    { polyline: true },
+    [storedLane([2, 1, 2])],
+  );
+  await page.getByTestId("object-row-0").click();
+  await expect(page.getByTestId("object-row-0")).toHaveAttribute("data-selected", "true");
+
+  const dots = page.getByTestId("annotation-layer").locator("[data-vertex]");
+  await expect(dots).toHaveCount(3);
+  await expect(dots.nth(1)).toHaveAttribute("data-occluded", "true");
+
+  await expect(page.getByTestId("vertex-hint")).toHaveCount(0);
+  const toggle = page.getByTestId("vertex-toggle-1");
+  await expect(toggle).toHaveAttribute("aria-disabled", "true");
+  await toggle.focus();
+  await expect(page.getByTestId("highlighted-vertex-number")).toHaveText("2");
+  await page.keyboard.press("Space");
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByTestId("vertex-toggle-2")).toBeFocused();
 });

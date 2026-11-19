@@ -43,7 +43,9 @@
 import { normalizeBbox } from "../../core/geometry/bbox";
 import { annotationsInDrawOrder } from "../../core/state/document";
 import type { AnnotationDocument } from "../../core/state/document";
+import { EMPTY_SELECTION } from "../../core/state/selection";
 import type { Selection } from "../../core/state/selection";
+import type { VertexRef } from "../../core/state/store";
 import type { InteractionState } from "../../core/interaction/state";
 import type { PromptPoint, SuggestionState } from "../../core/interaction/suggestion";
 import {
@@ -133,6 +135,29 @@ export function paintAnnotation(
     (candidate) => candidate.name === annotation.label_class,
   );
   return painted(annotation, declared, selection, hotId);
+}
+
+/** The vertex another surface is pointing at, resolved to where it is drawn. */
+export interface PaintedVertex {
+  readonly index: number;
+  readonly point: Point;
+  readonly color: string;
+}
+
+/**
+ * Resolve `StoreSnapshot.highlightedVertex` against what is drawn: `null` for a
+ * shape that is gone, hidden, has no vertices, or no longer has that index.
+ */
+export function paintHighlightedVertex(
+  document: AnnotationDocument,
+  vertex: VertexRef | null,
+): PaintedVertex | null {
+  if (vertex === null) return null;
+  const shape = paintAnnotation(document, EMPTY_SELECTION, vertex.id, null);
+  if (shape === null || shape.geometry.type === "bbox") return null;
+  const point = shape.geometry.points[vertex.index];
+  if (point === undefined) return null;
+  return { index: vertex.index, point, color: shape.color };
 }
 
 /**

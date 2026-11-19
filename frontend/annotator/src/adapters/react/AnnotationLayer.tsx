@@ -46,7 +46,8 @@ export interface AnnotationLayerProps {
   /**
    * Whether a selected shape grows grips and vertex dots. `false` in the
    * read-only mode: selection there highlights — stroke and label — and
-   * must not advertise a resize or a vertex drag that no press can start. A
+   * must not advertise a resize or a vertex drag that no press can start; a
+   * polyline keeps its dots, which carry its recorded visibility. A
    * boolean constant per mode, so it never moves mid-gesture and the `memo`
    * above keeps its bail-out.
    */
