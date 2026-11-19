@@ -88,6 +88,9 @@ def test_boxes_and_single_ring_polygons_are_read_without_loss(tmp_path: Path) ->
         ({"category_id": 2, "segmentation": [[0, 0, 4, 0, 0, 4], [8, 8, 9, 8, 8, 9]]}, "label", 0),
         ({"category_id": 2, "segmentation": [[0, 0, 4, 0]]}, "label", 0),
         ({"category_id": 1, "bbox": [1, 1, 0, 4]}, "label", 0),
+        ({"category_id": 2, "segmentation": [[0, 0, 4, 4, 8, 8]]}, "label", 0),
+        ({"category_id": 2, "segmentation": [[3, 3, 3, 3, 3, 3]]}, "label", 0),
+        ({"category_id": 2, "segmentation": [[0, 0, 4, 0, 8, 0, 2, 0]]}, "label", 0),
         ({"category_id": 9, "bbox": [1, 1, 4, 4]}, "label", 0),
         ({"category_id": 1, "bbox": [500, 500, 4, 4]}, "label", 0),
         (
@@ -132,7 +135,7 @@ def test_an_image_path_leaving_the_source_refuses_the_whole_import(
 
 
 def test_a_source_without_instances_or_with_broken_json_is_refused(tmp_path: Path) -> None:
-    with pytest.raises(ImportSourceUnreadable, match="no instances JSON"):
+    with pytest.raises(ImportSourceUnreadable, match="holds no instances_"):
         CocoImporter().read(tmp_path)
     (tmp_path / "instances.json").write_text("{not json", encoding="utf-8")
     with pytest.raises(ImportSourceUnreadable, match="not readable JSON"):
@@ -209,3 +212,143 @@ def test_a_coco_export_of_boxes_and_polygons_imports_back_without_loss(tmp_path:
         (c.name, c.geometries) for c in classes
     ]
     workspace.close()
+
+
+# --- defects found in review ----------------------------------------------------
+
+
+def _with_cats(names: list[str], annotations: list[dict[str, Any]]) -> dict[str, Any]:
+    document = _document(annotations)
+    document["categories"] = [{"id": i, "name": n} for i, n in enumerate(names, 1)]
+    return document
+
+
+def test_only_instances_files_are_read_and_the_others_are_reported(tmp_path: Path) -> None:
+    box = {"category_id": 1, "bbox": [1, 1, 4, 4]}
+    _write(tmp_path, _with_cats(["person"], [box]), name="instances_val.json")
+    _write(
+        tmp_path,
+        _with_cats(["person"], [{**box, "keypoints": [2, 2, 2], "num_keypoints": 1}]),
+        name="person_keypoints_val.json",
+    )
+    _write(
+        tmp_path,
+        {"images": [], "annotations": [{"id": 1, "image_id": 1, "caption": "x"}]},
+        name="captions_val.json",
+    )
+    dataset = CocoImporter().read(tmp_path)
+
+    assert sum(len(image.labels) for image in dataset.images) == 1
+    assert sorted((loss.kind.value, loss.subject) for loss in dataset.losses) == [
+        ("geometry", "person_keypoints_val.json"),
+        ("label", "captions_val.json"),
+    ]
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_a_non_finite_number_refuses_the_file(tmp_path: Path, constant: str) -> None:
+    raw = json.dumps(_document([{"category_id": 1, "bbox": [1, 1, 4, 4]}]))
+    target = tmp_path / "annotations" / "instances_x.json"
+    target.parent.mkdir(parents=True)
+    target.write_text(raw.replace("[1, 1, 4, 4]", f"[{constant}, 1, 4, 4]"), encoding="utf-8")
+
+    with pytest.raises(ImportSourceUnreadable, match="non-finite"):
+        CocoImporter().read(tmp_path)
+
+
+def test_an_exponent_that_overflows_to_infinity_loses_the_label(tmp_path: Path) -> None:
+    raw = json.dumps(_document([{"category_id": 1, "bbox": [1, 1, 4, 4]}]))
+    target = tmp_path / "annotations" / "instances_x.json"
+    target.parent.mkdir(parents=True)
+    target.write_text(raw.replace("[1, 1, 4, 4]", "[1e999, 1, 4, 4]"), encoding="utf-8")
+
+    dataset = CocoImporter().read(tmp_path)
+
+    assert [(loss.kind, loss.count) for loss in dataset.losses] == [(ImportLossKind.LABEL, 1)]
+    assert sum(len(image.labels) for image in dataset.images) == 0
+
+
+def test_a_coordinate_too_large_for_a_float_refuses_the_file(tmp_path: Path) -> None:
+    src = _write(tmp_path, _document([{"category_id": 1, "bbox": [10**400, 1, 4, 4]}]))
+
+    with pytest.raises(ImportSourceUnreadable, match="too large"):
+        CocoImporter().read(src)
+
+
+def _project(tmp_path: Path) -> tuple[WorkspaceService, Any]:
+    workspace = WorkspaceService.init(tmp_path / "ws")
+    return workspace, ProjectService(workspace).create("p")
+
+
+def test_duplicate_image_content_is_an_image_loss_and_keeps_the_first_path(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    write_image(src / "images" / "a.png", size=(32, 24), seed=0)
+    write_image(src / "images" / "b.png", size=(32, 24), seed=0)
+    document = _document(
+        [
+            {"category_id": 1, "bbox": [1, 1, 4, 4]},
+            {"image_id": 2, "category_id": 1, "bbox": [2, 2, 4, 4]},
+        ]
+    )
+    document["images"].append({"id": 2, "file_name": "b.png", "width": 32, "height": 24})
+    document["annotations"][1]["image_id"] = 2
+    _write(src, document)
+    workspace, project = _project(tmp_path)
+    imports = ImportService(workspace)
+
+    plan = imports.inspect(project.id, CocoImporter(), src)
+    run = imports.commit(
+        project.id,
+        CocoImporter(),
+        src,
+        consent=ImportConsent(kinds=frozenset({ImportLossKind.IMAGE})),
+    )
+    workspace.close()
+
+    assert [(loss.kind, loss.subject) for loss in plan.losses] == [
+        (ImportLossKind.IMAGE, "images/b.png")
+    ]
+    assert run.annotations_written == 1
+    assert len(run.created_asset_ids) == 1
+
+
+def test_case_colliding_categories_conflict_at_inspect(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    write_image(src / "images" / "a.png", size=(32, 24))
+    _write(
+        src,
+        _with_cats(
+            ["Car", "car"],
+            [{"category_id": 1, "bbox": [1, 1, 4, 4]}, {"category_id": 2, "bbox": [2, 2, 4, 4]}],
+        ),
+    )
+    workspace, project = _project(tmp_path)
+
+    plan = ImportService(workspace).inspect(project.id, CocoImporter(), src)
+    workspace.close()
+
+    assert plan.conflicts and "collides" in plan.conflicts[0]
+
+
+def test_a_label_outside_an_image_with_no_stated_size_is_a_label_loss(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    write_image(src / "images" / "a.png", size=(32, 24))
+    document = _document(
+        [{"category_id": 1, "bbox": [500, 500, 4, 4]}, {"category_id": 1, "bbox": [1, 1, 4, 4]}]
+    )
+    del document["images"][0]["width"], document["images"][0]["height"]
+    _write(src, document)
+    workspace, project = _project(tmp_path)
+    imports = ImportService(workspace)
+
+    plan = imports.inspect(project.id, CocoImporter(), src)
+    run = imports.commit(
+        project.id,
+        CocoImporter(),
+        src,
+        consent=ImportConsent(kinds=frozenset({ImportLossKind.LABEL})),
+    )
+    workspace.close()
+
+    assert [(loss.kind, loss.count) for loss in plan.losses] == [(ImportLossKind.LABEL, 1)]
+    assert run.annotations_written == 1

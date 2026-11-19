@@ -16,6 +16,7 @@ its content, so there is no ``lossy`` flag here.
 from __future__ import annotations
 
 import json
+import math
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
@@ -43,6 +44,8 @@ from visionset.kernel.errors import ImportSourceUnreadable
 
 ANNOTATIONS_DIRNAME: Final = "annotations"
 _INSTANCES_PREFIX: Final = "instances_"
+#: Below this many square pixels a ring is a line or a point, not a shape.
+_DEGENERATE_AREA: Final = 1e-9
 
 
 @dataclass
@@ -59,7 +62,7 @@ class CocoImporter:
     format_name = "coco"
 
     def read(self, src: Path) -> ImportedDataset:
-        documents = _instance_files(src)
+        documents, unread = _instance_files(src)
         geometries: dict[str, set[GeometryType]] = {}
         images: dict[PurePosixPath, _Image] = {}
         losses: Counter[tuple[ImportLossKind, str, str]] = Counter()
@@ -73,6 +76,9 @@ class CocoImporter:
             by_id = self._images(document, document_path.name, image_dir, images)
             for row in _rows(document, "annotations", document_path.name):
                 self._annotation(row, categories, by_id, geometries, losses)
+
+        for kind, subject, reason, count in map(_unread, unread):
+            losses[(kind, subject, reason)] += max(count, 1)
 
         classes = tuple(
             ImportedClass(name=name, geometries=tuple(seen) or (GeometryType.BBOX,))
@@ -169,24 +175,55 @@ class CocoImporter:
         )
 
 
-def _instance_files(src: Path) -> list[Path]:
+def _instance_files(src: Path) -> tuple[list[Path], list[Path]]:
+    """The instances files to read, and the other COCO files beside them that are not read.
+
+    Only ``instances_*.json`` holds detection and segmentation labels; a COCO
+    folder also carries ``person_keypoints_*`` and ``captions_*`` over the same
+    images, and reading those too would label every person twice. A single
+    JSON file at the top of the source is read whatever it is called.
+    """
     if not src.is_dir():
         raise ImportSourceUnreadable(f"the COCO source {src.name!r} is not a directory")
-    for directory in (src / ANNOTATIONS_DIRNAME, src):
-        if directory.is_dir():
-            found = sorted(path for path in directory.glob("*.json") if path.is_file())
-            if found:
-                return found
+    nested = src / ANNOTATIONS_DIRNAME
+    for directory in (nested, src):
+        if not directory.is_dir():
+            continue
+        found = sorted(path for path in directory.glob("*.json") if path.is_file())
+        instances = [path for path in found if path.name.startswith(_INSTANCES_PREFIX)]
+        if instances:
+            return instances, [path for path in found if path not in instances]
+    top = sorted(path for path in src.glob("*.json") if path.is_file())
+    if len(top) == 1:
+        return top, []
     raise ImportSourceUnreadable(
-        f"the COCO source {src.name!r} holds no instances JSON, at its top or under "
-        f"{ANNOTATIONS_DIRNAME}/"
+        f"the COCO source {src.name!r} holds no {_INSTANCES_PREFIX}*.json at its top or under "
+        f"{ANNOTATIONS_DIRNAME}/, nor a single JSON file at its top"
     )
+
+
+def _unread(path: Path) -> tuple[ImportLossKind, str, str, int]:
+    """The loss one COCO file that is not an instances file stands for."""
+    try:
+        rows = json.loads(path.read_text(encoding="utf-8")).get("annotations", [])
+        count = len(rows) if isinstance(rows, list) else 0
+    except (OSError, ValueError, AttributeError):
+        count = 0
+    if path.name.startswith("person_keypoints_"):
+        return ImportLossKind.GEOMETRY, path.name, "keypoint files are not imported", count
+    if path.name.startswith("captions_"):
+        return ImportLossKind.LABEL, path.name, "captions are not imported", count
+    return ImportLossKind.LABEL, path.name, "only instances files are imported", count
+
+
+def _refuse_constant(name: str) -> float:
+    raise ImportSourceUnreadable(f"the COCO file holds the non-finite number {name}")
 
 
 def _load(path: Path) -> Mapping[str, Any]:
     try:
-        document = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        document = json.loads(path.read_text(encoding="utf-8"), parse_constant=_refuse_constant)
+    except (OSError, ValueError) as exc:
         raise ImportSourceUnreadable(f"{path.name} is not readable JSON: {exc}") from None
     if not isinstance(document, dict):
         raise ImportSourceUnreadable(f"{path.name} is not a COCO document")
@@ -242,9 +279,10 @@ def _geometry(row: Mapping[str, Any]) -> tuple[Geometry | None, str]:
             or not all(_is_number(value) for value in ring)
         ):
             return None, "its polygon has fewer than three points or is malformed"
-        return PolygonGeometry(
-            points=[(float(x), float(y)) for x, y in zip(*[iter(ring)] * 2, strict=True)]
-        ), ""
+        points = [(float(x), float(y)) for x, y in zip(*[iter(ring)] * 2, strict=True)]
+        if _shoelace(points) <= _DEGENERATE_AREA:
+            return None, "its polygon encloses no area"
+        return PolygonGeometry(points=points), ""
     box = row.get("bbox")
     if not isinstance(box, list) or len(box) != 4 or not all(_is_number(value) for value in box):
         return None, "it has neither a polygon nor a well-formed box"
@@ -255,7 +293,22 @@ def _geometry(row: Mapping[str, Any]) -> tuple[Geometry | None, str]:
 
 
 def _is_number(value: object) -> bool:
-    return isinstance(value, int | float) and not isinstance(value, bool)
+    if not isinstance(value, int | float) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        raise ImportSourceUnreadable(
+            f"the COCO file holds a number too large to be a coordinate ({str(value)[:20]}...)"
+        ) from None
+
+
+def _shoelace(points: list[tuple[float, float]]) -> float:
+    total = 0.0
+    for index, (x1, y1) in enumerate(points):
+        x2, y2 = points[(index + 1) % len(points)]
+        total += x1 * y2 - x2 * y1
+    return abs(total) / 2
 
 
 def _extension(row: Mapping[str, Any]) -> Mapping[str, Any]:
