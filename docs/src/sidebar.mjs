@@ -74,6 +74,7 @@ export const sidebar = [
           { slug: "architecture/decisions/where-a-model-runs-is-not-where-it-came-from" },
           { slug: "architecture/decisions/the-inference-worker-is-persistent" },
           { slug: "architecture/decisions/the-image-embedding-stays-in-the-worker" },
+          { slug: "architecture/decisions/an-import-is-a-labeled-batch" },
         ],
       },
     ],

@@ -35,3 +35,9 @@ browser runs. They were written together, and they are easiest to read in this o
 | --- | --- |
 | [The inference worker is persistent](the-inference-worker-is-persistent.md) | One worker outlives every operation, so routing, cancellation and disposal become the runtime's own obligations - and its operation ids are not the editor's suggestion serial. |
 | [The image embedding stays in the worker](the-image-embedding-stays-in-the-worker.md) | An encoded image never crosses the worker boundary, in either direction, and the worker holds exactly one at a time. |
+
+## Importing a dataset
+
+| Page | The rule |
+| --- | --- |
+| [An import is a labeled batch](an-import-is-a-labeled-batch.md) | Labels are written before the batch is approved, as `provenance="import"` with no job. There is no import-only path into the trunk, and fidelity is computed per dataset and consent-gated. |
