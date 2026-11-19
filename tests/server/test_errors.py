@@ -70,6 +70,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "BatchNotFound": (404, "BATCH_NOT_FOUND"),
     "JobNotFound": (404, "JOB_NOT_FOUND"),
     "IngestJobNotFound": (404, "INGEST_JOB_NOT_FOUND"),
+    "ImportFormatNotFound": (404, "IMPORT_FORMAT_NOT_FOUND"),
     "ImportNotConsented": (409, "IMPORT_NOT_CONSENTED"),
     "ImportSourceUnreadable": (422, "IMPORT_SOURCE_UNREADABLE"),
     "VideoImportNotFound": (404, "VIDEO_IMPORT_NOT_FOUND"),

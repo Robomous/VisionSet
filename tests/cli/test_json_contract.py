@@ -15,7 +15,7 @@ contract keeps the surfaces siblings. A test can: ``tests/`` is outside the
 3. the projection is JSON-serializable with no ``default=``, so a leaf somebody
    forgot to encode is a ``TypeError`` here rather than a silent ``str()``.
 
-Three projections are deliberately ungated, and named at the bottom: a surface
+Some projections are deliberately ungated, and named at the bottom: a surface
 defines those shapes first, because no route publishes them.
 """
 
@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from pathlib import PurePosixPath
 from typing import Any
 from uuid import uuid4
 
@@ -81,6 +82,14 @@ from visionset.kernel.domain import (
     AssetProgress,
     BackgroundJobState,
     GeometryType,
+    ImportedClass,
+    ImportedDataset,
+    ImportedImage,
+    ImportedLabel,
+    ImportLoss,
+    ImportLossKind,
+    ImportPlan,
+    ImportRun,
     PolylineGeometry,
     PreLabelRun,
 )
@@ -340,7 +349,40 @@ def test_a_timestamp_keeps_its_microseconds_and_ends_in_z() -> None:
     assert wire._moment(when) == "2026-07-28T12:34:56.789012Z"
 
 
-# --- the three shapes with no wire partner -----------------------------------
+# --- the shapes with no wire partner ------------------------------------------
+
+_LOSS = ImportLoss(kind=ImportLossKind.LABEL, subject="car", count=2, reason="RLE masks")
+_IMAGE = ImportedImage(
+    path="images/a.png",
+    labels=(ImportedLabel(class_name="car", geometry=BBOX),),
+)
+IMPORT_PLAN = ImportPlan(
+    project_id=uuid4(),
+    format_name="coco",
+    dataset=ImportedDataset(
+        classes=(ImportedClass(name="car", geometries=(GeometryType.BBOX,)),),
+        images=(_IMAGE, ImportedImage(path="images/b.png")),
+    ),
+    images=(_IMAGE,),
+    losses=(_LOSS,),
+    missing_images=(PurePosixPath("images/b.png"),),
+    conflicts=("a conflict",),
+    creates_schema=True,
+    new_assets=1,
+    new_annotations=1,
+    annotations_already_present=0,
+)
+IMPORT_RUN = ImportRun(
+    project_id=uuid4(),
+    format_name="coco",
+    batch_id=uuid4(),
+    schema_version=1,
+    created_asset_ids=(uuid4(),),
+    asset_ids=(uuid4(),),
+    annotations_written=1,
+    annotations_already_present=0,
+    losses=(_LOSS,),
+)
 
 
 SURFACE_DEFINED: list[tuple[str, Mapping[str, Any]]] = [
@@ -348,6 +390,8 @@ SURFACE_DEFINED: list[tuple[str, Mapping[str, Any]]] = [
     ("export_result_with_recipe", wire.export_result(EXPORT_RESULT_WITH_RECIPE)),
     ("thumbnail_backfill", wire.thumbnail_backfill(THUMBNAIL_BACKFILL)),
     ("schema_diff", wire.schema_diff(SCHEMA_DIFF)),
+    ("import_plan", wire.import_plan(IMPORT_PLAN)),
+    ("import_run", wire.import_run(IMPORT_RUN)),
 ]
 
 
@@ -355,7 +399,7 @@ SURFACE_DEFINED: list[tuple[str, Mapping[str, Any]]] = [
     "payload", [p for _, p in SURFACE_DEFINED], ids=[n for n, _ in SURFACE_DEFINED]
 )
 def test_a_surface_defined_shape_still_serializes(payload: Mapping[str, Any]) -> None:
-    # No route publishes any of the three, so there is nothing to be parity-gated
+    # No route publishes any of these, so there is nothing to be parity-gated
     # against. What still has to hold is that every leaf is encoded — which is the
     # failure they would otherwise be free to have.
     json.dumps(payload)
@@ -412,6 +456,8 @@ SHAPES: dict[str, Any] = {
     "export_result": shapes.ExportResult,
     "export_result_with_recipe": shapes.ExportResult,
     "thumbnail_backfill": shapes.ThumbnailBackfill,
+    "import_plan": shapes.ImportPlan,
+    "import_run": shapes.ImportRun,
 }
 
 EVERY_PAYLOAD = [(label, payload) for label, payload, _ in PAIRS] + SURFACE_DEFINED

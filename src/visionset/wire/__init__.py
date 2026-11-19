@@ -35,10 +35,11 @@ shape for one concept, so a caller moves between ``curl | jq``,
 ``visionset --json | jq`` and an MCP tool result without relearning the field
 names — and there are still **two** spellings to keep in step, not three.
 
-Three things here have no wire partner, because no route publishes them: an
+Some things here have no wire partner, because no route publishes them: an
 export report (the API returns the archive itself, not a description of it), a
-thumbnail backfill, and a schema diff. They are gated only for encoding, at the
-bottom of the parity test.
+thumbnail backfill, a schema diff, and an import's plan and run (an import reads
+a directory on this machine, which REST has no way to name). They are gated only
+for encoding, at the bottom of the parity test.
 
 Leaf encoding is explicit everywhere: UUIDs as strings, enums as ``.value``,
 paths as strings, and timestamps in **pydantic's** format — microseconds, ``Z``
@@ -92,6 +93,10 @@ from visionset.kernel.domain import (
     ExportResult,
     ExportTarget,
     Geometry,
+    ImportedClass,
+    ImportLoss,
+    ImportPlan,
+    ImportRun,
     InferenceConnection,
     IngestFailure,
     IngestJob,
@@ -127,6 +132,7 @@ from visionset.kernel.domain import (
     batch_actions,
     connection_actions,
     job_actions,
+    loss_kinds,
 )
 from visionset.kernel.ports import Exporter, Provider
 from visionset.wire import shapes
@@ -987,6 +993,63 @@ def export_result(value: ExportResult) -> shapes.ExportResult:
         "preprocessing": None
         if value.preprocessing is None
         else export_preprocessing(value.preprocessing),
+    }
+
+
+# --- imports --------------------------------------------------------------------
+
+
+def import_loss(value: ImportLoss) -> shapes.ImportLoss:
+    """One kind of thing an import cannot carry, counted, with the reason."""
+    return {
+        "kind": value.kind.value,
+        "subject": value.subject,
+        "count": value.count,
+        "reason": value.reason,
+    }
+
+
+def imported_class(value: ImportedClass) -> shapes.ImportedClass:
+    return {"name": value.name, "geometries": [g.value for g in value.geometries]}
+
+
+def import_plan(value: ImportPlan) -> shapes.ImportPlan:
+    """What committing the same source would do. **Surface-defined**: no route publishes it.
+
+    Counts rather than the dataset itself, which for a real source is every
+    label it holds. ``loss_kinds`` is what consent has to name for a commit to
+    go ahead; ``conflicts`` refuse a commit whatever it consents to.
+    """
+    return {
+        "project_id": str(value.project_id),
+        "format": value.format_name,
+        "classes": [imported_class(one) for one in value.dataset.classes],
+        "source_images": len(value.dataset.images),
+        "images": len(value.images),
+        "labels": sum(len(image.labels) for image in value.images),
+        "missing_images": [str(path) for path in value.missing_images],
+        "losses": [import_loss(one) for one in value.losses],
+        "loss_kinds": sorted(kind.value for kind in loss_kinds(value.losses)),
+        "conflicts": list(value.conflicts),
+        "creates_schema": value.creates_schema,
+        "new_assets": value.new_assets,
+        "new_annotations": value.new_annotations,
+        "annotations_already_present": value.annotations_already_present,
+    }
+
+
+def import_run(value: ImportRun) -> shapes.ImportRun:
+    """What a committed import wrote. **Surface-defined**: no route publishes it."""
+    return {
+        "project_id": str(value.project_id),
+        "format": value.format_name,
+        "batch_id": None if value.batch_id is None else str(value.batch_id),
+        "schema_version": value.schema_version,
+        "asset_count": len(value.asset_ids),
+        "created_asset_count": len(value.created_asset_ids),
+        "annotations_written": value.annotations_written,
+        "annotations_already_present": value.annotations_already_present,
+        "losses": [import_loss(one) for one in value.losses],
     }
 
 

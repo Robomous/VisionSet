@@ -42,6 +42,7 @@ from visionset.kernel import (
     DestructiveSchemaChange,
     ExportDestinationNotEmpty,
     ExportTargetNotFound,
+    ImportNotConsented,
     InferenceConnectionNotSetUp,
     LossyExportNotConsented,
     NotAWorkspace,
@@ -89,6 +90,10 @@ _HINTS: Final[dict[type[BaseException], str]] = {
     LossyExportNotConsented: (
         "Re-run with --allow-lossy to accept the loss, or with --check to see "
         "exactly what it costs, class by class."
+    ),
+    ImportNotConsented: (
+        "Re-run with --dry-run to see exactly what would be dropped, then add "
+        "--consent-lossy KIND for each kind you accept."
     ),
     # The kernel's sentence says "pass allow_destructive=True", which is the
     # *service* keyword — a person at a terminal types `--allow-destructive`, and

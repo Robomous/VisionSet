@@ -79,7 +79,7 @@ it, and what twelve real agent runs did with it - see
 
 ## The tools
 
-Sixty-one tools are offered by default, in the order an agent meets them, plus the four
+Sixty-three tools are offered by default, in the order an agent meets them, plus the four
 below that are offered only on request — see
 [above](#destructive-tools-are-not-offered-unless-you-ask).
 [mcp-tools.md](mcp-tools.md) is the complete listing, generated from the server itself; this
@@ -109,6 +109,8 @@ page groups them by what they are for.
 | `ingest` | A local directory of stills in, one batch out - none when nothing new was read and no `batch_name` was given. Synchronous. `~` is expanded. Refuses a video by name - there is no tool that ingests one; see below. |
 | `list_sources` | The folders a project was built from, and the clips a browser import declared for it - read-only, both kinds. |
 | `backfill_thumbnails` | Render previews that are missing. |
+| `inspect_import` | What importing a labeled dataset from a local directory would do and drop. Writes nothing. |
+| `import_dataset` | A labeled dataset from a local directory in, one approved batch out, labels as `import` provenance. Refuses a loss until `consent_lossy` names its kind. Synchronous, with progress. See [import.md](import.md). |
 
 ### Batches
 
@@ -434,12 +436,12 @@ re-run creates no asset it created before, and a run that finds nothing new crea
 (`batch_id` is null) unless `batch_name` asks for one. That is the same argument that gave the CLI no
 `--resume`.
 
-**Paths are local.** `ingest` and `export_release` take paths on the machine the server runs on.
+**Paths are local.** `ingest`, `inspect_import`, `import_dataset` and `export_release` take paths on the machine the server runs on.
 The API's upload staging exists because HTTP has bytes where the kernel has paths; an agent runs
 beside the workspace and has the filesystem.
 
 **One workspace per server.** No tool takes a workspace parameter — threading one through
-sixty-one tools would put a path an agent has no way to know into every call. The workspace is
+sixty-three tools would put a path an agent has no way to know into every call. The workspace is
 opened and closed per tool call rather than held, so the file is never kept from `visionset server`
 or a second agent between calls.
 
@@ -469,8 +471,9 @@ half of an export on the `preview_schema_change` precedent; `list_export_targets
 `export_release` takes a target name and an agent has to be able to read the catalog it comes
 from; and the five recipe tools, because `export_release` takes a recipe by name and an agent
 has to be able to write one, read it back and edit it on the same terms as REST and the CLI; and
-`list_project_assets`, because `list_batch_assets` cannot show an asset no batch holds. That is
-sixty-one offered by default and sixty-five in all. The parity rule means
+`list_project_assets`, because `list_batch_assets` cannot show an asset no batch holds; and
+`inspect_import` and `import_dataset`, the plan and the commit of an [import](import.md), on the
+`check_export` precedent. That is sixty-three offered by default and sixty-seven in all. The parity rule means
 *evaluated*, not *implemented* — tool-selection accuracy degrades with count, so a tool ships
 only when an agent has a reason to reach for it that no neighbour covers.
 
@@ -525,7 +528,7 @@ worse than no refusal. `backfill_thumbnails` is `POST /projects/{id}/thumbnail-b
 `get_project`'s `progress`, the project's assets counted by state across every batch, is `GET /projects/{id}/progress` over REST, in the same shape.
 
 Some operations are machine-local by design and have no REST route that takes a path, because REST
-has no filesystem to point at: `ingest` reads a directory on this machine and `export_release`
+has no filesystem to point at: `ingest` and `import_dataset` read a directory on this machine and `export_release`
 writes into one. REST reaches the same kernel work through uploaded sources
 (`POST /projects/{id}/sources/images`, then an ingest job) and a release export job whose archive
 is downloaded. `backfill_thumbnails` takes only a project, so REST has it as a

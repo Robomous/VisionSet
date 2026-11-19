@@ -1,4 +1,4 @@
-# usage: from visionset.formats.registry import exporter, exporters, importers
+# usage: from visionset.formats.registry import exporter, exporters, importer, importers
 """Finding the exporter a caller named.
 
 The kernel cannot do this. ``ReleaseService.export`` takes an ``Exporter``
@@ -29,7 +29,7 @@ from collections.abc import Mapping
 from importlib.metadata import entry_points
 from typing import Final
 
-from visionset.kernel.errors import ExportFormatNotFound
+from visionset.kernel.errors import ExportFormatNotFound, ImportFormatNotFound
 from visionset.kernel.ports import Exporter, Importer, validate_installed
 
 #: Former format names still accepted, and the name each now means.
@@ -115,4 +115,33 @@ def exporter(format_name: str) -> Exporter:
         ExportFormatNotFound: nothing is installed under it.
     """
     plugin, _ = pick(exporters(), format_name)
+    return plugin
+
+
+def pick_importer(
+    installed: Mapping[str, Importer], format_name: str
+) -> tuple[Importer, str | None]:
+    """One importer out of a set already in hand, and the alias it was reached by, if any.
+
+    :func:`pick` for the other port, with the same aliases.
+
+    Raises:
+        ImportFormatNotFound: no importer is installed under that name.
+    """
+    canonical = ALIASES.get(format_name, format_name)
+    if canonical not in installed:
+        known = ", ".join(sorted(installed)) or "none"
+        raise ImportFormatNotFound(
+            f"no importer is installed for format {format_name!r}; importable formats: {known}"
+        )
+    return installed[canonical], format_name if canonical != format_name else None
+
+
+def importer(format_name: str) -> Importer:
+    """The installed importer registered under that name, or under an alias of it.
+
+    Raises:
+        ImportFormatNotFound: no importer is installed under it.
+    """
+    plugin, _ = pick_importer(importers(), format_name)
     return plugin

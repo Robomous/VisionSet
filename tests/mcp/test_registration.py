@@ -80,6 +80,8 @@ SHIPPED = {
     "create_preprocessing_recipe",
     "update_preprocessing_recipe",
     "list_formats",
+    "inspect_import",
+    "import_dataset",
     "list_inference_connections",
     "list_providers",
     "model_download_size",

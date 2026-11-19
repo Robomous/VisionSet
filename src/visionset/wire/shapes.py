@@ -571,6 +571,51 @@ class ExportResult(TypedDict):
 
 
 @closed
+class ImportLoss(TypedDict):
+    kind: str
+    subject: str
+    count: int
+    reason: str
+
+
+@closed
+class ImportedClass(TypedDict):
+    name: str
+    geometries: list[str]
+
+
+@closed
+class ImportPlan(TypedDict):
+    project_id: str
+    format: str
+    classes: list[ImportedClass]
+    source_images: int
+    images: int
+    labels: int
+    missing_images: list[str]
+    losses: list[ImportLoss]
+    loss_kinds: list[str]
+    conflicts: list[str]
+    creates_schema: bool
+    new_assets: int
+    new_annotations: int
+    annotations_already_present: int
+
+
+@closed
+class ImportRun(TypedDict):
+    project_id: str
+    format: str
+    batch_id: str | None
+    schema_version: int | None
+    asset_count: int
+    created_asset_count: int
+    annotations_written: int
+    annotations_already_present: int
+    losses: list[ImportLoss]
+
+
+@closed
 class WeightDownload(TypedDict):
     job_id: str
     state: str

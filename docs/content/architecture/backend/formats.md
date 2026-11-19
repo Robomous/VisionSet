@@ -27,8 +27,9 @@ target - never through a dict, so a typo answers a `VisionSetError` rather than 
 
 ## What ships
 
-Eleven plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
-`[project.entry-points."visionset.formats"]`:
+Twelve plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
+`[project.entry-points."visionset.formats"]`: the eleven exporters below and the COCO importer,
+`coco-import` (see [Importers](#importers)).
 
 | Name | Module |
 | --- | --- |
@@ -39,6 +40,18 @@ Eleven plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
 | `voc` | [`voc/`](../../../../src/visionset/formats/voc/) |
 | `classification` | [`classification/`](../../../../src/visionset/formats/classification/) - `labels.csv`, one row per (image, tag) |
 | `tusimple`, `curvelanes`, `bdd100k-lane`, `culane`, `openlane-2d` | [`lanes/`](../../../../src/visionset/formats/lanes/) - five plugins over one shared core |
+
+## Importers
+
+The same group carries importers, which satisfy the other port,
+[`Importer`](../../../../src/visionset/kernel/ports/importer.py): `read(src)` returns an
+`ImportedDataset` - classes, images by relative path, their labels, and a report of everything it
+could not represent - and touches no workspace. `registry.importers()` filters the scan by that
+port, and `registry.pick_importer(installed, name)` resolves a name with the same aliases,
+refusing with `ImportFormatNotFound`. `ImportService` takes the instance, as `ReleaseService.export`
+takes an exporter. The one built-in is `coco-import`, the
+[COCO reader](../../../../src/visionset/formats/coco/reader.py); what an import does with the
+dataset is [import.md](../../import.md).
 
 ## What a plugin declares
 

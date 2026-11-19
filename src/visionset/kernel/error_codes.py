@@ -24,7 +24,7 @@ from typing import Any, Final
 from pydantic import ValidationError
 
 from visionset.kernel import errors
-from visionset.kernel.domain import ClassCount, ExportCompatibility
+from visionset.kernel.domain import ClassCount, ExportCompatibility, ImportLoss
 
 ERROR_CODES: Final[Mapping[type[errors.VisionSetError], str]] = {
     errors.AnnotationGeometryOutOfBounds: "ANNOTATION_GEOMETRY_OUT_OF_BOUNDS",
@@ -74,6 +74,7 @@ ERROR_CODES: Final[Mapping[type[errors.VisionSetError], str]] = {
     errors.InferenceConnectionNotTestable: "INFERENCE_CONNECTION_NOT_TESTABLE",
     errors.InferenceEndpointUnavailable: "INFERENCE_ENDPOINT_UNAVAILABLE",
     errors.InferenceOutOfMemory: "INFERENCE_OUT_OF_MEMORY",
+    errors.ImportFormatNotFound: "IMPORT_FORMAT_NOT_FOUND",
     errors.ImportNotConsented: "IMPORT_NOT_CONSENTED",
     errors.ImportSourceUnreadable: "IMPORT_SOURCE_UNREADABLE",
     errors.IngestJobNotFound: "INGEST_JOB_NOT_FOUND",
@@ -209,6 +210,12 @@ def error_detail(exc: BaseException) -> dict[str, Any] | None:
         # ``by_alias`` makes it key-for-key the document the export endpoint
         # returns and the export writes into its own output.
         return {"compatibility": exc.compatibility.model_dump(mode="json", by_alias=True)}
+    if isinstance(exc, errors.ImportNotConsented) and isinstance(exc.losses, tuple):
+        return {
+            "losses": [
+                loss.model_dump(mode="json") for loss in exc.losses if isinstance(loss, ImportLoss)
+            ]
+        }
     if isinstance(exc, errors.SchemaChangeWouldOrphan) and isinstance(exc.blockers, tuple):
         return {"blockers": _class_counts(exc.blockers)}
     if isinstance(exc, errors.ReleaseContentWouldViolateSchema) and isinstance(exc.blockers, tuple):

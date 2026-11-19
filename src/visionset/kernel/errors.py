@@ -896,6 +896,15 @@ class LossyExportNotConsented(VisionSetError):
             self.compatibility = compatibility
 
 
+class ImportFormatNotFound(VisionSetError):
+    """No importer is registered under that format name.
+
+    ``ExportFormatNotFound``'s sibling for the other port: raised by the plugin
+    registry in ``visionset.formats``, because the kernel takes an ``Importer``
+    instance and never resolves a name.
+    """
+
+
 class ImportNotConsented(VisionSetError):
     """The import would drop something and the caller did not consent to that kind.
 

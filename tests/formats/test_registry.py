@@ -15,17 +15,18 @@ from pathlib import Path
 import pytest
 
 from visionset.formats._targets import self_target
-from visionset.formats.registry import exporter, exporters, pick
+from visionset.formats.registry import exporter, exporters, importer, pick, pick_importer
 from visionset.kernel.domain import (
     Annotation,
     ExportTarget,
     GeometryType,
+    ImportedDataset,
     Manifest,
     Release,
     TargetFamily,
     Task,
 )
-from visionset.kernel.errors import ExportFormatNotFound, InvalidExportTarget
+from visionset.kernel.errors import ExportFormatNotFound, ImportFormatNotFound, InvalidExportTarget
 from visionset.kernel.ports import ContentReader, Exporter
 
 
@@ -291,3 +292,27 @@ def test_a_plugin_missing_the_targets_member_is_not_an_exporter() -> None:
             return None
 
     assert not isinstance(_Targetless(), Exporter)
+
+
+def test_an_unknown_import_format_is_refused_with_the_importable_ones() -> None:
+    with pytest.raises(ImportFormatNotFound) as refusal:
+        importer("not-a-format")
+
+    assert "not-a-format" in str(refusal.value)
+    assert "coco" in str(refusal.value)
+
+
+class _AReader:
+    format_name = "a-reader"
+
+    def read(self, src: Path) -> ImportedDataset:
+        return ImportedDataset(classes=(), images=())
+
+
+def test_picking_an_importer_returns_the_instance_and_honours_the_aliases() -> None:
+    plugin = _AReader()
+
+    assert pick_importer({"a-reader": plugin}, "a-reader") == (plugin, None)
+    assert pick_importer({"ultralytics": plugin}, "yolo") == (plugin, "yolo")
+    with pytest.raises(ImportFormatNotFound, match="none"):
+        pick_importer({}, "coco")

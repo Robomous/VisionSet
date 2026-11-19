@@ -5,6 +5,8 @@ take a directory of still images and refuse a video file; the REST video-import 
 the client has to cut the frames itself, as the browser does. [surfaces.md](surfaces.md) shows what
 each surface can do.
 
+A dataset that already carries labels is [imported](import.md) rather than ingested.
+
 There are two distinct ways raw data becomes an `Asset`, and they are two use cases rather than
 one with a branch in it. `IngestService` turns a registered directory [source](sources.md) into
 rows: it hashes every item, stores its bytes once, records the decoder output, and adds the

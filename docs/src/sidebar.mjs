@@ -90,6 +90,7 @@ export const sidebar = [
       { slug: "projects" },
       { slug: "sources" },
       { slug: "ingest" },
+      { slug: "import" },
       { slug: "media" },
       { slug: "schemas" },
       { slug: "batches" },

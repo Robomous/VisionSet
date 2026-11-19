@@ -36,6 +36,7 @@ visionset schema draft clear --project P [--kind K]
 visionset schema draft publish --project P [--kind K] [--revision N] [--allow-destructive]
 
 visionset ingest DIRECTORY --project P [--batch-name NAME] [--start]
+visionset import FORMAT PATH --project P [--consent-lossy KIND]... [--dry-run]
 visionset batch list --project P
 visionset batch assets BATCH_ID [--job JOB_ID] [--progress STATE]...
 visionset batch approve BATCH_ID [--jobs-of N] [--start]
@@ -417,6 +418,21 @@ dispatch to - see [ingest.md](ingest.md#at-a-terminal). The run is **synchronous
 no `--resume`: polling needs a second process, which is what `visionset server` and
 `GET /ingest-jobs/{id}` are for.
 
+### `visionset import`
+
+`FORMAT PATH --project P [--consent-lossy KIND]... [--dry-run]` - an external dataset with labels
+in, one **approved** batch out: the images are ingested by content, the dataset's classes become
+schema version 1 when the project has none, and every label is written with `import` provenance.
+Nothing is completed or promoted. `FORMAT` is an importer's name (`coco`); an unknown one is
+refused with the importable formats listed. See [import.md](import.md).
+
+A commit that would drop anything is refused with `IMPORT_NOT_CONSENTED` unless each kind of loss
+is named by a `--consent-lossy` (`class`, `geometry`, `label`, `image` or `attribute`); under
+`--json` the refusal's `detail.losses` is the report. `--dry-run` takes the same arguments, writes
+nothing, prints the report as columns (`KIND SUBJECT COUNT REASON`, the plan under `--json`) and
+exits **1** when the same command without it would be refused, on `export --check`'s precedent.
+The batch id goes to stdout; a re-run that finds nothing new creates no batch and prints none.
+
 ### `visionset batch`
 
 `list --project P`, `assets BATCH [--job JOB] [--progress STATE]...`, then the one-way walk
@@ -658,8 +674,8 @@ write no labels.
 workspace and, for REST, a token issued from the CLI.
 
 Machine-local operations are CLI-and-MCP-only **by design**, because REST has no filesystem to
-point at: `ingest` (a directory on this machine) and `export` (a destination directory) have no
-REST route that takes a path. REST does the same work through uploaded sources and ingest jobs,
+point at: `ingest` and `import` (a directory on this machine) and `export` (a destination
+directory) have no REST route that takes a path; `import` has no REST equivalent yet. REST does the same work through uploaded sources and ingest jobs,
 and through a release export job whose archive is downloaded. `backfill-thumbnails` takes only a
 project, so REST has it too, as the background job `POST /projects/{id}/thumbnail-backfill-jobs`.
 

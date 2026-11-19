@@ -21,6 +21,7 @@ what each one exposes. This page says, step by step, which surface can do what.
 | Create a project | yes | yes | `project create` | `create_project` |
 | Define a schema | yes | yes | `schema apply`, `schema draft ...` | `create_schema_version`, `*_schema_draft` |
 | Add still images | upload | multipart upload, then an ingest job | `ingest DIR` (a directory on this machine) | `ingest` (same) |
+| Import a labeled dataset | - | - | `import FORMAT DIR` (a directory on this machine) | `inspect_import`, `import_dataset` (same) |
 | Import a video clip | yes | the video-import session endpoints, which the browser drives | **no** | **no** |
 | Build and approve batches | yes | yes | `batch approve` | `create_batch`, `approve_batch` |
 | Work a job: read assets, set progress | yes | yes | `job next`, `job mark` | `next_pending_assets`, `set_asset_progress` |
@@ -49,6 +50,7 @@ of its own, not a bug fix.
 | --- | --- | --- |
 | **No video import from the CLI or MCP.** No fps, clip range or downscale option exists on either. | Nothing in the server process decodes video; a clip is demuxed and decoded in the browser, so its provenance (`frame_index`, `frame_timestamp`) is recorded by the one place that has the clip. | Import the clip in the browser. A script can drive the REST video-import session, but it must cut the frames itself. Frames extracted elsewhere and ingested as stills carry no video provenance. |
 | **No media upload over MCP.** `ingest` reads a directory on the machine the server runs on, top level only. | A stdio tool call carries JSON, not a file; media is a bulk transfer that REST (`multipart` upload, then an ingest job) already does. | Put the media on the server's machine, or upload over REST or the browser. |
+| **No dataset import over REST or in the browser.** `import` and `import_dataset` read a directory on the machine VisionSet runs on. | REST has no route that takes a server-side path, because it would hand every token holder an arbitrary-directory read, and there is no upload variant yet. | Run `visionset import` or the MCP tools on that machine. See [import.md](import.md). |
 | **The CLI cannot create, edit or delete annotations.** | Drawing a label is an interactive judgement. `job mark` records progress only; annotation is a browser, REST or MCP step, or a model's with `pre-label`. | Use the browser, REST or MCP. |
 | **Workspace creation and API tokens are CLI-only.** | They act on the machine's own files and credentials, so there is no remote tool to call. | `visionset init`, `visionset token ...`. |
 | **MCP does not offer** a job assignee, project rename, dataset curation, release manifest and assignment reads, point-click suggestions, or background-job tracking. | Each is either a person's judgement, a read too large to hand an agent, or work a browser follows. [mcp.md](mcp.md#what-is-not-here-and-why) gives the reasoning per tool. | The REST route named there. |

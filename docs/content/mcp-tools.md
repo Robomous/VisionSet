@@ -11,7 +11,7 @@ error envelope, and the three gate words.
 
 ## Always offered
 
-61 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
+63 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
 
 | Tool | Takes | What it does |
 | --- | --- | --- |
@@ -30,6 +30,8 @@ error envelope, and the three gate words.
 | `ingest` | `project`, `path`, `batch_name`? | Register a directory of images and read it into one batch. Blocks until done. |
 | `list_sources` | `project` | List the origins registered in a project — the folders and clips it was built from. |
 | `backfill_thumbnails` | `project` | Render the previews that are missing for a project's assets. |
+| `inspect_import` | `project`, `format`, `path` | Read an external dataset and report what importing it would do. Writes nothing. |
+| `import_dataset` | `project`, `format`, `path`, `consent_lossy`? | Import an external dataset into a project as one approved batch. Blocks until done. |
 | `list_batches` | `project` | List a project's batches with where each one's assets have got to. |
 | `get_batch` | `batch_id` | Read one batch: its state, its schema pin, its progress and its jobs. |
 | `approve_batch` | `batch_id`, `jobs_of`?, `start`? | Freeze a batch, pin the project's active schema, and cut it into jobs. |
