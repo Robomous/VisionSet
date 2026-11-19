@@ -352,3 +352,21 @@ def test_a_label_outside_an_image_with_no_stated_size_is_a_label_loss(tmp_path: 
 
     assert [(loss.kind, loss.count) for loss in plan.losses] == [(ImportLossKind.LABEL, 1)]
     assert run.annotations_written == 1
+
+
+def test_json_nested_too_deep_to_parse_is_refused(tmp_path: Path) -> None:
+    (tmp_path / "instances.json").write_text("[" * 100000 + "]" * 100000, encoding="utf-8")
+
+    with pytest.raises(ImportSourceUnreadable, match="not readable JSON|not a COCO"):
+        CocoImporter().read(tmp_path)
+
+
+def test_a_too_deep_file_beside_the_instances_is_reported_not_raised(tmp_path: Path) -> None:
+    _write(tmp_path, _document([]))
+    deep = tmp_path / "annotations" / "captions_train.json"
+    deep.write_text("[" * 100000 + "]" * 100000, encoding="utf-8")
+
+    losses = CocoImporter().read(tmp_path).losses
+    assert [(loss.kind, loss.subject) for loss in losses] == [
+        (ImportLossKind.LABEL, "captions_train.json")
+    ]

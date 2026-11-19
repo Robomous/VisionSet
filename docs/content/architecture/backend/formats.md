@@ -27,9 +27,9 @@ target - never through a dict, so a typo answers a `VisionSetError` rather than 
 
 ## What ships
 
-Twelve plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
-`[project.entry-points."visionset.formats"]`: the eleven exporters below and the COCO importer,
-`coco-import` (see [Importers](#importers)).
+Thirteen plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
+`[project.entry-points."visionset.formats"]`: the eleven exporters below and two importers,
+`coco-import` and `openlane-2d-import` (see [Importers](#importers)).
 
 | Name | Module |
 | --- | --- |
@@ -49,9 +49,11 @@ The same group carries importers, which satisfy the other port,
 could not represent - and touches no workspace. `registry.importers()` filters the scan by that
 port, and `registry.pick_importer(installed, name)` resolves a name with the same aliases,
 refusing with `ImportFormatNotFound`. `ImportService` takes the instance, as `ReleaseService.export`
-takes an exporter. The one built-in is `coco-import`, the
-[COCO reader](../../../../src/visionset/formats/coco/reader.py); what an import does with the
-dataset is [import.md](../../import.md).
+takes an exporter. The built-ins are `coco-import`, the
+[COCO reader](../../../../src/visionset/formats/coco/reader.py), and `openlane-2d-import`, the
+[OpenLane 2D reader](../../../../src/visionset/formats/lanes/reader.py); each answers to its
+exporter's `format_name` (`coco`, `openlane-2d`). What an import does with the dataset is
+[import.md](../../import.md).
 
 ## What a plugin declares
 

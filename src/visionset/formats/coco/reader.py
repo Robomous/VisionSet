@@ -207,7 +207,7 @@ def _unread(path: Path) -> tuple[ImportLossKind, str, str, int]:
     try:
         rows = json.loads(path.read_text(encoding="utf-8")).get("annotations", [])
         count = len(rows) if isinstance(rows, list) else 0
-    except (OSError, ValueError, AttributeError):
+    except (OSError, ValueError, AttributeError, RecursionError):
         count = 0
     if path.name.startswith("person_keypoints_"):
         return ImportLossKind.GEOMETRY, path.name, "keypoint files are not imported", count
@@ -223,7 +223,7 @@ def _refuse_constant(name: str) -> float:
 def _load(path: Path) -> Mapping[str, Any]:
     try:
         document = json.loads(path.read_text(encoding="utf-8"), parse_constant=_refuse_constant)
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, RecursionError) as exc:
         raise ImportSourceUnreadable(f"{path.name} is not readable JSON: {exc}") from None
     if not isinstance(document, dict):
         raise ImportSourceUnreadable(f"{path.name} is not a COCO document")

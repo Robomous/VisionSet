@@ -39,10 +39,10 @@ computed from the content, and a commit that would drop something is refused wit
 | Kind | What is dropped |
 | --- | --- |
 | `class` | A class the project's schema does not declare and no label uses. |
-| `geometry` | Part of a shape the kernel has no type for, such as keypoints, while the shape itself is kept. |
+| `geometry` | Part of a shape the kernel has no type for, such as keypoints, 3D lane points or an unusable per-vertex visibility, while the shape itself is kept. |
 | `label` | A whole label: an RLE or crowd mask, a polygon of several rings, a label outside its image. |
 | `image` | An image the source names but does not hold, or one whose bytes repeat an earlier image; its labels go with it. |
-| `attribute` | Per-label extras the importer does not carry, such as COCO attributes. |
+| `attribute` | Extras the importer does not carry, such as COCO attributes, an OpenLane camera calibration or track id. |
 
 The refusal carries the full report in its `detail.losses`. Inspecting the source first returns
 the same report and writes nothing; its `loss_kinds` is exactly what the commit has to consent to,
@@ -73,6 +73,25 @@ naming the kinds to accept. See [mcp-tools.md](mcp-tools.md).
 | Format | Reads | Reported as lost |
 | --- | --- | --- |
 | `coco` | `annotations/instances_*.json` with images under `images/<fold>/` or `images/`, the layout the COCO exporter writes; boxes and single-ring polygons | RLE and crowd masks, multi-ring polygons, keypoints, captions and other non-instances files, attributes |
+| `openlane-2d` | `labels/**/*.json`, one document per image naming it in `file_path`, the layout the OpenLane 2D exporter writes; lanes as polylines with their per-vertex `visibility` | 3D points (`xyz`), a camera calibration, track ids and lane `attribute` values beyond the exporter's own, a `visibility` that is not one `0` or `1` per point (the lane is kept without it), malformed lanes |
+
+**OpenLane 2D.** A lane's `category` becomes its class, under OpenLane's own names (`white-dash`,
+`yellow-solid`, ... and `unknown` for `0`); the exporter's road edges, `13` and `14`, both read
+back as `road_edge`, the class name the exporter writes them from, and a category with no name
+becomes `category-<n>`. `visibility` reads `1` as visible and `0` as occluded, so a lane exported
+with occluded vertices imports back with the same `visibility`. OpenLane has no "unknown", so an
+import never produces an unlabeled vertex, and a lane exported without visibility comes back
+all-visible. The exporter maps style and colour to the category and writes no class name, so the
+lane attributes and the source class are not recovered: only the category is. Upstream OpenLane's
+column-major `uv` (`[[u...], [v...]]`) is a different layout and is refused rather than guessed.
+One case cannot be told apart: a two-point lane is `[[a, b], [c, d]]` in both layouts, and is read
+as the two points `(a, b)` and `(c, d)`. A document with any longer column-major lane is refused
+whole, so only a document whose every lane has two points can be misread. A lane `attribute` is
+kept quiet only when it equals the lane's category, which is what the exporter writes; any other
+value is an `attribute` loss. A symbolic link to a directory under `labels/` is refused, not
+followed.
+TuSimple, CurveLanes, BDD100K and CULane have no importer: none of them carries anything a
+polyline import does not already get from OpenLane, and none has a per-vertex slot.
 
 An importer is a plugin in the `visionset.formats` entry-point group, beside the exporters; see
 [formats](architecture/backend/formats.md#importers). A name nothing is installed under is refused
