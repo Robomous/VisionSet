@@ -906,6 +906,25 @@ describe("vertex toggles for a long lane", () => {
     expect(toggle(1).getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("does not undo or redo from a toggle in the read-only mode", async () => {
+    const store = longLane(3);
+    const { unmount } = render(mount(store));
+    toggle(1).focus();
+    await userEvent.keyboard(" ");
+    unmount();
+
+    render(mount(store, { readOnly: true }));
+    toggle(1).focus();
+    await userEvent.keyboard("{Control>}z{/Control}");
+    expect(store.canUndo).toBe(true);
+    expect(store.canRedo).toBe(false);
+
+    store.undo();
+    await userEvent.keyboard("{Control>}{Shift>}z{/Shift}{/Control}");
+    expect(store.canRedo).toBe(true);
+    expect(store.canUndo).toBe(false);
+  });
+
   it("leaves the history chords to the filter field", async () => {
     const store = longLane(3);
     render(mount(store));
