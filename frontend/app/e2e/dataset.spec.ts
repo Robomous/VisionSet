@@ -494,3 +494,33 @@ test("a consent covers the one export it was given for", async ({ page }) => {
   await expect(dialog.getByTestId("lossy-checkbox")).not.toBeChecked();
   await expect(submit).toBeDisabled();
 });
+
+for (const [from, to] of [
+  [
+    { width: 1280, height: 720 },
+    { width: 390, height: 844 },
+  ],
+  [
+    { width: 390, height: 844 },
+    { width: 1280, height: 720 },
+  ],
+] as const) {
+  test(`an open export dialog survives a resize from ${from.width} to ${to.width} wide`, async ({ page }) => {
+    await page.setViewportSize(from);
+    await openDataset(page);
+    await page.getByTestId("dataset-tab-releases").click();
+    await page.getByTestId(`export-${RELEASE.tag}`).click();
+    await page.getByTestId("export-target").click();
+    await page.getByRole("option", { name: /openlane-2d/ }).click();
+    const dialog = page.getByTestId("export-dialog");
+    await dialog.getByTestId("export-submit").click();
+    await dialog.getByTestId("lossy-checkbox").click();
+
+    await page.setViewportSize(to);
+
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByTestId("export-target")).toHaveText(/openlane-2d/);
+    await expect(dialog.getByTestId("lossy-checkbox")).toBeChecked();
+    await expect(dialog.getByTestId("export-submit")).toBeEnabled();
+  });
+}

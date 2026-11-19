@@ -7,9 +7,16 @@
  * is `matchMedia`, not a hidden duplicate — so a screen reader meets one nav, the
  * column is genuinely absent on a narrow viewport, and a count of filled
  * controls in a browser counts the page rather than the page and its shadow.
+ *
+ * The two layouts hold the content at different places in the tree, so React
+ * would unmount and remount the whole section on every crossing of the
+ * breakpoint — closing an open dialog and dropping every form's state. The
+ * content is therefore rendered once, through a portal into a node of its own,
+ * and the layout only decides which slot that node hangs from.
  */
 
-import type { JSX, ReactNode } from "react";
+import { useCallback, useState, type JSX, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 import { useViewportAtLeast } from "../annotator/viewportFloor";
 import { PaddedContent } from "./PaddedContent";
@@ -32,29 +39,43 @@ export interface ProjectShellProps {
 
 export function ProjectShell({ nav, eyebrow, children }: ProjectShellProps): JSX.Element {
   const wide = useViewportAtLeast(PROJECT_NAV_MIN_VIEWPORT_PX);
-  if (!wide) {
-    return (
-      <PaddedContent>
-        <div className="flex flex-col gap-6">
-          {eyebrow}
-          <ProjectNav layout="strip" {...nav}>
-            {children}
-          </ProjectNav>
-        </div>
-      </PaddedContent>
-    );
-  }
+  const [host] = useState(() => {
+    const node = document.createElement("div");
+    node.className = "contents";
+    return node;
+  });
+  const slot = useCallback(
+    (node: HTMLDivElement | null) => {
+      node?.appendChild(host);
+    },
+    [host],
+  );
+  const content = <div ref={slot} className="contents" />;
   return (
-    <div className="flex min-h-full flex-1" data-testid="project-shell">
-      <ProjectNav layout="column" {...nav} />
-      <div className="min-w-0 flex-1">
+    <>
+      {wide ? (
+        <div className="flex min-h-full flex-1" data-testid="project-shell">
+          <ProjectNav layout="column" {...nav} />
+          <div className="min-w-0 flex-1">
+            <PaddedContent>
+              <div className="flex flex-col gap-6">
+                {eyebrow}
+                {content}
+              </div>
+            </PaddedContent>
+          </div>
+        </div>
+      ) : (
         <PaddedContent>
           <div className="flex flex-col gap-6">
             {eyebrow}
-            {children}
+            <ProjectNav layout="strip" {...nav}>
+              {content}
+            </ProjectNav>
           </div>
         </PaddedContent>
-      </div>
-    </div>
+      )}
+      {createPortal(children, host)}
+    </>
   );
 }
