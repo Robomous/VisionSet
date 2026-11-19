@@ -771,10 +771,150 @@ describe("the selected lane's vertices", () => {
     expect(store.document.annotations.get("b")?.geometry).toMatchObject({ visibility: [2, 1, 2] });
   });
 
-  it("is disabled, not hidden, in the read-only mode", () => {
-    render(mount(laneStore(), { readOnly: true }));
+  it("is disabled, not hidden, in the read-only mode, and says nothing about pressing", async () => {
+    const store = laneStore();
+    render(mount(store, { readOnly: true }));
     const toggles = within(screen.getByTestId("vertex-region")).getAllByRole("button");
     expect(toggles).toHaveLength(3);
-    for (const toggle of toggles) expect(toggle).toHaveProperty("disabled", true);
+    for (const toggle of toggles) expect(toggle.getAttribute("aria-disabled")).toBe("true");
+    expect(screen.queryByTestId("vertex-hint")).toBeNull();
+
+    await userEvent.click(toggles[1]);
+    toggles[1].focus();
+    await userEvent.keyboard(" ");
+    expect(toggles[1].getAttribute("aria-pressed")).toBe("false");
+    expect(store.canUndo).toBe(false);
+  });
+});
+
+/** A selected `centerline` lane of `count` vertices, carrying `visibility` when given. */
+function longLane(count: number, visibility?: readonly number[]): AnnotatorStore {
+  const lane = annotation("b", "centerline", "polyline") as { geometry: object };
+  const store = storeWith([
+    {
+      ...lane,
+      geometry: {
+        type: "polyline",
+        points: Array.from({ length: count }, (_, index) => [index * 2, index * 2]),
+        ...(visibility === undefined ? {} : { visibility }),
+      },
+    },
+  ]);
+  store.select(selectOnly("b"));
+  return store;
+}
+
+const toggle = (index: number): HTMLElement => screen.getByTestId(`vertex-toggle-${index}`);
+
+describe("vertex toggles for a long lane", () => {
+  it("lays the toggles out as one toolbar on a five-column grid", () => {
+    render(mount(longLane(40)));
+    const toolbar = screen.getByRole("toolbar", { name: "Vertex occlusion" });
+    expect(toolbar.className).toContain("grid-cols-5");
+    expect(within(toolbar).getAllByRole("button")).toHaveLength(40);
+  });
+
+  it("tells an unlabeled vertex from a visible one, in the count, the mark and the name", () => {
+    render(mount(longLane(4, [2, 0, 1, 0])));
+    expect(screen.getByTestId("vertex-occluded-count").textContent).toBe("1 occluded, 2 unlabeled");
+    expect(toggle(1).getAttribute("data-visibility")).toBe("unlabeled");
+    expect(toggle(0).getAttribute("data-visibility")).toBe("visible");
+    expect(toggle(1).getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("button", { name: "Vertex 2 occluded (unlabeled)" })).toBe(toggle(1));
+    expect(screen.getByRole("button", { name: "Vertex 1 occluded" })).toBe(toggle(0));
+  });
+
+  it("names no unlabeled count when there are none", () => {
+    render(mount(longLane(3, [2, 1, 2])));
+    expect(screen.getByTestId("vertex-occluded-count").textContent).toBe("1 occluded");
+  });
+
+  it("points the canvas at the vertex under the pointer, and at none once it leaves", async () => {
+    const store = longLane(30);
+    render(mount(store));
+    await userEvent.hover(toggle(22));
+    expect(store.getSnapshot().highlightedVertex).toEqual({ id: "b", index: 22 });
+    await userEvent.unhover(toggle(22));
+    expect(store.getSnapshot().highlightedVertex).toBeNull();
+  });
+
+  it("points the canvas at the focused vertex, also in the read-only mode, and clears on leaving", async () => {
+    const store = longLane(6);
+    const { unmount } = render(mount(store, { readOnly: true }));
+    toggle(3).focus();
+    expect(store.getSnapshot().highlightedVertex).toEqual({ id: "b", index: 3 });
+    toggle(3).blur();
+    expect(store.getSnapshot().highlightedVertex).toBeNull();
+
+    toggle(2).focus();
+    unmount();
+    expect(store.getSnapshot().highlightedVertex).toBeNull();
+  });
+
+  it("is one tab stop, and the arrows, Home and End move between toggles on the grid", async () => {
+    render(mount(longLane(12)));
+    const stops = within(screen.getByRole("toolbar")).getAllByRole("button")
+      .filter((one) => one.tabIndex === 0);
+    expect(stops).toEqual([toggle(0)]);
+
+    toggle(0).focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(document.activeElement).toBe(toggle(1));
+    await userEvent.keyboard("{ArrowDown}");
+    expect(document.activeElement).toBe(toggle(6));
+    await userEvent.keyboard("{ArrowDown}");
+    expect(document.activeElement).toBe(toggle(11));
+    await userEvent.keyboard("{ArrowDown}");
+    expect(document.activeElement).toBe(toggle(11));
+    await userEvent.keyboard("{ArrowUp}{ArrowLeft}");
+    expect(document.activeElement).toBe(toggle(5));
+    await userEvent.keyboard("{Home}");
+    expect(document.activeElement).toBe(toggle(0));
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(document.activeElement).toBe(toggle(0));
+    await userEvent.keyboard("{End}");
+    expect(document.activeElement).toBe(toggle(11));
+    expect(toggle(11).tabIndex).toBe(0);
+    expect(toggle(0).tabIndex).toBe(-1);
+
+    await userEvent.tab();
+    expect(screen.getByRole("toolbar").contains(document.activeElement)).toBe(false);
+    await userEvent.tab({ shift: true });
+    expect(document.activeElement).toBe(toggle(11));
+  });
+
+  it("toggles the focused vertex with Enter as well as Space", async () => {
+    const store = longLane(3);
+    render(mount(store));
+    toggle(2).focus();
+    await userEvent.keyboard("{Enter}");
+    expect(toggle(2).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("undoes and redoes from a focused toggle", async () => {
+    const store = longLane(3);
+    render(mount(store));
+    toggle(1).focus();
+    await userEvent.keyboard(" ");
+    expect(toggle(1).getAttribute("aria-pressed")).toBe("true");
+
+    await userEvent.keyboard("{Control>}z{/Control}");
+    expect(toggle(1).getAttribute("aria-pressed")).toBe("false");
+    expect(store.canRedo).toBe(true);
+
+    await userEvent.keyboard("{Control>}{Shift>}z{/Shift}{/Control}");
+    expect(toggle(1).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("leaves the history chords to the filter field", async () => {
+    const store = longLane(3);
+    render(mount(store));
+    toggle(1).focus();
+    await userEvent.keyboard(" ");
+
+    await userEvent.click(screen.getByTestId("object-filter"));
+    await userEvent.keyboard("{Control>}z{/Control}");
+    expect(store.canUndo).toBe(true);
+    expect(toggle(1).getAttribute("aria-pressed")).toBe("true");
   });
 });
