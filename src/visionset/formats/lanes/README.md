@@ -38,5 +38,6 @@ CULane have no per-vertex field and drop it; their `lossy` flag already says so.
 
 ## Drawing lanes
 
-There is no interactive polyline tool yet — lanes are written through the SDK, the REST API and
-MCP, and reviewed in the annotator. The drawing tool is tracked separately; see #342.
+The annotator has a polyline tool: draw a lane point by point, select it, drag or insert and
+delete its vertices, and mark individual vertices occluded. Lanes can also be written through the
+SDK, the REST API and MCP. See [the annotator page](../../../../docs/content/ui/annotator.md).
