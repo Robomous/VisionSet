@@ -150,6 +150,24 @@ const LOSSY_REFUSAL = {
   },
 };
 
+/** The consented export, already finished: the first poll answers `succeeded`. */
+const EXPORT_JOB = {
+  id: "cccccccc-0000-4000-8000-000000000001",
+  type: "export",
+  state: "succeeded",
+  attempt: 1,
+  cancel_requested: false,
+  created_at: "2026-01-01T00:00:00Z",
+  started_at: "2026-01-01T00:00:00Z",
+  finished_at: "2026-01-01T00:00:01Z",
+  error: null,
+  error_code: null,
+  failures: [],
+  processed: 1,
+  total: 1,
+  result: {},
+} satisfies Wire["BackgroundJobOut"];
+
 async function serveApi(page: Page): Promise<void> {
   // The membership, and the DELETE actually takes something out of it. Widened
   // to `string`, because the ids arriving off the wire are not the literal union
@@ -243,7 +261,16 @@ async function serveApi(page: Page): Promise<void> {
       return route.fulfill({ json: { items: [LANE_FORMAT], total: 1 } satisfies Wire["FormatPage"] });
     }
     if (path === `/releases/${RELEASE.id}/export` && request.method() === "POST") {
-      return route.fulfill({ status: 409, json: LOSSY_REFUSAL });
+      if (new URL(request.url()).searchParams.get("allow_lossy") !== "true") {
+        return route.fulfill({ status: 409, json: LOSSY_REFUSAL });
+      }
+      return route.fulfill({ status: 202, json: EXPORT_JOB });
+    }
+    if (path === `/background-jobs/${EXPORT_JOB.id}`) {
+      return route.fulfill({ json: EXPORT_JOB });
+    }
+    if (path === `/background-jobs/${EXPORT_JOB.id}/artifact`) {
+      return route.fulfill({ contentType: "application/zip", body: Buffer.from("PK") });
     }
     if (path === `/projects/${PROJECT}/schema`) {
       // A schema-less project is a real answer: the overlay colours itself.
@@ -441,5 +468,59 @@ for (const viewport of [
     await expect(submit).toBeInViewport({ ratio: 1 });
     await expect(submit).toBeEnabled();
     await submit.click({ trial: true });
+  });
+}
+
+test("a consent covers the one export it was given for", async ({ page }) => {
+  await openDataset(page);
+  await page.getByTestId("dataset-tab-releases").click();
+  await page.getByTestId(`export-${RELEASE.tag}`).click();
+  await page.getByTestId("export-target").click();
+  await page.getByRole("option", { name: /openlane-2d/ }).click();
+
+  const dialog = page.getByTestId("export-dialog");
+  const submit = dialog.getByTestId("export-submit");
+  await submit.click();
+  await dialog.getByTestId("lossy-checkbox").click();
+  await expect(submit).toHaveText(/Export anyway/);
+  const download = page.waitForEvent("download");
+  await submit.click();
+  await download;
+  await expect(dialog.getByTestId("export-job-state")).toHaveText("Done");
+
+  await expect(submit).toHaveText(/^Export$/);
+  await submit.click();
+  await expect(dialog.getByTestId("lossy-consent")).toBeVisible();
+  await expect(dialog.getByTestId("lossy-checkbox")).not.toBeChecked();
+  await expect(submit).toBeDisabled();
+});
+
+for (const [from, to] of [
+  [
+    { width: 1280, height: 720 },
+    { width: 390, height: 844 },
+  ],
+  [
+    { width: 390, height: 844 },
+    { width: 1280, height: 720 },
+  ],
+] as const) {
+  test(`an open export dialog survives a resize from ${from.width} to ${to.width} wide`, async ({ page }) => {
+    await page.setViewportSize(from);
+    await openDataset(page);
+    await page.getByTestId("dataset-tab-releases").click();
+    await page.getByTestId(`export-${RELEASE.tag}`).click();
+    await page.getByTestId("export-target").click();
+    await page.getByRole("option", { name: /openlane-2d/ }).click();
+    const dialog = page.getByTestId("export-dialog");
+    await dialog.getByTestId("export-submit").click();
+    await dialog.getByTestId("lossy-checkbox").click();
+
+    await page.setViewportSize(to);
+
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByTestId("export-target")).toHaveText(/openlane-2d/);
+    await expect(dialog.getByTestId("lossy-checkbox")).toBeChecked();
+    await expect(dialog.getByTestId("export-submit")).toBeEnabled();
   });
 }

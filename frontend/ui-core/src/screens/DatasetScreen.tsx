@@ -1000,9 +1000,23 @@ function ExportDialog({
       ? job.data
       : null;
 
+  // A consent answers one refusal for one request: it is spent by the request it
+  // rides on, and a changed target, recipe or a closed dialog is a different
+  // question, so the refusal it answered goes with it.
+  function forgetConsent(): void {
+    setConsented(false);
+    if (exportRelease.isError) exportRelease.reset();
+  }
+
+  function close(): void {
+    forgetConsent();
+    onClose();
+  }
+
   function run(allowLossy: boolean): void {
     setSaved(false);
     setOutcome(null);
+    setConsented(false);
     exportRelease.mutate(
       {
         target,
@@ -1040,7 +1054,7 @@ function ExportDialog({
   const shownState = job.data?.state ?? outcome;
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    <Dialog open={open} onOpenChange={(next) => !next && close()}>
       <DialogContent data-testid="export-dialog" className="flex max-h-[calc(100dvh-2rem)] flex-col">
         <DialogTitle>Export {tag}</DialogTitle>
         <DialogDescription>
@@ -1092,7 +1106,10 @@ function ExportDialog({
                 data-testid="export-target"
                 targets={catalog}
                 value={target}
-                onValueChange={setTarget}
+                onValueChange={(next) => {
+                  forgetConsent();
+                  setTarget(next);
+                }}
               />
             )}
             {/* Declared by the format, never by the release: a bbox-only format
@@ -1128,7 +1145,13 @@ function ExportDialog({
                 transform.
               </FieldDescription>
             ) : (
-              <Select value={recipe} onValueChange={setRecipe}>
+              <Select
+                value={recipe}
+                onValueChange={(next) => {
+                  forgetConsent();
+                  setRecipe(next);
+                }}
+              >
                 <SelectTrigger id="export-recipe" data-testid="export-recipe" multiline>
                   <SelectValue />
                 </SelectTrigger>
@@ -1233,7 +1256,7 @@ function ExportDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={close}>
             Cancel
           </Button>
           <Button

@@ -658,6 +658,47 @@ describe("export, and the third gate word", () => {
     );
   });
 
+  it("forgets a consent once the question changes: another recipe, another target, a closed dialog", async () => {
+    baseline();
+    handlers.push((request) =>
+      request.method === "POST" && request.url.includes("/export") && !request.url.includes("allow_lossy")
+        ? {
+            status: 409,
+            body: { code: "LOSSY_EXPORT_NOT_CONSENTED", message: "ultralytics cannot express polygons." },
+          }
+        : undefined,
+    );
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
+    await userEvent.click(await screen.findByTestId("export-v1"));
+    await userEvent.click(screen.getByTestId("export-target"));
+    await userEvent.click(await screen.findByRole("option", { name: /YOLOv10/ }));
+
+    async function consentTo(): Promise<void> {
+      await userEvent.click(screen.getByTestId("export-submit"));
+      const checkbox = within(await screen.findByTestId("lossy-consent")).getByTestId("lossy-checkbox");
+      expect(checkbox).toHaveProperty("checked", false);
+      await userEvent.click(checkbox);
+      expect(checkbox).toHaveProperty("checked", true);
+    }
+
+    await consentTo();
+    await userEvent.click(screen.getByTestId("export-recipe"));
+    await userEvent.click(await screen.findByRole("option", { name: /yolo-640/ }));
+    expect(screen.queryByTestId("lossy-consent")).toBeNull();
+
+    await consentTo();
+    await userEvent.click(screen.getByTestId("export-target"));
+    await userEvent.click(await screen.findByRole("option", { name: /YOLO11/ }));
+    expect(screen.queryByTestId("lossy-consent")).toBeNull();
+
+    await consentTo();
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await userEvent.click(screen.getByTestId("export-v1"));
+    expect(await screen.findByTestId("export-dialog")).toBeTruthy();
+    expect(screen.queryByTestId("lossy-consent")).toBeNull();
+    await consentTo();
+  });
+
   /**
    * The export job's own state.
    *
