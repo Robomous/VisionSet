@@ -66,6 +66,7 @@ from visionset.formats.lanes._core import (
     lanes_of,
     refuse,
 )
+from visionset.formats.lanes.reader import OpenLane2dImporter as OpenLane2dImporter
 from visionset.kernel.domain import (
     GeometryType,
     Manifest,
