@@ -1697,21 +1697,18 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByRole("option", { name: /openlane-2d/ }).click();
 
     // Everything but the lane is dropped, so the consent question comes first.
-    // Its list names every class this target drops, which grows the dialog past
-    // a 900px viewport with no scroll, so the checkbox and the submit are reached
-    // by keyboard rather than by a pointer that cannot get to them.
+    // Its list names every class this target drops — the longest the walk meets —
+    // and the checkbox and submit are still reached by pointer (#1020).
     await page.getByTestId("export-submit").click();
     const consent = page.getByTestId("lossy-consent");
     await expect(consent).toContainText("openlane-2d accepts polylines only");
     const checkbox = consent.getByTestId("lossy-checkbox");
-    await checkbox.focus();
-    await page.keyboard.press("Space");
+    await checkbox.click();
     await expect(checkbox).toBeChecked();
 
-    await page.getByTestId("export-submit").focus();
     const [download] = await Promise.all([
       page.waitForEvent("download"),
-      page.keyboard.press("Enter"),
+      page.getByTestId("export-submit").click(),
     ]);
     await expectOpenLaneArchive(download);
     await page.keyboard.press("Escape");
