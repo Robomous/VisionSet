@@ -16,7 +16,7 @@ tables the surfaces use, so it cannot drift from what they answer.
 The framework's own codes - `VALIDATION_ERROR`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `UNAUTHORIZED`
 and `INTERNAL_ERROR` - are not raised by the kernel and are described in [api.md](api.md).
 
-106 codes, alphabetical.
+107 codes, alphabetical.
 
 | Code | Status | Meaning | Remedy | Retry with |
 | --- | --- | --- | --- | --- |
@@ -56,7 +56,8 @@ and `INTERNAL_ERROR` - are not raised by the kernel and are described in [api.md
 | `FRAME_ORDINAL_OUT_OF_RANGE` | 422 | A frame was offered at a grid position the session does not have. |  |  |
 | `FRAME_TIMESTAMP_OFF_GRID` | 422 | A frame's declared timestamp is not the one its ordinal names. |  |  |
 | `GEOMETRY_NOT_PRODUCED` | 422 | A pre-labeling run was asked to write a shape this model does not answer in. |  |  |
-| `IMPORT_NOT_CONSENTED` | 409 | The import would drop something and the caller did not consent to that kind. |  |  |
+| `IMPORT_FORMAT_NOT_FOUND` | 404 | No importer is registered under that format name. |  |  |
+| `IMPORT_NOT_CONSENTED` | 409 | The import would drop something and the caller did not consent to that kind. | Call `inspect_import` with the same project, format and path to see exactly what would be dropped, then re-run `import_dataset` with `consent_lossy` naming each kind you accept. | `consent_lossy` |
 | `IMPORT_SOURCE_UNREADABLE` | 422 | The dataset to import is malformed, unsafe or not readable. |  |  |
 | `INFERENCE_CONNECTION_INVALID` | 422 | The parameters do not describe a usable connection of that kind. |  |  |
 | `INFERENCE_CONNECTION_MODEL_FIXED` | 409 | This connection is set up, so which model it names cannot change. |  |  |

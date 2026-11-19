@@ -13,6 +13,7 @@ from visionset.cli._output import document, reset_json_requested
 from visionset.cli.batches import batch_app
 from visionset.cli.export import export
 from visionset.cli.formats import format_app
+from visionset.cli.imports import import_dataset
 from visionset.cli.inference import inference_app
 from visionset.cli.ingest import backfill_thumbnails, ingest
 from visionset.cli.init import init
@@ -81,6 +82,7 @@ app.command("init")(init)
 app.add_typer(project_app, name="project")
 app.add_typer(schema_app, name="schema")
 app.command("ingest")(ingest)
+app.command("import")(import_dataset)
 app.add_typer(batch_app, name="batch")
 app.add_typer(job_app, name="job")
 app.add_typer(release_app, name="release")

@@ -61,6 +61,7 @@ from visionset.kernel import (
     DestructiveSchemaChange,
     EmptyRelease,
     ExportDestinationNotEmpty,
+    ImportNotConsented,
     JobNotComplete,
     LossyExportNotConsented,
     ModelNotFound,
@@ -112,6 +113,7 @@ RETRY_WITH: Final[dict[type[BaseException], str]] = {
     ConfirmationRequired: "confirm",
     DestructiveSchemaChange: "allow_destructive",
     LossyExportNotConsented: "allow_lossy",
+    ImportNotConsented: "consent_lossy",
     ExportDestinationNotEmpty: "allow_non_empty",
 }
 """The parameter that turns this refusal into the same call, succeeding.
@@ -145,6 +147,11 @@ _HINTS: Final[dict[type[BaseException], str]] = {
         "Call `check_export` with the same release and format to see exactly "
         "which classes would be dropped and how many annotations that is, then "
         "re-run `export_release` with `allow_lossy=true` to accept the loss."
+    ),
+    ImportNotConsented: (
+        "Call `inspect_import` with the same project, format and path to see exactly "
+        "what would be dropped, then re-run `import_dataset` with `consent_lossy` "
+        "naming each kind you accept."
     ),
     ModelNotFound: (
         "Check the model id and revision with `model_download_size` before creating "

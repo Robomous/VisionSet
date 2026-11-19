@@ -36,6 +36,7 @@ from visionset.kernel import (
     ConfirmationRequired,
     DestructiveSchemaChange,
     ExportDestinationNotEmpty,
+    ImportNotConsented,
     LossyExportNotConsented,
     SchemaChangeWouldOrphan,
 )
@@ -241,12 +242,14 @@ def test_the_orphan_refusal_offers_nothing_and_that_is_the_whole_point() -> None
 def test_the_retry_words_are_distinct_and_are_never_merged() -> None:
     # `confirm` guards destroying data, `allow_destructive` guards narrowing a
     # contract, `allow_lossy` guards emitting an incomplete copy of something that
-    # stays intact, `allow_non_empty` guards mixing two exports in one directory.
-    # Different words, different errors, never one `except`.
+    # stays intact, `allow_non_empty` guards mixing two exports in one directory,
+    # `consent_lossy` names what an import may drop. Different words, different
+    # errors, never one `except`.
     expected = {
         ConfirmationRequired: "confirm",
         DestructiveSchemaChange: "allow_destructive",
         LossyExportNotConsented: "allow_lossy",
+        ImportNotConsented: "consent_lossy",
         ExportDestinationNotEmpty: "allow_non_empty",
     }
     assert expected == RETRY_WITH
