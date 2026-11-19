@@ -408,3 +408,23 @@ def test_add_imported_refuses_an_asset_another_batch_holds(world: World) -> None
     with pytest.raises(AssetNotWritable, match="another batch"):
         world.annotations.add_imported(other.id, [_import_label(asset_id)])
     assert batch_id != other.id
+
+
+def test_add_imported_never_writes_into_the_trunk(world: World) -> None:
+    batch_id, asset_id = _draft_with_one_asset(world)
+    world.batches.approve(batch_id)
+    world.batches.start(batch_id)
+    (job,) = world.batches.jobs(batch_id)
+    world.jobs.start(job.id)
+    for member in job.progress:
+        world.jobs.mark(
+            job.id, member, AssetProgress.SKIPPED if member != asset_id else AssetProgress.ANNOTATED
+        )
+    world.jobs.complete(job.id)
+    world.batches.complete(batch_id)
+    world.datasets.promote(batch_id)
+    assert asset_id in world.datasets.promoted_asset_ids(world.project.id)
+    draft = world.batches.create(world.project.id, "again", [asset_id])
+
+    with pytest.raises(AssetNotWritable, match="already in the dataset"):
+        world.annotations.add_imported(draft.id, [_import_label(asset_id)])
