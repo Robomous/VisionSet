@@ -74,6 +74,8 @@ ERROR_CODES: Final[Mapping[type[errors.VisionSetError], str]] = {
     errors.InferenceConnectionNotTestable: "INFERENCE_CONNECTION_NOT_TESTABLE",
     errors.InferenceEndpointUnavailable: "INFERENCE_ENDPOINT_UNAVAILABLE",
     errors.InferenceOutOfMemory: "INFERENCE_OUT_OF_MEMORY",
+    errors.ImportNotConsented: "IMPORT_NOT_CONSENTED",
+    errors.ImportSourceUnreadable: "IMPORT_SOURCE_UNREADABLE",
     errors.IngestJobNotFound: "INGEST_JOB_NOT_FOUND",
     errors.InvalidAnnotation: "INVALID_ANNOTATION",
     errors.InvalidAttributeValue: "INVALID_ATTRIBUTE_VALUE",

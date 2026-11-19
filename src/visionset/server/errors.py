@@ -80,6 +80,8 @@ from visionset.kernel import (
     FrameOrdinalOutOfRange,
     FrameTimestampOffGrid,
     GeometryNotProduced,
+    ImportNotConsented,
+    ImportSourceUnreadable,
     InferenceConnectionInvalid,
     InferenceConnectionModelFixed,
     InferenceConnectionNameTaken,
@@ -371,6 +373,10 @@ _HTTP: Final[dict[type[VisionSetError], _Http]] = {
     # workspace's own `exports/`, so these reach a client only as a failed job.
     ExportDestinationNotEmpty: _Http(409),
     ExportDestinationRefused: _Http(422),
+    # Retryable with consent for the named loss kinds, like LOSSY_EXPORT_NOT_CONSENTED.
+    ImportNotConsented: _Http(409),
+    # The source the caller pointed at is malformed or unsafe; nothing was written.
+    ImportSourceUnreadable: _Http(422),
     # The `download_weights` gate, refusing what `allowed_actions` had already
     # declined to declare. 409 rather than 404 because both readings are about
     # the resource as it stands — already set up, or a kind with no weights of
