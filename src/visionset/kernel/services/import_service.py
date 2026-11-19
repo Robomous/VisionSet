@@ -21,7 +21,7 @@ transaction, so a refusal anywhere leaves none of them.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import BytesIO
@@ -119,6 +119,7 @@ class ImportService:
         src: Path,
         *,
         consent: ImportConsent | None = None,
+        on_progress: Callable[[int, int], None] | None = None,
     ) -> ImportRun:
         """Import the source as a new approved batch, or refuse having written nothing.
 
@@ -127,6 +128,10 @@ class ImportService:
         the same source while its first batch is untouched, or after that batch
         was deleted, writes nothing and returns no batch. A run that would
         write no asset and no label writes nothing at all, schema included.
+
+        ``on_progress`` hears ``(stored, total)`` after each image's bytes are
+        stored, which is the long part of a commit; the rows follow in one
+        transaction it does not report on.
 
         Raises:
             ProjectNotFound: no such project in this workspace.
@@ -173,10 +178,13 @@ class ImportService:
                 losses=plan.losses,
             )
 
-        candidates = [
-            self._store(project_id, planned.root, image, planned.probes[image.path])
-            for image in plan.images
-        ]
+        candidates: list[Asset] = []
+        for image in plan.images:
+            candidates.append(
+                self._store(project_id, planned.root, image, planned.probes[image.path])
+            )
+            if on_progress is not None:
+                on_progress(len(candidates), len(plan.images))
 
         with self._workspace.unit_of_work() as uow:
             self._require_project(uow, project_id)
