@@ -41,3 +41,9 @@ browser runs. They were written together, and they are easiest to read in this o
 | Page | The rule |
 | --- | --- |
 | [An import is a labeled batch](an-import-is-a-labeled-batch.md) | Labels are written before the batch is approved, as `provenance="import"` with no job. There is no import-only path into the trunk, and fidelity is computed per dataset and consent-gated. |
+
+## Three-dimensional labels
+
+| Page | The rule |
+| --- | --- |
+| [Three-dimensional labels are calibrated image labels](three-dimensional-labels-are-calibrated-image-labels.md) | A 3D label belongs to an image asset, in its sensor frame, with calibration stored per source. Point clouds are a separate modality and are not admitted by adding a geometry. |
