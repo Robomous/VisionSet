@@ -22,6 +22,7 @@ class Topic(NamedTuple):
 PRE_LABELING_URI: Final = "visionset://pre-labeling"
 EXPORT_URI: Final = "visionset://export"
 SCHEMA_CHANGES_URI: Final = "visionset://schema-changes"
+ANNOTATION_GEOMETRY_URI: Final = "visionset://annotation-geometry"
 
 PRE_LABELING: Final = """\
 # Pre-labeling
@@ -256,9 +257,39 @@ with the active one (`get_schema`) first. `is_destructive` false means the re-pi
 no flag.
 """
 
+ANNOTATION_GEOMETRY: Final = """\
+# Annotation geometry
+
+Applies to `add_annotations` and `update_annotations`. Every coordinate is in the
+asset's own pixels, never normalized. `type` selects the shape:
+
+- `bbox`: `x`, `y` (top-left corner), `width`, `height`.
+- `polygon`: `points`, at least three `[x, y]` pairs; the ends join.
+- `polyline`: `points`, at least two `[x, y]` pairs in order; the ends do not join.
+- `classification_tag`: no coordinates.
+
+## Polyline vertex visibility
+
+A polyline may carry `visibility`, one state per point and in the same order:
+`0` unlabeled (nobody judged the vertex), `1` occluded (judged, and hidden), `2`
+visible (judged, and seen). Only those integers are accepted; `true`, `"2"` and
+`2.0` are refused, and so is `null`.
+
+**Omit the key when you do not know.** An absent `visibility` means nobody said,
+which is not the same as every vertex visible, and it is never answered as `null`.
+A list whose length differs from `points` is refused, never padded or truncated.
+
+**An update replaces the whole geometry, so resend it to keep it.**
+`update_annotations` takes the geometry you send as the new one: if you move a
+point and leave `visibility` out, the stored visibility is cleared. Copy it from
+`list_asset_annotations`, and adjust it with the points — add or remove the state
+of a vertex you add or remove.
+"""
+
 TOPICS: Final = (
     Topic(PRE_LABELING_URI, "pre-labeling", PRE_LABELING),
     Topic(EXPORT_URI, "export", EXPORT),
     Topic(SCHEMA_CHANGES_URI, "schema-changes", SCHEMA_CHANGES),
+    Topic(ANNOTATION_GEOMETRY_URI, "annotation-geometry", ANNOTATION_GEOMETRY),
 )
 """Every extra resource :func:`visionset.mcp.main.build_server` serves."""

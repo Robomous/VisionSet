@@ -72,7 +72,13 @@ from visionset.kernel.errors import UnserializableManifest
 #: the shape of ``classes`` here. A version-1 document still loads — ``LabelClass``
 #: reads the old singular key — so every release published before that stays
 #: verifiable, with its bytes and its hash untouched.
-MANIFEST_VERSION: int = 2
+#:
+#: **3** since #352, which let a polyline carry ``visibility``, one state per
+#: vertex. The key is omitted when unknown, so a polyline without it serializes
+#: to the bytes it did under 2, and a version-2 document loads and verifies with
+#: its hash untouched. A document that does carry it is one a version-2 build
+#: refuses, which is what the bump announces.
+MANIFEST_VERSION: int = 3
 
 
 class ManifestAnnotation(BaseModel):

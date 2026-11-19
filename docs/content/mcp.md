@@ -323,11 +323,13 @@ A **domain refusal** is an ordinary successful call whose payload is the error e
 
 **A connection says how to start before any call.** `initialize` returns `instructions` - the order
 of the workflow, the error envelope and the coordinate trap, in a few lines - and the server
-advertises resources an agent reads on demand: `visionset://workflow`, the walk-through, and three
+advertises resources an agent reads on demand: `visionset://workflow`, the walk-through, and four
 references that hold the long prose behind the largest tools so their descriptions stay under 1500
 characters - `visionset://pre-labeling` (`get_pre_label_plan`, `pre_label_batch`, `pre_label_job`,
-`pre_label_project`), `visionset://export` (`check_export`, `export_release`) and
-`visionset://schema-changes` (`preview_schema_change`, `compare_schema_versions`). Each description
+`pre_label_project`), `visionset://export` (`check_export`, `export_release`),
+`visionset://schema-changes` (`preview_schema_change`, `compare_schema_versions`) and
+`visionset://annotation-geometry` (`add_annotations`, `update_annotations`: the shapes, and a
+polyline's per-vertex `visibility`, which an update clears unless it is resent). Each description
 ends with a `Details:` pointer to the one it relies on, and a test asserts every `visionset://` URI a
 description mentions is served.
 `serverInfo.version` is the installed version and every tool has a `title`. A refusal that has a

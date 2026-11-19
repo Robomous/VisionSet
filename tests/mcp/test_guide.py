@@ -86,3 +86,18 @@ def test_a_topic_resource_is_served_verbatim() -> None:
             ]
 
     assert anyio.run(go) == [topic.text for topic in TOPICS]
+
+
+def test_both_annotation_writes_say_an_update_clears_an_unsent_visibility() -> None:
+    async def go() -> dict[str, str]:
+        listed = await build_server().list_tools()
+        return {tool.name: tool.description or "" for tool in listed}
+
+    described = anyio.run(go)
+    geometry = next(t.text for t in TOPICS if t.uri == "visionset://annotation-geometry")
+    for name in ("add_annotations", "update_annotations"):
+        assert "visibility" in described[name]
+        assert "visionset://annotation-geometry" in described[name]
+    assert "resend it" in described["update_annotations"]
+    assert "stored visibility is cleared" in geometry
+    assert "`0` unlabeled" in geometry

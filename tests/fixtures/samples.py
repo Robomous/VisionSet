@@ -79,6 +79,7 @@ from visionset.kernel.domain import (
     ThumbnailBackfill,
     TimeRange,
     TransformedAnnotation,
+    VertexVisibility,
     VideoMetadata,
     VideoProvenance,
 )
@@ -296,6 +297,17 @@ POLYGON = PolygonGeometry(points=[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)])
 # Y-ascending on purpose: it is the one sample a lane exporter can consume, and
 # TuSimple refuses a lane whose points are not sorted by ascending Y.
 POLYLINE = PolylineGeometry(points=[(2.0, 4.0), (12.0, 40.0), (30.0, 96.0)])
+# The same path with per-vertex visibility, one of each state, so a projection
+# that dropped the field or reordered it has something to lose.
+POLYLINE_WITH_VISIBILITY = POLYLINE.model_copy(
+    update={
+        "visibility": (
+            VertexVisibility.VISIBLE,
+            VertexVisibility.OCCLUDED,
+            VertexVisibility.UNLABELED,
+        )
+    }
+)
 CLASSIFICATION = ClassificationGeometry()
 
 # Every geometry variant gets its own sample rather than one standing for the

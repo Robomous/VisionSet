@@ -12,12 +12,15 @@ import {
   MIN_POLYLINE_POINTS,
   insertPolygonVertex,
   insertPolylineVertex,
+  isVertexOccluded,
   movePolygonVertex,
   movePolylineVertex,
   polygonBbox,
   polygonContains,
   removePolygonVertex,
   removePolylineVertex,
+  sameVisibility,
+  setPolylineVertexOccluded,
   translatePolygon,
   translatePolyline,
 } from "./polygon";
@@ -208,18 +211,19 @@ describe("moving a polygon moves it rigidly", () => {
    * came back as a `polygon` would be a closed shape drawn over an open one.
    */
   it("moves a polyline by the same rule, and it stays a polyline", () => {
-    const line: PolylineGeometry = { type: "polyline", points: [[100, 100], [200, 150]] };
+    const line: PolylineGeometry = { type: "polyline", points: [[100, 100], [200, 150]], visibility: undefined };
     expect(translatePolyline(line, [0, 0], FRAME)).toEqual({
       type: "polyline",
       points: [
         [0, 0],
         [100, 50],
       ],
+      visibility: undefined,
     });
   });
 
   it("clamps a polyline into the frame exactly as it clamps a polygon", () => {
-    const line: PolylineGeometry = { type: "polyline", points: [[100, 100], [200, 200]] };
+    const line: PolylineGeometry = { type: "polyline", points: [[100, 100], [200, 200]], visibility: undefined };
     const asPolygon: PolygonGeometry = { type: "polygon", points: line.points };
     const line9999 = translatePolyline(line, [9999, 9999], FRAME);
     const polygon9999 = translatePolygon(asPolygon, [9999, 9999], FRAME);
@@ -319,6 +323,7 @@ describe("the polyline's own edits (#342)", () => {
       [50, 10],
       [50, 50],
     ],
+    visibility: undefined,
   };
   const BOUNDS = { width: 100, height: 100 };
 
@@ -364,5 +369,66 @@ describe("the polyline's own edits (#342)", () => {
   it("keeps the polygon's floor where it was, so neither shape borrowed the other's", () => {
     const triangle: PolygonGeometry = { type: "polygon", points: LANE.points };
     expect(removePolygonVertex(triangle, 0)).toBeNull();
+  });
+});
+
+describe("per-vertex visibility follows the points", () => {
+  const BOUNDS = { width: 100, height: 100 };
+  const MARKED: PolylineGeometry = {
+    type: "polyline",
+    points: [
+      [10, 10],
+      [50, 10],
+      [50, 50],
+    ],
+    visibility: [2, 1, 2],
+  };
+
+  it("keeps the list through a move and a vertex drag", () => {
+    expect(translatePolyline(MARKED, [0, 0], BOUNDS).visibility).toEqual([2, 1, 2]);
+    expect(movePolylineVertex(MARKED, 1, [60, 20], BOUNDS).visibility).toEqual([2, 1, 2]);
+  });
+
+  it("gives an inserted vertex the state of the one it follows", () => {
+    const inserted = insertPolylineVertex(MARKED, 1, [50, 30]);
+    expect(inserted.points).toHaveLength(4);
+    expect(inserted.visibility).toEqual([2, 1, 1, 2]);
+    expect(insertPolylineVertex(MARKED, 0, [30, 10]).visibility).toEqual([2, 2, 1, 2]);
+  });
+
+  it("drops the removed vertex's state, and keeps the two-point floor", () => {
+    const removed = removePolylineVertex(MARKED, 1);
+    expect(removed?.visibility).toEqual([2, 2]);
+    expect(removed === null ? null : removePolylineVertex(removed, 0)).toBeNull();
+  });
+
+  it("leaves an unknown list unknown through every edit", () => {
+    const unknown: PolylineGeometry = { ...MARKED, visibility: undefined };
+    expect(translatePolyline(unknown, [0, 0], BOUNDS).visibility).toBeUndefined();
+    expect(movePolylineVertex(unknown, 0, [1, 1], BOUNDS).visibility).toBeUndefined();
+    expect(insertPolylineVertex(unknown, 0, [30, 10]).visibility).toBeUndefined();
+    expect(removePolylineVertex(unknown, 0)?.visibility).toBeUndefined();
+  });
+
+  it("records a mark on an unknown polyline as visible everywhere else", () => {
+    const unknown: PolylineGeometry = { ...MARKED, visibility: undefined };
+    const marked = setPolylineVertexOccluded(unknown, 2, true);
+    expect(marked.visibility).toEqual([2, 2, 1]);
+    expect(isVertexOccluded(marked, 2)).toBe(true);
+    expect(setPolylineVertexOccluded(marked, 2, false).visibility).toEqual([2, 2, 2]);
+    expect(() => setPolylineVertexOccluded(unknown, 3, true)).toThrow(RangeError);
+  });
+
+  it("keeps a state it did not touch, unlabeled included", () => {
+    const recorded: PolylineGeometry = { ...MARKED, visibility: [0, 2, 0] };
+    expect(setPolylineVertexOccluded(recorded, 1, true).visibility).toEqual([0, 1, 0]);
+  });
+
+  it("compares lists by value, and unknown only equal to unknown", () => {
+    const unknown: PolylineGeometry = { ...MARKED, visibility: undefined };
+    expect(sameVisibility(MARKED, { ...MARKED, visibility: [2, 1, 2] })).toBe(true);
+    expect(sameVisibility(MARKED, { ...MARKED, visibility: [2, 2, 2] })).toBe(false);
+    expect(sameVisibility(unknown, { ...unknown })).toBe(true);
+    expect(sameVisibility(unknown, { ...MARKED, visibility: [0, 0, 0] })).toBe(false);
   });
 });

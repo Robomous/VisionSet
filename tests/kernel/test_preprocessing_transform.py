@@ -29,6 +29,7 @@ from visionset.kernel.domain import (
     ResizeStrategy,
     SplitAssignment,
     TransformedFile,
+    VertexVisibility,
     letterbox_fit,
     recipe_hash,
     rot90_quarter_turns,
@@ -44,6 +45,10 @@ from visionset.kernel.errors import (
 BBOX = BboxGeometry(x=10.0, y=20.0, width=30.0, height=40.0)
 POLYGON = PolygonGeometry(points=[(0.0, 0.0), (50.0, 0.0), (50.0, 100.0)])
 POLYLINE = PolylineGeometry(points=[(5.0, 10.0), (60.0, 150.0)])
+SEEN = (VertexVisibility.OCCLUDED, VertexVisibility.VISIBLE, VertexVisibility.UNLABELED)
+VISIBLE_POLYLINE = PolylineGeometry(
+    points=[(5.0, 10.0), (60.0, 150.0), (80.0, 190.0)], visibility=SEEN
+)
 TAG = ClassificationGeometry()
 EVERY_GEOMETRY: tuple[Geometry, ...] = (BBOX, POLYGON, POLYLINE, TAG)
 
@@ -207,6 +212,27 @@ def test_hflip_mirrors_in_the_frame_width_and_keeps_polyline_order() -> None:
         points=[(95.0, 10.0), (40.0, 150.0)]
     )
     assert _geometry_of(variant, ClassificationGeometry) == TAG
+
+
+def test_a_resize_keeps_per_vertex_visibility_aligned() -> None:
+    step = ResizeStep(strategy=ResizeStrategy.LETTERBOX, width=400, height=400)
+    (file,) = transform_manifest(_manifest(_asset(VISIBLE_POLYLINE)), _spec(step), None).files
+    assert _geometry_of(file, PolylineGeometry) == PolylineGeometry(
+        points=[(110.0, 20.0), (220.0, 300.0), (260.0, 380.0)], visibility=SEEN
+    )
+
+
+def test_hflip_keeps_per_vertex_visibility_in_vertex_order() -> None:
+    spec = _spec(AugmentStep(op=AugmentOp.HFLIP), variants=1)
+    variant = _only_variant(spec, VISIBLE_POLYLINE)
+    assert _geometry_of(variant, PolylineGeometry) == PolylineGeometry(
+        points=[(95.0, 10.0), (40.0, 150.0), (20.0, 190.0)], visibility=SEEN
+    )
+
+
+def test_a_transform_leaves_unknown_visibility_unknown() -> None:
+    spec = _spec(AugmentStep(op=AugmentOp.HFLIP), variants=1)
+    assert _geometry_of(_only_variant(spec, POLYLINE), PolylineGeometry).visibility is None
 
 
 @pytest.mark.parametrize("content_hash", [f"content-{candidate}" for candidate in range(8)])

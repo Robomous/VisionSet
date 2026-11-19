@@ -52,6 +52,7 @@ from visionset.kernel.domain import (
     ManifestAnnotation,
     ManifestAsset,
     PolylineGeometry,
+    VertexVisibility,
 )
 from visionset.kernel.errors import ExportSourceUnreadable
 
@@ -164,6 +165,10 @@ class Lane:
     Exists so the five exporters share one answer to "what is this lane": the
     resolution rules — attribute first, class name second, ``other`` last — run
     once here rather than five times with a chance of drifting.
+
+    ``visibility`` is the geometry's own, aligned with ``points`` or ``None`` when
+    nobody said. Only OpenLane has a slot for it; the other four drop it, which
+    their ``lossy`` flag already declares.
     """
 
     annotation: ManifestAnnotation
@@ -171,6 +176,7 @@ class Lane:
     style: str
     color: str
     position: str
+    visibility: tuple[VertexVisibility, ...] | None = None
 
     @property
     def label_class(self) -> str:
@@ -191,6 +197,7 @@ def lanes_of(asset: ManifestAsset) -> list[Lane]:
             style=_attribute(annotation, STYLE, STYLE_VALUES),
             color=_attribute(annotation, COLOR, COLOR_VALUES),
             position=_position(annotation),
+            visibility=geometry.visibility,
         )
         for annotation in asset.annotations
         if isinstance(geometry := annotation.geometry, PolylineGeometry)

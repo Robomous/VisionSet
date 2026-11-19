@@ -113,6 +113,39 @@
       "model_ref": null,
       "provenance": "human",
       "schema_version": 1
+    },
+    {
+      "asset_id": "1ad26c67-2b52-553f-ae2d-30346d8e20cc",
+      "attributes": {},
+      "confidence": null,
+      "geometry": {
+        "points": [
+          [
+            2.0,
+            4.0
+          ],
+          [
+            12.0,
+            40.0
+          ],
+          [
+            30.0,
+            96.0
+          ]
+        ],
+        "type": "polyline",
+        "visibility": [
+          2,
+          1,
+          0
+        ]
+      },
+      "id": "ceb4e7aa-a1cb-5f39-8f0a-49111fe40b22",
+      "job_id": null,
+      "label_class": "sign",
+      "model_ref": null,
+      "provenance": "human",
+      "schema_version": 1
     }
   ],
   "asset": {

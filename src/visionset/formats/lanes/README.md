@@ -29,13 +29,15 @@ class name when the attribute is absent, so a schema whose classes *are* the pos
 
 ## What is deliberately not carried
 
-OpenLane 2D marks each vertex visible or occluded. `PolylineGeometry.points` is a list of
-coordinates and there is no per-vertex slot, so the `visibility` array is written all-visible.
-Extending the annotation model for one format was declined in #223 rather than smuggled in; if
-per-vertex data is ever wanted it is a domain change with a wire change behind it, not a
-format's business.
+`PolylineGeometry` carries an optional per-vertex `visibility` (unlabeled, occluded, visible —
+COCO's 0/1/2), added in #352 as a domain and wire change rather than a format's business.
+OpenLane 2D is the one lane format with a slot for it: occluded writes `0`, visible writes `1`,
+and unlabeled — like a lane with no visibility at all — writes `1`, because OpenLane has no
+"unknown" and an unjudged vertex is no claim of occlusion. TuSimple, CurveLanes, BDD100K and
+CULane have no per-vertex field and drop it; their `lossy` flag already says so.
 
 ## Drawing lanes
 
-There is no interactive polyline tool yet — lanes are written through the SDK, the REST API and
-MCP, and reviewed in the annotator. The drawing tool is tracked separately; see #342.
+The annotator has a polyline tool: draw a lane point by point, select it, drag or insert and
+delete its vertices, and mark individual vertices occluded. Lanes can also be written through the
+SDK, the REST API and MCP. See [the annotator page](../../../../docs/content/ui/annotator.md).

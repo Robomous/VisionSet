@@ -68,6 +68,7 @@ from visionset.kernel.domain import (
     PolygonGeometry,
     PolylineGeometry,
     Release,
+    VertexVisibility,
 )
 from visionset.kernel.errors import ExportSourceUnreadable
 
@@ -93,6 +94,7 @@ def _lane(
     style: str | None = None,
     color: str | None = None,
     position: str | None = None,
+    visibility: tuple[VertexVisibility, ...] | None = None,
 ) -> ManifestAnnotation:
     attributes: dict[str, Any] = {}
     if style is not None:
@@ -105,7 +107,9 @@ def _lane(
         id=uuid4(),
         label_class=label_class,
         schema_version=1,
-        geometry=PolylineGeometry(points=points),
+        geometry=PolylineGeometry(points=points)
+        if visibility is None
+        else PolylineGeometry(points=points, visibility=visibility),
         attributes=attributes,
         provenance="human",
     )
@@ -639,13 +643,11 @@ def test_openlane_gives_a_crosswalk_category_zero(tmp_path: Path) -> None:
     assert line["category"] == 0
 
 
-def test_openlane_writes_every_point_visible_because_the_domain_has_no_other_answer(
+def test_openlane_writes_every_point_visible_when_visibility_is_unknown(
     tmp_path: Path,
 ) -> None:
-    # The one loss worth naming: OpenLane marks each vertex visible or occluded
-    # and `PolylineGeometry.points` is coordinates alone. Extending the annotation
-    # model for one format was declined, so this is what is known rather than
-    # what was measured.
+    # OpenLane has no "unknown", and a lane nobody judged carries no claim that
+    # anything hid it.
     dest = _export(
         OpenLane2dExporter(),
         _asset(_lane([(1.0, 1.0), (2.0, 20.0), (3.0, 40.0)])),
@@ -653,6 +655,57 @@ def test_openlane_writes_every_point_visible_because_the_domain_has_no_other_ans
     )
     (line,) = _openlane(dest)["lane_lines"]
     assert line["visibility"] == [1, 1, 1]
+
+
+def test_openlane_writes_the_recorded_visibility_onto_its_binary_flag(
+    tmp_path: Path,
+) -> None:
+    # Visible is 1 and occluded is 0; unlabeled follows the unknown lane above.
+    dest = _export(
+        OpenLane2dExporter(),
+        _asset(
+            _lane(
+                [(1.0, 1.0), (2.0, 20.0), (3.0, 40.0), (4.0, 60.0)],
+                visibility=(
+                    VertexVisibility.VISIBLE,
+                    VertexVisibility.OCCLUDED,
+                    VertexVisibility.UNLABELED,
+                    VertexVisibility.OCCLUDED,
+                ),
+            )
+        ),
+        tmp_path,
+    )
+    (line,) = _openlane(dest)["lane_lines"]
+    assert line["visibility"] == [1, 0, 1, 0]
+    assert len(line["visibility"]) == len(line["uv"])
+
+
+@pytest.mark.parametrize(
+    "exporter",
+    [TuSimpleExporter, CurveLanesExporter, Bdd100kLaneExporter, CuLaneExporter],
+    ids=lambda e: str(e.format_name),
+)
+def test_a_format_with_no_per_vertex_slot_writes_the_same_bytes_with_or_without_visibility(
+    tmp_path: Path, exporter: type
+) -> None:
+    points = [(1.0, 1.0), (2.0, 20.0), (3.0, 40.0)]
+    labelled = _lane(points, visibility=(VertexVisibility.OCCLUDED,) * 3)
+    asset = _asset(labelled)
+    bare = asset.model_copy(
+        update={
+            "annotations": (
+                labelled.model_copy(update={"geometry": PolylineGeometry(points=points)}),
+            )
+        }
+    )
+
+    def written(dest: Path) -> dict[str, bytes]:
+        return {str(p.relative_to(dest)): p.read_bytes() for p in dest.rglob("*") if p.is_file()}
+
+    assert written(_export(exporter(), asset, tmp_path / "with")) == written(
+        _export(exporter(), bare, tmp_path / "without")
+    )
 
 
 def test_openlane_writes_an_empty_lane_lines_list_when_there_are_no_lanes(

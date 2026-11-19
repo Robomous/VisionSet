@@ -152,6 +152,7 @@ from visionset.kernel.domain import (
     Task,
     TimeRange,
     TransformedAnnotation,
+    VertexVisibilities,
     VideoImport,
     VideoImportState,
     VideoMetadata,
@@ -161,8 +162,10 @@ from visionset.kernel.domain import (
     WorkspaceTotals,
     asset_actions,
     batch_actions,
+    check_vertex_visibility,
     connection_actions,
     job_actions,
+    optional_visibility_field,
 )
 from visionset.kernel.ports import Exporter, Provider
 
@@ -1806,19 +1809,39 @@ class PolygonBody(BaseModel):
 
 
 class PolylineBody(BaseModel):
-    """An open path of at least two points, in order. Nothing joins the ends."""
+    """An open path of at least two points, in order. Nothing joins the ends.
+
+    `visibility` is one state per point — the integer 0 unlabeled, 1 occluded,
+    2 visible — or absent when nobody said; never null. A geometry is replaced
+    whole, so an update that leaves it out clears it: resend it to keep it. One
+    whose length differs from `points` is refused.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     type: Literal[GeometryType.POLYLINE]
     points: list[tuple[float, float]]
+    visibility: VertexVisibilities = optional_visibility_field()
+
+    @model_validator(mode="after")
+    def _one_state_per_point(self) -> Self:
+        check_vertex_visibility(self.visibility, self.points)
+        return self
 
     def to_domain(self) -> PolylineGeometry:
-        return PolylineGeometry(points=self.points)
+        if self.visibility is None:
+            return PolylineGeometry(points=self.points)
+        return PolylineGeometry(points=self.points, visibility=self.visibility)
 
     @classmethod
     def of(cls, geometry: PolylineGeometry) -> Self:
-        return cls(type=GeometryType.POLYLINE, points=list(geometry.points))
+        if geometry.visibility is None:
+            return cls(type=GeometryType.POLYLINE, points=list(geometry.points))
+        return cls(
+            type=GeometryType.POLYLINE,
+            points=list(geometry.points),
+            visibility=geometry.visibility,
+        )
 
 
 class ClassificationBody(BaseModel):

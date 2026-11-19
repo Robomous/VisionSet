@@ -45,8 +45,11 @@ export const checkClassificationBody: Check<Schemas["ClassificationBody"]> =
 export const checkPolygonBody: Check<Schemas["PolygonBody"]> =
   /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("polygon")] } as const);
 
+export const checkVertexVisibility: Check<Schemas["VertexVisibility"]> =
+  /*#__PURE__*/ oneOf([0, 1, 2] as const);
+
 export const checkPolylineBody: Check<Schemas["PolylineBody"]> =
-  /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("polyline")] } as const);
+  /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("polyline")], "visibility": [false, arrayOf(checkVertexVisibility)] } as const);
 
 export const checkAnnotationOut: Check<Schemas["AnnotationOut"]> =
   /*#__PURE__*/ object({ "asset_id": [true, isString], "attributes": [true, mapOf(either([isBoolean, isNumber, isString] as const))], "confidence": [true, either([isNumber, isNull] as const)], "geometry": [true, tagged("type", { "bbox": checkBboxBody, "classification_tag": checkClassificationBody, "polygon": checkPolygonBody, "polyline": checkPolylineBody })], "id": [true, isString], "job_id": [true, either([isString, isNull] as const)], "label_class": [true, isString], "model_ref": [true, either([isString, isNull] as const)], "provenance": [true, oneOf(["human", "model", "import"] as const)], "schema_version": [true, isInteger] } as const);
@@ -409,7 +412,7 @@ export const checkPolygonGeometry: Check<Schemas["PolygonGeometry"]> =
   /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("polygon")] } as const);
 
 export const checkPolylineGeometry: Check<Schemas["PolylineGeometry"]> =
-  /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("polyline")] } as const);
+  /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("polyline")], "visibility": [false, arrayOf(checkVertexVisibility)] } as const);
 
 export const checkSuggestedRegion: Check<Schemas["SuggestedRegion"]> =
   /*#__PURE__*/ object({ "contour": [true, arrayOf(tuple([isNumber, isNumber] as const))], "geometry": [true, tagged("type", { "bbox": checkBboxGeometry, "classification_tag": checkClassificationGeometry, "polygon": checkPolygonGeometry, "polyline": checkPolylineGeometry })] } as const);

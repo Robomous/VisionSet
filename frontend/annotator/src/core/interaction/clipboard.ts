@@ -75,7 +75,12 @@
 
 import type { IdFactory } from "../ids";
 import { moveBbox } from "../geometry/bbox";
-import { polygonBbox, translatePolygon, translatePolyline } from "../geometry/polygon";
+import {
+  polygonBbox,
+  sameVisibility,
+  translatePolygon,
+  translatePolyline,
+} from "../geometry/polygon";
 import type { Bounds } from "../geometry/primitives";
 import { annotationsInDrawOrder } from "../state/document";
 import type { AnnotationDocument } from "../state/document";
@@ -164,7 +169,11 @@ function copiedGeometry(geometry: Geometry): Geometry {
     case "polygon":
       return { type: "polygon", points: geometry.points.map(([x, y]) => [x, y] as const) };
     case "polyline":
-      return { type: "polyline", points: geometry.points.map(([x, y]) => [x, y] as const) };
+      return {
+        type: "polyline",
+        points: geometry.points.map(([x, y]) => [x, y] as const),
+        visibility: geometry.visibility === undefined ? undefined : [...geometry.visibility],
+      };
     case "classification_tag":
       return { type: "classification_tag" };
   }
@@ -300,10 +309,13 @@ function sameGeometry(a: Geometry, b: Geometry): boolean {
     return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
   }
   if ((a.type === "polygon" || a.type === "polyline") && "points" in b) {
-    return (
+    const samePoints =
       a.points.length === b.points.length &&
-      a.points.every((point, at) => point[0] === b.points[at][0] && point[1] === b.points[at][1])
-    );
+      a.points.every((point, at) => point[0] === b.points[at][0] && point[1] === b.points[at][1]);
+    if (a.type === "polyline" && b.type === "polyline") {
+      return samePoints && sameVisibility(a, b);
+    }
+    return samePoints;
   }
   // Two tags. They carry nothing else, so being the same type is the whole answer.
   return true;

@@ -36,6 +36,7 @@ import type { AnnotationDocument } from "../state/document";
 import type { Point, PolylineGeometry } from "../types";
 import { PATH_BODY, PATH_ID, PATH_VERTEX, World, doubleClick, down, move, up } from "./_scene";
 import { IDLE } from "./state";
+import { setVertexOccludedCommand } from "./vertexVisibility";
 
 /** Three points running up and to the right — deliberately in descending Y. */
 const A: Point = [200, 400];
@@ -309,5 +310,45 @@ describe("moving and editing a lane", () => {
     // the same surprise whichever shape it happens to.
     expect(world.store.document).toBe(atTheFloor);
     expect(annotationById(world.store.document, PATH_ID)).toBeDefined();
+  });
+});
+
+describe("vertex visibility on the canvas", () => {
+  function marked(): World {
+    const world = picked();
+    const command = setVertexOccludedCommand(world.store.document, PATH_ID, 0, true);
+    if (command === null) throw new Error("nothing to execute");
+    world.store.execute(command);
+    return world;
+  }
+
+  it("records every vertex of a finished path as visible", () => {
+    const world = drawing();
+    world.send(down(A), down(B), down(C));
+    world.dispatch({ type: "commit" });
+    expect(drawn(world).visibility).toEqual([2, 2, 2]);
+  });
+
+  it("keeps the list through a rigid move and a vertex drag", () => {
+    const world = marked();
+    const to: Point = [PATH_BODY[0] - 40, PATH_BODY[1] + 20];
+    world.send(down(PATH_BODY), move(to), up(to));
+    expect(polylineOf(world.store.document, PATH_ID).visibility).toEqual([1, 2, 2]);
+    world.send(down([460, 320]), move([450, 310]), up([450, 310]));
+    expect(polylineOf(world.store.document, PATH_ID).visibility).toEqual([1, 2, 2]);
+  });
+
+  it("gives an inserted vertex the state of the one before it", () => {
+    const world = marked();
+    world.dispatch(doubleClick([560, 300]));
+    const lane = polylineOf(world.store.document, PATH_ID);
+    expect(lane.points).toHaveLength(4);
+    expect(lane.visibility).toEqual([1, 1, 2, 2]);
+  });
+
+  it("drops a deleted vertex's state with it", () => {
+    const world = marked();
+    world.dispatch(down(PATH_VERTEX, "secondary"));
+    expect(polylineOf(world.store.document, PATH_ID).visibility).toEqual([2, 2]);
   });
 });

@@ -102,6 +102,13 @@ describe("enums and literals", () => {
     expect(firstMismatch(state, "draft")).toBeNull();
   });
 
+  it("holds an integer enum to its members and to numbers", () => {
+    const visibility = oneOf([0, 1, 2] as const);
+    expect(firstMismatch(visibility, 2)).toBeNull();
+    expect(firstMismatch(visibility, 3)).toBe("the body should be 0 or 1 or 2");
+    expect(firstMismatch(visibility, "2")).toBe("the body should be 0 or 1 or 2");
+  });
+
   it("passes a member of an open vocabulary this build has never seen", () => {
     const capability = openOneOf(["point_suggest", "text_detect"] as const);
     expect(firstMismatch(capability, "depth_estimate")).toBeNull();

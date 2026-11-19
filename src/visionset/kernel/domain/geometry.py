@@ -18,13 +18,117 @@ exists.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import IntEnum
 from math import isfinite
-from typing import Annotated, Final, Literal, get_args
+from typing import TYPE_CHECKING, Annotated, Any, Final, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    ValidationError,
+    model_validator,
+)
+from pydantic.json_schema import JsonDict
+from pydantic_core import PydanticCustomError
 
 from visionset.kernel.domain.schema import GeometryType
+
+
+class VertexVisibility(IntEnum):
+    """What is known about one vertex of a path: COCO keypoint visibility's three states.
+
+    The integers are COCO's own ``v`` values, so a keypoint exporter writes them
+    unchanged. ``UNLABELED`` is a vertex nobody judged, which is not the same
+    claim as ``OCCLUDED`` (judged, and hidden) — a format with a binary flag has
+    to decide what an unjudged vertex becomes, and each one says so where it
+    writes it.
+
+    Closed and integer on the wire: it is accepted in requests, so it can never
+    be an open vocabulary, and a client switching on three numbers needs no
+    string table.
+    """
+
+    UNLABELED = 0
+    OCCLUDED = 1
+    VISIBLE = 2
+
+
+def _omitted_when_unknown(value: object) -> bool:
+    return value is None
+
+
+def _integer_state(value: object) -> object:
+    # bool is an int subclass, so `true` would otherwise store 1 — OCCLUDED —
+    # for a client that meant "visible". Only an integer names a state.
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(
+            f"a vertex visibility is the integer 0, 1 or 2, not {type(value).__name__} {value!r}"
+        )
+    return value
+
+
+def _never_null(value: object) -> object:
+    if value is None:
+        raise ValueError(
+            "visibility is omitted when unknown, never null; leave the key out instead"
+        )
+    return value
+
+
+def _absent_not_null(schema: JsonDict) -> None:
+    # Unknown is an absent key, so the schema advertises neither null nor a default.
+    schema.pop("default", None)
+
+
+StrictVertexVisibility = Annotated[VertexVisibility, BeforeValidator(_integer_state)]
+"""A :class:`VertexVisibility` accepted only from an integer: no bool, string or float."""
+
+if TYPE_CHECKING:
+    VertexVisibilities = tuple[StrictVertexVisibility, ...] | None
+else:
+    # No `| None` branch at runtime: a union reports each branch's failure and puts the
+    # tuple's repr in `loc`. The default is never validated, so unset still works.
+    VertexVisibilities = Annotated[
+        tuple[StrictVertexVisibility, ...],
+        BeforeValidator(_never_null),
+    ]
+"""One strict state per vertex. ``None`` is the unset default only: an explicit null is refused."""
+
+
+def optional_visibility_field() -> Any:
+    """The ``visibility`` field: absent when unknown, never ``null`` on input or output."""
+    return Field(default=None, exclude_if=_omitted_when_unknown, json_schema_extra=_absent_not_null)
+
+
+def check_vertex_visibility(
+    visibility: Sequence[VertexVisibility] | None, points: Sequence[tuple[float, float]]
+) -> None:
+    """Refuse a per-vertex visibility that does not name exactly one state per point.
+
+    Shared rather than inlined, so the next geometry with ordered vertices
+    (keypoints, a 3D polyline) holds the same rule instead of a second spelling of it.
+    """
+    if visibility is not None and len(visibility) != len(points):
+        message = (
+            f"visibility names {len(visibility)} vertices and the geometry has "
+            f"{len(points)} points; send one state per point, or omit visibility"
+        )
+        raise ValidationError.from_exception_data(
+            "PolylineGeometry",
+            [
+                {
+                    "type": PydanticCustomError(
+                        "value_error", "Value error, {error}", {"error": message}
+                    ),
+                    "loc": ("visibility",),
+                    "input": visibility,
+                }
+            ],
+        )
 
 
 class BboxGeometry(BaseModel):
@@ -85,18 +189,37 @@ class PolylineGeometry(BaseModel):
     longer path are left alone — they arrive from real digitizers and from honest
     resampling, and they cost a renderer nothing — and self-intersection is not
     validated here for the same reason it is not validated for a polygon.
+
+    ``visibility`` is optional per-vertex data, one :class:`VertexVisibility` per
+    point and in the same order. ``None`` means *nobody said*, which is a
+    different claim from every vertex visible, and it is **omitted** from every
+    serialization rather than written as ``null`` — so a polyline without it
+    dumps to exactly the bytes it did before the field existed, and every
+    manifest hash over such content is unchanged. The omission depends on the
+    value, never on how the model was constructed, which is what keeps
+    :func:`~visionset.kernel.domain.release.canonical_bytes` stable across a
+    round trip. A transform that moves points keeps the list aligned; one that
+    reversed the path would have to reverse it too.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     type: Literal[GeometryType.POLYLINE] = GeometryType.POLYLINE
     points: list[tuple[float, float]] = Field(min_length=2)
+    visibility: VertexVisibilities = optional_visibility_field()
 
     @model_validator(mode="after")
     def _has_length(self) -> PolylineGeometry:
         if len(set(self.points)) == 1:
             raise ValueError("a polyline whose points are all the same point has no length")
+        check_vertex_visibility(self.visibility, self.points)
         return self
+
+    def through(self, points: list[tuple[float, float]]) -> PolylineGeometry:
+        """The same path moved onto ``points``, its visibility carried in order."""
+        if self.visibility is None:
+            return PolylineGeometry(points=points)
+        return PolylineGeometry(points=points, visibility=self.visibility)
 
 
 class ClassificationGeometry(BaseModel):

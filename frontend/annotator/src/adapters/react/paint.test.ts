@@ -22,6 +22,7 @@ import {
   paintDocument,
   paintSuggestions,
   pendingPolygon,
+  polylineRuns,
   rubberBand,
   screenPx,
   type PaintedAnnotation,
@@ -368,7 +369,7 @@ describe("a pending suggestion, drawn as a proposal (#424)", () => {
     // still refused here, because this function is exported from the package root
     // and a caller could hand it anything the type permits.
     const path = shown({
-      geometry: { type: "polyline", points: [[0, 0], [1, 1]] },
+      geometry: { type: "polyline", points: [[0, 0], [1, 1]], visibility: undefined },
       confidence: 0.5,
       modelRef: "m@1",
       contour: [],
@@ -446,5 +447,43 @@ describe("a committed annotation's confidence is not the canvas's business", () 
     // imports it. Two `Math.round`s would be the same quantity in two
     // notations, which is the defect the shared helper exists to prevent.
     expect(confidenceLabel("sign", 0.87)).toBe(`sign ${confidencePercent(0.87)}`);
+  });
+});
+
+describe("an occluded stretch of a polyline is its own run", () => {
+  const POINTS: readonly [number, number][] = [
+    [0, 0],
+    [10, 0],
+    [20, 0],
+    [30, 0],
+    [40, 0],
+  ];
+
+  it("is one solid run when nothing is recorded, or nothing is occluded", () => {
+    expect(polylineRuns({ type: "polyline", points: POINTS, visibility: undefined })).toEqual([
+      { points: POINTS, occluded: false },
+    ]);
+    expect(
+      polylineRuns({ type: "polyline", points: POINTS, visibility: [2, 0, 2, 0, 2] }),
+    ).toEqual([{ points: POINTS, occluded: false }]);
+  });
+
+  it("dashes every segment touching an occluded vertex, sharing the joining vertices", () => {
+    expect(
+      polylineRuns({ type: "polyline", points: POINTS, visibility: [2, 2, 1, 2, 2] }),
+    ).toEqual([
+      { points: [POINTS[0], POINTS[1]], occluded: false },
+      { points: [POINTS[1], POINTS[2], POINTS[3]], occluded: true },
+      { points: [POINTS[3], POINTS[4]], occluded: false },
+    ]);
+  });
+
+  it("keeps a run of occluded vertices in one piece, to the end of the line", () => {
+    expect(
+      polylineRuns({ type: "polyline", points: POINTS, visibility: [0, 2, 2, 1, 1] }),
+    ).toEqual([
+      { points: [POINTS[0], POINTS[1], POINTS[2]], occluded: false },
+      { points: [POINTS[2], POINTS[3], POINTS[4]], occluded: true },
+    ]);
   });
 });

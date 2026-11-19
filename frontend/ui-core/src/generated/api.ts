@@ -4920,6 +4920,11 @@ export interface components {
         /**
          * PolylineBody
          * @description An open path of at least two points, in order. Nothing joins the ends.
+         *
+         *     `visibility` is one state per point — the integer 0 unlabeled, 1 occluded,
+         *     2 visible — or absent when nobody said; never null. A geometry is replaced
+         *     whole, so an update that leaves it out clears it: resend it to keep it. One
+         *     whose length differs from `points` is refused.
          */
         PolylineBody: {
             /** Points */
@@ -4932,6 +4937,8 @@ export interface components {
              * @enum {string}
              */
             type: "polyline";
+            /** Visibility */
+            visibility?: components["schemas"]["VertexVisibility"][];
         };
         /**
          * PolylineGeometry
@@ -4959,6 +4966,17 @@ export interface components {
          *     longer path are left alone — they arrive from real digitizers and from honest
          *     resampling, and they cost a renderer nothing — and self-intersection is not
          *     validated here for the same reason it is not validated for a polygon.
+         *
+         *     ``visibility`` is optional per-vertex data, one :class:`VertexVisibility` per
+         *     point and in the same order. ``None`` means *nobody said*, which is a
+         *     different claim from every vertex visible, and it is **omitted** from every
+         *     serialization rather than written as ``null`` — so a polyline without it
+         *     dumps to exactly the bytes it did before the field existed, and every
+         *     manifest hash over such content is unchanged. The omission depends on the
+         *     value, never on how the model was constructed, which is what keeps
+         *     :func:`~visionset.kernel.domain.release.canonical_bytes` stable across a
+         *     round trip. A transform that moves points keeps the list aligned; one that
+         *     reversed the path would have to reverse it too.
          */
         PolylineGeometry: {
             /** Points */
@@ -4971,6 +4989,8 @@ export interface components {
              * @enum {string}
              */
             type: "polyline";
+            /** Visibility */
+            visibility?: components["schemas"]["VertexVisibility"][];
         };
         /**
          * PreLabelExclusionOut
@@ -6127,6 +6147,22 @@ export interface components {
          * @enum {string}
          */
         Task: "detect" | "segment" | "classify" | "pose" | "obb" | "semantic" | "depth" | (string & {});
+        /**
+         * VertexVisibility
+         * @description What is known about one vertex of a path: COCO keypoint visibility's three states.
+         *
+         *     The integers are COCO's own ``v`` values, so a keypoint exporter writes them
+         *     unchanged. ``UNLABELED`` is a vertex nobody judged, which is not the same
+         *     claim as ``OCCLUDED`` (judged, and hidden) — a format with a binary flag has
+         *     to decide what an unjudged vertex becomes, and each one says so where it
+         *     writes it.
+         *
+         *     Closed and integer on the wire: it is accepted in requests, so it can never
+         *     be an open vocabulary, and a client switching on three numbers needs no
+         *     string table.
+         * @enum {integer}
+         */
+        VertexVisibility: 0 | 1 | 2;
         /**
          * VideoImportOut
          * @description A browser-driven import: how many frames are expected, and how many arrived.

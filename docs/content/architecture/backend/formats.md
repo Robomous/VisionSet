@@ -47,7 +47,9 @@ asks for three capability facts, and the split between them is the interesting
 part:
 
 - `lossy` - a blanket statement about everything a capability list cannot see:
-  attributes, confidence, provenance. True or false for the format, forever.
+  attributes, confidence, provenance, and a polyline's per-vertex `visibility`
+  where the format has no slot for it (every lane format but `openlane-2d`).
+  True or false for the format, forever.
 - `supported_geometries` - what it writes **intact**.
 - `degraded_geometries` - what it writes **having lost something**, such as a
   polygon arriving as its axis-aligned bounding box.

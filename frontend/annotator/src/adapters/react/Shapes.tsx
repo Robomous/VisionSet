@@ -58,14 +58,16 @@ import type { JSX } from "react";
 
 import { BBOX_HANDLES, bboxHandlePositions } from "../../core/geometry/bbox";
 import { polygonBbox } from "../../core/geometry/polygon";
-import type {
-  BboxGeometry,
-  Point,
-  PolygonGeometry,
-  PolylineGeometry,
+import {
+  VERTEX_VISIBILITY,
+  type BboxGeometry,
+  type Point,
+  type PolygonGeometry,
+  type PolylineGeometry,
+  type VertexVisibility,
 } from "../../core/types";
-import { screenPx } from "./paint";
-import type { PaintedAnnotation } from "./paint";
+import { polylineRuns, screenPx } from "./paint";
+import type { PaintedAnnotation, PolylineRun } from "./paint";
 
 /** Stroke thickness, in screen pixels, for an unselected shape. */
 export const STROKE_PX = 2;
@@ -87,6 +89,21 @@ export const LABEL_HALO_PX = 3;
 
 /** How far the label sits above its anchor, in screen pixels. */
 export const LABEL_LIFT_PX = 4;
+
+/**
+ * An occluded polyline run's dash and gap, in screen pixels: short and widely
+ * spaced, so it reads apart from the drawing preview's `6 4` and a suggestion's
+ * `10 6`. Exactly one and three unselected strokes, which is what lets a run
+ * derive it from `--vs-stroke` rather than costing the stage another variable.
+ */
+export const OCCLUDED_DASH_PX = [STROKE_PX, 3 * STROKE_PX] as const;
+
+const OCCLUDED_RUN_DASH = "var(--vs-stroke) calc(var(--vs-stroke) * 3)";
+
+/** `OCCLUDED_DASH_PX` as a `stroke-dasharray`, each length scaled by `perScreenPx`. */
+export function occludedDash(perScreenPx: number): string {
+  return OCCLUDED_DASH_PX.map((length) => length * perScreenPx).join(" ");
+}
 
 /**
  * The screen sizes a whole document draws with, as CSS custom properties for the
@@ -245,30 +262,39 @@ export function Grips({ geometry, color, zoom, hotHandle }: {
   );
 }
 
-/** The draggable vertices of a selected polygon. */
-export function Vertices({ points, color, zoom, hotIndex }: {
+/**
+ * The draggable vertices of a selected polygon or polyline. An occluded polyline
+ * vertex is hollow with a dashed outline, the same signal its run carries.
+ */
+export function Vertices({ points, color, zoom, hotIndex, visibility }: {
   readonly points: readonly Point[];
   readonly color: string;
   readonly zoom: number;
   readonly hotIndex: number | null;
+  readonly visibility?: readonly VertexVisibility[] | undefined;
 }): JSX.Element {
   const radius = screenPx(VERTEX_PX, zoom);
   return (
     <g>
-      {points.map((point, index) => (
-        <circle
-          // A vertex *is* its position — `state.ts` says so, and there is nothing
-          // else to name it by. The index is the honest key here.
-          key={index}
-          data-vertex={index}
-          cx={point[0]}
-          cy={point[1]}
-          r={radius}
-          fill={index === hotIndex ? color : "#ffffff"}
-          stroke={color}
-          strokeWidth={screenPx(1.5, zoom)}
-        />
-      ))}
+      {points.map((point, index) => {
+        const occluded = visibility?.[index] === VERTEX_VISIBILITY.OCCLUDED;
+        return (
+          <circle
+            // A vertex *is* its position — `state.ts` says so, and there is nothing
+            // else to name it by. The index is the honest key here.
+            key={index}
+            data-vertex={index}
+            data-occluded={occluded ? "true" : undefined}
+            cx={point[0]}
+            cy={point[1]}
+            r={radius}
+            fill={index === hotIndex ? color : occluded ? "none" : "#ffffff"}
+            stroke={color}
+            strokeWidth={screenPx(1.5, zoom)}
+            strokeDasharray={occluded ? occludedDash(screenPx(0.5, zoom)) : undefined}
+          />
+        );
+      })}
     </g>
   );
 }
@@ -325,17 +351,27 @@ export function PolylineShape({ geometry, color, hot, selected }: {
   readonly hot: boolean;
   readonly selected: boolean;
 }): JSX.Element {
-  return (
+  const runs = polylineRuns(geometry);
+  const run = ({ points, occluded }: PolylineRun, key?: number): JSX.Element => (
     <polyline
-      points={pointsAttribute(geometry.points)}
+      key={key}
+      data-occluded={occluded ? "true" : undefined}
+      points={pointsAttribute(points)}
       fill="none"
       stroke={color}
       strokeOpacity={hot ? 1 : HOT_FILL_OPACITY}
       strokeLinecap="round"
       strokeLinejoin="round"
-      style={{ strokeWidth: strokeOf(selected) }}
+      style={{
+        strokeWidth: strokeOf(selected),
+        ...(occluded ? { strokeDasharray: OCCLUDED_RUN_DASH } : {}),
+      }}
     />
   );
+  // One element for the common case, so a polyline with nothing occluded draws
+  // exactly as it always has.
+  if (runs.length === 1 && !runs[0].occluded) return run(runs[0]);
+  return <g>{runs.map((one, index) => run(one, index))}</g>;
 }
 
 /**
@@ -392,6 +428,7 @@ export function AnnotationShape({ shape, zoom, handles }: ShapeProps): JSX.Eleme
           color={shape.color}
           zoom={zoom}
           hotIndex={null}
+          visibility={shape.geometry.type === "polyline" ? shape.geometry.visibility : undefined}
         />
       )}
     </g>

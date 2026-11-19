@@ -517,3 +517,63 @@ describe("what leaves for the API", () => {
     }
   });
 });
+
+describe("polyline vertex visibility", () => {
+  const POINTS = [
+    [0, 0],
+    [10, 0],
+    [10, 10],
+  ];
+
+  it("reads an absent key as unknown, and an unknown polyline goes back out without it", () => {
+    const parsed = parseGeometry({ type: "polyline", points: POINTS });
+    if (parsed.type !== "polyline") throw new Error("not a polyline");
+    expect(parsed.visibility).toBeUndefined();
+
+    // Selected on the raw payload, so a parser that invented a list for an absent
+    // key cannot make the case disappear.
+    const raw = (fixture.annotations as { geometry: Record<string, unknown> }[]).find(
+      (one) => one.geometry["type"] === "polyline" && !("visibility" in one.geometry),
+    );
+    expect(raw).toBeDefined();
+    const annotation = parseAnnotation(raw);
+    const create = JSON.parse(JSON.stringify(toAnnotationCreate(annotation)));
+    const update = JSON.parse(JSON.stringify(toAnnotationUpdate(annotation)));
+    expect(create.geometry).toStrictEqual(raw?.geometry);
+    expect(update.geometry).toStrictEqual(raw?.geometry);
+  });
+
+  it("reads a recorded list and sends it back", () => {
+    const parsed = parseGeometry({ type: "polyline", points: POINTS, visibility: [2, 1, 0] });
+    expect(parsed).toMatchObject({ visibility: [2, 1, 0] });
+    expect(JSON.parse(JSON.stringify(parsed))).toEqual({
+      type: "polyline",
+      points: POINTS,
+      visibility: [2, 1, 0],
+    });
+  });
+
+  it("refuses a list whose length is not the point count", () => {
+    expect(() =>
+      parseGeometry({ type: "polyline", points: POINTS, visibility: [2, 1] }),
+    ).toThrow(/2 states for 3 points/);
+  });
+
+  it("refuses a state outside 0, 1, 2, and a list that is not one", () => {
+    expect(() =>
+      parseGeometry({ type: "polyline", points: POINTS, visibility: [2, 3, 0] }),
+    ).toThrow(/visibility\[1\]/);
+    expect(() =>
+      parseGeometry({ type: "polyline", points: POINTS, visibility: [2, "1", 0] }),
+    ).toThrow(WireFormatError);
+    expect(() =>
+      parseGeometry({ type: "polyline", points: POINTS, visibility: null }),
+    ).toThrow(/must be an array/);
+  });
+
+  it("is a polyline key, not a polygon one", () => {
+    expect(() =>
+      parseGeometry({ type: "polygon", points: POINTS, visibility: [2, 2, 2] }),
+    ).toThrow(/does not declare/);
+  });
+});

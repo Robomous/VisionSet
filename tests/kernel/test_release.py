@@ -23,6 +23,7 @@ from visionset.kernel.domain import (
     Manifest,
     ManifestAnnotation,
     ManifestAsset,
+    PolylineGeometry,
     SplitRecipe,
     assign_split,
     canonical_bytes,
@@ -101,6 +102,50 @@ def test_a_manifest_carries_no_timestamp_no_tag_and_no_release_id() -> None:
 def test_a_manifest_says_which_format_it_is_in() -> None:
     document = json.loads(canonical_bytes(_manifest(_asset("a"))))
     assert document["manifest_version"] == MANIFEST_VERSION
+
+
+# A version-2 document exactly as the build before per-vertex visibility wrote it.
+VERSION_2_DOCUMENT = (
+    b'{"assets":[{"annotations":[{"attributes":{},"confidence":null,'
+    b'"geometry":{"points":[[1.0,2.0],[3.0,40.0]],"type":"polyline"},'
+    b'"id":"00000000-0000-0000-0000-000000000001","label_class":"lane","model_ref":null,'
+    b'"provenance":"human","schema_version":1}],'
+    b'"asset_id":"00000000-0000-0000-0000-0000000000aa","content_hash":"aa","height":null,'
+    b'"uri":"/tmp/a.png","width":null}],'
+    b'"classes":[{"attributes":[],"color":null,"geometries":["polyline"],"name":"lane"}],'
+    b'"manifest_version":2,"schema_version":1}'
+)
+
+
+def test_a_version_two_document_loads_and_keeps_its_bytes() -> None:
+    manifest = Manifest.model_validate_json(VERSION_2_DOCUMENT)
+    assert manifest.manifest_version == 2
+    (annotation,) = manifest.assets[0].annotations
+    assert isinstance(annotation.geometry, PolylineGeometry)
+    assert annotation.geometry.visibility is None
+    # Equal bytes are an equal hash; asserting the hash too would only restate this.
+    assert canonical_bytes(manifest) == VERSION_2_DOCUMENT
+
+
+def test_a_polyline_without_visibility_serializes_exactly_as_before() -> None:
+    line = PolylineGeometry(points=[(1.0, 2.0), (3.0, 40.0)])
+    document = json.loads(
+        canonical_bytes(_manifest(_asset("a", annotations=(_annotation(geometry=line),))))
+    )
+    assert document["assets"][0]["annotations"][0]["geometry"] == {
+        "points": [[1.0, 2.0], [3.0, 40.0]],
+        "type": "polyline",
+    }
+
+
+def test_per_vertex_visibility_round_trips_through_the_canonical_bytes() -> None:
+    line = PolylineGeometry(points=[(1.0, 2.0), (3.0, 40.0)], visibility=(2, 1))
+    manifest = _manifest(_asset("a", annotations=(_annotation(geometry=line),)))
+    document = json.loads(canonical_bytes(manifest))
+    assert document["assets"][0]["annotations"][0]["geometry"]["visibility"] == [2, 1]
+    rehydrated = Manifest.model_validate(document)
+    assert rehydrated == manifest
+    assert canonical_bytes(rehydrated) == canonical_bytes(manifest)
 
 
 def test_a_manifest_refuses_a_field_it_does_not_declare() -> None:

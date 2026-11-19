@@ -49,7 +49,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from tests.fixtures.samples import ANNOTATION, ASSET, GEOMETRIES, SCHEMA_VERSION  # noqa: E402
+from tests.fixtures.samples import (  # noqa: E402
+    ANNOTATION,
+    ASSET,
+    GEOMETRIES,
+    POLYLINE_WITH_VISIBILITY,
+    SCHEMA_VERSION,
+)
 
 from visionset.kernel.domain import (  # noqa: E402
     IMPLEMENTED_GEOMETRIES,
@@ -166,6 +172,21 @@ def build_fixture() -> dict[str, Any]:
             label_class=ANNOTATION.label_class,
             schema_version=1,
             geometry=GEOMETRIES[0],
+            attributes={},
+            provenance="human",
+            model_ref=None,
+            confidence=None,
+        )
+    )
+    # And a polyline carrying per-vertex visibility beside the one above that
+    # omits it, so a mirror has to accept the key present and absent both.
+    annotations.append(
+        Annotation(
+            id=_annotation_id("polyline-visibility"),
+            asset_id=_ASSET_ID,
+            label_class=ANNOTATION.label_class,
+            schema_version=1,
+            geometry=POLYLINE_WITH_VISIBILITY,
             attributes={},
             provenance="human",
             model_ref=None,

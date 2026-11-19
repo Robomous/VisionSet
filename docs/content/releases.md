@@ -67,6 +67,31 @@ authored - it drives how a labeling surface lists them - so it is part of the fr
 is a workspace-local path, kept because an exporter names its output files from it. The same
 images ingested on another machine produce a different manifest.
 
+### The manifest's own format version
+
+`manifest_version` names the shape of the document itself, independent of the workspace
+database's format and of the package version. A build writes **3**:
+
+| Version | Since | What changed |
+| --- | --- | --- |
+| 1 | the first release | - |
+| 2 | #584 | `LabelClass.geometries` became plural; a version-1 class's singular `geometry` still loads |
+| 3 | #352 | a polyline may carry per-vertex `visibility` |
+
+An older document keeps the version it was written with, so its bytes and its hash never move and
+`verify` still passes. Version 3 changes no existing bytes: a polyline with unknown visibility
+**omits** the key rather than writing `null`, so it serializes exactly as it did under version 2.
+What the bump announces is that a version-3 document *may* carry the key.
+
+**The number is a label, not a gate.** Loading a manifest does not compare `manifest_version`
+against anything; what a build refuses is a key it does not know, because a manifest is read with
+unknown keys forbidden - half-understanding hash-pinned evidence is worse than refusing it. So a
+version-2 build refuses a version-3 manifest only when that manifest carries a `visibility`; one
+with no visibility recorded anywhere loads there unchanged.
+
+Publishing the same content under a newer build still produces a different manifest hash than an
+older build did, because the version number is part of the document.
+
 ### Which schema version a release pins
 
 The project's **active** version - the highest one - with its classes. Each copied annotation
@@ -657,6 +682,12 @@ Four of them write the vertices they were given, so `polyline` is in `supported_
 rows", so a lane goes in as vertices and comes out as samples on a fixed grid. That is the third
 state - carried, but reduced - and it is why `tusimple` declares `polyline` under
 `degraded_geometries` while the other four do not.
+
+A polyline's per-vertex `visibility` reaches **only `openlane-2d`**, the one lane format with a
+per-point slot. OpenLane's flag is binary, so `visible` writes `1`, `occluded` writes `0`, and
+`unlabeled` writes `1` - as does a lane with no visibility recorded at all, because OpenLane has no
+"unknown" and an unjudged vertex is no claim that anything hid it. The other four have no
+per-vertex field and drop it, which their `lossy = True` already covers.
 
 The lane vocabulary is a convention on attribute names - `style`, `color`, `position_role`, each
 a `select` - defined in `visionset/formats/lanes/_core.py` and not in the kernel, because the

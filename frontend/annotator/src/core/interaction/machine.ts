@@ -167,6 +167,7 @@ import {
   polygonBbox,
   removePolygonVertex,
   removePolylineVertex,
+  sameVisibility,
   translatePolygon,
   translatePolyline,
 } from "../geometry/polygon";
@@ -178,7 +179,7 @@ import { annotationById } from "../state/document";
 import type { AnnotationDocument } from "../state/document";
 import { clearSelection, selectAlso, selectOnly, toggleSelection } from "../state/selection";
 import type { Selection } from "../state/selection";
-import type { Annotation, Geometry, Point } from "../types";
+import { VERTEX_VISIBILITY, type Annotation, type Geometry, type Point } from "../types";
 import { draftAnnotation } from "./draft";
 import { NO_EFFECTS } from "./effects";
 import type { Effect } from "./effects";
@@ -277,7 +278,9 @@ function geometryEquals(a: Geometry, b: Geometry): boolean {
   // drag would stage nothing** — `stageOrDiscard` would discard on every move — and
   // it would read as the shape refusing to be dragged rather than as a bug here.
   if (a.type === "polygon" && b.type === "polygon") return samePoints(a.points, b.points);
-  if (a.type === "polyline" && b.type === "polyline") return samePoints(a.points, b.points);
+  if (a.type === "polyline" && b.type === "polyline") {
+    return samePoints(a.points, b.points) && sameVisibility(a, b);
+  }
   return true;
 }
 
@@ -706,6 +709,7 @@ function endSession(turn: Turn<Extract<InteractionState, { type: "drawing-polyli
   return finishDrawing(turn.context, turn.state.labelClass, {
     type: "polyline",
     points: turn.state.points,
+    visibility: turn.state.points.map(() => VERTEX_VISIBILITY.VISIBLE),
   });
 }
 

@@ -3663,7 +3663,7 @@
       },
       "PolylineBody": {
         "additionalProperties": false,
-        "description": "An open path of at least two points, in order. Nothing joins the ends.",
+        "description": "An open path of at least two points, in order. Nothing joins the ends.\n\n`visibility` is one state per point \u2014 the integer 0 unlabeled, 1 occluded,\n2 visible \u2014 or absent when nobody said; never null. A geometry is replaced\nwhole, so an update that leaves it out clears it: resend it to keep it. One\nwhose length differs from `points` is refused.",
         "properties": {
           "points": {
             "items": {
@@ -3686,6 +3686,13 @@
             "const": "polyline",
             "title": "Type",
             "type": "string"
+          },
+          "visibility": {
+            "items": {
+              "$ref": "#/components/schemas/VertexVisibility"
+            },
+            "title": "Visibility",
+            "type": "array"
           }
         },
         "required": [
@@ -3697,7 +3704,7 @@
       },
       "PolylineGeometry": {
         "additionalProperties": false,
-        "description": "An open path, as at least two ``(x, y)`` vertices in order.\n\nThe contrast with :class:`PolygonGeometry` is the whole definition: a polygon\nis a *ring* whose closing edge is implicit, and a polyline is a *path* whose\nends stay apart. Nothing joins the last point to the first, and a caller that\nrepeats the first point at the end has drawn a closed path \u2014 which is a legal\npolyline, and not the same value as the polygon with those vertices.\n\n**The order of the points is the geometry**, not an incidental detail of how\nthey were collected. A lane runs from one end to the other, and reversing the\nlist is a different annotation of the same pixels. There is nothing to\nvalidate in that \u2014 an ordered sequence is ordered \u2014 which is worth saying\nbecause the ordering rule a lane *format* wants is a different rule: TuSimple\nrequires points sorted by ascending Y, and :mod:`visionset.formats.lanes`\nenforces that at the boundary where it applies. Putting it here would make one\nformat's invariant a condition of storing a lane at all, and would refuse\nevery horizontal path in a domain that has no idea what a road is.\n\nDegeneracy is refused in exactly one case, the analogue of the zero-area box\n:class:`BboxGeometry` already declines: a path whose points are all the same\npoint has no length and describes nothing. Consecutive duplicates within a\nlonger path are left alone \u2014 they arrive from real digitizers and from honest\nresampling, and they cost a renderer nothing \u2014 and self-intersection is not\nvalidated here for the same reason it is not validated for a polygon.",
+        "description": "An open path, as at least two ``(x, y)`` vertices in order.\n\nThe contrast with :class:`PolygonGeometry` is the whole definition: a polygon\nis a *ring* whose closing edge is implicit, and a polyline is a *path* whose\nends stay apart. Nothing joins the last point to the first, and a caller that\nrepeats the first point at the end has drawn a closed path \u2014 which is a legal\npolyline, and not the same value as the polygon with those vertices.\n\n**The order of the points is the geometry**, not an incidental detail of how\nthey were collected. A lane runs from one end to the other, and reversing the\nlist is a different annotation of the same pixels. There is nothing to\nvalidate in that \u2014 an ordered sequence is ordered \u2014 which is worth saying\nbecause the ordering rule a lane *format* wants is a different rule: TuSimple\nrequires points sorted by ascending Y, and :mod:`visionset.formats.lanes`\nenforces that at the boundary where it applies. Putting it here would make one\nformat's invariant a condition of storing a lane at all, and would refuse\nevery horizontal path in a domain that has no idea what a road is.\n\nDegeneracy is refused in exactly one case, the analogue of the zero-area box\n:class:`BboxGeometry` already declines: a path whose points are all the same\npoint has no length and describes nothing. Consecutive duplicates within a\nlonger path are left alone \u2014 they arrive from real digitizers and from honest\nresampling, and they cost a renderer nothing \u2014 and self-intersection is not\nvalidated here for the same reason it is not validated for a polygon.\n\n``visibility`` is optional per-vertex data, one :class:`VertexVisibility` per\npoint and in the same order. ``None`` means *nobody said*, which is a\ndifferent claim from every vertex visible, and it is **omitted** from every\nserialization rather than written as ``null`` \u2014 so a polyline without it\ndumps to exactly the bytes it did before the field existed, and every\nmanifest hash over such content is unchanged. The omission depends on the\nvalue, never on how the model was constructed, which is what keeps\n:func:`~visionset.kernel.domain.release.canonical_bytes` stable across a\nround trip. A transform that moves points keeps the list aligned; one that\nreversed the path would have to reverse it too.",
         "properties": {
           "points": {
             "items": {
@@ -3722,6 +3729,13 @@
             "default": "polyline",
             "title": "Type",
             "type": "string"
+          },
+          "visibility": {
+            "items": {
+              "$ref": "#/components/schemas/VertexVisibility"
+            },
+            "title": "Visibility",
+            "type": "array"
           }
         },
         "required": [
@@ -5938,6 +5952,16 @@
         "title": "Task",
         "type": "string",
         "x-visionset-open": true
+      },
+      "VertexVisibility": {
+        "description": "What is known about one vertex of a path: COCO keypoint visibility's three states.\n\nThe integers are COCO's own ``v`` values, so a keypoint exporter writes them\nunchanged. ``UNLABELED`` is a vertex nobody judged, which is not the same\nclaim as ``OCCLUDED`` (judged, and hidden) \u2014 a format with a binary flag has\nto decide what an unjudged vertex becomes, and each one says so where it\nwrites it.\n\nClosed and integer on the wire: it is accepted in requests, so it can never\nbe an open vocabulary, and a client switching on three numbers needs no\nstring table.",
+        "enum": [
+          0,
+          1,
+          2
+        ],
+        "title": "VertexVisibility",
+        "type": "integer"
       },
       "VideoImportOut": {
         "description": "A browser-driven import: how many frames are expected, and how many arrived.",
