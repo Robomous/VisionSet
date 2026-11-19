@@ -140,17 +140,27 @@ export function openedWorld(): Lifecycle {
  */
 export interface SchemaSize {
   readonly classes?: number;
+  /** Append a `centerline` polyline class, for the scenarios that seed a lane. */
+  readonly polyline?: boolean;
 }
 
+const CENTERLINE = {
+  name: "centerline",
+  geometries: ["polyline"],
+  color: "#eb5a47",
+  attributes: [],
+} satisfies Wire["SchemaVersionOut"]["classes"][number];
+
 function schemaOfSize(size: SchemaSize | undefined): Wire["SchemaVersionOut"] {
-  const want = size?.classes ?? SCHEMA.classes.length;
-  if (want <= SCHEMA.classes.length) return SCHEMA;
+  const base = size?.polyline === true ? { ...SCHEMA, classes: [...SCHEMA.classes, CENTERLINE] } : SCHEMA;
+  const want = size?.classes ?? base.classes.length;
+  if (want <= base.classes.length) return base;
   return {
-    ...SCHEMA,
+    ...base,
     classes: [
-      ...SCHEMA.classes,
+      ...base.classes,
       ...Array.from(
-        { length: want - SCHEMA.classes.length },
+        { length: want - base.classes.length },
         (_unused, index): Wire["SchemaVersionOut"]["classes"][number] => ({
           name: `filler-${index + 1}`,
           geometries: ["bbox"],
