@@ -1,4 +1,4 @@
-# usage: from visionset.formats.coco import CocoExporter
+# usage: from visionset.formats.coco import CocoExporter, CocoImporter
 """COCO instances: one JSON per split, boxes and polygon segmentation together.
 
 The second exporter, and the one that makes the plugin architecture do something
@@ -55,6 +55,7 @@ from visionset.formats._layout import (
     write_image,
 )
 from visionset.formats._targets import self_target
+from visionset.formats.coco.reader import CocoImporter
 from visionset.kernel.domain import (
     BboxGeometry,
     GeometryType,
@@ -90,6 +91,8 @@ PRECISION: Final = 4
 #: exactly what is known.
 LICENSE_ID: Final = 1
 LICENSE_NAME: Final = "unspecified"
+
+__all__ = ["ANNOTATIONS_DIRNAME", "CocoExporter", "CocoImporter"]
 
 
 class CocoExporter:

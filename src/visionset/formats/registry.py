@@ -1,4 +1,4 @@
-# usage: from visionset.formats.registry import exporter, exporters
+# usage: from visionset.formats.registry import exporter, exporters, importers
 """Finding the exporter a caller named.
 
 The kernel cannot do this. ``ReleaseService.export`` takes an ``Exporter``
@@ -30,7 +30,7 @@ from importlib.metadata import entry_points
 from typing import Final
 
 from visionset.kernel.errors import ExportFormatNotFound
-from visionset.kernel.ports import Exporter, validate_installed
+from visionset.kernel.ports import Exporter, Importer, validate_installed
 
 #: Former format names still accepted, and the name each now means.
 #:
@@ -66,6 +66,20 @@ def exporters() -> dict[str, Exporter]:
         if isinstance(plugin, Exporter):
             found[plugin.format_name] = plugin
     validate_installed(found)
+    return found
+
+
+def importers() -> dict[str, Importer]:
+    """Every installed importer, keyed by its own ``format_name``.
+
+    The same scan as :func:`exporters`, filtered by the other port. A format
+    with both an exporter and an importer appears under one name in each.
+    """
+    found: dict[str, Importer] = {}
+    for entry_point in entry_points(group="visionset.formats"):
+        plugin = entry_point.load()()
+        if isinstance(plugin, Importer):
+            found[plugin.format_name] = plugin
     return found
 
 
