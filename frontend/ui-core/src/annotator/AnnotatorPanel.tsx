@@ -330,6 +330,7 @@ export function AnnotatorPanel({
 
       {lane !== undefined && lane.geometry.type === "polyline" && (
         <VertexRegion
+          key={lane.id}
           store={store}
           annotationId={lane.id}
           geometry={lane.geometry}

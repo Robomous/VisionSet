@@ -12,7 +12,7 @@
  */
 
 import { AnnotatorStore, documentFromWire, selectOnly } from "@visionset/annotator";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
@@ -923,6 +923,24 @@ describe("vertex toggles for a long lane", () => {
     await userEvent.keyboard("{Control>}{Shift>}z{/Shift}{/Control}");
     expect(store.canRedo).toBe(true);
     expect(store.canUndo).toBe(false);
+  });
+
+  it("starts the next lane's toggles at the first, not at the previous roving index", async () => {
+    const lane = (id: string): unknown => ({
+      ...(annotation(id, "centerline", "polyline") as object),
+      geometry: { type: "polyline", points: Array.from({ length: 8 }, (_, i) => [i * 2, i * 2]) },
+    });
+    const store = storeWith([lane("b"), lane("c")]);
+    store.select(selectOnly("b"));
+    render(mount(store));
+    toggle(0).focus();
+    await userEvent.keyboard("{End}");
+    expect(toggle(7).tabIndex).toBe(0);
+
+    act(() => store.select(selectOnly("c")));
+    const stops = within(screen.getByRole("toolbar")).getAllByRole("button")
+      .filter((one) => one.tabIndex === 0);
+    expect(stops).toEqual([toggle(0)]);
   });
 
   it("leaves the history chords to the filter field", async () => {
