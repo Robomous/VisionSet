@@ -84,6 +84,12 @@ import never produces an unlabeled vertex, and a lane exported without visibilit
 all-visible. The exporter maps style and colour to the category and writes no class name, so the
 lane attributes and the source class are not recovered: only the category is. Upstream OpenLane's
 column-major `uv` (`[[u...], [v...]]`) is a different layout and is refused rather than guessed.
+One case cannot be told apart: a two-point lane is `[[a, b], [c, d]]` in both layouts, and is read
+as the two points `(a, b)` and `(c, d)`. A document with any longer column-major lane is refused
+whole, so only a document whose every lane has two points can be misread. A lane `attribute` is
+kept quiet only when it equals the lane's category, which is what the exporter writes; any other
+value is an `attribute` loss. A symbolic link to a directory under `labels/` is refused, not
+followed.
 TuSimple, CurveLanes, BDD100K and CULane have no importer: none of them carries anything a
 polyline import does not already get from OpenLane, and none has a per-vertex slot.
 
