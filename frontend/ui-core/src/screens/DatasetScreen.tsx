@@ -1048,8 +1048,9 @@ function ExportDialog({
         </DialogDescription>
 
         {/* A lossy refusal's class list is unbounded, so the body scrolls and the
-            footer holding the consent's submit stays on screen. */}
-        <div data-testid="export-body" className="-mx-4 -my-1 flex min-h-0 flex-col gap-3 overflow-y-auto px-4 py-1">
+            footer holding the consent's submit stays on screen. Children never
+            shrink: a squeezed box spills its content past its own background. */}
+        <div data-testid="export-body" className="-mx-4 -my-1 flex min-h-0 flex-col gap-3 overflow-y-auto px-4 py-1 [&>*]:shrink-0">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="export-target">Target model</Label>
             {/*
