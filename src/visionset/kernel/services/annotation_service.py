@@ -22,7 +22,9 @@ Five things shape this module:
   working does not change the rules under them. The service *stamps* that version
   onto what it stores, the way it lets ``id`` generate itself: whatever a caller
   put in the field is replaced, because the pin is a fact about the batch, not an
-  opinion of the writer.
+  opinion of the writer. The one exception is ``add_imported``: a draft has no
+  pin yet, so an import's labels are judged against the project's active
+  version, which is the one approval then pins.
 - **There is no ``InvalidProvenance``.** ``provenance='model'`` requiring a
   ``model_ref``, and ``confidence`` inside [0, 1], are validators on the model
   (``domain/annotation.py``). An ``Annotation`` that breaks either cannot be
@@ -344,7 +346,9 @@ class AnnotationService:
                 satisfy the active schema.
             SchemaNotFound: the project has no schema yet.
         """
-        batch = self._batches.hold_draft(uow, batch_id)
+        self._batches.hold_draft(uow, batch_id)
+        # Membership re-read under the lock hold_draft took, as approve_in does.
+        batch = self._batches.require_batch(uow, batch_id)
         schema = self._schemas.require_active(uow, batch.project_id)
         members = set(batch.asset_ids)
         trunk = member_asset_ids_of(

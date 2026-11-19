@@ -7,26 +7,31 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from tests.fixtures.media import write_image
 
 from visionset.kernel import (
-    AnnotationGeometryOutOfBounds,
+    AssetNotInBatch,
     AssetNotWritable,
     BatchNotEditable,
     DisallowedGeometry,
+    DuplicateClassificationTag,
     ImportNotConsented,
     ImportSourceUnreadable,
     InvalidAnnotation,
+    InvalidSchema,
     LabelClassNotInSchema,
+    StaleWrite,
 )
 from visionset.kernel.domain import (
     Annotation,
     AssetProgress,
+    BatchApproved,
     BatchState,
     BboxGeometry,
+    ClassificationGeometry,
     GeometryType,
     ImportConsent,
     ImportedClass,
@@ -182,7 +187,7 @@ def test_inspect_reports_and_writes_nothing(world: World) -> None:
     assert plan.creates_schema
     assert [str(path) for path in plan.missing_images] == ["images/gone.png"]
     assert {loss.kind for loss in plan.losses} == {ImportLossKind.GEOMETRY, ImportLossKind.IMAGE}
-    assert [str(image.path) for image in plan.importable_images] == ["images/a.png"]
+    assert [str(image.path) for image in plan.images] == ["images/a.png"]
     assert world.nothing_written()
 
 
@@ -308,15 +313,146 @@ def test_a_second_run_of_the_same_source_adds_nothing_and_makes_no_batch(world: 
     assert [batch.id for batch in world.batches.list(world.project.id)] == [first.batch_id]
 
 
-def test_a_refusal_midway_rolls_back_every_row(world: World) -> None:
+def test_a_label_outside_its_decoded_image_is_a_reported_loss(world: World) -> None:
     outside = BboxGeometry(x=500, y=500, width=5, height=5)
     dataset = _dataset(
         _image("a.png", ImportedLabel(class_name="car", geometry=BOX)),
         _image("b.png", ImportedLabel(class_name="car", geometry=outside)),
     )
-    with pytest.raises(AnnotationGeometryOutOfBounds):
+    plan = world.imports.inspect(world.project.id, FakeImporter(dataset), world.src)
+    assert [(loss.kind, loss.count) for loss in plan.losses] == [(ImportLossKind.LABEL, 1)]
+    with pytest.raises(ImportNotConsented):
+        world.imports.commit(world.project.id, FakeImporter(dataset), world.src)
+    assert world.nothing_written()
+
+    run = world.imports.commit(
+        world.project.id,
+        FakeImporter(dataset),
+        world.src,
+        consent=ImportConsent(kinds=frozenset({ImportLossKind.LABEL})),
+    )
+    assert run.annotations_written == plan.new_annotations == 1
+    assert len(run.created_asset_ids) == plan.new_assets == 2
+
+
+def test_a_refusal_inside_the_transaction_rolls_back_every_row_and_announces_nothing(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    announced: list[BatchApproved] = []
+    world.workspace.event_bus.subscribe(BatchApproved, announced.append)
+
+    def refuse(*_: object, **__: object) -> None:
+        raise StaleWrite("injected")
+
+    monkeypatch.setattr(BatchService, "approve_in", refuse)
+    with pytest.raises(StaleWrite):
+        world.imports.commit(world.project.id, FakeImporter(_labeled()), world.src)
+
+    assert world.nothing_written()
+    assert announced == []
+
+
+def test_a_committed_import_announces_its_approval_exactly_once(world: World) -> None:
+    announced: list[BatchApproved] = []
+    world.workspace.event_bus.subscribe(BatchApproved, announced.append)
+
+    run = world.imports.commit(world.project.id, FakeImporter(_labeled()), world.src)
+
+    assert [event.batch_id for event in announced] == [run.batch_id]
+
+
+def test_inspect_predicts_exactly_what_commit_writes(world: World) -> None:
+    plan = world.imports.inspect(world.project.id, FakeImporter(_labeled()), world.src)
+    run = world.imports.commit(world.project.id, FakeImporter(_labeled()), world.src)
+
+    assert (plan.new_assets, plan.new_annotations) == (3, 3)
+    assert (len(run.created_asset_ids), run.annotations_written) == (3, 3)
+
+
+def test_a_run_with_nothing_to_write_writes_no_schema(world: World) -> None:
+    empty = world.imports.commit(world.project.id, FakeImporter(_dataset()), world.src)
+    assert empty.batch_id is None
+    assert world.nothing_written()
+
+    gone = _dataset(_image("gone.png", ImportedLabel(class_name="car", geometry=BOX)))
+    run = world.imports.commit(
+        world.project.id,
+        FakeImporter(gone),
+        world.src,
+        consent=ImportConsent(kinds=frozenset({ImportLossKind.IMAGE})),
+    )
+    assert run.batch_id is None
+    assert run.schema_version is None
+    assert world.nothing_written()
+
+
+def test_two_paths_with_the_same_bytes_keep_the_first_and_report_the_rest(world: World) -> None:
+    write_image(world.src / "images" / "z.png", size=SIZE, seed=0)
+    dataset = _dataset(
+        _image("z.png", ImportedLabel(class_name="lane", geometry=TRIANGLE)),
+        _image("a.png", ImportedLabel(class_name="car", geometry=BOX)),
+    )
+    plan = world.imports.inspect(world.project.id, FakeImporter(dataset), world.src)
+    assert [(loss.kind, loss.subject) for loss in plan.losses] == [
+        (ImportLossKind.IMAGE, "images/z.png")
+    ]
+    with pytest.raises(ImportNotConsented, match="image"):
         world.imports.commit(world.project.id, FakeImporter(dataset), world.src)
 
+    run = world.imports.commit(
+        world.project.id,
+        FakeImporter(dataset),
+        world.src,
+        consent=ImportConsent(kinds=frozenset({ImportLossKind.IMAGE})),
+    )
+    assert run.annotations_written == 1
+    assert [(label.label_class, label.geometry) for label in world.labels()] == [("car", BOX)]
+
+
+def test_a_re_run_after_a_reviewer_moved_a_box_refuses_rather_than_re_syncs(
+    world: World,
+) -> None:
+    importer = FakeImporter(_labeled())
+    first = world.imports.commit(world.project.id, importer, world.src)
+    assert first.batch_id is not None
+    world.batches.start(first.batch_id)
+    (job,) = world.batches.jobs(first.batch_id)
+    world.jobs.start(job.id)
+    (moved, *_) = [label for label in world.labels() if label.confidence == 0.75]
+    world.annotations.update(
+        job.id, [moved.model_copy(update={"geometry": BOX.model_copy(update={"x": 3.0})})]
+    )
+
+    plan = world.imports.inspect(world.project.id, importer, world.src)
+    assert plan.conflicts
+    with pytest.raises(AssetNotWritable, match="one-shot"):
+        world.imports.commit(world.project.id, importer, world.src)
+
+
+def test_a_re_run_after_the_batch_was_deleted_returns_no_batch(world: World) -> None:
+    importer = FakeImporter(_labeled())
+    first = world.imports.commit(world.project.id, importer, world.src)
+    assert first.batch_id is not None
+    world.batches.delete(first.batch_id, confirm=True)
+
+    second = world.imports.commit(world.project.id, importer, world.src)
+
+    assert second.batch_id is None
+    assert world.batches.list(world.project.id) == []
+
+
+def test_case_colliding_classes_are_a_conflict_inspect_reports(world: World) -> None:
+    dataset = ImportedDataset(
+        classes=(
+            ImportedClass(name="Car", geometries=(GeometryType.BBOX,)),
+            ImportedClass(name="car", geometries=(GeometryType.BBOX,)),
+        ),
+        images=(_image("a.png", ImportedLabel(class_name="car", geometry=BOX)),),
+    )
+    plan = world.imports.inspect(world.project.id, FakeImporter(dataset), world.src)
+    assert plan.conflicts
+    with pytest.raises(InvalidSchema, match="collides"):
+        world.imports.commit(world.project.id, FakeImporter(dataset), world.src)
     assert world.nothing_written()
 
 
@@ -334,6 +470,26 @@ def test_a_symbolic_link_out_of_the_source_is_refused(world: World, tmp_path: Pa
 
     with pytest.raises(ImportSourceUnreadable, match="outside the source"):
         world.imports.inspect(world.project.id, FakeImporter(dataset), world.src)
+    with pytest.raises(ImportSourceUnreadable, match="outside the source"):
+        world.imports.commit(world.project.id, FakeImporter(dataset), world.src)
+    assert world.nothing_written()
+
+
+def test_a_link_swapped_out_of_the_source_after_planning_is_refused_when_stored(
+    world: World, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    secret = write_image(tmp_path / "outside" / "a.png", size=SIZE, seed=0)
+    real_probe = ImportService._probe
+
+    def probe_then_swap(self: ImportService, path: Path, image: ImportedImage) -> object:
+        probed = real_probe(self, path, image)
+        path.unlink()
+        path.symlink_to(secret)
+        return probed
+
+    monkeypatch.setattr(ImportService, "_probe", probe_then_swap)
+    dataset = _dataset(_image("a.png"))
+
     with pytest.raises(ImportSourceUnreadable, match="outside the source"):
         world.imports.commit(world.project.id, FakeImporter(dataset), world.src)
     assert world.nothing_written()
@@ -407,7 +563,41 @@ def test_add_imported_refuses_an_asset_another_batch_holds(world: World) -> None
 
     with pytest.raises(AssetNotWritable, match="another batch"):
         world.annotations.add_imported(other.id, [_import_label(asset_id)])
-    assert batch_id != other.id
+    assert world.workspace_annotations(asset_id) == []
+    assert world.batches.get(batch_id).state is BatchState.DRAFT
+
+
+def test_add_imported_refuses_an_asset_the_batch_does_not_hold(world: World) -> None:
+    batch_id, asset_id = _draft_with_one_asset(world)
+    world.batches.remove_assets(batch_id, [asset_id])
+
+    with pytest.raises(AssetNotInBatch):
+        world.annotations.add_imported(batch_id, [_import_label(asset_id)])
+    assert world.workspace_annotations(asset_id) == []
+
+
+def test_add_imported_refuses_a_second_tag_of_one_class(world: World) -> None:
+    world.schemas.create_version(
+        world.project.id,
+        [LabelClass(name="weather", geometries=(GeometryType.CLASSIFICATION_TAG,))],
+    )
+    source = world.sources.register_images(world.project.id, world.src / "images")
+    ingested = world.ingest.ingest(source.id, batch_name="draft")
+    assert ingested.batch_id is not None
+    asset_id = ingested.assets[0].id
+    tag = Annotation(
+        asset_id=asset_id,
+        label_class="weather",
+        schema_version=1,
+        geometry=ClassificationGeometry(),
+        provenance="import",
+    )
+
+    with pytest.raises(DuplicateClassificationTag):
+        world.annotations.add_imported(
+            ingested.batch_id, [tag, tag.model_copy(update={"id": uuid4()})]
+        )
+    assert world.workspace_annotations(asset_id) == []
 
 
 def test_add_imported_never_writes_into_the_trunk(world: World) -> None:

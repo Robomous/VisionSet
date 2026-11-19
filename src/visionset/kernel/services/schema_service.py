@@ -316,6 +316,16 @@ class SchemaService:
         except ConstraintViolated as exc:
             raise self._as_version_conflict(exc, project_id) from exc
 
+    @staticmethod
+    def require_coherent(classes: Sequence[LabelClass]) -> None:
+        """Refuse classes that could not be published together, writing nothing.
+
+        Raises:
+            InvalidSchema: no classes, or two names collide case-insensitively.
+            UnsupportedGeometry: a class names a geometry with no implementation.
+        """
+        _require_coherent(tuple(classes))
+
     def publish_in(
         self,
         uow: UnitOfWork,

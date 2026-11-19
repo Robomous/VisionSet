@@ -159,9 +159,14 @@ class ImportPlan(BaseModel):
     """What committing the same source would do, computed without writing.
 
     ``losses`` is the importer's report plus what only the workspace can tell:
-    images the source names but does not hold, and classes the active schema
-    does not declare that no label uses. ``conflicts`` are classes a label uses
-    that the active schema cannot accept; any of them refuses the commit.
+    images the source names but does not hold, images whose bytes repeat an
+    earlier listed image (the first path in sorted order wins and the later
+    ones' labels are dropped), and labels wholly outside their decoded image.
+    ``images`` is what a commit would import, those drops already applied.
+
+    ``conflicts`` are refusals a commit would raise even with full consent: a
+    label the active schema cannot accept, classes that cannot form a schema,
+    or a label that would land on an asset another batch or the trunk holds.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -169,22 +174,28 @@ class ImportPlan(BaseModel):
     project_id: UUID
     format_name: str
     dataset: ImportedDataset
+    images: tuple[ImportedImage, ...]
     losses: tuple[ImportLoss, ...]
     missing_images: tuple[PurePosixPath, ...]
     conflicts: tuple[str, ...]
     creates_schema: bool
-
-    @property
-    def importable_images(self) -> tuple[ImportedImage, ...]:
-        missing = set(self.missing_images)
-        return tuple(image for image in self.dataset.images if image.path not in missing)
+    new_assets: int = Field(ge=0)
+    new_annotations: int = Field(ge=0)
+    annotations_already_present: int = Field(ge=0)
 
 
 class ImportRun(BaseModel):
     """What a committed import wrote.
 
-    ``batch_id`` is ``None`` when the run found nothing new: no asset was
-    created and every label was already there.
+    ``batch_id`` is ``None`` when the run wrote nothing: no asset was new and
+    every label was already on its asset. That is what a second run of the same
+    source answers while its first batch is untouched, and also after that
+    batch was deleted. A re-run is not a re-sync: once a reviewer has changed
+    a label, the source's version of it is new again and lands on an asset a
+    batch holds, so the commit refuses with ``AssetNotWritable``.
+
+    ``schema_version`` is ``None`` only when nothing was written and the
+    project has no schema.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -192,7 +203,7 @@ class ImportRun(BaseModel):
     project_id: UUID
     format_name: str
     batch_id: UUID | None
-    schema_version: int = Field(ge=1)
+    schema_version: int | None = Field(default=None, ge=1)
     created_asset_ids: tuple[UUID, ...]
     asset_ids: tuple[UUID, ...]
     annotations_written: int = Field(ge=0)
