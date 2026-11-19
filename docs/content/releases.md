@@ -687,7 +687,9 @@ A polyline's per-vertex `visibility` reaches **only `openlane-2d`**, the one lan
 per-point slot. OpenLane's flag is binary, so `visible` writes `1`, `occluded` writes `0`, and
 `unlabeled` writes `1` - as does a lane with no visibility recorded at all, because OpenLane has no
 "unknown" and an unjudged vertex is no claim that anything hid it. The other four have no
-per-vertex field and drop it, which their `lossy = True` already covers.
+per-vertex field and drop it, which their `lossy = True` already covers. `openlane-2d` is also
+the one lane format with an importer, which reads `0` back as occluded and `1` as visible; see
+[import](import.md#formats).
 
 The lane vocabulary is a convention on attribute names - `style`, `color`, `position_role`, each
 a `select` - defined in `visionset/formats/lanes/_core.py` and not in the kernel, because the

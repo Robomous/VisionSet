@@ -193,7 +193,8 @@ front, as the REST `PolylineBody` schema does.
 Pre-processing keeps it aligned: a resize or a flip moves the points and carries the list
 unchanged, since neither reorders the vertices. A quarter turn never meets one - `rot90` refuses
 polylines outright (see [pre-processing](preprocessing.md)). Of the export formats only
-`openlane-2d` has a per-vertex slot; see [releases](releases.md#the-lane-formats).
+`openlane-2d` has a per-vertex slot, and its importer reads it back; see
+[releases](releases.md#the-lane-formats).
 
 ## Provenance is the model's own rule, not the service's
 

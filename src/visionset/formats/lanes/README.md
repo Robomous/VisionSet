@@ -36,6 +36,11 @@ and unlabeled — like a lane with no visibility at all — writes `1`, because 
 "unknown" and an unjudged vertex is no claim of occlusion. TuSimple, CurveLanes, BDD100K and
 CULane have no per-vertex field and drop it; their `lossy` flag already says so.
 
+`reader.py` is the inverse for OpenLane 2D, the one lane format with an importer: `0` reads back
+as occluded and `1` as visible, a lane's category becomes its class, and what the domain cannot
+hold (3D points, camera calibration, track ids) is reported as an import loss. See
+[import](../../../../docs/content/import.md#formats).
+
 ## Drawing lanes
 
 The annotator has a polyline tool: draw a lane point by point, select it, drag or insert and
