@@ -83,7 +83,8 @@ cannot validate the class, the geometry or the attributes either.
 
 ## Every call is all-or-nothing
 
-`add`, `update`, `delete` and `enter_unreviewed` each take a sequence and run in one transaction.
+`add`, `update`, `delete`, `enter_unreviewed` and `add_imported` each take a sequence and run in one
+transaction.
 A payload with one bad box stores nothing at all: a half-labeled asset is not a state a caller
 can reach.
 
@@ -91,6 +92,8 @@ Which is also why each publishes exactly one [`AnnotationsWritten`](events.md) a
 naming its operation - one per call, not one per box, because the call is the thing that
 happened. `enter_unreviewed` names its operation `add`, the same as `add` itself - both are new
 rows landing, and the event does not carry which progress the write left behind.
+`add_imported` publishes none: it writes into a draft, which has no job to name, and the
+[`BatchApproved`](events.md) that follows the import is the event that says the work exists.
 
 ## Attributes are keyed by exact name
 
@@ -229,6 +232,17 @@ asked to replace, a `pre_labeled` one whose model labels it supersedes in the sa
 and only `provenance="model"`, and lands its labels at `pre_labeled`, because nothing has judged
 what it wrote. The gesture behind it is a batch-level action, not a per-asset one - see
 [batches.md](batches.md).
+
+**Imported labels enter through a door of their own, before approval.**
+`AnnotationService.add_imported` is kernel-only and is how `ImportService` writes an external
+dataset's labels: only `provenance="import"`, with `job_id=None`, into a batch that is still a
+`draft`. A draft has no pinned version, so these labels are judged against - and stamped with -
+the project's active version, the one approval then pins. It refuses once the batch is past
+`draft` (`BatchNotEditable`), an asset the batch does not hold (`AssetNotInBatch`), and an asset
+that is in the trunk or held by any other batch (`AssetNotWritable`), because a label hangs off
+its asset and would otherwise appear in that work unreviewed. Approval then seeds each labeled
+asset `annotated`, exactly as it seeds a correction batch, and a person reviews and promotes
+them. See [an import is a labeled batch](architecture/decisions/an-import-is-a-labeled-batch.md).
 
 ## `delete` has no `confirm=`
 
