@@ -27,8 +27,9 @@ target - never through a dict, so a typo answers a `VisionSetError` rather than 
 
 ## What ships
 
-Eleven plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
-`[project.entry-points."visionset.formats"]`:
+Twelve plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
+`[project.entry-points."visionset.formats"]`: the eleven exporters below and the COCO importer,
+`coco-import` (see [Importers](#importers)).
 
 | Name | Module |
 | --- | --- |
