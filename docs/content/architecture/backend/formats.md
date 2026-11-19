@@ -40,6 +40,18 @@ Eleven plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
 | `classification` | [`classification/`](../../../../src/visionset/formats/classification/) - `labels.csv`, one row per (image, tag) |
 | `tusimple`, `curvelanes`, `bdd100k-lane`, `culane`, `openlane-2d` | [`lanes/`](../../../../src/visionset/formats/lanes/) - five plugins over one shared core |
 
+## Importers
+
+The same group carries importers, which satisfy the other port,
+[`Importer`](../../../../src/visionset/kernel/ports/importer.py): `read(src)` returns an
+`ImportedDataset` - classes, images by relative path, their labels, and a report of everything it
+could not represent - and touches no workspace. `registry.importers()` filters the scan by that
+port, and `registry.pick_importer(installed, name)` resolves a name with the same aliases,
+refusing with `ImportFormatNotFound`. `ImportService` takes the instance, as `ReleaseService.export`
+takes an exporter. The one built-in is `coco-import`, the
+[COCO reader](../../../../src/visionset/formats/coco/reader.py); what an import does with the
+dataset is [import.md](../../import.md).
+
 ## What a plugin declares
 
 The `Exporter` port ([`kernel/ports/exporter.py`](../../../../src/visionset/kernel/ports/exporter.py))
