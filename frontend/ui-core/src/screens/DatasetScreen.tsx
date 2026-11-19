@@ -1041,13 +1041,15 @@ function ExportDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent data-testid="export-dialog">
+      <DialogContent data-testid="export-dialog" className="flex max-h-[calc(100dvh-2rem)] flex-col">
         <DialogTitle>Export {tag}</DialogTitle>
         <DialogDescription>
           Writes the release for the model you will train and downloads the result.
         </DialogDescription>
 
-        <div className="flex flex-col gap-3">
+        {/* A lossy refusal's class list is unbounded, so the body scrolls and the
+            footer holding the consent's submit stays on screen. */}
+        <div data-testid="export-body" className="-mx-4 -my-1 flex min-h-0 flex-col gap-3 overflow-y-auto px-4 py-1">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="export-target">Target model</Label>
             {/*

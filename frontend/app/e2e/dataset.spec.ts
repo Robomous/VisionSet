@@ -85,6 +85,71 @@ function assetRow(asset: { id: string; frame_index: number }): Wire["DatasetAsse
   };
 }
 
+const RELEASE: Wire["ReleaseOut"] = {
+  id: "cccccccc-0000-4000-8000-000000000001",
+  dataset_id: DATASET,
+  tag: "v1",
+  annotation_count: 3,
+  asset_count: 3,
+  created_at: "2026-07-31T09:00:00.000000Z",
+  manifest_hash: "0".repeat(64),
+  schema_version: 1,
+  split: null,
+  visionset_version: "0.0.1",
+};
+
+const LANE_TARGET: Wire["ExportTargetOut"] = {
+  name: "openlane-2d",
+  label: "openlane-2d",
+  family: "openlane",
+  format: "openlane",
+  geometries: ["polyline"],
+  tasks: [],
+  hints: { augmentation_common: false, trainer_resizes: false },
+};
+
+const LANE_FORMAT: Wire["FormatOut"] = {
+  name: "openlane",
+  lossy: true,
+  geometries: ["polyline"],
+  degraded_geometries: [],
+  modalities: ["image"],
+  targets: ["openlane-2d"],
+};
+
+/**
+ * The longest consent list the dialog has to hold: a target that keeps one
+ * geometry, against a schema with dozens of classes it drops. Every one is a
+ * line in the alert, so this is the refusal that outgrows a laptop viewport.
+ */
+const DROPPED = Array.from({ length: 40 }, (_, at) => ({
+  label_class: `class-${String(at).padStart(2, "0")}`,
+  geometry: "bbox",
+  status: "excluded",
+  annotations: 10 + at,
+  assets: 3,
+  reason: "openlane-2d accepts polylines only",
+}));
+
+const LOSSY_REFUSAL = {
+  code: "LOSSY_EXPORT_NOT_CONSENTED",
+  message: "openlane cannot express bbox annotations for openlane-2d.",
+  detail: {
+    compatibility: {
+      release_id: RELEASE.id,
+      format: "openlane",
+      target: "openlane-2d",
+      compatible: false,
+      format_is_lossy: true,
+      excluded_annotations: DROPPED.reduce((sum, one) => sum + one.annotations, 0),
+      excluded_assets: 3,
+      degraded_annotations: 0,
+      degraded_assets: 0,
+      classes: DROPPED,
+    },
+  },
+};
+
 async function serveApi(page: Page): Promise<void> {
   // The membership, and the DELETE actually takes something out of it. Widened
   // to `string`, because the ids arriving off the wire are not the literal union
@@ -167,6 +232,18 @@ async function serveApi(page: Page): Promise<void> {
             }))
           : [annotationRow(assetId)];
       return route.fulfill({ json: { items, total: items.length } satisfies Wire["AnnotationPage"] });
+    }
+    if (path === `/datasets/${DATASET}/releases`) {
+      return route.fulfill({ json: { items: [RELEASE], total: 1 } satisfies Wire["ReleasePage"] });
+    }
+    if (path === "/export-targets") {
+      return route.fulfill({ json: { items: [LANE_TARGET], total: 1 } satisfies Wire["ExportTargetPage"] });
+    }
+    if (path === "/formats") {
+      return route.fulfill({ json: { items: [LANE_FORMAT], total: 1 } satisfies Wire["FormatPage"] });
+    }
+    if (path === `/releases/${RELEASE.id}/export` && request.method() === "POST") {
+      return route.fulfill({ status: 409, json: LOSSY_REFUSAL });
     }
     if (path === `/projects/${PROJECT}/schema`) {
       // A schema-less project is a real answer: the overlay colours itself.
@@ -312,3 +389,44 @@ test("a panel with more than fits scrolls inside the dialog rather than stretchi
   expect(overflow).toBeGreaterThan(0);
   await expect(preview.getByTestId("preview-remove")).toBeVisible();
 });
+
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 1280, height: 720 },
+  { width: 390, height: 844 },
+]) {
+  test(`the lossy consent is reachable by pointer at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await openDataset(page);
+    await page.getByTestId("dataset-tab-releases").click();
+    await page.getByTestId(`export-${RELEASE.tag}`).click();
+    await page.getByTestId("export-target").click();
+    await page.getByRole("option", { name: /openlane-2d/ }).click();
+    await page.getByTestId("export-submit").click();
+
+    const dialog = page.getByTestId("export-dialog");
+    const consent = dialog.getByTestId("lossy-consent");
+    await expect(consent.getByTestId("lossy-classes").getByRole("listitem")).toHaveCount(DROPPED.length);
+
+    // The dialog stays inside the viewport however long the list, so neither
+    // its top nor its footer is off-screen where no scroll can reach them.
+    const box = await dialog.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box?.y ?? -1).toBeGreaterThanOrEqual(0);
+    expect((box?.y ?? 0) + (box?.height ?? Infinity)).toBeLessThanOrEqual(viewport.height);
+
+    const submit = dialog.getByTestId("export-submit");
+    await expect(submit).toBeInViewport({ ratio: 1 });
+    await expect(submit).toBeDisabled();
+
+    // A real pointer click: Playwright scrolls the box into view first, and a
+    // click it cannot land fails rather than falling back to the keyboard.
+    const checkbox = consent.getByTestId("lossy-checkbox");
+    await checkbox.click();
+    await expect(checkbox).toBeInViewport({ ratio: 1 });
+    await expect(checkbox).toBeChecked();
+    await expect(submit).toBeInViewport({ ratio: 1 });
+    await expect(submit).toBeEnabled();
+    await submit.click({ trial: true });
+  });
+}
