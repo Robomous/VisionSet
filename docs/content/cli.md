@@ -423,8 +423,9 @@ no `--resume`: polling needs a second process, which is what `visionset server` 
 `FORMAT PATH --project P [--consent-lossy KIND]... [--dry-run]` - an external dataset with labels
 in, one **approved** batch out: the images are ingested by content, the dataset's classes become
 schema version 1 when the project has none, and every label is written with `import` provenance.
-Nothing is completed or promoted. `FORMAT` is an importer's name (`coco`, `openlane-2d`); an unknown one is
-refused with the importable formats listed. See [import.md](import.md).
+Nothing is completed or promoted. `FORMAT` is an importer's name (`ultralytics`, `yolov5-yaml`,
+`darknet`, `coco`, `voc`, `classification`, `openlane-2d`); an unknown one is refused with the
+importable formats listed. See [import.md](import.md).
 
 A commit that would drop anything is refused with `IMPORT_NOT_CONSENTED` unless each kind of loss
 is named by a `--consent-lossy` (`class`, `geometry`, `label`, `image` or `attribute`); under

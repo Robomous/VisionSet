@@ -1,4 +1,4 @@
-# usage: from visionset.formats.ultralytics import UltralyticsExporter
+# usage: from visionset.formats.ultralytics import UltralyticsExporter, UltralyticsImporter
 """The Ultralytics dialect: ``data.yaml`` with ``path`` and indexed ``names``, or a class tree.
 
 The primary export of the thirty-minute flow, and the format every YOLO
@@ -57,6 +57,7 @@ from visionset.formats._yolo_writer import (
     write_label_layout,
     yaml_scalar,
 )
+from visionset.formats.ultralytics.reader import UltralyticsImporter
 from visionset.kernel.domain import (
     ClassificationGeometry,
     ExportTarget,
@@ -71,7 +72,13 @@ from visionset.kernel.domain import (
 from visionset.kernel.errors import ExportSourceUnreadable
 from visionset.kernel.ports import ContentReader
 
-__all__ = ["DATA_FILENAME", "LABELS_DIRNAME", "TARGETS", "UltralyticsExporter"]
+__all__ = [
+    "DATA_FILENAME",
+    "LABELS_DIRNAME",
+    "TARGETS",
+    "UltralyticsExporter",
+    "UltralyticsImporter",
+]
 
 #: The tasks this dialect can lay out. A target narrower than this still gets
 #: the layout its task set allows; a target wider than this is a promise the

@@ -1,4 +1,4 @@
-# usage: from visionset.formats.darknet import DarknetExporter
+# usage: from visionset.formats.darknet import DarknetExporter, DarknetImporter
 """The Darknet dialect: ``obj.data``, ``obj.names`` and ``train.txt`` / ``valid.txt`` image lists.
 
 The same images-and-labels layout as the ``ultralytics`` dialect, described the
@@ -25,6 +25,7 @@ from typing import Final
 
 from visionset.formats._layout import IMAGES_DIRNAME
 from visionset.formats._yolo_writer import class_names, detect_rows, write_label_layout
+from visionset.formats.darknet.reader import DATA_FILENAME, NAMES_FILENAME, DarknetImporter
 from visionset.kernel.domain import (
     ExportTarget,
     GeometryType,
@@ -37,10 +38,8 @@ from visionset.kernel.domain import (
 )
 from visionset.kernel.ports import ContentReader
 
-__all__ = ["DATA_FILENAME", "NAMES_FILENAME", "TARGETS", "DarknetExporter"]
+__all__ = ["DATA_FILENAME", "NAMES_FILENAME", "TARGETS", "DarknetExporter", "DarknetImporter"]
 
-DATA_FILENAME: Final = "obj.data"
-NAMES_FILENAME: Final = "obj.names"
 TRAIN_FILENAME: Final = "train.txt"
 VALID_FILENAME: Final = "valid.txt"
 BACKUP_DIRNAME: Final = "backup"

@@ -1,4 +1,4 @@
-# usage: from visionset.formats.classification import ClassificationExporter
+# usage: from visionset.formats.classification import ClassificationExporter, ClassificationImporter
 """Image classification: the pictures, and one CSV row per tag annotation.
 
 The first installed format that writes a classification tag at all. Every other
@@ -13,10 +13,9 @@ reads, and it cannot express this at all: an image tagged ``rain`` and ``night``
 would have to be copied into two directories, doubling the bytes and making one
 picture look like two examples. It would also disagree with the pre-export
 compatibility report, which counts *annotations* rather than images. The kernel
-enforces no ``(asset, class)`` uniqueness for a classification tag, so two
-``weather`` annotations on one asset are two rows, not one — the row count
-follows the annotations exactly, duplicates included, rather than deduplicating
-a label space this format does not own.
+refuses a second ``(asset, class)`` classification tag (``DuplicateClassificationTag``),
+so the row count follows the annotations exactly; the importer reports a repeated
+row as a lost label rather than writing it.
 
 **The vocabulary is the frozen schema's, not the data's, and it is filtered to
 tag-capable classes.** ``classes.txt`` names every class the release declares
@@ -59,6 +58,9 @@ from typing import Final
 
 from visionset.formats._layout import IMAGES_DIRNAME, folds_of, write_image
 from visionset.formats._targets import self_target
+from visionset.formats.classification.reader import (
+    ClassificationImporter as ClassificationImporter,
+)
 from visionset.kernel.domain import (
     ClassificationGeometry,
     GeometryType,

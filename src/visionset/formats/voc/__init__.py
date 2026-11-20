@@ -1,4 +1,4 @@
-# usage: from visionset.formats.voc import VocExporter
+# usage: from visionset.formats.voc import VocExporter, VocImporter
 """Pascal VOC: one XML per image, and an ``ImageSets`` index per fold.
 
 The third exporter, and the interchange format the wider ecosystem expects. It
@@ -46,6 +46,7 @@ from visionset.formats._layout import (
     write_image,
 )
 from visionset.formats._targets import self_target
+from visionset.formats.voc.reader import VocImporter as VocImporter
 from visionset.kernel.domain import (
     BboxGeometry,
     GeometryType,

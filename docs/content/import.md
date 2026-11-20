@@ -39,10 +39,10 @@ computed from the content, and a commit that would drop something is refused wit
 | Kind | What is dropped |
 | --- | --- |
 | `class` | A class the project's schema does not declare and no label uses. |
-| `geometry` | Part of a shape the kernel has no type for, such as keypoints, 3D lane points or an unusable per-vertex visibility, while the shape itself is kept. |
+| `geometry` | Part of a shape the kernel has no type for, such as YOLO keypoints, VOC parts, 3D lane points or an unusable per-vertex visibility, while the shape itself is kept. |
 | `label` | A whole label: an RLE or crowd mask, a polygon of several rings, a label outside its image. |
 | `image` | An image the source names but does not hold, or one whose bytes repeat an earlier image; its labels go with it. |
-| `attribute` | Extras the importer does not carry, such as COCO attributes, an OpenLane camera calibration or track id. |
+| `attribute` | Extras the importer does not carry, such as COCO attributes, VOC difficult or pose flags, an OpenLane camera calibration or track id. |
 
 The refusal carries the full report in its `detail.losses`. Inspecting the source first returns
 the same report and writes nothing; its `loss_kinds` is exactly what the commit has to consent to,
@@ -74,6 +74,46 @@ naming the kinds to accept. See [mcp-tools.md](mcp-tools.md).
 | --- | --- | --- |
 | `coco` | `annotations/instances_*.json` with images under `images/<fold>/` or `images/`, the layout the COCO exporter writes; boxes and single-ring polygons | RLE and crowd masks, multi-ring polygons, keypoints, captions and other non-instances files, attributes |
 | `openlane-2d` | `labels/**/*.json`, one document per image naming it in `file_path`, the layout the OpenLane 2D exporter writes; lanes as polylines with their per-vertex `visibility` | 3D points (`xyz`), a camera calibration, track ids and lane `attribute` values beyond the exporter's own, a `visibility` that is not one `0` or `1` per point (the lane is kept without it), malformed lanes |
+| `ultralytics` | `data.yaml` with `names` and pictures under any `images/` directory, labels at the matching `labels/` path, the layout the exporter writes; boxes (four values) and polygons (six or more, an even count); or a class tree (`train`/`val`/`test` directories of class directories) as tags | Keypoints of a pose dataset (`kpt_shape`), malformed rows, an unknown class index, a zero-area or wholly outside box, a label file with no picture, the labels of a picture whose size cannot be read |
+| `yolov5-yaml` | The same layout with `nc` and a list of `names` | As `ultralytics` |
+| `darknet` | `obj.names` (and `obj.data`) with the same `images/` and `labels/` layout | As `ultralytics`, bar keypoints |
+| `voc` | `Annotations/**/*.xml` with pictures under `JPEGImages/`; boxes | Pose, truncated, difficult and occluded values other than unspecified or `0`, other `<object>` children, parts, segmentation, an object with no name or box, a zero-area or outside box |
+| `classification` | `labels.csv` (`image`, `class`) and `classes.txt` beside `images/`; one tag per row | A row naming a class `classes.txt` does not declare, a second row of one class on one picture, a malformed row, a row with no picture or class |
+
+**YOLO family** (`ultralytics`, `yolov5-yaml`, `darknet`). A picture is any file under an `images/`
+directory; its label is at the same path with the last `images` segment swapped for `labels` and
+the suffix `.txt`, which covers both `images/<fold>` and `<fold>/images`. Normalized coordinates
+are scaled by the picture's EXIF-oriented size, read from its header, and rounded to six decimals
+in pixels. Classes come from `data.yaml` (`names` as a mapping or a list; `nc` must agree) or the
+single YAML at the top, and for darknet from `obj.names`, found by file name at the top, with
+`classes =` in `obj.data` agreeing. A class no label uses is declared as a box class. Only the
+YAML subset a descriptor uses is read (top-level `key: value`, a flow or block list or mapping of
+scalars); anything else in `names` is refused, as are a name given to two indices, a plain
+`yes`, `no`, `null` or `~` that YAML would not read as a name, a key with a leading zero, and a
+spelled-out `nan` or `inf`. A picture with no label file is imported unlabelled. A symbolic
+link to a directory, or a file resolving outside the source, is refused. The exporters write
+six-decimal normalized coordinates, so a round trip is exact to a millionth of the picture size; a
+box in an ultralytics segment export is written as four corners and reads back as a four-point
+polygon; the exporters clamp boxes into the image and drop tags beside boxes. The split is not
+imported: darknet's `train.txt` and `valid.txt` are ignored, and no importer reads a fold.
+With no `data.yaml` and no `images/` directory, an `ultralytics` source with `train`, `val` or
+`test` directories is a class tree: each class directory is a tag class, in sorted order rather
+than the original schema order, and a picture copied under several class directories (the same
+bytes) is one image with each tag; the same bytes twice under one class directory is a repeated
+tag, a `label` loss, and a picture directly under a fold, outside every class directory, is an
+`image` loss.
+
+**VOC.** A box is `xmin`, `ymin`, `xmax`, `ymax`, 1-based and inclusive, so `x = xmin - 1` and
+`width = xmax - xmin + 1`. Only boxes are read. Classes are the names objects use, in order of
+first appearance: an unused class and the schema's order are not recovered, and a box the
+exporter rounded outward to integers stays rounded. A picture under `JPEGImages/` that no document
+names is imported unlabelled. A `DOCTYPE` or `ENTITY` declaration refuses the file, in whatever
+encoding it is written.
+
+**Classification.** `labels.csv` needs an `image` and a `class` column; a `fold` column is
+ignored and each row is one tag. A picture carries one tag of a class, so a second row of the
+same class on the same picture is a `label` loss. `classes.txt` declares the classes in
+order, including unused ones. A picture under `images/` with no row is imported untagged.
 
 **OpenLane 2D.** A lane's `category` becomes its class, under OpenLane's own names (`white-dash`,
 `yellow-solid`, ... and `unknown` for `0`); the exporter's road edges, `13` and `14`, both read
