@@ -34,10 +34,11 @@ cannot compare these" must never read as "these were duplicates".
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Final
+from typing import Final, assert_never
 
 from visionset.kernel.domain import (
     BboxGeometry,
+    ClassificationGeometry,
     Geometry,
     PolygonGeometry,
     PolylineGeometry,
@@ -82,17 +83,21 @@ def extent_of(geometry: Geometry) -> BboxGeometry | None:
     ``BboxGeometry`` will construct and answers ``None``, as does a
     classification tag, which occupies nothing.
     """
-    if isinstance(geometry, BboxGeometry):
-        return geometry
-    if not isinstance(geometry, PolygonGeometry | PolylineGeometry):
-        return None
-    xs = [x for x, _ in geometry.points]
-    ys = [y for _, y in geometry.points]
-    width = max(xs) - min(xs)
-    height = max(ys) - min(ys)
-    if width <= 0.0 or height <= 0.0:
-        return None
-    return BboxGeometry(x=min(xs), y=min(ys), width=width, height=height)
+    match geometry:
+        case BboxGeometry():
+            return geometry
+        case ClassificationGeometry():
+            return None
+        case PolygonGeometry() | PolylineGeometry():
+            xs = [x for x, _ in geometry.points]
+            ys = [y for _, y in geometry.points]
+            width = max(xs) - min(xs)
+            height = max(ys) - min(ys)
+            if width <= 0.0 or height <= 0.0:
+                return None
+            return BboxGeometry(x=min(xs), y=min(ys), width=width, height=height)
+        case _:
+            assert_never(geometry)
 
 
 def suppressed(

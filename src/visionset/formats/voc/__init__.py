@@ -37,7 +37,7 @@ from __future__ import annotations
 import xml.etree.ElementTree as ElementTree
 from math import ceil, floor
 from pathlib import Path
-from typing import Final
+from typing import Final, assert_never
 
 from visionset.formats._layout import (
     FOLDS,
@@ -49,11 +49,13 @@ from visionset.formats._targets import self_target
 from visionset.formats.voc.reader import VocImporter as VocImporter
 from visionset.kernel.domain import (
     BboxGeometry,
+    ClassificationGeometry,
     GeometryType,
     Manifest,
     ManifestAnnotation,
     ManifestAsset,
     PolygonGeometry,
+    PolylineGeometry,
     Release,
 )
 from visionset.kernel.errors import ExportSourceUnreadable
@@ -263,11 +265,17 @@ def _as_box(
         )
 
     geometry = annotation.geometry
-    if isinstance(geometry, BboxGeometry):
-        return geometry
-    if isinstance(geometry, PolygonGeometry):
-        xs = [x for x, _ in geometry.points]
-        ys = [y for _, y in geometry.points]
-        return BboxGeometry(x=min(xs), y=min(ys), width=max(xs) - min(xs), height=max(ys) - min(ys))
-    # A classification tag: no location, and VOC's `<object>` is a location.
-    return None
+    match geometry:
+        case BboxGeometry():
+            return geometry
+        case PolygonGeometry():
+            xs = [x for x, _ in geometry.points]
+            ys = [y for _, y in geometry.points]
+            return BboxGeometry(
+                x=min(xs), y=min(ys), width=max(xs) - min(xs), height=max(ys) - min(ys)
+            )
+        case ClassificationGeometry() | PolylineGeometry():
+            # No location to write, or one VOC's `<object>` cannot hold.
+            return None
+        case _:
+            assert_never(geometry)

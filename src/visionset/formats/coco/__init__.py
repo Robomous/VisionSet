@@ -44,7 +44,7 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, assert_never
 
 from visionset import __version__
 from visionset.formats._layout import (
@@ -58,11 +58,13 @@ from visionset.formats._targets import self_target
 from visionset.formats.coco.reader import CocoImporter
 from visionset.kernel.domain import (
     BboxGeometry,
+    ClassificationGeometry,
     GeometryType,
     Manifest,
     ManifestAnnotation,
     ManifestAsset,
     PolygonGeometry,
+    PolylineGeometry,
     Release,
 )
 from visionset.kernel.errors import ExportSourceUnreadable
@@ -260,22 +262,27 @@ def _annotation(
         )
 
     geometry = annotation.geometry
-    if isinstance(geometry, BboxGeometry):
-        box = _rounded((geometry.x, geometry.y, geometry.width, geometry.height))
-        # **An empty `segmentation`, deliberately.** COCO allows one, and the
-        # alternative — writing the box's own rectangle — would claim the object
-        # fills its bounding box, which a mask consumer would take literally. A
-        # box says where something is, not what shape it is.
-        segmentation: list[list[float]] = []
-        area = round(geometry.width * geometry.height, PRECISION)
-    elif isinstance(geometry, PolygonGeometry):
-        xs = [x for x, _ in geometry.points]
-        ys = [y for _, y in geometry.points]
-        box = _rounded((min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)))
-        segmentation = [[round(value, PRECISION) for point in geometry.points for value in point]]
-        area = round(_shoelace(geometry.points), PRECISION)
-    else:
-        return None
+    match geometry:
+        case BboxGeometry():
+            box = _rounded((geometry.x, geometry.y, geometry.width, geometry.height))
+            # **An empty `segmentation`, deliberately.** COCO allows one, and the
+            # alternative — writing the box's own rectangle — would claim the object
+            # fills its bounding box, which a mask consumer would take literally. A
+            # box says where something is, not what shape it is.
+            segmentation: list[list[float]] = []
+            area = round(geometry.width * geometry.height, PRECISION)
+        case PolygonGeometry():
+            xs = [x for x, _ in geometry.points]
+            ys = [y for _, y in geometry.points]
+            box = _rounded((min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)))
+            segmentation = [
+                [round(value, PRECISION) for point in geometry.points for value in point]
+            ]
+            area = round(_shoelace(geometry.points), PRECISION)
+        case ClassificationGeometry() | PolylineGeometry():
+            return None
+        case _:
+            assert_never(geometry)
 
     return {
         "category_id": category_id,

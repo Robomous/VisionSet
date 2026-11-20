@@ -41,7 +41,7 @@ import base64
 from collections.abc import Iterable
 from collections.abc import Set as AbstractSet
 from datetime import datetime
-from typing import Annotated, Final, Generic, Literal, Self, TypeVar
+from typing import Annotated, Final, Generic, Literal, Self, TypeVar, assert_never
 from uuid import UUID, uuid4
 
 from fastapi import Query
@@ -1875,6 +1875,8 @@ def geometry_of(geometry: Geometry) -> BboxBody | PolygonBody | PolylineBody | C
             return PolylineBody.of(geometry)
         case ClassificationGeometry():
             return ClassificationBody.of(geometry)
+        case _:
+            assert_never(geometry)
 
 
 # ``schema_version`` is deliberately not on either request: ``AnnotationService``
