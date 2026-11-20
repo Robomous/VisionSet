@@ -54,6 +54,7 @@ import {
   checkAddAnnotations,
   checkCompleteJob,
   checkDeleteAnnotations,
+  checkGetAssetCalibration,
   checkGetBatch,
   checkGetJob,
   checkGetJobProgress,
@@ -104,12 +105,15 @@ export interface WireAnnotation {
   readonly job_id: string | null;
 }
 export type SchemaVersion = components["schemas"]["SchemaVersionOut"];
+export type AssetCalibration = components["schemas"]["AssetCalibrationOut"];
 
 export const jobKeys = {
   job: (jobId: string) => ["jobs", jobId] as const,
   progress: (jobId: string) => ["jobs", jobId, "progress"] as const,
   annotations: (jobId: string, assetId: string) =>
     ["jobs", jobId, "assets", assetId, "annotations"] as const,
+  calibration: (projectId: string, assetId: string) =>
+    ["projects", projectId, "assets", assetId, "calibration"] as const,
 };
 
 export function useJob(jobId: string): UseQueryResult<Job, Error> {
@@ -263,6 +267,29 @@ export function useAssetAnnotations(
         }),
         checkListAssetAnnotations,
       ).items,
+  });
+}
+
+/**
+ * The calibration a 3D label on this asset is read against. Asked only when the
+ * asset carries one, so a 2D-only frame costs no request.
+ */
+export function useAssetCalibration(
+  projectId: string,
+  assetId: string,
+  enabled: boolean,
+): UseQueryResult<AssetCalibration, Error> {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: jobKeys.calibration(projectId, assetId),
+    enabled,
+    queryFn: async () =>
+      unwrap(
+        await client.GET("/projects/{project_id}/assets/{asset_id}/calibration", {
+          params: { path: { project_id: projectId, asset_id: assetId } },
+        }),
+        checkGetAssetCalibration,
+      ),
   });
 }
 

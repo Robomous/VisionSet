@@ -213,6 +213,7 @@ export async function serveApi(
   size?: SchemaSize,
   seeded: readonly Wire["AnnotationOut"][] = [],
   suggestible = false,
+  calibrations: Readonly<Record<string, Wire["CalibrationOut"]>> = {},
 ): Promise<void> {
   const stored: Wire["AnnotationOut"][] = [...seeded];
   const batchBody = (): Wire["BatchOut"] => ({
@@ -394,6 +395,17 @@ export async function serveApi(
         } satisfies Wire["AssetProgressOut"],
       });
     }
+    // Only a frame carrying a 3D label asks; `effective` is null for any other.
+    if (path.endsWith("/calibration") && request.method() === "GET") {
+      const assetId = path.split("/").at(-2) ?? "";
+      return route.fulfill({
+        json: {
+          asset_id: assetId,
+          override: null,
+          effective: calibrations[assetId] ?? null,
+        } satisfies Wire["AssetCalibrationOut"],
+      });
+    }
     if (path.endsWith("/content") || path.endsWith("/thumbnail")) {
       return route.fulfill({ contentType: "image/png", body: PIXEL });
     }
@@ -445,8 +457,9 @@ export async function openJob(
   size?: SchemaSize,
   seeded?: readonly Wire["AnnotationOut"][],
   suggestible?: boolean,
+  calibrations?: Readonly<Record<string, Wire["CalibrationOut"]>>,
 ): Promise<void> {
-  await serveApi(page, sent, progress, lifecycle, size, seeded, suggestible);
+  await serveApi(page, sent, progress, lifecycle, size, seeded, suggestible, calibrations);
   await page.goto(`/jobs/${JOB}`);
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();

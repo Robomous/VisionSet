@@ -132,7 +132,7 @@ import {
   type AnnotatorView,
 } from "@visionset/annotator/react";
 import { AnnotatorStore as Store, WireFormatError, parseAssetDescriptor } from "@visionset/annotator";
-import { ArrowLeft, Check, CheckCheck, ChevronLeft, ChevronRight, CircleHelp, Eye, Grid3x3, MonitorSmartphone, MoreHorizontal, SkipForward, TriangleAlert, Undo2 } from "lucide-react";
+import { ArrowLeft, Box, Check, CheckCheck, ChevronLeft, ChevronRight, CircleHelp, Eye, Grid3x3, MonitorSmartphone, MoreHorizontal, SkipForward, TriangleAlert, Undo2 } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -168,6 +168,7 @@ import { ToolPalette } from "./ToolPalette";
 import { ZoomWidget } from "./ZoomWidget";
 import { ANNOTATOR_MIN_VIEWPORT_PX, useViewportAtLeast } from "./viewportFloor";
 import { AssetImage } from "./AssetImage";
+import { carries3DLabels, overlay3DFor, type Overlay3DWithheld } from "./overlay3d";
 import type { AssetProgress, WireAnnotation } from "./jobQueries";
 import type { BatchAsset } from "../screens/queries";
 import {
@@ -176,6 +177,7 @@ import {
   isEmptyPlan,
   planSave,
   useAssetAnnotations,
+  useAssetCalibration,
   useBatchOf,
   useJob,
   useJobAssets,
@@ -888,6 +890,13 @@ function Workspace({
         }),
       ),
     [asset.id, asset.width, asset.height, schema, loaded],
+  );
+
+  const carries3d = useMemo(() => carries3DLabels(loaded), [loaded]);
+  const calibration = useAssetCalibration(projectId, asset.id, carries3d);
+  const overlay3d = useMemo(
+    () => overlay3DFor(loaded, calibration.data, store.document.asset),
+    [loaded, calibration.data, store],
   );
 
   const snapshot = useAnnotatorSnapshot(store);
@@ -2719,6 +2728,7 @@ function Workspace({
                 onActivateClass={activateClass}
                 onViewChange={setView}
                 hiddenIds={hiddenIds}
+                overlay3d={overlay3d.labels}
                 viewRef={viewRef}
                 // One per job, from `JobScreen` — the canvas would otherwise make
                 // its own and lose it on every navigation.
@@ -2938,6 +2948,22 @@ function Workspace({
                 title={asApiError(actionRefusal).code}
               >
                 {refusalProse(actionRefusal)}
+              </EditorNotice>
+            )}
+
+            {carries3d && (calibration.isError || overlay3d.withheld !== null) && (
+              <EditorNotice
+                testId="overlay-3d-withheld"
+                tone="calm"
+                icon={<Box className="size-4" />}
+                {...(calibration.isError ? { title: asApiError(calibration.error).code } : {})}
+              >
+                <p className="font-medium text-foreground">3D labels are not drawn on this image</p>
+                <p className="text-muted-foreground">
+                  {calibration.isError
+                    ? refusalProse(calibration.error)
+                    : withheldProse(overlay3d.withheld)}
+                </p>
               </EditorNotice>
             )}
 
@@ -3383,4 +3409,17 @@ function SaveState({
       Saved
     </Badge>
   );
+}
+
+function withheldProse(withheld: Overlay3DWithheld | null): string {
+  switch (withheld?.kind) {
+    case "missing":
+      return "Neither this image nor its source has a camera calibration, and a 3D label has no place in the picture without one. The labels are kept unchanged.";
+    case "mismatch":
+      return `The calibration was measured at ${withheld.calibrated.join("×")} and this image is ${withheld.asset.join("×")}, so it does not describe these pixels. The labels are kept unchanged.`;
+    case "unreadable":
+      return `The calibration cannot be projected by this version: ${withheld.message}`;
+    default:
+      return "";
+  }
 }

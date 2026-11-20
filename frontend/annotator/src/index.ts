@@ -9,6 +9,7 @@ export {
   parseAnnotations,
   parseAssetDescriptor,
   parseAttribute,
+  parseCalibration,
   parseGeometry,
   parseLabelClass,
   parseStoredGeometry,
@@ -62,6 +63,14 @@ export {
 } from "./core/state/store";
 // Geometry — asset-pixel math: predicates, hit-testing, transforms
 export { clamp } from "./core/geometry/clamp";
+export {
+  NEAR_PLANE_M,
+  calibrationFits,
+  projectLabels3D,
+  projectPoint,
+  projectPolyline3D,
+  type Projected3DLabel,
+} from "./core/geometry/projection";
 export {
   clampPoint,
   closestPointOnSegment,

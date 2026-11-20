@@ -61,8 +61,8 @@
  * 4. **A class declaring `keypoints`, `mask`, `cuboid_3d` or `polyline_3d`.**
  *    Legal in a schema, and not drawable — the eight-names/four-variants split
  *    `types.ts` keeps. `polyline` is not in this list, because it has a tool;
- *    the ones left have no `Geometry` variant, and `polyline_3d` is carried but
- *    never drawn.
+ *    the ones left have no `Geometry` variant, and `polyline_3d` is carried and
+ *    only drawn read-only, as a projected overlay.
  *
  * `drawableGeometries` is exported separately so a class palette can distinguish
  * 3 and 4 from 1 and 2 and say "this class cannot be drawn here" rather than

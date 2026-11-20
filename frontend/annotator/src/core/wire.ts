@@ -76,6 +76,7 @@ import {
   type Attribute,
   type AttributeKind,
   type AttributeValue,
+  type Calibration,
   type Geometry,
   type LabelClass,
   type Point,
@@ -159,6 +160,8 @@ const SCHEMA_REQUIRED_KEYS = ["project_id", "version", "classes"] as const;
 // A projection: it names the three fields it wants of the eleven an asset
 // carries. Rule 4 is what makes that unremarkable rather than a special case.
 const ASSET_KEYS = ["id", "width", "height"] as const;
+const INTRINSICS_KEYS = ["fx", "fy", "cx", "cy", "skew", "width", "height"] as const;
+const DISTORTION_KEYS = ["model", "k1", "k2", "p1", "p2", "k3"] as const;
 
 const BBOX_KEYS = ["type", "x", "y", "width", "height"] as const;
 const POLYGON_KEYS = ["type", "points"] as const;
@@ -331,14 +334,14 @@ function requireAttributes(
  * A `type` this build cannot carry is told apart from a `type` that is not a
  * geometry at all, because the remedies differ: the first waits for a variant to
  * be implemented, the second is a bug in the caller. A `polyline_3d` is carried
- * but not drawn, so it is refused here and parsed by `parseStoredGeometry`.
+ * but never edited, so it is refused here and parsed by `parseStoredGeometry`.
  */
 export function parseGeometry(value: unknown): Geometry {
   const geometry = parseStoredGeometry(value);
   if (geometry.type === "polyline_3d") {
     throw new WireFormatError(
-      `geometry.type "polyline_3d" is carried and not drawn — it is read against a ` +
-        `camera calibration this engine does not have`,
+      `geometry.type "polyline_3d" is carried and not editable — it has no pixel ` +
+        `coordinates of its own, and only projectLabels3D draws it, read-only`,
     );
   }
   return geometry;
@@ -618,6 +621,80 @@ export function parseAssetDescriptor(value: unknown): AssetDescriptor {
     id,
     width: requirePixelCount(value["width"], "asset.width"),
     height: requirePixelCount(value["height"], "asset.height"),
+  };
+}
+
+/**
+ * A camera calibration, as `CalibrationOut` sends it. Input-only, so undeclared
+ * keys are ignored (rule 4).
+ *
+ * A distortion model this build does not know is refused rather than dropped:
+ * projecting through a lens it cannot model would draw a confident wrong line.
+ */
+export function parseCalibration(value: unknown): Calibration {
+  if (!isRecord(value)) {
+    throw new WireFormatError("calibration must be an object");
+  }
+  allowUndeclaredKeys(value, ["intrinsics", "extrinsics", "distortion"], "calibration");
+  const intrinsics = value["intrinsics"];
+  if (!isRecord(intrinsics)) {
+    throw new WireFormatError("calibration.intrinsics must be an object");
+  }
+  allowUndeclaredKeys(intrinsics, INTRINSICS_KEYS, "calibration.intrinsics");
+  const number = (key: string): number =>
+    requireNumber(intrinsics[key], `calibration.intrinsics.${key}`);
+  const extrinsics = value["extrinsics"];
+  if (!isRecord(extrinsics)) {
+    throw new WireFormatError("calibration.extrinsics must be an object");
+  }
+  allowUndeclaredKeys(extrinsics, ["rotation", "translation"], "calibration.extrinsics");
+  const rotation = extrinsics["rotation"];
+  if (!Array.isArray(rotation) || rotation.length !== 3) {
+    throw new WireFormatError("calibration.extrinsics.rotation must be three rows");
+  }
+  return {
+    intrinsics: {
+      fx: number("fx"),
+      fy: number("fy"),
+      cx: number("cx"),
+      cy: number("cy"),
+      skew: number("skew"),
+      width: requirePixelCount(intrinsics["width"], "calibration.intrinsics.width"),
+      height: requirePixelCount(intrinsics["height"], "calibration.intrinsics.height"),
+    },
+    extrinsics: {
+      rotation: [
+        requirePoint3D(rotation[0], "calibration.extrinsics.rotation[0]"),
+        requirePoint3D(rotation[1], "calibration.extrinsics.rotation[1]"),
+        requirePoint3D(rotation[2], "calibration.extrinsics.rotation[2]"),
+      ],
+      translation: requirePoint3D(extrinsics["translation"], "calibration.extrinsics.translation"),
+    },
+    distortion: parseDistortion(value["distortion"]),
+  };
+}
+
+function parseDistortion(value: unknown): Calibration["distortion"] {
+  if (value === null) return null;
+  if (!isRecord(value)) {
+    throw new WireFormatError("calibration.distortion must be an object or null");
+  }
+  allowUndeclaredKeys(value, DISTORTION_KEYS, "calibration.distortion");
+  if (value["model"] !== "plumb_bob") {
+    throw new WireFormatError(
+      `calibration.distortion.model ${JSON.stringify(value["model"])} is not one this build ` +
+        `can project through`,
+    );
+  }
+  const number = (key: string): number =>
+    requireNumber(value[key], `calibration.distortion.${key}`);
+  return {
+    model: "plumb_bob",
+    k1: number("k1"),
+    k2: number("k2"),
+    p1: number("p1"),
+    p2: number("p2"),
+    k3: number("k3"),
   };
 }
 
