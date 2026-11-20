@@ -75,6 +75,7 @@ export const sidebar = [
           { slug: "architecture/decisions/the-inference-worker-is-persistent" },
           { slug: "architecture/decisions/the-image-embedding-stays-in-the-worker" },
           { slug: "architecture/decisions/an-import-is-a-labeled-batch" },
+          { slug: "architecture/decisions/three-dimensional-labels-are-calibrated-image-labels" },
         ],
       },
     ],
