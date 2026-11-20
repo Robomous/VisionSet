@@ -134,11 +134,11 @@ describe("the divergences this file exists to keep closed", () => {
     expect(() => parseAnnotation(flattened)).toThrow(/does not declare/);
   });
 
-  it.each(["keypoints", "mask", "cuboid_3d"])(
+  it.each(["keypoints", "mask"])(
     "refuses %s as declared-but-unimplemented rather than as unknown",
     (type) => {
       // The distinction is the point: the remedy for one is to wait for a
-      // variant, and for the other to fix the caller. Three names are still
+      // variant, and for the other to fix the caller. Two names are still
       // waiting on a variant.
       expect(() => parseGeometry({ type })).toThrow(WireFormatError);
       expect(() => parseGeometry({ type })).toThrow(/no implementation/);
@@ -174,7 +174,28 @@ describe("a 3D polyline, carried read-only outside the scene", () => {
   it("is told apart from the drawn variants", () => {
     const parsed = parseAnnotations(fixture.annotations);
     const carried = parsed.filter((one) => !isDrawnAnnotation(one));
-    expect(carried.map((one) => one.geometry.type)).toEqual(["polyline_3d"]);
+    expect(carried.map((one) => one.geometry.type)).toEqual(["polyline_3d", "cuboid_3d"]);
+  });
+});
+
+describe("a 3D cuboid, carried read-only outside the scene", () => {
+  const BOX = { type: "cuboid_3d", center: [-2.5, 0.75, 12], size: [4.5, 1.9, 1.6], yaw: 1.2 };
+
+  it("parses as a stored geometry and goes back out byte for byte", () => {
+    expect(JSON.parse(JSON.stringify(parseStoredGeometry(BOX)))).toStrictEqual(BOX);
+  });
+
+  it("is refused by the scene's own parser, which draws pixels", () => {
+    expect(() => parseGeometry(BOX)).toThrow(/"cuboid_3d" is carried and not editable/);
+  });
+
+  it("refuses a 2D centre, a missing yaw and an undeclared visibility", () => {
+    expect(() => parseStoredGeometry({ ...BOX, center: [1, 2] })).toThrow(/\[x, y, z\] triple/);
+    expect(() => parseStoredGeometry({ ...BOX, size: [1, 2] })).toThrow(/geometry\.size/);
+    const noYaw = { type: BOX.type, center: BOX.center, size: BOX.size };
+    expect(() => parseStoredGeometry(noYaw)).toThrow(/missing yaw/);
+    expect(() => parseStoredGeometry({ ...BOX, yaw: "1.2" })).toThrow(/geometry\.yaw/);
+    expect(() => parseStoredGeometry({ ...BOX, visibility: [2] })).toThrow(/does not declare/);
   });
 });
 

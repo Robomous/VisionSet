@@ -11,7 +11,7 @@ Adding a geometry (keypoints, mask, the 3D variants) means defining a model whos
 ``type`` is the matching ``GeometryType`` member and appending it to the
 ``Geometry`` union. Nothing about the discriminator changes shape and no existing
 payload stops parsing, because geometry rides in the annotation's JSON column and
-needs no migration. ``GeometryType`` names eight geometries; five are implemented
+needs no migration. ``GeometryType`` names eight geometries; six are implemented
 here — the rest are roadmap, and a payload naming one is rejected until its model
 exists.
 """
@@ -21,7 +21,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import IntEnum
-from math import isfinite
+from math import isfinite, pi
 from typing import TYPE_CHECKING, Annotated, Any, Final, Literal, assert_never, get_args
 
 from pydantic import (
@@ -253,6 +253,40 @@ class Polyline3DGeometry(BaseModel):
         return self
 
 
+class Cuboid3DGeometry(BaseModel):
+    """A box in its asset's sensor frame: a center, a size and a yaw, in metres.
+
+    The frame is the camera's OpenCV frame (x right, y down, z forward), and the
+    box is interpretable only against the asset's effective calibration, so no
+    image-frame bounds check applies.
+
+    ``center`` is the box's geometric centre. ``size`` is ``(length, width,
+    height)``: ``length`` runs along the heading, ``width`` across it, and
+    ``height`` along the sensor's y axis, every one strictly positive. ``yaw`` is
+    a right-handed rotation in radians about the sensor's +y (down) axis, within
+    ``[-pi, pi]`` and not normalised: a value outside is refused rather than
+    wrapped, so what is stored is what was sent. At ``yaw = 0`` the heading is
+    sensor +x; in general it is ``(cos yaw, 0, -sin yaw)``, KITTI's
+    ``rotation_y`` convention. Roll and pitch are not modelled; a full rotation
+    would extend this shape, not replace it.
+
+    A sibling of every other variant, never a subclass, and it has no
+    ``visibility``: per-vertex visibility describes an ordered path, which a box
+    is not.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    type: Literal[GeometryType.CUBOID_3D] = GeometryType.CUBOID_3D
+    center: tuple[float, float, float]
+    size: tuple[
+        Annotated[float, Field(gt=0.0)],
+        Annotated[float, Field(gt=0.0)],
+        Annotated[float, Field(gt=0.0)],
+    ]
+    yaw: float = Field(ge=-pi, le=pi)
+
+
 class ClassificationGeometry(BaseModel):
     """A whole-asset tag: the annotation carries a class but no coordinates.
 
@@ -267,7 +301,12 @@ class ClassificationGeometry(BaseModel):
 
 
 Geometry = Annotated[
-    BboxGeometry | PolygonGeometry | PolylineGeometry | Polyline3DGeometry | ClassificationGeometry,
+    BboxGeometry
+    | PolygonGeometry
+    | PolylineGeometry
+    | Polyline3DGeometry
+    | Cuboid3DGeometry
+    | ClassificationGeometry,
     Field(discriminator="type"),
 ]
 """Every geometry an Annotation can carry.
@@ -303,7 +342,7 @@ def geometry_intersects_asset(geometry: Geometry, *, width: int | None, height: 
         return True
     frame = _Frame(width=float(width), height=float(height))
     match geometry:
-        case ClassificationGeometry() | Polyline3DGeometry():
+        case ClassificationGeometry() | Polyline3DGeometry() | Cuboid3DGeometry():
             return True
         case BboxGeometry():
             return _bbox_intersects_frame(geometry, frame)
@@ -326,6 +365,10 @@ def _coordinates_are_finite(geometry: Geometry) -> bool:
             )
         case PolygonGeometry() | PolylineGeometry() | Polyline3DGeometry():
             return all(isfinite(value) for point in geometry.points for value in point)
+        case Cuboid3DGeometry():
+            return all(
+                isfinite(value) for value in (*geometry.center, *geometry.size, geometry.yaw)
+            )
         case _:
             assert_never(geometry)
 

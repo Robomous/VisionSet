@@ -37,9 +37,11 @@ export type Overlay3DNotice =
 
 export const NO_OVERLAY_3D: Overlay3D = { labels: [], withheld: null };
 
+const THREE_D_TYPES: ReadonlySet<unknown> = new Set(["polyline_3d", "cuboid_3d"]);
+
 export function carries3DLabels(loaded: readonly WireAnnotation[]): boolean {
-  return loaded.some(
-    (one) => (one.geometry as { readonly type?: unknown } | null)?.type === "polyline_3d",
+  return loaded.some((one) =>
+    THREE_D_TYPES.has((one.geometry as { readonly type?: unknown } | null)?.type),
   );
 }
 

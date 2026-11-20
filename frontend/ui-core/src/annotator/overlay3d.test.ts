@@ -45,6 +45,12 @@ const LANE = wire("lane-3d", {
   visibility: [2, 1],
 });
 const BOX = wire("box", { type: "bbox", x: 1, y: 1, width: 4, height: 4 });
+const CAR = wire("car-3d", {
+  type: "cuboid_3d",
+  center: [0, 0.5, 10],
+  size: [4, 2, 1],
+  yaw: 0,
+});
 
 function served(effective: AssetCalibration["effective"]): AssetCalibration {
   return { asset_id: ASSET.id, override: null, effective };
@@ -60,6 +66,19 @@ describe("overlay3DFor", () => {
       [320, 290],
     ]);
     expect(overlay.labels[0].paths[0].visibility).toEqual([2, 1]);
+  });
+
+  it("projects a cuboid as its twelve edges, and a frame holding only one carries 3D labels", () => {
+    expect(carries3DLabels([BOX, CAR])).toBe(true);
+    const overlay = overlay3DFor([BOX, CAR], served(CALIBRATION), ASSET);
+    expect(overlay.withheld).toBeNull();
+    expect(overlay.labels.map((label) => [label.id, label.paths.length])).toEqual([["car-3d", 12]]);
+    // The rear-left-top corner (-2, 0, 9) and the front-left-top one (2, 0, 9).
+    const [[u0, v0], [u1, v1]] = overlay.labels[0].paths[0].points;
+    expect([u0, v0, u1, v1].map((value) => Math.round(value * 1e6) / 1e6)).toEqual([
+      208.888889, 240, 431.111111, 240,
+    ]);
+    expect(overlay3DFor([CAR], served(null), ASSET).withheld).toEqual({ kind: "missing" });
   });
 
   it("draws nothing and says nothing while the calibration is being read, or for a 2D-only frame", () => {

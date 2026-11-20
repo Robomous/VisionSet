@@ -77,6 +77,7 @@ import {
   type AttributeKind,
   type AttributeValue,
   type Calibration,
+  type Cuboid3DGeometry,
   type Geometry,
   type LabelClass,
   type Point,
@@ -170,6 +171,7 @@ const POLYLINE_KEYS = ["type", "points"] as const;
 // Declared but optional: the kernel omits it when nobody has said.
 const POLYLINE_OPTIONAL_KEYS = ["visibility"] as const;
 const VERTEX_VISIBILITIES: readonly number[] = Object.values(VERTEX_VISIBILITY);
+const CUBOID_KEYS = ["type", "center", "size", "yaw"] as const;
 const CLASSIFICATION_KEYS = ["type"] as const;
 
 const PROVENANCES: readonly Provenance[] = ["human", "model", "import"];
@@ -333,14 +335,15 @@ function requireAttributes(
  *
  * A `type` this build cannot carry is told apart from a `type` that is not a
  * geometry at all, because the remedies differ: the first waits for a variant to
- * be implemented, the second is a bug in the caller. A `polyline_3d` is carried
- * but never edited, so it is refused here and parsed by `parseStoredGeometry`.
+ * be implemented, the second is a bug in the caller. A 3D label (`polyline_3d`,
+ * `cuboid_3d`) is carried but never edited, so it is refused here and parsed by
+ * `parseStoredGeometry`.
  */
 export function parseGeometry(value: unknown): Geometry {
   const geometry = parseStoredGeometry(value);
-  if (geometry.type === "polyline_3d") {
+  if (geometry.type === "polyline_3d" || geometry.type === "cuboid_3d") {
     throw new WireFormatError(
-      `geometry.type "polyline_3d" is carried and not editable — it has no pixel ` +
+      `geometry.type "${geometry.type}" is carried and not editable — it has no pixel ` +
         `coordinates of its own, and only projectLabels3D draws it, read-only`,
     );
   }
@@ -407,6 +410,8 @@ export function parseStoredGeometry(value: unknown): StoredGeometry {
     }
     case "polyline_3d":
       return parsePolyline3D(value);
+    case "cuboid_3d":
+      return parseCuboid3D(value);
     default:
       requireExactKeys(value, CLASSIFICATION_KEYS, "classification_tag geometry");
       return { type: "classification_tag" };
@@ -427,6 +432,16 @@ function parsePolyline3D(value: Record<string, unknown>): Polyline3DGeometry {
     points: parsed,
     visibility:
       "visibility" in value ? requireVisibility(value["visibility"], parsed.length) : undefined,
+  };
+}
+
+function parseCuboid3D(value: Record<string, unknown>): Cuboid3DGeometry {
+  requireExactKeys(value, CUBOID_KEYS, "cuboid_3d geometry");
+  return {
+    type: "cuboid_3d",
+    center: requirePoint3D(value["center"], "geometry.center"),
+    size: requirePoint3D(value["size"], "geometry.size"),
+    yaw: requireNumber(value["yaw"], "geometry.yaw"),
   };
 }
 

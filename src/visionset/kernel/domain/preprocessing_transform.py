@@ -26,6 +26,7 @@ from visionset.kernel.domain.export_target import ResizeStrategy
 from visionset.kernel.domain.geometry import (
     BboxGeometry,
     ClassificationGeometry,
+    Cuboid3DGeometry,
     Geometry,
     PolygonGeometry,
     Polyline3DGeometry,
@@ -419,7 +420,7 @@ def _scaled(
             return geometry.through(
                 [(x * scale_x + offset_x, y * scale_y + offset_y) for x, y in geometry.points]
             )
-        case Polyline3DGeometry():
+        case Polyline3DGeometry() | Cuboid3DGeometry():
             raise _unreachable_3d(geometry)
         case _:
             assert_never(geometry)
@@ -440,7 +441,7 @@ def _mirrored(geometry: Geometry, width: float) -> Geometry:
             return PolygonGeometry(points=[(width - x, y) for x, y in geometry.points])
         case PolylineGeometry():
             return geometry.through([(width - x, y) for x, y in geometry.points])
-        case Polyline3DGeometry():
+        case Polyline3DGeometry() | Cuboid3DGeometry():
             raise _unreachable_3d(geometry)
         case _:
             assert_never(geometry)
@@ -467,13 +468,13 @@ def _rotated_once(geometry: Geometry, width: float) -> Geometry:
             return PolygonGeometry(points=[(y, width - x) for x, y in geometry.points])
         case PolylineGeometry():
             return geometry.through([(y, width - x) for x, y in geometry.points])
-        case Polyline3DGeometry():
+        case Polyline3DGeometry() | Cuboid3DGeometry():
             raise _unreachable_3d(geometry)
         case _:
             assert_never(geometry)
 
 
-def _unreachable_3d(geometry: Polyline3DGeometry) -> AssertionError:
+def _unreachable_3d(geometry: Polyline3DGeometry | Cuboid3DGeometry) -> AssertionError:
     # The step tables keep every 3D type out of a pixel-moving step and
     # `fit_within` passes them by, so reaching this means a caller and the
     # arithmetic disagree about which coordinates are pixels.

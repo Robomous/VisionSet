@@ -22,6 +22,7 @@ from visionset.formats._layout import IMAGES_DIRNAME, dimensions_of, folds_of, w
 from visionset.kernel.domain import (
     BboxGeometry,
     ClassificationGeometry,
+    Cuboid3DGeometry,
     Geometry,
     Manifest,
     ManifestAnnotation,
@@ -77,7 +78,7 @@ def derive_task(manifest: Manifest, accepted: frozenset[Task]) -> Task:
                     has_box = True
                 case ClassificationGeometry():
                     has_tag = True
-                case PolylineGeometry() | Polyline3DGeometry():
+                case PolylineGeometry() | Polyline3DGeometry() | Cuboid3DGeometry():
                     pass
                 case _:
                     assert_never(geometry)
@@ -191,7 +192,12 @@ def _as_box(annotation: ManifestAnnotation) -> BboxGeometry | None:
             return BboxGeometry(
                 x=min(xs), y=min(ys), width=max(xs) - min(xs), height=max(ys) - min(ys)
             )
-        case ClassificationGeometry() | PolylineGeometry() | Polyline3DGeometry():
+        case (
+            ClassificationGeometry()
+            | PolylineGeometry()
+            | Polyline3DGeometry()
+            | Cuboid3DGeometry()
+        ):
             return None
         case _:
             assert_never(geometry)
@@ -206,7 +212,12 @@ def _as_ring(annotation: ManifestAnnotation) -> list[tuple[float, float]] | None
             left, top = geometry.x, geometry.y
             right, bottom = geometry.x + geometry.width, geometry.y + geometry.height
             return [(left, top), (right, top), (right, bottom), (left, bottom)]
-        case ClassificationGeometry() | PolylineGeometry() | Polyline3DGeometry():
+        case (
+            ClassificationGeometry()
+            | PolylineGeometry()
+            | Polyline3DGeometry()
+            | Cuboid3DGeometry()
+        ):
             return None
         case _:
             assert_never(geometry)

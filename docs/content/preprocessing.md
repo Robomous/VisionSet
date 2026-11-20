@@ -93,7 +93,7 @@ scale and offset for a resize, mirror for `hflip`, a quarter turn for `rot90`, n
 the same arithmetic: `letterbox_fit` is the single spelling of where letterboxed content lands,
 and the per-variant draws come from one seed.
 
-| step | bbox | polygon | polyline | polyline_3d | classification_tag |
+| step | bbox | polygon | polyline | polyline_3d, cuboid_3d | classification_tag |
 | --- | --- | --- | --- | --- | --- |
 | stretch | scale x, y | scale | scale | **refused** | unchanged |
 | letterbox | scale then offset | same | same | **refused** | unchanged |

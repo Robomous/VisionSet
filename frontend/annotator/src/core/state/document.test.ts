@@ -214,8 +214,10 @@ describe("built from the wire, and back again", () => {
   });
 
   it("carries a 3D label past the scene, so no edit can reach it", () => {
-    const carried = fixture.annotations.filter((raw) => geometryType(raw) === "polyline_3d");
-    expect(carried.length).toBeGreaterThan(0);
+    const carried = fixture.annotations.filter((raw) =>
+      ["polyline_3d", "cuboid_3d"].includes(geometryType(raw)),
+    );
+    expect(carried.map(geometryType)).toEqual(["polyline_3d", "cuboid_3d"]);
     const document = documentFromWire(wire);
     for (const raw of carried) {
       expect(document.annotations.has((raw as { id: string }).id)).toBe(false);

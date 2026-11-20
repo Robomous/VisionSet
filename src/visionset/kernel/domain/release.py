@@ -85,7 +85,10 @@ from visionset.kernel.errors import UnserializableManifest
 #: a 3D label and omitted otherwise. A release is written at the lowest version
 #: that can express it (:func:`manifest_version_for`), so a 2D release is still
 #: a version-3 document with the bytes and the hash it had before, and only a
-#: release holding a 3D label is one a version-3 build refuses.
+#: release holding a 3D label is one a version-3 build refuses. ``cuboid_3d``
+#: (#1045) joined the union under the same version before any build wrote 4,
+#: and is held to the same rule: a cuboid needs a calibration, and a
+#: calibration needs version 4.
 MANIFEST_VERSION: int = 4
 
 CALIBRATED_MANIFEST_VERSION: int = 4

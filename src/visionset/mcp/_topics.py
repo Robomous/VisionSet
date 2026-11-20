@@ -268,11 +268,16 @@ asset's own pixels, never normalized. `type` selects the shape:
 - `polyline`: `points`, at least two `[x, y]` pairs in order; the ends do not join.
 - `polyline_3d`: `points`, at least two `[x, y, z]` triples in order, in metres in the
   camera's sensor frame (x right, y down, z forward), never pixels.
+- `cuboid_3d`: `center` `[x, y, z]` (the box's middle), `size` `[length, width, height]`
+  and `yaw`, in metres and radians in the same sensor frame. Every size is above zero:
+  `length` runs along the heading, `width` across it, `height` along y. `yaw` turns
+  about +y (down), within `[-pi, pi]`, and is refused outside it rather than wrapped;
+  at `0` the heading is +x, in general `(cos yaw, 0, -sin yaw)`. No `visibility`.
 - `classification_tag`: no coordinates.
 
 ## 3D labels need a calibration
 
-A `polyline_3d` is read against its asset's calibration: the asset's own override
+A `polyline_3d` or `cuboid_3d` is read against its asset's calibration: the asset's own override
 when it has one, else its source's (`get_calibration`). Writing one to an asset with
 neither is refused with `CALIBRATION_MISSING`; `set_calibration` first. No image-frame
 bounds check applies to a 3D point.

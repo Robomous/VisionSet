@@ -1,8 +1,10 @@
 /**
  * Projecting a 3D label into its image, for a read-only overlay.
  *
- * A `polyline_3d` is stored in the camera's own sensor frame (OpenCV: x right,
- * y down, z forward, metres), so only the intrinsics and the distortion take part.
+ * A `polyline_3d` or a `cuboid_3d` is stored in the camera's own sensor frame
+ * (OpenCV: x right, y down, z forward, metres), so only the intrinsics and the
+ * distortion take part. A cuboid is drawn as its twelve edges, each projected
+ * as a two-point path, so it is clipped exactly as a path is.
  * The extrinsics map that frame into the rig frame and are not used: the points
  * never leave the camera they were measured from.
  *
@@ -22,6 +24,7 @@ import {
   VERTEX_VISIBILITY,
   type AssetDescriptor,
   type Calibration,
+  type Cuboid3DGeometry,
   type Point,
   type Point3D,
   type Polyline3DGeometry,
@@ -54,7 +57,7 @@ export function calibrationFits(calibration: Calibration, asset: AssetDescriptor
 }
 
 /**
- * Every `polyline_3d` among `annotations`, projected. Empty when there is no
+ * Every 3D label among `annotations`, projected. Empty when there is no
  * calibration or it does not fit the asset; a label wholly behind the camera is
  * left out.
  */
@@ -66,13 +69,57 @@ export function projectLabels3D(
   if (calibration === null || !calibrationFits(calibration, asset)) return [];
   const labels: Projected3DLabel[] = [];
   for (const annotation of annotations) {
-    if (annotation.geometry.type !== "polyline_3d") continue;
-    const paths = projectPolyline3D(annotation.geometry, calibration);
+    const { geometry } = annotation;
+    let paths: readonly PolylineGeometry[];
+    if (geometry.type === "polyline_3d") paths = projectPolyline3D(geometry, calibration);
+    else if (geometry.type === "cuboid_3d") paths = projectCuboid3D(geometry, calibration);
+    else continue;
     if (paths.length > 0) {
       labels.push({ id: annotation.id, labelClass: annotation.label_class, paths });
     }
   }
   return labels;
+}
+
+/**
+ * A cuboid's eight corners in the sensor frame. Corner `i` takes the `+` half
+ * of length when bit 0 is set, of width for bit 1 and of height for bit 2, so
+ * corners 0–3 are the top face (−y) and an edge joins two corners one bit apart.
+ */
+export function cuboidCorners(geometry: Cuboid3DGeometry): readonly Point3D[] {
+  const [cx, cy, cz] = geometry.center;
+  const [length, width, height] = geometry.size;
+  const cos = Math.cos(geometry.yaw);
+  const sin = Math.sin(geometry.yaw);
+  const corners: Point3D[] = [];
+  for (let i = 0; i < 8; i += 1) {
+    const along = ((i & 1) === 0 ? -0.5 : 0.5) * length;
+    const across = ((i & 2) === 0 ? -0.5 : 0.5) * width;
+    const down = ((i & 4) === 0 ? -0.5 : 0.5) * height;
+    corners.push([cx + along * cos + across * sin, cy + down, cz - along * sin + across * cos]);
+  }
+  return corners;
+}
+
+/** The twelve edges of `cuboidCorners`, as index pairs. */
+export const CUBOID_EDGES: readonly (readonly [number, number])[] = [1, 2, 4].flatMap((bit) =>
+  [0, 1, 2, 3, 4, 5, 6, 7]
+    .filter((corner) => (corner & bit) === 0)
+    .map((corner) => [corner, corner | bit] as const),
+);
+
+/** A cuboid's drawable edges in pixels: each edge clipped like a two-point path. */
+export function projectCuboid3D(
+  geometry: Cuboid3DGeometry,
+  calibration: Calibration,
+): readonly PolylineGeometry[] {
+  const corners = cuboidCorners(geometry);
+  return CUBOID_EDGES.flatMap(([from, to]) =>
+    projectPolyline3D(
+      { type: "polyline_3d", points: [corners[from], corners[to]], visibility: undefined },
+      calibration,
+    ),
+  );
 }
 
 /** A pixel for one sensor-frame point, or `null` when it cannot be drawn. */

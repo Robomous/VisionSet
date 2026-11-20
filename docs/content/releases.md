@@ -78,7 +78,7 @@ express the release**: **3** for a release with no 3D label, **4** for one that 
 | 1 | the first release | - |
 | 2 | #584 | `LabelClass.geometries` became plural; a version-1 class's singular `geometry` still loads |
 | 3 | #352 | a polyline may carry per-vertex `visibility` |
-| 4 | #1038 | a `polyline_3d` geometry, and a `calibration` on each asset that carries one |
+| 4 | #1038, #1045 | the `polyline_3d` and `cuboid_3d` geometries, and a `calibration` on each asset that carries one |
 
 An older document keeps the version it was written with, so its bytes and its hash never move and
 `verify` still passes. Version 3 changes no existing bytes: a polyline with unknown visibility
@@ -108,7 +108,7 @@ at that moment - the asset's own override, else its source's - so the release ca
 without the workspace. An asset carrying one with no calibration refuses the publish with
 `CALIBRATION_MISSING` (409), and one whose calibration was measured at another size than the
 asset with `CALIBRATION_RESOLUTION_MISMATCH` (422). No installed format writes a 3D geometry: an
-export reports the `polyline_3d` class **dropped**, with its annotation and asset counts, and
+export reports a `polyline_3d` or `cuboid_3d` class **dropped**, with its annotation and asset counts, and
 needs `allow_lossy` like any other loss. The drop happens before pre-processing, with or without a
 target, so a resize or flip in the export's recipe never refuses over a 3D label the format would
 not write anyway.

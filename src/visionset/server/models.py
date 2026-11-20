@@ -95,6 +95,7 @@ from visionset.kernel.domain import (
     ConnectionAction,
     ConnectionSetupState,
     ConnectionType,
+    Cuboid3DGeometry,
     CuratedModel,
     Dataset,
     DatasetChange,
@@ -2050,6 +2051,40 @@ class Polyline3DBody(BaseModel):
         )
 
 
+class Cuboid3DBody(BaseModel):
+    """A box in metres in the asset's camera sensor frame: a center, a size and a yaw.
+
+    The frame is x right, y down, z forward. `center` is the box's geometric
+    centre; `size` is `[length, width, height]`, each strictly positive, with
+    `length` along the heading, `width` across it and `height` along the sensor
+    y axis. `yaw` is radians about the sensor +y axis, within `[-pi, pi]` and
+    refused outside it rather than wrapped; at `yaw = 0` the heading is sensor
+    +x, and in general it is `(cos yaw, 0, -sin yaw)`. Read against the asset's
+    effective calibration; writing one to an asset with no calibration is
+    refused with `CALIBRATION_MISSING`, and one written against a calibration measured at a
+    different resolution with `CALIBRATION_RESOLUTION_MISMATCH`. No image-frame bounds check applies.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal[GeometryType.CUBOID_3D]
+    center: tuple[float, float, float]
+    size: tuple[float, float, float]
+    yaw: float
+
+    def to_domain(self) -> Cuboid3DGeometry:
+        return Cuboid3DGeometry(center=self.center, size=self.size, yaw=self.yaw)
+
+    @classmethod
+    def of(cls, geometry: Cuboid3DGeometry) -> Self:
+        return cls(
+            type=GeometryType.CUBOID_3D,
+            center=geometry.center,
+            size=geometry.size,
+            yaw=geometry.yaw,
+        )
+
+
 class ClassificationBody(BaseModel):
     """A whole-asset tag: a class with no coordinates."""
 
@@ -2066,14 +2101,14 @@ class ClassificationBody(BaseModel):
 
 
 GeometryBody = Annotated[
-    BboxBody | PolygonBody | PolylineBody | Polyline3DBody | ClassificationBody,
+    BboxBody | PolygonBody | PolylineBody | Polyline3DBody | Cuboid3DBody | ClassificationBody,
     Field(discriminator="type"),
 ]
 
 
 def geometry_of(
     geometry: Geometry,
-) -> BboxBody | PolygonBody | PolylineBody | Polyline3DBody | ClassificationBody:
+) -> BboxBody | PolygonBody | PolylineBody | Polyline3DBody | Cuboid3DBody | ClassificationBody:
     """The wire form of a stored geometry, matched on the same discriminator."""
     match geometry:
         case BboxGeometry():
@@ -2084,6 +2119,8 @@ def geometry_of(
             return PolylineBody.of(geometry)
         case Polyline3DGeometry():
             return Polyline3DBody.of(geometry)
+        case Cuboid3DGeometry():
+            return Cuboid3DBody.of(geometry)
         case ClassificationGeometry():
             return ClassificationBody.of(geometry)
         case _:

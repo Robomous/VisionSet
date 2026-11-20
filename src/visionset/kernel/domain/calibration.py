@@ -28,6 +28,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from visionset.kernel.domain.geometry import (
     BboxGeometry,
     ClassificationGeometry,
+    Cuboid3DGeometry,
     Geometry,
     PolygonGeometry,
     Polyline3DGeometry,
@@ -171,7 +172,7 @@ def require_calibration(asset: Asset, source: Source | None) -> Calibration:
 def geometry_needs_calibration(geometry: Geometry) -> bool:
     """Whether a stored label is read against its asset's calibration: every 3D one is."""
     match geometry:
-        case Polyline3DGeometry():
+        case Polyline3DGeometry() | Cuboid3DGeometry():
             return True
         case BboxGeometry() | PolygonGeometry() | PolylineGeometry() | ClassificationGeometry():
             return False
