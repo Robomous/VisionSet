@@ -27,6 +27,7 @@ what each one exposes. This page says, step by step, which surface can do what.
 | Work a job: read assets, set progress | yes | yes | `job next`, `job mark` | `next_pending_assets`, `set_asset_progress` |
 | Create and edit annotations | yes | yes | **no** | `add_annotations`, `update_annotations`, `delete_annotations` |
 | See the image | yes | yes | no | `get_asset_image` |
+| Camera calibration of a source or an asset | - | `GET/PUT/DELETE .../calibration` | `calibration show/set/clear` | `get_calibration`, `set_calibration`, `clear_calibration` |
 | Pre-label with a model | yes | yes | `batch pre-label`, `job pre-label` | `pre_label_batch`, `pre_label_job` |
 | Configure model connections | yes | yes | `inference ...` | `*_inference_connection`, `download_connection_weights` |
 | Complete a batch and promote | yes | yes | `batch complete --promote` | `complete_batch`, `promote_batch` |

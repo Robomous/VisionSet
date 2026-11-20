@@ -46,6 +46,7 @@ from visionset.kernel.domain import (
 from visionset.kernel.ports import THUMBNAIL_FORMAT
 from visionset.kernel.services import (
     BatchService,
+    CalibrationService,
     DatasetService,
     IngestService,
     JobService,
@@ -54,11 +55,13 @@ from visionset.kernel.services import (
 from visionset.server.dependencies import RunnerDep, WorkspaceDep, protected_router
 from visionset.server.errors import documented
 from visionset.server.models import (
+    AssetCalibrationOut,
     AssetOut,
     AssetPage,
     BackgroundJobOut,
     BatchOut,
     BatchPage,
+    CalibrationBody,
     LimitQuery,
     OffsetQuery,
     window,
@@ -151,6 +154,56 @@ def get_asset(workspace: WorkspaceDep, project_id: UUID, asset_id: UUID) -> Asse
     id.
     """
     return AssetOut.of(IngestService(workspace).asset(project_id, asset_id))
+
+
+@router.get("/{asset_id}/calibration", responses=documented(404))
+def get_asset_calibration(
+    workspace: WorkspaceDep, project_id: UUID, asset_id: UUID
+) -> AssetCalibrationOut:
+    """The asset's own calibration, and the one that applies to it.
+
+    `override` is the asset's own, null when it inherits; `effective` is the
+    override when there is one, else its source's, null when neither is stated.
+    An unknown project is 404 `PROJECT_NOT_FOUND` and an unknown asset 404
+    `ASSET_NOT_FOUND`.
+    """
+    return AssetCalibrationOut.of(
+        CalibrationService(workspace).asset_calibration(project_id, asset_id)
+    )
+
+
+@router.put("/{asset_id}/calibration", responses=documented(404))
+def set_asset_calibration(
+    workspace: WorkspaceDep, project_id: UUID, asset_id: UUID, body: CalibrationBody
+) -> AssetCalibrationOut:
+    """State this asset's own calibration, overriding its source's and replacing any override.
+
+    The only way a calibration reaches an imported asset, which has no source.
+    One measured at a size other than the asset's is 422
+    `CALIBRATION_RESOLUTION_MISMATCH`; a rotation that is not a proper rotation,
+    or a non-positive focal length, is 422 `VALIDATION_ERROR`. An unknown
+    project is 404 `PROJECT_NOT_FOUND` and an unknown asset 404 `ASSET_NOT_FOUND`.
+    """
+    return AssetCalibrationOut.of(
+        CalibrationService(workspace).set_asset_calibration(project_id, asset_id, body.to_domain())
+    )
+
+
+@router.delete(
+    "/{asset_id}/calibration",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=documented(404, 409),
+)
+def clear_asset_calibration(workspace: WorkspaceDep, project_id: UUID, asset_id: UUID) -> None:
+    """Remove the asset's override, so it inherits its source's again. None is a 204 too.
+
+    Refused with 409 `CALIBRATION_IN_USE` when the asset holds 3D labels and its
+    source has no calibration to fall back to, and with 422
+    `CALIBRATION_RESOLUTION_MISMATCH` when the source's calibration was measured
+    at a size other than the asset's. An unknown project is 404
+    `PROJECT_NOT_FOUND` and an unknown asset 404 `ASSET_NOT_FOUND`.
+    """
+    CalibrationService(workspace).clear_asset_calibration(project_id, asset_id)
 
 
 @router.get("/{asset_id}/batches", responses=documented(404))

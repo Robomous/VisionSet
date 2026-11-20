@@ -452,6 +452,43 @@
         "type": "string",
         "x-visionset-open": true
       },
+      "AssetCalibrationOut": {
+        "description": "An asset's own override, and the calibration that applies to it.",
+        "properties": {
+          "asset_id": {
+            "format": "uuid",
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "effective": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CalibrationOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "override": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CalibrationOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "asset_id",
+          "override",
+          "effective"
+        ],
+        "title": "AssetCalibrationOut",
+        "type": "object"
+      },
       "AssetClassCountOut": {
         "description": "How many labels of one class sit on a single asset.",
         "properties": {
@@ -1737,6 +1774,151 @@
         "title": "BySizeBody",
         "type": "object"
       },
+      "CalibrationBody": {
+        "additionalProperties": false,
+        "description": "A camera calibration, replaced whole. The sensor frame is OpenCV's.",
+        "properties": {
+          "distortion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DistortionBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "extrinsics": {
+            "$ref": "#/components/schemas/SensorExtrinsicsBody"
+          },
+          "intrinsics": {
+            "$ref": "#/components/schemas/CameraIntrinsicsBody"
+          }
+        },
+        "required": [
+          "intrinsics",
+          "extrinsics"
+        ],
+        "title": "CalibrationBody",
+        "type": "object"
+      },
+      "CalibrationOut": {
+        "description": "A camera calibration. The sensor frame is OpenCV's: x right, y down, z forward.",
+        "properties": {
+          "distortion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DistortionOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "extrinsics": {
+            "$ref": "#/components/schemas/SensorExtrinsicsOut"
+          },
+          "intrinsics": {
+            "$ref": "#/components/schemas/CameraIntrinsicsOut"
+          }
+        },
+        "required": [
+          "intrinsics",
+          "extrinsics",
+          "distortion"
+        ],
+        "title": "CalibrationOut",
+        "type": "object"
+      },
+      "CameraIntrinsicsBody": {
+        "additionalProperties": false,
+        "description": "Pinhole intrinsics in pixels, and the image size they were measured at.",
+        "properties": {
+          "cx": {
+            "title": "Cx",
+            "type": "number"
+          },
+          "cy": {
+            "title": "Cy",
+            "type": "number"
+          },
+          "fx": {
+            "title": "Fx",
+            "type": "number"
+          },
+          "fy": {
+            "title": "Fy",
+            "type": "number"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "skew": {
+            "default": 0.0,
+            "title": "Skew",
+            "type": "number"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fx",
+          "fy",
+          "cx",
+          "cy",
+          "width",
+          "height"
+        ],
+        "title": "CameraIntrinsicsBody",
+        "type": "object"
+      },
+      "CameraIntrinsicsOut": {
+        "description": "Pinhole intrinsics in pixels, and the image size they were measured at.",
+        "properties": {
+          "cx": {
+            "title": "Cx",
+            "type": "number"
+          },
+          "cy": {
+            "title": "Cy",
+            "type": "number"
+          },
+          "fx": {
+            "title": "Fx",
+            "type": "number"
+          },
+          "fy": {
+            "title": "Fy",
+            "type": "number"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "skew": {
+            "title": "Skew",
+            "type": "number"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fx",
+          "fy",
+          "cx",
+          "cy",
+          "skew",
+          "width",
+          "height"
+        ],
+        "title": "CameraIntrinsicsOut",
+        "type": "object"
+      },
       "ChangeKind": {
         "description": "Whether a change preserves the meaning of existing annotations.",
         "enum": [
@@ -2692,6 +2874,87 @@
           "classes"
         ],
         "title": "DatasetStatsOut",
+        "type": "object"
+      },
+      "DistortionBody": {
+        "additionalProperties": false,
+        "description": "OpenCV radial-tangential distortion coefficients.",
+        "properties": {
+          "k1": {
+            "title": "K1",
+            "type": "number"
+          },
+          "k2": {
+            "title": "K2",
+            "type": "number"
+          },
+          "k3": {
+            "default": 0.0,
+            "title": "K3",
+            "type": "number"
+          },
+          "model": {
+            "const": "plumb_bob",
+            "default": "plumb_bob",
+            "title": "Model",
+            "type": "string"
+          },
+          "p1": {
+            "title": "P1",
+            "type": "number"
+          },
+          "p2": {
+            "title": "P2",
+            "type": "number"
+          }
+        },
+        "required": [
+          "k1",
+          "k2",
+          "p1",
+          "p2"
+        ],
+        "title": "DistortionBody",
+        "type": "object"
+      },
+      "DistortionOut": {
+        "description": "OpenCV radial-tangential distortion coefficients.",
+        "properties": {
+          "k1": {
+            "title": "K1",
+            "type": "number"
+          },
+          "k2": {
+            "title": "K2",
+            "type": "number"
+          },
+          "k3": {
+            "title": "K3",
+            "type": "number"
+          },
+          "model": {
+            "const": "plumb_bob",
+            "title": "Model",
+            "type": "string"
+          },
+          "p1": {
+            "title": "P1",
+            "type": "number"
+          },
+          "p2": {
+            "title": "P2",
+            "type": "number"
+          }
+        },
+        "required": [
+          "model",
+          "k1",
+          "k2",
+          "p1",
+          "p2",
+          "k3"
+        ],
+        "title": "DistortionOut",
         "type": "object"
       },
       "DownloadSizeOut": {
@@ -5594,6 +5857,175 @@
         "title": "SchemaVersionPage",
         "type": "object"
       },
+      "SensorExtrinsicsBody": {
+        "additionalProperties": false,
+        "description": "Sensor to rig: a row-major 3x3 rotation and a translation in metres.",
+        "properties": {
+          "rotation": {
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              }
+            ],
+            "title": "Rotation",
+            "type": "array"
+          },
+          "translation": {
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Translation",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rotation",
+          "translation"
+        ],
+        "title": "SensorExtrinsicsBody",
+        "type": "object"
+      },
+      "SensorExtrinsicsOut": {
+        "description": "Sensor to rig: a row-major 3x3 rotation and a translation in metres.",
+        "properties": {
+          "rotation": {
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              }
+            ],
+            "title": "Rotation",
+            "type": "array"
+          },
+          "translation": {
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Translation",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rotation",
+          "translation"
+        ],
+        "title": "SensorExtrinsicsOut",
+        "type": "object"
+      },
       "SingleJobBody": {
         "additionalProperties": false,
         "description": "One job for the whole batch.",
@@ -5608,6 +6040,32 @@
           "kind"
         ],
         "title": "SingleJobBody",
+        "type": "object"
+      },
+      "SourceCalibrationOut": {
+        "description": "A source's calibration, null when none is stated.",
+        "properties": {
+          "calibration": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CalibrationOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "calibration"
+        ],
+        "title": "SourceCalibrationOut",
         "type": "object"
       },
       "SourceKind": {
@@ -12533,6 +12991,312 @@
         ]
       }
     },
+    "/projects/{project_id}/assets/{asset_id}/calibration": {
+      "delete": {
+        "description": "Remove the asset's override, so it inherits its source's again. None is a 204 too.\n\nRefused with 409 `CALIBRATION_IN_USE` when the asset holds 3D labels and its\nsource has no calibration to fall back to, and with 422\n`CALIBRATION_RESOLUTION_MISMATCH` when the source's calibration was measured\nat a size other than the asset's. An unknown project is 404\n`PROJECT_NOT_FOUND` and an unknown asset 404 `ASSET_NOT_FOUND`.",
+        "operationId": "clear_asset_calibration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Clear Asset Calibration",
+        "tags": [
+          "assets"
+        ]
+      },
+      "get": {
+        "description": "The asset's own calibration, and the one that applies to it.\n\n`override` is the asset's own, null when it inherits; `effective` is the\noverride when there is one, else its source's, null when neither is stated.\nAn unknown project is 404 `PROJECT_NOT_FOUND` and an unknown asset 404\n`ASSET_NOT_FOUND`.",
+        "operationId": "get_asset_calibration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetCalibrationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Asset Calibration",
+        "tags": [
+          "assets"
+        ]
+      },
+      "put": {
+        "description": "State this asset's own calibration, overriding its source's and replacing any override.\n\nThe only way a calibration reaches an imported asset, which has no source.\nOne measured at a size other than the asset's is 422\n`CALIBRATION_RESOLUTION_MISMATCH`; a rotation that is not a proper rotation,\nor a non-positive focal length, is 422 `VALIDATION_ERROR`. An unknown\nproject is 404 `PROJECT_NOT_FOUND` and an unknown asset 404 `ASSET_NOT_FOUND`.",
+        "operationId": "set_asset_calibration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalibrationBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetCalibrationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Asset Calibration",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
     "/projects/{project_id}/assets/{asset_id}/content": {
       "get": {
         "description": "The asset's own bytes, streamed.\n\nThe original that was ingested, not a re-encode \u2014 for a video frame that is\nthe JPEG the materializer wrote, which is the picture an annotator drew on and the\npicture an exporter ships.\n\n`Content-Type` comes from what the ingest actually probed. An asset written\nbefore the pipeline recorded a format is served as\n`application/octet-stream`, because inventing one would be worse than\nadmitting it.\n\nCached forever and never revalidated: identity is content, so these bytes\ncannot change. The `ETag` is the content hash.\n\nAn unknown project or asset is 404 \u2014 `PROJECT_NOT_FOUND` and\n`ASSET_NOT_FOUND` \u2014 and those are the only two. 404 `WORKSPACE_CORRUPT` is\nnot among the answers: a recorded hash with no blob behind it is a guarantee\nfailing, and is 500.",
@@ -16229,6 +16993,282 @@
           }
         ],
         "summary": "Get Source",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
+    "/sources/{source_id}/calibration": {
+      "delete": {
+        "description": "Remove the source's calibration. Clearing one that is not there is a 204 too.\n\nRefused with 409 `CALIBRATION_IN_USE` while an asset inheriting it holds 3D\nlabels; replacing it with `PUT` stays allowed. An unknown source is 404\n`SOURCE_NOT_FOUND`.",
+        "operationId": "clear_source_calibration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Clear Source Calibration",
+        "tags": [
+          "sources"
+        ]
+      },
+      "get": {
+        "description": "The camera calibration stated for this source; `calibration` is null when none is.\n\nAn unknown source is 404 `SOURCE_NOT_FOUND`.",
+        "operationId": "get_source_calibration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceCalibrationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Source Calibration",
+        "tags": [
+          "sources"
+        ]
+      },
+      "put": {
+        "description": "State the camera behind every frame of this source, replacing any already stated.\n\nEvery asset of the source that has no calibration of its own inherits it.\nCalibration is not part of the source's identity: registering the same files\nagain returns this source with its calibration untouched.\n\nA calibration measured at a size other than a clip's stored frame size, or\nthan an asset that would inherit it, is 422 `CALIBRATION_RESOLUTION_MISMATCH`.\nA rotation that is not a proper rotation, or a non-positive focal length, is\n422 `VALIDATION_ERROR`. An unknown source is 404 `SOURCE_NOT_FOUND`.",
+        "operationId": "set_source_calibration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalibrationBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceCalibrationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Source Calibration",
         "tags": [
           "sources"
         ]

@@ -11,7 +11,7 @@ error envelope, and the three gate words.
 
 ## Always offered
 
-63 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
+66 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
 
 | Tool | Takes | What it does |
 | --- | --- | --- |
@@ -49,6 +49,9 @@ error envelope, and the three gate words.
 | `next_pending_assets` | `job_id`, `count`? | Get the next assets in a job that nobody has annotated yet. |
 | `list_project_assets` | `project`, `limit`?, `offset`? | List every asset ingested into a project, whether or not any batch holds it. |
 | `get_asset_image` | `project`, `asset_id`, `full`? | Look at an asset's pixels, so you can annotate what is actually there. |
+| `get_calibration` | `project`, `source_id`?, `asset_id`? | Read the camera calibration of a source, or of one asset. |
+| `set_calibration` | `project`, `calibration`, `source_id`?, `asset_id`? | State the camera calibration of a source, or override it for one asset. |
+| `clear_calibration` | `project`, `source_id`?, `asset_id`? | Remove the calibration of a source, or one asset's override. None is not an error. |
 | `list_asset_annotations` | `job_id`, `asset_id` | List the annotations already written on one asset of a job. |
 | `add_annotations` | `job_id`, `annotations` | Write new annotations into a job. All succeed together or none are written. |
 | `update_annotations` | `job_id`, `annotations` | Replace existing annotations wholesale. All succeed together or none are written. |

@@ -44,6 +44,7 @@ anything used it.
 | `registered_at` | timezone-aware UTC, the **first** registration |
 | `capture_params` | opaque operator-supplied provenance; nothing branches on it |
 | `video` | a `VideoProvenance`, present exactly when `kind` is `video` |
+| `calibration` | the camera behind its frames, or `None` - see [Camera calibration](#camera-calibration) |
 
 `locator` is the domain's name for what used to be unconditionally `path`, and the rename is the
 point: a directory's locator is a canonical filesystem path, `canonical_path`-normalized, and this
@@ -216,6 +217,40 @@ per frame: each one is decoded by `ImageProcessor` as it is staged, and a frame 
 decode, or that decodes to something other than its own declared size, is refused there. Anything
 that treats a successful `start` as proof a clip will fully materialize is wrong, on the same
 terms the old registration warning stated it.
+
+## Camera calibration
+
+A 3D label is read against the camera that took its image, so a source can carry a
+`Calibration` and an asset can override it - the rule is
+[Three-dimensional labels are calibrated image labels](architecture/decisions/three-dimensional-labels-are-calibrated-image-labels.md).
+Nothing creates 3D labels yet; the calibration lands first so the geometry has something to be
+read against.
+
+| Part | Meaning |
+| --- | --- |
+| `intrinsics` | `fx`, `fy`, `cx`, `cy`, `skew` (default 0) in pixels, and the `width` x `height` they were measured at |
+| `extrinsics` | required: a row-major 3x3 `rotation` and a `translation` in metres, taking the sensor frame into the rig's: `p_rig = R p_sensor + t`. The rotation must be proper - orthonormal with determinant +1, to 1e-4 |
+| `distortion` | optional: `plumb_bob`, OpenCV's radial-tangential `k1`, `k2`, `p1`, `p2`, `k3` (default 0) |
+
+**The sensor frame is OpenCV's**: x right, y down, z forward along the optical axis, in metres.
+
+**An asset's effective calibration is its own override, else its source's, else none.** The
+override exists because an imported asset has no `source_id`, so it is the only way a calibration
+reaches one; it is curation rather than provenance, and replaceable.
+
+**Calibration is not identity.** It is outside the origin index like `capture_params`, and
+`register_images` takes none: registering the same directory again returns the same source with
+its calibration untouched, so a re-registration cannot re-interpret labels already drawn against
+it. `CalibrationService` is the one writer, and REST, the CLI and MCP each reach it through set,
+get and clear.
+
+| Refusal | When |
+| --- | --- |
+| `CALIBRATION_RESOLUTION_MISMATCH` (422) | the intrinsics were measured at a size other than an asset they would apply to - for a source, any of its assets with no override of its own, or a clip's stored frame size; for clearing an asset's override, the source calibration it would fall back to. An asset of unknown size takes any |
+| `CALIBRATION_IN_USE` (409) | clearing would leave an asset holding 3D labels with no calibration: a source's, while an inheriting asset holds them, or an asset's override when its source has none to fall back to. Replacing is always allowed |
+
+An asset ingested after its source was calibrated is not measured against it at ingest; the check
+runs when a calibration is stated.
 
 ## What is deliberately not here yet
 

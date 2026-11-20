@@ -52,6 +52,7 @@ from visionset.mcp import (
     annotations,
     assets,
     batches,
+    calibration,
     datasets,
     formats,
     imports,
@@ -125,6 +126,11 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     (jobs.next_pending_assets, READS),
     (assets.list_project_assets, READS),
     (assets.get_asset_image, READS),
+    (calibration.get_calibration, READS),
+    (calibration.set_calibration, WRITES),
+    # WRITES, not DESTROYS: it is refused while a label depends on it, and the
+    # value it removes is one an agent can state again.
+    (calibration.clear_calibration, WRITES),
     (annotations.list_asset_annotations, READS),
     (annotations.add_annotations, WRITES),
     (annotations.update_annotations, WRITES),

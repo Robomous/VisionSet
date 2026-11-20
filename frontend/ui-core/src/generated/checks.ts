@@ -57,6 +57,21 @@ export const checkAnnotationOut: Check<Schemas["AnnotationOut"]> =
 export const checkAnnotationPage: Check<Schemas["AnnotationPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkAnnotationOut)], "total": [true, isInteger] } as const);
 
+export const checkCameraIntrinsicsOut: Check<Schemas["CameraIntrinsicsOut"]> =
+  /*#__PURE__*/ object({ "cx": [true, isNumber], "cy": [true, isNumber], "fx": [true, isNumber], "fy": [true, isNumber], "height": [true, isInteger], "skew": [true, isNumber], "width": [true, isInteger] } as const);
+
+export const checkDistortionOut: Check<Schemas["DistortionOut"]> =
+  /*#__PURE__*/ object({ "k1": [true, isNumber], "k2": [true, isNumber], "k3": [true, isNumber], "model": [true, lit("plumb_bob")], "p1": [true, isNumber], "p2": [true, isNumber] } as const);
+
+export const checkSensorExtrinsicsOut: Check<Schemas["SensorExtrinsicsOut"]> =
+  /*#__PURE__*/ object({ "rotation": [true, tuple([tuple([isNumber, isNumber, isNumber] as const), tuple([isNumber, isNumber, isNumber] as const), tuple([isNumber, isNumber, isNumber] as const)] as const)], "translation": [true, tuple([isNumber, isNumber, isNumber] as const)] } as const);
+
+export const checkCalibrationOut: Check<Schemas["CalibrationOut"]> =
+  /*#__PURE__*/ object({ "distortion": [true, either([checkDistortionOut, isNull] as const)], "extrinsics": [true, checkSensorExtrinsicsOut], "intrinsics": [true, checkCameraIntrinsicsOut] } as const);
+
+export const checkAssetCalibrationOut: Check<Schemas["AssetCalibrationOut"]> =
+  /*#__PURE__*/ object({ "asset_id": [true, isString], "effective": [true, either([checkCalibrationOut, isNull] as const)], "override": [true, either([checkCalibrationOut, isNull] as const)] } as const);
+
 export const checkImageFormat: Check<Schemas["ImageFormat"]> =
   /*#__PURE__*/ oneOf(["jpeg", "png"] as const);
 
@@ -378,6 +393,9 @@ export const checkSchemaPublicationOut: Check<Schemas["SchemaPublicationOut"]> =
 export const checkSchemaVersionPage: Check<Schemas["SchemaVersionPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkSchemaVersionOut)], "total": [true, isInteger] } as const);
 
+export const checkSourceCalibrationOut: Check<Schemas["SourceCalibrationOut"]> =
+  /*#__PURE__*/ object({ "calibration": [true, either([checkCalibrationOut, isNull] as const)], "source_id": [true, isString] } as const);
+
 export const checkSourceKind: Check<Schemas["SourceKind"]> =
   /*#__PURE__*/ oneOf(["image_directory", "video"] as const);
 
@@ -438,6 +456,8 @@ export const checkAssignJob = checkJobOut;
 export const checkCancelBackgroundJob = checkBackgroundJobOut;
 export const checkCheckConnectionIntegrity = checkBackgroundJobOut;
 export const checkCheckExport = checkExportCompatibilityOut;
+export const checkClearAssetCalibration = checkNoContent;
+export const checkClearSourceCalibration = checkNoContent;
 export const checkCommitVideoImport = checkBatchOut;
 export const checkCompareSchemaVersions = checkSchemaDiffOut;
 export const checkCompleteBatch = checkBatchOut;
@@ -459,6 +479,7 @@ export const checkDownloadConnectionWeights = checkBackgroundJobOut;
 export const checkExportRelease = checkBackgroundJobOut;
 export const checkGetActiveSchema = checkSchemaVersionOut;
 export const checkGetAsset = checkAssetOut;
+export const checkGetAssetCalibration = checkAssetCalibrationOut;
 export const checkGetAssetContent = checkBlob;
 export const checkGetAssetThumbnail = checkBlob;
 export const checkGetBackgroundJob = checkBackgroundJobOut;
@@ -481,6 +502,7 @@ export const checkGetReleaseManifest = checkBlob;
 export const checkGetSchemaDraft = checkSchemaDraftOut;
 export const checkGetSchemaVersion = checkSchemaVersionOut;
 export const checkGetSource = checkSourceOut;
+export const checkGetSourceCalibration = checkSourceCalibrationOut;
 export const checkGetVideoImport = checkVideoImportOut;
 export const checkHealth: Check<operations["health"]["responses"][200]["content"]["application/json"]> =
   /*#__PURE__*/ mapOf(isString);
@@ -524,7 +546,9 @@ export const checkRenameProject = checkProjectOut;
 export const checkRepinBatch = checkBatchOut;
 export const checkResumeIngest = checkIngestJobOut;
 export const checkSaveSchemaDraft = checkSchemaDraftOut;
+export const checkSetAssetCalibration = checkAssetCalibrationOut;
 export const checkSetAssetProgress = checkAssetProgressOut;
+export const checkSetSourceCalibration = checkSourceCalibrationOut;
 export const checkStartBatch = checkBatchOut;
 export const checkStartIngest = checkIngestJobOut;
 export const checkStartJob = checkJobOut;

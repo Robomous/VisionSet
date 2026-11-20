@@ -9,6 +9,7 @@ is port-typed, so nothing above it can reach SQLAlchemy by accident.
 
 from visionset.kernel.services.annotation_service import AnnotationService
 from visionset.kernel.services.batch_service import BatchService
+from visionset.kernel.services.calibration_service import CalibrationService
 from visionset.kernel.services.dataset_service import DatasetService
 from visionset.kernel.services.import_service import ImportService
 from visionset.kernel.services.inference_connection_service import InferenceConnectionService
@@ -40,6 +41,7 @@ __all__ = [
     "WORKSPACE_ENV_VAR",
     "AnnotationService",
     "BatchService",
+    "CalibrationService",
     "DatasetService",
     "ImportService",
     "InferenceConnectionService",

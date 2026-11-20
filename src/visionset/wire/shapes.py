@@ -188,6 +188,53 @@ class Source(TypedDict):
 
 
 @closed
+class CameraIntrinsics(TypedDict):
+    fx: float
+    fy: float
+    cx: float
+    cy: float
+    skew: float
+    width: int
+    height: int
+
+
+@closed
+class SensorExtrinsics(TypedDict):
+    rotation: list[list[float]]
+    translation: list[float]
+
+
+@closed
+class Distortion(TypedDict):
+    model: Literal["plumb_bob"]
+    k1: float
+    k2: float
+    p1: float
+    p2: float
+    k3: float
+
+
+@closed
+class Calibration(TypedDict):
+    intrinsics: CameraIntrinsics
+    extrinsics: SensorExtrinsics
+    distortion: Distortion | None
+
+
+@closed
+class SourceCalibration(TypedDict):
+    source_id: str
+    calibration: Calibration | None
+
+
+@closed
+class AssetCalibration(TypedDict):
+    asset_id: str
+    override: Calibration | None
+    effective: Calibration | None
+
+
+@closed
 class IngestFailure(TypedDict):
     name: str
     kind: str

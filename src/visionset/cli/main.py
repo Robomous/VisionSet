@@ -11,6 +11,7 @@ from visionset import __version__
 from visionset.cli._errors import unexpected_failure
 from visionset.cli._output import document, reset_json_requested
 from visionset.cli.batches import batch_app
+from visionset.cli.calibration import calibration_app
 from visionset.cli.export import export
 from visionset.cli.formats import format_app
 from visionset.cli.imports import import_dataset
@@ -83,6 +84,7 @@ app.add_typer(project_app, name="project")
 app.add_typer(schema_app, name="schema")
 app.command("ingest")(ingest)
 app.command("import")(import_dataset)
+app.add_typer(calibration_app, name="calibration")
 app.add_typer(batch_app, name="batch")
 app.add_typer(job_app, name="job")
 app.add_typer(release_app, name="release")

@@ -49,6 +49,7 @@ from visionset.kernel.domain import (
     BackgroundJob,
     BackgroundJobState,
     Batch,
+    Calibration,
     ConnectionSetupState,
     ConnectionType,
     Dataset,
@@ -389,6 +390,14 @@ def _video_to_json(video: VideoProvenance | None) -> dict[str, Any] | None:
     return dump
 
 
+def _calibration_to_json(calibration: Calibration | None) -> dict[str, Any] | None:
+    return None if calibration is None else calibration.model_dump(mode="json")
+
+
+def _calibration_from_json(stored: dict[str, Any] | None) -> Calibration | None:
+    return None if stored is None else Calibration.model_validate(stored)
+
+
 def _source_to_row(entity: Source) -> t.Base:
     return t.SourceRow(
         id=entity.id,
@@ -404,6 +413,7 @@ def _source_to_row(entity: Source) -> t.Base:
         registered_at=entity.registered_at.isoformat(),
         capture_params=dict(entity.capture_params),
         video=_video_to_json(entity.video),
+        calibration=_calibration_to_json(entity.calibration),
     )
 
 
@@ -418,6 +428,7 @@ def _source_to_domain(_: Session, row: Any) -> Source:
         registered_at=datetime.fromisoformat(row.registered_at),
         capture_params=row.capture_params,
         video=None if row.video is None else VideoProvenance.model_validate(row.video),
+        calibration=_calibration_from_json(row.calibration),
     )
 
 
@@ -476,6 +487,7 @@ def _asset_to_row(entity: Asset) -> t.Base:
         frame_timestamp=entity.frame_timestamp,
         thumbnail_hash=entity.thumbnail_hash,
         ingested_at=None if entity.ingested_at is None else entity.ingested_at.isoformat(),
+        calibration=_calibration_to_json(entity.calibration),
     )
 
 
@@ -494,6 +506,7 @@ def _asset_to_domain(_: Session, row: Any) -> Asset:
         frame_timestamp=row.frame_timestamp,
         thumbnail_hash=row.thumbnail_hash,
         ingested_at=None if row.ingested_at is None else datetime.fromisoformat(row.ingested_at),
+        calibration=_calibration_from_json(row.calibration),
     )
 
 

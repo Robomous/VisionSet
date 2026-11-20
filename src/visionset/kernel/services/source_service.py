@@ -93,7 +93,9 @@ class SourceService:
 
         Registering a directory already registered for this project returns the
         existing source. Differing ``capture_params`` are written onto it rather
-        than making a second one — see the module docstring.
+        than making a second one — see the module docstring. A stored
+        calibration is carried forward untouched; only ``CalibrationService``
+        writes one.
 
         ``display_name`` is what to *call* the source — the answer for an
         origin whose basename is unreadable, which over HTTP is every image

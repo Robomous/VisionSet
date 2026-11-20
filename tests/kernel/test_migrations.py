@@ -196,6 +196,8 @@ def _at_generation_one(path: Path) -> None:
         connection.execute(text("ALTER TABLE inference_connection DROP COLUMN credential_env"))
         connection.execute(text("ALTER TABLE project DROP COLUMN created_at"))
         connection.execute(text("ALTER TABLE inference_connection DROP COLUMN origin"))
+        connection.execute(text("ALTER TABLE source DROP COLUMN calibration"))
+        connection.execute(text("ALTER TABLE asset DROP COLUMN calibration"))
         connection.execute(text("DROP INDEX uq_source_project_kind_path_fps_ranges_scale"))
         connection.execute(
             text(
@@ -358,6 +360,59 @@ def test_a_failure_report_written_before_the_counts_were_retired_still_reads(
     migrated.close()
 
 
+def test_a_generation_20_file_gains_calibration_and_keeps_its_rows(tmp_path: Path) -> None:
+    """Migration 21, from the generation right before it rather than from one.
+
+    A source and an asset written at 20 read back through the domain with no
+    calibration, and the file then matches a fresh one exactly.
+    """
+    fresh = SqliteMetadataStore(tmp_path / "fresh.db")
+    fresh.initialize()
+    expected = _schema(fresh)
+    fresh.close()
+
+    old = tmp_path / "old.db"
+    store = SqliteMetadataStore(old)
+    store.initialize()
+    workspace_id, project_id, source_id, asset_id = uuid4(), uuid4(), uuid4(), uuid4()
+    ids = {"w": workspace_id.hex, "p": project_id.hex, "s": source_id.hex, "a": asset_id.hex}
+    with store.engine.begin() as connection:
+        connection.execute(text("ALTER TABLE source DROP COLUMN calibration"))
+        connection.execute(text("ALTER TABLE asset DROP COLUMN calibration"))
+        connection.execute(text(f"UPDATE {META_TABLE} SET format_version = 20"))
+        connection.execute(text("insert into workspace (id, name) values (:w, 'ws')"), ids)
+        connection.execute(
+            text("insert into project (id, workspace_id, name) values (:p, :w, 'rig')"), ids
+        )
+        connection.execute(
+            text(
+                "insert into source (id, project_id, kind, path, registered_at, capture_params)"
+                " values (:s, :p, 'image_directory', '/rig', '2026-01-01T00:00:00+00:00', '{}')"
+            ),
+            ids,
+        )
+        connection.execute(
+            text(
+                "insert into asset (id, project_id, modality, content_hash, uri, source_id)"
+                f" values (:a, :p, 'image', '{'a' * 64}', '/rig/a.png', :s)"
+            ),
+            ids,
+        )
+    store.close()
+
+    migrated = SqliteMetadataStore(old)
+    migrated.initialize()
+    assert migrated.format_version == FORMAT_VERSION
+    assert MIGRATIONS[20].name == "calibration"
+    assert _schema(migrated) == expected
+    with migrated.unit_of_work() as uow:
+        source = uow.sources.get(source_id)
+        asset = uow.assets.get(asset_id)
+    assert source is not None and source.calibration is None
+    assert asset is not None and asset.calibration is None and asset.source_id == source_id
+    migrated.close()
+
+
 def test_the_reshaped_source_index_still_refuses_a_duplicate_origin(tmp_path: Path) -> None:
     """Migration 16 exercised for real: the index it creates has teeth on an old file.
 
@@ -473,8 +528,8 @@ _DECLARED_TAILS = {
     # three deep and its *order* is the assertion — swapping any two would split
     # the ``create_all`` path from the migration path.
     "annotation_schema": ["description", "created_at", "provenance"],
-    "source": ["display_name"],
-    "asset": ["thumbnail_hash", "ingested_at"],
+    "source": ["display_name", "calibration"],
+    "asset": ["thumbnail_hash", "ingested_at", "calibration"],
     # Migration 2 and migration 3, in that order. Both arrive by ``ALTER`` and
     # SQLite appends, so declaring either anywhere but last would split the
     # ``create_all`` path from the migration path — which is exactly what the
@@ -867,7 +922,7 @@ def test_a_generation_eighteen_file_gains_the_video_import_tables(tmp_path: Path
 
     migrated = SqliteMetadataStore(old)
     migrated.initialize()
-    assert migrated.format_version == FORMAT_VERSION == 20
+    assert migrated.format_version == FORMAT_VERSION
     with migrated.engine.connect() as connection:
         tables = set(inspect(connection).get_table_names())
     assert {"video_import", "video_import_frame"} <= tables

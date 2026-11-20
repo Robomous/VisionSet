@@ -59,6 +59,8 @@ from visionset.kernel import (
     BatchNotEditable,
     BatchNotFound,
     BatchNotInAnnotation,
+    CalibrationInUse,
+    CalibrationResolutionMismatch,
     ConfirmationRequired,
     ConstraintViolated,
     CorruptMedia,
@@ -417,6 +419,9 @@ _HTTP: Final[dict[type[VisionSetError], _Http]] = {
     # by the release's content — without the consent flag, because a label that
     # cannot follow its image is never something to consent to.
     PreprocessingStepUnsupportedGeometry: _Http(409),
+    # Change-the-state-and-resubmit: delete the 3D labels, or give their assets
+    # a calibration of their own, and the identical clear succeeds.
+    CalibrationInUse: _Http(409),
     # --- 422: the payload itself is wrong ----------------------------------
     InvalidName: _Http(422),
     InferenceConnectionInvalid: _Http(422),
@@ -468,6 +473,9 @@ _HTTP: Final[dict[type[VisionSetError], _Http]] = {
     # kind of prompt or another connection, this wants the same request with a
     # different point — and a client cannot tell them apart from a shared 422.
     PromptPointOutOfBounds: _Http(422),
+    # The resolution is a field of the payload, and the asset's size is fixed by
+    # its bytes, so no state change makes the same calibration fit.
+    CalibrationResolutionMismatch: _Http(422),
     # --- 502: the other end did not answer the contract ---------------------
     # The first 502 in this table, and the only honest status for it: the
     # request was fine and this program is fine; the upstream an `http`

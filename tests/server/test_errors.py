@@ -138,6 +138,8 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "LossyExportNotConsented": (409, "LOSSY_EXPORT_NOT_CONSENTED"),
     "AugmentationRequiresSplit": (409, "AUGMENTATION_REQUIRES_SPLIT"),
     "PreprocessingStepUnsupportedGeometry": (409, "PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY"),
+    "CalibrationInUse": (409, "CALIBRATION_IN_USE"),
+    "CalibrationResolutionMismatch": (422, "CALIBRATION_RESOLUTION_MISMATCH"),
     # 422 — the payload itself is wrong
     "AnnotationNotFromModel": (422, "ANNOTATION_NOT_FROM_MODEL"),
     "InvalidName": (422, "INVALID_NAME"),
