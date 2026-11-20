@@ -24,6 +24,8 @@ from visionset.kernel.domain import (
     Asset,
     BboxGeometry,
     Calibration,
+    Geometry,
+    Polyline3DGeometry,
     Source,
     SourceKind,
     VideoMetadata,
@@ -38,7 +40,9 @@ from visionset.kernel.services import (
     SourceService,
     WorkspaceService,
 )
-from visionset.kernel.services import calibration_service as calibration_module
+
+BOX = BboxGeometry(x=1, y=1, width=2, height=2)
+PATH_3D = Polyline3DGeometry(points=[(0.0, 1.0, 5.0), (0.0, 1.0, 9.0)])
 
 
 class Fixture:
@@ -56,14 +60,14 @@ class Fixture:
         self.assets = IngestService(self.workspace).assets(self.project.id)
         self.calibrations = CalibrationService(self.workspace)
 
-    def label(self, asset: Asset) -> None:
+    def label(self, asset: Asset, geometry: Geometry = BOX) -> None:
         with self.workspace.unit_of_work() as uow:
             uow.annotations.add(
                 Annotation(
                     asset_id=asset.id,
                     label_class="lane",
                     schema_version=1,
-                    geometry=BboxGeometry(x=1, y=1, width=2, height=2),
+                    geometry=geometry,
                     provenance="human",
                 )
             )
@@ -74,12 +78,6 @@ def fx(tmp_path: Path) -> Any:
     made = Fixture(tmp_path)
     yield made
     made.workspace.close()
-
-
-@pytest.fixture()
-def every_label_is_3d(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The seam a 3D geometry will occupy: every stored label needs a calibration."""
-    monkeypatch.setattr(calibration_module, "geometry_needs_calibration", lambda _: True)
 
 
 # --- the domain value --------------------------------------------------------
@@ -253,11 +251,10 @@ def test_clearing_a_source_calibration_falls_back_to_none(fx: Fixture) -> None:
     assert fx.calibrations.clear_source_calibration(fx.source.id).calibration is None
 
 
-@pytest.mark.usefixtures("every_label_is_3d")
 def test_clearing_a_source_calibration_its_3d_labels_need_is_refused(fx: Fixture) -> None:
     stated = calibration()
     fx.calibrations.set_source_calibration(fx.source.id, stated)
-    fx.label(fx.assets[0])
+    fx.label(fx.assets[0], PATH_3D)
 
     with pytest.raises(CalibrationInUse, match=str(fx.assets[0].id)):
         fx.calibrations.clear_source_calibration(fx.source.id)
@@ -265,13 +262,12 @@ def test_clearing_a_source_calibration_its_3d_labels_need_is_refused(fx: Fixture
     fx.calibrations.set_source_calibration(fx.source.id, calibration(fx=40.0))
 
 
-@pytest.mark.usefixtures("every_label_is_3d")
 def test_a_labelled_asset_with_its_own_calibration_does_not_block_clearing_the_source(
     fx: Fixture,
 ) -> None:
     fx.calibrations.set_source_calibration(fx.source.id, calibration())
     fx.calibrations.set_asset_calibration(fx.project.id, fx.assets[0].id, calibration(fx=9.0))
-    fx.label(fx.assets[0])
+    fx.label(fx.assets[0], PATH_3D)
 
     assert fx.calibrations.clear_source_calibration(fx.source.id).calibration is None
 
@@ -338,11 +334,10 @@ def test_an_asset_of_unknown_size_takes_any_calibration(fx: Fixture) -> None:
     )
 
 
-@pytest.mark.usefixtures("every_label_is_3d")
 def test_clearing_the_last_calibration_a_labelled_asset_has_is_refused(fx: Fixture) -> None:
     asset = fx.assets[0]
     fx.calibrations.set_asset_calibration(fx.project.id, asset.id, calibration())
-    fx.label(asset)
+    fx.label(asset, PATH_3D)
 
     with pytest.raises(CalibrationInUse):
         fx.calibrations.clear_asset_calibration(fx.project.id, asset.id)

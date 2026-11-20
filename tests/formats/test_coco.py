@@ -25,7 +25,6 @@ from tests.formats.test_ultralytics import CLASSES, Fixture, _box
 from visionset.formats.coco import ANNOTATIONS_DIRNAME, CocoExporter
 from visionset.kernel import ExportSourceUnreadable, LossyExportNotConsented
 from visionset.kernel.domain import (
-    MANIFEST_VERSION,
     Annotation,
     ClassificationGeometry,
     PolygonGeometry,
@@ -118,7 +117,8 @@ def test_the_info_block_names_the_release_it_was_cut_from(tmp_path: Path) -> Non
         # The important one: it names the exact frozen document, so an export can
         # be traced back to a release that can be re-verified.
         "manifest_hash": release.manifest_hash,
-        "manifest_version": MANIFEST_VERSION,
+        # A 2D release is written at the lowest version that expresses it.
+        "manifest_version": 3,
         "schema_version": 1,
     }
 

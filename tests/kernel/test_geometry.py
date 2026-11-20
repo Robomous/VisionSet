@@ -13,6 +13,7 @@ from visionset.kernel.domain import (
     GeometryType,
     LabelClass,
     PolygonGeometry,
+    Polyline3DGeometry,
     PolylineGeometry,
     VertexVisibility,
 )
@@ -24,6 +25,7 @@ VARIANTS = [
     BboxGeometry(x=1.0, y=2.0, width=10.0, height=20.0),
     PolygonGeometry(points=[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)]),
     PolylineGeometry(points=[(0.0, 0.0), (10.0, 5.0), (20.0, 30.0)]),
+    Polyline3DGeometry(points=[(-1.5, 1.2, 8.0), (-1.4, 1.2, 20.0)]),
     ClassificationGeometry(),
 ]
 
@@ -250,7 +252,7 @@ def test_the_domain_does_not_impose_one_format_s_ordering_rule() -> None:
 
 
 def test_unimplemented_and_unknown_geometry_tags_are_rejected() -> None:
-    for tag in ["mask", "keypoints", "cuboid_3d", "polyline_3d", "hexagon"]:
+    for tag in ["mask", "keypoints", "cuboid_3d", "hexagon"]:
         with pytest.raises(ValidationError, match="union_tag_invalid"):
             geometry_adapter.validate_python({"type": tag})
 
@@ -305,6 +307,7 @@ def test_implemented_geometries_names_exactly_the_variants_of_the_union() -> Non
         GeometryType.BBOX,
         GeometryType.POLYGON,
         GeometryType.POLYLINE,
+        GeometryType.POLYLINE_3D,
         GeometryType.CLASSIFICATION_TAG,
     }
     assert IMPLEMENTED_GEOMETRIES == from_the_union == expected

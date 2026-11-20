@@ -13,9 +13,8 @@ from tests.fixtures.calibration import calibration_document
 from tests.fixtures.media import write_image
 from tests.server._api import api_client
 
-from visionset.kernel.domain import Annotation, BboxGeometry
+from visionset.kernel.domain import Annotation, Polyline3DGeometry
 from visionset.kernel.services import IngestService, WorkspaceService
-from visionset.kernel.services import calibration_service as calibration_module
 
 
 class Rig:
@@ -148,9 +147,7 @@ def test_a_malformed_calibration_is_a_validation_error(rig: Rig, spoil: Any) -> 
     assert response.json()["code"] == "VALIDATION_ERROR"
 
 
-def test_clearing_a_calibration_3d_labels_need_is_409_by_code(
-    rig: Rig, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_clearing_a_calibration_3d_labels_need_is_409_by_code(rig: Rig) -> None:
     rig.client.put(rig.source_path, json=calibration_document())
     opened = WorkspaceService.open(rig.root)
     with opened.unit_of_work() as uow:
@@ -159,12 +156,11 @@ def test_clearing_a_calibration_3d_labels_need_is_409_by_code(
                 asset_id=UUID(rig.asset),
                 label_class="lane",
                 schema_version=1,
-                geometry=BboxGeometry(x=1, y=1, width=2, height=2),
+                geometry=Polyline3DGeometry(points=[(0.0, 1.0, 5.0), (0.0, 1.0, 9.0)]),
                 provenance="human",
             )
         )
     opened.close()
-    monkeypatch.setattr(calibration_module, "geometry_needs_calibration", lambda _: True)
 
     response = rig.client.delete(rig.source_path)
 

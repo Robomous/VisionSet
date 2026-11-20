@@ -83,9 +83,12 @@ from visionset.kernel.domain import (
     TransformedView,
     assign_split,
     canonical_bytes,
+    geometry_needs_calibration,
+    manifest_version_for,
     normalize_release_tag,
     plugin_manifest,
     recipe_hash,
+    require_calibration,
     sha256_hex,
     sha256_hex_of_stream,
     source_of_content_hash,
@@ -184,6 +187,10 @@ class ReleaseService:
             ReleaseTagTaken: this dataset already has a release under that tag.
             UnserializableManifest: an annotation carries a NaN or infinite
                 coordinate, which canonical JSON cannot express.
+            CalibrationMissing: an asset carrying a 3D label has no calibration,
+                neither its own nor its source's.
+            CalibrationResolutionMismatch: an asset carrying a 3D label has a
+                calibration measured at another size.
             WorkspaceCorrupt: the trunk holds an asset that is not stored.
         """
         cleaned = normalize_release_tag(tag)
@@ -210,6 +217,7 @@ class ReleaseService:
                     )
 
                 manifest = Manifest(
+                    manifest_version=manifest_version_for(manifest_assets),
                     schema_version=active.version,
                     classes=active.classes,
                     assets=manifest_assets,
@@ -886,18 +894,34 @@ def _manifest_assets(uow: UnitOfWork, assets: list[Asset]) -> tuple[ManifestAsse
     Nothing is sorted here. The canonical order is the manifest's own rule and
     the models apply it on construction, so this hands over the trunk's order and
     lets the artifact decide what it means — one place, not two that can drift.
+
+    An asset carrying a 3D label gets a copy of the calibration that applies to
+    it; every other asset gets none, whatever its source says, so a 2D release
+    hashes as it did before calibration existed.
+
+    Raises:
+        CalibrationMissing: an asset with a 3D label has no calibration.
+        CalibrationResolutionMismatch: its calibration was measured at another size.
     """
-    return tuple(
-        ManifestAsset(
-            asset_id=asset.id,
-            content_hash=asset.content_hash,
-            uri=asset.uri,
-            width=asset.width,
-            height=asset.height,
-            annotations=tuple(_manifest_annotation(a) for a in uow.annotations.list(asset.id)),
+    built = []
+    for asset in assets:
+        annotations = uow.annotations.list(asset.id)
+        calibration = None
+        if any(geometry_needs_calibration(a.geometry) for a in annotations):
+            source = None if asset.source_id is None else uow.sources.get(asset.source_id)
+            calibration = require_calibration(asset, source)
+        built.append(
+            ManifestAsset(
+                asset_id=asset.id,
+                content_hash=asset.content_hash,
+                uri=asset.uri,
+                width=asset.width,
+                height=asset.height,
+                annotations=tuple(_manifest_annotation(a) for a in annotations),
+                calibration=calibration,
+            )
         )
-        for asset in assets
-    )
+    return tuple(built)
 
 
 def _release_schema_blockers(

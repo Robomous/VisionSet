@@ -148,7 +148,9 @@ def preview_preprocessing(
     size the asset never recorded, or an asset whose bytes are gone, is 409
     `EXPORT_SOURCE_UNREADABLE`. A rendered image in an encoding this server
     cannot name is 422 `UNSUPPORTED_MEDIA`, and a step kind no installed driver
-    applies is 500 `PREPROCESSING_DRIVER_NOT_FOUND`.
+    applies is 500 `PREPROCESSING_DRIVER_NOT_FOUND`. An asset carrying a 3D label
+    with no calibration is 409 `CALIBRATION_MISSING`, and one whose calibration
+    was measured at another size is 422 `CALIBRATION_RESOLUTION_MISMATCH`.
     """
     preview = PreprocessingRecipeService(workspace).preview(
         project_id,

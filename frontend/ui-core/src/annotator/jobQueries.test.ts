@@ -87,6 +87,22 @@ describe("planSave", () => {
     expect(plan.deleted).toEqual([]);
   });
 
+  it("never plans a write for a 3D label, which loads and is carried past the scene", () => {
+    const lane3d: WireAnnotation = {
+      ...loaded("3d"),
+      geometry: { type: "polyline_3d", points: [[-1.5, 1.2, 8], [-1.4, 1.2, 20]], visibility: [2, 1] },
+    };
+    const server = [loaded("a"), lane3d];
+    const store = storeOf(server);
+    expect(store.document.annotations.has("3d")).toBe(false);
+    expect(isEmptyPlan(planSave(store.document, server))).toBe(true);
+
+    store.execute({ label: "drop", apply: (d) => ({ ...d, annotations: new Map() }) });
+    const plan = planSave(store.document, server);
+    expect(plan.deleted).toEqual(["a"]);
+    expect(plan.updated).toEqual([]);
+  });
+
   it("plans a delete for one the server has and the document does not", () => {
     const server = [loaded("a"), loaded("b")];
     const store = storeOf(server);

@@ -87,7 +87,9 @@ from visionset.kernel.domain import (
     AssetProgress,
     Batch,
     ClassificationGeometry,
+    geometry_needs_calibration,
     progress_after_annotating,
+    require_calibration,
 )
 from visionset.kernel.domain.geometry import geometry_intersects_asset
 from visionset.kernel.domain.schema_validation import validate_schema_annotation
@@ -174,6 +176,10 @@ class AnnotationService:
             AssetNotInJob: an annotation names an asset the job does not carry.
             AssetNotWritable: an asset's progress says its labeling is over.
             InvalidAnnotation: an annotation does not satisfy the pinned version.
+            CalibrationMissing: a 3D label names an asset with no calibration,
+                neither its own nor its source's.
+            CalibrationResolutionMismatch: a 3D label names an asset whose
+                calibration was measured at another size.
             WorkspaceCorrupt: the open batch has no pinned schema version.
         """
         with self._workspace.unit_of_work() as uow:
@@ -257,6 +263,10 @@ class AnnotationService:
                 trunk, whose labels another batch confirmed.
             AnnotationNotFromModel: an annotation does not carry model provenance.
             InvalidAnnotation: an annotation does not satisfy the pinned version.
+            CalibrationMissing: a 3D label names an asset with no calibration,
+                neither its own nor its source's.
+            CalibrationResolutionMismatch: a 3D label names an asset whose
+                calibration was measured at another size.
             StaleWrite: an asset moved between this call's read and its write.
             WorkspaceCorrupt: the open batch has no pinned schema version.
         """
@@ -327,6 +337,10 @@ class AnnotationService:
             AssetNotWritable: an asset is in the dataset's trunk or in another batch.
             InvalidAnnotation: an annotation is not an import's, or does not
                 satisfy the active schema.
+            CalibrationMissing: a 3D label names an asset with no calibration,
+                neither its own nor its source's.
+            CalibrationResolutionMismatch: a 3D label names an asset whose
+                calibration was measured at another size.
             SchemaNotFound: the project has no schema yet.
         """
         with self._workspace.unit_of_work() as uow:
@@ -344,6 +358,10 @@ class AnnotationService:
             AssetNotWritable: an asset is in the dataset's trunk or in another batch.
             InvalidAnnotation: an annotation is not an import's, or does not
                 satisfy the active schema.
+            CalibrationMissing: a 3D label names an asset with no calibration,
+                neither its own nor its source's.
+            CalibrationResolutionMismatch: a 3D label names an asset whose
+                calibration was measured at another size.
             SchemaNotFound: the project has no schema yet.
         """
         self._batches.hold_draft(uow, batch_id)
@@ -399,6 +417,10 @@ class AnnotationService:
             AssetNotWritable: an asset's progress says its labeling is over.
             InvalidAnnotation: a replacement does not satisfy the pinned version,
                 or claims a ``provenance`` other than the stored one.
+            CalibrationMissing: a 3D label names an asset with no calibration,
+                neither its own nor its source's.
+            CalibrationResolutionMismatch: a 3D label names an asset whose
+                calibration was measured at another size.
             WorkspaceCorrupt: the open batch has no pinned schema version.
         """
         with self._workspace.unit_of_work() as uow:
@@ -649,12 +671,22 @@ def _require_writable(job: AnnotationJob, asset_id: UUID) -> None:
 
 
 def _require_geometry_on_asset(uow: UnitOfWork, annotation: Annotation) -> None:
-    """Refuse a spatial annotation wholly outside its measured asset."""
+    """Refuse a spatial annotation wholly outside its measured asset, or a 3D one
+    on an asset with no calibration that fits it.
+
+    Raises:
+        CalibrationMissing: a 3D label on an asset with no effective calibration.
+        CalibrationResolutionMismatch: the effective calibration was measured at
+            a size other than the asset's.
+    """
     asset = uow.assets.get(annotation.asset_id)
     if asset is None:
         raise WorkspaceCorrupt(
             f"annotation {annotation.id} names asset {annotation.asset_id}, which does not exist"
         )
+    if geometry_needs_calibration(annotation.geometry):
+        source = None if asset.source_id is None else uow.sources.get(asset.source_id)
+        require_calibration(asset, source)
     if not geometry_intersects_asset(annotation.geometry, width=asset.width, height=asset.height):
         raise AnnotationGeometryOutOfBounds(
             f"a {annotation.geometry.type.value} annotation on asset {asset.id} has no overlap "

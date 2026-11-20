@@ -122,6 +122,7 @@ from visionset.kernel.domain import (
     Partition,
     PlumbBobDistortion,
     PolygonGeometry,
+    Polyline3DGeometry,
     PolylineGeometry,
     Precision,
     PreLabelRun,
@@ -2012,6 +2013,43 @@ class PolylineBody(BaseModel):
         )
 
 
+class Polyline3DBody(BaseModel):
+    """An open path of at least two `(x, y, z)` points, in order, in metres.
+
+    Points are in the asset's camera sensor frame — x right, y down, z forward —
+    and are read against the asset's effective calibration; writing one to an
+    asset with no calibration is refused with `CALIBRATION_MISSING`. No
+    image-frame bounds check applies. `visibility` follows the 2D polyline's
+    rules exactly.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal[GeometryType.POLYLINE_3D]
+    points: list[tuple[float, float, float]]
+    visibility: VertexVisibilities = optional_visibility_field()
+
+    @model_validator(mode="after")
+    def _one_state_per_point(self) -> Self:
+        check_vertex_visibility(self.visibility, self.points)
+        return self
+
+    def to_domain(self) -> Polyline3DGeometry:
+        if self.visibility is None:
+            return Polyline3DGeometry(points=self.points)
+        return Polyline3DGeometry(points=self.points, visibility=self.visibility)
+
+    @classmethod
+    def of(cls, geometry: Polyline3DGeometry) -> Self:
+        if geometry.visibility is None:
+            return cls(type=GeometryType.POLYLINE_3D, points=list(geometry.points))
+        return cls(
+            type=GeometryType.POLYLINE_3D,
+            points=list(geometry.points),
+            visibility=geometry.visibility,
+        )
+
+
 class ClassificationBody(BaseModel):
     """A whole-asset tag: a class with no coordinates."""
 
@@ -2028,11 +2066,14 @@ class ClassificationBody(BaseModel):
 
 
 GeometryBody = Annotated[
-    BboxBody | PolygonBody | PolylineBody | ClassificationBody, Field(discriminator="type")
+    BboxBody | PolygonBody | PolylineBody | Polyline3DBody | ClassificationBody,
+    Field(discriminator="type"),
 ]
 
 
-def geometry_of(geometry: Geometry) -> BboxBody | PolygonBody | PolylineBody | ClassificationBody:
+def geometry_of(
+    geometry: Geometry,
+) -> BboxBody | PolygonBody | PolylineBody | Polyline3DBody | ClassificationBody:
     """The wire form of a stored geometry, matched on the same discriminator."""
     match geometry:
         case BboxGeometry():
@@ -2041,6 +2082,8 @@ def geometry_of(geometry: Geometry) -> BboxBody | PolygonBody | PolylineBody | C
             return PolygonBody.of(geometry)
         case PolylineGeometry():
             return PolylineBody.of(geometry)
+        case Polyline3DGeometry():
+            return Polyline3DBody.of(geometry)
         case ClassificationGeometry():
             return ClassificationBody.of(geometry)
         case _:

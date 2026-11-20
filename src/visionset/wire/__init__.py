@@ -105,6 +105,7 @@ from visionset.kernel.domain import (
     IntegrityCheck,
     LabelClass,
     PolygonGeometry,
+    Polyline3DGeometry,
     PolylineGeometry,
     PreLabelRun,
     PreprocessingHints,
@@ -656,7 +657,8 @@ def asset_progress(asset_id: UUID, progress: AssetProgress) -> shapes.AssetProgr
 
 
 def geometry(value: Geometry) -> shapes.Geometry:
-    """One shape, tagged by ``type``. Coordinates are the asset's own pixels.
+    """One shape, tagged by ``type``. Coordinates are the asset's own pixels,
+    or metres in its camera's sensor frame for a 3D shape.
 
     Never normalized, at any surface — the domain's rule, and the one thing a
     caller reading a scaled-down preview has to know. ``match`` on the concrete
@@ -682,6 +684,14 @@ def geometry(value: Geometry) -> shapes.Geometry:
             if value.visibility is not None:
                 polyline["visibility"] = [_vertex_visibility(v) for v in value.visibility]
             return polyline
+        case Polyline3DGeometry():
+            path: shapes.Polyline3DGeometry = {
+                "type": "polyline_3d",
+                "points": [list(p) for p in value.points],
+            }
+            if value.visibility is not None:
+                path["visibility"] = [_vertex_visibility(v) for v in value.visibility]
+            return path
         case ClassificationGeometry():
             return {"type": "classification_tag"}
         case _:

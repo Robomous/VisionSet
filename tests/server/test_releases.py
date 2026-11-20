@@ -45,7 +45,6 @@ from tests.server._flow import (
 from tests.server._jobs import InlineDispatcher
 
 from visionset.formats._targets import self_target
-from visionset.kernel.domain import MANIFEST_VERSION
 from visionset.kernel.services.release_service import EXPORT_REPORT_FILENAME
 
 RECIPE = {"train": 0.6, "val": 0.2, "test": 0.2, "seed": 42}
@@ -260,7 +259,6 @@ def test_the_manifest_is_served_as_json_and_parses(client: TestClient, release: 
 
     assert response.headers["content-type"].startswith("application/json")
     document = response.json()
-    assert document["manifest_version"] == MANIFEST_VERSION
     assert document["schema_version"] == 1
     assert len(document["assets"]) == 3
 
@@ -268,7 +266,8 @@ def test_the_manifest_is_served_as_json_and_parses(client: TestClient, release: 
 def test_a_release_published_now_writes_manifest_version_three(
     client: TestClient, release: str
 ) -> None:
-    """The literal, not the constant: reverting the #352 bump must fail here."""
+    """The literal, not the constant: reverting the #352 bump must fail here, and so
+    must writing a 2D release at version 4, which only calibrated content needs."""
     document = client.get(f"/releases/{release}/manifest").json()
     assert document["manifest_version"] == 3
 

@@ -368,11 +368,20 @@ class PolylineGeometry(TypedDict):
 
 
 @closed
+class Polyline3DGeometry(TypedDict):
+    type: Literal["polyline_3d"]
+    points: list[list[float]]
+    visibility: NotRequired[list[Literal[0, 1, 2]]]
+
+
+@closed
 class ClassificationGeometry(TypedDict):
     type: Literal["classification_tag"]
 
 
-Geometry = BboxGeometry | PolygonGeometry | PolylineGeometry | ClassificationGeometry
+Geometry = (
+    BboxGeometry | PolygonGeometry | PolylineGeometry | Polyline3DGeometry | ClassificationGeometry
+)
 
 
 @closed

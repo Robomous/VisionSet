@@ -153,7 +153,8 @@ def publish_release(workspace: WorkspaceDep, dataset_id: UUID, body: ReleaseCrea
     and from the frozen asset set. Fractions must sum to 1.0.
 
     Tags are unique per dataset and **case-sensitive**, like a git tag: `v1.0` and
-    `V1.0` are two releases, and reusing one is 409 `RELEASE_TAG_TAKEN`. A dataset
+    `V1.0` are two releases, and reusing one is 409 `RELEASE_TAG_TAKEN`; a blank
+    tag is 422 `INVALID_NAME`. A dataset
     with no assets is 409 `EMPTY_RELEASE`; zero *annotations* is fine, since
     unlabeled images are legitimate training data. A project with no schema is 404
     `SCHEMA_NOT_FOUND`, because there is no version to pin, and an unknown dataset
@@ -171,6 +172,12 @@ def publish_release(workspace: WorkspaceDep, dataset_id: UUID, body: ReleaseCrea
     `RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA`, with per-class blockers in `detail`.
     Reconcile those annotations or restore a compatible active schema, then
     publish again.
+
+    Every asset carrying a 3D label must have a calibration — its own, else its
+    source's — which the release embeds beside it. Without one publishing is
+    409 `CALIBRATION_MISSING`, and with one measured at another size than the
+    asset it is 422 `CALIBRATION_RESOLUTION_MISMATCH`. A release with no 3D
+    label embeds no calibration and is written as manifest version 3.
     """
     release = ReleaseService(workspace).publish(
         dataset_id, body.tag, split=None if body.split is None else body.split.to_domain()

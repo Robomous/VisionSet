@@ -223,8 +223,8 @@ terms the old registration warning stated it.
 A 3D label is read against the camera that took its image, so a source can carry a
 `Calibration` and an asset can override it - the rule is
 [Three-dimensional labels are calibrated image labels](architecture/decisions/three-dimensional-labels-are-calibrated-image-labels.md).
-Nothing creates 3D labels yet; the calibration lands first so the geometry has something to be
-read against.
+A `polyline_3d` label (see [annotations](annotations.md#a-3d-polyline-is-read-against-a-calibration))
+is refused on an asset with no effective calibration.
 
 | Part | Meaning |
 | --- | --- |
@@ -249,8 +249,11 @@ get and clear.
 | `CALIBRATION_RESOLUTION_MISMATCH` (422) | the intrinsics were measured at a size other than an asset they would apply to - for a source, any of its assets with no override of its own, or a clip's stored frame size; for clearing an asset's override, the source calibration it would fall back to. An asset of unknown size takes any |
 | `CALIBRATION_IN_USE` (409) | clearing would leave an asset holding 3D labels with no calibration: a source's, while an inheriting asset holds them, or an asset's override when its source has none to fall back to. Replacing is always allowed |
 
-An asset ingested after its source was calibrated is not measured against it at ingest; the check
-runs when a calibration is stated.
+An asset ingested after its source was calibrated is not measured against it at ingest. The check
+runs when a calibration is stated, and again wherever a 3D label is read against one - a write,
+an import, a publish - so an asset that joined a calibrated source at another size refuses its
+first 3D label with `CALIBRATION_RESOLUTION_MISMATCH` rather than being read with the wrong
+focal lengths.
 
 ## What is deliberately not here yet
 

@@ -793,7 +793,8 @@ export interface paths {
          *     and from the frozen asset set. Fractions must sum to 1.0.
          *
          *     Tags are unique per dataset and **case-sensitive**, like a git tag: `v1.0` and
-         *     `V1.0` are two releases, and reusing one is 409 `RELEASE_TAG_TAKEN`. A dataset
+         *     `V1.0` are two releases, and reusing one is 409 `RELEASE_TAG_TAKEN`; a blank
+         *     tag is 422 `INVALID_NAME`. A dataset
          *     with no assets is 409 `EMPTY_RELEASE`; zero *annotations* is fine, since
          *     unlabeled images are legitimate training data. A project with no schema is 404
          *     `SCHEMA_NOT_FOUND`, because there is no version to pin, and an unknown dataset
@@ -811,6 +812,12 @@ export interface paths {
          *     `RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA`, with per-class blockers in `detail`.
          *     Reconcile those annotations or restore a compatible active schema, then
          *     publish again.
+         *
+         *     Every asset carrying a 3D label must have a calibration — its own, else its
+         *     source's — which the release embeds beside it. Without one publishing is
+         *     409 `CALIBRATION_MISSING`, and with one measured at another size than the
+         *     asset it is 422 `CALIBRATION_RESOLUTION_MISMATCH`. A release with no 3D
+         *     label embeds no calibration and is written as manifest version 3.
          */
         post: operations["publish_release"];
         delete?: never;
@@ -1508,6 +1515,11 @@ export interface paths {
          *     `accepted` has no exit, so correcting it means a new batch. Read
          *     `allowed_actions` on the batch's asset listing rather than guessing: it
          *     declares `annotate` exactly when this will be accepted.
+         *
+         *     A `polyline_3d` is read against its asset's calibration — the asset's own,
+         *     else its source's. With neither this is 409 `CALIBRATION_MISSING`, and with
+         *     one measured at another size than the asset it is 422
+         *     `CALIBRATION_RESOLUTION_MISMATCH`; set a fitting calibration and resend.
          */
         post: operations["add_annotations"];
         /**
@@ -1548,7 +1560,8 @@ export interface paths {
          *     and so are the two gates around it: a batch that is not open for annotation
          *     is 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409
          *     `JOB_FINISHED`. An edit is a write, and every gate that stops a new label
-         *     stops a replacement too.
+         *     stops a replacement too — including 409 `CALIBRATION_MISSING` and 422
+         *     `CALIBRATION_RESOLUTION_MISMATCH` for a `polyline_3d`.
          */
         patch: operations["update_annotations"];
         trace?: never;
@@ -2258,7 +2271,9 @@ export interface paths {
          *     size the asset never recorded, or an asset whose bytes are gone, is 409
          *     `EXPORT_SOURCE_UNREADABLE`. A rendered image in an encoding this server
          *     cannot name is 422 `UNSUPPORTED_MEDIA`, and a step kind no installed driver
-         *     applies is 500 `PREPROCESSING_DRIVER_NOT_FOUND`.
+         *     applies is 500 `PREPROCESSING_DRIVER_NOT_FOUND`. An asset carrying a 3D label
+         *     with no calibration is 409 `CALIBRATION_MISSING`, and one whose calibration
+         *     was measured at another size is 422 `CALIBRATION_RESOLUTION_MISMATCH`.
          */
         post: operations["preview_preprocessing"];
         delete?: never;
@@ -3474,7 +3489,7 @@ export interface components {
             /** Confidence */
             confidence?: number | null;
             /** Geometry */
-            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["ClassificationBody"];
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["ClassificationBody"];
             /** Label Class */
             label_class: string;
             /** Model Ref */
@@ -3511,7 +3526,7 @@ export interface components {
             /** Confidence */
             confidence: number | null;
             /** Geometry */
-            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["ClassificationBody"];
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["ClassificationBody"];
             /**
              * Id
              * Format: uuid
@@ -3556,7 +3571,7 @@ export interface components {
             /** Confidence */
             confidence?: number | null;
             /** Geometry */
-            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["ClassificationBody"];
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["ClassificationBody"];
             /**
              * Id
              * Format: uuid
@@ -5126,6 +5141,62 @@ export interface components {
             type: "polygon";
         };
         /**
+         * Polyline3DBody
+         * @description An open path of at least two `(x, y, z)` points, in order, in metres.
+         *
+         *     Points are in the asset's camera sensor frame — x right, y down, z forward —
+         *     and are read against the asset's effective calibration; writing one to an
+         *     asset with no calibration is refused with `CALIBRATION_MISSING`. No
+         *     image-frame bounds check applies. `visibility` follows the 2D polyline's
+         *     rules exactly.
+         */
+        Polyline3DBody: {
+            /** Points */
+            points: [
+                number,
+                number,
+                number
+            ][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "polyline_3d";
+            /** Visibility */
+            visibility?: components["schemas"]["VertexVisibility"][];
+        };
+        /**
+         * Polyline3DGeometry
+         * @description An open path of at least two ``(x, y, z)`` vertices in its asset's sensor frame.
+         *
+         *     A sibling of :class:`PolylineGeometry`, never a subclass: every
+         *     ``case PolylineGeometry()`` and ``isinstance`` check reads 2D pixel points,
+         *     and a 3D path must not reach one by inheritance.
+         *
+         *     Points are metres in the camera's OpenCV frame (x right, y down, z forward;
+         *     see :mod:`~visionset.kernel.domain.calibration`), and are interpretable only
+         *     against the asset's effective calibration. That is why no image-frame bounds
+         *     check applies: a point behind the camera, or outside the frame, is a legal
+         *     3D label. The path rules are the 2D polyline's — ordered, degenerate only
+         *     when every point is the same point — and ``visibility`` is the same
+         *     :class:`VertexVisibility` field under the same validator.
+         */
+        Polyline3DGeometry: {
+            /** Points */
+            points: [
+                number,
+                number,
+                number
+            ][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "polyline_3d";
+            /** Visibility */
+            visibility?: components["schemas"]["VertexVisibility"][];
+        };
+        /**
          * PolylineBody
          * @description An open path of at least two points, in order. Nothing joins the ends.
          *
@@ -5560,7 +5631,7 @@ export interface components {
             /** Confidence */
             confidence: number | null;
             /** Geometry */
-            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["ClassificationBody"];
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["ClassificationBody"];
             /** Id */
             id: string;
             /** Label Class */
@@ -6380,7 +6451,7 @@ export interface components {
                 number
             ][];
             /** Geometry */
-            geometry: components["schemas"]["BboxGeometry"] | components["schemas"]["PolygonGeometry"] | components["schemas"]["PolylineGeometry"] | components["schemas"]["ClassificationGeometry"];
+            geometry: components["schemas"]["BboxGeometry"] | components["schemas"]["PolygonGeometry"] | components["schemas"]["PolylineGeometry"] | components["schemas"]["Polyline3DGeometry"] | components["schemas"]["ClassificationGeometry"];
         };
         /**
          * SuggestionOut

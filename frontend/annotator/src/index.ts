@@ -11,6 +11,7 @@ export {
   parseAttribute,
   parseGeometry,
   parseLabelClass,
+  parseStoredGeometry,
   parseSchema,
   toAnnotationCreate,
   toAnnotationUpdate,

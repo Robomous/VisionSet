@@ -15,7 +15,13 @@
 import { describe, expect, it } from "vitest";
 
 import { fixture, sampleAnnotation as sample } from "./_fixture";
-import { ATTRIBUTE_KINDS, GEOMETRY_TYPES, IMPLEMENTED_GEOMETRY_TYPES } from "./types";
+import {
+  ATTRIBUTE_KINDS,
+  GEOMETRY_TYPES,
+  IMPLEMENTED_GEOMETRY_TYPES,
+  isDrawnAnnotation,
+  type Annotation,
+} from "./types";
 import {
   ANNOTATION_CREATE_KEYS,
   ANNOTATION_KEYS,
@@ -28,9 +34,16 @@ import {
   parseGeometry,
   parseLabelClass,
   parseSchema,
+  parseStoredGeometry,
   toAnnotationCreate,
   toAnnotationUpdate,
 } from "./wire";
+
+function drawn(raw: unknown): Annotation {
+  const annotation = parseAnnotation(raw);
+  if (!isDrawnAnnotation(annotation)) throw new Error("not an annotation the scene holds");
+  return annotation;
+}
 
 describe("the geometry vocabulary", () => {
   it("names every geometry the kernel can address", () => {
@@ -44,7 +57,7 @@ describe("the geometry vocabulary", () => {
   });
 
   it("keeps the carryable set a strict subset of the vocabulary", () => {
-    // Five members are roadmap. If this ever becomes an equality the two lists
+    // Three members are roadmap. If this ever becomes an equality the two lists
     // have collapsed into one and `parseGeometry` has nothing left to refuse.
     expect(IMPLEMENTED_GEOMETRY_TYPES.length).toBeLessThan(GEOMETRY_TYPES.length);
     for (const type of IMPLEMENTED_GEOMETRY_TYPES) {
@@ -120,17 +133,48 @@ describe("the divergences this file exists to keep closed", () => {
     expect(() => parseAnnotation(flattened)).toThrow(/does not declare/);
   });
 
-  it.each(["keypoints", "mask", "cuboid_3d", "polyline_3d"])(
+  it.each(["keypoints", "mask", "cuboid_3d"])(
     "refuses %s as declared-but-unimplemented rather than as unknown",
     (type) => {
       // The distinction is the point: the remedy for one is to wait for a
-      // variant, and for the other to fix the caller. Four names are still
+      // variant, and for the other to fix the caller. Three names are still
       // waiting on a variant.
       expect(() => parseGeometry({ type })).toThrow(WireFormatError);
       expect(() => parseGeometry({ type })).toThrow(/no implementation/);
       expect(() => parseGeometry({ type })).toThrow(/UNSUPPORTED_GEOMETRY/);
     },
   );
+});
+
+describe("a 3D polyline, carried and never drawn", () => {
+  const PATH = { type: "polyline_3d", points: [[-1.5, 1.2, 8], [-1.4, 1.2, 20]] };
+
+  it("parses as a stored geometry and goes back out byte for byte", () => {
+    const withVisibility = { ...PATH, visibility: [2, 1] };
+    for (const raw of [PATH, withVisibility]) {
+      expect(JSON.parse(JSON.stringify(parseStoredGeometry(raw)))).toStrictEqual(raw);
+    }
+  });
+
+  it("is refused by the scene's own parser, which draws pixels", () => {
+    expect(() => parseGeometry(PATH)).toThrow(/carried and not drawn/);
+  });
+
+  it("refuses a 2D point, a wrong visibility length and an undeclared key", () => {
+    expect(() => parseStoredGeometry({ ...PATH, points: [[1, 2], [3, 4]] })).toThrow(
+      /\[x, y, z\] triple/,
+    );
+    expect(() => parseStoredGeometry({ ...PATH, visibility: [2] })).toThrow(
+      /names 1 states for 2 points/,
+    );
+    expect(() => parseStoredGeometry({ ...PATH, z: 1 })).toThrow(/does not declare/);
+  });
+
+  it("is told apart from the drawn variants", () => {
+    const parsed = parseAnnotations(fixture.annotations);
+    const carried = parsed.filter((one) => !isDrawnAnnotation(one));
+    expect(carried.map((one) => one.geometry.type)).toEqual(["polyline_3d"]);
+  });
 });
 
 describe("strictness, so the editor cannot silently erase a field", () => {
@@ -491,7 +535,7 @@ describe("what leaves for the API", () => {
   it("drops id and schema_version from a create", () => {
     // Both are provisional locally and the service owns both, so a field here
     // would be one a client could set and never observe.
-    const annotation = parseAnnotation(fixture.annotations[0]);
+    const annotation = drawn(fixture.annotations[0]);
     const create = toAnnotationCreate(annotation);
     expect(Object.keys(create).sort()).toEqual([...ANNOTATION_CREATE_KEYS].sort());
     expect(create).not.toHaveProperty("id");
@@ -501,7 +545,7 @@ describe("what leaves for the API", () => {
   it("keeps the id on an update and drops asset_id", () => {
     // An update is addressed by id and by nothing else; the stored asset wins, so
     // moving a label to another asset is a delete and an add.
-    const annotation = parseAnnotation(fixture.annotations[0]);
+    const annotation = drawn(fixture.annotations[0]);
     const update = toAnnotationUpdate(annotation);
     expect(Object.keys(update).sort()).toEqual([...ANNOTATION_UPDATE_KEYS].sort());
     expect(update.id).toBe(annotation.id);
@@ -510,8 +554,7 @@ describe("what leaves for the API", () => {
   });
 
   it("carries the geometry through untouched", () => {
-    for (const raw of fixture.annotations) {
-      const annotation = parseAnnotation(raw);
+    for (const annotation of parseAnnotations(fixture.annotations).filter(isDrawnAnnotation)) {
       expect(toAnnotationCreate(annotation).geometry).toEqual(annotation.geometry);
       expect(toAnnotationUpdate(annotation).geometry).toEqual(annotation.geometry);
     }
@@ -536,7 +579,7 @@ describe("polyline vertex visibility", () => {
       (one) => one.geometry["type"] === "polyline" && !("visibility" in one.geometry),
     );
     expect(raw).toBeDefined();
-    const annotation = parseAnnotation(raw);
+    const annotation = drawn(raw);
     const create = JSON.parse(JSON.stringify(toAnnotationCreate(annotation)));
     const update = JSON.parse(JSON.stringify(toAnnotationUpdate(annotation)));
     expect(create.geometry).toStrictEqual(raw?.geometry);

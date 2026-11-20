@@ -11,14 +11,13 @@ import pytest
 from tests.cli._flow import ingested_batch, ok, payload, run, usage_error, workspace
 from tests.fixtures.calibration import calibration_document
 
-from visionset.kernel.domain import Annotation, BboxGeometry
+from visionset.kernel.domain import Annotation, Polyline3DGeometry
 from visionset.kernel.services import (
     IngestService,
     ProjectService,
     SourceService,
     WorkspaceService,
 )
-from visionset.kernel.services import calibration_service as calibration_module
 
 
 @pytest.fixture()
@@ -122,7 +121,7 @@ def test_a_calibration_measured_at_another_size_is_refused_by_code(
 
 
 def test_clearing_a_calibration_3d_labels_need_is_refused_by_code(
-    root: Path, tmp_path: Path, rig: tuple[str, str, str], monkeypatch: pytest.MonkeyPatch
+    root: Path, tmp_path: Path, rig: tuple[str, str, str]
 ) -> None:
     name, source, asset = rig
     ok(
@@ -142,12 +141,11 @@ def test_clearing_a_calibration_3d_labels_need_is_refused_by_code(
                 asset_id=UUID(asset),
                 label_class="lane",
                 schema_version=1,
-                geometry=BboxGeometry(x=1, y=1, width=2, height=2),
+                geometry=Polyline3DGeometry(points=[(0.0, 1.0, 5.0), (0.0, 1.0, 9.0)]),
                 provenance="human",
             )
         )
     opened.close()
-    monkeypatch.setattr(calibration_module, "geometry_needs_calibration", lambda _: True)
 
     refused = _refusal(root, "calibration", "clear", "-p", name, "--source", source)
 

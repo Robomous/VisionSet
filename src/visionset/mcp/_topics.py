@@ -260,17 +260,26 @@ no flag.
 ANNOTATION_GEOMETRY: Final = """\
 # Annotation geometry
 
-Applies to `add_annotations` and `update_annotations`. Every coordinate is in the
+Applies to `add_annotations` and `update_annotations`. Every 2D coordinate is in the
 asset's own pixels, never normalized. `type` selects the shape:
 
 - `bbox`: `x`, `y` (top-left corner), `width`, `height`.
 - `polygon`: `points`, at least three `[x, y]` pairs; the ends join.
 - `polyline`: `points`, at least two `[x, y]` pairs in order; the ends do not join.
+- `polyline_3d`: `points`, at least two `[x, y, z]` triples in order, in metres in the
+  camera's sensor frame (x right, y down, z forward), never pixels.
 - `classification_tag`: no coordinates.
+
+## 3D labels need a calibration
+
+A `polyline_3d` is read against its asset's calibration: the asset's own override
+when it has one, else its source's (`get_calibration`). Writing one to an asset with
+neither is refused with `CALIBRATION_MISSING`; `set_calibration` first. No image-frame
+bounds check applies to a 3D point.
 
 ## Polyline vertex visibility
 
-A polyline may carry `visibility`, one state per point and in the same order:
+A polyline or a `polyline_3d` may carry `visibility`, one state per point and in the same order:
 `0` unlabeled (nobody judged the vertex), `1` occluded (judged, and hidden), `2`
 visible (judged, and seen). Only those integers are accepted; `true`, `"2"` and
 `2.0` are refused, and so is `null`.

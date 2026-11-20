@@ -56,6 +56,7 @@ from visionset.kernel.domain import (
     LabelClass,
     OrphanGuard,
     PolygonGeometry,
+    Polyline3DGeometry,
     PolylineGeometry,
     PreprocessingPreview,
     PreprocessingRecipe,
@@ -309,11 +310,17 @@ POLYLINE_WITH_VISIBILITY = POLYLINE.model_copy(
     }
 )
 CLASSIFICATION = ClassificationGeometry()
+# Metres in the sensor frame, with a point behind the camera: a 3D label has no
+# pixel-frame bounds, and a projection that read it as pixels would show it.
+POLYLINE_3D = Polyline3DGeometry(
+    points=[(-1.75, 1.5, 6.0), (-1.7, 1.5, 18.25), (-1.6, 1.4, -2.0)],
+    visibility=(VertexVisibility.VISIBLE, VertexVisibility.VISIBLE, VertexVisibility.OCCLUDED),
+)
 
 # Every geometry variant gets its own sample rather than one standing for the
-# union: they are four components on the wire, and a projection that dropped
+# union: they are five components on the wire, and a projection that dropped
 # `points` would still round-trip through the bbox model.
-GEOMETRIES = (BBOX, POLYGON, POLYLINE, CLASSIFICATION)
+GEOMETRIES = (BBOX, POLYGON, POLYLINE, POLYLINE_3D, CLASSIFICATION)
 
 ANNOTATION = Annotation(
     asset_id=ASSET.id,

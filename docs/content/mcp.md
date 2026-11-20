@@ -454,8 +454,9 @@ geometry and the pre-processing steps alike. The domain models give the tag a de
 server corrects the schema it derives from them rather than publishing it as optional.
 
 **Only the geometries a class can use are offered.** `GeometryType` also names `mask`,
-`keypoints`, `cuboid_3d` and `polyline_3d`, reserved for geometries with no implementation yet.
-Every input schema here lists only `bbox`, `polygon`, `polyline` and `classification_tag`, and a
+`keypoints` and `cuboid_3d`, reserved for geometries with no implementation yet. Every input
+schema here lists only `bbox`, `polygon`, `polyline`, `polyline_3d` and `classification_tag`,
+and a
 reserved value that is sent anyway is refused by the kernel exactly as before
 (`UNSUPPORTED_GEOMETRY` when a version is published). The REST API keeps the full enum, because
 the browser groups and disables the reserved members rather than hiding them.
