@@ -34,14 +34,16 @@ from fastapi import File, Form, Response, UploadFile, status
 from visionset.jobs.ingest import JOB_TYPE as ingest_job_type
 from visionset.jobs.ingest import payload_for as ingest_payload_for
 from visionset.kernel.domain import BackgroundJobSpec
-from visionset.kernel.services import IngestService, SourceService
+from visionset.kernel.services import CalibrationService, IngestService, SourceService
 from visionset.server.dependencies import RunnerDep, WorkspaceDep, protected_router
 from visionset.server.errors import documented
 from visionset.server.models import (
     WIRE_TEXT_MAX_LENGTH,
+    CalibrationBody,
     IngestJobOut,
     IngestJobPage,
     IngestStart,
+    SourceCalibrationOut,
     SourceOut,
     SourcePage,
 )
@@ -105,6 +107,50 @@ def list_sources(workspace: WorkspaceDep, project_id: UUID) -> SourcePage:
 def get_source(workspace: WorkspaceDep, source_id: UUID) -> SourceOut:
     """The source with that id."""
     return SourceOut.of(SourceService(workspace).get(source_id))
+
+
+@router.get("/{source_id}/calibration", responses=documented(404))
+def get_source_calibration(workspace: WorkspaceDep, source_id: UUID) -> SourceCalibrationOut:
+    """The camera calibration stated for this source; `calibration` is null when none is.
+
+    An unknown source is 404 `SOURCE_NOT_FOUND`.
+    """
+    found = CalibrationService(workspace).source_calibration(source_id)
+    return SourceCalibrationOut.of(source_id, found)
+
+
+@router.put("/{source_id}/calibration", responses=documented(404))
+def set_source_calibration(
+    workspace: WorkspaceDep, source_id: UUID, body: CalibrationBody
+) -> SourceCalibrationOut:
+    """State the camera behind every frame of this source, replacing any already stated.
+
+    Every asset of the source that has no calibration of its own inherits it.
+    Calibration is not part of the source's identity: registering the same files
+    again returns this source with its calibration untouched.
+
+    A calibration measured at a size other than a clip's stored frame size, or
+    than an asset that would inherit it, is 422 `CALIBRATION_RESOLUTION_MISMATCH`.
+    A rotation that is not a proper rotation, or a non-positive focal length, is
+    422 `VALIDATION_ERROR`. An unknown source is 404 `SOURCE_NOT_FOUND`.
+    """
+    stored = CalibrationService(workspace).set_source_calibration(source_id, body.to_domain())
+    return SourceCalibrationOut.of(stored.id, stored.calibration)
+
+
+@router.delete(
+    "/{source_id}/calibration",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=documented(404, 409),
+)
+def clear_source_calibration(workspace: WorkspaceDep, source_id: UUID) -> None:
+    """Remove the source's calibration. Clearing one that is not there is a 204 too.
+
+    Refused with 409 `CALIBRATION_IN_USE` while an asset inheriting it holds 3D
+    labels; replacing it with `PUT` stays allowed. An unknown source is 404
+    `SOURCE_NOT_FOUND`.
+    """
+    CalibrationService(workspace).clear_source_calibration(source_id)
 
 
 @router.post(

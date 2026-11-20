@@ -167,9 +167,9 @@ class SchemaDraftRow(Base):
 class SourceRow(Base):
     """Registered origins: where a project's bytes came from.
 
-    ``display_name`` sits at the bottom rather than beside ``path``, where it
-    would read more naturally, because it is the newest column here — see the
-    module docstring's ordering rule.
+    ``display_name`` sits below ``video`` rather than beside ``path``, where it
+    would read more naturally, and ``calibration`` below it, because the newest
+    columns go last — see the module docstring's ordering rule.
     """
 
     __tablename__ = "source"
@@ -187,8 +187,12 @@ class SourceRow(Base):
     #: A ``VideoProvenance``, or NULL for anything that is not a clip.
     video: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     #: What a caller asked this source to be called; NULL means nobody said.
-    #: The newest column here, so it is declared last — see the class docstring.
+    #: Declared after ``video`` and before ``calibration`` — see the class docstring.
     display_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: A ``Calibration``, or NULL when nobody stated one. Never an origin-index
+    #: term: it is curation, so re-registering an origin must find the same row.
+    #: Migration 21 appends it, so it is declared last.
+    calibration: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
 
 #: One origin is one source: the backstop under ``SourceService``'s idempotency
@@ -288,7 +292,7 @@ class AssetRow(Base):
     # ``dataset_member``, ``annotation_job_asset``), and under
     # ``PRAGMA foreign_keys = ON`` a ``DROP TABLE`` runs an implicit ``DELETE``
     # that takes all four silently. So a column added here arrives by ``ALTER``,
-    # goes last, and cannot carry a foreign key — the six below are in that
+    # goes last, and cannot carry a foreign key — the seven below are in that
     # position already, and ``source_id`` says what the last part costs.
     #: The decoded format, never the filename's suffix.
     format: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -335,6 +339,9 @@ class AssetRow(Base):
     #: project's assets after
     #: ``Repository.list`` has already read them.
     ingested_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: The asset's own ``Calibration``, overriding its source's; NULL for none.
+    #: Migration 21 appends it, so it is declared last.
+    calibration: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
 
 #: The same bytes are the same asset: the backstop under the ingest pipeline's

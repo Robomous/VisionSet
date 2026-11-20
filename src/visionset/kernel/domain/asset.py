@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
+from visionset.kernel.domain.calibration import Calibration
 from visionset.kernel.domain.media import ImageFormat
 
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
@@ -87,9 +88,16 @@ class Asset(BaseModel):
     #: Defaulted to ``None`` and stamped by ``IngestService`` rather than by a
     #: ``default_factory``: a factory would make every ``Asset(...)`` built
     #: anywhere claim an arrival, and this column's whole value is that NULL stays
-    #: NULL. Declared last, after ``thumbnail_hash``, because it arrives by
-    #: ``ALTER TABLE``.
+    #: NULL. Declared after ``thumbnail_hash`` and before ``calibration``, in
+    #: the order the columns arrive by ``ALTER TABLE``.
     ingested_at: datetime | None = None
+    #: This asset's own camera calibration, overriding its source's.
+    #:
+    #: **Curation, not provenance**: it is stated after the fact, may be
+    #: replaced, and is the only route by which a calibration reaches an asset
+    #: with no ``source_id`` — every imported asset. See
+    #: ``effective_calibration`` for how the two are resolved.
+    calibration: Calibration | None = None
 
     @field_validator("content_hash", "thumbnail_hash")
     @classmethod

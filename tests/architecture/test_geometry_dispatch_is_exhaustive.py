@@ -28,6 +28,7 @@ from visionset.kernel.domain import (
     Task,
     VertexVisibility,
     check_vertex_visibility,
+    geometry_needs_calibration,
     preprocessing_transform,
 )
 from visionset.kernel.domain import geometry as geometry_module
@@ -76,6 +77,7 @@ def _intersects_past_the_finite_check(monkeypatch: pytest.MonkeyPatch) -> None:
 SITES: dict[str, Callable[[pytest.MonkeyPatch], object]] = {
     "geometry_intersects_asset": _intersects_past_the_finite_check,
     "coordinates_are_finite": lambda _: geometry_module._coordinates_are_finite(STAND_IN),
+    "geometry_needs_calibration": lambda _: geometry_needs_calibration(STAND_IN),
     "preprocessing scale": lambda _: preprocessing_transform._scaled(STAND_IN, 2.0, 2.0, 0.0, 0.0),
     "preprocessing mirror": lambda _: preprocessing_transform._mirrored(STAND_IN, 8.0),
     "preprocessing rotate": lambda _: preprocessing_transform._rotated_once(STAND_IN, 8.0),

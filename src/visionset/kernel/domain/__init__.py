@@ -27,6 +27,16 @@ from visionset.kernel.domain.batch import (
     BatchState,
     MembershipChange,
 )
+from visionset.kernel.domain.calibration import (
+    ROTATION_TOLERANCE,
+    AssetCalibration,
+    Calibration,
+    CameraIntrinsics,
+    PlumbBobDistortion,
+    SensorExtrinsics,
+    effective_calibration,
+    geometry_needs_calibration,
+)
 from visionset.kernel.domain.capabilities import (
     ASSET_MOVES,
     BATCH_GATES,
@@ -426,6 +436,14 @@ __all__ = [
     "AnnotationTotals",
     "AnnotationsWritten",
     "Asset",
+    "AssetCalibration",
+    "Calibration",
+    "CameraIntrinsics",
+    "PlumbBobDistortion",
+    "ROTATION_TOLERANCE",
+    "SensorExtrinsics",
+    "effective_calibration",
+    "geometry_needs_calibration",
     "AssetPrediction",
     "AssetProgress",
     "AssetSort",

@@ -547,6 +547,24 @@ class SourceNotFound(VisionSetError):
     """
 
 
+class CalibrationResolutionMismatch(VisionSetError):
+    """A calibration was measured at a resolution the asset it would apply to does not have.
+
+    Intrinsics scale with the image, so focal lengths measured on a 1920x1080
+    frame are wrong for the same camera's 960x540 frame. The remedy is a
+    calibration measured at, or rescaled to, the asset's own size.
+    """
+
+
+class CalibrationInUse(VisionSetError):
+    """Clearing this calibration would leave stored 3D labels with none to be read against.
+
+    Replacing a calibration is allowed; removing the last one an annotated asset
+    resolves to is not. The remedy is to delete those labels first, or to give
+    the assets a calibration of their own before clearing this one.
+    """
+
+
 class IngestJobNotFound(VisionSetError):
     """No ingest job with that id lives in this workspace.
 

@@ -73,12 +73,14 @@ from visionset.kernel.domain import (
     AnnotationSchema,
     AnnotationSummary,
     Asset,
+    AssetCalibration,
     AssetProgress,
     Attribute,
     Batch,
     BatchState,
     BboxGeometry,
     BlockingAsset,
+    Calibration,
     ClassCompatibility,
     ClassCount,
     ClassificationGeometry,
@@ -374,6 +376,53 @@ def source(value: Source) -> shapes.Source:
         "name": value.name,
         "registered_at": _moment(value.registered_at),
         "video": None if value.video is None else video_provenance(value.video),
+    }
+
+
+def calibration(value: Calibration) -> shapes.Calibration:
+    """A camera calibration, in the shape ``Calibration.model_validate`` reads back."""
+    distortion = value.distortion
+    return {
+        "intrinsics": {
+            "fx": value.intrinsics.fx,
+            "fy": value.intrinsics.fy,
+            "cx": value.intrinsics.cx,
+            "cy": value.intrinsics.cy,
+            "skew": value.intrinsics.skew,
+            "width": value.intrinsics.width,
+            "height": value.intrinsics.height,
+        },
+        "extrinsics": {
+            "rotation": [list(row) for row in value.extrinsics.rotation],
+            "translation": list(value.extrinsics.translation),
+        },
+        "distortion": None
+        if distortion is None
+        else {
+            "model": distortion.model,
+            "k1": distortion.k1,
+            "k2": distortion.k2,
+            "p1": distortion.p1,
+            "p2": distortion.p2,
+            "k3": distortion.k3,
+        },
+    }
+
+
+def source_calibration(source_id: UUID, value: Calibration | None) -> shapes.SourceCalibration:
+    """A source's calibration, ``None`` when nobody stated one."""
+    return {
+        "source_id": str(source_id),
+        "calibration": None if value is None else calibration(value),
+    }
+
+
+def asset_calibration(value: AssetCalibration) -> shapes.AssetCalibration:
+    """An asset's own override and the calibration that applies to it."""
+    return {
+        "asset_id": str(value.asset_id),
+        "override": None if value.override is None else calibration(value.override),
+        "effective": None if value.effective is None else calibration(value.effective),
     }
 
 

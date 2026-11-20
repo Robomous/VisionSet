@@ -2004,6 +2004,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/assets/{asset_id}/calibration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Asset Calibration
+         * @description The asset's own calibration, and the one that applies to it.
+         *
+         *     `override` is the asset's own, null when it inherits; `effective` is the
+         *     override when there is one, else its source's, null when neither is stated.
+         *     An unknown project is 404 `PROJECT_NOT_FOUND` and an unknown asset 404
+         *     `ASSET_NOT_FOUND`.
+         */
+        get: operations["get_asset_calibration"];
+        /**
+         * Set Asset Calibration
+         * @description State this asset's own calibration, overriding its source's and replacing any override.
+         *
+         *     The only way a calibration reaches an imported asset, which has no source.
+         *     One measured at a size other than the asset's is 422
+         *     `CALIBRATION_RESOLUTION_MISMATCH`; a rotation that is not a proper rotation,
+         *     or a non-positive focal length, is 422 `VALIDATION_ERROR`. An unknown
+         *     project is 404 `PROJECT_NOT_FOUND` and an unknown asset 404 `ASSET_NOT_FOUND`.
+         */
+        put: operations["set_asset_calibration"];
+        post?: never;
+        /**
+         * Clear Asset Calibration
+         * @description Remove the asset's override, so it inherits its source's again. None is a 204 too.
+         *
+         *     Refused with 409 `CALIBRATION_IN_USE` when the asset holds 3D labels and its
+         *     source has no calibration to fall back to, and with 422
+         *     `CALIBRATION_RESOLUTION_MISMATCH` when the source's calibration was measured
+         *     at a size other than the asset's. An unknown project is 404
+         *     `PROJECT_NOT_FOUND` and an unknown asset 404 `ASSET_NOT_FOUND`.
+         */
+        delete: operations["clear_asset_calibration"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/assets/{asset_id}/content": {
         parameters: {
             query?: never;
@@ -3116,6 +3161,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sources/{source_id}/calibration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Source Calibration
+         * @description The camera calibration stated for this source; `calibration` is null when none is.
+         *
+         *     An unknown source is 404 `SOURCE_NOT_FOUND`.
+         */
+        get: operations["get_source_calibration"];
+        /**
+         * Set Source Calibration
+         * @description State the camera behind every frame of this source, replacing any already stated.
+         *
+         *     Every asset of the source that has no calibration of its own inherits it.
+         *     Calibration is not part of the source's identity: registering the same files
+         *     again returns this source with its calibration untouched.
+         *
+         *     A calibration measured at a size other than a clip's stored frame size, or
+         *     than an asset that would inherit it, is 422 `CALIBRATION_RESOLUTION_MISMATCH`.
+         *     A rotation that is not a proper rotation, or a non-positive focal length, is
+         *     422 `VALIDATION_ERROR`. An unknown source is 404 `SOURCE_NOT_FOUND`.
+         */
+        put: operations["set_source_calibration"];
+        post?: never;
+        /**
+         * Clear Source Calibration
+         * @description Remove the source's calibration. Clearing one that is not there is a 204 too.
+         *
+         *     Refused with 409 `CALIBRATION_IN_USE` while an asset inheriting it holds 3D
+         *     labels; replacing it with `PUT` stays allowed. An unknown source is 404
+         *     `SOURCE_NOT_FOUND`.
+         */
+        delete: operations["clear_source_calibration"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sources/{source_id}/ingest-jobs": {
         parameters: {
             query?: never;
@@ -3503,6 +3591,19 @@ export interface components {
          * @enum {string}
          */
         AssetAction: "annotate" | "skip" | "restore" | "confirm" | "submit_for_review" | "accept" | "return_to_annotator" | (string & {});
+        /**
+         * AssetCalibrationOut
+         * @description An asset's own override, and the calibration that applies to it.
+         */
+        AssetCalibrationOut: {
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            asset_id: string;
+            effective: components["schemas"]["CalibrationOut"] | null;
+            override: components["schemas"]["CalibrationOut"] | null;
+        };
         /**
          * AssetClassCountOut
          * @description How many labels of one class sit on a single asset.
@@ -4022,6 +4123,67 @@ export interface components {
             size: number;
         };
         /**
+         * CalibrationBody
+         * @description A camera calibration, replaced whole. The sensor frame is OpenCV's.
+         */
+        CalibrationBody: {
+            distortion?: components["schemas"]["DistortionBody"] | null;
+            extrinsics: components["schemas"]["SensorExtrinsicsBody"];
+            intrinsics: components["schemas"]["CameraIntrinsicsBody"];
+        };
+        /**
+         * CalibrationOut
+         * @description A camera calibration. The sensor frame is OpenCV's: x right, y down, z forward.
+         */
+        CalibrationOut: {
+            distortion: components["schemas"]["DistortionOut"] | null;
+            extrinsics: components["schemas"]["SensorExtrinsicsOut"];
+            intrinsics: components["schemas"]["CameraIntrinsicsOut"];
+        };
+        /**
+         * CameraIntrinsicsBody
+         * @description Pinhole intrinsics in pixels, and the image size they were measured at.
+         */
+        CameraIntrinsicsBody: {
+            /** Cx */
+            cx: number;
+            /** Cy */
+            cy: number;
+            /** Fx */
+            fx: number;
+            /** Fy */
+            fy: number;
+            /** Height */
+            height: number;
+            /**
+             * Skew
+             * @default 0
+             */
+            skew: number;
+            /** Width */
+            width: number;
+        };
+        /**
+         * CameraIntrinsicsOut
+         * @description Pinhole intrinsics in pixels, and the image size they were measured at.
+         */
+        CameraIntrinsicsOut: {
+            /** Cx */
+            cx: number;
+            /** Cy */
+            cy: number;
+            /** Fx */
+            fx: number;
+            /** Fy */
+            fy: number;
+            /** Height */
+            height: number;
+            /** Skew */
+            skew: number;
+            /** Width */
+            width: number;
+        };
+        /**
          * ChangeKind
          * @description Whether a change preserves the meaning of existing annotations.
          * @enum {string}
@@ -4415,6 +4577,52 @@ export interface components {
              * Format: uuid
              */
             dataset_id: string;
+        };
+        /**
+         * DistortionBody
+         * @description OpenCV radial-tangential distortion coefficients.
+         */
+        DistortionBody: {
+            /** K1 */
+            k1: number;
+            /** K2 */
+            k2: number;
+            /**
+             * K3
+             * @default 0
+             */
+            k3: number;
+            /**
+             * Model
+             * @default plumb_bob
+             * @constant
+             */
+            model: "plumb_bob";
+            /** P1 */
+            p1: number;
+            /** P2 */
+            p2: number;
+        };
+        /**
+         * DistortionOut
+         * @description OpenCV radial-tangential distortion coefficients.
+         */
+        DistortionOut: {
+            /** K1 */
+            k1: number;
+            /** K2 */
+            k2: number;
+            /** K3 */
+            k3: number;
+            /**
+             * Model
+             * @constant
+             */
+            model: "plumb_bob";
+            /** P1 */
+            p1: number;
+            /** P2 */
+            p2: number;
         };
         /**
          * DownloadSizeOut
@@ -5928,6 +6136,66 @@ export interface components {
             total: number;
         };
         /**
+         * SensorExtrinsicsBody
+         * @description Sensor to rig: a row-major 3x3 rotation and a translation in metres.
+         */
+        SensorExtrinsicsBody: {
+            /** Rotation */
+            rotation: [
+                [
+                    number,
+                    number,
+                    number
+                ],
+                [
+                    number,
+                    number,
+                    number
+                ],
+                [
+                    number,
+                    number,
+                    number
+                ]
+            ];
+            /** Translation */
+            translation: [
+                number,
+                number,
+                number
+            ];
+        };
+        /**
+         * SensorExtrinsicsOut
+         * @description Sensor to rig: a row-major 3x3 rotation and a translation in metres.
+         */
+        SensorExtrinsicsOut: {
+            /** Rotation */
+            rotation: [
+                [
+                    number,
+                    number,
+                    number
+                ],
+                [
+                    number,
+                    number,
+                    number
+                ],
+                [
+                    number,
+                    number,
+                    number
+                ]
+            ];
+            /** Translation */
+            translation: [
+                number,
+                number,
+                number
+            ];
+        };
+        /**
          * SingleJobBody
          * @description One job for the whole batch.
          */
@@ -5937,6 +6205,18 @@ export interface components {
              * @enum {string}
              */
             kind: "single";
+        };
+        /**
+         * SourceCalibrationOut
+         * @description A source's calibration, null when none is stated.
+         */
+        SourceCalibrationOut: {
+            calibration: components["schemas"]["CalibrationOut"] | null;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
         };
         /**
          * SourceKind
@@ -10870,6 +11150,221 @@ export interface operations {
             };
         };
     };
+    get_asset_calibration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetCalibrationOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_asset_calibration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalibrationBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetCalibrationOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    clear_asset_calibration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     get_asset_content: {
         parameters: {
             query?: never;
@@ -13432,6 +13927,218 @@ export interface operations {
             };
             /** @description No such resource */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_source_calibration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceCalibrationOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_source_calibration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CalibrationBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceCalibrationOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    clear_source_calibration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -30,6 +30,7 @@ from uuid import uuid4
 
 import pytest
 from pydantic import BaseModel, TypeAdapter
+from tests.fixtures.calibration import calibration
 from tests.fixtures.samples import (
     ANNOTATION,
     ASSET,
@@ -79,6 +80,7 @@ from visionset.inference import (
 )
 from visionset.kernel.domain import (
     AnnotationSummary,
+    AssetCalibration,
     AssetProgress,
     BackgroundJobState,
     GeometryType,
@@ -180,6 +182,29 @@ PAIRS: list[tuple[str, Mapping[str, Any], type[BaseModel]]] = [
     # Both kinds, so a projection cannot pass by hardcoding one of them.
     ("ingest_failure_corrupt", wire.ingest_failure(CORRUPT_FAILURE), models.IngestFailureOut),
     ("asset", wire.asset(ASSET), models.AssetOut),
+    ("calibration", wire.calibration(calibration()), models.CalibrationOut),
+    (
+        "calibration_undistorted",
+        wire.calibration(calibration(distortion=False)),
+        models.CalibrationOut,
+    ),
+    (
+        "source_calibration",
+        wire.source_calibration(SOURCE.id, calibration()),
+        models.SourceCalibrationOut,
+    ),
+    (
+        "source_calibration_none",
+        wire.source_calibration(SOURCE.id, None),
+        models.SourceCalibrationOut,
+    ),
+    (
+        "asset_calibration",
+        wire.asset_calibration(
+            AssetCalibration(asset_id=ASSET.id, override=None, effective=calibration())
+        ),
+        models.AssetCalibrationOut,
+    ),
     (
         "batch_asset",
         wire.batch_asset(
@@ -430,6 +455,11 @@ SHAPES: dict[str, Any] = {
     "ingest_failure": shapes.IngestFailure,
     "ingest_failure_corrupt": shapes.IngestFailure,
     "asset": shapes.Asset,
+    "calibration": shapes.Calibration,
+    "calibration_undistorted": shapes.Calibration,
+    "source_calibration": shapes.SourceCalibration,
+    "source_calibration_none": shapes.SourceCalibration,
+    "asset_calibration": shapes.AssetCalibration,
     "batch_asset": shapes.BatchAsset,
     "progress_counts": shapes.ProgressCounts,
     "batch": shapes.Batch,

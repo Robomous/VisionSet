@@ -32,6 +32,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from visionset.kernel.domain.calibration import Calibration
 from visionset.kernel.domain.media import VideoMetadata
 from visionset.kernel.errors import WorkspaceCorrupt
 
@@ -294,6 +295,10 @@ class Source(BaseModel):
     value *does* refresh the stored one, because a label is curation, not
     provenance.
 
+    :attr:`calibration` is the camera behind every frame of this origin, or
+    ``None`` when nobody stated one. Curation, like ``display_name``, and also
+    outside the identity: registering the same directory again neither carries
+    nor changes it. ``CalibrationService`` is the one writer.
     """
 
     model_config = ConfigDict(validate_assignment=True)
@@ -306,6 +311,7 @@ class Source(BaseModel):
     registered_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     capture_params: dict[str, str] = Field(default_factory=dict)
     video: VideoProvenance | None = None
+    calibration: Calibration | None = None
 
     @property
     def name(self) -> str:

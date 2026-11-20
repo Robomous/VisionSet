@@ -37,6 +37,8 @@ visionset schema draft publish --project P [--kind K] [--revision N] [--allow-de
 
 visionset ingest DIRECTORY --project P [--batch-name NAME] [--start]
 visionset import FORMAT PATH --project P [--consent-lossy KIND]... [--dry-run]
+visionset calibration show|clear --project P --source SOURCE_ID|--asset ASSET_ID
+visionset calibration set FILE --project P --source SOURCE_ID|--asset ASSET_ID
 visionset batch list --project P
 visionset batch assets BATCH_ID [--job JOB_ID] [--progress STATE]...
 visionset batch approve BATCH_ID [--jobs-of N] [--start]
@@ -433,6 +435,17 @@ is named by a `--consent-lossy` (`class`, `geometry`, `label`, `image` or `attri
 nothing, prints the report as columns (`KIND SUBJECT COUNT REASON`, the plan under `--json`) and
 exits **1** when the same command without it would be refused, on `export --check`'s precedent.
 The batch id goes to stdout; a re-run that finds nothing new creates no batch and prints none.
+
+### `visionset calibration`
+
+`show`, `set FILE` and `clear`, each with `--project P` and exactly one of `--source` and
+`--asset` - the camera behind a source, or one asset's own override (see
+[sources.md](sources.md#camera-calibration)). `FILE` is the calibration as JSON, the shape
+`show --json` prints under `calibration` for a source and `override` for an asset; one that does
+not parse is a usage error (exit 2). `set` replaces whole. A calibration measured at a size other
+than an asset it would apply to - including the source's, when `clear --asset` would fall back to
+it - is refused with `CALIBRATION_RESOLUTION_MISMATCH`, and clearing
+one that 3D labels still resolve to with `CALIBRATION_IN_USE`.
 
 ### `visionset batch`
 

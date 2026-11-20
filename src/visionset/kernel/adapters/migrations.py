@@ -510,6 +510,18 @@ def _retire_partial_ingest_failures(connection: Connection) -> None:
             )
 
 
+def _add_calibration(connection: Connection) -> None:
+    """``source.calibration`` and ``asset.calibration``: a camera to read 3D labels against.
+
+    **Nothing to backfill.** No calibration could be stated before these
+    columns existed, so NULL is the truth for every existing row. Neither column
+    joins the source-origin index: a calibration is curation, and an origin
+    registered again must land on the same row whatever it says.
+    """
+    _add_column(connection, "source", "calibration")
+    _add_column(connection, "asset", "calibration")
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
     Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
@@ -535,6 +547,7 @@ MIGRATIONS: list[Migration] = [
         name="retire_partial_ingest_failures",
         upgrade=_retire_partial_ingest_failures,
     ),
+    Migration(version=21, name="calibration", upgrade=_add_calibration),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version

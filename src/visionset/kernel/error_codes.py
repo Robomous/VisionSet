@@ -42,6 +42,8 @@ ERROR_CODES: Final[Mapping[type[errors.VisionSetError], str]] = {
     errors.BatchNotEditable: "BATCH_NOT_EDITABLE",
     errors.BatchNotFound: "BATCH_NOT_FOUND",
     errors.BatchNotInAnnotation: "BATCH_NOT_IN_ANNOTATION",
+    errors.CalibrationInUse: "CALIBRATION_IN_USE",
+    errors.CalibrationResolutionMismatch: "CALIBRATION_RESOLUTION_MISMATCH",
     errors.ConfirmationRequired: "CONFIRMATION_REQUIRED",
     errors.ConstraintViolated: "CONSTRAINT_VIOLATED",
     errors.CorruptMedia: "CORRUPT_MEDIA",

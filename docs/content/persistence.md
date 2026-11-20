@@ -183,11 +183,15 @@ MIGRATIONS: list[Migration] = [
     Migration(version=15, name="connection_origin", upgrade=_add_connection_origin),
     Migration(version=16, name="source_clip_ranges", upgrade=_reshape_source_origin_index),
     Migration(version=17, name="preprocessing_recipes", upgrade=_add_preprocessing_recipes),
+    Migration(version=18, name="source_scale", upgrade=_add_source_scale),
+    Migration(version=19, name="video_imports", upgrade=_add_video_imports),
+    Migration(version=20, name="retire_partial_ingest_failures", upgrade=...),
+    Migration(version=21, name="calibration", upgrade=_add_calibration),
 ]
-FORMAT_VERSION: int = MIGRATIONS[-1].version  # 17
+FORMAT_VERSION: int = MIGRATIONS[-1].version  # 21
 ```
 
-**Generation 1 is the baseline, and the sixteen entries after it are ordinary migrations.** A long
+**Generation 1 is the baseline, and the twenty entries after it are ordinary migrations.** A long
 chain of generations got this schema to its present shape while VisionSet was unreleased.
 Every database they could have upgraded was disposable test data inside this repository, so
 what they actually bought was an idempotency argument and an undo line per generation, plus
@@ -226,6 +230,9 @@ canonical-ranges term, and backfills nothing — a row written before ranges exi
 `$.ranges` key, which the new index reads as the same `''` a whole-clip selection stores.
 Migration 17 creates the `preprocessing_recipes` table whole and backfills nothing: no recipe
 existed before it, and an export that applied none is what every earlier export was.
+Migration 21 appends a nullable JSON `calibration` column to `source` and to `asset`, and
+backfills nothing: no calibration could be stated before it. Neither column is a term of the
+source-origin index - see [sources.md](sources.md#camera-calibration).
 
 **There are no downgrade paths, deliberately.** Nothing walks a file backwards and the
 tests no longer do either. A downgrade is a compatibility promise and a promise is owed

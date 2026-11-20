@@ -68,6 +68,7 @@ from visionset.kernel.domain import (
     AnnotationSummary,
     Asset,
     AssetAction,
+    AssetCalibration,
     AssetProgress,
     AssetSort,
     AttentionItem,
@@ -84,6 +85,8 @@ from visionset.kernel.domain import (
     BlockingAsset,
     BySegments,
     BySize,
+    Calibration,
+    CameraIntrinsics,
     ChangeKind,
     ClassCompatibility,
     ClassCount,
@@ -117,6 +120,7 @@ from visionset.kernel.domain import (
     ModelCapability,
     ModelOrigin,
     Partition,
+    PlumbBobDistortion,
     PolygonGeometry,
     PolylineGeometry,
     Precision,
@@ -142,6 +146,7 @@ from visionset.kernel.domain import (
     SchemaDraft,
     SchemaProvenance,
     SchemaPublication,
+    SensorExtrinsics,
     SingleJob,
     Source,
     SourceKind,
@@ -854,6 +859,169 @@ class SourceOut(BaseModel):
 
 class SourcePage(Page[SourceOut]):
     """A page of sources."""
+
+
+# --- calibration --------------------------------------------------------------
+
+
+# Bounds are not restated: ``Calibration`` refuses them when ``to_domain()`` runs
+# inside the validator, which is what turns its pydantic error into a 422 rather
+# than a 500 — ``AnnotationCreate``'s arrangement.
+class CameraIntrinsicsBody(BaseModel):
+    """Pinhole intrinsics in pixels, and the image size they were measured at."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    fx: float
+    fy: float
+    cx: float
+    cy: float
+    skew: float = 0.0
+    width: int
+    height: int
+
+
+class SensorExtrinsicsBody(BaseModel):
+    """Sensor to rig: a row-major 3x3 rotation and a translation in metres."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    rotation: tuple[
+        tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]
+    ]
+    translation: tuple[float, float, float]
+
+
+class DistortionBody(BaseModel):
+    """OpenCV radial-tangential distortion coefficients."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model: Literal["plumb_bob"] = "plumb_bob"
+    k1: float
+    k2: float
+    p1: float
+    p2: float
+    k3: float = 0.0
+
+
+class CalibrationBody(BaseModel):
+    """A camera calibration, replaced whole. The sensor frame is OpenCV's."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    intrinsics: CameraIntrinsicsBody
+    extrinsics: SensorExtrinsicsBody
+    distortion: DistortionBody | None = None
+
+    @model_validator(mode="after")
+    def _the_domain_accepts_it(self) -> Self:
+        self.to_domain()
+        return self
+
+    def to_domain(self) -> Calibration:
+        return Calibration.model_validate(self.model_dump())
+
+
+class CameraIntrinsicsOut(BaseModel):
+    """Pinhole intrinsics in pixels, and the image size they were measured at."""
+
+    fx: float
+    fy: float
+    cx: float
+    cy: float
+    skew: float
+    width: int
+    height: int
+
+    @classmethod
+    def of(cls, value: CameraIntrinsics) -> Self:
+        return cls(
+            fx=value.fx,
+            fy=value.fy,
+            cx=value.cx,
+            cy=value.cy,
+            skew=value.skew,
+            width=value.width,
+            height=value.height,
+        )
+
+
+class SensorExtrinsicsOut(BaseModel):
+    """Sensor to rig: a row-major 3x3 rotation and a translation in metres."""
+
+    rotation: tuple[
+        tuple[float, float, float], tuple[float, float, float], tuple[float, float, float]
+    ]
+    translation: tuple[float, float, float]
+
+    @classmethod
+    def of(cls, value: SensorExtrinsics) -> Self:
+        return cls(rotation=value.rotation, translation=value.translation)
+
+
+class DistortionOut(BaseModel):
+    """OpenCV radial-tangential distortion coefficients."""
+
+    model: Literal["plumb_bob"]
+    k1: float
+    k2: float
+    p1: float
+    p2: float
+    k3: float
+
+    @classmethod
+    def of(cls, value: PlumbBobDistortion) -> Self:
+        return cls(
+            model=value.model, k1=value.k1, k2=value.k2, p1=value.p1, p2=value.p2, k3=value.k3
+        )
+
+
+class CalibrationOut(BaseModel):
+    """A camera calibration. The sensor frame is OpenCV's: x right, y down, z forward."""
+
+    intrinsics: CameraIntrinsicsOut
+    extrinsics: SensorExtrinsicsOut
+    distortion: DistortionOut | None
+
+    @classmethod
+    def of(cls, value: Calibration) -> Self:
+        return cls(
+            intrinsics=CameraIntrinsicsOut.of(value.intrinsics),
+            extrinsics=SensorExtrinsicsOut.of(value.extrinsics),
+            distortion=None if value.distortion is None else DistortionOut.of(value.distortion),
+        )
+
+
+class SourceCalibrationOut(BaseModel):
+    """A source's calibration, null when none is stated."""
+
+    source_id: UUID
+    calibration: CalibrationOut | None
+
+    @classmethod
+    def of(cls, source_id: UUID, value: Calibration | None) -> Self:
+        return cls(
+            source_id=source_id, calibration=None if value is None else CalibrationOut.of(value)
+        )
+
+
+class AssetCalibrationOut(BaseModel):
+    """An asset's own override, and the calibration that applies to it."""
+
+    asset_id: UUID
+    #: The asset's own calibration, null when it inherits its source's.
+    override: CalibrationOut | None
+    #: The override when there is one, else the source's; null when neither is stated.
+    effective: CalibrationOut | None
+
+    @classmethod
+    def of(cls, value: AssetCalibration) -> Self:
+        return cls(
+            asset_id=value.asset_id,
+            override=None if value.override is None else CalibrationOut.of(value.override),
+            effective=None if value.effective is None else CalibrationOut.of(value.effective),
+        )
 
 
 # --- video imports ------------------------------------------------------------
