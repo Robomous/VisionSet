@@ -147,7 +147,7 @@ describe("the divergences this file exists to keep closed", () => {
   );
 });
 
-describe("a 3D polyline, carried and never drawn", () => {
+describe("a 3D polyline, carried read-only outside the scene", () => {
   const PATH = { type: "polyline_3d", points: [[-1.5, 1.2, 8], [-1.4, 1.2, 20]] };
 
   it("parses as a stored geometry and goes back out byte for byte", () => {

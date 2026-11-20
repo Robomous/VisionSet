@@ -168,7 +168,7 @@ import { ToolPalette } from "./ToolPalette";
 import { ZoomWidget } from "./ZoomWidget";
 import { ANNOTATOR_MIN_VIEWPORT_PX, useViewportAtLeast } from "./viewportFloor";
 import { AssetImage } from "./AssetImage";
-import { carries3DLabels, overlay3DFor, type Overlay3DWithheld } from "./overlay3d";
+import { carries3DLabels, overlay3DFor, overlay3DNotice, type Overlay3DWithheld } from "./overlay3d";
 import type { AssetProgress, WireAnnotation } from "./jobQueries";
 import type { BatchAsset } from "../screens/queries";
 import {
@@ -898,6 +898,7 @@ function Workspace({
     () => overlay3DFor(loaded, calibration.data, store.document.asset),
     [loaded, calibration.data, store],
   );
+  const overlay3dNotice = overlay3DNotice(carries3d, calibration, overlay3d);
 
   const snapshot = useAnnotatorSnapshot(store);
   const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -2951,18 +2952,20 @@ function Workspace({
               </EditorNotice>
             )}
 
-            {carries3d && (calibration.isError || overlay3d.withheld !== null) && (
+            {overlay3dNotice !== null && (
               <EditorNotice
                 testId="overlay-3d-withheld"
                 tone="calm"
                 icon={<Box className="size-4" />}
-                {...(calibration.isError ? { title: asApiError(calibration.error).code } : {})}
+                {...(overlay3dNotice.kind === "refused"
+                  ? { title: asApiError(overlay3dNotice.error).code }
+                  : {})}
               >
                 <p className="font-medium text-foreground">3D labels are not drawn on this image</p>
                 <p className="text-muted-foreground">
-                  {calibration.isError
-                    ? refusalProse(calibration.error)
-                    : withheldProse(overlay3d.withheld)}
+                  {overlay3dNotice.kind === "refused"
+                    ? refusalProse(overlay3dNotice.error)
+                    : withheldProse(overlay3dNotice.withheld)}
                 </p>
               </EditorNotice>
             )}
@@ -3411,15 +3414,13 @@ function SaveState({
   );
 }
 
-function withheldProse(withheld: Overlay3DWithheld | null): string {
-  switch (withheld?.kind) {
+function withheldProse(withheld: Overlay3DWithheld): string {
+  switch (withheld.kind) {
     case "missing":
       return "Neither this image nor its source has a camera calibration, and a 3D label has no place in the picture without one. The labels are kept unchanged.";
     case "mismatch":
       return `The calibration was measured at ${withheld.calibrated.join("×")} and this image is ${withheld.asset.join("×")}, so it does not describe these pixels. The labels are kept unchanged.`;
     case "unreadable":
       return `The calibration cannot be projected by this version: ${withheld.message}`;
-    default:
-      return "";
   }
 }

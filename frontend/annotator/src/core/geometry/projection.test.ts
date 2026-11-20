@@ -119,6 +119,14 @@ describe("validRadiusSquared", () => {
     };
     expect(validRadiusSquared(k1Only)).toBeCloseTo(4 / 3, 9);
   });
+
+  it("bounds a tangential-only lens where its Jacobian first vanishes: r = 1/(6·|p|)", () => {
+    const tangential: Calibration = {
+      ...PINHOLE,
+      distortion: { model: "plumb_bob", k1: 0, k2: 0, p1: 0, p2: -0.0015, k3: 0 },
+    };
+    expect(Math.sqrt(validRadiusSquared(tangential))).toBeCloseTo(1 / (6 * 0.0015), 6);
+  });
 });
 
 describe("projectPolyline3D", () => {
@@ -252,6 +260,24 @@ describe("projectPolyline3D", () => {
       // Monotonic up to the cut, give or take the tangential terms at the extremum.
       expect(pieces[0].points[index][0]).toBeGreaterThan(pieces[0].points[index - 1][0] - 0.1);
     }
+  });
+
+  it("never folds a segment through the near plane back under a tangential-only lens", () => {
+    const tangential: Calibration = {
+      ...PINHOLE,
+      distortion: { model: "plumb_bob", k1: 0, k2: 0, p1: 0, p2: -0.0015, k3: 0 },
+    };
+    const pieces = projectPolyline3D(
+      polyline([
+        [3, 0, 2],
+        [3, 0, -2],
+      ]),
+      tangential,
+    );
+    expect(pieces).toHaveLength(1);
+    const us = pieces[0].points.map(([u]) => u);
+    expectPoint(pieces[0].points[0], projectPoint([3, 0, 2], tangential) as Point);
+    for (let i = 1; i < us.length; i += 1) expect(us[i]).toBeGreaterThan(us[i - 1]);
   });
 });
 

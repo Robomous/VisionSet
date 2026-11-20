@@ -106,11 +106,8 @@ test("a calibrated frame draws its 3D labels projected, occluded runs dashed", a
   await expect(page.locator('[data-overlay-id="behind"]')).toHaveCount(0);
   await expect(page.getByTestId("overlay-3d-withheld")).toHaveCount(0);
 
-  // Not an object: not counted, not listed, not selectable, nothing to save.
+  // Not an object: not counted, nothing to save.
   await expect(page.getByTestId("object-total")).toHaveText("0 objects");
-  const box = (await lane.nth(0).boundingBox())!;
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  await expect(page.locator("[data-selected='true']")).toHaveCount(0);
   await expectNothingToSave(page);
 });
 

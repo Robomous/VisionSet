@@ -778,14 +778,19 @@ is projected through the **effective** calibration by the annotator's headless
 occluded runs dashed. Only the intrinsics and the plumb-bob distortion take part: the points
 are already in the camera's sensor frame, and the extrinsics map that frame to the rig. A
 segment is clipped at a near plane 1 cm in front of the camera, and, under distortion, at the
-radius where the lens polynomial stops growing; a label wholly behind the camera draws nothing.
+radius where the lens model starts to fold back, radially or tangentially; a label wholly behind
+the camera draws nothing.
 Under distortion a straight segment is sampled so it bends as the lens bends it.
 
 The overlay is not in the document: it is not counted, listed, hit-tested, selected, undone or
-saved. It draws **nothing** when the frame has no calibration, when the calibration was measured
-at another size than the asset (it is never rescaled), or when its lens model is one this build
-cannot project. Each of those says so in a calm editor notice, *3D labels are not drawn on this
-image*, with the reason.
+saved. It draws **nothing** when the frame has no calibration, or when the calibration was
+measured at another size than the asset (it is never rescaled). Each of those says so in a calm
+editor notice, *3D labels are not drawn on this image*, with the reason. A calibration that
+cannot be read at all draws nothing under the same notice, carrying the refusal: a lens model
+this build does not know is refused by the response check before any projection, so it shows
+the generic *The server answered with something this app does not recognise.* under
+`MALFORMED_RESPONSE`. A refetch that fails while a calibration is already drawn keeps drawing it
+and raises no notice.
 
 ### The annotation side panel
 

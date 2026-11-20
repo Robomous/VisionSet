@@ -10,9 +10,9 @@
  * asset, projects nothing. A calibration is never rescaled to fit.
  *
  * Two regions are cut away rather than drawn wrong. Behind the camera, every
- * segment is clipped at `NEAR_PLANE_M`. With a lens distortion, the radial
- * polynomial only describes the lens while it still grows with the radius;
- * past that it folds back and would draw a far-off point near the centre, so
+ * segment is clipped at `NEAR_PLANE_M`. With a lens distortion, the model only
+ * describes the lens while it maps the plane without folding — radially and
+ * tangentially; past that it would draw a far-off point near the centre, so
  * segments are clipped at that radius too. Both regions are convex, so a segment
  * keeps at most one piece, and a path breaks wherever a piece stops short of a
  * vertex. Under distortion a straight segment is a curve, so it is sampled.
@@ -210,23 +210,40 @@ function isDistorted(calibration: Calibration): boolean {
   return d !== null && (d.k1 !== 0 || d.k2 !== 0 || d.k3 !== 0 || d.p1 !== 0 || d.p2 !== 0);
 }
 
+const foldCache = new WeakMap<NonNullable<Calibration["distortion"]>, number>();
+
 /**
- * The largest normalized radius² at which the radial distortion still grows
- * with the radius: the first positive root of `d(r·radial(r))/dr`, which in
+ * The largest normalized radius² inside which the lens model never folds back:
+ * the first radius at which the Jacobian of the full distortion (radial and
+ * tangential) stops being positive in some direction. Without tangential terms
+ * that is exactly the first positive root of `d(r·radial(r))/dr`, which in
  * `s = r²` is `1 + 3·k1·s + 5·k2·s² + 7·k3·s³`. `Infinity` when it never stops.
  */
 export function validRadiusSquared(calibration: Calibration): number {
   const d = calibration.distortion;
   if (d === null) return Infinity;
-  const slope = (s: number): number => 1 + s * (3 * d.k1 + s * (5 * d.k2 + s * 7 * d.k3));
-  const ceiling = 1e4;
+  const cached = foldCache.get(d);
+  if (cached !== undefined) return cached;
+  const radialSlope = (s: number): number => 1 + s * (3 * d.k1 + s * (5 * d.k2 + s * 7 * d.k3));
+  let limit = firstFold(radialSlope);
+  if (d.p1 !== 0 || d.p2 !== 0) {
+    limit = Math.min(limit, firstFold((s) => minJacobianDeterminant(d, s)));
+  }
+  foldCache.set(d, limit);
+  return limit;
+}
+
+const FOLD_SCAN_CEILING = 1e12;
+const FOLD_SCAN_DIRECTIONS = 128;
+
+function firstFold(positive: (s: number) => number): number {
   let low = 0;
-  for (let s = 1e-3; s <= ceiling; s *= 1.05) {
-    if (slope(s) <= 0) {
+  for (let s = 1e-3; s <= FOLD_SCAN_CEILING; s *= 1.05) {
+    if (positive(s) <= 0) {
       let high = s;
       for (let round = 0; round < 60; round += 1) {
         const middle = (low + high) / 2;
-        if (slope(middle) > 0) low = middle;
+        if (positive(middle) > 0) low = middle;
         else high = middle;
       }
       return low;
@@ -234,6 +251,24 @@ export function validRadiusSquared(calibration: Calibration): number {
     low = s;
   }
   return Infinity;
+}
+
+/** The smallest determinant of the distortion's Jacobian on the circle of radius² `s`. */
+function minJacobianDeterminant(d: NonNullable<Calibration["distortion"]>, s: number): number {
+  const radius = Math.sqrt(s);
+  const radial = 1 + s * (d.k1 + s * (d.k2 + s * d.k3));
+  const radialSlope = d.k1 + s * (2 * d.k2 + s * 3 * d.k3);
+  let smallest = Infinity;
+  for (let i = 0; i < FOLD_SCAN_DIRECTIONS; i += 1) {
+    const angle = (2 * Math.PI * i) / FOLD_SCAN_DIRECTIONS;
+    const x = radius * Math.cos(angle);
+    const y = radius * Math.sin(angle);
+    const dxdx = radial + 2 * x * x * radialSlope + 2 * d.p1 * y + 6 * d.p2 * x;
+    const dydy = radial + 2 * y * y * radialSlope + 6 * d.p1 * y + 2 * d.p2 * x;
+    const cross = 2 * x * y * radialSlope + 2 * d.p1 * x + 2 * d.p2 * y;
+    smallest = Math.min(smallest, dxdx * dydy - cross * cross);
+  }
+  return smallest;
 }
 
 /** OpenCV's `projectPoints` from a normalized image point, with the skew term. */

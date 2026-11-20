@@ -30,6 +30,11 @@ export interface Overlay3D {
   readonly withheld: Overlay3DWithheld | null;
 }
 
+/** What the editor notice says about a frame's 3D labels, if anything. */
+export type Overlay3DNotice =
+  | { readonly kind: "refused"; readonly error: unknown }
+  | { readonly kind: "withheld"; readonly withheld: Overlay3DWithheld };
+
 export const NO_OVERLAY_3D: Overlay3D = { labels: [], withheld: null };
 
 export function carries3DLabels(loaded: readonly WireAnnotation[]): boolean {
@@ -67,4 +72,20 @@ export function overlay3DFor(
     };
   }
   return { labels: projectLabels3D(parseAnnotations(loaded), parsed, asset), withheld: null };
+}
+
+/**
+ * The notice for a frame's 3D labels. A failed refetch keeps the last
+ * calibration drawn, so only a read that never succeeded is reported as refused.
+ */
+export function overlay3DNotice(
+  carries3d: boolean,
+  calibration: { readonly isError: boolean; readonly error: unknown; readonly data: unknown },
+  overlay: Overlay3D,
+): Overlay3DNotice | null {
+  if (!carries3d) return null;
+  if (calibration.isError && calibration.data === undefined) {
+    return { kind: "refused", error: calibration.error };
+  }
+  return overlay.withheld === null ? null : { kind: "withheld", withheld: overlay.withheld };
 }
