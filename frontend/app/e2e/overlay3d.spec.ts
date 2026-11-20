@@ -1,5 +1,5 @@
 /**
- * The read-only 3D overlay (#1039), in a real browser: a `polyline_3d` projected
+ * The read-only 3D overlay (#1039), in a real browser: a `polyline_3d` or a `cuboid_3d` projected
  * through its frame's calibration, drawn with a 2D polyline's visibility styling,
  * and never part of what a press, a selection or a save can reach. A frame with no
  * fitting calibration draws nothing and says why.
@@ -67,6 +67,12 @@ const BEHIND = lane3d("behind", "asset-1", [
   [0, 1.5, -9],
 ]);
 
+/** Yaw 0, so its top-left edge from rear (-2, 0, 9) to front (2, 0, 9) is horizontal. */
+const CAR: Wire["AnnotationOut"] = {
+  ...lane3d("car-3d", "asset-1", []),
+  geometry: { type: "cuboid_3d", center: [0, 0.5, 10], size: [4, 2, 1], yaw: 0 },
+};
+
 const UNCALIBRATED = lane3d("uncalibrated", "asset-2", [
   [0, 1.5, 5],
   [0, 1.5, 10],
@@ -83,7 +89,7 @@ async function openSeeded(
     progressStore({ "asset-1": "unannotated", "asset-2": "unannotated" }),
     undefined,
     undefined,
-    [LANE, THROUGH_THE_CAMERA, BEHIND, UNCALIBRATED],
+    [LANE, THROUGH_THE_CAMERA, BEHIND, CAR, UNCALIBRATED],
     false,
     calibrations,
   );
@@ -107,6 +113,20 @@ test("a calibrated frame draws its 3D labels projected, occluded runs dashed", a
   await expect(page.getByTestId("overlay-3d-withheld")).toHaveCount(0);
 
   // Not an object: not counted, nothing to save.
+  await expect(page.getByTestId("object-total")).toHaveText("0 objects");
+  await expectNothingToSave(page);
+});
+
+test("a calibrated frame draws a cuboid as its twelve projected edges", async ({ page }) => {
+  await openSeeded(page, { "asset-1": PINHOLE });
+
+  const edges = page.locator('[data-overlay-id="car-3d"] polyline');
+  await expect(edges).toHaveCount(12);
+  const first = await edges.nth(0).getAttribute("points");
+  const [[u0, v0], [u1, v1]] = (first ?? "").split(" ").map((pair) => pair.split(",").map(Number));
+  expect(u0).toBeCloseTo(320 - 1000 / 9, 3);
+  expect(u1).toBeCloseTo(320 + 1000 / 9, 3);
+  expect([v0, v1]).toEqual([240, 240]);
   await expect(page.getByTestId("object-total")).toHaveText("0 objects");
   await expectNothingToSave(page);
 });

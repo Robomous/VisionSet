@@ -50,6 +50,7 @@ from visionset.formats.voc.reader import VocImporter as VocImporter
 from visionset.kernel.domain import (
     BboxGeometry,
     ClassificationGeometry,
+    Cuboid3DGeometry,
     GeometryType,
     Manifest,
     ManifestAnnotation,
@@ -275,7 +276,12 @@ def _as_box(
             return BboxGeometry(
                 x=min(xs), y=min(ys), width=max(xs) - min(xs), height=max(ys) - min(ys)
             )
-        case ClassificationGeometry() | PolylineGeometry() | Polyline3DGeometry():
+        case (
+            ClassificationGeometry()
+            | PolylineGeometry()
+            | Polyline3DGeometry()
+            | Cuboid3DGeometry()
+        ):
             # No location to write, or one VOC's `<object>` cannot hold.
             return None
         case _:

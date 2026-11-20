@@ -39,6 +39,7 @@ from typing import Final, assert_never
 from visionset.kernel.domain import (
     BboxGeometry,
     ClassificationGeometry,
+    Cuboid3DGeometry,
     Geometry,
     PolygonGeometry,
     Polyline3DGeometry,
@@ -82,13 +83,13 @@ def extent_of(geometry: Geometry) -> BboxGeometry | None:
     A box is its own extent; a polygon or polyline is the box around its points.
     A zero-width or zero-height path — a vertical polyline — has no box
     ``BboxGeometry`` will construct and answers ``None``, as does a
-    classification tag, which occupies nothing, and a 3D path, which has no
+    classification tag, which occupies nothing, and a 3D label, which has no
     pixel extent without projecting it.
     """
     match geometry:
         case BboxGeometry():
             return geometry
-        case ClassificationGeometry() | Polyline3DGeometry():
+        case ClassificationGeometry() | Polyline3DGeometry() | Cuboid3DGeometry():
             return None
         case PolygonGeometry() | PolylineGeometry():
             xs = [x for x, _ in geometry.points]

@@ -20,6 +20,7 @@ from visionset.inference.nms import extent_of
 from visionset.kernel.domain import (
     IMPLEMENTED_GEOMETRIES,
     BboxGeometry,
+    Cuboid3DGeometry,
     GeometryType,
     LabelClass,
     Manifest,
@@ -120,60 +121,82 @@ def test_vertex_visibility_is_checked_for_points_of_any_dimension() -> None:
 
 
 PATH_3D = Polyline3DGeometry(points=[(0.0, 1.0, 5.0), (0.5, 1.0, 9.0)])
-ANNOTATION_3D = ANNOTATION.model_copy(update={"geometry": PATH_3D})
-ASSET_3D = ASSET.model_copy(update={"annotations": (ANNOTATION_3D,)})
-MANIFEST_3D = MANIFEST.model_copy(update={"assets": (ASSET_3D,)})
+BOX_3D = Cuboid3DGeometry(center=(0.5, 1.0, 9.0), size=(4.2, 1.8, 1.5), yaw=0.25)
+WIRE_3D: dict[str, object] = {
+    "polyline_3d": {"type": "polyline_3d", "points": [[0.0, 1.0, 5.0], [0.5, 1.0, 9.0]]},
+    "cuboid_3d": {
+        "type": "cuboid_3d",
+        "center": [0.5, 1.0, 9.0],
+        "size": [4.2, 1.8, 1.5],
+        "yaw": 0.25,
+    },
+}
+THREE_D = [PATH_3D, BOX_3D]
 
-#: What each site answers for a 3D path: never a pixel extent, a box or a ring.
-ANSWERS_3D: dict[str, Callable[[], object]] = {
-    "geometry_intersects_asset": lambda: geometry_module.geometry_intersects_asset(
-        PATH_3D, width=8, height=8
+
+def _in_manifest(geometry: Any) -> tuple[ManifestAnnotation, ManifestAsset, Manifest]:
+    annotation = ANNOTATION.model_copy(update={"geometry": geometry})
+    asset = ASSET.model_copy(update={"annotations": (annotation,)})
+    return annotation, asset, MANIFEST.model_copy(update={"assets": (asset,)})
+
+
+#: What each site answers for a 3D label: never a pixel extent, a box or a ring.
+ANSWERS_3D: dict[str, Callable[[Any], object]] = {
+    "geometry_intersects_asset": lambda g: geometry_module.geometry_intersects_asset(
+        g, width=8, height=8
     ),
-    "coordinates_are_finite": lambda: geometry_module._coordinates_are_finite(PATH_3D),
-    "geometry_needs_calibration": lambda: geometry_needs_calibration(PATH_3D),
-    "nms extent": lambda: extent_of(PATH_3D),
-    "yolo derive_task": lambda: _yolo_writer.derive_task(MANIFEST_3D, frozenset(Task)),
-    "yolo box": lambda: _yolo_writer._as_box(ANNOTATION_3D),
-    "yolo ring": lambda: _yolo_writer._as_ring(ANNOTATION_3D),
-    "voc box": lambda: voc_box(ANNOTATION_3D, ASSET_3D, {"thing"}),
-    "coco annotation": lambda: coco_annotation(ANNOTATION_3D, {"thing": 1}, ASSET_3D),
-    "server geometry_of": lambda: geometry_of(PATH_3D).to_domain(),
-    "wire geometry": lambda: wire_geometry(PATH_3D),
+    "coordinates_are_finite": lambda g: geometry_module._coordinates_are_finite(g),
+    "geometry_needs_calibration": lambda g: geometry_needs_calibration(g),
+    "nms extent": lambda g: extent_of(g),
+    "yolo derive_task": lambda g: _yolo_writer.derive_task(_in_manifest(g)[2], frozenset(Task)),
+    "yolo box": lambda g: _yolo_writer._as_box(_in_manifest(g)[0]),
+    "yolo ring": lambda g: _yolo_writer._as_ring(_in_manifest(g)[0]),
+    "voc box": lambda g: voc_box(_in_manifest(g)[0], _in_manifest(g)[1], {"thing"}),
+    "coco annotation": lambda g: coco_annotation(_in_manifest(g)[0], {"thing": 1}, ASSET),
+    "server geometry_of": lambda g: geometry_of(g).to_domain(),
+    "wire geometry": lambda g: wire_geometry(g),
 }
-EXPECTED_3D: dict[str, object] = {
-    "geometry_intersects_asset": True,
-    "coordinates_are_finite": True,
-    "geometry_needs_calibration": True,
-    "nms extent": None,
-    "yolo derive_task": Task.DETECT,
-    "yolo box": None,
-    "yolo ring": None,
-    "voc box": None,
-    "coco annotation": None,
-    "server geometry_of": PATH_3D,
-    "wire geometry": {"type": "polyline_3d", "points": [[0.0, 1.0, 5.0], [0.5, 1.0, 9.0]]},
+EXPECTED_3D: dict[str, Callable[[Any], object]] = {
+    "geometry_intersects_asset": lambda _: True,
+    "coordinates_are_finite": lambda _: True,
+    "geometry_needs_calibration": lambda _: True,
+    "nms extent": lambda _: None,
+    "yolo derive_task": lambda _: Task.DETECT,
+    "yolo box": lambda _: None,
+    "yolo ring": lambda _: None,
+    "voc box": lambda _: None,
+    "coco annotation": lambda _: None,
+    "server geometry_of": lambda g: g,
+    "wire geometry": lambda g: WIRE_3D[g.type.value],
 }
 
 
-def test_every_site_has_an_answer_for_the_3d_polyline() -> None:
+def test_every_site_has_an_answer_for_each_3d_geometry() -> None:
     pixel_moving = {"preprocessing scale", "preprocessing mirror", "preprocessing rotate"}
     assert set(SITES) == set(ANSWERS_3D) | pixel_moving
+    assert {g.type for g in THREE_D} == {GeometryType.POLYLINE_3D, GeometryType.CUBOID_3D}
 
 
+@pytest.mark.parametrize("geometry", THREE_D, ids=lambda g: g.type.value)
 @pytest.mark.parametrize("site", ANSWERS_3D)
-def test_each_site_answers_the_3d_polyline(site: str) -> None:
-    assert ANSWERS_3D[site]() == EXPECTED_3D[site]
+def test_each_site_answers_a_3d_geometry(site: str, geometry: Any) -> None:
+    assert ANSWERS_3D[site](geometry) == EXPECTED_3D[site](geometry)
 
 
+@pytest.mark.parametrize("geometry", THREE_D, ids=lambda g: g.type.value)
 @pytest.mark.parametrize(
     "move",
     [
-        lambda: preprocessing_transform._scaled(PATH_3D, 2.0, 2.0, 0.0, 0.0),
-        lambda: preprocessing_transform._mirrored(PATH_3D, 8.0),
-        lambda: preprocessing_transform._rotated_once(PATH_3D, 8.0),
+        lambda g: preprocessing_transform._scaled(g, 2.0, 2.0, 0.0, 0.0),
+        lambda g: preprocessing_transform._mirrored(g, 8.0),
+        lambda g: preprocessing_transform._rotated_once(g, 8.0),
     ],
     ids=["scale", "mirror", "rotate"],
 )
-def test_a_pixel_moving_step_never_moves_a_3d_point(move: Callable[[], object]) -> None:
-    with pytest.raises(AssertionError, match="no pixel-moving step transforms a polyline_3d"):
-        move()
+def test_a_pixel_moving_step_never_moves_a_3d_label(
+    move: Callable[[Any], object], geometry: Any
+) -> None:
+    with pytest.raises(
+        AssertionError, match=f"no pixel-moving step transforms a {geometry.type.value}"
+    ):
+        move(geometry)

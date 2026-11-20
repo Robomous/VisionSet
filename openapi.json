@@ -115,6 +115,7 @@
               "mapping": {
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
+                "cuboid_3d": "#/components/schemas/Cuboid3DBody",
                 "polygon": "#/components/schemas/PolygonBody",
                 "polyline": "#/components/schemas/PolylineBody",
                 "polyline_3d": "#/components/schemas/Polyline3DBody"
@@ -133,6 +134,9 @@
               },
               {
                 "$ref": "#/components/schemas/Polyline3DBody"
+              },
+              {
+                "$ref": "#/components/schemas/Cuboid3DBody"
               },
               {
                 "$ref": "#/components/schemas/ClassificationBody"
@@ -225,6 +229,7 @@
               "mapping": {
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
+                "cuboid_3d": "#/components/schemas/Cuboid3DBody",
                 "polygon": "#/components/schemas/PolygonBody",
                 "polyline": "#/components/schemas/PolylineBody",
                 "polyline_3d": "#/components/schemas/Polyline3DBody"
@@ -243,6 +248,9 @@
               },
               {
                 "$ref": "#/components/schemas/Polyline3DBody"
+              },
+              {
+                "$ref": "#/components/schemas/Cuboid3DBody"
               },
               {
                 "$ref": "#/components/schemas/ClassificationBody"
@@ -371,6 +379,7 @@
               "mapping": {
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
+                "cuboid_3d": "#/components/schemas/Cuboid3DBody",
                 "polygon": "#/components/schemas/PolygonBody",
                 "polyline": "#/components/schemas/PolylineBody",
                 "polyline_3d": "#/components/schemas/Polyline3DBody"
@@ -389,6 +398,9 @@
               },
               {
                 "$ref": "#/components/schemas/Polyline3DBody"
+              },
+              {
+                "$ref": "#/components/schemas/Cuboid3DBody"
               },
               {
                 "$ref": "#/components/schemas/ClassificationBody"
@@ -2466,6 +2478,125 @@
           }
         },
         "title": "ConnectionUpdate",
+        "type": "object"
+      },
+      "Cuboid3DBody": {
+        "additionalProperties": false,
+        "description": "A box in metres in the asset's camera sensor frame: a center, a size and a yaw.\n\nThe frame is x right, y down, z forward. `center` is the box's geometric\ncentre; `size` is `[length, width, height]`, each strictly positive, with\n`length` along the heading, `width` across it and `height` along the sensor\ny axis. `yaw` is radians about the sensor +y axis, within `[-pi, pi]` and\nrefused outside it rather than wrapped; at `yaw = 0` the heading is sensor\n+x, and in general it is `(cos yaw, 0, -sin yaw)`. Read against the asset's\neffective calibration; writing one to an asset with no calibration is\nrefused with `CALIBRATION_MISSING`, and one written against a calibration measured at a\ndifferent resolution with `CALIBRATION_RESOLUTION_MISMATCH`. No image-frame bounds check\napplies.",
+        "properties": {
+          "center": {
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Center",
+            "type": "array"
+          },
+          "size": {
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Size",
+            "type": "array"
+          },
+          "type": {
+            "const": "cuboid_3d",
+            "title": "Type",
+            "type": "string"
+          },
+          "yaw": {
+            "title": "Yaw",
+            "type": "number"
+          }
+        },
+        "required": [
+          "type",
+          "center",
+          "size",
+          "yaw"
+        ],
+        "title": "Cuboid3DBody",
+        "type": "object"
+      },
+      "Cuboid3DGeometry": {
+        "additionalProperties": false,
+        "description": "A box in its asset's sensor frame: a center, a size and a yaw, in metres.\n\nThe frame is the camera's OpenCV frame (x right, y down, z forward), and the\nbox is interpretable only against the asset's effective calibration, so no\nimage-frame bounds check applies.\n\n``center`` is the box's geometric centre. ``size`` is ``(length, width,\nheight)``: ``length`` runs along the heading, ``width`` across it, and\n``height`` along the sensor's y axis, every one strictly positive. ``yaw`` is\na right-handed rotation in radians about the sensor's +y (down) axis, within\n``[-pi, pi]`` and not normalised: a value outside is refused rather than\nwrapped, so what is stored is what was sent. At ``yaw = 0`` the heading is\nsensor +x; in general it is ``(cos yaw, 0, -sin yaw)``, KITTI's\n``rotation_y`` convention. Roll and pitch are not modelled; a full rotation\nwould extend this shape, not replace it.\n\nA sibling of every other variant, never a subclass, and it has no\n``visibility``: per-vertex visibility describes an ordered path, which a box\nis not.",
+        "properties": {
+          "center": {
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Center",
+            "type": "array"
+          },
+          "size": {
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              }
+            ],
+            "title": "Size",
+            "type": "array"
+          },
+          "type": {
+            "const": "cuboid_3d",
+            "default": "cuboid_3d",
+            "title": "Type",
+            "type": "string"
+          },
+          "yaw": {
+            "maximum": 3.141592653589793,
+            "minimum": -3.141592653589793,
+            "title": "Yaw",
+            "type": "number"
+          }
+        },
+        "required": [
+          "center",
+          "size",
+          "yaw"
+        ],
+        "title": "Cuboid3DGeometry",
         "type": "object"
       },
       "CuratedModelOut": {
@@ -4753,6 +4884,7 @@
               "mapping": {
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
+                "cuboid_3d": "#/components/schemas/Cuboid3DBody",
                 "polygon": "#/components/schemas/PolygonBody",
                 "polyline": "#/components/schemas/PolylineBody",
                 "polyline_3d": "#/components/schemas/Polyline3DBody"
@@ -4771,6 +4903,9 @@
               },
               {
                 "$ref": "#/components/schemas/Polyline3DBody"
+              },
+              {
+                "$ref": "#/components/schemas/Cuboid3DBody"
               },
               {
                 "$ref": "#/components/schemas/ClassificationBody"
@@ -6431,6 +6566,7 @@
               "mapping": {
                 "bbox": "#/components/schemas/BboxGeometry",
                 "classification_tag": "#/components/schemas/ClassificationGeometry",
+                "cuboid_3d": "#/components/schemas/Cuboid3DGeometry",
                 "polygon": "#/components/schemas/PolygonGeometry",
                 "polyline": "#/components/schemas/PolylineGeometry",
                 "polyline_3d": "#/components/schemas/Polyline3DGeometry"
@@ -6449,6 +6585,9 @@
               },
               {
                 "$ref": "#/components/schemas/Polyline3DGeometry"
+              },
+              {
+                "$ref": "#/components/schemas/Cuboid3DGeometry"
               },
               {
                 "$ref": "#/components/schemas/ClassificationGeometry"
@@ -11294,7 +11433,7 @@
         ]
       },
       "patch": {
-        "description": "Replace stored annotations whole, judged against the same pinned version.\n\nAddressed by `id` and by nothing else \u2014 annotations are never reached by\nindex or position. There is no `asset_id` on the body because the stored one\nwins: moving a label from one asset to another is a delete and an add, not an\nedit, and doing it silently would take an asset's last annotation away\nwithout anything saying so. Who made a label is kept the same way: a\n`provenance` other than the stored one is 422 `INVALID_ANNOTATION`, and\n`model_ref` and `confidence` are taken from the stored annotation. An edit\nchanges what a label says, never who made it.\n\nAll-or-nothing, and `detail.index` names the culprit, exactly as on the POST.\nAn asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST,\nand so are the two gates around it: a batch that is not open for annotation\nis 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409\n`JOB_FINISHED`. An edit is a write, and every gate that stops a new label\nstops a replacement too \u2014 including 409 `CALIBRATION_MISSING` and 422\n`CALIBRATION_RESOLUTION_MISMATCH` for a `polyline_3d`.",
+        "description": "Replace stored annotations whole, judged against the same pinned version.\n\nAddressed by `id` and by nothing else \u2014 annotations are never reached by\nindex or position. There is no `asset_id` on the body because the stored one\nwins: moving a label from one asset to another is a delete and an add, not an\nedit, and doing it silently would take an asset's last annotation away\nwithout anything saying so. Who made a label is kept the same way: a\n`provenance` other than the stored one is 422 `INVALID_ANNOTATION`, and\n`model_ref` and `confidence` are taken from the stored annotation. An edit\nchanges what a label says, never who made it.\n\nAll-or-nothing, and `detail.index` names the culprit, exactly as on the POST.\nAn asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST,\nand so are the two gates around it: a batch that is not open for annotation\nis 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409\n`JOB_FINISHED`. An edit is a write, and every gate that stops a new label\nstops a replacement too \u2014 including 409 `CALIBRATION_MISSING` and 422\n`CALIBRATION_RESOLUTION_MISMATCH` for a 3D label.",
         "operationId": "update_annotations",
         "parameters": [
           {
@@ -11405,7 +11544,7 @@
         ]
       },
       "post": {
-        "description": "Store annotations, judged against the version this job's batch pinned.\n\nAll-or-nothing: every annotation is validated before any of them is written,\nso a payload with one bad box stores nothing at all. A half-labeled asset is\nnot a state a client can reach.\n\nA refusal that is about one item carries `detail.index` \u2014 the position in the\narray you sent \u2014 because nothing was written and the message alone cannot say\nwhich one it was. `schema_version` is not yours to set: the pinned version is\nstamped onto whatever you send, and comes back on the response.\n\nAn unknown job is 404 `JOB_NOT_FOUND`. The batch must be `in_annotation`, or\nthis is 409 `BATCH_NOT_IN_ANNOTATION`, and the job itself must still be open:\none that was completed is 409 `JOB_FINISHED`, and a completed job has no way\nback, so the remedy is a new job over those assets rather than a retry. An\nasset the job does not carry is 422 `ASSET_NOT_IN_JOB`.\n\nAn annotation the pinned version does not describe is 422\n`INVALID_ANNOTATION`, which is the general answer; the specific ones carry\ntheir own codes \u2014 `LABEL_CLASS_NOT_IN_SCHEMA`, `DISALLOWED_GEOMETRY`,\n`MISSING_REQUIRED_ATTRIBUTE` and their kin \u2014 so a client that wants to say\nwhat is wrong reads the code rather than the status.\n\nThe asset must also still be open for labeling \u2014 `unannotated` or\n`annotated`. One that was skipped, submitted for review or accepted is 409\n`ASSET_NOT_WRITABLE`, and the message names the state it is in. The remedy is\na progress move where the table allows one (`skipped` back to `unannotated`);\n`accepted` has no exit, so correcting it means a new batch. Read\n`allowed_actions` on the batch's asset listing rather than guessing: it\ndeclares `annotate` exactly when this will be accepted.\n\nA `polyline_3d` is read against its asset's calibration \u2014 the asset's own,\nelse its source's. With neither this is 409 `CALIBRATION_MISSING`, and with\none measured at another size than the asset it is 422\n`CALIBRATION_RESOLUTION_MISMATCH`; set a fitting calibration and resend.",
+        "description": "Store annotations, judged against the version this job's batch pinned.\n\nAll-or-nothing: every annotation is validated before any of them is written,\nso a payload with one bad box stores nothing at all. A half-labeled asset is\nnot a state a client can reach.\n\nA refusal that is about one item carries `detail.index` \u2014 the position in the\narray you sent \u2014 because nothing was written and the message alone cannot say\nwhich one it was. `schema_version` is not yours to set: the pinned version is\nstamped onto whatever you send, and comes back on the response.\n\nAn unknown job is 404 `JOB_NOT_FOUND`. The batch must be `in_annotation`, or\nthis is 409 `BATCH_NOT_IN_ANNOTATION`, and the job itself must still be open:\none that was completed is 409 `JOB_FINISHED`, and a completed job has no way\nback, so the remedy is a new job over those assets rather than a retry. An\nasset the job does not carry is 422 `ASSET_NOT_IN_JOB`.\n\nAn annotation the pinned version does not describe is 422\n`INVALID_ANNOTATION`, which is the general answer; the specific ones carry\ntheir own codes \u2014 `LABEL_CLASS_NOT_IN_SCHEMA`, `DISALLOWED_GEOMETRY`,\n`MISSING_REQUIRED_ATTRIBUTE` and their kin \u2014 so a client that wants to say\nwhat is wrong reads the code rather than the status.\n\nThe asset must also still be open for labeling \u2014 `unannotated` or\n`annotated`. One that was skipped, submitted for review or accepted is 409\n`ASSET_NOT_WRITABLE`, and the message names the state it is in. The remedy is\na progress move where the table allows one (`skipped` back to `unannotated`);\n`accepted` has no exit, so correcting it means a new batch. Read\n`allowed_actions` on the batch's asset listing rather than guessing: it\ndeclares `annotate` exactly when this will be accepted.\n\nA 3D label (`polyline_3d`, `cuboid_3d`) is read against its asset's\ncalibration \u2014 the asset's own, else its source's. With neither this is 409\n`CALIBRATION_MISSING`, and with one measured at another size than the asset\nit is 422 `CALIBRATION_RESOLUTION_MISMATCH`; set a fitting calibration and\nresend.",
         "operationId": "add_annotations",
         "parameters": [
           {

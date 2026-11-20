@@ -313,7 +313,7 @@ export function isEmptyPlan(plan: SavePlan): boolean {
  * that actually travels (`toAnnotationUpdate`), so a field the wire does not carry
  * cannot make a save look necessary.
  *
- * A loaded annotation the document never holds — a `polyline_3d`, carried past
+ * A loaded annotation the document never holds — a 3D label, carried past
  * the scene — is left out of the comparison, so its absence from the document
  * never reads as a delete.
  */

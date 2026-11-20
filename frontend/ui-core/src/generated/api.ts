@@ -1516,10 +1516,11 @@ export interface paths {
          *     `allowed_actions` on the batch's asset listing rather than guessing: it
          *     declares `annotate` exactly when this will be accepted.
          *
-         *     A `polyline_3d` is read against its asset's calibration — the asset's own,
-         *     else its source's. With neither this is 409 `CALIBRATION_MISSING`, and with
-         *     one measured at another size than the asset it is 422
-         *     `CALIBRATION_RESOLUTION_MISMATCH`; set a fitting calibration and resend.
+         *     A 3D label (`polyline_3d`, `cuboid_3d`) is read against its asset's
+         *     calibration — the asset's own, else its source's. With neither this is 409
+         *     `CALIBRATION_MISSING`, and with one measured at another size than the asset
+         *     it is 422 `CALIBRATION_RESOLUTION_MISMATCH`; set a fitting calibration and
+         *     resend.
          */
         post: operations["add_annotations"];
         /**
@@ -1561,7 +1562,7 @@ export interface paths {
          *     is 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409
          *     `JOB_FINISHED`. An edit is a write, and every gate that stops a new label
          *     stops a replacement too — including 409 `CALIBRATION_MISSING` and 422
-         *     `CALIBRATION_RESOLUTION_MISMATCH` for a `polyline_3d`.
+         *     `CALIBRATION_RESOLUTION_MISMATCH` for a 3D label.
          */
         patch: operations["update_annotations"];
         trace?: never;
@@ -3489,7 +3490,7 @@ export interface components {
             /** Confidence */
             confidence?: number | null;
             /** Geometry */
-            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["ClassificationBody"];
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["ClassificationBody"];
             /** Label Class */
             label_class: string;
             /** Model Ref */
@@ -3526,7 +3527,7 @@ export interface components {
             /** Confidence */
             confidence: number | null;
             /** Geometry */
-            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["ClassificationBody"];
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["ClassificationBody"];
             /**
              * Id
              * Format: uuid
@@ -3571,7 +3572,7 @@ export interface components {
             /** Confidence */
             confidence?: number | null;
             /** Geometry */
-            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["ClassificationBody"];
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["ClassificationBody"];
             /**
              * Id
              * Format: uuid
@@ -4422,6 +4423,85 @@ export interface components {
             precision?: components["schemas"]["Precision"] | null;
             /** Provider Id */
             provider_id?: string | null;
+        };
+        /**
+         * Cuboid3DBody
+         * @description A box in metres in the asset's camera sensor frame: a center, a size and a yaw.
+         *
+         *     The frame is x right, y down, z forward. `center` is the box's geometric
+         *     centre; `size` is `[length, width, height]`, each strictly positive, with
+         *     `length` along the heading, `width` across it and `height` along the sensor
+         *     y axis. `yaw` is radians about the sensor +y axis, within `[-pi, pi]` and
+         *     refused outside it rather than wrapped; at `yaw = 0` the heading is sensor
+         *     +x, and in general it is `(cos yaw, 0, -sin yaw)`. Read against the asset's
+         *     effective calibration; writing one to an asset with no calibration is
+         *     refused with `CALIBRATION_MISSING`, and one written against a calibration measured at a
+         *     different resolution with `CALIBRATION_RESOLUTION_MISMATCH`. No image-frame bounds check
+         *     applies.
+         */
+        Cuboid3DBody: {
+            /** Center */
+            center: [
+                number,
+                number,
+                number
+            ];
+            /** Size */
+            size: [
+                number,
+                number,
+                number
+            ];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "cuboid_3d";
+            /** Yaw */
+            yaw: number;
+        };
+        /**
+         * Cuboid3DGeometry
+         * @description A box in its asset's sensor frame: a center, a size and a yaw, in metres.
+         *
+         *     The frame is the camera's OpenCV frame (x right, y down, z forward), and the
+         *     box is interpretable only against the asset's effective calibration, so no
+         *     image-frame bounds check applies.
+         *
+         *     ``center`` is the box's geometric centre. ``size`` is ``(length, width,
+         *     height)``: ``length`` runs along the heading, ``width`` across it, and
+         *     ``height`` along the sensor's y axis, every one strictly positive. ``yaw`` is
+         *     a right-handed rotation in radians about the sensor's +y (down) axis, within
+         *     ``[-pi, pi]`` and not normalised: a value outside is refused rather than
+         *     wrapped, so what is stored is what was sent. At ``yaw = 0`` the heading is
+         *     sensor +x; in general it is ``(cos yaw, 0, -sin yaw)``, KITTI's
+         *     ``rotation_y`` convention. Roll and pitch are not modelled; a full rotation
+         *     would extend this shape, not replace it.
+         *
+         *     A sibling of every other variant, never a subclass, and it has no
+         *     ``visibility``: per-vertex visibility describes an ordered path, which a box
+         *     is not.
+         */
+        Cuboid3DGeometry: {
+            /** Center */
+            center: [
+                number,
+                number,
+                number
+            ];
+            /** Size */
+            size: [
+                number,
+                number,
+                number
+            ];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "cuboid_3d";
+            /** Yaw */
+            yaw: number;
         };
         /**
          * CuratedModelOut
@@ -5631,7 +5711,7 @@ export interface components {
             /** Confidence */
             confidence: number | null;
             /** Geometry */
-            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["ClassificationBody"];
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["ClassificationBody"];
             /** Id */
             id: string;
             /** Label Class */
@@ -6451,7 +6531,7 @@ export interface components {
                 number
             ][];
             /** Geometry */
-            geometry: components["schemas"]["BboxGeometry"] | components["schemas"]["PolygonGeometry"] | components["schemas"]["PolylineGeometry"] | components["schemas"]["Polyline3DGeometry"] | components["schemas"]["ClassificationGeometry"];
+            geometry: components["schemas"]["BboxGeometry"] | components["schemas"]["PolygonGeometry"] | components["schemas"]["PolylineGeometry"] | components["schemas"]["Polyline3DGeometry"] | components["schemas"]["Cuboid3DGeometry"] | components["schemas"]["ClassificationGeometry"];
         };
         /**
          * SuggestionOut

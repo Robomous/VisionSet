@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CUBOID_EDGES,
   NEAR_PLANE_M,
   calibrationFits,
+  cuboidCorners,
+  projectCuboid3D,
   projectLabels3D,
   projectPoint,
   projectPolyline3D,
@@ -11,6 +14,7 @@ import {
 import {
   VERTEX_VISIBILITY,
   type Calibration,
+  type Cuboid3DGeometry,
   type Point,
   type Point3D,
   type Polyline3DGeometry,
@@ -278,6 +282,120 @@ describe("projectPolyline3D", () => {
     const us = pieces[0].points.map(([u]) => u);
     expectPoint(pieces[0].points[0], projectPoint([3, 0, 2], tangential) as Point);
     for (let i = 1; i < us.length; i += 1) expect(us[i]).toBeGreaterThan(us[i - 1]);
+  });
+});
+
+describe("a cuboid", () => {
+  // Corner i takes +length for bit 0, +width for bit 1 and +height for bit 2.
+  const CAR: Cuboid3DGeometry = {
+    type: "cuboid_3d",
+    center: [1.5, 0.8, 12],
+    size: [4.5, 1.9, 1.6],
+    yaw: 0.6,
+  };
+  // cv2.Rodrigues((0, yaw, 0)) applied to the local corners (±L/2, ±H/2, ±W/2),
+  // then cv2.projectPoints(local, (0, yaw, 0), center, K, dist), OpenCV 4.13.
+  const CORNERS: readonly Point3D[] = [
+    [-0.8934154833, 0, 12.486376731],
+    [2.8205947838, 0, 9.9454856007],
+    [0.1794052162, 0, 14.0545143993],
+    [3.8934154833, 0, 11.513623269],
+    [-0.8934154833, 1.6, 12.486376731],
+    [2.8205947838, 1.6, 9.9454856007],
+    [0.1794052162, 1.6, 14.0545143993],
+    [3.8934154833, 1.6, 11.513623269],
+  ];
+  const PINHOLE_PIXELS: readonly Point[] = [
+    [568.4487804172, 360],
+    [923.6055369306, 360],
+    [652.7649530308, 360],
+    [978.1572761501, 360],
+    [568.4487804172, 481.7326717549],
+    [923.6055369306, 512.8331607954],
+    [652.7649530308, 468.1503036544],
+    [978.1572761501, 492.0175208519],
+  ];
+  const DISTORTED_PIXELS: readonly Point[] = [
+    [568.5281410075, 360.0048635982],
+    [917.0198708974, 360.0764104955],
+    [652.7636374208, 360.0001547968],
+    [967.2074369251, 360.1086328262],
+    [568.8113231865, 481.0813585349],
+    [915.1381161268, 508.4570586669],
+    [652.7009793208, 467.7875333824],
+    [965.5861053449, 487.3149532264],
+  ];
+
+  it("places its corners by a right-handed yaw about +y, KITTI's rotation_y", () => {
+    cuboidCorners(CAR).forEach((corner, i) => {
+      corner.forEach((value, axis) => expect(value).toBeCloseTo(CORNERS[i][axis], 9));
+    });
+    const [rear, front] = cuboidCorners({ ...CAR, center: [0, 0, 10], yaw: 0 });
+    expect(front[0] - rear[0]).toBeCloseTo(4.5, 12);
+    expect(front[2] - rear[2]).toBeCloseTo(0, 12);
+  });
+
+  it("has twelve edges, each joining two corners that differ on one axis", () => {
+    expect(CUBOID_EDGES).toHaveLength(12);
+    expect(new Set(CUBOID_EDGES.map(([a, b]) => `${a}-${b}`)).size).toBe(12);
+    for (const [a, b] of CUBOID_EDGES) expect([1, 2, 4]).toContain(a ^ b);
+  });
+
+  it("projects each edge between OpenCV's projected corners, pinhole and distorted", () => {
+    for (const [calibration, pixels] of [
+      [PINHOLE, PINHOLE_PIXELS],
+      [DISTORTED, DISTORTED_PIXELS],
+    ] as const) {
+      const edges = projectCuboid3D(CAR, calibration);
+      expect(edges).toHaveLength(12);
+      edges.forEach((edge, index) => {
+        const [from, to] = CUBOID_EDGES[index];
+        expectPoint(edge.points[0], pixels[from], 6);
+        expectPoint(edge.points[edge.points.length - 1], pixels[to], 6);
+        expect(edge.visibility).toBeUndefined();
+      });
+      const sampled = edges.some((edge) => edge.points.length > 2);
+      expect(sampled).toBe(calibration === DISTORTED);
+    }
+  });
+
+  it("cuts an edge that crosses the near plane and drops one wholly behind it", () => {
+    // Heading -z: the front face sits at z = -0.5, the rear face at z = 1.5.
+    const straddling: Cuboid3DGeometry = {
+      type: "cuboid_3d",
+      center: [0, 0, 0.5],
+      size: [2, 1, 1],
+      yaw: Math.PI / 2,
+    };
+    const corners = cuboidCorners(straddling);
+    const edges = projectCuboid3D(straddling, PINHOLE);
+    const lengthEdges = CUBOID_EDGES.filter(([a, b]) => (a ^ b) === 1);
+    expect(edges).toHaveLength(4 + lengthEdges.length);
+    const near = (a: Point, b: Point): boolean =>
+      Math.abs(a[0] - b[0]) < 1e-3 && Math.abs(a[1] - b[1]) < 1e-3;
+    for (const [rear, front] of lengthEdges) {
+      const start = projectPoint(corners[rear], PINHOLE)!;
+      const [x, y] = corners[front];
+      const end = projectPoint([x, y, NEAR_PLANE_M], PINHOLE)!;
+      expect(
+        edges.some(
+          (edge) =>
+            edge.points.length === 2 && near(edge.points[0], start) && near(edge.points[1], end),
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it("draws nothing when it is wholly behind the camera", () => {
+    expect(projectCuboid3D({ ...CAR, center: [0, 0, -10] }, PINHOLE)).toEqual([]);
+  });
+
+  it("is projected beside the 3D paths and withheld by the same calibration rules", () => {
+    const car = annotation("car-1", CAR);
+    const labels = projectLabels3D([car], PINHOLE, ASSET);
+    expect(labels.map((one) => [one.id, one.paths.length])).toEqual([["car-1", 12]]);
+    expect(projectLabels3D([car], null, ASSET)).toEqual([]);
+    expect(projectLabels3D([car], PINHOLE, { ...ASSET, width: 640 })).toEqual([]);
   });
 });
 

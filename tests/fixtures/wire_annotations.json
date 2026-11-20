@@ -125,6 +125,33 @@
       },
       "confidence": 0.87,
       "geometry": {
+        "center": [
+          -2.5,
+          0.75,
+          2.0
+        ],
+        "size": [
+          4.5,
+          1.9,
+          1.6
+        ],
+        "type": "cuboid_3d",
+        "yaw": 1.2
+      },
+      "id": "53709b1d-bc75-5b96-a212-88104d16d2e0",
+      "job_id": null,
+      "label_class": "sign",
+      "model_ref": "yolo-v8n@1",
+      "provenance": "model",
+      "schema_version": 3
+    },
+    {
+      "asset_id": "1ad26c67-2b52-553f-ae2d-30346d8e20cc",
+      "attributes": {
+        "condition": "faded"
+      },
+      "confidence": 0.87,
+      "geometry": {
         "type": "classification_tag"
       },
       "id": "0c4afc30-255b-5ea9-88d6-42020efb3c28",
@@ -262,6 +289,7 @@
   "implemented_geometry_types": [
     "bbox",
     "classification_tag",
+    "cuboid_3d",
     "polygon",
     "polyline",
     "polyline_3d"
@@ -311,6 +339,14 @@
           "polyline_3d"
         ],
         "name": "lane_3d"
+      },
+      {
+        "attributes": [],
+        "color": null,
+        "geometries": [
+          "cuboid_3d"
+        ],
+        "name": "car_3d"
       },
       {
         "attributes": [

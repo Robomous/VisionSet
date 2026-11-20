@@ -92,9 +92,14 @@ describe("planSave", () => {
       ...loaded("3d"),
       geometry: { type: "polyline_3d", points: [[-1.5, 1.2, 8], [-1.4, 1.2, 20]], visibility: [2, 1] },
     };
-    const server = [loaded("a"), lane3d];
+    const car3d: WireAnnotation = {
+      ...loaded("cuboid"),
+      geometry: { type: "cuboid_3d", center: [-2.5, 0.75, 12], size: [4.5, 1.9, 1.6], yaw: 1.2 },
+    };
+    const server = [loaded("a"), lane3d, car3d];
     const store = storeOf(server);
     expect(store.document.annotations.has("3d")).toBe(false);
+    expect(store.document.annotations.has("cuboid")).toBe(false);
     expect(isEmptyPlan(planSave(store.document, server))).toBe(true);
 
     store.execute({ label: "drop", apply: (d) => ({ ...d, annotations: new Map() }) });

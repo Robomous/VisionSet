@@ -76,8 +76,8 @@ export const GEOMETRY_CATEGORIES = [
  * `GeometryType` and regenerating the client breaks this file; removing one from
  * this map breaks it too. Neither can be committed past a `tsc` run.
  *
- * The categorisation covers the four unimplemented members as well as the four
- * writable ones, because the point at which a geometry gets a category is the
+ * The categorisation covers every member, implemented or not, as well as the writable
+ * ones, because the point at which a geometry gets a category is the
  * point at which it is *named*, not the point at which it reaches a picker —
  * otherwise the map is only ever total by coincidence.
  *

@@ -130,7 +130,7 @@ export function createDocument(
  * `unknown` and leaves typed, so a payload that does not match the contract is
  * refused here rather than surfacing as a rendering bug later.
  *
- * A carried-only annotation (`polyline_3d`) is parsed, so a malformed one is
+ * A carried-only annotation (`polyline_3d`, `cuboid_3d`) is parsed, so a malformed one is
  * still refused, and then left out: the scene never holds it, so no edit can
  * reach it. A host diffing the document against what it loaded must leave it
  * out of that comparison too, or the save reads it as deleted.

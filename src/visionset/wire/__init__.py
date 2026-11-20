@@ -84,6 +84,7 @@ from visionset.kernel.domain import (
     ClassCompatibility,
     ClassCount,
     ClassificationGeometry,
+    Cuboid3DGeometry,
     Dataset,
     DatasetStats,
     DownloadSize,
@@ -692,6 +693,13 @@ def geometry(value: Geometry) -> shapes.Geometry:
             if value.visibility is not None:
                 path["visibility"] = [_vertex_visibility(v) for v in value.visibility]
             return path
+        case Cuboid3DGeometry():
+            return {
+                "type": "cuboid_3d",
+                "center": list(value.center),
+                "size": list(value.size),
+                "yaw": value.yaw,
+            }
         case ClassificationGeometry():
             return {"type": "classification_tag"}
         case _:

@@ -64,8 +64,11 @@ export {
 // Geometry — asset-pixel math: predicates, hit-testing, transforms
 export { clamp } from "./core/geometry/clamp";
 export {
+  CUBOID_EDGES,
   NEAR_PLANE_M,
   calibrationFits,
+  cuboidCorners,
+  projectCuboid3D,
   projectLabels3D,
   projectPoint,
   projectPolyline3D,

@@ -29,11 +29,11 @@
  * the annotation, by the kernel (`UNSUPPORTED_GEOMETRY`) and by `parseGeometry`
  * here. See `docs/content/schemas.md`.
  *
- * A fifth variant, `polyline_3d`, is carried and never edited: `StoredGeometry`
- * admits it, `parseAnnotation` parses it, and `documentFromWire` leaves it out
- * of the scene, so a job holding one loads, and its 3D labels are never sent
- * back changed or deleted. A host may draw it read-only through
- * `projectLabels3D`, against its asset's calibration.
+ * Two more variants, `polyline_3d` and `cuboid_3d`, are carried and never
+ * edited: `StoredGeometry` admits them, `parseAnnotation` parses them, and
+ * `documentFromWire` leaves them out of the scene, so a job holding one loads,
+ * and its 3D labels are never sent back changed or deleted. A host may draw
+ * them read-only through `projectLabels3D`, against the asset's calibration.
  *
  * A locally drawn annotation carries identity even though `AnnotationCreate` has
  * no `id` field: it mints a client-side uuid v4 into the ordinary `id`, and
@@ -59,7 +59,7 @@ export const GEOMETRY_TYPES = [
   "polyline_3d",
 ] as const;
 
-/** The vocabulary a `LabelClass` declares. Eight names; five have a model. */
+/** The vocabulary a `LabelClass` declares. Eight names; six have a model. */
 export type GeometryType = (typeof GEOMETRY_TYPES)[number];
 
 /**
@@ -72,6 +72,7 @@ export type GeometryType = (typeof GEOMETRY_TYPES)[number];
 export const IMPLEMENTED_GEOMETRY_TYPES = [
   "bbox",
   "classification_tag",
+  "cuboid_3d",
   "polygon",
   "polyline",
   "polyline_3d",
@@ -173,6 +174,19 @@ export interface Polyline3DGeometry {
   readonly visibility: readonly VertexVisibility[] | undefined;
 }
 
+/**
+ * A box in the sensor frame, in metres: its centre, `[length, width, height]`,
+ * and a yaw in radians about the sensor's +y (down) axis within `[-π, π]`. The
+ * heading — the `length` axis — is `(cos yaw, 0, −sin yaw)`. Carried, never
+ * edited, and drawn only through `projectLabels3D`, as `polyline_3d` is.
+ */
+export interface Cuboid3DGeometry {
+  readonly type: "cuboid_3d";
+  readonly center: Point3D;
+  readonly size: Point3D;
+  readonly yaw: number;
+}
+
 /** Pinhole intrinsics in pixels, and the image size they were measured at. Mirrors `CameraIntrinsicsOut`. */
 export interface CameraIntrinsics {
   readonly fx: number;
@@ -215,7 +229,7 @@ export type Geometry =
   | ClassificationGeometry;
 
 /** Every geometry the wire can carry, drawn or not. */
-export type StoredGeometry = Geometry | Polyline3DGeometry;
+export type StoredGeometry = Geometry | Polyline3DGeometry | Cuboid3DGeometry;
 
 /** One stored annotation as the wire sends it, whether or not the scene can hold it. */
 export type StoredAnnotation = Omit<Annotation, "geometry"> & {

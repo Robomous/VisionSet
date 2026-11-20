@@ -375,12 +375,25 @@ class Polyline3DGeometry(TypedDict):
 
 
 @closed
+class Cuboid3DGeometry(TypedDict):
+    type: Literal["cuboid_3d"]
+    center: list[float]
+    size: list[float]
+    yaw: float
+
+
+@closed
 class ClassificationGeometry(TypedDict):
     type: Literal["classification_tag"]
 
 
 Geometry = (
-    BboxGeometry | PolygonGeometry | PolylineGeometry | Polyline3DGeometry | ClassificationGeometry
+    BboxGeometry
+    | PolygonGeometry
+    | PolylineGeometry
+    | Polyline3DGeometry
+    | Cuboid3DGeometry
+    | ClassificationGeometry
 )
 
 

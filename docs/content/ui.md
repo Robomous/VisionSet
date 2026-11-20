@@ -771,7 +771,7 @@ is what carries the install command when the optional runtime is absent.
 
 #### 3D labels are drawn, not edited
 
-A frame carrying a `polyline_3d` asks for its calibration
+A frame carrying a `polyline_3d` or a `cuboid_3d` asks for its calibration
 (`GET /projects/{id}/assets/{asset_id}/calibration`); a 2D-only frame never does. Each 3D label
 is projected through the **effective** calibration by the annotator's headless
 `projectLabels3D` and drawn beneath the 2D annotations exactly as an unselected 2D polyline is,
@@ -781,6 +781,13 @@ segment is clipped at a near plane 1 cm in front of the camera, and, under disto
 radius where the lens model starts to fold back, radially or tangentially; a label wholly behind
 the camera draws nothing.
 Under distortion a straight segment is sampled so it bends as the lens bends it.
+
+A `cuboid_3d` is drawn as its twelve edges, each projected and clipped exactly as a two-point
+segment of a path is: an edge that crosses the near plane is cut at it rather than dropped, an
+edge wholly behind the camera is dropped, and the edges in front still draw. Its corners are the
+centre plus half the size along the heading `(cos yaw, 0, -sin yaw)`, the width axis
+`(sin yaw, 0, cos yaw)` and the sensor's y axis (`cuboidCorners`). A box records no visibility,
+so every edge is drawn solid.
 
 The overlay is not in the document: it is not counted, listed, hit-tested, selected, undone or
 saved. It draws **nothing** when the frame has no calibration, or when the calibration was

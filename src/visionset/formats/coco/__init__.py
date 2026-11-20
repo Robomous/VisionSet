@@ -59,6 +59,7 @@ from visionset.formats.coco.reader import CocoImporter
 from visionset.kernel.domain import (
     BboxGeometry,
     ClassificationGeometry,
+    Cuboid3DGeometry,
     GeometryType,
     Manifest,
     ManifestAnnotation,
@@ -280,7 +281,12 @@ def _annotation(
                 [round(value, PRECISION) for point in geometry.points for value in point]
             ]
             area = round(_shoelace(geometry.points), PRECISION)
-        case ClassificationGeometry() | PolylineGeometry() | Polyline3DGeometry():
+        case (
+            ClassificationGeometry()
+            | PolylineGeometry()
+            | Polyline3DGeometry()
+            | Cuboid3DGeometry()
+        ):
             return None
         case _:
             assert_never(geometry)

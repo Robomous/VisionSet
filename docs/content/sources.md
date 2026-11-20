@@ -223,8 +223,9 @@ terms the old registration warning stated it.
 A 3D label is read against the camera that took its image, so a source can carry a
 `Calibration` and an asset can override it - the rule is
 [Three-dimensional labels are calibrated image labels](architecture/decisions/three-dimensional-labels-are-calibrated-image-labels.md).
-A `polyline_3d` label (see [annotations](annotations.md#a-3d-polyline-is-read-against-a-calibration))
-is refused on an asset with no effective calibration.
+A `polyline_3d` or `cuboid_3d` label (see
+[annotations](annotations.md#a-3d-polyline-is-read-against-a-calibration)) is refused on an asset
+with no effective calibration.
 
 | Part | Meaning |
 | --- | --- |

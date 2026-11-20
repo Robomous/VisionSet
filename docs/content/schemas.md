@@ -206,8 +206,8 @@ straight into the document it hashes, so a set whose order depended on how a cal
 would make two identical schemas produce two different release hashes. Class *order* is
 authored and preserved; geometry order carries no meaning and nobody can read one into it.
 
-`GeometryType` names eight geometries; five have a model in the `Geometry` union today -
-`bbox`, `polygon`, `polyline`, `polyline_3d` and `classification_tag`.
+`GeometryType` names eight geometries; six have a model in the `Geometry` union today -
+`bbox`, `polygon`, `polyline`, `polyline_3d`, `cuboid_3d` and `classification_tag`.
 `IMPLEMENTED_GEOMETRIES` is read *off* the union, so shipping a variant widens it with no
 second edit, and `create_version` refuses a class naming anything outside it:
 
@@ -226,11 +226,12 @@ silently reinterpreted.
 Declaring a class whose geometry has no implementation would create a class nobody could
 ever label. Refusing at the schema is better than discovering it at the first annotation.
 
-**`polyline_3d` is the newest (#1038), and it has no drawing tool.** It is a class like any
-other to the SDK, REST, MCP and the CLI, and the browser loads a job holding one and saves it
-untouched, but the schema editor does not offer it - a class there would be one nobody could
-draw. Its labels arrive by script, agent or a future importer; see
-[annotations](annotations.md#a-3d-polyline-is-read-against-a-calibration).
+**`polyline_3d` (#1038) and `cuboid_3d` (#1045) are the newest, and neither has a drawing
+tool.** Each is a class like any other to the SDK, REST, MCP and the CLI, and the browser loads
+a job holding one and saves it untouched, but the schema editor does not offer them - a class
+there would be one nobody could draw. Their labels arrive by script, agent or a future importer;
+see [annotations](annotations.md#a-3d-polyline-is-read-against-a-calibration) and
+[the cuboid's fields](annotations.md#a-3d-cuboid-is-a-center-a-size-and-a-yaw).
 
 **`polyline` is complete end to end.** It joined the
 union in #223 so that lane datasets work — the SDK, the REST API and MCP all accept one, and
@@ -253,8 +254,7 @@ The eight fall into two families, and the grouping is **presentation only** - th
 no category concept and takes none (#375). "Basic Computer Vision" holds the geometries an
 ordinary image task produces: `bbox`, `polygon`, `mask`, `keypoints` and
 `classification_tag`. "Robotics and AD" holds the ones that describe a scene the camera
-alone does not give you - `polyline` for lanes, `polyline_3d` (#1038), and the reserved
-`cuboid_3d`.
+alone does not give you - `polyline` for lanes, `polyline_3d` (#1038) and `cuboid_3d` (#1045).
 
 The map lives in `frontend/ui-core/src/data/geometryCategory.ts`, declared total over the
 generated `GeometryType` union so a ninth member fails the frontend build until somebody

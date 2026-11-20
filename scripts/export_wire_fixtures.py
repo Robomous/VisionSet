@@ -140,8 +140,9 @@ def _schema() -> AnnotationSchema:
             # fact about the annotator rather than about the wire — so it appears
             # here exactly like the other three.
             LabelClass(name="centerline", geometries=(GeometryType.POLYLINE,), color="#eb5a47"),
-            # Carried and never drawn: the annotator loads it and saves it untouched.
+            # Carried and never edited: the annotator loads these and saves them untouched.
             LabelClass(name="lane_3d", geometries=(GeometryType.POLYLINE_3D,)),
+            LabelClass(name="car_3d", geometries=(GeometryType.CUBOID_3D,)),
             # An attribute with every optional at its default: not required, no
             # options, no default. `select` is the only kind that may carry
             # options, so this is the other side of `populated`'s attribute.
@@ -168,7 +169,7 @@ _CALIBRATION = Calibration(
 def build_fixture() -> dict[str, Any]:
     """The payload, as a pure function of the models. Imported by the gate."""
     annotations = [
-        # One per implemented geometry: five components on the wire, and a
+        # One per implemented geometry: six components on the wire, and a
         # mirror that dropped `points` would still round-trip through the bbox.
         Annotation(
             id=_annotation_id(geometry.type.value),

@@ -57,7 +57,8 @@ class AnnotationInput(BaseModel):
     label_class: str = Field(description="A class name the batch's pinned schema declares.")
     geometry: Geometry = Field(
         description=(
-            "The shape, in the asset's own pixel coordinates — never normalized. "
+            "The shape, in the asset's own pixel coordinates — never normalized — "
+            "or, for polyline_3d and cuboid_3d, metres in its camera's sensor frame. "
             "Its 'type' field is required and selects the variant. A polyline's "
             "optional 'visibility' is one integer per point (0 unlabeled, 1 occluded, "
             "2 visible); omit it when unknown."

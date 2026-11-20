@@ -220,6 +220,29 @@ around it untouched. The annotation page draws it read-only, projected through t
 effective calibration; see [ui](ui.md#3d-labels-are-drawn-not-edited). No installed export format writes one either; see
 [releases](releases.md#a-3d-label-travels-with-its-calibration).
 
+## A 3D cuboid is a center, a size and a yaw
+
+`cuboid_3d` is a box in the same sensor frame, in metres, held to every rule above: its own
+variant, no image-frame bounds check, and a write, import, publish or preview that needs a
+calibration that fits (`CALIBRATION_MISSING`, `CALIBRATION_RESOLUTION_MISMATCH`). It carries
+three fields and nothing else:
+
+| Field | Meaning |
+| --- | --- |
+| `center` | `[x, y, z]`, the box's geometric centre (not the bottom face's) |
+| `size` | `[length, width, height]`, each finite and strictly above zero. `length` runs along the heading, `width` across it, `height` along the sensor's y axis |
+| `yaw` | radians, a right-handed turn about the sensor's +y (down) axis. At `0` the heading is sensor +x; in general it is `(cos yaw, 0, -sin yaw)` and the width axis `(sin yaw, 0, cos yaw)` - KITTI's `rotation_y` convention |
+
+**`yaw` is range-checked, not normalised.** It must lie in `[-pi, pi]`, both ends included (they
+are the same turn); a value outside is refused rather than wrapped, so what is stored is the
+number that was sent, as a float, and a round trip never changes it. Every field refuses NaN and infinity.
+
+Roll and pitch are not modelled: the box stands upright in the camera's frame. A full rotation
+would be an extension of this shape, not an alternative to it. There is no `visibility`: a box is
+not an ordered path, and the key is refused. Like `polyline_3d` it has no drawing tool; the
+annotation page draws its twelve edges read-only, under the same rules (see
+[ui](ui.md#3d-labels-are-drawn-not-edited)).
+
 ## Provenance is the model's own rule, not the service's
 
 There is no `InvalidProvenance`. `provenance="model"` requiring a `model_ref`, and `confidence`

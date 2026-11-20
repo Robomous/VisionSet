@@ -38,6 +38,7 @@ from visionset.kernel.domain import (
     ClassificationGeometry,
     ConnectionSetupState,
     ConnectionType,
+    Cuboid3DGeometry,
     Dataset,
     DatasetStats,
     DraftAttribute,
@@ -316,11 +317,14 @@ POLYLINE_3D = Polyline3DGeometry(
     points=[(-1.75, 1.5, 6.0), (-1.7, 1.5, 18.25), (-1.6, 1.4, -2.0)],
     visibility=(VertexVisibility.VISIBLE, VertexVisibility.VISIBLE, VertexVisibility.OCCLUDED),
 )
+# A car ahead and to the left, turned off the optical axis, its half-length
+# reaching past the near plane so a projection has a corner to cut.
+CUBOID_3D = Cuboid3DGeometry(center=(-2.5, 0.75, 2.0), size=(4.5, 1.9, 1.6), yaw=1.2)
 
 # Every geometry variant gets its own sample rather than one standing for the
-# union: they are five components on the wire, and a projection that dropped
+# union: they are six components on the wire, and a projection that dropped
 # `points` would still round-trip through the bbox model.
-GEOMETRIES = (BBOX, POLYGON, POLYLINE, POLYLINE_3D, CLASSIFICATION)
+GEOMETRIES = (BBOX, POLYGON, POLYLINE, POLYLINE_3D, CUBOID_3D, CLASSIFICATION)
 
 ANNOTATION = Annotation(
     asset_id=ASSET.id,
