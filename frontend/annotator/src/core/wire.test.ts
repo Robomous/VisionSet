@@ -31,6 +31,7 @@ import {
   parseAnnotations,
   parseAssetDescriptor,
   parseAttribute,
+  parseCalibration,
   parseGeometry,
   parseLabelClass,
   parseSchema,
@@ -146,7 +147,7 @@ describe("the divergences this file exists to keep closed", () => {
   );
 });
 
-describe("a 3D polyline, carried and never drawn", () => {
+describe("a 3D polyline, carried read-only outside the scene", () => {
   const PATH = { type: "polyline_3d", points: [[-1.5, 1.2, 8], [-1.4, 1.2, 20]] };
 
   it("parses as a stored geometry and goes back out byte for byte", () => {
@@ -157,7 +158,7 @@ describe("a 3D polyline, carried and never drawn", () => {
   });
 
   it("is refused by the scene's own parser, which draws pixels", () => {
-    expect(() => parseGeometry(PATH)).toThrow(/carried and not drawn/);
+    expect(() => parseGeometry(PATH)).toThrow(/carried and not editable/);
   });
 
   it("refuses a 2D point, a wrong visibility length and an undeclared key", () => {
@@ -618,5 +619,67 @@ describe("polyline vertex visibility", () => {
     expect(() =>
       parseGeometry({ type: "polygon", points: POINTS, visibility: [2, 2, 2] }),
     ).toThrow(/does not declare/);
+  });
+});
+
+describe("parseCalibration", () => {
+  const wire = {
+    intrinsics: { fx: 1000, fy: 950, cx: 640, cy: 360, skew: 0, width: 1280, height: 720 },
+    extrinsics: {
+      rotation: [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ],
+      translation: [0, 0, 1.6],
+    },
+    distortion: { model: "plumb_bob", k1: -0.1, k2: 0.01, p1: 0, p2: 0, k3: 0 },
+  };
+
+  it("parses the calibration the kernel serialized", () => {
+    const parsed = parseCalibration(fixture.calibration);
+    expect(parsed.intrinsics).toEqual({
+      fx: 1000,
+      fy: 950,
+      cx: 640,
+      cy: 360,
+      skew: 0,
+      width: 1280,
+      height: 720,
+    });
+    expect(parsed.distortion).toEqual({
+      model: "plumb_bob",
+      k1: -0.28,
+      k2: 0.09,
+      p1: 0.001,
+      p2: -0.0015,
+      k3: -0.012,
+    });
+  });
+
+  it("reads CalibrationOut and ignores keys it does not declare", () => {
+    const parsed = parseCalibration({ ...wire, measured_on: "2026-01-01" });
+    expect(parsed.intrinsics.width).toBe(1280);
+    expect(parsed.extrinsics.translation).toEqual([0, 0, 1.6]);
+    expect(parsed.distortion?.k1).toBe(-0.1);
+    expect(parseCalibration({ ...wire, distortion: null }).distortion).toBeNull();
+  });
+
+  it("refuses a distortion model it cannot project through", () => {
+    expect(() =>
+      parseCalibration({ ...wire, distortion: { ...wire.distortion, model: "fisheye" } }),
+    ).toThrow(/fisheye/);
+  });
+
+  it("refuses a missing or malformed field", () => {
+    const noSkew: Record<string, unknown> = { ...wire.intrinsics };
+    delete noSkew["skew"];
+    expect(() => parseCalibration({ ...wire, intrinsics: noSkew })).toThrow(/skew/);
+    expect(() =>
+      parseCalibration({ ...wire, intrinsics: { ...wire.intrinsics, width: 0 } }),
+    ).toThrow(WireFormatError);
+    expect(() =>
+      parseCalibration({ ...wire, extrinsics: { ...wire.extrinsics, rotation: [[1, 0, 0]] } }),
+    ).toThrow(/rotation/);
   });
 });

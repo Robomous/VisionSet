@@ -155,6 +155,7 @@ import type {
 import { topmostAnnotationAt } from "../../core/geometry/hitTest";
 import { withinBounds } from "../../core/geometry/primitives";
 import { assetTolerances } from "../../core/geometry/tolerance";
+import type { Projected3DLabel } from "../../core/geometry/projection";
 import { affordanceAt, viewerAffordanceAt } from "../../core/interaction/affordance";
 import { transition } from "../../core/interaction/machine";
 import { runEffects } from "../../core/interaction/runEffects";
@@ -207,6 +208,7 @@ import {
 } from "../viewport";
 import type { Viewport } from "../viewport";
 import { AnnotationLayer } from "./AnnotationLayer";
+import { Overlay3DLayer } from "./Overlay3DLayer";
 import { createDecodedAssetImage, type DecodedAssetImage } from "./decodedAssetImage";
 import { useAnnotatorSnapshot } from "./hooks";
 import { digitFromCode, isComposing, isTextEntry } from "./keyboard";
@@ -325,6 +327,13 @@ export interface AnnotatorCanvasProps {
    * costs the committed layer three DOM writes instead of six hundred.
    */
   readonly hiddenIds?: ReadonlySet<string>;
+  /**
+   * 3D labels already projected into this asset's pixels (`projectLabels3D`),
+   * drawn read-only beneath the annotations and outside the document — never hit
+   * tested, selected, undone or saved. Memoize it; an inline array defeats the
+   * layer's `memo`.
+   */
+  readonly overlay3d?: readonly Projected3DLabel[];
   /**
    * Anything core cannot do and this adapter does not own — a help sheet, a
    * "next asset". `reset-zoom` never arrives: the zoom is the adapter's.
@@ -511,6 +520,7 @@ export function AnnotatorCanvas({
   onSelectionChange,
   onViewChange,
   hiddenIds,
+  overlay3d,
   onHostAction,
   onAnnotationMenu,
   bindings,
@@ -1558,6 +1568,9 @@ export function AnnotatorCanvas({
             // measures the asset rect on screen by reading this box.
             style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
           >
+            {overlay3d !== undefined && (
+              <Overlay3DLayer labels={overlay3d} schema={snapshot.document.schema} />
+            )}
             <AnnotationLayer
               committed={visibleCommitted}
               selection={snapshot.selection}

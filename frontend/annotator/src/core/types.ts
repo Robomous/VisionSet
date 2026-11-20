@@ -29,10 +29,11 @@
  * the annotation, by the kernel (`UNSUPPORTED_GEOMETRY`) and by `parseGeometry`
  * here. See `docs/content/schemas.md`.
  *
- * A fifth variant, `polyline_3d`, is carried and never drawn: `StoredGeometry`
+ * A fifth variant, `polyline_3d`, is carried and never edited: `StoredGeometry`
  * admits it, `parseAnnotation` parses it, and `documentFromWire` leaves it out
  * of the scene, so a job holding one loads, and its 3D labels are never sent
- * back changed or deleted.
+ * back changed or deleted. A host may draw it read-only through
+ * `projectLabels3D`, against its asset's calibration.
  *
  * A locally drawn annotation carries identity even though `AnnotationCreate` has
  * no `id` field: it mints a client-side uuid v4 into the ordinary `id`, and
@@ -162,13 +163,48 @@ export interface ClassificationGeometry {
 export type Point3D = readonly [number, number, number];
 
 /**
- * An open 3D path in the sensor frame. Carried, never drawn: it has no pixel
- * coordinates without its asset's calibration, which this engine does not read.
+ * An open 3D path in the sensor frame. Carried, never edited: it has no pixel
+ * coordinates without its asset's calibration, and `projectLabels3D` is the only
+ * way it reaches the canvas — as a read-only overlay outside the document.
  */
 export interface Polyline3DGeometry {
   readonly type: "polyline_3d";
   readonly points: readonly Point3D[];
   readonly visibility: readonly VertexVisibility[] | undefined;
+}
+
+/** Pinhole intrinsics in pixels, and the image size they were measured at. Mirrors `CameraIntrinsicsOut`. */
+export interface CameraIntrinsics {
+  readonly fx: number;
+  readonly fy: number;
+  readonly cx: number;
+  readonly cy: number;
+  readonly skew: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** Sensor to rig, `p_rig = rotation @ p_sensor + translation`. Mirrors `SensorExtrinsicsOut`. */
+export interface SensorExtrinsics {
+  readonly rotation: readonly [Point3D, Point3D, Point3D];
+  readonly translation: Point3D;
+}
+
+/** OpenCV's radial-tangential lens distortion. Mirrors `DistortionOut`. */
+export interface PlumbBobDistortion {
+  readonly model: "plumb_bob";
+  readonly k1: number;
+  readonly k2: number;
+  readonly p1: number;
+  readonly p2: number;
+  readonly k3: number;
+}
+
+/** One camera's calibration, in OpenCV's sensor frame. Mirrors `CalibrationOut`. */
+export interface Calibration {
+  readonly intrinsics: CameraIntrinsics;
+  readonly extrinsics: SensorExtrinsics;
+  readonly distortion: PlumbBobDistortion | null;
 }
 
 /** Every shape an annotation can carry, discriminated on `type`. */

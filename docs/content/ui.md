@@ -769,6 +769,29 @@ one action to fix it. Nothing navigates away, and no exit loses work. A refusal
 from the server is rendered where the panel is, in the server's own words, which
 is what carries the install command when the optional runtime is absent.
 
+#### 3D labels are drawn, not edited
+
+A frame carrying a `polyline_3d` asks for its calibration
+(`GET /projects/{id}/assets/{asset_id}/calibration`); a 2D-only frame never does. Each 3D label
+is projected through the **effective** calibration by the annotator's headless
+`projectLabels3D` and drawn beneath the 2D annotations exactly as an unselected 2D polyline is,
+occluded runs dashed. Only the intrinsics and the plumb-bob distortion take part: the points
+are already in the camera's sensor frame, and the extrinsics map that frame to the rig. A
+segment is clipped at a near plane 1 cm in front of the camera, and, under distortion, at the
+radius where the lens model starts to fold back, radially or tangentially; a label wholly behind
+the camera draws nothing.
+Under distortion a straight segment is sampled so it bends as the lens bends it.
+
+The overlay is not in the document: it is not counted, listed, hit-tested, selected, undone or
+saved. It draws **nothing** when the frame has no calibration, or when the calibration was
+measured at another size than the asset (it is never rescaled). Each of those says so in a calm
+editor notice, *3D labels are not drawn on this image*, with the reason. A calibration that
+cannot be read at all draws nothing under the same notice, carrying the refusal: a lens model
+this build does not know is refused by the response check before any projection, so it shows
+the generic *The server answered with something this app does not recognise.* under
+`MALFORMED_RESPONSE`. A refetch that fails while a calibration is already drawn keeps drawing it
+and raises no notice.
+
 ### The annotation side panel
 
 `AnnotatorPanel` - Classes, Tags and Annotations, three stacked regions with no

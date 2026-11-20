@@ -216,7 +216,8 @@ asset has no calibration yet.
 
 No drawing tool exists for it. The browser parses one, keeps it out of the scene, and leaves it
 out of what a save compares, so a job holding a 3D label loads and every other label saves
-around it untouched. No installed export format writes one either; see
+around it untouched. The annotation page draws it read-only, projected through the asset's
+effective calibration; see [ui](ui.md#3d-labels-are-drawn-not-edited). No installed export format writes one either; see
 [releases](releases.md#a-3d-label-travels-with-its-calibration).
 
 ## Provenance is the model's own rule, not the service's

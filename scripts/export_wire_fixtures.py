@@ -65,14 +65,23 @@ from visionset.kernel.domain import (  # noqa: E402
     AssetProgress,
     Attribute,
     BatchState,
+    Calibration,
+    CameraIntrinsics,
     GeometryType,
     LabelClass,
+    PlumbBobDistortion,
     SchemaProvenance,
+    SensorExtrinsics,
     asset_actions,
     batch_actions,
     job_actions,
 )
-from visionset.server.models import AnnotationOut, AssetOut, SchemaVersionOut  # noqa: E402
+from visionset.server.models import (  # noqa: E402
+    AnnotationOut,
+    AssetOut,
+    CalibrationOut,
+    SchemaVersionOut,
+)
 
 OUTPUT_PATH = "tests/fixtures/wire_annotations.json"
 CAPABILITIES_PATH = "tests/fixtures/wire_capabilities.json"
@@ -146,6 +155,16 @@ def _schema() -> AnnotationSchema:
     )
 
 
+_CALIBRATION = Calibration(
+    intrinsics=CameraIntrinsics(fx=1000.0, fy=950.0, cx=640.0, cy=360.0, width=1280, height=720),
+    extrinsics=SensorExtrinsics(
+        rotation=((0.0, 0.0, 1.0), (-1.0, 0.0, 0.0), (0.0, -1.0, 0.0)),
+        translation=(1.5, 0.0, 1.6),
+    ),
+    distortion=PlumbBobDistortion(k1=-0.28, k2=0.09, p1=0.001, p2=-0.0015, k3=-0.012),
+)
+
+
 def build_fixture() -> dict[str, Any]:
     """The payload, as a pure function of the models. Imported by the gate."""
     annotations = [
@@ -209,6 +228,9 @@ def build_fixture() -> dict[str, Any]:
         "annotations": [AnnotationOut.of(a).model_dump(mode="json") for a in annotations],
         "asset": AssetOut.of(asset).model_dump(mode="json"),
         "schema": SchemaVersionOut.of(_schema()).model_dump(mode="json"),
+        # What the annotator projects a `polyline_3d` through, with a distortion so
+        # the optional half of the mirror is exercised too.
+        "calibration": CalibrationOut.of(_CALIBRATION).model_dump(mode="json"),
         # The four `Attribute.kind` values, read off the model rather than typed
         # out — the `geometry_types` bargain, so a fifth kind reaches the
         # annotator as a failing test instead of as a payload it cannot describe.

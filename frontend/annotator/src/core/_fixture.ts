@@ -26,6 +26,7 @@ export interface WireFixture {
   readonly annotations: readonly unknown[];
   readonly asset: unknown;
   readonly schema: unknown;
+  readonly calibration: unknown;
   readonly attribute_kinds: readonly string[];
   readonly geometry_types: readonly string[];
   readonly implemented_geometry_types: readonly string[];

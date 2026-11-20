@@ -27,6 +27,7 @@ export {
   type PendingPhase,
 } from "./pending";
 export { AnnotationLayer, type AnnotationLayerProps } from "./AnnotationLayer";
+export { Overlay3DLayer, type Overlay3DLayerProps } from "./Overlay3DLayer";
 export { TransientLayer, type TransientLayerProps } from "./TransientLayer";
 export {
   AnnotationShape,
