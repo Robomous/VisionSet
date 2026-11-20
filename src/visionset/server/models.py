@@ -2062,7 +2062,8 @@ class Cuboid3DBody(BaseModel):
     +x, and in general it is `(cos yaw, 0, -sin yaw)`. Read against the asset's
     effective calibration; writing one to an asset with no calibration is
     refused with `CALIBRATION_MISSING`, and one written against a calibration measured at a
-    different resolution with `CALIBRATION_RESOLUTION_MISMATCH`. No image-frame bounds check applies.
+    different resolution with `CALIBRATION_RESOLUTION_MISMATCH`. No image-frame bounds check
+    applies.
     """
 
     model_config = ConfigDict(extra="forbid")
