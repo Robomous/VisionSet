@@ -93,18 +93,24 @@ scale and offset for a resize, mirror for `hflip`, a quarter turn for `rot90`, n
 the same arithmetic: `letterbox_fit` is the single spelling of where letterboxed content lands,
 and the per-variant draws come from one seed.
 
-| step | bbox | polygon | polyline | classification_tag |
-| --- | --- | --- | --- | --- |
-| stretch | scale x, y | scale | scale | unchanged |
-| letterbox | scale then offset | same | same | unchanged |
-| hflip | `x' = W - x - w` | mirror points | mirror points, order kept | unchanged |
-| brightness_contrast | unchanged | unchanged | unchanged | unchanged |
-| rot90 | rotate corners, rebuilt axis-aligned | rotate points | **refused** | unchanged |
+| step | bbox | polygon | polyline | polyline_3d | classification_tag |
+| --- | --- | --- | --- | --- | --- |
+| stretch | scale x, y | scale | scale | **refused** | unchanged |
+| letterbox | scale then offset | same | same | **refused** | unchanged |
+| hflip | `x' = W - x - w` | mirror points | mirror points, order kept | **refused** | unchanged |
+| brightness_contrast | unchanged | unchanged | unchanged | unchanged, calibration kept | unchanged |
+| rot90 | rotate corners, rebuilt axis-aligned | rotate points | **refused** | **refused** | unchanged |
 
 A step declares what it can transform, and a geometry it cannot is a **typed refusal, never a
 consent**: `PreprocessingStepUnsupportedGeometry` names the step, the geometry and the first asset
 carrying it. Today that is `rot90` over a polyline, whose point order carries meaning relative
-to the frame's axes. The lossy-consent path is for a format that cannot *carry* a label; a label
+to the frame's axes, and every pixel-moving step over a 3D label: a resize changes the
+intrinsics it is read through, and a mirror or a quarter turn changes the frame's handedness or
+axes, so each would need a new calibration per variant. Only `brightness_contrast` keeps one, and
+each variant carries its source's calibration. An export that does not write the 3D label - every
+installed format, with or without a target - drops it before any step runs, counted and behind
+lossy consent, so it cannot make a step refuse; only the preview, which shows every label, and a
+format that writes 3D meet the refusal. The lossy-consent path is for a format that cannot *carry* a label; a label
 that cannot *follow its image* is not something to consent to.
 
 Drivers are plugins on the `PreprocessingDriver` port, discovered over the
@@ -205,7 +211,7 @@ recognise, so the pixel driver and the geometry transform still agree through th
 | `InvalidName` | The name is not a slug: lowercase letters, digits, dots, hyphens and underscores, starting with a letter or digit, at most 64 characters. 422. |
 | `VALIDATION_ERROR` | The spec breaks the grammar: two resize steps, a resize after an augmentation, an augmentation repeated, augmentation steps with `variants_per_asset` 0, or variants with no augmentation step. The rule that was broken is the message, in the words above. Refused by the spec model itself, so every surface says the same thing. 422. |
 | `AugmentationRequiresSplit` | The recipe augments and the release was published without a split recipe. Raised at pre-flight and at export. 409. |
-| `PreprocessingStepUnsupportedGeometry` | A step met a geometry outside the set it declares it can transform - every step declares `supported_geometries` the way an exporter does, and today the one exclusion is `rot90` over a polyline. Carries `step`, `geometry` and the first `asset_id`. 409. |
+| `PreprocessingStepUnsupportedGeometry` | A step met a geometry outside the set it declares it can transform - every step declares `supported_geometries` the way an exporter does, and today the exclusions are `rot90` over a polyline and every step but `brightness_contrast` over a 3D label. Carries `step`, `geometry` and the first `asset_id`. 409. |
 | `ExportSourceUnreadable` | A step needs the source's pixel size and the manifest never recorded one, or the asset's bytes are gone. 409. |
 | `PreprocessingDriverNotFound` | No installed driver applies a step kind the recipe holds. A fact about the installation, not the request. 500. |
 

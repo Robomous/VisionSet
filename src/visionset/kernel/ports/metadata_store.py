@@ -286,6 +286,16 @@ class UnitOfWork(Protocol):
         """
         ...
 
+    def hold_writes(self) -> None:
+        """Take the store's write lock now, and keep it until this unit of work ends.
+
+        For a check-then-write whose check is not a guarded write of its own:
+        reads before a unit of work's first write may see a state another
+        writer is about to change, so a caller whose decision rests on a read
+        takes the lock first and reads after it. Writes nothing a reader sees.
+        """
+        ...
+
     def set_job_state(
         self,
         job_id: UUID,

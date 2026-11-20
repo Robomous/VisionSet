@@ -21,12 +21,14 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from pydantic import BaseModel, ConfigDict, Field
 
 from visionset.kernel.domain.annotation import Provenance
+from visionset.kernel.domain.calibration import geometry_needs_calibration
 from visionset.kernel.domain.export_target import ResizeStrategy
 from visionset.kernel.domain.geometry import (
     BboxGeometry,
     ClassificationGeometry,
     Geometry,
     PolygonGeometry,
+    Polyline3DGeometry,
     PolylineGeometry,
 )
 from visionset.kernel.domain.preprocessing import (
@@ -219,7 +221,8 @@ def transform_manifest(
             ``None`` — the release was published without a split recipe.
         PreprocessingStepUnsupportedGeometry: a step met a geometry outside
             its ``supported_geometries`` — ``rot90`` over a polyline, whose
-            point order carries meaning relative to the frame's axes.
+            point order carries meaning relative to the frame's axes, or any
+            pixel-moving step over a 3D label.
         ExportSourceUnreadable: a step needs the source image's dimensions and
             the manifest never recorded them.
     """
@@ -416,6 +419,8 @@ def _scaled(
             return geometry.through(
                 [(x * scale_x + offset_x, y * scale_y + offset_y) for x, y in geometry.points]
             )
+        case Polyline3DGeometry():
+            raise _unreachable_3d(geometry)
         case _:
             assert_never(geometry)
 
@@ -435,6 +440,8 @@ def _mirrored(geometry: Geometry, width: float) -> Geometry:
             return PolygonGeometry(points=[(width - x, y) for x, y in geometry.points])
         case PolylineGeometry():
             return geometry.through([(width - x, y) for x, y in geometry.points])
+        case Polyline3DGeometry():
+            raise _unreachable_3d(geometry)
         case _:
             assert_never(geometry)
 
@@ -460,8 +467,17 @@ def _rotated_once(geometry: Geometry, width: float) -> Geometry:
             return PolygonGeometry(points=[(y, width - x) for x, y in geometry.points])
         case PolylineGeometry():
             return geometry.through([(y, width - x) for x, y in geometry.points])
+        case Polyline3DGeometry():
+            raise _unreachable_3d(geometry)
         case _:
             assert_never(geometry)
+
+
+def _unreachable_3d(geometry: Polyline3DGeometry) -> AssertionError:
+    # The step tables keep every 3D type out of a pixel-moving step and
+    # `fit_within` passes them by, so reaching this means a caller and the
+    # arithmetic disagree about which coordinates are pixels.
+    return AssertionError(f"no pixel-moving step transforms a {geometry.type.value}")
 
 
 def variant_content_hash(content_hash: str, variant: int) -> str:
@@ -491,7 +507,9 @@ def plugin_manifest(manifest: Manifest, view: TransformedView) -> Manifest:
     plugin recomputes folds — and its ``content_hash`` is
     :func:`variant_content_hash`, distinct per variant so the plugin names and
     reads each file on its own. ``uri`` is copied from the source; ``width``
-    and ``height`` are the transformed size. Classes stay the manifest's.
+    and ``height`` are the transformed size. Classes stay the manifest's. A file
+    still carrying a 3D label carries its source's calibration, which only a
+    step that leaves the pixels where they are lets through.
     """
     sources = {asset.asset_id: asset for asset in manifest.assets}
     return manifest.model_copy(
@@ -506,6 +524,11 @@ def plugin_manifest(manifest: Manifest, view: TransformedView) -> Manifest:
                     annotations=tuple(
                         _manifest_annotation(annotation, file.variant)
                         for annotation in file.annotations
+                    ),
+                    calibration=(
+                        sources[file.asset_id].calibration
+                        if any(geometry_needs_calibration(a.geometry) for a in file.annotations)
+                        else None
                     ),
                 )
                 for file in view.files
@@ -533,7 +556,8 @@ def fit_within(file: TransformedFile, max_edge: int) -> TransformedFile:
     A preview's size cap, applied as the stretch arithmetic the export uses so
     the annotations land where a resize driver asked for the same size would
     put the pixels. A file already within the cap, or one with no recorded
-    size, is returned as it is.
+    size, is returned as it is. A 3D label is in metres, not pixels, so the
+    cap leaves it as it is too.
     """
     if file.width is None or file.height is None or max(file.width, file.height) <= max_edge:
         return file
@@ -544,7 +568,9 @@ def fit_within(file: TransformedFile, max_edge: int) -> TransformedFile:
             "width": width,
             "height": height,
             "annotations": tuple(
-                annotation.model_copy(
+                annotation
+                if geometry_needs_calibration(annotation.geometry)
+                else annotation.model_copy(
                     update={
                         "geometry": _scaled(
                             annotation.geometry, width / file.width, height / file.height, 0.0, 0.0

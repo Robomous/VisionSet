@@ -44,7 +44,21 @@ from visionset.kernel.domain.release import canonical_bytes, sha256_hex
 from visionset.kernel.domain.schema import GeometryType
 
 EVERY_GEOMETRY: Final[frozenset[GeometryType]] = frozenset(GeometryType)
-"""What a step that moves every coordinate the same way can transform."""
+"""What a step that leaves every coordinate where it is can carry."""
+
+THREE_D: Final[frozenset[GeometryType]] = frozenset(
+    {GeometryType.CUBOID_3D, GeometryType.POLYLINE_3D}
+)
+"""Geometries in the sensor frame, which no pixel-moving step can follow.
+
+A resize changes the intrinsics a 3D label is read through and a mirror or a
+quarter turn changes the frame's handedness or axes, so each would need a new
+calibration per variant. Only a step that leaves the pixels' positions alone
+keeps them.
+"""
+
+PIXEL_GEOMETRIES: Final[frozenset[GeometryType]] = EVERY_GEOMETRY - THREE_D
+"""What a step that moves every pixel coordinate the same way can transform."""
 
 SHOWCASE_SEED: Final = b"showcase"
 """The seed a preview passes to see a step at its declared strength.
@@ -77,8 +91,8 @@ class ResizeStep(BaseModel):
 
     @property
     def supported_geometries(self) -> frozenset[GeometryType]:
-        """Every geometry: a resize scales and offsets each coordinate alike."""
-        return EVERY_GEOMETRY
+        """Every pixel geometry: a resize scales and offsets each coordinate alike."""
+        return PIXEL_GEOMETRIES
 
 
 class AugmentOp(StrEnum):
@@ -90,11 +104,11 @@ class AugmentOp(StrEnum):
 
 
 AUGMENT_GEOMETRIES: Final[Mapping[AugmentOp, frozenset[GeometryType]]] = {
-    AugmentOp.HFLIP: EVERY_GEOMETRY,
+    AugmentOp.HFLIP: PIXEL_GEOMETRIES,
     AugmentOp.BRIGHTNESS_CONTRAST: EVERY_GEOMETRY,
     # A polyline's point order carries meaning relative to the frame's axes,
     # and a quarter turn re-axes the frame under it.
-    AugmentOp.ROT90: EVERY_GEOMETRY - {GeometryType.POLYLINE},
+    AugmentOp.ROT90: PIXEL_GEOMETRIES - {GeometryType.POLYLINE},
 }
 """Which geometries each augmentation can transform, per :class:`AugmentOp`."""
 

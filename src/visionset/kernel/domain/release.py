@@ -53,6 +53,7 @@ from pydantic import (
 )
 
 from visionset.kernel.domain.annotation import Provenance
+from visionset.kernel.domain.calibration import Calibration, geometry_needs_calibration
 from visionset.kernel.domain.geometry import Geometry
 from visionset.kernel.domain.schema import AttributeValue, GeometryType, LabelClass
 from visionset.kernel.errors import UnserializableManifest
@@ -78,7 +79,17 @@ from visionset.kernel.errors import UnserializableManifest
 #: to the bytes it did under 2, and a version-2 document loads and verifies with
 #: its hash untouched. A document that does carry it is one a version-2 build
 #: refuses, which is what the bump announces.
-MANIFEST_VERSION: int = 3
+#:
+#: **4** since #1038, which added ``polyline_3d`` to the geometry union and a
+#: ``calibration`` to :class:`ManifestAsset`, embedded only on an asset carrying
+#: a 3D label and omitted otherwise. A release is written at the lowest version
+#: that can express it (:func:`manifest_version_for`), so a 2D release is still
+#: a version-3 document with the bytes and the hash it had before, and only a
+#: release holding a 3D label is one a version-3 build refuses.
+MANIFEST_VERSION: int = 4
+
+CALIBRATED_MANIFEST_VERSION: int = 4
+"""The first manifest version that can carry a calibration, and so a 3D label."""
 
 
 class ManifestAnnotation(BaseModel):
@@ -119,6 +130,11 @@ class ManifestAsset(BaseModel):
     workspace-local path, and that is exactly why a manifest hash is a *snapshot*
     identity rather than a universal content identity. The same images ingested
     on another machine produce a different manifest.
+
+    ``calibration`` is a copy of the calibration that applied to the asset at
+    publication, present exactly when the asset carries a 3D label — a 3D label
+    is never read without it — and **omitted** otherwise, so a 2D asset
+    serializes to the bytes it always did, whatever its source says.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -129,6 +145,17 @@ class ManifestAsset(BaseModel):
     width: int | None = None
     height: int | None = None
     annotations: tuple[ManifestAnnotation, ...] = ()
+    calibration: Calibration | None = Field(default=None, exclude_if=lambda value: value is None)
+
+    @model_validator(mode="after")
+    def _three_d_labels_carry_their_calibration(self) -> ManifestAsset:
+        if self.calibration is None and any(
+            geometry_needs_calibration(annotation.geometry) for annotation in self.annotations
+        ):
+            raise ValueError(
+                f"asset {self.asset_id} carries a 3D label and no calibration to read it against"
+            )
+        return self
 
     @field_validator("annotations")
     @classmethod
@@ -180,10 +207,32 @@ class Manifest(BaseModel):
         """By content, then by id — never by the order they were promoted in."""
         return tuple(sorted(value, key=lambda asset: (asset.content_hash, str(asset.asset_id))))
 
+    @model_validator(mode="after")
+    def _version_can_express_the_content(self) -> Manifest:
+        if self.manifest_version < CALIBRATED_MANIFEST_VERSION and any(
+            asset.calibration is not None for asset in self.assets
+        ):
+            raise ValueError(
+                f"a version-{self.manifest_version} manifest cannot carry a calibration; "
+                f"calibrated assets need version {CALIBRATED_MANIFEST_VERSION}"
+            )
+        return self
+
     @property
     def annotation_count(self) -> int:
         """How many labels this manifest carries, across every asset."""
         return sum(len(asset.annotations) for asset in self.assets)
+
+
+def manifest_version_for(assets: Sequence[ManifestAsset]) -> int:
+    """The lowest manifest version that can express these assets.
+
+    Publishing writes this rather than :data:`MANIFEST_VERSION`, so content a
+    version-3 build can read is still written as version 3 and keeps its hash.
+    """
+    if any(asset.calibration is not None for asset in assets):
+        return CALIBRATED_MANIFEST_VERSION
+    return 3
 
 
 def canonical_bytes(model: BaseModel) -> bytes:

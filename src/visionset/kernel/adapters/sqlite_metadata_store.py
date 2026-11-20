@@ -488,6 +488,10 @@ class SqlUnitOfWork:
             raise EntityNotFound(f"job {job_id} does not carry asset {asset_id}")
         return AssetProgress(stored)
 
+    def hold_writes(self) -> None:
+        """A no-op ``UPDATE`` of the one workspace row: SQLite's write lock, taken now."""
+        self._session.execute(update(t.WorkspaceRow).values(name=t.WorkspaceRow.name))
+
     def set_job_state(
         self,
         job_id: UUID,

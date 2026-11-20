@@ -79,7 +79,11 @@ import {
   type Geometry,
   type LabelClass,
   type Point,
+  type Point3D,
+  type Polyline3DGeometry,
   type Provenance,
+  type StoredAnnotation,
+  type StoredGeometry,
   type VertexVisibility,
 } from "./types";
 
@@ -296,6 +300,17 @@ function requirePoint(value: unknown, what: string): Point {
   return [requireNumber(value[0], `${what}[0]`), requireNumber(value[1], `${what}[1]`)];
 }
 
+function requirePoint3D(value: unknown, what: string): Point3D {
+  if (!Array.isArray(value) || value.length !== 3) {
+    throw new WireFormatError(`${what} must be an [x, y, z] triple`);
+  }
+  return [
+    requireNumber(value[0], `${what}[0]`),
+    requireNumber(value[1], `${what}[1]`),
+    requireNumber(value[2], `${what}[2]`),
+  ];
+}
+
 function requireAttributes(
   value: unknown,
   what: string,
@@ -311,13 +326,26 @@ function requireAttributes(
 }
 
 /**
- * One geometry, routed on its `type` exactly as the domain's union is.
+ * One geometry this engine draws, routed on its `type` exactly as the domain's union is.
  *
  * A `type` this build cannot carry is told apart from a `type` that is not a
  * geometry at all, because the remedies differ: the first waits for a variant to
- * be implemented, the second is a bug in the caller.
+ * be implemented, the second is a bug in the caller. A `polyline_3d` is carried
+ * but not drawn, so it is refused here and parsed by `parseStoredGeometry`.
  */
 export function parseGeometry(value: unknown): Geometry {
+  const geometry = parseStoredGeometry(value);
+  if (geometry.type === "polyline_3d") {
+    throw new WireFormatError(
+      `geometry.type "polyline_3d" is carried and not drawn — it is read against a ` +
+        `camera calibration this engine does not have`,
+    );
+  }
+  return geometry;
+}
+
+/** One geometry the wire can carry, including the ones the scene does not draw. */
+export function parseStoredGeometry(value: unknown): StoredGeometry {
   if (!isRecord(value)) {
     throw new WireFormatError("geometry must be an object");
   }
@@ -374,10 +402,29 @@ export function parseGeometry(value: unknown): Geometry {
             : undefined,
       };
     }
+    case "polyline_3d":
+      return parsePolyline3D(value);
     default:
       requireExactKeys(value, CLASSIFICATION_KEYS, "classification_tag geometry");
       return { type: "classification_tag" };
   }
+}
+
+function parsePolyline3D(value: Record<string, unknown>): Polyline3DGeometry {
+  requireExactKeys(value, POLYLINE_KEYS, "polyline_3d geometry", POLYLINE_OPTIONAL_KEYS);
+  const points = value["points"];
+  if (!Array.isArray(points)) {
+    throw new WireFormatError("geometry.points must be an array");
+  }
+  const parsed = points.map((point, index) =>
+    requirePoint3D(point, `geometry.points[${index}]`),
+  );
+  return {
+    type: "polyline_3d",
+    points: parsed,
+    visibility:
+      "visibility" in value ? requireVisibility(value["visibility"], parsed.length) : undefined,
+  };
 }
 
 /**
@@ -387,7 +434,7 @@ export function parseGeometry(value: unknown): Geometry {
  * re-serializing the result and comparing it to the input proves nothing was
  * dropped, renamed or reordered on the way through.
  */
-export function parseAnnotation(value: unknown): Annotation {
+export function parseAnnotation(value: unknown): StoredAnnotation {
   if (!isRecord(value)) {
     throw new WireFormatError("annotation must be an object");
   }
@@ -406,7 +453,7 @@ export function parseAnnotation(value: unknown): Annotation {
     asset_id: requireString(value["asset_id"], "annotation.asset_id"),
     label_class: requireString(value["label_class"], "annotation.label_class"),
     schema_version: requireNumber(value["schema_version"], "annotation.schema_version"),
-    geometry: parseGeometry(value["geometry"]),
+    geometry: parseStoredGeometry(value["geometry"]),
     attributes: requireAttributes(value["attributes"], "annotation.attributes"),
     provenance: provenance as Provenance,
     model_ref: requireNullableString(value["model_ref"], "annotation.model_ref"),
@@ -417,7 +464,7 @@ export function parseAnnotation(value: unknown): Annotation {
 }
 
 /** A whole collection, refused entirely if any member is malformed. */
-export function parseAnnotations(value: unknown): Annotation[] {
+export function parseAnnotations(value: unknown): StoredAnnotation[] {
   if (!Array.isArray(value)) {
     throw new WireFormatError("annotations must be an array");
   }

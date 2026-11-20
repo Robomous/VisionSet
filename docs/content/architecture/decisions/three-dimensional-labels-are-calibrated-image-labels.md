@@ -18,7 +18,7 @@ It is interpretable only together with the calibration of the source the image c
   rotation is an extension of that shape, not an alternative to it.
 - **A point cloud is not an image.** If a point-cloud asset is ever admitted, it is a new
   modality holding a single scan, and it arrives with a manifest that records modality
-  (`MANIFEST_VERSION` 4). A multi-sensor frame is not an asset.
+  (the next `MANIFEST_VERSION`). A multi-sensor frame is not an asset.
 
 ## What this forbids
 

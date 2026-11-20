@@ -46,6 +46,8 @@ from visionset.kernel.domain import (
     ImportRun,
     LabelClass,
     Project,
+    geometry_needs_calibration,
+    require_calibration,
     sha256_hex,
 )
 from visionset.kernel.domain.geometry import geometry_intersects_asset
@@ -53,6 +55,8 @@ from visionset.kernel.domain.names import derived_name
 from visionset.kernel.domain.schema_validation import validate_schema_annotation
 from visionset.kernel.errors import (
     AssetNotWritable,
+    CalibrationMissing,
+    CalibrationResolutionMismatch,
     ImportNotConsented,
     ImportSourceUnreadable,
     InvalidAnnotation,
@@ -149,6 +153,10 @@ class ImportService:
                 after a reviewer changed a label in it. A re-run is not a re-sync.
             AnnotationGeometryOutOfBounds: a stored asset's recorded size
                 disagrees with its bytes, so a label planned inside it is not.
+            CalibrationMissing: a 3D label would land on an asset with no
+                calibration — always so for an asset the import creates.
+            CalibrationResolutionMismatch: a 3D label would land on an asset
+                whose calibration was measured at another size.
             ConstraintViolated: a concurrent writer stored the same content or
                 schema version first; nothing of this run was kept.
         """
@@ -304,10 +312,24 @@ class ImportService:
                 if asset is None:
                     new_assets += 1
                     new_annotations += len(image.labels)
+                    if any(geometry_needs_calibration(one.geometry) for one in image.labels):
+                        blocked.append(
+                            CalibrationMissing(
+                                f"image {str(image.path)!r} is new to the project, so it has no "
+                                f"calibration, and the source gives it 3D labels; an import "
+                                f"cannot calibrate an asset it creates"
+                            )
+                        )
                     continue
                 new, repeated = _new_labels(_present(uow.annotations.list(asset.id)), image.labels)
                 already += repeated
                 new_annotations += len(new)
+                if any(geometry_needs_calibration(one.geometry) for one in new):
+                    source = None if asset.source_id is None else uow.sources.get(asset.source_id)
+                    try:
+                        require_calibration(asset, source)
+                    except (CalibrationMissing, CalibrationResolutionMismatch) as refusal:
+                        blocked.append(refusal)
                 if new and (asset.id in trunk or asset.id in held):
                     blocked.append(
                         AssetNotWritable(

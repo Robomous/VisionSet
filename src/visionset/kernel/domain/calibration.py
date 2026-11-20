@@ -30,8 +30,10 @@ from visionset.kernel.domain.geometry import (
     ClassificationGeometry,
     Geometry,
     PolygonGeometry,
+    Polyline3DGeometry,
     PolylineGeometry,
 )
+from visionset.kernel.errors import CalibrationMissing, CalibrationResolutionMismatch
 
 if TYPE_CHECKING:
     from visionset.kernel.domain.asset import Asset
@@ -139,13 +141,38 @@ def effective_calibration(asset: Asset, source: Source | None) -> Calibration | 
     return None if source is None else source.calibration
 
 
-def geometry_needs_calibration(geometry: Geometry) -> bool:
-    """Whether a stored label is read against its asset's calibration.
+def require_calibration(asset: Asset, source: Source | None) -> Calibration:
+    """The calibration a 3D label on ``asset`` is read against, or a refusal.
 
-    No implemented geometry is 3D yet, so nothing does. Exhaustive so that the
-    first 3D variant has to answer.
+    The size check is repeated here, not only where a calibration is set,
+    because an asset can join a calibrated source later at another size.
+
+    Raises:
+        CalibrationMissing: neither the asset nor its source has one.
+        CalibrationResolutionMismatch: the one that applies was measured at a
+            size other than the asset's.
     """
+    calibration = effective_calibration(asset, source)
+    if calibration is None:
+        raise CalibrationMissing(
+            f"asset {asset.id} has no calibration of its own and "
+            + ("no source" if source is None else f"its source {source.id} has none")
+            + "; a 3D label is read against one, so set it on the asset or its source first"
+        )
+    if not calibration.fits(asset.width, asset.height):
+        intrinsics = calibration.intrinsics
+        raise CalibrationResolutionMismatch(
+            f"asset {asset.id} is {asset.width}x{asset.height} and the calibration that "
+            f"applies to it was measured at {intrinsics.width}x{intrinsics.height}"
+        )
+    return calibration
+
+
+def geometry_needs_calibration(geometry: Geometry) -> bool:
+    """Whether a stored label is read against its asset's calibration: every 3D one is."""
     match geometry:
+        case Polyline3DGeometry():
+            return True
         case BboxGeometry() | PolygonGeometry() | PolylineGeometry() | ClassificationGeometry():
             return False
         case _:

@@ -35,6 +35,7 @@
  */
 
 import {
+  isDrawnGeometryType,
   toAnnotationCreate,
   toAnnotationUpdate,
   type Annotation,
@@ -284,12 +285,18 @@ export function isEmptyPlan(plan: SavePlan): boolean {
  * kernel accepts and a history entry nobody asked for. Compared by the projection
  * that actually travels (`toAnnotationUpdate`), so a field the wire does not carry
  * cannot make a save look necessary.
+ *
+ * A loaded annotation the document never holds — a `polyline_3d`, carried past
+ * the scene — is left out of the comparison, so its absence from the document
+ * never reads as a delete.
  */
 export function planSave(
   document: AnnotationDocument,
   loaded: readonly WireAnnotation[],
 ): SavePlan {
-  const before = new Map(loaded.map((one) => [one.id, one]));
+  const before = new Map(
+    loaded.filter((one) => !carriedPast(one.geometry)).map((one) => [one.id, one]),
+  );
   const created: Annotation[] = [];
   const updated: Annotation[] = [];
 
@@ -306,6 +313,11 @@ export function planSave(
 
   const deleted = [...before.keys()].filter((id) => !document.annotations.has(id));
   return { created, updated, deleted };
+}
+
+function carriedPast(geometry: unknown): boolean {
+  const type = (geometry as { readonly type?: unknown } | null)?.type;
+  return typeof type === "string" && !isDrawnGeometryType(type);
 }
 
 /** A loaded annotation in the shape an update would send, so the two compare. */

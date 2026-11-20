@@ -70,13 +70,15 @@ images ingested on another machine produce a different manifest.
 ### The manifest's own format version
 
 `manifest_version` names the shape of the document itself, independent of the workspace
-database's format and of the package version. A build writes **3**:
+database's format and of the package version. A build writes the **lowest version that can
+express the release**: **3** for a release with no 3D label, **4** for one that holds any.
 
 | Version | Since | What changed |
 | --- | --- | --- |
 | 1 | the first release | - |
 | 2 | #584 | `LabelClass.geometries` became plural; a version-1 class's singular `geometry` still loads |
 | 3 | #352 | a polyline may carry per-vertex `visibility` |
+| 4 | #1038 | a `polyline_3d` geometry, and a `calibration` on each asset that carries one |
 
 An older document keeps the version it was written with, so its bytes and its hash never move and
 `verify` still passes. Version 3 changes no existing bytes: a polyline with unknown visibility
@@ -89,8 +91,27 @@ unknown keys forbidden - half-understanding hash-pinned evidence is worse than r
 version-2 build refuses a version-3 manifest only when that manifest carries a `visibility`; one
 with no visibility recorded anywhere loads there unchanged.
 
-Publishing the same content under a newer build still produces a different manifest hash than an
-older build did, because the version number is part of the document.
+Version 4 changes no existing bytes either. An asset's `calibration` is embedded only when the
+asset carries a 3D label, and **omitted** otherwise - even when its source is calibrated - and a
+release with no 3D label is still written as version 3. So a 2D release published now hashes
+exactly as it did before 3D labels existed, and only a release holding one is refused by a
+version-3 build. A manifest that carries a calibration under a version below 4, or a 3D label on
+an asset with no calibration beside it, does not load.
+
+Publishing content that needs a newer version than an older build wrote still produces a
+different manifest hash, because the version number is part of the document.
+
+### A 3D label travels with its calibration
+
+Publishing copies, beside every asset that carries a 3D label, the calibration that applied to it
+at that moment - the asset's own override, else its source's - so the release can be read
+without the workspace. An asset carrying one with no calibration refuses the publish with
+`CALIBRATION_MISSING` (409), and one whose calibration was measured at another size than the
+asset with `CALIBRATION_RESOLUTION_MISMATCH` (422). No installed format writes a 3D geometry: an
+export reports the `polyline_3d` class **dropped**, with its annotation and asset counts, and
+needs `allow_lossy` like any other loss. The drop happens before pre-processing, with or without a
+target, so a resize or flip in the export's recipe never refuses over a 3D label the format would
+not write anyway.
 
 ### Which schema version a release pins
 
@@ -931,6 +952,8 @@ carries the identical body under `detail.compatibility`.
 | `ReleaseTagTaken` | This dataset already has a release under that tag. **Case-sensitive**: a tag is an identifier like a git tag, so `v1.0` and `V1.0` are two releases. Enforced by a pre-check and by a unique index, the second so a race cannot slip past the first. |
 | `NoSplitRecipe` | `assignment` was asked of a release published without one. Not an error in the release: no recipe means one undivided set, and inventing an all-train answer would be indistinguishable from a real one. |
 | `UnserializableManifest` | An annotation carries a NaN or infinite coordinate. `Geometry` accepts any float, so such a label can be stored; canonical JSON cannot express it, and writing `null` or the bare token `NaN` would lose data or produce a document no other tool can parse. |
+| `CalibrationMissing` | An asset carrying a 3D label has no calibration, neither its own nor its source's. 409. |
+| `CalibrationResolutionMismatch` | An asset carrying a 3D label has a calibration measured at another size than the asset. 422. |
 | `WorkspaceCorrupt` | The manifest blob is gone, or is not a readable manifest, or the trunk holds an asset that is not stored. All are guarantees failing rather than entities missing. |
 | `ExportSourceUnreadable` | The release names bytes an export cannot use - the blob is gone, no longer matches its content hash, or is not an image the format can write. **409, not 500**: the request is fine and the stored state is not, so the message names the asset and reaches the caller. The remedy is `verify` and then restoring the blob. A previous generation of this tool swallowed this and shipped a training set one image short. |
 | `ExportDestinationRefused` | The export directory is relative, inside or containing the workspace, a file, or cannot be created or read. Not overridable; the remedy is another path. |
@@ -942,7 +965,7 @@ carries the identical body under `detail.compatibility`.
 | `LossyExportNotConsented` | The chosen format cannot carry everything the release holds, and the caller has not passed `allow_lossy`. Raised when the format declares itself lossy **or** when this release's own report is not clean, and it carries that report. Retryable with the flag, which is why a client must branch on the code and never on the 409. |
 | `PreprocessingRecipeNotFound` | The release's project has no recipe under the name the export was given. Resolved through the project the release's dataset hangs off. |
 | `AugmentationRequiresSplit` | The recipe asks for augmented variants and the release was published without a split recipe, so there is no train fold to augment. Raised at pre-flight and again at export. |
-| `PreprocessingStepUnsupportedGeometry` | A recipe step cannot transform a geometry the export would carry - `rot90` over a polyline. A refusal, never a consent: a label that cannot follow its image is not something to consent to. Carries the step, the geometry and the first asset. |
+| `PreprocessingStepUnsupportedGeometry` | A recipe step cannot transform a geometry the export would carry - `rot90` over a polyline, or a resize, flip or quarter turn over a 3D label. A refusal, never a consent: a label that cannot follow its image is not something to consent to. Carries the step, the geometry and the first asset. |
 | `PreprocessingDriverNotFound` | No installed driver applies a step kind the recipe holds. A fact about the installation rather than the request, 500 over HTTP; the message lists the kinds that are installed. |
 
 

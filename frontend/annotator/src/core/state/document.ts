@@ -56,11 +56,12 @@
  */
 
 import { parseAnnotations, parseAssetDescriptor, parseSchema } from "../wire";
-import type {
-  Annotation,
-  AnnotationSchema,
-  AssetDescriptor,
-  LabelClass,
+import {
+  isDrawnAnnotation,
+  type Annotation,
+  type AnnotationSchema,
+  type AssetDescriptor,
+  type LabelClass,
 } from "../types";
 
 /** A document that would break one of its own invariants. */
@@ -128,12 +129,17 @@ export function createDocument(
  * The boundary a generated API client plugs into: everything arrives as
  * `unknown` and leaves typed, so a payload that does not match the contract is
  * refused here rather than surfacing as a rendering bug later.
+ *
+ * A carried-only annotation (`polyline_3d`) is parsed, so a malformed one is
+ * still refused, and then left out: the scene never holds it, so no edit can
+ * reach it. A host diffing the document against what it loaded must leave it
+ * out of that comparison too, or the save reads it as deleted.
  */
 export function documentFromWire(payload: WireDocument): AnnotationDocument {
   return createDocument(
     parseAssetDescriptor(payload.asset),
     parseSchema(payload.schema),
-    parseAnnotations(payload.annotations),
+    parseAnnotations(payload.annotations).filter(isDrawnAnnotation),
   );
 }
 

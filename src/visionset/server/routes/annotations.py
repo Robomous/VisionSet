@@ -107,6 +107,11 @@ def add_annotations(
     `accepted` has no exit, so correcting it means a new batch. Read
     `allowed_actions` on the batch's asset listing rather than guessing: it
     declares `annotate` exactly when this will be accepted.
+
+    A `polyline_3d` is read against its asset's calibration — the asset's own,
+    else its source's. With neither this is 409 `CALIBRATION_MISSING`, and with
+    one measured at another size than the asset it is 422
+    `CALIBRATION_RESOLUTION_MISMATCH`; set a fitting calibration and resend.
     """
     try:
         stored = AnnotationService(workspace).add(job_id, [a.to_domain() for a in body])
@@ -138,7 +143,8 @@ def update_annotations(
     and so are the two gates around it: a batch that is not open for annotation
     is 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409
     `JOB_FINISHED`. An edit is a write, and every gate that stops a new label
-    stops a replacement too.
+    stops a replacement too — including 409 `CALIBRATION_MISSING` and 422
+    `CALIBRATION_RESOLUTION_MISMATCH` for a `polyline_3d`.
     """
     try:
         stored = AnnotationService(workspace).update(job_id, [a.to_domain() for a in body])

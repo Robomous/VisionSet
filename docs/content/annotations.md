@@ -196,6 +196,29 @@ polylines outright (see [pre-processing](preprocessing.md)). Of the export forma
 `openlane-2d` has a per-vertex slot, and its importer reads it back; see
 [releases](releases.md#the-lane-formats).
 
+## A 3D polyline is read against a calibration
+
+`polyline_3d` is an open path of at least two `[x, y, z]` points, in order, in **metres in the
+camera's sensor frame** (OpenCV's: x right, y down, z forward) - never pixels. It is its own
+variant, not a `polyline` with a z coordinate, so no code reading 2D points can reach it, and it
+keeps the polyline's rules exactly: a path whose points are all one point is refused, and
+`visibility` is the same optional per-vertex field under the same validator. No image-frame
+bounds check applies; a point outside the frame, or behind the camera, is a legal label. See
+[Three-dimensional labels are calibrated image labels](architecture/decisions/three-dimensional-labels-are-calibrated-image-labels.md).
+
+**Every write needs a calibration that fits.** The asset's effective calibration - its own
+override, else its source's (see [sources](sources.md#camera-calibration)) - must exist, or the
+write is `CALIBRATION_MISSING` (409), and must have been measured at the asset's size, or it is
+`CALIBRATION_RESOLUTION_MISMATCH` (422). The check sits in the one funnel every write goes
+through, so `add`, `update`, the import door and the pre-labeling door all hold it, on every
+surface. An import refuses a 3D label before writing anything: it creates its assets, and a new
+asset has no calibration yet.
+
+No drawing tool exists for it. The browser parses one, keeps it out of the scene, and leaves it
+out of what a save compares, so a job holding a 3D label loads and every other label saves
+around it untouched. No installed export format writes one either; see
+[releases](releases.md#a-3d-label-travels-with-its-calibration).
+
 ## Provenance is the model's own rule, not the service's
 
 There is no `InvalidProvenance`. `provenance="model"` requiring a `model_ref`, and `confidence`

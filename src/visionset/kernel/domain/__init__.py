@@ -36,6 +36,7 @@ from visionset.kernel.domain.calibration import (
     SensorExtrinsics,
     effective_calibration,
     geometry_needs_calibration,
+    require_calibration,
 )
 from visionset.kernel.domain.capabilities import (
     ASSET_MOVES,
@@ -109,6 +110,7 @@ from visionset.kernel.domain.geometry import (
     ClassificationGeometry,
     Geometry,
     PolygonGeometry,
+    Polyline3DGeometry,
     PolylineGeometry,
     StrictVertexVisibility,
     VertexVisibilities,
@@ -222,7 +224,9 @@ from visionset.kernel.domain.prediction import (
 from visionset.kernel.domain.preprocessing import (
     AUGMENT_GEOMETRIES,
     EVERY_GEOMETRY,
+    PIXEL_GEOMETRIES,
     SHOWCASE_SEED,
+    THREE_D,
     AugmentOp,
     AugmentStep,
     PreprocessingRecipe,
@@ -251,6 +255,7 @@ from visionset.kernel.domain.preprocessing_transform import (
 )
 from visionset.kernel.domain.project import Project, ProjectPreview, ProjectStats
 from visionset.kernel.domain.release import (
+    CALIBRATED_MANIFEST_VERSION,
     MANIFEST_VERSION,
     ClassCompatibility,
     ClassExportStatus,
@@ -264,6 +269,7 @@ from visionset.kernel.domain.release import (
     SplitRecipe,
     assign_split,
     canonical_bytes,
+    manifest_version_for,
     sha256_hex,
     sha256_hex_of_stream,
 )
@@ -415,6 +421,8 @@ __all__ = [
     "JOB_TRANSITIONS",
     "LIVE_JOB_STATES",
     "MANIFEST_VERSION",
+    "CALIBRATED_MANIFEST_VERSION",
+    "manifest_version_for",
     "MARK_TRANSITIONS",
     "MEDIA_TYPES",
     "OCTET_STREAM",
@@ -444,6 +452,7 @@ __all__ = [
     "SensorExtrinsics",
     "effective_calibration",
     "geometry_needs_calibration",
+    "require_calibration",
     "AssetPrediction",
     "AssetProgress",
     "AssetSort",
@@ -500,6 +509,8 @@ __all__ = [
     "TARGET_NAME_PATTERN",
     "AUGMENT_GEOMETRIES",
     "EVERY_GEOMETRY",
+    "PIXEL_GEOMETRIES",
+    "THREE_D",
     "AugmentOp",
     "AugmentStep",
     "Fold",
@@ -573,6 +584,7 @@ __all__ = [
     "PointPrompt",
     "PolygonGeometry",
     "PolylineGeometry",
+    "Polyline3DGeometry",
     "VertexVisibility",
     "StrictVertexVisibility",
     "VertexVisibilities",

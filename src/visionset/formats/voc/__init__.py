@@ -55,6 +55,7 @@ from visionset.kernel.domain import (
     ManifestAnnotation,
     ManifestAsset,
     PolygonGeometry,
+    Polyline3DGeometry,
     PolylineGeometry,
     Release,
 )
@@ -274,7 +275,7 @@ def _as_box(
             return BboxGeometry(
                 x=min(xs), y=min(ys), width=max(xs) - min(xs), height=max(ys) - min(ys)
             )
-        case ClassificationGeometry() | PolylineGeometry():
+        case ClassificationGeometry() | PolylineGeometry() | Polyline3DGeometry():
             # No location to write, or one VOC's `<object>` cannot hold.
             return None
         case _:

@@ -116,7 +116,8 @@
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
                 "polygon": "#/components/schemas/PolygonBody",
-                "polyline": "#/components/schemas/PolylineBody"
+                "polyline": "#/components/schemas/PolylineBody",
+                "polyline_3d": "#/components/schemas/Polyline3DBody"
               },
               "propertyName": "type"
             },
@@ -129,6 +130,9 @@
               },
               {
                 "$ref": "#/components/schemas/PolylineBody"
+              },
+              {
+                "$ref": "#/components/schemas/Polyline3DBody"
               },
               {
                 "$ref": "#/components/schemas/ClassificationBody"
@@ -222,7 +226,8 @@
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
                 "polygon": "#/components/schemas/PolygonBody",
-                "polyline": "#/components/schemas/PolylineBody"
+                "polyline": "#/components/schemas/PolylineBody",
+                "polyline_3d": "#/components/schemas/Polyline3DBody"
               },
               "propertyName": "type"
             },
@@ -235,6 +240,9 @@
               },
               {
                 "$ref": "#/components/schemas/PolylineBody"
+              },
+              {
+                "$ref": "#/components/schemas/Polyline3DBody"
               },
               {
                 "$ref": "#/components/schemas/ClassificationBody"
@@ -364,7 +372,8 @@
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
                 "polygon": "#/components/schemas/PolygonBody",
-                "polyline": "#/components/schemas/PolylineBody"
+                "polyline": "#/components/schemas/PolylineBody",
+                "polyline_3d": "#/components/schemas/Polyline3DBody"
               },
               "propertyName": "type"
             },
@@ -377,6 +386,9 @@
               },
               {
                 "$ref": "#/components/schemas/PolylineBody"
+              },
+              {
+                "$ref": "#/components/schemas/Polyline3DBody"
               },
               {
                 "$ref": "#/components/schemas/ClassificationBody"
@@ -3924,6 +3936,95 @@
         "title": "PolygonGeometry",
         "type": "object"
       },
+      "Polyline3DBody": {
+        "additionalProperties": false,
+        "description": "An open path of at least two `(x, y, z)` points, in order, in metres.\n\nPoints are in the asset's camera sensor frame \u2014 x right, y down, z forward \u2014\nand are read against the asset's effective calibration; writing one to an\nasset with no calibration is refused with `CALIBRATION_MISSING`. No\nimage-frame bounds check applies. `visibility` follows the 2D polyline's\nrules exactly.",
+        "properties": {
+          "points": {
+            "items": {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "type": {
+            "const": "polyline_3d",
+            "title": "Type",
+            "type": "string"
+          },
+          "visibility": {
+            "items": {
+              "$ref": "#/components/schemas/VertexVisibility"
+            },
+            "title": "Visibility",
+            "type": "array"
+          }
+        },
+        "required": [
+          "type",
+          "points"
+        ],
+        "title": "Polyline3DBody",
+        "type": "object"
+      },
+      "Polyline3DGeometry": {
+        "additionalProperties": false,
+        "description": "An open path of at least two ``(x, y, z)`` vertices in its asset's sensor frame.\n\nA sibling of :class:`PolylineGeometry`, never a subclass: every\n``case PolylineGeometry()`` and ``isinstance`` check reads 2D pixel points,\nand a 3D path must not reach one by inheritance.\n\nPoints are metres in the camera's OpenCV frame (x right, y down, z forward;\nsee :mod:`~visionset.kernel.domain.calibration`), and are interpretable only\nagainst the asset's effective calibration. That is why no image-frame bounds\ncheck applies: a point behind the camera, or outside the frame, is a legal\n3D label. The path rules are the 2D polyline's \u2014 ordered, degenerate only\nwhen every point is the same point \u2014 and ``visibility`` is the same\n:class:`VertexVisibility` field under the same validator.",
+        "properties": {
+          "points": {
+            "items": {
+              "maxItems": 3,
+              "minItems": 3,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "minItems": 2,
+            "title": "Points",
+            "type": "array"
+          },
+          "type": {
+            "const": "polyline_3d",
+            "default": "polyline_3d",
+            "title": "Type",
+            "type": "string"
+          },
+          "visibility": {
+            "items": {
+              "$ref": "#/components/schemas/VertexVisibility"
+            },
+            "title": "Visibility",
+            "type": "array"
+          }
+        },
+        "required": [
+          "points"
+        ],
+        "title": "Polyline3DGeometry",
+        "type": "object"
+      },
       "PolylineBody": {
         "additionalProperties": false,
         "description": "An open path of at least two points, in order. Nothing joins the ends.\n\n`visibility` is one state per point \u2014 the integer 0 unlabeled, 1 occluded,\n2 visible \u2014 or absent when nobody said; never null. A geometry is replaced\nwhole, so an update that leaves it out clears it: resend it to keep it. One\nwhose length differs from `points` is refused.",
@@ -4653,7 +4754,8 @@
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
                 "polygon": "#/components/schemas/PolygonBody",
-                "polyline": "#/components/schemas/PolylineBody"
+                "polyline": "#/components/schemas/PolylineBody",
+                "polyline_3d": "#/components/schemas/Polyline3DBody"
               },
               "propertyName": "type"
             },
@@ -4666,6 +4768,9 @@
               },
               {
                 "$ref": "#/components/schemas/PolylineBody"
+              },
+              {
+                "$ref": "#/components/schemas/Polyline3DBody"
               },
               {
                 "$ref": "#/components/schemas/ClassificationBody"
@@ -6327,7 +6432,8 @@
                 "bbox": "#/components/schemas/BboxGeometry",
                 "classification_tag": "#/components/schemas/ClassificationGeometry",
                 "polygon": "#/components/schemas/PolygonGeometry",
-                "polyline": "#/components/schemas/PolylineGeometry"
+                "polyline": "#/components/schemas/PolylineGeometry",
+                "polyline_3d": "#/components/schemas/Polyline3DGeometry"
               },
               "propertyName": "type"
             },
@@ -6340,6 +6446,9 @@
               },
               {
                 "$ref": "#/components/schemas/PolylineGeometry"
+              },
+              {
+                "$ref": "#/components/schemas/Polyline3DGeometry"
               },
               {
                 "$ref": "#/components/schemas/ClassificationGeometry"
@@ -9355,7 +9464,7 @@
         ]
       },
       "post": {
-        "description": "Freeze the trunk as it stands into an immutable, named snapshot.\n\nWhat is frozen is the content: every member asset, every annotation on it as\nit was, and the schema version those labels were judged against. Deleting an\nannotation afterwards cannot reach backwards into a published release.\n\nPublishing twice from an unchanged dataset produces byte-identical manifests\nand therefore the same `manifest_hash`, because nothing time-, machine- or\nidentity-specific goes inside the document. The tag, the timestamp and the\nbuild live on the release row instead.\n\n`split` is stored as a recipe, not materialized. `GET\n/releases/{release_id}/assignment` cuts the folds on demand, deterministically\nand from the frozen asset set. Fractions must sum to 1.0.\n\nTags are unique per dataset and **case-sensitive**, like a git tag: `v1.0` and\n`V1.0` are two releases, and reusing one is 409 `RELEASE_TAG_TAKEN`. A dataset\nwith no assets is 409 `EMPTY_RELEASE`; zero *annotations* is fine, since\nunlabeled images are legitimate training data. A project with no schema is 404\n`SCHEMA_NOT_FOUND`, because there is no version to pin, and an unknown dataset\nis 404 `DATASET_NOT_FOUND`.\n\nOne refusal is about the labels rather than about the request: an annotation\ncarrying a coordinate canonical JSON cannot express \u2014 a NaN or an infinity \u2014\nis 409 `UNSERIALIZABLE_MANIFEST`, and the message names it. Nothing is\npublished, because writing that value as `null` would lose it silently and\nwriting it as `NaN` would produce a manifest no other tool can read. The\nremedy is to correct the annotation and publish again.\n\nThe active schema must also describe every annotation the release would\nfreeze. Otherwise publishing is 409\n`RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA`, with per-class blockers in `detail`.\nReconcile those annotations or restore a compatible active schema, then\npublish again.",
+        "description": "Freeze the trunk as it stands into an immutable, named snapshot.\n\nWhat is frozen is the content: every member asset, every annotation on it as\nit was, and the schema version those labels were judged against. Deleting an\nannotation afterwards cannot reach backwards into a published release.\n\nPublishing twice from an unchanged dataset produces byte-identical manifests\nand therefore the same `manifest_hash`, because nothing time-, machine- or\nidentity-specific goes inside the document. The tag, the timestamp and the\nbuild live on the release row instead.\n\n`split` is stored as a recipe, not materialized. `GET\n/releases/{release_id}/assignment` cuts the folds on demand, deterministically\nand from the frozen asset set. Fractions must sum to 1.0.\n\nTags are unique per dataset and **case-sensitive**, like a git tag: `v1.0` and\n`V1.0` are two releases, and reusing one is 409 `RELEASE_TAG_TAKEN`; a blank\ntag is 422 `INVALID_NAME`. A dataset\nwith no assets is 409 `EMPTY_RELEASE`; zero *annotations* is fine, since\nunlabeled images are legitimate training data. A project with no schema is 404\n`SCHEMA_NOT_FOUND`, because there is no version to pin, and an unknown dataset\nis 404 `DATASET_NOT_FOUND`.\n\nOne refusal is about the labels rather than about the request: an annotation\ncarrying a coordinate canonical JSON cannot express \u2014 a NaN or an infinity \u2014\nis 409 `UNSERIALIZABLE_MANIFEST`, and the message names it. Nothing is\npublished, because writing that value as `null` would lose it silently and\nwriting it as `NaN` would produce a manifest no other tool can read. The\nremedy is to correct the annotation and publish again.\n\nThe active schema must also describe every annotation the release would\nfreeze. Otherwise publishing is 409\n`RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA`, with per-class blockers in `detail`.\nReconcile those annotations or restore a compatible active schema, then\npublish again.\n\nEvery asset carrying a 3D label must have a calibration \u2014 its own, else its\nsource's \u2014 which the release embeds beside it. Without one publishing is\n409 `CALIBRATION_MISSING`, and with one measured at another size than the\nasset it is 422 `CALIBRATION_RESOLUTION_MISMATCH`. A release with no 3D\nlabel embeds no calibration and is written as manifest version 3.",
         "operationId": "publish_release",
         "parameters": [
           {
@@ -11185,7 +11294,7 @@
         ]
       },
       "patch": {
-        "description": "Replace stored annotations whole, judged against the same pinned version.\n\nAddressed by `id` and by nothing else \u2014 annotations are never reached by\nindex or position. There is no `asset_id` on the body because the stored one\nwins: moving a label from one asset to another is a delete and an add, not an\nedit, and doing it silently would take an asset's last annotation away\nwithout anything saying so. Who made a label is kept the same way: a\n`provenance` other than the stored one is 422 `INVALID_ANNOTATION`, and\n`model_ref` and `confidence` are taken from the stored annotation. An edit\nchanges what a label says, never who made it.\n\nAll-or-nothing, and `detail.index` names the culprit, exactly as on the POST.\nAn asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST,\nand so are the two gates around it: a batch that is not open for annotation\nis 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409\n`JOB_FINISHED`. An edit is a write, and every gate that stops a new label\nstops a replacement too.",
+        "description": "Replace stored annotations whole, judged against the same pinned version.\n\nAddressed by `id` and by nothing else \u2014 annotations are never reached by\nindex or position. There is no `asset_id` on the body because the stored one\nwins: moving a label from one asset to another is a delete and an add, not an\nedit, and doing it silently would take an asset's last annotation away\nwithout anything saying so. Who made a label is kept the same way: a\n`provenance` other than the stored one is 422 `INVALID_ANNOTATION`, and\n`model_ref` and `confidence` are taken from the stored annotation. An edit\nchanges what a label says, never who made it.\n\nAll-or-nothing, and `detail.index` names the culprit, exactly as on the POST.\nAn asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST,\nand so are the two gates around it: a batch that is not open for annotation\nis 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409\n`JOB_FINISHED`. An edit is a write, and every gate that stops a new label\nstops a replacement too \u2014 including 409 `CALIBRATION_MISSING` and 422\n`CALIBRATION_RESOLUTION_MISMATCH` for a `polyline_3d`.",
         "operationId": "update_annotations",
         "parameters": [
           {
@@ -11296,7 +11405,7 @@
         ]
       },
       "post": {
-        "description": "Store annotations, judged against the version this job's batch pinned.\n\nAll-or-nothing: every annotation is validated before any of them is written,\nso a payload with one bad box stores nothing at all. A half-labeled asset is\nnot a state a client can reach.\n\nA refusal that is about one item carries `detail.index` \u2014 the position in the\narray you sent \u2014 because nothing was written and the message alone cannot say\nwhich one it was. `schema_version` is not yours to set: the pinned version is\nstamped onto whatever you send, and comes back on the response.\n\nAn unknown job is 404 `JOB_NOT_FOUND`. The batch must be `in_annotation`, or\nthis is 409 `BATCH_NOT_IN_ANNOTATION`, and the job itself must still be open:\none that was completed is 409 `JOB_FINISHED`, and a completed job has no way\nback, so the remedy is a new job over those assets rather than a retry. An\nasset the job does not carry is 422 `ASSET_NOT_IN_JOB`.\n\nAn annotation the pinned version does not describe is 422\n`INVALID_ANNOTATION`, which is the general answer; the specific ones carry\ntheir own codes \u2014 `LABEL_CLASS_NOT_IN_SCHEMA`, `DISALLOWED_GEOMETRY`,\n`MISSING_REQUIRED_ATTRIBUTE` and their kin \u2014 so a client that wants to say\nwhat is wrong reads the code rather than the status.\n\nThe asset must also still be open for labeling \u2014 `unannotated` or\n`annotated`. One that was skipped, submitted for review or accepted is 409\n`ASSET_NOT_WRITABLE`, and the message names the state it is in. The remedy is\na progress move where the table allows one (`skipped` back to `unannotated`);\n`accepted` has no exit, so correcting it means a new batch. Read\n`allowed_actions` on the batch's asset listing rather than guessing: it\ndeclares `annotate` exactly when this will be accepted.",
+        "description": "Store annotations, judged against the version this job's batch pinned.\n\nAll-or-nothing: every annotation is validated before any of them is written,\nso a payload with one bad box stores nothing at all. A half-labeled asset is\nnot a state a client can reach.\n\nA refusal that is about one item carries `detail.index` \u2014 the position in the\narray you sent \u2014 because nothing was written and the message alone cannot say\nwhich one it was. `schema_version` is not yours to set: the pinned version is\nstamped onto whatever you send, and comes back on the response.\n\nAn unknown job is 404 `JOB_NOT_FOUND`. The batch must be `in_annotation`, or\nthis is 409 `BATCH_NOT_IN_ANNOTATION`, and the job itself must still be open:\none that was completed is 409 `JOB_FINISHED`, and a completed job has no way\nback, so the remedy is a new job over those assets rather than a retry. An\nasset the job does not carry is 422 `ASSET_NOT_IN_JOB`.\n\nAn annotation the pinned version does not describe is 422\n`INVALID_ANNOTATION`, which is the general answer; the specific ones carry\ntheir own codes \u2014 `LABEL_CLASS_NOT_IN_SCHEMA`, `DISALLOWED_GEOMETRY`,\n`MISSING_REQUIRED_ATTRIBUTE` and their kin \u2014 so a client that wants to say\nwhat is wrong reads the code rather than the status.\n\nThe asset must also still be open for labeling \u2014 `unannotated` or\n`annotated`. One that was skipped, submitted for review or accepted is 409\n`ASSET_NOT_WRITABLE`, and the message names the state it is in. The remedy is\na progress move where the table allows one (`skipped` back to `unannotated`);\n`accepted` has no exit, so correcting it means a new batch. Read\n`allowed_actions` on the batch's asset listing rather than guessing: it\ndeclares `annotate` exactly when this will be accepted.\n\nA `polyline_3d` is read against its asset's calibration \u2014 the asset's own,\nelse its source's. With neither this is 409 `CALIBRATION_MISSING`, and with\none measured at another size than the asset it is 422\n`CALIBRATION_RESOLUTION_MISMATCH`; set a fitting calibration and resend.",
         "operationId": "add_annotations",
         "parameters": [
           {
@@ -13883,7 +13992,7 @@
     },
     "/projects/{project_id}/preprocessing-preview": {
       "post": {
-        "description": "Render one asset through a spec, the way an export would write it.\n\nThe same kernel path as an export, over the one asset as if it were in the\ntrain fold, so every variant the spec declares can be seen whether or not a\nrelease exists. The image is capped to 512 pixels on its longer side, with\nthe annotations scaled to match, and comes back base64-encoded beside its\n`media_type`. Never cached: the spec is the request's own. With `showcase`\ntrue the variant's draws are fixed at each step's declared strength, so\nthe picture shows what a step does rather than one seeded draw of it.\n\nAn unknown project is 404 `PROJECT_NOT_FOUND` and an asset outside it 404\n`ASSET_NOT_FOUND`. A step that cannot transform a geometry the asset carries\nis 409 `PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY`, and a step needing a source\nsize the asset never recorded, or an asset whose bytes are gone, is 409\n`EXPORT_SOURCE_UNREADABLE`. A rendered image in an encoding this server\ncannot name is 422 `UNSUPPORTED_MEDIA`, and a step kind no installed driver\napplies is 500 `PREPROCESSING_DRIVER_NOT_FOUND`.",
+        "description": "Render one asset through a spec, the way an export would write it.\n\nThe same kernel path as an export, over the one asset as if it were in the\ntrain fold, so every variant the spec declares can be seen whether or not a\nrelease exists. The image is capped to 512 pixels on its longer side, with\nthe annotations scaled to match, and comes back base64-encoded beside its\n`media_type`. Never cached: the spec is the request's own. With `showcase`\ntrue the variant's draws are fixed at each step's declared strength, so\nthe picture shows what a step does rather than one seeded draw of it.\n\nAn unknown project is 404 `PROJECT_NOT_FOUND` and an asset outside it 404\n`ASSET_NOT_FOUND`. A step that cannot transform a geometry the asset carries\nis 409 `PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY`, and a step needing a source\nsize the asset never recorded, or an asset whose bytes are gone, is 409\n`EXPORT_SOURCE_UNREADABLE`. A rendered image in an encoding this server\ncannot name is 422 `UNSUPPORTED_MEDIA`, and a step kind no installed driver\napplies is 500 `PREPROCESSING_DRIVER_NOT_FOUND`. An asset carrying a 3D label\nwith no calibration is 409 `CALIBRATION_MISSING`, and one whose calibration\nwas measured at another size is 422 `CALIBRATION_RESOLUTION_MISMATCH`.",
         "operationId": "preview_preprocessing",
         "parameters": [
           {

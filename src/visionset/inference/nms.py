@@ -41,6 +41,7 @@ from visionset.kernel.domain import (
     ClassificationGeometry,
     Geometry,
     PolygonGeometry,
+    Polyline3DGeometry,
     PolylineGeometry,
     PredictedRegion,
 )
@@ -81,12 +82,13 @@ def extent_of(geometry: Geometry) -> BboxGeometry | None:
     A box is its own extent; a polygon or polyline is the box around its points.
     A zero-width or zero-height path — a vertical polyline — has no box
     ``BboxGeometry`` will construct and answers ``None``, as does a
-    classification tag, which occupies nothing.
+    classification tag, which occupies nothing, and a 3D path, which has no
+    pixel extent without projecting it.
     """
     match geometry:
         case BboxGeometry():
             return geometry
-        case ClassificationGeometry():
+        case ClassificationGeometry() | Polyline3DGeometry():
             return None
         case PolygonGeometry() | PolylineGeometry():
             xs = [x for x, _ in geometry.points]

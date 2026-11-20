@@ -11,7 +11,7 @@ Adding a geometry (keypoints, mask, the 3D variants) means defining a model whos
 ``type`` is the matching ``GeometryType`` member and appending it to the
 ``Geometry`` union. Nothing about the discriminator changes shape and no existing
 payload stops parsing, because geometry rides in the annotation's JSON column and
-needs no migration. ``GeometryType`` names eight geometries; four are implemented
+needs no migration. ``GeometryType`` names eight geometries; five are implemented
 here — the rest are roadmap, and a payload naming one is rejected until its model
 exists.
 """
@@ -223,6 +223,36 @@ class PolylineGeometry(BaseModel):
         return PolylineGeometry(points=points, visibility=self.visibility)
 
 
+class Polyline3DGeometry(BaseModel):
+    """An open path of at least two ``(x, y, z)`` vertices in its asset's sensor frame.
+
+    A sibling of :class:`PolylineGeometry`, never a subclass: every
+    ``case PolylineGeometry()`` and ``isinstance`` check reads 2D pixel points,
+    and a 3D path must not reach one by inheritance.
+
+    Points are metres in the camera's OpenCV frame (x right, y down, z forward;
+    see :mod:`~visionset.kernel.domain.calibration`), and are interpretable only
+    against the asset's effective calibration. That is why no image-frame bounds
+    check applies: a point behind the camera, or outside the frame, is a legal
+    3D label. The path rules are the 2D polyline's — ordered, degenerate only
+    when every point is the same point — and ``visibility`` is the same
+    :class:`VertexVisibility` field under the same validator.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    type: Literal[GeometryType.POLYLINE_3D] = GeometryType.POLYLINE_3D
+    points: list[tuple[float, float, float]] = Field(min_length=2)
+    visibility: VertexVisibilities = optional_visibility_field()
+
+    @model_validator(mode="after")
+    def _has_length(self) -> Polyline3DGeometry:
+        if len(set(self.points)) == 1:
+            raise ValueError("a polyline whose points are all the same point has no length")
+        check_vertex_visibility(self.visibility, self.points)
+        return self
+
+
 class ClassificationGeometry(BaseModel):
     """A whole-asset tag: the annotation carries a class but no coordinates.
 
@@ -237,13 +267,14 @@ class ClassificationGeometry(BaseModel):
 
 
 Geometry = Annotated[
-    BboxGeometry | PolygonGeometry | PolylineGeometry | ClassificationGeometry,
+    BboxGeometry | PolygonGeometry | PolylineGeometry | Polyline3DGeometry | ClassificationGeometry,
     Field(discriminator="type"),
 ]
 """Every geometry an Annotation can carry.
 
 Coordinates are ALWAYS floats in the asset's native reference frame — pixels for
-images — and are NEVER normalized. Normalization to a [0, 1] range, or to any
+images, and the camera's sensor frame in metres for a 3D variant — and are NEVER
+normalized. Normalization to a [0, 1] range, or to any
 other convention a format demands, is the exporter's concern and happens at the
 boundary, never in the domain.
 """
@@ -272,7 +303,7 @@ def geometry_intersects_asset(geometry: Geometry, *, width: int | None, height: 
         return True
     frame = _Frame(width=float(width), height=float(height))
     match geometry:
-        case ClassificationGeometry():
+        case ClassificationGeometry() | Polyline3DGeometry():
             return True
         case BboxGeometry():
             return _bbox_intersects_frame(geometry, frame)
@@ -293,7 +324,7 @@ def _coordinates_are_finite(geometry: Geometry) -> bool:
                 isfinite(value)
                 for value in (geometry.x, geometry.y, geometry.width, geometry.height)
             )
-        case PolygonGeometry() | PolylineGeometry():
+        case PolygonGeometry() | PolylineGeometry() | Polyline3DGeometry():
             return all(isfinite(value) for point in geometry.points for value in point)
         case _:
             assert_never(geometry)

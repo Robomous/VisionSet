@@ -56,6 +56,7 @@ from visionset import __version__
 from visionset.kernel.domain import (
     IMPLEMENTED_GEOMETRIES,
     SHOWCASE_SEED,
+    THREE_D,
     Annotation,
     AnnotationSchema,
     Asset,
@@ -83,9 +84,12 @@ from visionset.kernel.domain import (
     TransformedView,
     assign_split,
     canonical_bytes,
+    geometry_needs_calibration,
+    manifest_version_for,
     normalize_release_tag,
     plugin_manifest,
     recipe_hash,
+    require_calibration,
     sha256_hex,
     sha256_hex_of_stream,
     source_of_content_hash,
@@ -184,6 +188,10 @@ class ReleaseService:
             ReleaseTagTaken: this dataset already has a release under that tag.
             UnserializableManifest: an annotation carries a NaN or infinite
                 coordinate, which canonical JSON cannot express.
+            CalibrationMissing: an asset carrying a 3D label has no calibration,
+                neither its own nor its source's.
+            CalibrationResolutionMismatch: an asset carrying a 3D label has a
+                calibration measured at another size.
             WorkspaceCorrupt: the trunk holds an asset that is not stored.
         """
         cleaned = normalize_release_tag(tag)
@@ -210,6 +218,7 @@ class ReleaseService:
                     )
 
                 manifest = Manifest(
+                    manifest_version=manifest_version_for(manifest_assets),
                     schema_version=active.version,
                     classes=active.classes,
                     assets=manifest_assets,
@@ -445,7 +454,7 @@ class ReleaseService:
         manifest = self._read_manifest(release)
         compatibility = _compatibility(release, manifest, exporter, target)
         if recipe is not None:
-            _transformed(release, manifest, target, recipe)
+            _transformed(release, manifest, exporter, target, recipe)
         return compatibility
 
     def require_export_consent(
@@ -502,7 +511,7 @@ class ReleaseService:
                 compatibility=compatibility,
             )
         if recipe is not None:
-            _transformed(release, manifest, target, recipe)
+            _transformed(release, manifest, exporter, target, recipe)
         return compatibility
 
     def export(
@@ -604,12 +613,12 @@ class ReleaseService:
         compatibility = self.require_export_consent(
             release_id, exporter, allow_lossy=allow_lossy, target=target
         )
-        addressed = manifest if target is None else _addressed_to(manifest, target)
+        addressed = _handed(manifest, exporter, target)
         reader = _RecordingReader(manifest, self._workspace.blob_store)
         if recipe is None:
             handed, view = addressed, None
         else:
-            view = _transformed(release, manifest, target, recipe)
+            view = _transformed(release, manifest, exporter, target, recipe)
             handed = plugin_manifest(addressed, view)
             reader.transform(recipe, drivers or {})
         self._require_destination(
@@ -886,18 +895,34 @@ def _manifest_assets(uow: UnitOfWork, assets: list[Asset]) -> tuple[ManifestAsse
     Nothing is sorted here. The canonical order is the manifest's own rule and
     the models apply it on construction, so this hands over the trunk's order and
     lets the artifact decide what it means — one place, not two that can drift.
+
+    An asset carrying a 3D label gets a copy of the calibration that applies to
+    it; every other asset gets none, whatever its source says, so a 2D release
+    hashes as it did before calibration existed.
+
+    Raises:
+        CalibrationMissing: an asset with a 3D label has no calibration.
+        CalibrationResolutionMismatch: its calibration was measured at another size.
     """
-    return tuple(
-        ManifestAsset(
-            asset_id=asset.id,
-            content_hash=asset.content_hash,
-            uri=asset.uri,
-            width=asset.width,
-            height=asset.height,
-            annotations=tuple(_manifest_annotation(a) for a in uow.annotations.list(asset.id)),
+    built = []
+    for asset in assets:
+        annotations = uow.annotations.list(asset.id)
+        calibration = None
+        if any(geometry_needs_calibration(a.geometry) for a in annotations):
+            source = None if asset.source_id is None else uow.sources.get(asset.source_id)
+            calibration = require_calibration(asset, source)
+        built.append(
+            ManifestAsset(
+                asset_id=asset.id,
+                content_hash=asset.content_hash,
+                uri=asset.uri,
+                width=asset.width,
+                height=asset.height,
+                annotations=tuple(_manifest_annotation(a) for a in annotations),
+                calibration=calibration,
+            )
         )
-        for asset in assets
-    )
+    return tuple(built)
 
 
 def _release_schema_blockers(
@@ -970,11 +995,15 @@ def _cache_mismatches(release: Release, manifest: Manifest) -> tuple[str, ...]:
 
 
 def _transformed(
-    release: Release, manifest: Manifest, target: ExportTarget | None, recipe: RecipeSpec
+    release: Release,
+    manifest: Manifest,
+    exporter: Exporter,
+    target: ExportTarget | None,
+    recipe: RecipeSpec,
 ) -> TransformedView:
     """What the recipe makes of the manifest an export would hand the plugin.
 
-    Narrowed to the target first, so a geometry the target drops never
+    Narrowed by :func:`_handed` first, so a geometry the export drops never
     reaches a step that cannot move it; folds from the release's own split
     over the frozen manifest, the cut ``assignment`` answers.
 
@@ -982,7 +1011,7 @@ def _transformed(
         AugmentationRequiresSplit, PreprocessingStepUnsupportedGeometry,
             ExportSourceUnreadable: from ``transform_manifest``.
     """
-    addressed = manifest if target is None else _addressed_to(manifest, target)
+    addressed = _handed(manifest, exporter, target)
     folds = None if release.split is None else assign_split(release.split, manifest.assets)
     return transform_manifest(addressed, recipe, folds)
 
@@ -1375,8 +1404,23 @@ def _compatibility(
     )
 
 
-def _addressed_to(manifest: Manifest, target: ExportTarget) -> Manifest:
-    """The manifest with every annotation the target does not carry removed.
+def _handed(manifest: Manifest, exporter: Exporter, target: ExportTarget | None) -> Manifest:
+    """The manifest an export hands the plugin and runs its recipe over.
+
+    A target narrows it to what the target carries. Without one, only the 3D
+    labels the format does not write are taken out: they are reported dropped
+    and consented to like any loss, and no pixel-moving step can follow them,
+    so leaving them in would refuse a resize for a label the export never
+    writes. Every other geometry is the plugin's to drop, as it always was.
+    """
+    if target is not None:
+        return _addressed_to(manifest, target.supported_geometries)
+    written = exporter.supported_geometries | exporter.degraded_geometries
+    return _addressed_to(manifest, (IMPLEMENTED_GEOMETRIES - THREE_D) | written)
+
+
+def _addressed_to(manifest: Manifest, carried: frozenset[GeometryType]) -> Manifest:
+    """The manifest with every annotation outside ``carried`` removed.
 
     The classes stay: a class index is the frozen schema's, and a target that
     drops every polygon of a class still has that class in its vocabulary.
@@ -1389,7 +1433,7 @@ def _addressed_to(manifest: Manifest, target: ExportTarget) -> Manifest:
                         "annotations": tuple(
                             one
                             for one in asset.annotations
-                            if GeometryType(one.geometry.type) in target.supported_geometries
+                            if GeometryType(one.geometry.type) in carried
                         )
                     }
                 )

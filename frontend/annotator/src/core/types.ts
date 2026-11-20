@@ -24,10 +24,15 @@
  *
  * Two vocabularies, one union — the kernel's own split, kept: `GeometryType`
  * names eight geometries, because that is what a `LabelClass` declares and what
- * the API publishes; `Geometry` has four variants, because that is what an
- * annotation can actually carry. Naming `mask` or `keypoints` is legal in a
- * schema and refused at the annotation, by the kernel (`UNSUPPORTED_GEOMETRY`)
- * and by `parseGeometry` here. See `docs/content/schemas.md`.
+ * the API publishes; `Geometry` has four variants, because that is what this
+ * engine draws. Naming `mask` or `keypoints` is legal in a schema and refused at
+ * the annotation, by the kernel (`UNSUPPORTED_GEOMETRY`) and by `parseGeometry`
+ * here. See `docs/content/schemas.md`.
+ *
+ * A fifth variant, `polyline_3d`, is carried and never drawn: `StoredGeometry`
+ * admits it, `parseAnnotation` parses it, and `documentFromWire` leaves it out
+ * of the scene, so a job holding one loads, and its 3D labels are never sent
+ * back changed or deleted.
  *
  * A locally drawn annotation carries identity even though `AnnotationCreate` has
  * no `id` field: it mints a client-side uuid v4 into the ordinary `id`, and
@@ -53,7 +58,7 @@ export const GEOMETRY_TYPES = [
   "polyline_3d",
 ] as const;
 
-/** The vocabulary a `LabelClass` declares. Eight names; four have a model. */
+/** The vocabulary a `LabelClass` declares. Eight names; five have a model. */
 export type GeometryType = (typeof GEOMETRY_TYPES)[number];
 
 /**
@@ -68,7 +73,21 @@ export const IMPLEMENTED_GEOMETRY_TYPES = [
   "classification_tag",
   "polygon",
   "polyline",
+  "polyline_3d",
 ] as const satisfies readonly GeometryType[];
+
+/** The carryable geometries this engine draws: every member of `Geometry`. */
+export const DRAWN_GEOMETRY_TYPES = [
+  "bbox",
+  "classification_tag",
+  "polygon",
+  "polyline",
+] as const satisfies readonly (typeof IMPLEMENTED_GEOMETRY_TYPES)[number][];
+
+/** Whether a stored geometry `type` is one the scene holds, rather than one it carries past. */
+export function isDrawnGeometryType(type: string): type is Geometry["type"] {
+  return (DRAWN_GEOMETRY_TYPES as readonly string[]).includes(type);
+}
 
 /**
  * What an `Attribute` may hold — the kernel's `Attribute.kind` Literal.
@@ -139,12 +158,38 @@ export interface ClassificationGeometry {
   readonly type: "classification_tag";
 }
 
+/** One 3D vertex, `[x, y, z]`, in metres in the camera's sensor frame. */
+export type Point3D = readonly [number, number, number];
+
+/**
+ * An open 3D path in the sensor frame. Carried, never drawn: it has no pixel
+ * coordinates without its asset's calibration, which this engine does not read.
+ */
+export interface Polyline3DGeometry {
+  readonly type: "polyline_3d";
+  readonly points: readonly Point3D[];
+  readonly visibility: readonly VertexVisibility[] | undefined;
+}
+
 /** Every shape an annotation can carry, discriminated on `type`. */
 export type Geometry =
   | BboxGeometry
   | PolygonGeometry
   | PolylineGeometry
   | ClassificationGeometry;
+
+/** Every geometry the wire can carry, drawn or not. */
+export type StoredGeometry = Geometry | Polyline3DGeometry;
+
+/** One stored annotation as the wire sends it, whether or not the scene can hold it. */
+export type StoredAnnotation = Omit<Annotation, "geometry"> & {
+  readonly geometry: StoredGeometry;
+};
+
+/** Whether the scene holds this annotation; `false` only for one it carries past. */
+export function isDrawnAnnotation(annotation: StoredAnnotation): annotation is Annotation {
+  return isDrawnGeometryType(annotation.geometry.type);
+}
 
 /** One stored annotation, in the asset's own pixel frame. Mirrors `AnnotationOut`. */
 export interface Annotation {

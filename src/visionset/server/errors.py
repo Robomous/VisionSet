@@ -60,6 +60,7 @@ from visionset.kernel import (
     BatchNotFound,
     BatchNotInAnnotation,
     CalibrationInUse,
+    CalibrationMissing,
     CalibrationResolutionMismatch,
     ConfirmationRequired,
     ConstraintViolated,
@@ -422,6 +423,9 @@ _HTTP: Final[dict[type[VisionSetError], _Http]] = {
     # Change-the-state-and-resubmit: delete the 3D labels, or give their assets
     # a calibration of their own, and the identical clear succeeds.
     CalibrationInUse: _Http(409),
+    # AUGMENTATION_REQUIRES_SPLIT's reading: set a calibration on the asset or
+    # its source and the identical write or publish succeeds.
+    CalibrationMissing: _Http(409),
     # --- 422: the payload itself is wrong ----------------------------------
     InvalidName: _Http(422),
     InferenceConnectionInvalid: _Http(422),

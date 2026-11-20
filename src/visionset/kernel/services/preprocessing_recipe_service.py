@@ -42,8 +42,10 @@ from visionset.kernel.domain import (
     ResizeStrategy,
     SplitAssignment,
     fit_within,
+    geometry_needs_calibration,
     normalize_name,
     recipe_usage,
+    require_calibration,
     transform_manifest,
 )
 from visionset.kernel.errors import (
@@ -230,6 +232,9 @@ class PreprocessingRecipeService:
             AssetNotFound: the asset is not in this project.
             PreprocessingStepUnsupportedGeometry: a step cannot transform a
                 geometry the asset carries.
+            CalibrationMissing: the asset carries a 3D label and no calibration.
+            CalibrationResolutionMismatch: the asset carries a 3D label and its
+                calibration was measured at another size.
             ExportSourceUnreadable: a step needs a source size the asset never
                 recorded, or the asset's bytes are not in the blob store.
             PreprocessingDriverNotFound: no driver in ``drivers`` applies a step.
@@ -240,17 +245,21 @@ class PreprocessingRecipeService:
             asset = uow.assets.get(asset_id)
             if asset is None or asset.project_id != project_id:
                 raise AssetNotFound(f"no asset {asset_id} in project {project_id}")
+            annotations = uow.annotations.list(asset.id)
+            source = None if asset.source_id is None else uow.sources.get(asset.source_id)
             manifest_asset = ManifestAsset(
                 asset_id=asset.id,
                 content_hash=asset.content_hash,
                 uri=asset.uri,
                 width=asset.width,
                 height=asset.height,
-                annotations=tuple(
-                    _manifest_annotation(one) for one in uow.annotations.list(asset.id)
+                annotations=tuple(_manifest_annotation(one) for one in annotations),
+                calibration=(
+                    require_calibration(asset, source)
+                    if any(geometry_needs_calibration(one.geometry) for one in annotations)
+                    else None
                 ),
             )
-            source = None if asset.source_id is None else uow.sources.get(asset.source_id)
         manifest = Manifest(schema_version=1, assets=(manifest_asset,))
         view = transform_manifest(
             manifest, spec, SplitAssignment(train=(asset.id,)), showcase=showcase

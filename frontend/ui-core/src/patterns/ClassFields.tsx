@@ -28,7 +28,9 @@ import { Button, Input, Label, FieldDescription, Select, SelectContent, SelectIt
 import type { AttributeBody, GeometryType, LabelClassBody } from "../screens/queries";
 
 /**
- * The four an `Annotation` can carry. The other four are refused at write time.
+ * The four an `Annotation` can carry that this editor draws. Of the other four,
+ * `polyline_3d` is carried but has no drawing tool, so a class offering it here
+ * would be one nobody could annotate; the rest are refused at write time.
  *
  * `satisfies` rather than an annotation, so the elements keep their
  * literal types and a member deleted from the generated union fails here. What

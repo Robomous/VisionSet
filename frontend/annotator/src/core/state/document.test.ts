@@ -10,7 +10,7 @@
 import { describe, expect, it } from "vitest";
 
 import { fixture } from "../_fixture";
-import type { Annotation, AnnotationSchema, AssetDescriptor } from "../types";
+import { isDrawnAnnotation, isDrawnGeometryType, type Annotation, type AnnotationSchema, type AssetDescriptor } from "../types";
 import { WireFormatError, parseAnnotations, toAnnotationCreate } from "../wire";
 import {
   DocumentError,
@@ -204,12 +204,34 @@ describe("built from the wire, and back again", () => {
     schema: fixture.schema,
     annotations: fixture.annotations,
   };
+  const geometryType = (raw: unknown) => (raw as { geometry: { type: string } }).geometry.type;
+  const drawnFixture = fixture.annotations.filter((raw) => isDrawnGeometryType(geometryType(raw)));
 
   it("loads what the kernel produced", () => {
     const document = documentFromWire(wire);
-    expect(document.annotations.size).toBe(fixture.annotations.length);
+    expect(document.annotations.size).toBe(drawnFixture.length);
     expect(document.asset.width).toBeGreaterThan(0);
   });
+
+  it("carries a 3D label past the scene, so no edit can reach it", () => {
+    const carried = fixture.annotations.filter((raw) => geometryType(raw) === "polyline_3d");
+    expect(carried.length).toBeGreaterThan(0);
+    const document = documentFromWire(wire);
+    for (const raw of carried) {
+      expect(document.annotations.has((raw as { id: string }).id)).toBe(false);
+    }
+  });
+
+  it("still refuses a malformed 3D label rather than skipping it unread", () => {
+    const bad = { ...(carried3D() as object), geometry: { type: "polyline_3d", points: [[1, 2]] } };
+    expect(() => documentFromWire({ ...wire, annotations: [bad] })).toThrow(
+      /must be an \[x, y, z\] triple/,
+    );
+  });
+
+  function carried3D(): unknown {
+    return fixture.annotations.find((raw) => geometryType(raw) === "polyline_3d");
+  }
 
   it("round-trips every annotation back to the bytes it came from", () => {
     // Acceptance criterion 2. The document is keyed by id and iterated in
@@ -218,14 +240,16 @@ describe("built from the wire, and back again", () => {
     const out = annotationsInDrawOrder(document).map((a) =>
       JSON.parse(JSON.stringify(a)),
     );
-    expect(out).toEqual(fixture.annotations);
+    expect(out).toEqual(drawnFixture);
   });
 
-  it("carries every carryable geometry variant through the document", () => {
+  it("carries every drawn geometry variant through the document", () => {
     const seen = new Set(
       annotationsInDrawOrder(documentFromWire(wire)).map((a) => a.geometry.type),
     );
-    expect([...seen].sort()).toEqual([...fixture.implemented_geometry_types]);
+    expect([...seen].sort()).toEqual(
+      fixture.implemented_geometry_types.filter((type) => isDrawnGeometryType(type)),
+    );
   });
 
   it("holds annotations whose class declares a different geometry", () => {
@@ -255,7 +279,9 @@ describe("built from the wire, and back again", () => {
     // The parser cannot catch this — each payload is individually valid — so it is
     // the document's own invariant, and it is the one that stops a host pairing an
     // asset with somebody else's labels.
-    const foreign = parseAnnotations(fixture.annotations).map((a) => ({
+    const foreign = parseAnnotations(fixture.annotations)
+      .filter(isDrawnAnnotation)
+      .map((a) => ({
       ...a,
       asset_id: "asset-elsewhere",
     }));

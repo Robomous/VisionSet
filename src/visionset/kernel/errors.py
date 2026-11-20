@@ -565,6 +565,15 @@ class CalibrationInUse(VisionSetError):
     """
 
 
+class CalibrationMissing(VisionSetError):
+    """A 3D label was written or published for an asset with no calibration to read it against.
+
+    The calibration that applies is the asset's own override, else its
+    source's. The remedy is to set one on either, then resubmit the identical
+    request.
+    """
+
+
 class IngestJobNotFound(VisionSetError):
     """No ingest job with that id lives in this workspace.
 
