@@ -56,6 +56,7 @@ from visionset import __version__
 from visionset.kernel.domain import (
     IMPLEMENTED_GEOMETRIES,
     SHOWCASE_SEED,
+    THREE_D,
     Annotation,
     AnnotationSchema,
     Asset,
@@ -453,7 +454,7 @@ class ReleaseService:
         manifest = self._read_manifest(release)
         compatibility = _compatibility(release, manifest, exporter, target)
         if recipe is not None:
-            _transformed(release, manifest, target, recipe)
+            _transformed(release, manifest, exporter, target, recipe)
         return compatibility
 
     def require_export_consent(
@@ -510,7 +511,7 @@ class ReleaseService:
                 compatibility=compatibility,
             )
         if recipe is not None:
-            _transformed(release, manifest, target, recipe)
+            _transformed(release, manifest, exporter, target, recipe)
         return compatibility
 
     def export(
@@ -612,12 +613,12 @@ class ReleaseService:
         compatibility = self.require_export_consent(
             release_id, exporter, allow_lossy=allow_lossy, target=target
         )
-        addressed = manifest if target is None else _addressed_to(manifest, target)
+        addressed = _handed(manifest, exporter, target)
         reader = _RecordingReader(manifest, self._workspace.blob_store)
         if recipe is None:
             handed, view = addressed, None
         else:
-            view = _transformed(release, manifest, target, recipe)
+            view = _transformed(release, manifest, exporter, target, recipe)
             handed = plugin_manifest(addressed, view)
             reader.transform(recipe, drivers or {})
         self._require_destination(
@@ -994,11 +995,15 @@ def _cache_mismatches(release: Release, manifest: Manifest) -> tuple[str, ...]:
 
 
 def _transformed(
-    release: Release, manifest: Manifest, target: ExportTarget | None, recipe: RecipeSpec
+    release: Release,
+    manifest: Manifest,
+    exporter: Exporter,
+    target: ExportTarget | None,
+    recipe: RecipeSpec,
 ) -> TransformedView:
     """What the recipe makes of the manifest an export would hand the plugin.
 
-    Narrowed to the target first, so a geometry the target drops never
+    Narrowed by :func:`_handed` first, so a geometry the export drops never
     reaches a step that cannot move it; folds from the release's own split
     over the frozen manifest, the cut ``assignment`` answers.
 
@@ -1006,7 +1011,7 @@ def _transformed(
         AugmentationRequiresSplit, PreprocessingStepUnsupportedGeometry,
             ExportSourceUnreadable: from ``transform_manifest``.
     """
-    addressed = manifest if target is None else _addressed_to(manifest, target)
+    addressed = _handed(manifest, exporter, target)
     folds = None if release.split is None else assign_split(release.split, manifest.assets)
     return transform_manifest(addressed, recipe, folds)
 
@@ -1399,8 +1404,23 @@ def _compatibility(
     )
 
 
-def _addressed_to(manifest: Manifest, target: ExportTarget) -> Manifest:
-    """The manifest with every annotation the target does not carry removed.
+def _handed(manifest: Manifest, exporter: Exporter, target: ExportTarget | None) -> Manifest:
+    """The manifest an export hands the plugin and runs its recipe over.
+
+    A target narrows it to what the target carries. Without one, only the 3D
+    labels the format does not write are taken out: they are reported dropped
+    and consented to like any loss, and no pixel-moving step can follow them,
+    so leaving them in would refuse a resize for a label the export never
+    writes. Every other geometry is the plugin's to drop, as it always was.
+    """
+    if target is not None:
+        return _addressed_to(manifest, target.supported_geometries)
+    written = exporter.supported_geometries | exporter.degraded_geometries
+    return _addressed_to(manifest, (IMPLEMENTED_GEOMETRIES - THREE_D) | written)
+
+
+def _addressed_to(manifest: Manifest, carried: frozenset[GeometryType]) -> Manifest:
+    """The manifest with every annotation outside ``carried`` removed.
 
     The classes stay: a class index is the frozen schema's, and a target that
     drops every polygon of a class still has that class in its vocabulary.
@@ -1413,7 +1433,7 @@ def _addressed_to(manifest: Manifest, target: ExportTarget) -> Manifest:
                         "annotations": tuple(
                             one
                             for one in asset.annotations
-                            if GeometryType(one.geometry.type) in target.supported_geometries
+                            if GeometryType(one.geometry.type) in carried
                         )
                     }
                 )

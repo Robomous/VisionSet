@@ -13,6 +13,7 @@ else.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import overload
 from uuid import UUID
 
 from visionset.kernel.domain import (
@@ -95,6 +96,7 @@ class CalibrationService:
             source = self._require_source(uow, source_id, project_id)
             if source.calibration is None:
                 return source
+            source = _held(uow, source)
             dependent = _dependent(uow, _inheriting(uow, source))
             if dependent:
                 raise CalibrationInUse(
@@ -150,6 +152,7 @@ class CalibrationService:
             asset = self._require_asset(uow, project_id, asset_id)
             if asset.calibration is None:
                 return _resolved(uow, asset)
+            asset = _held(uow, asset)
             cleared = asset.model_copy(update={"calibration": None})
             fallback = effective_calibration(cleared, _source_of(uow, asset))
             if fallback is not None and not fallback.fits(asset.width, asset.height):
@@ -182,6 +185,27 @@ class CalibrationService:
         if asset is None or asset.project_id != project.id:
             raise AssetNotFound(f"no asset {asset_id} in project {project.name!r}")
         return asset
+
+
+@overload
+def _held(uow: UnitOfWork, row: Source) -> Source: ...
+@overload
+def _held(uow: UnitOfWork, row: Asset) -> Asset: ...
+def _held(uow: UnitOfWork, row: Source | Asset) -> Source | Asset:
+    """The row re-read under the store's write lock.
+
+    A read before a unit of work's first write can see a state another writer
+    is about to change, so a clear that checked for 3D labels and then wrote
+    could interleave with a label write that checked for a calibration and then
+    wrote, and both would land. Every label write already takes the lock before
+    its calibration check (``hold_open_job``, ``hold_draft``); taking it here
+    before the dependency check serializes the two, so the second one sees the
+    first one's commit.
+    """
+    uow.hold_writes()
+    fresh = uow.sources.get(row.id) if isinstance(row, Source) else uow.assets.get(row.id)
+    assert fresh is not None
+    return fresh
 
 
 def _measured(calibration: Calibration) -> str:

@@ -109,7 +109,9 @@ without the workspace. An asset carrying one with no calibration refuses the pub
 `CALIBRATION_MISSING` (409), and one whose calibration was measured at another size than the
 asset with `CALIBRATION_RESOLUTION_MISMATCH` (422). No installed format writes a 3D geometry: an
 export reports the `polyline_3d` class **dropped**, with its annotation and asset counts, and
-needs `allow_lossy` like any other loss.
+needs `allow_lossy` like any other loss. The drop happens before pre-processing, with or without a
+target, so a resize or flip in the export's recipe never refuses over a 3D label the format would
+not write anyway.
 
 ### Which schema version a release pins
 

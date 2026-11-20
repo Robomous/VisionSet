@@ -674,6 +674,10 @@ def _require_geometry_on_asset(uow: UnitOfWork, annotation: Annotation) -> None:
     """Refuse a spatial annotation wholly outside its measured asset, or a 3D one
     on an asset with no calibration that fits it.
 
+    Every caller holds the write lock before this runs, so the calibration read
+    here cannot be cleared before the label commits; ``CalibrationService``'s
+    clears take the same lock before checking for 3D labels.
+
     Raises:
         CalibrationMissing: a 3D label on an asset with no effective calibration.
         CalibrationResolutionMismatch: the effective calibration was measured at

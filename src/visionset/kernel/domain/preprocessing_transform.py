@@ -474,8 +474,9 @@ def _rotated_once(geometry: Geometry, width: float) -> Geometry:
 
 
 def _unreachable_3d(geometry: Polyline3DGeometry) -> AssertionError:
-    # The step tables keep every 3D type out of a pixel-moving step, so reaching
-    # this means a table and the arithmetic disagree.
+    # The step tables keep every 3D type out of a pixel-moving step and
+    # `fit_within` passes them by, so reaching this means a caller and the
+    # arithmetic disagree about which coordinates are pixels.
     return AssertionError(f"no pixel-moving step transforms a {geometry.type.value}")
 
 
@@ -555,7 +556,8 @@ def fit_within(file: TransformedFile, max_edge: int) -> TransformedFile:
     A preview's size cap, applied as the stretch arithmetic the export uses so
     the annotations land where a resize driver asked for the same size would
     put the pixels. A file already within the cap, or one with no recorded
-    size, is returned as it is.
+    size, is returned as it is. A 3D label is in metres, not pixels, so the
+    cap leaves it as it is too.
     """
     if file.width is None or file.height is None or max(file.width, file.height) <= max_edge:
         return file
@@ -566,7 +568,9 @@ def fit_within(file: TransformedFile, max_edge: int) -> TransformedFile:
             "width": width,
             "height": height,
             "annotations": tuple(
-                annotation.model_copy(
+                annotation
+                if geometry_needs_calibration(annotation.geometry)
+                else annotation.model_copy(
                     update={
                         "geometry": _scaled(
                             annotation.geometry, width / file.width, height / file.height, 0.0, 0.0

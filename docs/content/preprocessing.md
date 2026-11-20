@@ -107,8 +107,10 @@ carrying it. Today that is `rot90` over a polyline, whose point order carries me
 to the frame's axes, and every pixel-moving step over a 3D label: a resize changes the
 intrinsics it is read through, and a mirror or a quarter turn changes the frame's handedness or
 axes, so each would need a new calibration per variant. Only `brightness_contrast` keeps one, and
-each variant carries its source's calibration. A target that does not take the 3D label narrows
-it away before any step runs, so it cannot make a step refuse. The lossy-consent path is for a format that cannot *carry* a label; a label
+each variant carries its source's calibration. An export that does not write the 3D label - every
+installed format, with or without a target - drops it before any step runs, counted and behind
+lossy consent, so it cannot make a step refuse; only the preview, which shows every label, and a
+format that writes 3D meet the refusal. The lossy-consent path is for a format that cannot *carry* a label; a label
 that cannot *follow its image* is not something to consent to.
 
 Drivers are plugins on the `PreprocessingDriver` port, discovered over the

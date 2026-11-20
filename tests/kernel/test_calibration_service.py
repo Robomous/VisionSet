@@ -18,7 +18,9 @@ from visionset.kernel import (
     ConstraintViolated,
     ProjectNotFound,
     SourceNotFound,
+    WorkspaceBusy,
 )
+from visionset.kernel.adapters.sqlite_metadata_store import SqliteMetadataStore
 from visionset.kernel.domain import (
     Annotation,
     Asset,
@@ -40,6 +42,7 @@ from visionset.kernel.services import (
     SourceService,
     WorkspaceService,
 )
+from visionset.kernel.services import calibration_service as calibration_module
 
 BOX = BboxGeometry(x=1, y=1, width=2, height=2)
 PATH_3D = Polyline3DGeometry(points=[(0.0, 1.0, 5.0), (0.0, 1.0, 9.0)])
@@ -353,3 +356,45 @@ def test_an_asset_is_scoped_by_its_project(fx: Fixture) -> None:
         fx.calibrations.asset_calibration(other.id, fx.assets[0].id)
     with pytest.raises(ProjectNotFound):
         fx.calibrations.asset_calibration(uuid4(), fx.assets[0].id)
+
+
+@pytest.mark.parametrize("target", ["source", "asset"])
+def test_a_clear_holds_the_write_lock_while_it_checks_for_3d_labels(
+    fx: Fixture, monkeypatch: pytest.MonkeyPatch, target: str
+) -> None:
+    """A label write landing between the clear's check and its write is what the lock prevents."""
+    asset = fx.assets[0]
+    if target == "source":
+        fx.calibrations.set_source_calibration(fx.source.id, calibration())
+    else:
+        fx.calibrations.set_asset_calibration(fx.project.id, asset.id, calibration())
+    contender = SqliteMetadataStore(fx.root / "visionset.db", busy_timeout_ms=0)
+    outcomes: list[str] = []
+    checked = calibration_module._dependent
+
+    def interleaved(uow: Any, assets: Any) -> list[Asset]:
+        found = checked(uow, assets)
+        try:
+            with contender.unit_of_work() as other:
+                other.annotations.add(
+                    Annotation(
+                        asset_id=asset.id,
+                        label_class="lane",
+                        schema_version=1,
+                        geometry=PATH_3D,
+                        provenance="human",
+                    )
+                )
+            outcomes.append("landed")
+        except WorkspaceBusy:
+            outcomes.append("blocked")
+        return found
+
+    monkeypatch.setattr(calibration_module, "_dependent", interleaved)
+    if target == "source":
+        fx.calibrations.clear_source_calibration(fx.source.id)
+    else:
+        fx.calibrations.clear_asset_calibration(fx.project.id, asset.id)
+    contender.close()
+
+    assert outcomes == ["blocked"]

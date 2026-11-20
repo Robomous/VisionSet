@@ -52,7 +52,8 @@ from visionset.kernel.domain import (
     transform_manifest,
 )
 from visionset.kernel.domain.geometry import geometry_intersects_asset
-from visionset.kernel.services import CalibrationService
+from visionset.kernel.services import CalibrationService, PreprocessingRecipeService
+from visionset.preprocessing.registry import drivers
 
 geometry_adapter: TypeAdapter[Geometry] = TypeAdapter(Geometry)
 
@@ -288,6 +289,51 @@ def test_an_import_carrying_a_3d_label_refuses_before_writing_anything(tmp_path:
         world.workspace.close()
 
 
+def _importer_of_a_3d_lane() -> FakeImporter:
+    return FakeImporter(
+        ImportedDataset(
+            classes=(ImportedClass(name="lane_3d", geometries=(GeometryType.POLYLINE_3D,)),),
+            images=(_image("a.png", ImportedLabel(class_name="lane_3d", geometry=PATH)),),
+        )
+    )
+
+
+def _unheld_asset(world: World) -> Any:
+    """``a.png`` stored in the project and held by no batch, so an import may label it."""
+    source = world.sources.register_images(world.project.id, world.src / "images")
+    run = world.ingest.ingest(source.id)
+    assert run.batch_id is not None
+    by_name = {Path(a.uri).name: a for a in world.ingest.assets(world.project.id)}
+    world.batches.remove_assets(run.batch_id, [by_name["a.png"].id])
+    return by_name["a.png"]
+
+
+def test_an_import_onto_an_existing_asset_resolves_its_calibration(tmp_path: Path) -> None:
+    world = World(tmp_path)
+    try:
+        asset = _unheld_asset(world)
+        importer = _importer_of_a_3d_lane()
+
+        with pytest.raises(CalibrationMissing, match=str(asset.source_id)):
+            world.imports.commit(world.project.id, importer, world.src)
+
+        CalibrationService(world.workspace).set_source_calibration(
+            asset.source_id, calibration(width=32, height=24)
+        )
+        with world.workspace.unit_of_work() as uow:
+            uow.assets.update(uow.assets.get(asset.id).model_copy(update={"width": 64}))
+        with pytest.raises(CalibrationResolutionMismatch, match="64x24"):
+            world.imports.commit(world.project.id, importer, world.src)
+
+        with world.workspace.unit_of_work() as uow:
+            uow.assets.update(uow.assets.get(asset.id).model_copy(update={"width": 32}))
+        run = world.imports.commit(world.project.id, importer, world.src)
+        assert run.annotations_written == 1
+        assert [a.geometry for a in world.workspace_annotations(asset.id)] == [PATH]
+    finally:
+        world.workspace.close()
+
+
 # --- publish and the manifest -----------------------------------------------
 
 
@@ -439,6 +485,30 @@ def test_brightness_keeps_the_label_and_its_calibration_on_every_variant() -> No
         assert asset.calibration == calibration(width=64, height=48)
 
 
+def test_the_preview_cap_leaves_a_3d_label_in_metres(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path, classes=CLASSES)
+    try:
+        job, assets = _opened(fixture)
+        CalibrationService(fixture.workspace).set_asset_calibration(
+            fixture.project.id, assets[0].id, calibration(width=64, height=48)
+        )
+        fixture.annotations.add(job.id, [_lane().model_copy(update={"asset_id": assets[0].id})])
+        spec = RecipeSpec(
+            target=None,
+            steps=(AugmentStep(op=AugmentOp.BRIGHTNESS_CONTRAST, amount=0.2),),
+            variants_per_asset=1,
+        )
+
+        preview = PreprocessingRecipeService(fixture.workspace).preview(
+            fixture.project.id, spec, assets[0].id, variant=1, drivers=drivers(), max_edge=48
+        )
+
+        assert (preview.width, preview.height) == (48, 36)
+        assert [a.geometry for a in preview.annotations] == [PATH]
+    finally:
+        fixture.close()
+
+
 # --- export -----------------------------------------------------------------
 
 
@@ -480,5 +550,29 @@ def test_an_export_with_consent_writes_everything_but_the_3d_class(tmp_path: Pat
         )
         assert "lane_3d" in written  # the class stays in the vocabulary
         assert "-39.0" not in written and "-3.0" not in written
+    finally:
+        fixture.close()
+
+
+def test_a_format_only_export_drops_the_3d_label_before_a_resize_can_refuse(
+    tmp_path: Path,
+) -> None:
+    fixture = _labelled(tmp_path)
+    try:
+        release_id = fixture.publish()
+        coco = exporters()["coco"]
+        resize = RecipeSpec(
+            target=None,
+            steps=(ResizeStep(strategy=ResizeStrategy.STRETCH, width=128, height=96),),
+        )
+
+        with pytest.raises(LossyExportNotConsented):
+            fixture.releases.export(release_id, coco, tmp_path / "refused", recipe=resize)
+        result = fixture.releases.export(
+            release_id, coco, tmp_path / "out", allow_lossy=True, recipe=resize, drivers=drivers()
+        )
+        assert result.compatibility.excluded_annotations >= 1
+        written = "".join(p.read_text(encoding="utf-8") for p in (tmp_path / "out").rglob("*.json"))
+        assert "-39.0" not in written
     finally:
         fixture.close()
