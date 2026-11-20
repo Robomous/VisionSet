@@ -54,7 +54,7 @@ import base64
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from datetime import UTC, datetime
-from typing import Any, Literal, TypeVar
+from typing import Any, Literal, TypeVar, assert_never
 from uuid import UUID
 
 # The one import here that is not the kernel's, and it is the same direction as
@@ -635,6 +635,8 @@ def geometry(value: Geometry) -> shapes.Geometry:
             return polyline
         case ClassificationGeometry():
             return {"type": "classification_tag"}
+        case _:
+            assert_never(value)
 
 
 def _vertex_visibility(value: VertexVisibility) -> Literal[0, 1, 2]:

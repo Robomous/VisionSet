@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
-from typing import Final
+from typing import Final, assert_never
 
 from visionset.formats._layout import IMAGES_DIRNAME, dimensions_of, folds_of, write_image
 from visionset.kernel.domain import (
@@ -27,6 +27,7 @@ from visionset.kernel.domain import (
     ManifestAnnotation,
     ManifestAsset,
     PolygonGeometry,
+    PolylineGeometry,
     Release,
     Task,
 )
@@ -68,12 +69,17 @@ def derive_task(manifest: Manifest, accepted: frozenset[Task]) -> Task:
     for asset in manifest.assets:
         for annotation in asset.annotations:
             geometry: Geometry = annotation.geometry
-            if isinstance(geometry, PolygonGeometry):
-                has_polygon = True
-            elif isinstance(geometry, BboxGeometry):
-                has_box = True
-            elif isinstance(geometry, ClassificationGeometry):
-                has_tag = True
+            match geometry:
+                case PolygonGeometry():
+                    has_polygon = True
+                case BboxGeometry():
+                    has_box = True
+                case ClassificationGeometry():
+                    has_tag = True
+                case PolylineGeometry():
+                    pass
+                case _:
+                    assert_never(geometry)
     if Task.SEGMENT in accepted and has_polygon:
         return Task.SEGMENT
     if Task.CLASSIFY in accepted and has_tag and not (has_box or has_polygon):
@@ -175,24 +181,34 @@ def _as_box(annotation: ManifestAnnotation) -> BboxGeometry | None:
     covering the whole image.
     """
     geometry: Geometry = annotation.geometry
-    if isinstance(geometry, BboxGeometry):
-        return geometry
-    if isinstance(geometry, PolygonGeometry):
-        xs = [x for x, _ in geometry.points]
-        ys = [y for _, y in geometry.points]
-        return BboxGeometry(x=min(xs), y=min(ys), width=max(xs) - min(xs), height=max(ys) - min(ys))
-    return None
+    match geometry:
+        case BboxGeometry():
+            return geometry
+        case PolygonGeometry():
+            xs = [x for x, _ in geometry.points]
+            ys = [y for _, y in geometry.points]
+            return BboxGeometry(
+                x=min(xs), y=min(ys), width=max(xs) - min(xs), height=max(ys) - min(ys)
+            )
+        case ClassificationGeometry() | PolylineGeometry():
+            return None
+        case _:
+            assert_never(geometry)
 
 
 def _as_ring(annotation: ManifestAnnotation) -> list[tuple[float, float]] | None:
     geometry: Geometry = annotation.geometry
-    if isinstance(geometry, PolygonGeometry):
-        return list(geometry.points)
-    if isinstance(geometry, BboxGeometry):
-        left, top = geometry.x, geometry.y
-        right, bottom = geometry.x + geometry.width, geometry.y + geometry.height
-        return [(left, top), (right, top), (right, bottom), (left, bottom)]
-    return None
+    match geometry:
+        case PolygonGeometry():
+            return list(geometry.points)
+        case BboxGeometry():
+            left, top = geometry.x, geometry.y
+            right, bottom = geometry.x + geometry.width, geometry.y + geometry.height
+            return [(left, top), (right, top), (right, bottom), (left, bottom)]
+        case ClassificationGeometry() | PolylineGeometry():
+            return None
+        case _:
+            assert_never(geometry)
 
 
 def _normalized_box(box: BboxGeometry, width: int, height: int) -> list[str]:

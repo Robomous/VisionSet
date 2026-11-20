@@ -15,7 +15,7 @@ is a hash-pinned contract and this document is derived and transient.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Final, Literal
+from typing import Final, Literal, assert_never
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -27,6 +27,7 @@ from visionset.kernel.domain.geometry import (
     ClassificationGeometry,
     Geometry,
     PolygonGeometry,
+    PolylineGeometry,
 )
 from visionset.kernel.domain.preprocessing import (
     SHOWCASE_SEED,
@@ -395,35 +396,47 @@ def _any_coordinates(geometries: Sequence[Geometry]) -> bool:
 def _scaled(
     geometry: Geometry, scale_x: float, scale_y: float, offset_x: float, offset_y: float
 ) -> Geometry:
-    if isinstance(geometry, ClassificationGeometry):
-        return geometry
-    if isinstance(geometry, BboxGeometry):
-        return BboxGeometry(
-            x=geometry.x * scale_x + offset_x,
-            y=geometry.y * scale_y + offset_y,
-            width=geometry.width * scale_x,
-            height=geometry.height * scale_y,
-        )
-    points = [(x * scale_x + offset_x, y * scale_y + offset_y) for x, y in geometry.points]
-    if isinstance(geometry, PolygonGeometry):
-        return PolygonGeometry(points=points)
-    return geometry.through(points)
+    match geometry:
+        case ClassificationGeometry():
+            return geometry
+        case BboxGeometry():
+            return BboxGeometry(
+                x=geometry.x * scale_x + offset_x,
+                y=geometry.y * scale_y + offset_y,
+                width=geometry.width * scale_x,
+                height=geometry.height * scale_y,
+            )
+        case PolygonGeometry():
+            return PolygonGeometry(
+                points=[
+                    (x * scale_x + offset_x, y * scale_y + offset_y) for x, y in geometry.points
+                ]
+            )
+        case PolylineGeometry():
+            return geometry.through(
+                [(x * scale_x + offset_x, y * scale_y + offset_y) for x, y in geometry.points]
+            )
+        case _:
+            assert_never(geometry)
 
 
 def _mirrored(geometry: Geometry, width: float) -> Geometry:
-    if isinstance(geometry, ClassificationGeometry):
-        return geometry
-    if isinstance(geometry, BboxGeometry):
-        return BboxGeometry(
-            x=width - geometry.x - geometry.width,
-            y=geometry.y,
-            width=geometry.width,
-            height=geometry.height,
-        )
-    points = [(width - x, y) for x, y in geometry.points]
-    if isinstance(geometry, PolygonGeometry):
-        return PolygonGeometry(points=points)
-    return geometry.through(points)
+    match geometry:
+        case ClassificationGeometry():
+            return geometry
+        case BboxGeometry():
+            return BboxGeometry(
+                x=width - geometry.x - geometry.width,
+                y=geometry.y,
+                width=geometry.width,
+                height=geometry.height,
+            )
+        case PolygonGeometry():
+            return PolygonGeometry(points=[(width - x, y) for x, y in geometry.points])
+        case PolylineGeometry():
+            return geometry.through([(width - x, y) for x, y in geometry.points])
+        case _:
+            assert_never(geometry)
 
 
 def _rotated_once(geometry: Geometry, width: float) -> Geometry:
@@ -433,19 +446,22 @@ def _rotated_once(geometry: Geometry, width: float) -> Geometry:
     means, and the two must turn the same way. A box's corners rotate and the
     result is rebuilt axis-aligned, which is exact at a quarter turn.
     """
-    if isinstance(geometry, ClassificationGeometry):
-        return geometry
-    if isinstance(geometry, BboxGeometry):
-        return BboxGeometry(
-            x=geometry.y,
-            y=width - geometry.x - geometry.width,
-            width=geometry.height,
-            height=geometry.width,
-        )
-    points = [(y, width - x) for x, y in geometry.points]
-    if isinstance(geometry, PolygonGeometry):
-        return PolygonGeometry(points=points)
-    return geometry.through(points)
+    match geometry:
+        case ClassificationGeometry():
+            return geometry
+        case BboxGeometry():
+            return BboxGeometry(
+                x=geometry.y,
+                y=width - geometry.x - geometry.width,
+                width=geometry.height,
+                height=geometry.width,
+            )
+        case PolygonGeometry():
+            return PolygonGeometry(points=[(y, width - x) for x, y in geometry.points])
+        case PolylineGeometry():
+            return geometry.through([(y, width - x) for x, y in geometry.points])
+        case _:
+            assert_never(geometry)
 
 
 def variant_content_hash(content_hash: str, variant: int) -> str:

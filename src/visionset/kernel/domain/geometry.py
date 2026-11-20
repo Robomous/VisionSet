@@ -22,7 +22,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import IntEnum
 from math import isfinite
-from typing import TYPE_CHECKING, Annotated, Any, Final, Literal, get_args
+from typing import TYPE_CHECKING, Annotated, Any, Final, Literal, assert_never, get_args
 
 from pydantic import (
     BaseModel,
@@ -105,7 +105,7 @@ def optional_visibility_field() -> Any:
 
 
 def check_vertex_visibility(
-    visibility: Sequence[VertexVisibility] | None, points: Sequence[tuple[float, float]]
+    visibility: Sequence[VertexVisibility] | None, points: Sequence[tuple[float, ...]]
 ) -> None:
     """Refuse a per-vertex visibility that does not name exactly one state per point.
 
@@ -117,8 +117,9 @@ def check_vertex_visibility(
             f"visibility names {len(visibility)} vertices and the geometry has "
             f"{len(points)} points; send one state per point, or omit visibility"
         )
+        # Pydantic replaces this title with the validating model's name.
         raise ValidationError.from_exception_data(
-            "PolylineGeometry",
+            "vertex visibility",
             [
                 {
                     "type": PydanticCustomError(
@@ -270,23 +271,32 @@ def geometry_intersects_asset(geometry: Geometry, *, width: int | None, height: 
     if width is None or height is None or not _coordinates_are_finite(geometry):
         return True
     frame = _Frame(width=float(width), height=float(height))
-    if isinstance(geometry, ClassificationGeometry):
-        return True
-    if isinstance(geometry, BboxGeometry):
-        return _bbox_intersects_frame(geometry, frame)
-    if isinstance(geometry, PolylineGeometry):
-        return _path_intersects_frame(geometry.points, frame, closed=False)
-    return _path_intersects_frame(geometry.points, frame, closed=True)
+    match geometry:
+        case ClassificationGeometry():
+            return True
+        case BboxGeometry():
+            return _bbox_intersects_frame(geometry, frame)
+        case PolylineGeometry():
+            return _path_intersects_frame(geometry.points, frame, closed=False)
+        case PolygonGeometry():
+            return _path_intersects_frame(geometry.points, frame, closed=True)
+        case _:
+            assert_never(geometry)
 
 
 def _coordinates_are_finite(geometry: Geometry) -> bool:
-    if isinstance(geometry, ClassificationGeometry):
-        return True
-    if isinstance(geometry, BboxGeometry):
-        return all(
-            isfinite(value) for value in (geometry.x, geometry.y, geometry.width, geometry.height)
-        )
-    return all(isfinite(value) for point in geometry.points for value in point)
+    match geometry:
+        case ClassificationGeometry():
+            return True
+        case BboxGeometry():
+            return all(
+                isfinite(value)
+                for value in (geometry.x, geometry.y, geometry.width, geometry.height)
+            )
+        case PolygonGeometry() | PolylineGeometry():
+            return all(isfinite(value) for point in geometry.points for value in point)
+        case _:
+            assert_never(geometry)
 
 
 def _bbox_intersects_frame(geometry: BboxGeometry, frame: _Frame) -> bool:
