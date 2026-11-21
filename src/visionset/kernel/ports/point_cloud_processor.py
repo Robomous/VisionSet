@@ -8,7 +8,7 @@ raises from, and the reverse.
 from dataclasses import dataclass
 from typing import BinaryIO, Final, Protocol, runtime_checkable
 
-from visionset.kernel.domain import PointCloudMetadata, ScanFrame
+from visionset.kernel.domain import PointCloudMetadata, PointSample, ScanFrame
 from visionset.kernel.ports.image_processor import DEFAULT_THUMBNAIL_MAX_EDGE
 
 #: The most points one scan may hold, counted as declared in its header before
@@ -49,6 +49,11 @@ class PointCloudProcessor(Protocol):
     ``read`` answers both from one decode, which is what an ingest wants: it
     raises as ``probe`` does, and a preview that alone fails comes back ``None``.
 
+    ``sample`` keeps every ``ceil(n / budget)``-th of the ``n`` finite points, in
+    file order, so the same scan and budget always give the same points. It
+    carries intensity and 8-bit colour when the scan has them, and raises as
+    ``probe`` does; a ``budget`` below 1 is a ``ValueError``.
+
     Nothing else escapes: any fault the bytes provoke is one of the two
     refusals below, so a hostile file can never be taken for a broken machine.
 
@@ -80,3 +85,5 @@ class PointCloudProcessor(Protocol):
         max_edge: int = DEFAULT_THUMBNAIL_MAX_EDGE,
         name: str | None = None,
     ) -> PointCloudReading: ...
+
+    def sample(self, content: BinaryIO, *, budget: int, name: str | None = None) -> PointSample: ...

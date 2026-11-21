@@ -1,12 +1,14 @@
 """Default PointCloudProcessor adapter: PCD and PLY scans read with the standard library.
 
-Pillow draws the bird's-eye thumbnail; nothing else is a dependency. Only ``x``,
-``y`` and ``z`` are ever decoded to values — every other field is checked for
-presence and for the bytes being there, which is all ``probe`` reports.
+Pillow draws the bird's-eye thumbnail; nothing else is a dependency. ``probe``,
+``thumbnail`` and ``read`` decode only ``x``, ``y`` and ``z`` to values — every
+other field is checked for presence and for the bytes being there. ``sample``
+alone also decodes intensity and colour, which a viewer draws.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import math
 import struct
@@ -14,7 +16,7 @@ import sys
 from array import array
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import BinaryIO, Final
+from typing import Any, BinaryIO, Final
 
 from PIL import Image
 
@@ -30,6 +32,7 @@ from visionset.kernel.domain.media import (
     PointCloudFormat,
     PointCloudMetadata,
 )
+from visionset.kernel.domain.point_sample import PointSample, decimation_stride
 from visionset.kernel.errors import CorruptMedia, MediaError, UnsupportedMedia
 from visionset.kernel.ports import point_cloud_processor as _port
 from visionset.kernel.ports.image_processor import DEFAULT_THUMBNAIL_MAX_EDGE
@@ -83,6 +86,14 @@ def _unsupported(reason: str, name: str | None) -> UnsupportedMedia:
     return UnsupportedMedia(reason, name=name)
 
 
+#: An optional column decoded beside the coordinates for ``sample``: how it was
+#: declared (a struct code, or ``_PACKED``/``_PACKED_FLOAT`` for PCD colour) and its values.
+_Extra = tuple[str, "array[Any]"]
+_PACKED: Final = "packed"
+_PACKED_FLOAT: Final = "packed_float"
+_F32_MAX: Final = 3.4028234663852886e38
+
+
 @dataclass(frozen=True)
 class _Cloud:
     """The finite points of one scan, and which optional fields it carries."""
@@ -92,6 +103,7 @@ class _Cloud:
     ys: array[float]
     zs: array[float]
     fields: tuple[str, ...]
+    extras: dict[str, _Extra] = dataclasses.field(default_factory=dict)
 
     def axis(self, index: int) -> array[float]:
         return (self.xs, self.ys, self.zs)[index]
@@ -176,19 +188,33 @@ def _finalize(
     zs: Sequence[float],
     fields: tuple[str, ...],
     name: str | None,
+    extras: dict[str, _Extra] | None = None,
 ) -> _Cloud:
     kx: array[float] = array("d")
     ky: array[float] = array("d")
     kz: array[float] = array("d")
     isfinite = math.isfinite
-    for x, y, z in zip(xs, ys, zs, strict=True):
-        if isfinite(x) and isfinite(y) and isfinite(z):
-            kx.append(x)
-            ky.append(y)
-            kz.append(z)
+    if not extras:
+        for x, y, z in zip(xs, ys, zs, strict=True):
+            if isfinite(x) and isfinite(y) and isfinite(z):
+                kx.append(x)
+                ky.append(y)
+                kz.append(z)
+        kept: dict[str, _Extra] = {}
+    else:
+        keys = list(extras)
+        outs = [array(extras[key][1].typecode) for key in keys]
+        for x, y, z, *rest in zip(xs, ys, zs, *(extras[key][1] for key in keys), strict=True):
+            if isfinite(x) and isfinite(y) and isfinite(z):
+                kx.append(x)
+                ky.append(y)
+                kz.append(z)
+                for out, value in zip(outs, rest, strict=True):
+                    out.append(value)
+        kept = {key: (extras[key][0], out) for key, out in zip(keys, outs, strict=True)}
     if not kx:
         raise _corrupt("every point has a non-finite coordinate", name)
-    return _Cloud(fmt, kx, ky, kz, fields)
+    return _Cloud(fmt, kx, ky, kz, fields, kept)
 
 
 def _canonical(present: set[str]) -> tuple[str, ...]:
@@ -201,9 +227,13 @@ def _unpack_rows(
     row_size: int,
     layout: Sequence[tuple[int, str]],
     endian: str,
-) -> tuple[array[float], array[float], array[float]]:
-    """Pull the ``(offset, code)`` x, y, z values out of ``rows`` fixed-size records."""
-    order = sorted(range(3), key=lambda k: layout[k][0])
+) -> list[array[Any]]:
+    """Pull the ``(offset, code)`` columns out of ``rows`` fixed-size records.
+
+    The first three are x, y and z, held as doubles; any further column keeps its
+    own code, so an optional field costs what the file spent on it.
+    """
+    order = sorted(range(len(layout)), key=lambda k: layout[k][0])
     parts = [endian]
     cursor = 0
     for k in order:
@@ -215,12 +245,14 @@ def _unpack_rows(
     if row_size > cursor:
         parts.append(f"{row_size - cursor}x")
     parsed = struct.Struct("".join(parts))
-    columns: list[array[float]] = [array("d"), array("d"), array("d")]
+    columns: list[array[Any]] = [
+        array("d" if k < 3 else code) for k, (_, code) in enumerate(layout)
+    ]
     ordered = [columns[k] for k in order]
     for record in parsed.iter_unpack(buffer[: rows * row_size]):
         for column, value in zip(ordered, record, strict=True):
             column.append(value)
-    return columns[0], columns[1], columns[2]
+    return columns
 
 
 def _ints(header: dict[str, list[str]], key: str, name: str | None) -> list[int]:
@@ -237,7 +269,9 @@ def _first(header: dict[str, list[str]], key: str, name: str | None) -> int:
     return values[0]
 
 
-def _decode_pcd(content: BinaryIO, lines: list[str], name: str | None) -> _Cloud:
+def _decode_pcd(
+    content: BinaryIO, lines: list[str], name: str | None, want_extras: bool = False
+) -> _Cloud:
     header: dict[str, list[str]] = {}
     for line in lines:
         if not line or line.startswith("#"):
@@ -308,20 +342,45 @@ def _decode_pcd(content: BinaryIO, lines: list[str], name: str | None) -> _Cloud
         present.add("rgb")
     out_fields = _canonical(present)
 
+    # Each optional column: its field index, the code it is read with, and the kind recorded.
+    wanted: dict[str, tuple[int, str, str]] = {}
+    if want_extras:
+        intensity = find("intensity")
+        if intensity is not None:
+            wanted["intensity"] = (intensity, codes[intensity], codes[intensity])
+        colour = find("rgb")
+        if colour is None:
+            colour = find("rgba")
+        if colour is not None and sizes[colour] == 4:
+            kind = _PACKED_FLOAT if types[colour] == "F" and mode == "ascii" else _PACKED
+            wanted["rgb"] = (colour, "I", kind)
+    picks = xyz_index + [index for index, _, _ in wanted.values()]
+
+    def finish(columns: Sequence[array[Any]]) -> _Cloud:
+        extras = {
+            key: (kind, column)
+            for (key, (_, _, kind)), column in zip(wanted.items(), columns[3:], strict=True)
+        }
+        return _finalize(
+            PointCloudFormat.PCD, columns[0], columns[1], columns[2], out_fields, name, extras
+        )
+
     if mode == "ascii":
-        columns = _decode_pcd_ascii(content, points, counts, xyz_index, name)
-        return _finalize(PointCloudFormat.PCD, *columns, out_fields, name)
+        return finish(_decode_pcd_ascii(content, points, counts, picks, name))
 
     needed = points * row_size
     if needed > _port.MAX_POINT_CLOUD_BYTES:
         raise _unsupported(f"{needed} bytes of point data is over the limit", name)
+    read_codes = [codes[k] for k in xyz_index] + [code for _, code, _ in wanted.values()]
     if mode == "binary":
         buffer = content.read(needed)
         if len(buffer) < needed:
             raise _corrupt("the binary point data is truncated", name)
-        layout = [(offsets[k], codes[k]) for k in xyz_index]
+        layout = [(offsets[k], code) for k, code in zip(picks, read_codes, strict=True)]
         columns = _unpack_rows(buffer, points, row_size, layout, "<")
-        return _finalize(PointCloudFormat.PCD, *columns, out_fields, name)
+        # Up to MAX_POINT_CLOUD_BYTES of raw rows; released before the finite-point copy.
+        del buffer
+        return finish(columns)
 
     sizes_raw = content.read(8)
     if len(sizes_raw) < 8:
@@ -336,15 +395,17 @@ def _decode_pcd(content: BinaryIO, lines: list[str], name: str | None) -> _Cloud
     if len(blob) < compressed:
         raise _corrupt("the compressed point data is truncated", name)
     raw = memoryview(_lzf_decompress(blob, uncompressed, name))
-    arrays: list[array[float]] = []
-    for k in xyz_index:
+    del blob
+    arrays: list[array[Any]] = []
+    for position, (k, code) in enumerate(zip(picks, read_codes, strict=True)):
         start = points * offsets[k]
-        block = array(codes[k])
+        block = array(code)
         block.frombytes(raw[start : start + points * sizes[k]])
         if sys.byteorder == "big":
             block.byteswap()
-        arrays.append(array("d", block))
-    return _finalize(PointCloudFormat.PCD, arrays[0], arrays[1], arrays[2], out_fields, name)
+        arrays.append(array("d", block) if position < 3 else block)
+    del raw
+    return finish(arrays)
 
 
 def _ascii_rows(
@@ -354,8 +415,8 @@ def _ascii_rows(
     picks: Sequence[int],
     what: str,
     name: str | None,
-) -> tuple[array[float], array[float], array[float]]:
-    out: tuple[array[float], array[float], array[float]] = (array("d"), array("d"), array("d"))
+) -> list[array[Any]]:
+    out: list[array[Any]] = [array("d") for _ in picks]
     consumed = 0
     seen = 0
     while raw := content.readline(_LINE_LIMIT + 1):
@@ -385,11 +446,11 @@ def _decode_pcd_ascii(
     content: BinaryIO,
     points: int,
     counts: list[int],
-    xyz_index: list[int],
+    picks: list[int],
     name: str | None,
-) -> tuple[array[float], array[float], array[float]]:
+) -> list[array[Any]]:
     starts = [sum(counts[:k]) for k in range(len(counts))]
-    return _ascii_rows(content, points, sum(counts), [starts[k] for k in xyz_index], "point", name)
+    return _ascii_rows(content, points, sum(counts), [starts[k] for k in picks], "point", name)
 
 
 @dataclass(frozen=True)
@@ -477,7 +538,9 @@ def _skip_binary_element(
             content.seek(skip, io.SEEK_CUR)
 
 
-def _decode_ply(content: BinaryIO, lines: list[str], name: str | None) -> _Cloud:
+def _decode_ply(
+    content: BinaryIO, lines: list[str], name: str | None, want_extras: bool = False
+) -> _Cloud:
     mode, elements = _parse_ply_header(lines, name)
     if mode != "ascii" and mode not in _PLY_ENDIANS:
         raise _unsupported(f"PLY format {mode!r} is not read", name)
@@ -504,6 +567,12 @@ def _decode_ply(content: BinaryIO, lines: list[str], name: str | None) -> _Cloud
     if {"red", "green", "blue"} <= set(names):
         present.add("rgb")
     out_fields = _canonical(present)
+    wanted: list[str] = [
+        key
+        for key in ("intensity", "red", "green", "blue")
+        if want_extras and (key == "intensity" or "rgb" in present) and key in names
+    ]
+    picks = picks + [names.index(key) for key in wanted]
 
     endian = "<" if mode == "ascii" else _PLY_ENDIANS[mode]
     skipped = elements[: elements.index(vertex)]
@@ -531,10 +600,17 @@ def _decode_ply(content: BinaryIO, lines: list[str], name: str | None) -> _Cloud
             offsets.append(offsets[-1] + struct.calcsize(prop.code))
         layout = [(offsets[k], vertex.properties[k].code) for k in picks]
         columns = _unpack_rows(buffer, vertex.count, vertex.row_size, layout, endian)
-    return _finalize(PointCloudFormat.PLY, *columns, out_fields, name)
+        del buffer
+    extras = {
+        key: (vertex.properties[k].code, column)
+        for key, k, column in zip(wanted, picks[3:], columns[3:], strict=True)
+    }
+    return _finalize(
+        PointCloudFormat.PLY, columns[0], columns[1], columns[2], out_fields, name, extras
+    )
 
 
-def _decode(content: BinaryIO, name: str | None) -> _Cloud:
+def _decode(content: BinaryIO, name: str | None, want_extras: bool = False) -> _Cloud:
     """Every finite point of the scan, or a ``MediaError`` naming why not.
 
     Whatever a hostile header provokes in ``struct``, ``array`` or arithmetic is
@@ -544,8 +620,8 @@ def _decode(content: BinaryIO, name: str | None) -> _Cloud:
     try:
         fmt, lines = _read_header(content, name)
         if fmt is PointCloudFormat.PCD:
-            return _decode_pcd(content, lines, name)
-        return _decode_ply(content, lines, name)
+            return _decode_pcd(content, lines, name, want_extras)
+        return _decode_ply(content, lines, name, want_extras)
     except (struct.error, ValueError, OverflowError, IndexError) as exc:
         raise _corrupt(f"the scan will not decode ({exc.__class__.__name__})", name) from None
 
@@ -605,6 +681,83 @@ def _draw(cloud: _Cloud, frame: ScanFrame, max_edge: int, name: str | None) -> b
     return buffer.getvalue()
 
 
+def _clamped_f32(values: array[Any]) -> array[float]:
+    """``values`` as float32, with anything beyond float32's range held at its edge."""
+    if min(values) >= -_F32_MAX and max(values) <= _F32_MAX:
+        return array("f", values)
+    return array("f", (min(_F32_MAX, max(-_F32_MAX, v)) for v in values))
+
+
+def _le_bytes(values: array[Any]) -> bytes:
+    if sys.byteorder == "big":
+        values.byteswap()
+    return values.tobytes()
+
+
+def _positions(cloud: _Cloud, stride: int) -> bytes:
+    count = len(range(0, len(cloud.xs), stride))
+    positions = array("f", bytes(12 * count))
+    for axis in range(3):
+        positions[axis::3] = _clamped_f32(cloud.axis(axis)[::stride])
+    return _le_bytes(positions)
+
+
+def _intensity(cloud: _Cloud, stride: int) -> bytes | None:
+    """Intensity as float32; a value that is not finite reads as 0."""
+    if "intensity" not in cloud.extras:
+        return None
+    isfinite = math.isfinite
+    values = cloud.extras["intensity"][1][::stride]
+    return _le_bytes(
+        array("f", (min(_F32_MAX, max(-_F32_MAX, v)) if isfinite(v) else 0.0 for v in values))
+    )
+
+
+def _packed(value: float, as_float: bool) -> int:
+    """PCD's ``0x00RRGGBB``, from the integer stored or a float32 holding its bits."""
+    if not math.isfinite(value):
+        return 0
+    if as_float:
+        try:
+            unpacked: int = struct.unpack("<I", struct.pack("<f", value))[0]
+        except (OverflowError, struct.error):
+            return 0
+        return unpacked
+    return int(value)
+
+
+def _channel_byte(value: float, code: str) -> int:
+    """One PLY colour channel as 0-255: bytes as stored, 16 bits scaled down, floats as 0-1."""
+    if not math.isfinite(value):
+        return 0
+    if code in _FLOAT_CODES:
+        return round(min(1.0, max(0.0, value)) * 255)
+    if code == "H":
+        return min(255, max(0, int(value) >> 8))
+    return min(255, max(0, int(value)))
+
+
+def _rgb(cloud: _Cloud, stride: int) -> bytes | None:
+    count = len(range(0, len(cloud.xs), stride))
+    out = bytearray(3 * count)
+    if "rgb" in cloud.extras:
+        kind, column = cloud.extras["rgb"]
+        packed = [_packed(v, kind == _PACKED_FLOAT) for v in column[::stride]]
+        for channel, shift in enumerate((16, 8, 0)):
+            out[channel::3] = bytes((p >> shift) & 0xFF for p in packed)
+        return bytes(out)
+    if not {"red", "green", "blue"} <= cloud.extras.keys():
+        return None
+    for channel, key in enumerate(("red", "green", "blue")):
+        code, column = cloud.extras[key]
+        sub = column[::stride]
+        if code == "B" and sub.typecode == "B":
+            out[channel::3] = sub.tobytes()
+        else:
+            out[channel::3] = bytes(_channel_byte(v, code) for v in sub)
+    return bytes(out)
+
+
 class StdlibPointCloudProcessor:
     """Reads PCD and PLY scans (ascii, binary, and LZF-compressed PCD) without NumPy."""
 
@@ -648,3 +801,25 @@ class StdlibPointCloudProcessor:
         except MediaError:
             preview = None
         return PointCloudReading(metadata=_metadata(cloud), thumbnail=preview)
+
+    def sample(self, content: BinaryIO, *, budget: int, name: str | None = None) -> PointSample:
+        """Every ``ceil(n / budget)``-th finite point, in file order, with what it carries.
+
+        Intensity comes back as float32, a non-finite value as 0. Colour comes
+        back as 8 bits a channel: PCD ``rgb``/``rgba`` unpacked from its
+        ``0x00RRGGBB``, PLY ``uchar`` channels as stored, ``ushort`` ones scaled
+        down and float ones read as 0 to 1. A coordinate beyond float32's range
+        is held at its edge.
+        """
+        if budget < 1:
+            raise ValueError(f"budget must be at least 1 point, got {budget}")
+        named = _stream_name(content, name)
+        cloud = _decode(content, named, want_extras=True)
+        stride = decimation_stride(len(cloud.xs), budget)
+        return PointSample(
+            total=len(cloud.xs),
+            stride=stride,
+            positions=_positions(cloud, stride),
+            intensity=_intensity(cloud, stride),
+            rgb=_rgb(cloud, stride),
+        )

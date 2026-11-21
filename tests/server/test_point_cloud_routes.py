@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import struct
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Final
@@ -12,9 +13,16 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 from tests.fixtures.calibration import calibration_document
-from tests.fixtures.point_clouds import pcd_ascii, write_scans
+from tests.fixtures.point_clouds import SCAN, pcd_ascii, write_scans
 from tests.server._api import api_client
-from tests.server._flow import SIGN, a_box, dataset_of, project_with_schema
+from tests.server._flow import (
+    SIGN,
+    a_box,
+    asset_ids,
+    batch_from_ingest,
+    dataset_of,
+    project_with_schema,
+)
 from tests.server._jobs import InlineDispatcher
 
 from visionset.kernel.domain import ScanFrame
@@ -173,3 +181,89 @@ def test_a_cuboid_lands_on_a_scan_and_a_box_does_not(
             "with every label on them",
         }
     ]
+
+
+def _points(client: TestClient, project: str, asset: str, **params: Any) -> Any:
+    return client.get(f"/projects/{project}/assets/{asset}/points", params=params)
+
+
+def _decoded(buffer: bytes) -> tuple[int, list[tuple[float, ...]], tuple[float, ...] | None]:
+    magic, version, count, flags = struct.unpack_from("<4sIII", buffer)
+    assert (magic, version) == (b"VSPC", 1)
+    assert flags & 2 == 0
+    xyz = struct.unpack_from(f"<{3 * count}f", buffer, 16)
+    intensity = struct.unpack_from(f"<{count}f", buffer, 16 + 12 * count) if flags & 1 else None
+    assert len(buffer) == 16 + 12 * count + (4 * count if flags & 1 else 0)
+    return flags, [tuple(xyz[i : i + 3]) for i in range(0, 3 * count, 3)], intensity
+
+
+def test_the_points_route_serves_each_scan_as_a_vspc_buffer(
+    client: TestClient, scans: dict[str, Any]
+) -> None:
+    project = scans["project"]
+    seen = set()
+    for asset_id in scans["assets"]:
+        fmt = client.get(f"/projects/{project}/assets/{asset_id}").json()["point_cloud"]["format"]
+        response = _points(client, project, asset_id)
+        assert response.status_code == 200, response.text
+        assert response.headers["content-type"] == "application/octet-stream"
+        flags, points, intensity = _decoded(response.content)
+        if fmt == "pcd":
+            assert (flags, points, intensity) == (0, list(SCAN), None)
+        else:
+            assert flags == 1
+            assert points == [(x, y + 1, z) for x, y, z in SCAN]
+            assert intensity == (0.5, 0.5, 0.5)
+        assert _points(client, project, asset_id).content == response.content
+        seen.add(fmt)
+    assert seen == {"pcd", "ply"}
+
+
+@pytest.mark.parametrize(
+    ("max_points", "status"),
+    [
+        (999, 422),
+        (1_000, 200),
+        (2_000_000, 200),
+        (2_000_001, 422),
+        (-1, 422),
+        (10**30, 422),
+        ("many", 422),
+    ],
+)
+def test_max_points_outside_its_range_is_422_never_clamped(
+    client: TestClient, scans: dict[str, Any], max_points: object, status: int
+) -> None:
+    response = _points(client, scans["project"], scans["assets"][0], max_points=max_points)
+    assert response.status_code == status, response.text
+    if status == 422:
+        assert response.json()["code"] == "VALIDATION_ERROR"
+
+
+def test_an_image_asset_has_no_points(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path, scans: dict[str, Any]
+) -> None:
+    batch = batch_from_ingest(client, runner, tmp_path / "images", scans["project"], images=1)
+    image = asset_ids(client, batch)[0]
+
+    response = _points(client, scans["project"], image)
+
+    assert response.status_code == 404, response.text
+    assert response.json()["code"] == "ASSET_NOT_FOUND"
+
+
+def test_the_points_route_is_scoped_and_guarded_like_content(
+    client: TestClient, scans: dict[str, Any]
+) -> None:
+    other = client.post("/projects", json={"name": "elsewhere"}).json()["id"]
+    asset = scans["assets"][0]
+
+    foreign = _points(client, other, asset)
+    unknown = _points(client, str(UUID(int=0)), asset)
+    anonymous = client.get(
+        f"/projects/{scans['project']}/assets/{asset}/points", headers={"Authorization": ""}
+    )
+
+    assert (foreign.status_code, foreign.json()["code"]) == (404, "ASSET_NOT_FOUND")
+    assert (unknown.status_code, unknown.json()["code"]) == (404, "PROJECT_NOT_FOUND")
+    assert anonymous.status_code == 401

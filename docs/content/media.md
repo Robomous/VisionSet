@@ -303,6 +303,39 @@ suggestion, a pre-processing preview, MCP's `get_asset_image` with `full` - and 
 passes it over. A pixel-space label (`bbox`, `polygon`, `polyline`) on a scan is refused with
 `INVALID_ANNOTATION`; a `classification_tag` and the 3D geometries are accepted.
 
+### Thinned points for a viewer
+
+`sample(handle, budget=n)` is the fourth method, and the only one that decodes intensity and
+colour as well as `x`, `y` and `z`. It keeps every `ceil(total / budget)`-th of the scan's finite
+points in file order, so one scan and one budget always give the same points, and returns a
+`PointSample` (in `visionset.kernel.domain`): the `total` before thinning, the `stride`, and
+little-endian buffers of float32 positions, float32 intensity and 8-bit colour, the last two
+`None` when the scan has no such field. A non-finite intensity reads as 0, and a coordinate beyond
+float32's range is held at its edge. Colour is a four-byte PCD `rgb` or `rgba` unpacked
+from its `0x00RRGGBB`, or PLY `red`, `green` and `blue` together - `uchar` as stored, `ushort` scaled down,
+float read as 0 to 1; a scan with only some of the three channels has no colour. It refuses
+exactly what `probe` refuses.
+
+`IngestService.points(project_id, asset_id, max_points=500_000)` reads a stored scan through it,
+and `GET /projects/{project_id}/assets/{asset_id}/points?max_points=N` serves
+`PointSample.encode()`:
+
+| Bytes | Content |
+| --- | --- |
+| 0-15 | header, little-endian: the magic `VSPC`, then u32 version (`1`), u32 count, u32 flags (bit 0 intensity, bit 1 rgb) |
+| next `12 x count` | f32 `x, y, z` per point |
+| next `4 x count`, if bit 0 | f32 intensity per point |
+| next `3 x count`, if bit 1 | u8 `r, g, b` per point |
+
+`max_points` is 1,000 to 2,000,000, default 500,000; a value outside that range is 422
+`VALIDATION_ERROR` (a `ValueError` through the service), not clamped. An image asset is 404
+`ASSET_NOT_FOUND`: it has no points. The scan's full count and bounds are not in the buffer -
+they are the asset's `point_cloud` metadata.
+
+**The cost is a decode per request.** Nothing is cached: the scan is parsed again on every call,
+so a ten-million-point scan costs what its ingest did, and the response is held in memory, at 16
+bytes a point with both fields - 8 MB at the default budget, 32 MB at the maximum.
+
 ## Video moved to the browser
 
 This page used to describe a second port here, `VideoProcessor`, backed by an adapter that shelled

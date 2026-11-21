@@ -19,24 +19,29 @@ sameness compares ``content_hash`` off the JSON, exactly as before.
 ``StreamingResponse`` walks it, so a fifty-megapixel frame is served without
 being read into memory — the discipline ``uploads.py`` follows in the other
 direction. A handler that called ``.read()`` would undo it in one line.
+The one exception is ``points``, which has to decode a scan to thin it: it
+answers a buffer bounded by its point budget, never the file.
 
 Handlers are ``def``, not ``async def``, for the reason ``projects.py`` gives.
 """
 
 from __future__ import annotations
 
-from typing import Any, Final
+from typing import Annotated, Any, Final
 from uuid import UUID
 
-from fastapi import Response, status
+from fastapi import Query, Response, status
 from fastapi.responses import StreamingResponse
 
 from visionset.jobs.thumbnails import JOB_TYPE as backfill_job_type
 from visionset.jobs.thumbnails import PROJECT_KEY as backfill_project_key
 from visionset.jobs.thumbnails import payload_for as backfill_payload_for
 from visionset.kernel.domain import (
+    DEFAULT_POINT_BUDGET,
     LIVE_JOB_STATES,
+    MAX_POINT_BUDGET,
     MEDIA_TYPES,
+    MIN_POINT_BUDGET,
     OCTET_STREAM,
     Asset,
     BackgroundJob,
@@ -104,6 +109,23 @@ _THUMBNAIL_RESPONSE: Final[dict[int | str, dict[str, Any]]] = {
         "description": "The cached preview, streamed.",
     }
 }
+
+
+_POINTS_RESPONSE: Final[dict[int | str, dict[str, Any]]] = {
+    200: {
+        "content": {OCTET_STREAM: {"schema": {}}},
+        "description": "The thinned scan, as the VSPC buffer.",
+    }
+}
+
+MaxPointsQuery = Annotated[
+    int,
+    Query(
+        ge=MIN_POINT_BUDGET,
+        le=MAX_POINT_BUDGET,
+        description="The most points to return; the scan is thinned by a whole stride to fit.",
+    ),
+]
 
 
 def _media_type(asset: Asset) -> str:
@@ -319,6 +341,41 @@ def get_asset_thumbnail(
         stream,
         media_type=MEDIA_TYPES[THUMBNAIL_FORMAT],
         headers={"ETag": f'"{asset.thumbnail_hash}"', "Cache-Control": _IMMUTABLE},
+    )
+
+
+@router.get(
+    "/{asset_id}/points",
+    response_class=Response,
+    response_model=None,
+    responses={**documented(404), **_POINTS_RESPONSE},
+)
+def get_asset_points(
+    workspace: WorkspaceDep,
+    project_id: UUID,
+    asset_id: UUID,
+    max_points: MaxPointsQuery = DEFAULT_POINT_BUDGET,
+) -> Response:
+    """A point-cloud scan thinned to at most `max_points`, as a compact binary buffer.
+
+    Every `ceil(n / max_points)`-th of the scan's `n` finite points, in file
+    order, so one asset and one budget always answer the same bytes. Little-endian
+    throughout: a 16-byte header (the magic `VSPC`, then u32 version `1`, u32
+    count and u32 flags, bit 0 intensity and bit 1 rgb), then f32 `x, y, z` per
+    point, then f32 intensity per point if flagged, then u8 `r, g, b` per point
+    if flagged. The scan's full count and bounds are the asset's `point_cloud`.
+
+    `max_points` defaults to 500000; outside 1000 to 2000000 it is 422
+    `VALIDATION_ERROR`, never clamped. An image asset is 404 `ASSET_NOT_FOUND`,
+    as is an unknown asset; an unknown project is 404 `PROJECT_NOT_FOUND`. A
+    stored scan this installation can no longer read is 422 `UNSUPPORTED_MEDIA`
+    or `CORRUPT_MEDIA`.
+    """
+    sample = IngestService(workspace).points(project_id, asset_id, max_points=max_points)
+    return Response(
+        content=sample.encode(),
+        media_type=OCTET_STREAM,
+        headers={"Cache-Control": "private, no-cache"},
     )
 
 
