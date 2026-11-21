@@ -71,7 +71,8 @@ images ingested on another machine produce a different manifest.
 
 `manifest_version` names the shape of the document itself, independent of the workspace
 database's format and of the package version. A build writes the **lowest version that can
-express the release**: **3** for a release with no 3D label, **4** for one that holds any.
+express the release**: **3** for a release of images with no 3D label, **4** for one that holds
+any, and **5** for one that holds a point-cloud asset.
 
 | Version | Since | What changed |
 | --- | --- | --- |
@@ -79,6 +80,7 @@ express the release**: **3** for a release with no 3D label, **4** for one that 
 | 2 | #584 | `LabelClass.geometries` became plural; a version-1 class's singular `geometry` still loads |
 | 3 | #352 | a polyline may carry per-vertex `visibility` |
 | 4 | #1038, #1045 | the `polyline_3d` and `cuboid_3d` geometries, and a `calibration` on each asset that carries one |
+| 5 | #1046 | an asset's `modality`, and on a point-cloud asset its `point_cloud` metadata and the scan `frame` |
 
 An older document keeps the version it was written with, so its bytes and its hash never move and
 `verify` still passes. Version 3 changes no existing bytes: a polyline with unknown visibility
@@ -98,6 +100,13 @@ exactly as it did before 3D labels existed, and only a release holding one is re
 version-3 build. A manifest that carries a calibration under a version below 4, or a 3D label on
 an asset with no calibration beside it, does not load.
 
+Version 5 changes no existing bytes either. `modality` is **omitted** when it is `image`, so a
+release of images is still written as version 3 or 4 with the hash it always had. A point-cloud
+asset carries `"modality": "point_cloud"`, its `point_cloud` metadata (format, point count,
+bounds, fields) and the `frame` its source declares, and never a `calibration` or a pixel size; a
+manifest holding one under a version below 5 does not load, and neither does a pixel-space label
+(`bbox`, `polygon`, `polyline`) on a scan.
+
 Publishing content that needs a newer version than an older build wrote still produces a
 different manifest hash, because the version number is part of the document.
 
@@ -112,6 +121,12 @@ export reports a `polyline_3d` or `cuboid_3d` class **dropped**, with its annota
 needs `allow_lossy` like any other loss. The drop happens before pre-processing, with or without a
 target, so a resize or flip in the export's recipe never refuses over a 3D label the format would
 not write anyway.
+
+### A scan travels with its frame
+
+A point-cloud asset is read in its source's declared frame, not against a camera calibration, so
+publishing copies that frame beside every scan, labelled or not. A `cuboid_3d` on a scan has its
+yaw about that frame's up axis. See [sources.md](sources.md#point-cloud-directories-and-their-frame).
 
 ### Which schema version a release pins
 
@@ -235,7 +250,7 @@ half-written directory behind.
 
 `lossy` is a blanket claim nobody can check. `Exporter.supported_geometries` is the checkable
 half of it: the set of `GeometryType` members the format can write. `supported_modalities` sits
-beside it, declared and published, and is read below.
+beside it: the asset modalities the format can write, judged below.
 
 `ReleaseService.check_export(release_id, exporter)` judges one release's **frozen manifest**
 against one format's declaration and returns an `ExportCompatibility`:
@@ -255,7 +270,8 @@ against one format's declaration and returns an `ExportCompatibility`:
     {"label_class": "weather", "geometry": "classification_tag", "status": "dropped",
      "annotations": 40, "assets": 40,
      "reason": "yolov5-yaml cannot place a classification_tag and drops it"}
-  ]
+  ],
+  "dropped_modalities": []
 }
 ```
 
@@ -325,12 +341,14 @@ and a release is a snapshot: curating an asset out of the trunk afterwards does 
 answer. That is what lets one document be shown in a consent dialog, attached to a refusal and
 written into the output without three chances to disagree.
 
-**Modality is declared but not yet judged against.** A `ManifestAsset` carries no modality -
-adding one would change the shape of every manifest and therefore every release hash ever
-computed - and reading it off the live `Asset` would make the report depend on something that
-moves after publication. `supported_modalities` is published on `GET /formats` and in
-`list_formats` so a caller can see what a format claims; making it part of the verdict needs a
-field on `ManifestAsset` behind a `MANIFEST_VERSION` bump, which is its own decision.
+**Modality is judged first, from the manifest.** A version-5 `ManifestAsset` records its modality,
+and an asset whose modality the format does not list in `supported_modalities` is absent from the
+output whole. It gets one row per modality in `dropped_modalities` - `modality`, `assets`,
+`annotations` and a `reason` - is counted in `excluded_assets` and `excluded_annotations`, and
+makes the report incompatible, so the export needs `allow_lossy`. Its labels appear in no row of
+`classes`, which judge only what reaches the format, and the export never hands such an asset to
+the plugin. No installed format writes a point cloud, so every one of them reports a release's
+scans dropped, by count.
 
 ### Consent is required if *either* says so
 

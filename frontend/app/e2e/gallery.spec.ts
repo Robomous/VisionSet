@@ -106,6 +106,7 @@ function assets(
         id: `asset-${at}`,
         project_id: PROJECT,
         modality: "image",
+        point_cloud: null,
         content_hash: `${at}`.padStart(8, "0") + "deadbeef",
         width: 1280,
         height: 720,
@@ -396,6 +397,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
             id: `asset-${at}`,
             project_id: PROJECT,
             modality: "image",
+            point_cloud: null,
             content_hash: `${at}`.padStart(8, "0") + "deadbeef",
             width: 1280,
             height: 720,
@@ -470,6 +472,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
           kind: "video",
           name: "video-test-480.mp4",
           registered_at: "2026-08-01T08:00:00Z",
+          frame: null,
           video: {
             codec: "h264",
             duration_seconds: 10,

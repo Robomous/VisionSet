@@ -28,6 +28,12 @@ from visionset.kernel.ports.metadata_store import (
     UnitOfWork,
 )
 from visionset.kernel.ports.model_provider import ModelProvider
+from visionset.kernel.ports.point_cloud_processor import (
+    MAX_POINT_CLOUD_BYTES,
+    MAX_POINT_CLOUD_POINTS,
+    PointCloudProcessor,
+    PointCloudReading,
+)
 from visionset.kernel.ports.point_segmenter import PointSegmenter
 from visionset.kernel.ports.preprocessing import PreprocessingDriver, driver_for
 from visionset.kernel.ports.progress_reporter import ProgressReporter
@@ -47,6 +53,10 @@ __all__ = [
     "JobQueue",
     "MetadataStore",
     "ModelProvider",
+    "MAX_POINT_CLOUD_BYTES",
+    "MAX_POINT_CLOUD_POINTS",
+    "PointCloudProcessor",
+    "PointCloudReading",
     "PointSegmenter",
     "PreprocessingDriver",
     "driver_for",

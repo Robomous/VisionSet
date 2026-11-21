@@ -46,6 +46,7 @@ from visionset.kernel.domain import (
     normalize_name,
     recipe_usage,
     require_calibration,
+    require_image,
     transform_manifest,
 )
 from visionset.kernel.errors import (
@@ -238,13 +239,15 @@ class PreprocessingRecipeService:
             ExportSourceUnreadable: a step needs a source size the asset never
                 recorded, or the asset's bytes are not in the blob store.
             PreprocessingDriverNotFound: no driver in ``drivers`` applies a step.
-            UnsupportedMedia: the rendered bytes are not a JPEG, PNG or WebP.
+            UnsupportedMedia: the rendered bytes are not a JPEG, PNG or WebP, or
+                the asset is a point cloud, which no recipe transforms.
         """
         with self._workspace.unit_of_work() as uow:
             self._require_project(uow, project_id)
             asset = uow.assets.get(asset_id)
             if asset is None or asset.project_id != project_id:
                 raise AssetNotFound(f"no asset {asset_id} in project {project_id}")
+            require_image(asset)
             annotations = uow.annotations.list(asset.id)
             source = None if asset.source_id is None else uow.sources.get(asset.source_id)
             manifest_asset = ManifestAsset(
@@ -256,7 +259,10 @@ class PreprocessingRecipeService:
                 annotations=tuple(_manifest_annotation(one) for one in annotations),
                 calibration=(
                     require_calibration(asset, source)
-                    if any(geometry_needs_calibration(one.geometry) for one in annotations)
+                    if any(
+                        geometry_needs_calibration(one.geometry, modality=asset.modality)
+                        for one in annotations
+                    )
                     else None
                 ),
             )

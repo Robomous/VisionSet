@@ -50,6 +50,7 @@ function asset(id: string, hash: string): unknown {
     id,
     project_id: PROJECT,
     modality: "image",
+    point_cloud: null,
     content_hash: hash.padEnd(64, "0"),
     width: 640,
     height: 480,

@@ -799,6 +799,12 @@ the generic *The server answered with something this app does not recognise.* un
 `MALFORMED_RESPONSE`. A refetch that fails while a calibration is already drawn keeps drawing it
 and raises no notice.
 
+#### Point-cloud scans have no viewer yet
+
+A `point_cloud` asset appears in galleries and lists with its top-down thumbnail, but the
+annotation page has no viewer for one: the image stage cannot draw a scan, and nothing in this
+build tries to. A read-only 3D view of a scan and its cuboids is tracked separately.
+
 ### The annotation side panel
 
 `AnnotatorPanel` - Classes, Tags and Annotations, three stacked regions with no

@@ -60,7 +60,7 @@ from visionset.cli.batches import (
     second_step,
     start_after_approval,
 )
-from visionset.kernel.domain import BatchState, IngestResult
+from visionset.kernel.domain import BatchState, IngestResult, ScanFrame
 from visionset.kernel.services import (
     BatchService,
     IngestService,
@@ -109,10 +109,18 @@ def ingest(
         typer.Argument(
             exists=True,
             readable=True,
-            help="A directory of still images.",
+            help="A directory of still images, or of point-cloud scans with --point-clouds.",
         ),
     ],
     project: ProjectOption,
+    point_clouds: Annotated[
+        ScanFrame | None,
+        typer.Option(
+            "--point-clouds",
+            help="Read the directory as PCD and PLY scans written in this frame: "
+            "lidar_flu (x forward, y left, z up) or camera_rdf (x right, y down, z forward).",
+        ),
+    ] = None,
     batch_name: Annotated[
         str | None,
         typer.Option(
@@ -147,6 +155,10 @@ def ingest(
     that finds nothing new creates no batch unless `--batch-name` asks for one,
     and prints no batch id.
 
+    `--point-clouds FRAME` reads the directory as single PCD and PLY scans
+    instead, each one a point-cloud asset, and declares the frame their
+    coordinates and 3D labels are written in.
+
     `--start` follows with `batch approve` (one job) and `batch start`. The
     ingest is committed before approval is attempted, so a refused approval — a
     project with no schema — leaves a draft batch, and the output names it.
@@ -156,7 +168,12 @@ def ingest(
 
     with opened_workspace(workspace) as service:
         resolved = ProjectService(service).resolve(project)
-        registered = SourceService(service).register_images(resolved.id, source)
+        sources = SourceService(service)
+        registered = (
+            sources.register_images(resolved.id, source)
+            if point_clouds is None
+            else sources.register_point_clouds(resolved.id, source, frame=point_clouds)
+        )
         note(f"Reading {registered.kind.value.replace('_', ' ')} {source}…")
         result = IngestService(service).ingest(registered.id, batch_name=batch_name)
         batch_id = result.batch_id

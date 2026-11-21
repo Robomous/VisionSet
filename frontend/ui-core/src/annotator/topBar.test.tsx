@@ -150,6 +150,7 @@ function answer(path: string): unknown {
       id: index === 0 ? ASSET : assetId(index),
       project_id: PROJECT,
       modality: "image",
+      point_cloud: null,
       content_hash: `abcdef0${index}`.padEnd(64, "0"),
       width: 640,
       height: 480,

@@ -24,6 +24,7 @@ const PROJECT = "11111111-1111-4111-8111-111111111111";
 // document the endpoint never sends, and `unwrap` now says so.
 const ASSET_REST = {
   modality: "image",
+  point_cloud: null,
   content_hash: "0".repeat(64),
   width: 640,
   height: 480,

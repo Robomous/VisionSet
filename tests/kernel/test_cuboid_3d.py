@@ -123,7 +123,7 @@ def test_no_image_frame_bounds_apply() -> None:
 
 
 def test_it_needs_a_calibration() -> None:
-    assert geometry_needs_calibration(BOX)
+    assert geometry_needs_calibration(BOX, modality="image")
 
 
 # --- the write funnel -------------------------------------------------------

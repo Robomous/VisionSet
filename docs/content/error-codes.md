@@ -16,7 +16,7 @@ tables the surfaces use, so it cannot drift from what they answer.
 The framework's own codes - `VALIDATION_ERROR`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `UNAUTHORIZED`
 and `INTERNAL_ERROR` - are not raised by the kernel and are described in [api.md](api.md).
 
-110 codes, alphabetical.
+111 codes, alphabetical.
 
 | Code | Status | Meaning | Remedy | Retry with |
 | --- | --- | --- | --- | --- |
@@ -36,7 +36,8 @@ and `INTERNAL_ERROR` - are not raised by the kernel and are described in [api.md
 | `BATCH_NOT_FOUND` | 404 | No batch with that id lives in this workspace. |  |  |
 | `BATCH_NOT_IN_ANNOTATION` | 409 | Work was attempted on a job whose batch is not open for annotation. |  |  |
 | `CALIBRATION_IN_USE` | 409 | Clearing this calibration would leave stored 3D labels with none to be read against. |  |  |
-| `CALIBRATION_MISSING` | 409 | A 3D label was written or published for an asset with no calibration to read it against. |  |  |
+| `CALIBRATION_MISSING` | 409 | A 3D label was written or published for an asset with nothing to read it against. |  |  |
+| `CALIBRATION_NOT_APPLICABLE` | 409 | A camera calibration was stated for something that has no camera intrinsics. |  |  |
 | `CALIBRATION_RESOLUTION_MISMATCH` | 422 | A calibration was measured at a resolution the asset it would apply to does not have. |  |  |
 | `CONFIRMATION_REQUIRED` | 409 | A destructive operation was called without ``confirm=True``. |  | `confirm` |
 | `CONSTRAINT_VIOLATED` | 500 | The store refused a write that broke one of its constraints. |  |  |

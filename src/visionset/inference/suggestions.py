@@ -39,6 +39,7 @@ from visionset.kernel.domain import (
     PredictionTarget,
     SuggestParameter,
     media_type_of,
+    require_image,
     require_points_on_asset,
     suggest_parameters,
 )
@@ -115,6 +116,7 @@ def suggest(
         ProjectNotFound: no such project.
         AssetNotFound: no such asset in that project.
         PromptPointOutOfBounds: a point in the gesture is not on that asset.
+        UnsupportedMedia: the asset is a point cloud, which has no pixels to click.
     """
     kind = target_kind(allowed)
     # Read from what was *asked for*, not from what came back: an answer with
@@ -135,7 +137,7 @@ def suggest(
         )
 
     ingest = IngestService(workspace)
-    asset = ingest.asset(project_id, asset_id)
+    asset = require_image(ingest.asset(project_id, asset_id))
     # Before the bytes are read, because a prompt that names nowhere on this
     # asset is refused whether or not the file opens, and reading an image to
     # answer that would be work nobody asked for.

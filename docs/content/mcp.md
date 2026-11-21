@@ -293,6 +293,10 @@ original. A relative `path` given to `ingest` is read against the server's worki
 reported back as an absolute one. An asset with no recorded image format has no honest media type, so its
 measurements come back with an explanation rather than pixels.
 
+A point-cloud asset's preview is its scan seen from above (see
+[media.md](media.md#point-cloud-scans)); `width`, `height` and `scale` are null, because a scan
+has no pixel frame to write in. `full: true` is refused for one with `UNSUPPORTED_MEDIA`.
+
 ## How a tool refuses
 
 There are **two** failure shapes, and telling them apart is deliberate.

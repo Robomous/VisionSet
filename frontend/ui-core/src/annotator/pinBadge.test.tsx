@@ -102,6 +102,7 @@ function answer(path: string, search: string): unknown {
           id: ASSET,
           project_id: PROJECT,
           modality: "image",
+          point_cloud: null,
           content_hash: "a".repeat(64),
           width: 640,
           height: 480,

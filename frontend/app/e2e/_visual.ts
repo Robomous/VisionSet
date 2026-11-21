@@ -375,6 +375,7 @@ export async function serveVisualApi(page: Page, options: VisualOptions = {}): P
               id: VISUAL.asset,
               project_id: P,
               modality: "image",
+              point_cloud: null,
               content_hash: LONG_CONTENT_HASH,
               width: 640,
               height: 480,

@@ -137,13 +137,10 @@ class Exporter(Protocol):
     #: heard of one should report it as unsupported rather than fail to load the
     #: plugin.
     #:
-    #: **Declared and published, but not yet judged against.** A
-    #: ``ManifestAsset`` carries no modality — adding one would change the shape
-    #: of every manifest and therefore every release hash ever computed — and
-    #: reading it off the live ``Asset`` would make an export report depend on
-    #: something that can move after publication. ``_compatibility`` in
-    #: ``release_service.py`` says so in full. Everything ingested today is
-    #: ``image``.
+    #: **Judged against the release.** A version-5 ``ManifestAsset`` records its
+    #: modality, and an asset whose modality is not in this set is reported
+    #: dropped by ``_compatibility`` in ``release_service.py`` and never handed
+    #: to the plugin.
     supported_modalities: frozenset[str]
 
     #: Which models a person can train on this format's output.

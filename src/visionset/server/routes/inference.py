@@ -432,7 +432,8 @@ def suggest_region(workspace: WorkspaceDep, body: SuggestRequest) -> SuggestionO
     with a point removed is a different gesture. Nothing is clamped: a
     coordinate outside the frame is not a place on the image, and answering
     about the nearest edge instead would return a mask, and a confidence, for a
-    question nobody asked.
+    question nobody asked. A point-cloud asset has no pixel frame to click in,
+    and is refused with 422 `UNSUPPORTED_MEDIA`.
 
     An empty `regions` is a successful answer with nothing to propose. These
     refusals are about the request, and the caller can act on each: an unknown

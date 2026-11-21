@@ -148,6 +148,7 @@ function asset(index: number, jobId: string): Record<string, unknown> {
     id: `asset-${index}`,
     project_id: PROJECT,
     modality: "image",
+    point_cloud: null,
     content_hash: `${index}`.padStart(8, "0") + "deadbeef",
     width: 1280,
     height: 720,

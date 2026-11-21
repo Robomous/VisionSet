@@ -32,7 +32,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from visionset.kernel.domain.calibration import Calibration
+from visionset.kernel.domain.calibration import Calibration, ScanFrame
 from visionset.kernel.domain.media import VideoMetadata
 from visionset.kernel.errors import WorkspaceCorrupt
 
@@ -60,6 +60,14 @@ class SourceKind(StrEnum):
 
     IMAGE_DIRECTORY = "image_directory"
     VIDEO = "video"
+    #: A directory of PCD and PLY scans, each one a ``point_cloud`` asset.
+    POINT_CLOUD_DIRECTORY = "point_cloud_directory"
+
+
+#: The kinds whose locator is a directory this process opens and reads.
+DIRECTORY_KINDS: frozenset[SourceKind] = frozenset(
+    {SourceKind.IMAGE_DIRECTORY, SourceKind.POINT_CLOUD_DIRECTORY}
+)
 
 
 def canonical_path(path: Path) -> str:
@@ -299,6 +307,10 @@ class Source(BaseModel):
     ``None`` when nobody stated one. Curation, like ``display_name``, and also
     outside the identity: registering the same directory again neither carries
     nor changes it. ``CalibrationService`` is the one writer.
+
+    :attr:`frame` is the axis convention a point-cloud directory's scans are
+    written in, present exactly on a :attr:`SourceKind.POINT_CLOUD_DIRECTORY`.
+    A scan has no intrinsics, so such a source never carries a calibration.
     """
 
     model_config = ConfigDict(validate_assignment=True)
@@ -312,6 +324,7 @@ class Source(BaseModel):
     capture_params: dict[str, str] = Field(default_factory=dict)
     video: VideoProvenance | None = None
     calibration: Calibration | None = None
+    frame: ScanFrame | None = None
 
     @property
     def name(self) -> str:
@@ -338,6 +351,16 @@ class Source(BaseModel):
             raise ValueError(f"a {self.kind.value} source must {carry} video provenance")
         return self
 
+    @model_validator(mode="after")
+    def _frame_matches_the_kind(self) -> Source:
+        scans = self.kind is SourceKind.POINT_CLOUD_DIRECTORY
+        if (self.frame is not None) != scans:
+            carry = "declare" if scans else "not declare"
+            raise ValueError(f"a {self.kind.value} source must {carry} a scan frame")
+        if scans and self.calibration is not None:
+            raise ValueError("a point_cloud_directory source carries no camera calibration")
+        return self
+
     def require_video(self) -> VideoProvenance:
         """The clip's provenance, or refuse because this is not a clip.
 
@@ -356,3 +379,13 @@ class Source(BaseModel):
                 f"source {self.id} is a {self.kind.value} and has no video provenance"
             )
         return self.video
+
+    def require_frame(self) -> ScanFrame:
+        """The declared scan frame, or refuse because this is not a point-cloud directory.
+
+        Raises:
+            WorkspaceCorrupt: this source declares no frame.
+        """
+        if self.frame is None:
+            raise WorkspaceCorrupt(f"source {self.id} is a {self.kind.value} and declares no frame")
+        return self.frame

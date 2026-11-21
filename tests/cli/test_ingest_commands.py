@@ -22,6 +22,7 @@ from tests.cli._flow import (
     usage_error,
     workspace,
 )
+from tests.fixtures.point_clouds import write_scans
 
 from visionset.kernel.domain import SourceKind
 from visionset.kernel.services import (
@@ -248,3 +249,25 @@ def test_backfill_says_what_it_examined_on_stderr(root: Path, tmp_path: Path) ->
     result = run(root, "backfill-thumbnails", "-p", "road-signs")
     assert result.exit_code == 0, result.output
     assert "Examined 0 asset(s)" in result.stderr
+
+
+# --- a directory of point-cloud scans -----------------------------------------
+
+
+def test_point_clouds_register_a_scan_source_with_its_frame(root: Path, tmp_path: Path) -> None:
+    scans = write_scans(tmp_path / "scans")
+    document = payload(
+        root, "ingest", str(scans), "-p", "road-signs", "--point-clouds", "camera_rdf"
+    )
+
+    assert document["source"]["kind"] == "point_cloud_directory"
+    assert document["source"]["frame"] == "camera_rdf"
+    assert (document["created"], document["failed"]) == (2, 0)
+    assert _sources(root) == [SourceKind.POINT_CLOUD_DIRECTORY]
+
+
+def test_an_unknown_frame_is_a_usage_error(root: Path, tmp_path: Path) -> None:
+    scans = write_scans(tmp_path / "scans")
+    result = run(root, "ingest", str(scans), "-p", "road-signs", "--point-clouds", "lidar_up")
+    assert result.exit_code == 2
+    assert "lidar_up" in usage_error(result)

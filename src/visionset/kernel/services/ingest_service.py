@@ -7,8 +7,8 @@ putting the result in a draft batch somebody can approve. Nothing else in the
 kernel may create an ``Asset``.
 
 **This service does not know what a video is.** It reads an origin *this
-process can open*, which is a directory of stills and nothing else. A clip never
-reaches the server at all — a client decodes it locally and posts frames — so
+process can open*, which is a directory of stills or of point-cloud scans. A
+clip never reaches the server at all — a client decodes it locally and posts frames — so
 that work is ``VideoImportService``, a use case of its own shape rather than a
 branch in here. A ``VIDEO`` source is a receipt for frames somebody else
 materialized; pointed at one, this service has nothing to read.
@@ -84,6 +84,7 @@ from typing import BinaryIO, Final
 from uuid import UUID
 
 from visionset.kernel.domain import (
+    DIRECTORY_KINDS,
     INGEST_TRANSITIONS,
     Asset,
     Batch,
@@ -94,6 +95,7 @@ from visionset.kernel.domain import (
     IngestResult,
     IngestState,
     Project,
+    ScanFrame,
     Source,
     SourceKind,
     ThumbnailBackfill,
@@ -293,9 +295,9 @@ class IngestService:
         is the only thing that crosses. :meth:`resume` already reads it as "the
         batch this attempt was headed for".
 
-        **Only a directory of images is run here.** A run opens the source's
-        locator, and ``Source.locator`` promises openability for
-        ``IMAGE_DIRECTORY`` alone — a clip's is the opaque ``video-import:<uuid>``
+        **Only a directory is run here**, of stills or of point-cloud scans. A
+        run opens the source's locator, and ``Source.locator`` promises
+        openability for a directory kind alone — a clip's is the opaque ``video-import:<uuid>``
         this process has nothing to do with, because its frames are materialized
         by a client and posted to ``VideoImportService``. Accepting one produced a
         ``202`` and then a run that died on a ``FileNotFoundError`` nobody asked
@@ -303,15 +305,15 @@ class IngestService:
 
         Raises:
             SourceNotFound: no such source in this workspace.
-            UnsupportedMedia: the source is not a directory of images, so this
-                process cannot read it at all.
+            UnsupportedMedia: the source is not a directory, so this process
+                cannot read it at all.
             BatchNotFound: ``batch_id`` names no batch in this workspace.
             BatchNotEditable: the target batch is past ``draft``.
             InvalidName: ``batch_name`` is blank once stripped.
         """
         with self._workspace.unit_of_work() as uow:
             source = self._sources.require_source(uow, source_id)
-            if source.kind is not SourceKind.IMAGE_DIRECTORY:
+            if source.kind not in DIRECTORY_KINDS:
                 raise UnsupportedMedia(
                     f"a {source.kind.value} source is not read by this server; a clip's"
                     " frames are decoded by a client and posted to a video import",
@@ -490,7 +492,7 @@ class IngestService:
         with self._workspace.unit_of_work() as uow:
             self._require_project(uow, project_id)
             pending = [
-                (asset.id, asset.content_hash, asset.uri)
+                (asset.id, asset.content_hash, asset.uri, self._scan_frame_of(uow, asset))
                 for asset in uow.assets.list(project_id)
                 if asset.thumbnail_hash is None
                 or not self._workspace.blob_store.exists(asset.thumbnail_hash)
@@ -499,11 +501,11 @@ class IngestService:
         rendered: dict[UUID, str] = {}
         missing: list[UUID] = []
         unreadable: list[IngestFailure] = []
-        for asset_id, content_hash, uri in pending:
+        for asset_id, content_hash, uri, frame in pending:
             try:
                 with self._workspace.blob_store.get(content_hash) as content:
                     thumbnail_hash = self._workspace.blob_store.put(
-                        BytesIO(self._workspace.image_processor.thumbnail(content, name=uri))
+                        BytesIO(self._render_thumbnail(content, frame, name=uri))
                     )
             except FileNotFoundError:
                 missing.append(asset_id)
@@ -681,7 +683,9 @@ class IngestService:
         return candidates, failures
 
     def _read_file(self, source: Source, path: Path, handle: BinaryIO) -> list[Asset]:
-        """The candidate assets one open file holds: one per still or frame."""
+        """The candidate assets one open file holds: one per still or frame, or one scan."""
+        if source.kind is SourceKind.POINT_CLOUD_DIRECTORY:
+            return [self._read_scan(source, path, handle)]
         read: list[Asset] = []
         # A file that is going to be refused never leaves a blob behind:
         # ``stills`` has decoded the whole file — every frame of an animation
@@ -716,7 +720,52 @@ class IngestService:
             )
         return read
 
-    def _cache_thumbnail(self, content: BinaryIO, *, name: str) -> str | None:
+    def _read_scan(self, source: Source, path: Path, handle: BinaryIO) -> Asset:
+        """One point-cloud scan, decoded once and whole before a byte of it is stored.
+
+        The preview comes out of the same decode, so nothing that reads the
+        scan runs after its blob exists: a refused file leaves no orphan.
+        """
+        reading = self._workspace.point_cloud_processor.read(
+            handle, frame=source.require_frame(), name=str(path)
+        )
+        handle.seek(0)
+        content_hash = self._workspace.blob_store.put(handle)
+        thumbnail_hash = (
+            None
+            if reading.thumbnail is None
+            else self._workspace.blob_store.put(BytesIO(reading.thumbnail))
+        )
+        return Asset(
+            project_id=source.project_id,
+            modality="point_cloud",
+            content_hash=content_hash,
+            uri=str(path),
+            source_id=source.id,
+            point_cloud=reading.metadata,
+            thumbnail_hash=thumbnail_hash,
+        )
+
+    def _scan_frame_of(self, uow: UnitOfWork, asset: Asset) -> ScanFrame | None:
+        """The frame a scan's preview is drawn in; ``None`` for an image."""
+        if asset.modality == "image":
+            return None
+        source = None if asset.source_id is None else uow.sources.get(asset.source_id)
+        if source is None:
+            raise WorkspaceCorrupt(
+                f"point-cloud asset {asset.id} has no source declaring its frame"
+            )
+        return source.require_frame()
+
+    def _render_thumbnail(self, content: BinaryIO, frame: ScanFrame | None, *, name: str) -> bytes:
+        """A preview of an image, or of a scan seen from above in its declared frame."""
+        if frame is None:
+            return self._workspace.image_processor.thumbnail(content, name=name)
+        return self._workspace.point_cloud_processor.thumbnail(content, frame=frame, name=name)
+
+    def _cache_thumbnail(
+        self, content: BinaryIO, *, name: str, frame: ScanFrame | None = None
+    ) -> str | None:
         """Render a preview and store it, or hand back NULL and carry on.
 
         Best effort by design, and the ``try`` is *inside* the caller's rather
@@ -738,7 +787,7 @@ class IngestService:
         can tell apart from a hash, and the column holds one pointer.
         """
         try:
-            rendered = self._workspace.image_processor.thumbnail(content, name=name)
+            rendered = self._render_thumbnail(content, frame, name=name)
         except MediaError:
             return None
         return self._workspace.blob_store.put(BytesIO(rendered))

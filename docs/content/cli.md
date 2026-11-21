@@ -35,7 +35,7 @@ visionset schema draft set FILE --project P [--kind K] [--note TEXT] [--revision
 visionset schema draft clear --project P [--kind K]
 visionset schema draft publish --project P [--kind K] [--revision N] [--allow-destructive]
 
-visionset ingest DIRECTORY --project P [--batch-name NAME] [--start]
+visionset ingest DIRECTORY --project P [--batch-name NAME] [--point-clouds FRAME] [--start]
 visionset import FORMAT PATH --project P [--consent-lossy KIND]... [--dry-run]
 visionset calibration show|clear --project P --source SOURCE_ID|--asset ASSET_ID
 visionset calibration set FILE --project P --source SOURCE_ID|--asset ASSET_ID
@@ -399,6 +399,11 @@ created before, which is the remedy for an interrupted run. The batch id goes to
 that finds nothing new creates **no batch** unless `--batch-name` asks for one, and a run that
 read nothing never creates one: stdout is then empty, stderr says so, `--json` carries
 `"batch_id": null`, and `--start` has nothing to start and says that too.
+
+`--point-clouds FRAME` reads the directory as PCD and PLY scans instead, through
+`SourceService.register_point_clouds`, each scan one point-cloud asset; `FRAME` is the axis
+convention they are written in, `lidar_flu` or `camera_rdf` (see
+[sources.md](sources.md#point-cloud-directories-and-their-frame)).
 
 Every entry of the directory that did not become an asset is reported on stderr, and in
 `failures` under `--json`, with a `kind`: `unsupported` (not an image, a video included - its

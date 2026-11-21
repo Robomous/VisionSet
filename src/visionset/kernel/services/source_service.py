@@ -6,7 +6,8 @@ clip* is where a project's assets came from, when it was registered, and what a
 probe made of it. Materializing assets out of it is the ingest pipeline's job;
 this service only ever writes one row.
 
-**One registration method, and it registers a directory.** A ``VIDEO`` source
+**Two registration methods, and each registers a directory**: one of stills,
+one of point-cloud scans, which also declares the scan frame. A ``VIDEO`` source
 is not made here at all: the server never sees a clip, so there is nothing to
 open and nothing to probe. ``VideoImportService.start`` is the only door to one,
 and it writes its ``VideoProvenance`` from what a client's decoder declared.
@@ -48,12 +49,14 @@ from uuid import UUID
 
 from visionset.kernel.domain import (
     Project,
+    ScanFrame,
     Source,
     SourceKind,
     canonical_path,
+    geometry_needs_scan_frame,
     normalize_name,
 )
-from visionset.kernel.errors import ProjectNotFound, SourceNotFound
+from visionset.kernel.errors import CalibrationInUse, ProjectNotFound, SourceNotFound
 from visionset.kernel.ports import UnitOfWork
 from visionset.kernel.services.workspace_service import WorkspaceService
 
@@ -111,6 +114,58 @@ class SourceService:
             FileNotFoundError: there is nothing at ``directory``.
             NotADirectoryError: ``directory`` is there but is not one.
         """
+        return self._register_directory(
+            project_id,
+            directory,
+            kind=SourceKind.IMAGE_DIRECTORY,
+            frame=None,
+            capture_params=capture_params,
+            display_name=display_name,
+        )
+
+    def register_point_clouds(
+        self,
+        project_id: UUID,
+        directory: Path,
+        *,
+        frame: ScanFrame,
+        capture_params: Mapping[str, str] | None = None,
+        display_name: str | None = None,
+    ) -> Source:
+        """Record a directory of PCD and PLY scans, and the frame they are written in.
+
+        Idempotent on the directory, exactly as :meth:`register_images` is, and a
+        point-cloud directory is a different source from an image directory at
+        the same path. ``frame`` is a declaration the scans' labels are read
+        against, so registering again with another frame is refused while any
+        stored 3D label of the source depends on it, and replaces it otherwise.
+
+        Raises:
+            ProjectNotFound: no such project in this workspace.
+            InvalidName: ``display_name`` was provided and is blank.
+            CalibrationInUse: the frame would change under stored 3D labels.
+            FileNotFoundError: there is nothing at ``directory``.
+            NotADirectoryError: ``directory`` is there but is not one.
+        """
+        return self._register_directory(
+            project_id,
+            directory,
+            kind=SourceKind.POINT_CLOUD_DIRECTORY,
+            frame=frame,
+            capture_params=capture_params,
+            display_name=display_name,
+        )
+
+    def _register_directory(
+        self,
+        project_id: UUID,
+        directory: Path,
+        *,
+        kind: SourceKind,
+        frame: ScanFrame | None,
+        capture_params: Mapping[str, str] | None,
+        display_name: str | None,
+    ) -> Source:
         path = canonical_path(directory)
         if not Path(path).is_dir():
             raise NotADirectoryError(f"{path} is not a directory")
@@ -119,8 +174,12 @@ class SourceService:
         with self._workspace.unit_of_work() as uow:
             self._require_project(uow, project_id)
             for stored in uow.sources.list(project_id):
-                if stored.kind is not SourceKind.IMAGE_DIRECTORY or stored.locator != path:
+                if stored.kind is not kind or stored.locator != path:
                     continue
+                if stored.frame != frame:
+                    # Under the write lock, as every label write checks the frame:
+                    # a cuboid cannot commit between this check and the update.
+                    stored = _held(uow, stored)
                 # ``None`` means the caller said nothing, which must keep the
                 # stored name — not erase it. A provided name renames: a label
                 # is curation, not provenance, so the last statement wins.
@@ -129,16 +188,20 @@ class SourceService:
                     changes["capture_params"] = params
                 if name is not None and stored.display_name != name:
                     changes["display_name"] = name
+                if stored.frame != frame:
+                    _require_no_scan_labels(uow, stored)
+                    changes["frame"] = frame
                 if not changes:
                     return stored
                 return uow.sources.update(stored.model_copy(update=changes))
             return uow.sources.add(
                 Source(
                     project_id=project_id,
-                    kind=SourceKind.IMAGE_DIRECTORY,
+                    kind=kind,
                     locator=path,
                     display_name=name,
                     capture_params=params,
+                    frame=frame,
                 )
             )
 
@@ -185,3 +248,26 @@ class SourceService:
         with self._workspace.unit_of_work() as uow:
             self._require_project(uow, project_id)
             return uow.sources.list(project_id)
+
+
+def _require_no_scan_labels(uow: UnitOfWork, source: Source) -> None:
+    """Refuse a frame change that would re-read a stored 3D label in other axes."""
+    for asset in uow.assets.list(source.project_id):
+        if asset.source_id != source.id:
+            continue
+        if any(
+            geometry_needs_scan_frame(one.geometry, modality=asset.modality)
+            for one in uow.annotations.list(asset.id)
+        ):
+            raise CalibrationInUse(
+                f"source {source.id} declares the {source.frame} frame and asset {asset.id} "
+                "holds 3D labels read in it; delete those labels before declaring another frame"
+            )
+
+
+def _held(uow: UnitOfWork, source: Source) -> Source:
+    """The source re-read under the store's write lock."""
+    uow.hold_writes()
+    fresh = uow.sources.get(source.id)
+    assert fresh is not None
+    return fresh

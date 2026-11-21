@@ -191,8 +191,12 @@ class SourceRow(Base):
     display_name: Mapped[str | None] = mapped_column(String, nullable=True)
     #: A ``Calibration``, or NULL when nobody stated one. Never an origin-index
     #: term: it is curation, so re-registering an origin must find the same row.
-    #: Migration 21 appends it, so it is declared last.
+    #: Migration 21 appends it.
     calibration: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    #: A ``ScanFrame``, exactly on a point-cloud directory; NULL otherwise. Not an
+    #: origin-index term: one directory is one point-cloud source, whatever it says.
+    #: Migration 22 appends it, so it is declared last.
+    frame: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 #: One origin is one source: the backstop under ``SourceService``'s idempotency
@@ -340,8 +344,11 @@ class AssetRow(Base):
     #: ``Repository.list`` has already read them.
     ingested_at: Mapped[str | None] = mapped_column(String, nullable=True)
     #: The asset's own ``Calibration``, overriding its source's; NULL for none.
-    #: Migration 21 appends it, so it is declared last.
+    #: Migration 21 appends it.
     calibration: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    #: A ``PointCloudMetadata``, exactly on a ``point_cloud`` asset; NULL on an image.
+    #: Migration 22 appends it, so it is declared last.
+    point_cloud: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
 
 #: The same bytes are the same asset: the backstop under the ingest pipeline's

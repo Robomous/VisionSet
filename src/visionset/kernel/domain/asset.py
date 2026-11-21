@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
 
-from visionset.kernel.domain.calibration import Calibration
-from visionset.kernel.domain.media import ImageFormat
+from visionset.kernel.domain.calibration import Calibration, Modality
+from visionset.kernel.domain.media import ImageFormat, PointCloudMetadata
+from visionset.kernel.errors import UnsupportedMedia
 
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 
@@ -20,8 +20,12 @@ class Asset(BaseModel):
     Identity is the SHA-256 hash of the content (``content_hash``): the same
     bytes ingested twice are the same asset. Spatial metadata (width/height)
     is expressed in the asset's native reference frame — pixels for images.
-    Only the "image" modality exists today; the field is typed to extend
-    (video, pointcloud, ...) without changing the wire format.
+
+    **Two modalities, each with its own metadata.** An ``image`` carries
+    ``width``, ``height`` and ``format``; a ``point_cloud`` is a single scan
+    and carries ``point_cloud`` instead, with none of the image fields, no
+    calibration and no frame origin. ``_metadata_matches_the_modality`` holds
+    the pairing, so an image stays exactly what it was.
 
     **Origin is provenance, not identity.** ``source_id`` and the frame fields
     record where these bytes were *first* seen, and are never rewritten when the
@@ -42,7 +46,7 @@ class Asset(BaseModel):
 
     id: UUID = Field(default_factory=uuid4)
     project_id: UUID
-    modality: Literal["image"] = "image"
+    modality: Modality = "image"
     content_hash: str
     uri: str
     width: int | None = Field(default=None, ge=1)
@@ -98,6 +102,9 @@ class Asset(BaseModel):
     #: with no ``source_id`` — every imported asset. See
     #: ``effective_calibration`` for how the two are resolved.
     calibration: Calibration | None = None
+    #: What a scan turned out to be, present exactly when ``modality`` is
+    #: ``point_cloud``. Migration 22 appends its column, so it is declared last.
+    point_cloud: PointCloudMetadata | None = None
 
     @field_validator("content_hash", "thumbnail_hash")
     @classmethod
@@ -142,3 +149,35 @@ class Asset(BaseModel):
         if not missing_index and self.source_id is None:
             raise ValueError("a frame origin needs the source it was extracted from")
         return self
+
+    @model_validator(mode="after")
+    def _metadata_matches_the_modality(self) -> Asset:
+        if (self.point_cloud is not None) != (self.modality == "point_cloud"):
+            raise ValueError("point_cloud metadata is present exactly on a point_cloud asset")
+        if self.modality == "point_cloud":
+            image_only = {
+                "width": self.width,
+                "height": self.height,
+                "format": self.format,
+                "calibration": self.calibration,
+                "frame_index": self.frame_index,
+            }
+            present = sorted(name for name, value in image_only.items() if value is not None)
+            if present:
+                raise ValueError(f"a point_cloud asset carries no {', '.join(present)}")
+        return self
+
+
+def require_image(asset: Asset) -> Asset:
+    """The asset, if it is an image; refuse a modality that has no pixels.
+
+    Raises:
+        UnsupportedMedia: the asset is a point cloud, so nothing that reads
+            pixels can take it.
+    """
+    if asset.modality != "image":
+        raise UnsupportedMedia(
+            f"asset {asset.id} is a {asset.modality}, and this reads images only",
+            name=str(asset.id),
+        )
+    return asset

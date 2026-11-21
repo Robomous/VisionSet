@@ -46,4 +46,4 @@ browser runs. They were written together, and they are easiest to read in this o
 
 | Page | The rule |
 | --- | --- |
-| [Three-dimensional labels are calibrated image labels](three-dimensional-labels-are-calibrated-image-labels.md) | A 3D label belongs to an image asset, in its sensor frame, with calibration stored per source. Point clouds are a separate modality and are not admitted by adding a geometry. |
+| [Three-dimensional labels are calibrated image labels](three-dimensional-labels-are-calibrated-image-labels.md) | A 3D label belongs to an image asset, in its sensor frame, with calibration stored per source. Point clouds are a separate modality, not admitted by adding a geometry, and their labels are read in the frame their source declares. |

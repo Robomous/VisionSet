@@ -140,6 +140,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "PreprocessingStepUnsupportedGeometry": (409, "PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY"),
     "CalibrationInUse": (409, "CALIBRATION_IN_USE"),
     "CalibrationMissing": (409, "CALIBRATION_MISSING"),
+    "CalibrationNotApplicable": (409, "CALIBRATION_NOT_APPLICABLE"),
     "CalibrationResolutionMismatch": (422, "CALIBRATION_RESOLUTION_MISMATCH"),
     # 422 — the payload itself is wrong
     "AnnotationNotFromModel": (422, "ANNOTATION_NOT_FROM_MODEL"),

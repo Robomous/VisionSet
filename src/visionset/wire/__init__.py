@@ -105,6 +105,7 @@ from visionset.kernel.domain import (
     IngestJob,
     IntegrityCheck,
     LabelClass,
+    PointCloudMetadata,
     PolygonGeometry,
     Polyline3DGeometry,
     PolylineGeometry,
@@ -378,6 +379,7 @@ def source(value: Source) -> shapes.Source:
         "name": value.name,
         "registered_at": _moment(value.registered_at),
         "video": None if value.video is None else video_provenance(value.video),
+        "frame": None if value.frame is None else value.frame.value,
     }
 
 
@@ -452,8 +454,18 @@ def ingest_job(value: IngestJob) -> shapes.IngestJob:
     }
 
 
+def point_cloud_metadata(value: PointCloudMetadata) -> shapes.PointCloudMetadata:
+    """What one scan turned out to be."""
+    return {
+        "format": value.format.value,
+        "point_count": value.point_count,
+        "bounds": {"minimum": list(value.bounds.minimum), "maximum": list(value.bounds.maximum)},
+        "fields": list(value.fields),
+    }
+
+
 def asset(value: Asset) -> shapes.Asset:
-    """One image. ``uri`` is absent: it is a path on this machine."""
+    """One image or point-cloud scan. ``uri`` is absent: it is a path on this machine."""
     return {
         "id": str(value.id),
         "project_id": str(value.project_id),
@@ -470,6 +482,9 @@ def asset(value: Asset) -> shapes.Asset:
         # column existed is legitimately unstamped. ``_moment`` and not ``isoformat``,
         # because the parity gate compares this against pydantic's own encoding.
         "ingested_at": None if value.ingested_at is None else _moment(value.ingested_at),
+        "point_cloud": (
+            None if value.point_cloud is None else point_cloud_metadata(value.point_cloud)
+        ),
     }
 
 
@@ -932,6 +947,15 @@ def export_compatibility(value: ExportCompatibility) -> shapes.ExportCompatibili
         "degraded_annotations": value.degraded_annotations,
         "degraded_assets": value.degraded_assets,
         "classes": [class_compatibility(one) for one in value.classes],
+        "dropped_modalities": [
+            {
+                "modality": one.modality,
+                "assets": one.assets,
+                "annotations": one.annotations,
+                "reason": one.reason,
+            }
+            for one in value.dropped_modalities
+        ],
     }
 
 

@@ -87,9 +87,11 @@ from visionset.kernel.domain import (
     AssetProgress,
     Batch,
     ClassificationGeometry,
-    geometry_needs_calibration,
+    geometry_fits_modality,
+    geometry_reference,
     progress_after_annotating,
     require_calibration,
+    require_scan_frame,
 )
 from visionset.kernel.domain.geometry import geometry_intersects_asset
 from visionset.kernel.domain.schema_validation import validate_schema_annotation
@@ -671,26 +673,38 @@ def _require_writable(job: AnnotationJob, asset_id: UUID) -> None:
 
 
 def _require_geometry_on_asset(uow: UnitOfWork, annotation: Annotation) -> None:
-    """Refuse a spatial annotation wholly outside its measured asset, or a 3D one
-    on an asset with no calibration that fits it.
+    """Refuse a spatial annotation wholly outside its measured asset, a 3D one
+    on an image with no calibration that fits it or on a scan whose source
+    declares no frame, and a pixel-space one on a point cloud.
 
     Every caller holds the write lock before this runs, so the calibration read
     here cannot be cleared before the label commits; ``CalibrationService``'s
     clears take the same lock before checking for 3D labels.
 
     Raises:
-        CalibrationMissing: a 3D label on an asset with no effective calibration.
+        CalibrationMissing: a 3D label on an image with no effective
+            calibration, or on a scan with no declared frame.
         CalibrationResolutionMismatch: the effective calibration was measured at
             a size other than the asset's.
+        InvalidAnnotation: a pixel-space shape on a point cloud.
     """
     asset = uow.assets.get(annotation.asset_id)
     if asset is None:
         raise WorkspaceCorrupt(
             f"annotation {annotation.id} names asset {annotation.asset_id}, which does not exist"
         )
-    if geometry_needs_calibration(annotation.geometry):
+    if not geometry_fits_modality(annotation.geometry, modality=asset.modality):
+        raise InvalidAnnotation(
+            f"asset {asset.id} is a {asset.modality}, which has no pixels for a "
+            f"{annotation.geometry.type.value} to be drawn in; label a scan in 3D or with a tag"
+        )
+    reference = geometry_reference(annotation.geometry, modality=asset.modality)
+    if reference is not None:
         source = None if asset.source_id is None else uow.sources.get(asset.source_id)
-        require_calibration(asset, source)
+        if reference == "calibration":
+            require_calibration(asset, source)
+        else:
+            require_scan_frame(asset, source)
     if not geometry_intersects_asset(annotation.geometry, width=asset.width, height=asset.height):
         raise AnnotationGeometryOutOfBounds(
             f"a {annotation.geometry.type.value} annotation on asset {asset.id} has no overlap "

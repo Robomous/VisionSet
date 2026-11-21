@@ -61,6 +61,7 @@ from visionset.kernel import (
     BatchNotInAnnotation,
     CalibrationInUse,
     CalibrationMissing,
+    CalibrationNotApplicable,
     CalibrationResolutionMismatch,
     ConfirmationRequired,
     ConstraintViolated,
@@ -426,6 +427,7 @@ _HTTP: Final[dict[type[VisionSetError], _Http]] = {
     # AUGMENTATION_REQUIRES_SPLIT's reading: set a calibration on the asset or
     # its source and the identical write or publish succeeds.
     CalibrationMissing: _Http(409),
+    CalibrationNotApplicable: _Http(409),
     # --- 422: the payload itself is wrong ----------------------------------
     InvalidName: _Http(422),
     InferenceConnectionInvalid: _Http(422),

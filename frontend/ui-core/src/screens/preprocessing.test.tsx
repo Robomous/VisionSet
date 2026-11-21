@@ -106,6 +106,7 @@ function assetRow(id: string) {
     id,
     project_id: PROJECT,
     modality: "image",
+    point_cloud: null,
     content_hash: id.slice(-12).padStart(64, "0"),
     width: 640,
     height: 480,

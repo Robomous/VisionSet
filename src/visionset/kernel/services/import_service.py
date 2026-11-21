@@ -312,7 +312,10 @@ class ImportService:
                 if asset is None:
                     new_assets += 1
                     new_annotations += len(image.labels)
-                    if any(geometry_needs_calibration(one.geometry) for one in image.labels):
+                    if any(
+                        geometry_needs_calibration(one.geometry, modality="image")
+                        for one in image.labels
+                    ):
                         blocked.append(
                             CalibrationMissing(
                                 f"image {str(image.path)!r} is new to the project, so it has no "
@@ -324,7 +327,9 @@ class ImportService:
                 new, repeated = _new_labels(_present(uow.annotations.list(asset.id)), image.labels)
                 already += repeated
                 new_annotations += len(new)
-                if any(geometry_needs_calibration(one.geometry) for one in new):
+                if any(
+                    geometry_needs_calibration(one.geometry, modality=asset.modality) for one in new
+                ):
                     source = None if asset.source_id is None else uow.sources.get(asset.source_id)
                     try:
                         require_calibration(asset, source)
