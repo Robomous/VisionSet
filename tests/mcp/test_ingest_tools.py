@@ -14,6 +14,7 @@ from uuid import UUID
 
 import pytest
 from tests.fixtures.media import write_image, write_images, write_unsupported_file
+from tests.fixtures.point_clouds import write_scans
 from tests.mcp._flow import call, error, payload, schema
 
 from visionset.kernel.services import IngestService, ProjectService, WorkspaceService
@@ -30,6 +31,54 @@ def test_a_directory_of_stills_becomes_one_batch(
     assert result["failed"] == 0
     assert result["source"]["kind"] == "image_directory"
     assert result["batch_id"]
+
+
+def test_a_frame_reads_the_directory_as_point_cloud_scans(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named = schema(monkeypatch, tmp_path)
+    scans = str(write_scans(tmp_path / "scans"))
+
+    first = payload(call("ingest", project=named, path=scans, frame="camera_rdf"))
+    again = payload(call("ingest", project=named, path=scans, frame="camera_rdf"))
+
+    assert (first["source"]["kind"], first["source"]["frame"]) == (
+        "point_cloud_directory",
+        "camera_rdf",
+    )
+    assert (first["created"], first["failed"]) == (2, 0)
+    assert first["batch_id"]
+    assert again["source"]["id"] == first["source"]["id"]
+    assert (again["created"], again["deduplicated"]) == (0, 2)
+    with WorkspaceService.open(tmp_path / "ws") as service:
+        project_id = ProjectService(service).get_by_name(named).id
+        with service.unit_of_work() as uow:
+            assert {asset.modality for asset in uow.assets.list(project_id)} == {"point_cloud"}
+
+
+def test_without_a_frame_the_same_directory_is_still_images(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named = schema(monkeypatch, tmp_path)
+    scans = str(write_scans(tmp_path / "scans"))
+
+    result = payload(call("ingest", project=named, path=scans))
+
+    assert (result["source"]["kind"], result["source"]["frame"]) == ("image_directory", None)
+    assert (result["created"], result["failed"]) == (0, 2)
+
+
+def test_an_unknown_frame_is_refused_before_any_work(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named = schema(monkeypatch, tmp_path)
+    scans = str(write_scans(tmp_path / "scans"))
+
+    result = call("ingest", project=named, path=scans, frame="lidar_up")
+
+    assert result.is_error
+    assert "lidar_up" in str(result.content)
+    assert payload(call("list_sources", project=named))["total"] == 0
 
 
 def test_the_run_id_is_not_called_job_id_because_no_tool_can_read_one(

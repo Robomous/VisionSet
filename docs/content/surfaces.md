@@ -21,6 +21,7 @@ what each one exposes. This page says, step by step, which surface can do what.
 | Create a project | yes | yes | `project create` | `create_project` |
 | Define a schema | yes | yes | `schema apply`, `schema draft ...` | `create_schema_version`, `*_schema_draft` |
 | Add still images | upload | multipart upload, then an ingest job | `ingest DIR` (a directory on this machine) | `ingest` (same) |
+| Add point-cloud scans | - | multipart upload with a `frame`, then an ingest job | `ingest DIR --point-clouds FRAME` | `ingest` with `frame` |
 | Import a labeled dataset | - | - | `import FORMAT DIR` (a directory on this machine) | `inspect_import`, `import_dataset` (same) |
 | Import a video clip | yes | the video-import session endpoints, which the browser drives | **no** | **no** |
 | Build and approve batches | yes | yes | `batch approve` | `create_batch`, `approve_batch` |

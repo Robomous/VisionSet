@@ -289,8 +289,12 @@ preview yet is drawn in the new one.
 Stating a camera calibration for a point-cloud directory, or for a scan, is refused with
 `CALIBRATION_NOT_APPLICABLE` (409).
 
-Only the SDK and `visionset ingest DIR --point-clouds FRAME` register one today; REST registers
-image directories through an upload and has no point-cloud equivalent yet, and neither does MCP.
+Every surface registers one. The SDK and `visionset ingest DIR --point-clouds FRAME` take a
+directory on this machine, and so does the MCP `ingest` tool given a `frame`. REST takes the scans
+as an upload, `POST /projects/{project_id}/sources/point-clouds` with a required `frame` form
+field, and stages them the way it stages images, so uploading the same files again returns the
+same source. A missing or unknown `frame` is `VALIDATION_ERROR` (422). The browser has no upload
+for scans yet.
 
 ## What is deliberately not here yet
 

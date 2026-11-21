@@ -489,7 +489,9 @@ only when an agent has a reason to reach for it that no neighbour covers.
 trip: `get_project_dataset`, `get_dataset`, `list_schema_versions`, `get_source`,
 `list_batch_jobs`, `get_job_progress`, `get_asset`, `get_release`.
 
-**Folded into `ingest`**: `register_image_source`, `start_ingest`. `register_video_source` was a
+**Folded into `ingest`**: `register_image_source`, `start_ingest`. Registering a directory of
+point-cloud scans, `POST /projects/{id}/sources/point-clouds` over REST, is `ingest` with a
+`frame`. `register_video_source` was a
 parity candidate for a kernel capability that no longer exists: registering a clip by path was
 always going to need a probe this process could run, and the server does not decode video at all
 any more, so there is nothing left for a tool by that name to call. A video is imported by a
@@ -538,7 +540,7 @@ worse than no refusal. `backfill_thumbnails` is `POST /projects/{id}/thumbnail-b
 Some operations are machine-local by design and have no REST route that takes a path, because REST
 has no filesystem to point at: `ingest` and `import_dataset` read a directory on this machine and `export_release`
 writes into one. REST reaches the same kernel work through uploaded sources
-(`POST /projects/{id}/sources/images`, then an ingest job) and a release export job whose archive
+(`POST /projects/{id}/sources/images` or `/sources/point-clouds`, then an ingest job) and a release export job whose archive
 is downloaded. `backfill_thumbnails` takes only a project, so REST has it as a
 background job, `POST /projects/{id}/thumbnail-backfill-jobs`. `init` and `token` are CLI-only, as stated above.
 

@@ -1777,6 +1777,42 @@
         "title": "Body_register_image_source",
         "type": "object"
       },
+      "Body_register_point_cloud_source": {
+        "properties": {
+          "files": {
+            "description": "The PCD and PLY scans, as one multipart part each.",
+            "items": {
+              "contentMediaType": "application/octet-stream",
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "frame": {
+            "$ref": "#/components/schemas/ScanFrame",
+            "description": "The axis convention the scans and their 3D labels are written in: `lidar_flu` (x forward, y left, z up) or `camera_rdf` (x right, y down, z forward)."
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What to call the source; without one it is named by its staged directory's content digest. A new name for the same files renames the existing source.",
+            "title": "Name"
+          }
+        },
+        "required": [
+          "files",
+          "frame"
+        ],
+        "title": "Body_register_point_cloud_source",
+        "type": "object"
+      },
       "BySegmentsBody": {
         "additionalProperties": false,
         "description": "Exactly these segments, which must reproduce the batch with nothing over.",
@@ -16492,6 +16528,115 @@
           }
         ],
         "summary": "Register Image Source",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
+    "/projects/{project_id}/sources/point-clouds": {
+      "post": {
+        "description": "Offer a project a folder of point-cloud scans, declaring the frame they are written in.\n\nStaged and deduplicated exactly as `POST /projects/{project_id}/sources/images`\nis: the same files uploaded again return the **same** source. Nothing is\nparsed here \u2014 each file's format is read from its header at ingest, and a\nfile that is not a PCD or PLY scan is reported there rather than refused now.\n\nUploading the same files with another `frame` replaces the declaration,\nunless a scan of the source already holds a 3D label: that is 409\n`CALIBRATION_IN_USE`, because the label would be re-read in other axes.\n\nA missing `frame`, or one that is neither `lidar_flu` nor `camera_rdf`, is\n422 `VALIDATION_ERROR`, as is a `name` longer than 255 characters; a blank\n`name` is 422 `INVALID_NAME`. An unknown project is 404 `PROJECT_NOT_FOUND`.",
+        "operationId": "register_point_cloud_source",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_register_point_cloud_source"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Register Point Cloud Source",
         "tags": [
           "sources"
         ]
