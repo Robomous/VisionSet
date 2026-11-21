@@ -4,7 +4,8 @@
 **Two parity candidates collapse into ``ingest``.** ``register_image_source``
 and ``start_ingest`` are two tools describing one intention, and the split exists
 in the kernel because a source outlives the run that reads it. An agent holding a
-path does not care.
+path does not care. A point-cloud directory is the same intention with a declared
+frame, so it is ``ingest`` with ``frame`` rather than a tool of its own.
 
 **There is no video tool, and there is deliberately no way to ask for one.** A
 clip is decoded by the client that holds it — a browser, locally — and arrives
@@ -39,6 +40,7 @@ from pydantic import ConfigDict, Field, with_config
 from typing_extensions import TypedDict
 
 from visionset import wire
+from visionset.kernel.domain import ScanFrame
 from visionset.kernel.services import (
     IngestService,
     ProjectService,
@@ -83,8 +85,9 @@ def ingest(
         str,
         Field(
             description=(
-                "A path on this machine to a directory of still images; `~` is expanded, "
-                "and a relative path is read against the server's working directory."
+                "A path on this machine to a directory of still images, or of point-cloud "
+                "scans when `frame` is given; `~` is expanded, and a relative path is read "
+                "against the server's working directory."
             )
         ),
     ],
@@ -92,13 +95,23 @@ def ingest(
         str | None,
         Field(description="Name the batch this run fills. Defaults to the source's own name."),
     ] = None,
+    frame: Annotated[
+        ScanFrame | None,
+        Field(
+            description=(
+                "Read the directory as PCD and PLY point-cloud scans written in this frame: "
+                "`lidar_flu` (x forward, y left, z up) or `camera_rdf` (x right, y down, "
+                "z forward). Omit it for still images."
+            )
+        ),
+    ] = None,
 ) -> Ingested | Refusal:
-    """Register a directory of images and read it into one batch. Blocks until done.
+    """Register a directory of images or point-cloud scans into one batch. Blocks until done.
 
     The directory is read top level only, in filename order, with no filter on
-    the suffix — anything that is not a usable image, cannot be opened, or is not
-    a regular file (a subdirectory, a broken link) is reported in `failures`, by
-    `kind`, and the run carries on.
+    the suffix — anything that is not usable, cannot be opened, or is not a
+    regular file (a subdirectory, a broken link) is reported in `failures`, by
+    `kind`, and the run carries on. With `frame`, each file is one PCD or PLY scan.
 
     **Video is not ingested here.** A clip is imported through the browser, which
     decodes it on the user's machine and uploads the frames; pointed at one, this
@@ -118,8 +131,8 @@ def ingest(
     yet at this point: `approve_batch` is what cuts them, and the ids it returns
     are the ones `get_job` and the rest of the loop take.
 
-    Refuses before doing any work if the path does not exist, is not a
-    directory, or cannot be read.
+    Refuses before any work if the path does not exist, is not a directory,
+    or cannot be read.
     """
     # Absolute before anything is said about it: a relative path means the server
     # process's working directory, which is not the agent's, and an error echoing
@@ -138,7 +151,12 @@ def ingest(
 
     with opened_workspace() as workspace:
         resolved = ProjectService(workspace).resolve(project)
-        registered = SourceService(workspace).register_images(resolved.id, source_path)
+        sources = SourceService(workspace)
+        registered = (
+            sources.register_images(resolved.id, source_path)
+            if frame is None
+            else sources.register_point_clouds(resolved.id, source_path, frame=frame)
+        )
         result = IngestService(workspace).ingest(registered.id, batch_name=batch_name)
     return {
         "source": wire.source(registered),

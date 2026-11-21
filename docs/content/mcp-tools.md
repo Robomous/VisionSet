@@ -27,7 +27,7 @@ error envelope, and the three gate words.
 | `set_schema_draft` | `project`, `classes`, `kind`?, `note`?, `revision`? | Write the whole draft, creating it when there is none. |
 | `publish_schema_draft` | `project`, `revision`, `kind`?, `allow_destructive`? | Turn the draft into the next schema version, and clear it. |
 | `clear_schema_draft` | `project`, `kind`? | Throw the draft away without publishing it. |
-| `ingest` | `project`, `path`, `batch_name`? | Register a directory of images and read it into one batch. Blocks until done. |
+| `ingest` | `project`, `path`, `batch_name`?, `frame`? | Register a directory of images or point-cloud scans into one batch. Blocks until done. |
 | `list_sources` | `project` | List the origins registered in a project — the folders and clips it was built from. |
 | `backfill_thumbnails` | `project` | Render the previews that are missing for a project's assets. |
 | `inspect_import` | `project`, `format`, `path` | Read an external dataset and report what importing it would do. Writes nothing. |

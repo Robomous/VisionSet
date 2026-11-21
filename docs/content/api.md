@@ -54,6 +54,7 @@ PUT    /projects/{project_id}/schema/drafts/{kind}        409 STALE_WRITE
 DELETE /projects/{project_id}/schema/drafts/{kind}
 POST   /projects/{project_id}/schema/drafts/{kind}/publish
 POST   /projects/{project_id}/sources/images              multipart
+POST   /projects/{project_id}/sources/point-clouds        multipart + frame; 409 CALIBRATION_IN_USE
 GET    /projects/{project_id}/sources
 GET    /sources/{source_id}
 GET    /sources/{source_id}/calibration                   null when none is stated

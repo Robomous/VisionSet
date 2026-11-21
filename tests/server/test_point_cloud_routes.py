@@ -1,4 +1,4 @@
-"""Point-cloud scans over HTTP: read, served, labelled in 3D, released, judged for export."""
+"""Point-cloud scans over HTTP: uploaded, read, served, labelled in 3D, released, exported."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 from tests.fixtures.calibration import calibration_document
-from tests.fixtures.point_clouds import SCAN, pcd_ascii, write_scans
+from tests.fixtures.point_clouds import SCAN, pcd_ascii, ply_binary
 from tests.server._api import api_client
 from tests.server._flow import (
     SIGN,
@@ -24,9 +24,6 @@ from tests.server._flow import (
     project_with_schema,
 )
 from tests.server._jobs import InlineDispatcher
-
-from visionset.kernel.domain import ScanFrame
-from visionset.kernel.services import SourceService
 
 CAR_3D: Final[dict[str, Any]] = {"name": "car_3d", "geometries": ["cuboid_3d"]}
 CAR: Final[dict[str, Any]] = {
@@ -48,25 +45,105 @@ def client(tmp_path: Path, runner: InlineDispatcher) -> Iterator[TestClient]:
         yield made
 
 
-@pytest.fixture()
-def scans(client: TestClient, runner: InlineDispatcher, tmp_path: Path) -> dict[str, Any]:
-    """A project whose point-cloud directory has been ingested over HTTP."""
-    project_id = project_with_schema(client, classes=[SIGN, CAR_3D])
-    workspace = client.app.state.workspace_handle.get()  # type: ignore[attr-defined]
-    source = SourceService(workspace).register_point_clouds(
-        UUID(project_id), write_scans(tmp_path / "scans"), frame=ScanFrame.LIDAR_FLU
+def scan_parts() -> list[tuple[str, tuple[str, bytes, str]]]:
+    """One PCD and one PLY, under names whose suffixes lie, as multipart parts."""
+    rear = ply_binary(tuple((x, y + 1, z) for x, y, z in SCAN))
+    return [
+        ("files", ("front.bin", pcd_ascii(), "application/octet-stream")),
+        ("files", ("rear.dat", rear, "application/octet-stream")),
+    ]
+
+
+def upload_scans(client: TestClient, project_id: str, **form: str) -> Any:
+    return client.post(
+        f"/projects/{project_id}/sources/point-clouds", files=scan_parts(), data=form
     )
-    job = client.post(f"/sources/{source.id}/ingest-jobs")
+
+
+@pytest.fixture()
+def scans(client: TestClient, runner: InlineDispatcher) -> dict[str, Any]:
+    """A project whose point-cloud scans have been uploaded and ingested over HTTP."""
+    project_id = project_with_schema(client, classes=[SIGN, CAR_3D])
+    registered = upload_scans(client, project_id, frame="lidar_flu")
+    assert registered.status_code == 201, registered.text
+    source = registered.json()
+    job = client.post(f"/sources/{source['id']}/ingest-jobs")
     assert job.status_code == 202, job.text
     runner.wait()
     batch_id = client.get(f"/ingest-jobs/{job.json()['id']}").json()["batch_id"]
     items = client.get(f"/batches/{batch_id}/assets").json()["items"]
     return {
         "project": project_id,
-        "source": str(source.id),
+        "source": source["id"],
         "batch": batch_id,
         "assets": [item["id"] for item in items],
     }
+
+
+def test_uploading_scans_registers_a_point_cloud_source(client: TestClient) -> None:
+    project_id = project_with_schema(client, classes=[CAR_3D])
+
+    response = upload_scans(client, project_id, frame="camera_rdf", name="drive 1")
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert (body["kind"], body["frame"], body["name"]) == (
+        "point_cloud_directory",
+        "camera_rdf",
+        "drive 1",
+    )
+    listed = client.get(f"/projects/{project_id}/sources").json()["items"]
+    assert [one["id"] for one in listed] == [body["id"]]
+
+
+def test_the_same_scans_uploaded_twice_are_one_source(client: TestClient) -> None:
+    project_id = project_with_schema(client, classes=[CAR_3D])
+
+    first = upload_scans(client, project_id, frame="lidar_flu")
+    second = upload_scans(client, project_id, frame="lidar_flu")
+
+    assert second.status_code == 201, second.text
+    assert second.json() == first.json()
+    assert client.get(f"/projects/{project_id}/sources").json()["total"] == 1
+
+
+def test_another_frame_replaces_the_declaration_while_nothing_depends_on_it(
+    client: TestClient,
+) -> None:
+    project_id = project_with_schema(client, classes=[CAR_3D])
+    first = upload_scans(client, project_id, frame="lidar_flu").json()
+
+    moved = upload_scans(client, project_id, frame="camera_rdf")
+
+    assert moved.status_code == 201, moved.text
+    assert (moved.json()["id"], moved.json()["frame"]) == (first["id"], "camera_rdf")
+
+
+@pytest.mark.parametrize("form", [{}, {"frame": "radar"}, {"frame": "LIDAR_FLU"}])
+def test_a_missing_or_unknown_frame_is_422(client: TestClient, form: dict[str, str]) -> None:
+    project_id = project_with_schema(client, classes=[CAR_3D])
+
+    response = upload_scans(client, project_id, **form)
+
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "VALIDATION_ERROR"
+    assert client.get(f"/projects/{project_id}/sources").json()["total"] == 0
+
+
+def test_a_blank_name_is_422_invalid_name(client: TestClient) -> None:
+    project_id = project_with_schema(client, classes=[CAR_3D])
+
+    response = upload_scans(client, project_id, frame="lidar_flu", name="   ")
+
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "INVALID_NAME"
+
+
+def test_an_unknown_project_is_404(client: TestClient) -> None:
+    response = upload_scans(client, str(UUID(int=0)), frame="lidar_flu")
+
+    assert response.status_code == 404, response.text
+    assert response.json()["code"] == "PROJECT_NOT_FOUND"
 
 
 def test_a_scan_asset_publishes_its_modality_and_metadata(
@@ -181,6 +258,33 @@ def test_a_cuboid_lands_on_a_scan_and_a_box_does_not(
             "with every label on them",
         }
     ]
+
+
+def test_another_frame_is_409_once_a_scan_holds_a_3d_label(
+    client: TestClient, scans: dict[str, Any]
+) -> None:
+    job_id = _open(client, scans["batch"])
+    written = client.post(
+        f"/jobs/{job_id}/annotations",
+        json=[
+            {
+                "asset_id": scans["assets"][0],
+                "label_class": "car_3d",
+                "geometry": CAR,
+                "attributes": {},
+                "provenance": "human",
+            }
+        ],
+    )
+    assert written.status_code == 201, written.text
+
+    moved = upload_scans(client, scans["project"], frame="camera_rdf")
+    again = upload_scans(client, scans["project"], frame="lidar_flu")
+
+    assert moved.status_code == 409, moved.text
+    assert moved.json()["code"] == "CALIBRATION_IN_USE"
+    assert client.get(f"/sources/{scans['source']}").json()["frame"] == "lidar_flu"
+    assert (again.status_code, again.json()["id"]) == (201, scans["source"])
 
 
 def _points(client: TestClient, project: str, asset: str, **params: Any) -> Any:

@@ -8,13 +8,14 @@ source belongs to exactly one); the resource does not, because what hangs off
 
 **Registration is upload-only.** The kernel registers a directory source by path,
 so these routes stage the bytes first (see ``server/uploads.py``) and register
-the staged directory. There is no route that takes a server-side path: it would
-hand every token holder an arbitrary-directory read, and the two surfaces that
-legitimately hold real paths — the CLI and MCP — call the SDK in-process and
-never come through here. It also has a quiet dividend: because the server just
-wrote the files, `SourceService`'s ``FileNotFoundError`` and ``NotADirectoryError``
-are unreachable, and those are plain Python exceptions with no place in
-``ERROR_RULES``.
+the staged directory — a folder of stills, or a folder of point-cloud scans
+together with the frame they are written in. There is no route that takes a
+server-side path: it would hand every token holder an arbitrary-directory read,
+and the two surfaces that legitimately hold real paths — the CLI and MCP — call
+the SDK in-process and never come through here. It also has a quiet dividend:
+because the server just wrote the files, `SourceService`'s ``FileNotFoundError``
+and ``NotADirectoryError`` are unreachable, and those are plain Python exceptions
+with no place in ``ERROR_RULES``.
 
 **A clip is not registered here.** The server decodes no video: a video source is
 opened as a session in ``routes/video_imports.py``, and its frames arrive as
@@ -33,7 +34,7 @@ from fastapi import File, Form, Response, UploadFile, status
 
 from visionset.jobs.ingest import JOB_TYPE as ingest_job_type
 from visionset.jobs.ingest import payload_for as ingest_payload_for
-from visionset.kernel.domain import BackgroundJobSpec
+from visionset.kernel.domain import BackgroundJobSpec, ScanFrame
 from visionset.kernel.services import CalibrationService, IngestService, SourceService
 from visionset.server.dependencies import RunnerDep, WorkspaceDep, protected_router
 from visionset.server.errors import documented
@@ -93,6 +94,60 @@ def register_image_source(
     staged = stage(workspace.root, files)
     return SourceOut.of(
         SourceService(workspace).register_images(project_id, staged.directory, display_name=name)
+    )
+
+
+@project_router.post(
+    "/point-clouds", status_code=status.HTTP_201_CREATED, responses=documented(404, 409)
+)
+def register_point_cloud_source(
+    workspace: WorkspaceDep,
+    project_id: UUID,
+    files: Annotated[
+        list[UploadFile], File(description="The PCD and PLY scans, as one multipart part each.")
+    ],
+    frame: Annotated[
+        ScanFrame,
+        Form(
+            description=(
+                "The axis convention the scans and their 3D labels are written in: "
+                "`lidar_flu` (x forward, y left, z up) or `camera_rdf` (x right, "
+                "y down, z forward)."
+            ),
+        ),
+    ],
+    name: Annotated[
+        str | None,
+        Form(
+            max_length=WIRE_TEXT_MAX_LENGTH,
+            description=(
+                "What to call the source; without one it is named by its staged "
+                "directory's content digest. A new name for the same files renames "
+                "the existing source."
+            ),
+        ),
+    ] = None,
+) -> SourceOut:
+    """Offer a project a folder of point-cloud scans, declaring the frame they are written in.
+
+    Staged and deduplicated exactly as `POST /projects/{project_id}/sources/images`
+    is: the same files uploaded again return the **same** source. Nothing is
+    parsed here — each file's format is read from its header at ingest, and a
+    file that is not a PCD or PLY scan is reported there rather than refused now.
+
+    Uploading the same files with another `frame` replaces the declaration,
+    unless a scan of the source already holds a 3D label: that is 409
+    `CALIBRATION_IN_USE`, because the label would be re-read in other axes.
+
+    A missing `frame`, or one that is neither `lidar_flu` nor `camera_rdf`, is
+    422 `VALIDATION_ERROR`, as is a `name` longer than 255 characters; a blank
+    `name` is 422 `INVALID_NAME`. An unknown project is 404 `PROJECT_NOT_FOUND`.
+    """
+    staged = stage(workspace.root, files)
+    return SourceOut.of(
+        SourceService(workspace).register_point_clouds(
+            project_id, staged.directory, frame=frame, display_name=name
+        )
     )
 
 

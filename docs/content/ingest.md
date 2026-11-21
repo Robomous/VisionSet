@@ -384,14 +384,15 @@ posture the kernel takes about a crashed process.
 
 ## Over HTTP
 
-The image-directory half of the [API](api.md) is `enqueue` and `resume` with a worker between
+The directory half of the [API](api.md) is `enqueue` and `resume` with a worker between
 them:
 
 ```
-POST /projects/{id}/sources/images   multipart: the files + an optional name → 201 SourceOut
-POST /sources/{id}/ingest-jobs                                             → 202 IngestJobOut
-GET  /ingest-jobs/{id}                                                     → 200 IngestJobOut
-GET  /batches/{id}/assets                                                  → 200 the assets
+POST /projects/{id}/sources/images        multipart: the files + an optional name → 201 SourceOut
+POST /projects/{id}/sources/point-clouds  the same + a required frame             → 201 SourceOut
+POST /sources/{id}/ingest-jobs                                                    → 202 IngestJobOut
+GET  /ingest-jobs/{id}                                                            → 200 IngestJobOut
+GET  /batches/{id}/assets                                                         → 200 the assets
 ```
 
 The launch calls `enqueue` on the request thread and hands the `pending` job to a **single

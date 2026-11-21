@@ -2822,6 +2822,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/sources/point-clouds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register Point Cloud Source
+         * @description Offer a project a folder of point-cloud scans, declaring the frame they are written in.
+         *
+         *     Staged and deduplicated exactly as `POST /projects/{project_id}/sources/images`
+         *     is: the same files uploaded again return the **same** source. Nothing is
+         *     parsed here — each file's format is read from its header at ingest, and a
+         *     file that is not a PCD or PLY scan is reported there rather than refused now.
+         *
+         *     Uploading the same files with another `frame` replaces the declaration,
+         *     unless a scan of the source already holds a 3D label: that is 409
+         *     `CALIBRATION_IN_USE`, because the label would be re-read in other axes.
+         *
+         *     A missing `frame`, or one that is neither `lidar_flu` nor `camera_rdf`, is
+         *     422 `VALIDATION_ERROR`, as is a `name` longer than 255 characters; a blank
+         *     `name` is 422 `INVALID_NAME`. An unknown project is 404 `PROJECT_NOT_FOUND`.
+         */
+        post: operations["register_point_cloud_source"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/stats": {
         parameters: {
             query?: never;
@@ -4150,6 +4183,21 @@ export interface components {
             /**
              * Name
              * @description What to call the source. Without one it is named by its staged directory, whose basename is a content digest — 64 hex characters nobody can read. Registering the same files again with a new name renames the existing source rather than creating a second one.
+             */
+            name?: string | null;
+        };
+        /** Body_register_point_cloud_source */
+        Body_register_point_cloud_source: {
+            /**
+             * Files
+             * @description The PCD and PLY scans, as one multipart part each.
+             */
+            files: string[];
+            /** @description The axis convention the scans and their 3D labels are written in: `lidar_flu` (x forward, y left, z up) or `camera_rdf` (x right, y down, z forward). */
+            frame: components["schemas"]["ScanFrame"];
+            /**
+             * Name
+             * @description What to call the source; without one it is named by its staged directory's content digest. A new name for the same files renames the existing source.
              */
             name?: string | null;
         };
@@ -13543,6 +13591,86 @@ export interface operations {
             };
             /** @description No such resource */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    register_point_cloud_source: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_register_point_cloud_source"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -568,6 +568,7 @@ export const checkPromoteBatch = checkAssetPage;
 export const checkPublishRelease = checkReleaseOut;
 export const checkPublishSchemaDraft = checkSchemaPublicationOut;
 export const checkRegisterImageSource = checkSourceOut;
+export const checkRegisterPointCloudSource = checkSourceOut;
 export const checkRemoveBatchAssets = checkBatchMembershipOut;
 export const checkRemoveDatasetAsset = checkNoContent;
 export const checkRenameProject = checkProjectOut;
