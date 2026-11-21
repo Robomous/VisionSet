@@ -799,11 +799,34 @@ the generic *The server answered with something this app does not recognise.* un
 `MALFORMED_RESPONSE`. A refetch that fails while a calibration is already drawn keeps drawing it
 and raises no notice.
 
-#### Point-cloud scans have no viewer yet
+#### Point-cloud scans are viewed in 3D, read-only
 
-A `point_cloud` asset appears in galleries and lists with its top-down thumbnail, but the
-annotation page has no viewer for one: the image stage cannot draw a scan, and nothing in this
-build tries to. A read-only 3D view of a scan and its cuboids is tracked separately.
+A `point_cloud` asset appears in galleries and lists with its top-down thumbnail. On the
+annotation page its stage is a WebGL2 view instead of the image canvas: the page fetches
+`GET /projects/{id}/assets/{asset_id}/points` (at most 500,000 points, thinned by the server;
+the corner of the view says how many of the scan's points are shown) and draws them with the
+annotator's `PointCloudCanvas`. Nothing is re-expressed: the view orbits about the **up axis of
+the frame the scan's source declares** (`+z` for `lidar_flu`, `-y` for `camera_rdf`), and a
+source that declares no frame is shown with `z` up and has no labels to draw.
+
+The open job's `cuboid_3d` labels on the scan are drawn as their twelve edges, and a
+`polyline_3d` as its segments, in the class colour, in the scan's own frame - no calibration is
+asked for or used. A cuboid's corners are its centre plus half its size along the heading
+`cos(yaw)·forward + sin(yaw)·left`, across it, and along up (`scanCuboidCorners`). Edges are drawn
+over the points rather than hidden inside them. Like the 3D overlay on an image they are not in
+the document: not counted, listed, selected or saved.
+
+Drag orbits, a right or middle drag (or shift-drag) pans, and the wheel zooms; with the view
+focused, the arrow keys orbit, `+`/`-` zoom and `0` resets. The controls in the corner colour
+the points by height along up, by intensity, or by the scan's own colour - a mode the scan
+does not record is disabled with the reason - turn the labels off and on, and reset the view.
+The opening view frames the body of the scan, ignoring the farthest 2% of returns on each axis.
+The image stage's tool strip, zoom cluster and canvas shortcuts are not shown on a scan.
+
+A browser with no WebGL2 gets a notice instead, with the scan's point count, format, frame and
+bounds and its top-down thumbnail. A points request that fails, or a buffer this build cannot
+read, says the scan's points could not be loaded. A lost graphics context says so and the view
+comes back when the browser restores it.
 
 ### The annotation side panel
 

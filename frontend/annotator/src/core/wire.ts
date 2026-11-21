@@ -626,6 +626,7 @@ export function parseAssetDescriptor(value: unknown): AssetDescriptor {
   }
   allowUndeclaredKeys(value, ASSET_KEYS, "asset");
   const id = requireString(value["id"], "asset.id");
+  if (value["modality"] === "point_cloud") return { id, width: 0, height: 0, modality: "point_cloud" };
   if (value["width"] === null || value["height"] === null) {
     throw new WireFormatError(
       `asset ${id} has no measured width and height, so there is no pixel frame to ` +

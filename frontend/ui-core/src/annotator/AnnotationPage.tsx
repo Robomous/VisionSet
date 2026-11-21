@@ -168,6 +168,7 @@ import { ToolPalette } from "./ToolPalette";
 import { ZoomWidget } from "./ZoomWidget";
 import { ANNOTATOR_MIN_VIEWPORT_PX, useViewportAtLeast } from "./viewportFloor";
 import { AssetImage } from "./AssetImage";
+import { PointCloudStage } from "./PointCloudStage";
 import { carries3DLabels, overlay3DFor, overlay3DNotice, type Overlay3DWithheld } from "./overlay3d";
 import type { AssetProgress, WireAnnotation } from "./jobQueries";
 import type { BatchAsset } from "../screens/queries";
@@ -711,7 +712,7 @@ function JobScreen({
   }
 
   try {
-    parseAssetDescriptor({ id: asset.id, width: asset.width, height: asset.height });
+    parseAssetDescriptor({ id: asset.id, width: asset.width, height: asset.height, modality: asset.modality });
   } catch (error) {
     if (!(error instanceof WireFormatError)) throw error;
     return <ErrorState code="ASSET_FRAME_INVALID" message={error.message} onRetry={() => void assets.refetch()} />;
@@ -784,6 +785,10 @@ interface WorkspaceProps {
     readonly id: string;
     readonly width: number | null;
     readonly height: number | null;
+    readonly modality: "image" | "point_cloud";
+    readonly source_id: string | null;
+    readonly thumbnail_hash: string | null;
+    readonly point_cloud: BatchAsset["point_cloud"];
     readonly content_hash: string;
     readonly progress?: string | null;
     /**
@@ -884,15 +889,22 @@ function Workspace({
     () =>
       new Store(
         documentFromWire({
-          asset: parseAssetDescriptor({ id: asset.id, width: asset.width, height: asset.height }),
+          asset: parseAssetDescriptor({
+            id: asset.id,
+            width: asset.width,
+            height: asset.height,
+            modality: asset.modality,
+          }),
           schema,
           annotations: loaded,
         }),
       ),
-    [asset.id, asset.width, asset.height, schema, loaded],
+    [asset.id, asset.width, asset.height, asset.modality, schema, loaded],
   );
 
-  const carries3d = useMemo(() => carries3DLabels(loaded), [loaded]);
+  const isScan = asset.modality === "point_cloud";
+  // A scan's labels are read in its source's frame, never through a calibration.
+  const carries3d = useMemo(() => !isScan && carries3DLabels(loaded), [isScan, loaded]);
   const calibration = useAssetCalibration(projectId, asset.id, carries3d);
   const overlay3d = useMemo(
     () => overlay3DFor(loaded, calibration.data, store.document.asset),
@@ -2013,14 +2025,15 @@ function Workspace({
    * - `accepted` has no exit at all, which is why correcting accepted work needs
    *   a new batch rather than a progress move.
    */
+  const thisAsset = isScan ? "This scan" : "This frame";
   const settledBecause =
     asset.progress === "skipped"
       ? null
       : asset.progress === "review_pending"
-        ? "This frame is waiting on a review — return it to the annotator to change its labels."
+        ? `${thisAsset} is waiting on a review — return it to the annotator to change its labels.`
         : asset.progress === "accepted"
-          ? "This frame has been accepted, and accepted work is not edited in place — a correction batch is how it changes."
-          : `This frame is ${progressWord} — its labels are settled and cannot be changed here.`;
+          ? `${thisAsset} has been accepted, and accepted work is not edited in place — a correction batch is how it changes.`
+          : `${thisAsset} is ${progressWord} — its labels are settled and cannot be changed here.`;
 
   return (
     // `data-asset` names the frame on screen, the way a rendered shape carries
@@ -2716,94 +2729,105 @@ function Workspace({
           className="relative min-w-0 flex-1 overflow-hidden rounded-lg border border-border bg-stage"
           data-testid="canvas-stage"
         >
-          <AssetImage projectId={projectId} assetId={asset.id}>
-            {(src) => (
-              <AnnotatorCanvas
-                store={store}
-                imageSrc={src}
-                // The engine's own guarantee, not a suggestion from up here: a
-                // greyed-out toolbar does not stop a drag from drawing a box.
-                readOnly={readOnly}
-                activeClass={readOnly ? null : activeClass}
-                activeTool={activeTool}
-                onActivateClass={activateClass}
-                onViewChange={setView}
-                hiddenIds={hiddenIds}
-                overlay3d={overlay3d.labels}
-                viewRef={viewRef}
-                // One per job, from `JobScreen` — the canvas would otherwise make
-                // its own and lose it on every navigation.
-                clipboard={clipboard}
-                onHostAction={hostAction}
-                onImageReady={(image) => {
-                  /*
-                    The **descriptor's** frame, never the decoded image's
-                    `naturalWidth`/`naturalHeight` — the same rule
-                    `AnnotatorCanvas` lays the picture out under, one layer on.
+          {isScan ? (
+            <PointCloudStage
+              projectId={projectId}
+              asset={asset}
+              loaded={loaded}
+              schema={store.document.schema}
+            />
+          ) : (
+            <AssetImage projectId={projectId} assetId={asset.id}>
+              {(src) => (
+                <AnnotatorCanvas
+                  store={store}
+                  imageSrc={src}
+                  // The engine's own guarantee, not a suggestion from up here: a
+                  // greyed-out toolbar does not stop a drag from drawing a box.
+                  readOnly={readOnly}
+                  activeClass={readOnly ? null : activeClass}
+                  activeTool={activeTool}
+                  onActivateClass={activateClass}
+                  onViewChange={setView}
+                  hiddenIds={hiddenIds}
+                  overlay3d={overlay3d.labels}
+                  viewRef={viewRef}
+                  // One per job, from `JobScreen` — the canvas would otherwise make
+                  // its own and lose it on every navigation.
+                  clipboard={clipboard}
+                  onHostAction={hostAction}
+                  onImageReady={(image) => {
+                    /*
+                      The **descriptor's** frame, never the decoded image's
+                      `naturalWidth`/`naturalHeight` — the same rule
+                      `AnnotatorCanvas` lays the picture out under, one layer on.
 
-                    Everything this source meets is already in the descriptor's
-                    pixels: the click points `suggestAt` sends, the geometry
-                    `shapesFromMask` hands back, and the annotations already on
-                    the frame. A decode that disagrees — EXIF orientation
-                    swapping the axes, a preview served in place of the
-                    original — would have the executor bound-check clicks and
-                    extract pixels against a second, private frame, and produce
-                    suggestions that are individually plausible and uniformly
-                    wrong. `readRgb` scales the decode into the frame asked for,
-                    so naming the descriptor here is also what makes a
-                    disagreeing decode harmless rather than silent.
-                  */
-                  const { width, height } = store.document.asset;
-                  const source: BrowserSuggestionAssetSource = {
-                    assetId: asset.id,
-                    width,
-                    height,
-                    readRgb: () => image.readRgb(width, height),
-                  };
-                  browserRuntime?.setActiveAsset?.(source);
-                }}
-                // A right-click on a shape: select it, then open its class
-                // picker over it. Selecting is what makes the picker's
-                // subject unambiguous — it anchors to the selection, and a menu
-                // about a shape nobody had selected would be a third rule about
-                // what "the selected object" means.
-                //
-                // Handed over in read-only too, deliberately: `CanvasReassign`
-                // renders nothing there, and a guard here as well would keep the
-                // behaviour correct with that one deleted.
-                onAnnotationMenu={(annotationId) => {
-                  store.select(selectOnly(annotationId));
-                  setReclassing(annotationId);
-                }}
-                // The suggest mode. Its presence diverts every primary
-                // press away from the interaction machine, which is what stops a
-                // click meant for the model from drawing a box instead — so it is
-                // `diverting`, which drops a parked session, and not the
-                // whole of `suggesting`.
-                panTool={handTool}
-                preciseDeviceSeen={preciseDeviceSeen}
-                onPreciseDevice={noteTrackpadSeen}
-                suggestion={diverting}
-                onSuggestPoint={suggestAt}
-                // The halo and the busy cursor. Keyed to `diverting` for the same
-                // reason the session is: a parked tool has nothing in flight, so a
-                // halo over one would be reporting a wait nobody started.
-              />
-            )}
-          </AssetImage>
+                      Everything this source meets is already in the descriptor's
+                      pixels: the click points `suggestAt` sends, the geometry
+                      `shapesFromMask` hands back, and the annotations already on
+                      the frame. A decode that disagrees — EXIF orientation
+                      swapping the axes, a preview served in place of the
+                      original — would have the executor bound-check clicks and
+                      extract pixels against a second, private frame, and produce
+                      suggestions that are individually plausible and uniformly
+                      wrong. `readRgb` scales the decode into the frame asked for,
+                      so naming the descriptor here is also what makes a
+                      disagreeing decode harmless rather than silent.
+                    */
+                    const { width, height } = store.document.asset;
+                    const source: BrowserSuggestionAssetSource = {
+                      assetId: asset.id,
+                      width,
+                      height,
+                      readRgb: () => image.readRgb(width, height),
+                    };
+                    browserRuntime?.setActiveAsset?.(source);
+                  }}
+                  // A right-click on a shape: select it, then open its class
+                  // picker over it. Selecting is what makes the picker's
+                  // subject unambiguous — it anchors to the selection, and a menu
+                  // about a shape nobody had selected would be a third rule about
+                  // what "the selected object" means.
+                  //
+                  // Handed over in read-only too, deliberately: `CanvasReassign`
+                  // renders nothing there, and a guard here as well would keep the
+                  // behaviour correct with that one deleted.
+                  onAnnotationMenu={(annotationId) => {
+                    store.select(selectOnly(annotationId));
+                    setReclassing(annotationId);
+                  }}
+                  // The suggest mode. Its presence diverts every primary
+                  // press away from the interaction machine, which is what stops a
+                  // click meant for the model from drawing a box instead — so it is
+                  // `diverting`, which drops a parked session, and not the
+                  // whole of `suggesting`.
+                  panTool={handTool}
+                  preciseDeviceSeen={preciseDeviceSeen}
+                  onPreciseDevice={noteTrackpadSeen}
+                  suggestion={diverting}
+                  onSuggestPoint={suggestAt}
+                  // The halo and the busy cursor. Keyed to `diverting` for the same
+                  // reason the session is: a parked tool has nothing in flight, so a
+                  // halo over one would be reporting a wait nobody started.
+                />
+              )}
+            </AssetImage>
+          )}
 
           {/*
             The reassignment picker's canvas anchor — a sibling of the
             canvas for `ToolPalette`'s reason, since the stage is `relative` and
             the annotator ships no chrome.
           */}
-          <CanvasReassign
-            store={store}
-            view={view}
-            readOnly={readOnly}
-            openFor={reclassing}
-            onOpenChange={setReclassing}
-          />
+          {!isScan && (
+            <CanvasReassign
+              store={store}
+              view={view}
+              readOnly={readOnly}
+              openFor={reclassing}
+              onOpenChange={setReclassing}
+            />
+          )}
 
           {/*
             The strip is a sibling of the canvas, not a child of it, and the stage
@@ -2829,49 +2853,51 @@ function Workspace({
             hidden rather than disabled, and the banner above still carries that
             reason once.
           */}
-          <ToolPalette
-            readOnly={readOnly}
-            hand={{ active: handTool, onToggle: () => setHandTool((on) => !on) }}
-            schema={store.document.schema}
-            tool={toolFor(store.document, activeClass, activeTool)}
-            activeClass={activeClass}
-            onActivateClass={activateClass}
-            onActivateTool={onActivateTool}
-            onToggleHelp={() => setHelpOpen((open) => !open)}
-            // Empty, unlike the class field's create row: `+` means "I want a
-            // class", not a particular one, and carrying the previous
-            // opening's name into it would be a prefill nobody asked for.
-            onAddClass={() => {
-              setNewClassName("");
-              setAddingClass(true);
-            }}
-            // The chords work whether or not the page draws them; this is where
-            // it says so. `canUndo`/`canRedo` come off the snapshot, so the
-            // buttons and the keyboard read one command log.
-            history={{
-              canUndo: snapshot.canUndo,
-              canRedo: snapshot.canRedo,
-              onUndo: () => store.undo(),
-              onRedo: () => store.redo(),
-            }}
-            // The strip hides it on a schema no class of which could
-            // hold the answer; this page offers it because it has an API
-            // behind it, which the showcase does not.
-            //
-            // `unavailable` is the parked reading: the schema can
-            // suggest, so the button is present, but the class the workspace is
-            // sitting on cannot hold one — which is a fact to state rather than
-            // a control that quietly stops working. Lit *and* dimmed, because
-            // both halves are true: the tool is still armed, and it cannot act.
-            suggest={{
-              active: suggesting !== null,
-              onToggle: toggleSuggest,
-              unavailable:
-                suggesting !== null && isParked(suggesting)
-                  ? `Suggest is on, but “${activeClass ?? ""}” cannot hold a suggested shape`
-                  : null,
-            }}
-            />
+          {!isScan && (
+            <ToolPalette
+              readOnly={readOnly}
+              hand={{ active: handTool, onToggle: () => setHandTool((on) => !on) }}
+              schema={store.document.schema}
+              tool={toolFor(store.document, activeClass, activeTool)}
+              activeClass={activeClass}
+              onActivateClass={activateClass}
+              onActivateTool={onActivateTool}
+              onToggleHelp={() => setHelpOpen((open) => !open)}
+              // Empty, unlike the class field's create row: `+` means "I want a
+              // class", not a particular one, and carrying the previous
+              // opening's name into it would be a prefill nobody asked for.
+              onAddClass={() => {
+                setNewClassName("");
+                setAddingClass(true);
+              }}
+              // The chords work whether or not the page draws them; this is where
+              // it says so. `canUndo`/`canRedo` come off the snapshot, so the
+              // buttons and the keyboard read one command log.
+              history={{
+                canUndo: snapshot.canUndo,
+                canRedo: snapshot.canRedo,
+                onUndo: () => store.undo(),
+                onRedo: () => store.redo(),
+              }}
+              // The strip hides it on a schema no class of which could
+              // hold the answer; this page offers it because it has an API
+              // behind it, which the showcase does not.
+              //
+              // `unavailable` is the parked reading: the schema can
+              // suggest, so the button is present, but the class the workspace is
+              // sitting on cannot hold one — which is a fact to state rather than
+              // a control that quietly stops working. Lit *and* dimmed, because
+              // both halves are true: the tool is still armed, and it cannot act.
+              suggest={{
+                active: suggesting !== null,
+                onToggle: toggleSuggest,
+                unavailable:
+                  suggesting !== null && isParked(suggesting)
+                    ? `Suggest is on, but “${activeClass ?? ""}” cannot hold a suggested shape`
+                    : null,
+              }}
+              />
+          )}
 
           {/*
             Everything the editor floats over the picture, in one column.
@@ -2918,7 +2944,7 @@ function Workspace({
                 icon={<TriangleAlert className="size-4" />}
                 title={asApiError(save.error).code}
               >
-                <p className="font-medium text-foreground">This frame could not be saved</p>
+                <p className="font-medium text-foreground">{thisAsset} could not be saved</p>
                 <p className="text-muted-foreground">{refusalProse(save.error)}</p>
                 <p className="text-muted-foreground">
                   Your work is still here — nothing has been discarded.
@@ -3028,17 +3054,19 @@ function Workspace({
             the one thing that decides them, so a control re-deriving `>= 8` would
             be a second spelling free to disagree with the stage it is driving.
           */}
-          <ZoomWidget
-            zoom={view?.zoom ?? null}
-            atFloor={view !== null && atZoomFloor(view.zoom)}
-            atCeiling={view !== null && atZoomCeiling(view.zoom)}
-            floorReason={`Minimum zoom — ${Math.round(MIN_ZOOM * 100)}% of the asset`}
-            ceilingReason={`Maximum zoom — ${MAX_ZOOM}× image pixels`}
-            onZoomIn={() => viewRef.current?.zoomBy(ZOOM_STEP)}
-            onZoomOut={() => viewRef.current?.zoomBy(1 / ZOOM_STEP)}
-            onFit={() => viewRef.current?.fit()}
-            fullscreenTarget={stage}
-          />
+          {!isScan && (
+            <ZoomWidget
+              zoom={view?.zoom ?? null}
+              atFloor={view !== null && atZoomFloor(view.zoom)}
+              atCeiling={view !== null && atZoomCeiling(view.zoom)}
+              floorReason={`Minimum zoom — ${Math.round(MIN_ZOOM * 100)}% of the asset`}
+              ceilingReason={`Maximum zoom — ${MAX_ZOOM}× image pixels`}
+              onZoomIn={() => viewRef.current?.zoomBy(ZOOM_STEP)}
+              onZoomOut={() => viewRef.current?.zoomBy(1 / ZOOM_STEP)}
+              onFit={() => viewRef.current?.fit()}
+              fullscreenTarget={stage}
+            />
+          )}
         </div>
 
         {/*

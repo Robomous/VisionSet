@@ -74,6 +74,52 @@ export {
   projectPolyline3D,
   type Projected3DLabel,
 } from "./core/geometry/projection";
+// Point-cloud scans — the buffer, the orbit camera, colours and labels in the declared frame
+export {
+  POINT_BUFFER_MAGIC,
+  POINT_BUFFER_VERSION,
+  PointBufferError,
+  boundsOf,
+  decodePoints,
+  type PointBounds,
+  type PointSample,
+} from "./core/pointcloud/decode";
+export {
+  SCAN_FRAME_AXES,
+  fromForwardLeftUp,
+  heightOf,
+  isScanFrame,
+  type FrameAxes,
+  type FrameAxis,
+  type ScanFrame,
+} from "./core/pointcloud/frame";
+export {
+  FIELD_OF_VIEW,
+  MAX_PITCH,
+  eyeOf,
+  framingBounds,
+  homeCamera,
+  orbit,
+  pan,
+  projectToNdc,
+  sceneRadius,
+  viewBasis,
+  viewProjection,
+  zoom,
+  type OrbitCamera,
+} from "./core/pointcloud/camera";
+export {
+  colorModeAvailable,
+  defaultColorMode,
+  pointColors,
+  type ColorMode,
+} from "./core/pointcloud/ramp";
+export {
+  cuboidSegments,
+  scanCuboidCorners,
+  scanLabels,
+  type ScanLabel,
+} from "./core/pointcloud/labels";
 export {
   clampPoint,
   closestPointOnSegment,
