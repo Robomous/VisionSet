@@ -243,6 +243,19 @@ not an ordered path, and the key is refused. Like `polyline_3d` it has no drawin
 annotation page draws its twelve edges read-only, under the same rules (see
 [ui](ui.md#3d-labels-are-drawn-not-edited)).
 
+## On a point-cloud scan, 3D labels are read in the source's frame
+
+A `polyline_3d` or `cuboid_3d` on a `point_cloud` asset is in the **scan's own frame**, the one
+its source declares (see [sources](sources.md#point-cloud-directories-and-their-frame)), in that
+scan's units, and needs no calibration: the write funnel checks for the declared frame instead,
+and a scan with none is `CALIBRATION_MISSING` (409). For a cuboid, `length` runs along the
+heading, `width` across it and `height` along the frame's **up** axis; at `yaw` 0 the heading is
+the frame's forward axis, and `yaw` turns it right-handed about up - counter-clockwise seen from
+above. On `lidar_flu` that is KITTI's lidar convention, heading `(cos yaw, sin yaw, 0)`.
+
+A scan has no pixels, so a `bbox`, `polygon` or `polyline` on one is refused with
+`INVALID_ANNOTATION` (422); a `classification_tag` is accepted.
+
 ## Provenance is the model's own rule, not the service's
 
 There is no `InvalidProvenance`. `provenance="model"` requiring a `model_ref`, and `confidence`

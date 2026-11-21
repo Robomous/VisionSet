@@ -533,7 +533,7 @@
         "type": "object"
       },
       "AssetOut": {
-        "description": "One ingested item.",
+        "description": "One ingested item: a still image, or a single point-cloud scan.\n\nAn image carries ``width``, ``height`` and ``format``; a point cloud carries\n``point_cloud`` and null in all three.",
         "properties": {
           "content_hash": {
             "title": "Content Hash",
@@ -600,9 +600,22 @@
             "title": "Ingested At"
           },
           "modality": {
-            "const": "image",
+            "enum": [
+              "image",
+              "point_cloud"
+            ],
             "title": "Modality",
             "type": "string"
+          },
+          "point_cloud": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PointCloudMetadataOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "project_id": {
             "format": "uuid",
@@ -656,7 +669,8 @@
           "frame_index",
           "frame_timestamp",
           "thumbnail_hash",
-          "ingested_at"
+          "ingested_at",
+          "point_cloud"
         ],
         "title": "AssetOut",
         "type": "object"
@@ -1256,9 +1270,22 @@
             "title": "Min Confidence"
           },
           "modality": {
-            "const": "image",
+            "enum": [
+              "image",
+              "point_cloud"
+            ],
             "title": "Modality",
             "type": "string"
+          },
+          "point_cloud": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PointCloudMetadataOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "progress": {
             "anyOf": [
@@ -1323,6 +1350,7 @@
           "frame_timestamp",
           "thumbnail_hash",
           "ingested_at",
+          "point_cloud",
           "job_id",
           "progress",
           "allowed_actions",
@@ -2748,9 +2776,22 @@
             "type": "array"
           },
           "modality": {
-            "const": "image",
+            "enum": [
+              "image",
+              "point_cloud"
+            ],
             "title": "Modality",
             "type": "string"
+          },
+          "point_cloud": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PointCloudMetadataOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "project_id": {
             "format": "uuid",
@@ -2836,6 +2877,7 @@
           "frame_timestamp",
           "thumbnail_hash",
           "ingested_at",
+          "point_cloud",
           "annotation_count",
           "label_classes",
           "class_counts",
@@ -3291,6 +3333,13 @@
             "title": "Degraded Assets",
             "type": "integer"
           },
+          "dropped_modalities": {
+            "items": {
+              "$ref": "#/components/schemas/ModalityCompatibilityOut"
+            },
+            "title": "Dropped Modalities",
+            "type": "array"
+          },
           "excluded_annotations": {
             "title": "Excluded Annotations",
             "type": "integer"
@@ -3333,7 +3382,8 @@
           "excluded_assets",
           "degraded_annotations",
           "degraded_assets",
-          "classes"
+          "classes",
+          "dropped_modalities"
         ],
         "title": "ExportCompatibilityOut",
         "type": "object"
@@ -3545,7 +3595,7 @@
         "type": "object"
       },
       "ImageFormat": {
-        "description": "Every still-image encoding a dataset may contain. See the module docstring.\n\nA ``StrEnum`` rather than a ``Literal``, unlike ``Asset.modality``: that one\nhas a single member, where an enum would be ceremony. This set is **frozen\nat JPEG and PNG**: acceptance is wider \u2014 anything Pillow decodes is read \u2014\nbut everything else is normalized into these two at ingest. It costs the\npersistence layer nothing \u2014 a ``StrEnum`` member *is* a ``str``, and the\ntables already store every other enum as ``String``.",
+        "description": "Every still-image encoding a dataset may contain. See the module docstring.\n\nA ``StrEnum`` rather than a ``Literal``, unlike ``Asset.modality``, which\nnothing outside the kernel extends. This set is **frozen\nat JPEG and PNG**: acceptance is wider \u2014 anything Pillow decodes is read \u2014\nbut everything else is normalized into these two at ingest. It costs the\npersistence layer nothing \u2014 a ``StrEnum`` member *is* a ``str``, and the\ntables already store every other enum as ``String``.",
         "enum": [
           "jpeg",
           "png"
@@ -3978,6 +4028,39 @@
         "title": "LabelClassBody",
         "type": "object"
       },
+      "ModalityCompatibilityOut": {
+        "description": "The assets of one modality a format cannot write, counted whole.",
+        "properties": {
+          "annotations": {
+            "title": "Annotations",
+            "type": "integer"
+          },
+          "assets": {
+            "title": "Assets",
+            "type": "integer"
+          },
+          "modality": {
+            "enum": [
+              "image",
+              "point_cloud"
+            ],
+            "title": "Modality",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "modality",
+          "assets",
+          "annotations",
+          "reason"
+        ],
+        "title": "ModalityCompatibilityOut",
+        "type": "object"
+      },
       "ModelCapability": {
         "description": "What a connection's model can be asked for: the kind of prompt it takes.",
         "enum": [
@@ -3997,6 +4080,90 @@
         ],
         "title": "ModelOrigin",
         "type": "string"
+      },
+      "PointCloudBoundsOut": {
+        "description": "The box a scan's points span, in its source's declared frame and unit.",
+        "properties": {
+          "maximum": {
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Maximum",
+            "type": "array"
+          },
+          "minimum": {
+            "maxItems": 3,
+            "minItems": 3,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Minimum",
+            "type": "array"
+          }
+        },
+        "required": [
+          "minimum",
+          "maximum"
+        ],
+        "title": "PointCloudBoundsOut",
+        "type": "object"
+      },
+      "PointCloudFormat": {
+        "description": "Every point-cloud encoding a directory ingest reads, decided by the header bytes.\n\nHeadered formats only, because ingest never trusts a suffix: a KITTI\n``.bin`` has no header to sniff and arrives through a format importer.",
+        "enum": [
+          "pcd",
+          "ply"
+        ],
+        "title": "PointCloudFormat",
+        "type": "string"
+      },
+      "PointCloudMetadataOut": {
+        "description": "What one scan turned out to be: its encoding, its points, where they lie.",
+        "properties": {
+          "bounds": {
+            "$ref": "#/components/schemas/PointCloudBoundsOut"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "format": {
+            "$ref": "#/components/schemas/PointCloudFormat"
+          },
+          "point_count": {
+            "title": "Point Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "format",
+          "point_count",
+          "bounds",
+          "fields"
+        ],
+        "title": "PointCloudMetadataOut",
+        "type": "object"
       },
       "PolygonBody": {
         "additionalProperties": false,
@@ -5742,6 +5909,15 @@
         "title": "ResumeTargetOut",
         "type": "object"
       },
+      "ScanFrame": {
+        "description": "The axis convention a point-cloud source's coordinates are written in.\n\nDeclared by the source, never inferred, and never normalised away: a label\non a scan is stored in exactly these axes, and a ``cuboid_3d`` yaw is a\nrotation about :attr:`up`, counter-clockwise seen from above.",
+        "enum": [
+          "lidar_flu",
+          "camera_rdf"
+        ],
+        "title": "ScanFrame",
+        "type": "string"
+      },
       "SchemaChangeOut": {
         "description": "One difference between two schema versions, already judged.",
         "properties": {
@@ -6312,14 +6488,25 @@
         "description": "The shapes of raw input VisionSet accepts.\n\nAn enum, where ``DatasetChange.operation`` and ``VideoMetadata.codec`` are\nplain ``str``. That doctrine turns on one question \u2014 *can something outside\nthis build write the value?* A change-log entry outlives the release that\nwrote it and a codec name is whatever the decoder that read it decides to\ncall it, so both have to stay readable when they name something this build\nnever heard of.\n\nNeither applies here. ``SourceService`` and ``VideoImportService`` are the\nonly two doors to a ``Source``, one per member, so no foreign writer exists;\nthe kernel **branches** on this value, in the invariant tying\n:attr:`Source.video` to\n:attr:`SourceKind.VIDEO`, and a branch on a magic string is the shape this\ncodebase replaces with a table; and the set grows by a deliberate kernel\nchange with a service method behind it. That is ``ImageFormat`` /\n``BatchState`` / ``IngestState`` territory, and it costs persistence nothing\n\u2014 a ``StrEnum`` member *is* a ``str``.",
         "enum": [
           "image_directory",
-          "video"
+          "video",
+          "point_cloud_directory"
         ],
         "title": "SourceKind",
         "type": "string"
       },
       "SourceOut": {
-        "description": "A registered origin: a folder of stills, or a clip.",
+        "description": "A registered origin: a folder of stills, a clip, or a folder of point-cloud scans.",
         "properties": {
+          "frame": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScanFrame"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -6359,7 +6546,8 @@
           "kind",
           "name",
           "registered_at",
-          "video"
+          "video",
+          "frame"
         ],
         "title": "SourceOut",
         "type": "object"
@@ -10944,7 +11132,7 @@
     },
     "/inference/suggest": {
       "post": {
-        "description": "Propose a shape for the thing under those points.\n\nThe server side of the editor's suggest gesture. One asset, one prompt set,\none answer \u2014 batch prediction is a separate path and is not this one.\n\n**Nothing is written and nothing is remembered.** A suggestion is a proposal:\naccepting it is a later, ordinary annotation write carrying `provenance:\nmodel`, this response's `model_ref`, and its `confidence`. Discarding it\ncosts a request that already finished. The only thing that outlives the call\nis a cached image embedding, which is an optimisation rather than a record \u2014\nso the same points sent twice answer the same way, and a restart changes\nnothing but the latency of the first click.\n\n**The first click on an asset is the slow one.** A segmenter reads the whole\nimage once and then answers any number of clicks from that reading almost for\nfree, which is what makes refining by adding points practical. Sending the\naccumulated points \u2014 rather than a diff \u2014 is what keeps this stateless.\n\n**`allowed_geometries` is bounded by the caller's schema, and chosen within\nit.** The answer is produced in one of the kinds named or not at all: naming\npolygon gets the outline of the piece under the click, naming only box gets\none box over every piece the mask kept, and naming neither gets no regions.\nAnswering in a kind the schema would refuse would produce a suggestion that\ncannot be accepted, so every kind sent must be one the active class admits.\n\nWhich of them to send is the caller's decision, and it matters because **this\nroute prefers the polygon whenever both are named**. A client whose user is\nholding a box tool over a class that also accepts polygons sends `[\"bbox\"]`\nalone; sending both would answer past the tool they are holding, and nothing\non their screen would have said so.\n\n**`tolerance` is the one setting, and it does not reach the model.** It is a\ndistance in the asset's pixels: every point of the traced outline lies within\nit of the polygon returned. Optional, defaulting to `1.0`; refused outside\n`[0.25, 16]` rather than clamped. Closing the small gaps in a mask and\ndropping its noise specks still happen, at fixed defaults nobody asks for.\n\n**`parameters` says which settings apply here**, for the kind of shape this\nrequest will come back in. It is empty for a box class \u2014 the tolerance shapes an\noutline and a box has none \u2014 which is how a client is told to render no\nadjustments at all. It is present even when there is nothing to propose, so\nsomebody who adjusted their way into an empty answer can adjust their way\nback out. A client renders what this names and works none of it out itself.\n\n**`contour` on each region is the outline the shape was reduced from.** It is\nwhat lets a client re-run the tolerance locally rather than asking again, and it\nis the *same* points this route reduced \u2014 simplification is not nested, so a\nclient starting from anything else could not be held to the same answer. A\nbox carries none, because there is nothing it was reduced from.\n\n**Every point must be on the asset**, positive and negative alike \u2014 `x` in\n`[0, width]` and `y` in `[0, height]`, both ends included, in the asset's own\npixel frame. One point off the picture refuses the whole request with 422\n`PROMPT_POINT_OUT_OF_BOUNDS` rather than being dropped, because a gesture\nwith a point removed is a different gesture. Nothing is clamped: a\ncoordinate outside the frame is not a place on the image, and answering\nabout the nearest edge instead would return a mask, and a confidence, for a\nquestion nobody asked.\n\nAn empty `regions` is a successful answer with nothing to propose. These\nrefusals are about the request, and the caller can act on each: an unknown\nproject, asset or connection is 404 \u2014 `PROJECT_NOT_FOUND`, `ASSET_NOT_FOUND`\nor `INFERENCE_CONNECTION_NOT_FOUND`; a connection whose weights are not here\nyet is 409 `INFERENCE_CONNECTION_NOT_SET_UP` and names what to do; a\nconnection whose model answers words rather than places is 422\n`UNSUPPORTED_PROMPT`, as is a prompt point off the asset; an `http`\nconnection whose endpoint does not answer the contract is 502\n`INFERENCE_ENDPOINT_UNAVAILABLE`.\n\nThree failures are about this installation rather than about the request,\nand answer 500 carrying the message that says which: a connection of a kind\nthis build ships no adapter for is `INFERENCE_CONNECTION_NOT_RUNNABLE`, a\nmachine without the optional local runtime is `LOCAL_INFERENCE_UNAVAILABLE`\nand carries the command that installs it, and a model that will not fit the\ndevice it was asked to run on is `INFERENCE_OUT_OF_MEMORY`. None of the\nthree is worth resending unchanged: there is no state here to change, so the\nremedy is the one the message names \u2014 an install, a different device, a\nsmaller model, or a build that ships the adapter.",
+        "description": "Propose a shape for the thing under those points.\n\nThe server side of the editor's suggest gesture. One asset, one prompt set,\none answer \u2014 batch prediction is a separate path and is not this one.\n\n**Nothing is written and nothing is remembered.** A suggestion is a proposal:\naccepting it is a later, ordinary annotation write carrying `provenance:\nmodel`, this response's `model_ref`, and its `confidence`. Discarding it\ncosts a request that already finished. The only thing that outlives the call\nis a cached image embedding, which is an optimisation rather than a record \u2014\nso the same points sent twice answer the same way, and a restart changes\nnothing but the latency of the first click.\n\n**The first click on an asset is the slow one.** A segmenter reads the whole\nimage once and then answers any number of clicks from that reading almost for\nfree, which is what makes refining by adding points practical. Sending the\naccumulated points \u2014 rather than a diff \u2014 is what keeps this stateless.\n\n**`allowed_geometries` is bounded by the caller's schema, and chosen within\nit.** The answer is produced in one of the kinds named or not at all: naming\npolygon gets the outline of the piece under the click, naming only box gets\none box over every piece the mask kept, and naming neither gets no regions.\nAnswering in a kind the schema would refuse would produce a suggestion that\ncannot be accepted, so every kind sent must be one the active class admits.\n\nWhich of them to send is the caller's decision, and it matters because **this\nroute prefers the polygon whenever both are named**. A client whose user is\nholding a box tool over a class that also accepts polygons sends `[\"bbox\"]`\nalone; sending both would answer past the tool they are holding, and nothing\non their screen would have said so.\n\n**`tolerance` is the one setting, and it does not reach the model.** It is a\ndistance in the asset's pixels: every point of the traced outline lies within\nit of the polygon returned. Optional, defaulting to `1.0`; refused outside\n`[0.25, 16]` rather than clamped. Closing the small gaps in a mask and\ndropping its noise specks still happen, at fixed defaults nobody asks for.\n\n**`parameters` says which settings apply here**, for the kind of shape this\nrequest will come back in. It is empty for a box class \u2014 the tolerance shapes an\noutline and a box has none \u2014 which is how a client is told to render no\nadjustments at all. It is present even when there is nothing to propose, so\nsomebody who adjusted their way into an empty answer can adjust their way\nback out. A client renders what this names and works none of it out itself.\n\n**`contour` on each region is the outline the shape was reduced from.** It is\nwhat lets a client re-run the tolerance locally rather than asking again, and it\nis the *same* points this route reduced \u2014 simplification is not nested, so a\nclient starting from anything else could not be held to the same answer. A\nbox carries none, because there is nothing it was reduced from.\n\n**Every point must be on the asset**, positive and negative alike \u2014 `x` in\n`[0, width]` and `y` in `[0, height]`, both ends included, in the asset's own\npixel frame. One point off the picture refuses the whole request with 422\n`PROMPT_POINT_OUT_OF_BOUNDS` rather than being dropped, because a gesture\nwith a point removed is a different gesture. Nothing is clamped: a\ncoordinate outside the frame is not a place on the image, and answering\nabout the nearest edge instead would return a mask, and a confidence, for a\nquestion nobody asked. A point-cloud asset has no pixel frame to click in,\nand is refused with 422 `UNSUPPORTED_MEDIA`.\n\nAn empty `regions` is a successful answer with nothing to propose. These\nrefusals are about the request, and the caller can act on each: an unknown\nproject, asset or connection is 404 \u2014 `PROJECT_NOT_FOUND`, `ASSET_NOT_FOUND`\nor `INFERENCE_CONNECTION_NOT_FOUND`; a connection whose weights are not here\nyet is 409 `INFERENCE_CONNECTION_NOT_SET_UP` and names what to do; a\nconnection whose model answers words rather than places is 422\n`UNSUPPORTED_PROMPT`, as is a prompt point off the asset; an `http`\nconnection whose endpoint does not answer the contract is 502\n`INFERENCE_ENDPOINT_UNAVAILABLE`.\n\nThree failures are about this installation rather than about the request,\nand answer 500 carrying the message that says which: a connection of a kind\nthis build ships no adapter for is `INFERENCE_CONNECTION_NOT_RUNNABLE`, a\nmachine without the optional local runtime is `LOCAL_INFERENCE_UNAVAILABLE`\nand carries the command that installs it, and a model that will not fit the\ndevice it was asked to run on is `INFERENCE_OUT_OF_MEMORY`. None of the\nthree is worth resending unchanged: there is no state here to change, so the\nremedy is the one the message names \u2014 an install, a different device, a\nsmaller model, or a build that ships the adapter.",
         "operationId": "suggest_region",
         "requestBody": {
           "content": {
@@ -13547,7 +13735,7 @@
     },
     "/projects/{project_id}/assets/{asset_id}/content": {
       "get": {
-        "description": "The asset's own bytes, streamed.\n\nThe original that was ingested, not a re-encode \u2014 for a video frame that is\nthe JPEG the materializer wrote, which is the picture an annotator drew on and the\npicture an exporter ships.\n\n`Content-Type` comes from what the ingest actually probed. An asset written\nbefore the pipeline recorded a format is served as\n`application/octet-stream`, because inventing one would be worse than\nadmitting it.\n\nCached forever and never revalidated: identity is content, so these bytes\ncannot change. The `ETag` is the content hash.\n\nAn unknown project or asset is 404 \u2014 `PROJECT_NOT_FOUND` and\n`ASSET_NOT_FOUND` \u2014 and those are the only two. 404 `WORKSPACE_CORRUPT` is\nnot among the answers: a recorded hash with no blob behind it is a guarantee\nfailing, and is 500.",
+        "description": "The asset's own bytes, streamed.\n\nThe original that was ingested, not a re-encode \u2014 for a video frame that is\nthe JPEG the materializer wrote, which is the picture an annotator drew on and the\npicture an exporter ships.\n\n`Content-Type` comes from what the ingest actually probed. An asset written\nbefore the pipeline recorded a format is served as\n`application/octet-stream`, because inventing one would be worse than\nadmitting it. A point-cloud scan is served as `application/octet-stream`\ntoo, the PCD or PLY file as ingested: neither has a registered media type,\nand the asset's `point_cloud.format` says which it is.\n\nCached forever and never revalidated: identity is content, so these bytes\ncannot change. The `ETag` is the content hash.\n\nAn unknown project or asset is 404 \u2014 `PROJECT_NOT_FOUND` and\n`ASSET_NOT_FOUND` \u2014 and those are the only two. 404 `WORKSPACE_CORRUPT` is\nnot among the answers: a recorded hash with no blob behind it is a guarantee\nfailing, and is 500.",
         "operationId": "get_asset_content",
         "parameters": [
           {

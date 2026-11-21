@@ -145,7 +145,9 @@ def test_the_override_wins_then_the_source() -> None:
 
 
 def test_no_implemented_geometry_needs_a_calibration_yet() -> None:
-    assert not geometry_needs_calibration(BboxGeometry(x=0, y=0, width=1, height=1))
+    assert not geometry_needs_calibration(
+        BboxGeometry(x=0, y=0, width=1, height=1), modality="image"
+    )
 
 
 # --- a source's calibration --------------------------------------------------

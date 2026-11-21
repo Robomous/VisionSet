@@ -10,15 +10,23 @@ from __future__ import annotations
 import base64
 import io
 import json
+import os
 from pathlib import Path
 
 import pytest
 from PIL import Image as PillowImage
 from tests.fixtures.media import write_images
+from tests.fixtures.point_clouds import write_scans
 from tests.mcp._flow import call, error, ingested, payload, schema
 
-from visionset.kernel.domain import ImageFormat
+from visionset.kernel.domain import ImageFormat, ScanFrame
 from visionset.kernel.ports import DEFAULT_THUMBNAIL_MAX_EDGE, THUMBNAIL_FORMAT
+from visionset.kernel.services import (
+    IngestService,
+    ProjectService,
+    SourceService,
+    WorkspaceService,
+)
 from visionset.mcp.assets import SUFFIXES
 
 
@@ -251,3 +259,38 @@ def test_an_asset_with_no_recorded_format_still_carries_its_measurements_as_text
     assert measured["asset_id"] == str(asset.id)
     assert measured["scale"] == 1.0
     assert (measured["image_width"], measured["image_height"]) == (40, 30)
+
+
+def _scan(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[str, str]:
+    named = schema(monkeypatch, tmp_path)
+    root = Path(os.environ["VISIONSET_WORKSPACE"])
+    with WorkspaceService.open(root) as service:
+        project = ProjectService(service).get_by_name(named)
+        source = SourceService(service).register_point_clouds(
+            project.id, write_scans(tmp_path / "scans"), frame=ScanFrame.LIDAR_FLU
+        )
+        run = IngestService(service).ingest(source.id)
+    return named, str(run.assets[0].id)
+
+
+def test_a_scan_is_previewed_from_above_with_no_pixel_frame(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named, asset_id = _scan(monkeypatch, tmp_path)
+
+    result = call("get_asset_image", project=named, asset_id=asset_id)
+
+    assert _image_block(result).mime_type == "image/jpeg"  # type: ignore[attr-defined]
+    meta = result.structured_content
+    assert meta is not None
+    assert (meta["width"], meta["height"], meta["scale"]) == (None, None, None)
+
+
+def test_a_scan_is_not_sent_in_full_as_an_image(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named, asset_id = _scan(monkeypatch, tmp_path)
+
+    envelope = error(call("get_asset_image", project=named, asset_id=asset_id, full=True))
+
+    assert envelope["code"] == "UNSUPPORTED_MEDIA"

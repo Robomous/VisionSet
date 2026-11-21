@@ -1365,7 +1365,8 @@ export interface paths {
          *     with a point removed is a different gesture. Nothing is clamped: a
          *     coordinate outside the frame is not a place on the image, and answering
          *     about the nearest edge instead would return a mask, and a confidence, for a
-         *     question nobody asked.
+         *     question nobody asked. A point-cloud asset has no pixel frame to click in,
+         *     and is refused with 422 `UNSUPPORTED_MEDIA`.
          *
          *     An empty `regions` is a successful answer with nothing to propose. These
          *     refusals are about the request, and the caller can act on each: an unknown
@@ -2081,7 +2082,9 @@ export interface paths {
          *     `Content-Type` comes from what the ingest actually probed. An asset written
          *     before the pipeline recorded a format is served as
          *     `application/octet-stream`, because inventing one would be worse than
-         *     admitting it.
+         *     admitting it. A point-cloud scan is served as `application/octet-stream`
+         *     too, the PCD or PLY file as ingested: neither has a registered media type,
+         *     and the asset's `point_cloud.format` says which it is.
          *
          *     Cached forever and never revalidated: identity is content, so these bytes
          *     cannot change. The `ETag` is the content hash.
@@ -3632,7 +3635,10 @@ export interface components {
         };
         /**
          * AssetOut
-         * @description One ingested item.
+         * @description One ingested item: a still image, or a single point-cloud scan.
+         *
+         *     An image carries ``width``, ``height`` and ``format``; a point cloud carries
+         *     ``point_cloud`` and null in all three.
          */
         AssetOut: {
             /** Content Hash */
@@ -3653,9 +3659,10 @@ export interface components {
             ingested_at: string | null;
             /**
              * Modality
-             * @constant
+             * @enum {string}
              */
-            modality: "image";
+            modality: "image" | "point_cloud";
+            point_cloud: components["schemas"]["PointCloudMetadataOut"] | null;
             /**
              * Project Id
              * Format: uuid
@@ -3906,9 +3913,10 @@ export interface components {
             min_confidence: number | null;
             /**
              * Modality
-             * @constant
+             * @enum {string}
              */
-            modality: "image";
+            modality: "image" | "point_cloud";
+            point_cloud: components["schemas"]["PointCloudMetadataOut"] | null;
             progress: components["schemas"]["AssetProgress"] | null;
             /**
              * Project Id
@@ -4566,9 +4574,10 @@ export interface components {
             label_classes: string[];
             /**
              * Modality
-             * @constant
+             * @enum {string}
              */
-            modality: "image";
+            modality: "image" | "point_cloud";
+            point_cloud: components["schemas"]["PointCloudMetadataOut"] | null;
             /**
              * Project Id
              * Format: uuid
@@ -4831,6 +4840,8 @@ export interface components {
             degraded_annotations: number;
             /** Degraded Assets */
             degraded_assets: number;
+            /** Dropped Modalities */
+            dropped_modalities: components["schemas"]["ModalityCompatibilityOut"][];
             /** Excluded Annotations */
             excluded_annotations: number;
             /** Excluded Assets */
@@ -4950,8 +4961,8 @@ export interface components {
          * ImageFormat
          * @description Every still-image encoding a dataset may contain. See the module docstring.
          *
-         *     A ``StrEnum`` rather than a ``Literal``, unlike ``Asset.modality``: that one
-         *     has a single member, where an enum would be ceremony. This set is **frozen
+         *     A ``StrEnum`` rather than a ``Literal``, unlike ``Asset.modality``, which
+         *     nothing outside the kernel extends. This set is **frozen
          *     at JPEG and PNG**: acceptance is wider — anything Pillow decodes is read —
          *     but everything else is normalized into these two at ingest. It costs the
          *     persistence layer nothing — a ``StrEnum`` member *is* a ``str``, and the
@@ -5165,6 +5176,23 @@ export interface components {
             name: string;
         };
         /**
+         * ModalityCompatibilityOut
+         * @description The assets of one modality a format cannot write, counted whole.
+         */
+        ModalityCompatibilityOut: {
+            /** Annotations */
+            annotations: number;
+            /** Assets */
+            assets: number;
+            /**
+             * Modality
+             * @enum {string}
+             */
+            modality: "image" | "point_cloud";
+            /** Reason */
+            reason: string;
+        };
+        /**
          * ModelCapability
          * @description What a connection's model can be asked for: the kind of prompt it takes.
          * @enum {string}
@@ -5183,6 +5211,45 @@ export interface components {
          * @enum {string}
          */
         ModelOrigin: "huggingface" | "custom" | "robomous";
+        /**
+         * PointCloudBoundsOut
+         * @description The box a scan's points span, in its source's declared frame and unit.
+         */
+        PointCloudBoundsOut: {
+            /** Maximum */
+            maximum: [
+                number,
+                number,
+                number
+            ];
+            /** Minimum */
+            minimum: [
+                number,
+                number,
+                number
+            ];
+        };
+        /**
+         * PointCloudFormat
+         * @description Every point-cloud encoding a directory ingest reads, decided by the header bytes.
+         *
+         *     Headered formats only, because ingest never trusts a suffix: a KITTI
+         *     ``.bin`` has no header to sniff and arrives through a format importer.
+         * @enum {string}
+         */
+        PointCloudFormat: "pcd" | "ply";
+        /**
+         * PointCloudMetadataOut
+         * @description What one scan turned out to be: its encoding, its points, where they lie.
+         */
+        PointCloudMetadataOut: {
+            bounds: components["schemas"]["PointCloudBoundsOut"];
+            /** Fields */
+            fields: string[];
+            format: components["schemas"]["PointCloudFormat"];
+            /** Point Count */
+            point_count: number;
+        };
         /**
          * PolygonBody
          * @description A closed polygon of at least three points. The closing edge is implicit.
@@ -6113,6 +6180,16 @@ export interface components {
             total: number;
         };
         /**
+         * ScanFrame
+         * @description The axis convention a point-cloud source's coordinates are written in.
+         *
+         *     Declared by the source, never inferred, and never normalised away: a label
+         *     on a scan is stored in exactly these axes, and a ``cuboid_3d`` yaw is a
+         *     rotation about :attr:`up`, counter-clockwise seen from above.
+         * @enum {string}
+         */
+        ScanFrame: "lidar_flu" | "camera_rdf";
+        /**
          * SchemaChangeOut
          * @description One difference between two schema versions, already judged.
          */
@@ -6391,12 +6468,13 @@ export interface components {
          *     — a ``StrEnum`` member *is* a ``str``.
          * @enum {string}
          */
-        SourceKind: "image_directory" | "video";
+        SourceKind: "image_directory" | "video" | "point_cloud_directory";
         /**
          * SourceOut
-         * @description A registered origin: a folder of stills, or a clip.
+         * @description A registered origin: a folder of stills, a clip, or a folder of point-cloud scans.
          */
         SourceOut: {
+            frame: components["schemas"]["ScanFrame"] | null;
             /**
              * Id
              * Format: uuid

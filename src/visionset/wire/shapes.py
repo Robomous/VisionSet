@@ -134,6 +134,20 @@ class SchemaChangePreview(TypedDict):
 
 
 @closed
+class PointCloudBounds(TypedDict):
+    minimum: list[float]
+    maximum: list[float]
+
+
+@closed
+class PointCloudMetadata(TypedDict):
+    format: str
+    point_count: int
+    bounds: PointCloudBounds
+    fields: list[str]
+
+
+@closed
 class Asset(TypedDict):
     id: str
     project_id: str
@@ -147,6 +161,7 @@ class Asset(TypedDict):
     frame_timestamp: float | None
     thumbnail_hash: str | None
     ingested_at: str | None
+    point_cloud: PointCloudMetadata | None
 
 
 @closed
@@ -185,6 +200,7 @@ class Source(TypedDict):
     name: str
     registered_at: str
     video: VideoProvenance | None
+    frame: str | None
 
 
 @closed
@@ -520,6 +536,14 @@ class ClassCompatibility(TypedDict):
 
 
 @closed
+class ModalityCompatibility(TypedDict):
+    modality: str
+    assets: int
+    annotations: int
+    reason: str
+
+
+@closed
 class ExportCompatibility(TypedDict):
     release_id: str
     format: str
@@ -531,6 +555,7 @@ class ExportCompatibility(TypedDict):
     degraded_annotations: int
     degraded_assets: int
     classes: list[ClassCompatibility]
+    dropped_modalities: list[ModalityCompatibility]
 
 
 @closed

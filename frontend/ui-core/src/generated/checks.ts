@@ -81,8 +81,17 @@ export const checkAssetCalibrationOut: Check<Schemas["AssetCalibrationOut"]> =
 export const checkImageFormat: Check<Schemas["ImageFormat"]> =
   /*#__PURE__*/ oneOf(["jpeg", "png"] as const);
 
+export const checkPointCloudBoundsOut: Check<Schemas["PointCloudBoundsOut"]> =
+  /*#__PURE__*/ object({ "maximum": [true, tuple([isNumber, isNumber, isNumber] as const)], "minimum": [true, tuple([isNumber, isNumber, isNumber] as const)] } as const);
+
+export const checkPointCloudFormat: Check<Schemas["PointCloudFormat"]> =
+  /*#__PURE__*/ oneOf(["pcd", "ply"] as const);
+
+export const checkPointCloudMetadataOut: Check<Schemas["PointCloudMetadataOut"]> =
+  /*#__PURE__*/ object({ "bounds": [true, checkPointCloudBoundsOut], "fields": [true, arrayOf(isString)], "format": [true, checkPointCloudFormat], "point_count": [true, isInteger] } as const);
+
 export const checkAssetOut: Check<Schemas["AssetOut"]> =
-  /*#__PURE__*/ object({ "content_hash": [true, isString], "format": [true, either([checkImageFormat, isNull] as const)], "frame_index": [true, either([isInteger, isNull] as const)], "frame_timestamp": [true, either([isNumber, isNull] as const)], "height": [true, either([isInteger, isNull] as const)], "id": [true, isString], "ingested_at": [true, either([isString, isNull] as const)], "modality": [true, lit("image")], "project_id": [true, isString], "source_id": [true, either([isString, isNull] as const)], "thumbnail_hash": [true, either([isString, isNull] as const)], "width": [true, either([isInteger, isNull] as const)] } as const);
+  /*#__PURE__*/ object({ "content_hash": [true, isString], "format": [true, either([checkImageFormat, isNull] as const)], "frame_index": [true, either([isInteger, isNull] as const)], "frame_timestamp": [true, either([isNumber, isNull] as const)], "height": [true, either([isInteger, isNull] as const)], "id": [true, isString], "ingested_at": [true, either([isString, isNull] as const)], "modality": [true, oneOf(["image", "point_cloud"] as const)], "point_cloud": [true, either([checkPointCloudMetadataOut, isNull] as const)], "project_id": [true, isString], "source_id": [true, either([isString, isNull] as const)], "thumbnail_hash": [true, either([isString, isNull] as const)], "width": [true, either([isInteger, isNull] as const)] } as const);
 
 export const checkAssetPage: Check<Schemas["AssetPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkAssetOut)], "total": [true, isInteger] } as const);
@@ -112,7 +121,7 @@ export const checkAssetAction: Check<Schemas["AssetAction"]> =
   /*#__PURE__*/ openOneOf(["annotate", "skip", "restore", "confirm", "submit_for_review", "accept", "return_to_annotator"] as const);
 
 export const checkBatchAssetOut: Check<Schemas["BatchAssetOut"]> =
-  /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkAssetAction)], "annotation_count": [true, isInteger], "content_hash": [true, isString], "format": [true, either([checkImageFormat, isNull] as const)], "frame_index": [true, either([isInteger, isNull] as const)], "frame_timestamp": [true, either([isNumber, isNull] as const)], "height": [true, either([isInteger, isNull] as const)], "id": [true, isString], "ingested_at": [true, either([isString, isNull] as const)], "job_id": [true, either([isString, isNull] as const)], "min_confidence": [true, either([isNumber, isNull] as const)], "modality": [true, lit("image")], "progress": [true, either([checkAssetProgress, isNull] as const)], "project_id": [true, isString], "source_id": [true, either([isString, isNull] as const)], "thumbnail_hash": [true, either([isString, isNull] as const)], "width": [true, either([isInteger, isNull] as const)] } as const);
+  /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkAssetAction)], "annotation_count": [true, isInteger], "content_hash": [true, isString], "format": [true, either([checkImageFormat, isNull] as const)], "frame_index": [true, either([isInteger, isNull] as const)], "frame_timestamp": [true, either([isNumber, isNull] as const)], "height": [true, either([isInteger, isNull] as const)], "id": [true, isString], "ingested_at": [true, either([isString, isNull] as const)], "job_id": [true, either([isString, isNull] as const)], "min_confidence": [true, either([isNumber, isNull] as const)], "modality": [true, oneOf(["image", "point_cloud"] as const)], "point_cloud": [true, either([checkPointCloudMetadataOut, isNull] as const)], "progress": [true, either([checkAssetProgress, isNull] as const)], "project_id": [true, isString], "source_id": [true, either([isString, isNull] as const)], "thumbnail_hash": [true, either([isString, isNull] as const)], "width": [true, either([isInteger, isNull] as const)] } as const);
 
 export const checkBatchAssetPage: Check<Schemas["BatchAssetPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkBatchAssetOut)], "total": [true, isInteger] } as const);
@@ -181,7 +190,7 @@ export const checkAssetClassCountOut: Check<Schemas["AssetClassCountOut"]> =
   /*#__PURE__*/ object({ "annotations": [true, isInteger], "label_class": [true, isString] } as const);
 
 export const checkDatasetAssetOut: Check<Schemas["DatasetAssetOut"]> =
-  /*#__PURE__*/ object({ "annotation_count": [true, isInteger], "class_counts": [true, arrayOf(checkAssetClassCountOut)], "content_hash": [true, isString], "format": [true, either([checkImageFormat, isNull] as const)], "frame_index": [true, either([isInteger, isNull] as const)], "frame_timestamp": [true, either([isNumber, isNull] as const)], "height": [true, either([isInteger, isNull] as const)], "id": [true, isString], "ingested_at": [true, either([isString, isNull] as const)], "label_classes": [true, arrayOf(isString)], "modality": [true, lit("image")], "project_id": [true, isString], "promoted_at": [true, either([isString, isNull] as const)], "promoted_by_batch_id": [true, either([isString, isNull] as const)], "release_tags": [true, arrayOf(isString)], "source_id": [true, either([isString, isNull] as const)], "thumbnail_hash": [true, either([isString, isNull] as const)], "width": [true, either([isInteger, isNull] as const)] } as const);
+  /*#__PURE__*/ object({ "annotation_count": [true, isInteger], "class_counts": [true, arrayOf(checkAssetClassCountOut)], "content_hash": [true, isString], "format": [true, either([checkImageFormat, isNull] as const)], "frame_index": [true, either([isInteger, isNull] as const)], "frame_timestamp": [true, either([isNumber, isNull] as const)], "height": [true, either([isInteger, isNull] as const)], "id": [true, isString], "ingested_at": [true, either([isString, isNull] as const)], "label_classes": [true, arrayOf(isString)], "modality": [true, oneOf(["image", "point_cloud"] as const)], "point_cloud": [true, either([checkPointCloudMetadataOut, isNull] as const)], "project_id": [true, isString], "promoted_at": [true, either([isString, isNull] as const)], "promoted_by_batch_id": [true, either([isString, isNull] as const)], "release_tags": [true, arrayOf(isString)], "source_id": [true, either([isString, isNull] as const)], "thumbnail_hash": [true, either([isString, isNull] as const)], "width": [true, either([isInteger, isNull] as const)] } as const);
 
 export const checkDatasetAssetPage: Check<Schemas["DatasetAssetPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkDatasetAssetOut)], "total": [true, isInteger] } as const);
@@ -210,8 +219,11 @@ export const checkClassExportStatus: Check<Schemas["ClassExportStatus"]> =
 export const checkClassCompatibilityOut: Check<Schemas["ClassCompatibilityOut"]> =
   /*#__PURE__*/ object({ "annotations": [true, isInteger], "assets": [true, isInteger], "geometry": [true, checkGeometryType], "label_class": [true, isString], "reason": [false, either([isString, isNull] as const)], "status": [true, checkClassExportStatus] } as const);
 
+export const checkModalityCompatibilityOut: Check<Schemas["ModalityCompatibilityOut"]> =
+  /*#__PURE__*/ object({ "annotations": [true, isInteger], "assets": [true, isInteger], "modality": [true, oneOf(["image", "point_cloud"] as const)], "reason": [true, isString] } as const);
+
 export const checkExportCompatibilityOut: Check<Schemas["ExportCompatibilityOut"]> =
-  /*#__PURE__*/ object({ "classes": [true, arrayOf(checkClassCompatibilityOut)], "compatible": [true, isBoolean], "degraded_annotations": [true, isInteger], "degraded_assets": [true, isInteger], "excluded_annotations": [true, isInteger], "excluded_assets": [true, isInteger], "format": [true, isString], "format_is_lossy": [true, isBoolean], "release_id": [true, isString], "target": [false, either([isString, isNull] as const)] } as const);
+  /*#__PURE__*/ object({ "classes": [true, arrayOf(checkClassCompatibilityOut)], "compatible": [true, isBoolean], "degraded_annotations": [true, isInteger], "degraded_assets": [true, isInteger], "dropped_modalities": [true, arrayOf(checkModalityCompatibilityOut)], "excluded_annotations": [true, isInteger], "excluded_assets": [true, isInteger], "format": [true, isString], "format_is_lossy": [true, isBoolean], "release_id": [true, isString], "target": [false, either([isString, isNull] as const)] } as const);
 
 export const checkPreprocessingHintsOut: Check<Schemas["PreprocessingHintsOut"]> =
   /*#__PURE__*/ object({ "augmentation_common": [true, isBoolean], "recommended_size": [false, either([tuple([isInteger, isInteger] as const), isNull] as const)], "recommended_strategy": [false, either([isString, isNull] as const)], "trainer_resizes": [true, isBoolean] } as const);
@@ -402,8 +414,11 @@ export const checkSchemaVersionPage: Check<Schemas["SchemaVersionPage"]> =
 export const checkSourceCalibrationOut: Check<Schemas["SourceCalibrationOut"]> =
   /*#__PURE__*/ object({ "calibration": [true, either([checkCalibrationOut, isNull] as const)], "source_id": [true, isString] } as const);
 
+export const checkScanFrame: Check<Schemas["ScanFrame"]> =
+  /*#__PURE__*/ oneOf(["lidar_flu", "camera_rdf"] as const);
+
 export const checkSourceKind: Check<Schemas["SourceKind"]> =
-  /*#__PURE__*/ oneOf(["image_directory", "video"] as const);
+  /*#__PURE__*/ oneOf(["image_directory", "video", "point_cloud_directory"] as const);
 
 export const checkClipRange: Check<Schemas["ClipRange"]> =
   /*#__PURE__*/ object({ "end_seconds": [true, isNumber], "start_seconds": [true, isNumber] } as const);
@@ -412,7 +427,7 @@ export const checkVideoProvenanceOut: Check<Schemas["VideoProvenanceOut"]> =
   /*#__PURE__*/ object({ "codec": [true, isString], "duration_seconds": [true, isNumber], "extraction_fps": [true, isNumber], "fps": [true, either([isNumber, isNull] as const)], "height": [true, isInteger], "materializer": [true, either([isString, isNull] as const)], "policy_version": [true, either([isInteger, isNull] as const)], "ranges": [true, arrayOf(checkClipRange)], "scale_percent": [true, isInteger], "width": [true, isInteger] } as const);
 
 export const checkSourceOut: Check<Schemas["SourceOut"]> =
-  /*#__PURE__*/ object({ "id": [true, isString], "kind": [true, checkSourceKind], "name": [true, isString], "project_id": [true, isString], "registered_at": [true, isString], "video": [true, either([checkVideoProvenanceOut, isNull] as const)] } as const);
+  /*#__PURE__*/ object({ "frame": [true, either([checkScanFrame, isNull] as const)], "id": [true, isString], "kind": [true, checkSourceKind], "name": [true, isString], "project_id": [true, isString], "registered_at": [true, isString], "video": [true, either([checkVideoProvenanceOut, isNull] as const)] } as const);
 
 export const checkSourcePage: Check<Schemas["SourcePage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkSourceOut)], "total": [true, isInteger] } as const);

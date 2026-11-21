@@ -54,6 +54,9 @@ from visionset.kernel.domain import (
     InferenceConnection,
     LabelClass,
     ModelCapability,
+    PointCloudBounds,
+    PointCloudFormat,
+    PointCloudMetadata,
     PolygonGeometry,
     PredictedRegion,
     PredictionRequest,
@@ -1924,3 +1927,31 @@ def test_a_replacing_run_still_replaces_a_frame_outside_the_trunk(
     )
 
     assert again.annotations_replaced == 1
+
+
+def test_a_point_cloud_asset_is_passed_over_and_counted(prelabel_fixture: Fixture) -> None:
+    """A detector reads pixels; a scan in the batch is skipped, never sent to it."""
+    scan = PointCloudMetadata(
+        format=PointCloudFormat.PCD,
+        point_count=1,
+        bounds=PointCloudBounds(minimum=(0.0, 0.0, 0.0), maximum=(0.0, 0.0, 0.0)),
+        fields=("x", "y", "z"),
+    )
+    with prelabel_fixture.workspace.unit_of_work() as uow:
+        stored = uow.assets.get(prelabel_fixture.assets[0])
+        assert stored is not None
+        uow.assets.update(
+            Asset.model_validate(
+                stored.model_dump() | {"modality": "point_cloud", "point_cloud": scan}
+            )
+        )
+
+    outcome = pre_label(
+        prelabel_fixture.workspace,
+        job_id=prelabel_fixture.job_id,
+        connection_id=prelabel_fixture.connection.id,
+        pool=prelabel_fixture.pool,
+    )
+
+    assert (outcome.assets_considered, outcome.assets_skipped) == (2, 1)
+    assert prelabel_fixture.annotations_on(prelabel_fixture.assets[0]) == []

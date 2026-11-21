@@ -18,12 +18,13 @@ from __future__ import annotations
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 from tests.fixtures.endpoint import serving_endpoint
 from tests.fixtures.media import write_image
+from tests.fixtures.point_clouds import write_scans
 from tests.server._api import api_client
 from tests.server._jobs import InlineDispatcher
 
@@ -32,9 +33,11 @@ from visionset.inference import weights as weights_module
 from visionset.kernel.domain import (
     AssetSegmentation,
     DownloadSize,
+    ScanFrame,
     SegmentedMask,
 )
 from visionset.kernel.errors import InferenceOutOfMemory
+from visionset.kernel.services import IngestService, SourceService
 from visionset.server.routes import inference as inference_routes
 
 ASSET_WIDTH = 32
@@ -895,3 +898,20 @@ def test_a_failure_that_is_not_an_allocation_failure_is_not_dressed_up_as_one(
 
     with pytest.raises(RuntimeError, match="scalar type"):
         ask(client, project=project, asset=asset, connection=connection)
+
+
+def test_a_point_cloud_asset_has_no_pixels_to_click(
+    client: TestClient, project: str, tmp_path: Path, answering: list[Any]
+) -> None:
+    connection = a_connection(client)
+    workspace = client.app.state.workspace_handle.get()  # type: ignore[attr-defined]
+    source = SourceService(workspace).register_point_clouds(
+        UUID(project), write_scans(tmp_path / "scans"), frame=ScanFrame.LIDAR_FLU
+    )
+    scan = IngestService(workspace).ingest(source.id).assets[0]
+
+    answer = ask(client, project=project, asset=str(scan.id), connection=connection)
+
+    assert answer.status_code == 422, answer.text
+    assert answer.json()["code"] == "UNSUPPORTED_MEDIA"
+    assert answering == []

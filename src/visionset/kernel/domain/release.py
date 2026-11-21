@@ -53,8 +53,15 @@ from pydantic import (
 )
 
 from visionset.kernel.domain.annotation import Provenance
-from visionset.kernel.domain.calibration import Calibration, geometry_needs_calibration
+from visionset.kernel.domain.calibration import (
+    Calibration,
+    Modality,
+    ScanFrame,
+    geometry_fits_modality,
+    geometry_needs_calibration,
+)
 from visionset.kernel.domain.geometry import Geometry
+from visionset.kernel.domain.media import PointCloudMetadata
 from visionset.kernel.domain.schema import AttributeValue, GeometryType, LabelClass
 from visionset.kernel.errors import UnserializableManifest
 
@@ -89,10 +96,20 @@ from visionset.kernel.errors import UnserializableManifest
 #: (#1045) joined the union under the same version before any build wrote 4,
 #: and is held to the same rule: a cuboid needs a calibration, and a
 #: calibration needs version 4.
-MANIFEST_VERSION: int = 4
+#:
+#: **5** since #1046, which added the point-cloud modality: a
+#: :class:`ManifestAsset` may carry ``modality``, its ``point_cloud`` metadata
+#: and the ``frame`` its labels are read against. ``modality`` is omitted when
+#: it is ``image``, so an image-only release is still a version-3 or version-4
+#: document with its bytes and its hash untouched, and only a release holding a
+#: point cloud is one a version-4 build refuses.
+MANIFEST_VERSION: int = 5
 
 CALIBRATED_MANIFEST_VERSION: int = 4
 """The first manifest version that can carry a calibration, and so a 3D label."""
+
+MODALITY_MANIFEST_VERSION: int = 5
+"""The first manifest version that can carry an asset that is not an image."""
 
 
 class ManifestAnnotation(BaseModel):
@@ -138,6 +155,11 @@ class ManifestAsset(BaseModel):
     publication, present exactly when the asset carries a 3D label — a 3D label
     is never read without it — and **omitted** otherwise, so a 2D asset
     serializes to the bytes it always did, whatever its source says.
+
+    ``modality`` is omitted when it is ``image``, which is what keeps every
+    image-only manifest at the bytes it had before point clouds existed. A
+    ``point_cloud`` asset carries its scan metadata and the ``frame`` its
+    source declared, in place of pixel dimensions and a calibration.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -149,14 +171,49 @@ class ManifestAsset(BaseModel):
     height: int | None = None
     annotations: tuple[ManifestAnnotation, ...] = ()
     calibration: Calibration | None = Field(default=None, exclude_if=lambda value: value is None)
+    modality: Modality = Field(default="image", exclude_if=lambda value: value == "image")
+    point_cloud: PointCloudMetadata | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    frame: ScanFrame | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="after")
     def _three_d_labels_carry_their_calibration(self) -> ManifestAsset:
         if self.calibration is None and any(
-            geometry_needs_calibration(annotation.geometry) for annotation in self.annotations
+            geometry_needs_calibration(annotation.geometry, modality=self.modality)
+            for annotation in self.annotations
         ):
             raise ValueError(
                 f"asset {self.asset_id} carries a 3D label and no calibration to read it against"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _scan_carries_its_metadata_and_frame(self) -> ManifestAsset:
+        scan = self.modality == "point_cloud"
+        if (self.point_cloud is not None) != scan or (self.frame is not None) != scan:
+            raise ValueError(
+                f"asset {self.asset_id}: point_cloud metadata and a frame are present "
+                "exactly on a point_cloud asset"
+            )
+        if scan and (
+            self.calibration is not None or self.width is not None or self.height is not None
+        ):
+            raise ValueError(
+                f"point-cloud asset {self.asset_id} carries no calibration and no pixel size"
+            )
+        misfit = next(
+            (
+                one
+                for one in self.annotations
+                if not geometry_fits_modality(one.geometry, modality=self.modality)
+            ),
+            None,
+        )
+        if misfit is not None:
+            raise ValueError(
+                f"asset {self.asset_id} is a {self.modality} and cannot carry a "
+                f"{misfit.geometry.type.value} label"
             )
         return self
 
@@ -219,6 +276,13 @@ class Manifest(BaseModel):
                 f"a version-{self.manifest_version} manifest cannot carry a calibration; "
                 f"calibrated assets need version {CALIBRATED_MANIFEST_VERSION}"
             )
+        if self.manifest_version < MODALITY_MANIFEST_VERSION and any(
+            asset.modality != "image" for asset in self.assets
+        ):
+            raise ValueError(
+                f"a version-{self.manifest_version} manifest holds images only; "
+                f"a point-cloud asset needs version {MODALITY_MANIFEST_VERSION}"
+            )
         return self
 
     @property
@@ -233,6 +297,8 @@ def manifest_version_for(assets: Sequence[ManifestAsset]) -> int:
     Publishing writes this rather than :data:`MANIFEST_VERSION`, so content a
     version-3 build can read is still written as version 3 and keeps its hash.
     """
+    if any(asset.modality != "image" for asset in assets):
+        return MODALITY_MANIFEST_VERSION
     if any(asset.calibration is not None for asset in assets):
         return CALIBRATED_MANIFEST_VERSION
     return 3
@@ -566,6 +632,22 @@ class ClassCompatibility(BaseModel):
         return self.status is not ClassExportStatus.DROPPED
 
 
+class ModalityCompatibility(BaseModel):
+    """The assets of one modality a format cannot write, and the labels they take with them.
+
+    A row exists only for a modality the release holds and the format does not
+    declare in ``supported_modalities``: those assets are absent from the output
+    whole, so they are counted by asset, not by class.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    modality: Modality
+    assets: int = Field(ge=1)
+    annotations: int = Field(ge=0)
+    reason: str
+
+
 class ExportCompatibility(BaseModel):
     """What one format would lose from one release, worked out before writing.
 
@@ -639,6 +721,10 @@ class ExportCompatibility(BaseModel):
     degraded_annotations: int = Field(default=0, ge=0)
     degraded_assets: int = Field(default=0, ge=0)
     classes: tuple[ClassCompatibility, ...] = ()
+    #: Assets the format cannot open at all, one row per modality. Their labels
+    #: are counted here and in ``excluded_annotations``, and not in ``classes``,
+    #: which judge only what reaches the format.
+    dropped_modalities: tuple[ModalityCompatibility, ...] = ()
 
     @field_validator("classes")
     @classmethod

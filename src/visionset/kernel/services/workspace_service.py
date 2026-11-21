@@ -65,6 +65,7 @@ from visionset.kernel.adapters import (
     PillowImageProcessor,
     SqliteJobQueue,
     SqliteMetadataStore,
+    StdlibPointCloudProcessor,
     StoredTokenAuthProvider,
 )
 from visionset.kernel.domain import Workspace, normalize_name
@@ -83,6 +84,7 @@ from visionset.kernel.ports import (
     ImageProcessor,
     JobQueue,
     MetadataStore,
+    PointCloudProcessor,
     UnitOfWork,
 )
 
@@ -135,6 +137,8 @@ AuthProviderFactory: TypeAlias = Callable[[MetadataStore, UUID], AuthProvider]
 #: workspace, so the queue in this handle is that workspace's queue by
 #: construction.
 JobQueueFactory: TypeAlias = Callable[[MetadataStore], JobQueue]
+#: Zero-argument, for the image processor's reason: a decoder has no state.
+PointCloudProcessorFactory: TypeAlias = Callable[[], PointCloudProcessor]
 
 
 def _resolved(path: Path | str) -> Path:
@@ -207,7 +211,7 @@ def _workspace_above(start: Path) -> Path | None:
 
 
 class WorkspaceService:
-    """One open workspace: its identity, its directory, and its six ports.
+    """One open workspace: its identity, its directory, and its seven ports.
 
     Instances come from :meth:`init` and :meth:`open`. Constructing one directly
     is the injection seam — hand it ports and nothing here touches a disk.
@@ -238,6 +242,7 @@ class WorkspaceService:
         image_processor: ImageProcessor,
         auth_provider: AuthProvider,
         job_queue: JobQueue,
+        point_cloud_processor: PointCloudProcessor,
     ) -> None:
         self._root = root
         self._workspace = workspace
@@ -247,6 +252,7 @@ class WorkspaceService:
         self._image_processor = image_processor
         self._auth_provider = auth_provider
         self._job_queue = job_queue
+        self._point_cloud_processor = point_cloud_processor
 
     # --- composition: the only two ways to get one ------------------------
 
@@ -262,6 +268,7 @@ class WorkspaceService:
         image_processor_factory: ImageProcessorFactory = PillowImageProcessor,
         auth_provider_factory: AuthProviderFactory = StoredTokenAuthProvider,
         job_queue_factory: JobQueueFactory = SqliteJobQueue,
+        point_cloud_processor_factory: PointCloudProcessorFactory = StdlibPointCloudProcessor,
     ) -> WorkspaceService:
         """Create a workspace at ``path`` and return it open.
 
@@ -323,6 +330,7 @@ class WorkspaceService:
             image_processor_factory(),
             auth_provider_factory(metadata_store, workspace.id),
             job_queue_factory(metadata_store),
+            point_cloud_processor_factory(),
         )
 
     @classmethod
@@ -336,6 +344,7 @@ class WorkspaceService:
         image_processor_factory: ImageProcessorFactory = PillowImageProcessor,
         auth_provider_factory: AuthProviderFactory = StoredTokenAuthProvider,
         job_queue_factory: JobQueueFactory = SqliteJobQueue,
+        point_cloud_processor_factory: PointCloudProcessorFactory = StdlibPointCloudProcessor,
     ) -> WorkspaceService:
         """Open the workspace at ``path``, migrating it forward if it is behind.
 
@@ -392,6 +401,7 @@ class WorkspaceService:
             image_processor_factory(),
             auth_provider_factory(metadata_store, rows[0].id),
             job_queue_factory(metadata_store),
+            point_cloud_processor_factory(),
         )
 
     # --- what the surfaces and the later services read --------------------
@@ -451,6 +461,16 @@ class WorkspaceService:
         and means every port arrives the same way.
         """
         return self._image_processor
+
+    @property
+    def point_cloud_processor(self) -> PointCloudProcessor:
+        """Decoding, metadata and top-down previews for single point-cloud scans.
+
+        A port of its own beside :attr:`image_processor`, never a branch inside
+        it: a scan has no pixels. Stateless, and composed here for the same
+        reason the image processor is.
+        """
+        return self._point_cloud_processor
 
     @property
     def auth_provider(self) -> AuthProvider:

@@ -34,6 +34,7 @@ from visionset.kernel.domain.geometry import (
 )
 from visionset.kernel.domain.preprocessing import (
     SHOWCASE_SEED,
+    THREE_D,
     AugmentOp,
     AugmentStep,
     RecipeSpec,
@@ -48,7 +49,7 @@ from visionset.kernel.domain.release import (
     ManifestAsset,
     SplitAssignment,
 )
-from visionset.kernel.domain.schema import AttributeValue
+from visionset.kernel.domain.schema import AttributeValue, GeometryType
 from visionset.kernel.errors import (
     AugmentationRequiresSplit,
     ExportSourceUnreadable,
@@ -528,7 +529,12 @@ def plugin_manifest(manifest: Manifest, view: TransformedView) -> Manifest:
                     ),
                     calibration=(
                         sources[file.asset_id].calibration
-                        if any(geometry_needs_calibration(a.geometry) for a in file.annotations)
+                        if any(
+                            geometry_needs_calibration(
+                                a.geometry, modality=sources[file.asset_id].modality
+                            )
+                            for a in file.annotations
+                        )
                         else None
                     ),
                 )
@@ -570,7 +576,7 @@ def fit_within(file: TransformedFile, max_edge: int) -> TransformedFile:
             "height": height,
             "annotations": tuple(
                 annotation
-                if geometry_needs_calibration(annotation.geometry)
+                if GeometryType(annotation.geometry.type) in THREE_D
                 else annotation.model_copy(
                     update={
                         "geometry": _scaled(

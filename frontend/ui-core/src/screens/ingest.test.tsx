@@ -122,6 +122,7 @@ const IMAGE_SOURCE = {
   kind: "image_directory",
   name: "photos",
   registered_at: "2026-07-31T00:00:00.000000Z",
+  frame: null,
   video: null,
 };
 

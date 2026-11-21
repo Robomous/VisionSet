@@ -1,7 +1,7 @@
 # Sources
 
-A **source** records raw data offered to a project: either a directory of still images this
-process can open, or a declared video. A source is not annotatable and stores no pixels. Ingest
+A **source** records raw data offered to a project: a directory of still images this process can
+open, a directory of point-cloud scans it can open, or a declared video. A source is not annotatable and stores no pixels. Ingest
 *materializes* assets from the source, which retains their origin.
 
 A `VIDEO` source no longer means "a video file exists at a path the server can read." This
@@ -30,6 +30,10 @@ step to do: the server never receives the clip, so there is no file to check and
 probe. `SourceService.get`, `.list` and `require_source` still answer for both kinds; they read a
 row and do not care which service wrote it.
 
+`register_point_clouds(project.id, directory, frame=ScanFrame.LIDAR_FLU)` is the door to a
+`POINT_CLOUD_DIRECTORY` source - see
+[Point-cloud directories and their frame](#point-cloud-directories-and-their-frame).
+
 `register_images` checks that the directory exists and is a directory, and stops there. What is
 *in* it is read at ingest, because a count taken at registration would be stale by the time
 anything used it.
@@ -38,13 +42,14 @@ anything used it.
 
 | Field | Meaning |
 | --- | --- |
-| `kind` | `image_directory` or `video` - a `SourceKind` |
-| `locator` | identifies the origin; only `image_directory` promises it is a path this process can open |
+| `kind` | `image_directory`, `point_cloud_directory` or `video` - a `SourceKind` |
+| `locator` | identifies the origin; only the two directory kinds promise it is a path this process can open |
 | `display_name` | what somebody asked this source to be *called*, or `None` for nobody said |
 | `registered_at` | timezone-aware UTC, the **first** registration |
 | `capture_params` | opaque operator-supplied provenance; nothing branches on it |
 | `video` | a `VideoProvenance`, present exactly when `kind` is `video` |
-| `calibration` | the camera behind its frames, or `None` - see [Camera calibration](#camera-calibration) |
+| `calibration` | the camera behind its frames, or `None` - see [Camera calibration](#camera-calibration). Never on a point-cloud directory |
+| `frame` | the axis convention a point-cloud directory's scans are written in, present exactly when `kind` is `point_cloud_directory` |
 
 `locator` is the domain's name for what used to be unconditionally `path`, and the rename is the
 point: a directory's locator is a canonical filesystem path, `canonical_path`-normalized, and this
@@ -256,6 +261,37 @@ an import, a publish - so an asset that joined a calibrated source at another si
 first 3D label with `CALIBRATION_RESOLUTION_MISMATCH` rather than being read with the wrong
 focal lengths.
 
+## Point-cloud directories and their frame
+
+A point-cloud directory holds single PCD or PLY scans, each ingested as one `point_cloud` asset
+(see [media.md](media.md#point-cloud-scans)). A scan has no intrinsics, so its labels are read
+against the **frame its source declares**, not a calibration - the rule is the same
+[decision record](architecture/decisions/three-dimensional-labels-are-calibrated-image-labels.md).
+Nothing is normalised on ingest: a coordinate is stored in exactly the axes the sensor wrote.
+
+| `ScanFrame` | Axes | Up |
+| --- | --- | --- |
+| `lidar_flu` | x forward, y left, z up | +z |
+| `camera_rdf` | x right, y down, z forward (a depth camera's optical frame) | -y |
+
+A `cuboid_3d` on a scan is a centre and a size in the frame's own units and a `yaw` about its
+**up** axis, counter-clockwise seen from above. The thumbnail is drawn from above along the same
+axis, forward up the picture.
+
+Registration is idempotent on the directory, like `register_images`, and a point-cloud directory
+is a different source from an image directory at the same path. Registering it again with
+another frame replaces the declaration, unless one of its scans holds a 3D label: then it is
+refused with `CALIBRATION_IN_USE` (409), because the label would be re-read in other axes. The
+check runs under the store's write lock, the one every label write takes before it checks the
+frame, so a cuboid cannot land between the check and the change. Previews already rendered are
+not redrawn: they keep the orientation of the frame they were drawn in, and only a scan with no
+preview yet is drawn in the new one.
+Stating a camera calibration for a point-cloud directory, or for a scan, is refused with
+`CALIBRATION_NOT_APPLICABLE` (409).
+
+Only the SDK and `visionset ingest DIR --point-clouds FRAME` register one today; REST registers
+image directories through an upload and has no point-cloud equivalent yet, and neither does MCP.
+
 ## What is deliberately not here yet
 
 - **No delete.** A source disappears with its project's cascade and no sooner. The question ingest
@@ -266,6 +302,6 @@ focal lengths.
   `adapters/_tables.py` for why, and what it costs).
 - **No event.** Registering a source announces nothing. `IngestCompleted` is the event this area
   emits, and [the ingest pipeline](ingest.md) owns it.
-- **No remote kinds.** `SourceKind` has two members and grows by a deliberate kernel change with
+- **No remote kinds.** `SourceKind` has three members and grows by a deliberate kernel change with
   a service method behind it - see the enum's own docstring for why it is an enum where
   `DatasetChange.operation` is a plain `str`.

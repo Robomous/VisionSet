@@ -561,16 +561,28 @@ class CalibrationInUse(VisionSetError):
 
     Replacing a calibration is allowed; removing the last one an annotated asset
     resolves to is not. The remedy is to delete those labels first, or to give
-    the assets a calibration of their own before clearing this one.
+    the assets a calibration of their own before clearing this one. Declaring
+    another scan frame for a point-cloud source whose scans hold 3D labels is
+    refused the same way, since those labels would be re-read in other axes.
     """
 
 
 class CalibrationMissing(VisionSetError):
-    """A 3D label was written or published for an asset with no calibration to read it against.
+    """A 3D label was written or published for an asset with nothing to read it against.
 
-    The calibration that applies is the asset's own override, else its
-    source's. The remedy is to set one on either, then resubmit the identical
-    request.
+    On an image that is a calibration: the asset's own override, else its
+    source's, and the remedy is to set one on either, then resubmit the
+    identical request. On a point cloud it is the scan frame its source
+    declares, and the remedy is to ingest the scan from a source that declares one.
+    """
+
+
+class CalibrationNotApplicable(VisionSetError):
+    """A camera calibration was stated for something that has no camera intrinsics.
+
+    A point-cloud asset, and the point-cloud directory it came from, are read
+    against a declared scan frame instead. The remedy is to calibrate the image
+    assets this was meant for, not the scans.
     """
 
 

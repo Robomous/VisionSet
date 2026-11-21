@@ -30,7 +30,9 @@ from visionset.kernel.domain import (
     Task,
     VertexVisibility,
     check_vertex_visibility,
+    geometry_fits_modality,
     geometry_needs_calibration,
+    geometry_reference,
     preprocessing_transform,
 )
 from visionset.kernel.domain import geometry as geometry_module
@@ -79,7 +81,9 @@ def _intersects_past_the_finite_check(monkeypatch: pytest.MonkeyPatch) -> None:
 SITES: dict[str, Callable[[pytest.MonkeyPatch], object]] = {
     "geometry_intersects_asset": _intersects_past_the_finite_check,
     "coordinates_are_finite": lambda _: geometry_module._coordinates_are_finite(STAND_IN),
-    "geometry_needs_calibration": lambda _: geometry_needs_calibration(STAND_IN),
+    "geometry_needs_calibration": lambda _: geometry_needs_calibration(STAND_IN, modality="image"),
+    "geometry_reference on a scan": lambda _: geometry_reference(STAND_IN, modality="point_cloud"),
+    "geometry_fits_modality": lambda _: geometry_fits_modality(STAND_IN, modality="point_cloud"),
     "preprocessing scale": lambda _: preprocessing_transform._scaled(STAND_IN, 2.0, 2.0, 0.0, 0.0),
     "preprocessing mirror": lambda _: preprocessing_transform._mirrored(STAND_IN, 8.0),
     "preprocessing rotate": lambda _: preprocessing_transform._rotated_once(STAND_IN, 8.0),
@@ -146,7 +150,9 @@ ANSWERS_3D: dict[str, Callable[[Any], object]] = {
         g, width=8, height=8
     ),
     "coordinates_are_finite": lambda g: geometry_module._coordinates_are_finite(g),
-    "geometry_needs_calibration": lambda g: geometry_needs_calibration(g),
+    "geometry_needs_calibration": lambda g: geometry_needs_calibration(g, modality="image"),
+    "geometry_reference on a scan": lambda g: geometry_reference(g, modality="point_cloud"),
+    "geometry_fits_modality": lambda g: geometry_fits_modality(g, modality="point_cloud"),
     "nms extent": lambda g: extent_of(g),
     "yolo derive_task": lambda g: _yolo_writer.derive_task(_in_manifest(g)[2], frozenset(Task)),
     "yolo box": lambda g: _yolo_writer._as_box(_in_manifest(g)[0]),
@@ -160,6 +166,8 @@ EXPECTED_3D: dict[str, Callable[[Any], object]] = {
     "geometry_intersects_asset": lambda _: True,
     "coordinates_are_finite": lambda _: True,
     "geometry_needs_calibration": lambda _: True,
+    "geometry_reference on a scan": lambda _: "scan_frame",
+    "geometry_fits_modality": lambda _: True,
     "nms extent": lambda _: None,
     "yolo derive_task": lambda _: Task.DETECT,
     "yolo box": lambda _: None,

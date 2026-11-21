@@ -50,6 +50,7 @@ const ASSET = {
   id: "asset-1",
   project_id: PROJECT,
   modality: "image",
+  point_cloud: null,
   content_hash: "abcdef01abcdef01",
   width: 640,
   height: 480,

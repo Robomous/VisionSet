@@ -266,7 +266,9 @@ def get_asset_content(
     `Content-Type` comes from what the ingest actually probed. An asset written
     before the pipeline recorded a format is served as
     `application/octet-stream`, because inventing one would be worse than
-    admitting it.
+    admitting it. A point-cloud scan is served as `application/octet-stream`
+    too, the PCD or PLY file as ingested: neither has a registered media type,
+    and the asset's `point_cloud.format` says which it is.
 
     Cached forever and never revalidated: identity is content, so these bytes
     cannot change. The `ETag` is the content hash.

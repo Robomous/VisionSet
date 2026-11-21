@@ -37,6 +37,7 @@ function asset(
     id: `asset-${index}`,
     project_id: PROJECT,
     modality: "image",
+    point_cloud: null,
     content_hash: `${index}`.repeat(8) + "abcdef",
     width: 640,
     height: 480,

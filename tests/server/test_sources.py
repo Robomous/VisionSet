@@ -256,7 +256,7 @@ def test_a_source_never_publishes_its_path(
     body = post_images(client, project, image_part(tmp_path, "a.png", 1)).json()
 
     assert "path" not in body
-    assert set(body) == {"id", "project_id", "kind", "name", "registered_at", "video"}
+    assert set(body) == {"id", "project_id", "kind", "name", "registered_at", "video", "frame"}
 
 
 def test_reading_an_unknown_source_is_404(client: TestClient) -> None:

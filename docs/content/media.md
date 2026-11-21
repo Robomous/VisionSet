@@ -13,10 +13,11 @@ with WorkspaceService.open("./road-signs") as workspace:
         preview = workspace.image_processor.thumbnail(handle)  # opaque JPEG bytes
 ```
 
-## The kernel has one decoder, and it is for stills
+## The kernel has one image decoder, and it is for stills
 
-`ImageProcessor` is the only media port `WorkspaceService` composes, and it is named for stills
-rather than for media because that is all it ever reads. This process never decodes video: a
+`ImageProcessor` is the image port `WorkspaceService` composes, and it is named for stills
+rather than for media because that is all it ever reads. Point-cloud scans have a port of their
+own beside it - see [Point-cloud scans](#point-cloud-scans). This process never decodes video: a
 client materializes a clip into JPEG frames on its own machine and posts them here, and from that
 point on each one is an ordinary image - decoded, hashed and thumbnailed by exactly the same
 `ImageProcessor` a directory of photos goes through. See [ingest.md](ingest.md) for the session
@@ -239,6 +240,68 @@ after it.
 No service below the composition point ever names `PillowImageProcessor`. That is the rule
 [workspaces.md](workspaces.md) describes, and it is what makes swapping the decoder a change to
 two functions and to nowhere else.
+
+## Point-cloud scans
+
+`PointCloudProcessor` reads single point-cloud scans, the way `ImageProcessor` reads stills, and
+is a separate port because a scan has no pixels: every image method would be one a scan
+implementation raised from. It is reached as `workspace.point_cloud_processor`, built by a
+zero-argument `point_cloud_processor_factory`, appended last on `WorkspaceService`. The default
+adapter, `StdlibPointCloudProcessor`, uses the standard library to parse and Pillow to draw.
+
+```python
+from visionset.kernel.domain import ScanFrame
+
+with open("scans/000042.pcd", "rb") as handle:
+    metadata = workspace.point_cloud_processor.probe(
+        handle
+    )  # PointCloudMetadata(format="pcd", ...)
+    preview = workspace.point_cloud_processor.thumbnail(handle, frame=ScanFrame.LIDAR_FLU)
+```
+
+**The bytes decide, never the suffix**, as for images: the header is sniffed, so a `.bin` holding
+a PCD is read as one. KITTI's headerless `.bin` cannot be sniffed and is a format importer's job.
+
+| Format | Encodings read |
+| --- | --- |
+| PCD | `DATA ascii`, `binary` and `binary_compressed` (LZF) |
+| PLY | `ascii`, `binary_little_endian` and `binary_big_endian`; the `vertex` element is read, and faces, tristrips and other elements are skipped |
+
+`x`, `y` and `z` must be float fields. `intensity`, and colour as PCD `rgb` or `rgba` or PLY
+`red`/`green`/`blue`, are recorded in `fields` when present; anything else is ignored, including
+PCD padding (`_`). A point with a non-finite coordinate - an organized cloud's empty pixel - is
+dropped and not counted.
+
+`probe` decodes every point before it answers, so a refused scan never leaves a blob or an asset
+behind. It returns `PointCloudMetadata`: the `format`, the `point_count` kept, the axis-aligned
+`bounds` of those points, and the `fields`.
+
+| Refusal | When |
+| --- | --- |
+| `UNSUPPORTED_MEDIA` | not a PCD or PLY header; an encoding not read; no float `x`, `y`, `z`; more than 10 million points declared, or more than 512 MiB of point data |
+| `CORRUPT_MEDIA` | a recognisable header whose data is truncated or malformed, a header that contradicts itself (a `SIZE` below 1, a negative `COUNT`, `POINTS` other than `WIDTH` x `HEIGHT`, a PLY property named twice, an element before the vertices declaring an implausible count), an ascii row over 64 KiB, a damaged LZF stream, or no finite point at all |
+
+**The limits are sized for one scan.** Ten million points is several sweeps of a 128-beam lidar,
+and keeps the decoded coordinates - three doubles a point - under a quarter of a gigabyte. The
+limits are checked against the header before anything is decoded, and an LZF stream may be no
+larger than LZF can make from the data the header declares. Whatever else a hostile file
+provokes while it is parsed is refused as `CORRUPT_MEDIA` against that one file: an ingest run
+reports it and carries on, and nothing of it is stored.
+
+`read` gives both answers from one decode, and is what ingest uses: the scan is parsed once, and
+its blob is written only after it, together with its preview.
+
+**The thumbnail is a bird's-eye view**, drawn from above along the source's declared frame's up
+axis with forward up the picture: each pixel is the tallest point in it, shaded from dark to light
+over the scan's height range, on black. It is a JPEG like every other preview, sized and pinned
+the same way, so the thumbnail route and the gallery serve it unchanged.
+
+A point-cloud asset carries `modality: "point_cloud"` and its `point_cloud` metadata, and no
+`width`, `height`, `format` or calibration. Its content is served as `application/octet-stream`,
+the PCD or PLY as ingested. Whatever reads pixels refuses it with `UNSUPPORTED_MEDIA` - a point
+suggestion, a pre-processing preview, MCP's `get_asset_image` with `full` - and a pre-label run
+passes it over. A pixel-space label (`bbox`, `polygon`, `polyline`) on a scan is refused with
+`INVALID_ANNOTATION`; a `classification_tag` and the 3D geometries are accepted.
 
 ## Video moved to the browser
 

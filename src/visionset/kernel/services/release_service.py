@@ -74,6 +74,7 @@ from visionset.kernel.domain import (
     Manifest,
     ManifestAnnotation,
     ManifestAsset,
+    ModalityCompatibility,
     RecipeSpec,
     Release,
     ReleasePublished,
@@ -85,11 +86,13 @@ from visionset.kernel.domain import (
     assign_split,
     canonical_bytes,
     geometry_needs_calibration,
+    geometry_needs_scan_frame,
     manifest_version_for,
     normalize_release_tag,
     plugin_manifest,
     recipe_hash,
     require_calibration,
+    require_scan_frame,
     sha256_hex,
     sha256_hex_of_stream,
     source_of_content_hash,
@@ -900,17 +903,29 @@ def _manifest_assets(uow: UnitOfWork, assets: list[Asset]) -> tuple[ManifestAsse
     it; every other asset gets none, whatever its source says, so a 2D release
     hashes as it did before calibration existed.
 
+    A point-cloud asset carries its scan metadata and its source's declared
+    frame instead, labelled or not, so the release says how to read every
+    coordinate in the scan as well as on it.
+
     Raises:
-        CalibrationMissing: an asset with a 3D label has no calibration.
+        CalibrationMissing: an image with a 3D label has no calibration, or a
+            scan has no source declaring its frame.
         CalibrationResolutionMismatch: its calibration was measured at another size.
     """
     built = []
     for asset in assets:
         annotations = uow.annotations.list(asset.id)
+        source = None if asset.source_id is None else uow.sources.get(asset.source_id)
         calibration = None
-        if any(geometry_needs_calibration(a.geometry) for a in annotations):
-            source = None if asset.source_id is None else uow.sources.get(asset.source_id)
+        if any(
+            geometry_needs_calibration(a.geometry, modality=asset.modality) for a in annotations
+        ):
             calibration = require_calibration(asset, source)
+        frame = None
+        if asset.modality == "point_cloud" or any(
+            geometry_needs_scan_frame(a.geometry, modality=asset.modality) for a in annotations
+        ):
+            frame = require_scan_frame(asset, source)
         built.append(
             ManifestAsset(
                 asset_id=asset.id,
@@ -920,6 +935,9 @@ def _manifest_assets(uow: UnitOfWork, assets: list[Asset]) -> tuple[ManifestAsse
                 height=asset.height,
                 annotations=tuple(_manifest_annotation(a) for a in annotations),
                 calibration=calibration,
+                modality=asset.modality,
+                point_cloud=asset.point_cloud,
+                frame=frame,
             )
         )
     return tuple(built)
@@ -1295,21 +1313,13 @@ def _compatibility(
     ``degraded_annotations`` counts what survives coarser; ``compatible`` is false
     for either, so nothing about consent moved.
 
-    **Geometry only, and modality deliberately not.** ``Exporter`` declares
-    ``supported_modalities`` and ``list_formats`` publishes it, but nothing here
-    judges against it: a :class:`ManifestAsset` carries ``asset_id``,
-    ``content_hash``, ``uri`` and the pixel dimensions, and **no modality**.
-    Adding one would change the shape of every manifest — and therefore every
-    release hash ever computed, which is the one number this whole subsystem
-    exists to keep stable.
-
-    Reading the modality off the live ``Asset`` instead would be worse: it would
-    make the report depend on something that can change after publication, and
-    the property that lets one document be shown in a dialog, attached to a
-    refusal and written into the output is precisely that it is derived from the
-    snapshot alone. Recorded rather than skipped quietly; a modality a format
-    cannot open would have to become a field on ``ManifestAsset``, behind a
-    ``MANIFEST_VERSION`` bump, which is its own decision.
+    **Modality first, from the snapshot.** A :class:`ManifestAsset` records
+    its modality (manifest version 5), and an asset whose modality the format
+    does not declare in ``supported_modalities`` is absent from the output
+    whole: it is counted in ``dropped_modalities`` and in the excluded totals,
+    and its labels are left out of the per-class rows, which judge only what
+    reaches the format. Never read off the live ``Asset``, so the report stays
+    a function of the release alone.
 
     **A target narrows the format.** Given one, a geometry the format writes
     whole but the target's task set does not accept is reported dropped, and
@@ -1323,6 +1333,24 @@ def _compatibility(
     no place for one beside a box. When anything else reaches the output, those
     rows are reported dropped, because that is what the plugin does.
     """
+    unopenable = [
+        asset for asset in manifest.assets if asset.modality not in exporter.supported_modalities
+    ]
+    dropped_modalities = tuple(
+        ModalityCompatibility(
+            modality=modality,
+            assets=len(of_modality),
+            annotations=sum(len(asset.annotations) for asset in of_modality),
+            reason=(
+                f"{exporter.format_name} does not write {modality} assets, so "
+                f"{len(of_modality)} of them are left out with every label on them"
+            ),
+        )
+        for modality in sorted({asset.modality for asset in unopenable})
+        for of_modality in [[asset for asset in unopenable if asset.modality == modality]]
+    )
+    manifest = _openable(manifest, exporter)
+
     # Keyed by class *and* geometry: a class accepting both boxes and polygons
     # gets one row per shape, because a boxes-only format writes one whole and
     # reduces the other and a single row could only say one of those. Seeded from
@@ -1385,7 +1413,8 @@ def _compatibility(
         for (name, geometry), (count, assets) in per_shape.items()
     )
 
-    dropped = counts[ClassExportStatus.DROPPED]
+    dropped = counts[ClassExportStatus.DROPPED] + sum(row.annotations for row in dropped_modalities)
+    touched[ClassExportStatus.DROPPED] |= {asset.asset_id for asset in unopenable}
     degraded = counts[ClassExportStatus.DEGRADED]
     return ExportCompatibility(
         release_id=release.id,
@@ -1394,13 +1423,27 @@ def _compatibility(
         # Degraded counts against `compatible` exactly as dropped does: a polygon
         # arriving as a box has lost its shape, and the caller is asked before
         # that happens rather than told after.
-        compatible=dropped == 0 and degraded == 0,
+        compatible=dropped == 0 and degraded == 0 and not dropped_modalities,
         format_is_lossy=exporter.lossy,
         excluded_annotations=dropped,
         excluded_assets=len(touched[ClassExportStatus.DROPPED]),
         degraded_annotations=degraded,
         degraded_assets=len(touched[ClassExportStatus.DEGRADED]),
         classes=classes,
+        dropped_modalities=dropped_modalities,
+    )
+
+
+def _openable(manifest: Manifest, exporter: Exporter) -> Manifest:
+    """The manifest without the assets whose modality the format cannot open."""
+    return manifest.model_copy(
+        update={
+            "assets": tuple(
+                asset
+                for asset in manifest.assets
+                if asset.modality in exporter.supported_modalities
+            )
+        }
     )
 
 
@@ -1412,7 +1455,12 @@ def _handed(manifest: Manifest, exporter: Exporter, target: ExportTarget | None)
     and consented to like any loss, and no pixel-moving step can follow them,
     so leaving them in would refuse a resize for a label the export never
     writes. Every other geometry is the plugin's to drop, as it always was.
+
+    An asset of a modality the format does not open is never handed over: the
+    report already counts it dropped, and no plugin is asked to read a scan
+    as an image.
     """
+    manifest = _openable(manifest, exporter)
     if target is not None:
         return _addressed_to(manifest, target.supported_geometries)
     written = exporter.supported_geometries | exporter.degraded_geometries

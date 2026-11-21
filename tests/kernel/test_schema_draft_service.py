@@ -41,8 +41,8 @@ def _drafts(
     return workspace, SchemaDraftService(workspace), project
 
 
-def test_the_format_version_is_twenty_one() -> None:
-    assert FORMAT_VERSION == 21
+def test_the_format_version_is_twenty_two() -> None:
+    assert FORMAT_VERSION == 22
 
 
 def test_a_draft_round_trips_with_its_half_typed_classes_intact(tmp_path: Path) -> None:

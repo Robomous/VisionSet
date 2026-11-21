@@ -1,8 +1,8 @@
 # Three-dimensional labels are calibrated image labels
 
-`GeometryType` reserves `cuboid_3d` and `polyline_3d`, and `Asset.modality` admits only
+`GeometryType` reserved `cuboid_3d` and `polyline_3d` while `Asset.modality` admitted only
 `image`. This page fixes what those reservations mean, so the first implementation does not
-settle it by accident.
+settle it by accident; `point_cloud` has since joined `image` as a modality, under the rules below.
 
 ## The rule
 
@@ -16,14 +16,19 @@ It is interpretable only together with the calibration of the source the image c
   the same validator, not a parallel field.
 - **`cuboid_3d` is a center, a size and a yaw**, in metres, in the sensor frame. A full
   rotation is an extension of that shape, not an alternative to it.
-- **A point cloud is not an image.** If a point-cloud asset is ever admitted, it is a new
-  modality holding a single scan, and it arrives with a manifest that records modality
-  (the next `MANIFEST_VERSION`). A multi-sensor frame is not an asset.
+- **A point cloud is not an image.** A point-cloud asset is a new modality holding a single
+  scan, and it arrives with a manifest that records modality (the next `MANIFEST_VERSION`).
+  A multi-sensor frame is not an asset.
+- **A scan's labels live in the scan's own frame, not an image's.** A scan has no
+  intrinsics, so a 3D label on a point-cloud asset needs no image calibration. Its frame is
+  the sensor's, and the **source declares which frame that is** (for example a lidar with x
+  forward, y left, z up). `yaw` on such a label is a rotation about that frame's up axis,
+  and nothing is normalised on ingest, so a coordinate is never silently re-expressed.
 
 ## What this forbids
 
-- a 3D geometry that is read without the calibration it depends on, or that stores pixel
-  coordinates in a 3D field;
+- a 3D geometry that is read without the calibration or declared frame it depends on, or
+  that stores pixel coordinates in a 3D field;
 - widening `Asset.modality` as a side effect of adding a geometry: a 3D label on an image does
   not need it;
 - a release manifest that changes shape without a `MANIFEST_VERSION` bump;

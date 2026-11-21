@@ -1,5 +1,5 @@
 # usage: from visionset.kernel.domain import Calibration, effective_calibration
-"""Camera calibration: what a 3D label needs to be read against its image.
+"""Camera calibration and scan frames: what a 3D label is read against.
 
 A calibration belongs to a source, with an optional per-asset override — see
 ``docs/content/architecture/decisions/three-dimensional-labels-are-calibrated-image-labels.md``.
@@ -16,10 +16,15 @@ it, a calibration that does not match the asset it would apply to is refused.
 **Extrinsics are required**, and map the sensor frame into the rig frame:
 ``p_rig = rotation @ p_sensor + translation``. The rotation is a row-major 3x3
 matrix and must be a proper rotation (orthonormal, determinant +1).
+
+**A point cloud is read against a declared frame instead.** A scan has no
+intrinsics; its source declares which axis convention its coordinates use
+(:class:`ScanFrame`), and nothing is re-expressed on ingest.
 """
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import TYPE_CHECKING, Final, Literal, assert_never
 from uuid import UUID
 
@@ -34,7 +39,11 @@ from visionset.kernel.domain.geometry import (
     Polyline3DGeometry,
     PolylineGeometry,
 )
-from visionset.kernel.errors import CalibrationMissing, CalibrationResolutionMismatch
+from visionset.kernel.errors import (
+    CalibrationMissing,
+    CalibrationNotApplicable,
+    CalibrationResolutionMismatch,
+)
 
 if TYPE_CHECKING:
     from visionset.kernel.domain.asset import Asset
@@ -169,12 +178,119 @@ def require_calibration(asset: Asset, source: Source | None) -> Calibration:
     return calibration
 
 
-def geometry_needs_calibration(geometry: Geometry) -> bool:
-    """Whether a stored label is read against its asset's calibration: every 3D one is."""
+Modality = Literal["image", "point_cloud"]
+"""What an asset holds: a still image, or a single point-cloud scan."""
+
+GeometryReference = Literal["calibration", "scan_frame"]
+
+
+class ScanFrame(StrEnum):
+    """The axis convention a point-cloud source's coordinates are written in.
+
+    Declared by the source, never inferred, and never normalised away: a label
+    on a scan is stored in exactly these axes, and a ``cuboid_3d`` yaw is a
+    rotation about :attr:`up`, counter-clockwise seen from above.
+    """
+
+    #: A lidar's usual frame: x forward, y left, z up.
+    LIDAR_FLU = "lidar_flu"
+    #: A depth camera's optical frame: x right, y down, z forward (OpenCV's).
+    CAMERA_RDF = "camera_rdf"
+
+    @property
+    def forward(self) -> tuple[int, int]:
+        """The forward axis as ``(index, sign)`` over ``(x, y, z)``."""
+        return _FRAME_AXES[self][0]
+
+    @property
+    def left(self) -> tuple[int, int]:
+        return _FRAME_AXES[self][1]
+
+    @property
+    def up(self) -> tuple[int, int]:
+        return _FRAME_AXES[self][2]
+
+
+_FRAME_AXES: Final[dict[ScanFrame, tuple[tuple[int, int], tuple[int, int], tuple[int, int]]]] = {
+    ScanFrame.LIDAR_FLU: ((0, 1), (1, 1), (2, 1)),
+    ScanFrame.CAMERA_RDF: ((2, 1), (0, -1), (1, -1)),
+}
+
+
+def require_scan_frame(asset: Asset, source: Source | None) -> ScanFrame:
+    """The frame a 3D label on a point-cloud ``asset`` is read against, or a refusal.
+
+    Raises:
+        CalibrationMissing: the asset has no source declaring a frame.
+    """
+    frame = None if source is None else source.frame
+    if frame is None:
+        raise CalibrationMissing(
+            f"point-cloud asset {asset.id} has "
+            + ("no source" if source is None else f"a source {source.id} declaring no frame")
+            + "; a 3D label on a scan is read against the frame its source declares"
+        )
+    return frame
+
+
+def require_calibratable(asset: Asset) -> None:
+    """Refuse a calibration for an asset that cannot have one.
+
+    Raises:
+        CalibrationNotApplicable: the asset is a point cloud, which has no intrinsics.
+    """
+    if asset.modality != "image":
+        raise CalibrationNotApplicable(
+            f"asset {asset.id} is a {asset.modality}, which has no camera intrinsics; "
+            "its 3D labels are read against the frame its source declares"
+        )
+
+
+def geometry_reference(geometry: Geometry, *, modality: Modality) -> GeometryReference | None:
+    """What a stored label on an asset of that modality is read against, if anything.
+
+    Every 3D label is read against something: an image's calibration, or a
+    scan's declared frame. A 2D label is read against nothing but its pixels.
+    """
     match geometry:
         case Polyline3DGeometry() | Cuboid3DGeometry():
-            return True
+            match modality:
+                case "image":
+                    return "calibration"
+                case "point_cloud":
+                    return "scan_frame"
+                case _:
+                    assert_never(modality)
         case BboxGeometry() | PolygonGeometry() | PolylineGeometry() | ClassificationGeometry():
-            return False
+            return None
+        case _:
+            assert_never(geometry)
+
+
+def geometry_needs_calibration(geometry: Geometry, *, modality: Modality) -> bool:
+    """Whether a stored label is read against its asset's camera calibration.
+
+    Every 3D label on an image is; a 3D label on a point cloud is read against
+    its source's declared frame instead (:func:`geometry_needs_scan_frame`).
+    """
+    return geometry_reference(geometry, modality=modality) == "calibration"
+
+
+def geometry_needs_scan_frame(geometry: Geometry, *, modality: Modality) -> bool:
+    """Whether a stored label is read against its point-cloud source's declared frame."""
+    return geometry_reference(geometry, modality=modality) == "scan_frame"
+
+
+def geometry_fits_modality(geometry: Geometry, *, modality: Modality) -> bool:
+    """Whether a label of that shape means anything on an asset of that modality.
+
+    A pixel-space shape on a scan has no pixels to be measured in; a tag and a
+    3D label fit both.
+    """
+    match geometry:
+        case BboxGeometry() | PolygonGeometry() | PolylineGeometry():
+            return modality == "image"
+        case Polyline3DGeometry() | Cuboid3DGeometry() | ClassificationGeometry():
+            return True
         case _:
             assert_never(geometry)

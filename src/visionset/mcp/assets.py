@@ -51,7 +51,7 @@ from mcp.types import CallToolResult, TextContent
 from pydantic import ConfigDict, Field, with_config
 
 from visionset import wire
-from visionset.kernel.domain import Asset, ImageFormat
+from visionset.kernel.domain import Asset, ImageFormat, require_image
 from visionset.kernel.ports import THUMBNAIL_FORMAT
 from visionset.kernel.services import (
     IngestService,
@@ -204,11 +204,15 @@ def get_asset_image(
     Refuses if no preview has been rendered yet, and names `backfill_thumbnails`
     as the remedy. An asset with no recorded image format has no honest media
     type, so its measurements come back with an explanation instead of pixels.
+
+    A point-cloud asset's preview is its scan seen from above, with no pixel
+    frame to write in (`width`, `height` and `scale` are null); `full=true` is
+    refused for one, since a scan is not an image.
     """
     with opened_workspace() as workspace:
         resolved = ProjectService(workspace).resolve(project)
         asset = IngestService(workspace).asset(resolved.id, identifier(asset_id, what="asset_id"))
-        return _original(workspace, asset) if full else _preview(workspace, asset)
+        return _original(workspace, require_image(asset)) if full else _preview(workspace, asset)
 
 
 def list_project_assets(

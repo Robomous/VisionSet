@@ -131,8 +131,10 @@ def test_no_image_frame_bounds_apply() -> None:
 
 
 def test_it_needs_a_calibration_and_no_2d_geometry_does() -> None:
-    assert geometry_needs_calibration(PATH)
-    assert not geometry_needs_calibration(PolylineGeometry(points=[(0, 0), (1, 1)]))
+    assert geometry_needs_calibration(PATH, modality="image")
+    assert not geometry_needs_calibration(
+        PolylineGeometry(points=[(0, 0), (1, 1)]), modality="image"
+    )
 
 
 def test_a_lane_format_never_reads_it_as_a_lane() -> None:

@@ -63,9 +63,11 @@ from visionset.kernel.domain import (
     IngestState,
     ItemFailure,
     LabelClass,
+    PointCloudMetadata,
     PreprocessingRecipe,
     Project,
     Release,
+    ScanFrame,
     SchemaDraft,
     Source,
     SourceKind,
@@ -414,6 +416,7 @@ def _source_to_row(entity: Source) -> t.Base:
         capture_params=dict(entity.capture_params),
         video=_video_to_json(entity.video),
         calibration=_calibration_to_json(entity.calibration),
+        frame=None if entity.frame is None else entity.frame.value,
     )
 
 
@@ -429,6 +432,7 @@ def _source_to_domain(_: Session, row: Any) -> Source:
         capture_params=row.capture_params,
         video=None if row.video is None else VideoProvenance.model_validate(row.video),
         calibration=_calibration_from_json(row.calibration),
+        frame=None if row.frame is None else ScanFrame(row.frame),
     )
 
 
@@ -488,6 +492,9 @@ def _asset_to_row(entity: Asset) -> t.Base:
         thumbnail_hash=entity.thumbnail_hash,
         ingested_at=None if entity.ingested_at is None else entity.ingested_at.isoformat(),
         calibration=_calibration_to_json(entity.calibration),
+        point_cloud=(
+            None if entity.point_cloud is None else entity.point_cloud.model_dump(mode="json")
+        ),
     )
 
 
@@ -507,6 +514,9 @@ def _asset_to_domain(_: Session, row: Any) -> Asset:
         thumbnail_hash=row.thumbnail_hash,
         ingested_at=None if row.ingested_at is None else datetime.fromisoformat(row.ingested_at),
         calibration=_calibration_from_json(row.calibration),
+        point_cloud=(
+            None if row.point_cloud is None else PointCloudMetadata.model_validate(row.point_cloud)
+        ),
     )
 
 

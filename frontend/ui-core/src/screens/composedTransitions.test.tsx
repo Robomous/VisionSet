@@ -208,6 +208,7 @@ describe("Complete and promote", () => {
       id: `asset-${at}`,
       project_id: PROJECT,
       modality: "image",
+      point_cloud: null,
       content_hash: `${at}`.padStart(8, "0") + "deadbeef",
       width: 1,
       height: 1,

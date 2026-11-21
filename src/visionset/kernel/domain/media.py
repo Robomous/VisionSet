@@ -1,4 +1,4 @@
-# usage: from visionset.kernel.domain import ImageFormat, ImageMetadata, VideoMetadata
+# usage: from visionset.kernel.domain import ImageFormat, ImageMetadata, PointCloudMetadata
 """What a media file turns out to be, once something has decoded it.
 
 These are what something that decoded media has to say about it. They live in
@@ -7,12 +7,12 @@ ingest pipeline copies an ``ImageMetadata`` onto an ``Asset``, and a REST surfac
 serializes one. A port's vocabulary may be domain; a domain model may never be a
 port's.
 
-Both modalities live here, which is why the file is named for the concept and not
-for one of them: :class:`ImageMetadata` for a still, :class:`VideoMetadata` for a
-clip. Only the first is a port's result type — ``ImageProcessor`` is the one
-decoder this process has. The second is a **declaration**: a client materializes
-frames from a clip that never leaves its machine and states what it read off the
-container, which ``VideoImportService`` stores as provenance.
+Every kind of media lives here, which is why the file is named for the concept and
+not for one of them: :class:`ImageMetadata` for a still, :class:`PointCloudMetadata`
+for a scan, :class:`VideoMetadata` for a clip. The first two are port results —
+``ImageProcessor`` and ``PointCloudProcessor``. The third is a **declaration**: a
+client materializes frames from a clip that never leaves its machine and states
+what it read off the container, which ``VideoImportService`` stores as provenance.
 
 **The dataset vocabulary is** :class:`ImageFormat` **, frozen at two members.**
 Acceptance is wider than the dataset: ``ImageProcessor.stills`` reads anything
@@ -38,16 +38,16 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from enum import StrEnum
-from typing import Final
+from typing import Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ImageFormat(StrEnum):
     """Every still-image encoding a dataset may contain. See the module docstring.
 
-    A ``StrEnum`` rather than a ``Literal``, unlike ``Asset.modality``: that one
-    has a single member, where an enum would be ceremony. This set is **frozen
+    A ``StrEnum`` rather than a ``Literal``, unlike ``Asset.modality``, which
+    nothing outside the kernel extends. This set is **frozen
     at JPEG and PNG**: acceptance is wider — anything Pillow decodes is read —
     but everything else is normalized into these two at ingest. It costs the
     persistence layer nothing — a ``StrEnum`` member *is* a ``str``, and the
@@ -191,3 +191,66 @@ class VideoMetadata(BaseModel):
     fps: float | None = Field(default=None, gt=0)
     duration_seconds: float = Field(gt=0)
     codec: str = Field(min_length=1)
+
+
+class PointCloudFormat(StrEnum):
+    """Every point-cloud encoding a directory ingest reads, decided by the header bytes.
+
+    Headered formats only, because ingest never trusts a suffix: a KITTI
+    ``.bin`` has no header to sniff and arrives through a format importer.
+    """
+
+    PCD = "pcd"
+    PLY = "ply"
+
+
+#: The per-point fields a point cloud may carry, in their canonical order.
+#: ``x``, ``y`` and ``z`` are always present; anything else in a file is ignored.
+POINT_CLOUD_FIELDS: Final = ("x", "y", "z", "intensity", "rgb")
+
+PointCloudField = Literal["x", "y", "z", "intensity", "rgb"]
+
+Vector3 = tuple[float, float, float]
+
+
+class PointCloudBounds(BaseModel):
+    """The axis-aligned box the finite points span, in the scan's own frame and unit."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    minimum: Vector3
+    maximum: Vector3
+
+    @model_validator(mode="after")
+    def _minimum_is_below_maximum(self) -> PointCloudBounds:
+        if any(low > high for low, high in zip(self.minimum, self.maximum, strict=True)):
+            raise ValueError("every minimum coordinate must be at most its maximum")
+        return self
+
+
+class PointCloudMetadata(BaseModel):
+    """What one scan turns out to be: its encoding, how many points, where they lie.
+
+    ``point_count`` counts the points kept: a point with a non-finite coordinate
+    (an organized cloud's empty pixel) is not a point, and is not counted.
+    ``fields`` is the set of :data:`POINT_CLOUD_FIELDS` the file carries, in that
+    order.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    format: PointCloudFormat
+    point_count: int = Field(ge=1)
+    bounds: PointCloudBounds
+    fields: tuple[PointCloudField, ...]
+
+    @field_validator("fields")
+    @classmethod
+    def _canonical_fields(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(set(value)) != len(value):
+            raise ValueError("a point field is named once")
+        if not {"x", "y", "z"} <= set(value):
+            raise ValueError("a point cloud carries x, y and z")
+        if value != tuple(name for name in POINT_CLOUD_FIELDS if name in value):
+            raise ValueError(f"fields are listed in the order {POINT_CLOUD_FIELDS}")
+        return value

@@ -522,6 +522,17 @@ def _add_calibration(connection: Connection) -> None:
     _add_column(connection, "asset", "calibration")
 
 
+def _add_point_clouds(connection: Connection) -> None:
+    """``source.frame`` and ``asset.point_cloud``: the point-cloud modality.
+
+    **Nothing to backfill.** No point-cloud source or asset could exist before
+    these columns, so NULL is the truth for every existing row: an image
+    directory declares no frame, and an image carries no scan metadata.
+    """
+    _add_column(connection, "source", "frame")
+    _add_column(connection, "asset", "point_cloud")
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
     Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
@@ -548,6 +559,7 @@ MIGRATIONS: list[Migration] = [
         upgrade=_retire_partial_ingest_failures,
     ),
     Migration(version=21, name="calibration", upgrade=_add_calibration),
+    Migration(version=22, name="point_clouds", upgrade=_add_point_clouds),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version

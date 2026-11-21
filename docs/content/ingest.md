@@ -85,6 +85,16 @@ what an already-registered source means. There is no suffix filter either: a `no
 reported as unsupported rather than skipped, because guessing which files an operator meant to
 offer is a policy the kernel would be inventing.
 
+## What a point-cloud-directory ingest does
+
+The same walk over the same top level, in filename order, with each file read by
+`PointCloudProcessor` instead (see [media.md](media.md#point-cloud-scans)): one PCD or PLY scan is
+one `point_cloud` asset, whose `uri` is its path and whose `point_cloud` carries what the probe
+found. The scan is decoded whole before its bytes are stored, so a refused file leaves no blob and
+no asset. A still in the directory is reported `unsupported`, like a `notes.txt`; a scan whose
+data is truncated, or whose every point is non-finite, is `corrupt`. The preview is drawn from
+above in the frame the source declares.
+
 ## Asking for a run and doing it are two calls
 
 ```python
@@ -347,6 +357,13 @@ decodes video.
 That refusal is a usage error (exit 2), fires before anything is registered, and names where a
 clip is actually imported rather than leaving somebody to search for it - falling back to "treat
 it as a folder" would put a decoder's refusal where the product's own answer belongs.
+
+`--point-clouds FRAME` reads the directory as point-cloud scans instead, registering it with
+`register_point_clouds` and declaring the frame - `lidar_flu` or `camera_rdf`:
+
+```bash
+BATCH=$(visionset ingest ./sweeps --project road-signs --point-clouds lidar_flu)
+```
 
 It is the only command in the CLI that is two SDK calls (`register_images` then `ingest`), and its
 module says so. Both are safe to repeat: `register_images` is idempotent on the directory, and

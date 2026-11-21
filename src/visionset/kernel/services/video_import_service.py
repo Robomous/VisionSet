@@ -273,7 +273,7 @@ class VideoImportService:
 
         The source's locator is ``video-import:<uuid4>`` and is **opaque**.
         A fake server path would be a lie the rest of the kernel is entitled to
-        believe — ``Source.locator`` promises only ``IMAGE_DIRECTORY`` is
+        believe — ``Source.locator`` promises only the directory kinds are
         openable — and making it unique per import is what keeps
         ``SOURCE_ORIGIN_UNIQUE`` out of the way: two imports of one file are two
         sources, and asset content-addressing stays the only thing that

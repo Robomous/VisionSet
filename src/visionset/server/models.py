@@ -118,10 +118,13 @@ from visionset.kernel.domain import (
     JobAction,
     LabelClass,
     MembershipChange,
+    ModalityCompatibility,
     ModelCapability,
     ModelOrigin,
     Partition,
     PlumbBobDistortion,
+    PointCloudFormat,
+    PointCloudMetadata,
     PolygonGeometry,
     Polyline3DGeometry,
     PolylineGeometry,
@@ -142,6 +145,7 @@ from visionset.kernel.domain import (
     ResizeStrategy,
     ResumeKind,
     ResumeTarget,
+    ScanFrame,
     SchemaChange,
     SchemaChangePreview,
     SchemaDiff,
@@ -834,7 +838,7 @@ class VideoProvenanceOut(BaseModel):
 # ``video-import:<uuid>`` that names nothing at all. A client can do nothing with
 # either. ``name`` is the part it recognises: the filename it uploaded.
 class SourceOut(BaseModel):
-    """A registered origin: a folder of stills, or a clip."""
+    """A registered origin: a folder of stills, a clip, or a folder of point-cloud scans."""
 
     id: UUID
     project_id: UUID
@@ -842,6 +846,8 @@ class SourceOut(BaseModel):
     name: str
     registered_at: datetime
     video: VideoProvenanceOut | None
+    # The axis convention a point-cloud folder's scans are written in; null otherwise.
+    frame: ScanFrame | None
 
     @classmethod
     def of(cls, source: Source) -> Self:
@@ -856,6 +862,7 @@ class SourceOut(BaseModel):
             name=source.name,
             registered_at=source.registered_at,
             video=None if source.video is None else VideoProvenanceOut.of(source.video),
+            frame=source.frame,
         )
 
 
@@ -1306,12 +1313,44 @@ class BackgroundJobPage(Page[BackgroundJobOut]):
 # the hashes below as their ``ETag`` — a hash names bytes and not a media type,
 # and resolving one back to its asset would need a query the persistence port
 # deliberately does not have.
+class PointCloudBoundsOut(BaseModel):
+    """The box a scan's points span, in its source's declared frame and unit."""
+
+    minimum: tuple[float, float, float]
+    maximum: tuple[float, float, float]
+
+
+class PointCloudMetadataOut(BaseModel):
+    """What one scan turned out to be: its encoding, its points, where they lie."""
+
+    format: PointCloudFormat
+    point_count: int
+    bounds: PointCloudBoundsOut
+    # Plain strings, a subset of x, y, z, intensity and rgb, in that order.
+    fields: list[str]
+
+    @classmethod
+    def of(cls, metadata: PointCloudMetadata) -> Self:
+        return cls(
+            format=metadata.format,
+            point_count=metadata.point_count,
+            bounds=PointCloudBoundsOut(
+                minimum=metadata.bounds.minimum, maximum=metadata.bounds.maximum
+            ),
+            fields=list(metadata.fields),
+        )
+
+
 class AssetOut(BaseModel):
-    """One ingested item."""
+    """One ingested item: a still image, or a single point-cloud scan.
+
+    An image carries ``width``, ``height`` and ``format``; a point cloud carries
+    ``point_cloud`` and null in all three.
+    """
 
     id: UUID
     project_id: UUID
-    modality: Literal["image"]
+    modality: Literal["image", "point_cloud"]
     content_hash: str
     width: int | None
     height: int | None
@@ -1326,6 +1365,7 @@ class AssetOut(BaseModel):
     # already makes the same distinction one level up. A client deriving an age
     # from it has to render that third state rather than treating null as zero.
     ingested_at: datetime | None
+    point_cloud: PointCloudMetadataOut | None
 
     @classmethod
     def of(cls, asset: Asset) -> Self:
@@ -1342,6 +1382,9 @@ class AssetOut(BaseModel):
             frame_timestamp=asset.frame_timestamp,
             thumbnail_hash=asset.thumbnail_hash,
             ingested_at=asset.ingested_at,
+            point_cloud=(
+                None if asset.point_cloud is None else PointCloudMetadataOut.of(asset.point_cloud)
+            ),
         )
 
 
@@ -2598,6 +2641,24 @@ class ClassCompatibilityOut(BaseModel):
         )
 
 
+class ModalityCompatibilityOut(BaseModel):
+    """The assets of one modality a format cannot write, counted whole."""
+
+    modality: Literal["image", "point_cloud"]
+    assets: int
+    annotations: int
+    reason: str
+
+    @classmethod
+    def of(cls, compatibility: ModalityCompatibility) -> Self:
+        return cls(
+            modality=compatibility.modality,
+            assets=compatibility.assets,
+            annotations=compatibility.annotations,
+            reason=compatibility.reason,
+        )
+
+
 # Key-for-key the document the kernel writes into an export directory and the one
 # ``visionset.wire`` gives the CLI and MCP: the report is user-facing on three
 # surfaces, so there is one spelling of it and not three. ``format`` rather than
@@ -2621,6 +2682,9 @@ class ExportCompatibilityOut(BaseModel):
     degraded_annotations: int
     degraded_assets: int
     classes: list[ClassCompatibilityOut]
+    # Assets absent whole because the format cannot open their modality; their
+    # labels are in `excluded_annotations` too, and in no row of `classes`.
+    dropped_modalities: list[ModalityCompatibilityOut]
 
     @classmethod
     def of(cls, compatibility: ExportCompatibility) -> Self:
@@ -2635,6 +2699,9 @@ class ExportCompatibilityOut(BaseModel):
             degraded_annotations=compatibility.degraded_annotations,
             degraded_assets=compatibility.degraded_assets,
             classes=[ClassCompatibilityOut.of(one) for one in compatibility.classes],
+            dropped_modalities=[
+                ModalityCompatibilityOut.of(one) for one in compatibility.dropped_modalities
+            ],
         )
 
 

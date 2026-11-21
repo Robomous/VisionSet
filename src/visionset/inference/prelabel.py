@@ -114,7 +114,8 @@ class PreLabelOutcome:
     stopped_early: bool = False
     #: Untouched at the run's snapshot, but worked by somebody before this run
     #: reached them. Passed over rather than an error, on the same idempotency
-    #: argument that makes a second run safe.
+    #: argument that makes a second run safe. A point-cloud asset, which no
+    #: detector reads, is passed over and counted here too.
     assets_skipped: int = 0
     #: Regions that could not be written as the class they named — a label
     #: naming no phrase asked for, or a shape the class does not admit or the
@@ -588,6 +589,12 @@ def pre_label(
             )
 
         asset = ingest.asset(batch.project_id, asset_id)
+        if asset.modality != "image":
+            # A detector reads pixels, and a scan has none.
+            skipped += 1
+            if on_progress is not None:
+                on_progress(considered, total)
+            continue
         with ingest.open_content(asset) as handle:
             content = handle.read()
         request = PredictionRequest(

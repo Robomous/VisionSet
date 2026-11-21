@@ -21,12 +21,15 @@ from visionset.kernel.domain import (
     AssetCalibration,
     Calibration,
     Source,
+    SourceKind,
     effective_calibration,
     geometry_needs_calibration,
+    require_calibratable,
 )
 from visionset.kernel.errors import (
     AssetNotFound,
     CalibrationInUse,
+    CalibrationNotApplicable,
     CalibrationResolutionMismatch,
     ProjectNotFound,
     SourceNotFound,
@@ -65,9 +68,15 @@ class CalibrationService:
             SourceNotFound: no such source in this workspace, or in ``project_id``.
             CalibrationResolutionMismatch: a clip's stored frame size, or an asset
                 that would inherit it, is not the size it was measured at.
+            CalibrationNotApplicable: the source is a point-cloud directory.
         """
         with self._workspace.unit_of_work() as uow:
             source = self._require_source(uow, source_id, project_id)
+            if source.kind is SourceKind.POINT_CLOUD_DIRECTORY:
+                raise CalibrationNotApplicable(
+                    f"source {source.id} is a point-cloud directory, which has no camera "
+                    f"intrinsics; its scans are read against its declared {source.frame} frame"
+                )
             if source.video is not None and not calibration.fits(
                 source.video.stored_width, source.video.stored_height
             ):
@@ -127,9 +136,11 @@ class CalibrationService:
             ProjectNotFound: no such project in this workspace.
             AssetNotFound: no such asset in that project.
             CalibrationResolutionMismatch: the asset is not the size it was measured at.
+            CalibrationNotApplicable: the asset is a point cloud.
         """
         with self._workspace.unit_of_work() as uow:
             asset = self._require_asset(uow, project_id, asset_id)
+            require_calibratable(asset)
             if not calibration.fits(asset.width, asset.height):
                 raise CalibrationResolutionMismatch(
                     f"asset {asset.id} is {asset.width}x{asset.height}; {_measured(calibration)}"
@@ -227,7 +238,10 @@ def _dependent(uow: UnitOfWork, assets: Iterable[Asset]) -> list[Asset]:
     return [
         asset
         for asset in assets
-        if any(geometry_needs_calibration(a.geometry) for a in uow.annotations.list(asset.id))
+        if any(
+            geometry_needs_calibration(a.geometry, modality=asset.modality)
+            for a in uow.annotations.list(asset.id)
+        )
     ]
 
 

@@ -148,6 +148,7 @@ const ASSET_ROW = {
   id: ASSET,
   project_id: PROJECT,
   modality: "image",
+  point_cloud: null,
   content_hash: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
   width: 640,
   height: 480,
@@ -599,6 +600,7 @@ describe("export, and the third gate word", () => {
                   excluded_assets: 3,
                   degraded_annotations: 0,
                   degraded_assets: 0,
+                  dropped_modalities: [],
                   classes: [
                     {
                       label_class: "car",

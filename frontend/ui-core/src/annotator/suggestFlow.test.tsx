@@ -153,6 +153,7 @@ function assetRow(id: string, hash: string): Record<string, unknown> {
     id,
     project_id: PROJECT,
     modality: "image",
+    point_cloud: null,
     content_hash: hash.padEnd(64, "0"),
     ...assetSize,
     format: "png",
