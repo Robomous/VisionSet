@@ -84,8 +84,11 @@ from typing import BinaryIO, Final
 from uuid import UUID
 
 from visionset.kernel.domain import (
+    DEFAULT_POINT_BUDGET,
     DIRECTORY_KINDS,
     INGEST_TRANSITIONS,
+    MAX_POINT_BUDGET,
+    MIN_POINT_BUDGET,
     Asset,
     Batch,
     IngestCompleted,
@@ -94,6 +97,7 @@ from visionset.kernel.domain import (
     IngestJob,
     IngestResult,
     IngestState,
+    PointSample,
     Project,
     ScanFrame,
     Source,
@@ -267,6 +271,39 @@ class IngestService:
                 f"the cached preview of asset {asset.id} is no longer in the blob store; "
                 "run backfill_thumbnails on its project to render it again"
             ) from exc
+
+    def points(
+        self, project_id: UUID, asset_id: UUID, *, max_points: int = DEFAULT_POINT_BUDGET
+    ) -> PointSample:
+        """A point-cloud asset thinned to at most ``max_points``, for a viewer.
+
+        Every ``ceil(n / max_points)``-th of the scan's ``n`` finite points, in
+        file order, so the same asset and budget always give the same points;
+        :meth:`PointSample.encode` is the buffer the REST route serves. Decoded
+        from the stored scan on every call, nothing cached.
+
+        Raises:
+            ValueError: ``max_points`` outside ``MIN_POINT_BUDGET`` to
+                ``MAX_POINT_BUDGET``.
+            ProjectNotFound: no such project in this workspace.
+            AssetNotFound: no such asset in that project, or it is an image,
+                which has no points.
+            WorkspaceCorrupt: the blob this asset names is gone.
+            UnsupportedMedia: the stored scan is not one this installation's
+                point-cloud reader takes.
+            CorruptMedia: the stored scan no longer decodes.
+        """
+        if not MIN_POINT_BUDGET <= max_points <= MAX_POINT_BUDGET:
+            raise ValueError(
+                f"max_points must be {MIN_POINT_BUDGET} to {MAX_POINT_BUDGET}, got {max_points}"
+            )
+        asset = self.asset(project_id, asset_id)
+        if asset.modality != "point_cloud":
+            raise AssetNotFound(f"asset {asset_id} is an {asset.modality}, not a point-cloud scan")
+        with self.open_content(asset) as content:
+            return self._workspace.point_cloud_processor.sample(
+                content, budget=max_points, name=str(asset.id)
+            )
 
     # --- ingesting ---------------------------------------------------------
 

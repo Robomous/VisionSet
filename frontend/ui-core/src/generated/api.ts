@@ -2103,6 +2103,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/assets/{asset_id}/points": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Asset Points
+         * @description A point-cloud scan thinned to at most `max_points`, as a compact binary buffer.
+         *
+         *     Every `ceil(n / max_points)`-th of the scan's `n` finite points, in file
+         *     order, so one asset and one budget always answer the same bytes. Little-endian
+         *     throughout: a 16-byte header (the magic `VSPC`, then u32 version `1`, u32
+         *     count and u32 flags, bit 0 intensity and bit 1 rgb), then f32 `x, y, z` per
+         *     point, then f32 intensity per point if flagged, then u8 `r, g, b` per point
+         *     if flagged. The scan's full count and bounds are the asset's `point_cloud`.
+         *
+         *     `max_points` defaults to 500000; outside 1000 to 2000000 it is 422
+         *     `VALIDATION_ERROR`, never clamped. An image asset is 404 `ASSET_NOT_FOUND`,
+         *     as is an unknown asset; an unknown project is 404 `PROJECT_NOT_FOUND`. A
+         *     stored scan this installation can no longer read is 422 `UNSUPPORTED_MEDIA`
+         *     or `CORRUPT_MEDIA`.
+         */
+        get: operations["get_asset_points"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/assets/{asset_id}/thumbnail": {
         parameters: {
             query?: never;
@@ -11615,6 +11648,77 @@ export interface operations {
                     "application/octet-stream": unknown;
                     "image/jpeg": unknown;
                     "image/png": unknown;
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_asset_points: {
+        parameters: {
+            query?: {
+                /** @description The most points to return; the scan is thinned by a whole stride to fit. */
+                max_points?: number;
+            };
+            header?: never;
+            path: {
+                project_id: string;
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The thinned scan, as the VSPC buffer. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
                 };
             };
             /** @description Missing or invalid bearer token */

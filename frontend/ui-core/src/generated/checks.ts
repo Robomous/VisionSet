@@ -508,6 +508,7 @@ export const checkGetActiveSchema = checkSchemaVersionOut;
 export const checkGetAsset = checkAssetOut;
 export const checkGetAssetCalibration = checkAssetCalibrationOut;
 export const checkGetAssetContent = checkBlob;
+export const checkGetAssetPoints = checkBlob;
 export const checkGetAssetThumbnail = checkBlob;
 export const checkGetBackgroundJob = checkBackgroundJobOut;
 export const checkGetBackgroundJobArtifact = checkBlob;

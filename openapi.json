@@ -13836,6 +13836,117 @@
         ]
       }
     },
+    "/projects/{project_id}/assets/{asset_id}/points": {
+      "get": {
+        "description": "A point-cloud scan thinned to at most `max_points`, as a compact binary buffer.\n\nEvery `ceil(n / max_points)`-th of the scan's `n` finite points, in file\norder, so one asset and one budget always answer the same bytes. Little-endian\nthroughout: a 16-byte header (the magic `VSPC`, then u32 version `1`, u32\ncount and u32 flags, bit 0 intensity and bit 1 rgb), then f32 `x, y, z` per\npoint, then f32 intensity per point if flagged, then u8 `r, g, b` per point\nif flagged. The scan's full count and bounds are the asset's `point_cloud`.\n\n`max_points` defaults to 500000; outside 1000 to 2000000 it is 422\n`VALIDATION_ERROR`, never clamped. An image asset is 404 `ASSET_NOT_FOUND`,\nas is an unknown asset; an unknown project is 404 `PROJECT_NOT_FOUND`. A\nstored scan this installation can no longer read is 422 `UNSUPPORTED_MEDIA`\nor `CORRUPT_MEDIA`.",
+        "operationId": "get_asset_points",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The most points to return; the scan is thinned by a whole stride to fit.",
+            "in": "query",
+            "name": "max_points",
+            "required": false,
+            "schema": {
+              "default": 500000,
+              "description": "The most points to return; the scan is thinned by a whole stride to fit.",
+              "maximum": 2000000,
+              "minimum": 1000,
+              "title": "Max Points",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {}
+              }
+            },
+            "description": "The thinned scan, as the VSPC buffer."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Asset Points",
+        "tags": [
+          "assets"
+        ]
+      }
+    },
     "/projects/{project_id}/assets/{asset_id}/thumbnail": {
       "get": {
         "description": "The asset's cached preview, streamed. Always JPEG.\n\nA preview is a cache, so this reads one and never renders one. An asset with\nno preview is 404 `THUMBNAIL_NOT_CACHED` \u2014 which has three causes with one\nremedy: the asset predates the cache, its bytes would not render, or no run\nhas reached it yet. `POST /projects/{project_id}/thumbnail-backfill-jobs`\nfills what it can. The other two 404s are the\nordinary ones, resolved before the cache is consulted: 404 `PROJECT_NOT_FOUND`\nand 404 `ASSET_NOT_FOUND`, which say the thing itself is not here rather than\nthat its preview is missing.\n\nCached the same way `content` is, and for the same reason. The `ETag` is the\nthumbnail hash, which is a cache key and not an identity: two machines may\nhold different preview bytes for one image, so never compare these across\nworkspaces.",

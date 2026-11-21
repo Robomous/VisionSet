@@ -71,6 +71,7 @@ DELETE /video-imports/{import_id}                         throw the session away
 GET    /projects/{project_id}/assets/{asset_id}
 GET    /projects/{project_id}/assets/{asset_id}/content   bytes
 GET    /projects/{project_id}/assets/{asset_id}/thumbnail bytes
+GET    /projects/{project_id}/assets/{asset_id}/points    a scan thinned for a viewer, bytes
 GET    /projects/{project_id}/assets/{asset_id}/calibration  its override, and the one in effect
 PUT    /projects/{project_id}/assets/{asset_id}/calibration  the override, replaced whole
 DELETE /projects/{project_id}/assets/{asset_id}/calibration  204; falls back to the source's, if it fits
@@ -941,8 +942,8 @@ compiler accepted on the day it was written.
 
 ### Binary responses type as `unknown`
 
-Four operations answer with bytes rather than JSON - asset content, thumbnails, the release
-manifest and the export archive - and the spec declares them with an empty schema, OpenAPI's way
+Five operations answer with bytes rather than JSON - asset content, thumbnails, a scan's
+thinned points, the release manifest and the export archive - and the spec declares them with an empty schema, OpenAPI's way
 of saying "bytes, and there is nothing more to say about their shape". The generator is run with
 `emptyObjectsUnknown`, so they come out as `unknown`.
 

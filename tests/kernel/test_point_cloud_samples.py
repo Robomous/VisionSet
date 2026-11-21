@@ -15,7 +15,7 @@ import pytest
 from PIL import Image
 
 from visionset.kernel.adapters import StdlibPointCloudProcessor
-from visionset.kernel.domain import ScanFrame
+from visionset.kernel.domain import MIN_POINT_BUDGET, ScanFrame
 from visionset.kernel.services import (
     IngestService,
     ProjectService,
@@ -67,3 +67,18 @@ def test_every_sample_directory_ingests_without_a_failure(tmp_path: Path) -> Non
             assert run.failures == ()
             assert run.created == len(scans)
             assert all(asset.thumbnail_hash is not None for asset in run.assets)
+
+
+@pytest.mark.parametrize("path", _files(), ids=lambda p: p.name)
+def test_each_sample_thins_to_the_minimum_budget(path: Path) -> None:
+    processor = StdlibPointCloudProcessor()
+    with path.open("rb") as handle:
+        metadata = processor.probe(handle)
+        sample = processor.sample(handle, budget=MIN_POINT_BUDGET)
+
+    assert sample.total == metadata.point_count
+    assert 1 <= sample.count <= MIN_POINT_BUDGET
+    assert ("intensity" in metadata.fields) == (sample.intensity is not None)
+    assert len(sample.encode()) == 16 + 12 * sample.count + len(sample.intensity or b"") + len(
+        sample.rgb or b""
+    )
