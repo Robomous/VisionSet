@@ -73,3 +73,10 @@ export {
   type CompositionProbe,
   type TextEntryProbe,
 } from "./keyboard";
+export {
+  PointCloudCanvas,
+  type PointCloudCanvasProps,
+  type PointCloudLabel,
+  type PointCloudStatus,
+} from "./PointCloudCanvas";
+export { cssColorToRgb } from "./pointCloudGl";

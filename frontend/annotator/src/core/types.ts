@@ -390,9 +390,14 @@ export interface AnnotationSchema {
  * is capped on its long edge, and coordinates measured on it and submitted
  * unscaled are individually plausible and uniformly wrong. The screen↔image
  * transform belongs to the adapter; the document only ever holds native pixels.
+ *
+ * A point-cloud scan has no pixel frame at all: its descriptor says
+ * `modality: "point_cloud"` and carries `0 × 0`, and no pixel geometry is ever
+ * drawn on it.
  */
 export interface AssetDescriptor {
   readonly id: string;
   readonly width: number;
   readonly height: number;
+  readonly modality?: "point_cloud";
 }

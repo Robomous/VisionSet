@@ -472,6 +472,16 @@ describe("parsing the asset the kernel produced", () => {
     expect(() => parseAssetDescriptor(unmeasured)).toThrow(/no measured width and height/);
   });
 
+  it("takes a point-cloud scan, which has no pixel frame, as 0 x 0", () => {
+    const scan = { ...(fixture.asset as object), modality: "point_cloud", width: null, height: null };
+    expect(parseAssetDescriptor(scan)).toEqual({
+      id: (fixture.asset as { id: string }).id,
+      width: 0,
+      height: 0,
+      modality: "point_cloud",
+    });
+  });
+
   it("refuses an asset missing a dimension key entirely", () => {
     // Absent is told apart from null: one is a payload that is not an AssetOut,
     // the other is an AssetOut for an asset nobody has measured.
