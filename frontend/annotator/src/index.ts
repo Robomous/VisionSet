@@ -99,6 +99,7 @@ export {
   MIN_PITCH,
   eyeOf,
   framingBounds,
+  groundHeight,
   homeCamera,
   orbit,
   pan,
@@ -106,9 +107,72 @@ export {
   sceneRadius,
   viewBasis,
   viewProjection,
+  wrapAngle,
   zoom,
   type OrbitCamera,
 } from "./core/pointcloud/camera";
+export {
+  closestOnAxis,
+  metresPerPixel,
+  ndcRay,
+  ndcToScreen,
+  pointOnRay,
+  rayCuboidHit,
+  rayGroundHit,
+  screenOf,
+  screenRay,
+  screenToNdc,
+  type CuboidHit,
+  type Ray,
+  type ScanViewport,
+} from "./core/pointcloud/ray";
+export {
+  CUBOID_FACES,
+  MIN_CUBOID_SIZE,
+  cuboidAxes,
+  cuboidFromScanCorners,
+  faceCenter,
+  headingOfYaw,
+  resizeCuboidFace,
+  wrapYaw,
+  yawOfHeading,
+  type CuboidFace,
+} from "./core/pointcloud/cuboid";
+// The scan editor — a sibling of the image engine, sharing its log, store and selection
+export {
+  addScanAnnotation,
+  createScanDocument,
+  removeScanAnnotations,
+  replaceScanAnnotation,
+  scanDocumentFromWire,
+  scanEditability,
+  type ScanDocument,
+  type ScanEditability,
+} from "./core/pointcloud/edit/scanDocument";
+export {
+  DEFAULT_HIT_TOLERANCES_3D,
+  faceHandles,
+  handleTarget,
+  hitTest3D,
+  yawRing,
+  type Hit3D,
+  type HitTolerances3D,
+  type Scene3D,
+  type YawRing,
+} from "./core/pointcloud/edit/scene";
+export {
+  SCAN_IDLE,
+  draftCuboid,
+  scanTransition,
+  type ScanContext,
+  type ScanEffect,
+  type ScanEvent,
+  type ScanState,
+  type ScanStateType,
+  type ScanTool,
+  type ScanTransition,
+} from "./core/pointcloud/edit/machine";
+export { runScanEffects } from "./core/pointcloud/edit/runScanEffects";
 export {
   colorModeAvailable,
   defaultColorMode,

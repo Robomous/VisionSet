@@ -6,6 +6,7 @@ import {
   MIN_PITCH,
   eyeOf,
   framingBounds,
+  groundHeight,
   homeCamera,
   orbit,
   pan,
@@ -180,5 +181,22 @@ describe("pan", () => {
   it("does nothing on a view with no height", () => {
     const camera = homeCamera(BOUNDS);
     expect(pan(camera, "lidar_flu", 10, 10, 0)).toBe(camera);
+  });
+});
+
+describe("groundHeight", () => {
+  it("is the scan's low robust height along each frame's up axis", () => {
+    for (const frame of FRAMES) {
+      const positions = new Float32Array(300 * 3);
+      for (let i = 0; i < 300; i += 1) {
+        const lift = i === 0 ? -50 : (i % 10) * 0.2 - 1.5;
+        positions.set(fromForwardLeftUp(frame, [i * 0.1, 0, lift]), i * 3);
+      }
+      expect(groundHeight(positions, frame)).toBeCloseTo(-1.5, 5);
+    }
+  });
+
+  it("is 0 for an empty scan", () => {
+    expect(groundHeight(new Float32Array(0), "lidar_flu")).toBe(0);
   });
 });

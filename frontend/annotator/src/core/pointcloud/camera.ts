@@ -9,8 +9,9 @@
 
 import type { Point3D } from "../types";
 import type { PointBounds } from "./decode";
-import { fromForwardLeftUp, type ScanFrame } from "./frame";
+import { fromForwardLeftUp, heightOf, type ScanFrame } from "./frame";
 import { robustRange } from "./ramp";
+import { cross, dot, normalize, subtract } from "./vector";
 
 export interface OrbitCamera {
   readonly yaw: number;
@@ -46,6 +47,18 @@ export function framingBounds(positions: Float32Array): PointBounds | null {
     minimum: [ranges[0][0], ranges[1][0], ranges[2][0]],
     maximum: [ranges[0][1], ranges[1][1], ranges[2][1]],
   };
+}
+
+/**
+ * The level a new box stands on: the scan's low robust height along the
+ * declared up, so a few returns under the road do not sink it. `0` for no points.
+ */
+export function groundHeight(positions: Float32Array, frame: ScanFrame): number {
+  const count = Math.floor(positions.length / 3);
+  if (count === 0) return 0;
+  return robustRange(count, (i) =>
+    heightOf(frame, [positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]]),
+  )[0];
 }
 
 /** From behind the forward axis and above, far enough to hold `bounds`. */
@@ -181,25 +194,9 @@ export function projectToNdc(matrix: Float32Array, [x, y, z]: Point3D): Point3D 
   return [clipX / clipW, clipY / clipW, clipZ / clipW];
 }
 
-function wrapAngle(angle: number): number {
+/** `angle` turned into `(-π, π]`. */
+export function wrapAngle(angle: number): number {
   const turn = 2 * Math.PI;
   const wrapped = ((((angle + Math.PI) % turn) + turn) % turn) - Math.PI;
   return wrapped === -Math.PI ? Math.PI : wrapped;
-}
-
-function subtract(a: Point3D, b: Point3D): Point3D {
-  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-}
-
-function cross(a: Point3D, b: Point3D): Point3D {
-  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-}
-
-function dot(a: Point3D, b: Point3D): number {
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-}
-
-function normalize(v: Point3D): Point3D {
-  const length = Math.hypot(v[0], v[1], v[2]);
-  return length > 0 ? [v[0] / length, v[1] / length, v[2] / length] : [0, 0, 0];
 }
