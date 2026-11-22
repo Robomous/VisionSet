@@ -401,8 +401,10 @@ hand-written rather than derived, because a gesture has no chord to be read off.
 
 ## The read-only mode
 
-The workspace opens as a **viewer** whenever the wire withholds `annotate` on the frame — a
-completed batch, a finished job, or a settled frame inside an open one. The mode is the
+The workspace opens as a **viewer** whenever the wire withholds `annotate` on the frame — an
+`approved` batch nobody has started, a completed batch, a finished job, or a settled frame
+inside an open one. Opening never starts the batch: while it declares `start`, the banner
+carries `Start annotating`, and pressing it is what turns the page into the editor, in place. The mode is the
 frame's own declaration (`allowed_actions`), never this page's arithmetic.
 
 **It is also a transition, not only an entry state.** Pressing `Finish job` turns the

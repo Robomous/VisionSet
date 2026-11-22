@@ -488,6 +488,14 @@ The gallery says the same thing one screen earlier: its header button reads **Vi
 frames** and its per-tile link reads **View** when nothing in the batch declares
 `annotate`. Same door, honest word.
 
+**Viewing never starts a batch.** A tile of an `approved` batch opens the frame or scan
+read-only - nothing in that batch declares `annotate` - and the page sends no transition on
+mount. The banner carries **Start annotating** while the batch declares `start`: it sends
+`POST /batches/{id}/start`, and once the re-read job declares `start` the page takes the job
+(`POST /jobs/{id}/start`) and becomes the editor in place, with no reload. A refused start is
+said in the editor's notice column and the page stays a viewer. Inside a batch that is
+already `in_annotation`, opening a `pending` job still takes it, as before.
+
 #### Adding a class where the pin cannot move
 
 The add-class chain used to be save → publish → re-pin, running the third step

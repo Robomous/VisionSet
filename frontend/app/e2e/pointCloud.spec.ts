@@ -12,7 +12,7 @@
 import { expect, test, type Locator, type Page, type Request } from "@playwright/test";
 
 import { assetActions, type Wire } from "./_wire";
-import { JOB, PROJECT, progressStore, serveApi } from "./_wireApiStub";
+import { BATCH, JOB, PROJECT, openedWorld, progressStore, serveApi, type Lifecycle } from "./_wireApiStub";
 
 const REQUIRE_ENV = "VISIONSET_REQUIRE_WEBGL";
 const SOURCE = "44444444-4444-4444-8444-444444444444";
@@ -57,7 +57,7 @@ function scanBuffer(): { readonly body: Buffer; readonly count: number } {
 
 const SCAN = scanBuffer();
 
-function scanAsset(): Wire["BatchAssetOut"] {
+function scanAsset(lifecycle: Lifecycle): Wire["BatchAssetOut"] {
   return {
     id: "asset-1",
     project_id: PROJECT,
@@ -79,7 +79,7 @@ function scanAsset(): Wire["BatchAssetOut"] {
     ingested_at: null,
     job_id: JOB,
     progress: "unannotated",
-    allowed_actions: assetActions("unannotated", { batchState: "in_annotation", jobState: "in_progress" }),
+    allowed_actions: assetActions("unannotated", { batchState: lifecycle.batch, jobState: lifecycle.job }),
     annotation_count: 1,
     min_confidence: null,
   };
@@ -96,13 +96,18 @@ async function requireWebGl2(page: Page): Promise<void> {
 
 async function openScan(page: Page): Promise<Request[]> {
   await requireWebGl2(page);
+  return serveScan(page, openedWorld());
+}
+
+/** The scan's job, served and opened; the stub moves `lifecycle` as the page starts things. */
+async function serveScan(page: Page, lifecycle: Lifecycle): Promise<Request[]> {
   const sent: Request[] = [];
-  await serveApi(page, sent, progressStore({ "asset-1": "unannotated" }), undefined, undefined, [CAR]);
+  await serveApi(page, sent, progressStore({ "asset-1": "unannotated" }), lifecycle, undefined, [CAR]);
   // Registered after the shared stub, so it is asked first and hands everything else back.
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname.replace(/^\/api/, "");
     if (path.endsWith("/assets") && path.startsWith("/batches")) {
-      return route.fulfill({ json: { items: [scanAsset()], total: 1 } satisfies Wire["BatchAssetPage"] });
+      return route.fulfill({ json: { items: [scanAsset(lifecycle)], total: 1 } satisfies Wire["BatchAssetPage"] });
     }
     if (path === `/projects/${PROJECT}/assets/asset-1/points`) {
       return route.fulfill({ contentType: "application/octet-stream", body: SCAN.body });
@@ -231,4 +236,23 @@ test("colour by intensity is offered, colour by rgb is not on a scan without col
   await expect(page.getByTestId("color-by-rgb")).toBeDisabled();
   await page.getByTestId("color-by-intensity").click();
   await expect(view).toHaveAttribute("data-color-mode", "intensity");
+});
+
+test("looking at a scan in an approved batch starts nothing, and Start annotating does", async ({ page }) => {
+  // No WebGL2 needed: the batch's state is the page's, not the view's.
+  const sent = await serveScan(page, { batch: "approved", job: "pending" });
+  const starts = (): string[] =>
+    sent
+      .filter((request) => request.method() === "POST" && request.url().endsWith("/start"))
+      .map((request) => new URL(request.url()).pathname.replace(/^\/api/, ""));
+
+  const banner = page.getByTestId("readonly-banner");
+  await expect(banner).toContainText("Viewing only.");
+  await expect(banner).not.toContainText(/image|frame/i);
+  expect(starts()).toEqual([]);
+
+  await page.getByTestId("banner-start-batch").click();
+  await expect.poll(starts).toEqual([`/batches/${BATCH}/start`, `/jobs/${JOB}/start`]);
+  await expect(banner).toHaveCount(0);
+  await expect(page.getByTestId("skip")).toBeEnabled();
 });

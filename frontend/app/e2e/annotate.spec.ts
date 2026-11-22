@@ -378,7 +378,7 @@ test("Save is inert until something changes, then sends exactly the new annotati
   expect(sent.filter((r) => r.method() === "DELETE")).toHaveLength(0);
 });
 
-/** The two opening moves this page sends, in the order they were sent. */
+/** The start moves this page sent, in the order they were sent. */
 function startsSent(sent: Request[]): string[] {
   return sent
     .filter((request) => request.method() === "POST" && request.url().endsWith("/start"))
@@ -386,25 +386,30 @@ function startsSent(sent: Request[]): string[] {
 }
 
 /**
- * The workspace routes into the annotator from an *approved* batch — the
- * gallery's `Start annotating`, every tile, a pasted URL — and nothing on that
- * path presses the batch table's own `Start`. So the page makes both opening
- * moves itself, in their one legal order. Without them the job start is refused
- * `BATCH_NOT_IN_ANNOTATION` silently and the first Save answers the raw code.
+ * Every tile of an *approved* batch opens here, and looking must not start the
+ * batch. The page opens read-only, and the banner's `Start annotating` makes both
+ * moves in their one legal order: the batch, then the job once it is startable.
  */
-test("opening a job in an approved batch starts the batch, then the job, and a save lands", async ({
+test("an approved batch opens read-only, and Start annotating starts the batch, then the job", async ({
   page,
 }) => {
   const sent: Request[] = [];
   await openJob(page, sent, undefined, { batch: "approved", job: "pending" });
 
+  await expect(page.getByTestId("readonly-banner")).toContainText("Viewing only.");
+  await expect(page.getByTestId("class-row-vehicle-name")).toHaveCount(0);
+  expect(startsSent(sent)).toEqual([]);
+
+  await page.getByTestId("banner-start-batch").click();
   await expect.poll(() => startsSent(sent)).toEqual([
     `/batches/${BATCH}/start`,
     `/jobs/${JOB}/start`,
   ]);
+  await expect(page.getByTestId("readonly-banner")).toHaveCount(0);
+  await expect(page.getByTestId("class-row-vehicle-name")).toBeVisible();
 
-  // …and the page is actually usable afterwards: draw one box, save, and the
-  // bar answers Saved rather than a code — the exact gesture the defect refused.
+  // …and the page is usable without a reload: draw one box, save, and the bar
+  // answers Saved rather than a code.
   const canvas = page.getByTestId("annotator-canvas");
   const box = (await canvas.boundingBox())!;
   await page.getByTestId("annotator-root").focus();
@@ -417,7 +422,7 @@ test("opening a job in an approved batch starts the batch, then the job, and a s
   await expect(page.getByTestId("save-state")).toContainText("Saved");
 });
 
-test("a refused opening move is sent once, never looped, and its code is on the bar", async ({
+test("a refused Start annotating is sent once, never looped, and stays read-only", async ({
   page,
 }) => {
   const sent: Request[] = [];
@@ -427,33 +432,20 @@ test("a refused opening move is sent once, never looped, and its code is on the 
     refuseBatchStart: "BATCH_NOT_IN_ANNOTATION",
   });
 
-  // The move was attempted and refused…
+  await page.getByTestId("banner-start-batch").click();
   await expect.poll(() => startsSent(sent)).toEqual([`/batches/${BATCH}/start`]);
-
-  // …and the refusal surfaces beside the save state, before anybody has saved —
-  // the page must never look inert about a batch it could not open. It moved out
-  // of the save's own slot, where as a fallback it would survive every
-  // later save and report a failure that had not happened.
   await expect(page.getByTestId("opening-refusal")).toContainText(/not open for annotation/i);
 
-  // Force a run of re-renders, then look at the wire. The old effect's bail flags
-  // were all false again after a refusal, so every one of these renders re-sent
-  // the refused POST.
-  //
-  // **This used to force them by drawing a box, and cannot any more**: a batch
-  // whose start was refused is still `approved`, so its frames declare no
-  // `annotate` and the canvas is read-only — which is the point of F2 and is a
-  // strictly better answer than a page that draws work it can never save. The
-  // zoom is the re-render that survives read-only, because it moves the
-  // viewport and not the document, and `onViewChange` fires on every notch.
+  // Force a run of re-renders, then look at the wire. The zoom is the re-render
+  // that survives read-only: it moves the viewport, not the document.
   const zoomIn = page.getByTestId("zoom-in");
   for (let notch = 0; notch < 8; notch += 1) await zoomIn.click();
-  // The renders really happened, and the bar keeps the refusal.
   await expect(page.getByTestId("zoom-readout")).not.toHaveText("100%");
   await expect(page.getByTestId("opening-refusal")).toContainText(/not open for annotation/i);
+  await expect(page.getByTestId("readonly-banner")).toContainText("Viewing only.");
 
-  // Once — and the job's own start never fired at all, because the batch never
-  // reached `in_annotation` for it to be legal in.
+  // Once — and the job's own start never fired, because the batch never reached
+  // `in_annotation` for it to be legal in.
   expect(startsSent(sent)).toEqual([`/batches/${BATCH}/start`]);
 });
 
@@ -2195,6 +2187,7 @@ test("a refusal on the bar is a sentence now, not a kernel identifier", async ({
     job: "pending",
     refuseBatchStart: "BATCH_NOT_IN_ANNOTATION",
   });
+  await page.getByTestId("banner-start-batch").click();
 
   // A raw code rendered as a destructive badge is a kernel identifier in front of
   // a user. This is an *opening* refusal, which takes its own notice at the top

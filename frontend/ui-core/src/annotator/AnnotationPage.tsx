@@ -1503,60 +1503,27 @@ function Workspace({
   const finishJob = useJobTransition(jobId, "complete");
 
   /**
-   * Opening a job to work on it **is** starting it — the batch first, when the
-   * batch itself has not been opened.
+   * Looking never starts a batch; starting the job inside an open one is part of opening it.
    *
-   * Both are moves somebody has to make, and on this path there is nobody else.
-   * Without the job's half, `pending → in_progress` is a move nothing
-   * in the browser makes, so `JobService.complete` refuses forever.
-   * Without the batch's half, from the other end of the lifecycle: approval
-   * cuts the jobs, so the workspace offers `Start annotating` and every tile
-   * opens here — but only the batch table's own `Start` button ever sends
-   * `POST /batches/{id}/start`, and the workspace flow bypasses the table. An
-   * `approved` batch refuses the job start *and* every save with
-   * `BATCH_NOT_IN_ANNOTATION`, which is what a person saw: a page that draws
-   * and a Save that answers a code.
+   * An `approved` batch opens read-only — its frames declare no `annotate` — and the
+   * banner's `Start annotating` is the only thing on this page that sends
+   * `POST /batches/{id}/start`. Once the refetched job declares `start` (its batch is
+   * then `in_annotation`), the job is started on its own: without that move nothing in
+   * the browser takes it `pending → in_progress`, and `JobService.complete` refuses
+   * forever. Both gates are `declares(...)`, never this page's reading of the states.
    *
-   * So the two moves run in their only legal order — batch, then job once the
-   * refetched batch answers `in_annotation`. Each is sent **at most once per
-   * mounted workspace, guarded by a ref rather than by the mutation's own
-   * flags**: the flags are false again after a refusal (so the refused POST
-   * would re-fire on every re-render — a silent 409 loop), and under
-   * StrictMode's double-invoked effects they have not even updated yet between
-   * the two runs, so `isPending` cannot dedupe the send either.
+   * The job start is sent at most once per mounted workspace, guarded by a ref rather
+   * than by the mutation's flags: those are false again after a refusal (a silent 409
+   * loop), and under StrictMode's double-invoked effects they have not updated between
+   * the two runs. Its refusal lands in `openingRefusal` through `mutateAsync`'s own
+   * promise for the same reason — the throwaway first invocation's observer is not the
+   * one the committed render reads.
    *
-   * A refusal lands in `openingRefusal` — component state, via `mutateAsync`'s
-   * own promise — **not** in the mutation's `isError`, and that too is
-   * StrictMode's doing: the send fires from the first, throwaway effect
-   * invocation, whose observer is not the one the committed render reads, so
-   * the hook can answer idle over a mutation that really refused. The promise
-   * and the setter survive either way. It surfaces in its **own** slot beside
-   * the save state, rather than being discovered at Save.
-   *
-   * ## Whether to send: the wire's answer, not this page's arithmetic
-   *
-   * Gating on `batchState !== "approved"` and `jobState !== "pending"` would
-   * restate two rows of `BATCH_TRANSITIONS` and `JOB_TRANSITIONS` here, which
-   * is the hand-mirror the capabilities contract exists to delete. Both are
-   * `declares(...)`, so the question "may this move be made" has one answer and
-   * the kernel gives it.
-   *
-   * ## Already-made is not a failure, and this is what made the suite flake
-   *
-   * Both declarations come from a **cache**. An invalidation's refetch is
-   * asynchronous, so there is a window where the read still declares `start`
-   * over a resource the server has already started — and the kernel answers the
-   * second start `INVALID_TRANSITION`. That is the only thing it can mean here:
-   * `start` moves `pending → in_progress`, so refusing it says the job is not
-   * pending, which is the state the effect was reaching for. Reporting it tells
-   * somebody their page is broken because it is already working.
-   *
-   * So an already-made refusal re-reads the resource and says nothing, and
-   * everything else the kernel refuses with is still surfaced — a batch that
-   * genuinely may not be opened still says so, before the first Save.
+   * `INVALID_TRANSITION` on either start means the move was already made (a cached
+   * declaration still offering it), so it re-reads the resource and says nothing;
+   * every other refusal is surfaced.
    */
   const [openingRefusal, setOpeningRefusal] = useState<unknown>(null);
-  const sentBatchStart = useRef(false);
   const sentJobStart = useRef(false);
   const queries = useQueryClient();
 
@@ -1574,13 +1541,12 @@ function Workspace({
   const mayStartBatch = declares({ allowed_actions: batchActions }, BATCH_ACTION.start);
   const mayStartJob = declares({ allowed_actions: jobActions }, JOB_ACTION.start);
 
-  useEffect(() => {
-    if (!mayStartBatch || sentBatchStart.current) return;
-    sentBatchStart.current = true;
+  const startAnnotating = useCallback(() => {
+    setOpeningRefusal(null);
     startBatch.mutateAsync().catch((error: unknown) => {
       openingFailed(error, batchKeys.batch(batchId));
     });
-  }, [batchId, mayStartBatch, openingFailed, startBatch]);
+  }, [batchId, openingFailed, startBatch]);
 
   useEffect(() => {
     if (!mayStartJob || sentJobStart.current) return;
@@ -2677,6 +2643,18 @@ function Workspace({
           <Eye className="size-3.5 shrink-0" aria-hidden="true" />
           <span className="font-medium">Viewing only.</span>
           {workflowBecause ?? settledBecause}
+          {mayStartBatch && (
+            <Button
+              variant="outline"
+              size="xs"
+              className="ml-auto"
+              data-testid="banner-start-batch"
+              disabled={startBatch.isPending}
+              onClick={startAnnotating}
+            >
+              {startBatch.isPending ? "Starting…" : "Start annotating"}
+            </Button>
+          )}
           {/*
             The sentence names a correction batch, and now it can reach one — the
             last link in the forward-only story. The sentence was written
