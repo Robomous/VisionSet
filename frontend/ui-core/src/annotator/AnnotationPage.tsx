@@ -3055,7 +3055,7 @@ function Workspace({
             )}
           </EditorNotices>
 
-          <span className="absolute bottom-2 left-2 rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground" data-testid="object-total">
+          <span className="pointer-events-none absolute bottom-2 left-2 rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground" data-testid="object-total">
             {objects} object{objects === 1 ? "" : "s"}
           </span>
 

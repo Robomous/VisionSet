@@ -5,7 +5,9 @@
  *
  * Given the page's scan workspace, it also hosts the cuboid editor: the Edit
  * toggle, the tool and class pick, undo and redo, the editor's keys, and the
- * handles over the selected box. Without one it is the read-only viewer.
+ * handles over the selected box. In Edit a top-down view sits beside the
+ * perspective one, driving the same editor and store through its own camera, so
+ * a drag in either moves the box in both. Without one it is the read-only viewer.
  *
  * The points are fetched with the credential for the same reason `AssetImage`
  * fetches the picture. A browser with no WebGL2 gets the scan's metadata and
@@ -29,7 +31,13 @@ import {
   type PointSample,
   type ScanFrame,
 } from "@visionset/annotator";
-import { PointCloudCanvas, classColor, type PointCloudLabel, type PointCloudStatus } from "@visionset/annotator/react";
+import {
+  PointCloudCanvas,
+  classColor,
+  type PointCloudLabel,
+  type PointCloudStatus,
+  type ScanView as ScanCamera,
+} from "@visionset/annotator/react";
 import { Box, Cuboid, MousePointer2, Pencil, Redo2, RotateCcw, Undo2 } from "lucide-react";
 import { useEffect, useMemo, useState, type JSX, type KeyboardEvent, type ReactNode } from "react";
 
@@ -87,6 +95,11 @@ const EDIT_LABEL =
   "Point cloud, editing 3D labels. Drag to draw or adjust a cuboid, right-drag to orbit, " +
   "middle-drag or shift and right-drag to pan, scroll to zoom. Delete removes the selected cuboid, " +
   "Escape cancels, and Enter finishes a cuboid's height.";
+
+const TOP_DOWN_LABEL =
+  "Top-down view of the point cloud, following the perspective view's centre. Drag to draw a footprint, " +
+  "move a cuboid, pull a side face or turn the yaw handle; right-drag or middle-drag to pan, scroll to zoom. " +
+  "A cuboid's height is set in the perspective view.";
 
 type Fetched =
   | { readonly kind: "loading" }
@@ -181,6 +194,7 @@ function ScanView({
   const [showLabels, setShowLabels] = useState(true);
   const [resetSignal, setResetSignal] = useState(0);
   const [status, setStatus] = useState<PointCloudStatus | null>(null);
+  const [topView, setTopView] = useState<ScanCamera | null>(null);
 
   const setGround = scan?.setGroundHeight;
   useEffect(() => {
@@ -188,6 +202,9 @@ function ScanView({
   }, [setGround, sample, frame]);
 
   const editing = scan?.editing === true;
+  useEffect(() => {
+    if (!editing) setTopView(null);
+  }, [editing]);
   const rendered = scan?.snapshot.rendered ?? null;
   const selection = scan?.snapshot.selection ?? EMPTY_SELECTION;
   const draft = scan?.editor.draft ?? null;
@@ -233,7 +250,7 @@ function ScanView({
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
     if (scan === null) return;
     const target = event.target as HTMLElement;
-    if (target.closest('[data-testid="point-cloud-canvas"]') === null) return;
+    if (target.closest("[data-scan-view]") === null) return;
     const intent = scanKeyIntent({
       key: event.key,
       shift: event.shiftKey,
@@ -273,136 +290,183 @@ function ScanView({
 
   const view = scan?.editor.view ?? null;
 
+  const topDown = editing && scan !== null && frame !== null;
+
   return (
-    <div className="relative size-full" data-testid="point-cloud-stage" onKeyDown={onKeyDown}>
-      <PointCloudCanvas
-        sample={sample}
-        frame={frame ?? "lidar_flu"}
-        colorMode={colorMode}
-        labels={labels}
-        showLabels={showLabels || editing}
-        resetSignal={resetSignal}
-        onStatusChange={setStatus}
-        ariaLabel={editing ? EDIT_LABEL : VIEW_LABEL}
-        editing={editing}
-        highlightColor="var(--foreground)"
-        {...(scan === null
-          ? {}
-          : { onScanPointer: scan.editor.onScanPointer, onCameraChange: scan.editor.onCameraChange })}
-      />
+    <div className="@container relative size-full" data-testid="point-cloud-stage" onKeyDown={onKeyDown}>
+      <div className="flex size-full flex-col @2xl:flex-row">
+        <div className="relative min-h-0 min-w-0 flex-1" data-testid="scan-perspective">
+          <PointCloudCanvas
+            sample={sample}
+            frame={frame ?? "lidar_flu"}
+            colorMode={colorMode}
+            labels={labels}
+            showLabels={showLabels || editing}
+            resetSignal={resetSignal}
+            onStatusChange={setStatus}
+            ariaLabel={editing ? EDIT_LABEL : VIEW_LABEL}
+            editing={editing}
+            highlightColor="var(--foreground)"
+            {...(scan === null
+              ? {}
+              : { onScanPointer: scan.editor.onScanPointer, onCameraChange: scan.editor.onCameraChange })}
+          />
 
-      {editing && rendered !== null && view !== null && frame !== null && (
-        <ScanHandles
-          scene={{ document: rendered, selection, frame, camera: view.camera, viewport: view.viewport }}
-        />
-      )}
+          {editing && rendered !== null && view !== null && frame !== null && (
+            <ScanHandles
+              scene={{ document: rendered, selection, frame, camera: view.camera, viewport: view.viewport }}
+            />
+          )}
 
-      <div className="pointer-events-none absolute inset-x-2 top-2 flex flex-wrap items-start gap-2">
-        <p
-          data-testid="point-cloud-summary"
-          className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground"
-        >
-          {sample.count === total
-            ? `${total.toLocaleString()} points`
-            : `${sample.count.toLocaleString()} of ${total.toLocaleString()} points`}
-          {" · "}
-          {frame ?? "no declared frame, shown with z up"}
-        </p>
-
-        {scan !== null && <ScanStrip scan={scan} />}
-      </div>
-
-      {status === "lost" && (
-        <p
-          data-testid="point-cloud-lost"
-          className="absolute inset-x-0 top-1/2 mx-auto w-fit -translate-y-1/2 rounded-lg border border-border bg-muted px-3 py-2 text-xs text-muted-foreground"
-        >
-          The graphics context was lost. The view comes back when the browser restores it.
-        </p>
-      )}
-
-      <div
-        data-testid="point-cloud-controls"
-        className="absolute bottom-3 right-3 flex items-center gap-1 rounded-xl border border-border bg-muted p-1 shadow-lg"
-      >
-        <ToggleGroup
-          type="single"
-          size="sm"
-          value={colorMode}
-          aria-label="Colour points by"
-          onValueChange={(value) => {
-            if (value === "height" || value === "intensity" || value === "rgb") setColorMode(value);
-          }}
-        >
-          {MODES.map(({ mode, label, absent }) => {
-            const available = colorModeAvailable(sample, mode);
-            const item = (
-              <ToggleGroupItem
-                key={mode}
-                value={mode}
-                disabled={!available}
-                data-testid={`color-by-${mode}`}
-                onMouseDown={keepFocus}
-                className="px-2 text-xs"
-              >
-                {label}
-              </ToggleGroupItem>
-            );
-            return available ? (
-              item
-            ) : (
-              <Tooltip key={mode}>
-                <TooltipTrigger asChild>
-                  <span tabIndex={0}>{item}</span>
-                </TooltipTrigger>
-                <TooltipContent>{absent}</TooltipContent>
-              </Tooltip>
-            );
-          })}
-        </ToggleGroup>
-
-        <span className="mx-0.5 h-5 w-px bg-border" />
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span tabIndex={labelCount === 0 || editing ? 0 : -1}>
-              <Toggle
-                size="sm"
-                pressed={(showLabels || editing) && labelCount > 0}
-                disabled={labelCount === 0 || editing}
-                onPressedChange={setShowLabels}
-                aria-label={showLabels ? "Hide 3D labels" : "Show 3D labels"}
-                data-testid="toggle-scan-labels"
-                onMouseDown={keepFocus}
-              >
-                <Box className="size-4" />
-              </Toggle>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>
-            {labelCount === 0
-              ? "No 3D labels on this scan"
-              : editing
-                ? "3D labels stay on while editing"
-                : `${showLabels ? "Hide" : "Show"} ${labelCount} 3D label${labelCount === 1 ? "" : "s"}`}
-          </TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Reset view"
-              data-testid="reset-scan-view"
-              onMouseDown={keepFocus}
-              onClick={() => setResetSignal((signal) => signal + 1)}
+          <div className="pointer-events-none absolute inset-x-2 top-2 flex flex-wrap items-start gap-2">
+            <p
+              data-testid="point-cloud-summary"
+              className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground"
             >
-              <RotateCcw className="size-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Reset view (0)</TooltipContent>
-        </Tooltip>
+              {sample.count === total
+                ? `${total.toLocaleString()} points`
+                : `${sample.count.toLocaleString()} of ${total.toLocaleString()} points`}
+              {" · "}
+              {frame ?? "no declared frame, shown with z up"}
+            </p>
+
+            {scan !== null && <ScanStrip scan={scan} />}
+          </div>
+
+          {status === "lost" && (
+            <p
+              data-testid="point-cloud-lost"
+              className="absolute inset-x-0 top-1/2 mx-auto w-fit -translate-y-1/2 rounded-lg border border-border bg-muted px-3 py-2 text-xs text-muted-foreground"
+            >
+              The graphics context was lost. The view comes back when the browser restores it.
+            </p>
+          )}
+
+          <div
+            data-testid="point-cloud-controls"
+            className="absolute bottom-3 right-3 flex items-center gap-1 rounded-xl border border-border bg-muted p-1 shadow-lg"
+          >
+            <ToggleGroup
+              type="single"
+              size="sm"
+              value={colorMode}
+              aria-label="Colour points by"
+              onValueChange={(value) => {
+                if (value === "height" || value === "intensity" || value === "rgb") setColorMode(value);
+              }}
+            >
+              {MODES.map(({ mode, label, absent }) => {
+                const available = colorModeAvailable(sample, mode);
+                const item = (
+                  <ToggleGroupItem
+                    key={mode}
+                    value={mode}
+                    disabled={!available}
+                    data-testid={`color-by-${mode}`}
+                    onMouseDown={keepFocus}
+                    className="px-2 text-xs"
+                  >
+                    {label}
+                  </ToggleGroupItem>
+                );
+                return available ? (
+                  item
+                ) : (
+                  <Tooltip key={mode}>
+                    <TooltipTrigger asChild>
+                      <span tabIndex={0}>{item}</span>
+                    </TooltipTrigger>
+                    <TooltipContent>{absent}</TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </ToggleGroup>
+
+            <span className="mx-0.5 h-5 w-px bg-border" />
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span tabIndex={labelCount === 0 || editing ? 0 : -1}>
+                  <Toggle
+                    size="sm"
+                    pressed={(showLabels || editing) && labelCount > 0}
+                    disabled={labelCount === 0 || editing}
+                    onPressedChange={setShowLabels}
+                    aria-label={showLabels ? "Hide 3D labels" : "Show 3D labels"}
+                    data-testid="toggle-scan-labels"
+                    onMouseDown={keepFocus}
+                  >
+                    <Box className="size-4" />
+                  </Toggle>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {labelCount === 0
+                  ? "No 3D labels on this scan"
+                  : editing
+                    ? "3D labels stay on while editing"
+                    : `${showLabels ? "Hide" : "Show"} ${labelCount} 3D label${labelCount === 1 ? "" : "s"}`}
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Reset view"
+                  data-testid="reset-scan-view"
+                  onMouseDown={keepFocus}
+                  onClick={() => setResetSignal((signal) => signal + 1)}
+                >
+                  <RotateCcw className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Reset view (0)</TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
+
+        {topDown && (
+          <section
+            data-testid="scan-top-down"
+            aria-label="Top-down view"
+            className="relative min-h-0 min-w-0 basis-2/5 border-t border-border @2xl:border-l @2xl:border-t-0"
+          >
+            <PointCloudCanvas
+              sample={sample}
+              frame={frame}
+              colorMode={colorMode}
+              labels={labels}
+              showLabels
+              resetSignal={resetSignal}
+              ariaLabel={TOP_DOWN_LABEL}
+              editing
+              pinned
+              highlightColor="var(--foreground)"
+              testIds={{ view: "scan-top-down-canvas", canvas: "scan-top-down-gl" }}
+              onScanPointer={scan.editor.onScanPointer}
+              onCameraChange={setTopView}
+              {...(view === null ? {} : { followTarget: view.camera.target })}
+            />
+            {rendered !== null && topView !== null && (
+              <ScanHandles
+                testIdPrefix="scan-top"
+                scene={{
+                  document: rendered,
+                  selection,
+                  frame,
+                  camera: topView.camera,
+                  viewport: topView.viewport,
+                  view: "top-down",
+                }}
+              />
+            )}
+            <p className="pointer-events-none absolute left-2 top-2 rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+              Top-down
+            </p>
+          </section>
+        )}
       </div>
     </div>
   );

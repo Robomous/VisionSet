@@ -1,4 +1,4 @@
-import { createScanDocument, EMPTY_SELECTION, selectOnly, type Scene3D } from "@visionset/annotator";
+import { createScanDocument, EMPTY_SELECTION, selectOnly, topDownCamera, type Scene3D } from "@visionset/annotator";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -41,6 +41,31 @@ describe("ScanHandles", () => {
     }
     expect(screen.getByTestId("scan-yaw-ring").getAttribute("points")?.split(" ").length).toBeGreaterThan(32);
     expect(svg.innerHTML).not.toMatch(/#[0-9a-f]{3,6}\b/i);
+  });
+
+  it("over the top-down view, draws the footprint, the four side handles and a yaw handle on the heading", () => {
+    const top: Scene3D = {
+      ...scene(),
+      camera: topDownCamera([0, 0, 0], 30),
+      view: "top-down",
+    };
+    render(<ScanHandles scene={top} testIdPrefix="scan-top" />);
+    expect(screen.getByTestId("scan-top-handles").getAttribute("data-target")).toBe("box");
+    expect(screen.getByTestId("scan-top-footprint").getAttribute("points")?.split(" ")).toHaveLength(4);
+    for (const face of ["front", "back", "left", "right"]) expect(screen.getByTestId(`scan-top-handle-${face}`)).toBeTruthy();
+    expect(screen.queryByTestId("scan-top-handle-top")).toBeNull();
+    expect(screen.queryByTestId("scan-handles")).toBeNull();
+    const knob = screen.getByTestId("scan-top-yaw-handle");
+    const front = screen.getByTestId("scan-top-handle-front");
+    // Yaw 0 heads forward, which the top-down view draws up the screen.
+    expect(Number(knob.getAttribute("cy"))).toBeLessThan(Number(front.getAttribute("y")));
+    expect(Number(knob.getAttribute("cx"))).toBeCloseTo(400, 0);
+  });
+
+  it("over the perspective view, draws neither footprint nor yaw handle", () => {
+    render(<ScanHandles scene={scene()} />);
+    expect(screen.queryByTestId("scan-footprint")).toBeNull();
+    expect(screen.queryByTestId("scan-yaw-handle")).toBeNull();
   });
 
   it("draws nothing when no single box is selected", () => {
