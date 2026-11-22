@@ -402,7 +402,7 @@ read nothing never creates one: stdout is then empty, stderr says so, `--json` c
 
 `--point-clouds FRAME` reads the directory as PCD and PLY scans instead, through
 `SourceService.register_point_clouds`, each scan one point-cloud asset; `FRAME` is the axis
-convention they are written in, `lidar_flu` or `camera_rdf` (see
+convention they are written in, `lidar_flu`, `camera_rdf` or `lidar_rfu` (see
 [sources.md](sources.md#point-cloud-directories-and-their-frame)).
 
 Every entry of the directory that did not become an asset is reported on stderr, and in
@@ -431,7 +431,7 @@ no `--resume`: polling needs a second process, which is what `visionset server` 
 in, one **approved** batch out: the images (or scans) are ingested by content, the dataset's classes become
 schema version 1 when the project has none, and every label is written with `import` provenance.
 Nothing is completed or promoted. `FORMAT` is an importer's name (`ultralytics`, `yolov5-yaml`,
-`darknet`, `coco`, `voc`, `classification`, `openlane-2d`, `kitti`); an unknown one is refused with the
+`darknet`, `coco`, `voc`, `classification`, `openlane-2d`, `kitti`, `nuscenes`); an unknown one is refused with the
 importable formats listed. See [import.md](import.md).
 
 A commit that would drop anything is refused with `IMPORT_NOT_CONSENTED` unless each kind of loss

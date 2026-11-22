@@ -10,6 +10,7 @@ import pytest
 from tests.cli._flow import ok, payload, project, run, workspace
 from tests.fixtures.coco_source import write_coco_source
 from tests.fixtures.kitti_source import write_kitti_source
+from tests.fixtures.nuscenes_source import write_nuscenes_source
 
 from visionset.kernel.domain import AssetProgress, BatchState
 from visionset.kernel.services import (
@@ -180,6 +181,28 @@ def test_a_kitti_dry_run_counts_scans_and_a_consented_commit_imports_them(tmp_pa
     assert _state(root, name) == (0, 0, 0)
 
     batch_id = UUID(ok(root, "import", "kitti", str(src), "--project", name, *consent))
+    with WorkspaceService.open(root) as service:
+        assert BatchService(service).get(batch_id).state is BatchState.APPROVED
+    assert _state(root, name) == (2, 1, 1)
+
+
+def test_a_nuscenes_dry_run_counts_scans_and_a_consented_commit_imports_them(
+    tmp_path: Path,
+) -> None:
+    root = workspace(tmp_path)
+    name = project(root)
+    src = write_nuscenes_source(tmp_path / "src")
+    consent = [arg for kind in ("attribute", "image", "scan") for arg in ("--consent-lossy", kind)]
+
+    dry = run(root, "import", "nuscenes", str(src), "--project", name, "--dry-run", *consent)
+    assert dry.exit_code == 0, dry.output
+    assert "2 scan(s) in the lidar_rfu frame and 2 label(s)" in dry.stderr
+    assert _state(root, name) == (0, 0, 0)
+
+    refused = run(root, "import", "nuscenes", str(src), "--project", name, "--dry-run")
+    assert refused.exit_code == 1, refused.output
+
+    batch_id = UUID(ok(root, "import", "nuscenes", str(src), "--project", name, *consent))
     with WorkspaceService.open(root) as service:
         assert BatchService(service).get(batch_id).state is BatchState.APPROVED
     assert _state(root, name) == (2, 1, 1)

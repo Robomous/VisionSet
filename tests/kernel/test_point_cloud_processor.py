@@ -718,6 +718,15 @@ class TestThumbnail:
         assert image.getpixel((31, 31)) > 200  # type: ignore[operator]
         assert image.getpixel((0, 0)) < 40  # type: ignore[operator]
 
+    def test_rfu_forward_is_y_and_left_is_minus_x(self) -> None:
+        points = [(0.0, 0.0, 0.0), (0.0, 10.0, 0.0), (-10.0, 0.0, 0.0)]
+        image = self._thumb(points, ScanFrame.LIDAR_RFU).convert("L")
+        assert image.size == (32, 32)
+        assert image.getpixel((31, 0)) > 200  # type: ignore[operator]
+        assert image.getpixel((0, 31)) > 200  # type: ignore[operator]
+        assert image.getpixel((31, 31)) > 200  # type: ignore[operator]
+        assert image.getpixel((0, 0)) < 40  # type: ignore[operator]
+
     def test_camera_up_is_minus_y(self) -> None:
         points = [(0.0, -10.0, 0.0), (10.0, 10.0, 0.0)]
         image = self._thumb(points, ScanFrame.CAMERA_RDF, 16).convert("L")

@@ -18,6 +18,10 @@ nothing was being distributed. This is the first version that is.
 - **A `kitti` importer.** Reads a KITTI 3D object detection split (`velodyne/*.bin`, `label_2`, `calib`) into
   `point_cloud` assets under a `lidar_flu` source, with each box converted from the camera frame into the lidar
   frame as a `cuboid_3d`; a new `scan` loss kind covers a scan whose points repeat another's (#1049).
+- **A `nuscenes` importer and the `lidar_rfu` scan frame.** Reads a nuScenes data root's LIDAR_TOP keyframes
+  into `point_cloud` assets under a source declaring the new `lidar_rfu` frame (x right, y forward, z up), with
+  each global box moved into the sensor frame through the keyframe's ego pose and calibration as a `cuboid_3d`;
+  a box leaning more than 5 degrees is a `label` loss rather than flattened (#1056).
 
 ### Changed
 

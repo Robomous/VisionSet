@@ -47,6 +47,18 @@ describe("scanCuboidCorners", () => {
     expectClose(front(corners), [-2, 0, 0]);
   });
 
+  it("lidar_rfu at yaw 0: heading forward (+y), width along x, height along z", () => {
+    const corners = scanCuboidCorners(BOX, "lidar_rfu");
+    expectClose(extents(corners), [2, 4, 1]);
+    expectClose(front(corners), [0, 2, 0]);
+  });
+
+  it("lidar_rfu turns counter-clockwise about +z: a quarter turn heads left (-x)", () => {
+    const corners = scanCuboidCorners({ ...BOX, yaw: Math.PI / 2 }, "lidar_rfu");
+    expectClose(extents(corners), [4, 2, 1]);
+    expectClose(front(corners), [-2, 0, 0]);
+  });
+
   it("is placed at the centre", () => {
     const corners = scanCuboidCorners({ ...BOX, center: [10, -3, 1.5] }, "lidar_flu");
     expectClose(front(corners), [12, -3, 1.5]);

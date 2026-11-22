@@ -261,7 +261,8 @@ with open("scans/000042.pcd", "rb") as handle:
 
 **The bytes decide, never the suffix**, as for images: the header is sniffed, so a `.bin` holding
 a PCD is read as one. KITTI's headerless `.bin` cannot be sniffed and is a format importer's job:
-the [`kitti` import](import.md#formats) stores each as a binary PCD of the same bytes.
+the [`kitti` import](import.md#formats) stores each as a binary PCD of the same bytes, as the
+`nuscenes` import does with LIDAR_TOP's `.pcd.bin`, which is headerless too despite its name.
 
 | Format | Encodings read |
 | --- | --- |

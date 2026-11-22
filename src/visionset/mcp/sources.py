@@ -100,8 +100,9 @@ def ingest(
         Field(
             description=(
                 "Read the directory as PCD and PLY point-cloud scans written in this frame: "
-                "`lidar_flu` (x forward, y left, z up) or `camera_rdf` (x right, y down, "
-                "z forward). Omit it for still images."
+                "`lidar_flu` (x forward, y left, z up), `camera_rdf` (x right, y down, "
+                "z forward) or `lidar_rfu` (x right, y forward, z up). Omit it for still "
+                "images."
             )
         ),
     ] = None,

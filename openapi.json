@@ -1790,7 +1790,7 @@
           },
           "frame": {
             "$ref": "#/components/schemas/ScanFrame",
-            "description": "The axis convention the scans and their 3D labels are written in: `lidar_flu` (x forward, y left, z up) or `camera_rdf` (x right, y down, z forward)."
+            "description": "The axis convention the scans and their 3D labels are written in: `lidar_flu` (x forward, y left, z up), `camera_rdf` (x right, y down, z forward) or `lidar_rfu` (x right, y forward, z up)."
           },
           "name": {
             "anyOf": [
@@ -5949,7 +5949,8 @@
         "description": "The axis convention a point-cloud source's coordinates are written in.\n\nDeclared by the source, never inferred, and never normalised away: a label\non a scan is stored in exactly these axes, and a ``cuboid_3d`` yaw is a\nrotation about :attr:`up`, counter-clockwise seen from above.",
         "enum": [
           "lidar_flu",
-          "camera_rdf"
+          "camera_rdf",
+          "lidar_rfu"
         ],
         "title": "ScanFrame",
         "type": "string"
@@ -16535,7 +16536,7 @@
     },
     "/projects/{project_id}/sources/point-clouds": {
       "post": {
-        "description": "Offer a project a folder of point-cloud scans, declaring the frame they are written in.\n\nStaged and deduplicated exactly as `POST /projects/{project_id}/sources/images`\nis: the same files uploaded again return the **same** source. Nothing is\nparsed here \u2014 each file's format is read from its header at ingest, and a\nfile that is not a PCD or PLY scan is reported there rather than refused now.\n\nUploading the same files with another `frame` replaces the declaration,\nunless a scan of the source already holds a 3D label: that is 409\n`CALIBRATION_IN_USE`, because the label would be re-read in other axes.\n\nA missing `frame`, or one that is neither `lidar_flu` nor `camera_rdf`, is\n422 `VALIDATION_ERROR`, as is a `name` longer than 255 characters; a blank\n`name` is 422 `INVALID_NAME`. An unknown project is 404 `PROJECT_NOT_FOUND`.",
+        "description": "Offer a project a folder of point-cloud scans, declaring the frame they are written in.\n\nStaged and deduplicated exactly as `POST /projects/{project_id}/sources/images`\nis: the same files uploaded again return the **same** source. Nothing is\nparsed here \u2014 each file's format is read from its header at ingest, and a\nfile that is not a PCD or PLY scan is reported there rather than refused now.\n\nUploading the same files with another `frame` replaces the declaration,\nunless a scan of the source already holds a 3D label: that is 409\n`CALIBRATION_IN_USE`, because the label would be re-read in other axes.\n\nA missing `frame`, or one that is not `lidar_flu`, `camera_rdf` or\n`lidar_rfu`, is 422 `VALIDATION_ERROR`, as is a `name` longer than 255 characters; a blank\n`name` is 422 `INVALID_NAME`. An unknown project is 404 `PROJECT_NOT_FOUND`.",
         "operationId": "register_point_cloud_source",
         "parameters": [
           {

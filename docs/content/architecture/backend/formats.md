@@ -27,10 +27,11 @@ target - never through a dict, so a typo answers a `VisionSetError` rather than 
 
 ## What ships
 
-Nineteen plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
-`[project.entry-points."visionset.formats"]`: the eleven exporters below and eight importers,
+Twenty plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
+`[project.entry-points."visionset.formats"]`: the eleven exporters below and nine importers,
 `ultralytics-import`, `yolov5-yaml-import`, `darknet-import`, `coco-import`, `voc-import`,
-`classification-import`, `openlane-2d-import` and `kitti-import` (see [Importers](#importers)).
+`classification-import`, `openlane-2d-import`, `kitti-import` and `nuscenes-import` (see
+[Importers](#importers)).
 
 | Name | Module |
 | --- | --- |
@@ -53,7 +54,7 @@ and labels in the one `ScanFrame` the dataset declares; `ImportService` stores e
 of the same bytes under a point-cloud source declaring that frame. `registry.importers()` filters the scan by that
 port, and `registry.pick_importer(installed, name)` resolves a name with the same aliases,
 refusing with `ImportFormatNotFound`. `ImportService` takes the instance, as `ReleaseService.export`
-takes an exporter. The built-ins are eight, seven of them answering to their exporter's `format_name`:
+takes an exporter. The built-ins are nine, seven of them answering to their exporter's `format_name`:
 [`ultralytics-import`](../../../../src/visionset/formats/ultralytics/reader.py),
 [`yolov5-yaml-import`](../../../../src/visionset/formats/yolov5_yaml/reader.py) and
 [`darknet-import`](../../../../src/visionset/formats/darknet/reader.py), which share
@@ -62,10 +63,13 @@ takes an exporter. The built-ins are eight, seven of them answering to their exp
 [`coco-import`](../../../../src/visionset/formats/coco/reader.py),
 [`voc-import`](../../../../src/visionset/formats/voc/reader.py),
 [`classification-import`](../../../../src/visionset/formats/classification/reader.py) and
-[`openlane-2d-import`](../../../../src/visionset/formats/lanes/reader.py), and
-[`kitti-import`](../../../../src/visionset/formats/kitti/reader.py), which has no exporter and
-converts KITTI's camera-frame boxes into the lidar frame in
-[`kitti/frames.py`](../../../../src/visionset/formats/kitti/frames.py). The `yolo` alias
+[`openlane-2d-import`](../../../../src/visionset/formats/lanes/reader.py); and two with no
+exporter: [`kitti-import`](../../../../src/visionset/formats/kitti/reader.py), which converts
+KITTI's camera-frame boxes into the lidar frame in
+[`kitti/frames.py`](../../../../src/visionset/formats/kitti/frames.py), and
+[`nuscenes-import`](../../../../src/visionset/formats/nuscenes/reader.py), which moves nuScenes'
+global boxes into the LIDAR_TOP frame through each keyframe's poses in
+[`nuscenes/poses.py`](../../../../src/visionset/formats/nuscenes/poses.py). The `yolo` alias
 resolves to `ultralytics` for importers too. What an import does with the dataset is
 [import.md](../../import.md).
 

@@ -359,7 +359,7 @@ clip is actually imported rather than leaving somebody to search for it - fallin
 it as a folder" would put a decoder's refusal where the product's own answer belongs.
 
 `--point-clouds FRAME` reads the directory as point-cloud scans instead, registering it with
-`register_point_clouds` and declaring the frame - `lidar_flu` or `camera_rdf`:
+`register_point_clouds` and declaring the frame - `lidar_flu`, `camera_rdf` or `lidar_rfu`:
 
 ```bash
 BATCH=$(visionset ingest ./sweeps --project road-signs --point-clouds lidar_flu)

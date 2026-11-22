@@ -1,7 +1,7 @@
 # Import
 
 An import brings a dataset that already has labels - a COCO export from another tool, say, or
-KITTI lidar scans with their boxes - into a project. The images or scans become assets, the dataset's classes become the project's schema when it has
+KITTI or nuScenes lidar scans with their boxes - into a project. The images or scans become assets, the dataset's classes become the project's schema when it has
 none, and every label is written with `import` provenance into one batch, which is then approved.
 The import stops there. A person reviews the labels and promotes them as with any other batch,
 because a label from outside is third-party truth. The rule is
@@ -51,9 +51,9 @@ computed from the content, and a commit that would drop something is refused wit
 | `class` | A class the project's schema does not declare and no label uses. |
 | `geometry` | Part of a shape the kernel has no type for, such as YOLO keypoints, VOC parts, 3D lane points or an unusable per-vertex visibility, while the shape itself is kept. |
 | `label` | A whole label: an RLE or crowd mask, a polygon of several rings, a label outside its image. |
-| `image` | An image the source names but does not hold, or one whose bytes repeat an earlier image; its labels go with it. |
-| `scan` | A scan whose points repeat an earlier scan's, or one gone from the source; its labels go with it. |
-| `attribute` | Extras the importer does not carry, such as COCO attributes, VOC difficult or pose flags, an OpenLane camera calibration or track id, KITTI truncation, occlusion, alpha and calibration. |
+| `image` | An image the source names but does not hold, or one whose bytes repeat an earlier image; its labels go with it. A nuScenes camera frame, which is not read. |
+| `scan` | A scan whose points repeat an earlier scan's, or one gone from the source; its labels go with it. A nuScenes sweep or radar frame, which is not read. |
+| `attribute` | Extras the importer does not carry, such as COCO attributes, VOC difficult or pose flags, an OpenLane camera calibration or track id, KITTI truncation, occlusion, alpha and calibration, nuScenes attributes, visibility, instance tokens, point counts and poses. |
 
 The refusal carries the full report in its `detail.losses`. Inspecting the source first returns
 the same report and writes nothing; its `loss_kinds` is exactly what the commit has to consent to,
@@ -91,6 +91,7 @@ naming the kinds to accept. See [mcp-tools.md](mcp-tools.md).
 | `voc` | `Annotations/**/*.xml` with pictures under `JPEGImages/`; boxes | Pose, truncated, difficult and occluded values other than unspecified or `0`, other `<object>` children, parts, segmentation, an object with no name or box, a zero-area or outside box |
 | `classification` | `labels.csv` (`image`, `class`) and `classes.txt` beside `images/`; one tag per row | A row naming a class `classes.txt` does not declare, a second row of one class on one picture, a malformed row, a row with no picture or class |
 | `kitti` | A 3D object detection split: `velodyne/*.bin` scans, `label_2/*.txt` and `calib/*.txt`, at the top or in `training/` and `testing/`; boxes as `cuboid_3d` in the `lidar_flu` frame | `DontCare` regions, each box's 2D image `bbox`, truncation, occlusion and alpha, the calibration itself, a score outside 0 to 1, a label with no scan, no usable calibration, a malformed line or a dimension that is not positive |
+| `nuscenes` | A data root: a version folder (`v1.0-mini`, `v1.0-trainval`, ...) of JSON tables beside `samples/LIDAR_TOP/*.pcd.bin`; the LIDAR_TOP keyframes, boxes as `cuboid_3d` in the `lidar_rfu` frame | Attributes, visibility, instance tokens (tracking identity), `num_lidar_pts` and `num_radar_pts`, the ego pose and calibration themselves, a box leaning more than 5 degrees, a malformed box or a dimension that is not positive, an annotation whose sample has no LIDAR_TOP keyframe, the sweeps, and every other sensor's data |
 
 **YOLO family** (`ultralytics`, `yolov5-yaml`, `darknet`). A picture is any file under an `images/`
 directory; its label is at the same path with the last `images` segment swapped for `labels` and
@@ -158,7 +159,34 @@ between camera y and lidar z is not modelled by a cuboid and is projected out of
 Coordinates are rounded to the micrometre. Classes are the names labels use, KITTI's own
 (`Car`, `Van`, `Truck`, `Pedestrian`, `Person_sitting`, `Cyclist`, `Tram`, `Misc`) first in that
 order. A 16th column, a detection score, becomes the label's confidence when it lies in 0 to 1.
-Camera images are not read. nuScenes has no importer yet.
+Camera images are not read.
+
+**nuScenes.** The source is a data root, the directory that holds `samples/` beside one or more
+version folders of JSON tables (`v1.0-mini`, `v1.0-trainval`, `v1.0-test`); several version
+folders are merged by token, and naming a version folder itself is refused, because the tables
+name files relative to the root. The tables read are `sensor`, `calibrated_sensor`, `ego_pose`,
+`sample_data`, `sample_annotation`, `instance` and `category`; one that is missing, is not a JSON
+list of objects, or names a row another table does not hold refuses the source. Each LIDAR_TOP
+keyframe (`is_key_frame`) is one scan of float32 `x, y, z, intensity, ring` records, kept byte for
+byte with `ring` skipped; a file that is not a whole number of 20-byte points refuses the source,
+and a root with no LIDAR_TOP keyframe is refused. A keyframe with no annotations is imported
+unlabelled. The scans are declared in the `lidar_rfu` frame (x right, y forward, z up), LIDAR_TOP's
+own axes, so no point is re-expressed.
+
+An annotation is in the global frame: `translation` is the box's centre, `size` is `(w, l, h)` and
+`rotation` a `(w, x, y, z)` quaternion. The import moves each box into the scan's frame through
+that keyframe's poses, an explicit conversion the loss report names (an `attribute` loss on
+`ego_pose`): the inverse of its `ego_pose`, then the inverse of its `calibrated_sensor`, so
+`p_sensor = Rc^T (Re^T (p - te) - tc)`. The box's own x axis, its heading, is mapped through both
+rotations and read back as `yaw = atan2(-x, y)`, the turn from forward (+y) toward left (-x); the
+size becomes `(l, w, h)`. A cuboid has no pitch or roll, so a box whose up axis leans more than
+**5 degrees** from the sensor's is a `label` loss rather than a flattened box; within that, the lean
+is projected out of the heading. Coordinates are rounded to the micrometre. Classes are
+`category.name` (such as `vehicle.car`), sorted. Sweeps, camera images, radar and tracking
+identity are out of scope; each is reported, never dropped silently.
+
+nuScenes is licensed CC BY-NC-SA 4.0 and downloaded only after registering at nuscenes.org;
+VisionSet ships none of it, and its tests build a synthetic root instead.
 
 TuSimple, CurveLanes, BDD100K and CULane have no importer: none of them carries anything a
 polyline import does not already get from OpenLane, and none has a per-vertex slot.

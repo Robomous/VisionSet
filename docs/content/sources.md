@@ -273,6 +273,7 @@ Nothing is normalised on ingest: a coordinate is stored in exactly the axes the 
 | --- | --- | --- |
 | `lidar_flu` | x forward, y left, z up | +z |
 | `camera_rdf` | x right, y down, z forward (a depth camera's optical frame) | -y |
+| `lidar_rfu` | x right, y forward, z up (nuScenes' LIDAR_TOP) | +z |
 
 A `cuboid_3d` on a scan is a centre and a size in the frame's own units and a `yaw` about its
 **up** axis, counter-clockwise seen from above. The thumbnail is drawn from above along the same
@@ -286,7 +287,7 @@ check runs under the store's write lock, the one every label write takes before 
 frame, so a cuboid cannot land between the check and the change. Previews already rendered are
 not redrawn: they keep the orientation of the frame they were drawn in, and only a scan with no
 preview yet is drawn in the new one.
-An [import](import.md) of scans, such as `kitti`, writes or reuses the point-cloud source at its
+An [import](import.md) of scans, such as `kitti` or `nuscenes`, writes or reuses the point-cloud source at its
 directory in the dataset's frame, and never re-declares one: a source there in another frame
 refuses the import with `CALIBRATION_IN_USE`.
 Stating a camera calibration for a point-cloud directory, or for a scan, is refused with

@@ -415,7 +415,7 @@ export const checkSourceCalibrationOut: Check<Schemas["SourceCalibrationOut"]> =
   /*#__PURE__*/ object({ "calibration": [true, either([checkCalibrationOut, isNull] as const)], "source_id": [true, isString] } as const);
 
 export const checkScanFrame: Check<Schemas["ScanFrame"]> =
-  /*#__PURE__*/ oneOf(["lidar_flu", "camera_rdf"] as const);
+  /*#__PURE__*/ oneOf(["lidar_flu", "camera_rdf", "lidar_rfu"] as const);
 
 export const checkSourceKind: Check<Schemas["SourceKind"]> =
   /*#__PURE__*/ oneOf(["image_directory", "video", "point_cloud_directory"] as const);
