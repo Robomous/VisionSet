@@ -37,10 +37,10 @@ import type { Annotation } from "../types";
  * Everything else here is a call to this one, and a tool with a transformation
  * these four do not cover uses it directly rather than growing a fifth factory.
  */
-export function documentCommand(
+export function documentCommand<D = AnnotationDocument>(
   label: string,
-  apply: (document: AnnotationDocument) => AnnotationDocument,
-): Command {
+  apply: (document: D) => D,
+): Command<D> {
   return { label, apply };
 }
 
