@@ -169,7 +169,7 @@ import { ZoomWidget } from "./ZoomWidget";
 import { ANNOTATOR_MIN_VIEWPORT_PX, useViewportAtLeast } from "./viewportFloor";
 import { AssetImage } from "./AssetImage";
 import { PointCloudStage } from "./PointCloudStage";
-import { carries3DLabels, overlay3DFor, overlay3DNotice, type Overlay3DWithheld } from "./overlay3d";
+import { carries3DLabels, labels3D, overlay3DFor, overlay3DNotice, type Overlay3DWithheld } from "./overlay3d";
 import type { AssetProgress, WireAnnotation } from "./jobQueries";
 import type { BatchAsset } from "../screens/queries";
 import {
@@ -1772,6 +1772,8 @@ function Workspace({
   const drawn = annotationsInDrawOrder(snapshot.document).filter(
     (annotation) => !isTagAnnotation(annotation),
   ).length;
+  const scanLabels = useMemo(() => (isScan ? labels3D(loaded) : []), [isScan, loaded]);
+  const objects = drawn + scanLabels.length;
 
 
   /**
@@ -3036,7 +3038,7 @@ function Workspace({
           </EditorNotices>
 
           <span className="absolute bottom-2 left-2 rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground" data-testid="object-total">
-            {drawn} object{drawn === 1 ? "" : "s"}
+            {objects} object{objects === 1 ? "" : "s"}
           </span>
 
           {/*
@@ -3075,6 +3077,7 @@ function Workspace({
         <AnnotatorPanel
           store={store}
           readOnly={readOnly}
+          labels3D={scanLabels}
           hiddenIds={hiddenIds}
           onHiddenChange={setHiddenIds}
           activeClass={activeClass}

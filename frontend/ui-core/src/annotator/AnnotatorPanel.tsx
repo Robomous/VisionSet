@@ -91,6 +91,13 @@ import { Badge, Button, DropdownMenu, DropdownMenuTrigger, Input, Tooltip, Toolt
 import { ClassRegion } from "./ClassRegion";
 import { ReassignMenu } from "./ReassignMenu";
 import { VertexRegion } from "./VertexRegion";
+import type { WireAnnotation } from "./jobQueries";
+
+function geometryLabel3D(geometry: unknown): string {
+  return (geometry as { readonly type?: unknown } | null)?.type === "polyline_3d"
+    ? geometryLabel("polyline_3d")
+    : geometryLabel("cuboid_3d");
+}
 
 export interface AnnotatorPanelProps {
   readonly store: AnnotatorStore;
@@ -124,6 +131,11 @@ export interface AnnotatorPanelProps {
   readonly classFilterRef?: RefObject<HTMLInputElement | null>;
   /** Open the add-a-class dialog, or absent where there is nowhere to add one. */
   readonly onAddClass?: (name: string) => void;
+  /**
+   * A scan's 3D labels. They are drawn by the point-cloud viewer, not held in the
+   * document, so they are listed and counted here read-only.
+   */
+  readonly labels3D?: readonly WireAnnotation[];
 }
 
 export function AnnotatorPanel({
@@ -137,6 +149,7 @@ export function AnnotatorPanel({
   onActivateTool,
   classFilterRef,
   onAddClass,
+  labels3D = [],
 }: AnnotatorPanelProps): JSX.Element {
   const snapshot = useAnnotatorSnapshot(store);
   const [filter, setFilter] = useState("");
@@ -164,6 +177,11 @@ export function AnnotatorPanel({
   const rows = drawn
     .map((annotation, index) => ({ annotation, index }))
     .filter((row) => row.annotation.label_class.toLowerCase().includes(query));
+
+  const rows3D = labels3D
+    .map((label, index) => ({ label, index: drawn.length + index }))
+    .filter((row) => row.label.label_class.toLowerCase().includes(query));
+  const total = drawn.length + labels3D.length;
 
   const allHidden = drawn.length > 0 && drawn.every((one) => hiddenIds.has(one.id));
 
@@ -271,7 +289,7 @@ export function AnnotatorPanel({
         <span className="text-sm font-medium">Annotations</span>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground" data-testid="object-count">
-            {drawn.length} object{drawn.length === 1 ? "" : "s"}
+            {total} object{total === 1 ? "" : "s"}
           </span>
           <Button
             variant="ghost"
@@ -296,12 +314,12 @@ export function AnnotatorPanel({
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto" data-testid="objects-scroller">
-        {rows.length === 0 ? (
+        {rows.length + rows3D.length === 0 ? (
           <p
             className="px-1 py-4 text-center text-xs text-muted-foreground"
             data-testid="objects-empty"
           >
-            {drawn.length === 0 ? "Nothing drawn yet." : "No object matches that filter."}
+            {total === 0 ? "Nothing drawn yet." : "No object matches that filter."}
           </p>
         ) : (
           <ul className="flex flex-col gap-1">
@@ -323,6 +341,23 @@ export function AnnotatorPanel({
                       onReassign: (labelClass: string) => reassign(annotation, labelClass),
                     })}
               />
+            ))}
+            {rows3D.map(({ label, index }) => (
+              <li
+                key={label.id}
+                data-testid={`object-row-${index}`}
+                className="flex items-center gap-2 rounded-md border border-transparent bg-card px-1.5 py-1 text-xs"
+              >
+                <span
+                  aria-hidden="true"
+                  className="size-2.5 shrink-0 rounded-sm"
+                  style={{ background: classColor(classNamed(snapshot.document, label.label_class), label.label_class) }}
+                />
+                <span className="truncate">
+                  {index + 1}. {label.label_class}{" "}
+                  <span className="text-muted-foreground">· {geometryLabel3D(label.geometry)}</span>
+                </span>
+              </li>
             ))}
           </ul>
         )}

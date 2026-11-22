@@ -180,6 +180,8 @@ test("a scan draws its points and its cuboid, and never asks for a calibration",
   await expect(view).toHaveAttribute("data-status", "ready");
   await expect.poll(() => drawCount(view)).toBeGreaterThan(0);
   await expect(view).toHaveAttribute("data-label-count", "1");
+  await expect(page.getByTestId("object-count")).toHaveText("1 object");
+  await expect(page.getByTestId("object-total")).toHaveText("1 object");
   await expect(page.getByTestId("point-cloud-summary")).toContainText(`${SCAN.count.toLocaleString("en-US")} points`);
   await expect(page.getByTestId("point-cloud-summary")).toContainText("lidar_flu");
 

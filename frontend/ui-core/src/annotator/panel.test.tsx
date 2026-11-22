@@ -101,6 +101,33 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("a scan's 3D labels (#1061)", () => {
+  const cuboid = {
+    id: "c1",
+    asset_id: "asset-1",
+    label_class: "vehicle",
+    schema_version: 1,
+    geometry: { type: "cuboid_3d", center: [8, 0, 0], size: [4, 2, 1.6], yaw: 0.3 },
+    attributes: {},
+    provenance: "human",
+    model_ref: null,
+    confidence: null,
+    job_id: null,
+  } as const;
+
+  it("counts and lists them, which the document does not hold", async () => {
+    render(mount(storeWith([]), { labels3D: [cuboid] }));
+
+    expect(screen.getByTestId("object-count").textContent).toBe("1 object");
+    expect(screen.queryByTestId("objects-empty")).toBeNull();
+    expect(screen.getByTestId("object-row-0").textContent).toContain("1. vehicle");
+    expect(screen.getByTestId("object-row-0").textContent).toContain("3D box");
+
+    await userEvent.type(screen.getByTestId("object-filter"), "lane");
+    expect(screen.getByTestId("objects-empty").textContent).toBe("No object matches that filter.");
+  });
+});
+
 describe("the three regions the panel is now", () => {
   it("stacks them without tabs, so all three subjects are on screen at once", () => {
     // One view rather than Objects | Labels tabs.
