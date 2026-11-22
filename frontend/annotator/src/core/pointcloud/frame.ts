@@ -6,7 +6,7 @@
 
 import type { Point3D } from "../types";
 
-export type ScanFrame = "lidar_flu" | "camera_rdf";
+export type ScanFrame = "lidar_flu" | "camera_rdf" | "lidar_rfu";
 
 /** One frame axis as `[index over (x, y, z), sign]`. */
 export type FrameAxis = readonly [0 | 1 | 2, 1 | -1];
@@ -20,10 +20,11 @@ export interface FrameAxes {
 export const SCAN_FRAME_AXES: Readonly<Record<ScanFrame, FrameAxes>> = {
   lidar_flu: { forward: [0, 1], left: [1, 1], up: [2, 1] },
   camera_rdf: { forward: [2, 1], left: [0, -1], up: [1, -1] },
+  lidar_rfu: { forward: [1, 1], left: [0, -1], up: [2, 1] },
 };
 
 export function isScanFrame(value: unknown): value is ScanFrame {
-  return value === "lidar_flu" || value === "camera_rdf";
+  return typeof value === "string" && Object.hasOwn(SCAN_FRAME_AXES, value);
 }
 
 /** A vector given as `[forward, left, up]`, in the frame's own coordinates. */

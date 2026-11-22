@@ -69,6 +69,12 @@ describe("pointColors", () => {
     expect(colorAt(colors, 100)).toEqual([...HEIGHT_RAMP[0]]);
   });
 
+  it("colours lidar_rfu by z, low to high", () => {
+    const colors = pointColors(sample(column.flatMap((z) => [0, 0, z])), "height", "lidar_rfu");
+    expect(colorAt(colors, 0)).toEqual([...HEIGHT_RAMP[0]]);
+    expect(colorAt(colors, 100)).toEqual([...HEIGHT_RAMP[4]]);
+  });
+
   it("colours by intensity when there is one", () => {
     const scan = sample([0, 0, 0, 0, 0, 0], { intensity: new Float32Array([0, 255]) });
     const colors = pointColors(scan, "intensity", "lidar_flu");

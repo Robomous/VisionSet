@@ -111,8 +111,8 @@ def register_point_cloud_source(
         Form(
             description=(
                 "The axis convention the scans and their 3D labels are written in: "
-                "`lidar_flu` (x forward, y left, z up) or `camera_rdf` (x right, "
-                "y down, z forward)."
+                "`lidar_flu` (x forward, y left, z up), `camera_rdf` (x right, "
+                "y down, z forward) or `lidar_rfu` (x right, y forward, z up)."
             ),
         ),
     ],
@@ -139,8 +139,8 @@ def register_point_cloud_source(
     unless a scan of the source already holds a 3D label: that is 409
     `CALIBRATION_IN_USE`, because the label would be re-read in other axes.
 
-    A missing `frame`, or one that is neither `lidar_flu` nor `camera_rdf`, is
-    422 `VALIDATION_ERROR`, as is a `name` longer than 255 characters; a blank
+    A missing `frame`, or one that is not `lidar_flu`, `camera_rdf` or
+    `lidar_rfu`, is 422 `VALIDATION_ERROR`, as is a `name` longer than 255 characters; a blank
     `name` is 422 `INVALID_NAME`. An unknown project is 404 `PROJECT_NOT_FOUND`.
     """
     staged = stage(workspace.root, files)

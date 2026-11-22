@@ -174,13 +174,18 @@ def test_a_point_cloud_source_carries_no_camera_calibration() -> None:
         _scan_source(calibration=calibration(width=4, height=3))
 
 
-@pytest.mark.parametrize(
-    ("frame", "forward", "left", "up"),
-    [
-        (ScanFrame.LIDAR_FLU, (0, 1), (1, 1), (2, 1)),
-        (ScanFrame.CAMERA_RDF, (2, 1), (0, -1), (1, -1)),
-    ],
-)
+FRAME_AXES = [
+    (ScanFrame.LIDAR_FLU, (0, 1), (1, 1), (2, 1)),
+    (ScanFrame.CAMERA_RDF, (2, 1), (0, -1), (1, -1)),
+    (ScanFrame.LIDAR_RFU, (1, 1), (0, -1), (2, 1)),
+]
+
+
+def test_every_frame_has_its_axes_checked() -> None:
+    assert [row[0] for row in FRAME_AXES] == list(ScanFrame)
+
+
+@pytest.mark.parametrize(("frame", "forward", "left", "up"), FRAME_AXES)
 def test_each_frame_names_right_handed_axes(
     frame: ScanFrame, forward: tuple[int, int], left: tuple[int, int], up: tuple[int, int]
 ) -> None:

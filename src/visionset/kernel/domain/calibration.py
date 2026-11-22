@@ -196,6 +196,8 @@ class ScanFrame(StrEnum):
     LIDAR_FLU = "lidar_flu"
     #: A depth camera's optical frame: x right, y down, z forward (OpenCV's).
     CAMERA_RDF = "camera_rdf"
+    #: nuScenes' LIDAR_TOP frame: x right, y forward, z up.
+    LIDAR_RFU = "lidar_rfu"
 
     @property
     def forward(self) -> tuple[int, int]:
@@ -214,6 +216,7 @@ class ScanFrame(StrEnum):
 _FRAME_AXES: Final[dict[ScanFrame, tuple[tuple[int, int], tuple[int, int], tuple[int, int]]]] = {
     ScanFrame.LIDAR_FLU: ((0, 1), (1, 1), (2, 1)),
     ScanFrame.CAMERA_RDF: ((2, 1), (0, -1), (1, -1)),
+    ScanFrame.LIDAR_RFU: ((1, 1), (0, -1), (2, 1)),
 }
 
 

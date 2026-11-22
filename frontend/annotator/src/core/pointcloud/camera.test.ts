@@ -14,9 +14,9 @@ import {
   zoom,
   type OrbitCamera,
 } from "./camera";
-import { fromForwardLeftUp, type ScanFrame } from "./frame";
+import { SCAN_FRAME_AXES, fromForwardLeftUp, isScanFrame, type ScanFrame } from "./frame";
 
-const FRAMES: readonly ScanFrame[] = ["lidar_flu", "camera_rdf"];
+const FRAMES: readonly ScanFrame[] = ["lidar_flu", "camera_rdf", "lidar_rfu"];
 const BOUNDS = { minimum: [-10, -10, -10] as Point3D, maximum: [10, 10, 10] as Point3D };
 
 function expectClose(actual: Point3D, expected: Point3D): void {
@@ -35,6 +35,32 @@ describe("the frame's axes", () => {
     expect(fromForwardLeftUp("camera_rdf", [0, 0, 1])).toEqual([0, -1, 0]);
     expect(fromForwardLeftUp("camera_rdf", [1, 0, 0])).toEqual([0, 0, 1]);
     expect(fromForwardLeftUp("camera_rdf", [0, 1, 0])).toEqual([-1, 0, 0]);
+  });
+
+  it("names lidar_rfu as x right, y forward, z up", () => {
+    expect(fromForwardLeftUp("lidar_rfu", [0, 0, 1])).toEqual([0, 0, 1]);
+    expect(fromForwardLeftUp("lidar_rfu", [1, 0, 0])).toEqual([0, 1, 0]);
+    expect(fromForwardLeftUp("lidar_rfu", [0, 1, 0])).toEqual([-1, 0, 0]);
+  });
+
+  it("covers every declared frame, and only those", () => {
+    expect(Object.keys(SCAN_FRAME_AXES).sort()).toEqual([...FRAMES].sort());
+    FRAMES.forEach((frame) => expect(isScanFrame(frame)).toBe(true));
+    ["LIDAR_RFU", "radar", "toString", "constructor", null, 3].forEach((value) =>
+      expect(isScanFrame(value)).toBe(false),
+    );
+  });
+
+  it("is right-handed in every frame: forward × left = up", () => {
+    FRAMES.forEach((frame) => {
+      const [f, l, u] = [
+        fromForwardLeftUp(frame, [1, 0, 0]),
+        fromForwardLeftUp(frame, [0, 1, 0]),
+        fromForwardLeftUp(frame, [0, 0, 1]),
+      ];
+      const cross = [f[1] * l[2] - f[2] * l[1], f[2] * l[0] - f[0] * l[2], f[0] * l[1] - f[1] * l[0]];
+      expect(cross.map((value) => value + 0)).toEqual(u.map((value) => value + 0));
+    });
   });
 });
 

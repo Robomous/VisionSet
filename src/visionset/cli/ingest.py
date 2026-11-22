@@ -118,7 +118,8 @@ def ingest(
         typer.Option(
             "--point-clouds",
             help="Read the directory as PCD and PLY scans written in this frame: "
-            "lidar_flu (x forward, y left, z up) or camera_rdf (x right, y down, z forward).",
+            "lidar_flu (x forward, y left, z up), camera_rdf (x right, y down, z forward) "
+            "or lidar_rfu (x right, y forward, z up).",
         ),
     ] = None,
     batch_name: Annotated[
