@@ -458,6 +458,7 @@ function Tile({
     asset.frame_index === null || asset.frame_index === undefined
       ? asset.content_hash.slice(0, 8)
       : String(asset.frame_index);
+  const noun = asset.modality === "point_cloud" ? "scan" : "frame";
 
   const picture = (
     <>
@@ -465,7 +466,7 @@ function Tile({
         projectId={projectId}
         assetId={asset.id}
         thumbnailHash={asset.thumbnail_hash}
-        alt={`Frame ${label}`}
+        alt={`${noun === "scan" ? "Scan" : "Frame"} ${label}`}
         className="size-full object-cover"
       />
       {/*
@@ -507,7 +508,7 @@ function Tile({
         <button
           type="button"
           data-testid={`select-${asset.id}`}
-          aria-label={`Select frame ${label}`}
+          aria-label={`Select ${noun} ${label}`}
           aria-pressed={selected}
           onClick={(event) =>
             onSelect({ shift: event.shiftKey, meta: event.metaKey || event.ctrlKey })
@@ -538,8 +539,8 @@ function Tile({
               onClick={onOpen}
               aria-label={
                 declares(asset, ASSET_ACTION.annotate)
-                  ? `Open frame ${label} in the annotator`
-                  : `View frame ${label}`
+                  ? `Open ${noun} ${label} in the annotator`
+                  : `View ${noun} ${label}`
               }
               className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
             >

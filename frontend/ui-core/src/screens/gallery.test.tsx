@@ -826,6 +826,39 @@ describe("the gallery", () => {
     }
   });
 
+  it("names a scan as a scan, not as a frame with no number (#1061)", async () => {
+    on("GET", /\/batches\/[^/]+$/, {
+      status: 200,
+      body: batch({ state: "in_annotation", progress: { ...NO_PROGRESS, total: 2, annotated: 2 } }),
+    });
+    oneJob({ assetCount: 2, counts: { total: 2, annotated: 2 } });
+    const scan = (index: number): Record<string, unknown> =>
+      asset(index, {
+        modality: "point_cloud",
+        point_cloud: {
+          format: "pcd",
+          point_count: 3,
+          fields: ["x", "y", "z"],
+          bounds: { minimum: [-1, -1, -1], maximum: [1, 1, 1] },
+        },
+        width: null,
+        height: null,
+        format: null,
+        frame_index: null,
+        frame_timestamp: null,
+        job_id: JOB,
+        progress: "annotated",
+      });
+    on("GET", /\/assets$/, { status: 200, body: { total: 2, items: [scan(0), scan(1)] } });
+
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
+    await waitFor(() => expect(screen.queryByTestId("timeline-asset-1")).not.toBeNull());
+
+    expect(screen.getByTestId("timeline-asset-0").getAttribute("aria-label")).toBe("Scan 1, annotated");
+    expect(screen.getByTestId("timeline-asset-1").getAttribute("aria-label")).toBe("Scan 2, annotated");
+    expect(screen.getByTestId("select-asset-1").getAttribute("aria-label")).toBe("Select scan 00000001");
+  });
+
   it("keeps the empty state for a batch with nothing in it", async () => {
     on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch() });
     on("GET", /\/assets$/, { status: 200, body: assets(0, 0, 0) });
