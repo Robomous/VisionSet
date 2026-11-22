@@ -38,6 +38,7 @@ let modality: Modality = "image";
 let batchState: "approved" | "in_annotation" = "approved";
 let jobState: "pending" | "in_progress" = "pending";
 let refuseBatchStart: string | null = null;
+let startedElsewhere = false;
 let posts: string[] = [];
 
 function json(body: unknown, status = 200): Response {
@@ -129,6 +130,7 @@ beforeEach(() => {
   batchState = "approved";
   jobState = "pending";
   refuseBatchStart = null;
+  startedElsewhere = false;
   posts = [];
   stubResizeObserver();
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
@@ -143,6 +145,10 @@ beforeEach(() => {
     if (request.method !== "POST") return answer(path);
     posts.push(path);
     if (path === `/batches/${BATCH}/start`) {
+      if (startedElsewhere) {
+        batchState = "in_annotation";
+        return json({ code: "INVALID_TRANSITION", message: "refused" }, 409);
+      }
       if (refuseBatchStart !== null) {
         return json({ code: refuseBatchStart, message: "refused" }, 409);
       }
@@ -226,6 +232,20 @@ describe.each<Modality>(["image", "point_cloud"])("an approved batch's %s", (kin
     expect(starts()).toEqual([`/batches/${BATCH}/start`]);
     expect(screen.getByTestId("readonly-banner")).toBeDefined();
     expect((screen.getByTestId("banner-start-batch") as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+describe("a batch started elsewhere after the page opened", () => {
+  it("re-reads the batch and the job quietly, then starts the job", async () => {
+    startedElsewhere = true;
+    await open();
+    await settle();
+
+    await userEvent.click(screen.getByTestId("banner-start-batch"));
+
+    await waitFor(() => expect(starts()).toEqual([`/batches/${BATCH}/start`, `/jobs/${JOB}/start`]));
+    await waitFor(() => expect(screen.queryByTestId("readonly-banner")).toBeNull());
+    expect(screen.queryByTestId("opening-refusal")).toBeNull();
   });
 });
 

@@ -1520,17 +1520,18 @@ function Workspace({
    * one the committed render reads.
    *
    * `INVALID_TRANSITION` on either start means the move was already made (a cached
-   * declaration still offering it), so it re-reads the resource and says nothing;
-   * every other refusal is surfaced.
+   * declaration still offering it), so it re-reads and says nothing; every other
+   * refusal is surfaced. A batch started elsewhere re-reads the job too: its cached
+   * declaration was answered against the approved batch and would never offer `start`.
    */
   const [openingRefusal, setOpeningRefusal] = useState<unknown>(null);
   const sentJobStart = useRef(false);
   const queries = useQueryClient();
 
   const openingFailed = useCallback(
-    (error: unknown, stale: readonly unknown[]): void => {
+    (error: unknown, stale: readonly (readonly unknown[])[]): void => {
       if (asApiError(error).code === "INVALID_TRANSITION") {
-        void queries.invalidateQueries({ queryKey: stale });
+        for (const queryKey of stale) void queries.invalidateQueries({ queryKey });
         return;
       }
       setOpeningRefusal(error);
@@ -1544,15 +1545,15 @@ function Workspace({
   const startAnnotating = useCallback(() => {
     setOpeningRefusal(null);
     startBatch.mutateAsync().catch((error: unknown) => {
-      openingFailed(error, batchKeys.batch(batchId));
+      openingFailed(error, [batchKeys.batch(batchId), jobKeys.job(jobId)]);
     });
-  }, [batchId, openingFailed, startBatch]);
+  }, [batchId, jobId, openingFailed, startBatch]);
 
   useEffect(() => {
     if (!mayStartJob || sentJobStart.current) return;
     sentJobStart.current = true;
     startJob.mutateAsync().catch((error: unknown) => {
-      openingFailed(error, jobKeys.job(jobId));
+      openingFailed(error, [jobKeys.job(jobId)]);
     });
   }, [jobId, mayStartJob, openingFailed, startJob]);
 

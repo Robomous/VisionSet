@@ -493,7 +493,9 @@ read-only - nothing in that batch declares `annotate` - and the page sends no tr
 mount. The banner carries **Start annotating** while the batch declares `start`: it sends
 `POST /batches/{id}/start`, and once the re-read job declares `start` the page takes the job
 (`POST /jobs/{id}/start`) and becomes the editor in place, with no reload. A refused start is
-said in the editor's notice column and the page stays a viewer. Inside a batch that is
+said in the editor's notice column and the page stays a viewer. If the batch was started
+elsewhere first, the `INVALID_TRANSITION` is not said: the page re-reads both the batch and the
+job, so the job is taken just as it would have been. Inside a batch that is
 already `in_annotation`, opening a `pending` job still takes it, as before.
 
 #### Adding a class where the pin cannot move
