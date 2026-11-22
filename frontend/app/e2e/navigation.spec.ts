@@ -24,7 +24,7 @@
  */
 
 import { expect, test, type Page } from "@playwright/test";
-import { assetActions, batchActions, jobActions, type Wire } from "./_wire";
+import { assetActions, batchActions, jobActions, projectDigest, type Wire } from "./_wire";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
@@ -82,7 +82,7 @@ async function serveApi(page: Page): Promise<void> {
     if (path === "/projects") {
       return route.fulfill({
         json: {
-          items: [{ id: PROJECT, name: "road-signs", description: null, thumbnail_asset_id: null, thumbnail_hash: null, created_at: null }],
+          items: [{ id: PROJECT, name: "road-signs", description: null, thumbnail_asset_id: null, thumbnail_hash: null, created_at: null, digest: projectDigest() }],
           total: 1,
         } satisfies Wire["ProjectPage"],
       });
@@ -225,9 +225,8 @@ const SUBVIEWS = [
     name: "the batch gallery",
     url: `/projects/${PROJECT}/batches/${BATCH}`,
     ready: "gallery",
-    // Up to the section the batch was on, not to the project's default one:
-    // landing on Overview after leaving a batch is landing somewhere you were not.
-    parent: new RegExp(`/projects/${PROJECT}/batches$`),
+    // Up to the Overview, where the batch is listed and was opened from.
+    parent: new RegExp(`/projects/${PROJECT}/overview$`),
   },
 ] as const;
 
@@ -301,21 +300,24 @@ test("the way out names the project it goes to", async ({ page }) => {
   await expect(page.getByTestId("back-link")).toHaveText("road-signs");
 });
 
-test("a section has no way out of its own: the column and the rail are it", async ({ page }) => {
+test("a section has no way out of its own: the toolbar, the tabs and the rail are it", async ({ page }) => {
   await openCold(page, `/projects/${PROJECT}/overview`);
   await expect(page.getByTestId("project-screen")).toBeVisible();
   await expect(page.getByTestId("back-link")).toHaveCount(0);
 });
 
-test("the gallery's way out lands with the Batches section actually open", async ({ page }) => {
+test("the gallery's way out lands with the Overview actually open", async ({ page }) => {
   // A section in the URL and a navigation showing something else is the failure
   // this asserts against — the redirect-that-moved-only-the-URL shape. A section
   // is a place, which is what makes it a legitimate parent.
   await openCold(page, `/projects/${PROJECT}/batches/${BATCH}`);
+  await expect(page.getByTestId("nav-overview")).toHaveAttribute("aria-current", "page");
+  await expect(page.getByTestId("back-link")).toHaveText("Overview");
   await page.getByTestId("back-link").click();
 
-  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/batches$`));
-  await expect(page.getByTestId("nav-batches")).toHaveAttribute("aria-current", "page");
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview$`));
+  await expect(page.getByTestId("nav-overview")).toHaveAttribute("aria-current", "page");
+  await expect(page.getByTestId("overview-batches")).toBeVisible();
 });
 
 /**
@@ -337,7 +339,7 @@ test("the dataset's old URL is the Dataset section itself", async ({ page }) => 
   await expect(page.getByTestId("nav-dataset")).toHaveAttribute("aria-current", "page");
 });
 
-test("a bookmarked ?tab=versions lands on Schema, with the history under the editor", async ({
+test("a bookmarked ?tab=versions lands on Schema, with the history one press away", async ({
   page,
 }) => {
   // The history was a fourth tab — a read-only view *of* the second, offered as
@@ -349,6 +351,8 @@ test("a bookmarked ?tab=versions lands on Schema, with the history under the edi
 
   await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/schema$`));
   await expect(page.getByTestId("schema-editor")).toBeVisible();
+  // The history is the section's sheet, opened from its band.
+  await page.getByTestId("open-history").click();
   await expect(page.getByTestId("version-history")).toBeVisible();
   // Versions is gone from the navigation, which is the half that matters: a
   // redirect that left the entry in place would have moved nothing.
@@ -356,9 +360,21 @@ test("a bookmarked ?tab=versions lands on Schema, with the history under the edi
 });
 
 test("a ?tab= address keeps its other query parameters across the redirect", async ({ page }) => {
-  await openCold(page, `/projects/${PROJECT}?tab=batches&ref=mail`);
-  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/batches\\?ref=mail$`));
-  await expect(page.getByTestId("batches-screen")).toBeVisible();
+  await openCold(page, `/projects/${PROJECT}?tab=schema&ref=mail`);
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/schema\\?ref=mail$`));
+  await expect(page.getByTestId("schema-editor")).toBeVisible();
+});
+
+test("the old Batches section address, and ?tab=batches, land on the Overview", async ({ page }) => {
+  // `batches` was a bookmarkable section until its list moved onto the Overview;
+  // old links keep landing where the batches now are.
+  await openCold(page, `/projects/${PROJECT}/batches`);
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview$`));
+  await expect(page.getByTestId("overview-batches")).toBeVisible();
+
+  await page.goto(`/projects/${PROJECT}?tab=batches`);
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview$`));
+  await expect(page.getByTestId("overview-batches")).toBeVisible();
 });
 
 test("the dataset is one press from every other section", async ({ page }) => {
@@ -368,7 +384,7 @@ test("the dataset is one press from every other section", async ({ page }) => {
   await openCold(page, `/projects/${PROJECT}`);
   await expect(page.getByTestId("project-screen")).toBeVisible();
 
-  for (const from of ["nav-overview", "nav-schema", "nav-batches"]) {
+  for (const from of ["nav-overview", "nav-images", "nav-schema"]) {
     await page.getByTestId(from).click();
     await expect(page.getByTestId("nav-dataset")).toBeVisible();
   }
@@ -389,13 +405,17 @@ async function channelsOf(page: Page, colour: string): Promise<readonly number[]
   }, colour);
 }
 
-test("a batch row's progress fills with the primary colour on a bordered muted track", async ({
+test("a batch's progress bar fills with the primary colour on a bordered muted track", async ({
   page,
 }) => {
-  await openCold(page, `/projects/${PROJECT}/batches`);
-  await expect(page.getByTestId("batches-screen")).toBeVisible();
+  // The Overview's rows draw a small decorative meter; the labelled progressbar
+  // is the batch gallery's.
+  await openCold(page, `/projects/${PROJECT}/batches/${BATCH}`);
+  await expect(page.getByTestId("gallery")).toBeVisible();
 
-  const bar = page.getByRole("progressbar", { name: "Annotation progress" }).first();
+  const bar = page
+    .getByTestId("batch-progress-row")
+    .getByRole("progressbar", { name: "Annotation progress" });
   await expect(bar).toBeVisible();
   const tokens = await page.evaluate(() => {
     const style = getComputedStyle(document.documentElement);

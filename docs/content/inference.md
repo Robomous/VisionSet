@@ -80,7 +80,7 @@ the Robomous registry. Omitted on creation, it is what the kind implies - `huggi
 closed, like the kind's: a caller states it, so a client must be able to enumerate what it may
 send, and a new origin arrives with a release. Like the kind, it is not editable afterwards,
 because it is a fact about the weights and the weights are what a connection is. The Models page
-marks each card by it (see [The Models page](#the-models-page)).
+marks each row by it (see [The Models page](#the-models-page)).
 
 ## Running a model here needs the `local-inference` extra
 
@@ -248,7 +248,7 @@ none to read, and both are `INFERENCE_CONNECTION_NOT_CHECKABLE`.
 connection is put back to `not_set_up` before the job says so, in that order. The order is the whole
 point: a cache hit is returned unread, so leaving the bad bytes in place would let the download
 somebody runs next hand back the same damaged file and call the connection ready again. With them
-gone, **Download weights** is a real transfer, which is why it is the remedy the row then offers.
+gone, **Download weights** is a real transfer, which is why it is the remedy the sheet then offers.
 
 The two states stay the only two throughout. A check that cannot reach the hub - no network, a
 repository that moved - changes nothing and removes nothing: there are no published digests to
@@ -461,7 +461,7 @@ have to be **asked**: its model runs elsewhere, and this workspace never loads i
 `test_endpoint` action does the asking - one request to the connection's `endpoint_url` - and
 records what came back: the capability the endpoint declared becomes the row's `capabilities`,
 and `provider_id` records the driver that asked (`http`, unless the row already named another).
-Until then an `http` connection declares nothing - its card on the Models page carries no
+Until then an `http` connection declares nothing - its row on the Models page carries no
 ability badge and answers only the **All** chip - and is refused with
 `INFERENCE_CONNECTION_NOT_SET_UP` naming `test_endpoint`.
 
@@ -811,7 +811,7 @@ the remedy for a wrong one is to edit it or make another.
 
 ## The Models page
 
-Connections live behind **Models** in the rail, beside Home and Projects, at `/models`; the
+Connections live behind **Models** in the rail, beside Projects, at `/models`; the
 address the page had before it was named for what it lists, `/inference`, redirects there. It is
 a top-level destination rather than something inside a project because a connection belongs to
 the *workspace*: it carries no project id, and every project uses the same ones. The entry is
@@ -854,8 +854,8 @@ opens on the same form with the kind already settled.
   connection downloads nothing, so not knowing the size is information rather than a barrier.
 - **HTTP** asks for the endpoint URL and, optionally, the **Credential variable** - the name of
   an environment variable holding the endpoint's credential, never the secret itself, which the
-  hint beside the field says. Once created, **Test endpoint** in the card's menu asks the endpoint
-  what it answers, and the card's badges say what came back.
+  hint beside the field says. Once created, **Test endpoint** in the row's menu asks the endpoint
+  what it answers, and the row's labels say what came back.
 
 Because that list is a request rather than a constant, the model field has four states and says
 which one it is in. While the answer is in flight it says it is reading, and puts nothing else in
@@ -867,53 +867,68 @@ two leave the free model id and revision fields on screen, because a model id ty
 no list at all - a catalog that could not be read is no reason to stop a connection being
 configured.
 
-The page is a grid of cards, one per connection - a connection serving two abilities is one
-card, not two. Each card carries one colour, and it is where the weights come from: a narrow
-accent along the card's left edge - amber for a hub checkpoint, blue for the user's own, the
-brand's orange for the Robomous registry - with the origin named in plain words beneath the
-model reference (**Hugging Face**, **Customized**, **Robomous**). Top to bottom a card shows its name with `model @ revision`
-beneath; the origin; one quiet square label per ability the connection declares, in a person's
-words - **Suggests from clicks** for `point_suggest`, **Finds what you name** for `text_detect`,
-a value this build has no words for printed as it arrived - and one more for what it writes
-(*writes boxes or polygons*), read from `produces`; where it runs, in one line - `Local · cuda ·
-fp16`, or `HTTP · models.example` with the endpoint's host; and its status as a word - **Ready**
-or **Not set up** - beside a colour, never as a colour alone, the one badge on the card. Every
-line is absent rather than blank when the connection has nothing to put in it: a card whose
-weights have not been downloaded carries no ability labels yet, because what a model answers is
-read out of its own config.
+The page is a full-bleed table, like the Projects list: a header band with the page's name and
+**Add model**, a toolbar band with the filters, and a grid running edge to edge with one row per
+connection - a connection serving two abilities is one row, not two. Its columns, each named
+with an icon and a word: **Model**, the connection's name; **Weights**, `model @ revision` on one
+line, the revision being the part a short column gives up; **Origin**, where the weights come
+from in plain words (**Hugging Face**, **Customized**, **Robomous**) beside the row's one colour,
+a small square - amber for a hub checkpoint, blue for the user's own, the brand's orange for the
+Robomous registry; **What it does**, one quiet label per ability the connection declares, in a
+person's words - **Suggests from clicks** for `point_suggest`, **Finds what you name** for
+`text_detect`, a value this build has no words for printed as it arrived - and one more for what
+it writes (*writes boxes or polygons*), read from `produces`, on one line that fades out at its
+edge when there are more than fit, all of them in the cell's tooltip; **Runs on**, in one line -
+`Local · cuda · fp16`, or `HTTP · models.example` with the endpoint's host; **State**, as a word -
+**Ready** or **Not set up** - beside a colour, never as a colour alone; and a chevron that says
+the row opens. A cell with nothing to say shows a dash: a connection whose weights have not been
+downloaded declares no ability yet, because what a model answers is read out of its own config.
+The status bar says how many connections there are - *2 of 4 models* while a filter narrows them
+- how many of those are ready, and how many are not set up.
 
-Above the grid sit dropdown filters, one per dimension the workspace varies on - **Origin**,
-**Ability**, **Runs** (local or HTTP), **State** (ready or not set up) - each at **All** until
-somebody chooses, and combined: a card is shown only while it answers every chosen value. A
-filter offers only the values on the page, named in a person's words where this build knows
-them and printed raw where it does not; and a dimension on which every connection agrees is not
-offered at all, because a dropdown whose every choice shows the same cards is a control in a
-useless state - a workspace with one connection shows no filter, and one whose connections
-differ only in ability shows exactly one. A connection that has declared no ability answers
-**All** only. While anything is chosen a **Clear** control puts every filter back and the page
-says how many cards the choice left of how many there are; an empty result says *nothing here
-matches the filter* and invites nothing, because every choice on offer is one some card
-answers, so what left nothing is the combination. Above twenty connections the page also grows
-a text filter, which matches a name substring.
+In the toolbar sit dropdown filters, one per dimension the workspace varies on - **Origin**,
+**Ability**, **Runs** (local or HTTP), **State** (ready or not set up) - each a pill reading its
+name and its value, at **All** until somebody chooses, and combined: a row is shown only while it
+answers every chosen value. A filter offers only the values on the page, named in a person's
+words where this build knows them and printed raw where it does not; and a dimension on which
+every connection agrees is not offered at all, because a dropdown whose every choice shows the
+same rows is a control in a useless state - a workspace with one connection shows no filter, and
+one whose connections differ only in ability shows exactly one. A connection that has declared no
+ability answers **All** only. While anything is chosen a **Clear** control puts every filter back
+and the status bar says how many rows the choice left of how many there are; an empty result says
+*nothing here matches the filter* in the grid and invites nothing, because every choice on offer
+is one some row answers, so what left nothing is the combination. Above twenty connections the
+toolbar also grows a text filter, which matches a name substring.
 
-A local card that is not set up also says what fetching its weights would cost - the same size
-read the form shows before a confirm, asked per card and only while there is something to
-fetch - and carries **Download weights**, which launches the background job described above and
-reports its progress on the card; the card becomes **Ready** when the job finishes, without a
-reload. A card that is already ready carries two checks in its overflow menu instead - **Check for
-missing files**, which is the same request re-run, and **Check files are undamaged**, which reads
-every byte. The table above is what separates them. A machine without the extra still shows both
-controls, and pressing either answers with the install command - a control that vanished would
-take the remedy with it. While either run is under way all three are disabled and labelled with
-what is happening, for the reason above: they act on one cache, and the run is read off the
-connection, so a tab that started nothing shows it too.
+**A row is read; its sheet is where a model is managed.** The row's State cell is the state's
+word or, while a download or a check runs, the run itself - its name, its amounts and a bar - at
+the cell's width, so a run starting or ending moves nothing else in the grid; a run that failed
+adds a short note beside the word (*Download failed*), and the row never grows a line. Pressing a
+row opens the model's **sheet**: what the row truncates said in full - the weights and revision,
+where it runs, the endpoint, every ability - and every action the connection declares, each beside
+the sentence that says what it does.
 
-A failed download leaves the card at **Not set up**, because weights arrive or they do not, and
-says what happened in the job's own words with what to do about it. There is no separate retry
-button: **Download weights** is the retry. A failed *integrity* check leaves the card at **Not set
+A local connection that is not set up says there what fetching its weights would cost - *Downloads
+1.9 GB across 10 files* - the same size read the form shows before a confirm, asked only while
+there is something to fetch, and offers **Download weights**, which launches the background job
+described above. The run shows in the sheet and in the row at once, and the sheet says it runs on
+the server, so closing the sheet or leaving the page does not stop it; the state turns **Ready**
+when the job finishes, without a reload. A connection that is already ready offers two checks
+instead - **Check for missing files**, which is the same request re-run, and **Check files are
+undamaged**, which reads every byte - with one sentence saying which proves what; the table above
+is what separates them. A machine without the extra still shows the controls, and the size line or
+the press answers with the install command - a control that vanished would take the remedy with
+it. While either run is under way every control over the files is disabled and labelled with what
+is happening, for the reason above: they act on one cache, and the run is read off the
+connection, so a tab that started nothing shows it too. An HTTP connection offers **Test
+endpoint**, and its answer is said under the button - fresh every time, never stored.
+
+A failed download leaves the connection at **Not set up**, because weights arrive or they do not,
+and the sheet says what happened in the job's own words with what to do about it; the button
+becomes **Retry download**, the same action. A failed *integrity* check leaves it at **Not set
 up** for a different reason - the damaged files were removed and the connection stood down before
-the card said so - and the retry is the same **Download weights**, which now has to fetch them
-again for real.
+the job said so - and the remedy is the same download, which now has to fetch them again for
+real. **Edit** and **Delete** sit at the sheet's foot.
 
 Editing does not offer to change the kind, because the kind is not editable. Saving an edit that
 moves a local connection to another model or revision returns it to **Not set up** in place, with

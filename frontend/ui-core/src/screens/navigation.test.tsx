@@ -156,9 +156,9 @@ const SUBVIEWS = [
   },
   {
     name: "the gallery",
-    // The section this batch belongs to, not the project: landing on Overview
-    // after leaving a batch is landing somewhere you were not.
-    parent: "Batches",
+    // Overview is where a batch is opened from, so it is where leaving one
+    // returns: the Labeling section no longer exists to name.
+    parent: "Overview",
     sentinel: "gallery",
     render: (nav?: () => void) =>
       <GalleryScreen projectId={PROJECT} batchId={BATCH} {...(nav === undefined ? {} : { onBack: nav })} />,

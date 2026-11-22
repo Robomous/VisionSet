@@ -26,7 +26,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 
-import type { Wire } from "./_wire";
+import { projectDigest, type Wire } from "./_wire";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const DATASET = "22222222-2222-4222-8222-222222222222";
@@ -192,7 +192,7 @@ async function serveApi(page: Page): Promise<void> {
     if (path === "/projects") {
       return route.fulfill({
         json: {
-          items: [{ id: PROJECT, name: "road-signs", description: null, thumbnail_asset_id: null, thumbnail_hash: null, created_at: null }],
+          items: [{ id: PROJECT, name: "road-signs", description: null, thumbnail_asset_id: null, thumbnail_hash: null, created_at: null, digest: projectDigest() }],
           total: 1,
         } satisfies Wire["ProjectPage"],
       });
@@ -291,9 +291,9 @@ async function serveApi(page: Page): Promise<void> {
 }
 
 /**
- * The dataset on its Assets view, which is where every scenario here lives. The
- * asset count rides on the tab's own label, so "off the count" is asserted
- * there rather than on the Overview the scenarios never open.
+ * The dataset on its working copy, which is what the section opens on and where
+ * every scenario here lives. The image count rides on the working copy's own
+ * row in the version list, so "off the count" is asserted there.
  */
 async function openDataset(page: Page): Promise<void> {
   await serveApi(page);
@@ -301,52 +301,55 @@ async function openDataset(page: Page): Promise<void> {
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();
   await expect(page.getByTestId("dataset-screen")).toBeVisible();
-  await page.getByTestId("dataset-tab-assets").click();
   await expect(page.getByTestId("trunk-assets")).toBeVisible();
 }
 
-test("the trunk lists what is in it, and every row offers the removal", async ({ page }) => {
+test("the trunk lists what is in it, and every image offers the removal once it is open", async ({ page }) => {
   await openDataset(page);
 
   await expect(page.getByTestId("trunk-assets")).toBeVisible();
   for (const asset of ASSETS) {
-    await expect(page.getByTestId(`trunk-asset-${asset.id}`)).toBeVisible();
-    await expect(page.getByTestId(`remove-${asset.id}`)).toBeVisible();
+    await expect(page.getByTestId(`open-${asset.id}`)).toBeVisible();
+    // The removal lives with the image being read, in the detail beside the wall.
+    await page.getByTestId(`open-${asset.id}`).click();
+    await expect(page.getByTestId("preview-remove")).toBeVisible();
   }
 });
 
 test("removing an asset takes it out of the listing and off the count", async ({ page }) => {
   await openDataset(page);
   const [first] = ASSETS;
-  await expect(page.getByTestId("dataset-tab-assets")).toContainText("3");
+  await expect(page.getByTestId("version-working")).toContainText("3");
 
-  await page.getByTestId(`remove-${first.id}`).click();
+  await page.getByTestId(`open-${first.id}`).click();
+  await page.getByTestId("preview-remove").click();
   await expect(page.getByTestId("remove-asset-dialog")).toBeVisible();
   await page.getByTestId("remove-asset-submit").click();
 
   // The row goes, and so does the dialog...
-  await expect(page.getByTestId(`trunk-asset-${first.id}`)).toHaveCount(0);
+  await expect(page.getByTestId(`open-${first.id}`)).toHaveCount(0);
   await expect(page.getByTestId("remove-asset-dialog")).toHaveCount(0);
   // ...and the count above it follows, which is the half a listing-only
   // invalidation would miss. It is derived per call by the kernel, so a stale
   // cache would keep reporting the pre-removal trunk.
-  await expect(page.getByTestId("dataset-tab-assets")).toContainText("2");
+  await expect(page.getByTestId("version-working")).toContainText("2");
   // The others are untouched: this removes one membership row, not a page.
-  await expect(page.getByTestId(`trunk-asset-${ASSETS[1].id}`)).toBeVisible();
+  await expect(page.getByTestId(`open-${ASSETS[1].id}`)).toBeVisible();
 });
 
 test("cancelling takes no action at all", async ({ page }) => {
   await openDataset(page);
   const [first] = ASSETS;
 
-  await page.getByTestId(`remove-${first.id}`).click();
+  await page.getByTestId(`open-${first.id}`).click();
+  await page.getByTestId("preview-remove").click();
   await expect(page.getByTestId("remove-asset-dialog")).toBeVisible();
   await page.getByRole("button", { name: "Cancel" }).click();
 
   await expect(page.getByTestId("remove-asset-dialog")).toHaveCount(0);
   // The decision is the confirmation, not the press that opened it.
-  await expect(page.getByTestId(`trunk-asset-${first.id}`)).toBeVisible();
-  await expect(page.getByTestId("dataset-tab-assets")).toContainText("3");
+  await expect(page.getByTestId(`open-${first.id}`)).toBeVisible();
+  await expect(page.getByTestId("version-working")).toContainText("3");
 });
 
 test("opening a tile shows the picture with its label drawn over it, in the picture's own frame", async ({
@@ -356,18 +359,18 @@ test("opening a tile shows the picture with its label drawn over it, in the pict
   const [first] = ASSETS;
 
   await page.getByTestId(`open-${first.id}`).click();
-  const preview = page.getByTestId("asset-preview");
+  const preview = page.getByTestId("image-detail");
   await expect(preview).toBeVisible();
   await expect(preview.getByTestId(`preview-shape-${annotationRow(first.id).id}`)).toBeVisible();
 
   // The overlay is placed by the asset's dimensions and not by measuring the
   // picture, and this is the one claim jsdom cannot check: the SVG's box has to
   // be the image's box, or a coordinate lands beside the pixel it names.
-  // Both rectangles read in one evaluation, so the dialog's opening animation —
-  // which scales them together — cannot put a frame between the two readings.
-  await expect(preview.getByTestId("preview-image")).toBeVisible();
+  // Both rectangles read in one evaluation, so nothing can put a frame between
+  // the two readings.
+  await expect(preview.getByTestId("image-detail-picture")).toBeVisible();
   const [picture, overlay] = await preview.evaluate((node) =>
-    ["preview-image", "preview-overlay"].map((id) => {
+    ["image-detail-picture", "preview-overlay"].map((id) => {
       const rect = node.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect();
       return rect === undefined ? null : { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
     }),
@@ -377,14 +380,15 @@ test("opening a tile shows the picture with its label drawn over it, in the pict
   for (const side of ["x", "y", "width", "height"] as const) {
     expect(Math.abs((picture?.[side] ?? 0) - (overlay?.[side] ?? 0))).toBeLessThanOrEqual(1);
   }
-  // And the box keeps the asset's 4:3 whatever the dialog's width.
+  // And the box keeps the asset's 4:3 whatever the detail's width.
   expect(Math.abs((picture?.width ?? 0) / (picture?.height ?? 1) - 640 / 480)).toBeLessThan(0.02);
 
+  // The wall's arrows walk the selection, and the detail follows it.
   await page.keyboard.press("ArrowRight");
-  await expect(preview.getByTestId("preview-position")).toHaveText("2 of 3 on this page");
+  await expect(preview.getByTestId("image-detail-position")).toHaveText("2 of 3");
 });
 
-test("removing from the preview takes the tile out and closes the viewer", async ({ page }) => {
+test("removing from the detail takes the tile out and closes the detail", async ({ page }) => {
   await openDataset(page);
   const [first] = ASSETS;
 
@@ -393,28 +397,29 @@ test("removing from the preview takes the tile out and closes the viewer", async
   await expect(page.getByTestId("remove-asset-dialog")).toBeVisible();
   await page.getByTestId("remove-asset-submit").click();
 
-  await expect(page.getByTestId("asset-preview")).toHaveCount(0);
-  await expect(page.getByTestId(`trunk-asset-${first.id}`)).toHaveCount(0);
-  await expect(page.getByTestId("dataset-tab-assets")).toContainText("2");
+  await expect(page.getByTestId("image-detail")).toHaveCount(0);
+  await expect(page.getByTestId(`open-${first.id}`)).toHaveCount(0);
+  await expect(page.getByTestId("version-working")).toContainText("2");
 });
 
-test("a panel with more than fits scrolls inside the dialog rather than stretching it", async ({
+test("a member with more than fits scrolls inside the detail rather than stretching it", async ({
   page,
 }) => {
   await openDataset(page);
   const tall = ASSETS[2];
 
   await page.getByTestId(`open-${tall.id}`).click();
-  const preview = page.getByTestId("asset-preview");
+  const preview = page.getByTestId("image-detail");
   await expect(preview.getByTestId("preview-class-class-59")).toBeAttached();
 
   const viewport = page.viewportSize();
-  const dialog = await preview.boundingBox();
-  expect(dialog).not.toBeNull();
-  expect(dialog?.height ?? Infinity).toBeLessThanOrEqual((viewport?.height ?? 0) * 0.92 + 1);
-  // The panel is the part that scrolls, and it has something to scroll.
-  const panel = preview.getByTestId("preview-panel");
-  const overflow = await panel.evaluate((node) => node.scrollHeight - node.clientHeight);
+  const pane = await preview.boundingBox();
+  expect(pane).not.toBeNull();
+  // The detail is fitted to the window: it never grows past it to hold its content.
+  expect(pane?.height ?? Infinity).toBeLessThanOrEqual((viewport?.height ?? 0) + 1);
+  // What scrolls is the facts under the picture, between the detail's head and its foot.
+  const scroller = preview.getByTestId("image-detail-facts");
+  const overflow = await scroller.evaluate((node) => node.scrollHeight - node.clientHeight);
   expect(overflow).toBeGreaterThan(0);
   await expect(preview.getByTestId("preview-remove")).toBeVisible();
 });

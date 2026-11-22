@@ -3,15 +3,15 @@
  *
  * Every route under `/projects/:id/` — the four sections, the ingest flow, the
  * batch gallery — renders inside the same navigation column (the tab strip
- * below `lg`), with the project's identity, its sections, and its overflow; only
+ * below `lg`), with its sections, its actions and its overflow; only
  * the annotator, which needs the whole screen, stands outside it. This is the
  * one place that reads the project for the navigation's sake, so the column
  * says the same thing on every page and the rename and delete dialogs it opens
  * exist once.
  *
  * The one filled control is the frame's only when a caller hands it the slot's
- * inputs (`cta`): the sections do, so Annotate — or Ingest in its place — is the
- * project shell's dominant action there; a sub-view such as the gallery or the
+ * inputs (`cta`): the sections do, so Annotate — or Add images in its place — is
+ * the project shell's dominant action there, with Add images beside Annotate; a sub-view such as the gallery or the
  * ingest flow does not, because that page owns its own dominant action and a
  * second filled control beside it would be two answers to "what now?".
  */
@@ -22,14 +22,15 @@ import { refusalProse } from "../data/refusals";
 import { asApiError } from "../data/errors";
 import { formatCount } from "../lib/format";
 import { ErrorState } from "../patterns/AsyncStates";
-import { ProjectEyebrow } from "../patterns/ProjectEyebrow";
 import type { AnnotateTarget, ProjectSection } from "../patterns/ProjectNav";
 import { ProjectShell, type ProjectNavData } from "../patterns/ProjectShell";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldError } from "@robomous/ui-core";
 import {
   useActiveSchema,
   useBatches,
+  useDatasetStats,
   useDeleteProject,
+  useProjectDataset,
   useJobsOfBatches,
   useProject,
   useProjectStats,
@@ -48,13 +49,6 @@ export interface ProjectFrameProps {
   readonly onNavigate: (section: ProjectSection) => void;
   readonly hrefFor?: (section: ProjectSection) => string;
   /**
-   * Who heads the page. A section is the project, so the frame draws the
-   * project's eyebrow — `<name> · v4 active` — above its header; a sub-view (the
-   * gallery, the ingest flow) heads itself, with its own way out, and the frame
-   * adds nothing above it.
-   */
-  readonly chain: "frame" | "page";
-  /**
    * The filled control's inputs. Absent means the navigation draws none and the
    * page inside owns the dominant action; present, the slot shows Annotate when a
    * batch is open for annotation and the host can open one, else Ingest, which
@@ -65,13 +59,19 @@ export interface ProjectFrameProps {
     readonly onOpenJob?: (jobId: string) => void;
     readonly onIngest?: () => void;
     readonly contentOwnsTheAction?: boolean;
+    /** Add images as a button, or as the overflow's first entry. See `ProjectNav`. */
+    readonly ingest?: "action" | "menu";
   };
+  /** One line about the open section, drawn in the bar after the tabs. */
+  readonly meta?: ReactNode;
   /**
    * Where to go once the project is gone. Absent means the overflow menu still
    * deletes, and the caller is left on a screen whose subject no longer exists —
    * so a host with a route table wires it and one without does not offer it.
    */
   readonly onDeleted?: () => void;
+  /** The section lays itself out across the whole pane (`ProjectShell`'s `bleed`). */
+  readonly bleed?: boolean;
   readonly children: ReactNode;
 }
 
@@ -109,14 +109,15 @@ export function ProjectFrame({
   sections,
   onNavigate,
   hrefFor,
-  chain,
   cta,
   onDeleted,
+  bleed = false,
+  meta,
   children,
 }: ProjectFrameProps): JSX.Element {
   const project = useProject(projectId);
-  const schema = useActiveSchema(projectId);
   const batches = useBatches(projectId);
+  const counts = useSectionCounts(projectId);
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -133,25 +134,27 @@ export function ProjectFrame({
     sections,
     active,
     onNavigate,
+    ...(counts === undefined ? {} : { counts }),
+    ...(meta === undefined ? {} : { meta }),
+    ...(cta?.ingest === undefined ? {} : { ingest: cta.ingest }),
     ...(hrefFor === undefined ? {} : { hrefFor }),
     ...(open.length > 0 && cta?.onOpenBatch !== undefined
       ? { annotate: { targets: open, onOpen: cta.onOpenBatch, ...(cta.onOpenJob === undefined ? {} : { onOpenJob: cta.onOpenJob }) } }
       : {}),
-    ...(cta?.onIngest === undefined ? {} : { onIngest: cta.onIngest }),
+    // Where Annotate may appear, the actions wait for the batches: Add images
+    // drawn alone and filled, then pushed aside by an arriving Annotate, would
+    // be the bar's one layout shift.
+    ...(cta?.onIngest === undefined || (cta.onOpenBatch !== undefined && batches.isPending) ? {} : { onIngest: cta.onIngest }),
     contentOwnsTheAction: cta?.contentOwnsTheAction ?? false,
     onRename: () => setRenaming(true),
     onDelete: () => setDeleting(true),
   };
 
-  const eyebrow =
-    chain === "page" ? undefined : (
-      <ProjectEyebrow name={project.data?.name ?? ""} version={schema.data?.version ?? null} />
-    );
 
   return (
     <div className="flex min-h-full min-w-0 flex-1 flex-col" data-testid="project-screen">
-      <ProjectShell nav={nav} {...(eyebrow === undefined ? {} : { eyebrow })}>
-        <div className="flex flex-col gap-6">
+      <ProjectShell nav={nav} bleed={bleed}>
+        <div className={bleed ? "flex min-w-0 flex-1 flex-col" : "flex flex-col gap-6"}>
           {/* The project itself failing to load is said here, above the page
               rather than instead of it: the pages read their own queries and
               stand on their own, and the navigation has no room for an error. */}
@@ -166,7 +169,7 @@ export function ProjectFrame({
         </div>
       </ProjectShell>
 
-      <RenameDialog
+      <RenameProjectDialog
         projectId={projectId}
         current={project.data?.name ?? ""}
         open={renaming}
@@ -188,6 +191,36 @@ export function ProjectFrame({
       )}
     </div>
   );
+}
+
+/**
+ * What each section holds, for the tabs: the project's images, its active
+ * classes, and the images in its dataset.
+ *
+ * Every route inside the frame reads it — the gallery and the ingest flow too —
+ * so the tabs are the same width on every page of the project. It is handed
+ * over whole once each count has answered (or failed, which leaves that one
+ * out), so the tabs widen once instead of once per query. All three queries
+ * are ones the Overview already runs, under the same keys.
+ */
+function useSectionCounts(projectId: string): Partial<Record<ProjectSection, number>> | undefined {
+  const stats = useProjectStats(projectId);
+  const schema = useActiveSchema(projectId);
+  const dataset = useProjectDataset(projectId);
+  const trunk = useDatasetStats(dataset.data?.id);
+  const settled = (query: { isPending: boolean }): boolean => !query.isPending;
+  const datasetSettled = dataset.isError || settled(trunk);
+  if (!settled(stats) || !settled(schema) || !datasetSettled) return undefined;
+  return {
+    ...(stats.data === undefined ? {} : { images: stats.data.asset_count }),
+    // A project with no schema yet has no classes; any other failure says nothing.
+    ...(schema.data !== undefined
+      ? { schema: schema.data.classes.length }
+      : asApiError(schema.error).code === "SCHEMA_NOT_FOUND"
+        ? { schema: 0 }
+        : {}),
+    ...(trunk.data === undefined ? {} : { dataset: trunk.data.asset_count }),
+  };
 }
 
 /**
@@ -273,7 +306,12 @@ function DeleteDialog({
   );
 }
 
-function RenameDialog({
+/**
+ * Rename, as a dialog. Exported so the project list's row menu offers the same
+ * one — one component, so a rename reads and refuses identically wherever it
+ * starts.
+ */
+export function RenameProjectDialog({
   projectId,
   current,
   open,

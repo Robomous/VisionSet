@@ -1,5 +1,5 @@
 /**
- * The Batches tab's project-wide launch: offered off the wire, the checklist
+ * The Overview's project-wide pre-label, in the Batches panel's tool row: offered off the wire, the checklist
  * defaults to what has work, and the POST carries exactly what was checked.
  *
  * Reuses the fetch-stub harness `preLabel.test.tsx` established — `on`, `mount`,
@@ -11,7 +11,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import { BatchesScreen } from "./BatchesScreen";
+import { OverviewPanel } from "./OverviewPanel";
 import { renderWithData } from "../testing/dataHarness";
 import { batchActions } from "../testing/wire.fixtures.js";
 import type { Connection } from "../data/inferenceQueries";
@@ -132,6 +132,19 @@ function planFor(request: Request): Answer {
 }
 
 function stubBatches(items: unknown[], connections: readonly Connection[] = [connectionOf()]): void {
+  // The Overview draws the batches panel only for a project that has images.
+  on("GET", /\/stats$/, {
+    status: 200,
+    body: {
+      project_id: PROJECT,
+      asset_count: 8,
+      annotated_asset_count: 0,
+      annotation_count: 0,
+      class_count: 0,
+      annotated_pct: 0,
+      classes: [],
+    },
+  });
   on("GET", new RegExp(`/projects/${PROJECT}/batches$`), {
     status: 200,
     body: { items, total: items.length },
@@ -148,7 +161,7 @@ function stubBatches(items: unknown[], connections: readonly Connection[] = [con
 }
 
 function renderBatches(): void {
-  renderWithData(<BatchesScreen projectId={PROJECT} onOpenBatch={() => undefined} />);
+  renderWithData(<OverviewPanel projectId={PROJECT} onOpenBatch={() => undefined} />);
 }
 
 /** A full `BackgroundJobOut`, the shape every `PreLabelFanOutItemOut.job` carries. */
@@ -179,7 +192,7 @@ function textOf(element: HTMLElement): string {
 it("offers the project launch only when some batch declares pre_label", async () => {
   stubBatches([batch(DRAFT, "draft-01", "draft", 0)]);
   renderBatches();
-  await screen.findByTestId("batches-table");
+  await screen.findByTestId("overview-batches");
   expect(screen.queryByTestId("project-prelabel")).toBeNull();
 });
 
@@ -286,7 +299,7 @@ it("renders a refusal as prose", async () => {
   expect(textOf(refusal)).toMatch(/no class that a box can be written as/);
 });
 
-it("marks a batch whose remembered run is live", async () => {
+it("marks a batch whose remembered run is live, on its row in the batches panel", async () => {
   stubBatches([
     {
       ...batch(OPEN, "drive-01", "in_annotation", 8),
@@ -307,7 +320,9 @@ it("marks a batch whose remembered run is live", async () => {
     },
   ]);
   renderBatches();
-  expect(await screen.findByTestId(`prelabel-live-${OPEN}`)).toBeTruthy();
+  // The Overview draws a live run as "Drafting n/total" on the batch's own row.
+  const row = await screen.findByTestId("overview-batch-drive-01");
+  expect(textOf(row)).toContain("Drafting 3/8");
 });
 
 // --- what each run would ask for and write, and which shapes ---------------------

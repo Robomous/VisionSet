@@ -140,8 +140,8 @@ export const queryKeys = {
   project: (projectId: string) => ["projects", projectId] as const,
   activeSchema: (projectId: string) => ["projects", projectId, "schema"] as const,
   projectStats: (projectId: string) => ["projects", projectId, "stats"] as const,
-  projectAssets: (projectId: string, limit?: number) =>
-    ["projects", projectId, "assets", limit ?? "all"] as const,
+  projectAssets: (projectId: string, limit?: number, offset = 0, sourceId?: string) =>
+    ["projects", projectId, "assets", limit ?? "all", offset, sourceId ?? "any"] as const,
   schemaVersions: (projectId: string) => ["projects", projectId, "schema", "versions"] as const,
   schemaCompare: (projectId: string, from: number, to: number) =>
     ["projects", projectId, "schema", "compare", from, to] as const,
@@ -151,6 +151,8 @@ export const queryKeys = {
   // one key would make editing the draft a cache overwrite rather than a new read.
   schemaBlockingAssets: (projectId: string, classes: readonly LabelClassBody[], limit?: number) =>
     ["projects", projectId, "schema", "blocking-assets", classes, limit ?? "all"] as const,
+  schemaPreview: (projectId: string, classes: readonly LabelClassBody[]) =>
+    ["projects", projectId, "schema", "preview", classes] as const,
 };
 
 /**
@@ -217,29 +219,132 @@ export function useProjectStats(projectId: string): UseQueryResult<ProjectStats,
 }
 
 /**
- * A window onto the project's own assets — the third asset listing.
+ * A window onto the project's own assets — the third asset listing, and what the
+ * Images section pages through.
  *
- * `total` counts the project rather than the page, which is what lets six sample
- * tiles compute their own `+N` overflow without a second request.
+ * `total` counts the project rather than the page, so a caller can say "1–60 of
+ * 4,812" and compute an overflow without a second request.
  */
 export function useProjectAssets(
   projectId: string,
   limit?: number,
+  offset = 0,
+  sourceId?: string,
 ): UseQueryResult<AssetPage, Error> {
   const client = useApiClient();
   return useQuery({
-    queryKey: queryKeys.projectAssets(projectId, limit),
+    queryKey: queryKeys.projectAssets(projectId, limit, offset, sourceId),
     queryFn: async () =>
       unwrap(
         await client.GET("/projects/{project_id}/assets", {
           params: {
             path: { project_id: projectId },
-            ...(limit === undefined ? {} : { query: { limit } }),
+            query: {
+              offset,
+              ...(limit === undefined ? {} : { limit }),
+              ...(sourceId === undefined ? {} : { source_id: sourceId }),
+            },
           },
         }),
         checkListProjectAssets,
       ),
+    // A page turn keeps the last window on screen until the next one answers,
+    // so the grid never collapses to a loading state between pages.
+    placeholderData: keepPreviousData,
   });
+}
+
+/**
+ * How many assets each source produced, by id — one `limit=1` request per
+ * source, whose `total` is the count. `undefined` for a source still answering.
+ * Keys are the listing's own, so a source the Images page then opens is a page
+ * the cache already started.
+ */
+/** One run of pages the Images section reads: a source's, or (`sourceId: null`) the whole project's. */
+export interface AssetPagesRequest {
+  readonly sourceId: string | null;
+  /** How many pages, from the first, are wanted. */
+  readonly pages: number;
+}
+
+/** What one run answered: the images so far, in the wire's order, and how many there are in all. */
+export interface AssetPages {
+  readonly items: readonly Asset[];
+  /** The run's `total` once its first page has answered. */
+  readonly total: number | undefined;
+  readonly isPending: boolean;
+  readonly isFetchingMore: boolean;
+  readonly isError: boolean;
+  readonly error: unknown;
+}
+
+/**
+ * Several runs of pages at once — one per source on the Images section — as
+ * plain queries, one per page, so a run grows by asking for one more page and
+ * every page is a cache entry the old paged listing already keyed the same way
+ * (`queryKeys.projectAssets`). `total` comes from the first page and does not
+ * move as more are read, so "is there more" is `items < total`.
+ */
+export function useAssetPages(projectId: string, pageSize: number, requests: readonly AssetPagesRequest[]): readonly AssetPages[] {
+  const client = useApiClient();
+  const flat = requests.flatMap((request, run) => Array.from({ length: Math.max(1, request.pages) }, (_, page) => ({ run, page, sourceId: request.sourceId })));
+  const results = useQueries({
+    queries: flat.map(({ page, sourceId }) => ({
+      queryKey: queryKeys.projectAssets(projectId, pageSize, page * pageSize, sourceId ?? undefined),
+      queryFn: async () =>
+        unwrap(
+          await client.GET("/projects/{project_id}/assets", {
+            params: {
+              path: { project_id: projectId },
+              query: { limit: pageSize, offset: page * pageSize, ...(sourceId === null ? {} : { source_id: sourceId }) },
+            },
+          }),
+          checkListProjectAssets,
+        ),
+    })),
+  });
+  return requests.map((_, run) => {
+    const mine = flat.flatMap((entry, i) => (entry.run === run ? [results[i]!] : []));
+    const first = mine[0];
+    // Pages are kept in order and stop at the first that has not answered, so a
+    // later page never shows before the one in front of it.
+    const items: Asset[] = [];
+    for (const page of mine) {
+      if (page.data === undefined) break;
+      items.push(...page.data.items);
+    }
+    const failed = mine.find((page) => page.isError);
+    return {
+      items,
+      total: first?.data?.total,
+      isPending: first === undefined || first.isPending,
+      isFetchingMore: mine.slice(1).some((page) => page.isPending),
+      isError: failed !== undefined,
+      error: failed?.error,
+    };
+  });
+}
+
+export function useSourceAssetTotals(projectId: string, sourceIds: readonly string[]): ReadonlyMap<string, number> {
+  const client = useApiClient();
+  const results = useQueries({
+    queries: sourceIds.map((sourceId) => ({
+      queryKey: queryKeys.projectAssets(projectId, 1, 0, sourceId),
+      queryFn: async () =>
+        unwrap(
+          await client.GET("/projects/{project_id}/assets", {
+            params: { path: { project_id: projectId }, query: { limit: 1, offset: 0, source_id: sourceId } },
+          }),
+          checkListProjectAssets,
+        ),
+    })),
+  });
+  const totals = new Map<string, number>();
+  results.forEach((result, i) => {
+    const id = sourceIds[i];
+    if (id !== undefined && result.data !== undefined) totals.set(id, result.data.total);
+  });
+  return totals;
 }
 
 export function useCreateProject() {
@@ -396,6 +501,42 @@ export function usePreviewSchemaChange(projectId: string) {
         await client.POST("/projects/{project_id}/schema/preview", {
           params: { path: { project_id: projectId } },
           body: { classes: [...classes] },
+        }),
+        checkPreviewSchemaChange,
+      ),
+  });
+}
+
+/**
+ * What publishing `classes` would do, read as the draft changes rather than
+ * asked once at Save.
+ *
+ * The same `POST .../schema/preview` the mutation above sends — a question, not a
+ * write — so the draft rail can list the changes in the kernel's own words and
+ * say before Save whether anything is in the way. Save still asks again through
+ * the mutation, and the publish's own 409 still decides: nothing is locked
+ * between this answer and a publish.
+ *
+ * Disabled while `classes` is null. A caller settles the list first, because
+ * every keystroke in a class name is a different proposal and the server walks
+ * every annotation to answer one.
+ */
+export function useSchemaChangePreview(
+  projectId: string,
+  classes: readonly LabelClassBody[] | null,
+): UseQueryResult<SchemaChangePreview, Error> {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: queryKeys.schemaPreview(projectId, classes ?? []),
+    enabled: classes !== null,
+    // Keep the last answer on screen while the next proposal is asked about, so
+    // the list does not blink empty between two edits.
+    placeholderData: keepPreviousData,
+    queryFn: async () =>
+      unwrap(
+        await client.POST("/projects/{project_id}/schema/preview", {
+          params: { path: { project_id: projectId } },
+          body: { classes: [...(classes ?? [])] },
         }),
         checkPreviewSchemaChange,
       ),
@@ -694,6 +835,10 @@ export type SourcePage = components["schemas"]["SourcePage"];
 export type IngestJob = components["schemas"]["IngestJobOut"];
 export type BackgroundJob = components["schemas"]["BackgroundJobOut"];
 export type Home = components["schemas"]["HomeOut"];
+/** A row of the project list: the project, plus the digest the kernel computes for the listing. */
+export type ProjectListItem = components["schemas"]["ProjectListItemOut"];
+/** Where a project is, as the kernel describes it — a description, never a capability. */
+export type ProjectStage = components["schemas"]["ProjectStage"];
 export type ResumeTarget = components["schemas"]["ResumeTargetOut"];
 export type AttentionItem = components["schemas"]["AttentionItemOut"];
 export type ActivityEntry = components["schemas"]["ActivityEntryOut"];
@@ -1147,6 +1292,44 @@ export function useJobsOfBatches(
   });
   if (results.some((one) => one.data === undefined)) return undefined;
   return new Map(batchIds.map((batchId, at) => [batchId, results[at]?.data?.items ?? []]));
+}
+
+/** One batch's jobs read, standing on its own. */
+export type BatchJobsRead =
+  | { readonly status: "pending" }
+  | { readonly status: "ready"; readonly jobs: readonly Job[] }
+  | { readonly status: "error"; readonly error: Error; readonly retry: () => void };
+
+/**
+ * The jobs of several batches, each read settling on its own — what a list of
+ * batches needs, one row per batch.
+ *
+ * Unlike `useJobsOfBatches`, which answers only once every read has arrived (a
+ * rule over all of them cannot be applied to half), a row here shows its jobs
+ * as soon as its own read lands, and a read that fails is that row's to say —
+ * it never holds the other rows blank. Shares cache keys with
+ * `useJobsOfBatches` and `useBatchJobs`, so neither reads twice.
+ */
+export function useJobsByBatch(batchIds: readonly string[]): ReadonlyMap<string, BatchJobsRead> {
+  const client = useApiClient();
+  const results = useQueries({
+    queries: batchIds.map((batchId) => ({
+      queryKey: batchKeys.jobs(batchId),
+      queryFn: async () =>
+        unwrap(
+          await client.GET("/batches/{batch_id}/jobs", { params: { path: { batch_id: batchId } } }),
+          checkListBatchJobs,
+        ),
+    })),
+  });
+  return new Map(
+    batchIds.map((batchId, at): [string, BatchJobsRead] => {
+      const one = results[at];
+      if (one?.data !== undefined) return [batchId, { status: "ready", jobs: one.data.items }];
+      if (one?.error != null) return [batchId, { status: "error", error: one.error, retry: () => void one.refetch() }];
+      return [batchId, { status: "pending" }];
+    }),
+  );
 }
 
 /**
@@ -1842,8 +2025,8 @@ export const datasetKeys = {
   stats: (datasetId: string) => ["datasets", datasetId, "stats"] as const,
   // The page is part of the key: two offsets are two answers, and sharing one
   // key would make paging a cache overwrite rather than a second read.
-  assets: (datasetId: string, offset: number) =>
-    ["datasets", datasetId, "assets", offset] as const,
+  assets: (datasetId: string, offset: number, releaseId?: string) =>
+    ["datasets", datasetId, "assets", offset, releaseId ?? "all"] as const,
   allAssets: (datasetId: string) => ["datasets", datasetId, "assets"] as const,
   annotations: (datasetId: string, assetId: string) =>
     ["datasets", datasetId, "assets", assetId, "annotations"] as const,
@@ -1907,17 +2090,53 @@ export function useDatasetStats(datasetId: string | undefined): UseQueryResult<D
 export function useDatasetAssets(
   datasetId: string | undefined,
   offset: number,
+  /** Keeps the members a release names. The release is part of the key: two filters are two answers. */
+  releaseId?: string,
 ): UseQueryResult<DatasetAssetPage, Error> {
   const client = useApiClient();
   return useQuery({
-    queryKey: datasetKeys.assets(datasetId ?? "none", offset),
+    queryKey: datasetKeys.assets(datasetId ?? "none", offset, releaseId),
     enabled: datasetId !== undefined,
     queryFn: async () =>
       unwrap(
         await client.GET("/datasets/{dataset_id}/assets", {
           params: {
             path: { dataset_id: datasetId ?? "" },
-            query: { limit: TRUNK_PAGE_SIZE, offset },
+            query: { limit: TRUNK_PAGE_SIZE, offset, ...(releaseId === undefined ? {} : { release_id: releaseId }) },
+          },
+        }),
+        checkListDatasetAssets,
+      ),
+  });
+}
+
+/**
+ * The first few trunk members, optionally only those carrying one class — the
+ * Overview's window, as opposed to the Dataset section's pager above.
+ *
+ * Its key sits under `allAssets`, so every invalidation of the trunk's membership
+ * reaches it too. The class is part of the key because two filters are two
+ * answers; `keepPreviousData` holds the last window on screen while the next one
+ * is read, so switching a filter changes the tiles rather than flashing a
+ * skeleton — and the component holding the filter is never unmounted by a key it
+ * moved (`ui-capabilities`, *One structural trap*).
+ */
+export function useDatasetAssetWindow(
+  datasetId: string | undefined,
+  limit: number,
+  labelClass: string | null,
+): UseQueryResult<DatasetAssetPage, Error> {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: [...datasetKeys.allAssets(datasetId ?? "none"), "window", limit, labelClass] as const,
+    enabled: datasetId !== undefined,
+    placeholderData: keepPreviousData,
+    queryFn: async () =>
+      unwrap(
+        await client.GET("/datasets/{dataset_id}/assets", {
+          params: {
+            path: { dataset_id: datasetId ?? "" },
+            query: { limit, offset: 0, ...(labelClass === null ? {} : { label_class: [labelClass] }) },
           },
         }),
         checkListDatasetAssets,

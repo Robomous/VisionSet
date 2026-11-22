@@ -5,13 +5,12 @@
  * `columnsFor` are: these are the claims worth checking without a browser, and
  * jsdom has nothing to say about them either way.
  *
- * ## One mapping, two screens
+ * ## One mapping
  *
- * `BatchesScreen` renders the lifecycle as a table row and `GalleryScreen` renders
- * it as a header badge. Both need "what colour is `in_annotation`" and "what does
- * a person call it", and a second spelling of either is free to drift — the
- * promoted-not-copied rule. The variant map moved here out of `BatchesScreen`
- * unchanged, so no shipped pixel moved with it.
+ * `GalleryScreen` renders the lifecycle as a header badge, and any other screen
+ * that names a batch's state reads the same map: "what colour is
+ * `in_annotation`" and "what does a person call it" have one spelling, because
+ * a second is free to drift — the promoted-not-copied rule.
  *
  * ## Green arrived, and it lives in one file
  *

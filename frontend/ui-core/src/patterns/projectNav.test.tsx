@@ -4,8 +4,8 @@
  * Everything here is presentational — the host spells the URLs and owns the
  * route change — so what a test can hold is the shape: one filled control, one
  * item per section with the open one marked structurally, the overflow, and the
- * callback each item fires. The project's identity is not here at all — it is an
- * eyebrow the frame draws above the content. Which breakpoint draws which layout
+ * callback each item fires. The project's identity is not here at all, nor
+ * anywhere on the project's pages. Which breakpoint draws which layout
  * is a browser fact and lives in `e2e/project-nav.spec.ts`.
  */
 
@@ -19,7 +19,7 @@ import { PROJECT_SECTIONS, ProjectNav, type ProjectNavProps } from "./ProjectNav
 
 function props(overrides: Partial<ProjectNavProps> = {}): ProjectNavProps {
   return {
-    layout: "column",
+    layout: "bar",
     sections: PROJECT_SECTIONS,
     active: "schema",
     hrefFor: (section) => `/projects/p/${section}`,
@@ -49,16 +49,21 @@ describe("ProjectNav", () => {
 
     const nav = screen.getByTestId("project-nav");
     const items = within(nav).getAllByRole("link").filter((link) => link.dataset.testid?.startsWith("nav-"));
-    expect(items.map((item) => item.textContent)).toEqual(["Overview", "Batches", "Schema", "Dataset"]);
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Overview",
+      "Images",
+      "Classes",
+      "Dataset",
+    ]);
     expect(items.map((item) => item.getAttribute("href"))).toEqual([
       "/projects/p/overview",
-      "/projects/p/batches",
+      "/projects/p/images",
       "/projects/p/schema",
       "/projects/p/dataset",
     ]);
     expect(within(nav).getByTestId("project-menu")).toBeTruthy();
 
-    // The name, the chip and the way out are the frame's eyebrow, not the column's.
+    // The name, the chip and the way out are not the bar's.
     expect(within(nav).queryByRole("heading")).toBeNull();
     expect(within(nav).queryByTestId("project-title")).toBeNull();
     expect(within(nav).queryByTestId("chip-version")).toBeNull();
@@ -66,11 +71,19 @@ describe("ProjectNav", () => {
   });
 
   it("marks the open section with aria-current and nothing else with it", () => {
-    render(<ProjectNav {...props({ active: "batches" })} />);
-    expect(screen.getByTestId("nav-batches").getAttribute("aria-current")).toBe("page");
+    render(<ProjectNav {...props({ active: "images" })} />);
+    expect(screen.getByTestId("nav-images").getAttribute("aria-current")).toBe("page");
     for (const other of ["nav-overview", "nav-schema", "nav-dataset"]) {
       expect(screen.getByTestId(other).hasAttribute("aria-current")).toBe(false);
     }
+  });
+
+  it("keeps the section ids as the product's nouns while the labels are the words a person reads", () => {
+    expect(PROJECT_SECTIONS).toEqual(["overview", "images", "schema", "dataset"]);
+    render(<ProjectNav {...props()} />);
+    expect(screen.queryByTestId("nav-batches")).toBeNull();
+    expect(screen.getByTestId("nav-schema").textContent).toBe("Classes");
+    expect(screen.getByTestId("nav-images").getAttribute("href")).toBe("/projects/p/images");
   });
 
   it("lights nothing for a page that belongs to no section", () => {
@@ -90,15 +103,44 @@ describe("ProjectNav", () => {
 
   it("offers only the sections the host wired", () => {
     render(<ProjectNav {...props({ sections: ["overview", "schema", "dataset"] })} />);
-    expect(screen.queryByTestId("nav-batches")).toBeNull();
+    expect(screen.queryByTestId("nav-images")).toBeNull();
     expect(screen.getByTestId("nav-dataset")).toBeTruthy();
   });
 
-  it("falls back to Ingest as the filled control when nothing is open for annotation", () => {
+  it("draws Add images outlined before the filled Annotate while a batch is open", () => {
+    render(<ProjectNav {...props()} />);
+    const ingest = screen.getByTestId("go-ingest");
+    const annotate = screen.getByTestId("go-annotate");
+    expect(ingest.dataset.variant).toBe("outline");
+    expect(annotate.dataset.variant).toBe("default");
+    expect(ingest.compareDocumentPosition(annotate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getAllByTestId("go-ingest")).toHaveLength(1);
+    expect(filled()).toEqual([annotate]);
+  });
+
+  it("keeps Add images outlined before Annotate whether or not the content owns the action", () => {
+    render(<ProjectNav {...props({ contentOwnsTheAction: true })} />);
+    expect(screen.getByTestId("go-ingest").dataset.variant).toBe("outline");
+    expect(screen.getByTestId("go-annotate").dataset.variant).toBe("default");
+  });
+
+  it("fills Add images when nothing is open for annotation, and it is the only control", () => {
+    render(<ProjectNav {...props({ annotate: undefined })} />);
+    expect(screen.getByTestId("go-ingest").dataset.variant).toBe("default");
+    expect(screen.getAllByTestId("go-ingest")).toHaveLength(1);
+  });
+
+  it("draws no Add images without an onIngest, and Annotate stands alone", () => {
+    render(<ProjectNav {...props({ onIngest: undefined })} />);
+    expect(screen.queryByTestId("go-ingest")).toBeNull();
+    expect(filled()).toEqual([screen.getByTestId("go-annotate")]);
+  });
+
+  it("falls back to Add images as the filled control when nothing is open for annotation", () => {
     render(<ProjectNav {...props({ annotate: undefined })} />);
     expect(screen.queryByTestId("go-annotate")).toBeNull();
     expect(filled()).toHaveLength(1);
-    expect(filled()[0]?.textContent).toContain("Ingest");
+    expect(filled()[0]?.textContent).toContain("Add images");
   });
 
   it("steps Ingest back when the content owns the page's filled control", () => {
@@ -219,8 +261,8 @@ describe("ProjectNav", () => {
     expect(screen.getByTestId("project-tabs")).toBeTruthy();
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
       "Overview",
-      "Batches",
-      "Schema",
+      "Images",
+      "Classes",
       "Dataset",
     ]);
     expect(screen.getByTestId("nav-overview").getAttribute("aria-selected")).toBe("true");

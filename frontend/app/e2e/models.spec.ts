@@ -294,9 +294,8 @@ test("the page is a grid of cards, and a dropdown narrows it to the ability a ca
   );
   await openModels(page);
 
-  // One card per connection, saying where its weights come from, what it is
-  // *for* — which the flat table of names, kinds and model ids never did — what
-  // it writes, and where it runs.
+  // One row per connection in a full-width table, saying where its weights come
+  // from, what it is *for*, what it writes, and where it runs.
   const grid = page.getByTestId("models-grid");
   await expect(grid.getByTestId("connection-sam2-local")).toHaveCount(1);
   const card = grid.getByTestId("connection-sam2-local");
@@ -306,17 +305,22 @@ test("the page is a grid of cards, and a dropdown narrows it to the ability a ca
     "writes boxes or polygons",
   ]);
   await expect(card.getByTestId("connection-source")).toHaveText("Local · cuda · fp16");
-  await expect(card).toHaveCSS("border-left-width", "4px");
+  // The origin's colour is the small mark beside its name — a real fill, which
+  // is the one thing a stylesheet that lost its token would turn transparent.
+  await expect(card.getByTestId("connection-origin").locator("span").first()).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  // What the list adds up to is said in the workbench's status bar, not on the page.
+  await expect(page.getByTestId("status-bar").getByTestId("models-count")).toHaveText("2 models");
+  await expect(page.getByTestId("models-screen").getByTestId("models-count")).toHaveCount(0);
 
   // Two abilities on the page, so Ability is offered — and nothing else is,
-  // because the two cards agree on origin, kind and state.
+  // because the two rows agree on origin, kind and state.
   await expect(page.getByTestId("filter-capability")).toBeVisible();
   await expect(page.getByTestId("filter-origin")).toHaveCount(0);
   await page.getByTestId("filter-capability").click();
   await page.getByRole("option", { name: "Text prompts" }).click();
   await expect(grid.getByTestId("connection-grounding-dino")).toBeVisible();
   await expect(grid.getByTestId("connection-sam2-local")).toHaveCount(0);
-  await expect(page.getByTestId("filter-count")).toHaveText("1 of 2");
+  await expect(page.getByTestId("status-bar").getByTestId("models-count")).toHaveText("1 of 2 models");
   await page.getByTestId("clear-filters").click();
   await expect(grid.getByTestId("connection-sam2-local")).toBeVisible();
 });
@@ -345,13 +349,19 @@ test("a transfer left running is where it got to when you come back", async ({ p
   await openModels(page);
   await expect(page.getByTestId("download-progress-prose")).toContainText("25%");
 
+  // On Models the row is where the run is read, so the status bar does not repeat it.
+  await expect(page.getByTestId("status-download-sam2-local")).toHaveCount(0);
+
   await page.getByTestId("rail-projects").click();
   await expect(page.getByTestId("models-screen")).toHaveCount(0);
+  // Anywhere else the bar carries it, with its progress, so it is not lost from sight.
+  await expect(page.getByTestId("status-download-sam2-local")).toContainText("25%");
   // The worker keeps going, because nothing about it was ever this browser's.
   done = 1.2 * GIGABYTE;
 
   await page.getByTestId("rail-models").click();
   await expect(page.getByTestId("download-progress-prose")).toHaveText("1.2 GB of 1.6 GB · 75%");
+  await expect(page.getByTestId("status-download-sam2-local")).toHaveCount(0);
 });
 
 test("the bar moves on the poll alone, and stops being a bar when it lands", async ({ page }) => {
@@ -453,8 +463,12 @@ test("an http connection is asked what it answers, and moves under it", async ({
   await expect(card.getByTestId("connection-source")).toHaveText("HTTP · models.example");
   await expect(card.getByTestId("connection-origin")).toHaveText("Customized");
   await expect(card.getByTestId("ability-label")).toHaveCount(0);
-  await page.getByTestId("actions-remote-seg").click();
+  // The test is the model sheet's: a row is read, and pressing it opens the
+  // sheet where the connection is managed.
+  await page.getByTestId("open-remote-seg").click();
+  await expect(page.getByTestId("model-sheet")).toBeVisible();
   await page.getByTestId("action-test-endpoint").click();
+  await expect(page.getByTestId("test-endpoint-ok")).toHaveText("The endpoint answered.");
   await expect(card.getByTestId("ability-label")).toHaveText([
     "Suggests from clicks",
     "writes boxes or polygons",

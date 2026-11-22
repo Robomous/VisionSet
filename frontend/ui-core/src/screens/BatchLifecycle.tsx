@@ -1,8 +1,7 @@
 /**
  * The two pieces of the batch lifecycle that more than one screen renders.
  *
- * Both are here rather than in `BatchesScreen`, because `GalleryScreen` needs
- * them too — **promoted rather than copied**, the rule the kernel follows for a gate two
+ * Both live here rather than inside one screen — **promoted rather than copied**, the rule the kernel follows for a gate two
  * services need, for the same reason: a second spelling of "what does approving
  * do" is free to drift, and the two would eventually disagree in front of a user
  * about something irreversible.

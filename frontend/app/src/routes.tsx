@@ -45,7 +45,6 @@ import {
   assetParamFor,
   DEFAULT_PROJECT_SECTION,
   GalleryScreen,
-  HomeScreen,
   ModelsScreen,
   isProjectSection,
   resolveProjectTab,
@@ -64,7 +63,7 @@ import { AnnotatorDemo } from "./demo/AnnotatorDemo";
 import { AssetPixelsFixture } from "./demo/AssetPixelsFixture";
 import { BenchmarkHost } from "./demo/BenchmarkHost";
 import { ShowcaseFrame } from "./demo/ShowcaseFrame";
-import { AppShell, FullBleedPane, PaddedPane, ProjectPane } from "./shell/AppShell";
+import { AppShell, FullBleedPane, ListPane, PaddedPane, ProjectPane } from "./shell/AppShell";
 import { Gated } from "./shell/Gated";
 import { NotFound } from "./shell/NotFound";
 import { Styleguide } from "./styleguide/Styleguide";
@@ -75,17 +74,9 @@ export function AppRoutes(): JSX.Element {
       {/* The product. Everything under here needs a workspace token. */}
       <Route element={<Gated />}>
         <Route element={<AppShell />}>
-          {/* Lists and forms: the padded, centred column. */}
-          <Route element={<PaddedPane />}>
-            {/* Home was a redirect to the project list, on the reasoning that
-                there was nothing else a workspace's front page could honestly be
-                until a dashboard had numbers to show. `GET /home` is those
-                numbers: what is waiting across every project, and which batch to
-                carry on with. The two screens do not drift because they answer
-                different questions — this one is *what needs me*, the list is
-                *what exists* — and Home links to the list rather than repeating
-                it. */}
-            <Route index element={<Home />} />
+          {/* The workspace's lists: full-bleed tables, edge to edge under the
+              tabs — `ListPane`, not the padded column. */}
+          <Route element={<ListPane />}>
             <Route path="projects" element={<Projects />} />
             {/*
               A top-level destination rather than a project route, per the
@@ -96,6 +87,16 @@ export function AppRoutes(): JSX.Element {
               noun it catalogues; a bookmarked URL is a promise, so it redirects.
             */}
             <Route path="models" element={<ModelsScreen />} />
+          </Route>
+
+          {/* Forms and everything else: the padded, centred column. */}
+          <Route element={<PaddedPane />}>
+            {/* The workspace's front door is the project list. There was a Home
+                dashboard here; it was removed, and `/` went back to being what
+                it was before one existed. A redirect rather than a second
+                rendering of the list, so the list has one address and the rail
+                lights one entry for it. */}
+            <Route index element={<Navigate to={PARENT.projects} replace />} />
             <Route path="inference" element={<Navigate to={PARENT.models} replace />} />
             <Route path="*" element={<NotFound />} />
           </Route>
@@ -172,31 +173,6 @@ function Projects(): JSX.Element {
 }
 
 /**
- * The workspace's front page, and the four edges it hands out.
- *
- * `onContinue` is the one that carries a decision rather than a path. The screen
- * passes a null asset when the batch it is offering has no unlabeled frame left,
- * and the annotator's `?asset=` is *where to start* rather than part of its
- * identity — so a null simply means "open the job wherever it opens", which is
- * what a deep link nobody parameterised already does.
- */
-function Home(): JSX.Element {
-  const navigate = useNavigate();
-  return (
-    <HomeScreen
-      onContinue={(jobId, assetId) =>
-        void navigate(assetId === null ? `/jobs/${jobId}` : `/jobs/${jobId}?asset=${assetId}`)
-      }
-      onOpenBatch={(projectId, batchId) =>
-        void navigate(`/projects/${projectId}/batches/${batchId}`)
-      }
-      onOpenProject={(projectId) => void navigate(PARENT.project(projectId))}
-      onOpenProjects={() => void navigate(PARENT.projects)}
-    />
-  );
-}
-
-/**
  * Every parent of every sub-view, in one place.
  *
  * A way out navigates to its **declared parent**, never `navigate(-1)`: the
@@ -217,15 +193,12 @@ function Home(): JSX.Element {
  * still has exactly one spelling.
  *
  * A project's sections are path segments, and each is a place: the gallery's way
- * out is the Batches section, because landing on the project's default section
- * after leaving a batch is landing somewhere you were not. `project` itself
+ * out is the Overview, because that is where a project's batches are listed and
+ * where the batch was opened from. `project` itself
  * spells the default section outright rather than the bare project URL, so a
  * way out lands in one hop instead of bouncing through the redirect.
  */
 export const PARENT = {
-  //: A rail destination, like `models` below, so nothing declares it as a
-  //: parent either. It is here because this table is the route map's own index.
-  home: "/",
   projects: "/projects",
   //: A rail destination, so nothing declares it as a parent — it is here because
   //: this table is the route map's own index, and an entry point missing from it
@@ -233,7 +206,6 @@ export const PARENT = {
   models: "/models",
   section: (projectId: string, section: ProjectSection) => `/projects/${projectId}/${section}`,
   project: (projectId: string) => PARENT.section(projectId, DEFAULT_PROJECT_SECTION),
-  batches: (projectId: string) => PARENT.section(projectId, "batches"),
   dataset: (projectId: string) => PARENT.section(projectId, "dataset"),
   schema: (projectId: string) => PARENT.section(projectId, "schema"),
 } as const;
@@ -294,7 +266,12 @@ function Project(): JSX.Element {
   const { projectId, section } = useParams();
   const navigate = useNavigate();
   // The router guarantees the segments exist for this path; the type does not.
-  if (projectId === undefined || !isProjectSection(section)) return <NotFound />;
+  if (projectId === undefined) return <NotFound />;
+  // `batches` was a section until its list moved onto the Overview. A link to it
+  // is a promise somebody bookmarked, so it lands where the batches now are
+  // rather than on a 404. (A batch's own gallery keeps its URL under it.)
+  if (section === "batches") return <Navigate to={PARENT.project(projectId)} replace />;
+  if (!isProjectSection(section)) return <NotFound />;
   return (
     <ProjectScreen
       projectId={projectId}
@@ -336,14 +313,13 @@ function Gallery(): JSX.Element {
   const navigate = useNavigate();
   if (projectId === undefined || batchId === undefined) return <NotFound />;
   return (
-    // Inside the project's frame, with Batches lit: a batch belongs to that
-    // section. No `cta` — the gallery owns its own dominant action — and the
-    // chain is the gallery's own, so the frame draws no eyebrow above it.
-    <ProjectFrame {...frameProps(projectId, navigate)} active="batches" chain="page">
+    // Inside the project's frame, with Overview lit: a batch is listed and
+    // opened there. No `cta` — the gallery owns its own dominant action.
+    <ProjectFrame {...frameProps(projectId, navigate)} active="overview">
       <GalleryScreen
         projectId={projectId}
         batchId={batchId}
-        onBack={() => void navigate(PARENT.batches(projectId))}
+        onBack={() => void navigate(PARENT.project(projectId))}
         onOpenAsset={(asset) => {
           if (asset.job_id === null || asset.job_id === undefined) return;
           void navigate(`/jobs/${asset.job_id}?asset=${asset.id}`);
@@ -361,9 +337,10 @@ function Gallery(): JSX.Element {
         // named it.
         onOpenBatch={(next) => void navigate(`/projects/${projectId}/batches/${next}`)}
         // This screen's whole subject has just stopped existing, so its own
-        // URL is a 404 waiting to happen — the Batches section is where to land,
-        // and `replace` so Back does not walk into the gone batch.
-        onDeleted={() => void navigate(PARENT.batches(projectId), { replace: true })}
+        // URL is a 404 waiting to happen — the Overview, where batches are
+        // listed, is where to land, and `replace` so Back does not walk into the
+        // gone batch.
+        onDeleted={() => void navigate(PARENT.project(projectId), { replace: true })}
       />
     </ProjectFrame>
   );
@@ -377,7 +354,7 @@ function Gallery(): JSX.Element {
 function frameProps(
   projectId: string,
   navigate: ReturnType<typeof useNavigate>,
-): Omit<ProjectFrameProps, "active" | "chain" | "children"> {
+): Omit<ProjectFrameProps, "active" | "children"> {
   return {
     projectId,
     sections: PROJECT_SECTIONS,
@@ -461,7 +438,7 @@ function Ingest(): JSX.Element {
   return (
     // Inside the project's frame with no section lit: an ingest is the project's,
     // not any one section's. No `cta` — the flow owns its own dominant action.
-    <ProjectFrame {...frameProps(projectId, navigate)} active={null} chain="page">
+    <ProjectFrame {...frameProps(projectId, navigate)} active={null}>
       <IngestScreen
         projectId={projectId}
         onBack={() => void navigate(PARENT.project(projectId))}

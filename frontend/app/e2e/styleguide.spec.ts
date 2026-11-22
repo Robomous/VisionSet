@@ -476,7 +476,8 @@ test("a two-line option grows its trigger, and a one-line one is Nova's 28px", a
 test("the Combobox filters as you type, ArrowDown+Enter selects and closes, and Escape backs out", async ({
   page,
 }) => {
-  const input = page.getByLabel("Class");
+  // By role: "Class" is also a substring of the class-filter group's "Filter by class".
+  const input = page.getByRole("combobox", { name: "Class", exact: true });
   await input.click();
   await input.fill("an");
 

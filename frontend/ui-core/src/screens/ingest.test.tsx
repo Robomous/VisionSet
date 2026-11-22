@@ -149,6 +149,16 @@ async function choose(files: readonly File[]): Promise<void> {
   await userEvent.upload(screen.getByTestId("file-input"), [...files]);
 }
 
+describe("the ingest page", () => {
+  it("is titled Add images, in the words the toolbar uses", async () => {
+    on("GET", /\/batches$/, { status: 200, body: { items: [], total: 0 } });
+    renderWithData(<IngestScreen projectId={PROJECT} />);
+
+    const screenRoot = await screen.findByTestId("ingest-screen");
+    expect(screenRoot.querySelector("h1")?.textContent).toBe("Add images");
+  });
+});
+
 describe("registering a source", () => {
   beforeEach(() => {
     on("GET", /\/batches$/, { status: 200, body: { items: [], total: 0 } });

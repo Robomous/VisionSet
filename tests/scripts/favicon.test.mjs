@@ -38,12 +38,19 @@ test("the icon ships with the app and is text, not a binary", () => {
   assert.ok(existsSync(icon), "frontend/app/public/favicon.svg is missing");
   const markup = readFileSync(icon, "utf8");
   assert.match(markup, /^<svg/m, "the icon should be an SVG document");
+  // XML forbids a double hyphen inside a comment, and a browser that meets one
+  // refuses the whole document: the tab shows no icon and nothing else errors.
+  for (const [, comment] of markup.matchAll(/<!--([\s\S]*?)-->/g)) {
+    assert.ok(!comment.includes("--"), "an XML comment in the icon contains a double hyphen");
+  }
   // `tests/architecture/test_tracked_file_sizes.py` caps a tracked file at 200 KB
   // and exists to keep binaries out of the repository. An SVG sits far inside it
   // and needs no exemption argued — which is the whole reason it is not an `.ico`.
   assert.ok(statSync(icon).size < 8 * 1024, "an icon this large is not a mark, it is art");
-  // The accent is `DESIGN.md`'s, not invented for this file.
-  assert.ok(markup.includes("#eb5a47"), "the mark should use the Robomous accent");
+  // The colour is the brand token's, not invented for this file: `--brand` is
+  // `oklch(0.663 0.205 39.9)`, which is `#f5580b` in sRGB — hex because a favicon
+  // loads outside the page and cannot read the CSS variable.
+  assert.ok(markup.includes("#f5580b"), "the icon should use the brand colour, --brand in sRGB");
 });
 
 test("the source declares the icon root-relative, so Vite can rebase it", () => {

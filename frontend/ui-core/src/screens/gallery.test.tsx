@@ -29,11 +29,10 @@ import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 
-import { BatchesScreen } from "./BatchesScreen";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { GalleryScreen, columnsFor } from "./GalleryScreen";
 import { renderWithData } from "../testing/dataHarness";
-import { assetActions, batchActions, jobActions, datasetOf } from "../testing/wire.fixtures.js";
+import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
 import type { components } from "../generated/api.js";
 import { TONE_BORDER, TONE_FILL } from "./batchState";
 
@@ -164,116 +163,58 @@ function oneJob(
   });
 }
 
-describe("the batch table", () => {
+describe("the batch header's actions", () => {
   it("shows one action per state, and the last one is promote", async () => {
-    on("GET", /\/batches$/, {
-      status: 200,
-      body: {
-        items: [
-          batch({ name: "a", state: "draft" }),
-          batch({ id: "b", name: "b", state: "approved", schema_version: 2 }),
-          batch({ id: "c", name: "c", state: "in_annotation", schema_version: 2 }),
-          batch({ id: "d", name: "d", state: "completed", schema_version: 2 }),
-        ],
-        total: 4,
-      },
-    });
+    const ACTIONS = ["approve-batch", "start-batch", "complete-drive-01", "promote-drive-01"];
+    const cases: readonly { state: BatchState; offered: string }[] = [
+      { state: "draft", offered: "approve-batch" },
+      { state: "approved", offered: "start-batch" },
+      { state: "in_annotation", offered: "complete-drive-01" },
+      // `completed` is terminal as a *state* — there is no route back to `draft`,
+      // because jobs are already cut against the pinned schema — but it is not the
+      // end of the batch's usefulness: promotion is the last move, and the product
+      // needs a way to make it.
+      { state: "completed", offered: "promote-drive-01" },
+    ];
 
-    renderWithData(<BatchesScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
-    await screen.findByTestId("batches-table");
+    for (const one of cases) {
+      handlers = [];
+      on("GET", /\/batches\/[^/]+$/, {
+        status: 200,
+        body: batch({ state: one.state, schema_version: one.state === "draft" ? null : 2 }),
+      });
+      on("GET", /\/batches$/, { status: 200, body: { items: [], total: 0 } });
+      on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
+      on("GET", /\/jobs$/, { status: 200, body: { items: [], total: 0 } });
 
-    expect(screen.queryByTestId("approve-a")).not.toBeNull();
-    expect(screen.queryByTestId("start-b")).not.toBeNull();
-    expect(screen.queryByTestId("complete-c")).not.toBeNull();
-    // `completed` is terminal as a *state* — there is no route back to `draft`,
-    // because jobs are already cut against the pinned schema — but it is not the
-    // end of the batch's usefulness: promotion is the last move, and the product
-    // needs a way to make it.
-    expect(screen.queryByTestId("promote-d")).not.toBeNull();
-    expect(screen.queryByTestId("approve-d")).toBeNull();
-    expect(screen.queryByTestId("start-d")).toBeNull();
-    expect(screen.queryByTestId("complete-d")).toBeNull();
-  });
-
-  it("shows no schema version until approval, because that is when it pins", async () => {
-    on("GET", /\/batches$/, { status: 200, body: { items: [batch()], total: 1 } });
-    renderWithData(<BatchesScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
-    await screen.findByTestId("batches-table");
-    expect(screen.getByTestId("batch-drive-01").textContent).toContain("—");
-  });
-});
-
-describe("the labels foreshadowing banner (#290)", () => {
-  /** The readiness sources beside the screen's own batches query. */
-  function withSchema(exists: boolean): void {
-    // `SchemaForeshadow` reads `useProjectReadiness`, which needs the schema and
-    // the project's counts to answer at all — an unanswered source leaves
-    // readiness `null` and the banner never renders, which looks exactly like
-    // the banner being wrong. The dataset and its releases are stubbed too,
-    // because this screen's own cards still ask for them.
-    on("GET", /^\/projects\/[^/]+\/dataset$/, {
-      status: 200,
-      body: datasetOf(PROJECT, "22222222-2222-4222-8222-222222222222"),
-    });
-    on("GET", /\/releases$/, { status: 200, body: { items: [], total: 0 } });
-    on(
-      "GET",
-      /^\/projects\/[^/]+\/schema$/,
-      exists
-        ? { status: 200, body: { project_id: PROJECT, version: 1, classes: [] } }
-        : { status: 404, body: { code: "SCHEMA_NOT_FOUND", message: "none yet" } },
-    );
-    on("GET", /\/stats$/, {
-      status: 200,
-      body: {
-        project_id: PROJECT,
-        asset_count: 120,
-        annotated_asset_count: 0,
-        annotation_count: 0,
-        class_count: 0,
-        annotated_pct: 0,
-        classes: [],
-        last_ingest_at: null,
-      },
-    });
-    on("GET", /\/batches$/, { status: 200, body: { items: [batch()], total: 1 } });
-  }
-
-  it("warns while the project has no labels, and the link goes to the schema", async () => {
-    withSchema(false);
-    const opened = vi.fn();
-    renderWithData(<BatchesScreen projectId={PROJECT} onOpenBatch={vi.fn()} onOpenSchema={opened} />);
-
-    const banner = await screen.findByTestId("schema-foreshadow");
-    expect(banner.textContent).toContain("labels before annotating");
-    await userEvent.click(screen.getByTestId("foreshadow-schema"));
-    expect(opened).toHaveBeenCalledOnce();
-  });
-
-  it("says nothing once a schema exists", async () => {
-    withSchema(true);
-    renderWithData(<BatchesScreen projectId={PROJECT} onOpenBatch={vi.fn()} onOpenSchema={vi.fn()} />);
-
-    await screen.findByTestId("batches-table");
-    // Wait for the readiness sources to have answered, so this asserts a
-    // decision rather than a pending query.
-    await waitFor(() =>
-      expect(sent.some((request) => request.url.endsWith("/schema"))).toBe(true),
-    );
-    expect(screen.queryByTestId("schema-foreshadow")).toBeNull();
+      const { unmount } = renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
+      await waitFor(() =>
+        expect(screen.queryByTestId(one.offered), one.state).not.toBeNull(),
+      );
+      for (const other of ACTIONS.filter((id) => id !== one.offered)) {
+        expect(screen.queryByTestId(other), `${one.state}: ${other}`).toBeNull();
+      }
+      unmount();
+    }
   });
 });
 
 describe("the approval dialog", () => {
-  beforeEach(() => {
+  /** What the gallery reads to draw a draft batch: the batch, its siblings, its frames. */
+  function draftBatch(): void {
+    on("GET", /\/batches\/[^/]+$/, { status: 200, body: batch() });
     on("GET", /\/batches$/, { status: 200, body: { items: [batch()], total: 1 } });
+    on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
+  }
+
+  beforeEach(() => {
+    draftBatch();
     on("POST", /\/approve$/, { status: 200, body: batch({ state: "approved", schema_version: 3 }) });
   });
 
   async function open(): Promise<void> {
-    renderWithData(<BatchesScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
-    await screen.findByTestId("batches-table");
-    await userEvent.click(screen.getByTestId("approve-drive-01"));
+    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
+    await userEvent.click(await screen.findByTestId("approve-batch"));
     await screen.findByTestId("approve-dialog");
   }
 
@@ -316,7 +257,7 @@ describe("the approval dialog", () => {
 
   it("surfaces a schema-less refusal in a person's words rather than closing", async () => {
     handlers = [];
-    on("GET", /\/batches$/, { status: 200, body: { items: [batch()], total: 1 } });
+    draftBatch();
     on("POST", /\/approve$/, {
       status: 404,
       body: { code: "SCHEMA_NOT_FOUND", message: "This project has no schema version yet." },
@@ -509,7 +450,7 @@ describe("the gallery", () => {
     );
 
     // There is no route back to draft, so the action is not merely disabled here
-    // — it is absent, which is the same call `BatchesScreen` makes.
+    // — it is absent, which is what the batch's declared actions say.
     expect(screen.queryByTestId("approve-batch")).toBeNull();
   });
 
@@ -1074,6 +1015,13 @@ describe("finishing a batch", () => {
     });
   }
 
+  /** What the batch's own page reads: the batch, its siblings, and its frames. */
+  function serve(one: Record<string, unknown>): void {
+    on("GET", /\/batches\/[^/]+$/, { status: 200, body: one });
+    on("GET", /\/batches$/, { status: 200, body: { items: [one], total: 1 } });
+    on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
+  }
+
   function job(at: number, state: string): Record<string, unknown> {
     return {
       id: `job-${at}`,
@@ -1101,13 +1049,12 @@ describe("finishing a batch", () => {
   }
 
   async function pressComplete(): Promise<void> {
-    renderWithData(<BatchesScreen projectId={PROJECT_ID} onOpenBatch={vi.fn()} />);
-    await screen.findByTestId("batches-table");
-    await userEvent.click(screen.getByTestId("complete-drive-01"));
+    renderWithData(<GalleryScreen projectId={PROJECT_ID} batchId={BATCH} />);
+    await userEvent.click(await screen.findByTestId("complete-drive-01"));
   }
 
   it("completes the batch's open job before completing the batch", async () => {
-    on("GET", /\/batches$/, { status: 200, body: { items: [settled()], total: 1 } });
+    serve(settled());
     jobsAre("in_progress");
     on("POST", /\/jobs\/[^/]+\/complete$/, { status: 200, body: job(0, "completed") });
     on("POST", /\/complete$/, { status: 200, body: settled({ state: "completed" }) });
@@ -1128,7 +1075,7 @@ describe("finishing a batch", () => {
     // was never opened, so `JobService.start` never ran and the job sits at
     // `pending`. `JOB_TRANSITIONS` has no edge from there to `completed`, so
     // without this the batch is unfinishable by any sequence of clicks at all.
-    on("GET", /\/batches$/, { status: 200, body: { items: [settled()], total: 1 } });
+    serve(settled());
     jobsAre("pending");
     on("POST", /\/jobs\/[^/]+\/start$/, { status: 200, body: job(0, "in_progress") });
     on("POST", /\/jobs\/[^/]+\/complete$/, { status: 200, body: job(0, "completed") });
@@ -1149,7 +1096,7 @@ describe("finishing a batch", () => {
     // `JOB_TRANSITIONS` gives `completed` no exits, so re-completing one is a 409
     // — and a batch finished half in the annotator and half here is the ordinary
     // case, not an exotic one.
-    on("GET", /\/batches$/, { status: 200, body: { items: [settled()], total: 1 } });
+    serve(settled());
     jobsAre("completed", "in_progress");
     on("POST", /\/jobs\/[^/]+\/complete$/, { status: 200, body: job(0, "completed") });
     on("POST", /\/complete$/, { status: 200, body: settled({ state: "completed" }) });
@@ -1165,7 +1112,7 @@ describe("finishing a batch", () => {
   });
 
   it("stops at the first refusal rather than completing the batch anyway", async () => {
-    on("GET", /\/batches$/, { status: 200, body: { items: [settled()], total: 1 } });
+    serve(settled());
     jobsAre("in_progress");
     on("POST", /\/jobs\/[^/]+\/complete$/, {
       status: 409,
@@ -1184,7 +1131,7 @@ describe("finishing a batch", () => {
   });
 
   it("keeps the server's own words for a refusal the vocabulary has never heard of", async () => {
-    on("GET", /\/batches$/, { status: 200, body: { items: [settled()], total: 1 } });
+    serve(settled());
     jobsAre("in_progress");
     on("POST", /\/jobs\/[^/]+\/complete$/, {
       status: 503,
@@ -1205,7 +1152,7 @@ describe("finishing a batch", () => {
   });
 
   it("says a mapped refusal in the product's own words", async () => {
-    on("GET", /\/batches$/, { status: 200, body: { items: [settled()], total: 1 } });
+    serve(settled());
     jobsAre("in_progress");
     on("POST", /\/jobs\/[^/]+\/complete$/, {
       status: 503,
@@ -1222,18 +1169,12 @@ describe("finishing a batch", () => {
   });
 
   it("withholds the press while frames are still outstanding, and says how many", async () => {
-    on("GET", /\/batches$/, {
-      status: 200,
-      body: {
-        items: [
-          settled({ progress: { ...NO_PROGRESS, unannotated: 5, review_pending: 2, annotated: 41, total: 48 } }),
-        ],
-        total: 1,
-      },
-    });
+    serve(
+      settled({ progress: { ...NO_PROGRESS, unannotated: 5, review_pending: 2, annotated: 41, total: 48 } }),
+    );
 
-    renderWithData(<BatchesScreen projectId={PROJECT_ID} onOpenBatch={vi.fn()} />);
-    await screen.findByTestId("batches-table");
+    renderWithData(<GalleryScreen projectId={PROJECT_ID} batchId={BATCH} />);
+    await screen.findByTestId("complete-drive-01");
 
     // `JobService.complete` would refuse this, and the screen can already see the
     // count — a number is more use than the 409 would have been.

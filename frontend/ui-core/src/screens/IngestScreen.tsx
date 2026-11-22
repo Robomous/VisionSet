@@ -97,9 +97,9 @@ export function IngestScreen({
       )}
 
       <header className="border-b border-border pb-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Ingest</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Add images</h1>
         <p className="text-xs text-muted-foreground">
-          A source is registered once; ingesting it again creates nothing new.
+          Upload images or a video. Adding the same source twice creates nothing new.
         </p>
       </header>
 

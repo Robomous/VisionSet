@@ -1521,14 +1521,14 @@ test("collapsing the rail reflows the annotation page to the new width", async (
   await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "true");
 
   const after = (await page.getByTestId("annotation-page").boundingBox())!;
-  // The whole 192px the rail gave back — 240px expanded, 48px collapsed, the
+  // The whole 160px the rail gave back — 208px expanded, 48px collapsed, the
   // tokens three things have to agree on.
   //
   // Before the fix this was **128**, which is the defect stating itself: at 1440
   // the expanded pane is 1200 and `max-w-7xl` never engages, but collapsing frees
   // enough width for the cap to start biting, so the page grew by less than the
   // rail released and the difference went into gutters.
-  expect(after.width - before.width).toBeCloseTo(192, 0);
+  expect(after.width - before.width).toBeCloseTo(160, 0);
   expect(after.width).toBeCloseTo(await paneWidth(page), 0);
 });
 
@@ -1537,7 +1537,10 @@ test("every other route keeps the padded, capped container", async ({ page }) =>
 
   const sent: Request[] = [];
   await serveApi(page, sent);
-  await page.goto("/projects");
+  // A project section: the padded, capped column under the section bar. (The
+  // project and model lists are full-bleed tables, and Images lays itself out
+  // across its pane; neither is this column.)
+  await page.goto(`/projects/${PROJECT}/schema`);
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();
 
@@ -1558,39 +1561,43 @@ test("every other route keeps the padded, capped container", async ({ page }) =>
 });
 
 /**
- * The rail is continuous across the two panes, whatever the route tree looks like.
+ * The rail is continuous across the panes, and only the annotator stands outside
+ * the workbench frame.
  *
- * Splitting a shell into two layout routes is the kind of change that quietly
- * costs local state, and the annotator's full-bleed route introduces exactly that
- * shape. This asserts the
- * property rather than the structure — deliberately, because the structure turns
- * out not to decide it: two sibling `<Route element={<AppShell />}>` branches are
- * reconciled into one instance and preserve the state too. What must not regress
- * is the user-visible half, and that is what is written down here.
+ * Crossing between the full-bleed pane and a padded one must move nothing beside
+ * the page: same rail, same state. Expanded is the state asserted, because it is
+ * the one that is not the default — what survives the crossing is a choice
+ * somebody made, not what a freshly mounted shell would produce anyway. And the annotator, which
+ * derives its fit zoom from its pane, gets the whole height: no open-project
+ * tabs above it and no status bar below it, while every other pane has both.
  */
-test("the rail keeps its collapsed state when the pane changes", async ({ page }) => {
+test("the rail is the same on both panes, and the annotator gets no workbench chrome", async ({ page }) => {
   const sent: Request[] = [];
   // Start inside the **full-bleed** pane, so both crossings below are real.
   await openJob(page, sent);
-
-  // Expanded, which is the state that is *not* the default — so what
-  // survives the crossing below is a choice somebody made rather than the value
-  // a freshly mounted shell would have produced anyway. That makes this a
-  // stricter scenario than it was, not a looser one.
+  const rail = page.getByTestId("app-rail");
   await page.getByTestId("rail-collapse").click();
-  await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "false");
+  await expect(rail).toHaveAttribute("data-collapsed", "false");
+  const onAnnotator = (await rail.boundingBox())!;
+  expect(onAnnotator.width).toBe(208);
+  await expect(page.getByTestId("project-tabs-bar")).toHaveCount(0);
+  await expect(page.getByTestId("status-bar")).toHaveCount(0);
 
   // Full-bleed → padded, by a client-side navigation. A reload would remount
   // everything and prove nothing about the route tree.
   await page.getByTestId("rail-projects").click();
-  await expect(page.locator("main .max-w-page")).toBeVisible();
+  // Projects is a full-bleed list pane now; what matters here is that it is a workbench pane.
+  await expect(page.getByTestId("projects-screen")).toBeVisible();
   await expect(page.getByTestId("annotation-page")).toHaveCount(0);
-  await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "false");
+  expect((await rail.boundingBox())!.width).toBe(onAnnotator.width);
+  await expect(page.getByTestId("project-tabs-bar")).toBeVisible();
+  await expect(page.getByTestId("status-bar")).toBeVisible();
 
   // …and back the other way.
   await page.goBack();
   await expect(page.getByTestId("annotation-page")).toBeVisible();
-  await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "false");
+  expect((await rail.boundingBox())!.width).toBe(onAnnotator.width);
+  await expect(page.getByTestId("status-bar")).toHaveCount(0);
 });
 
 /**

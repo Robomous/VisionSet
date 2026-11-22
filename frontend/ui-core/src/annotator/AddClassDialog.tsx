@@ -743,7 +743,7 @@ export function AddClassDialog({
                   {" "}
                   The version was published, but this batch is still on v{pinnedVersion}.
                   Somebody narrowed the schema since this batch was approved — open the
-                  project’s Schema tab to see what changed.
+                  project’s Classes section to see what changed.
                 </>
               )}
               </AlertDescription>

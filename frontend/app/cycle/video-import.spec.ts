@@ -361,7 +361,7 @@ function bearer(): Record<string, string> {
   return { Authorization: `Bearer ${token()}` };
 }
 
-/** A project made through the API, opened on Ingest through its real route. */
+/** A project made through the API, opened on Add images through its real route. */
 async function projectAtIngest(
   page: Page,
   request: APIRequestContext,
@@ -421,13 +421,14 @@ test("a clip is inspected, cut and imported here, and never uploaded", async ({ 
   await page.goto("./");
   await expect(page.getByTestId("app-rail")).toBeVisible();
 
-  await test.step("create a project and reach Ingest, by clicking", async () => {
-    await expect(page.getByTestId("home-first-run")).toBeVisible();
-    await page.getByTestId("home-create-project").click();
+  await test.step("create a project and reach Add images, by clicking", async () => {
+    // From the project list, which is where `/` lands: there is no Home page.
+    await expect(page.getByTestId("projects-screen")).toBeVisible();
+    await page.getByTestId("new-project").click();
     await page.getByTestId("project-name").fill("browser-video-import");
     await page.getByTestId("create-submit").click();
     await expect(page.getByTestId("project-screen")).toBeVisible();
-    // A project with no assets carries Ingest in the navigation's action slot,
+    // A project with no assets carries Add images in the toolbar's action slot,
     // which is the road a person actually takes here.
     await page.getByTestId("go-ingest").click();
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}\/ingest$/);

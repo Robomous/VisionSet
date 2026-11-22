@@ -313,15 +313,16 @@ one class, neither of which anybody watched happen. Cancelling with classes bank
 **asks**, on Escape and the overlay too: everything a session holds lives in the browser,
 so closing loses exactly what was typed and nothing else. The save-then-publish-then-repin
 order, the `canRepin` preflight that says *before* the press when a completed batch will
-keep its version, and the refusal that names the Schema tab are all described in
+keep its version, and the refusal that names the Classes section are all described in
 [`docs/content/ui.md`](../ui.md).
 
-**Version history grouping.** The project's Schema tab ends in a ledger of every version,
-and the annotator publishes versions too, so consecutive versions whose `provenance` is
-`annotation` collapse into one expandable row — `v3–v5`, how many, when the run ended, and
-the contract it left behind — while `curated` versions (and those from before the field
-existed) always render individually. A run of one is not a run. Expanding gives back
-exactly the rows a flat table would have had, indented.
+**Version history grouping.** The History sheet of the project's Classes section lists every
+version, newest first, and the annotator publishes versions too, so consecutive versions whose
+`provenance` is `annotation` are drawn on a lane of their own that branches off the main one and
+rejoins it — one detour per sitting, in its own colour — while `curated` versions (and those from
+before the field existed) stay on the main lane. A run of one is not a run. Every version keeps
+its own line, so nothing is hidden behind a disclosure; a version opened from a run names the
+sitting it came from.
 
 ## The tool strip
 

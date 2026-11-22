@@ -39,6 +39,25 @@ export function formatPercent(value: number): string {
 }
 
 /**
+ * A share of a whole, to one decimal: `35.3%`.
+ *
+ * `formatPercent` is a stat card's glance; this is a row in a breakdown, where
+ * rows are compared against each other and `8%` beside `8%` would hide which is
+ * larger. Takes a fraction (`0.353`) because that is what a breakdown divides to.
+ *
+ * Same refusal to flatter as `formatPercent`: a non-zero share too small to show
+ * reads `<0.1%`, never `0.1%` and never `0.0%` — the first overstates it and the
+ * second says it is absent.
+ */
+export function formatShare(fraction: number): string {
+  const percent = fraction * 100;
+  if (percent > 0 && percent < 0.1) return "<0.1%";
+  // The epsilon absorbs binary noise — 0.353 × 1000 is 352.99999… — without
+  // rounding a genuinely smaller share up.
+  return `${(Math.floor(percent * 10 + 1e-9) / 10).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+}
+
+/**
  * A byte count at human scale: `648 B`, `1.5 KB`, `12.4 MB`.
  *
  * Binary units (1024) because that is what the file managers a user will

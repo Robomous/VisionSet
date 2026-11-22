@@ -92,7 +92,7 @@ which somebody is going to label.
 
 > **Starting from a video instead?** `visionset ingest` takes a directory of stills only, and
 > refuses a video file by name rather than guessing what you meant. Importing a clip is a
-> **browser** capability: run `visionset server`, open the project's Ingest screen, and choose the
+> **browser** capability: run `visionset server`, open the project's *Add images* page, and choose the
 > file there - it is demuxed and decoded on your own machine, and only the JPEG frames it produces
 > ever reach the server. Nothing in this process decodes video, so there is no CLI or MCP
 > equivalent of this step; once the import finishes you have a batch, and step 4 onward is

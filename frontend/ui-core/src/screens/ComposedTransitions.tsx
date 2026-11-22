@@ -276,7 +276,7 @@ export function OutcomeNextStep({
               Define one
             </button>
           )}{" "}
-          and the batch can start from its row.
+          and the batch can start from its own page.
         </p>
       )}
       {composed && batch.data !== undefined && (

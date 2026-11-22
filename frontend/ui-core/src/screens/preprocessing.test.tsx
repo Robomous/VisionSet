@@ -1,20 +1,26 @@
 /**
- * The Pre-processing view: recipes as a project resource, the editor's four
- * steps, and the preview through the export's own path.
+ * Recipes: a project resource chosen in a release's Export section and written
+ * in a modal dialog over the page, one step at a time: Name and model, Resize,
+ * Augmentation.
  *
- * Two halves. `recipeDraft` is pure and holds the rules a form restates — the
+ * Three parts. `recipeDraft` is pure and holds the rules a form restates — the
  * hints preselecting only untouched fields, the body's bounds, the cross-field
- * constraints — so those are asserted without a DOM. The screen tests drive
- * the tab through a stubbed wire and assert what a person sees and what the
- * server was sent.
+ * constraints — so those are asserted without a DOM. The editor's own rules
+ * (its steps, fields, drawings, info cards, saving and discarding) are driven
+ * through `RecipeDialog` in a minimal host. The entry points — where a recipe
+ * is chosen, created, edited and deleted — are driven through the real
+ * Dataset page and a release's Export section. Both go through a stubbed wire
+ * and assert what a person sees and what the server was sent.
  */
 
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
+import { useRef, useState, type JSX } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DatasetScreen } from "./DatasetScreen";
-import { PreprocessingTab } from "./PreprocessingTab";
+import { DiscardRecipeDialog, RecipeDialog, type OpenRecipe, type RecipeEditorHandle } from "./dataset/recipe/RecipeDialog";
+import { suggestName } from "./dataset/recipe/flow";
 import type { ExportTarget } from "./queries";
 import {
   applyTargetHints,
@@ -26,6 +32,7 @@ import {
   type RecipeSpec,
 } from "./recipeDraft";
 import { renderWithData } from "../testing/dataHarness";
+import { stubResizeObserver } from "../testing/resizeObserver";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const DATASET = "22222222-2222-4222-8222-222222222222";
@@ -119,34 +126,6 @@ function assetRow(id: string) {
   };
 }
 
-/** One rendering, carrying one placed box so the overlay has something to draw. */
-function previewRow(assetId: string, variant: number) {
-  return {
-    asset_id: assetId,
-    variant,
-    width: 512,
-    height: 384,
-    original_width: 640,
-    original_height: 480,
-    frame_index: null,
-    source_name: null,
-    annotations: [
-      {
-        id: variant === 0 ? "box-1" : `box-1-aug${variant}`,
-        label_class: "car",
-        schema_version: 1,
-        geometry: { type: "bbox", x: 10, y: 20, width: 100, height: 50 },
-        attributes: {},
-        provenance: "human",
-        model_ref: null,
-        confidence: null,
-      },
-    ],
-    image_base64: "aGVsbG8=",
-    media_type: "image/png",
-  };
-}
-
 // --- the pure half ---------------------------------------------------------------
 
 describe("recipeDraft", () => {
@@ -209,6 +188,14 @@ describe("recipeDraft", () => {
     expect(amount.kind === "problems" && amount.problems[0]?.text).toContain("at most 0.5");
   });
 
+  it("suggests a name from the choices, until somebody types one", () => {
+    expect(suggestName(EMPTY_DRAFT)).toBe("recipe");
+    const sized = applyTargetHints(EMPTY_DRAFT, YOLO11);
+    expect(suggestName(sized)).toBe("yolo11-640");
+    expect(suggestName({ ...sized, ops: ["hflip"], variants: "2" })).toBe("yolo11-640-aug2");
+    expect(suggestName({ ...applyTargetHints(EMPTY_DRAFT, WIDE) })).toBe("wide-1280x720-stretch");
+  });
+
   it("says a spec in one line", () => {
     expect(describeRecipeSpec(LETTERBOX)).toBe("letterbox 640×640 · flip, brightness/contrast · 2 variants");
     expect(describeRecipeSpec({ target: null, steps: [], variants_per_asset: 0 })).toBe("No transform");
@@ -223,6 +210,8 @@ const sent: Request[] = [];
 const bodies = new Map<Request, string>();
 
 beforeEach(() => {
+  // The amount and pad sliders measure their track on mount.
+  stubResizeObserver();
   handlers = [];
   sent.length = 0;
   bodies.clear();
@@ -264,7 +253,22 @@ function bodyOf(request: Request): Record<string, unknown> {
   return JSON.parse(bodies.get(request) ?? "{}") as Record<string, unknown>;
 }
 
-/** Every read the tab makes, with the project holding four assets and no release. */
+const FORMAT_REST = { geometries: [], modalities: [], degraded_geometries: [], targets: [] } as const;
+
+const RELEASE_ROW = {
+  id: RELEASE,
+  dataset_id: DATASET,
+  tag: "v1",
+  manifest_hash: "abcdef0123456789",
+  schema_version: 1,
+  asset_count: 4,
+  annotation_count: 0,
+  split: null,
+  created_at: "2026-07-31T10:00:00.000000Z",
+  visionset_version: "0.0.1.dev0",
+};
+
+/** Every read the page makes, with the project holding four assets and one release, `v1`. */
 function baseline(recipes: ReturnType<typeof recipeRow>[] = []): void {
   on("GET", /\/preprocessing-recipes$/, { status: 200, body: { items: recipes, total: recipes.length } });
   on("GET", /\/export-targets$/, { status: 200, body: { items: TARGETS, total: TARGETS.length } });
@@ -283,15 +287,18 @@ function baseline(recipes: ReturnType<typeof recipeRow>[] = []): void {
     status: 200,
     body: { id: DATASET, project_id: PROJECT, name: "highway", description: null },
   });
-  on("GET", /\/releases$/, { status: 200, body: { items: [], total: 0 } });
+  on("GET", /\/releases$/, { status: 200, body: { items: [RELEASE_ROW], total: 1 } });
+  on("GET", /\/formats$/, {
+    status: 200,
+    body: { items: [{ name: "ultralytics", lossy: false, ...FORMAT_REST, targets: ["yolo11", "wide"] }], total: 1 },
+  });
+  on("GET", /\/stats$/, {
+    status: 200,
+    body: { dataset_id: DATASET, asset_count: 0, annotated_asset_count: 0, annotation_count: 0, classes: [] },
+  });
   on("GET", /\/projects\/[^/]+\/assets$/, {
     status: 200,
     body: { items: [ASSET_A, ASSET_B, ASSET_C, ASSET_D].map(assetRow), total: 4 },
-  });
-  handlers.push((request) => {
-    if (request.method !== "POST" || !pathOf(request).endsWith("/preprocessing-preview")) return undefined;
-    const body = bodyOf(request);
-    return { status: 200, body: previewRow(String(body["asset_id"]), Number(body["variant"])) };
   });
 }
 
@@ -301,265 +308,762 @@ async function chooseTarget(label: RegExp): Promise<void> {
   await userEvent.click(await screen.findByRole("option", { name: label }));
 }
 
-describe("the dataset's tab roster", () => {
-  it("carries Pre-processing between Assets and Releases, with the recipe count", async () => {
-    baseline([recipeRow("yolo-640", LETTERBOX)]);
-    on("GET", /\/stats$/, {
-      status: 200,
-      body: { dataset_id: DATASET, asset_count: 0, annotated_asset_count: 0, annotation_count: 0, classes: [] },
-    });
-    renderWithData(<DatasetScreen projectId={PROJECT} />);
+const PLAIN: RecipeSpec = { target: null, steps: [], variants_per_asset: 0 };
 
-    const tabs = await screen.findByTestId("dataset-tabs");
-    const labels = within(tabs)
-      .getAllByRole("tab")
-      .map((tab) => tab.getAttribute("data-testid"));
-    expect(labels).toEqual([
-      "dataset-tab-overview",
-      "dataset-tab-assets",
-      "dataset-tab-preprocessing",
-      "dataset-tab-releases",
-    ]);
-    await waitFor(() =>
-      expect(screen.getByTestId("dataset-tab-preprocessing").textContent).toContain("1"),
-    );
-  });
+/**
+ * The recipe dialog and the question that guards it, hosted as the export
+ * dialog hosts them: a close asks the editor whether it holds unsaved work, and
+ * a saved recipe is the one the dialog now shows.
+ */
+function Host({ name, onSaved }: { readonly name: string | null; readonly onSaved?: (name: string) => void }): JSX.Element {
+  const [open, setOpen] = useState<OpenRecipe | null>({ session: 1, name });
+  const [asking, setAsking] = useState(false);
+  const editor = useRef<RecipeEditorHandle>(null);
+  return (
+    <>
+      <RecipeDialog
+        projectId={PROJECT}
+        recipe={open}
+        editor={editor}
+        onRequestClose={() => {
+          if (editor.current?.hasUnsavedChanges() === true) setAsking(true);
+          else setOpen(null);
+        }}
+        onSaved={(saved) => {
+          setOpen((before) => (before === null ? null : { session: before.session, name: saved }));
+          onSaved?.(saved);
+        }}
+      />
+      <DiscardRecipeDialog
+        name={open?.name ?? null}
+        open={asking}
+        onKeep={() => setAsking(false)}
+        onDiscard={() => {
+          setAsking(false);
+          setOpen(null);
+        }}
+      />
+    </>
+  );
+}
 
-  it("opens on the view the host names, and hands a normalised one back", async () => {
-    baseline([recipeRow("yolo-640", LETTERBOX)]);
-    const changed = vi.fn();
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="preprocessing" onTabChange={changed} />);
+/** A new recipe's dialog, on its first step. */
+async function openNew(): Promise<HTMLElement> {
+  renderWithData(<Host name={null} />);
+  const dialog = await screen.findByTestId("recipe-dialog");
+  await within(dialog).findByTestId("recipe-editor");
+  return dialog;
+}
 
-    expect(await screen.findByTestId("preprocessing-tab")).not.toBeNull();
-    await userEvent.click(screen.getByTestId("dataset-tab-assets"));
-    expect(changed).toHaveBeenCalledWith("assets");
-  });
-});
+/** A stored recipe's dialog, on its first step. */
+async function openStored(name: string): Promise<HTMLElement> {
+  renderWithData(<Host name={name} />);
+  const dialog = await screen.findByTestId("recipe-dialog");
+  await within(dialog).findByTestId("recipe-editor");
+  return dialog;
+}
 
-describe("the recipe list", () => {
-  it("lists every recipe with its summary and the target's label, and opens the first", async () => {
-    baseline([recipeRow("yolo-640", LETTERBOX), recipeRow("plain", { target: null, steps: [], variants_per_asset: 0 })]);
-    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
+/** The Dataset page, with release `v1` opened: its Export section, in the left column. */
+async function openExport(): Promise<HTMLElement> {
+  renderWithData(<DatasetScreen projectId={PROJECT} />);
+  await userEvent.click(await screen.findByTestId("version-v1"));
+  const section = await screen.findByTestId("section-export");
+  await within(section).findByTestId("export-form");
+  return section;
+}
 
-    const row = await screen.findByTestId("recipe-yolo-640");
-    expect(row.textContent).toContain("letterbox 640×640");
-    expect(row.textContent).toContain("YOLO11");
-    expect(row.getAttribute("aria-current")).toBe("true");
-    expect(screen.getByTestId("recipe-plain").textContent).toContain("No transform");
-    expect(screen.getByTestId("recipe-list-note").textContent).toContain("Applied at export");
-    // The open recipe's fields, as stored.
-    expect(screen.getByTestId("recipe-name")).toHaveProperty("value", "yolo-640");
-    expect(screen.getByTestId("resize-width")).toHaveProperty("value", "640");
-    expect(screen.getByTestId("augment-hflip")).toHaveProperty("checked", true);
-    expect(screen.getByTestId("augment-variants")).toHaveProperty("value", "2");
-  });
+/**
+ * The radio of a recipe's row in the export's list (`~none` is No recipe).
+ * `behindDialog` reads it while a recipe dialog is open over the page, which
+ * hides the page from assistive technology.
+ */
+function radio(exported: HTMLElement, name: string, behindDialog = false): HTMLInputElement {
+  return within(within(exported).getByTestId(`recipe-row-${name}`)).getByRole("radio", { hidden: behindDialog });
+}
 
-  it("says which export used the open recipe, and nothing for one no export ran", async () => {
-    baseline([
-      recipeRow("yolo-640", LETTERBOX, {
-        export_count: 3,
-        release_id: RELEASE,
-        release_tag: "v0.5",
-        target: "yolo11",
-        format: "ultralytics",
-      }),
-      recipeRow("by-format", LETTERBOX, {
-        export_count: 1,
-        release_id: RELEASE,
-        release_tag: "v1",
-        target: null,
-        format: "coco",
-      }),
-      recipeRow("plain", { target: null, steps: [], variants_per_asset: 0 }),
-    ]);
-    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
+/** Choose a recipe in the export's list, once its row has arrived. */
+async function chooseRecipe(exported: HTMLElement, name: string): Promise<void> {
+  await within(exported).findByTestId(`recipe-row-${name}`);
+  await userEvent.click(radio(exported, name));
+}
 
-    expect((await screen.findByTestId("recipe-used-by")).textContent).toBe(
-      "Used by the v0.5 YOLO11 export and 2 earlier",
-    );
-    await userEvent.click(within(screen.getByTestId("recipe-by-format")).getByText("by-format"));
-    await waitFor(() =>
-      expect(screen.getByTestId("recipe-used-by").textContent).toBe("Used by the v1 coco export"),
-    );
-    await userEvent.click(within(screen.getByTestId("recipe-plain")).getByText("plain"));
-    await waitFor(() => expect(screen.getByTestId("recipe-name")).toHaveProperty("value", "plain"));
-    expect(screen.queryByTestId("recipe-used-by")).toBeNull();
-  });
+/** Press Next, which moves one step on. */
+const next = (dialog: HTMLElement): Promise<void> => userEvent.click(within(dialog).getByTestId("recipe-next"));
+/** Press Previous, which moves one step back. */
+const previous = (dialog: HTMLElement): Promise<void> => userEvent.click(within(dialog).getByTestId("recipe-previous"));
+/** The step the dialog is on, by its header. */
+const stepOf = (dialog: HTMLElement): string => `${within(dialog).getByTestId("recipe-step-title").textContent} ${within(dialog).getByTestId("recipe-step-count").textContent}`;
 
-  it("is an invitation with one verb-first action while there are none", async () => {
-    baseline();
-    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
+/** Move on to the Resize step. */
+async function toResize(dialog: HTMLElement): Promise<void> {
+  await next(dialog);
+  await within(dialog).findByTestId("recipe-step-size");
+}
 
-    const empty = await screen.findByTestId("recipes-empty");
-    expect(within(empty).getAllByRole("button")).toHaveLength(1);
-    await userEvent.click(within(empty).getByTestId("recipe-new"));
-    expect(await screen.findByTestId("recipe-editor")).not.toBeNull();
-    expect(screen.getByTestId("recipe-footer-note").textContent).toContain("A recipe needs a name");
-  });
+/** Move on to the Augmentation step. */
+async function toAugment(dialog: HTMLElement): Promise<void> {
+  await toResize(dialog);
+  await next(dialog);
+  await within(dialog).findByTestId("recipe-step-augment");
+}
 
-  it("says when the recipes could not be read, rather than showing an empty list", async () => {
-    on("GET", /\/preprocessing-recipes$/, { status: 503, body: { code: "WORKSPACE_BUSY", message: "Busy." } });
-    baseline();
-    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
+/**
+ * The pointer moving off `from` onto `to`. Inside the modal user-event moves
+ * the pointer without the out/over pair React derives a leave from, so the
+ * pair is sent as a browser sends it.
+ */
+function pointerLeaves(from: HTMLElement, to: HTMLElement): void {
+  fireEvent.pointerOut(from, { relatedTarget: to });
+  fireEvent.pointerOver(to, { relatedTarget: from });
+}
 
-    const said = (await screen.findByTestId("recipes-error")).textContent ?? "";
-    expect(said).toContain("busy");
-    expect(screen.queryByTestId("recipes-empty")).toBeNull();
-  });
-});
+/** Opens the variants' info tooltip and reads it. */
+async function variantsNote(dialog: HTMLElement): Promise<string> {
+  return infoNote(within(dialog).getByTestId("augment-variants-info"));
+}
+
+/** Opens the model's info tooltip and reads it. */
+async function modelNote(dialog: HTMLElement): Promise<string> {
+  return infoNote(within(dialog).getByTestId("recipe-target-info"));
+}
+
+async function infoNote(button: HTMLElement): Promise<string> {
+  await userEvent.hover(button);
+  return (await screen.findByRole("tooltip")).textContent ?? "";
+}
 
 describe("the editor", () => {
-  it("presets the resize from the target's hints and marks the suggestion", async () => {
-    baseline();
-    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
-    await userEvent.click(await screen.findByTestId("recipe-new"));
-
-    expect(screen.getByTestId("recipe-step-target").getAttribute("data-state")).toBe("upcoming");
-    await chooseTarget(/YOLO11/);
-
-    expect(screen.getByTestId("recipe-step-target").getAttribute("data-state")).toBe("complete");
-    expect(screen.getByTestId("recipe-target-meta").textContent).toContain("Ultralytics YOLO");
-    expect(screen.getByTestId("recipe-target-meta").textContent).toContain("detect, segment");
-    expect(screen.getByTestId("recipe-target-carries").textContent).toContain("boxes and polygons");
-    expect(screen.getByTestId("recipe-target-carries").textContent).toContain("2 classes");
-    expect(screen.getByTestId("resize-ambient").textContent).toContain("YOLO11 letterboxes to 640 on its own");
-    expect(screen.getByTestId("resize-letterbox").getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByTestId("resize-letterbox-suggested")).not.toBeNull();
-    expect(screen.getByTestId("resize-width")).toHaveProperty("value", "640");
-    expect(screen.getByTestId("resize-height")).toHaveProperty("value", "640");
-    expect(screen.getByTestId("resize-pad")).toHaveProperty("value", "114");
-    expect(screen.getByTestId("resize-geometry").textContent).toContain("Geometry exact");
-    expect(screen.getByTestId("augment-ambient").textContent).toContain("usual practice");
-  });
-
-  it("keeps a typed size when the target changes, and moves the rest", async () => {
-    baseline();
-    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
-    await userEvent.click(await screen.findByTestId("recipe-new"));
-    await chooseTarget(/YOLO11/);
-    await userEvent.clear(screen.getByTestId("resize-width"));
-    await userEvent.type(screen.getByTestId("resize-width"), "800");
-
-    await chooseTarget(/Wide/);
-
-    expect(screen.getByTestId("resize-width")).toHaveProperty("value", "800");
-    expect(screen.getByTestId("resize-height")).toHaveProperty("value", "720");
-    expect(screen.getByTestId("resize-stretch").getAttribute("aria-pressed")).toBe("true");
-  });
-
-  it("names the rule beside the field and keeps Save shut with the reason in the footer", async () => {
-    baseline();
-    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
-    await userEvent.click(await screen.findByTestId("recipe-new"));
-    await userEvent.type(screen.getByTestId("recipe-name"), "small");
-    await chooseTarget(/YOLO11/);
-    await userEvent.clear(screen.getByTestId("resize-width"));
-    await userEvent.type(screen.getByTestId("resize-width"), "16");
-
-    expect(screen.getByTestId("resize-problem").textContent).toContain("32 to 8192");
-    expect(screen.getByTestId("recipe-step-resize").getAttribute("data-state")).toBe("upcoming");
-    expect(screen.getByTestId("recipe-save")).toHaveProperty("disabled", true);
-    expect(screen.getByTestId("recipe-footer-note").textContent).toContain("32 to 8192");
-  });
-
-  it("ticks the first augmentation with one variant, and clears the count with the last", async () => {
-    baseline();
-    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
-    await userEvent.click(await screen.findByTestId("recipe-new"));
-
-    await userEvent.click(screen.getByTestId("augment-brightness_contrast"));
-    expect(screen.getByTestId("augment-variants")).toHaveProperty("value", "1");
-    expect(screen.getByTestId("augment-amount")).toHaveProperty("value", "0.2");
-    await userEvent.click(screen.getByTestId("augment-brightness_contrast"));
-    expect(screen.getByTestId("augment-variants")).toHaveProperty("value", "0");
-    expect(screen.queryByTestId("augment-amount")).toBeNull();
-    expect(screen.getByTestId("augment-ambient-split").textContent).toContain("train fold");
-  });
-
-  it("creates a new recipe with the spec the steps describe", async () => {
-    baseline();
-    on("POST", /\/preprocessing-recipes$/, { status: 201, body: recipeRow("yolo-640", LETTERBOX) });
-    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
-    await userEvent.click(await screen.findByTestId("recipe-new"));
-    await userEvent.type(screen.getByTestId("recipe-name"), "yolo-640");
-    await chooseTarget(/YOLO11/);
-    await userEvent.click(screen.getByTestId("augment-hflip"));
-    await userEvent.click(screen.getByTestId("augment-brightness_contrast"));
-    await userEvent.clear(screen.getByTestId("augment-amount"));
-    await userEvent.type(screen.getByTestId("augment-amount"), "0.3");
-    await userEvent.clear(screen.getByTestId("augment-variants"));
-    await userEvent.type(screen.getByTestId("augment-variants"), "2");
-    expect(screen.getByTestId("recipe-footer-note").textContent).toContain("Unsaved changes");
-
-    await userEvent.click(screen.getByTestId("recipe-save"));
-
-    const create = () =>
-      sent.find((r) => r.method === "POST" && pathOf(r).endsWith("/preprocessing-recipes"));
-    await waitFor(() => expect(create()).not.toBeUndefined());
-    expect(bodyOf(create() as Request)).toEqual({ name: "yolo-640", spec: LETTERBOX });
-    // Saved: the footer says so and the row is selected.
-    await waitFor(() => expect(screen.getByTestId("recipe-footer-note").textContent).toContain("No unsaved changes"));
-  });
-
-  it("replaces an open recipe with PUT, at its current name", async () => {
+  it("opens a stored recipe on its first step and fills each step from it", async () => {
     baseline([recipeRow("yolo-640", LETTERBOX)]);
-    on("PUT", /\/preprocessing-recipes\/yolo-640$/, {
-      status: 200,
-      body: recipeRow("yolo-640", { ...LETTERBOX, variants_per_asset: 3 }),
-    });
-    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
-    await screen.findByTestId("recipe-editor");
-    expect(screen.getByTestId("recipe-save")).toHaveProperty("disabled", true);
-    expect(screen.getByTestId("recipe-footer-note").textContent).toContain("No unsaved changes");
+    const dialog = await openStored("yolo-640");
 
-    await userEvent.clear(screen.getByTestId("augment-variants"));
-    await userEvent.type(screen.getByTestId("augment-variants"), "3");
-    await userEvent.click(screen.getByTestId("recipe-save"));
+    expect(stepOf(dialog)).toBe("Name and model 1/3");
+    expect(within(dialog).getByTestId("recipe-editor").getAttribute("data-mode")).toBe("edit");
+    expect(within(dialog).getByTestId("recipe-name")).toHaveProperty("value", "yolo-640");
+    expect(within(dialog).getByTestId("recipe-target").textContent?.trim()).toBe("YOLO11");
+    // The next steps are not drawn until they are reached.
+    expect(within(dialog).queryByTestId("resize-width")).toBeNull();
 
-    const replace = () => sent.find((r) => r.method === "PUT");
-    await waitFor(() => expect(replace()).not.toBeUndefined());
-    expect(pathOf(replace() as Request)).toMatch(/\/preprocessing-recipes\/yolo-640$/);
-    expect(bodyOf(replace() as Request)).toEqual({
-      name: "yolo-640",
-      spec: { ...LETTERBOX, variants_per_asset: 3 },
-    });
+    await toResize(dialog);
+    expect(within(dialog).getByTestId("resize-letterbox").getAttribute("data-state")).toBe("on");
+    expect(within(dialog).getByTestId("resize-width")).toHaveProperty("value", "640");
+
+    await next(dialog);
+    expect(within(dialog).getByTestId("augment-hflip").getAttribute("aria-checked")).toBe("true");
+    expect(within(dialog).getByTestId("augment-variants").textContent).toBe("2");
+    // Nothing has changed, so there is nothing to save.
+    expect(within(dialog).getByTestId("recipe-save")).toHaveProperty("disabled", true);
   });
 
-  it("discards back to the stored recipe", async () => {
+  it("walks the steps: the header follows, Previous goes back, and a step's problem holds only its own Next", async () => {
+    baseline();
+    const dialog = await openNew();
+    await chooseTarget(/YOLO11/);
+
+    expect(stepOf(dialog)).toBe("Name and model 1/3");
+    // Nowhere to go back to from the first step: Previous keeps its place but is hidden.
+    expect(within(dialog).getByTestId("recipe-previous").className).toContain("invisible");
+    expect(within(dialog).getByTestId("recipe-next").textContent).toContain("Next");
+
+    await next(dialog);
+    expect(stepOf(dialog)).toBe("Resize 2/3");
+    expect(within(dialog).getByTestId("recipe-previous").className).not.toContain("invisible");
+
+    // A bad width holds this step's Next, says why, and points the field at the message.
+    const width = within(dialog).getByTestId("resize-width");
+    await userEvent.clear(width);
+    await userEvent.type(width, "16");
+    expect(within(dialog).getByTestId("recipe-problem").textContent).toContain("32 to 8192");
+    expect(width.getAttribute("aria-invalid")).toBe("true");
+    expect(width.getAttribute("aria-describedby")).toBe("recipe-status");
+    expect(within(dialog).getByTestId("recipe-problem").id).toBe("recipe-status");
+    expect(within(dialog).getByTestId("recipe-next")).toHaveProperty("disabled", true);
+
+    // Another step's Next is not held by it: Previous still goes back, and the first step moves on.
+    await previous(dialog);
+    expect(stepOf(dialog)).toBe("Name and model 1/3");
+    expect(within(dialog).queryByTestId("recipe-problem")).toBeNull();
+    expect(within(dialog).getByTestId("recipe-next")).toHaveProperty("disabled", false);
+
+    // The bad width is still there to fix.
+    await next(dialog);
+    expect(within(dialog).getByTestId("resize-width")).toHaveProperty("value", "16");
+    expect(within(dialog).getByTestId("recipe-next")).toHaveProperty("disabled", true);
+    await userEvent.clear(within(dialog).getByTestId("resize-width"));
+    await userEvent.type(within(dialog).getByTestId("resize-width"), "320");
+    expect(within(dialog).getByTestId("recipe-next")).toHaveProperty("disabled", false);
+
+    await next(dialog);
+    expect(stepOf(dialog)).toBe("Augmentation 3/3");
+    expect(within(dialog).queryByTestId("recipe-next")).toBeNull();
+    expect(within(dialog).getByTestId("recipe-save").textContent).toContain("Create recipe");
+  });
+
+  it("holds the first step on a missing name, and Enter in a field moves on like Next", async () => {
+    baseline();
+    const dialog = await openNew();
+    const name = within(dialog).getByTestId("recipe-name");
+
+    await userEvent.clear(name);
+    expect(within(dialog).getByTestId("recipe-problem").textContent).toContain("Enter a name");
+    expect(name.getAttribute("aria-invalid")).toBe("true");
+    expect(name.getAttribute("aria-describedby")).toBe("recipe-status");
+    expect(within(dialog).getByTestId("recipe-next")).toHaveProperty("disabled", true);
+    await userEvent.type(name, "{Enter}");
+    expect(stepOf(dialog)).toBe("Name and model 1/3");
+
+    await userEvent.type(name, "plain{Enter}");
+    await within(dialog).findByTestId("recipe-step-size");
+    expect(stepOf(dialog)).toBe("Resize 2/3");
+  });
+
+  it("asks before a close would throw unsaved work away, and keeps it on Keep editing", async () => {
     baseline([recipeRow("yolo-640", LETTERBOX)]);
-    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
-    await screen.findByTestId("recipe-editor");
-    expect(screen.getByTestId("recipe-discard")).toHaveProperty("disabled", true);
+    const dialog = await openStored("yolo-640");
+    const name = within(dialog).getByTestId("recipe-name");
+    await userEvent.clear(name);
+    await userEvent.type(name, "yolo-640-v2");
 
-    await userEvent.clear(screen.getByTestId("resize-width"));
-    await userEvent.type(screen.getByTestId("resize-width"), "320");
-    expect(screen.getByTestId("recipe-discard")).toHaveProperty("disabled", false);
-    await userEvent.click(screen.getByTestId("recipe-discard"));
+    await userEvent.keyboard("{Escape}");
+    expect((await screen.findByTestId("recipe-discard-dialog")).textContent).toContain("Discard changes to yolo-640?");
+    await userEvent.click(screen.getByTestId("recipe-keep-editing"));
+    await waitFor(() => expect(screen.queryByTestId("recipe-discard-dialog")).toBeNull());
+    expect(within(screen.getByTestId("recipe-dialog")).getByTestId("recipe-name")).toHaveProperty("value", "yolo-640-v2");
 
-    expect(screen.getByTestId("resize-width")).toHaveProperty("value", "640");
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(await screen.findByTestId("recipe-discard-changes"));
+    await waitFor(() => expect(screen.queryByTestId("recipe-dialog")).toBeNull());
+  });
+
+  it("closes without asking when nothing changed", async () => {
+    baseline([recipeRow("yolo-640", LETTERBOX)]);
+    await openStored("yolo-640");
+
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByTestId("recipe-dialog")).toBeNull());
+    expect(screen.queryByTestId("recipe-discard-dialog")).toBeNull();
+  });
+
+  it("says which export used the open recipe, and shows no such row when none did", async () => {
+    const stored = [
+      recipeRow("yolo-640", LETTERBOX, { export_count: 3, release_id: RELEASE, release_tag: "v0.5", target: "yolo11", format: "ultralytics" }),
+      recipeRow("by-format", LETTERBOX, { export_count: 1, release_id: RELEASE, release_tag: "v1", target: null, format: "coco" }),
+      recipeRow("plain", PLAIN),
+    ];
+    baseline(stored);
+    const dialog = await openStored("yolo-640");
+    expect(within(dialog).getByTestId("recipe-used-by").textContent).toBe("The v0.5 YOLO11 export and 2 earlier");
+
+    cleanup();
+    const byFormat = await openStored("by-format");
+    expect(within(byFormat).getByTestId("recipe-used-by").textContent).toBe("The v1 coco export");
+
+    cleanup();
+    const plain = await openStored("plain");
+    expect(within(plain).queryByTestId("recipe-used-by")).toBeNull();
+  });
+
+  it("shows no used-by row on a new recipe", async () => {
+    baseline([recipeRow("yolo-640", LETTERBOX, { export_count: 1, release_id: RELEASE, release_tag: "v1", target: "yolo11", format: "ultralytics" })]);
+    const dialog = await openNew();
+    expect(within(dialog).queryByTestId("recipe-used-by")).toBeNull();
+  });
+});
+
+describe("the recipe in a release's Export section", () => {
+  it("lists No recipe first and chosen, then the project's recipes, each with its summary and model for a reader of the page", async () => {
+    baseline([recipeRow("yolo-640", LETTERBOX), recipeRow("plain", PLAIN)]);
+    const exported = await openExport();
+
+    const list = within(exported).getByTestId("export-recipe");
+    await within(list).findByTestId("recipe-row-yolo-640");
+    const rows = [...list.querySelectorAll("[data-testid^='recipe-row-']")].map((one) => one.getAttribute("data-testid"));
+    expect(rows).toEqual(["recipe-row-~none", "recipe-row-yolo-640", "recipe-row-plain"]);
+    expect(radio(exported, "~none").checked).toBe(true);
+    expect(radio(exported, "yolo-640").checked).toBe(false);
+
+    // The detail is on hover and, as words, with the radio for a screen reader.
+    const said = (name: string): string => within(exported).getByTestId(`recipe-row-${name}`).querySelector("span.sr-only")?.textContent ?? "";
+    expect(said("yolo-640")).toContain("Letterbox 640×640");
+    expect(said("yolo-640")).toContain("For YOLO11");
+    expect(said("plain")).toContain("No transform");
+    expect(said("plain")).toContain("For any model");
+    // Nothing is written until a row asks for it, and no recipe is chosen for the person.
+    expect(screen.queryByTestId("recipe-dialog")).toBeNull();
+    // Edit and Delete belong to a chosen recipe.
+    expect(within(exported).queryByTestId("recipe-edit")).toBeNull();
+    expect(within(exported).queryByTestId("recipe-delete")).toBeNull();
+  });
+
+  it("puts Edit and Delete on the chosen recipe's row alone", async () => {
+    baseline([recipeRow("yolo-640", LETTERBOX), recipeRow("plain", PLAIN)]);
+    const exported = await openExport();
+    await chooseRecipe(exported, "yolo-640");
+
+    const edit = within(exported).getByTestId("recipe-edit");
+    expect(within(exported).getByTestId("recipe-row-yolo-640").contains(edit)).toBe(true);
+    expect(within(exported).getAllByTestId("recipe-delete")).toHaveLength(1);
+
+    await chooseRecipe(exported, "plain");
+    expect(within(exported).getByTestId("recipe-row-plain").contains(within(exported).getByTestId("recipe-edit"))).toBe(true);
+    expect(within(exported).getByTestId("recipe-row-yolo-640").querySelector("[data-testid='recipe-edit']")).toBeNull();
+
+    await chooseRecipe(exported, "~none");
+    expect(within(exported).queryByTestId("recipe-edit")).toBeNull();
+  });
+
+  it("shelves no recipes in the working copy, and the project bar publishes", async () => {
+    baseline([recipeRow("yolo-640", LETTERBOX)]);
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+
+    const nav = await screen.findByTestId("version-nav");
+    expect(within(nav).getByTestId("version-working")).not.toBeNull();
+    await within(nav).findByTestId("version-v1");
+    expect(screen.queryByTestId("recipe-shelf")).toBeNull();
+    expect(screen.queryByTestId("recipe-list")).toBeNull();
+    expect(screen.queryByTestId("recipe-yolo-640")).toBeNull();
+    expect(screen.queryByTestId("recipe-new")).toBeNull();
+    expect(screen.queryByTestId("recipe-dialog")).toBeNull();
+    expect(screen.getByTestId("publish-release").getAttribute("data-variant")).not.toBe("outline");
+  });
+
+  it("opens the working copy for every tab the host names, and opens no recipe", async () => {
+    baseline([recipeRow("yolo-640", LETTERBOX)]);
+    renderWithData(<DatasetScreen projectId={PROJECT} tab="preprocessing" />);
+
+    const nav = await screen.findByTestId("version-nav");
+    await within(nav).findByTestId("version-v1");
+    expect(within(nav).getByTestId("version-working").getAttribute("aria-current")).toBe("true");
+    expect(screen.getByTestId("publish-release")).not.toBeNull();
+    expect(screen.queryByTestId("recipe-dialog")).toBeNull();
+  });
+
+  it("writes a new recipe from the list's last row, and the saved recipe becomes the export's", async () => {
+    let created = false;
+    handlers.push((request) => {
+      if (request.method !== "GET" || !pathOf(request).endsWith("/preprocessing-recipes")) return undefined;
+      const items = created ? [recipeRow("recipe", PLAIN)] : [];
+      return { status: 200, body: { items, total: items.length } };
+    });
+    baseline();
+    on("POST", /\/preprocessing-recipes$/, { status: 201, body: recipeRow("recipe", PLAIN) });
+    const exported = await openExport();
+    expect(radio(exported, "~none").checked).toBe(true);
+
+    await userEvent.click(within(exported).getByTestId("recipe-new"));
+    const dialog = await screen.findByTestId("recipe-dialog");
+    await within(dialog).findByTestId("recipe-editor");
+    expect(within(dialog).getByTestId("recipe-editor").getAttribute("data-mode")).toBe("create");
+    await toAugment(dialog);
+    created = true;
+    await userEvent.click(within(dialog).getByTestId("recipe-save"));
+    const saved = await within(dialog).findByTestId("recipe-saved");
+    await userEvent.click(within(saved).getByTestId("recipe-saved-done"));
+    await waitFor(() => expect(screen.queryByTestId("recipe-dialog")).toBeNull());
+
+    // The export now runs the recipe that was just written, and the list shows it chosen.
+    await within(exported).findByTestId("recipe-row-recipe");
+    await waitFor(() => expect(radio(exported, "recipe").checked).toBe(true));
+    expect(radio(exported, "~none").checked).toBe(false);
+  });
+
+  it("opens the chosen recipe to edit, over the page, and the export keeps it chosen after a save", async () => {
+    baseline([recipeRow("yolo-640", LETTERBOX)]);
+    on("PUT", /\/preprocessing-recipes\/yolo-640$/, { status: 200, body: recipeRow("yolo-640", { ...LETTERBOX, variants_per_asset: 3 }) });
+    const exported = await openExport();
+    await chooseRecipe(exported, "yolo-640");
+
+    await userEvent.click(within(exported).getByTestId("recipe-edit"));
+    const dialog = await screen.findByTestId("recipe-dialog");
+    await within(dialog).findByTestId("recipe-editor");
+    expect(within(dialog).getByTestId("recipe-editor").getAttribute("data-mode")).toBe("edit");
+    expect(within(dialog).getByTestId("recipe-name")).toHaveProperty("value", "yolo-640");
+    // The export's section is still on the page beneath it.
+    expect(screen.getByTestId("section-export")).not.toBeNull();
+
+    await toAugment(dialog);
+    await userEvent.click(within(dialog).getByRole("button", { name: "More variants" }));
+    await userEvent.click(within(dialog).getByTestId("recipe-save"));
+    await within(dialog).findByTestId("recipe-saved");
+    expect(sent.some((r) => r.method === "PUT")).toBe(true);
+    await userEvent.click(within(dialog).getByTestId("recipe-saved-done"));
+    await waitFor(() => expect(screen.queryByTestId("recipe-dialog")).toBeNull());
+    expect(radio(exported, "yolo-640").checked).toBe(true);
+  });
+
+  it("asks before an edit's close throws changes away, and leaves the Export section and its choice standing", async () => {
+    baseline([recipeRow("yolo-640", LETTERBOX)]);
+    const exported = await openExport();
+    await chooseRecipe(exported, "yolo-640");
+    await userEvent.click(within(exported).getByTestId("recipe-edit"));
+    const dialog = await screen.findByTestId("recipe-dialog");
+    const name = await within(dialog).findByTestId("recipe-name");
+    await userEvent.clear(name);
+    await userEvent.type(name, "yolo-640-v2");
+
+    await userEvent.keyboard("{Escape}");
+    const ask = await screen.findByTestId("recipe-discard-dialog");
+    expect(ask.textContent).toContain("Discard changes to yolo-640?");
+    await userEvent.click(within(ask).getByTestId("recipe-discard-changes"));
+
+    await waitFor(() => expect(screen.queryByTestId("recipe-dialog")).toBeNull());
+    expect(screen.getByTestId("section-export")).not.toBeNull();
+    expect(radio(exported, "yolo-640").checked).toBe(true);
     expect(sent.some((r) => r.method === "PUT")).toBe(false);
   });
 
-  it("renders a refused save as prose, never as its code", async () => {
+  it("says when the recipes could not be read, and the export still runs without one", async () => {
+    on("GET", /\/preprocessing-recipes$/, { status: 503, body: { code: "WORKSPACE_BUSY", message: "Busy." } });
+    baseline();
+    const exported = await openExport();
+
+    const said = (await within(exported).findByTestId("export-recipes-error")).textContent ?? "";
+    expect(said).toContain("busy");
+    expect(said).toContain("The export runs without a recipe");
+    expect(within(exported).queryByTestId("recipe-row-~none")).toBeNull();
+    expect(within(exported).getByTestId("export-submit")).not.toBeNull();
+  });
+});
+
+describe("writing a new recipe", () => {
+  it("opens on the name and model; a model fills in the size and the name, and says what it takes behind the info button", async () => {
+    baseline();
+    const dialog = await openNew();
+
+    expect(stepOf(dialog)).toBe("Name and model 1/3");
+    expect(within(dialog).getByTestId("recipe-editor").getAttribute("data-mode")).toBe("create");
+    expect(within(dialog).getByTestId("recipe-target").textContent?.trim()).toBe("Any model");
+    // The dialog takes focus itself, not its close button.
+    expect(document.activeElement).toBe(dialog);
+
+    await chooseTarget(/YOLO11/);
+    // The field says the model's name; what it takes is one press away.
+    expect(within(dialog).getByTestId("recipe-target").textContent?.trim()).toBe("YOLO11");
+    const meta = await modelNote(dialog);
+    expect(meta).toContain("detect · segment");
+    expect(meta).toContain("Letterboxes to 640 on its own.");
+    expect(within(dialog).getByTestId("recipe-name")).toHaveProperty("value", "yolo11-640");
+    expect(within(dialog).getByTestId("recipe-name-suggested").textContent).toBe("Suggested");
+
+    // The steps after it start from what the model recommends.
+    await next(dialog);
+    expect(within(dialog).getByTestId("resize-letterbox").getAttribute("data-state")).toBe("on");
+    expect(within(dialog).getByTestId("resize-width")).toHaveProperty("value", "640");
+    expect(within(dialog).getByTestId("resize-height")).toHaveProperty("value", "640");
+    await next(dialog);
+    expect(await variantsNote(dialog)).toContain("Usual when training YOLO11");
+    expect(within(dialog).getByTestId("recipe-save").textContent).toContain("Create recipe");
+  });
+
+  it("clears the model from the list itself", async () => {
+    baseline();
+    const dialog = await openNew();
+    await chooseTarget(/YOLO11/);
+
+    await chooseTarget(/^Any model$/);
+    expect(within(dialog).getByTestId("recipe-target").textContent?.trim()).toBe("Any model");
+    const meta = await modelNote(dialog);
+    expect(meta).toContain("A model fills in the fit and size it trains at.");
+    expect(meta).not.toContain("on its own");
+  });
+
+  it("names the models alone in the list, and says what one takes in a card beside the highlighted option", async () => {
+    baseline();
+    await openNew();
+    await userEvent.click(screen.getByTestId("recipe-target"));
+    const option = await screen.findByRole("option", { name: /YOLO11/ });
+    // The name is all that shows; the tasks are heard with it, not seen.
+    expect(option.querySelector(".text-muted-foreground")).toBeNull();
+    expect(option.textContent).toContain("YOLO11");
+
+    // Highlighting it, by pointer or keyboard, opens its card after a moment.
+    act(() => option.focus());
+    const card = await screen.findByTestId("target-card-yolo11");
+    expect(card.textContent).toContain("detect · segment");
+
+    // One Escape closes the list, card and all, and leaves the recipe open.
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("listbox")).toBeNull());
+    expect(screen.queryByTestId("target-card-yolo11")).toBeNull();
+    expect(screen.getByTestId("recipe-dialog")).not.toBeNull();
+  });
+
+  it("keeps a typed size when the model changes, and moves the rest", async () => {
+    baseline();
+    const dialog = await openNew();
+    await chooseTarget(/YOLO11/);
+    await toResize(dialog);
+    await userEvent.clear(within(dialog).getByTestId("resize-width"));
+    await userEvent.type(within(dialog).getByTestId("resize-width"), "800");
+
+    // Back on the first step, the model is changed under the typed width.
+    await previous(dialog);
+    await chooseTarget(/Wide/);
+    await next(dialog);
+
+    expect(within(dialog).getByTestId("resize-width")).toHaveProperty("value", "800");
+    expect(within(dialog).getByTestId("resize-height")).toHaveProperty("value", "720");
+    expect(within(dialog).getByTestId("resize-stretch").getAttribute("data-state")).toBe("on");
+  });
+
+  it("names the rule between Previous and Next, points the field at it, and holds the step until it is met", async () => {
+    baseline();
+    const dialog = await openNew();
+    await chooseTarget(/YOLO11/);
+    await toResize(dialog);
+    const width = within(dialog).getByTestId("resize-width");
+    await userEvent.clear(width);
+    await userEvent.type(width, "16");
+
+    expect(within(dialog).getByTestId("recipe-problem").textContent).toContain("32 to 8192");
+    expect(width.getAttribute("aria-invalid")).toBe("true");
+    expect(width.getAttribute("aria-describedby")).toBe("recipe-status");
+    expect(within(dialog).getByTestId("recipe-next")).toHaveProperty("disabled", true);
+    // Enter in the field is Next, so it does not get past the problem either.
+    await userEvent.type(width, "{Enter}");
+    expect(stepOf(dialog)).toBe("Resize 2/3");
+
+    await userEvent.clear(within(dialog).getByTestId("resize-width"));
+    await userEvent.type(within(dialog).getByTestId("resize-width"), "320");
+    expect(within(dialog).queryByTestId("recipe-problem")).toBeNull();
+    expect(within(dialog).getByTestId("recipe-status").textContent).toBe("");
+    expect(within(dialog).getByTestId("recipe-next")).toHaveProperty("disabled", false);
+  });
+
+  it("draws what the fit does at the size, and the option pointed at before it is chosen", async () => {
+    baseline();
+    const dialog = await openNew();
+    await chooseTarget(/YOLO11/);
+    await toResize(dialog);
+
+    const stage = within(dialog).getByTestId("recipe-stage");
+    expect(stage.getAttribute("aria-hidden")).toBe("true");
+    const drawn = (): string | null | undefined => stage.querySelector("svg")?.getAttribute("data-fit");
+    expect(drawn()).toBe("letterbox");
+    // The caption says what the fit does; the fit and the size are the fields under it, not repeated.
+    expect(within(dialog).getByTestId("recipe-stage-caption").textContent).toBe("Keeps the shape and pads the rest.");
+
+    // Pointing at Stretch draws it without choosing it; leaving hands the stage back.
+    await userEvent.hover(within(dialog).getByTestId("resize-stretch"));
+    expect(drawn()).toBe("stretch");
+
+    expect(within(dialog).getByTestId("resize-letterbox").getAttribute("data-state")).toBe("on");
+    pointerLeaves(within(dialog).getByTestId("resize-stretch"), dialog);
+    expect(drawn()).toBe("letterbox");
+
+    await userEvent.click(within(dialog).getByTestId("resize-none"));
+    pointerLeaves(within(dialog).getByTestId("resize-none"), dialog);
+    expect(within(dialog).getByTestId("recipe-stage-caption").textContent).toBe("Keeps each image at its own size.");
+  });
+
+  it("disables the size where it stands when the fit keeps each image's own size, so nothing can be typed into it", async () => {
+    baseline();
+    const dialog = await openNew();
+    await toResize(dialog);
+    // The pad is not asked: a letterbox keeps the grey it has.
+    expect(dialog.querySelector("#recipe-pad")).toBeNull();
+    await userEvent.click(within(dialog).getByTestId("resize-none"));
+
+    // Disabled on the inputs and the common sizes themselves, not only through the fieldset.
+    const width = within(dialog).getByTestId("resize-width");
+    expect(width).toHaveProperty("disabled", true);
+    expect(within(dialog).getByTestId("resize-height")).toHaveProperty("disabled", true);
+    expect(within(dialog).getByRole("radio", { name: "640 × 640" })).toHaveProperty("disabled", true);
+    const before = (width as HTMLInputElement).value;
+    await userEvent.type(width, "77");
+    expect(width).toHaveProperty("value", before);
+
+    await userEvent.click(within(dialog).getByTestId("resize-letterbox"));
+    expect(within(dialog).getByTestId("resize-width")).toHaveProperty("disabled", false);
+  });
+
+  it("opens brightness's amount under its switch only while the switch is on", async () => {
+    baseline();
+    const dialog = await openNew();
+    await toAugment(dialog);
+    expect(within(dialog).queryByRole("slider")).toBeNull();
+
+    await userEvent.click(within(dialog).getByTestId("augment-brightness_contrast"));
+    const slider = await within(dialog).findByRole("slider");
+    // Drawn as Brightness's child: a branch from under its label, hidden from assistive technology.
+    expect(within(dialog).getByTestId("recipe-amount-branch").getAttribute("aria-hidden")).toBe("true");
+    // Its row follows the switch's and comes before Rotate's.
+    const rotate = within(dialog).getByRole("switch", { name: "Rotate" });
+    expect(slider.compareDocumentPosition(rotate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(dialog).getByRole("switch", { name: "Brightness" }).compareDocumentPosition(slider) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await userEvent.click(within(dialog).getByTestId("augment-brightness_contrast"));
+    await waitFor(() => expect(within(dialog).queryByRole("slider")).toBeNull());
+  });
+
+  it("switches the first augmentation on with one variant, and clears the count with the last", async () => {
+    baseline();
+    const dialog = await openNew();
+    await toAugment(dialog);
+
+    await userEvent.click(within(dialog).getByTestId("augment-brightness_contrast"));
+    expect(within(dialog).getByTestId("augment-variants").textContent).toBe("1");
+    await userEvent.click(within(dialog).getByTestId("augment-brightness_contrast"));
+    expect(within(dialog).getByTestId("augment-variants").textContent).toBe("0");
+    expect(within(dialog).getByRole("button", { name: "More variants" })).toHaveProperty("disabled", true);
+    // What variants are for is one press away, not a line under the row.
+    expect(await variantsNote(dialog)).toContain("training split");
+  });
+
+  it("draws what each augmentation does in a card beside its label, and one Escape closes only the card", async () => {
+    baseline();
+    const dialog = await openNew();
+    await toAugment(dialog);
+
+    const flip = within(dialog).getByTestId("augment-hflip-info");
+    expect(flip.getAttribute("aria-label")).toBe("About flip");
+    await userEvent.hover(flip);
+    const card = await screen.findByRole("tooltip");
+    expect(card.textContent).toContain("Mirrors left to right");
+    expect(card.textContent).toContain("Its labels are mirrored with it.");
+    // The drawing is decoration: the card says it in words.
+    expect(card.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+    expect(flip.getAttribute("aria-describedby")).toBe(card.id);
+
+    // Brightness's card says how far its amount reaches; Rotate's, what it refuses.
+    pointerLeaves(flip, dialog);
+    await userEvent.hover(within(dialog).getByTestId("augment-brightness_contrast-info"));
+    expect((await screen.findByRole("tooltip")).textContent).toContain("by up to its amount");
+    pointerLeaves(within(dialog).getByTestId("augment-brightness_contrast-info"), dialog);
+    within(dialog).getByTestId("augment-rot90-info").focus();
+    expect((await screen.findByRole("tooltip")).textContent).toContain("refuses it over polylines");
+
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+    expect(screen.getByTestId("recipe-dialog")).not.toBeNull();
+  });
+
+  it("labels each augmentation switch by its row and says what it does", async () => {
+    baseline();
+    const dialog = await openNew();
+    await toAugment(dialog);
+
+    const flip = within(dialog).getByRole("switch", { name: "Flip" });
+    expect(flip.getAttribute("aria-describedby")).toBe("augment-hflip-detail");
+    // Said once on screen, in the info card; the switch carries the same words for a screen reader only.
+    const detail = dialog.querySelector("#augment-hflip-detail");
+    expect(detail?.textContent).toBe("Mirrors left to right. Its labels are mirrored with it.");
+    expect(detail?.classList.contains("sr-only")).toBe(true);
+    expect(within(dialog).getByRole("switch", { name: "Brightness" })).not.toBeNull();
+    expect(within(dialog).getByRole("switch", { name: "Rotate" })).not.toBeNull();
+  });
+
+  it("creates the recipe the steps describe, and says it is ready", async () => {
+    baseline();
+    on("POST", /\/preprocessing-recipes$/, { status: 201, body: recipeRow("yolo-640", LETTERBOX) });
+    const dialog = await openNew();
+    await chooseTarget(/YOLO11/);
+    const name = within(dialog).getByTestId("recipe-name");
+    await userEvent.clear(name);
+    await userEvent.type(name, "yolo-640");
+    expect(within(dialog).queryByTestId("recipe-name-suggested")).toBeNull();
+    await toAugment(dialog);
+    await userEvent.click(within(dialog).getByTestId("augment-hflip"));
+    await userEvent.click(within(dialog).getByTestId("augment-brightness_contrast"));
+    // The amount, from 0.20 to 0.30 in two of its 0.05 steps.
+    const amount = within(dialog).getByRole("slider", { name: "Amount" });
+    amount.focus();
+    await userEvent.keyboard("{ArrowRight}{ArrowRight}");
+    await userEvent.click(within(dialog).getByRole("button", { name: "More variants" }));
+
+    await userEvent.click(within(dialog).getByTestId("recipe-save"));
+
+    const create = () => sent.find((r) => r.method === "POST" && pathOf(r).endsWith("/preprocessing-recipes"));
+    await waitFor(() => expect(create()).not.toBeUndefined());
+    expect(bodyOf(create() as Request)).toEqual({ name: "yolo-640", spec: LETTERBOX });
+    const saved = await within(dialog).findByTestId("recipe-saved");
+    expect(saved.textContent).toContain("yolo-640 is ready");
+    expect(saved.textContent).toContain("Letterbox 640×640 · flip, brightness/contrast · 2 variants");
+    // Done closes; nothing is left to lose.
+    await userEvent.click(within(saved).getByTestId("recipe-saved-done"));
+    await waitFor(() => expect(screen.queryByTestId("recipe-dialog")).toBeNull());
+    expect(screen.queryByTestId("recipe-discard-dialog")).toBeNull();
+  });
+
+  it("renders a refused save as prose between Previous and Save, never as its code, until the draft changes", async () => {
     baseline();
     on("POST", /\/preprocessing-recipes$/, {
       status: 409,
       body: { code: "PREPROCESSING_RECIPE_NAME_TAKEN", message: "project 1111 already has a recipe named 'yolo-640'" },
     });
-    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
-    await userEvent.click(await screen.findByTestId("recipe-new"));
-    await userEvent.type(screen.getByTestId("recipe-name"), "yolo-640");
-    await userEvent.click(screen.getByTestId("recipe-save"));
+    const dialog = await openNew();
+    await toAugment(dialog);
+    await userEvent.click(within(dialog).getByTestId("recipe-save"));
 
-    const said = (await screen.findByTestId("recipe-save-error")).textContent ?? "";
+    const said = (await within(dialog).findByTestId("recipe-save-error")).textContent ?? "";
     expect(said).toContain("already exists");
     expect(said).not.toContain("PREPROCESSING_RECIPE_NAME_TAKEN");
     expect(said).not.toContain("1111");
+    expect(within(dialog).queryByTestId("recipe-saved")).toBeNull();
+    // Answering it — a change to the draft — retires it.
+    await userEvent.click(within(dialog).getByTestId("augment-hflip"));
+    expect(within(dialog).queryByTestId("recipe-save-error")).toBeNull();
+  });
+
+  it("says why the model cannot be chosen when the catalog could not be read", async () => {
+    on("GET", /\/export-targets$/, { status: 503, body: { code: "WORKSPACE_BUSY", message: "Busy." } });
+    baseline();
+    const dialog = await openNew();
+
+    expect(within(dialog).getByTestId("recipe-targets-error").textContent).toContain("Try again to choose a model");
+    expect(within(dialog).queryByTestId("recipe-target")).toBeNull();
+    // The model is optional: the recipe can still be taken to the end and created without one.
+    expect(within(dialog).getByTestId("recipe-next")).toHaveProperty("disabled", false);
+    await toAugment(dialog);
+    expect(within(dialog).getByTestId("recipe-save")).toHaveProperty("disabled", false);
+  });
+});
+
+describe("editing a stored recipe", () => {
+  it("replaces it with PUT at its current name, and the save waits for a change", async () => {
+    baseline([recipeRow("yolo-640", LETTERBOX)]);
+    on("PUT", /\/preprocessing-recipes\/yolo-640$/, { status: 200, body: recipeRow("yolo-640", { ...LETTERBOX, variants_per_asset: 3 }) });
+    const dialog = await openStored("yolo-640");
+    await toAugment(dialog);
+
+    // Nothing changed yet, so Save changes has nothing to save.
+    expect(within(dialog).getByTestId("recipe-save").textContent).toContain("Save changes");
+    expect(within(dialog).getByTestId("recipe-save")).toHaveProperty("disabled", true);
+    await userEvent.click(within(dialog).getByRole("button", { name: "More variants" }));
+    expect(within(dialog).getByTestId("recipe-save")).toHaveProperty("disabled", false);
+    await userEvent.click(within(dialog).getByTestId("recipe-save"));
+
+    const replace = () => sent.find((r) => r.method === "PUT");
+    await waitFor(() => expect(replace()).not.toBeUndefined());
+    expect(pathOf(replace() as Request)).toMatch(/\/preprocessing-recipes\/yolo-640$/);
+    expect(bodyOf(replace() as Request)).toEqual({ name: "yolo-640", spec: { ...LETTERBOX, variants_per_asset: 3 } });
+    expect((await within(dialog).findByTestId("recipe-saved")).textContent).toContain("Changes to yolo-640 are saved");
+
+    // Keep editing returns to the recipe as saved, with nothing unsaved.
+    await userEvent.click(within(dialog).getByTestId("recipe-saved-again"));
+    expect(within(dialog).getByTestId("recipe-save")).toHaveProperty("disabled", true);
+  });
+
+  it("asks before closing a changed recipe, and Discard closes without a request", async () => {
+    baseline([recipeRow("yolo-640", LETTERBOX)]);
+    const dialog = await openStored("yolo-640");
+    await toResize(dialog);
+    const width = within(dialog).getByTestId("resize-width");
+    await userEvent.clear(width);
+    await userEvent.type(width, "320");
+
+    await userEvent.keyboard("{Escape}");
+    const ask = await screen.findByTestId("recipe-discard-dialog");
+    expect(ask.textContent).toContain("Discard changes to yolo-640?");
+    await userEvent.click(within(ask).getByTestId("recipe-discard-changes"));
+
+    await waitFor(() => expect(screen.queryByTestId("recipe-dialog")).toBeNull());
+    expect(sent.some((r) => r.method === "PUT")).toBe(false);
   });
 });
 
 describe("deleting a recipe", () => {
-  it("asks first, sends DELETE at the recipe's name, and the row leaves the list", async () => {
+  it("asks first, sends DELETE at the recipe's name, and the export falls back to No recipe", async () => {
     const stored = [recipeRow("yolo-640", LETTERBOX), recipeRow("wide-720", { ...LETTERBOX, target: "wide" })];
     handlers.push((request) => {
       if (request.method !== "GET" || !pathOf(request).endsWith("/preprocessing-recipes")) return undefined;
@@ -568,11 +1072,10 @@ describe("deleting a recipe", () => {
     });
     baseline();
     on("DELETE", /\/preprocessing-recipes\/yolo-640$/, { status: 204 });
-    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
-    await screen.findByTestId("recipe-editor");
-    expect(screen.getByTestId("recipe-yolo-640").getAttribute("aria-current")).toBe("true");
+    const exported = await openExport();
+    await chooseRecipe(exported, "yolo-640");
 
-    await userEvent.click(screen.getByTestId("recipe-delete-yolo-640"));
+    await userEvent.click(within(exported).getByTestId("recipe-delete"));
     const dialog = await screen.findByTestId("delete-recipe-dialog");
     expect(dialog.textContent).toContain("Delete yolo-640?");
     expect(sent.some((r) => r.method === "DELETE")).toBe(false);
@@ -582,29 +1085,11 @@ describe("deleting a recipe", () => {
     await waitFor(() => expect(remove()).not.toBeUndefined());
     expect(pathOf(remove() as Request)).toMatch(/\/preprocessing-recipes\/yolo-640$/);
     await waitFor(() => expect(screen.queryByTestId("delete-recipe-dialog")).toBeNull());
-    await waitFor(() => expect(screen.queryByTestId("recipe-yolo-640")).toBeNull());
-    // The editor held the deleted one, so it moves to the recipe that is left.
-    expect(screen.getByTestId("recipe-wide-720").getAttribute("aria-current")).toBe("true");
-    expect(screen.getByTestId("recipe-name")).toHaveProperty("value", "wide-720");
-  });
-
-  it("returns to the invitation when the last recipe goes", async () => {
-    const stored = [recipeRow("yolo-640", LETTERBOX)];
-    handlers.push((request) => {
-      if (request.method !== "GET" || !pathOf(request).endsWith("/preprocessing-recipes")) return undefined;
-      const items = sent.some((r) => r.method === "DELETE") ? [] : stored;
-      return { status: 200, body: { items, total: items.length } };
-    });
-    baseline();
-    on("DELETE", /\/preprocessing-recipes\/yolo-640$/, { status: 204 });
-    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
-    await screen.findByTestId("recipe-editor");
-
-    await userEvent.click(screen.getByTestId("recipe-delete-yolo-640"));
-    await userEvent.click(await screen.findByTestId("delete-recipe-submit"));
-
-    await screen.findByTestId("recipes-empty");
-    expect(screen.queryByTestId("recipe-editor")).toBeNull();
+    await waitFor(() => expect(within(exported).queryByTestId("recipe-row-yolo-640")).toBeNull());
+    expect(within(exported).getByTestId("recipe-row-wide-720")).not.toBeNull();
+    // The recipe the export was set to is gone, so it runs without one.
+    expect(radio(exported, "~none").checked).toBe(true);
+    expect(within(exported).queryByTestId("recipe-edit")).toBeNull();
   });
 
   it("renders a refused delete as prose in the dialog, never as its code", async () => {
@@ -613,207 +1098,31 @@ describe("deleting a recipe", () => {
       status: 404,
       body: { code: "PREPROCESSING_RECIPE_NOT_FOUND", message: "project 1111 has no recipe named 'yolo-640'" },
     });
-    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
-    await screen.findByTestId("recipe-editor");
+    const exported = await openExport();
+    await chooseRecipe(exported, "yolo-640");
 
-    await userEvent.click(screen.getByTestId("recipe-delete-yolo-640"));
+    await userEvent.click(within(exported).getByTestId("recipe-delete"));
     await userEvent.click(await screen.findByTestId("delete-recipe-submit"));
 
     const said = (await screen.findByTestId("delete-recipe-error")).textContent ?? "";
     expect(said).toContain("no longer on record");
     expect(said).not.toContain("PREPROCESSING_RECIPE_NOT_FOUND");
     expect(said).not.toContain("1111");
-    expect(document.body.textContent).not.toContain("PREPROCESSING_RECIPE_NOT_FOUND");
-    // The dialog stays up holding the refusal, and the editor still holds the recipe.
     expect(screen.getByTestId("delete-recipe-dialog")).toBeTruthy();
-    expect(screen.getByTestId("recipe-editor")).toBeTruthy();
+    // Refused, so the export keeps the choice it had.
+    expect(radio(exported, "yolo-640", true).checked).toBe(true);
   });
 
   it("can be cancelled without a request", async () => {
     baseline([recipeRow("yolo-640", LETTERBOX)]);
-    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
-    await screen.findByTestId("recipe-editor");
+    const exported = await openExport();
+    await chooseRecipe(exported, "yolo-640");
 
-    await userEvent.click(screen.getByTestId("recipe-delete-yolo-640"));
+    await userEvent.click(within(exported).getByTestId("recipe-delete"));
     await userEvent.click(await screen.findByTestId("delete-recipe-cancel"));
 
     await waitFor(() => expect(screen.queryByTestId("delete-recipe-dialog")).toBeNull());
     expect(sent.some((r) => r.method === "DELETE")).toBe(false);
-    expect(screen.getByTestId("recipe-yolo-640").getAttribute("aria-current")).toBe("true");
-  });
-});
-
-describe("the preview", () => {
-  it("samples the project's first asset when no release has a split, and renders each stage", async () => {
-    baseline([recipeRow("yolo-640", LETTERBOX)]);
-    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
-
-    const grid = await screen.findByTestId("preview-grid");
-    const rows = within(grid).getAllByTestId(/^preview-row-/);
-    expect(rows).toHaveLength(1);
-    // Three cells and nothing else: the row spends its width on the images.
-    expect(rows[0]?.children).toHaveLength(3);
-    expect(screen.getByTestId("preview-aside").textContent).toBe("1 sample asset");
-    // The third column names the last augmentation the draft holds.
-    expect(screen.getByTestId("preview-augment-heading").textContent).toBe("After brightness and contrast");
-
-    await waitFor(() =>
-      expect(screen.getByTestId("preview-0-augment").getAttribute("data-state")).toBe("rendered"),
-    );
-    // The original is the asset through no transform; the resize column the
-    // resize step alone; the augmentation column the resize and the last
-    // augmentation step only, one variant, shown at its declared strength.
-    const previews = sent.filter((r) => r.method === "POST" && pathOf(r).endsWith("/preprocessing-preview"));
-    const requests = previews.map(bodyOf).map((body) => ({
-      variant: body["variant"],
-      showcase: body["showcase"],
-      variants: (body["spec"] as RecipeSpec).variants_per_asset,
-      steps: (body["spec"] as RecipeSpec).steps.map((step) =>
-        step.kind === "augment" ? `augment:${step.op}` : step.kind,
-      ),
-    }));
-    expect(requests).toContainEqual({ variant: 0, showcase: false, variants: 0, steps: [] });
-    expect(requests).toContainEqual({ variant: 0, showcase: false, variants: 0, steps: ["resize"] });
-    expect(requests).toContainEqual({
-      variant: 1,
-      showcase: true,
-      variants: 1,
-      steps: ["resize", "augment:brightness_contrast"],
-    });
-    expect(requests).toHaveLength(3);
-    expect(new Set(previews.map((r) => bodyOf(r)["asset_id"]))).toEqual(new Set([ASSET_A]));
-    const original = screen.getByTestId("preview-0-original");
-    const image = original.querySelector("img");
-    expect(image?.getAttribute("src")).toBe("data:image/png;base64,aGVsbG8=");
-    // The placed label, drawn by the static overlay in the rendering's own frame.
-    expect(within(original).getByTestId("preview-overlay").getAttribute("viewBox")).toBe("0 0 512 384");
-    expect(within(original).getByTestId("preview-shape-box-1")).not.toBeNull();
-    expect(within(screen.getByTestId("preview-0-augment")).getByTestId("preview-shape-box-1-aug1")).not.toBeNull();
-    expect(screen.getByTestId("recipe-step-preview").getAttribute("data-state")).toBe("complete");
-    // A still with no recorded source is named by its id.
-    expect(screen.getByTestId("preview-caption").textContent).toBe("Sample aaaaaaaa");
-  });
-
-  it("captions the sample by its frame and source, and heads the original with its recorded size", async () => {
-    baseline([recipeRow("yolo-640", LETTERBOX)]);
-    handlers.unshift((request) => {
-      if (request.method !== "POST" || !pathOf(request).endsWith("/preprocessing-preview")) return undefined;
-      const body = bodyOf(request);
-      return {
-        status: 200,
-        body: {
-          ...previewRow(String(body["asset_id"]), Number(body["variant"])),
-          original_width: 1920,
-          original_height: 1080,
-          frame_index: 1188,
-          source_name: "Highway — August",
-        },
-      };
-    });
-    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
-
-    await waitFor(() =>
-      expect(screen.getByTestId("preview-caption").textContent).toBe("Frame 1,188 · Highway — August"),
-    );
-    // The response's own size, not the asset listing's 640 × 480.
-    expect(screen.getByTestId("preview-original-heading").textContent).toBe("Original · 1920 × 1080");
-    expect(screen.getByTestId("preview-row-0").getAttribute("title")).toBe("Frame 1,188 · Highway — August");
-    expect(screen.getByTestId("preview-0-original").querySelector("img")?.getAttribute("alt")).toBe(
-      "Frame 1,188 · Highway — August, variant 0",
-    );
-  });
-
-  it("names the step the third column shows, and follows the draft's last augmentation", async () => {
-    baseline([recipeRow("yolo-640", LETTERBOX)]);
-    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
-    await screen.findByTestId("preview-grid");
-
-    await userEvent.click(screen.getByTestId("augment-brightness_contrast"));
-    await waitFor(() =>
-      expect(screen.getByTestId("preview-augment-heading").textContent).toBe("After horizontal flip"),
-    );
-    await waitFor(() =>
-      expect(
-        sent
-          .filter((r) => r.method === "POST" && pathOf(r).endsWith("/preprocessing-preview"))
-          .map(bodyOf)
-          .some(
-            (body) =>
-              body["showcase"] === true &&
-              (body["spec"] as RecipeSpec).steps.map((step) => (step.kind === "augment" ? step.op : step.kind)).join(",") ===
-                "resize,hflip",
-          ),
-      ).toBe(true),
-    );
-
-    // The last augmentation unticked: no variant to show, and the column says so.
-    await userEvent.click(screen.getByTestId("augment-hflip"));
-    await waitFor(() =>
-      expect(screen.getByTestId("preview-0-augment").textContent).toContain("No augmentation"),
-    );
-    expect(screen.getByTestId("preview-augment-heading").textContent).toBe("After augmentation");
-  });
-
-  it("samples the newest release's train fold when it has a split", async () => {
-    on("GET", /\/releases$/, {
-      status: 200,
-      body: {
-        items: [
-          {
-            id: RELEASE,
-            dataset_id: DATASET,
-            tag: "v1",
-            manifest_hash: "abcdef0123456789",
-            schema_version: 1,
-            asset_count: 4,
-            annotation_count: 0,
-            split: { train: 0.5, val: 0.25, test: 0.25, seed: 0 },
-            created_at: "2026-08-01T10:00:00.000000Z",
-            visionset_version: "0.0.1.dev0",
-          },
-        ],
-        total: 1,
-      },
-    });
-    on("GET", /\/assignment$/, {
-      status: 200,
-      body: { train: [ASSET_C, ASSET_D], val: [ASSET_A], test: [ASSET_B] },
-    });
-    baseline([recipeRow("plain", { target: null, steps: [], variants_per_asset: 0 })]);
-    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
-
-    await screen.findByTestId("preview-grid");
-    await waitFor(() =>
-      expect(screen.getByTestId("preview-0-original").getAttribute("data-state")).toBe("rendered"),
-    );
-    const sampled = new Set(
-      sent
-        .filter((r) => r.method === "POST" && pathOf(r).endsWith("/preprocessing-preview"))
-        .map((r) => bodyOf(r)["asset_id"]),
-    );
-    expect(sampled).toEqual(new Set([ASSET_C]));
-    // No resize step and no augmentation: the two stages say so rather than
-    // repeating the original.
-    expect(screen.getByTestId("preview-0-resize").textContent).toContain("No resize step");
-    expect(screen.getByTestId("preview-0-augment").textContent).toContain("No augmentation");
-    expect(screen.getByTestId("preview-augment-heading").textContent).toBe("After augmentation");
-  });
-
-  it("shows a refused rendering as prose in the cell", async () => {
-    baseline([recipeRow("plain", { target: null, steps: [], variants_per_asset: 0 })]);
-    handlers.unshift((request) =>
-      request.method === "POST" && pathOf(request).endsWith("/preprocessing-preview")
-        ? { status: 422, body: { code: "UNSUPPORTED_MEDIA", message: "That file is not an image this server reads." } }
-        : undefined,
-    );
-    renderWithData(<PreprocessingTab projectId={PROJECT} datasetId={DATASET} />);
-
-    await screen.findByTestId("preview-grid");
-    await waitFor(() =>
-      expect(screen.getByTestId("preview-0-original").getAttribute("data-state")).toBe("error"),
-    );
-    const cell = screen.getByTestId("preview-0-original");
-    expect(cell.textContent).toContain("not an image");
-    expect(cell.textContent).not.toContain("UNSUPPORTED_MEDIA");
+    expect(radio(exported, "yolo-640").checked).toBe(true);
   });
 });

@@ -1,10 +1,14 @@
 /**
- * The publication tail: stats, the timeline, publishing, verifying and export.
+ * The publication tail: the line of versions, publishing, verifying and export.
+ *
+ * A release is opened from the version panel (`version-v1`); its facts (integrity,
+ * manifest, split) sit at the top of that panel, and so does its export, as the last
+ * section. There is no tab and no dialog to reach any of it by.
  *
  * The claim worth the file is the **third gate word**. `confirm=` guards destroying
  * data, `allow_destructive=` guards narrowing a contract, and `allow_lossy=` guards
  * emitting an incomplete copy of something that stays intact — and the kernel is
- * emphatic that the three are never caught together. The dialog does not call the
+ * emphatic that the three are never caught together. The form does not call the
  * compatibility route, so the consent flow is attempt → read the 409 → ask → retry
  * with the flag, and the test drives all four steps.
  */
@@ -83,6 +87,14 @@ const DATASET = "22222222-2222-4222-8222-222222222222";
 const RELEASE = "33333333-3333-4333-8333-333333333333";
 const EXPORT_JOB = "44444444-4444-4444-8444-444444444444";
 
+// The browser's save is a download the page cannot observe; what it was asked to save is the claim.
+const saved: { readonly blob: Blob; readonly name: string }[] = [];
+vi.mock("./download", () => ({
+  saveBlob: (blob: Blob, name: string) => {
+    saved.push({ blob, name });
+  },
+}));
+
 type Answer = { status: number; body?: unknown };
 let handlers: ((request: Request) => Answer | undefined)[] = [];
 const sent: Request[] = [];
@@ -92,6 +104,16 @@ beforeEach(() => {
   handlers = [];
   sent.length = 0;
   bodies.clear();
+  saved.length = 0;
+  // Radix positions a popover and a card with it; jsdom has none, and nothing here measures.
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    },
+  );
   vi.stubGlobal("fetch", async (request: Request) => {
     sent.push(request);
     if (request.method !== "GET") bodies.set(request, await request.clone().text());
@@ -208,6 +230,46 @@ function previewable(): void {
   on("GET", /\/schema$/, { status: 404, body: { code: "SCHEMA_NOT_FOUND", message: "none" } });
 }
 
+/** Open the release `RELEASE_ROW` describes, from the version panel, and wait for its facts. */
+async function openRelease(tag = "v1"): Promise<void> {
+  await userEvent.click(await screen.findByTestId(`version-${tag}`));
+  await screen.findByTestId(`release-${tag}`);
+}
+
+/** The export form of an open release: the last section of its facts, open to begin with. */
+async function openExport(): Promise<HTMLElement> {
+  return await screen.findByTestId("export-form");
+}
+
+/** Open the release, then find its export section: where the model, the recipe and the job are. */
+async function openReleaseExport(): Promise<HTMLElement> {
+  await openRelease();
+  return await openExport();
+}
+
+/** Choose a recipe in the export section by its row's radio; `~none` is "No recipe". */
+async function pickRecipe(value: string): Promise<void> {
+  await userEvent.click(within(await screen.findByTestId(`recipe-row-${value}`)).getByRole("radio"));
+}
+
+/** Open a section of the facts column by its title, if it is not open. */
+async function openSection(id: string): Promise<HTMLElement> {
+  const section = await screen.findByTestId(`section-${id}`);
+  const toggle = within(section).getByRole("button", { expanded: false });
+  await userEvent.click(toggle);
+  return section;
+}
+
+/**
+ * Take the trunk's one image out the way the screen offers it: open it, then
+ * press Remove in the viewer. The tile carries no trash button of its own.
+ */
+async function removeFromViewer(): Promise<void> {
+  previewable();
+  await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
+  await userEvent.click(await screen.findByTestId("preview-remove"));
+}
+
 function baseline(): void {
   on("GET", /\/dataset$/, {
     status: 200,
@@ -243,10 +305,25 @@ function baseline(): void {
     },
   });
   on("GET", /\/export-targets$/, { status: 200, body: { items: TARGETS, total: TARGETS.length } });
+  // The selected image's detail names its source; a project with none is a real answer.
+  on("GET", /\/sources$/, { status: 200, body: { items: [], total: 0 } });
   on("GET", /\/preprocessing-recipes$/, { status: 200, body: { items: RECIPES, total: RECIPES.length } });
 }
 
-/** One recipe of the project: what the export dialog offers beside the target. */
+/** The project's active schema: both classes the dataset's labels use, at the version the releases pin. */
+const SCHEMA = {
+  status: 200,
+  body: {
+    project_id: PROJECT,
+    version: 3,
+    classes: [
+      { name: "vehicle", geometries: ["bbox"], color: null, attributes: [] },
+      { name: "lane", geometries: ["polygon"], color: null, attributes: [] },
+    ],
+  },
+};
+
+/** One recipe of the project: what the export section offers beside the target. */
 const RECIPES = [
   {
     id: "88888888-8888-4888-8888-888888888888",
@@ -274,23 +351,73 @@ describe("the dataset view", () => {
     await screen.findByTestId("dataset-stats");
     const row = await screen.findByTestId("class-count-vehicle");
     // A thousand labels over a thousand images and the same thousand over ten are
-    // the same total and a very different dataset.
-    expect(row.textContent).toContain("31");
-    expect(row.textContent).toContain("8");
+    // the same total and a very different dataset: both numbers, in one row.
+    expect(row.textContent).toContain("31 on 8");
+    expect(screen.getByTestId("class-count-lane").textContent).toContain("9 on 3");
+  });
+});
 
-    // The three tab-count chips are all "secondary" badges — an inert count,
-    // never the filled/primary reading canonical's bare default would give one
-    // tab for no reason its neighbours do not share.
-    const badgeIn = (testId: string): Element | null =>
-      screen.getByTestId(testId).querySelector('[data-slot="badge"]');
-    await waitFor(() => {
-      expect(badgeIn("dataset-tab-assets")).not.toBeNull();
-      expect(badgeIn("dataset-tab-preprocessing")).not.toBeNull();
-      expect(badgeIn("dataset-tab-releases")).not.toBeNull();
+describe("the dataset view's words", () => {
+  it("lists its versions newest first — the working copy, then each release — and shelves no recipes beside them", async () => {
+    baseline();
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+
+    const nav = await screen.findByTestId("version-nav");
+    await within(nav).findByTestId("version-v1");
+    const versions = within(nav)
+      .getAllByRole("button")
+      .map((one) => one.getAttribute("data-testid"))
+      .filter((id) => id?.startsWith("version-"));
+    expect(versions).toEqual(["version-working", "version-v1"]);
+    expect(within(nav).getByTestId("version-working").textContent).toContain("Working copy");
+    // Recipes are written where they are used, in a release's export; nothing is shelved here,
+    // and the four-tab strip is gone.
+    expect(screen.queryByTestId("recipe-shelf")).toBeNull();
+    expect(screen.queryByTestId("recipe-list")).toBeNull();
+    expect(screen.queryByTestId("dataset-tabs")).toBeNull();
+  });
+
+  it("reads the working copy's contents as one line, and opens it into labeled, per image and schema", async () => {
+    baseline();
+    on("GET", /\/schema$/, SCHEMA);
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+
+    const stats = await screen.findByTestId("dataset-stats");
+    // The heading already answers: nothing needs opening to know the size.
+    expect(within(stats).getByTestId("section-contents").textContent).toContain("12 images · 40 annotations");
+    expect(screen.queryByTestId("state-labeling")).toBeNull();
+
+    const contents = await openSection("contents");
+    const labeled = within(contents).getByTestId("state-labeling");
+    expect(labeled.textContent).toBe("9 of 12 labeled");
+    expect(labeled.getAttribute("data-tone")).toBe("progress");
+    expect(contents.textContent).toContain("Per image");
+    expect(contents.textContent).toContain("3.3");
+    expect(contents.textContent).toContain("Schema");
+    expect(contents.textContent).toContain("v3");
+    // The per-class counts are not a table with a column each.
+    expect(within(screen.getByTestId("version-facts")).queryByRole("columnheader")).toBeNull();
+    expect((await screen.findByTestId("class-count-vehicle")).textContent).toMatch(/31\s*on\s*8/);
+  });
+
+  it("says which classes the schema declares and nothing labels, rather than leaving them out", async () => {
+    baseline();
+    on("GET", /\/schema$/, {
+      status: 200,
+      body: { ...SCHEMA.body, classes: [...SCHEMA.body.classes, { name: "sign", geometries: ["bbox"], color: null, attributes: [] }] },
     });
-    expect(badgeIn("dataset-tab-assets")?.getAttribute("data-variant")).toBe("secondary");
-    expect(badgeIn("dataset-tab-preprocessing")?.getAttribute("data-variant")).toBe("secondary");
-    expect(badgeIn("dataset-tab-releases")?.getAttribute("data-variant")).toBe("secondary");
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+
+    const sign = await screen.findByTestId("class-count-sign");
+    // A class nobody labelled is the gap a person training on this needs to see.
+    expect(sign.textContent).toContain("sign");
+    expect(sign.textContent).toContain("none");
+    expect(screen.getByTestId("class-count-vehicle").textContent).toContain("31 on 8");
+    const chip = await screen.findByTestId("state-classes");
+    expect(chip.getAttribute("data-tone")).toBe("review");
+    // Icon-only beside its own heading: the word is its accessible name, and the heading says it too.
+    expect(chip.getAttribute("aria-label")).toBe("2 of 3 classes used");
+    expect(screen.getByTestId("section-classes").textContent).toContain("2 of 3 classes used");
   });
 });
 
@@ -394,13 +521,21 @@ describe("verification", () => {
       },
     });
 
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
-    const releaseCard = await screen.findByTestId("release-v1");
-    expect(within(releaseCard).getByRole("heading", { level: 3, name: /v1/i })).not.toBeNull();
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openRelease();
+    const releaseCard = screen.getByTestId("release-v1");
+    // Not asked: the chip says so, and nothing has been read.
+    expect(within(releaseCard).getByTestId("state-integrity").textContent).toBe("Not verified");
+    expect(within(releaseCard).getByTestId("state-integrity").getAttribute("data-tone")).toBe("draft");
     expect(sent.some((r) => r.url.endsWith("/verify"))).toBe(false);
 
     await userEvent.click(screen.getByTestId("verify-v1"));
-    expect((await screen.findByTestId("verified-v1")).textContent).toContain("12 blobs");
+    await waitFor(() => expect(within(releaseCard).getByTestId("state-integrity").textContent).toBe("Intact"));
+    expect(within(releaseCard).getByTestId("state-integrity").getAttribute("data-tone")).toBe("done");
+    // A clean report is the chip alone; the report is for what was found wrong.
+    expect(screen.queryByTestId("verified-v1")).toBeNull();
+    // The history reads the same report: the release's entry now says so.
+    expect(within(screen.getByTestId("version-nav")).getByTestId("version-verified-v1").textContent).toContain("Verified intact");
   });
 
   it("reports a broken manifest on its own, because nothing else was checked", async () => {
@@ -419,13 +554,17 @@ describe("verification", () => {
       },
     });
 
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openRelease();
     await userEvent.click(await screen.findByTestId("verify-v1"));
     // `checked: 0` — every other number would be about a document that is not the
     // one its hash names.
     expect((await screen.findByTestId("verified-v1")).textContent).toContain(
       "does not match its hash",
     );
+    expect(screen.getByTestId("state-integrity").textContent).toBe("Problems found");
+    expect(screen.getByTestId("state-integrity").getAttribute("data-tone")).toBe("failed");
+    expect(within(screen.getByTestId("version-nav")).getByTestId("version-verified-v1").textContent).toContain("Failed verification");
   });
 
   /**
@@ -443,12 +582,41 @@ describe("verification", () => {
       body: { code: "WORKSPACE_BUSY", message: "database is locked" },
     });
 
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openRelease();
     await userEvent.click(await screen.findByTestId("verify-v1"));
 
     const said = (await screen.findByTestId("verify-error-v1")).textContent ?? "";
     expect(said).toContain("busy");
     expect(said).not.toContain("WORKSPACE_BUSY");
+    expect(screen.getByTestId("state-integrity").textContent).toBe("Couldn't verify");
+    expect(screen.getByTestId("state-integrity").getAttribute("data-tone")).toBe("failed");
+  });
+
+  it("names the blobs a verification could not find or read, when it found any", async () => {
+    baseline();
+    on("GET", /\/verify$/, {
+      status: 200,
+      body: {
+        release_id: RELEASE,
+        manifest_hash: RELEASE_ROW.manifest_hash,
+        manifest_intact: true,
+        ok: false,
+        checked: 12,
+        missing: ["a".repeat(64)],
+        corrupt: ["b".repeat(64), "c".repeat(64)],
+        cache_mismatches: [],
+      },
+    });
+
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openRelease();
+    await userEvent.click(await screen.findByTestId("verify-v1"));
+
+    const report = (await screen.findByTestId("verified-v1")).textContent ?? "";
+    expect(report).toContain("cannot be reproduced");
+    expect(report).toContain("1 missing · 2 corrupt");
+    expect(report).toContain("of 12 checked");
   });
 
   it("takes a stale report off the screen when the next verify could not be asked", async () => {
@@ -466,9 +634,10 @@ describe("verification", () => {
         cache_mismatches: [],
       },
     });
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openRelease();
     await userEvent.click(await screen.findByTestId("verify-v1"));
-    await screen.findByTestId("verified-v1");
+    await waitFor(() => expect(screen.getByTestId("state-integrity").textContent).toBe("Intact"));
 
     // The second press cannot be answered. A green report left underneath the
     // silence would be the product asserting something it has just failed to
@@ -482,7 +651,9 @@ describe("verification", () => {
     await userEvent.click(screen.getByTestId("verify-v1"));
 
     await screen.findByTestId("verify-error-v1");
-    expect(screen.queryByTestId("verified-v1")).toBeNull();
+    // Neither the chip nor the history keeps saying "intact" under a check that did not run.
+    expect(screen.getByTestId("state-integrity").textContent).toBe("Couldn't verify");
+    expect(within(screen.getByTestId("version-nav")).queryByTestId("version-verified-v1")).toBeNull();
   });
 });
 
@@ -501,7 +672,8 @@ describe("downloading a manifest", () => {
       body: { code: "RELEASE_NOT_FOUND", message: "no such release" },
     });
 
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openRelease();
     await userEvent.click(await screen.findByTestId("manifest-v1"));
 
     const said = (await screen.findByTestId("manifest-error-v1")).textContent ?? "";
@@ -514,8 +686,8 @@ describe("export, and the third gate word", () => {
   it("groups the catalog by family and says what each target takes", async () => {
     baseline();
 
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
-    await userEvent.click(await screen.findByTestId("export-v1"));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
     await userEvent.click(screen.getByTestId("export-target"));
 
     const listbox = await screen.findByRole("listbox");
@@ -526,22 +698,37 @@ describe("export, and the third gate word", () => {
     expect(headings[0]).toMatch(/^Ultralytics YOLO/);
     expect(headings[1]).toMatch(/^Community YOLO/);
     expect(headings[2]).toMatch(/^Other formats/);
-    // Each option's second line: the tasks a model accepts, or, for a format
-    // with no task vocabulary, the geometries it carries.
+    // The options are names; what a target takes is said with the option to a screen
+    // reader (the tasks a model accepts, or, for a format with no task vocabulary,
+    // the geometries it carries) and shown in a card beside the highlighted one.
     expect(screen.getByRole("option", { name: /YOLO11/ }).textContent).toContain(
       "detect · segment · classify · pose · obb",
     );
     expect(screen.getByRole("option", { name: /dummy/ }).textContent).toContain("box · polygon");
+    expect(screen.queryByTestId("target-card-yolo11")).toBeNull();
     // The retired alias is not a target and never appears.
     expect(screen.queryByRole("option", { name: /^yolo$/ })).toBeNull();
+  });
+
+  it("shows what a target takes in a card beside the option the pointer is on", async () => {
+    baseline();
+
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
+    await userEvent.click(screen.getByTestId("export-target"));
+    await userEvent.hover(await screen.findByRole("option", { name: /YOLO11/ }));
+
+    const card = await screen.findByTestId("target-card-yolo11", undefined, { timeout: 3000 });
+    expect(card.textContent).toContain("detect · segment · classify · pose · obb");
+    expect(card.textContent).toContain("Writes ultralytics.");
   });
 
   it("says when lossiness could not be read, rather than leaving the hint out silently", async () => {
     on("GET", /\/formats$/, { status: 503, body: { code: "WORKSPACE_BUSY", message: "Busy." } });
     baseline();
 
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
-    await userEvent.click(await screen.findByTestId("export-v1"));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
     await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /YOLOv10/ }));
 
@@ -560,8 +747,8 @@ describe("export, and the third gate word", () => {
         : undefined,
     );
 
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
-    await userEvent.click(await screen.findByTestId("export-v1"));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
     await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
     await userEvent.click(screen.getByTestId("export-submit"));
@@ -625,8 +812,8 @@ describe("export, and the third gate word", () => {
           };
     });
 
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
-    await userEvent.click(await screen.findByTestId("export-v1"));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
     await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /YOLOv10/ }));
     // The format declares it, so the warning is there before anything is attempted.
@@ -751,8 +938,8 @@ describe("export, and the third gate word", () => {
       body: backgroundJob({ state, ...overrides }),
     });
 
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
-    await userEvent.click(await screen.findByTestId("export-v1"));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
     await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
     await userEvent.click(screen.getByTestId("export-submit"));
@@ -771,23 +958,28 @@ describe("export, and the third gate word", () => {
     const recipeReads = () =>
       sent.filter((r) => r.method === "GET" && r.url.includes("/preprocessing-recipes")).length;
 
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
-    await userEvent.click(await screen.findByTestId("export-v1"));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
     await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
-    await userEvent.click(screen.getByTestId("export-recipe"));
-    await userEvent.click(await screen.findByRole("option", { name: /yolo-640/ }));
+    await pickRecipe("yolo-640");
     const before = recipeReads();
     await userEvent.click(screen.getByTestId("export-submit"));
 
-    expect((await screen.findByTestId("export-job-state")).textContent).toContain("Done");
+    expect((await screen.findByTestId("export-job-state")).textContent).toContain("Downloaded");
     await waitFor(() => expect(recipeReads()).toBeGreaterThan(before));
   });
 
-  it("says the export is running, in the colour work-in-flight wears (#391)", async () => {
+  it("says the export is queued, neutrally, before it has started", async () => {
+    const badge = await exportWith("queued");
+    expect(badge.textContent).toBe("Queued");
+    expect(badge.getAttribute("data-tone")).toBe("draft");
+  });
+
+  it("says the export is running, with how far it has got, in the tone work-in-flight wears (#391)", async () => {
     const badge = await exportWith("running");
-    expect(badge.textContent).toContain("Exporting");
-    expect(badge.className).toContain("text-primary");
+    expect(badge.textContent).toBe("Exporting 3/12");
+    expect(badge.getAttribute("data-tone")).toBe("progress");
   });
 
   it("shows no failure while the export is still queued or running", async () => {
@@ -800,16 +992,16 @@ describe("export, and the third gate word", () => {
     expect(screen.queryByTestId("export-job-error")).toBeNull();
   });
 
-  it("says a finished export is done, in the success token (#391)", async () => {
+  it("says a finished export was downloaded, in the success tone (#391)", async () => {
     const badge = await exportWith("succeeded");
-    expect(badge.textContent).toContain("Done");
-    expect(badge.getAttribute("data-variant")).toBe("success");
+    expect(badge.textContent).toBe("Downloaded");
+    expect(badge.getAttribute("data-tone")).toBe("done");
   });
 
   it("says a failed export failed, and the prose stays beside it (#391)", async () => {
     const badge = await exportWith("failed");
-    expect(badge.textContent).toContain("Failed");
-    expect(badge.className).toContain("text-destructive");
+    expect(badge.textContent).toBe("Failed");
+    expect(badge.getAttribute("data-tone")).toBe("failed");
     // The badge is the glance; the sentence is still the answer.
     expect(screen.getByTestId("export-job-error")).not.toBeNull();
   });
@@ -837,8 +1029,54 @@ describe("export, and the third gate word", () => {
 
   it("calls a cancelled export cancelled, neutrally — nothing failed (#391)", async () => {
     const badge = await exportWith("cancelled");
-    expect(badge.textContent).toContain("Cancelled");
-    expect(badge.className).not.toContain("text-destructive");
+    expect(badge.textContent).toBe("Cancelled");
+    // Somebody asked for it, so it is not the failed tone.
+    expect(badge.getAttribute("data-tone")).toBe("draft");
+  });
+
+  it("saves the archive as the release's tag and the target, once the job has succeeded", async () => {
+    on("GET", /\/artifact$/, { status: 200, body: "zip-bytes" });
+    await exportWith("succeeded");
+
+    await waitFor(() => expect(saved).toHaveLength(1));
+    expect(saved[0]?.name).toBe("v1-dummy.zip");
+    expect(screen.queryByTestId("export-download-error")).toBeNull();
+  });
+
+  it("says when the archive of a finished export could not be fetched, as a sentence", async () => {
+    on("GET", /\/artifact$/, { status: 503, body: { code: "WORKSPACE_BUSY", message: "database is locked" } });
+    await exportWith("succeeded");
+
+    const said = (await screen.findByTestId("export-download-error")).textContent ?? "";
+    expect(said).toContain("busy");
+    expect(said).not.toContain("WORKSPACE_BUSY");
+    expect(saved).toHaveLength(0);
+  });
+
+  it("says nothing was exported until a job runs, and keeps the job going while the section is folded", async () => {
+    baseline();
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
+    const section = screen.getByTestId("section-export");
+    expect(section.textContent).toContain("Not exported this session");
+    expect(screen.queryByTestId("export-job-state")).toBeNull();
+
+    cleanup();
+    await exportWith("running");
+    const folded = screen.getByTestId("section-export");
+    const toggle = within(folded).getByRole("button", { expanded: true });
+    await userEvent.click(toggle);
+
+    // Folded, the form is out of the way and the heading still says how the job is going.
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByTestId("export-form")).toBeNull();
+    const chip = screen.getByTestId("export-job-state");
+    expect(chip.textContent).toBe("Exporting 3/12");
+    expect(chip.getAttribute("data-tone")).toBe("progress");
+    // Unfolded again, the same job is still the one being shown.
+    await userEvent.click(toggle);
+    expect(await screen.findByTestId("export-form")).not.toBeNull();
+    expect(screen.getByTestId("export-job-state").textContent).toBe("Exporting 3/12");
   });
 });
 
@@ -870,8 +1108,8 @@ describe("a target catalog with nothing in it", () => {
       body: { code: "WORKSPACE_BUSY", message: "Another writer holds the workspace." },
     });
 
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
-    await userEvent.click(await screen.findByTestId("export-v1"));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
 
     const said = (await screen.findByTestId("export-targets-error")).textContent ?? "";
     // The product's sentence for the code, not the kernel's identifier.
@@ -884,8 +1122,8 @@ describe("a target catalog with nothing in it", () => {
   it("does not leave a silently empty picker where the failure is (#440)", async () => {
     targetsFail({ status: 503, body: { code: "WORKSPACE_BUSY", message: "Busy." } });
 
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
-    await userEvent.click(await screen.findByTestId("export-v1"));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
     await screen.findByTestId("export-targets-error");
 
     // A control offering nothing, beside a message saying why there is nothing,
@@ -896,8 +1134,8 @@ describe("a target catalog with nothing in it", () => {
   it("offers the request again, and asking again asks the server (#440)", async () => {
     targetsFail({ status: 503, body: { code: "WORKSPACE_BUSY", message: "Busy." } });
 
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
-    await userEvent.click(await screen.findByTestId("export-v1"));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
     const failed = await screen.findByTestId("export-targets-error");
 
     const asked = () =>
@@ -912,8 +1150,8 @@ describe("a target catalog with nothing in it", () => {
     on("GET", /\/export-targets$/, { status: 200, body: { items: [], total: 0 } });
     baseline();
 
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
-    await userEvent.click(await screen.findByTestId("export-v1"));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
 
     const said = (await screen.findByTestId("export-targets-empty")).textContent ?? "";
     // An invitation, not an apology — and it names what would fix it.
@@ -927,8 +1165,8 @@ describe("a target catalog with nothing in it", () => {
   it("still lists the targets when there are targets (#440)", async () => {
     baseline();
 
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
-    await userEvent.click(await screen.findByTestId("export-v1"));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
 
     // The success path keeps its picker and neither of the two explanations.
     expect(await screen.findByTestId("export-target")).not.toBeNull();
@@ -940,30 +1178,36 @@ describe("a target catalog with nothing in it", () => {
 /**
  * Curating the trunk.
  *
- * The claim worth the block is that removal is
+ * Removal is reached by opening an image and pressing Remove in the viewer;
+ * the tile has no trash button. The claim worth the block is that removal is
  * **curation, not deletion** — which is why the kernel gives it no `confirm=`
  * gate — and that the counts a removal invalidates include one on a screen this
  * mutation never touches.
  */
 describe("curating the trunk", () => {
   it("lists what is in the trunk, which is what the counts above are counts of", async () => {
+    // Already in the newest release, so the tile carries no "not released yet" mark.
+    on("GET", /\/assets$/, { status: 200, body: { items: [{ ...ASSET_ROW, release_tags: ["v1"] }], total: 1 } });
     baseline();
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
 
-    const tile = await screen.findByTestId(`trunk-asset-${ASSET}`);
+    const tile = await screen.findByTestId(`open-${ASSET}`);
+    // The wall is a listbox of tiles, none selected until one is pressed.
+    expect(within(screen.getByRole("listbox")).getByRole("option", { name: /frame 7/ })).toBe(tile);
+    expect(tile.getAttribute("aria-selected")).toBe("false");
     // The frame number when there is one, as the pill over the picture — not a
     // content hash nobody can act on — and how many labels it carries, read off
     // the listing itself rather than fetched per tile.
     expect(tile.textContent).toContain("7");
     expect(screen.getByTestId(`labels-${ASSET}`).textContent).toBe("2 labels");
     expect(screen.getByTestId(`labels-${ASSET}`).getAttribute("title")).toBe("lane, vehicle");
-    expect(screen.getByTestId(`open-${ASSET}`).getAttribute("aria-label")).toBe("Preview frame 7");
+    expect(tile.getAttribute("aria-label")).toBe("frame 7, 2 labels");
   });
 
   it("says what removal costs, and is honest that almost nothing is destroyed", async () => {
     baseline();
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
-    await userEvent.click(await screen.findByTestId(`remove-${ASSET}`));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await removeFromViewer();
 
     const consequence = await screen.findByTestId("remove-asset-consequence");
     // Every clause read off `DatasetService.remove_asset`, not assumed. The
@@ -977,8 +1221,8 @@ describe("curating the trunk", () => {
 
   it("takes no action until the confirmation is answered", async () => {
     baseline();
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
-    await userEvent.click(await screen.findByTestId(`remove-${ASSET}`));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await removeFromViewer();
     await screen.findByTestId("remove-asset-dialog");
 
     // Opening the dialog is not the decision. Nothing has been sent.
@@ -989,8 +1233,8 @@ describe("curating the trunk", () => {
     baseline();
     on("DELETE", /\/assets\//, { status: 204 });
 
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
-    await userEvent.click(await screen.findByTestId(`remove-${ASSET}`));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await removeFromViewer();
     await userEvent.click(await screen.findByTestId("remove-asset-submit"));
 
     await waitFor(() => expect(sent.some((r) => r.method === "DELETE")).toBe(true));
@@ -1002,14 +1246,14 @@ describe("curating the trunk", () => {
     baseline();
     on("DELETE", /\/assets\//, { status: 204 });
 
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
-    await screen.findByTestId(`trunk-asset-${ASSET}`);
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await screen.findByTestId(`open-${ASSET}`);
     const before = {
       stats: sent.filter((r) => r.url.endsWith("/stats")).length,
       assets: sent.filter((r) => new URL(r.url).pathname.endsWith("/assets")).length,
     };
 
-    await userEvent.click(screen.getByTestId(`remove-${ASSET}`));
+    await removeFromViewer();
     await userEvent.click(await screen.findByTestId("remove-asset-submit"));
 
     // A declaration — or a count — is a cached answer, so a mutation that moves
@@ -1036,8 +1280,8 @@ describe("curating the trunk", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     client.setQueryData(["batches", "some-batch"], { promoted_asset_count: 12 });
 
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />, { queryClient: client });
-    await userEvent.click(await screen.findByTestId(`remove-${ASSET}`));
+    renderWithData(<DatasetScreen projectId={PROJECT} />, { queryClient: client });
+    await removeFromViewer();
     await userEvent.click(await screen.findByTestId("remove-asset-submit"));
 
     await waitFor(() =>
@@ -1052,8 +1296,8 @@ describe("curating the trunk", () => {
       body: { code: "DATASET_NOT_FOUND", message: "No dataset with that id." },
     });
 
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
-    await userEvent.click(await screen.findByTestId(`remove-${ASSET}`));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await removeFromViewer();
     await userEvent.click(await screen.findByTestId("remove-asset-submit"));
 
     const failure = await screen.findByTestId("remove-asset-error");
@@ -1067,9 +1311,9 @@ describe("curating the trunk", () => {
 
   it("offers no paging for a trunk that fits on one page", async () => {
     baseline();
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
 
-    await screen.findByTestId(`trunk-asset-${ASSET}`);
+    await screen.findByTestId(`open-${ASSET}`);
     expect(screen.queryByTestId("trunk-paging")).toBeNull();
   });
 
@@ -1092,7 +1336,7 @@ describe("curating the trunk", () => {
     });
     baseline();
 
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
     await screen.findByTestId("trunk-paging");
     // `total` is the whole trunk, not the page — `docs/content/api.md`: paging bounds
     // the response, not the read.
@@ -1115,21 +1359,23 @@ describe("curating the trunk", () => {
  * over the picture in the asset's pixel frame, beside what the asset is and
  * what is on it. The claims worth the block are that the overlay is placed by
  * the asset's own dimensions, that the labels are read through the dataset and
- * not through a job, and that removal from the viewer is the same decision as
- * removal from the tile.
+ * not through a job, and that the viewer is the Images section's own detail,
+ * beside the wall rather than over it, from which an image is taken out, in the
+ * working copy only.
  */
 describe("looking at a member", () => {
   it("opens a preview with the picture, the metadata and the labels drawn over it", async () => {
     previewable();
     baseline();
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
     await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
 
-    const preview = await screen.findByTestId("asset-preview");
-    expect(within(preview).getByTestId("preview-metadata").textContent).toContain("640 × 480");
-    expect(within(preview).getByTestId("preview-metadata").textContent).toContain("png");
+    const preview = await screen.findByTestId("image-detail");
+    expect(within(preview).getByTestId("image-detail-title").textContent).toBe("frame 7");
+    expect(within(preview).getByTestId("image-facts").textContent).toContain("640 × 480");
+    expect(within(preview).getByTestId("image-facts").textContent).toContain("PNG");
     // The overlay speaks the asset's pixel frame, which is what makes a stored
-    // coordinate land on the pixel it names at every dialog width.
+    // coordinate land on the pixel it names at every pane width.
     expect(within(preview).getByTestId("preview-overlay").getAttribute("viewBox")).toBe("0 0 640 480");
     await within(preview).findByTestId(`preview-shape-${BOX}`);
     expect(within(preview).getByTestId(`preview-shape-${LANE}`).getAttribute("data-geometry")).toBe("polygon");
@@ -1152,7 +1398,7 @@ describe("looking at a member", () => {
   it("hides the overlay on request, and the list stays", async () => {
     previewable();
     baseline();
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
     await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
     await screen.findByTestId(`preview-shape-${BOX}`);
 
@@ -1180,7 +1426,7 @@ describe("looking at a member", () => {
     });
     previewable();
     baseline();
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
     await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
 
     const models = await screen.findByTestId("preview-models");
@@ -1191,7 +1437,24 @@ describe("looking at a member", () => {
     expect(screen.getByTestId("preview-by").textContent).toBe("model 2");
   });
 
-  it("steps through the page with the arrows and stops at its edges", async () => {
+  it("selects a tile when it is pressed, and opens that image beside the wall", async () => {
+    previewable();
+    baseline();
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    const tile = await screen.findByTestId(`open-${ASSET}`);
+    expect(screen.queryByTestId("image-detail")).toBeNull();
+
+    await userEvent.click(tile);
+
+    expect(tile.getAttribute("aria-selected")).toBe("true");
+    const detail = await screen.findByTestId("image-detail");
+    expect(within(detail).getByTestId("image-detail-position").textContent).toBe("1 of 1");
+    // A pane of the page, not a modal: nothing is covered and nothing is trapped.
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByTestId("trunk-grid")).not.toBeNull();
+  });
+
+  it("steps through the whole version with the arrows and the buttons, and stops at its ends", async () => {
     const ids = [
       "55555555-5555-4555-8555-555555555550",
       "55555555-5555-4555-8555-555555555551",
@@ -1203,38 +1466,103 @@ describe("looking at a member", () => {
     });
     previewable();
     baseline();
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
     await userEvent.click(await screen.findByTestId(`open-${ids[0]}`));
 
-    expect(screen.getByTestId("preview-position").textContent).toBe("1 of 3 on this page");
-    expect(screen.getByTestId("preview-previous")).toHaveProperty("disabled", true);
+    expect(screen.getByTestId("image-detail-position").textContent).toBe("1 of 3");
+    expect(screen.getByTestId("image-previous")).toHaveProperty("disabled", true);
 
     await userEvent.keyboard("{ArrowRight}");
-    expect(screen.getByTestId("preview-position").textContent).toBe("2 of 3 on this page");
+    expect(screen.getByTestId("image-detail-position").textContent).toBe("2 of 3");
+    expect(screen.getByTestId(`open-${ids[1]}`).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByTestId(`open-${ids[0]}`).getAttribute("aria-selected")).toBe("false");
 
-    await userEvent.click(screen.getByTestId("preview-next"));
-    expect(screen.getByTestId("preview-position").textContent).toBe("3 of 3 on this page");
-    expect(screen.getByTestId("preview-next")).toHaveProperty("disabled", true);
+    await userEvent.click(screen.getByTestId("image-next"));
+    expect(screen.getByTestId("image-detail-position").textContent).toBe("3 of 3");
+    expect(screen.getByTestId("image-next")).toHaveProperty("disabled", true);
     // The edge is the edge: the key does nothing past it.
     await userEvent.keyboard("{ArrowRight}");
-    expect(screen.getByTestId("preview-position").textContent).toBe("3 of 3 on this page");
+    expect(screen.getByTestId("image-detail-position").textContent).toBe("3 of 3");
+
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(screen.getByTestId("image-detail-position").textContent).toBe("2 of 3");
+  });
+
+  it("turns the page when the arrows run off its edge, and counts across the whole version", async () => {
+    // The wall is paged; the detail's count is the version's, not the page's.
+    const PAGE = 48;
+    const idAt = (at: number): string => `55555555-5555-4555-8555-${String(at).padStart(12, "0")}`;
+    handlers.push((request) => {
+      const url = new URL(request.url);
+      if (request.method !== "GET" || !url.pathname.endsWith("/assets")) return undefined;
+      const offset = Number(url.searchParams.get("offset") ?? "0");
+      const count = Math.min(PAGE, 60 - offset);
+      return {
+        status: 200,
+        body: { items: Array.from({ length: count }, (_, at) => ({ ...ASSET_ROW, id: idAt(offset + at), frame_index: offset + at })), total: 60 },
+      };
+    });
+    previewable();
+    baseline();
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await userEvent.click(await screen.findByTestId(`open-${idAt(PAGE - 1)}`));
+    expect(screen.getByTestId("image-detail-position").textContent).toBe("48 of 60");
+
+    await userEvent.keyboard("{ArrowRight}");
+
+    await waitFor(() => expect(sent.some((r) => new URL(r.url).searchParams.get("offset") === String(PAGE))).toBe(true));
+    await waitFor(() => expect(screen.getByTestId("image-detail-position").textContent).toBe("49 of 60"));
+    expect((await screen.findByTestId(`open-${idAt(PAGE)}`)).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("puts the selected image in focus with Enter and steps back out with Escape, then out of the selection", async () => {
+    previewable();
+    baseline();
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
+    const toggle = await screen.findByTestId("image-focus-toggle");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+
+    await userEvent.keyboard("{Enter}");
+    expect(screen.getByTestId("image-focus-toggle").getAttribute("aria-pressed")).toBe("true");
+
+    // The first Escape leaves focus and keeps the selection; the second clears it.
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByTestId("image-focus-toggle").getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByTestId(`open-${ASSET}`).getAttribute("aria-selected")).toBe("true");
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByTestId("image-detail")).toBeNull();
+    expect(screen.getByTestId(`open-${ASSET}`).getAttribute("aria-selected")).toBe("false");
+  });
+
+  it("selects and focuses a tile on a double press, and the toggle is the way back", async () => {
+    previewable();
+    baseline();
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+
+    await userEvent.dblClick(await screen.findByTestId(`open-${ASSET}`));
+
+    expect((await screen.findByTestId("image-focus-toggle")).getAttribute("aria-pressed")).toBe("true");
+    await userEvent.click(screen.getByTestId("image-focus-toggle"));
+    expect(screen.getByTestId("image-focus-toggle").getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByTestId("image-detail-picture")).not.toBeNull();
   });
 
   it("removes from the preview through the same confirmation, and closes the viewer", async () => {
     previewable();
     baseline();
     on("DELETE", /\/assets\//, { status: 204 });
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
     await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
     await userEvent.click(await screen.findByTestId("preview-remove"));
 
-    // The same dialog as the tile's, so the same sentence about what removal costs.
+    // The viewer is the only way to remove, so the dialog is the one that says what removal costs.
     await screen.findByTestId("remove-asset-consequence");
     expect(sent.some((r) => r.method === "DELETE")).toBe(false);
     await userEvent.click(screen.getByTestId("remove-asset-submit"));
 
     await waitFor(() => expect(sent.some((r) => r.method === "DELETE")).toBe(true));
-    await waitFor(() => expect(screen.queryByTestId("asset-preview")).toBeNull());
+    await waitFor(() => expect(screen.queryByTestId("image-detail")).toBeNull());
   });
 
   it("says when the labels cannot be read, as a sentence", async () => {
@@ -1245,12 +1573,49 @@ describe("looking at a member", () => {
     });
     on("GET", /\/schema$/, { status: 404, body: { code: "SCHEMA_NOT_FOUND", message: "none" } });
     baseline();
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
     await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
 
     const failure = await screen.findByTestId("preview-labels-error");
     expect(failure.textContent).toBe("That frame is no longer in the dataset.");
     expect(screen.queryByTestId(`preview-shape-${BOX}`)).toBeNull();
+  });
+
+  it("says an image carries no labels, rather than leaving the panel empty", async () => {
+    on("GET", /\/annotations$/, { status: 200, body: { items: [], total: 0 } });
+    previewable();
+    baseline();
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
+
+    expect((await screen.findByTestId("preview-no-labels")).textContent).toContain("No labels on this image");
+    // Nothing to hide, so no switch; and no provenance to give for nothing.
+    expect(screen.queryByTestId("preview-toggle-labels")).toBeNull();
+    expect(screen.queryByTestId("preview-provenance")).toBeNull();
+  });
+
+  it("says which releases hold an image, or that none does yet", async () => {
+    on("GET", /\/assets$/, {
+      status: 200,
+      body: { items: [{ ...ASSET_ROW, release_tags: ["v0.1", "v1"] }], total: 1 },
+    });
+    previewable();
+    baseline();
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
+    expect((await screen.findByTestId("preview-releases")).textContent).toBe("In v0.1, v1");
+  });
+
+  it("says an image is in no release yet when none holds it", async () => {
+    on("GET", /\/assets$/, {
+      status: 200,
+      body: { items: [{ ...ASSET_ROW, release_tags: [] }], total: 1 },
+    });
+    previewable();
+    baseline();
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
+    expect((await screen.findByTestId("preview-releases")).textContent).toBe("Not in a release yet");
   });
 
   it("shows the picture without an overlay when the asset does not record its dimensions", async () => {
@@ -1260,12 +1625,12 @@ describe("looking at a member", () => {
     });
     previewable();
     baseline();
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="assets" />);
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
     await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
 
     await screen.findByTestId("preview-no-overlay");
     expect(screen.queryByTestId("preview-overlay")).toBeNull();
-    expect(screen.getByTestId("preview-metadata").textContent).toContain("—");
+    expect(screen.getByTestId("image-facts").textContent).toContain("Size—");
   });
 });
 
@@ -1277,9 +1642,11 @@ describe("export, and the recipe beside the target", () => {
     handlers.push((request) =>
       request.method === "POST" && request.url.includes("/export") ? { status: 200, body: {} } : undefined,
     );
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
-    await userEvent.click(await screen.findByTestId("export-v1"));
-    expect(screen.getByTestId("export-recipe").textContent).toContain("None");
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
+    // "No recipe" is the choice until another is made.
+    expect(within(screen.getByTestId("recipe-row-~none")).getByRole("radio")).toHaveProperty("checked", true);
+    expect(within(screen.getByTestId("recipe-row-yolo-640")).getByRole("radio")).toHaveProperty("checked", false);
     await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
     await userEvent.click(screen.getByTestId("export-submit"));
@@ -1288,19 +1655,24 @@ describe("export, and the recipe beside the target", () => {
     expect(new URL(launch()?.url ?? "").searchParams.get("recipe")).toBeNull();
   });
 
-  it("lists the project's recipes with a one-line summary, and sends the chosen one by name", async () => {
+  it("lists the project's recipes with a one-line summary on hover, and sends the chosen one by name", async () => {
     baseline();
     handlers.push((request) =>
       request.method === "POST" && request.url.includes("/export") ? { status: 200, body: {} } : undefined,
     );
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
-    await userEvent.click(await screen.findByTestId("export-v1"));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
     await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
-    await userEvent.click(screen.getByTestId("export-recipe"));
-    const option = await screen.findByRole("option", { name: /yolo-640/ });
-    expect(option.textContent).toContain("letterbox 640×640 · flip · 1 variant");
-    await userEvent.click(option);
+    const row = await screen.findByTestId("recipe-row-yolo-640");
+    // The row is the name; what the recipe does is said with it, and shown in a card beside it.
+    expect(row.textContent).toContain("Letterbox 640×640 · flip · 1 variant");
+    expect(row.textContent).toContain("For YOLO11");
+    await pickRecipe("yolo-640");
+    expect(within(row).getByTestId("recipe-edit")).not.toBeNull();
+    expect(within(row).getByTestId("recipe-delete")).not.toBeNull();
+    // Only the chosen recipe offers them.
+    expect(within(screen.getByTestId("recipe-row-~none")).queryByTestId("recipe-edit")).toBeNull();
     await userEvent.click(screen.getByTestId("export-submit"));
 
     await waitFor(() => expect(launch()).not.toBeUndefined());
@@ -1309,14 +1681,92 @@ describe("export, and the recipe beside the target", () => {
     expect(query.get("target")).toBe("dummy");
   });
 
-  it("says when the project has no recipes, instead of offering a picker with one row", async () => {
+  it("offers only 'No recipe' and the row that writes one when the project has none", async () => {
     on("GET", /\/preprocessing-recipes$/, { status: 200, body: { items: [], total: 0 } });
     baseline();
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
-    await userEvent.click(await screen.findByTestId("export-v1"));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
 
-    expect((await screen.findByTestId("export-recipes-empty")).textContent).toContain("Pre-processing view");
-    expect(screen.queryByTestId("export-recipe")).toBeNull();
+    const choice = await screen.findByTestId("export-recipe");
+    const rows = within(choice).getAllByRole("radio");
+    expect(rows).toHaveLength(1);
+    expect(within(screen.getByTestId("recipe-row-~none")).getByRole("radio")).toHaveProperty("checked", true);
+    expect(within(choice).getByTestId("recipe-new").textContent).toBe("New recipe");
+    // Nothing chosen but "No recipe", so there is nothing to edit or delete.
+    expect(within(choice).queryByTestId("recipe-edit")).toBeNull();
+    expect(within(choice).queryByTestId("recipe-delete")).toBeNull();
+  });
+
+  it("says a recipes read that failed, and still exports without one", async () => {
+    on("GET", /\/preprocessing-recipes$/, { status: 503, body: { code: "WORKSPACE_BUSY", message: "Busy." } });
+    baseline();
+    handlers.push((request) =>
+      request.method === "POST" && request.url.includes("/export") ? { status: 200, body: {} } : undefined,
+    );
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
+
+    const said = (await screen.findByTestId("export-recipes-error")).textContent ?? "";
+    expect(said).toContain("workspace is busy");
+    expect(said).toContain("The export runs without a recipe.");
+    expect(said).not.toContain("WORKSPACE_BUSY");
+
+    await userEvent.click(screen.getByTestId("export-target"));
+    await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
+    await userEvent.click(screen.getByTestId("export-submit"));
+    await waitFor(() => expect(launch()).not.toBeUndefined());
+    expect(new URL(launch()?.url ?? "").searchParams.get("recipe")).toBeNull();
+  });
+
+  it("opens the recipe writer from the section as a plain modal, and keeps the export's choices", async () => {
+    baseline();
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
+    await userEvent.click(screen.getByTestId("export-target"));
+    await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
+
+    await userEvent.click(await screen.findByTestId("recipe-new"));
+
+    // Recipes are written where they are used, in a modal over the page; the export is
+    // page content behind it, not another dialog.
+    expect(await screen.findByTestId("recipe-dialog")).not.toBeNull();
+    expect(screen.queryByTestId("export-dialog")).toBeNull();
+    // And the model already chosen is still the model chosen.
+    expect(screen.getByTestId("export-target").textContent).toContain("dummy");
+  });
+
+  it("asks before deleting the chosen recipe, and falls back to no recipe when it is gone", async () => {
+    baseline();
+    on("DELETE", /\/preprocessing-recipes\//, { status: 204 });
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
+    await pickRecipe("yolo-640");
+
+    await userEvent.click(screen.getByTestId("recipe-delete"));
+    await screen.findByTestId("delete-recipe-dialog");
+    // Opening the confirmation is not the decision.
+    expect(sent.some((r) => r.method === "DELETE")).toBe(false);
+
+    await userEvent.click(screen.getByTestId("delete-recipe-submit"));
+    await waitFor(() => expect(sent.some((r) => r.method === "DELETE")).toBe(true));
+    expect(new URL(sent.find((r) => r.method === "DELETE")?.url ?? "").pathname).toBe(`/projects/${PROJECT}/preprocessing-recipes/yolo-640`);
+    // The recipe this export was going to run is gone, so it runs none.
+    await waitFor(() => expect(within(screen.getByTestId("recipe-row-~none")).getByRole("radio")).toHaveProperty("checked", true));
+  });
+
+  it("says a recipe that could not be deleted, as a sentence, and keeps the confirmation open", async () => {
+    baseline();
+    on("DELETE", /\/preprocessing-recipes\//, { status: 503, body: { code: "WORKSPACE_BUSY", message: "Busy." } });
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
+    await pickRecipe("yolo-640");
+    await userEvent.click(screen.getByTestId("recipe-delete"));
+    await userEvent.click(await screen.findByTestId("delete-recipe-submit"));
+
+    const said = (await screen.findByTestId("delete-recipe-error")).textContent ?? "";
+    expect(said).toContain("busy");
+    expect(said).not.toContain("WORKSPACE_BUSY");
+    expect(screen.getByTestId("delete-recipe-dialog")).not.toBeNull();
   });
 
   it("renders the split refusal as prose, with the remedy", async () => {
@@ -1332,12 +1782,11 @@ describe("export, and the recipe beside the target", () => {
           }
         : undefined,
     );
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
-    await userEvent.click(await screen.findByTestId("export-v1"));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
     await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
-    await userEvent.click(screen.getByTestId("export-recipe"));
-    await userEvent.click(await screen.findByRole("option", { name: /yolo-640/ }));
+    await pickRecipe("yolo-640");
     await userEvent.click(screen.getByTestId("export-submit"));
 
     const said = (await screen.findByTestId("export-error")).textContent ?? "";
@@ -1361,8 +1810,8 @@ describe("export, and the recipe beside the target", () => {
           }
         : undefined,
     );
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
-    await userEvent.click(await screen.findByTestId("export-v1"));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
     await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
     await userEvent.click(screen.getByTestId("export-submit"));
@@ -1384,8 +1833,8 @@ describe("export, and the recipe beside the target", () => {
         ? { status: 500, body: { code, message } }
         : undefined,
     );
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
-    await userEvent.click(await screen.findByTestId("export-v1"));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
     await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
     await userEvent.click(screen.getByTestId("export-submit"));
@@ -1393,5 +1842,160 @@ describe("export, and the recipe beside the target", () => {
     const said = (await screen.findByTestId("export-error")).textContent ?? "";
     expect(said).toContain(expected);
     expect(document.body.textContent).not.toContain(code);
+  });
+});
+
+/**
+ * The line of versions.
+ *
+ * The working copy is the trunk as it stands and each release is frozen out of
+ * it; opening one asks the listing for that release's members, and what the
+ * viewer offers depends on which is open — removal is the trunk's curation, so
+ * it is not offered inside something frozen.
+ */
+describe("the line of versions", () => {
+  const SECOND = "55555555-5555-4555-8555-555555555556";
+
+  it("lists the working copy and each release, newest first", async () => {
+    const newer = { ...RELEASE_ROW, id: "99999999-9999-4999-8999-999999999999", tag: "v2", asset_count: 20, created_at: "2026-08-15T10:00:00.000000Z" };
+    on("GET", /\/releases$/, { status: 200, body: { items: [RELEASE_ROW, newer], total: 2 } });
+    baseline();
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+
+    const nav = await screen.findByTestId("version-nav");
+    await within(nav).findByTestId("version-v2");
+    const order = within(nav)
+      .getAllByRole("button")
+      .map((one) => one.getAttribute("data-testid"))
+      .filter((id) => id?.startsWith("version-"));
+    expect(order).toEqual(["version-working", "version-v2", "version-v1"]);
+    // Each entry says what changed against the one before it, and only that.
+    expect(within(nav).getByTestId("version-notes-v2").textContent).toContain("+8images");
+    expect(within(nav).getByTestId("version-notes-v1").textContent).toContain("the first release");
+    expect(within(nav).queryByTestId("version-verified-v1")).toBeNull();
+    // The working copy is open to begin with.
+    expect(within(nav).getByTestId("version-working").getAttribute("aria-current")).toBe("true");
+  });
+
+  it("asks the listing for a release's members when it is opened, and for none in the working copy", async () => {
+    baseline();
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await screen.findByTestId(`open-${ASSET}`);
+    const listings = () => sent.filter((r) => new URL(r.url).pathname.endsWith("/assets"));
+    expect(listings().every((r) => new URL(r.url).searchParams.get("release_id") === null)).toBe(true);
+
+    await openRelease();
+
+    await waitFor(() => expect(listings().some((r) => new URL(r.url).searchParams.get("release_id") === RELEASE)).toBe(true));
+  });
+
+  it("says how many of a release's images have since left the dataset", async () => {
+    baseline();
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openRelease();
+
+    // The release froze 12 and the listing holds 1 of them.
+    expect((await screen.findByTestId("release-gone")).textContent).toContain("11 of its images have since left the dataset");
+  });
+
+  it("offers Remove in the viewer for the working copy, and not inside a release", async () => {
+    previewable();
+    baseline();
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+
+    await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
+    const detail = await screen.findByTestId("image-detail");
+    expect(within(detail).getByTestId("preview-remove")).not.toBeNull();
+
+    await userEvent.click(screen.getByTestId("version-v1"));
+    await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
+    const inRelease = await screen.findByTestId("image-detail");
+    expect(within(inRelease).getByTestId("image-next")).not.toBeNull();
+    expect(within(inRelease).getByTestId("preview-panel")).not.toBeNull();
+    expect(within(inRelease).queryByTestId("preview-remove")).toBeNull();
+  });
+
+  it("closes the selected image with Escape, because it is a pane and not a dialog", async () => {
+    previewable();
+    baseline();
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+
+    await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
+    await screen.findByTestId("image-detail");
+    // A pane, not a dialog: nothing modal is on the page, and there is no button to close it.
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByTestId("preview-close")).toBeNull();
+    expect(within(screen.getByTestId("version-facts")).getByTestId("dataset-stats")).not.toBeNull();
+
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByTestId("image-detail")).toBeNull();
+    // The version's facts never left the column.
+    expect(within(screen.getByTestId("version-facts")).getByTestId("dataset-stats")).not.toBeNull();
+  });
+
+  it("marks only images the newest release lacks, and only in the working copy", async () => {
+    on("GET", /\/assets$/, {
+      status: 200,
+      body: {
+        items: [
+          { ...ASSET_ROW, release_tags: ["v1"] },
+          { ...ASSET_ROW, id: SECOND, frame_index: 8, release_tags: [] },
+        ],
+        total: 2,
+      },
+    });
+    baseline();
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+
+    await screen.findByTestId(`open-${SECOND}`);
+    expect(screen.getByTestId(`fresh-${SECOND}`)).not.toBeNull();
+    expect(screen.queryByTestId(`fresh-${ASSET}`)).toBeNull();
+    expect(screen.getByTestId(`open-${SECOND}`).getAttribute("aria-label")).toContain("not released yet");
+
+    await openRelease();
+    await screen.findByTestId(`open-${SECOND}`);
+    expect(screen.queryByTestId(`fresh-${SECOND}`)).toBeNull();
+  });
+
+  it("shows a release's split as three shares of one bar", async () => {
+    const split = { train: 0.7, val: 0.2, test: 0.1, seed: 7 };
+    on("GET", /\/releases$/, { status: 200, body: { items: [{ ...RELEASE_ROW, split }], total: 1 } });
+    baseline();
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openRelease();
+    await openSection("contents");
+
+    const bar = screen.getByTestId("split-v1");
+    expect(bar.textContent).toContain("Train 70%");
+    expect(bar.textContent).toContain("Validation 20%");
+    expect(bar.textContent).toContain("Test 10%");
+  });
+
+  it("offers Publish in the project bar for the working copy only, and Export as a section of a release's facts", async () => {
+    baseline();
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    // The working copy is not exportable: it is not a release.
+    await screen.findByTestId("dataset-stats");
+    expect(screen.getByTestId("publish-release").textContent).toBe("Publish release");
+    expect(screen.queryByTestId("section-export")).toBeNull();
+    expect(screen.queryByTestId("export-form")).toBeNull();
+
+    await openRelease();
+    // A release's forward action is its export, which is a section of its facts and not a
+    // button in the bar or a dialog; the publish is the working copy's.
+    expect(screen.queryByTestId("publish-release")).toBeNull();
+    expect(screen.queryByTestId("export-open")).toBeNull();
+    expect(screen.queryByTestId("export-dialog")).toBeNull();
+
+    const form = await openExport();
+    const section = screen.getByTestId("section-export");
+    expect(section.textContent).toContain("Export");
+    // Open to begin with, and the last section of the release's facts.
+    expect(within(section).getByRole("button", { expanded: true })).not.toBeNull();
+    expect(within(section).getByTestId("export-form")).toBe(form);
+    expect(screen.getByTestId("release-v1").lastElementChild).toBe(section);
+    expect(within(form).getByTestId("export-submit").textContent).toBe("Export");
+    // Nothing is chosen, so nothing can be sent yet.
+    expect(within(form).getByTestId("export-submit")).toHaveProperty("disabled", true);
   });
 });

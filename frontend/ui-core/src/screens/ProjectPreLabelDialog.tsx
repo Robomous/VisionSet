@@ -83,7 +83,7 @@ export function ProjectPreLabelButton({
         data-testid="project-prelabel"
         onClick={() => setOpen(true)}
       >
-        <Sparkles className="size-4" aria-hidden="true" />
+        <Sparkles aria-hidden="true" />
         Pre-label
       </Button>
       {open && (
@@ -98,7 +98,12 @@ export function ProjectPreLabelButton({
   );
 }
 
-function ProjectPreLabelDialog({
+/**
+ * The dialog itself, for a host that opens it from its own control — the
+ * Overview's row menu opens it over one batch. Handed one batch, it is titled
+ * for that batch; the checklist, gating and refusals are the same.
+ */
+export function ProjectPreLabelDialog({
   projectId,
   batches,
   onClose,
@@ -186,7 +191,7 @@ function ProjectPreLabelDialog({
   return (
     <Dialog open onOpenChange={(next) => !next && onClose()}>
       <DialogContent data-testid="project-prelabel-dialog">
-        <DialogTitle>Pre-label open batches</DialogTitle>
+        <DialogTitle>{batches.length === 1 && batches[0] !== undefined ? `Pre-label ${batches[0].name}` : "Pre-label open batches"}</DialogTitle>
         <DialogDescription>
           One run per batch, over every asset nothing has touched yet. What a run finds lands{" "}
           <strong>pre-labeled and editable</strong> in that batch, never as somebody&rsquo;s own

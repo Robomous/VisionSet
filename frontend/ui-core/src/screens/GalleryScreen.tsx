@@ -71,13 +71,13 @@ export interface GalleryScreenProps {
    */
   readonly onOpenJob?: (jobId: string) => void;
   /**
-   * Up to the **Batches section** of the project this batch belongs to — this
-   * page's parent, and its one way out. The section, never the project's default
-   * view: landing on Overview after leaving a batch is landing somewhere you were
-   * not.
+   * Up to the **Overview** of the project this batch belongs to — this page's
+   * parent, and its one way out. Batches have no section of their own: the
+   * Overview's batch panel is where they are listed and where this one was
+   * opened from.
    */
   readonly onBack?: () => void;
-  /** The project's schema tab, for the approve dialog's `SCHEMA_NOT_FOUND` remedy. */
+  /** The project's Classes section, for the approve dialog's `SCHEMA_NOT_FOUND` remedy. */
   readonly onOpenSchema?: () => void;
   /**
    * Another batch of the same project — a correction just cut, or this one's
@@ -98,7 +98,7 @@ export interface GalleryScreenProps {
    * The gallery is the one mount of the delete control whose *subject* is what
    * goes: the Batches row loses a row and the table is still the answer, while
    * this screen would be left rendering a 404 over an id nobody can visit again.
-   * The app sends it to the Batches tab, replacing history so Back does not walk
+   * The app sends it to the Overview, where batches are listed, replacing history so Back does not walk
    * into the gone URL — `ProjectRoute`'s `onDeleted` for the same reason.
    */
   readonly onDeleted?: () => void;
@@ -185,11 +185,11 @@ export function GalleryScreen({
 
   return (
     <div className="flex flex-col gap-4" data-testid="gallery">
-      {/* The one way out: up to the Batches section this batch belongs to. The
-          project's sections are in the column beside this page and the list is
+      {/* The one way out: up to the Overview, where this batch is listed. The
+          project's sections are in the toolbar above this page and the list is
           on the rail, so nothing above the section needs naming here. Rendered
           only when the host gave it somewhere to go. */}
-      {onBack !== undefined && <BackLink label="Batches" onNavigate={onBack} />}
+      {onBack !== undefined && <BackLink label="Overview" onNavigate={onBack} />}
 
       <BatchHeader
         batch={batch.data}
@@ -251,7 +251,7 @@ export function GalleryScreen({
             onCorrect={() => setCorrecting(true)}
             emptyBatch={{
               title: "This batch is empty",
-              description: "Ingest into it, or promote a different batch.",
+              description: "Add images to it, or promote a different batch.",
             }}
             {...(onOpenAsset === undefined ? {} : { onOpenAsset })}
           />

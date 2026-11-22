@@ -17,10 +17,12 @@
  * incident id where a person can quote it. What a retry *does* is the caller's.
  */
 
-import { Inbox, TriangleAlert } from "lucide-react";
-import type { JSX, ReactNode } from "react";
+import { TriangleAlert } from "lucide-react";
+import type { CSSProperties, JSX, ReactNode } from "react";
 
 import { cn, Alert, AlertDescription, AlertTitle, Button, Skeleton } from "@robomous/ui-core";
+
+import { EmptyArt, type EmptyArtName } from "./EmptyArt.js";
 
 export interface LoadingStateProps {
   /** How many placeholder rows. Match the shape being waited for. */
@@ -56,32 +58,59 @@ export interface EmptyStateProps {
   readonly description?: ReactNode;
   /** One primary action, per `DESIGN.md`. Two is a decision, not an empty state. */
   readonly action?: ReactNode;
+  /** The space's own drawing. Without one, the stack's front card holds `icon`. */
+  readonly art?: EmptyArtName;
   readonly icon?: ReactNode;
+  /** `compact` inside a pane, a sheet or a form: a smaller drawing and smaller type. */
+  readonly size?: "default" | "compact";
   readonly className?: string;
 }
 
+/** Where each line stands in the entrance, after the drawing's cards. */
+function rise(order: number): CSSProperties {
+  return { "--vs-empty-i": order } as CSSProperties;
+}
+
+/**
+ * An invitation: a drawing, a headline naming the space, one line of body and
+ * one verb-first action.
+ *
+ * It is not a card. The drawing is the only thing here with a surface — a
+ * border around the whole state would put a box around something whose point
+ * is that nothing is here yet. In a flex column it takes the room it is given
+ * and centres in it; anywhere else it is as tall as its content.
+ *
+ * The pointer spreads the drawing only while it is over the invitation itself
+ * (`.vs-empty`), never the empty page around it.
+ */
 export function EmptyState({
   title,
   description,
   action,
+  art,
   icon,
+  size = "default",
   className,
 }: EmptyStateProps): JSX.Element {
+  const compact = size === "compact";
   return (
-    <div
-      className={cn(
-        "flex flex-col items-center gap-3 rounded-xl border border-border bg-card p-8 text-center",
-        className,
-      )}
-    >
-      <span className="text-muted-foreground" aria-hidden="true">
-        {icon ?? <Inbox className="size-8" />}
-      </span>
-      <p className="text-base font-semibold font-heading">{title}</p>
-      {description !== undefined && (
-        <p className="max-w-md text-sm text-muted-foreground">{description}</p>
-      )}
-      {action}
+    <div className={cn("flex min-w-0 flex-1 flex-col items-center justify-center text-center", compact ? "px-4 py-6" : "px-6 py-10", className)}>
+      <div className="vs-empty flex max-w-full flex-col items-center">
+        <EmptyArt {...(art === undefined ? {} : { name: art })} icon={icon} compact={compact} />
+        <p className={cn("vs-empty-rise-text font-heading font-semibold tracking-tight text-balance", compact ? "mt-2 text-sm" : "mt-4 text-base")} style={rise(4)}>
+          {title}
+        </p>
+        {description !== undefined && (
+          <p className={cn("vs-empty-rise-text mt-1.5 text-pretty text-muted-foreground", compact ? "max-w-xs text-xs/5" : "max-w-sm text-sm/6")} style={rise(5)}>
+            {description}
+          </p>
+        )}
+        {action !== undefined && action !== null && action !== false && (
+          <div className="vs-empty-rise-text mt-4" style={rise(6)}>
+            {action}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

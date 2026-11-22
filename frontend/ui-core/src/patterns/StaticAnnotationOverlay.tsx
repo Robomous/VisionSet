@@ -41,6 +41,37 @@ export function StaticAnnotationOverlay({
   annotations,
   classes = [],
 }: StaticAnnotationOverlayProps): JSX.Element {
+  return (
+    <div
+      data-testid="preview-picture"
+      className="relative w-full"
+      style={{ aspectRatio: `${width} / ${height}`, maxWidth: `calc(80vh * ${width / height})` }}
+    >
+      <img
+        data-testid="preview-image"
+        src={src}
+        alt={alt}
+        className="absolute inset-0 size-full rounded-md object-contain"
+      />
+      <AnnotationLayer width={width} height={height} annotations={annotations} classes={classes} />
+    </div>
+  );
+}
+
+export interface AnnotationLayerProps {
+  /** The picture's pixel size, which is the frame every coordinate is read in. */
+  readonly width: number;
+  readonly height: number;
+  readonly annotations: readonly WireAnnotation[];
+  readonly classes?: readonly LabelClass[];
+}
+
+/**
+ * The labels alone, as an SVG that fills its positioned parent: laid over a
+ * picture drawn by someone else — the Images section's own frame, whose box is
+ * already the picture's aspect — they land where the picture is.
+ */
+export function AnnotationLayer({ width, height, annotations, classes = [] }: AnnotationLayerProps): JSX.Element {
   const declared = new Map(classes.map((one) => [one.name, one]));
   const colorOf = (labelClass: string): string => classColor(declared.get(labelClass), labelClass);
 
@@ -54,30 +85,18 @@ export function StaticAnnotationOverlay({
   } as CSSProperties;
 
   return (
-    <div
-      data-testid="preview-picture"
-      className="relative w-full"
-      style={{ aspectRatio: `${width} / ${height}`, maxWidth: `calc(80vh * ${width / height})` }}
+    <svg
+      data-testid="preview-overlay"
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="xMidYMid meet"
+      className="pointer-events-none absolute inset-0 size-full"
+      style={strokeVars}
+      aria-hidden="true"
     >
-      <img
-        data-testid="preview-image"
-        src={src}
-        alt={alt}
-        className="absolute inset-0 size-full rounded-md object-contain"
-      />
-      <svg
-        data-testid="preview-overlay"
-        viewBox={`0 0 ${width} ${height}`}
-        preserveAspectRatio="xMidYMid meet"
-        className="pointer-events-none absolute inset-0 size-full"
-        style={strokeVars}
-        aria-hidden="true"
-      >
-        {annotations.map((annotation) => (
-          <Shape key={annotation.id} annotation={annotation} color={colorOf(annotation.label_class)} />
-        ))}
-      </svg>
-    </div>
+      {annotations.map((annotation) => (
+        <Shape key={annotation.id} annotation={annotation} color={colorOf(annotation.label_class)} />
+      ))}
+    </svg>
   );
 }
 

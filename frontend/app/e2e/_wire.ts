@@ -38,6 +38,28 @@ import type { components } from "@visionset/ui-core";
 /** The generated response shapes, under the name a stub spells them with. */
 export type Wire = components["schemas"];
 
+/**
+ * A project-list digest with nothing in it — what the kernel says about a
+ * project made a moment ago — with whatever a fixture needs to say overridden.
+ * The list's rows carry one each since the projects page became a ledger.
+ */
+export function projectDigest(overrides: Partial<Wire["ProjectDigestOut"]> = {}): Wire["ProjectDigestOut"] {
+  return {
+    asset_count: 0,
+    annotated_asset_count: 0,
+    annotated_fraction: 0,
+    class_count: 0,
+    batch_count: 0,
+    frames_left: 0,
+    frames_in_review: 0,
+    dataset_asset_count: 0,
+    latest_release: null,
+    last_activity_at: null,
+    stage: "empty",
+    ...overrides,
+  };
+}
+
 // `delete` in every row but `completed`, which is `DELETABLE_STATES`.
 //
 // Keyed and valued by the generated vocabularies rather than by `string`, so a

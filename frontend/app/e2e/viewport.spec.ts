@@ -12,7 +12,7 @@
  */
 
 import { expect, test, type Page } from "@playwright/test";
-import { assetActions, batchActions, jobActions, type Wire } from "./_wire";
+import { assetActions, batchActions, jobActions, projectDigest, type Wire } from "./_wire";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
@@ -74,7 +74,7 @@ async function serveApi(page: Page): Promise<void> {
     if (path === "/projects") {
       return route.fulfill({
         json: {
-          items: [{ id: PROJECT, name: "road-signs", description: null, thumbnail_asset_id: null, thumbnail_hash: null, created_at: null }],
+          items: [{ id: PROJECT, name: "road-signs", description: null, thumbnail_asset_id: null, thumbnail_hash: null, created_at: null, digest: projectDigest() }],
           total: 1,
         } satisfies Wire["ProjectPage"],
       });

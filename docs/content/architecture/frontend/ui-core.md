@@ -9,7 +9,7 @@ they read data against. Everything except routing and the transport itself.
 ```mermaid
 flowchart TB
     Screens["screens/ + annotator/\nthe domain surfaces"]
-    Patterns["patterns/\nasync states, back link, class fields, data display"]
+    Patterns["patterns/\nasync states, back link, class fields, data display,\nproject/ — the Overview's project components"]
     Primitives["primitives/\nButton, Dialog, Select, Table, Tabs, Badge…"]
     Data["data/\nport, VisionSetDataProvider, check, refusals"]
     Generated["generated/\napi.ts + checks.ts — from openapi.json"]

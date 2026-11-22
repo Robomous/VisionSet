@@ -30,6 +30,9 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  AssetMosaic,
+  BatchSummary,
+  ClassDistribution,
   ClassListRow,
   Combobox,
   ComboboxContent,
@@ -54,6 +57,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   EmptyState,
+  type EmptyArtName,
   ErrorState,
   Field,
   FieldDescription,
@@ -67,6 +71,7 @@ import {
   Progress,
   PROJECT_SECTIONS,
   ProjectEyebrow,
+  ProjectKpi,
   ProjectNav,
   SectionHeader,
   Select,
@@ -101,7 +106,7 @@ import {
   formatGeometries,
   toast,
 } from "@visionset/ui-core";
-import { Info, MousePointer2, Plus, Square, Trash2 } from "lucide-react";
+import { CircleCheck, Database, ImageIcon, Info, MousePointer2, Plus, Square, SquareDashed, Tag, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 
@@ -140,6 +145,8 @@ const DEMO_CLASSES = ["barrier", "bicycle", "cyclist", "lane", "sign", "truck", 
 /** `Badge`'s shadcn variants, then VisionSet's four status extensions. */
 const BADGE_OFFICIAL = ["default", "secondary", "outline", "destructive", "ghost", "link"] as const;
 const BADGE_STATUS = ["success", "warning", "info", "quiet"] as const;
+
+const EMPTY_ART: readonly EmptyArtName[] = ["projects", "images", "classes", "models", "dataset", "recipes"];
 
 export function Styleguide(): JSX.Element {
   return (
@@ -199,8 +206,8 @@ export function Styleguide(): JSX.Element {
               <div className="flex flex-wrap gap-3">
                 <Swatch name="stage" className="bg-stage" />
                 {/* The brand, shown here because a styleguide is where a value is
-                    inspected rather than used. Its two product sites are the rail's
-                    wordmark and the progress fill. */}
+                    inspected rather than used. Its one product site is the VisionSet
+                    logo (`shell/Brand.tsx`). */}
                 <Swatch name="brand" style={{ backgroundColor: "var(--brand)" }} />
                 <Swatch name="origin-hub" className="bg-origin-hub" />
                 <Swatch name="origin-custom" className="bg-origin-custom" />
@@ -462,12 +469,12 @@ export function Styleguide(): JSX.Element {
 
         <Section
           title="Project navigation"
-          description="Inside a project: the one filled control, one link per section with the open one marked, and the overflow — as wide as its widest control. Column at lg and above; the same data as a strip below. The project's identity is the eyebrow above the content (see Section header)."
+          description="Inside a project: one link per section with the open one marked, the one filled control, and the overflow. A toolbar across the pane at lg and above; the same data as a strip below. The project's identity is the eyebrow above the content (see Section header)."
         >
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-            <div className="flex h-[22rem] overflow-hidden rounded-lg border border-border" data-testid="sg-project-nav-column">
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col overflow-hidden rounded-lg border border-border" data-testid="sg-project-nav-bar">
               <ProjectNav
-                layout="column"
+                layout="bar"
                 sections={PROJECT_SECTIONS}
                 active="overview"
                 hrefFor={(section) => `#${section}`}
@@ -483,13 +490,13 @@ export function Styleguide(): JSX.Element {
                 onRename={() => undefined}
                 onDelete={() => undefined}
               />
-              <div className="flex-1 bg-background p-6 text-xs text-muted-foreground">the section</div>
+              <div className="h-24 bg-background p-6 text-xs text-muted-foreground">the section</div>
             </div>
-            <div className="min-w-0 flex-1 rounded-lg border border-border p-4" data-testid="sg-project-nav-strip">
+            <div className="min-w-0 max-w-xl rounded-lg border border-border p-4" data-testid="sg-project-nav-strip">
               <ProjectNav
                 layout="strip"
                 sections={PROJECT_SECTIONS}
-                active="batches"
+                active="images"
                 onNavigate={() => undefined}
                 onIngest={() => undefined}
                 onRename={() => undefined}
@@ -611,9 +618,10 @@ export function Styleguide(): JSX.Element {
           <div className="grid gap-4 lg:grid-cols-3">
             <LoadingState rows={3} />
             <EmptyState
-              title="No batches yet"
-              description="Ingest images or a video to create the first one."
-              action={<Button variant="default">Ingest</Button>}
+              art="images"
+              title="No images yet"
+              description="Images and video frames you add to this project appear here."
+              action={<Button variant="outline">Add images</Button>}
             />
             <ErrorState
               code="SCHEMA_CHANGE_WOULD_ORPHAN"
@@ -621,6 +629,19 @@ export function Styleguide(): JSX.Element {
               incidentId="7f1c9a2e"
               onRetry={() => toast("Retried")}
             />
+          </div>
+        </Section>
+
+        <Section
+          title="Empty-state drawings"
+          description="One stack per space, a plain stack that holds an icon for the rest, and the compact size a pane or a sheet gets. Hover one: the cards spread."
+        >
+          <div className="grid gap-x-4 gap-y-2 sm:grid-cols-2 lg:grid-cols-4">
+            {EMPTY_ART.map((name) => (
+              <EmptyState key={name} art={name} title={name} />
+            ))}
+            <EmptyState title="plain" description="No drawing of its own." />
+            <EmptyState size="compact" art="recipes" title="compact" description="In a pane, a sheet or a form." />
           </div>
         </Section>
 
@@ -693,6 +714,13 @@ export function Styleguide(): JSX.Element {
               ))}
             </div>
           </div>
+        </Section>
+
+        <Section
+          title="Project components"
+          description="What the project Overview is composed from: five pointers, the batches at a glance, the class split and the image window. Data-only — view models in, callbacks out."
+        >
+          <ProjectComponentsDemo />
         </Section>
       </div>
       <Toaster position="bottom-right" />
@@ -797,6 +825,97 @@ function Swatch({
       <div ref={box} className={`size-16 rounded-md border border-border ${className}`} style={style} />
       <span className="text-xs text-muted-foreground">{name}</span>
       <span className="font-mono text-xs text-muted-foreground">{value}</span>
+    </div>
+  );
+}
+
+/** Road-sign fixtures from the Paper Overview, so the catalogue shows a full project. */
+const ROAD_CLASSES = [
+  { name: "Traffic light", annotations: 1076210, assets: 412000 },
+  { name: "Speed limit", annotations: 770530, assets: 301000 },
+  { name: "Stop sign", annotations: 462318, assets: 220400 },
+  { name: "Pedestrian crossing", annotations: 339033, assets: 190300 },
+  { name: "Yield sign", annotations: 246569, assets: 140200 },
+] as const;
+
+const ROAD_BATCHES = [
+  { id: "1", name: "Highway Q3", phase: "annotating", total: 120000, remaining: 40762, percent: 66, inDataset: 0 },
+  { id: "2", name: "Downtown night", phase: "annotating", total: 80000, remaining: 34200, percent: 57, inDataset: 0 },
+  { id: "3", name: "Suburbs batch 4", phase: "draft", total: 6400, remaining: null, percent: null, inDataset: 0 },
+  { id: "4", name: "Downtown day", phase: "completed", total: 9600, remaining: 0, percent: 100, inDataset: 6720 },
+  { id: "5", name: "Rural set A", phase: "in_dataset", total: 212400, remaining: 0, percent: 100, inDataset: 212400 },
+  { id: "6", name: "Bridges & tunnels", phase: "in_dataset", total: 98310, remaining: 0, percent: 100, inDataset: 98310 },
+  { id: "7", name: "Coastal", phase: "in_dataset", total: 64000, remaining: 0, percent: 100, inDataset: 64000 },
+] as const;
+
+function ProjectComponentsDemo(): JSX.Element {
+  const [lens, setLens] = useState<"annotations" | "assets">("annotations");
+  const [assetLens, setAssetLens] = useState<"imported" | "dataset">("dataset");
+  const [labelClass, setLabelClass] = useState<string | null>(null);
+  const totalAnnotations = ROAD_CLASSES.reduce((sum, one) => sum + one.annotations, 0) + 154105;
+  const rows = [
+    ...ROAD_CLASSES.map((one) => ({
+      key: one.name,
+      label: one.name,
+      color: classColor(undefined, one.name),
+      count: lens === "annotations" ? one.annotations : one.assets,
+      share: lens === "annotations" ? one.annotations / totalAnnotations : one.assets / 906595,
+    })),
+    lens === "annotations"
+      ? { key: "other", label: "Other · 2 classes", color: null, count: 154105, share: 154105 / totalAnnotations }
+      : { key: "other", label: "Other · 2 classes", color: null, count: null, share: null },
+  ];
+  const tones = ["bg-primary/30", "bg-primary/20", "bg-primary/10", "bg-muted"];
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        <ProjectKpi icon={ImageIcon} label="Images" value={formatCount(906595)} context="from 4 sources" />
+        <ProjectKpi icon={CircleCheck} label="Annotated" value="76" unit="%" context={`${formatCount(686421)} of ${formatCount(906595)}`} onGo={() => toast("Batches")} />
+        <ProjectKpi icon={SquareDashed} label="Annotations" value={formatCount(3048765)} context="7 classes · schema v4" onGo={() => toast("Schema")} />
+        <ProjectKpi icon={Database} label="In dataset" value={formatCount(606421)} context="67% of images" onGo={() => toast("Dataset")} />
+        <ProjectKpi icon={Tag} label="Latest release" value="v0.6" mono context="Sep 15 · 602,421 images" onGo={() => toast("Dataset")} />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+        <BatchSummary items={ROAD_BATCHES} subtitle={`${formatCount(74962)} images left to annotate`} onOpenBatch={(id) => toast(`Open batch ${id}`)} />
+        <ClassDistribution
+          lens={lens}
+          onLensChange={setLens}
+          subtitle={lens === "annotations" ? "Share of all annotations" : "Share of images showing each class"}
+          rows={rows}
+          empty="No annotations yet."
+          note="Class imbalance: Lane marking is 2% of annotations"
+        />
+      </div>
+      <AssetMosaic
+        lens={assetLens}
+        onLensChange={setAssetLens}
+        subtitle={`${formatCount(606421)} in the dataset`}
+        {...(assetLens === "dataset"
+          ? {
+              filter: {
+                options: ROAD_CLASSES.map((one) => ({ value: one.name, label: one.name, color: classColor(undefined, one.name) })),
+                value: labelClass,
+                onChange: setLabelClass,
+              },
+            }
+          : {})}
+        tiles={Array.from({ length: 8 }, (_, index) => ({
+          id: String(index),
+          thumbnail: <div className={`size-full ${tones[index % tones.length]}`} />,
+        }))}
+        caption={{
+          title: "4032 × 3024 · JPEG",
+          tag: "v0.6",
+          classes: [
+            { label: "Traffic light", color: classColor(undefined, "Traffic light"), count: 2 },
+            { label: "Stop sign", color: classColor(undefined, "Stop sign"), count: 1 },
+          ],
+        }}
+        overflow={606413}
+        onOverflow={() => toast("Browse dataset")}
+        loading={false}
+        empty="Nothing in the dataset yet."
+      />
     </div>
   );
 }

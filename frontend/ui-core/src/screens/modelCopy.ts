@@ -1,5 +1,5 @@
 /**
- * How a connection's facts read on the Models page — one module, so the card
+ * How a connection's facts read on the Models page — one module, so the row
  * and the filters cannot spell the same word two ways.
  *
  * Four vocabularies, each keyed the way its wire shape allows. Three are closed
@@ -14,9 +14,9 @@
  * through raw rather than dropping it — nothing the wire declares may be
  * invisible — without ever reading through the object prototype.
  *
- * None of this decides what a card may *do*: that is `allowed_actions`, a
+ * None of this decides what a row may *do*: that is `allowed_actions`, a
  * different field answering a different question. This module only says how
- * the facts a card states, and a filter offers, are named.
+ * the facts a row states, and a filter offers, are named.
  */
 
 import type {
@@ -29,32 +29,32 @@ import type { KnownMembers } from "../generated/api.js";
 // --- origin: where the weights come from -------------------------------------------
 
 interface OriginCopy {
-  /** The name on the card, in the publisher's own spelling. */
+  /** The name on the row, in the publisher's own spelling. */
   readonly label: string;
   /**
-   * The card's accent edge, as the utility class over the origin's own token.
-   * An edge rather than a badge or a fill on purpose: a grid of cards sorts
-   * itself by origin at a glance with nothing added to the card's reading, where
-   * one more chip would be one more thing to read and a tinted card would say it
-   * again, louder, across the whole surface. The three tokens are VisionSet's
-   * own (`DESIGN.md`, *VisionSet Extensions*).
+   * The mark beside the origin's name, as the utility class over its own token.
+   * A small square beside the origin's name rather than a badge or a fill on
+   * purpose: the Origin column sorts itself at a glance with nothing added to
+   * the row's reading, where one more chip would be one more thing to read and
+   * a tinted row would say it again, louder, across the whole grid. The three
+   * tokens are VisionSet's own (`DESIGN.md`, *VisionSet Extensions*).
    */
   readonly mark: string;
 }
 
 /** Every origin, in the order a filter lists them. */
 const ORIGIN_COPY: Record<ModelOrigin, OriginCopy> = {
-  huggingface: { label: "Hugging Face", mark: "border-l-origin-hub" },
-  custom: { label: "Customized", mark: "border-l-origin-custom" },
-  robomous: { label: "Robomous", mark: "border-l-origin-robomous" },
+  huggingface: { label: "Hugging Face", mark: "bg-origin-hub" },
+  custom: { label: "Customized", mark: "bg-origin-custom" },
+  robomous: { label: "Robomous", mark: "bg-origin-robomous" },
 };
 
-/** The origin as the card names it. */
+/** The origin as the row names it. */
 export function originLabel(origin: ModelOrigin): string {
   return ORIGIN_COPY[origin].label;
 }
 
-/** The card's accent edge for an origin. */
+/** The mark beside an origin's name, as a fill class. */
 export function originMark(origin: ModelOrigin): string {
   return ORIGIN_COPY[origin].mark;
 }
@@ -62,7 +62,7 @@ export function originMark(origin: ModelOrigin): string {
 // --- ability: what the model can be asked for -------------------------------------
 
 interface CapabilityCopy {
-  /** The card's label: what the model does, as product prose. */
+  /** The row's label: what the model does, as product prose. */
   readonly prose: string;
   /** The filter's choice: the ability in a word or two. */
   readonly option: string;
@@ -80,14 +80,14 @@ function knownCapability(capability: string): CapabilityCopy | undefined {
     : undefined;
 }
 
-/** How a declared capability reads on the card: this build's prose, or the value itself. */
+/** How a declared capability reads on the row: this build's prose, or the value itself. */
 export function capabilityProse(capability: string): string {
   return knownCapability(capability)?.prose ?? capability;
 }
 
 // --- kind and state: where it runs, and whether it is ready ------------------------
 
-/** How each place a model can run reads, on the card's source line and in a filter. */
+/** How each place a model can run reads, on the row's source line and in a filter. */
 export const KIND_LABELS: Record<ConnectionType, string> = { local: "Local", http: "HTTP" };
 
 /** The kind as the page names it; a value outside the vocabulary reads as itself. */
@@ -95,7 +95,7 @@ export function kindLabel(kind: string): string {
   return Object.hasOwn(KIND_LABELS, kind) ? KIND_LABELS[kind as ConnectionType] : kind;
 }
 
-/** How each setup state reads — on the card's status badge and in a filter. */
+/** How each setup state reads — on the row's status badge and in a filter. */
 export const STATE_LABELS: Record<ConnectionSetupState, string> = {
   ready: "Ready",
   not_set_up: "Not set up",

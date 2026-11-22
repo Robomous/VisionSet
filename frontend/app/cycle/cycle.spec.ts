@@ -35,10 +35,10 @@
  * and the count — before the archive arrives, and then reads `data.yaml` out of
  * the download to see the class map the trainer would.
  *
- * **And once more through a pre-processing recipe.** Written on the Dataset's
- * Pre-processing view, previewed by the real kernel, chosen in the export
- * dialog; the second archive is opened for the report that names the recipe
- * under its hash and for the train fold's augmented variant beside its source.
+ * **And once more through a pre-processing recipe.** Written from the release's
+ * Export section in the recipe's modal, and chosen there; the second archive is opened
+ * for the report that names the recipe under its hash and for the train
+ * fold's augmented variant beside its source.
  */
 
 import { expect, test, type Download, type Page, type TestInfo } from "@playwright/test";
@@ -86,8 +86,8 @@ const STAND_IN = "built-in stand-in";
  * What the same connection is called after the walk edits it.
  *
  * A second constant rather than a literal at the call site, because a rename
- * moves two test ids at once — the card is `connection-{name}` and its menu
- * trigger is `actions-{name}` — so the new name is read in three places and a
+ * moves two test ids at once — the connection's row is `connection-{name}` and the
+ * name that opens its sheet is `open-{name}` — so the new name is read in three places and a
  * typo in one of them fails as a timeout rather than as a mismatch.
  */
 const REPINNED = "built-in stand-in, repinned";
@@ -124,7 +124,7 @@ function projectFor(info: TestInfo): string {
  * On the first attempt of a freshly built workspace this deletes nothing and
  * costs two reads. It exists for the second: the workspace is rebuilt once per
  * *server* start, not once per attempt, so without this a retry inherits the
- * previous attempt's projects and dies on Home's first-run invitation — an
+ * previous attempt's projects and dies on the project list's empty state — an
  * assertion about the workspace, three steps in, unrelated to whatever actually
  * failed.
  *
@@ -241,13 +241,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
   });
 
   await test.step("create a project", async () => {
-    // From Home's first-run invitation rather than from the project list, and
-    // that is the honest route here: this workspace was created seconds ago, so
-    // `/` is exactly the state that invitation exists for. It opens the same
-    // dialog the list's own button does — one component, two callers — which is
-    // why every field below is unchanged.
-    await expect(page.getByTestId("home-first-run")).toBeVisible();
-    await page.getByTestId("home-create-project").click();
+    // From the project list, which is where `/` lands: there is no Home page.
+    await expect(page.getByTestId("projects-screen")).toBeVisible();
+    await page.getByTestId("new-project").click();
     await page.getByTestId("project-name").fill(PROJECT);
     await page.getByTestId("project-description").fill("Driven by #59");
     await page.getByTestId("create-submit").click();
@@ -259,14 +255,16 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("project-screen")).toBeVisible();
     // A new project opens on its default section, spelled in the URL.
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}\/overview$/);
-    await expect(page.getByTestId("project-title")).toHaveText(PROJECT);
+    // The open-project tab names it; no eyebrow line is drawn over the content.
+    await expect(page.getByTestId(/^open-tab-[0-9a-f-]{36}$/)).toContainText(PROJECT);
+    await expect(page.getByTestId("project-title")).toHaveCount(0);
   });
 
   await test.step("declare a schema with all four geometries", async () => {
     /*
      * A brand-new project opens on Overview, on **one** invitation chosen from
      * its real state — no schema and no images, so the invitation is the ingest
-     * one, and the page's only filled button is the header's Ingest. The other
+     * one, and the page's only filled button is the toolbar's Add images. The other
      * order is a link beneath it, and this run walks that link rather than the
      * tab bar: a schema first is the road the invitation names as not taken,
      * and the walk proves it is a real road.
@@ -307,12 +305,17 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
       await page.getByTestId("add-class").click();
       await page.getByTestId(`class-name-${index}`).fill(name);
       if (geometry !== "bbox") {
-        // Tick the wanted shape *before* clearing the default, which is also the
+        // Press the wanted shape *before* clearing the default, which is also the
         // only order the control permits: a class never passes through accepting
-        // nothing, so the last ticked box refuses to come off.
+        // nothing, so the last pressed toggle refuses to come off.
         await page.getByTestId(`class-geometry-${index}-${geometry}`).click();
         await page.getByTestId(`class-geometry-${index}-bbox`).click();
       }
+      // Add class opened the class sheet on a blank class, with focus in its name.
+      // Nothing is in the draft until it is submitted, which also puts it away
+      // before the next class is added.
+      await page.getByTestId("class-sheet-done").click();
+      await expect(page.getByTestId("class-sheet")).toHaveCount(0);
     }
 
     /*
@@ -323,10 +326,13 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * can be shown end to end is here, where the kernel actually judges the
      * document. `vehicle` keeps its box and gains a polygon.
      */
-    await page.locator('[data-row="0"] button').first().click();
+    await page.getByTestId("class-card-0").click();
     await page.getByTestId("class-geometry-0-polygon").click();
-    await expect(page.getByTestId("class-geometry-0-bbox")).toBeChecked();
-    await expect(page.getByTestId("class-geometry-0-polygon")).toBeChecked();
+    await expect(page.getByTestId("class-geometry-0-bbox")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("class-geometry-0-polygon")).toHaveAttribute("aria-pressed", "true");
+    // The shape reaches the draft on Save, not on the click.
+    await page.getByTestId("class-sheet-done").click();
+    await expect(page.getByTestId("class-sheet")).toHaveCount(0);
 
     /*
      * The draft survives leaving the section, in a real DOM.
@@ -369,21 +375,36 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     }
     // The two shapes on `vehicle` survive too, so what came back is the draft as
     // edited rather than a re-seed from the four names alone.
-    await page.locator('[data-row="0"] button').first().click();
-    await expect(page.getByTestId("class-geometry-0-bbox")).toBeChecked();
-    await expect(page.getByTestId("class-geometry-0-polygon")).toBeChecked();
+    await page.getByTestId("class-card-0").click();
+    await expect(page.getByTestId("class-geometry-0-bbox")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("class-geometry-0-polygon")).toHaveAttribute("aria-pressed", "true");
+    // Nothing was changed, so Save just closes the dialog.
+    await page.getByTestId("class-sheet-done").click();
+    await expect(page.getByTestId("class-sheet")).toHaveCount(0);
 
+    // The draft holds four classes the project has never published, so the
+    // commit bar is up, offering version 1.
+    await expect(page.getByTestId("commit-bar")).toHaveAttribute("data-state", "up");
     await page.getByTestId("save-schema").click();
-    // The history nests inside the Schema tab now: it is a view *of* the schema
-    // rather than a peer of it, so the published version is checked further down
-    // the page it belongs to rather than in a fourth tab.
+    // Published, the draft matches the version in force and the bar goes down.
+    // The history is a view *of* the schema rather than a peer of it: one press
+    // away in the section's band, not a fourth tab.
+    await expect(page.getByTestId("commit-bar")).toHaveAttribute("data-state", "down");
+    await expect(page.getByTestId("open-history")).toContainText("v1");
+    await page.getByTestId("open-history").click();
     await expect(page.getByTestId("version-history")).toBeVisible();
     await expect(page.getByTestId("version-1")).toBeVisible();
-    await expect(page.getByTestId("version-1")).toContainText("active");
+    await expect(page.getByTestId("version-1")).toContainText("Active");
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("history-sheet")).toHaveCount(0);
   });
 
   await test.step("ingest three images into a new batch", async () => {
-    await page.getByTestId("go-ingest").click();
+    // Add images is a button on Overview and Images; from Classes, where the
+    // schema was just saved, it is the overflow's first entry.
+    await page.getByTestId("project-menu").click();
+    await page.getByTestId("menu-ingest").click();
+    await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}\/ingest$/);
     await page.getByTestId("file-input").setInputFiles(images());
     await expect(page.getByTestId("chosen")).toContainText("3 files");
 
@@ -479,33 +500,36 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // Navigated rather than `goBack()`: history depth is an implementation detail
     // of how the previous steps got here, and a cycle this long should not depend
     // on it.
-    await openProject(page, PROJECT, "batches");
-    await expect(page.getByTestId("batches-table")).toBeVisible();
-    await expect(page.getByTestId("batch-cycle-batch")).toContainText("pending approval");
-    // A draft row offers the composed step too, outline like every row action.
-    await expect(page.getByTestId("approve-start-cycle-batch")).toHaveAttribute(
-      "data-variant",
-      "outline",
-    );
+    await openProject(page, PROJECT, "overview");
+    await expect(page.getByTestId("overview-batches")).toBeVisible();
+    const row = page.getByTestId("overview-batch-cycle-batch");
+    await expect(row).toContainText("Draft");
+    // The batch's sheet points a draft at approval, which is made in the gallery.
+    await row.getByRole("button", { name: /cycle-batch/ }).click();
+    await expect(page.getByTestId("sheet-approve")).toBeVisible();
+    await page.keyboard.press("Escape");
 
-    await page.getByTestId("approve-cycle-batch").click();
+    await openBatch(page, PROJECT, "cycle-batch");
+    await expect(page.getByTestId("batch-state")).toHaveText("pending approval");
+    await page.getByTestId("approve-batch").click();
     await page.getByTestId("approve-submit").click();
+    await expect(page.getByTestId("batch-state")).toHaveText("approved");
 
-    // The version pins *at approval* — before it, the column is empty.
-    await expect(page.getByTestId("state-cycle-batch")).toHaveText("approved");
-    await expect(page.getByTestId("batch-cycle-batch")).toContainText("v1");
+    await page.getByTestId("start-batch").click();
+    await expect(page.getByTestId("batch-state")).toHaveText("in progress");
 
-    await page.getByTestId("start-cycle-batch").click();
-    await expect(page.getByTestId("state-cycle-batch")).toHaveText("in progress");
+    // The version pins *at approval* — the Overview's row now names it, and the
+    // batch reads as being labeled.
+    await openProject(page, PROJECT, "overview");
+    await expect(row).toContainText("Labeling");
+    await expect(row).toContainText("v1");
   });
 
   await test.step("the job's door is the way in: start the one job, and it opens", async () => {
     // Only the door is driven here: the cycle server has no `text_detect` model,
     // so the pre-label half of the job's controls is exercised against the
     // server suite.
-    await openProject(page, PROJECT, "batches");
-    await page.getByTestId("open-batch-cycle-batch").click();
-    await expect(page.getByTestId("gallery")).toBeVisible();
+    await openBatch(page, PROJECT, "cycle-batch");
     // The header offers no door of its own; the job's controls do. Approved
     // with no partition, the batch has one job, so there is no accordion to
     // choose from — the job sits flat under the header, and the batch bar is
@@ -543,9 +567,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // exists.** `page.goto('./jobs/' + id)` with the id read out of the API makes
     // a defect that blocks the whole product invisible to a green suite.
     // Nothing here types a URL.
-    await openProject(page, PROJECT, "batches");
-    await page.getByTestId("open-batch-cycle-batch").click();
-    await expect(page.getByTestId("gallery")).toBeVisible();
+    await openBatch(page, PROJECT, "cycle-batch");
 
     // The **third** tile, so "it opened the job" and "it opened this asset" cannot
     // be confused: a page that ignored the click would show 1/3.
@@ -661,10 +683,17 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // the locator, naming the selector instead of the assumption.
     const card = page.getByTestId(`connection-${STAND_IN}`);
     await expect(card.getByTestId("connection-status")).toContainText(/not set up/i);
-    await card.getByTestId("download-weights").click();
+    // The download is the model sheet's: the row is read, and its name opens
+    // the sheet where the connection is set up.
+    await card.getByTestId(`open-${STAND_IN}`).click();
+    await expect(page.getByTestId("model-sheet")).toBeVisible();
+    await page.getByTestId("download-weights").click();
     await expect(card.getByTestId("connection-status")).toContainText(/ready/i, {
       timeout: 15_000,
     });
+    // The sheet is a modal layer over the page: put it away before the walk moves on.
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("model-sheet")).toHaveCount(0);
 
     /*
      * One connection, asserted rather than assumed.
@@ -676,7 +705,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * decided, a violation names the count.
      *
      * The source line is what is counted because it is unconditional inside a
-     * card, while the download button appears only before setup.
+     * row, while the download button is the sheet's and appears only before setup.
      */
     await expect(page.getByTestId("connection-source")).toHaveCount(1);
   });
@@ -695,8 +724,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * reaches a model and comes back as a shape, not that a stand-in's square
      * belongs in somebody's dataset.
      */
-    await openProject(page, PROJECT, "batches");
-    await page.getByTestId("open-batch-cycle-batch").click();
+    await openBatch(page, PROJECT, "cycle-batch");
     const firstTile = page.getByTestId(/^tile-/).first();
     const firstAsset = (await firstTile.getAttribute("data-testid"))!.replace("tile-", "");
     await firstTile.getByTestId(`open-${firstAsset}`).click();
@@ -1174,10 +1202,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
   });
 
   await test.step("complete the batch", async () => {
-    await openProject(page, PROJECT, "batches");
-    await expect(page.getByTestId("batches-table")).toBeVisible();
+    await openBatch(page, PROJECT, "cycle-batch");
     await page.getByTestId("complete-cycle-batch").click();
-    await expect(page.getByTestId("state-cycle-batch")).toHaveText("completed", {
+    await expect(page.getByTestId("batch-state")).toHaveText("completed", {
       timeout: 30_000,
     });
   });
@@ -1190,8 +1217,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * entries below are the two roads in: the gallery tile, and a reload of the
      * job URL with no cache to inherit.
      */
-    await page.getByTestId("open-batch-cycle-batch").click();
-    await expect(page.getByTestId("gallery")).toBeVisible();
+    await openBatch(page, PROJECT, "cycle-batch");
     const tiles = page.getByTestId(/^tile-/);
     await expect(tiles).toHaveCount(3);
     const assetId = (await tiles.first().getAttribute("data-testid"))!.replace("tile-", "");
@@ -1222,8 +1248,6 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.reload();
     await expect(page.getByTestId("readonly-banner")).toContainText(/viewing only/i);
 
-    await openProject(page, PROJECT, "batches");
-    await expect(page.getByTestId("batches-table")).toBeVisible();
   });
 
   await test.step("promote the completed batch into the trunk", async () => {
@@ -1236,6 +1260,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // and it made a second press look forbidden when it is merely a no-op.
     // Promotion is not a transition either, so nothing else on the row could
     // move — which is how a working call came to read as a broken button.
+    await openBatch(page, PROJECT, "cycle-batch");
     await page.getByTestId("promote-cycle-batch").click();
 
     const said = page.getByTestId("promoted-cycle-batch");
@@ -1252,7 +1277,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // press* did and is gone on the next render, while `promoted_asset_count` is
     // derived per read and is still right in a session that did no promoting.
     await page.reload();
-    await expect(page.getByTestId("batches-table")).toBeVisible();
+    await expect(page.getByTestId("gallery")).toBeVisible();
     await expect(page.getByTestId("promoted-count-cycle-batch")).toHaveText(
       /3 of 3 in the dataset/,
     );
@@ -1287,8 +1312,8 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 
     // And the parent has not moved — which is the whole point of correcting
     // forward instead of reopening.
-    await openProject(page, PROJECT, "batches");
-    await expect(page.getByTestId("state-cycle-batch")).toHaveText("completed");
+    await openBatch(page, PROJECT, "cycle-batch");
+    await expect(page.getByTestId("batch-state")).toHaveText("completed");
     await expect(page.getByTestId("promoted-count-cycle-batch")).toHaveText(
       /3 of 3 in the dataset/,
     );
@@ -1326,16 +1351,20 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("gallery")).toBeVisible();
 
     // From the gallery, which is the mount whose subject stops existing — so it
-    // must land on the Batches tab rather than on its own dead URL.
+    // must land on the Overview, where the batches are listed, rather than on
+    // its own dead URL.
     await page.getByTestId("batch-overflow-doomed").click();
     await page.getByTestId("delete-batch-doomed").click();
     await expect(page.getByTestId("delete-batch-dialog")).toContainText("The annotations stay.");
     await page.getByTestId("delete-batch-submit").click();
 
-    await expect(page.getByTestId("batches-table")).toBeVisible();
-    await expect(page.getByTestId("batch-doomed")).toHaveCount(0);
+    await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}\/overview$/);
+    await expect(page.getByTestId("overview-batches")).toBeVisible();
+    await expect(page.getByTestId("overview-batch-cycle-batch")).toBeVisible();
+    await expect(page.getByTestId("overview-batch-doomed — correction")).toHaveCount(0);
     // The parent, its promotion and the trunk are all exactly where they were.
-    await expect(page.getByTestId("state-cycle-batch")).toHaveText("completed");
+    await openBatch(page, PROJECT, "cycle-batch");
+    await expect(page.getByTestId("batch-state")).toHaveText("completed");
     await expect(page.getByTestId("promoted-count-cycle-batch")).toHaveText(
       /3 of 3 in the dataset/,
     );
@@ -1364,17 +1393,17 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByTestId("use-split").check();
     await expect(page.getByTestId("split-hint")).toContainText("same seed gives the same folds");
     await page.getByTestId("publish-submit").click();
-    // The new release lands on the Releases view; the dialog was opened from
-    // the header, which every view shares.
-    await page.getByTestId("dataset-tab-releases").click();
+    // The new release joins the version list; opening it there puts its facts
+    // at the top of the column. The dialog was opened from the project bar.
+    await page.getByTestId(`version-${TAG}`).click();
     await expect(page.getByTestId(`release-${TAG}`)).toBeVisible();
   });
 
   await test.step("verify the release re-reads every blob", async () => {
     await page.getByTestId(`verify-${TAG}`).click();
     // Re-read and re-hashed, not `is_file()` — which is why this is a button and
-    // not something the list does on render.
-    await expect(page.getByTestId(`verified-${TAG}`)).toContainText("Intact");
+    // not something the list does on render. The answer is the integrity row's state.
+    await expect(page.getByTestId("state-integrity")).toHaveText("Intact");
   });
 
   await test.step("walk the correction through, and watch the trunk follow it", async () => {
@@ -1405,16 +1434,16 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * `tests/kernel/test_trunk_supersession.py` instead, where a reclass through
      * `AnnotationService.update` is one line.
      */
-    await openProject(page, PROJECT, "batches");
     // `defaultCorrectionName` built this, and the dialog above was submitted
     // with it untouched. Spelled out rather than read back off the row so a
     // rename of the suggestion is a failure here rather than a silent pass.
     const CORRECTION = "cycle-batch — correction";
-    await expect(page.getByTestId(`state-${CORRECTION}`)).toHaveText("pending approval");
+    await openBatch(page, PROJECT, CORRECTION, { correction: true });
+    await expect(page.getByTestId("batch-state")).toHaveText("pending approval");
 
-    await page.getByTestId(`approve-${CORRECTION}`).click();
+    await page.getByTestId("approve-batch").click();
     await page.getByTestId("approve-submit").click();
-    await expect(page.getByTestId(`state-${CORRECTION}`)).toHaveText("approved");
+    await expect(page.getByTestId("batch-state")).toHaveText("approved");
     // The child pins the project's *active* version at its own approval rather
     // than inheriting the parent's. They are the same number here — **v3**, after
     // the two additive publishes above, both of which moved the parent onto them
@@ -1422,12 +1451,11 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // Distinguishing the two needs a parent that is *behind*, which only a
     // narrowing version can produce, and that belongs to the kernel suite rather
     // than to a walk through the app.
-    await expect(page.getByTestId(`batch-${CORRECTION}`)).toContainText("v3");
-    await page.getByTestId(`start-${CORRECTION}`).click();
-    await expect(page.getByTestId(`state-${CORRECTION}`)).toHaveText("in progress");
-
-    await page.getByTestId(`open-batch-${CORRECTION}`).click();
-    await expect(page.getByTestId("gallery")).toBeVisible();
+    await openProject(page, PROJECT, "overview");
+    await expect(page.getByTestId(`overview-batch-${CORRECTION}`)).toContainText("v3");
+    await openBatch(page, PROJECT, CORRECTION, { correction: true });
+    await page.getByTestId("start-batch").click();
+    await expect(page.getByTestId("batch-state")).toHaveText("in progress");
 
     // (1) Seeded. Nothing was copied to make this true — annotations hang off an
     // `asset_id`, so the labels were already on these frames; what approval
@@ -1470,9 +1498,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByTestId("finish-job").click();
     await expect(page.getByTestId("finish-job")).toHaveText("Finished");
 
-    await openProject(page, PROJECT, "batches");
+    await openBatch(page, PROJECT, CORRECTION, { correction: true });
     await page.getByTestId(`complete-${CORRECTION}`).click();
-    await expect(page.getByTestId(`state-${CORRECTION}`)).toHaveText("completed", {
+    await expect(page.getByTestId("batch-state")).toHaveText("completed", {
       timeout: 30_000,
     });
 
@@ -1489,9 +1517,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByTestId("nav-dataset").click();
     await expect(page.getByTestId("dataset-screen")).toBeVisible();
     // (2) The deleted box is gone from the trunk — and `vehicle` was the only one
-    // of its class, so the row goes with it. `DatasetStats.per_class` lists only
-    // classes that appear, which is what makes absence the assertable outcome.
-    await expect(page.getByTestId("class-count-vehicle")).toHaveCount(0);
+    // of its class, so it has none left. The class is still declared, so its row
+    // stays and says so: a declared class nobody labelled is the gap to see.
+    await expect(page.getByTestId("class-count-vehicle")).toContainText("none");
     // The correction's own polygon arrived beside the parent's.
     await expect(page.getByTestId("class-count-lane")).toContainText("2");
     // (3) The frame nobody opened still carries what the first round left.
@@ -1504,15 +1532,16 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // blob and its hash is the contract, so a correction cannot reach back into
     // one already published — checked through `verify`, which re-reads and
     // re-hashes every blob rather than trusting the row it is compared against.
-    // Re-entered through the navigation, so the dataset opened on Overview; the
-    // release's controls live on its Releases view.
-    await page.getByTestId("dataset-tab-releases").click();
+    // Re-entered through the navigation, so the dataset opened on its working
+    // copy; the release's controls are its facts, at the top of the column.
+    await page.getByTestId(`version-${TAG}`).click();
     await page.getByTestId(`verify-${TAG}`).click();
-    await expect(page.getByTestId(`verified-${TAG}`)).toContainText("Intact");
+    await expect(page.getByTestId("state-integrity")).toHaveText("Intact");
   });
 
   await test.step("export for yolo11, consent to the polyline it drops, and download", async () => {
-    await page.getByTestId(`export-${TAG}`).click();
+    // A release's export is a section of its facts, open with the rest.
+    await expect(page.getByTestId("section-export")).toBeVisible();
     await page.getByTestId("export-target").click();
 
     // The catalog the *running server* derived through the real entry-point
@@ -1563,74 +1592,59 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expectArchive(download);
   });
 
-  await test.step("write a recipe on the Pre-processing view, previewed by the real kernel", async () => {
+  await test.step("write a recipe in its three steps", async () => {
     /*
      * The stage between a release and the files a trainer reads, driven the
-     * way a person drives it: the view's invitation, the editor's four steps,
-     * *Save recipe*. Every hop is real — the target catalog the editor seeds
-     * its resize from, the preview route rendering this project's own frames
-     * through the same kernel path an export takes, and the `POST` that
-     * stores the recipe. The view's own tests stub all three, which is right
-     * for them and is why they cannot notice a preview that refuses a shape
-     * the release actually holds.
+     * way a person drives it: the export's New recipe, the modal's three steps,
+     * *Create recipe*. Every hop is real — the target catalog the modal seeds its
+     * resize from, and the `POST` that stores the recipe. The modal's own
+     * tests stub both, which is right for them and is why they cannot notice
+     * a catalog whose hints the size field does not take.
      */
-    await page.keyboard.press("Escape");
-    await expect(page.getByTestId("export-dialog")).toHaveCount(0);
-
-    await page.getByTestId("dataset-tab-preprocessing").click();
-    await expect(page.getByTestId("recipes-empty")).toBeVisible();
+    // A recipe is written where it is used: the Export section's recipe list
+    // ends in New recipe, which opens the recipe in a modal over the page.
+    await expect(page.getByTestId("section-export")).toBeVisible();
     await page.getByTestId("recipe-new").click();
-    await expect(page.getByTestId("recipe-editor")).toBeVisible();
-    await page.getByTestId("recipe-name").fill(RECIPE);
+    const modal = page.getByTestId("recipe-dialog");
+    await expect(modal.getByTestId("recipe-editor")).toBeVisible();
+    await expect(modal.getByTestId("recipe-step-count")).toHaveText("1/3");
 
-    // The target first, because choosing one applies its hints: YOLO11's say
-    // letterbox to 640, and the resize step arrives filled in rather than
+    // The model first, because choosing one applies its hints: YOLO11's say
+    // letterbox to 640, and the Resize step fills in rather than being
     // typed. Asserted rather than typed over, since the hints are the
     // catalog's answer and a wrong one would be worth failing on.
-    await page.getByTestId("recipe-target").click();
+    await modal.getByTestId("recipe-target").click();
     await page.getByRole("option", { name: /YOLO11/ }).click();
-    await expect(page.getByTestId("recipe-step-target")).toHaveAttribute("data-state", "complete");
-    await expect(page.getByTestId("resize-letterbox")).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByTestId("resize-width")).toHaveValue("640");
-    await expect(page.getByTestId("resize-height")).toHaveValue("640");
-    await expect(page.getByTestId("recipe-step-resize")).toHaveAttribute("data-state", "complete");
-
-    // One augmentation; ticking the first one makes one variant, which is the
-    // spec's own rule rather than a default.
-    await page.getByTestId("augment-hflip").check();
-    await expect(page.getByTestId("augment-variants")).toHaveValue("1");
-    await expect(page.getByTestId("recipe-step-augment")).toHaveAttribute("data-state", "complete");
-
-    // The preview: three cells of the one row, each one a real render of a
-    // frame this walk ingested — the original, the letterbox, and the flip
-    // shown at full strength.
-    // Generous, because the preview debounces the draft and then goes through
-    // Pillow three times.
-    for (const cell of ["original", "resize", "augment"]) {
-      await expect(page.getByTestId(`preview-0-${cell}`)).toHaveAttribute("data-state", "rendered", {
-        timeout: 20_000,
-      });
-    }
-    await expect(page.getByTestId("recipe-step-preview")).toHaveAttribute("data-state", "complete");
-    // The sample named from the preview response itself: the size it recorded,
-    // and the source it was ingested from rather than its id.
-    await expect(page.getByTestId("preview-original-heading")).toHaveText(/^Original · \d+ × \d+$/);
-    await expect(page.getByTestId("preview-caption")).not.toContainText("Sample ");
+    await modal.getByTestId("recipe-name").fill(RECIPE);
     // Not yet exported, so nothing says it was.
-    await expect(page.getByTestId("recipe-used-by")).toHaveCount(0);
+    await expect(modal.getByTestId("recipe-used-by")).toHaveCount(0);
+    await modal.getByTestId("recipe-next").click();
 
-    await page.getByTestId("recipe-save").click();
-    await expect(page.getByTestId("recipe-footer-note")).toContainText("No unsaved changes");
-    await expect(page.getByTestId("recipe-save-error")).toHaveCount(0);
-    // Stored: the list names it, and the tab counts it.
-    await expect(page.getByTestId(`recipe-${RECIPE}`)).toBeVisible();
-    await expect(page.getByTestId("dataset-tab-preprocessing")).toContainText("1");
+    await expect(modal.getByTestId("recipe-step-count")).toHaveText("2/3");
+    await expect(modal.getByTestId("resize-letterbox")).toHaveAttribute("data-state", "on");
+    await expect(modal.getByTestId("resize-width")).toHaveValue("640");
+    await expect(modal.getByTestId("resize-height")).toHaveValue("640");
+    await modal.getByTestId("recipe-next").click();
+
+    // One augmentation; switching the first one on makes one variant, which is
+    // the spec's own rule rather than a default.
+    await expect(modal.getByTestId("recipe-step-count")).toHaveText("3/3");
+    await modal.getByTestId("augment-hflip").click();
+    await expect(modal.getByTestId("augment-variants")).toHaveText("1");
+
+    await modal.getByTestId("recipe-save").click();
+    await expect(modal.getByTestId("recipe-saved")).toContainText(`${RECIPE} is ready`);
+    await modal.getByTestId("recipe-saved-done").click();
+    await expect(modal).toHaveCount(0);
+    // Stored, and chosen: a recipe written from the export is the one it runs.
+    await expect(page.getByTestId(`recipe-row-${RECIPE}`)).toBeVisible();
+    await expect(page.getByTestId(`recipe-row-${RECIPE}`).getByRole("radio")).toBeChecked();
   });
 
   await test.step("export through the recipe, and find its variant in the archive", async () => {
     /*
-     * The same dialog, one more control: the recipe picker, which offers
-     * `None` and the project's recipes by name. The consent question is asked
+     * The same section, one more choice: the recipe list, which offers
+     * No recipe and the project's recipes by name. The consent question is asked
      * again — a recipe changes nothing about what the target drops — and the
      * archive that comes back is read for the two things a recipe promises:
      * the report names the recipe under its hash, and the train fold carries
@@ -1639,12 +1653,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * augmentation drivers, and the format laying the variant out where a
      * trainer will find it.
      */
-    await page.getByTestId("dataset-tab-releases").click();
-    await page.getByTestId(`export-${TAG}`).click();
-    await page.getByTestId("export-target").click();
-    await page.getByRole("option", { name: /YOLO11/ }).click();
-    await page.getByTestId("export-recipe").click();
-    await page.getByRole("option", { name: RECIPE }).click();
+    // Still on YOLO11, and the recipe just written is chosen.
+    await expect(page.getByTestId("export-target")).toContainText("YOLO11");
+    await expect(page.getByTestId(`recipe-row-${RECIPE}`).getByRole("radio")).toBeChecked();
 
     await page.getByTestId("export-submit").click();
     const consent = page.getByTestId("lossy-consent");
@@ -1661,30 +1672,27 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
   await test.step("delete the recipe, and watch the list and the count answer", async () => {
     /*
      * The last verb a recipe has, after the export that needed it has run:
-     * the row's control, the confirmation, the real `DELETE`, and the view
-     * back to its invitation with the tab no longer counting. The editor was
-     * holding this recipe, so its closing is part of what is asserted.
+     * the chosen row's Edit and Delete, the confirmation, the real `DELETE`,
+     * and the list no longer naming it.
      */
-    // The export dialog is still up, and deliberately: it holds the outcome so
-    // the badge can announce it once the poll has stopped, which means it closes
-    // the way every other dialog here does rather than on its own. So this step
-    // starts by doing what the person who has just taken the download does. The
-    // walk dismisses a dialog this way once already, when the batch is deleted.
-    await page.keyboard.press("Escape");
-    await expect(page.getByTestId("export-dialog")).toHaveCount(0);
-
-    await page.getByTestId("dataset-tab-preprocessing").click();
-    await expect(page.getByTestId("recipe-editor")).toBeVisible();
+    // The export's outcome stays in its section; the chosen recipe's Edit opens
+    // its modal over the page.
+    await page.getByTestId("recipe-edit").click();
+    const modal = page.getByTestId("recipe-dialog");
+    await expect(modal.getByTestId("recipe-editor")).toBeVisible();
     // The export that just ran, read back from the queue as the recipe's usage.
-    await expect(page.getByTestId("recipe-used-by")).toHaveText(`Used by the ${TAG} YOLO11 export`);
-    await page.getByTestId(`recipe-delete-${RECIPE}`).click();
+    await expect(modal.getByTestId("recipe-used-by")).toHaveText(`The ${TAG} YOLO11 export`);
+    // Nothing changed, so closing asks nothing, and the row's Delete is in reach.
+    await page.keyboard.press("Escape");
+    await expect(modal).toHaveCount(0);
+    await page.getByTestId("recipe-delete").click();
     await expect(page.getByTestId("delete-recipe-dialog")).toContainText(`Delete ${RECIPE}?`);
     await page.getByTestId("delete-recipe-submit").click();
 
     await expect(page.getByTestId("delete-recipe-dialog")).toHaveCount(0);
-    await expect(page.getByTestId("recipes-empty")).toBeVisible();
-    await expect(page.getByTestId("recipe-editor")).toHaveCount(0);
-    await expect(page.getByTestId("dataset-tab-preprocessing")).toContainText("0");
+    await expect(page.getByTestId(`recipe-row-${RECIPE}`)).toHaveCount(0);
+    // The export falls back to no recipe.
+    await expect(page.getByTestId("recipe-row-~none").getByRole("radio")).toBeChecked();
   });
 
   await test.step("export for openlane-2d, and find the occluded vertex in the archive", async () => {
@@ -1740,7 +1748,8 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // *accepted* is the half that would have caught a PATCH carrying the kind;
     // that the row is still ready afterwards is the half that catches a server
     // reading "supplied" as "moved".
-    await page.getByTestId(`actions-${STAND_IN}`).click();
+    await page.getByTestId(`open-${STAND_IN}`).click();
+    await expect(page.getByTestId("model-sheet")).toBeVisible();
     await page.getByTestId("action-edit").click();
     await page.getByTestId("connection-name").fill(REPINNED);
     await page.getByTestId("connection-submit").click();
@@ -1751,12 +1760,13 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("connection-dialog")).toHaveCount(0);
     await expect(after).toBeVisible();
     await expect(after.getByTestId("connection-status")).toContainText(/ready/i);
+    // The sheet that opened the edit is still open under it, and now carries the new name.
+    await expect(page.getByTestId("model-sheet").getByRole("heading", { name: REPINNED })).toBeVisible();
 
     // And the model is now a fact: the real kernel withholds `update_model`
     // from a set-up row, so the form states the reference where the choice
     // used to be and offers no field that would move it — while the name it
     // just changed is still there to change again.
-    await page.getByTestId(`actions-${REPINNED}`).click();
     await page.getByTestId("action-edit").click();
     await expect(page.getByTestId("connection-model-fixed")).toBeVisible();
     await expect(page.getByTestId("connection-revision")).toHaveCount(0);
@@ -1765,6 +1775,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("connection-dialog")).toHaveCount(0);
     await expect(after.getByTestId("connection-status")).toContainText(/ready/i);
+    // Escape closes the layer on top, so the sheet is still there: put it away too.
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("model-sheet")).toHaveCount(0);
   });
 
   await test.step("the whole walk produced a clean console", async () => {
@@ -1914,13 +1927,42 @@ async function columnsOf(page: Page): Promise<{ rendered: number; expected: numb
 async function openProject(
   page: Page,
   project: string,
-  section: "schema" | "batches" | "dataset",
+  section: "overview" | "images" | "schema" | "dataset",
 ): Promise<void> {
   await page.getByTestId("rail-projects").click();
   await expect(page.getByTestId(`open-${project}`)).toBeVisible();
   await page.getByTestId(`open-${project}`).click();
   await expect(page.getByTestId("project-screen")).toBeVisible();
   await page.getByTestId(`nav-${section}`).click();
+}
+
+/**
+ * A batch opened the way a person opens one: from the Overview's Batches panel —
+ * batches have no section of their own — by selecting its row and following the
+ * inspector's pointer into the batch gallery. Every batch action (approve, start,
+ * complete, promote, correct, delete) is made in that gallery.
+ *
+ * The pointer is whichever one the batch's state offers: a draft points at
+ * approval, a completed batch not yet promoted at promotion, an open batch at
+ * *Open batch*. Exactly one of the three is on the page for any state.
+ */
+async function openBatch(
+  page: Page,
+  project: string,
+  name: string,
+  { correction = false }: { readonly correction?: boolean } = {},
+): Promise<void> {
+  await openProject(page, project, "overview");
+  await expect(page.getByTestId("overview-batches")).toBeVisible();
+  // The panel labels a correction batch "<name> — correction" unless its own name
+  // already ends that way, and its row and inspector are keyed by that label
+  // rather than by the batch's own name.
+  const label = correction && !name.endsWith("— correction") ? `${name} — correction` : name;
+  await page.getByTestId(`overview-batch-${label}`).getByRole("button").click();
+  await expect(page.getByTestId("batch-inspector")).toHaveAttribute("aria-label", `Batch ${label}`);
+  await page.getByTestId(/^inspector-(approve|promote|open)$/).click();
+  await expect(page.getByTestId("gallery")).toBeVisible();
+  await expect(page.getByTestId("batch-title")).toHaveText(name);
 }
 
 /*

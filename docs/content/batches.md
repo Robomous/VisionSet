@@ -648,8 +648,9 @@ query; the partition is exact, so every asset appears under exactly one job.
 
 ## In the browser
 
-The batch table renders the row of `BATCH_TRANSITIONS` a batch is on and offers the
-one action that row allows - never a revert, because there is none. The version
-column is empty until approval, since that is when the pin happens. The approval
+The Overview's Batches panel lists a project's batches, and the batch gallery offers the
+action the row of `BATCH_TRANSITIONS` a batch is on allows - never a revert, because there
+is none. The panel's Schema column is a dash until approval, since that is when the pin
+happens. The approval
 dialog offers `single` and `by_size`; `by_segments` is the SDK's and the API's. See
 [ui.md](ui.md#batches-and-a-machine-that-only-goes-forwards).

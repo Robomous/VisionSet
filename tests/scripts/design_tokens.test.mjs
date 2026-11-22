@@ -27,7 +27,8 @@ const SOURCE = /\.(?:ts|tsx|css)$/;
 const GENERATED = /^frontend\/ui-core\/src\/generated\//;
 
 /**
- * The whole allowance: identity, and nowhere else. The rail's wordmark and the
+ * The whole allowance: identity, and nowhere else. The VisionSet logo (its icon
+ * on the rail, the full logo on the sign-in screen, both drawn by `Brand.tsx`) and the
  * styleguide swatch that puts the token on display for inspection — a
  * component that renders the *value* rather than reaching for it as a colour.
  * Paths, not a count, so a failure names what moved rather than reporting a
@@ -36,11 +37,11 @@ const GENERATED = /^frontend\/ui-core\/src\/generated\//;
  */
 const BRAND_VARIABLE = /var\(--brand\)/;
 const BRAND_SITES = [
-  "frontend/app/src/shell/AppShell.tsx",
+  "frontend/app/src/shell/Brand.tsx",
   "frontend/app/src/styleguide/Styleguide.tsx",
 ];
 
-test("the brand colour paints identity only — the wordmark and its styleguide swatch", () => {
+test("the brand colour paints identity only — the VisionSet logo and its styleguide swatch", () => {
   const tracked = trackedFiles(["frontend"]).filter(
     (name) => SOURCE.test(name) && !GENERATED.test(name),
   );

@@ -16,11 +16,15 @@ authorization/data scope that state machine hands to `VisionSetDataProvider`.
 `src/shell/TokenGate.tsx` is
 the form that appears when the server will not sign the browser in on its own.
 
-The rail's collapsed/expanded state - `src/shell/railState.ts`, read on mount and
-written back on toggle - and the rail's own layout widths,
-`--spacing-sidebar`/`--spacing-sidebar-collapsed` in `src/styles.css`, are the
-app's too: a host mounting VisionSet's screens brings its own global navigation,
-so nothing reusable needs to read the standalone shell's rail.
+The workbench frame is the app's too: the rail, its two widths (`--spacing-rail` and
+`--spacing-rail-expanded` in `src/styles.css`) and its collapsed/expanded preference
+(`src/shell/railState.ts`, read once in a lazy initializer and written on toggle); the open-project tabs, whose list persists through
+`src/shell/openProjects.ts` and whose state the shell holds in `ProjectTabs.tsx`'s
+`OpenProjectsProvider`; and the status bar, `src/shell/StatusBar.tsx`, which only
+reads `ui-core`'s public queries and holds `ui-core`'s `PageStatusOutlet`, the slot a
+screen's `PageStatus` writes its own facts into - so a screen speaks in the bar without
+knowing the shell exists, and a host without the outlet simply shows none of them. A host mounting VisionSet's screens brings its own
+global navigation, so nothing reusable needs to read the standalone shell's chrome.
 
 None of this is domain logic. `@visionset/ui-core` declares only the shape a host
 must satisfy - `VisionSetDataClient` and `VisionSetDataProviderProps` - and never

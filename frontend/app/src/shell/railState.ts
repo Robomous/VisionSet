@@ -3,12 +3,12 @@
  *
  * ## The default is collapsed, and it is one declaration
  *
- * The rail carries four things — the logo, the toggle, Home, Projects, and sign
- * out (`DESIGN.md` → **Layout**, and the thin-app rule keeps it that way) — and
- * every one of them is legible as an icon, with its label in `title=` when narrow.
- * The screens beside it are the ones that need the width: the gallery measures its
- * column count off the pane, and the annotator derives its fit zoom off the pane's
- * rect. 180px is a gallery column on a laptop.
+ * The rail carries the logo, Projects, Models, the toggle and sign out (the
+ * thin-app rule keeps it that way), and every one of them is legible as an icon,
+ * with its label as the accessible name and the tooltip when narrow. The screens
+ * beside it are the ones that need the width: the gallery measures its column
+ * count off the pane, and the annotator derives its fit zoom off the pane's rect.
+ * The 192px the expanded rail costs is most of a gallery column on a laptop.
  *
  * It lives here rather than inline in `AppShell` so the answer has exactly one
  * home. A default spelled at a call site is a default that gets spelled twice.

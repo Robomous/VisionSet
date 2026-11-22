@@ -23,7 +23,7 @@ import type { JSX } from "react";
 import { Button } from "@robomous/ui-core";
 
 export interface BackLinkProps {
-  /** The parent, named: "Batches", a project's name. */
+  /** The parent, named: "Overview", a project's name. */
   readonly label: string;
   /** Where it goes. The host turns this into a route change. */
   readonly onNavigate: () => void;

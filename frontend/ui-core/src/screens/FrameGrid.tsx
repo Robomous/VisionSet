@@ -314,7 +314,7 @@ export function FrameGrid({
       <Async
         query={assets}
         loadingRows={4}
-        empty={emptyBatch}
+        empty={{ ...emptyBatch, art: "images" }}
         // Only the unfiltered view can say the *batch* is empty; a segment
         // with no matches has its own message below, `segment-empty`.
         isEmpty={() => total === 0 && segment === "all"}
@@ -756,7 +756,10 @@ function BulkBar({
 
   return (
     <div
-      className="sticky bottom-4 z-10 mx-auto flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-2 shadow-lg"
+      // `--page-inset-bottom` is whatever chrome a host pins to the bottom of the
+      // viewport (the standalone app's status bar); the bar floats 1rem above it
+      // rather than under it. A host with none leaves it unset.
+      className="sticky bottom-[calc(var(--page-inset-bottom,0px)+1rem)] z-10 mx-auto flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-2 shadow-lg"
       data-testid="bulk-bar"
       role="region"
       aria-label="Bulk actions"
