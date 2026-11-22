@@ -15,6 +15,9 @@ nothing was being distributed. This is the first version that is.
 
 - **A `darknet` export dialect.** Writes `obj.data`, `obj.names`, `train.txt` and `valid.txt` over the shared
   images-and-labels layout, with `yolov4` as its target (#787).
+- **A `kitti` importer.** Reads a KITTI 3D object detection split (`velodyne/*.bin`, `label_2`, `calib`) into
+  `point_cloud` assets under a `lidar_flu` source, with each box converted from the camera frame into the lidar
+  frame as a `cuboid_3d`; a new `scan` loss kind covers a scan whose points repeat another's (#1049).
 
 ### Changed
 

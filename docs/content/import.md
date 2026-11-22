@@ -1,7 +1,7 @@
 # Import
 
-An import brings a dataset that already has labels - a COCO export from another tool, say - into
-a project. The images become assets, the dataset's classes become the project's schema when it has
+An import brings a dataset that already has labels - a COCO export from another tool, say, or
+KITTI lidar scans with their boxes - into a project. The images or scans become assets, the dataset's classes become the project's schema when it has
 none, and every label is written with `import` provenance into one batch, which is then approved.
 The import stops there. A person reviews the labels and promotes them as with any other batch,
 because a label from outside is third-party truth. The rule is
@@ -15,8 +15,10 @@ upload variant yet. [surfaces.md](surfaces.md) shows what each surface can do.
 ## What an import does
 
 1. **Reads the source.** An importer plugin, chosen by format name, reads the directory and
-   returns the classes, the images by relative path, the labels on each, and a report of
-   everything it could not represent. It writes nothing.
+   returns the classes, the images (or the point-cloud scans) by relative path, the labels on
+   each, and a report of everything it could not represent. It writes nothing. A dataset of
+   scans also declares the [frame](sources.md#point-cloud-directories-and-their-frame) its scans
+   and labels are written in.
 2. **Plans.** Every listed image is decoded and matched by content against the project's assets.
    An image the source names but does not hold, an image whose bytes repeat another's, and a
    label wholly outside its image are added to the loss report.
@@ -24,6 +26,14 @@ upload variant yet. [surfaces.md](surfaces.md) shows what each surface can do.
    project with no schema gets version 1 from the dataset's classes; the labels and a batch are
    written and the batch is approved, in one transaction. Approval seeds each labeled asset as
    `annotated`. Nothing is completed or promoted.
+
+A dataset of scans differs in three ways. A headerless scan is stored as a binary PCD of its own
+bytes, so it is a `point_cloud` asset like an ingested one, with its preview. The same transaction
+writes a point-cloud source at the import directory declaring the dataset's frame, or reuses the
+one already there; one there declaring another frame refuses the import with
+`CALIBRATION_IN_USE`, as does a scan already in the project under a source of another frame,
+because its labels would be read in other axes. A scan label has no image to fall outside of, so
+none is dropped for its position. The plan counts `scans` and names the `frame`.
 
 An existing schema is never changed by an import. A label the active schema cannot accept refuses
 the whole import, as does a label that would land on an asset already in the dataset or held by
@@ -42,7 +52,8 @@ computed from the content, and a commit that would drop something is refused wit
 | `geometry` | Part of a shape the kernel has no type for, such as YOLO keypoints, VOC parts, 3D lane points or an unusable per-vertex visibility, while the shape itself is kept. |
 | `label` | A whole label: an RLE or crowd mask, a polygon of several rings, a label outside its image. |
 | `image` | An image the source names but does not hold, or one whose bytes repeat an earlier image; its labels go with it. |
-| `attribute` | Extras the importer does not carry, such as COCO attributes, VOC difficult or pose flags, an OpenLane camera calibration or track id. |
+| `scan` | A scan whose points repeat an earlier scan's, or one gone from the source; its labels go with it. |
+| `attribute` | Extras the importer does not carry, such as COCO attributes, VOC difficult or pose flags, an OpenLane camera calibration or track id, KITTI truncation, occlusion, alpha and calibration. |
 
 The refusal carries the full report in its `detail.losses`. Inspecting the source first returns
 the same report and writes nothing; its `loss_kinds` is exactly what the commit has to consent to,
@@ -79,6 +90,7 @@ naming the kinds to accept. See [mcp-tools.md](mcp-tools.md).
 | `darknet` | `obj.names` (and `obj.data`) with the same `images/` and `labels/` layout | As `ultralytics`, bar keypoints |
 | `voc` | `Annotations/**/*.xml` with pictures under `JPEGImages/`; boxes | Pose, truncated, difficult and occluded values other than unspecified or `0`, other `<object>` children, parts, segmentation, an object with no name or box, a zero-area or outside box |
 | `classification` | `labels.csv` (`image`, `class`) and `classes.txt` beside `images/`; one tag per row | A row naming a class `classes.txt` does not declare, a second row of one class on one picture, a malformed row, a row with no picture or class |
+| `kitti` | A 3D object detection split: `velodyne/*.bin` scans, `label_2/*.txt` and `calib/*.txt`, at the top or in `training/` and `testing/`; boxes as `cuboid_3d` in the `lidar_flu` frame | `DontCare` regions, each box's 2D image `bbox`, truncation, occlusion and alpha, the calibration itself, a score outside 0 to 1, a label with no scan, no usable calibration, a malformed line or a dimension that is not positive |
 
 **YOLO family** (`ultralytics`, `yolov5-yaml`, `darknet`). A picture is any file under an `images/`
 directory; its label is at the same path with the last `images` segment swapped for `labels` and
@@ -130,6 +142,24 @@ whole, so only a document whose every lane has two points can be misread. A lane
 kept quiet only when it equals the lane's category, which is what the exporter writes; any other
 value is an `attribute` loss. A symbolic link to a directory under `labels/` is refused, not
 followed.
+**KITTI.** Each `velodyne/<id>.bin` is one scan of float32 `x, y, z, reflectance` records, kept
+byte for byte with reflectance as `intensity`; a file that is not a whole number of 16-byte
+points refuses the source. Its labels are `label_2/<id>.txt`, and a scan with none (the testing
+split) is imported unlabelled. A label is written in the rectified camera frame (x right, y down,
+z forward) with `location` the centre of the box's bottom face, dimensions `h w l` and
+`rotation_y` about camera y, while a scan's label must be in the scan's own frame. So the import
+converts each box with that frame's `calib/<id>.txt`, an explicit conversion the loss report names
+(an `attribute` loss on `calib`), never a silent one: the centre is lifted by `h / 2` along camera
+up and mapped through the inverse of `R0_rect` and `Tr_velo_to_cam` (`R_rect` and `Tr_velo_cam`
+are read too), the size becomes `(l, w, h)`, and the heading `(cos ry, 0, -sin ry)` is mapped
+through the inverse rotation and read back as `yaw = atan2(y, x)`. On KITTI's nominal axes that is
+`yaw = -rotation_y - pi/2`, wrapped into `[-pi, pi]`; the small pitch a real calibration has
+between camera y and lidar z is not modelled by a cuboid and is projected out of the heading.
+Coordinates are rounded to the micrometre. Classes are the names labels use, KITTI's own
+(`Car`, `Van`, `Truck`, `Pedestrian`, `Person_sitting`, `Cyclist`, `Tram`, `Misc`) first in that
+order. A 16th column, a detection score, becomes the label's confidence when it lies in 0 to 1.
+Camera images are not read. nuScenes has no importer yet.
+
 TuSimple, CurveLanes, BDD100K and CULane have no importer: none of them carries anything a
 polyline import does not already get from OpenLane, and none has a per-vertex slot.
 
