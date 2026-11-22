@@ -428,14 +428,14 @@ no `--resume`: polling needs a second process, which is what `visionset server` 
 ### `visionset import`
 
 `FORMAT PATH --project P [--consent-lossy KIND]... [--dry-run]` - an external dataset with labels
-in, one **approved** batch out: the images are ingested by content, the dataset's classes become
+in, one **approved** batch out: the images (or scans) are ingested by content, the dataset's classes become
 schema version 1 when the project has none, and every label is written with `import` provenance.
 Nothing is completed or promoted. `FORMAT` is an importer's name (`ultralytics`, `yolov5-yaml`,
-`darknet`, `coco`, `voc`, `classification`, `openlane-2d`); an unknown one is refused with the
+`darknet`, `coco`, `voc`, `classification`, `openlane-2d`, `kitti`); an unknown one is refused with the
 importable formats listed. See [import.md](import.md).
 
 A commit that would drop anything is refused with `IMPORT_NOT_CONSENTED` unless each kind of loss
-is named by a `--consent-lossy` (`class`, `geometry`, `label`, `image` or `attribute`); under
+is named by a `--consent-lossy` (`class`, `geometry`, `label`, `image`, `scan` or `attribute`); under
 `--json` the refusal's `detail.losses` is the report. `--dry-run` takes the same arguments, writes
 nothing, prints the report as columns (`KIND SUBJECT COUNT REASON`, the plan under `--json`) and
 exits **1** when the same command without it would be refused, on `export --check`'s precedent.

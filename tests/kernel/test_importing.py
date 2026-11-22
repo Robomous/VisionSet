@@ -9,15 +9,19 @@ from pydantic import ValidationError
 
 from visionset.kernel.domain import (
     BboxGeometry,
+    Cuboid3DGeometry,
     GeometryType,
     ImportConsent,
     ImportedClass,
     ImportedDataset,
     ImportedImage,
     ImportedLabel,
+    ImportedScan,
     ImportLoss,
     ImportLossKind,
     PolygonGeometry,
+    ScanFrame,
+    ScanLayout,
     loss_kinds,
 )
 
@@ -111,3 +115,66 @@ def test_an_image_and_a_class_are_each_listed_once() -> None:
 def test_class_names_are_stripped_the_way_a_schema_strips_them() -> None:
     assert ImportedClass(name=" car ", geometries=(GeometryType.BBOX,)).name == "car"
     assert ImportedLabel(class_name="car ", geometry=BOX).class_name == "car"
+
+
+KITTI = ScanLayout(fields=("x", "y", "z", "intensity"))
+CUBOID = Cuboid3DGeometry(center=(10.0, 0.0, -0.8), size=(4.0, 1.6, 1.5), yaw=0.3)
+BOTH = (GeometryType.BBOX, GeometryType.CUBOID_3D)
+
+
+def _scan(geometry: BboxGeometry | Cuboid3DGeometry = CUBOID) -> ImportedScan:
+    return ImportedScan(
+        path="velodyne/0.bin",
+        layout=KITTI,
+        labels=(ImportedLabel(class_name="car", geometry=geometry),),
+    )
+
+
+def test_a_dataset_of_scans_declares_its_frame() -> None:
+    classes = (ImportedClass(name="car", geometries=BOTH),)
+    with pytest.raises(ValidationError, match="frame"):
+        ImportedDataset(classes=classes, scans=(_scan(),))
+
+    dataset = ImportedDataset(classes=classes, scans=(_scan(),), frame=ScanFrame.LIDAR_FLU)
+    assert dataset.scans[0].labels[0].geometry == CUBOID
+
+
+def test_a_dataset_is_of_images_or_of_scans_never_both() -> None:
+    classes = (ImportedClass(name="car", geometries=BOTH),)
+    with pytest.raises(ValidationError, match="not both"):
+        ImportedDataset(
+            classes=classes,
+            images=(ImportedImage(path="a.png"),),
+            scans=(_scan(),),
+            frame=ScanFrame.LIDAR_FLU,
+        )
+    with pytest.raises(ValidationError, match="no scan frame"):
+        ImportedDataset(
+            classes=classes, images=(ImportedImage(path="a.png"),), frame=ScanFrame.LIDAR_FLU
+        )
+
+
+def test_a_scan_label_in_pixels_is_refused() -> None:
+    classes = (ImportedClass(name="car", geometries=BOTH),)
+    with pytest.raises(ValidationError, match="no pixels"):
+        ImportedDataset(classes=classes, scans=(_scan(BOX),), frame=ScanFrame.LIDAR_FLU)
+
+
+def test_a_scan_path_outside_the_source_is_refused() -> None:
+    with pytest.raises(ValidationError):
+        ImportedScan(path="../velodyne/0.bin", layout=KITTI)
+
+
+@pytest.mark.parametrize(
+    "fields", [("x", "y"), ("x", "y", "z", "z"), ("x", "y", "z", "intensity", "intensity")]
+)
+def test_a_scan_layout_names_each_coordinate_once(fields: tuple[str, ...]) -> None:
+    with pytest.raises(ValidationError):
+        ScanLayout(fields=fields)  # type: ignore[arg-type]
+
+
+def test_a_layout_with_a_skipped_field_is_a_pcd_with_a_padding_field() -> None:
+    header = ScanLayout(fields=("x", "y", "z", "intensity", "_")).pcd_header(2).decode()
+
+    assert "FIELDS x y z intensity _\n" in header
+    assert "POINTS 2\nDATA binary\n" in header

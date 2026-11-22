@@ -27,10 +27,10 @@ target - never through a dict, so a typo answers a `VisionSetError` rather than 
 
 ## What ships
 
-Eighteen plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
-`[project.entry-points."visionset.formats"]`: the eleven exporters below and seven importers,
+Nineteen plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
+`[project.entry-points."visionset.formats"]`: the eleven exporters below and eight importers,
 `ultralytics-import`, `yolov5-yaml-import`, `darknet-import`, `coco-import`, `voc-import`,
-`classification-import` and `openlane-2d-import` (see [Importers](#importers)).
+`classification-import`, `openlane-2d-import` and `kitti-import` (see [Importers](#importers)).
 
 | Name | Module |
 | --- | --- |
@@ -47,10 +47,13 @@ Eighteen plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
 The same group carries importers, which satisfy the other port,
 [`Importer`](../../../../src/visionset/kernel/ports/importer.py): `read(src)` returns an
 `ImportedDataset` - classes, images by relative path, their labels, and a report of everything it
-could not represent - and touches no workspace. `registry.importers()` filters the scan by that
+could not represent - and touches no workspace. A dataset of point-cloud scans holds `scans`
+instead, each a relative path, a `ScanLayout` naming the float32 fields of its headerless records,
+and labels in the one `ScanFrame` the dataset declares; `ImportService` stores each as a binary PCD
+of the same bytes under a point-cloud source declaring that frame. `registry.importers()` filters the scan by that
 port, and `registry.pick_importer(installed, name)` resolves a name with the same aliases,
 refusing with `ImportFormatNotFound`. `ImportService` takes the instance, as `ReleaseService.export`
-takes an exporter. The built-ins are all seven, each answering to its exporter's `format_name`:
+takes an exporter. The built-ins are eight, seven of them answering to their exporter's `format_name`:
 [`ultralytics-import`](../../../../src/visionset/formats/ultralytics/reader.py),
 [`yolov5-yaml-import`](../../../../src/visionset/formats/yolov5_yaml/reader.py) and
 [`darknet-import`](../../../../src/visionset/formats/darknet/reader.py), which share
@@ -59,7 +62,10 @@ takes an exporter. The built-ins are all seven, each answering to its exporter's
 [`coco-import`](../../../../src/visionset/formats/coco/reader.py),
 [`voc-import`](../../../../src/visionset/formats/voc/reader.py),
 [`classification-import`](../../../../src/visionset/formats/classification/reader.py) and
-[`openlane-2d-import`](../../../../src/visionset/formats/lanes/reader.py). The `yolo` alias
+[`openlane-2d-import`](../../../../src/visionset/formats/lanes/reader.py), and
+[`kitti-import`](../../../../src/visionset/formats/kitti/reader.py), which has no exporter and
+converts KITTI's camera-frame boxes into the lidar frame in
+[`kitti/frames.py`](../../../../src/visionset/formats/kitti/frames.py). The `yolo` alias
 resolves to `ultralytics` for importers too. What an import does with the dataset is
 [import.md](../../import.md).
 

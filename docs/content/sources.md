@@ -286,6 +286,9 @@ check runs under the store's write lock, the one every label write takes before 
 frame, so a cuboid cannot land between the check and the change. Previews already rendered are
 not redrawn: they keep the orientation of the frame they were drawn in, and only a scan with no
 preview yet is drawn in the new one.
+An [import](import.md) of scans, such as `kitti`, writes or reuses the point-cloud source at its
+directory in the dataset's frame, and never re-declares one: a source there in another frame
+refuses the import with `CALIBRATION_IN_USE`.
 Stating a camera calibration for a point-cloud directory, or for a scan, is refused with
 `CALIBRATION_NOT_APPLICABLE` (409).
 

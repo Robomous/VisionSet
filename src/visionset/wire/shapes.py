@@ -685,8 +685,12 @@ class ImportPlan(TypedDict):
     classes: list[ImportedClass]
     source_images: int
     images: int
+    source_scans: int
+    scans: int
+    frame: str | None
     labels: int
     missing_images: list[str]
+    missing_scans: list[str]
     losses: list[ImportLoss]
     loss_kinds: list[str]
     conflicts: list[str]
