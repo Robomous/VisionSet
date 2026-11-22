@@ -474,6 +474,17 @@ still zooms. Outside Edit the view keeps its own mapping: a left drag orbits.
   the selected box shows a handle on each face, which pushes that face, and a dashed ring at
   its base, which turns its yaw about the declared up. Handles and ring are an overlay placed
   by the same projection the editor picks with.
+- **Top-down.** In Edit a second view sits beside the perspective one - below it on a narrow
+  stage - looking straight down the declared up axis, forward up the screen. It is
+  orthographic, so a box's top lies over its footprint at any zoom, and it follows the
+  perspective view's centre: a pan there moves it too. It never orbits; a right or middle drag
+  pans it and the wheel zooms it. It drives the same editor, store and selection, so a drag in
+  either view moves the box in both while it is under way. Over the selected box it draws the
+  footprint, a handle on each of the four side faces, and the yaw ring with a handle where the
+  heading crosses it; the top and bottom faces sit on the box's centre there, so a press on the
+  centre moves the box. A footprint can be drawn there too, but a height is never read from
+  it: raise the height in the perspective view, or finish with a click or Enter and pull the top
+  face up later.
 - **Keys.** With the view focused: Delete removes the selection, Escape cancels a gesture or
   lets go of the selection, Enter finishes a height, `mod+z` / `mod+shift+z` undo and redo,
   `mod+s` saves. The strip carries undo and redo too. As in the 2D editor, a click on the

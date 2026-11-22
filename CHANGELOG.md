@@ -25,6 +25,9 @@ nothing was being distributed. This is the first version that is.
 - **Cuboids are edited on a point-cloud scan.** An Edit mode on the scan view draws, moves, resizes and
   turns a `cuboid_3d` in the scan's declared frame and saves it with the frame's other work; it is disabled,
   with the reason, on a scan whose source declares no frame or a frame open for viewing only (#1070).
+- **A top-down view for editing cuboids.** In Edit, an orthographic top-down view beside the perspective one
+  follows its centre and drives the same editor: draw a footprint, move a box, pull a side face, or turn its yaw
+  with a handle on the heading, and the other view follows while the drag is under way (#1071).
 
 ### Changed
 
