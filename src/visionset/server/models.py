@@ -134,12 +134,15 @@ from visionset.kernel.domain import (
     PreprocessingPreview,
     PreprocessingRecipe,
     Project,
+    ProjectDigest,
     ProjectPreview,
+    ProjectStage,
     ProjectStats,
     ProjectSummary,
     RecipeSpec,
     RecipeUsage,
     Release,
+    ReleaseDigest,
     ReleaseVerification,
     ResizeStep,
     ResizeStrategy,
@@ -333,8 +336,112 @@ class ProjectOut(BaseModel):
         )
 
 
-class ProjectPage(Page[ProjectOut]):
-    """A page of projects."""
+class ReleaseDigestOut(BaseModel):
+    """The newest release of a project's dataset, as a list row shows it.
+
+    `published_at` is when the release was made, in UTC. `asset_count` is the
+    size of what was frozen, not of the dataset as it stands now.
+    """
+
+    tag: str
+    asset_count: int
+    published_at: datetime
+
+    @classmethod
+    def of(cls, release: ReleaseDigest) -> Self:
+        return cls(
+            tag=release.tag,
+            asset_count=release.asset_count,
+            published_at=release.published_at,
+        )
+
+
+class ProjectDigestOut(BaseModel):
+    """A project's numbers for a listing row, computed by the kernel.
+
+    `asset_count` is every asset in the project, in the dataset or not;
+    `annotated_asset_count` those carrying at least one annotation, and
+    `annotated_fraction` their share in 0..1 (0 for a project with no assets).
+    `class_count` is the classes of the active schema version, 0 with none.
+
+    `frames_left` and `frames_in_review` count frames across the project's
+    `in_annotation` batches: still to be labeled, and waiting on a reviewer.
+    `dataset_asset_count` is the dataset's size now, and `latest_release` its
+    newest release, null if there is none. `last_activity_at` is the newest of
+    an asset's arrival, a schema version, a release and a promotion, null when
+    none is recorded.
+
+    `stage` says where the project is, first match wins: `empty` (no assets),
+    `in_review` (frames await review), `annotating` (frames await labeling),
+    `to_promote` (a completed batch has labeled assets not yet in the dataset),
+    `unreleased` (the dataset is non-empty and has no release, or has changed
+    since the newest one), `not_started` (assets, but nothing in the dataset),
+    `up_to_date`. It describes the project and is not a capability: it says
+    nothing about what may be done, and a client must not use it to enable or
+    disable an action.
+    """
+
+    asset_count: int
+    annotated_asset_count: int
+    annotated_fraction: float
+    class_count: int
+    batch_count: int
+    frames_left: int
+    frames_in_review: int
+    dataset_asset_count: int
+    latest_release: ReleaseDigestOut | None
+    last_activity_at: datetime | None
+    stage: ProjectStage
+
+    @classmethod
+    def of(cls, digest: ProjectDigest) -> Self:
+        return cls(
+            asset_count=digest.asset_count,
+            annotated_asset_count=digest.annotated_asset_count,
+            annotated_fraction=digest.annotated_fraction,
+            class_count=digest.class_count,
+            batch_count=digest.batch_count,
+            frames_left=digest.frames_left,
+            frames_in_review=digest.frames_in_review,
+            dataset_asset_count=digest.dataset_asset_count,
+            latest_release=(
+                None
+                if digest.latest_release is None
+                else ReleaseDigestOut.of(digest.latest_release)
+            ),
+            last_activity_at=digest.last_activity_at,
+            stage=digest.stage,
+        )
+
+
+class ProjectListItemOut(ProjectOut):
+    """A project as the list carries it: every `ProjectOut` field, plus its digest.
+
+    Only `GET /projects` returns this. The single-project routes stay on
+    `ProjectOut`, because the digest costs a walk of the project's batches and
+    jobs that a read, a create or a rename has no use for.
+    """
+
+    digest: ProjectDigestOut
+
+    @classmethod
+    def listed(
+        cls, project: Project, preview: ProjectPreview | None, digest: ProjectDigest
+    ) -> Self:
+        # Field by field, for ``ProjectOut.of``'s reason.
+        return cls(
+            id=project.id,
+            name=project.name,
+            description=project.description,
+            thumbnail_asset_id=preview.asset_id if preview else None,
+            thumbnail_hash=preview.thumbnail_hash if preview else None,
+            created_at=project.created_at,
+            digest=ProjectDigestOut.of(digest),
+        )
+
+
+class ProjectPage(Page[ProjectListItemOut]):
+    """A page of projects, each with its digest."""
 
 
 class ProjectCreate(BaseModel):

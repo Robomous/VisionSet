@@ -138,25 +138,32 @@ def list_project_assets(
     project_id: UUID,
     limit: LimitQuery = None,
     offset: OffsetQuery = 0,
+    source_id: Annotated[
+        UUID | None,
+        Query(
+            description="Only the assets this source produced. A source of another project is 404."
+        ),
+    ] = None,
 ) -> AssetPage:
-    """Every asset ingested into the project, in a stable order.
+    """Every asset ingested into the project, most recently ingested first.
 
-    The third asset listing, and the one that had been missing: the other two
-    window a *batch* and the curated *trunk*, and neither answers "show me this
-    project". A project page asking for six sample tiles passes `limit=6` and
-    reads `total` for the rest.
+    The third asset listing: the other two window a *batch* and the curated
+    *trunk*, and neither answers "show me this project". A page asking for six
+    sample tiles passes `limit=6` and reads `total` for the rest.
 
-    **The order is deterministic and it is not chronological.** Nothing records
-    when an asset arrived, so assets are grouped by source, then by frame index
-    for a clip, then by path for a directory, then by id. The practical effect is
-    that a clip's frames come back in order and a directory's stills in filename
-    order; the practical limit is that "the six most recent" cannot be asked for
-    yet.
+    **Newest run first, and stable inside a run** — within one ingest the order
+    is source, then file, then frame index, then id, so a clip's frames come back
+    in order and a directory's stills in filename order. Two calls never
+    disagree.
 
-    `total` is every asset in the project, never the size of this page, so a
-    client showing six tiles computes its own overflow from `total - 6`.
+    `source_id` narrows the listing to one source, in the same order, and
+    `total` then counts that source — so a client filtering by source pages and
+    counts exactly as it would the whole project. A source that is not this
+    project's is 404 `SOURCE_NOT_FOUND`, never an empty page.
+
+    `total` is every asset matched, never the size of this page.
     """
-    found = IngestService(workspace).assets(project_id)
+    found = IngestService(workspace).assets(project_id, source_id=source_id)
     return AssetPage(
         items=[AssetOut.of(asset) for asset in window(found, limit=limit, offset=offset)],
         total=len(found),

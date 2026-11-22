@@ -1968,6 +1968,42 @@ def test_a_project_with_no_assets_lists_nothing_rather_than_refusing(tmp_path: P
     fixture.close()
 
 
+def test_a_source_narrows_the_listing_to_what_it_produced(tmp_path: Path) -> None:
+    """Two drops into one project; asking for one returns only its own, in order."""
+    fixture = Fixture(tmp_path)
+    first_paths = write_images(fixture.stills, count=3)
+    first = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    fixture.ingest.ingest(first.id)
+    second_dir = tmp_path / "second"
+    second_dir.mkdir()
+    for seed, name in enumerate(["x.png", "y.png"], start=50):
+        write_image(second_dir / name, seed=seed)
+    second = fixture.sources.register_images(fixture.project.id, second_dir)
+    fixture.ingest.ingest(second.id)
+
+    only_first = fixture.ingest.assets(fixture.project.id, source_id=first.id)
+    only_second = fixture.ingest.assets(fixture.project.id, source_id=second.id)
+
+    assert [asset.uri for asset in only_first] == [str(path) for path in sorted(first_paths)]
+    assert [Path(asset.uri).name for asset in only_second] == ["x.png", "y.png"]
+    assert len(fixture.ingest.assets(fixture.project.id)) == 5
+    fixture.close()
+
+
+def test_a_source_of_another_project_reads_as_missing(tmp_path: Path) -> None:
+    """Cross-scope reads as missing, never as an empty list that hides the mistake."""
+    fixture = Fixture(tmp_path)
+    write_images(fixture.stills, count=1)
+    source = fixture.sources.register_images(fixture.project.id, fixture.stills)
+    other = fixture.projects.create("other")
+
+    with pytest.raises(SourceNotFound):
+        fixture.ingest.assets(other.id, source_id=source.id)
+    with pytest.raises(SourceNotFound):
+        fixture.ingest.assets(fixture.project.id, source_id=uuid4())
+    fixture.close()
+
+
 def test_stills_come_back_in_filename_order(tmp_path: Path) -> None:
     """A directory is walked sorted, so this is the order somebody's own file
     browser shows — the closest thing to "in order" the stored columns support."""

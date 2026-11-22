@@ -28,11 +28,18 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from visionset.kernel.domain import (
+    PROMOTABLE_PROGRESS,
+    SETTLED_PROGRESS,
+    AssetProgress,
+    BatchState,
     ClassCount,
     Dataset,
     Project,
+    ProjectDigest,
     ProjectPreview,
+    ProjectStage,
     ProjectStats,
+    ReleaseDigest,
     normalize_name,
 )
 from visionset.kernel.errors import (
@@ -43,7 +50,9 @@ from visionset.kernel.errors import (
     WorkspaceCorrupt,
 )
 from visionset.kernel.ports import UnitOfWork
+from visionset.kernel.services.batch_service import jobs_of
 from visionset.kernel.services.schema_service import SchemaService
+from visionset.kernel.services.summary_service import latest_activity
 from visionset.kernel.services.workspace_service import WorkspaceService
 
 #: SQLite's own wording when ``uq_project_workspace_name`` refuses a write. The
@@ -226,6 +235,128 @@ class ProjectService:
                 for name, counts in per_class.items()
             ),
             last_ingest_at=max(arrivals) if arrivals else None,
+        )
+
+    def digests(self) -> dict[UUID, ProjectDigest]:
+        """Each project's listing numbers, keyed by project id, in one unit of work.
+
+        What a dense project table needs per row and ``GET /projects`` did not
+        carry: size, how far along, what is waiting on whom, what was released,
+        and where the project stands (:class:`ProjectStage`, whose docstring owns
+        the rule). One transaction for the whole workspace, for ``previews``'s
+        reason - a unit of work per row is a ``Session`` per row - and by reading
+        the repositories directly, the way ``SummaryService.summary`` does.
+
+        Nothing here invents a definition. Asset and class counts are
+        ``stats``'s, the labeled count is ``annotation_totals`` (the aggregate
+        ``SummaryService`` already prefers to a per-asset walk), the frames that
+        wait on a reviewer are the ones that service raises
+        ``AttentionKind.REVIEW_PENDING`` for, the "still to label" test is
+        ``SETTLED_PROGRESS``, and the date is ``summary_service.latest_activity``,
+        the feed's own list of what counts as something happening.
+
+        Two rules are this method's own, and both are the domain's existing
+        answer asked a new way.
+
+        **A completed batch is "to promote"** when it holds an asset that
+        ``DatasetService.promote`` would still add: one whose progress is in
+        ``PROMOTABLE_PROGRESS`` and which is not in the trunk. That is the
+        union ``promote`` documents - "what this batch has that the trunk does
+        not" - and it is what ``BatchOut.promoted_asset_count`` counts against,
+        so a ``skipped`` frame, which promotion deliberately leaves behind, never
+        keeps a project in that stage. The consequence is the one ``promote``
+        states: an asset a curator took back out is promotable again, so the
+        stage will name it.
+
+        **The trunk is "unreleased"** when it is non-empty and either no release
+        exists or the change log holds an entry *after* the newest release. The
+        log is used, not the trunk's size, because it is the domain's record of
+        every mutation (``DatasetService`` appends one per promotion and per
+        removal): a size comparison cannot see one asset removed and another
+        promoted, and would call that trunk released. The log is trusted here
+        only to *describe*; it gates nothing, which is the line
+        ``promote`` draws against making the audit record load-bearing.
+
+        Cost: one asset read, one aggregate, and a walk of the batches, jobs,
+        schema versions, dataset members, releases and change log per project -
+        the N+1 per project ``previews`` and ``SummaryService.summary`` already
+        document and accept, for their reason.
+        """
+        with self._workspace.unit_of_work() as uow:
+            return {
+                project.id: self._digest(uow, project)
+                for project in uow.projects.list(self._workspace.workspace_id)
+            }
+
+    def _digest(self, uow: UnitOfWork, project: Project) -> ProjectDigest:
+        assets = uow.assets.list(project.id)
+        active = self._schemas.active(uow, project.id)
+        dataset = self.require_dataset(uow, project.id)
+        # ``DatasetService.member_asset_ids`` is the named spelling of this line.
+        # It cannot be imported here - ``dataset_service`` imports this module -
+        # and a one-line read of ``dataset_member`` is cheaper than a cycle.
+        trunk = {member.asset_id for member in uow.dataset_members.list(dataset.id)}
+        batches = uow.batches.list(project.id)
+
+        frames_left = 0
+        frames_in_review = 0
+        to_promote = False
+        for batch in batches:
+            if batch.state is BatchState.IN_ANNOTATION:
+                for job in jobs_of(uow, batch):
+                    for progress in job.progress.values():
+                        if progress is AssetProgress.REVIEW_PENDING:
+                            frames_in_review += 1
+                        elif progress not in SETTLED_PROGRESS:
+                            frames_left += 1
+            elif batch.state is BatchState.COMPLETED and not to_promote:
+                to_promote = any(
+                    progress in PROMOTABLE_PROGRESS and asset_id not in trunk
+                    for job in jobs_of(uow, batch)
+                    for asset_id, progress in job.progress.items()
+                )
+
+        releases = uow.releases.list(dataset.id)
+        newest = max(releases, key=lambda release: release.created_at, default=None)
+        changes = uow.dataset_changes.list(dataset.id)
+        changed_since = newest is not None and any(
+            change.occurred_at > newest.created_at for change in changes
+        )
+
+        if not assets:
+            stage = ProjectStage.EMPTY
+        elif frames_in_review:
+            stage = ProjectStage.IN_REVIEW
+        elif frames_left:
+            stage = ProjectStage.ANNOTATING
+        elif to_promote:
+            stage = ProjectStage.TO_PROMOTE
+        elif trunk and (newest is None or changed_since):
+            stage = ProjectStage.UNRELEASED
+        elif not trunk:
+            stage = ProjectStage.NOT_STARTED
+        else:
+            stage = ProjectStage.UP_TO_DATE
+
+        return ProjectDigest(
+            asset_count=len(assets),
+            annotated_asset_count=uow.annotation_totals(project.id).annotated_assets,
+            class_count=0 if active is None else len(active.classes),
+            batch_count=len(batches),
+            frames_left=frames_left,
+            frames_in_review=frames_in_review,
+            dataset_asset_count=len(trunk),
+            latest_release=(
+                None
+                if newest is None
+                else ReleaseDigest(
+                    tag=newest.tag,
+                    asset_count=newest.asset_count,
+                    published_at=newest.created_at,
+                )
+            ),
+            last_activity_at=latest_activity(uow, project, assets),
+            stage=stage,
         )
 
     # --- writing -----------------------------------------------------------

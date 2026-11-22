@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from tests.server._api import api_client
 from tests.server._flow import (
     a_box,
+    annotated_batch,
     asset_ids,
     batch_from_ingest,
     dataset_of,
@@ -508,3 +509,79 @@ def test_a_later_ingest_does_not_move_the_preview(
     batch_from_ingest(flow_client, stats_runner, tmp_path / "again", project_id, images=1)
 
     assert flow_client.get(f"/projects/{project_id}").json()["thumbnail_asset_id"] == kept
+
+
+# --- the digest each listed row carries -----------------------------------------
+
+
+def test_a_fresh_project_lists_an_empty_digest(client: TestClient) -> None:
+    made = created(client, "road-signs")
+
+    row = client.get("/projects").json()["items"][0]
+
+    assert row["id"] == made["id"]
+    assert row["digest"] == {
+        "asset_count": 0,
+        "annotated_asset_count": 0,
+        "annotated_fraction": 0.0,
+        "class_count": 0,
+        "batch_count": 0,
+        "frames_left": 0,
+        "frames_in_review": 0,
+        "dataset_asset_count": 0,
+        "latest_release": None,
+        "last_activity_at": None,
+        "stage": "empty",
+    }
+
+
+def test_only_the_list_carries_a_digest(client: TestClient) -> None:
+    made = created(client, "road-signs")
+
+    assert "digest" not in made
+    assert "digest" not in client.get(f"/projects/{made['id']}").json()
+
+
+def test_the_listing_digest_counts_an_open_batch(
+    flow_client: TestClient, stats_runner: InlineDispatcher, tmp_path: Path
+) -> None:
+    project_id = project_with_schema(flow_client)
+    batch_id = batch_from_ingest(flow_client, stats_runner, tmp_path, project_id, images=3)
+    flow_client.post(f"/batches/{batch_id}/approve")
+    flow_client.post(f"/batches/{batch_id}/start")
+
+    row = flow_client.get("/projects").json()["items"][0]
+
+    digest = row["digest"]
+    assert digest["asset_count"] == 3
+    assert digest["class_count"] == 2
+    assert digest["batch_count"] == 1
+    assert digest["frames_left"] == 3
+    assert digest["frames_in_review"] == 0
+    assert digest["stage"] == "annotating"
+    assert digest["last_activity_at"] is not None
+    # The preview fields are still on the row beside it.
+    assert row["thumbnail_asset_id"] is not None
+
+
+def test_the_listing_digest_follows_a_batch_into_a_release(
+    flow_client: TestClient, stats_runner: InlineDispatcher, tmp_path: Path
+) -> None:
+    project_id, batch_id = annotated_batch(flow_client, stats_runner, tmp_path, images=2)
+
+    assert flow_client.get("/projects").json()["items"][0]["digest"]["stage"] == "to_promote"
+
+    flow_client.post(f"/batches/{batch_id}/promote")
+    promoted = flow_client.get("/projects").json()["items"][0]["digest"]
+    assert promoted["stage"] == "unreleased"
+    assert promoted["dataset_asset_count"] == 2
+    assert promoted["annotated_asset_count"] == 2
+    assert promoted["annotated_fraction"] == 1.0
+
+    dataset_id = dataset_of(flow_client, project_id)
+    flow_client.post(f"/datasets/{dataset_id}/releases", json={"tag": "v1"})
+    released = flow_client.get("/projects").json()["items"][0]["digest"]
+    assert released["stage"] == "up_to_date"
+    assert released["latest_release"]["tag"] == "v1"
+    assert released["latest_release"]["asset_count"] == 2
+    assert released["latest_release"]["published_at"] is not None
