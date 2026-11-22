@@ -9,6 +9,7 @@ from uuid import UUID
 import pytest
 from tests.cli._flow import ok, payload, project, run, workspace
 from tests.fixtures.coco_source import write_coco_source
+from tests.fixtures.kitti_source import write_kitti_source
 
 from visionset.kernel.domain import AssetProgress, BatchState
 from visionset.kernel.services import (
@@ -159,3 +160,26 @@ def test_a_source_directory_name_that_is_not_a_valid_batch_name_still_imports(
 
     assert dry.exit_code == 0
     assert committed.exit_code == 0
+
+
+def test_a_kitti_dry_run_counts_scans_and_a_consented_commit_imports_them(tmp_path: Path) -> None:
+    root = workspace(tmp_path)
+    name = project(root)
+    src = write_kitti_source(tmp_path / "src")
+    consent = [
+        arg for kind in ("label", "geometry", "attribute") for arg in ("--consent-lossy", kind)
+    ]
+
+    dry = run(root, "import", "kitti", str(src), "--project", name, "--dry-run", *consent)
+    assert dry.exit_code == 0, dry.output
+    assert "2 scan(s) in the lidar_flu frame and 2 label(s)" in dry.stderr
+    assert _state(root, name) == (0, 0, 0)
+
+    refused = run(root, "import", "kitti", str(src), "--project", name)
+    assert refused.exit_code == 1, refused.output
+    assert _state(root, name) == (0, 0, 0)
+
+    batch_id = UUID(ok(root, "import", "kitti", str(src), "--project", name, *consent))
+    with WorkspaceService.open(root) as service:
+        assert BatchService(service).get(batch_id).state is BatchState.APPROVED
+    assert _state(root, name) == (2, 1, 1)

@@ -7,6 +7,7 @@ from uuid import UUID
 
 import pytest
 from tests.fixtures.coco_source import write_coco_source
+from tests.fixtures.kitti_source import write_kitti_source
 from tests.mcp._flow import call, call_with_progress, error, payload, project
 
 from visionset.kernel.domain import AssetProgress, BatchState
@@ -127,3 +128,30 @@ def test_an_unknown_format_and_an_unreadable_source_are_coded_refusals(
     )
     assert missing["code"] == "IMPORT_SOURCE_UNREADABLE"
     assert _state(tmp_path / "ws", named) == (0, 0, 0)
+
+
+def test_a_kitti_source_is_inspected_as_scans_and_imported_with_consent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named = project(monkeypatch, tmp_path)
+    src = write_kitti_source(tmp_path / "src")
+
+    plan = payload(call("inspect_import", project=named, format="kitti", path=str(src)))
+    assert (plan["scans"], plan["images"], plan["labels"], plan["frame"]) == (2, 0, 2, "lidar_flu")
+    assert plan["loss_kinds"] == ["attribute", "geometry", "label"]
+
+    refusal = error(call("import_dataset", project=named, format="kitti", path=str(src)))
+    assert refusal["code"] == "IMPORT_NOT_CONSENTED"
+    assert _state(tmp_path / "ws", named) == (0, 0, 0)
+
+    run = payload(
+        call(
+            "import_dataset",
+            project=named,
+            format="kitti",
+            path=str(src),
+            consent_lossy=plan["loss_kinds"],
+        )
+    )
+    assert (run["created_asset_count"], run["annotations_written"]) == (2, 2)
+    assert _state(tmp_path / "ws", named) == (2, 1, 1)
