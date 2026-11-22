@@ -331,9 +331,9 @@ function dragged(state: Drag, point: Point, context: ScanContext): Cuboid3DGeome
       return at === null ? null : { ...origin, center: add(origin.center, subtract(at, state.grab)) };
     }
     case "resizing": {
-      const { axis } = faceSpec(state.face);
+      const { axis, sign } = faceSpec(state.face);
       const along = closestOnAxis(ray, faceCenter(origin, frame, state.face), cuboidAxes(origin, frame)[axis]);
-      return along === null ? null : resizeCuboidFace(origin, frame, state.face, along - state.start);
+      return along === null ? null : resizeCuboidFace(origin, frame, state.face, sign * (along - state.start));
     }
     case "rotating": {
       const at = rayGroundHit(ray, frame, state.level);
