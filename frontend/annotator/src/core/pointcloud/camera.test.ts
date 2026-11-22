@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Point3D } from "../types";
 import {
   MAX_PITCH,
+  MIN_PITCH,
   eyeOf,
   framingBounds,
   homeCamera,
@@ -141,9 +142,18 @@ describe.each(FRAMES)("the view in %s", (frame) => {
 describe("orbit", () => {
   const camera = homeCamera(BOUNDS);
 
-  it("holds the pitch short of the poles", () => {
+  it("holds the pitch short of the top pole and above the horizon", () => {
     expect(orbit(camera, 0, 10).pitch).toBe(MAX_PITCH);
-    expect(orbit(camera, 0, -10).pitch).toBe(-MAX_PITCH);
+    expect(orbit(camera, 0, -10).pitch).toBe(MIN_PITCH);
+  });
+
+  it.each(FRAMES)("never takes the eye below the target along %s's up", (frame) => {
+    const up = fromForwardLeftUp(frame, [0, 0, 1]);
+    let tilted = camera;
+    for (let step = 0; step < 40; step += 1) tilted = orbit(tilted, 0.1, -0.05);
+    const eye = eyeOf(tilted, frame);
+    const above = [0, 1, 2].reduce((sum, axis) => sum + (eye[axis] - tilted.target[axis]) * up[axis], 0);
+    expect(above).toBeGreaterThanOrEqual(-1e-9);
   });
 
   it("wraps the yaw into (-pi, pi]", () => {

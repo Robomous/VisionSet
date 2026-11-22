@@ -96,6 +96,7 @@ export {
 export {
   FIELD_OF_VIEW,
   MAX_PITCH,
+  MIN_PITCH,
   eyeOf,
   framingBounds,
   homeCamera,

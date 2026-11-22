@@ -21,6 +21,8 @@ export interface OrbitCamera {
 
 export const FIELD_OF_VIEW = Math.PI / 4;
 export const MAX_PITCH = (89 * Math.PI) / 180;
+/** The eye never drops below the target along the declared up, so the scan is not seen from underneath. */
+export const MIN_PITCH = 0;
 export const HOME_PITCH = (35 * Math.PI) / 180;
 const MIN_DISTANCE_RATIO = 0.01;
 const MAX_DISTANCE_RATIO = 20;
@@ -65,7 +67,7 @@ export function orbit(camera: OrbitCamera, deltaYaw: number, deltaPitch: number)
   return {
     ...camera,
     yaw: wrapAngle(camera.yaw + deltaYaw),
-    pitch: Math.min(MAX_PITCH, Math.max(-MAX_PITCH, camera.pitch + deltaPitch)),
+    pitch: Math.min(MAX_PITCH, Math.max(MIN_PITCH, camera.pitch + deltaPitch)),
   };
 }
 
