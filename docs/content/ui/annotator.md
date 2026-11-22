@@ -53,8 +53,10 @@ advancing — and neither ever collapses into the overflow.
   advance to offer, and `›` is what moves there.
 - **On the last frame `Finish job` takes the dominant slot**, in place: `Save and next` is
   not rendered there, and Finish job is not rendered anywhere else. Where it renders and
-  cannot be pressed, it carries why. The consequence is worth stating: `complete` is
-  reachable from the last frame only.
+  cannot be pressed inside an open batch, it carries why (`aria-disabled` and a tooltip).
+  On a read-only page whose batch is not open, it is natively `disabled`: the banner is
+  the explanation, so there is no reason left to make it focusable for. The consequence
+  is worth stating: `complete` is reachable from the last frame only.
 - **The review move is an outline control**, chosen from the frame's own `allowed_actions`:
   `submit_for_review`, else `accept` — mutually exclusive by construction. `complete` is
   deliberately not ranked against them: it is the *job's* action, and it co-declares with

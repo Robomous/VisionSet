@@ -1943,6 +1943,8 @@ function Workspace({
             ? "1 frame unresolved — annotate or skip it to finish the job."
             : `${unresolved} frames unresolved — annotate or skip them to finish the job.`));
 
+  const finishInert = jobState === "completed" || withheld !== null;
+
   /**
    * Whether pressing the flow verb will actually store anything.
    *
@@ -2325,8 +2327,9 @@ function Workspace({
                 never opens and the reason cannot be read (principles 4 and 9).
                 `aria-disabled` keeps the hover and the focus, and the press is
                 refused in the handler. Native `disabled` survives only where
-                there is nothing to explain — a `Finished` job, whose label is
-                the explanation, and the in-flight press.
+                there is nothing for it to explain — a `Finished` job, whose label
+                is the explanation, a closed batch, whose banner already says why
+                the page is read-only, and the in-flight press.
               */
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -2334,12 +2337,14 @@ function Workspace({
                     variant="default"
                     size="sm"
                     className={
-                      finishWithheld === null ? "min-w-36" : "min-w-36 cursor-not-allowed opacity-40"
+                      finishWithheld === null || finishInert
+                        ? "min-w-36"
+                        : "min-w-36 cursor-not-allowed opacity-40"
                     }
                     data-testid="finish-job"
                     data-withheld={finishWithheld === null ? "false" : "true"}
-                    disabled={jobState === "completed" || finishJob.isPending}
-                    aria-disabled={finishWithheld !== null || undefined}
+                    disabled={finishInert || finishJob.isPending}
+                    aria-disabled={(!finishInert && finishWithheld !== null) || undefined}
                     onClick={() => {
                       if (finishWithheld !== null || finishJob.isPending) return;
                       // **Said out loud**, because the rest of what this press
@@ -2366,7 +2371,7 @@ function Workspace({
                 {/* Only while withheld: an enabled Finish job explains itself by
                     being pressable, and a tooltip repeating the label would be
                     noise over the one control the frame exists to end on. */}
-                {finishWithheld !== null && (
+                {finishWithheld !== null && !finishInert && (
                   <TooltipContent side="bottom" data-testid="finish-withheld">
                     {finishWithheld}
                   </TooltipContent>

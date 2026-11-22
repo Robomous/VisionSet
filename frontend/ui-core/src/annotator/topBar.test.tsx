@@ -557,6 +557,17 @@ describe("the flow verb", () => {
     expect(sent.some((request) => request.path.endsWith("/complete"))).toBe(false);
   });
 
+  it("is natively disabled on a closed batch, where the banner already says why (#1063)", async () => {
+    assetCount = 1;
+    closedBatch = true;
+    await open();
+
+    const finish = screen.getByTestId("finish-job") as HTMLButtonElement;
+    expect(finish.disabled).toBe(true);
+    expect(finish.getAttribute("aria-disabled")).toBeNull();
+    expect(screen.getByTestId("readonly-banner").textContent).toContain("Viewing only");
+  });
+
   it("names the blocker with its count, from the same progress the readout shows (#427)", async () => {
     assetCount = 1;
     jobSettled = false;

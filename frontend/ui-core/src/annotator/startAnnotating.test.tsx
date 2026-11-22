@@ -202,6 +202,7 @@ describe.each<Modality>(["image", "point_cloud"])("an approved batch's %s", (kin
     expect(banner.textContent).toContain("has not been started yet");
     expect(screen.getByTestId("banner-start-batch").textContent).toBe("Start annotating");
     expect(screen.queryByTestId("skip")).toBeNull();
+    expect((screen.getByTestId("finish-job") as HTMLButtonElement).disabled).toBe(true);
     if (kind === "point_cloud") expect(banner.textContent).not.toMatch(/image|frame/i);
   });
 
@@ -215,6 +216,9 @@ describe.each<Modality>(["image", "point_cloud"])("an approved batch's %s", (kin
     await waitFor(() => expect(screen.queryByTestId("readonly-banner")).toBeNull());
     expect(screen.queryByTestId("banner-start-batch")).toBeNull();
     expect((screen.getByTestId("skip") as HTMLButtonElement).disabled).toBe(false);
+    const finish = screen.getByTestId("finish-job") as HTMLButtonElement;
+    expect(finish.disabled).toBe(false);
+    expect(finish.getAttribute("aria-disabled")).toBe("true");
     if (kind === "image") expect(screen.getByTestId("class-row-vehicle-name")).toBeDefined();
     expect(screen.queryByTestId("opening-refusal")).toBeNull();
   });
