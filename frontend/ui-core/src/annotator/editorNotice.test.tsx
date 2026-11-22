@@ -41,7 +41,7 @@ const SCHEMA = {
   classes: [{ name: "vehicle", geometries: ["bbox"], color: "#3355ff", attributes: [] }],
 };
 
-/** The batch's state, which decides whether the page tries to open it. */
+/** The batch's state, which decides whether the page offers to start it. */
 let batchState: "approved" | "in_annotation" = "in_annotation";
 /** The code every write is refused with, or `null` for a wire that accepts. */
 let refuseWith: string | null = null;
@@ -101,7 +101,7 @@ function answer(path: string): unknown {
           ingested_at: null,
           job_id: JOB,
           progress: "unannotated",
-          allowed_actions: assetActions("unannotated", { batchState: "in_annotation" }),
+          allowed_actions: assetActions("unannotated", { batchState }),
           annotation_count: 0,
           min_confidence: null,
         },
@@ -192,11 +192,12 @@ describe("the notice column", () => {
   });
 
   it("is where a refused opening lands, not a badge in the top bar", async () => {
-    // An `approved` batch declares `start`, so the page sends one — and a
-    // refusal that is not `INVALID_TRANSITION` is a real one and is surfaced.
+    // A refusal of `Start annotating` that is not `INVALID_TRANSITION` is a real
+    // one and is surfaced.
     batchState = "approved";
     refuseWith = "BATCH_NOT_IN_ANNOTATION";
     await open();
+    await userEvent.click(await screen.findByTestId("banner-start-batch"));
 
     const said = await screen.findByTestId("opening-refusal");
     expect(screen.getByTestId("editor-notices").contains(said)).toBe(true);
