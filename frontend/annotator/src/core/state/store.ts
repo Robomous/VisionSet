@@ -53,13 +53,13 @@ import { EMPTY_SELECTION } from "./selection";
 import type { Selection } from "./selection";
 
 /** Everything a renderer reads, in one value with one identity. */
-export interface StoreSnapshot {
+export interface StoreSnapshot<D = AnnotationDocument> {
   /** The committed document. What a save would send. */
-  readonly document: AnnotationDocument;
+  readonly document: D;
   /** The drag in flight, or `null`. Never in the history. */
-  readonly preview: AnnotationDocument | null;
+  readonly preview: D | null;
   /** `preview ?? document` — what a canvas paints. */
-  readonly rendered: AnnotationDocument;
+  readonly rendered: D;
   /** The picked ids. Beside the document, never in the history. */
   readonly selection: Selection;
   /**
@@ -82,26 +82,29 @@ export interface VertexRef {
 }
 
 /** A transient view of the committed document — what a drag renders as. */
-export type Projection = (document: AnnotationDocument) => AnnotationDocument;
+export type Projection<D = AnnotationDocument> = (document: D) => D;
 
-/** The engine's state container. One per open asset. */
-export class AnnotatorStore {
-  private readonly log: CommandLog;
+/**
+ * The engine's state container. One per open asset. Generic over the document
+ * like `CommandLog`, so the scan editor stages and commits through it unchanged.
+ */
+export class AnnotatorStore<D = AnnotationDocument> {
+  private readonly log: CommandLog<D>;
   private readonly listeners = new Set<() => void>();
-  private staged: AnnotationDocument | null = null;
+  private staged: D | null = null;
   private picked: Selection;
   private highlighted: VertexRef | null = null;
-  private snapshot: StoreSnapshot | null = null;
+  private snapshot: StoreSnapshot<D> | null = null;
 
-  constructor(document: AnnotationDocument, selection: Selection = EMPTY_SELECTION) {
-    this.log = new CommandLog(document);
+  constructor(document: D, selection: Selection = EMPTY_SELECTION) {
+    this.log = new CommandLog<D>(document);
     this.picked = selection;
   }
 
   /**
    * Everything, in one value. Stable while nothing changes — see the note above.
    */
-  getSnapshot(): StoreSnapshot {
+  getSnapshot(): StoreSnapshot<D> {
     if (this.snapshot === null) {
       const document = this.log.document;
       this.snapshot = {
@@ -120,17 +123,17 @@ export class AnnotatorStore {
   }
 
   /** The committed document. */
-  get document(): AnnotationDocument {
+  get document(): D {
     return this.getSnapshot().document;
   }
 
   /** What a canvas paints: the drag in flight if there is one, else the document. */
-  get rendered(): AnnotationDocument {
+  get rendered(): D {
     return this.getSnapshot().rendered;
   }
 
   /** The drag in flight, or `null`. */
-  get preview(): AnnotationDocument | null {
+  get preview(): D | null {
     return this.getSnapshot().preview;
   }
 
@@ -168,7 +171,7 @@ export class AnnotatorStore {
    * Subscribers hear nothing when a command changed nothing and there was no
    * drag to drop — the same rule that keeps such a command out of the history.
    */
-  execute(command: Command): void {
+  execute(command: Command<D>): void {
     const had = this.staged !== null;
     this.staged = null;
     const before = this.log.document;
@@ -215,7 +218,7 @@ export class AnnotatorStore {
    * `project` receives the committed document every time, not the previous
    * preview. Calling it again replaces the preview; it never stacks.
    */
-  stage(project: Projection): void {
+  stage(project: Projection<D>): void {
     const next = project(this.log.document);
     if (next === this.staged) return;
     this.staged = next;
@@ -237,7 +240,7 @@ export class AnnotatorStore {
     // The projection already ran, against this very document. The command is
     // the answer it produced — and since `apply` is called exactly once, a
     // constant function is an honest command rather than a shortcut.
-    const after = this.log.execute(documentCommand(label, () => staged));
+    const after = this.log.execute(documentCommand<D>(label, () => staged));
     this.changed();
     return after !== before;
   }

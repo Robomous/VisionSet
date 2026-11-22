@@ -8,7 +8,14 @@
  * asked for, and an under-eager one loses work.
  */
 
-import { AnnotatorStore, addAnnotationCommand, documentFromWire } from "@visionset/annotator";
+import {
+  AnnotatorStore,
+  addAnnotationCommand,
+  documentFromWire,
+  replaceScanAnnotation,
+  scanDocumentFromWire,
+  type ScanDocument,
+} from "@visionset/annotator";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -16,6 +23,7 @@ import {
   assetPositionOf,
   isEmptyPlan,
   planSave,
+  planScanSave,
   type WireAnnotation,
 } from "./jobQueries";
 
@@ -168,6 +176,111 @@ describe("planSave", () => {
     expect(plan.updated.map((one) => one.id)).toEqual(["a"]);
     expect(plan.created.map((one) => one.id)).toEqual(["local-1"]);
     expect(plan.deleted).toEqual(["b"]);
+  });
+});
+
+function loadedCuboid(id: string, geometry: Record<string, unknown> = {}): WireAnnotation {
+  return {
+    ...loaded(id, "car"),
+    asset_id: "scan-1",
+    geometry: { type: "cuboid_3d", center: [10, 0, 0.8], size: [4.2, 1.8, 1.5], yaw: 0.25, ...geometry },
+    provenance: "import",
+  };
+}
+
+const SCAN_SCHEMA = {
+  ...SCHEMA,
+  classes: [
+    { name: "car", geometries: ["cuboid_3d"], color: null, attributes: [] },
+    { name: "weather", geometries: ["classification_tag"], color: null, attributes: [] },
+  ],
+};
+
+function scanStoreOf(annotations: readonly WireAnnotation[]): AnnotatorStore<ScanDocument> {
+  return new AnnotatorStore<ScanDocument>(
+    scanDocumentFromWire({
+      asset: { id: "scan-1", width: null, height: null, modality: "point_cloud" },
+      schema: SCAN_SCHEMA,
+      annotations,
+    }),
+  );
+}
+
+describe("planScanSave", () => {
+  const path: WireAnnotation = {
+    ...loadedCuboid("path"),
+    geometry: { type: "polyline_3d", points: [[0, 0, 0], [1, 1, 1]] },
+  };
+  const tag: WireAnnotation = { ...loaded("tag", "weather"), asset_id: "scan-1", geometry: { type: "classification_tag" } };
+
+  it("plans nothing for a scan nobody touched, and never deletes what it carries past", () => {
+    const server = [loadedCuboid("a"), path, tag, loadedCuboid("b", { yaw: -Math.PI })];
+    expect(isEmptyPlan(planScanSave(scanStoreOf(server).document, server))).toBe(true);
+  });
+
+  it("an edited import is an update that keeps its provenance", () => {
+    const server = [loadedCuboid("a")];
+    const store = scanStoreOf(server);
+    const box = store.document.annotations.get("a")!;
+    store.execute({
+      label: "move car",
+      apply: (d) => replaceScanAnnotation(d, { ...box, geometry: { ...box.geometry, center: [11, 0, 0.8] } }),
+    });
+    const plan = planScanSave(store.document, server);
+    expect(plan.created).toEqual([]);
+    expect(plan.deleted).toEqual([]);
+    expect(plan.updated.map((one) => [one.id, one.provenance, one.geometry.center])).toEqual([
+      ["a", "import", [11, 0, 0.8]],
+    ]);
+  });
+
+  it("wraps a yaw outside [-π, π] before it compares or sends", () => {
+    const server = [loadedCuboid("a", { yaw: 3 })];
+    const store = scanStoreOf(server);
+    const box = store.document.annotations.get("a")!;
+    store.execute({
+      label: "turn",
+      apply: (d) => replaceScanAnnotation(d, { ...box, geometry: { ...box.geometry, yaw: 3 + 2 * Math.PI } }),
+    });
+    expect(isEmptyPlan(planScanSave(store.document, server))).toBe(true);
+
+    store.execute({
+      label: "turn more",
+      apply: (d) => replaceScanAnnotation(d, { ...box, geometry: { ...box.geometry, yaw: 3.5 } }),
+    });
+    const [sent] = planScanSave(store.document, server).updated;
+    expect(sent.geometry.yaw).toBeCloseTo(3.5 - 2 * Math.PI, 12);
+  });
+
+  it("a drawn box is a create and a removed one a delete", () => {
+    const server = [loadedCuboid("a"), loadedCuboid("b")];
+    const store = scanStoreOf(server);
+    const kept = store.document.annotations.get("a")!;
+    store.execute({
+      label: "session",
+      apply: (d) => ({
+        ...d,
+        annotations: new Map([
+          ["a", kept],
+          ["local-1", { ...kept, id: "local-1", provenance: "human" as const }],
+        ]),
+      }),
+    });
+    const plan = planScanSave(store.document, server);
+    expect(plan.created.map((one) => one.id)).toEqual(["local-1"]);
+    expect(plan.deleted).toEqual(["b"]);
+    expect(plan.updated).toEqual([]);
+  });
+
+  it("is disjoint from the image plan over the same scan, so a page may send both", () => {
+    const server = [loadedCuboid("a"), tag, path];
+    const scanPlan = planScanSave(scanStoreOf([]).document, server);
+    const imagePlan = planSave(
+      documentFromWire({ asset: { id: "scan-1", width: null, height: null, modality: "point_cloud" }, schema: SCAN_SCHEMA, annotations: [] }),
+      server,
+    );
+    expect(scanPlan.deleted).toEqual(["a"]);
+    expect(imagePlan.deleted).toEqual(["tag"]);
   });
 });
 

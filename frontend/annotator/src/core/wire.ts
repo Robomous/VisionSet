@@ -84,6 +84,7 @@ import {
   type Point3D,
   type Polyline3DGeometry,
   type Provenance,
+  type ScanAnnotation,
   type StoredAnnotation,
   type StoredGeometry,
   type VertexVisibility,
@@ -336,15 +337,15 @@ function requireAttributes(
  * A `type` this build cannot carry is told apart from a `type` that is not a
  * geometry at all, because the remedies differ: the first waits for a variant to
  * be implemented, the second is a bug in the caller. A 3D label (`polyline_3d`,
- * `cuboid_3d`) is carried but never edited, so it is refused here and parsed by
- * `parseStoredGeometry`.
+ * `cuboid_3d`) never enters the image scene, so it is refused here and parsed by
+ * `parseStoredGeometry`; a scan's cuboids reach the scan editor that way.
  */
 export function parseGeometry(value: unknown): Geometry {
   const geometry = parseStoredGeometry(value);
   if (geometry.type === "polyline_3d" || geometry.type === "cuboid_3d") {
     throw new WireFormatError(
-      `geometry.type "${geometry.type}" is carried and not editable — it has no pixel ` +
-        `coordinates of its own, and only projectLabels3D draws it, read-only`,
+      `geometry.type "${geometry.type}" has no pixel coordinates of its own — on an image ` +
+        `only projectLabels3D draws it, read-only, and a scan edits it in a ScanDocument`,
     );
   }
   return geometry;
@@ -724,7 +725,7 @@ function parseDistortion(value: unknown): Calibration["distortion"] {
  * never observe is a lie, so neither travels, which is exactly what makes
  * inventing a local id safe.
  */
-export function toAnnotationCreate(annotation: Annotation): AnnotationCreate {
+export function toAnnotationCreate(annotation: Annotation | ScanAnnotation): AnnotationCreate {
   return {
     asset_id: annotation.asset_id,
     label_class: annotation.label_class,
@@ -742,7 +743,7 @@ export function toAnnotationCreate(annotation: Annotation): AnnotationCreate {
  * No `asset_id` — the stored one wins, so moving a label to another asset is a
  * delete and an add. No `schema_version` either, for `toAnnotationCreate`'s reason.
  */
-export function toAnnotationUpdate(annotation: Annotation): AnnotationUpdate {
+export function toAnnotationUpdate(annotation: Annotation | ScanAnnotation): AnnotationUpdate {
   return {
     id: annotation.id,
     label_class: annotation.label_class,

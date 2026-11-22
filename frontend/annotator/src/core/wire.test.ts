@@ -20,6 +20,7 @@ import {
   GEOMETRY_TYPES,
   IMPLEMENTED_GEOMETRY_TYPES,
   isDrawnAnnotation,
+  isScanAnnotation,
   type Annotation,
 } from "./types";
 import {
@@ -147,7 +148,7 @@ describe("the divergences this file exists to keep closed", () => {
   );
 });
 
-describe("a 3D polyline, carried read-only outside the scene", () => {
+describe("a 3D polyline, carried outside the image scene", () => {
   const PATH = { type: "polyline_3d", points: [[-1.5, 1.2, 8], [-1.4, 1.2, 20]] };
 
   it("parses as a stored geometry and goes back out byte for byte", () => {
@@ -158,7 +159,7 @@ describe("a 3D polyline, carried read-only outside the scene", () => {
   });
 
   it("is refused by the scene's own parser, which draws pixels", () => {
-    expect(() => parseGeometry(PATH)).toThrow(/carried and not editable/);
+    expect(() => parseGeometry(PATH)).toThrow(/no pixel coordinates of its own/);
   });
 
   it("refuses a 2D point, a wrong visibility length and an undeclared key", () => {
@@ -178,7 +179,7 @@ describe("a 3D polyline, carried read-only outside the scene", () => {
   });
 });
 
-describe("a 3D cuboid, carried read-only outside the scene", () => {
+describe("a 3D cuboid, carried outside the image scene", () => {
   const BOX = { type: "cuboid_3d", center: [-2.5, 0.75, 12], size: [4.5, 1.9, 1.6], yaw: 1.2 };
 
   it("parses as a stored geometry and goes back out byte for byte", () => {
@@ -186,7 +187,7 @@ describe("a 3D cuboid, carried read-only outside the scene", () => {
   });
 
   it("is refused by the scene's own parser, which draws pixels", () => {
-    expect(() => parseGeometry(BOX)).toThrow(/"cuboid_3d" is carried and not editable/);
+    expect(() => parseGeometry(BOX)).toThrow(/"cuboid_3d" has no pixel coordinates of its own/);
   });
 
   it("refuses a 2D centre, a missing yaw and an undeclared visibility", () => {
@@ -590,6 +591,16 @@ describe("what leaves for the API", () => {
       expect(toAnnotationCreate(annotation).geometry).toEqual(annotation.geometry);
       expect(toAnnotationUpdate(annotation).geometry).toEqual(annotation.geometry);
     }
+  });
+
+  it("sends a scan's cuboid with its stored provenance, as the scan editor holds it", () => {
+    const [cuboid] = parseAnnotations(fixture.annotations).filter(isScanAnnotation);
+    expect(cuboid.geometry.type).toBe("cuboid_3d");
+    const update = toAnnotationUpdate(cuboid);
+    expect(Object.keys(update).sort()).toEqual([...ANNOTATION_UPDATE_KEYS].sort());
+    expect(update.geometry).toEqual(cuboid.geometry);
+    expect(update.provenance).toBe(cuboid.provenance);
+    expect(Object.keys(toAnnotationCreate(cuboid)).sort()).toEqual([...ANNOTATION_CREATE_KEYS].sort());
   });
 });
 

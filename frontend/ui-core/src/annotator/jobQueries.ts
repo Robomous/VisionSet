@@ -38,8 +38,11 @@ import {
   isDrawnGeometryType,
   toAnnotationCreate,
   toAnnotationUpdate,
+  wrapYaw,
   type Annotation,
   type AnnotationDocument,
+  type ScanAnnotation,
+  type ScanDocument,
 } from "@visionset/annotator";
 import {
   useMutation,
@@ -293,14 +296,18 @@ export function useAssetCalibration(
   });
 }
 
-/** What a save has to do, worked out before anything is sent. */
-export interface SavePlan {
-  readonly created: readonly Annotation[];
-  readonly updated: readonly Annotation[];
+/**
+ * What a save has to do, worked out before anything is sent. The image
+ * editor's plan holds `Annotation`s and the scan editor's `ScanAnnotation`s;
+ * both travel through the same three calls.
+ */
+export interface SavePlan<A extends Annotation | ScanAnnotation = Annotation> {
+  readonly created: readonly A[];
+  readonly updated: readonly A[];
   readonly deleted: readonly string[];
 }
 
-export function isEmptyPlan(plan: SavePlan): boolean {
+export function isEmptyPlan(plan: SavePlan<Annotation | ScanAnnotation>): boolean {
   return plan.created.length === 0 && plan.updated.length === 0 && plan.deleted.length === 0;
 }
 
@@ -342,8 +349,53 @@ export function planSave(
   return { created, updated, deleted };
 }
 
+/**
+ * The scan editor's document against what was loaded: `planSave`'s rules over
+ * cuboids. Every other label on the scan — a `polyline_3d`, a whole-scan tag —
+ * is the image document's or nobody's, so it is left out and never reads as a
+ * delete; the two plans are disjoint and a page may send both.
+ *
+ * A yaw outside `[-π, π]` is wrapped before it is compared or sent, because the
+ * kernel refuses rather than wraps one. Provenance travels as stored, so an
+ * imported box that was nudged stays `import`.
+ */
+export function planScanSave(
+  document: ScanDocument,
+  loaded: readonly WireAnnotation[],
+): SavePlan<ScanAnnotation> {
+  const before = new Map(
+    loaded.filter((one) => geometryType(one.geometry) === "cuboid_3d").map((one) => [one.id, one]),
+  );
+  const created: ScanAnnotation[] = [];
+  const updated: ScanAnnotation[] = [];
+
+  for (const stored of document.annotations.values()) {
+    const annotation = withKernelYaw(stored);
+    const original = before.get(annotation.id);
+    if (original === undefined) {
+      created.push(annotation);
+      continue;
+    }
+    if (JSON.stringify(toAnnotationUpdate(annotation)) !== JSON.stringify(projected(original))) {
+      updated.push(annotation);
+    }
+  }
+
+  const deleted = [...before.keys()].filter((id) => !document.annotations.has(id));
+  return { created, updated, deleted };
+}
+
+function withKernelYaw(annotation: ScanAnnotation): ScanAnnotation {
+  const yaw = wrapYaw(annotation.geometry.yaw);
+  return yaw === annotation.geometry.yaw ? annotation : { ...annotation, geometry: { ...annotation.geometry, yaw } };
+}
+
+function geometryType(geometry: unknown): unknown {
+  return (geometry as { readonly type?: unknown } | null)?.type;
+}
+
 function carriedPast(geometry: unknown): boolean {
-  const type = (geometry as { readonly type?: unknown } | null)?.type;
+  const type = geometryType(geometry);
   return typeof type === "string" && !isDrawnGeometryType(type);
 }
 
@@ -374,7 +426,7 @@ export function useSaveAnnotations(jobId: string, assetId: string | undefined) {
   const queries = useQueryClient();
 
   return useMutation({
-    mutationFn: async (plan: SavePlan) => {
+    mutationFn: async (plan: SavePlan<Annotation | ScanAnnotation>) => {
       if (plan.deleted.length > 0) {
         unwrap(
           await client.DELETE("/jobs/{job_id}/annotations", {

@@ -54,31 +54,35 @@ import type { AnnotationDocument } from "./document";
  * mutates nothing — but it is free to close over anything else, because the log
  * calls it once and remembers the answer.
  */
-export interface Command {
+export interface Command<D = AnnotationDocument> {
   /** Human-readable, for a menu item and for a test. E.g. `"move sign"`. */
   readonly label: string;
-  apply(document: AnnotationDocument): AnnotationDocument;
+  apply(document: D): D;
 }
 
-interface LogEntry {
+interface LogEntry<D> {
   readonly label: string;
-  readonly before: AnnotationDocument;
-  readonly after: AnnotationDocument;
+  readonly before: D;
+  readonly after: D;
 }
 
-/** The document history, and the current document with it. */
-export class CommandLog {
-  private readonly entries: LogEntry[] = [];
+/**
+ * The document history, and the current document with it. Generic over the
+ * document because nothing here reads one: the scan editor's `ScanDocument`
+ * shares it with the image document.
+ */
+export class CommandLog<D = AnnotationDocument> {
+  private readonly entries: LogEntry<D>[] = [];
   /** How many entries are applied. Everything past it is the redo tail. */
   private cursor = 0;
-  private current: AnnotationDocument;
+  private current: D;
 
-  constructor(document: AnnotationDocument) {
+  constructor(document: D) {
     this.current = document;
   }
 
   /** The document as of the cursor. */
-  get document(): AnnotationDocument {
+  get document(): D {
     return this.current;
   }
 
@@ -121,7 +125,7 @@ export class CommandLog {
    * If `apply` throws, neither the document nor the log has moved: the tail is
    * truncated only after it has returned.
    */
-  execute(command: Command): AnnotationDocument {
+  execute(command: Command<D>): D {
     const before = this.current;
     const after = command.apply(before);
     if (after === before) {

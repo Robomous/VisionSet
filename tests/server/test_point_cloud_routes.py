@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import struct
 from collections.abc import Iterator
+from math import pi
 from pathlib import Path
 from typing import Any, Final
 from uuid import UUID
@@ -258,6 +259,55 @@ def test_a_cuboid_lands_on_a_scan_and_a_box_does_not(
             "with every label on them",
         }
     ]
+
+
+def test_an_imported_cuboid_on_a_scan_is_edited_in_place_and_stays_an_import(
+    client: TestClient, scans: dict[str, Any]
+) -> None:
+    job_id = _open(client, scans["batch"])
+    scan = scans["assets"][0]
+    written = client.post(
+        f"/jobs/{job_id}/annotations",
+        json=[
+            {
+                "asset_id": scan,
+                "label_class": "car_3d",
+                "geometry": CAR,
+                "attributes": {},
+                "provenance": "import",
+            }
+        ],
+    )
+    assert written.status_code == 201, written.text
+    stored_id = written.json()["items"][0]["id"]
+    moved = {**CAR, "center": [12.5, -1.0, 0.8], "size": [4.4, 1.9, 1.6], "yaw": -pi}
+
+    def update(geometry: dict[str, Any], provenance: str = "import") -> Any:
+        return client.patch(
+            f"/jobs/{job_id}/annotations",
+            json=[
+                {
+                    "id": stored_id,
+                    "label_class": "car_3d",
+                    "geometry": geometry,
+                    "attributes": {},
+                    "provenance": provenance,
+                }
+            ],
+        )
+
+    edited = update(moved)
+    over_a_turn = update({**moved, "yaw": pi + 0.25})
+    relabelled_human = update(moved, provenance="human")
+
+    assert edited.status_code == 200, edited.text
+    assert over_a_turn.status_code == 422, over_a_turn.text
+    assert relabelled_human.status_code == 422, relabelled_human.text
+    assert relabelled_human.json()["code"] == "INVALID_ANNOTATION"
+    (read_back,) = client.get(f"/jobs/{job_id}/assets/{scan}/annotations").json()["items"]
+    assert read_back["id"] == stored_id
+    assert read_back["geometry"] == moved
+    assert read_back["provenance"] == "import"
 
 
 def test_another_frame_is_409_once_a_scan_holds_a_3d_label(

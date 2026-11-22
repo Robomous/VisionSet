@@ -29,11 +29,13 @@
  * the annotation, by the kernel (`UNSUPPORTED_GEOMETRY`) and by `parseGeometry`
  * here. See `docs/content/schemas.md`.
  *
- * Two more variants, `polyline_3d` and `cuboid_3d`, are carried and never
- * edited: `StoredGeometry` admits them, `parseAnnotation` parses them, and
- * `documentFromWire` leaves them out of the scene, so a job holding one loads,
- * and its 3D labels are never sent back changed or deleted. A host may draw
- * them read-only through `projectLabels3D`, against the asset's calibration.
+ * Two more variants, `polyline_3d` and `cuboid_3d`, never enter that scene:
+ * `StoredGeometry` admits them, `parseAnnotation` parses them, and
+ * `documentFromWire` leaves them out, so a job holding one loads and the image
+ * editor never sends them back changed or deleted. On an image a host draws them
+ * read-only through `projectLabels3D`, against the asset's calibration. On a
+ * scan a `cuboid_3d` is a `ScanAnnotation`, edited by the sibling engine under
+ * `pointcloud/edit/` in a document of its own.
  *
  * A locally drawn annotation carries identity even though `AnnotationCreate` has
  * no `id` field: it mints a client-side uuid v4 into the ordinary `id`, and
@@ -164,9 +166,9 @@ export interface ClassificationGeometry {
 export type Point3D = readonly [number, number, number];
 
 /**
- * An open 3D path in the sensor frame. Carried, never edited: it has no pixel
- * coordinates without its asset's calibration, and `projectLabels3D` is the only
- * way it reaches the canvas — as a read-only overlay outside the document.
+ * An open 3D path in the sensor frame. Carried, never edited: on an image it
+ * reaches the canvas only through `projectLabels3D`, as a read-only overlay, and
+ * on a scan only through `scanLabels`.
  */
 export interface Polyline3DGeometry {
   readonly type: "polyline_3d";
@@ -177,8 +179,9 @@ export interface Polyline3DGeometry {
 /**
  * A box in the sensor frame, in metres: its centre, `[length, width, height]`,
  * and a yaw in radians about the sensor's +y (down) axis within `[-π, π]`. The
- * heading — the `length` axis — is `(cos yaw, 0, −sin yaw)`. Carried, never
- * edited, and drawn only through `projectLabels3D`, as `polyline_3d` is.
+ * heading — the `length` axis — is `(cos yaw, 0, −sin yaw)`. On a scan the yaw
+ * is about the declared frame's up axis instead (see `scanCuboidCorners`), and
+ * there, and only there, it is edited, as a `ScanAnnotation`.
  */
 export interface Cuboid3DGeometry {
   readonly type: "cuboid_3d";
@@ -241,6 +244,16 @@ export function isDrawnAnnotation(annotation: StoredAnnotation): annotation is A
   return isDrawnGeometryType(annotation.geometry.type);
 }
 
+/** A stored annotation the scan editor holds: a cuboid in the scan's declared frame. */
+export type ScanAnnotation = Omit<Annotation, "geometry"> & {
+  readonly geometry: Cuboid3DGeometry;
+};
+
+/** Whether the scan editor holds this annotation; everything else on a scan is carried past it. */
+export function isScanAnnotation(annotation: StoredAnnotation): annotation is ScanAnnotation {
+  return annotation.geometry.type === "cuboid_3d";
+}
+
 /** One stored annotation, in the asset's own pixel frame. Mirrors `AnnotationOut`. */
 export interface Annotation {
   readonly id: string;
@@ -277,7 +290,7 @@ export interface Annotation {
 export interface AnnotationCreate {
   readonly asset_id: string;
   readonly label_class: string;
-  readonly geometry: Geometry;
+  readonly geometry: Geometry | Cuboid3DGeometry;
   readonly attributes: Readonly<Record<string, AttributeValue>>;
   readonly provenance: Provenance;
   readonly model_ref: string | null;
@@ -293,7 +306,7 @@ export interface AnnotationCreate {
 export interface AnnotationUpdate {
   readonly id: string;
   readonly label_class: string;
-  readonly geometry: Geometry;
+  readonly geometry: Geometry | Cuboid3DGeometry;
   readonly attributes: Readonly<Record<string, AttributeValue>>;
   readonly provenance: Provenance;
   readonly model_ref: string | null;
