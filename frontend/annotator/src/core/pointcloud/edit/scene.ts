@@ -13,6 +13,13 @@ import type { Selection } from "../../state/selection";
 import type { Cuboid3DGeometry, Point, Point3D } from "../../types";
 import type { ScanDocument } from "./scanDocument";
 
+/**
+ * Which view a screen point was read through. The top-down view looks straight
+ * down the up axis, so it offers only the four side faces (top and bottom sit on
+ * the body's centre there) and reads no height.
+ */
+export type ScanViewKind = "perspective" | "top-down";
+
 export interface Scene3D {
   /** The committed document, never the store's `rendered`. */
   readonly document: ScanDocument;
@@ -20,6 +27,16 @@ export interface Scene3D {
   readonly frame: ScanFrame;
   readonly camera: OrbitCamera;
   readonly viewport: ScanViewport;
+  /** Absent means `perspective`. */
+  readonly view?: ScanViewKind;
+}
+
+const ALL_FACES: readonly CuboidFace[] = CUBOID_FACES.map(({ face }) => face);
+export const LEVEL_FACES: readonly CuboidFace[] = ["front", "back", "left", "right"];
+
+/** The faces a view offers handles for. */
+export function handleFaces(view: ScanViewKind = "perspective"): readonly CuboidFace[] {
+  return view === "top-down" ? LEVEL_FACES : ALL_FACES;
 }
 
 /** How near, in screen pixels, a pointer must come to a handle or the ring. */
@@ -50,12 +67,13 @@ export function yawRing(geometry: Cuboid3DGeometry, frame: ScanFrame): YawRing {
   return { center, radius: diagonal / 2 + Math.max(0.3, diagonal * 0.1), level: heightOf(frame, center) };
 }
 
-/** The six face handles, each at its face's centre. */
+/** The face handles, each at its face's centre; all six unless `faces` names fewer. */
 export function faceHandles(
   geometry: Cuboid3DGeometry,
   frame: ScanFrame,
+  faces: readonly CuboidFace[] = ALL_FACES,
 ): readonly { readonly face: CuboidFace; readonly point: Point3D }[] {
-  return CUBOID_FACES.map(({ face }) => ({ face, point: faceCenter(geometry, frame, face) }));
+  return faces.map((face) => ({ face, point: faceCenter(geometry, frame, face) }));
 }
 
 /** The one box whose handles are live: the selection's, when it is exactly one box. */
@@ -78,7 +96,7 @@ export function hitTest3D(
 
   if (target !== null) {
     let nearest: { face: CuboidFace; distance: number } | null = null;
-    for (const handle of faceHandles(target.geometry, frame)) {
+    for (const handle of faceHandles(target.geometry, frame, handleFaces(scene.view))) {
       const onScreen = screenOf(camera, frame, viewport, handle.point);
       if (onScreen === null) continue;
       const distance = Math.hypot(onScreen[0] - point[0], onScreen[1] - point[1]);

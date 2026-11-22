@@ -4,13 +4,19 @@
  * View mode keeps the viewer's own mapping: a primary drag orbits, a middle or
  * right drag (or any shift-drag) pans. Edit mode hands the primary button to the
  * editor, so orbit moves to the right button and pan to the middle one, with
- * shift + right as the pan for a trackpad that has no middle button.
+ * shift + right as the pan for a trackpad that has no middle button. A pinned
+ * view, such as the top-down one, never orbits: the drag that would pans.
  */
 
 export type ScanPointerRole = "edit" | "orbit" | "pan";
 
 /** `button` is `PointerEvent.button`: 0 primary, 1 middle, 2 right. */
-export function scanPointerRole(button: number, shift: boolean, editing: boolean): ScanPointerRole {
+export function scanPointerRole(button: number, shift: boolean, editing: boolean, pinned = false): ScanPointerRole {
+  const role = freeRole(button, shift, editing);
+  return pinned && role === "orbit" ? "pan" : role;
+}
+
+function freeRole(button: number, shift: boolean, editing: boolean): ScanPointerRole {
   if (button === 1) return "pan";
   if (!editing) return button === 2 || shift ? "pan" : "orbit";
   if (button === 0) return "edit";

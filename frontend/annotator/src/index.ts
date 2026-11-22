@@ -105,7 +105,11 @@ export {
   pan,
   projectToNdc,
   sceneRadius,
+  orthographic,
+  TOP_DOWN_PITCH,
+  topDownCamera,
   viewBasis,
+  viewHalfHeight,
   viewProjection,
   wrapAngle,
   zoom,
@@ -151,12 +155,15 @@ export {
 } from "./core/pointcloud/edit/scanDocument";
 export {
   DEFAULT_HIT_TOLERANCES_3D,
+  LEVEL_FACES,
   faceHandles,
+  handleFaces,
   handleTarget,
   hitTest3D,
   yawRing,
   type Hit3D,
   type HitTolerances3D,
+  type ScanViewKind,
   type Scene3D,
   type YawRing,
 } from "./core/pointcloud/edit/scene";

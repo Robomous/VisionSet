@@ -7,7 +7,7 @@
  */
 
 import type { Cuboid3DGeometry, Point, Point3D } from "../types";
-import { eyeOf, FIELD_OF_VIEW, viewBasis, type OrbitCamera } from "./camera";
+import { eyeOf, FIELD_OF_VIEW, viewBasis, viewHalfHeight, type OrbitCamera } from "./camera";
 import { cuboidAxes, CUBOID_FACES, type CuboidFace } from "./cuboid";
 import { SCAN_FRAME_AXES, type ScanFrame } from "./frame";
 import { add, dot, normalize, scale, subtract } from "./vector";
@@ -24,6 +24,11 @@ export interface ScanViewport {
 }
 
 const PARALLEL = 1e-9;
+/**
+ * How far behind the view plane an orthographic ray starts, in metres: beyond
+ * any scan, so it meets everything the view draws, above a close eye included.
+ */
+const ORTHOGRAPHIC_STANDOFF = 10_000;
 
 /** A screen point as normalized device coordinates, `y` up. */
 export function screenToNdc([x, y]: Point, viewport: ScanViewport): readonly [number, number] {
@@ -46,8 +51,14 @@ export function ndcRay(
   [x, y]: readonly [number, number],
 ): Ray {
   const { forward, right, up } = viewBasis(camera, frame);
+  const ratio = aspect > 0 ? aspect : 1;
+  if (camera.projection === "orthographic") {
+    const half = viewHalfHeight(camera);
+    const onPlane = add(eyeOf(camera, frame), add(scale(right, x * half * ratio), scale(up, y * half)));
+    return { origin: add(onPlane, scale(forward, -ORTHOGRAPHIC_STANDOFF)), direction: forward };
+  }
   const tangent = Math.tan(FIELD_OF_VIEW / 2);
-  const across = x * tangent * (aspect > 0 ? aspect : 1);
+  const across = x * tangent * ratio;
   const along = y * tangent;
   return {
     origin: eyeOf(camera, frame),
@@ -61,24 +72,29 @@ export function screenRay(camera: OrbitCamera, frame: ScanFrame, viewport: ScanV
 }
 
 /**
- * Where a frame point lands on screen, or `null` behind the eye: the x and y
- * `projectToNdc` gives under `viewProjection`, read in pixels.
+ * Where a frame point lands on screen, or `null` behind a perspective eye: the
+ * x and y `projectToNdc` gives under `viewProjection`, read in pixels.
  */
 export function screenOf(camera: OrbitCamera, frame: ScanFrame, viewport: ScanViewport, point: Point3D): Point | null {
   const { forward, right, up } = viewBasis(camera, frame);
   const offset = subtract(point, eyeOf(camera, frame));
+  const aspect = viewport.width / viewport.height;
+  if (camera.projection === "orthographic") {
+    const half = viewHalfHeight(camera);
+    return ndcToScreen([dot(offset, right) / (half * (aspect > 0 ? aspect : 1)), dot(offset, up) / half], viewport);
+  }
   const depth = dot(offset, forward);
   if (!(depth > 0)) return null;
   const tangent = Math.tan(FIELD_OF_VIEW / 2);
-  const aspect = viewport.width / viewport.height;
   return ndcToScreen(
     [dot(offset, right) / (depth * tangent * (aspect > 0 ? aspect : 1)), dot(offset, up) / (depth * tangent)],
     viewport,
   );
 }
 
-/** How many metres one screen pixel spans at `point`'s depth; `Infinity` behind the eye. */
+/** How many metres one screen pixel spans at `point`'s depth; `Infinity` behind a perspective eye. */
 export function metresPerPixel(camera: OrbitCamera, frame: ScanFrame, viewport: ScanViewport, point: Point3D): number {
+  if (camera.projection === "orthographic") return (2 * viewHalfHeight(camera)) / viewport.height;
   const depth = dot(subtract(point, eyeOf(camera, frame)), viewBasis(camera, frame).forward);
   if (!(depth > 0)) return Infinity;
   return (2 * depth * Math.tan(FIELD_OF_VIEW / 2)) / viewport.height;

@@ -18,6 +18,12 @@ export interface OrbitCamera {
   readonly pitch: number;
   readonly distance: number;
   readonly target: Point3D;
+  /**
+   * Absent means `perspective`. An `orthographic` camera shows at every depth
+   * the span a perspective one at the same distance shows at its target, so
+   * zoom and pan read the same in both.
+   */
+  readonly projection?: "perspective" | "orthographic";
 }
 
 export const FIELD_OF_VIEW = Math.PI / 4;
@@ -74,6 +80,27 @@ export function homeCamera(bounds: PointBounds): OrbitCamera {
       (minimum[2] + maximum[2]) / 2,
     ],
   };
+}
+
+/**
+ * A milliradian short of straight down: `viewBasis` needs the eye off the up
+ * axis to name a screen right, and the orbit's own limit leaves a box's top a
+ * visible few pixels off its footprint when zoomed in.
+ */
+export const TOP_DOWN_PITCH = Math.PI / 2 - 1e-3;
+
+/**
+ * The top-down view's camera: from behind forward, so forward reads up the
+ * screen and left reads left. Orthographic, because a perspective one this
+ * close draws a box's top visibly larger than its footprint.
+ */
+export function topDownCamera(target: Point3D, distance: number): OrbitCamera {
+  return { yaw: Math.PI, pitch: TOP_DOWN_PITCH, distance, target, projection: "orthographic" };
+}
+
+/** Half the view's height at the target, in metres; an orthographic view's at every depth. */
+export function viewHalfHeight(camera: OrbitCamera): number {
+  return camera.distance * Math.tan(FIELD_OF_VIEW / 2);
 }
 
 export function orbit(camera: OrbitCamera, deltaYaw: number, deltaPitch: number): OrbitCamera {
@@ -160,6 +187,17 @@ export function perspective(fov: number, aspect: number, near: number, far: numb
   ]);
 }
 
+export function orthographic(halfWidth: number, halfHeight: number, near: number, far: number): Float32Array {
+  const depth = far - near;
+  // prettier-ignore
+  return new Float32Array([
+    1 / halfWidth, 0, 0, 0,
+    0, 1 / halfHeight, 0, 0,
+    0, 0, -2 / depth, 0,
+    0, 0, -(far + near) / depth, 1,
+  ]);
+}
+
 export function multiply(a: Float32Array, b: Float32Array): Float32Array {
   const out = new Float32Array(16);
   for (let column = 0; column < 4; column += 1) {
@@ -180,8 +218,13 @@ export function viewProjection(
   radius: number,
 ): Float32Array {
   const far = (camera.distance + 2 * radius) * 2;
-  const near = far / 10_000;
-  return multiply(perspective(FIELD_OF_VIEW, aspect > 0 ? aspect : 1, near, far), lookAt(camera, frame));
+  const ratio = aspect > 0 ? aspect : 1;
+  if (camera.projection === "orthographic") {
+    // The near plane sits as far behind the eye as the far one ahead, so nothing above a close eye is cut.
+    const half = viewHalfHeight(camera);
+    return multiply(orthographic(half * ratio, half, -far, far), lookAt(camera, frame));
+  }
+  return multiply(perspective(FIELD_OF_VIEW, ratio, far / 10_000, far), lookAt(camera, frame));
 }
 
 /** Where a frame point lands, in normalized device coordinates; `null` behind the eye. */
