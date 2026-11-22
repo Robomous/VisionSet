@@ -90,6 +90,8 @@ advancing — and neither ever collapses into the overflow.
   is*. The word is on the bar beside the save state because **status is never colour
   alone**, and a tooltip is a place a word goes to not be read. After a refused save the
   honest answer there is `unsaved`, and the reason is a sentence in the notice column.
+  `Saved` claims a save, so it appears only after one on this visit to the frame; a frame
+  that has only been looked at shows the progress word alone.
 
 ## In-editor messages, and waits
 

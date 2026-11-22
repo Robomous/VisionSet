@@ -170,6 +170,8 @@ function assetRow(id: string, hash: string): Record<string, unknown> {
   };
 }
 
+let stored: Record<string, unknown>[] = [];
+
 function answer(path: string): unknown {
   if (path === "/inference/connections") {
     return { items: connections, total: connections.length };
@@ -212,11 +214,13 @@ function answer(path: string): unknown {
   if (path.endsWith("/assets")) {
     return { items: [assetRow(ASSET, "abcdef0"), assetRow(ASSET_TWO, "1234560")], total: 2 };
   }
+  if (path.endsWith("/annotations")) return { items: stored, total: stored.length };
   return { items: [], total: 0 };
 }
 
 beforeEach(() => {
   sent.length = 0;
+  stored = [];
   // The remembered model choice is a preference like any other, and a test
   // that inherited the last one's would pass alone and fail in a suite.
   clearPrefs();
@@ -263,6 +267,14 @@ beforeEach(() => {
           );
         }
         return new Response(JSON.stringify(suggestion), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (path.endsWith("/annotations") && request.method === "POST") {
+        const bodies = JSON.parse(sent[sent.length - 1].body) as Record<string, unknown>[];
+        stored = bodies.map((body) => ({ id: crypto.randomUUID(), schema_version: 1, job_id: JOB, ...body }));
+        return new Response(JSON.stringify({ items: stored, total: stored.length }), {
           status: 200,
           headers: { "content-type": "application/json" },
         });
@@ -832,6 +844,22 @@ describe("acceptance", () => {
     expect(body[0]["confidence"]).toBe(0.9125);
     expect(body[0]["label_class"]).toBe("vehicle");
     expect(body[0]["geometry"]).toEqual({ type: "bbox", x: 12, y: 34, width: 56, height: 78 });
+  });
+});
+
+describe("the save state (#1063)", () => {
+  it("claims Saved only after a save on this visit", async () => {
+    await open();
+    expect(screen.queryByTestId("save-state")).toBeNull();
+
+    await arm();
+    clickCanvas();
+    await screen.findByTestId("suggestion-shape");
+    await userEvent.click(screen.getByTestId("suggest-accept"));
+    expect(screen.getByTestId("save-state").textContent).toBe("unsaved");
+
+    await userEvent.click(screen.getByTestId("save-and-stay"));
+    await waitFor(() => expect(screen.getByTestId("save-state").textContent).toBe("Saved"));
   });
 });
 

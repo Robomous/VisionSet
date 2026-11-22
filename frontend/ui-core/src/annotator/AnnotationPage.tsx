@@ -2114,7 +2114,10 @@ function Workspace({
 
           {/*
             Where the frame is and whether it is stored, as one microtext
-            (decision 5): `● annotated · Saved`.
+            (decision 5): `● annotated · Saved`. The save half is absent until
+            something on this visit is unsaved or has been saved: `Saved` claims
+            a save, and a frame only looked at has had none. `Workspace` is keyed
+            by the asset, so the mutation's success never carries to another frame.
 
             They were two controls a bar apart — a colour-only dot beside the
             navigator and a save badge here — and reading either meant knowing
@@ -2125,8 +2128,12 @@ function Workspace({
           */}
           <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
             <AssetProgressDot progress={asset.progress ?? "unannotated"} />
-            <span aria-hidden="true">·</span>
-            <SaveState dirty={dirty} pending={save.isPending} />
+            {(dirty || save.isPending || save.isSuccess) && (
+              <>
+                <span aria-hidden="true">·</span>
+                <SaveState dirty={dirty} pending={save.isPending} />
+              </>
+            )}
           </span>
         </div>
 
@@ -3387,7 +3394,8 @@ function AssetProgressDot({ progress }: { readonly progress: string }): JSX.Elem
 }
 
 /**
- * `DESIGN.md`'s save-state indicator: saving, saved, or not yet stored.
+ * `DESIGN.md`'s save-state indicator: saving, saved, or not yet stored. Rendered
+ * only once there is something to say; `Saved` follows an actual save.
  *
  * **Three readings, not four.** It used to carry a fourth — the refusal itself,
  * as a destructive badge — and that reading has moved to the stage's notice

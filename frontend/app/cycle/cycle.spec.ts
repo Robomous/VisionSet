@@ -734,7 +734,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.getByTestId("annotator-root").focus();
     await page.keyboard.press("ControlOrMeta+z");
     await expect(page.getByTestId("object-total")).toHaveText("0 objects");
-    await expect(page.getByTestId("save-state")).not.toContainText("Saving");
+    await expect(page.getByTestId("save-state").filter({ hasText: /unsaved|Saving/ })).toHaveCount(0);
 
     // Back to the gallery, because the step after this one starts there. A step
     // that leaves the walk somewhere its successor does not expect fails in the
@@ -1215,7 +1215,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await page.mouse.down();
     await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
     await page.mouse.up();
-    await expect(page.getByTestId("save-state")).toContainText("Saved");
+    await expect(page.getByTestId("save-state")).toHaveCount(0);
 
     // The address bar is the second entry: a cold load of the same job answers
     // the same mode, with nothing inherited from the session above.
