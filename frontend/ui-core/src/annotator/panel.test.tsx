@@ -11,7 +11,13 @@
  * What is here is everything that is markup and commands.
  */
 
-import { AnnotatorStore, documentFromWire, selectOnly } from "@visionset/annotator";
+import {
+  AnnotatorStore,
+  documentFromWire,
+  scanDocumentFromWire,
+  selectOnly,
+  type ScanDocument,
+} from "@visionset/annotator";
 import { act, render, screen, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -125,6 +131,45 @@ describe("a scan's 3D labels (#1061)", () => {
 
     await userEvent.type(screen.getByTestId("object-filter"), "lane");
     expect(screen.getByTestId("objects-empty").textContent).toBe("No object matches that filter.");
+  });
+  function scanStoreOf(): AnnotatorStore<ScanDocument> {
+    return new AnnotatorStore<ScanDocument>(
+      scanDocumentFromWire({
+        asset: { id: "asset-1", width: null, height: null, modality: "point_cloud" },
+        schema: SCHEMA,
+        annotations: [cuboid],
+      }),
+    );
+  }
+
+  it("lists the scan editor's cuboids, selects one from its row, and deletes it", async () => {
+    const scan = scanStoreOf();
+    const onRemove = vi.fn();
+    render(mount(storeWith([]), { scan: { store: scan, onRemove } }));
+    expect(screen.getByTestId("object-count").textContent).toBe("1 object");
+    expect(screen.getByTestId("object-row-0").textContent).toContain("1. vehicle");
+
+    await userEvent.click(screen.getByTestId("object-select-0"));
+    expect([...scan.selection]).toEqual(["c1"]);
+    expect(screen.getByTestId("object-row-0").getAttribute("data-selected")).toBe("true");
+
+    await userEvent.click(screen.getByTestId("object-delete-0"));
+    expect(onRemove).toHaveBeenCalledWith("c1");
+  });
+
+  it("offers no delete on a scan that cannot be edited, or in the read-only mode", () => {
+    const { unmount } = render(mount(storeWith([]), { scan: { store: scanStoreOf(), onRemove: null } }));
+    expect(screen.getByTestId("object-delete-0").hasAttribute("disabled")).toBe(true);
+    unmount();
+    render(mount(storeWith([]), { readOnly: true, scan: { store: scanStoreOf(), onRemove: vi.fn() } }));
+    expect(screen.getByTestId("object-delete-0").hasAttribute("disabled")).toBe(true);
+  });
+
+  it("numbers the read-only 3D labels after the cuboids", () => {
+    const path = { ...cuboid, id: "p1", geometry: { type: "polyline_3d", points: [[0, 0, 0], [1, 0, 0]] } };
+    render(mount(storeWith([]), { scan: { store: scanStoreOf(), onRemove: null }, labels3D: [path] }));
+    expect(screen.getByTestId("object-count").textContent).toBe("2 objects");
+    expect(screen.getByTestId("object-row-1").textContent).toContain("2. vehicle");
   });
 });
 

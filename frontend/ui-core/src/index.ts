@@ -310,6 +310,7 @@ export { AssetImage, type AssetImageProps } from "./annotator/AssetImage.js";
 export {
   assetParamFor,
   isEmptyPlan,
+  mergePlans,
   jobKeys,
   planSave,
   planScanSave,

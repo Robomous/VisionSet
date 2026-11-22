@@ -311,6 +311,17 @@ export function isEmptyPlan(plan: SavePlan<Annotation | ScanAnnotation>): boolea
   return plan.created.length === 0 && plan.updated.length === 0 && plan.deleted.length === 0;
 }
 
+/** One plan from the image document's and the scan document's; the two are disjoint by geometry. */
+export function mergePlans(
+  ...plans: readonly SavePlan<Annotation | ScanAnnotation>[]
+): SavePlan<Annotation | ScanAnnotation> {
+  return {
+    created: plans.flatMap((plan) => plan.created),
+    updated: plans.flatMap((plan) => plan.updated),
+    deleted: plans.flatMap((plan) => plan.deleted),
+  };
+}
+
 /**
  * Local document against what was loaded.
  *

@@ -22,6 +22,7 @@ import {
   assetParamFor,
   assetPositionOf,
   isEmptyPlan,
+  mergePlans,
   planSave,
   planScanSave,
   type WireAnnotation,
@@ -281,6 +282,12 @@ describe("planScanSave", () => {
     );
     expect(scanPlan.deleted).toEqual(["a"]);
     expect(imagePlan.deleted).toEqual(["tag"]);
+
+    const merged = mergePlans(imagePlan, scanPlan);
+    expect(merged.deleted).toEqual(["tag", "a"]);
+    expect(isEmptyPlan(merged)).toBe(false);
+    expect(isEmptyPlan(mergePlans(imagePlan, { created: [], updated: [], deleted: [] }))).toBe(false);
+    expect(isEmptyPlan(mergePlans({ created: [], updated: [], deleted: [] }, scanPlan))).toBe(false);
   });
 });
 
