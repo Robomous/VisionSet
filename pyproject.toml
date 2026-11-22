@@ -152,6 +152,8 @@ openlane-2d = "visionset.formats.lanes:OpenLane2dExporter"
 openlane-2d-import = "visionset.formats.lanes:OpenLane2dImporter"
 # Scans and their 3D boxes (#1049): an importer only, read into the lidar frame.
 kitti-import = "visionset.formats.kitti:KittiImporter"
+# LIDAR_TOP keyframes and their global boxes (#1056), read into the sensor frame.
+nuscenes-import = "visionset.formats.nuscenes:NuScenesImporter"
 
 # Inference driver discovery. A third-party distribution registers its own
 # provider in this same group, and pins the VisionSet it was built for in its

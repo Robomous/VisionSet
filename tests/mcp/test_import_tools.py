@@ -8,6 +8,7 @@ from uuid import UUID
 import pytest
 from tests.fixtures.coco_source import write_coco_source
 from tests.fixtures.kitti_source import write_kitti_source
+from tests.fixtures.nuscenes_source import write_nuscenes_source
 from tests.mcp._flow import call, call_with_progress, error, payload, project
 
 from visionset.kernel.domain import AssetProgress, BatchState
@@ -149,6 +150,33 @@ def test_a_kitti_source_is_inspected_as_scans_and_imported_with_consent(
             "import_dataset",
             project=named,
             format="kitti",
+            path=str(src),
+            consent_lossy=plan["loss_kinds"],
+        )
+    )
+    assert (run["created_asset_count"], run["annotations_written"]) == (2, 2)
+    assert _state(tmp_path / "ws", named) == (2, 1, 1)
+
+
+def test_a_nuscenes_source_is_inspected_as_lidar_rfu_scans_and_imported_with_consent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named = project(monkeypatch, tmp_path)
+    src = write_nuscenes_source(tmp_path / "src")
+
+    plan = payload(call("inspect_import", project=named, format="nuscenes", path=str(src)))
+    assert (plan["scans"], plan["images"], plan["labels"], plan["frame"]) == (2, 0, 2, "lidar_rfu")
+    assert plan["loss_kinds"] == ["attribute", "image", "scan"]
+
+    refusal = error(call("import_dataset", project=named, format="nuscenes", path=str(src)))
+    assert refusal["code"] == "IMPORT_NOT_CONSENTED"
+    assert _state(tmp_path / "ws", named) == (0, 0, 0)
+
+    run = payload(
+        call(
+            "import_dataset",
+            project=named,
+            format="nuscenes",
             path=str(src),
             consent_lossy=plan["loss_kinds"],
         )
