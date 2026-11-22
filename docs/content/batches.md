@@ -30,6 +30,11 @@ draft ──approve──> approved ──start──> in_annotation ──compl
 consults it rather than restating it in guards, and anything absent raises
 `InvalidTransition` naming where the batch *can* go from here.
 
+`start` is always somebody's explicit act - `batches.start`, the CLI's `batch start` or
+`--start`, or a `Start annotating` control in the browser. Opening one of an `approved` batch's
+frames or scans to look at it never starts the batch: the annotation page opens read-only until
+that control is pressed.
+
 There is no route back to `draft`. A batch's schema version is pinned at approval and its
 jobs are already partitioned against that pin, so reopening membership would silently
 invalidate work already done. Making another batch is cheap; un-freezing one is not.
