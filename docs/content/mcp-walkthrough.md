@@ -83,7 +83,7 @@ One tool, and it **blocks until the run has finished**. `register_image_source` 
 became one call, because there is nothing an agent does between them.
 
 **It takes a directory of still images, or of point-cloud scans when given a `frame`
-(`lidar_flu` or `camera_rdf`), and nothing else.** There is no video path here at all:
+(`lidar_flu`, `camera_rdf` or `lidar_rfu`), and nothing else.** There is no video path here at all:
 a clip is decoded by a browser, on the user's own machine, and only the frames it was cut into
 ever reach the server — so no tool in this server decodes video, `register_video_source` does not
 exist, and there is no `extraction_fps` parameter to pass. Pointed at a clip, `ingest` refuses and

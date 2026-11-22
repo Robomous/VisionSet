@@ -806,7 +806,7 @@ annotation page its stage is a WebGL2 view instead of the image canvas: the page
 `GET /projects/{id}/assets/{asset_id}/points` (at most 500,000 points, thinned by the server;
 the corner of the view says how many of the scan's points are shown) and draws them with the
 annotator's `PointCloudCanvas`. Nothing is re-expressed: the view orbits about the **up axis of
-the frame the scan's source declares** (`+z` for `lidar_flu`, `-y` for `camera_rdf`), and a
+the frame the scan's source declares** (`+z` for `lidar_flu` and `lidar_rfu`, `-y` for `camera_rdf`), and a
 source that declares no frame is shown with `z` up and has no labels to draw.
 
 The open job's `cuboid_3d` labels on the scan are drawn as their twelve edges, and a
