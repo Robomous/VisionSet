@@ -174,6 +174,14 @@ export {
 } from "./core/pointcloud/edit/machine";
 export { runScanEffects } from "./core/pointcloud/edit/runScanEffects";
 export {
+  scanKeyIntent,
+  scanPointerRole,
+  type ScanKeyIntent,
+  type ScanKeyPress,
+  type ScanPointerRole,
+} from "./core/pointcloud/edit/input";
+export { scanHandleLayout, type ScanHandleLayout } from "./core/pointcloud/edit/overlay";
+export {
   colorModeAvailable,
   defaultColorMode,
   pointColors,

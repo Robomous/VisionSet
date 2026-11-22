@@ -1,10 +1,14 @@
 /**
- * A read-only WebGL2 view of one scan and its 3D labels, in the scan's declared
- * frame.
+ * A WebGL2 view of one scan and its 3D labels, in the scan's declared frame.
  *
  * Drag orbits about the frame's up axis, a right or middle drag (or shift-drag)
  * pans, the wheel zooms; with the view focused, the arrows orbit, `+`/`-` zoom
  * and `0` resets. It draws on demand, never in a loop.
+ *
+ * `editing` hands the primary button to the host through `onScanPointer`, with
+ * the camera and the CSS-pixel viewport the press was made against; orbit moves
+ * to the right button and pan to the middle one (or shift + right). The view
+ * edits nothing itself.
  *
  * The canvas is created inside the effect rather than rendered, so every mount
  * owns a fresh context it can release on unmount: a context once lost through
@@ -25,9 +29,12 @@ import {
   type OrbitCamera,
 } from "../../core/pointcloud/camera";
 import { boundsOf, type PointBounds, type PointSample } from "../../core/pointcloud/decode";
+import { scanPointerRole, type ScanPointerRole } from "../../core/pointcloud/edit/input";
+import type { ScanEvent } from "../../core/pointcloud/edit/machine";
 import type { ScanFrame } from "../../core/pointcloud/frame";
 import { pointColors, type ColorMode } from "../../core/pointcloud/ramp";
-import { PointCloudRenderer, cssColorToRgb } from "./pointCloudGl";
+import type { ScanViewport } from "../../core/pointcloud/ray";
+import { PointCloudRenderer, cssColorToRgb, resolveCssColor } from "./pointCloudGl";
 
 export interface PointCloudLabel {
   readonly id: string;
@@ -35,7 +42,20 @@ export interface PointCloudLabel {
   readonly color: string;
   /** `x, y, z` per vertex, two vertices a segment. */
   readonly segments: Float32Array;
+  /** Drawn in `highlightColor`, over every other label. */
+  readonly emphasis?: "selected" | "draft";
 }
+
+/** What a screen point means: the camera and the CSS-pixel viewport it was seen through. */
+export interface ScanView {
+  readonly camera: OrbitCamera;
+  readonly viewport: ScanViewport;
+}
+
+export type ScanPointerEvent = Extract<
+  ScanEvent,
+  { readonly type: "pointer-down" | "pointer-move" | "pointer-up" | "pointer-cancel" }
+>;
 
 /** `unsupported`: this browser offers no WebGL2. `lost`: the context was taken and may come back. */
 export type PointCloudStatus = "ready" | "unsupported" | "lost";
@@ -50,6 +70,13 @@ export interface PointCloudCanvasProps {
   readonly resetSignal?: number;
   readonly onStatusChange?: (status: PointCloudStatus) => void;
   readonly ariaLabel?: string;
+  /** Primary presses go to `onScanPointer` instead of orbiting. */
+  readonly editing?: boolean;
+  readonly onScanPointer?: (event: ScanPointerEvent, view: ScanView) => void;
+  /** After every camera move or resize, and once the view first has a size. */
+  readonly onCameraChange?: (view: ScanView) => void;
+  /** Any CSS colour, `var()` included; the colour of an emphasised label. */
+  readonly highlightColor?: string;
 }
 
 const ROTATE_PER_PX = 0.008;
@@ -67,7 +94,7 @@ interface Live {
 }
 
 export function PointCloudCanvas(props: PointCloudCanvasProps): JSX.Element {
-  const { sample, frame, colorMode, labels, showLabels, resetSignal } = props;
+  const { sample, frame, colorMode, labels, showLabels, resetSignal, highlightColor, editing = false } = props;
   const hostRef = useRef<HTMLDivElement>(null);
   const liveRef = useRef<Live | null>(null);
   const propsRef = useRef(props);
@@ -112,9 +139,23 @@ export function PointCloudCanvas(props: PointCloudCanvasProps): JSX.Element {
   }, []);
 
   const uploadLabels = useCallback((renderer: PointCloudRenderer): void => {
-    renderer.setLabels(
-      propsRef.current.labels.map((label) => ({ color: cssColorToRgb(label.color), segments: label.segments })),
-    );
+    const current = propsRef.current;
+    const host = hostRef.current;
+    const plain = current.labels.filter((label) => label.emphasis === undefined);
+    const emphasised = current.labels.filter((label) => label.emphasis !== undefined);
+    const highlight =
+      emphasised.length === 0 || host === null ? null : resolveCssColor(host, current.highlightColor ?? "currentColor");
+    renderer.setLabels([
+      ...plain.map((label) => ({ color: cssColorToRgb(label.color), segments: label.segments })),
+      ...emphasised.map((label) => ({ color: highlight ?? cssColorToRgb(label.color), segments: label.segments })),
+    ]);
+  }, []);
+
+  const notifyCamera = useCallback((): void => {
+    const camera = cameraRef.current;
+    const canvas = liveRef.current?.canvas;
+    if (camera === null || canvas === undefined || canvas.clientWidth <= 0 || canvas.clientHeight <= 0) return;
+    propsRef.current.onCameraChange?.({ camera, viewport: { width: canvas.clientWidth, height: canvas.clientHeight } });
   }, []);
 
   useEffect(() => {
@@ -163,6 +204,7 @@ export function PointCloudCanvas(props: PointCloudCanvasProps): JSX.Element {
         canvas.height = height;
       }
       drawNow();
+      notifyCamera();
     };
 
     const onLost = (event: Event): void => {
@@ -185,36 +227,71 @@ export function PointCloudCanvas(props: PointCloudCanvasProps): JSX.Element {
       if (cameraRef.current === null) return;
       cameraRef.current = next(cameraRef.current);
       requestDraw();
+      notifyCamera();
     };
 
-    let drag: { readonly id: number; x: number; y: number; readonly panning: boolean } | null = null;
+    const scanView = (): ScanView | null => {
+      const current = cameraRef.current;
+      if (current === null || canvas.clientWidth <= 0 || canvas.clientHeight <= 0) return null;
+      return { camera: current, viewport: { width: canvas.clientWidth, height: canvas.clientHeight } };
+    };
+    const tell = (event: ScanPointerEvent): void => {
+      const view = scanView();
+      if (view !== null) propsRef.current.onScanPointer?.(event, view);
+    };
+    const pointOf = (event: PointerEvent): readonly [number, number] => {
+      const rect = canvas.getBoundingClientRect();
+      return [event.clientX - rect.left, event.clientY - rect.top];
+    };
+    const modifiersOf = (event: PointerEvent) => ({
+      shift: event.shiftKey,
+      ctrl: event.ctrlKey,
+      meta: event.metaKey,
+      alt: event.altKey,
+    });
+
+    let drag: { readonly id: number; x: number; y: number; readonly role: ScanPointerRole } | null = null;
     const onPointerDown = (event: PointerEvent): void => {
       if (drag !== null) return;
       canvas.focus();
       canvas.setPointerCapture(event.pointerId);
-      drag = {
-        id: event.pointerId,
-        x: event.clientX,
-        y: event.clientY,
-        panning: event.button === 1 || event.button === 2 || event.shiftKey,
-      };
+      const editing = propsRef.current.editing === true && propsRef.current.onScanPointer !== undefined;
+      const role = scanPointerRole(event.button, event.shiftKey, editing);
+      drag = { id: event.pointerId, x: event.clientX, y: event.clientY, role };
+      if (role === "edit") {
+        tell({ type: "pointer-down", point: pointOf(event), button: "primary", modifiers: modifiersOf(event) });
+      }
     };
     const onPointerMove = (event: PointerEvent): void => {
-      if (drag === null || drag.id !== event.pointerId) return;
+      if (drag === null) {
+        if (propsRef.current.editing === true) tell({ type: "pointer-move", point: pointOf(event) });
+        return;
+      }
+      if (drag.id !== event.pointerId) return;
       const dx = event.clientX - drag.x;
       const dy = event.clientY - drag.y;
       drag.x = event.clientX;
       drag.y = event.clientY;
-      if (drag.panning) {
-        camera((c) => pan(c, propsRef.current.frame, dx, dy, canvas.clientHeight));
-      } else {
-        camera((c) => orbit(c, -dx * ROTATE_PER_PX, dy * ROTATE_PER_PX));
+      switch (drag.role) {
+        case "edit":
+          tell({ type: "pointer-move", point: pointOf(event) });
+          break;
+        case "pan":
+          camera((c) => pan(c, propsRef.current.frame, dx, dy, canvas.clientHeight));
+          break;
+        case "orbit":
+          camera((c) => orbit(c, -dx * ROTATE_PER_PX, dy * ROTATE_PER_PX));
+          break;
       }
     };
     const onPointerUp = (event: PointerEvent): void => {
       if (drag === null || drag.id !== event.pointerId) return;
+      const { role } = drag;
       drag = null;
       if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+      if (role !== "edit") return;
+      if (event.type === "pointercancel") tell({ type: "pointer-cancel" });
+      else tell({ type: "pointer-up", point: pointOf(event), button: "primary", modifiers: modifiersOf(event) });
     };
     const onWheel = (event: WheelEvent): void => {
       event.preventDefault();
@@ -293,7 +370,7 @@ export function PointCloudCanvas(props: PointCloudCanvasProps): JSX.Element {
       canvas.remove();
       if (liveRef.current === live) liveRef.current = null;
     };
-  }, [drawNow, requestDraw, uploadPositions, uploadColors, uploadLabels]);
+  }, [drawNow, requestDraw, uploadPositions, uploadColors, uploadLabels, notifyCamera]);
 
   useEffect(() => {
     sceneRef.current = sceneOf(sample);
@@ -301,7 +378,8 @@ export function PointCloudCanvas(props: PointCloudCanvasProps): JSX.Element {
     const renderer = liveRef.current?.renderer;
     if (renderer) uploadPositions(renderer);
     requestDraw();
-  }, [sample, frame, uploadPositions, requestDraw]);
+    notifyCamera();
+  }, [sample, frame, uploadPositions, requestDraw, notifyCamera]);
 
   useEffect(() => {
     const renderer = liveRef.current?.renderer;
@@ -313,7 +391,7 @@ export function PointCloudCanvas(props: PointCloudCanvasProps): JSX.Element {
     const renderer = liveRef.current?.renderer;
     if (renderer) uploadLabels(renderer);
     requestDraw();
-  }, [labels, uploadLabels, requestDraw]);
+  }, [labels, highlightColor, uploadLabels, requestDraw]);
 
   useEffect(() => {
     requestDraw();
@@ -327,7 +405,13 @@ export function PointCloudCanvas(props: PointCloudCanvasProps): JSX.Element {
     }
     cameraRef.current = sceneRef.current.home;
     requestDraw();
-  }, [resetSignal, requestDraw]);
+    notifyCamera();
+  }, [resetSignal, requestDraw, notifyCamera]);
+
+  useEffect(() => {
+    const canvas = liveRef.current?.canvas;
+    if (canvas !== undefined) canvas.style.cursor = editing ? "crosshair" : "";
+  }, [editing]);
 
   return (
     <div
@@ -337,6 +421,7 @@ export function PointCloudCanvas(props: PointCloudCanvasProps): JSX.Element {
       data-color-mode={colorMode}
       data-labels={showLabels ? "on" : "off"}
       data-label-count={labels.length}
+      data-editing={editing ? "on" : "off"}
     />
   );
 }
