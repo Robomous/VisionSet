@@ -223,7 +223,7 @@ function FrameTile({
   readonly onPick: () => void;
 }): JSX.Element {
   const word = progressLabel(asset.progress);
-  const label = `Frame ${position}, ${word}`;
+  const label = `${asset.modality === "point_cloud" ? "Scan" : "Frame"} ${position}, ${word}`;
 
   return (
     <button

@@ -557,6 +557,17 @@ describe("the flow verb", () => {
     expect(sent.some((request) => request.path.endsWith("/complete"))).toBe(false);
   });
 
+  it("is natively disabled on a closed batch, where the banner already says why (#1063)", async () => {
+    assetCount = 1;
+    closedBatch = true;
+    await open();
+
+    const finish = screen.getByTestId("finish-job") as HTMLButtonElement;
+    expect(finish.disabled).toBe(true);
+    expect(finish.getAttribute("aria-disabled")).toBeNull();
+    expect(screen.getByTestId("readonly-banner").textContent).toContain("Viewing only");
+  });
+
   it("names the blocker with its count, from the same progress the readout shows (#427)", async () => {
     assetCount = 1;
     jobSettled = false;
@@ -838,12 +849,13 @@ describe("the frame's state, in prose", () => {
     expect(state.innerHTML).toContain(TONE_BORDER.warning);
   });
 
-  it("sits beside the save state, so the two read as one sentence", async () => {
+  it("claims no save on a frame that has only been looked at (#1063)", async () => {
     await open();
 
     const state = screen.getByTestId("asset-progress");
-    expect(state.parentElement?.textContent).toContain("·");
-    expect(state.parentElement?.textContent).toContain("Saved");
+    expect(state.parentElement?.textContent).not.toContain("Saved");
+    expect(state.parentElement?.textContent).not.toContain("·");
+    expect(screen.queryByTestId("save-state")).toBeNull();
   });
 });
 
@@ -902,11 +914,10 @@ describe("principle 10 — no exit loses work", () => {
     expect(onOpenGallery).not.toHaveBeenCalled();
   });
 
-  it("has no Save button left on the bar, and still says whether it is saved", async () => {
+  it("has no Save button left on the bar", async () => {
     await open();
 
     expect(screen.queryByTestId("save")).toBeNull();
-    expect(screen.getByTestId("save-state")).toBeDefined();
   });
 });
 

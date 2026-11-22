@@ -570,12 +570,14 @@ export function Timeline({
         {start === null || start === undefined ? "" : `${Math.round(start)}s`}
       </span>
       <div className="flex h-4 min-w-0 flex-1 gap-px overflow-hidden rounded-sm">
-        {assets.map((asset) => (
+        {assets.map((asset, index) => (
           <button
             key={asset.id}
             type="button"
             data-testid={`timeline-${asset.id}`}
-            aria-label={`Frame ${asset.frame_index ?? "?"}, ${progressLabel(asset.progress)}`}
+            aria-label={`${
+              asset.modality === "point_cloud" ? `Scan ${index + 1}` : `Frame ${asset.frame_index ?? "?"}`
+            }, ${progressLabel(asset.progress)}`}
             onClick={() => onPick(asset.id)}
             className={cellClass(asset.progress, asset.id === highlighted)}
           />

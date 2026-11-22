@@ -16,7 +16,7 @@
  * a layout engine's absence.
  */
 
-import { screen, waitFor } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
@@ -224,8 +224,8 @@ describe("the notice column", () => {
     // a refused save the honest answer there is `unsaved`.
     await open();
 
-    await waitFor(() => expect(screen.getByTestId("save-state")).toBeDefined());
-    expect(screen.getByTestId("save-state").textContent).toBe("Saved");
+    await screen.findByTestId("asset-progress");
+    expect(screen.queryByTestId("save-state")).toBeNull();
     // And there is nowhere else on the bar a refusal could still be hiding.
     const header = screen.getByTestId("annotation-page").querySelector("header");
     expect(header?.querySelector("[data-testid='opening-refusal']")).toBeNull();

@@ -39,10 +39,16 @@ export const NO_OVERLAY_3D: Overlay3D = { labels: [], withheld: null };
 
 const THREE_D_TYPES: ReadonlySet<unknown> = new Set(["polyline_3d", "cuboid_3d"]);
 
+function is3D(one: WireAnnotation): boolean {
+  return THREE_D_TYPES.has((one.geometry as { readonly type?: unknown } | null)?.type);
+}
+
 export function carries3DLabels(loaded: readonly WireAnnotation[]): boolean {
-  return loaded.some((one) =>
-    THREE_D_TYPES.has((one.geometry as { readonly type?: unknown } | null)?.type),
-  );
+  return loaded.some(is3D);
+}
+
+export function labels3D(loaded: readonly WireAnnotation[]): readonly WireAnnotation[] {
+  return loaded.filter(is3D);
 }
 
 /**

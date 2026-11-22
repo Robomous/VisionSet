@@ -346,7 +346,7 @@ test("Save is inert until something changes, then sends exactly the new annotati
   await openJob(page, sent);
 
   await expectNothingToSave(page);
-  await expect(page.getByTestId("save-state")).toContainText("Saved");
+  await expect(page.getByTestId("save-state")).toHaveCount(0);
 
   // Draw one box: digit 1 is `vehicle`, the pinned schema's first class.
   const canvas = page.getByTestId("annotator-canvas");
@@ -515,7 +515,7 @@ test("an opening move refused as already-made is not reported, and the page re-r
   // Nothing is claimed at the user. The page opened, the job is open, and the
   // one thing that happened is a POST nobody needed to know about.
   await expect(page.getByTestId("opening-refusal")).toBeHidden();
-  await expect(page.getByTestId("save-state")).toContainText("Saved");
+  await expectNothingToSave(page);
 
   // And it went back to the wire rather than trusting the read that misled it:
   // a second `GET /jobs/{id}` after the refusal is the re-read.
@@ -1442,9 +1442,9 @@ test("the versioning controls are absent, not disabled", async ({ page }) => {
   // still there, so this is a removal rather than a header that failed to render.
   await expect(page.getByTestId("open-gallery")).toBeVisible();
   // There is no Save button, so the witness that the bar rendered is
-  // the save *state*, which stayed — and the overflow, which took its press.
+  // the frame's progress — and the overflow, which took its press.
   await expect(page.getByTestId("save")).toHaveCount(0);
-  await expect(page.getByTestId("save-state")).toBeVisible();
+  await expect(page.getByTestId("asset-progress")).toBeVisible();
   await expect(page.getByTestId("more-actions")).toBeVisible();
 });
 

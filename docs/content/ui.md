@@ -493,7 +493,9 @@ read-only - nothing in that batch declares `annotate` - and the page sends no tr
 mount. The banner carries **Start annotating** while the batch declares `start`: it sends
 `POST /batches/{id}/start`, and once the re-read job declares `start` the page takes the job
 (`POST /jobs/{id}/start`) and becomes the editor in place, with no reload. A refused start is
-said in the editor's notice column and the page stays a viewer. Inside a batch that is
+said in the editor's notice column and the page stays a viewer. If the batch was started
+elsewhere first, the `INVALID_TRANSITION` is not said: the page re-reads both the batch and the
+job, so the job is taken just as it would have been. Inside a batch that is
 already `in_annotation`, opening a `pending` job still takes it, as before.
 
 #### Adding a class where the pin cannot move
@@ -809,7 +811,9 @@ and raises no notice.
 
 #### Point-cloud scans are viewed in 3D, read-only
 
-A `point_cloud` asset appears in galleries and lists with its top-down thumbnail. On the
+A `point_cloud` asset appears in galleries and lists with its top-down thumbnail, and its tile,
+timeline cell and frame-gallery entry name it as a scan rather than as a frame (the timeline cell
+reads `Scan 2, annotated`; a scan has no frame number). On the
 annotation page its stage is a WebGL2 view instead of the image canvas: the page fetches
 `GET /projects/{id}/assets/{asset_id}/points` (at most 500,000 points, thinned by the server;
 the corner of the view says how many of the scan's points are shown) and draws them with the
@@ -822,10 +826,13 @@ The open job's `cuboid_3d` labels on the scan are drawn as their twelve edges, a
 asked for or used. A cuboid's corners are its centre plus half its size along the heading
 `cos(yaw)·forward + sin(yaw)·left`, across it, and along up (`scanCuboidCorners`). Edges are drawn
 over the points rather than hidden inside them. Like the 3D overlay on an image they are not in
-the document: not counted, listed, selected or saved.
+the document, so they are never selected or saved; the Annotations panel and the object badge
+still count them, and the panel lists each one read-only after the drawn shapes.
 
 Drag orbits, a right or middle drag (or shift-drag) pans, and the wheel zooms; with the view
-focused, the arrow keys orbit, `+`/`-` zoom and `0` resets. The controls in the corner colour
+focused, the arrow keys orbit, `+`/`-` zoom and `0` resets. The orbit's pitch is held between
+level with the target and just short of straight down from above, measured about the declared
+up, so the scan is never seen from underneath. The controls in the corner colour
 the points by height along up, by intensity, or by the scan's own colour - a mode the scan
 does not record is disabled with the reason - turn the labels off and on, and reset the view.
 The opening view frames the body of the scan, ignoring the farthest 2% of returns on each axis.

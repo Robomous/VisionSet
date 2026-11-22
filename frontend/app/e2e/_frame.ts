@@ -271,7 +271,7 @@ export async function saveNow(page: Page): Promise<void> {
  * close a popup to learn something the bar is already saying.
  */
 export async function expectNothingToSave(page: Page): Promise<void> {
-  await expect(page.getByTestId("save-state")).toContainText("Saved");
+  await expect(page.getByTestId("save-state").filter({ hasText: /unsaved|Saving/ })).toHaveCount(0);
 }
 
 /**

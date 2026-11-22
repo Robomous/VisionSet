@@ -169,7 +169,7 @@ import { ZoomWidget } from "./ZoomWidget";
 import { ANNOTATOR_MIN_VIEWPORT_PX, useViewportAtLeast } from "./viewportFloor";
 import { AssetImage } from "./AssetImage";
 import { PointCloudStage } from "./PointCloudStage";
-import { carries3DLabels, overlay3DFor, overlay3DNotice, type Overlay3DWithheld } from "./overlay3d";
+import { carries3DLabels, labels3D, overlay3DFor, overlay3DNotice, type Overlay3DWithheld } from "./overlay3d";
 import type { AssetProgress, WireAnnotation } from "./jobQueries";
 import type { BatchAsset } from "../screens/queries";
 import {
@@ -1520,17 +1520,18 @@ function Workspace({
    * one the committed render reads.
    *
    * `INVALID_TRANSITION` on either start means the move was already made (a cached
-   * declaration still offering it), so it re-reads the resource and says nothing;
-   * every other refusal is surfaced.
+   * declaration still offering it), so it re-reads and says nothing; every other
+   * refusal is surfaced. A batch started elsewhere re-reads the job too: its cached
+   * declaration was answered against the approved batch and would never offer `start`.
    */
   const [openingRefusal, setOpeningRefusal] = useState<unknown>(null);
   const sentJobStart = useRef(false);
   const queries = useQueryClient();
 
   const openingFailed = useCallback(
-    (error: unknown, stale: readonly unknown[]): void => {
+    (error: unknown, stale: readonly (readonly unknown[])[]): void => {
       if (asApiError(error).code === "INVALID_TRANSITION") {
-        void queries.invalidateQueries({ queryKey: stale });
+        for (const queryKey of stale) void queries.invalidateQueries({ queryKey });
         return;
       }
       setOpeningRefusal(error);
@@ -1544,15 +1545,15 @@ function Workspace({
   const startAnnotating = useCallback(() => {
     setOpeningRefusal(null);
     startBatch.mutateAsync().catch((error: unknown) => {
-      openingFailed(error, batchKeys.batch(batchId));
+      openingFailed(error, [batchKeys.batch(batchId), jobKeys.job(jobId)]);
     });
-  }, [batchId, openingFailed, startBatch]);
+  }, [batchId, jobId, openingFailed, startBatch]);
 
   useEffect(() => {
     if (!mayStartJob || sentJobStart.current) return;
     sentJobStart.current = true;
     startJob.mutateAsync().catch((error: unknown) => {
-      openingFailed(error, jobKeys.job(jobId));
+      openingFailed(error, [jobKeys.job(jobId)]);
     });
   }, [jobId, mayStartJob, openingFailed, startJob]);
 
@@ -1771,6 +1772,8 @@ function Workspace({
   const drawn = annotationsInDrawOrder(snapshot.document).filter(
     (annotation) => !isTagAnnotation(annotation),
   ).length;
+  const scanLabels = useMemo(() => (isScan ? labels3D(loaded) : []), [isScan, loaded]);
+  const objects = drawn + scanLabels.length;
 
 
   /**
@@ -1942,6 +1945,8 @@ function Workspace({
             ? "1 frame unresolved — annotate or skip it to finish the job."
             : `${unresolved} frames unresolved — annotate or skip them to finish the job.`));
 
+  const finishInert = jobState === "completed" || withheld !== null;
+
   /**
    * Whether pressing the flow verb will actually store anything.
    *
@@ -2111,7 +2116,10 @@ function Workspace({
 
           {/*
             Where the frame is and whether it is stored, as one microtext
-            (decision 5): `● annotated · Saved`.
+            (decision 5): `● annotated · Saved`. The save half is absent until
+            something on this visit is unsaved or has been saved: `Saved` claims
+            a save, and a frame only looked at has had none. `Workspace` is keyed
+            by the asset, so the mutation's success never carries to another frame.
 
             They were two controls a bar apart — a colour-only dot beside the
             navigator and a save badge here — and reading either meant knowing
@@ -2122,8 +2130,12 @@ function Workspace({
           */}
           <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
             <AssetProgressDot progress={asset.progress ?? "unannotated"} />
-            <span aria-hidden="true">·</span>
-            <SaveState dirty={dirty} pending={save.isPending} />
+            {(dirty || save.isPending || save.isSuccess) && (
+              <>
+                <span aria-hidden="true">·</span>
+                <SaveState dirty={dirty} pending={save.isPending} />
+              </>
+            )}
           </span>
         </div>
 
@@ -2324,8 +2336,9 @@ function Workspace({
                 never opens and the reason cannot be read (principles 4 and 9).
                 `aria-disabled` keeps the hover and the focus, and the press is
                 refused in the handler. Native `disabled` survives only where
-                there is nothing to explain — a `Finished` job, whose label is
-                the explanation, and the in-flight press.
+                there is nothing for it to explain — a `Finished` job, whose label
+                is the explanation, a closed batch, whose banner already says why
+                the page is read-only, and the in-flight press.
               */
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -2333,12 +2346,14 @@ function Workspace({
                     variant="default"
                     size="sm"
                     className={
-                      finishWithheld === null ? "min-w-36" : "min-w-36 cursor-not-allowed opacity-40"
+                      finishWithheld === null || finishInert
+                        ? "min-w-36"
+                        : "min-w-36 cursor-not-allowed opacity-40"
                     }
                     data-testid="finish-job"
                     data-withheld={finishWithheld === null ? "false" : "true"}
-                    disabled={jobState === "completed" || finishJob.isPending}
-                    aria-disabled={finishWithheld !== null || undefined}
+                    disabled={finishInert || finishJob.isPending}
+                    aria-disabled={(!finishInert && finishWithheld !== null) || undefined}
                     onClick={() => {
                       if (finishWithheld !== null || finishJob.isPending) return;
                       // **Said out loud**, because the rest of what this press
@@ -2365,7 +2380,7 @@ function Workspace({
                 {/* Only while withheld: an enabled Finish job explains itself by
                     being pressable, and a tooltip repeating the label would be
                     noise over the one control the frame exists to end on. */}
-                {finishWithheld !== null && (
+                {finishWithheld !== null && !finishInert && (
                   <TooltipContent side="bottom" data-testid="finish-withheld">
                     {finishWithheld}
                   </TooltipContent>
@@ -3023,7 +3038,7 @@ function Workspace({
           </EditorNotices>
 
           <span className="absolute bottom-2 left-2 rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground" data-testid="object-total">
-            {drawn} object{drawn === 1 ? "" : "s"}
+            {objects} object{objects === 1 ? "" : "s"}
           </span>
 
           {/*
@@ -3062,6 +3077,7 @@ function Workspace({
         <AnnotatorPanel
           store={store}
           readOnly={readOnly}
+          labels3D={scanLabels}
           hiddenIds={hiddenIds}
           onHiddenChange={setHiddenIds}
           activeClass={activeClass}
@@ -3381,7 +3397,8 @@ function AssetProgressDot({ progress }: { readonly progress: string }): JSX.Elem
 }
 
 /**
- * `DESIGN.md`'s save-state indicator: saving, saved, or not yet stored.
+ * `DESIGN.md`'s save-state indicator: saving, saved, or not yet stored. Rendered
+ * only once there is something to say; `Saved` follows an actual save.
  *
  * **Three readings, not four.** It used to carry a fourth — the refusal itself,
  * as a destructive badge — and that reading has moved to the stage's notice
