@@ -476,11 +476,14 @@ still zooms. Outside Edit the view keeps its own mapping: a left drag orbits.
   by the same projection the editor picks with.
 - **Keys.** With the view focused: Delete removes the selection, Escape cancels a gesture or
   lets go of the selection, Enter finishes a height, `mod+z` / `mod+shift+z` undo and redo,
-  `mod+s` saves. The strip carries undo and redo too.
+  `mod+s` saves. The strip carries undo and redo too. As in the 2D editor, a click on the
+  strip or the view's controls leaves focus on the view; a click on a panel row takes it.
 
 The selected box and the box being drawn are drawn in the foreground token over the class
 colours. Labels stay on while editing. The Annotations panel lists each cuboid; its row
-selects the box and deletes it through the same history as the keyboard.
+selects the box and deletes it through the same history as the keyboard. The panel shows no
+Classes region on a scan: its classes arm the 2D tools, and a cuboid's class is picked in the
+strip.
 
 A scan's edits share the page's one save plan and dirty state with the image document: *Save and
 stay*, *Save and next* and the unsaved-changes guard all cover them, and an edited import keeps

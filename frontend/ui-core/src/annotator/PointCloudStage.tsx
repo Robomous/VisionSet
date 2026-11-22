@@ -297,18 +297,20 @@ function ScanView({
         />
       )}
 
-      <p
-        data-testid="point-cloud-summary"
-        className="pointer-events-none absolute left-2 top-2 rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground"
-      >
-        {sample.count === total
-          ? `${total.toLocaleString()} points`
-          : `${sample.count.toLocaleString()} of ${total.toLocaleString()} points`}
-        {" · "}
-        {frame ?? "no declared frame, shown with z up"}
-      </p>
+      <div className="pointer-events-none absolute inset-x-2 top-2 flex flex-wrap items-start gap-2">
+        <p
+          data-testid="point-cloud-summary"
+          className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+        >
+          {sample.count === total
+            ? `${total.toLocaleString()} points`
+            : `${sample.count.toLocaleString()} of ${total.toLocaleString()} points`}
+          {" · "}
+          {frame ?? "no declared frame, shown with z up"}
+        </p>
 
-      {scan !== null && <ScanStrip scan={scan} />}
+        {scan !== null && <ScanStrip scan={scan} />}
+      </div>
 
       {status === "lost" && (
         <p
@@ -340,6 +342,7 @@ function ScanView({
                 value={mode}
                 disabled={!available}
                 data-testid={`color-by-${mode}`}
+                onMouseDown={keepFocus}
                 className="px-2 text-xs"
               >
                 {label}
@@ -370,6 +373,7 @@ function ScanView({
                 onPressedChange={setShowLabels}
                 aria-label={showLabels ? "Hide 3D labels" : "Show 3D labels"}
                 data-testid="toggle-scan-labels"
+                onMouseDown={keepFocus}
               >
                 <Box className="size-4" />
               </Toggle>
@@ -391,6 +395,7 @@ function ScanView({
               size="icon"
               aria-label="Reset view"
               data-testid="reset-scan-view"
+              onMouseDown={keepFocus}
               onClick={() => setResetSignal((signal) => signal + 1)}
             >
               <RotateCcw className="size-4" />
@@ -401,6 +406,11 @@ function ScanView({
       </div>
     </div>
   );
+}
+
+/** Leave focus on the view, whose root reads the shortcuts, as the 2D tool palette does. */
+function keepFocus(event: { preventDefault: () => void }): void {
+  event.preventDefault();
 }
 
 /** A control that says why it is off, on hover and on focus. */
@@ -432,6 +442,7 @@ function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Element {
       onPressedChange={scan.setEditing}
       aria-label={editing ? "Stop editing 3D labels" : "Edit 3D labels"}
       data-testid="scan-edit-toggle"
+      onMouseDown={keepFocus}
       className="gap-1 px-2 text-xs"
     >
       <Pencil className="size-4" />
@@ -439,7 +450,10 @@ function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Element {
     </Toggle>
   );
   const cuboidTool = (
-    <ToggleGroupItem value="cuboid" disabled={drawBlocked !== null} aria-label="Draw a cuboid" data-testid="scan-tool-cuboid">
+    <ToggleGroupItem value="cuboid" disabled={drawBlocked !== null} aria-label="Draw a cuboid"
+      data-testid="scan-tool-cuboid"
+      onMouseDown={keepFocus}
+    >
       <Cuboid className="size-4" />
     </ToggleGroupItem>
   );
@@ -447,7 +461,7 @@ function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Element {
   return (
     <div
       data-testid="scan-edit-strip"
-      className="absolute right-3 top-2 flex items-center gap-1 rounded-xl border border-border bg-muted p-1 shadow-lg"
+      className="pointer-events-auto ml-auto flex items-center gap-1 rounded-xl border border-border bg-muted p-1 shadow-lg"
     >
       {editBlocked === null ? editToggle : <WithReason reason={editBlocked}>{editToggle}</WithReason>}
 
@@ -463,7 +477,10 @@ function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Element {
               if (value === "select" || value === "cuboid") scan.setToolKind(value);
             }}
           >
-            <ToggleGroupItem value="select" aria-label="Select and adjust" data-testid="scan-tool-select">
+            <ToggleGroupItem value="select" aria-label="Select and adjust"
+              data-testid="scan-tool-select"
+              onMouseDown={keepFocus}
+            >
               <MousePointer2 className="size-4" />
             </ToggleGroupItem>
             {drawBlocked === null ? cuboidTool : <WithReason reason={drawBlocked}>{cuboidTool}</WithReason>}
@@ -488,6 +505,7 @@ function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Element {
             size="icon-sm"
             aria-label={snapshot.undoLabel === null ? "Undo" : `Undo ${snapshot.undoLabel}`}
             data-testid="scan-undo"
+            onMouseDown={keepFocus}
             disabled={!snapshot.canUndo}
             onClick={() => {
               scan.editor.send({ type: "cancel" });
@@ -501,6 +519,7 @@ function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Element {
             size="icon-sm"
             aria-label={snapshot.redoLabel === null ? "Redo" : `Redo ${snapshot.redoLabel}`}
             data-testid="scan-redo"
+            onMouseDown={keepFocus}
             disabled={!snapshot.canRedo}
             onClick={() => {
               scan.editor.send({ type: "cancel" });

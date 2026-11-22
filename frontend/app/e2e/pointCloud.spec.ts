@@ -367,6 +367,34 @@ test("in Edit, a drawn cuboid moves, the move undoes, and the save sends the box
   await expect(page.getByTestId("point-cloud-canvas")).toHaveAttribute("data-label-count", "2");
 });
 
+test("in Edit, pulling the right face out widens the box, and the toolbar leaves the keys on the view", async ({ page }) => {
+  await openScan(page, { schema: CUBOID_SCHEMA });
+  const view = page.getByTestId("point-cloud-canvas");
+  await expect.poll(() => drawCount(view)).toBeGreaterThan(0);
+  await page.getByTestId("scan-edit-toggle").click();
+  await page.getByTestId("scan-tool-cuboid").click();
+  await drawCuboid(page, view);
+  await expect(page.getByTestId("scan-handles")).toBeVisible();
+  await page.getByTestId("scan-tool-select").click();
+
+  const left = await handleAt(page, "left");
+  const right = await handleAt(page, "right");
+  const across = Math.hypot(right[0] - left[0], right[1] - left[1]);
+  const out = [(right[0] - left[0]) / across, (right[1] - left[1]) / across] as const;
+  await dragIn(page, view, right, [right[0] + out[0] * 60, right[1] + out[1] * 60]);
+
+  const widened = await handleAt(page, "right");
+  const leftAfter = await handleAt(page, "left");
+  expect(Math.hypot(leftAfter[0] - left[0], leftAfter[1] - left[1])).toBeLessThan(1);
+  expect(Math.hypot(widened[0] - left[0], widened[1] - left[1])).toBeGreaterThan(across + 30);
+
+  await page.getByTestId("scan-undo").click();
+  await expect.poll(() => handleAt(page, "right")).toEqual(right);
+  await expect(page.getByTestId("point-cloud-gl")).toBeFocused();
+  await page.keyboard.press("ControlOrMeta+Shift+z");
+  await expect.poll(() => handleAt(page, "right")).toEqual(widened);
+});
+
 test("in Edit, a right drag orbits and a left drag on open ground draws nothing with the select tool", async ({ page }) => {
   await openScan(page, { schema: CUBOID_SCHEMA });
   const view = page.getByTestId("point-cloud-canvas");

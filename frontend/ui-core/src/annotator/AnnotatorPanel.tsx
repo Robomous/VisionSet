@@ -179,9 +179,11 @@ export function AnnotatorPanel({
   const tagClasses = schema.classes.filter(isTaggableClass);
   // The composer asks, rather than `ClassRegion` hiding itself, because the split
   // rule below goes with the region.
-  const drawableClasses = schema.classes.filter(
-    (declared) => drawableGeometries(declared).length > 0,
-  );
+  // A scan draws only through the scan editor's own class picker; these tools draw on pixels.
+  const drawableClasses =
+    snapshot.document.asset.modality === "point_cloud"
+      ? []
+      : schema.classes.filter((declared) => drawableGeometries(declared).length > 0);
 
   const query = filter.trim().toLowerCase();
   // Numbered by **draw order**, never by position in the filtered list: the number

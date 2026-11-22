@@ -132,6 +132,19 @@ describe("a scan's 3D labels (#1061)", () => {
     await userEvent.type(screen.getByTestId("object-filter"), "lane");
     expect(screen.getByTestId("objects-empty").textContent).toBe("No object matches that filter.");
   });
+  it("offers none of the 2D drawing classes on a scan, which draws from the scan editor's own picker", () => {
+    const scanPage = new AnnotatorStore(
+      documentFromWire({
+        asset: { id: "asset-1", width: 0, height: 0, modality: "point_cloud" },
+        schema: SCHEMA,
+        annotations: [],
+      }),
+    );
+    render(mount(scanPage));
+    expect(screen.queryByTestId("class-region")).toBeNull();
+    expect(screen.getByTestId("objects-region")).toBeDefined();
+  });
+
   function scanStoreOf(): AnnotatorStore<ScanDocument> {
     return new AnnotatorStore<ScanDocument>(
       scanDocumentFromWire({
