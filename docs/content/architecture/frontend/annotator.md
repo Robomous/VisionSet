@@ -14,6 +14,7 @@ flowchart TB
         Interaction["interaction\nstates · events · effects · the table"]
         State["state\ndocument · command log · store"]
         Input["input\nkeys · chords · actions"]
+        PointCloud["pointcloud\nframe · camera · rays · edit/"]
     end
 
     subgraph Adapters["src/adapters/ — hosts"]
@@ -26,6 +27,7 @@ flowchart TB
     Interaction --> Geometry
     Interaction --> State
     Input --> Interaction
+    PointCloud --> State
     ReactAd --> Core
     ReactAd --> Viewport
     Host --> ReactAd
@@ -89,6 +91,34 @@ shape: extend the exporter and regenerate, which holds both gates in step.
 
 A field the *service* stamps stays off `AnnotationCreate`/`AnnotationUpdate`. A field a client
 could set and never observe is a lie in the schema.
+
+## The scan editor is a sibling, not a widening
+
+A point-cloud scan's labels are cuboids in the frame its source declares, and they are edited
+by a second engine under `src/core/pointcloud/edit/` rather than by pushing 3D through the
+image engine. `Geometry`, `Annotation` and the image interaction machine stay 2D, so every
+dispatch over them stays exhaustive without a 3D arm; the 3D variants never enter
+`AnnotationDocument`.
+
+| Piece | Image engine | Scan editor |
+| --- | --- | --- |
+| Document | `AnnotationDocument` (`documentFromWire`) | `ScanDocument` (`scanDocumentFromWire`), `cuboid_3d` only |
+| History, preview, selection | `CommandLog`, `AnnotatorStore`, `Selection` | the same classes, generic over the document |
+| Picking | `geometry/hitTest` in asset pixels | `pointcloud/ray` (screen to ray, ray vs ground and cuboid) and `edit/scene` |
+| Machine and effects | `interaction/machine`, `Effect` | `edit/machine`, `ScanEffect`, `runScanEffects` |
+| Save | `planSave` | `planScanSave` |
+
+The two save plans are disjoint over one scan: `planSave` carries every 3D label past, and
+`planScanSave` carries past everything that is not a cuboid, so a page can send both through
+the same job-scoped calls. The scan plan wraps a yaw into `[-π, π]`, because the kernel
+refuses one outside rather than wrapping it, and sends the stored provenance, so an edited
+import stays `import`.
+
+On a scan, `yaw` turns about the declared frame's up axis. `scanCuboidCorners` draws that
+convention and `pointcloud/cuboid` is its inverse, so an edit writes back exactly what the
+viewer read and no coordinate is re-expressed in another frame. A source that declares no
+frame is drawn in a default frame while the kernel refuses every 3D write on it, so
+`scanEditability` reports editing off there, with the reason.
 
 ## Zero runtime dependencies
 
