@@ -809,7 +809,7 @@ the generic *The server answered with something this app does not recognise.* un
 `MALFORMED_RESPONSE`. A refetch that fails while a calibration is already drawn keeps drawing it
 and raises no notice.
 
-#### Point-cloud scans are viewed in 3D, read-only
+#### Point-cloud scans are viewed in 3D, and their cuboids edited there
 
 A `point_cloud` asset appears in galleries and lists with its top-down thumbnail, and its tile,
 timeline cell and frame-gallery entry name it as a scan rather than as a frame (the timeline cell
@@ -825,11 +825,12 @@ The open job's `cuboid_3d` labels on the scan are drawn as their twelve edges, a
 `polyline_3d` as its segments, in the class colour, in the scan's own frame - no calibration is
 asked for or used. A cuboid's corners are its centre plus half its size along the heading
 `cos(yaw)·forward + sin(yaw)·left`, across it, and along up (`scanCuboidCorners`). Edges are drawn
-over the points rather than hidden inside them. Like the 3D overlay on an image they are not in
-the document, so they are never selected or saved; the Annotations panel and the object badge
-still count them, and the panel lists each one read-only after the drawn shapes.
+over the points rather than hidden inside them. The cuboids live in the page's scan document, so
+they can be selected, drawn, moved, resized, turned, deleted and saved in **Edit** mode (see
+[the scan editor](ui/annotator.md#editing-cuboids-on-a-scan)); a `polyline_3d` is not editable
+and is listed read-only. The Annotations panel and the object badge count both.
 
-Drag orbits, a right or middle drag (or shift-drag) pans, and the wheel zooms; with the view
+Outside Edit, drag orbits, a right or middle drag (or shift-drag) pans, and the wheel zooms; with the view
 focused, the arrow keys orbit, `+`/`-` zoom and `0` resets. The orbit's pitch is held between
 level with the target and just short of straight down from above, measured about the declared
 up, so the scan is never seen from underneath. The controls in the corner colour

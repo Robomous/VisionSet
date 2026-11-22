@@ -459,6 +459,35 @@ What a viewer is:
   write is refused at the engine (`readOnly` on the canvas, `READ_ONLY_KINDS` for the
   keyboard).
 
+## Editing cuboids on a scan
+
+A scan's cuboids are edited in an explicit **Edit** mode, switched on from the strip at the top
+right of the scan view, so orbiting never competes with drawing. In Edit a left drag edits, a
+right drag orbits, and a middle drag - or shift + right drag, for a trackpad - pans; the wheel
+still zooms. Outside Edit the view keeps its own mapping: a left drag orbits.
+
+- **Draw.** With the cuboid tool and a class picked, drag the footprint on the ground (the
+  scan's low robust height along the declared up), move the pointer to raise the height, and
+  click or press Enter to finish. The class pick lists only classes that declare `cuboid_3d`;
+  with none, the tool is disabled with that reason.
+- **Adjust.** With the select tool, a press on a box selects it and drags it along the ground;
+  the selected box shows a handle on each face, which pushes that face, and a dashed ring at
+  its base, which turns its yaw about the declared up. Handles and ring are an overlay placed
+  by the same projection the editor picks with.
+- **Keys.** With the view focused: Delete removes the selection, Escape cancels a gesture or
+  lets go of the selection, Enter finishes a height, `mod+z` / `mod+shift+z` undo and redo,
+  `mod+s` saves. The strip carries undo and redo too.
+
+The selected box and the box being drawn are drawn in the foreground token over the class
+colours. Labels stay on while editing. The Annotations panel lists each cuboid; its row
+selects the box and deletes it through the same history as the keyboard.
+
+A scan's edits share the page's one save plan and dirty state with the image document: *Save and
+stay*, *Save and next* and the unsaved-changes guard all cover them, and an edited import keeps
+its provenance. Edit is disabled, with the reason on the control, when the scan's source
+declares no frame (the server refuses every 3D write there) or the frame is open for viewing
+only; a frame that turns read-only mid-edit leaves Edit on the same render.
+
 ## The stage
 
 The area around the asset is the **`stage`** token, never `muted` and never a dark surface.
