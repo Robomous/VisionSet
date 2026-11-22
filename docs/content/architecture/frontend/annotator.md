@@ -120,6 +120,15 @@ viewer read and no coordinate is re-expressed in another frame. A source that de
 frame is drawn in a default frame while the kernel refuses every 3D write on it, so
 `scanEditability` reports editing off there, with the reason.
 
+In a host, `PointCloudCanvas` takes `editing`: primary presses then go to `onScanPointer` with
+the camera and the CSS-pixel viewport they were made through (`scanPointerRole` decides which
+button edits, orbits or pans), and `onCameraChange` reports every camera move. `useScanEditor`
+turns those events through the machine against the store, and `scanHandleLayout` places the
+selected box's handles with the same `screenOf` the hit test measures against. Selected and
+draft boxes go through the canvas's one lines buffer, flagged with an `emphasis` that draws them
+in `highlightColor`. In `ui-core`, `useScanWorkspace` holds the scan store beside the image
+store on the annotation page, and `mergePlans` joins the two save plans into one dirty state.
+
 ## Zero runtime dependencies
 
 `package.json` has no `dependencies` at all. The root entrypoint is headless and never

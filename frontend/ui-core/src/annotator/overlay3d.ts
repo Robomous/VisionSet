@@ -43,6 +43,10 @@ function is3D(one: WireAnnotation): boolean {
   return THREE_D_TYPES.has((one.geometry as { readonly type?: unknown } | null)?.type);
 }
 
+export function isCuboid3D(one: WireAnnotation): boolean {
+  return (one.geometry as { readonly type?: unknown } | null)?.type === "cuboid_3d";
+}
+
 export function carries3DLabels(loaded: readonly WireAnnotation[]): boolean {
   return loaded.some(is3D);
 }

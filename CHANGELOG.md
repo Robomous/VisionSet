@@ -22,6 +22,9 @@ nothing was being distributed. This is the first version that is.
   into `point_cloud` assets under a source declaring the new `lidar_rfu` frame (x right, y forward, z up), with
   each global box moved into the sensor frame through the keyframe's ego pose and calibration as a `cuboid_3d`;
   a box leaning more than 5 degrees is a `label` loss rather than flattened (#1056).
+- **Cuboids are edited on a point-cloud scan.** An Edit mode on the scan view draws, moves, resizes and
+  turns a `cuboid_3d` in the scan's declared frame and saves it with the frame's other work; it is disabled,
+  with the reason, on a scan whose source declares no frame or a frame open for viewing only (#1070).
 
 ### Changed
 

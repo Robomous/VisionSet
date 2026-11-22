@@ -169,13 +169,15 @@ import { ZoomWidget } from "./ZoomWidget";
 import { ANNOTATOR_MIN_VIEWPORT_PX, useViewportAtLeast } from "./viewportFloor";
 import { AssetImage } from "./AssetImage";
 import { PointCloudStage } from "./PointCloudStage";
-import { carries3DLabels, labels3D, overlay3DFor, overlay3DNotice, type Overlay3DWithheld } from "./overlay3d";
+import { useScanWorkspace } from "./scanWorkspace";
+import { carries3DLabels, isCuboid3D, labels3D, overlay3DFor, overlay3DNotice, type Overlay3DWithheld } from "./overlay3d";
 import type { AssetProgress, WireAnnotation } from "./jobQueries";
 import type { BatchAsset } from "../screens/queries";
 import {
   jobKeys,
   assetPositionOf,
   isEmptyPlan,
+  mergePlans,
   planSave,
   useAssetAnnotations,
   useAssetCalibration,
@@ -903,6 +905,9 @@ function Workspace({
   );
 
   const isScan = asset.modality === "point_cloud";
+  // The scan's cuboids live in their own store beside the image one. Read-only is
+  // the same wire declaration `readOnly` below reads.
+  const scan = useScanWorkspace({ asset, schema, loaded, readOnly: !declares(asset, ASSET_ACTION.annotate) });
   // A scan's labels are read in its source's frame, never through a calibration.
   const carries3d = useMemo(() => !isScan && carries3DLabels(loaded), [isScan, loaded]);
   const calibration = useAssetCalibration(projectId, asset.id, carries3d);
@@ -1557,7 +1562,11 @@ function Workspace({
     });
   }, [jobId, mayStartJob, openingFailed, startJob]);
 
-  const plan = useMemo(() => planSave(snapshot.document, loaded), [snapshot.document, loaded]);
+  const scanPlan = scan?.plan ?? null;
+  const plan = useMemo(() => {
+    const image = planSave(snapshot.document, loaded);
+    return scanPlan === null ? image : mergePlans(image, scanPlan);
+  }, [snapshot.document, loaded, scanPlan]);
   const dirty = !isEmptyPlan(plan);
 
   const commit = useCallback(
@@ -1772,8 +1781,13 @@ function Workspace({
   const drawn = annotationsInDrawOrder(snapshot.document).filter(
     (annotation) => !isTagAnnotation(annotation),
   ).length;
-  const scanLabels = useMemo(() => (isScan ? labels3D(loaded) : []), [isScan, loaded]);
-  const objects = drawn + scanLabels.length;
+  // The scan editor holds the cuboids; what it does not hold is listed read-only.
+  const scanEditor = scan !== null;
+  const scanLabels = useMemo(
+    () => (isScan ? labels3D(loaded).filter((one) => !scanEditor || !isCuboid3D(one)) : []),
+    [isScan, loaded, scanEditor],
+  );
+  const objects = drawn + (scan?.snapshot.document.annotations.size ?? 0) + scanLabels.length;
 
 
   /**
@@ -2728,6 +2742,10 @@ function Workspace({
               asset={asset}
               loaded={loaded}
               schema={store.document.schema}
+              scan={scan}
+              onSave={() => {
+                if (!readOnly) attempt();
+              }}
             />
           ) : (
             <AssetImage projectId={projectId} assetId={asset.id}>
@@ -3078,6 +3096,14 @@ function Workspace({
           store={store}
           readOnly={readOnly}
           labels3D={scanLabels}
+          scan={
+            scan === null
+              ? null
+              : {
+                  store: scan.store,
+                  onRemove: scan.editBlocked === null ? (id: string) => scan.remove([id]) : null,
+                }
+          }
           hiddenIds={hiddenIds}
           onHiddenChange={setHiddenIds}
           activeClass={activeClass}

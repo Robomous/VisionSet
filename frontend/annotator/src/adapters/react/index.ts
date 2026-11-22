@@ -78,5 +78,8 @@ export {
   type PointCloudCanvasProps,
   type PointCloudLabel,
   type PointCloudStatus,
+  type ScanPointerEvent,
+  type ScanView,
 } from "./PointCloudCanvas";
-export { cssColorToRgb } from "./pointCloudGl";
+export { cssColorToRgb, resolveCssColor } from "./pointCloudGl";
+export { useScanEditor, type ScanEditor, type ScanEditorOptions } from "./useScanEditor";

@@ -5,7 +5,9 @@ import { NO_MODIFIERS } from "../../interaction/events";
 import { EMPTY_SELECTION, selectOnly } from "../../state/selection";
 import { AnnotatorStore } from "../../state/store";
 import type { Cuboid3DGeometry, Point, Point3D } from "../../types";
-import { faceCenter, headingOfYaw, MIN_CUBOID_SIZE } from "../cuboid";
+import { CUBOID_FACES, cuboidAxes, faceCenter, headingOfYaw, MIN_CUBOID_SIZE } from "../cuboid";
+import { fromForwardLeftUp, type ScanFrame } from "../frame";
+import { add, scale } from "../vector";
 import { contextOf, pixelOf, scanBox, scanDocumentOf } from "./_scan";
 import {
   draftCuboid,
@@ -197,6 +199,39 @@ describe("editing a cuboid", () => {
     ]);
     expect(scanTransition(SCAN_IDLE, { type: "delete-selected" }, contextOf(scanDocumentOf(box))).effects).toEqual([]);
   });
+});
+
+describe("every face handle, in every frame", () => {
+  const frames: readonly ScanFrame[] = ["lidar_flu", "camera_rdf", "lidar_rfu"];
+  const opposite = { front: "back", back: "front", left: "right", right: "left", top: "bottom", bottom: "top" } as const;
+
+  for (const frame of frames) {
+    for (const yaw of [0, 0.7, -2.4]) {
+      for (const { face, axis, sign } of CUBOID_FACES) {
+        for (const distance of [1.5, -0.5]) {
+          const verb = distance > 0 ? "out" : "in";
+          it(`dragging ${face} ${verb} by ${Math.abs(distance)} m moves only that face (${frame}, yaw ${yaw})`, () => {
+            const box = scanBox("car-1", { center: fromForwardLeftUp(frame, [1, -0.5, 1.5]), size: [5, 3, 3], yaw });
+            const context = contextOf(scanDocumentOf(box), { selection: selectOnly("car-1"), frame });
+            const origin = box.geometry;
+            const grabbed = faceCenter(origin, frame, face);
+            const outward = scale(cuboidAxes(origin, frame)[axis], sign);
+
+            const pressed = scanTransition(SCAN_IDLE, down(pixelOf(context, grabbed)), context);
+            expect(pressed.state).toMatchObject({ type: "resizing", face });
+            const pulled = staged(scanTransition(pressed.state, move(pixelOf(context, add(grabbed, scale(outward, distance)))), context));
+
+            const size = [...origin.size];
+            size[axis] += distance;
+            expectClose(pulled.size, size, 4);
+            expectClose(faceCenter(pulled, frame, opposite[face]), faceCenter(origin, frame, opposite[face]), 4);
+            expectClose(faceCenter(pulled, frame, face), add(grabbed, scale(outward, distance)), 4);
+            expect(pulled.yaw).toBe(yaw);
+          });
+        }
+      }
+    }
+  }
 });
 
 describe("through the store", () => {

@@ -216,3 +216,39 @@ export function cssColorToRgb(color: string): readonly [number, number, number] 
   }
   return [1, 1, 1];
 }
+
+const resolved = new Map<string, readonly [number, number, number]>();
+
+/**
+ * Any CSS colour a stylesheet can spell — a `var()` token, `oklch()` — as `[0, 1]`
+ * channels, read as `host` would paint it. `null` where the browser cannot say.
+ */
+export function resolveCssColor(host: HTMLElement, color: string): readonly [number, number, number] | null {
+  const probe = document.createElement("span");
+  probe.style.color = color;
+  probe.style.display = "none";
+  host.appendChild(probe);
+  const computed = getComputedStyle(probe).color;
+  probe.remove();
+  if (computed === "") return null;
+  const cached = resolved.get(computed);
+  if (cached !== undefined) return cached;
+  const rgb = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i.exec(computed);
+  let channels: readonly [number, number, number];
+  if (rgb !== null) {
+    channels = [Number(rgb[1]) / 255, Number(rgb[2]) / 255, Number(rgb[3]) / 255];
+  } else {
+    // A colour space `rgb()` cannot carry: let a 2D canvas convert one pixel.
+    const pixel = document.createElement("canvas");
+    pixel.width = 1;
+    pixel.height = 1;
+    const context = pixel.getContext("2d", { willReadFrequently: true });
+    if (context === null) return null;
+    context.fillStyle = computed;
+    context.fillRect(0, 0, 1, 1);
+    const [r, g, b] = context.getImageData(0, 0, 1, 1).data;
+    channels = [r / 255, g / 255, b / 255];
+  }
+  resolved.set(computed, channels);
+  return channels;
+}

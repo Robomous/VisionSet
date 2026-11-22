@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { documentFromWire } from "../../core/state/document";
-import type { WireDocument } from "../../core/state/document";
+import type { AnnotationDocument, WireDocument } from "../../core/state/document";
 import { AnnotatorStore } from "../../core/state/store";
 import type { StoreSnapshot } from "../../core/state/store";
 import type { Selection } from "../../core/state/selection";
@@ -48,11 +48,14 @@ export function useAnnotatorStore(
  * `useSyncExternalStore` from resubscribing on every render, which is the other
  * half of the contract `store.ts` was designed against.
  */
-export function useAnnotatorSnapshot(store: AnnotatorStore): StoreSnapshot {
+export function useAnnotatorSnapshot<D = AnnotationDocument>(store: AnnotatorStore<D>): StoreSnapshot<D>;
+/** `null` while there is no store, so a host can hold one that exists only for some assets. */
+export function useAnnotatorSnapshot<D = AnnotationDocument>(store: AnnotatorStore<D> | null): StoreSnapshot<D> | null;
+export function useAnnotatorSnapshot<D>(store: AnnotatorStore<D> | null): StoreSnapshot<D> | null {
   const bound = useMemo(
     () => ({
-      subscribe: (listener: () => void) => store.subscribe(listener),
-      getSnapshot: () => store.getSnapshot(),
+      subscribe: (listener: () => void) => (store === null ? () => {} : store.subscribe(listener)),
+      getSnapshot: () => (store === null ? null : store.getSnapshot()),
     }),
     [store],
   );

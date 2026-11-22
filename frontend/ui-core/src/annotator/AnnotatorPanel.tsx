@@ -79,6 +79,8 @@ import {
   type AnnotationSchema,
   type AnnotatorStore,
   type LabelClass,
+  type ScanAnnotation,
+  type ScanDocument,
   type Tool,
 } from "@visionset/annotator";
 import { useAnnotatorSnapshot } from "@visionset/annotator/react";
@@ -132,10 +134,19 @@ export interface AnnotatorPanelProps {
   /** Open the add-a-class dialog, or absent where there is nowhere to add one. */
   readonly onAddClass?: (name: string) => void;
   /**
-   * A scan's 3D labels. They are drawn by the point-cloud viewer, not held in the
-   * document, so they are listed and counted here read-only.
+   * A scan's 3D labels the scan editor does not hold — a `polyline_3d` — listed
+   * and counted read-only.
    */
   readonly labels3D?: readonly WireAnnotation[];
+  /**
+   * A scan's cuboids, from the scan editor's store: a row selects its box, and
+   * deletes it through the same command log as the keyboard, unless `readOnly`
+   * or the scan cannot be edited.
+   */
+  readonly scan?: {
+    readonly store: AnnotatorStore<ScanDocument>;
+    readonly onRemove: ((id: string) => void) | null;
+  } | null;
 }
 
 export function AnnotatorPanel({
@@ -150,8 +161,10 @@ export function AnnotatorPanel({
   classFilterRef,
   onAddClass,
   labels3D = [],
+  scan = null,
 }: AnnotatorPanelProps): JSX.Element {
   const snapshot = useAnnotatorSnapshot(store);
+  const scanSnapshot = useAnnotatorSnapshot(scan?.store ?? null);
   const [filter, setFilter] = useState("");
 
   /**
@@ -166,9 +179,11 @@ export function AnnotatorPanel({
   const tagClasses = schema.classes.filter(isTaggableClass);
   // The composer asks, rather than `ClassRegion` hiding itself, because the split
   // rule below goes with the region.
-  const drawableClasses = schema.classes.filter(
-    (declared) => drawableGeometries(declared).length > 0,
-  );
+  // A scan draws only through the scan editor's own class picker; these tools draw on pixels.
+  const drawableClasses =
+    snapshot.document.asset.modality === "point_cloud"
+      ? []
+      : schema.classes.filter((declared) => drawableGeometries(declared).length > 0);
 
   const query = filter.trim().toLowerCase();
   // Numbered by **draw order**, never by position in the filtered list: the number
@@ -178,10 +193,14 @@ export function AnnotatorPanel({
     .map((annotation, index) => ({ annotation, index }))
     .filter((row) => row.annotation.label_class.toLowerCase().includes(query));
 
+  const cuboids = scanSnapshot === null ? [] : [...scanSnapshot.document.annotations.values()];
+  const cuboidRows = cuboids
+    .map((annotation, index) => ({ annotation, index: drawn.length + index }))
+    .filter((row) => row.annotation.label_class.toLowerCase().includes(query));
   const rows3D = labels3D
-    .map((label, index) => ({ label, index: drawn.length + index }))
+    .map((label, index) => ({ label, index: drawn.length + cuboids.length + index }))
     .filter((row) => row.label.label_class.toLowerCase().includes(query));
-  const total = drawn.length + labels3D.length;
+  const total = drawn.length + cuboids.length + labels3D.length;
 
   const allHidden = drawn.length > 0 && drawn.every((one) => hiddenIds.has(one.id));
 
@@ -314,7 +333,7 @@ export function AnnotatorPanel({
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto" data-testid="objects-scroller">
-        {rows.length + rows3D.length === 0 ? (
+        {rows.length + cuboidRows.length + rows3D.length === 0 ? (
           <p
             className="px-1 py-4 text-center text-xs text-muted-foreground"
             data-testid="objects-empty"
@@ -340,6 +359,17 @@ export function AnnotatorPanel({
                       onRemove: () => remove(annotation.id),
                       onReassign: (labelClass: string) => reassign(annotation, labelClass),
                     })}
+              />
+            ))}
+            {cuboidRows.map(({ annotation, index }) => (
+              <CuboidRow
+                key={annotation.id}
+                annotation={annotation}
+                index={index}
+                color={classColor(classNamed(snapshot.document, annotation.label_class), annotation.label_class)}
+                selected={scanSnapshot?.selection.has(annotation.id) === true}
+                onSelect={() => scan?.store.select(selectOnly(annotation.id))}
+                onRemove={readOnly || scan?.onRemove == null ? null : () => scan.onRemove?.(annotation.id)}
               />
             ))}
             {rows3D.map(({ label, index }) => (
@@ -646,6 +676,62 @@ function ObjectRow({
         data-testid={`object-delete-${index}`}
         onClick={onRemove}
         disabled={onRemove === undefined}
+      >
+        <Trash2 className="size-3.5" />
+      </Button>
+    </li>
+  );
+}
+
+/** One cuboid on a scan: select it, or delete it. No visibility toggle: the scan view has none per box. */
+function CuboidRow({
+  annotation,
+  index,
+  color,
+  selected,
+  onSelect,
+  onRemove,
+}: {
+  readonly annotation: ScanAnnotation;
+  readonly index: number;
+  readonly color: string;
+  readonly selected: boolean;
+  readonly onSelect: () => void;
+  readonly onRemove: (() => void) | null;
+}): JSX.Element {
+  const row = useRef<HTMLLIElement | null>(null);
+  useEffect(() => {
+    if (selected) row.current?.scrollIntoView({ block: "nearest" });
+  }, [selected]);
+  return (
+    <li
+      ref={row}
+      data-testid={`object-row-${index}`}
+      data-selected={selected ? "true" : "false"}
+      className={cn(
+        "flex items-center gap-1 rounded-md border px-1.5 py-1",
+        selected ? "border-primary bg-primary/10" : "border-transparent bg-card",
+      )}
+    >
+      <button
+        type="button"
+        data-testid={`object-select-${index}`}
+        onClick={onSelect}
+        className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs"
+      >
+        <span aria-hidden="true" className="size-2.5 shrink-0 rounded-sm" style={{ background: color }} />
+        <span className="truncate">
+          {index + 1}. {annotation.label_class}{" "}
+          <span className="text-muted-foreground">· {geometryLabel("cuboid_3d")}</span>
+        </span>
+      </button>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label={`Delete object ${index + 1}`}
+        data-testid={`object-delete-${index}`}
+        onClick={onRemove ?? undefined}
+        disabled={onRemove === null}
       >
         <Trash2 className="size-3.5" />
       </Button>
