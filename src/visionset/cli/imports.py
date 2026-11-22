@@ -66,10 +66,10 @@ def import_dataset(
 ) -> None:
     """Import an external dataset into a project as one approved batch.
 
-    The images are ingested by content, the dataset's classes become schema
-    version 1 when the project has none, and every label is written with
-    `import` provenance. The batch is approved and stops there: review the
-    labels and promote them as with any other batch.
+    The images, or a dataset's point-cloud scans, are ingested by content, the
+    dataset's classes become schema version 1 when the project has none, and
+    every label is written with `import` provenance. The batch is approved and
+    stops there: review the labels and promote them as with any other batch.
 
     Anything the import cannot carry is reported, never dropped silently. A
     commit that would drop a kind of thing not named by `--consent-lossy` is
@@ -133,9 +133,14 @@ def _report(plan: ImportPlan, consent: ImportConsent, *, json_out: bool) -> None
         ["KIND", "SUBJECT", "COUNT", "REASON"],
         [[loss.kind.value, loss.subject, str(loss.count), loss.reason] for loss in plan.losses],
     )
-    labels = sum(len(image.labels) for image in plan.images)
+    if plan.dataset.frame is None:
+        items = f"{len(plan.images)} image(s)"
+        labels = sum(len(image.labels) for image in plan.images)
+    else:
+        items = f"{len(plan.scans)} scan(s) in the {plan.dataset.frame.value} frame"
+        labels = sum(len(scan.labels) for scan in plan.scans)
     note(
-        f"{plan.format_name}: {len(plan.images)} image(s) and {labels} label(s) to import; "
+        f"{plan.format_name}: {items} and {labels} label(s) to import; "
         f"{plan.new_assets} new asset(s), {plan.new_annotations} new label(s), "
         f"{plan.annotations_already_present} already present."
     )

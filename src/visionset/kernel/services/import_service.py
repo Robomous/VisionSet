@@ -16,6 +16,13 @@ predicted. Planning decodes every listed image without storing anything; the
 commit then stores the blobs outside any transaction, as ingest does, and
 writes every row — assets, schema version, batch, labels, approval — in one
 transaction, so a refusal anywhere leaves none of them.
+
+A dataset of scans takes the same path with three differences. Each headerless
+scan is stored as a binary PCD of its own bytes, so the point-cloud processor
+that decodes an ingested scan decodes it too. The commit's transaction also
+writes the point-cloud source at the import root that declares the dataset's
+frame, unless one already declares it there. And a label has no image to fall
+outside of, so none is dropped for its position.
 """
 
 from __future__ import annotations
@@ -40,13 +47,17 @@ from visionset.kernel.domain import (
     ImportedDataset,
     ImportedImage,
     ImportedLabel,
+    ImportedScan,
     ImportLoss,
     ImportLossKind,
     ImportPlan,
     ImportRun,
     LabelClass,
+    PointCloudMetadata,
     Project,
+    ScanFrame,
     geometry_needs_calibration,
+    geometry_needs_scan_frame,
     require_calibration,
     sha256_hex,
 )
@@ -55,6 +66,7 @@ from visionset.kernel.domain.names import derived_name
 from visionset.kernel.domain.schema_validation import validate_schema_annotation
 from visionset.kernel.errors import (
     AssetNotWritable,
+    CalibrationInUse,
     CalibrationMissing,
     CalibrationResolutionMismatch,
     ImportNotConsented,
@@ -66,12 +78,14 @@ from visionset.kernel.errors import (
     VisionSetError,
 )
 from visionset.kernel.ports import Importer, UnitOfWork
+from visionset.kernel.ports.point_cloud_processor import MAX_POINT_CLOUD_BYTES
 from visionset.kernel.services.annotation_service import AnnotationService
 from visionset.kernel.services.batch_service import BatchService
 from visionset.kernel.services.dataset_service import member_asset_ids_of
 from visionset.kernel.services.ingest_service import store_assets
 from visionset.kernel.services.project_service import ProjectService
 from visionset.kernel.services.schema_service import SchemaService
+from visionset.kernel.services.source_service import SourceService
 from visionset.kernel.services.workspace_service import WorkspaceService
 
 _OUTSIDE = "it lies wholly outside its image"
@@ -85,6 +99,12 @@ class _Probe:
     format: ImageFormat | None
 
 
+@dataclass(frozen=True)
+class _ScanProbe:
+    content_hash: str
+    metadata: PointCloudMetadata
+
+
 @dataclass
 class _Planned:
     plan: ImportPlan
@@ -93,6 +113,7 @@ class _Planned:
     members: bool
     active: AnnotationSchema | None
     root: Path
+    scan_probes: dict[PurePosixPath, _ScanProbe] | None = None
 
 
 class ImportService:
@@ -103,6 +124,7 @@ class ImportService:
         self._schemas = SchemaService(workspace)
         self._batches = BatchService(workspace)
         self._annotations = AnnotationService(workspace)
+        self._sources = SourceService(workspace)
 
     def inspect(self, project_id: UUID, importer: Importer, src: Path) -> ImportPlan:
         """What committing this source would do, drop and refuse. Writes nothing.
@@ -112,7 +134,8 @@ class ImportService:
             ImportSourceUnreadable: the source is not a directory, is malformed,
                 names an image path that resolves outside it, or lists an image
                 whose decoded size disagrees with the annotation file.
-            MediaError: a listed image is not a supported, decodable still.
+            MediaError: a listed image is not a supported, decodable still, or a
+                listed scan does not decode as a point cloud.
         """
         return self._planned(project_id, importer, src).plan
 
@@ -133,15 +156,16 @@ class ImportService:
         was deleted, writes nothing and returns no batch. A run that would
         write no asset and no label writes nothing at all, schema included.
 
-        ``on_progress`` hears ``(stored, total)`` after each image's bytes are
-        stored, which is the long part of a commit; the rows follow in one
-        transaction it does not report on.
+        ``on_progress`` hears ``(stored, total)`` after each image's or scan's
+        bytes are stored, which is the long part of a commit; the rows follow
+        in one transaction it does not report on.
 
         Raises:
             ProjectNotFound: no such project in this workspace.
             ImportSourceUnreadable: the source is malformed or unsafe, an image
                 disagrees with the annotation file, or it changed during the run.
-            MediaError: a listed image is not a supported, decodable still.
+            MediaError: a listed image is not a supported, decodable still, or a
+                listed scan does not decode as a point cloud.
             ImportNotConsented: the import would drop a kind of thing that
                 ``consent`` does not name.
             InvalidAnnotation: a label does not fit the project's active schema;
@@ -157,6 +181,10 @@ class ImportService:
                 calibration — always so for an asset the import creates.
             CalibrationResolutionMismatch: a 3D label would land on an asset
                 whose calibration was measured at another size.
+            CalibrationInUse: a scan's labels would be read in a frame other
+                than the dataset's, because the scan is already an asset of a
+                source declaring another one, or the point-cloud source already
+                registered at the import root declares another one.
             ConstraintViolated: a concurrent writer stored the same content or
                 schema version first; nothing of this run was kept.
         """
@@ -186,16 +214,37 @@ class ImportService:
                 losses=plan.losses,
             )
 
+        frame = plan.dataset.frame
+        items: list[ImportedImage | ImportedScan]
         candidates: list[Asset] = []
-        for image in plan.images:
-            candidates.append(
-                self._store(project_id, planned.root, image, planned.probes[image.path])
-            )
-            if on_progress is not None:
-                on_progress(len(candidates), len(plan.images))
+        if frame is None:
+            items = list(plan.images)
+            for image in plan.images:
+                candidates.append(
+                    self._store(project_id, planned.root, image, planned.probes[image.path])
+                )
+                if on_progress is not None:
+                    on_progress(len(candidates), len(plan.images))
+        else:
+            items = list(plan.scans)
+            scan_probes = planned.scan_probes or {}
+            for scan in plan.scans:
+                candidates.append(
+                    self._store_scan(project_id, planned.root, scan, scan_probes[scan.path], frame)
+                )
+                if on_progress is not None:
+                    on_progress(len(candidates), len(plan.scans))
 
         with self._workspace.unit_of_work() as uow:
             self._require_project(uow, project_id)
+            if frame is not None:
+                source = self._sources.register_point_clouds_in(
+                    uow, project_id, planned.root, frame=frame
+                )
+                candidates = [
+                    candidate.model_copy(update={"source_id": source.id})
+                    for candidate in candidates
+                ]
             stored, created = store_assets(
                 uow, project_id, candidates, stamped_at=datetime.now(UTC)
             )
@@ -205,10 +254,10 @@ class ImportService:
             proposed: list[Annotation] = []
             already = 0
             labeled: list[UUID] = []
-            for image, candidate in zip(plan.images, candidates, strict=True):
+            for item, candidate in zip(items, candidates, strict=True):
                 asset = by_hash[candidate.content_hash]
                 present = _present(uow.annotations.list(asset.id))
-                new, repeated = _new_labels(present, image.labels)
+                new, repeated = _new_labels(present, item.labels)
                 already += repeated
                 for label in new:
                     proposed.append(
@@ -256,6 +305,8 @@ class ImportService:
         with self._workspace.unit_of_work() as uow:
             self._require_project(uow, project_id)
         dataset = importer.read(root)
+        if dataset.frame is not None:
+            return self._planned_scans(project_id, importer, root, dataset, dataset.frame)
         losses: list[ImportLoss] = list(dataset.losses)
         label_losses: Counter[tuple[str, str]] = Counter()
 
@@ -379,6 +430,135 @@ class ImportService:
             root=root,
         )
 
+    def _planned_scans(
+        self,
+        project_id: UUID,
+        importer: Importer,
+        root: Path,
+        dataset: ImportedDataset,
+        frame: ScanFrame,
+    ) -> _Planned:
+        losses: list[ImportLoss] = list(dataset.losses)
+        missing: list[PurePosixPath] = []
+        probes: dict[PurePosixPath, _ScanProbe] = {}
+        for scan in dataset.scans:
+            path = _contained(root, scan.path)
+            if not path.is_file():
+                missing.append(scan.path)
+                losses.append(_scan_loss(scan, "the source holds no such file"))
+                continue
+            probes[scan.path] = self._probe_scan(path, scan)
+
+        kept: list[ImportedScan] = []
+        first_with: dict[str, PurePosixPath] = {}
+        for scan in sorted(
+            (scan for scan in dataset.scans if scan.path in probes), key=lambda s: str(s.path)
+        ):
+            original = first_with.setdefault(probes[scan.path].content_hash, scan.path)
+            if original != scan.path:
+                del probes[scan.path]
+                losses.append(_scan_loss(scan, f"its points are those of {str(original)!r}"))
+                continue
+            kept.append(scan)
+
+        with self._workspace.unit_of_work() as uow:
+            active = self._schemas.active(uow, project_id)
+            known = {asset.content_hash: asset for asset in uow.assets.list(project_id)}
+            trunk = member_asset_ids_of(
+                uow, ProjectService(self._workspace).require_dataset(uow, project_id)
+            )
+            held = {
+                asset_id for batch in uow.batches.list(project_id) for asset_id in batch.asset_ids
+            }
+            registered = self._sources.point_cloud_source_of(uow, project_id, root)
+            new_assets = 0
+            new_annotations = 0
+            already = 0
+            blocked: list[VisionSetError] = []
+            for scan in kept:
+                asset = known.get(probes[scan.path].content_hash)
+                if asset is None:
+                    new_assets += 1
+                    new_annotations += len(scan.labels)
+                    continue
+                new, repeated = _new_labels(_present(uow.annotations.list(asset.id)), scan.labels)
+                already += repeated
+                new_annotations += len(new)
+                if any(
+                    geometry_needs_scan_frame(one.geometry, modality=asset.modality) for one in new
+                ):
+                    source = None if asset.source_id is None else uow.sources.get(asset.source_id)
+                    declared = None if source is None else source.frame
+                    if declared != frame:
+                        blocked.append(
+                            CalibrationInUse(
+                                f"scan {str(scan.path)!r} is asset {asset.id}, whose source "
+                                f"declares {declared or 'no frame'}, and the source labels it "
+                                f"in {frame}; an import never re-reads a label in other axes"
+                            )
+                        )
+                if new and (asset.id in trunk or asset.id in held):
+                    blocked.append(
+                        AssetNotWritable(
+                            f"scan {str(scan.path)!r} is asset {asset.id}, which "
+                            f"{'is in the dataset' if asset.id in trunk else 'a batch holds'}, "
+                            f"and the source has {len(new)} label(s) it does not carry; an "
+                            f"import is one-shot and never writes into reviewed or held work"
+                        )
+                    )
+
+        members = bool(new_assets or new_annotations)
+        refusals: list[VisionSetError] = []
+        if members and registered is not None and registered.frame != frame:
+            refusals.append(
+                CalibrationInUse(
+                    f"source {registered.id} at the import root declares the "
+                    f"{registered.frame} frame and the scans are labelled in {frame}; an "
+                    f"import never re-declares a frame"
+                )
+            )
+        if active is not None:
+            losses.extend(_undeclared_unused(dataset, active))
+            refusals.extend(_schema_refusals(kept, active))
+        elif members:
+            try:
+                SchemaService.require_coherent(_derived_classes(dataset))
+            except InvalidSchema as refusal:
+                refusals.append(refusal)
+        refusals.extend(blocked)
+
+        plan = ImportPlan(
+            project_id=project_id,
+            format_name=importer.format_name,
+            dataset=dataset,
+            images=(),
+            losses=tuple(losses),
+            missing_images=(),
+            conflicts=tuple(str(refusal) for refusal in refusals),
+            creates_schema=active is None and members,
+            new_assets=new_assets,
+            new_annotations=new_annotations,
+            annotations_already_present=already,
+            scans=tuple(kept),
+            missing_scans=tuple(missing),
+        )
+        return _Planned(
+            plan=plan,
+            refusals=refusals,
+            probes={},
+            members=members,
+            active=active,
+            root=root,
+            scan_probes=probes,
+        )
+
+    def _probe_scan(self, path: Path, scan: ImportedScan) -> _ScanProbe:
+        content = _scan_as_pcd(path, scan)
+        metadata = self._workspace.point_cloud_processor.probe(
+            BytesIO(content), name=str(scan.path)
+        )
+        return _ScanProbe(content_hash=sha256_hex(content), metadata=metadata)
+
     def _probe(self, path: Path, image: ImportedImage) -> _Probe:
         name = str(image.path)
         with _open(path, name) as handle:
@@ -436,6 +616,32 @@ class ImportService:
             thumbnail_hash=thumbnail_hash,
         )
 
+    def _store_scan(
+        self, project_id: UUID, root: Path, scan: ImportedScan, probe: _ScanProbe, frame: ScanFrame
+    ) -> Asset:
+        path = _contained(root, scan.path)
+        name = str(scan.path)
+        content = _scan_as_pcd(path, scan)
+        if sha256_hex(content) != probe.content_hash:
+            raise ImportSourceUnreadable(f"scan {name!r} changed while it was being imported")
+        reading = self._workspace.point_cloud_processor.read(
+            BytesIO(content), frame=frame, name=name
+        )
+        content_hash = self._workspace.blob_store.put(BytesIO(content))
+        thumbnail_hash = (
+            None
+            if reading.thumbnail is None
+            else self._workspace.blob_store.put(BytesIO(reading.thumbnail))
+        )
+        return Asset(
+            project_id=project_id,
+            modality="point_cloud",
+            content_hash=content_hash,
+            uri=str(path),
+            point_cloud=reading.metadata,
+            thumbnail_hash=thumbnail_hash,
+        )
+
     def _single_still(self, handle: BinaryIO, name: str) -> DecodedStill:
         stills = list(self._workspace.image_processor.stills(handle, name=name))
         if len(stills) != 1 or stills[0].frame_index is not None:
@@ -489,6 +695,38 @@ def _open(path: Path, name: str) -> BinaryIO:
         ) from None
 
 
+def _scan_as_pcd(path: Path, scan: ImportedScan) -> bytes:
+    """The scan's own bytes behind a binary PCD header, refused unless they are whole records."""
+    name = str(scan.path)
+    record = scan.layout.record_size
+    try:
+        size = path.stat().st_size
+        if size > MAX_POINT_CLOUD_BYTES:
+            raise ImportSourceUnreadable(
+                f"scan {name!r} is {size} bytes, over the {MAX_POINT_CLOUD_BYTES} a scan may hold"
+            )
+        data = path.read_bytes()
+    except OSError as exc:
+        raise ImportSourceUnreadable(
+            f"scan {name!r} could not be read: {exc.strerror or exc.__class__.__name__}"
+        ) from None
+    if not data or len(data) % record:
+        raise ImportSourceUnreadable(
+            f"scan {name!r} is {len(data)} bytes, which is not a whole number of "
+            f"{record}-byte points"
+        )
+    return scan.layout.pcd_header(len(data) // record) + data
+
+
+def _scan_loss(scan: ImportedScan, why: str) -> ImportLoss:
+    return ImportLoss(
+        kind=ImportLossKind.SCAN,
+        subject=str(scan.path),
+        count=1,
+        reason=f"{why}; its {len(scan.labels)} label(s) would be lost",
+    )
+
+
 def _image_loss(image: ImportedImage, why: str) -> ImportLoss:
     return ImportLoss(
         kind=ImportLossKind.IMAGE,
@@ -507,7 +745,8 @@ def _derived_classes(dataset: ImportedDataset) -> list[LabelClass]:
 
 def _undeclared_unused(dataset: ImportedDataset, active: AnnotationSchema) -> list[ImportLoss]:
     declared = {label_class.name for label_class in active.classes}
-    used = {label.class_name for image in dataset.images for label in image.labels}
+    items: tuple[ImportedImage | ImportedScan, ...] = (*dataset.images, *dataset.scans)
+    used = {label.class_name for item in items for label in item.labels}
     return [
         ImportLoss(
             kind=ImportLossKind.CLASS,
@@ -521,7 +760,7 @@ def _undeclared_unused(dataset: ImportedDataset, active: AnnotationSchema) -> li
 
 
 def _schema_refusals(
-    images: Iterable[ImportedImage], active: AnnotationSchema
+    images: Iterable[ImportedImage | ImportedScan], active: AnnotationSchema
 ) -> list[InvalidAnnotation]:
     """One refusal per distinct (class, geometry) a label uses that ``active`` cannot accept."""
     refusals: list[InvalidAnnotation] = []

@@ -156,6 +156,51 @@ class SourceService:
             display_name=display_name,
         )
 
+    def point_cloud_source_of(
+        self, uow: UnitOfWork, project_id: UUID, directory: Path
+    ) -> Source | None:
+        """The point-cloud source registered at ``directory``, if any, read in ``uow``."""
+        path = canonical_path(directory)
+        for stored in uow.sources.list(project_id):
+            if stored.kind is SourceKind.POINT_CLOUD_DIRECTORY and stored.locator == path:
+                return stored
+        return None
+
+    def register_point_clouds_in(
+        self, uow: UnitOfWork, project_id: UUID, directory: Path, *, frame: ScanFrame
+    ) -> Source:
+        """The point-cloud source at ``directory`` declaring ``frame``, in a caller's transaction.
+
+        For an import, which writes its source with its assets and labels. Unlike
+        :meth:`register_point_clouds` it changes nothing on a source already
+        there: its name and capture parameters are kept, and a different
+        declared frame is refused rather than replaced, because the import's
+        labels are written in ``frame``.
+
+        Raises:
+            CalibrationInUse: the source there declares another frame.
+            NotADirectoryError: ``directory`` is not a directory.
+        """
+        if not directory.is_dir():
+            raise NotADirectoryError(f"{directory} is not a directory")
+        uow.hold_writes()
+        stored = self.point_cloud_source_of(uow, project_id, directory)
+        if stored is None:
+            return uow.sources.add(
+                Source(
+                    project_id=project_id,
+                    kind=SourceKind.POINT_CLOUD_DIRECTORY,
+                    locator=canonical_path(directory),
+                    frame=frame,
+                )
+            )
+        if stored.frame != frame:
+            raise CalibrationInUse(
+                f"source {stored.id} declares the {stored.frame} frame and the scans to "
+                f"import are labelled in {frame}; an import never re-declares a frame"
+            )
+        return stored
+
     def _register_directory(
         self,
         project_id: UUID,

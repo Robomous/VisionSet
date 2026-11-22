@@ -9,7 +9,7 @@ included. Consent is per loss kind, the kinds ``inspect_import`` lists in
 **A local path, synchronous, like ``ingest``.** An agent runs beside the
 workspace, so it names a directory rather than uploading one, and a stdio server
 has no worker to poll. A client that sends a ``progressToken`` hears each image
-stored.
+or scan stored.
 """
 
 from __future__ import annotations
@@ -65,7 +65,9 @@ def inspect_import(
 
     `losses` lists everything the import cannot carry, by kind, subject and
     count: a geometry the kernel has no type for, a label outside its image, an
-    image the source names but does not hold. `loss_kinds` is what
+    image the source names but does not hold. A dataset of point-cloud scans,
+    such as `kitti`, counts them in `scans` and names the frame its scans and
+    labels are written in as `frame`. `loss_kinds` is what
     `import_dataset` needs in `consent_lossy` to go ahead. `conflicts` refuse an
     import whatever it consents to, such as a label the project's existing schema
     cannot accept.
@@ -74,7 +76,7 @@ def inspect_import(
     classes would become version 1. `new_assets` and `new_annotations` are what
     a commit would add; images already in the project are matched by content.
 
-    Every image is decoded, so expect it to take a while on a large dataset.
+    Every image or scan is decoded, so expect it to take a while on a large dataset.
     """
     with opened_workspace() as workspace:
         resolved = ProjectService(workspace).resolve(project)
@@ -100,18 +102,20 @@ def import_dataset(
 ) -> shapes.ImportRun | Refusal:
     """Import an external dataset into a project as one approved batch. Blocks until done.
 
-    The images are ingested by content, the dataset's classes become schema
-    version 1 when the project has none, and every label is written with
-    `import` provenance. The batch is approved and stops there: each labeled
-    asset arrives `annotated`, and a person reviews and promotes them as with any
-    other batch. An existing schema is never changed by an import.
+    The images, or a dataset's point-cloud scans, are ingested by content, the
+    dataset's classes become schema version 1 when the project has none, and
+    every label is written with `import` provenance. Scans are registered under
+    a point-cloud source at `path` that declares the dataset's frame. The batch
+    is approved and stops there: each labeled asset arrives `annotated`, and a
+    person reviews and promotes them as with any other batch. An existing schema
+    is never changed by an import.
 
     Call `inspect_import` first: an import that would drop anything refuses
     with `IMPORT_NOT_CONSENTED` unless `consent_lossy` names each kind, and the
     refusal's `detail.losses` lists what. Re-running the same source writes
     nothing new and answers a null `batch_id`.
 
-    A client that sends a `progressToken` hears each image as it is stored.
+    A client that sends a `progressToken` hears each image or scan as it is stored.
     """
     consent = ImportConsent(kinds=frozenset(ImportLossKind(kind) for kind in consent_lossy or ()))
     with opened_workspace() as workspace, reporting(ctx) as report:
@@ -121,7 +125,7 @@ def import_dataset(
             _importer(format),
             _local(path),
             consent=consent,
-            on_progress=lambda done, total: report(done, total, f"stored {done} of {total} images"),
+            on_progress=lambda done, total: report(done, total, f"stored {done} of {total} files"),
         )
     return wire.import_run(run)
 
