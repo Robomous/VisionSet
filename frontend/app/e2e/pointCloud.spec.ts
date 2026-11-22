@@ -94,13 +94,29 @@ async function requireWebGl2(page: Page): Promise<void> {
   test.skip(!available, `This browser offers no WebGL2; set ${REQUIRE_ENV}=1 to fail instead of skipping.`);
 }
 
-async function openScan(page: Page): Promise<Request[]> {
+/** The pinned schema with `vehicle` also accepting a cuboid, for the editor to draw with. */
+const CUBOID_SCHEMA = {
+  project_id: PROJECT,
+  version: 3,
+  classes: [
+    { name: "vehicle", geometries: ["bbox", "cuboid_3d"], color: "#38bdf8", attributes: [] },
+    { name: "lane", geometries: ["polygon"], color: "#f97316", attributes: [] },
+  ],
+} satisfies Wire["SchemaVersionOut"];
+
+interface ScanWorld {
+  /** The frame the source declares; `null` declares none. */
+  readonly frame?: Wire["SourceOut"]["frame"];
+  readonly schema?: Wire["SchemaVersionOut"];
+}
+
+async function openScan(page: Page, world: ScanWorld = {}): Promise<Request[]> {
   await requireWebGl2(page);
-  return serveScan(page, openedWorld());
+  return serveScan(page, openedWorld(), world);
 }
 
 /** The scan's job, served and opened; the stub moves `lifecycle` as the page starts things. */
-async function serveScan(page: Page, lifecycle: Lifecycle): Promise<Request[]> {
+async function serveScan(page: Page, lifecycle: Lifecycle, world: ScanWorld = {}): Promise<Request[]> {
   const sent: Request[] = [];
   await serveApi(page, sent, progressStore({ "asset-1": "unannotated" }), lifecycle, undefined, [CAR]);
   // Registered after the shared stub, so it is asked first and hands everything else back.
@@ -108,6 +124,9 @@ async function serveScan(page: Page, lifecycle: Lifecycle): Promise<Request[]> {
     const path = new URL(route.request().url()).pathname.replace(/^\/api/, "");
     if (path.endsWith("/assets") && path.startsWith("/batches")) {
       return route.fulfill({ json: { items: [scanAsset(lifecycle)], total: 1 } satisfies Wire["BatchAssetPage"] });
+    }
+    if (world.schema !== undefined && path.endsWith("/schema/versions/3")) {
+      return route.fulfill({ json: world.schema });
     }
     if (path === `/projects/${PROJECT}/assets/asset-1/points`) {
       return route.fulfill({ contentType: "application/octet-stream", body: SCAN.body });
@@ -120,7 +139,7 @@ async function serveScan(page: Page, lifecycle: Lifecycle): Promise<Request[]> {
           kind: "point_cloud_directory",
           name: "sweeps",
           registered_at: "2026-11-01T00:00:00Z",
-          frame: "lidar_flu",
+          frame: world.frame === undefined ? "lidar_flu" : world.frame,
           video: null,
         } satisfies Wire["SourceOut"],
       });
@@ -132,6 +151,35 @@ async function serveScan(page: Page, lifecycle: Lifecycle): Promise<Request[]> {
   await page.getByTestId("token-submit").click();
   await expect(page.getByTestId("annotation-page")).toBeVisible();
   return sent;
+}
+
+/** A primary drag from `from` to `to`, in pixels from the view's top-left. */
+async function dragIn(page: Page, view: Locator, from: readonly [number, number], to: readonly [number, number]): Promise<void> {
+  const box = await view.boundingBox();
+  if (box === null) throw new Error("the view has no box");
+  await page.mouse.move(box.x + from[0], box.y + from[1]);
+  await page.mouse.down();
+  await page.mouse.move(box.x + to[0], box.y + to[1], { steps: 8 });
+  await page.mouse.up();
+}
+
+/** A cuboid on the ground left of the car: the footprint dragged, the height raised, a click to finish. */
+async function drawCuboid(page: Page, view: Locator): Promise<void> {
+  const box = await view.boundingBox();
+  if (box === null) throw new Error("the view has no box");
+  const [cx, cy] = [box.width / 2, box.height / 2];
+  await dragIn(page, view, [cx - 220, cy + 60], [cx - 100, cy + 150]);
+  await page.mouse.move(box.x + cx - 100, box.y + cy + 90, { steps: 6 });
+  await page.mouse.down();
+  await page.mouse.up();
+}
+
+/** Where a handle of the selected box sits, in the overlay's own pixels. */
+async function handleAt(page: Page, face: string): Promise<readonly [number, number]> {
+  const handle = page.getByTestId(`scan-handle-${face}`);
+  const x = Number(await handle.getAttribute("x"));
+  const y = Number(await handle.getAttribute("y"));
+  return [x, y];
 }
 
 async function drawCount(view: Locator): Promise<number> {
@@ -253,8 +301,136 @@ test("looking at a scan in an approved batch starts nothing, and Start annotatin
   await expect(banner).not.toContainText(/image|frame/i);
   expect(starts()).toEqual([]);
 
+  await expect(page.getByTestId("scan-edit-toggle")).toBeDisabled();
+  await expect(page.getByTestId("scan-edit-strip").locator("[data-reason]")).toHaveAttribute(
+    "data-reason",
+    /viewing only/,
+  );
+
   await page.getByTestId("banner-start-batch").click();
   await expect.poll(starts).toEqual([`/batches/${BATCH}/start`, `/jobs/${JOB}/start`]);
   await expect(banner).toHaveCount(0);
   await expect(page.getByTestId("skip")).toBeEnabled();
+});
+
+test("in Edit, a drawn cuboid moves, the move undoes, and the save sends the box as drawn", async ({ page }) => {
+  const sent = await openScan(page, { schema: CUBOID_SCHEMA });
+  const view = page.getByTestId("point-cloud-canvas");
+  await expect.poll(() => drawCount(view)).toBeGreaterThan(0);
+  const box = await view.boundingBox();
+  if (box === null) throw new Error("the view has no box");
+  const [cx, cy] = [box.width / 2, box.height / 2];
+
+  await page.getByTestId("scan-edit-toggle").click();
+  await expect(view).toHaveAttribute("data-editing", "on");
+  await page.getByTestId("scan-tool-cuboid").click();
+  await expect(page.getByTestId("scan-cuboid-class")).toContainText("vehicle");
+
+  await drawCuboid(page, view);
+  await expect(page.getByTestId("object-count")).toHaveText("2 objects");
+  await expect(view).toHaveAttribute("data-label-count", "2");
+  await expect(page.getByTestId("scan-handles")).toBeVisible();
+  const drawn = await handleAt(page, "top");
+
+  // A press on the body away from every handle moves the box along the ground.
+  await page.getByTestId("scan-tool-select").click();
+  const [bx, by] = [cx - 160 + 18, cy + 105 + 14];
+  await dragIn(page, view, [bx, by], [bx + 90, by - 10]);
+  const moved = await handleAt(page, "top");
+  expect(Math.hypot(moved[0] - drawn[0], moved[1] - drawn[1])).toBeGreaterThan(30);
+
+  await page.getByTestId("scan-undo").click();
+  await expect.poll(() => handleAt(page, "top")).toEqual(drawn);
+
+  await page.getByTestId("save-and-stay").click();
+  await expect(page.getByTestId("save-state")).toContainText(/saved/i);
+  const posts = sent.filter((request) => request.method() === "POST" && request.url().endsWith(`/jobs/${JOB}/annotations`));
+  expect(posts).toHaveLength(1);
+  const body = posts[0]?.postDataJSON() as Wire["AnnotationCreate"][];
+  expect(body).toHaveLength(1);
+  const [created] = body;
+  expect(created).toMatchObject({ asset_id: "asset-1", label_class: "vehicle", geometry: { type: "cuboid_3d", yaw: 0 } });
+  const geometry = created?.geometry as Wire["Cuboid3DBody"];
+  for (const side of geometry.size) expect(side).toBeGreaterThan(0.05);
+  // It stands on the ground the scan was sampled on, left of the car and short of it.
+  expect(geometry.center[2] - geometry.size[2] / 2).toBeCloseTo(-0.8, 1);
+  expect(geometry.center[1]).toBeGreaterThan(0);
+  expect(sent.some((request) => request.method() === "PATCH")).toBe(false);
+
+  await page.reload();
+  const token = page.getByTestId("token-input");
+  if (await token.isVisible().catch(() => false)) {
+    await token.fill("a-token");
+    await page.getByTestId("token-submit").click();
+  }
+  await expect(page.getByTestId("object-count")).toHaveText("2 objects");
+  await expect(page.getByTestId("point-cloud-canvas")).toHaveAttribute("data-label-count", "2");
+});
+
+test("in Edit, a right drag orbits and a left drag on open ground draws nothing with the select tool", async ({ page }) => {
+  await openScan(page, { schema: CUBOID_SCHEMA });
+  const view = page.getByTestId("point-cloud-canvas");
+  await expect.poll(() => drawCount(view)).toBeGreaterThan(0);
+  await page.getByTestId("scan-edit-toggle").click();
+  const box = await view.boundingBox();
+  if (box === null) throw new Error("the view has no box");
+  const start = await view.screenshot();
+
+  const orbited = await shotAfter(view, async () => {
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down({ button: "right" });
+    await page.mouse.move(box.x + box.width / 2 + 120, box.y + box.height / 2 + 40, { steps: 6 });
+    await page.mouse.up({ button: "right" });
+  });
+  expect(orbited.equals(start)).toBe(false);
+
+  await dragIn(page, view, [box.width / 2 - 200, box.height - 80], [box.width / 2 - 100, box.height - 40]);
+  await expect(page.getByTestId("object-count")).toHaveText("1 object");
+  await expect(page.getByTestId("save-and-stay")).toBeDisabled();
+});
+
+test("a scan whose source declares no frame cannot be edited, and says why", async ({ page }) => {
+  await openScan(page, { schema: CUBOID_SCHEMA, frame: null });
+  await expect(page.getByTestId("point-cloud-summary")).toContainText("no declared frame");
+  const toggle = page.getByTestId("scan-edit-toggle");
+  await expect(toggle).toBeDisabled();
+  const reason = page.getByTestId("scan-edit-strip").locator("[data-reason]");
+  await expect(reason).toHaveAttribute("data-reason", /declares no frame/);
+  await reason.hover();
+  await expect(page.getByRole("tooltip")).toContainText("declares no frame");
+  await expect(page.getByTestId("point-cloud-canvas")).toHaveAttribute("data-editing", "off");
+});
+
+test("in Edit, the keys delete, undo, and let go of the selection", async ({ page }) => {
+  await openScan(page, { schema: CUBOID_SCHEMA });
+  const view = page.getByTestId("point-cloud-canvas");
+  await expect.poll(() => drawCount(view)).toBeGreaterThan(0);
+  await page.getByTestId("scan-edit-toggle").click();
+  await page.getByTestId("scan-tool-cuboid").click();
+  await drawCuboid(page, view);
+  await expect(page.getByTestId("object-count")).toHaveText("2 objects");
+  await expect(page.getByTestId("scan-handles")).toBeVisible();
+
+  await page.keyboard.press("Delete");
+  await expect(page.getByTestId("object-count")).toHaveText("1 object");
+  await expect(page.getByTestId("save-and-stay")).toBeDisabled();
+
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(page.getByTestId("object-count")).toHaveText("2 objects");
+  await page.getByTestId("object-select-1").click();
+  await expect(page.getByTestId("scan-handles")).toBeVisible();
+  await page.getByTestId("point-cloud-gl").focus();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("scan-handles")).toHaveCount(0);
+  await expect(page.getByTestId("save-and-stay")).toBeEnabled();
+});
+
+test("a selected cuboid is drawn in the highlight colour instead of its class colour", async ({ page }) => {
+  await openScan(page, { schema: CUBOID_SCHEMA });
+  const view = page.getByTestId("point-cloud-canvas");
+  await expect.poll(() => drawCount(view)).toBeGreaterThan(0);
+  expect((await census(page, await view.screenshot())).label).toBeGreaterThan(20);
+
+  const selected = await shotAfter(view, () => page.getByTestId("object-select-0").click());
+  expect((await census(page, selected)).label).toBe(0);
 });
