@@ -27,3 +27,11 @@ describe("refusalProse — browser target refusals", () => {
     expect(refusalProse(error)).not.toMatch(/could not be reached/i);
   });
 });
+
+describe("refusalProse — CALIBRATION_IN_USE", () => {
+  it("returns the fixed sentence, not the server message", () => {
+    const prose = refusalProse(new ApiError({ code: "CALIBRATION_IN_USE", message: "server wording" }));
+    expect(prose).toMatch(/already carry 3D labels/);
+    expect(prose).not.toContain("server wording");
+  });
+});

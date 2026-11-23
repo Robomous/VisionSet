@@ -99,6 +99,8 @@ import { formatCount } from "../lib/format.js";
  * rename cannot silently break a client.
  */
 export const REFUSAL_PROSE: Record<string, string> = {
+  CALIBRATION_IN_USE:
+    "These scans already carry 3D labels drawn in their declared frame, so they cannot be registered again with another one. Register them with the declared frame, or remove the 3D labels first.",
   // Projects.
   PROJECT_NOT_FOUND: "That project is no longer on record.",
 

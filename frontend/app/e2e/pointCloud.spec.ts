@@ -268,6 +268,7 @@ test("a scan draws its points and its cuboid, and never asks for a calibration",
   await expect(page.getByTestId("object-total")).toHaveText("1 object");
   await expect(page.getByTestId("point-cloud-summary")).toContainText(`${SCAN.count.toLocaleString("en-US")} points`);
   await expect(page.getByTestId("point-cloud-summary")).toContainText("lidar_flu");
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" }).locator('[aria-current="page"]')).toHaveText("Job · 1 scan");
 
   const { content, label } = await census(page, await view.screenshot());
   expect(content).toBeGreaterThan(5_000);
