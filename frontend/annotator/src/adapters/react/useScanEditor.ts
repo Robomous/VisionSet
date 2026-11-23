@@ -12,13 +12,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { IdFactory } from "../../core/ids";
-import { SCAN_IDLE, draftCuboid, scanTransition, type ScanContext, type ScanEvent, type ScanState, type ScanTool } from "../../core/pointcloud/edit/machine";
+import { SCAN_IDLE, draftCuboid, draftPolyline, scanTransition, type ScanContext, type ScanEvent, type ScanState, type ScanTool } from "../../core/pointcloud/edit/machine";
 import { runScanEffects } from "../../core/pointcloud/edit/runScanEffects";
 import { DEFAULT_HIT_TOLERANCES_3D } from "../../core/pointcloud/edit/scene";
 import type { ScanDocument } from "../../core/pointcloud/edit/scanDocument";
 import type { ScanFrame } from "../../core/pointcloud/frame";
 import type { AnnotatorStore } from "../../core/state/store";
-import type { Cuboid3DGeometry } from "../../core/types";
+import type { Cuboid3DGeometry, Polyline3DGeometry } from "../../core/types";
 import { randomUuid } from "../ids";
 import type { ScanPointerEvent, ScanView } from "./PointCloudCanvas";
 
@@ -36,10 +36,14 @@ export interface ScanEditor {
   readonly state: ScanState;
   /** The box being drawn, for the view to preview. */
   readonly draft: Cuboid3DGeometry | null;
+  /** The polyline being drawn, its last point following the pointer. */
+  readonly polylineDraft: Polyline3DGeometry | null;
   /** The last camera the perspective view reported; the top-down view's reports are not kept here. */
   readonly view: ScanView | null;
   readonly onScanPointer: (event: ScanPointerEvent, view: ScanView) => void;
   readonly onCameraChange: (view: ScanView) => void;
+  /** Finishes a polyline being drawn; anywhere else it does nothing. */
+  readonly onDoubleClick: () => void;
   /** A pointer-free event: `cancel`, `commit`, `delete-selected`. */
   readonly send: (event: Extract<ScanEvent, { type: "cancel" | "commit" | "delete-selected" }>) => void;
 }
@@ -113,6 +117,11 @@ export function useScanEditor(options: ScanEditorOptions): ScanEditor {
     [live, turn],
   );
 
+  const onDoubleClick = useCallback((): void => {
+    if (live && stateRef.current.type === "drawing-polyline") turn({ type: "commit" }, viewRef.current ?? NO_VIEW);
+  }, [live, turn]);
+
   const draft = useMemo(() => (frame === null ? null : draftCuboid(state, { frame })), [state, frame]);
-  return { state, draft, view, onScanPointer, onCameraChange, send };
+  const polylineDraft = useMemo(() => draftPolyline(state), [state]);
+  return { state, draft, polylineDraft, view, onScanPointer, onCameraChange, onDoubleClick, send };
 }

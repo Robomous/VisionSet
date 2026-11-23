@@ -20,6 +20,18 @@ function scene(selection = selectOnly("box")): Scene3D {
       confidence: null,
       job_id: null,
     },
+    {
+      id: "lane",
+      asset_id: "scan-1",
+      label_class: "curb",
+      schema_version: 1,
+      geometry: { type: "polyline_3d", points: [[0, -2, 0], [4, -2, 0], [8, -3, 0]], visibility: undefined },
+      attributes: {},
+      provenance: "human",
+      model_ref: null,
+      confidence: null,
+      job_id: null,
+    },
   ]);
   return {
     document,
@@ -68,8 +80,32 @@ describe("ScanHandles", () => {
     expect(screen.queryByTestId("scan-yaw-handle")).toBeNull();
   });
 
-  it("draws nothing when no single box is selected", () => {
+  it("draws nothing when no single label is selected and nothing is being drawn", () => {
     render(<ScanHandles scene={scene(EMPTY_SELECTION)} />);
     expect(screen.queryByTestId("scan-handles")).toBeNull();
+  });
+
+  it("draws a handle on each vertex of the selected polyline, and no cuboid handles", () => {
+    render(<ScanHandles scene={scene(selectOnly("lane"))} />);
+    expect(screen.getByTestId("scan-handles").getAttribute("data-target")).toBe("lane");
+    for (const index of [0, 1, 2]) {
+      expect(screen.getByTestId(`scan-vertex-${index}`).getAttribute("class")).toContain("stroke-foreground");
+    }
+    expect(screen.queryByTestId("scan-handle-front")).toBeNull();
+    expect(screen.queryByTestId("scan-yaw-ring")).toBeNull();
+  });
+
+  it("over the top-down view, draws the selected polyline's vertex handles too", () => {
+    const top: Scene3D = { ...scene(selectOnly("lane")), camera: topDownCamera([0, 0, 0], 30), view: "top-down" };
+    render(<ScanHandles scene={top} testIdPrefix="scan-top" />);
+    expect(screen.getAllByTestId(/^scan-top-vertex-\d$/)).toHaveLength(3);
+  });
+
+  it("draws the placed vertices of a polyline being drawn", () => {
+    const draft = [[0, 0, 0], [3, 1, 0]] as const;
+    render(<ScanHandles scene={scene(EMPTY_SELECTION)} draft={draft} />);
+    expect(screen.getByTestId("scan-handles").getAttribute("data-target")).toBe("draft");
+    expect(screen.getAllByTestId(/^scan-draft-vertex-\d$/)).toHaveLength(2);
+    expect(screen.getByTestId("scan-handles").innerHTML).not.toMatch(/#[0-9a-f]{3,6}\b/i);
   });
 });

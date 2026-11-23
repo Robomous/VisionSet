@@ -196,7 +196,14 @@ export {
   type ScanKeyPress,
   type ScanPointerRole,
 } from "./core/pointcloud/edit/input";
-export { scanHandleLayout, type ScanHandleLayout } from "./core/pointcloud/edit/overlay";
+export {
+  scanHandleLayout,
+  scanVertexLayout,
+  screenVertices,
+  type ScanHandleLayout,
+  type ScanVertexLayout,
+  type ScreenVertex,
+} from "./core/pointcloud/edit/overlay";
 export {
   colorModeAvailable,
   defaultColorMode,
@@ -205,6 +212,7 @@ export {
 } from "./core/pointcloud/ramp";
 export {
   cuboidSegments,
+  polylineSegments,
   scanCuboidCorners,
   scanLabels,
   type ScanLabel,

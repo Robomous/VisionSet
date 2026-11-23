@@ -1,5 +1,6 @@
 /**
- * Where the selected box's handles land on screen, for an overlay to draw.
+ * Where the selected label's handles land on screen, for an overlay to draw:
+ * a box's faces and yaw ring, or a polyline's vertices.
  *
  * The same `screenOf` the hit test measures against, so a handle is drawn where
  * a press finds it. Anything behind the eye is left out; the ring is split into
@@ -11,7 +12,7 @@ import { fromForwardLeftUp, type ScanFrame } from "../frame";
 import { screenOf } from "../ray";
 import { add, scale } from "../vector";
 import type { Cuboid3DGeometry, Point, Point3D } from "../../types";
-import { faceHandles, handleFaces, handleTarget, yawRing, type Scene3D } from "./scene";
+import { faceHandles, handleFaces, handleTarget, vertexTarget, yawRing, type Scene3D } from "./scene";
 
 export interface ScanHandleLayout {
   readonly id: string;
@@ -24,7 +25,31 @@ export interface ScanHandleLayout {
   readonly heading: Point | null;
 }
 
+export interface ScreenVertex {
+  readonly index: number;
+  readonly point: Point;
+}
+
+export interface ScanVertexLayout {
+  readonly id: string;
+  readonly vertices: readonly ScreenVertex[];
+}
+
 const RING_STEPS = 64;
+
+/** Each point on screen with its index; a point behind the eye is left out. */
+export function screenVertices(scene: Scene3D, points: readonly Point3D[]): readonly ScreenVertex[] {
+  return points.flatMap((point, index) => {
+    const onScreen = screenOf(scene.camera, scene.frame, scene.viewport, point);
+    return onScreen === null ? [] : [{ index, point: onScreen }];
+  });
+}
+
+/** `null` unless exactly one polyline is selected. */
+export function scanVertexLayout(scene: Scene3D): ScanVertexLayout | null {
+  const target = vertexTarget(scene);
+  return target === null ? null : { id: target.id, vertices: screenVertices(scene, target.geometry.points) };
+}
 
 /** `null` unless exactly one box is selected. */
 export function scanHandleLayout(scene: Scene3D): ScanHandleLayout | null {

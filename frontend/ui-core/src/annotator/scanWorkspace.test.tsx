@@ -4,7 +4,7 @@
  * the editor takes from the server.
  */
 
-import { isCuboidScanAnnotation, screenOf, selectOnly, type OrbitCamera } from "@visionset/annotator";
+import { isCuboidScanAnnotation, isPolylineScanAnnotation, screenOf, selectOnly, type OrbitCamera } from "@visionset/annotator";
 import { act, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -13,6 +13,7 @@ import type { WireAnnotation } from "./jobQueries";
 import {
   FRAME_UNDECLARED_REASON,
   NO_CUBOID_CLASS_REASON,
+  NO_POLYLINE_CLASS_REASON,
   READ_ONLY_REASON,
   useScanWorkspace,
   type ScanWorkspace,
@@ -28,6 +29,7 @@ const SCHEMA = {
   classes: [
     { name: "vehicle", geometries: ["bbox", "cuboid_3d"], color: "#38bdf8", attributes: [] },
     { name: "lane", geometries: ["polygon"], color: "#f97316", attributes: [] },
+    { name: "curb", geometries: ["polyline", "polyline_3d"], color: "#a3e635", attributes: [] },
   ],
 };
 
@@ -136,9 +138,30 @@ describe("useScanWorkspace", () => {
   it("offers no cuboid tool on a schema without a cuboid class", async () => {
     const probe = workspace({ schema: FLAT_SCHEMA, loaded: [] });
     await waitFor(() => expect(probe.current()?.editability.editable).toBe(true));
-    expect(probe.current()?.drawBlocked).toBe(NO_CUBOID_CLASS_REASON);
+    expect(probe.current()?.toolBlocked.cuboid).toBe(NO_CUBOID_CLASS_REASON);
+    expect(probe.current()?.drawBlocked).toBeNull();
     act(() => probe.current()?.setToolKind("cuboid"));
     expect(probe.current()?.toolKind).toBe("select");
+    expect(probe.current()?.drawBlocked).toBe(NO_CUBOID_CLASS_REASON);
+  });
+
+  it("offers no polyline tool on a schema without a polyline_3d class, and says why", async () => {
+    const probe = workspace({ schema: FLAT_SCHEMA, loaded: [] });
+    await waitFor(() => expect(probe.current()?.editability.editable).toBe(true));
+    expect(probe.current()?.toolBlocked.polyline).toBe(NO_POLYLINE_CLASS_REASON);
+    expect(probe.current()?.polylineClass).toBeNull();
+    act(() => probe.current()?.setToolKind("polyline"));
+    expect(probe.current()?.toolKind).toBe("select");
+    expect(probe.current()?.drawBlocked).toBe(NO_POLYLINE_CLASS_REASON);
+  });
+
+  it("lists the polyline_3d classes for the polyline tool and the cuboid_3d classes for the cuboid tool", async () => {
+    const probe = workspace();
+    await waitFor(() => expect(probe.current()?.editability.editable).toBe(true));
+    expect(probe.current()?.polylineClasses.map((one) => one.name)).toEqual(["curb"]);
+    expect(probe.current()?.polylineClass).toBe("curb");
+    expect(probe.current()?.cuboidClasses.map((one) => one.name)).toEqual(["vehicle"]);
+    expect(probe.current()?.toolBlocked).toEqual({ cuboid: null, polyline: null });
   });
 
   it("plans a delete from the panel, and an undo takes it back out of the plan", async () => {
@@ -216,5 +239,70 @@ describe("useScanWorkspace", () => {
     expect(probe.current()?.editor.state.type).toBe("idle");
     expect(probe.current()?.snapshot.preview).toBeNull();
     expect(probe.current()?.plan.updated).toEqual([]);
+  });
+
+  describe("the polyline tool", () => {
+    async function drawing(): Promise<{ current: () => ScanWorkspace }> {
+      const probe = workspace({ loaded: [] });
+      await waitFor(() => expect(probe.current()?.editability.editable).toBe(true));
+      act(() => {
+        probe.current()?.setEditing(true);
+        probe.current()?.setToolKind("polyline");
+      });
+      return {
+        current: () => {
+          const current = probe.current();
+          if (current === null) throw new Error("no workspace");
+          return current;
+        },
+      };
+    }
+
+    function click(probe: { current: () => ScanWorkspace }, at: readonly [number, number, number]): void {
+      const point = pixel(at);
+      act(() => probe.current().editor.onScanPointer({ type: "pointer-down", point, button: "primary", modifiers: NONE }, VIEW));
+      act(() => probe.current().editor.onScanPointer({ type: "pointer-up", point, button: "primary", modifiers: NONE }, VIEW));
+    }
+
+    it("adds a polyline_3d after two ground clicks and a commit, and plans it as a create", async () => {
+      const probe = await drawing();
+      click(probe, [0, 0, 0]);
+      click(probe, [4, 1, 0]);
+      act(() => probe.current().editor.onScanPointer({ type: "pointer-move", point: pixel([6, 2, 0]) }, VIEW));
+      expect(probe.current().editor.polylineDraft?.points).toHaveLength(3);
+      act(() => probe.current().editor.send({ type: "commit" }));
+
+      const [created] = probe.current().plan.created.filter(isPolylineScanAnnotation);
+      expect(created).toMatchObject({ label_class: "curb", provenance: "human" });
+      expect(created?.geometry.points).toHaveLength(2);
+      expect(probe.current().editor.polylineDraft).toBeNull();
+    });
+
+    it("finishes the line on a double-click", async () => {
+      const probe = await drawing();
+      click(probe, [0, 0, 0]);
+      click(probe, [4, 1, 0]);
+      click(probe, [4, 1, 0]);
+      act(() => probe.current().editor.onDoubleClick());
+      const [created] = probe.current().plan.created.filter(isPolylineScanAnnotation);
+      expect(created?.geometry.points).toHaveLength(2);
+    });
+
+    it("ignores a double-click when no line is being drawn", async () => {
+      const probe = await drawing();
+      act(() => probe.current().editor.onDoubleClick());
+      expect(probe.current().editor.state.type).toBe("idle");
+      expect(probe.current().plan.created).toEqual([]);
+    });
+
+    it("discards the draft when the tool changes under it", async () => {
+      const probe = await drawing();
+      click(probe, [0, 0, 0]);
+      click(probe, [4, 1, 0]);
+      expect(probe.current().editor.state.type).toBe("drawing-polyline");
+      act(() => probe.current().setToolKind("cuboid"));
+      expect(probe.current().editor.state.type).toBe("idle");
+      expect(probe.current().plan.created).toEqual([]);
+    });
   });
 });
