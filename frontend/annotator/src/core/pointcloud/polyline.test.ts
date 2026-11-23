@@ -36,6 +36,13 @@ describe("polyline vertex functions", () => {
     expect(removePolylineVertex(line(A, B), 0)).toBeNull();
   });
 
+  it("refuses a vertex or a segment the polyline does not have", () => {
+    expect(() => removePolylineVertex(line(A, B, C), -1)).toThrow(RangeError);
+    expect(() => removePolylineVertex(line(A, B, C), 3)).toThrow(RangeError);
+    expect(() => movePolylineVertex(line(A, B), 2, C)).toThrow(RangeError);
+    expect(() => insertPolylineVertex(line(A, B, C), 2, C)).toThrow(RangeError);
+  });
+
   it("keeps a declared visibility aligned with the points", () => {
     const seen: Polyline3DGeometry = { ...line(A, B, C), visibility: [2, 1, 2] };
     expect(insertPolylineVertex(seen, 0, [5, 0, 0]).visibility).toEqual([2, 2, 1, 2]);
@@ -55,6 +62,11 @@ describe("polyline vertex functions", () => {
     expect(nearestSegment([A, B, C], [13, 6, 0])).toEqual({ segment: 1, point: [10, 6, 0], distance: 3 });
     expect(nearestSegment([A, B], [-3, 4, 0])).toEqual({ segment: 0, point: A, distance: 5 });
     expect(nearestSegment([A], [1, 1, 1])).toBeNull();
+  });
+
+  it("nearestSegment keeps the first of two equally close segments", () => {
+    expect(nearestSegment([A, B, C], [12, -2, 0])?.segment).toBe(0);
+    expect(nearestSegment([A, B, C], [10, 0, 0])?.segment).toBe(0);
   });
 
   it("nearestSegment survives a zero-length segment", () => {

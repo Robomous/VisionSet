@@ -235,9 +235,10 @@ class Polyline3DGeometry(BaseModel):
     asset's effective calibration. On a point-cloud scan they are in the frame
     its source declares, in that scan's units, and need no calibration. Either
     way no image-frame bounds check applies: a point behind the camera, or
-    outside the frame, is a legal 3D label. The path rules are the 2D polyline's — ordered, degenerate only
-    when every point is the same point — and ``visibility`` is the same
-    :class:`VertexVisibility` field under the same validator.
+    outside the frame, is a legal 3D label. The path rules are the 2D
+    polyline's — ordered, degenerate only when every point is the same point —
+    and ``visibility`` is the same :class:`VertexVisibility` field under the
+    same validator.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
