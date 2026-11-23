@@ -826,7 +826,8 @@ The open job's `cuboid_3d` labels on the scan are drawn as their twelve edges, a
 asked for or used. A cuboid's corners are its centre plus half its size along the heading
 `cos(yaw)·forward + sin(yaw)·left`, across it, and along up (`scanCuboidCorners`). Edges are drawn
 over the points rather than hidden inside them. The cuboids live in the page's scan document, so
-they can be selected, drawn, moved, resized, turned, deleted and saved in **Edit** mode (see
+they can be selected, drawn, moved, resized, turned, deleted and saved in **Edit** mode, which
+adds an orthographic top-down view beside the perspective one (see
 [the scan editor](ui/annotator.md#editing-cuboids-on-a-scan)); a `polyline_3d` is not editable
 and is listed read-only. The Annotations panel and the object badge count both.
 

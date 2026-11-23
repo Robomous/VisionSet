@@ -9,7 +9,9 @@
  * discards it. A draft being drawn lives in the state, never in the document,
  * and enters the document as one `add`.
  *
- * Orbiting is the adapter's: only a primary press reaches this machine.
+ * Orbiting is the adapter's: only a primary press reaches this machine. Each
+ * event's context names the view it came through, so two views can share one
+ * state: a box's height is never read through the top-down one.
  */
 
 import type { IdFactory } from "../../ids";
@@ -266,6 +268,7 @@ function fromHeight(
 ): ScanTransition {
   switch (event.type) {
     case "pointer-move": {
+      if (context.view === "top-down") return to(state);
       const ray = screenRay(context.camera, context.frame, context.viewport, event.point);
       const up = fromForwardLeftUp(context.frame, [0, 0, 1]);
       const along = closestOnAxis(ray, state.base, up);

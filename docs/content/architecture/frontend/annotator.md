@@ -129,6 +129,16 @@ draft boxes go through the canvas's one lines buffer, flagged with an `emphasis`
 in `highlightColor`. In `ui-core`, `useScanWorkspace` holds the scan store beside the image
 store on the annotation page, and `mergePlans` joins the two save plans into one dirty state.
 
+The top-down view is a second `PointCloudCanvas` with `pinned`: its camera is `topDownCamera`,
+straight down the up axis and **orthographic** (`OrbitCamera.projection`), because a perspective
+camera that close draws a box's top visibly larger than its footprint. `ndcRay`, `screenOf`,
+`metresPerPixel` and `viewProjection` each take the orthographic case, so the machine, the hit
+test and `scanHandleLayout` are unchanged. It follows the perspective camera's target through
+`followTarget` and turns its orbit drag into a pan (`scanPointerRole(…, pinned)`). Both views feed
+the one `useScanEditor`; each `ScanView` names its `kind`, which reaches the machine as
+`Scene3D.view`. A `top-down` view offers only the four side faces (`handleFaces`) and never reads
+a height, so a draw can take its footprint there and its height in the perspective view.
+
 ## Zero runtime dependencies
 
 `package.json` has no `dependencies` at all. The root entrypoint is headless and never

@@ -36,7 +36,7 @@ export interface ScanEditor {
   readonly state: ScanState;
   /** The box being drawn, for the view to preview. */
   readonly draft: Cuboid3DGeometry | null;
-  /** The last camera the view reported. */
+  /** The last camera the perspective view reported; the top-down view's reports are not kept here. */
   readonly view: ScanView | null;
   readonly onScanPointer: (event: ScanPointerEvent, view: ScanView) => void;
   readonly onCameraChange: (view: ScanView) => void;
@@ -71,6 +71,7 @@ export function useScanEditor(options: ScanEditorOptions): ScanEditor {
         groundHeight,
         tolerances: DEFAULT_HIT_TOLERANCES_3D,
         mint,
+        ...(at.kind === undefined ? {} : { view: at.kind }),
       };
       const next = scanTransition(stateRef.current, event, context);
       stateRef.current = next.state;
@@ -100,6 +101,7 @@ export function useScanEditor(options: ScanEditorOptions): ScanEditor {
   );
 
   const onCameraChange = useCallback((at: ScanView): void => {
+    if (at.kind === "top-down") return;
     viewRef.current = at;
     setView(at);
   }, []);

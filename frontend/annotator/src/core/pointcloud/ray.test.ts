@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { mulberry32, SEEDS } from "../_random";
 import type { Cuboid3DGeometry, Point3D } from "../types";
-import { projectToNdc, viewProjection, type OrbitCamera } from "./camera";
-import { heightOf, type ScanFrame } from "./frame";
+import { projectToNdc, topDownCamera, viewProjection, type OrbitCamera } from "./camera";
+import { fromForwardLeftUp, heightOf, type ScanFrame } from "./frame";
 import {
   closestOnAxis,
+  metresPerPixel,
   ndcRay,
   ndcToScreen,
   pointOnRay,
@@ -16,7 +17,7 @@ import {
   screenToNdc,
   type Ray,
 } from "./ray";
-import { cross, dot, subtract } from "./vector";
+import { add, cross, dot, subtract } from "./vector";
 
 const FRAMES: readonly ScanFrame[] = ["lidar_flu", "camera_rdf", "lidar_rfu"];
 const VIEWPORT = { width: 800, height: 600 };
@@ -163,5 +164,77 @@ describe("rayCuboidHit", () => {
     const hit = rayCuboidHit(ray, box, "lidar_flu");
     expect(hit).not.toBeNull();
     expect(pointOnRay(ray, hit?.distance ?? 0)).toEqual(hit?.point);
+  });
+});
+
+describe("an orthographic camera", () => {
+  const ortho = (random: () => number): OrbitCamera => ({ ...randomCamera(random), projection: "orthographic" });
+
+  for (const seed of SEEDS) {
+    it(`sends every point to the NDC whose ray passes through it, from in front (seed ${seed})`, () => {
+      const random = mulberry32(seed);
+      for (let trial = 0; trial < 40; trial += 1) {
+        const frame = FRAMES[trial % 3];
+        const camera = ortho(random);
+        const aspect = 0.5 + random() * 2;
+        const point: Point3D = [
+          camera.target[0] + (random() - 0.5) * 10,
+          camera.target[1] + (random() - 0.5) * 10,
+          camera.target[2] + (random() - 0.5) * 10,
+        ];
+        const ndc = projectToNdc(viewProjection(camera, frame, aspect, 30), point);
+        expect(ndc).not.toBeNull();
+        if (ndc === null) return;
+        const ray = ndcRay(camera, frame, aspect, [ndc[0], ndc[1]]);
+        expect(distanceToRay(ray, point)).toBeLessThan(1e-4);
+        expect(dot(subtract(point, ray.origin), ray.direction)).toBeGreaterThan(0);
+        const viewport = { width: 600 * aspect, height: 600 };
+        const pixel = screenOf(camera, frame, viewport, point);
+        const [x, y] = ndcToScreen([ndc[0], ndc[1]], viewport);
+        expect(pixel?.[0]).toBeCloseTo(x, 2);
+        expect(pixel?.[1]).toBeCloseTo(y, 2);
+      }
+    });
+  }
+
+  for (const frame of FRAMES) {
+    it(`draws a level edge the same length at every height, as the perspective view does not (${frame})`, () => {
+      const top = topDownCamera([0, 0, 0], 12);
+      const perspective: OrbitCamera = { ...top, projection: "perspective" };
+      const edge = fromForwardLeftUp(frame, [4, 0, 0]);
+      const lengthAt = (camera: OrbitCamera, height: number): number => {
+        const start = fromForwardLeftUp(frame, [-2, 1, height]);
+        const a = screenOf(camera, frame, VIEWPORT, start);
+        const b = screenOf(camera, frame, VIEWPORT, add(start, edge));
+        if (a === null || b === null) throw new Error("off camera");
+        return Math.hypot(b[0] - a[0], b[1] - a[1]);
+      };
+      expect(lengthAt(top, 2) / lengthAt(top, -1)).toBeCloseTo(1, 9);
+      expect(lengthAt(perspective, 2) / lengthAt(perspective, -1)).toBeGreaterThan(1.2);
+      expect(metresPerPixel(top, frame, VIEWPORT, [0, 0, 0])).toBe(metresPerPixel(top, frame, VIEWPORT, edge));
+    });
+  }
+
+  for (const frame of FRAMES) {
+    it(`top-down, draws a box's top over its footprint (${frame})`, () => {
+      const camera = topDownCamera([0, 0, 0], 10);
+      const viewport = { width: 400, height: 800 };
+      for (const [f, l] of [[1, 1], [-2, 0.5], [0.3, -1.2]] as const) {
+        const bottom = screenOf(camera, frame, viewport, fromForwardLeftUp(frame, [f, l, -1]));
+        const top = screenOf(camera, frame, viewport, fromForwardLeftUp(frame, [f, l, 2]));
+        if (bottom === null || top === null) throw new Error("off camera");
+        expect(Math.hypot(top[0] - bottom[0], top[1] - bottom[1])).toBeLessThan(0.5);
+      }
+    });
+  }
+
+  it("meets the ground under a point drawn above its own eye", () => {
+    const camera = topDownCamera([0, 0, 0], 1);
+    const above: Point3D = [0.2, 0.1, 5];
+    const pixel = screenOf(camera, "lidar_flu", VIEWPORT, above);
+    expect(pixel).not.toBeNull();
+    const ray = screenRay(camera, "lidar_flu", VIEWPORT, pixel ?? [0, 0]);
+    expect(dot(subtract(above, ray.origin), ray.direction)).toBeGreaterThan(0);
+    expect(rayGroundHit(ray, "lidar_flu", 0)).not.toBeNull();
   });
 });

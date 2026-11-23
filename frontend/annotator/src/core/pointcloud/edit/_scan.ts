@@ -6,7 +6,7 @@ import type { OrbitCamera } from "../camera";
 import type { ScanFrame } from "../frame";
 import { screenOf } from "../ray";
 import type { ScanContext, ScanTool } from "./machine";
-import { DEFAULT_HIT_TOLERANCES_3D } from "./scene";
+import { DEFAULT_HIT_TOLERANCES_3D, type ScanViewKind } from "./scene";
 import { createScanDocument, type ScanDocument } from "./scanDocument";
 
 export const SCAN: AssetDescriptor = { id: "scan-1", width: 0, height: 0, modality: "point_cloud" };
@@ -52,7 +52,7 @@ export function scanDocumentOf(...boxes: ScanAnnotation[]): ScanDocument {
 
 export function contextOf(
   document: ScanDocument,
-  overrides: { selection?: Selection; tool?: ScanTool; frame?: ScanFrame; camera?: OrbitCamera } = {},
+  overrides: { selection?: Selection; tool?: ScanTool; frame?: ScanFrame; camera?: OrbitCamera; view?: ScanViewKind } = {},
 ): ScanContext {
   let minted = 0;
   return {
@@ -65,6 +65,7 @@ export function contextOf(
     groundHeight: 0,
     tolerances: DEFAULT_HIT_TOLERANCES_3D,
     mint: () => `drawn-${(minted += 1)}`,
+    ...(overrides.view === undefined ? {} : { view: overrides.view }),
   };
 }
 

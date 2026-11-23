@@ -6,18 +6,22 @@
  * the runs that stay in front of it.
  */
 
-import type { CuboidFace } from "../cuboid";
-import { fromForwardLeftUp } from "../frame";
+import { cuboidAxes, headingOfYaw, type CuboidFace } from "../cuboid";
+import { fromForwardLeftUp, type ScanFrame } from "../frame";
 import { screenOf } from "../ray";
-import { add } from "../vector";
-import type { Point } from "../../types";
-import { faceHandles, handleTarget, yawRing, type Scene3D } from "./scene";
+import { add, scale } from "../vector";
+import type { Cuboid3DGeometry, Point, Point3D } from "../../types";
+import { faceHandles, handleFaces, handleTarget, yawRing, type Scene3D } from "./scene";
 
 export interface ScanHandleLayout {
   readonly id: string;
   readonly handles: readonly { readonly face: CuboidFace; readonly point: Point }[];
   /** Screen polylines tracing the yaw ring. */
   readonly ring: readonly (readonly Point[])[];
+  /** The bottom face's corners in turn; empty when any is behind the eye. */
+  readonly footprint: readonly Point[];
+  /** Where the box's heading crosses the yaw ring: a press there turns it. */
+  readonly heading: Point | null;
 }
 
 const RING_STEPS = 64;
@@ -27,7 +31,7 @@ export function scanHandleLayout(scene: Scene3D): ScanHandleLayout | null {
   const target = handleTarget(scene);
   if (target === null) return null;
   const { camera, frame, viewport } = scene;
-  const handles = faceHandles(target.geometry, frame).flatMap(({ face, point }) => {
+  const handles = faceHandles(target.geometry, frame, handleFaces(scene.view)).flatMap(({ face, point }) => {
     const onScreen = screenOf(camera, frame, viewport, point);
     return onScreen === null ? [] : [{ face, point: onScreen }];
   });
@@ -47,5 +51,26 @@ export function scanHandleLayout(scene: Scene3D): ScanHandleLayout | null {
     }
   }
   if (run.length > 1) runs.push(run);
-  return { id: target.id, handles, ring: runs };
+
+  const footprint = footprintCorners(target.geometry, frame).map((corner) => screenOf(camera, frame, viewport, corner));
+  const heading = screenOf(camera, frame, viewport, add(ring.center, scale(headingOfYaw(target.geometry.yaw, frame), ring.radius)));
+  return {
+    id: target.id,
+    handles,
+    ring: runs,
+    footprint: footprint.every((corner): corner is Point => corner !== null) ? footprint : [],
+    heading,
+  };
+}
+
+function footprintCorners(geometry: Cuboid3DGeometry, frame: ScanFrame): Point3D[] {
+  const [along, across, up] = cuboidAxes(geometry, frame);
+  const [length, width, height] = geometry.size;
+  const bottom = add(geometry.center, scale(up, -height / 2));
+  return [
+    [1, 1],
+    [1, -1],
+    [-1, -1],
+    [-1, 1],
+  ].map(([a, b]) => add(bottom, add(scale(along, (a * length) / 2), scale(across, (b * width) / 2))));
 }

@@ -17,6 +17,14 @@ describe("scanPointerRole", () => {
     expect(scanPointerRole(2, true, true)).toBe("pan");
     expect(scanPointerRole(1, false, true)).toBe("pan");
   });
+
+  it("never orbits a pinned view: the orbit drag pans, and the editor keeps the primary button", () => {
+    expect(scanPointerRole(0, false, true, true)).toBe("edit");
+    expect(scanPointerRole(2, false, true, true)).toBe("pan");
+    expect(scanPointerRole(2, true, true, true)).toBe("pan");
+    expect(scanPointerRole(1, false, true, true)).toBe("pan");
+    expect(scanPointerRole(0, false, false, true)).toBe("pan");
+  });
 });
 
 describe("scanKeyIntent", () => {
