@@ -150,6 +150,14 @@ def test_replacing_a_calibration_3d_labels_were_drawn_against_is_refused_by_code
             calibration=calibration_document(),
         )
     )
+    other = calibration_document(fx=40.0)
+    first = error(call("set_calibration", project=named, asset_id=asset_id, calibration=other))
+    assert first["code"] == "CALIBRATION_IN_USE"
+    pinned = calibration_document()
+    payload(call("set_calibration", project=named, asset_id=asset_id, calibration=pinned))
+    payload(call("set_calibration", project=named, source_id=source_id, calibration=other))
+    cleared = error(call("clear_calibration", project=named, asset_id=asset_id))
+    assert cleared["code"] == "CALIBRATION_IN_USE"
 
 
 @pytest.mark.parametrize("targets", [{}, {"source_id": "x", "asset_id": "y"}])

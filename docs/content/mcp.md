@@ -161,7 +161,7 @@ wants the steps apart.
 | `get_asset_image` | **Look at the pixels.** See below. |
 | `get_calibration` | The camera calibration of a source, or of one asset (its override and the one that applies). Exactly one of `source_id` and `asset_id`. See [sources.md](sources.md#camera-calibration). |
 | `set_calibration` | State a source's calibration, or override it for one asset; replaces whole. Refuses one measured at another size, and replacing one that 3D labels resolve to with a different one. |
-| `clear_calibration` | Remove a source's calibration or an asset's override. Refused while 3D labels would be left without one, or when an asset would fall back to a source calibration of another size. |
+| `clear_calibration` | Remove a source's calibration or an asset's override. Refused while 3D labels would be left without one or would fall back to a different one, or when an asset would fall back to a source calibration of another size. |
 | `list_asset_annotations` | What is already on an asset, with ids for editing. |
 | `add_annotations` | Write labels. All or none. |
 | `update_annotations` | Replace labels wholesale, by id. All or none. |

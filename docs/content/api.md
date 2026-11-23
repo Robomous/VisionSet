@@ -75,7 +75,7 @@ GET    /projects/{project_id}/assets/{asset_id}/thumbnail bytes
 GET    /projects/{project_id}/assets/{asset_id}/points    a scan thinned for a viewer, bytes
 GET    /projects/{project_id}/assets/{asset_id}/calibration  its override, and the one in effect
 PUT    /projects/{project_id}/assets/{asset_id}/calibration  the override, replaced whole; 409 CALIBRATION_IN_USE
-DELETE /projects/{project_id}/assets/{asset_id}/calibration  204; falls back to the source's, if it fits
+DELETE /projects/{project_id}/assets/{asset_id}/calibration  204; falls back to the source's, if it fits; 409 CALIBRATION_IN_USE
 POST   /projects/{project_id}/thumbnail-backfill-jobs     launch; renders missing previews
 GET    /projects/{project_id}/assets/{asset_id}/batches    which batches carry it
 GET    /projects/{project_id}/batches

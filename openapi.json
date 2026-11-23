@@ -13466,7 +13466,7 @@
     },
     "/projects/{project_id}/assets/{asset_id}/calibration": {
       "delete": {
-        "description": "Remove the asset's override, so it inherits its source's again. None is a 204 too.\n\nRefused with 409 `CALIBRATION_IN_USE` when the asset holds 3D labels and its\nsource has no calibration to fall back to, and with 422\n`CALIBRATION_RESOLUTION_MISMATCH` when the source's calibration was measured\nat a size other than the asset's. An unknown project is 404\n`PROJECT_NOT_FOUND` and an unknown asset 404 `ASSET_NOT_FOUND`.",
+        "description": "Remove the asset's override, so it inherits its source's again. None is a 204 too.\n\nRefused with 409 `CALIBRATION_IN_USE` when the asset holds 3D labels and its\nsource has no calibration to fall back to, or a different one, and with 422\n`CALIBRATION_RESOLUTION_MISMATCH` when the source's calibration was measured\nat a size other than the asset's. An unknown project is 404\n`PROJECT_NOT_FOUND` and an unknown asset 404 `ASSET_NOT_FOUND`.",
         "operationId": "clear_asset_calibration",
         "parameters": [
           {
@@ -13663,7 +13663,7 @@
         ]
       },
       "put": {
-        "description": "State this asset's own calibration, overriding its source's and replacing any override.\n\nThe only way a calibration reaches an imported asset, which has no source.\nReplacing an override with a different one is refused with 409\n`CALIBRATION_IN_USE` while the asset holds 3D labels, which were drawn\nagainst it; stating the identical one again changes nothing. A point\ncloud, which has no camera, is 409 `CALIBRATION_NOT_APPLICABLE`.\nOne measured at a size other than the asset's is 422\n`CALIBRATION_RESOLUTION_MISMATCH`; a rotation that is not a proper rotation,\nor a non-positive focal length, is 422 `VALIDATION_ERROR`. An unknown\nproject is 404 `PROJECT_NOT_FOUND` and an unknown asset 404 `ASSET_NOT_FOUND`.",
+        "description": "State this asset's own calibration, overriding its source's and replacing any override.\n\nThe only way a calibration reaches an imported asset, which has no source.\nOne other than the calibration in effect for the asset (its override, else\nits source's) is refused with 409 `CALIBRATION_IN_USE` while the asset holds\n3D labels, which were drawn against it; stating the identical one again\nchanges nothing. A point\ncloud, which has no camera, is 409 `CALIBRATION_NOT_APPLICABLE`.\nOne measured at a size other than the asset's is 422\n`CALIBRATION_RESOLUTION_MISMATCH`; a rotation that is not a proper rotation,\nor a non-positive focal length, is 422 `VALIDATION_ERROR`. An unknown\nproject is 404 `PROJECT_NOT_FOUND` and an unknown asset 404 `ASSET_NOT_FOUND`.",
         "operationId": "set_asset_calibration",
         "parameters": [
           {

@@ -123,7 +123,8 @@ def calibration_set(
 
     The intrinsics' `width` and `height` must be the size of every asset it would
     apply to. Replacing a calibration with a different one is refused while 3D
-    labels resolve to it; setting the identical one again changes nothing.
+    labels resolve to it, including a first asset override other than the source
+    calibration it inherits; setting the identical one again changes nothing.
     Registering the same directory again keeps the calibration.
     """
     _one_target(source, asset)
@@ -151,8 +152,9 @@ def calibration_clear(
 ) -> None:
     """Remove a source's calibration, or an asset's override. Clearing none is not an error.
 
-    Refused while 3D labels would be left with no calibration to resolve to, and
-    when an asset would fall back to a source calibration of another size.
+    Refused while 3D labels would be left with no calibration to resolve to, or
+    when an asset holding them would fall back to a different one, and when an
+    asset would fall back to a source calibration of another size.
     """
     _one_target(source, asset)
     with opened_workspace(workspace) as service:
