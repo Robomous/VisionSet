@@ -39,7 +39,7 @@ handler is not an operation.
 | `/` | redirects to `/projects`; there is no Home page | yes |
 | `/projects`, `/projects/:id/overview\|images\|batches\|schema\|dataset`, `/projects/:id/ingest`, `/projects/:id/batches/:id` | the product | yes |
 | `/models` | model connections, workspace-scoped; `/inference` redirects here | yes |
-| `/jobs/:jobId` (`?asset=<id>`) | the annotation page | yes |
+| `/jobs/:jobId` (`?asset=<id>`) | the annotation page, outside the shell: the whole viewport, no main rail | yes |
 | `/demo` | the annotator showcase (`?scene=bench` for #49's benchmark) | **no** |
 | `/styleguide` | the rendered design system | **no** |
 
@@ -80,19 +80,21 @@ the decision recorded on #421 (2026-08-08), as *Inference* until the page was re
 the noun it lists: what earns an entry is a workspace-level object every project uses and
 that has nowhere else to live, never frequency of use.
 
-### Two panes, and which one a route gets
+### Panes, and which one a route gets
 
 `AppShell` renders the rail and a bare `<Outlet/>`; the pane beside it is a **nested
 layout route**, so choosing one is a routing decision and the shell stays
-composition-only. `ListPane`, `PaddedPane` and `ProjectPane` sit inside the workbench frame — the
-open-project tabs above, the status bar below; `FullBleedPane` sits outside it.
+composition-only. `ListPane`, `PaddedPane` and `ProjectPane` sit inside the shell and its
+workbench frame — the open-project tabs above, the status bar below. `FullBleedPane` is a
+**sibling** of `AppShell` under the same token gate, not a child: the annotator stands
+outside the shell, so it has no rail either. It is left by its own back control.
 
 | pane | routes | treatment |
 | --- | --- | --- |
 | `ListPane` | `/projects`, `/models` | tabs and status bar; the whole width beside the rail, unpadded and uncapped: the page is a full-bleed table (`ui-core`'s `ListPage`) that sets its own inset |
 | `PaddedPane` | everything else | tabs and status bar; `ui-core`'s `PaddedContent`: `px-4 py-6 md:px-6`, content capped at `max-w-page` (`--container-page: 96rem`) |
 | `ProjectPane` | `/projects/:id/<section>`, `/projects/:id/ingest`, `/projects/:id/batches/:id` | tabs and status bar; the whole width beside the rail, no padding of its own: `ProjectFrame` lays out the project's section toolbar across the pane and the same padded, capped content column under it |
-| `FullBleedPane` | `/jobs/:jobId` | the whole viewport beside the rail, `h-screen`, `overflow-hidden` — no tabs, no status bar |
+| `FullBleedPane` (outside `AppShell`) | `/jobs/:jobId` | the whole viewport, `h-screen`, `overflow-hidden` — no main rail, no tabs, no status bar |
 
 A padded, capped column is right for a form and wrong for the one screen
 somebody sits in front of for an hour. Boxing the annotator cost more than looks
@@ -102,23 +104,24 @@ tolerance constants - all in *screen* pixels, divided by zoom - at a zoom nobody
 chose. `h-screen` *plus* `py-6` also made the document 948px tall in a 900px window,
 so the canvas's own badge was cut off and the whole page scrolled.
 
-`FullBleedPane` is `h-screen` rather than `flex-1`: a flex item stretches to its row,
-the row is `min-h-screen`, and a page taller than the window would drag the rail down
-with it. Pinning the height is what makes "the canvas pane is the only thing with
-`overflow`" structural rather than incidental.
+`FullBleedPane` is `h-screen` rather than `min-h-screen` or `flex-1`: pinning the height
+is what makes "the canvas pane is the only thing with `overflow`" structural rather than
+incidental. The rail's ⌘B chord belongs to the shell, so it does nothing on the
+annotator.
 
-The panes are nested under **one** `AppShell` rather than under two sibling shells,
+The shell's panes are nested under **one** `AppShell` rather than under two sibling shells,
 so there is a single copy to keep correct. The open-project tabs' state lives in that
 shell (`OpenProjectsProvider`) rather than in the strip, because the strip is drawn
 inside each pane and the panes are siblings: crossing from a project to the list
-remounts the strip, and state held there forgot where each tab was. That the rail is
-the same on both panes, and that the annotator gets no workbench chrome, is asserted in
-`e2e/annotate.spec.ts`.
+remounts the strip, and state held there forgot where each tab was. That the annotator
+has no rail and no workbench chrome, and that its back control returns to a shell that
+has both, is asserted in `e2e/annotate.spec.ts`.
 
 The document scrolls rather than an inner pane, so a sideways overflow stays a fact
 about the document — what the responsive-floor checks measure. The status bar's height
-is published as `--page-inset-bottom`, which the gallery's sticky bulk bar adds to its
-own offset so it floats above the bar rather than under it.
+is published as `--page-inset-bottom`, which the sections that fit the window subtract
+from their height, and the Classes commit bar adds to its own offset, so each stops above
+the bar rather than running under it.
 
 ## Screens
 
@@ -159,7 +162,8 @@ unlabeled or carrying only a model's unreviewed guess, either way a frame the
 annotator can write to - `review` means it is one awaiting a reviewer, and `open`
 means the batch is settled throughout and there is no frame at all. The card's
 label follows - *Continue annotating*, *Review annotations*, *Open batch* - and so
-does its destination: the first two open the editor, the third the gallery. The two
+does its destination: the first two open the editor, the third the batch's panel on the
+Overview. The two
 editor cases are the same route because a `review_pending` frame opens read-only
 with the review actions on it, which is the position
 [the annotator section below](#review-is-a-flow-not-an-api-only-edge) already
@@ -177,8 +181,8 @@ without a backfill.
 **The attention list names who is being waited on.** A batch holding frames awaiting
 review is waiting on a reviewer; a batch holding frames a model labeled and nobody has
 read is waiting on an annotator, and its row says so rather than reading like the first -
-*48 model-labeled frames waiting on an annotator*. Both rows open the batch gallery,
-where the model-labeled segment and its bulk verbs are
+*48 model-labeled frames waiting on an annotator*. Both rows open the batch's panel
+on the Overview, where its jobs are and each opens in the editor
 ([below](#reviewing-a-pre-labeled-batch)); a batch holding both kinds gets both rows.
 
 One thing about the page is still a consequence of the storage format rather than a
@@ -195,18 +199,26 @@ which would be a second spelling of a fact the response already carries.
 The project list and the Models page share one composition (`patterns/ListPage.tsx`), laid out
 in a pane with no padding and no width cap (`ListPane`), so the table is the page:
 
-1. **A header band**, 48px: the page's icon and name, and its one filled action at the right.
+1. **A header band**, 48px: the page's icon and name, nothing else.
 2. **A toolbar band** under a hairline: how the list is being looked at - search, filters, the
-   order it is in.
+   order it is in - and, at its end, the page's one filled action, **New** with a plus (named
+   *New project*, *New model*). It is there even before there is anything to filter, since it is
+   how the first one is made.
 3. **The grid**, edge to edge, with no card around it: hairlines between columns as well as rows,
    every column named in its header with an icon and a word, 36px header cells on a faint fill
    and 44px rows.
 
-Nothing is said twice. What the list holds and adds up to - how many, *1 of 2* while a search or
-filter narrows them, and the figures that matter across the rows - is said in the status bar's
-left half (`PageStatus`), and nowhere on the page: no count beside the heading, no totals line at
-the foot. The header's button is the page's one way to create: no second "New ..." row under the
-last one, and an empty list's message names that button rather than repeating it.
+A list is **paged**, 25 rows to a page (`DESIGN.md`, *Paging a table*): under the grid a footer
+says which rows are on screen - *26-50 of 312 projects*, *1-2 of 2 models · filtered from 4* while
+a search or filter narrows them - and carries rows per page and the steps. The grid's area scrolls;
+the footer stays under it. A search, a filter or a new order starts over at the first page.
+
+Nothing is said twice. How many rows there are, and of how many, is the footer's. What the rows add
+up to - their images, how many are ready, how many wait on a review, over every row the search
+leaves and not only the page on screen - is said in the status bar's left half (`PageStatus`). No
+count beside the heading, no totals line at the foot. The header's button is the page's one way to
+create: no second "New ..." row under the last one, and an empty list's message names that button
+rather than repeating it.
 
 The header's text, the toolbar's first control and the first column all start on the pane's
 inset, the status bar's, so the page has one left edge.
@@ -260,8 +272,8 @@ toolbar across the pane, below `lg` a tab strip above the content, one
 component (`ProjectNav`) drawing whichever layout `ProjectShell`'s `matchMedia`
 answer hands it. The bar is the section's header: the tabs with their counts, one line about
 the open section, and the actions that section is about — Annotate and Add images on
-Overview (Annotate goes straight into a batch's one job, or onto the gallery to pick one),
-Add images on Images, Add class on Classes, Publish release on Dataset — then the overflow,
+Overview (Annotate goes straight into a batch's one job, or opens the batch's panel to pick one),
+Add images on Images, Publish on Dataset (Classes draws its **New** in its own band) — then the overflow,
 where Add images sits on the sections it is not about. The project's identity is the
 open-project tab above the bar, so no eyebrow line sits over the content, and the content
 opens straight on the section. Overview is the default, because a schema
@@ -282,8 +294,12 @@ product's nouns, because a bookmarked URL is a promise, and only the words a per
 changed. Images, `/projects/:id/images`, is the one new segment. **Batches have no section.** They
 are listed on the Overview, and `/projects/:id/batches`, which was a section, redirects to
 `/projects/:id/overview`, replacing the history entry. A batch's own address,
-`/projects/:id/batches/:batchId`, is still the gallery; it lights Overview in the toolbar, its
-way out reads *← Overview*, and deleting the batch from it lands on the Overview. The ingest flow
+`/projects/:id/batches/:batchId`, was a page of its own (the batch gallery) and now redirects,
+replacing the history entry, to `/projects/:id/overview?batch=:batchId`: a batch opens in the
+Overview's panel, and the open batch is that query parameter, written with `replace` and removed
+when the panel closes, so a reload or a pasted link opens the same one. `PARENT.batch` in
+`routes.tsx` spells it, which is why ingest's *Open batch*, the annotator's back arrow and
+*Correct this batch*, the pre-label dialog's links and a correction's lineage all land there. The ingest flow
 keeps `/projects/:id/ingest` and is titled *Add images*.
 
 **Each section owns its query.** Only the open section is mounted, so a query living in
@@ -357,76 +373,94 @@ off the last image that has arrived for a source asks for its next page and land
 section reads and changes nothing; an image does not know its batch, so it offers no way into one.
 
 **Overview is the project's console, composed from project components**
-(`patterns/project/`), and it changes nothing but for one control described below. It is drawn
+(`patterns/project/`), and it changes nothing but for the batches' controls, described below. It is drawn
 the way the Projects and Models lists are: full width under the project bar, no cards, one sheet
 of cells with a hairline between them, and every text starting on the pane's one inset. From
 `xl` the page is exactly the window between the project bar and the status bar - the document
 never scrolls; the batch table and the images scroll inside their own cells - with a floor below
 which the page scrolls rather than crushing the table.
 
-**Four cells** across the top - Images, Labeled, Classes, In dataset - each with its icon and
+**Four cells** across the top - Images, Labeled, In dataset, Classes - each with its icon and
 name, its figure, and one context line, with a short meter ahead of it where the figure is a
-share of something. Three are a door into the section that owns them: the whole cell is the
+share of something; the Classes cell, last, draws its bar of shares instead (below). Three are a door into the section that owns them: the whole cell is the
 target (Images to Images, Classes to Classes, In dataset to Dataset), with an arrow on hover.
 *Labeled* is a plain figure, because the batches that answer it are the table right below.
 **Labeled counts the images a person has decided**, read from batch progress: across every batch
 that has been cut into jobs (a draft has none), the images that are neither unannotated nor
 merely pre-labeled by a model (an image awaiting review counts as labeled). Its context line says
 how many are left and in how many open batches, so the two always add up; neither uses the
-project statistics' `annotated_pct`, which counts model drafts nobody has reviewed. The Classes
-cell's context line carries the annotation total and the active schema version (`schema v4`);
-the In dataset cell's says how many images have arrived since the latest release (*120 since
+project statistics' `annotated_pct`, which counts model drafts nobody has reviewed. The In
+dataset cell's context line says how many images have arrived since the latest release (*120 since
 v2*), or *all in v2*. **What needs somebody is a badge in a cell's label row**, never a row of its
 own, so the cells stay compact and level: *N to review* on Images when batches declare `approve`,
 *N to start* on Labeled when they declare `start`, *N to promote* on In dataset when finished
 batches declare `promote` (or *Unreleased* when the trunk holds images no release has). The badge
 opens its steps in a popover - on hover after a short delay, on click, and on Enter - one per
 batch, each a pointer labelled from what the batch declares (*Review and approve*, *Review and
-start*, *Review and promote*) into that batch's gallery, plus *Publish a release* into the
+start*, *Review and promote*) into that batch's panel, plus *Publish a release* into the
 Dataset's releases where it applies.
 
 Under the cells, on the same four columns so each vertical hairline continues one above, the
 **Batches table** takes three and a rail takes the fourth. Batches have no section of their own,
 so this table is where they are listed and opened. Its band carries the name and count, then
-*Pre-label*, the *All / Open / In dataset* lens and a filter; the table has the list pages'
-icon-and-word column headers, which stay on top while it scrolls. Each row is the batch's name
+the *Auto-label* icon when it applies ([below](#auto-labeling-from-the-overview)), the *All / Open /
+In dataset* lens and a filter; between the band and the table sits the auto-label line while
+images are waiting for labels. The table has the list pages' icon-and-word column headers, which
+stay on top while it scrolls. Each row is the batch's name
 with its size and schema pin, its state, one plain meter of how much is labeled (or *Drafting
 n/m* while a model pre-labels it, or *Not started* for a draft), and the initials of whoever holds
 its jobs (a dashed circle for an unassigned one). Below the last row the column hairlines run on
 to the cell's foot, so a short list leaves table rather than blank page. The table is driven from
 the keyboard: J/K or the arrow keys move between rows, Enter opens one, and `/` focuses the
-filter. **Opening a row opens the batch's sheet** from the right, so the table stays in view:
-*Batch n of N* with previous and next (J/K walk the batches without closing it), the name and
-state, and the batch's **jobs** - who holds each, how far it has come (`done/images`, read per
-job), and *Open* into the editor on that job, or *Done*. The sheet opens with focus on the
-batch's forward step. A row keeps no column for what shows only on hover: its forward step
-appears at the end of its name cell while it is pointed at or focused, and a menu - the only
-column of controls - carries everything: *Jobs and details*, the forward step, *Open batch*, and
-*Pre-label*. The forward step is a pointer labelled from the batch's `allowed_actions` -
-*Review and approve*, *Review and start*, *Review and promote*, *Annotate* - and opens the batch
-gallery (or, for a batch of one job, that job), because Approve, Start and Promote stay in the
-gallery with their gating and refusals.
+filter. **Opening a row opens the batch's detail panel** at the right of the page, so the table
+stays in view and the two are read together ([`DESIGN.md`](../../DESIGN.md#detail-panels): it
+comes from the right, its width is the person's to set, and it is not a dialog; below `lg` it is
+a sheet). The panel is the batch's only home: a batch has no page, and the old
+`/projects/:id/batches/:batchId` address redirects here. It reads *Batch n of N* with previous
+and next (J/K walk the batches without closing it), the name and state, the batch's facts -
+images, schema pin, how much is labeled - and its **jobs**: who holds each, how far it has come
+(`done/images`, read per job), and *Open* into the editor on that job, or *Done*. The panel opens
+with focus on the batch's forward step, and Escape closes it.
 
-The page's one exception to changing nothing is pre-labeling. **Pre-label** in the table's band
-opens the project-wide dialog described
-[below](#pre-labeling-every-open-batch-from-the-overview); it is offered only where some batch
-declares `pre_label`. A batch that declares it also offers **Pre-label** in its row menu and its
-sheet, which opens the same dialog over that one batch, titled for it. **Add images**, a pointer
+**The panel's footer carries every action on the batch**, each offered from the batch's
+`allowed_actions` - never from its state read here - and each with its own gating, refusals and
+outcome line (a label flip is not feedback). An overflow menu on the left holds *Delete batch*
+(the panel closes with the batch) beside *Auto-label*, which opens the dialog over this batch
+alone. On the right, as the batch declares them: *Create correction batch* (the new correction
+then opens in the panel), *Approve* (it opens the approve and partition dialog, because approval
+pins the schema, cuts the jobs and has no route back), *Start annotating*, *Annotate* (only when
+the batch has exactly one job, straight into it), *Complete*, *Complete and promote* and
+*Promote*. One control is filled, the batch's forward step: *Annotate* while there is work left,
+*Complete and promote* once nothing is outstanding. What the panel does not do is draw frames:
+there is no frame grid, no bulk moving of frames between states, no removing frames from a draft
+and no thumbnail density here or anywhere in the app - per-frame work happens in the annotator.
+
+A row keeps no column for what shows only on hover: its forward step
+appears at the end of its name cell while it is pointed at or focused, and a menu - the only
+column of controls - carries everything the row can do: *Jobs and details*, the forward step, and
+*Auto-label*. The forward step is a pointer labelled from the batch's `allowed_actions` -
+*Review and approve*, *Review and start*, *Review and promote*, *Annotate* - and opens the batch's
+panel (or, for *Annotate* on a batch of one job, that job), because Approve, Start and Promote
+stay in the panel with their gating and refusals.
+
+The page's exception to changing nothing is batches, which have no section to act in.
+**Auto-label** - a model drafting labels on images nobody has labeled yet - is offered for the
+project as a whole over the table, as the line or the band's icon described
+[below](#auto-labeling-from-the-overview), and only where some batch declares `pre_label`. A batch
+that declares it also offers **Auto-label** in its row menu and its panel, which opens the same
+dialog over that one batch, titled for it. **Add images**, a pointer
 to the ingest flow whose result is a new batch, is not on the page: it is the project bar's,
 beside Annotate.
 
-The rail holds the **Classes** panel over an **Images** panel; below `xl` both stack under the
-table. Classes is one bar split by each class's share of all annotations, a readout of one class
-- its share, its annotation count and how many images show it - and a legend, largest first,
-including declared classes with no annotations yet (a dash). The legend names the eight largest
-classes; the rest fold into one **Others** row, whose members and counts are on hover. Pointing at
-a legend row lifts its block in the bar and quiets the rest; choosing one pins it in the readout.
-Shares are of annotations only: an image can show several classes, so per-image shares overlap
-and would not sum to a whole. A class under the imbalance threshold carries a small warning dot
-in a slot every row reserves; **what a warning means is said on hover and on focus**, and the
-band's *N thin* badge holds the project's imbalance note, rather than a sentence that pushes the
-list down. The band's *Edit* opens the Classes section. With no classes the panel says *No
-classes yet. A class is what an annotation can say a shape is.* The Images panel previews the
+**The Classes card is the last of the four, and it draws the classes rather than describing
+them**: the class count beside its label, one bar split by each class's share of all annotations,
+and a readout of one class — its share, its annotation count and how many images show it — the
+largest until another block is pointed at (`patterns/project/ClassShareBar.tsx`). Shares are of
+annotations only: an image can show several classes, so per-image shares overlap and would not
+sum to a whole. When a class falls under the imbalance threshold, the card carries a warning
+glyph whose card is the project's imbalance note ([`DESIGN.md`](../../DESIGN.md#warnings)); the
+card's door opens the Classes section, where the full legend lives. The rail under it holds the
+**Images** panel alone. It previews the
 project's first images in a grid that fills what the classes leave and scrolls past it, the
 cut edge fading; each image's frame and size are on hover, and each, like the band's *Browse*,
 opens the Images section. There is no releases panel: the In dataset cell's badge points at the
@@ -443,31 +477,39 @@ release offers no edit and no delete, because there is no `ReleaseService.delete
 that.
 
 **The section is a line of versions, in two columns.** The left column holds the open
-version's facts on top, then the *working copy* — the trunk as it stands — and under it every
-release, newest first. The wall of pictures takes the rest, and the selected image opens beside
-it. There is no third pane: a version's facts sit above the list that picks it, so the wall
-keeps the width. The section is full-bleed and fitted to the window at `lg` and up, each column
+version's facts in its top region and, docked at its foot, *Releases*: the *working copy* — the
+trunk as it stands — and under it every release, newest first. The wall of pictures takes the
+rest, and the selected image opens beside it. There is no third pane: a version's facts sit above
+the list that picks it, so the wall keeps the width. **The releases are docked so that opening one
+never moves the list:** the facts differ in height from one version to the next, so the facts
+scroll in their own region and the releases keep a region of their own — capped, scrolling inside
+itself, its place set by its own height — and the entry just pressed stays under the pointer
+(`screens/dataset/VersionNav.tsx`). Folding the dock hands its height to the facts. The section is full-bleed and fitted to the window at `lg` and up, each column
 scrolling inside it; below that they stack.
 
-**A version's facts are sections whose headings answer.** Each is a small heading, the answer
-under it, and the action that belongs to it at its end — so the column stays short and the
-versions under it stay in view; a section with more to show opens in place
-(`screens/dataset/VersionFacts.tsx`; the pattern is
-[`DESIGN.md`](../../DESIGN.md#fact-sections-and-the-action-a-thing-is-opened-for)). The working copy's *Contents* reads *48 images · 427
-annotations* with a state beside it — *Same as v0.4*, or *Changed since v0.4* with what
-changed on its card — and opens on whether the images are labelled (*All labeled*, or *40 of 48
-labeled* with a pie that fills to the fraction), the annotations per image, and the schema in
-force (a state when it is not the one the newest release pinned). Its *Classes* is open: every
-class the schema declares, its bar and *N on M* — a declared class nobody labelled is drawn
-too, muted, as *none*, because that is the gap a person training on this needs to see — with
-*1 of 2 classes used* as its answer. A release's *Contents* opens on what changed since the
-release before (net), the split as its shares, one bar and the seed, the schema version and the
-VisionSet that built it; its *Integrity* answers with this session's check — *Not verified*,
-*Verifying*, *Intact*, *Problems found* — with **Verify** at its end; its *Manifest* shows the
-hash with a copy control and **Download** at its end; and its *Export* — open by default, since
-it is what a release is opened for — holds the model, the recipe and the button, with the job's
-state as its answer (*Not exported this session*, *Exporting 12/48*, *Downloaded*). A verify or
-a download that could not be asked is a sentence under its row.
+**A version reads as four numbers over the page and a rail of panels under them** — the
+Overview's sheet, so the Dataset reads like every other project screen: cells on hairlines, no
+cards, one inset (`screens/dataset/VersionKpis.tsx`, `VersionFacts.tsx`; the pattern is
+[`DESIGN.md`](../../DESIGN.md#fact-sections-and-the-action-a-thing-is-opened-for)). The working
+copy's numbers are what the next release would freeze: its *Images* against the newest release
+(*Same as v0.4*, *+12 since v0.4*), how much is *Labeled* with a meter, its *Classes* with the
+annotations and how many per image, and the *Releases* so far. Its rail is its classes — the
+Overview's own panel, read off the trunk: one bar of every class's share and a legend in which a
+declared class nobody labelled is drawn too, because that is the gap a person training on this
+needs to see. A release's numbers are what it froze: *Images* against the release before,
+*Annotations*, its *Split* (the shares and the seed) and its *Schema* with the VisionSet that
+built it. Its rail holds *Proof* — this session's integrity check, *Not verified*, *Verifying*,
+*Intact*, *Problems found*, with **Verify** beside it, and the manifest hash with two icon
+buttons, copy and download — and *Export*, open by default since it is what a release is opened
+for, holding the model, the recipe and the button with the job's state as its answer open or
+folded. Every panel folds, and folded, its band says its answer.
+
+**What is worth knowing and holds nothing back is a warning glyph beside what it is about**
+([`DESIGN.md`](../../DESIGN.md#warnings)): images without labels and a class nobody labelled on
+their numbers, a schema a publish would move to on *Releases*, a format that cannot carry every
+shape beside *Model*, recipes that could not be read beside *Recipe*, images that have left the
+dataset since a release beside its wall's title. What blocks — a refusal, a consent, a failed
+download — stays a sentence under its row.
 
 **States are chips** (`patterns/StateChip.tsx`, [`DESIGN.md`](../../DESIGN.md#states)): a
 tinted ground, a glyph that fills as the thing nears done — a dashed ring, a pie, a filled
@@ -488,20 +530,21 @@ trunk's, narrowed by `release_id` — and the head says how many have left since
 counts differ. In the working copy a dot marks an image the newest release does not have.
 
 **Publish is in the project bar; Export is in the column.** The working copy's forward action is
-*Publish release*, the bar's one filled control. A release's is its *Export* section, with the
+**Publish** (with its icon, named *Publish release* for assistive technology), the bar's one filled control. A release's is its *Export* section, with the
 rest of its facts, so the bar draws nothing for a release. The export's form (`ExportForm`, a
-render prop) lives above the column, so a job keeps running whatever the column does — a
-section folded, another version opened and back. `DatasetScreen` still takes
+render prop) wraps the release's facts alone: a folded Export keeps its body — and its job —
+mounted, and opening another version never re-mounts the column or the wall. `DatasetScreen` still takes
 `tab`/`onTabChange` like every other screen, so no host has to change; every name opens the
 working copy.
 
 **A recipe is chosen, written and edited where it is used: in a release's export.** A recipe
 is a named project resource — no state, no `allowed_actions`, every write unconditional
 (`docs/content/preprocessing.md`) — and it exists for an export, so it is not shelved beside
-the versions. The Export section's *Recipe* is a list: *No recipe* first, then the project's
+the versions. The Export section's *Recipe* is a select: *No recipe* first, then the project's
 recipes by name — what one does, the model its hints came from and the export that last ran it
-are its card on hover or focus — and its last row, *New recipe*, writes one. The chosen
-recipe's row carries *Edit* and *Delete* at its end, as words (`screens/dataset/RecipeChoice.tsx`).
+are its card beside the highlighted option. The "+" beside the field's label writes a new one.
+Once a recipe is chosen, what it does is a line under the select, with *Edit recipe* and
+*Delete* behind the "⋯" at its end (`screens/dataset/RecipeChoice.tsx`).
 Writing and editing open the recipe in a modal over the page
 (`screens/dataset/recipe/RecipeDialog.tsx`); a recipe saved there is the one the export runs,
 and a deleted one falls back to *No recipe*. Escape, the close button or a press outside closes
@@ -685,29 +728,55 @@ annotator judged against a newer schema would offer classes the API then refuses
 the refusal would be correct while the screen looked broken. The page walks job → batch
 → *that version*.
 
-**Saving is a diff, and then a reload.** The annotator mints client-side ids and
-the kernel mints its own (#40 declined a `rebaseAnnotationId` for this reason), so
-a save cannot merge its own response back in. It computes created / updated /
-deleted against what was loaded, sends up to three all-or-nothing calls - **deletes
-first**, so a failure leaves the smaller document a retry can be built from - and
-then refetches.
+**Saving is a diff against what the server holds, and the answer is kept.** The
+annotator mints client-side ids and the kernel mints its own (#40 declined a
+`rebaseAnnotationId` for this reason). A save computes created / updated / deleted
+against the page's record of the server and sends up to three all-or-nothing calls -
+**deletes first**, so a failure leaves the smaller document a retry can be built from.
+The kernel answers each with the rows it stored, in the order they were sent, and that
+answer becomes the page's record (`settledSave`): the stored rows, and which local id the
+server knows by which of its own. **The document itself is never rewritten by a save** -
+the next plan reads a shape created here through that map, so it addresses the server's
+id while the shape, its undo history and its selection keep their own.
 
-#### There is no autosave, and that is the policy
+#### Saving
 
-1. **A save is followed by a reload**, so a debounced autosave would rebuild the
-   document under the cursor every few seconds - and a rebuild mid-gesture is a
-   dropped drag.
-2. **Every call is all-or-nothing.** A partial autosave has no meaning: the kernel
-   refuses a batch as a unit and reports the offending index, and firing that on a
-   timer reports it about work the user was not doing.
-3. **The two cases autosave exists for are covered**: "I forgot" is
-   save-on-navigate, "I closed the tab" is the `beforeunload` guard.
+**The page saves on its own.** Once the document has been still for 1.2s, whatever
+differs from the server is sent. Navigating saves first and at once - `‹`, Next, the
+gallery, back and the review moves all wait for it - and `⌘S` saves now. There is no
+Save button: the bar's save state says where the work is (`Edited`, `Saving`, `Saved`, or
+`Not saved` after a refusal), and the refusal itself is a sentence in the stage's notice
+column. A read-only frame never saves; no dirty state is possible there.
+
+This replaces a documented *no autosave* policy, whose three reasons each have an answer
+now rather than being waved away:
+
+1. **A save used to be followed by a rebuild.** The page refetched after every save to
+   learn the kernel's ids and rebuilt the document from the answer - so a timed save would
+   have rebuilt it under the cursor, dropped a drag, taken back anything drawn while the
+   save was out, and emptied the undo history every few seconds. Now one `FrameSession`
+   per open frame (`frameSession.ts`) builds the document **once**, from the first read,
+   and keeps the kernel's own answer to each save as its record of the server. A later
+   read is taken in only when it arrives while there is nothing to take back - no unsaved
+   work, no save out, nothing in progress on the canvas - which is also how a stale cached
+   read is corrected when a frame is reopened. A read that arrives while somebody is
+   working is left: what the page writes is a diff against what it knows the server holds,
+   so a row somebody else added is never deleted from here.
+2. **Every call is all-or-nothing, and a refusal names an index.** So an autosave never
+   fires mid-gesture - not during a drag, not while a polygon's points are being placed
+   (the canvas reports a gesture in flight, `onGestureChange`), not while a suggestion
+   waits to be accepted - and saves go one at a time, each planned against what the one
+   before it left. A refused autosave is **not retried on a timer**: it waits for the
+   document to change, so the refusal on screen is about the work just done, once.
+3. **"I forgot" and "I closed the tab"** are still covered as they were: navigating saves
+   first, and the `beforeunload` guard holds the tab while anything is unsaved *or a save
+   is still out*.
 
 #### Review is a flow, not an API-only edge
 
 `annotated → review_pending → accepted | annotated` are three legal edges of
 `ASSET_PROGRESS_TRANSITIONS`, and until now the browser offered **none** of them.
-The gallery's "In review" segment could only be populated through the API or MCP,
+The "In review" state could only be populated through the API or MCP,
 and `accepted` - the one state that records that a human checked the work - was
 unreachable by any sequence of clicks.
 
@@ -734,13 +803,15 @@ that undoes that, which is on the same toolbar. `accepted` has no exit at all,
 which is why correcting accepted work needs a correction batch rather than a
 progress move, and the banner says that instead.
 
-**The job counter reads "past `unannotated` and `pre_labeled`", not the `annotated`
-count.** A readout that counted only `annotated` goes *backwards* when a frame is
-accepted, which is the one thing a progress readout must never do. It had that
+**The job's progress reads *settled* frames, not the `annotated` count** - the total
+less `outstandingWork`, which is `SETTLED_PROGRESS`'s complement. A readout that counted
+only `annotated` goes *backwards* when a frame is accepted, which is the one thing a
+progress readout must never do. It had that
 bug, and it never bit because nothing could produce `accepted`; the real-server
 cycle run caught it the moment the review moves landed, at 3 of 3 becoming 2 of 3.
 A model's unreviewed guess is excluded from the count the same way `unannotated`
-is, for the same reason: nobody has made a decision about the frame yet.
+is, for the same reason: nobody has made a decision about the frame yet - and so is a
+frame waiting on a review, which is still work somebody owes it.
 
 #### Read-only is a mode, not an accident
 
@@ -783,9 +854,8 @@ What a viewer looks like:
 - Save, Skip and Accept disabled, each from its own declaration rather than from the
   mode.
 
-The gallery says the same thing one screen earlier: its header button reads **View
-frames** and its per-tile link reads **View** when nothing in the batch declares
-`annotate`. Same door, honest word.
+The batch's panel says the same thing one screen earlier: a job that is finished reads
+*Done* rather than offering *Open* into the editor.
 
 **Viewing never starts a batch.** A tile of an `approved` batch opens the frame or scan
 read-only - nothing in that batch declares `annotate` - and the page sends no transition on
@@ -919,44 +989,47 @@ object list is how a lane is selected, which is a real affordance rather than a 
 The sparkles button - hotkey `S` - arms the **suggest tool**: click the thing you
 want and a segmentation model proposes its shape, which you can then adjust
 before accepting. It answers from one of two places - a model connection on the
-server, or a model running in this browser - and the panel carries that choice.
+server, or a model running in this browser - and the tool's bar, the row above the
+picture, carries that choice along with everything else the tool says.
 Through a connection it is `POST /inference/suggest`
 (`docs/content/inference.md`).
 
 **It runs through a connection that can answer a click**, which is a narrower set
 than "the ones that are ready": only those declaring `point_suggest`. A workspace
-whose only downloaded model answers text prompts gets a panel saying so, and no
+whose only downloaded model answers text prompts gets a bar saying so, and no
 request is sent - the server would refuse each one truthfully, which is a correct
-answer to a question the editor should not have asked. The panel tells that case
+answer to a question the editor should not have asked. The bar tells that case
 apart from having nothing configured and from having nothing downloaded, because
 each is a different thing to go and do.
 
-Where more than one connection can answer, the panel carries a picker naming the
+Where more than one connection can answer, the bar carries a picker naming the
 model under each, and the choice is remembered **per project** - it is a
 preference about this browser, so it survives leaving the editor and does not
 become a workspace setting that everybody annotating shares. With one candidate
-there is no control at all, only a line naming what is answering. The picker
-appears on the idle card alone: changing which model answers while a proposal is
-on screen would leave a shape nothing on the card explains.
+there is no control at all, only the name of what is answering. The picker - like
+the Server | Local choice and the shape - is drawn only while nothing is pending:
+changing which model answers while a proposal is on screen would leave a shape
+nothing in the bar explains.
 
-**Server, or this device.** The panel's two tabs are where a click goes. **Server**
-is the connection described above. **This device** runs a smaller segmentation model
+**Server, or Local.** The bar's `Server | Local` choice is where a click goes.
+**Server** is the connection described above. **Local** runs a smaller segmentation model
 in this browser, which answers without the picture or the click leaving the machine
 and without a connection being configured at all - useful where the workspace has no
 model that can answer a click, or where the server is slow to reach.
 
-It has to be downloaded first, and the panel says so: about 41 MB, on an explicit
-press, never on its own. Before that press the panel names the model's upstream source,
-license and download size. Verified weights are stored in this browser and normally
+It has to be downloaded first, and the bar says so: `Download` with its size, about
+41 MB, on an explicit press, never on its own. Before that press the bar names the
+model's download size on the button, and its license and upstream source behind the ⓘ
+and in the small menu on the model's name. Verified weights are stored in this browser and normally
 survive a reload; the browser can still evict its storage, and a removed or evicted
 model can be downloaded again. If storage is unavailable, a verified download may be
 ready for the current session without being described as installed.
 
-Opening the app, arming Suggest, or choosing **This device** never downloads missing
+Opening the app, arming Suggest, or choosing **Local** never downloads missing
 weights. A stored choice for a known model remains selected and shows the Download
 action when that model is not installed. An installed model is loaded only when the
 suggestion surface needs it, and loading from browser storage does not fetch the model
-again. **Remove from this browser** releases the running model and removes its stored
+again. **Remove from this browser**, in the model's menu, releases the running model and removes its stored
 weights. The model source receives artifact requests during an explicit download, but
 the image and points being annotated remain local during browser inference. Self-hosted
 deployments can replace the public model source with `VITE_MODEL_CDN_BASE_URL`.
@@ -975,16 +1048,16 @@ The gesture:
 | alt-click | adds a point that is **not** on the object, and asks again |
 | `↵` | accepts the proposal as an annotation |
 | `[` / `]` | coarser or finer - doubles or halves the tolerance, without opening anything |
-| `Esc` | closes the adjustments; then clears the points; then puts the tool away |
+| `Esc` | clears the points; then puts the tool away |
 
 Every click sends **all** the points placed so far - the route is stateless - and
 the answer replaces the preview. The first click on a frame is the slow one,
 because the model reads the whole image once; refining after it is quick.
 
-**A wait says so on the panel, and nowhere else.** The card reads
-`Looking at that…` on the same frame the request leaves. Past a second and a half -
-long enough that this is plausibly the first click on the frame - it adds the
-sentence explaining why that one is slow.
+**A wait says so in the bar, and nowhere else.** It reads `Looking at that…` on the
+same frame the request leaves. Past a second and a half - long enough that this is
+plausibly the first click on the frame - an ⓘ appears beside it whose card explains
+why that one is slow.
 
 Nothing appears at the cursor or the click point. A ring and a busy cursor used to,
 and both were taken away: sitting on the picture beside the pointer, they read as
@@ -993,10 +1066,12 @@ of the thing being looked at.
 
 Refining while an answer is still out is fine and is the ordinary way to work: the
 shape already on screen stays drawn, so you keep the best answer so far while the
-next one is fetched. The panel goes back to `Looking at that…` for the duration,
+next one is fetched. The bar goes back to `Looking at that…` for the duration,
 which is why `Accept` is not offered until the newer shape arrives. `Esc` takes the
-whole thing back at once. A refusal replaces the card with prose, so nothing is ever
-left saying a request is out when it is over.
+whole thing back at once. A refusal replaces it with `Suggestion refused`, and the
+server's own words - which carry the remedy - are the ⓘ's card, verbatim, and the
+button's description for a screen reader; so nothing is ever left saying a request is
+out when it is over.
 
 **The proposal is not an annotation until it is accepted.** It is drawn faintly
 with a dashed outline - solid is what an accepted annotation gets - carries its
@@ -1010,26 +1085,25 @@ shows its vertices only while it is selected; a proposal is not selected and sho
 them anyway, because choosing how far the polygon may drift from the mask is
 exactly a question about where the points are.
 
-**The shape can be adjusted before it is accepted**, from a section inside the
-same card - never a second panel over the picture, which would cover the thing
-being adjusted. It is closed until you ask for it, because the default is right
-most of the time.
+**The shape can be adjusted before it is accepted**, from the Detail slider in the
+same bar - never a panel over the picture, which would cover the thing being
+adjusted. It sits inline beside the proposal's state, with nothing to open first.
 
 One setting, and whether it appears is the server's answer rather than the
 editor's guess (`docs/content/inference.md`). **Detail** is a slider on a
 doubling track over the tolerance, from `0.25` px to `16` px, defaulting to
 `1.0`, with a label beside it naming the value and what it costs,
-`2.0 px · 23 pts`. `[` doubles it and `]` halves it without opening anything.
+`2.0 px · 23 pts`. `[` doubles it and `]` halves it from the keyboard.
 Either way it costs no request at all: the answer carried the outline it was
 reduced from, and the editor re-simplifies it here, so the shape and its
 vertices move under a held key. On a small object a coarse tolerance can leave
 nothing to show; step finer and the shape comes back.
 
-Pressing the slider never takes focus off the canvas, so `[`, `]`, `Esc` and `↵`
-keep working while you drag it. Tab still reaches it, for driving it from the
+The slider hands focus back to the canvas the moment a drag ends, and none of the
+bar's buttons takes it on press, so `[`, `]`, `Esc` and `↵` keep working. Tab still reaches it, for driving it from the
 keyboard on purpose.
 
-On a class that stores a box the section does not appear at all, because the
+On a class that stores a box the slider does not appear at all, because the
 tolerance changes an outline and a box has none. The editor does not know that;
 the answer says so, by naming no settings.
 
@@ -1040,7 +1114,7 @@ touch of one re-ran the model to produce it.
 
 **Adjusting into nothing says so and leaves the controls up.** A setting can
 empty the proposal - every piece too small, or an outline reduced past being a
-shape - and when it does, the card says what happened and every control stays
+shape - and when it does, the bar says what happened and every control stays
 where it was, so the way back is the way you came. The preview never simply
 vanishes.
 
@@ -1055,7 +1129,7 @@ new class, in its geometry and its colour. Only pressing the button again, or
 moving to another frame, puts the tool away.
 
 Land on a class that can hold no proposal - a tag, a lane - and the tool **parks**
-rather than switching itself off: the button dims and says why, the panel says what
+rather than switching itself off: the button dims and says why, the bar says what
 to pick, and the canvas goes back to drawing that class normally. Choose a box or a
 polygon class again and the tool carries on, with nothing to press.
 
@@ -1072,11 +1146,12 @@ answered; the parked state above is the same question asked of the class you are
 holding, and it dims the button rather than removing it because the answer changes
 again the moment you pick another class.
 
-Arming it with no usable connection shows an in-editor panel saying what is
-missing - none configured, or configured with its weights not yet downloaded - and
-one action to fix it. Nothing navigates away, and no exit loses work. A refusal
-from the server is rendered where the panel is, in the server's own words, which
-is what carries the install command when the optional runtime is absent.
+Arming it with no usable connection shows, in the tool's bar, what is missing -
+none configured, or configured with its weights not yet downloaded - with the full
+explanation behind its ⓘ and one action to fix it. Nothing navigates away, and no
+exit loses work. A refusal from the server is said in the same bar, with the
+server's own words behind the ⓘ, which is what carries the install command when
+the optional runtime is absent.
 
 #### 3D labels are drawn, not edited
 
@@ -1180,7 +1255,7 @@ Visibility is view state and returns the **same document object** when nothing i
 hidden, which is what keeps `AnnotationLayer`'s `memo` bailing out - #49's finding
 about `skipId`, from the other side.
 
-### The gallery, and the `<img>` that cannot work
+### Thumbnails, and the `<img>` that cannot work
 
 **Every route but `/health` and `/openapi.json` needs a credential, and an
 `<img src>` sends no header.** The browser issues that request itself, with cookies
@@ -1189,11 +1264,11 @@ and nothing else, so pointing an `<img>` at
 every tile whenever the credential is a token - and the API takes no token in the
 query string. A browser *session* would in fact carry, since a cookie is exactly
 what an `<img>` does send; the mechanism stays because it must work for both, and a
-gallery that rendered only for locally-signed-in users would be the kind of bug
+grid of previews that rendered only for locally-signed-in users would be the kind of bug
 nobody reproduces. So `AssetThumbnail` fetches the bytes with the credentialed
 client and
 hands the result over as an object URL - which it then **revokes**, because a
-gallery scrolling a thousand assets would otherwise hold a thousand JPEGs alive
+grid scrolling a thousand assets would otherwise hold a thousand JPEGs alive
 with nothing referencing them.
 
 The cost is smaller than it looks: the route carries
@@ -1205,116 +1280,67 @@ render is deliberately not an `IngestFailure`, because the asset exists and noth
 was lost. It draws a placeholder, and offers no button: the remedy,
 `backfill_thumbnails`, is reachable only from the CLI and MCP.
 
-**Paging and virtualization are two problems and both are solved.** `limit`/`offset`
-bound the *response*, so the network side is `useInfiniteQuery` - and "have I seen
-everything" is `seen < total`, because `total` is the size of what the request
-matched - the whole batch, or one job's frames where `job=` narrows it - and does
-not move while you page it. Ten pages fetched is still ten pages in the DOM, so the render side
-virtualizes **rows** (a row is what the browser lays out; virtualizing tiles inside a
-CSS grid means reimplementing the grid). The column count is measured with a
-`ResizeObserver` rather than guessed from a second breakpoint list.
+**Paging bounds the response, and a count that does not move is how "have I seen
+everything" is answered.** `limit`/`offset` bound the *response*, and a client reading a
+batch's frames pages it with `useInfiniteQuery` (`useBatchAssets`, exported for hosts):
+"have I seen everything" is `seen < total`, because `total` is the size of what the request
+matched - the whole batch, or one job's frames where `job=` narrows it - and does not move
+while you page it. The standalone app's Overview and Images sections read the project's own
+listing instead (`useProjectAssets`), a window at a time; no screen of it draws a batch's
+frames, which is the annotator's to show.
 
-#### One job, and several
+#### A batch's jobs, in its panel
 
-**Once a batch has jobs, its frames are shown per job.** A batch is partitioned, and a person
-works one part of it: a batch-wide grid beneath a per-job control would put two scopes for the
-same frames on one screen, where the control names a job and the grid, the counts and the
-timeline answer for everybody. The scope is always one job - its chips, its timeline and its
-tiles all count the same job.
+**Once a batch has jobs, the panel lists them, and nothing draws their frames.** A batch is
+partitioned, and a person works one part of it, so the job is the unit the panel shows: who
+holds it (or *Unassigned*), `done/images` read from that job's own progress
+(`GET /jobs/{id}/progress`, never the batch's), a meter, and *Open* into the editor on that job
+or, when it is finished, *Done*. There is no accordion and no per-job frame grid: a batch-wide
+grid beneath a per-job control would put two scopes for the same frames on one screen, and the
+frames are the annotator's to show, in its frame gallery overlay. The assignee is shown, not
+edited - the browser does not reassign a job; `PUT /jobs/{id}/assignee` does. Jobs are listed
+only once they exist, the same `hasJobs` gate the progress reads use, so a draft reads *No jobs
+yet. Approving the batch cuts it into jobs.* A failed read shows its refusal, with *Try again*,
+instead of the jobs silently vanishing - an empty list and a failed one look identical to the
+naive `undefined`-or-zero-items check, and only one of them means there is nothing to open.
 
-**The common batch has one job, and then there is no accordion.** A one-row accordion is a
-header nobody can choose between, a bar repeating the batch's own, and a sentence naming a
-job nobody else has. So with exactly one job the job's controls sit directly under the batch
-header - the way into the annotator, `Pre-label`, and the assignee as an editable line
-(*Assigned to Dana*, or *Unassigned*, the name itself the control) - followed by that job's
-segment chips, order select, timeline and frames, inside one bordered panel. The batch's own
-progress bar above is the page's one bar; the timeline is the breakdown.
-
-**From two jobs the gallery is an accordion, and at most one job is open at a time.** One open
-panel is one scope, which is why opening a panel closes the one that was open. **Every panel
-may be closed**: clicking the open header collapses it, and an accordion with nothing open is
-the batch read as an index of its jobs. The panel open on arrival is **the first job with work
-left** - frames still unannotated or only pre-labeled - and the first job otherwise, so
-landing on a batch lands on something to do rather than on a job somebody has finished.
-Nothing is remembered across reloads: the rule recomputes from counts that are read anyway,
-and a remembered panel is stale the moment somebody else works the job.
-
-**A collapsed header is the overview**, so a job is picked without opening it: ordinal, frame
-count, state, `A of F annotated`, a thin progress bar, and who is working it - *Unassigned*
-when nobody is. The assignee is a plain editable name, not an account: `JobService.assign`
-gates on nothing, so the control is always live, and clearing it is the same operation with
-`null`. In the accordion the editor is a button in the open panel, because the header is an
-overview and changing it is one of the things a panel is opened for. Jobs are rendered only
-once they exist, the same `showsProgress` gate the progress bar above uses, so a draft needs
-no empty state of its own. A failed read shows its error instead of the jobs silently
-vanishing - an empty list and a failed one look identical to the naive `undefined`-or-zero-
-items check, and only one of them means there is nothing to assign.
-
-**The open panel holds, in order,** exactly what the one-job panel holds: the way into the
-annotator, `Pre-label` and the assignee; the segment chips, counting *that job* from
-`GET /jobs/{id}/progress` rather than the batch; the order select; that job's timeline; and
-only that job's frames, from `GET /batches/{id}/assets?job=`. Frame numbers stay batch-wide,
-because a frame's number is its place in the batch and renumbering per job would give one
-picture two names.
-
-**Thumbnail size is one setting and is rendered outside the jobs** - it is a property of how
-a grid is read rather than of a job, and it is the same persisted preference either way. It
-sits on the batch's own progress row in the header, right of the progress bar and on the line
-of its `A of F annotated` readout: the last row above the frames that is about the batch
-rather than about one job. A draft, which has no progress row, keeps it in the toolbar over
-its flat grid. The segment filter, the order and the selection are the opposite: they belong
-to the job, and **each job keeps its own** - a closed panel is unmounted, and reopening it
-restores the filter, the order and the selection that were chosen in it, while the other job
-starts from `All`. A filter carried across jobs would show an empty panel for a job with
-nothing in that state, which reads as a job with no frames.
-
-**A draft batch has no jobs** - one flat grid, with the membership tools and selection over
-it - because there is nothing to partition its frames by.
-
-Each accordion header is a `<button>` carrying `aria-expanded`; the open one names the panel
-it controls, and a closed header carries no `aria-controls`, because its panel is unmounted
-and an id pointing at nothing is a broken reference rather than a closed one. The panel is
-labelled by its header. **↑/↓ move between headers, Home/End reach the first and last, Enter
-or Space opens the focused one - or closes it, when it is the open one.** The arrow keys are
-what make the accordion navigable at all: the open panel is a whole grid, so tabbing from one
-header to the next crosses every tile in between.
+**Frames are not curated in bulk in the browser.** A batch has no frame grid, no bulk progress
+moves and no draft-membership editing; per-frame work - labeling, skipping, un-skipping,
+submitting for review, accepting, confirming a model's labels - happens in the annotator, one
+frame at a time, and a draft's membership is edited through the API and MCP only
+([batches.md](batches.md#membership-is-editable-in-draft-and-nowhere-else)).
 
 #### The way in
 
-**The gallery header carries `Start annotating` only for an `approved` batch, and there it is the
+**`Start annotating` is in the panel's footer only for an `approved` batch, and there it is the
 transition rather than a door.** That press is `POST /batches/{id}/start`, the batch's own next
-step declared as `start` in its `allowed_actions` - and it navigates nowhere: landing back on the
-gallery re-reads the batch as `in_annotation`, and the job's own door is then what opens it.
-There is no icon on it; it is a state change, not a link.
+step declared as `start` in its `allowed_actions` - and it navigates nowhere: the panel re-reads
+the batch as `in_annotation`, and the job's own door is then what opens it. There is no icon on
+it; it is a state change, not a link.
 
 **Once the batch is open, the way into the annotator is the job's own door, because only a job
-answers which frames.** A batch is partitioned, so a header control would have to pick a job
-silently; with one job the door sits under the header, and with several it is in the open panel,
-where that choice is made. Each job carries one door, secondary rather than filled — the batch's
-own step in the header is the page's one filled control while it has one, and the navigation
-column's Annotate once the batch is open — and its word is read from that job: **`Annotate`** where
-the job declares `start`, which takes the job (`POST /jobs/{id}/start`) and then opens it;
-**`Continue`** while it is `in_progress`, the word for a job somebody is already inside; and
-**`View`** otherwise, for a `completed` job or a `pending` one of a batch nobody has opened,
-neither of which is startable from here. Beside it sits **Pre-label**, gated on `pre_label` in
-that job's own `allowed_actions` and absent otherwise
-([below](#pre-labeling-the-surface-text_detect-was-declared-for)).
+answers which frames.** A batch is partitioned, so a footer control would have to pick a job
+silently; the panel lists the jobs, and each unfinished one carries *Open*, straight into the
+editor on that job. The one exception hides no choice: a batch with exactly one job has *Annotate*
+in its footer, which opens that job, filled while there is work left and outlined once nothing is
+outstanding. Neither takes the job: opening one only navigates, and the editor itself takes a
+`pending` job to `in_progress` when it opens it.
 
 **The project's `Annotate` control follows the same rule one level up.** It opens the batch that
 is open for annotation - straight into that batch's one job where it has exactly one, and onto
-the gallery to pick a job otherwise. With two or more batches open it reads `Annotate ▾` and the
+the batch's panel to pick a job otherwise. With two or more batches open it reads `Annotate ▾` and the
 menu still lists batches, because the batch decides which schema version the work is judged
-against; picking one then applies the same rule, its single job or its gallery.
+against; picking one then applies the same rule, its single job or its panel.
 
 ### Batches, and a machine that only goes forwards
 
 `draft → approved → in_annotation → completed`, with **no route back to `draft`** -
-jobs are already cut against the pinned schema. So the table offers exactly one
-action per state and never a revert: an action that would be refused is an action
+jobs are already cut against the pinned schema. So the panel offers one
+forward action per state and never a revert: an action that would be refused is an action
 that should not be drawn.
 
 Approval is when the project's active schema version **pins to the batch and stops
-moving**, which is why the Overview's Schema column shows a dash until then. `complete` is
+moving**, which is why a batch's row and panel on the Overview show no schema pin until then. `complete` is
 *derived* rather than automatic - the service reads the jobs and refuses while any
 is outstanding - so that button is offered and its refusal is real.
 
@@ -1333,7 +1359,7 @@ takes them together. **Approve and start** takes a draft through `approved` to
 goes through *Approve*, whose dialog is where a partition is chosen. It sits on the ingest
 run card once a run settles, where it is the card's one filled control and *Open batch* steps
 down beside it. **Complete and promote** closes the batch and moves its work into the trunk;
-it sits in the gallery header beside *Complete*, withheld the same way while any frame is
+it sits in the panel's footer beside *Complete*, withheld the same way while any frame is
 still to do, and says what the press moved in the same sentence *Promote* uses.
 
 Neither is a new transition. Each control sends the two requests a person could send one
@@ -1354,7 +1380,7 @@ that read says nothing about the project, and the card offers what it always did
 
 #### Deleting a batch, behind `⋯`
 
-The one control on the gallery header that ends a batch rather than moving it
+The one control in the panel's footer that ends a batch rather than moving it
 along, and the only irreversible one - so it lives in an overflow menu, where the
 things you go looking for live, rather than beside the thing you press next. It is
 a single component (`screens/DeleteBatch.tsx`) so that there is one spelling of which
@@ -1370,17 +1396,22 @@ other withheld control on these screens.
 What the dialog says is the **verified** blast radius. The batch, its jobs and the
 per-frame progress go; the frames and their annotations stay, because
 `annotation.asset_id` is a label's only parent and a batch's cascade cannot reach
-one. Both numbers it quotes come off `BatchOut`, which the gallery has already loaded - a count
-of *jobs* would need a second request. After the deletion it navigates to the Overview,
-replacing history: the screen's whole subject has stopped existing.
+one. Both numbers it quotes come off `BatchOut`, which the panel has already loaded - a count
+of *jobs* would need a second request. After the deletion the panel closes, dropping `?batch=`
+from the address: its whole subject has stopped existing, and the table beside it is still
+the Overview.
 
 #### Pre-labeling: the surface `text_detect` was declared for
 
-**The control sits with the job's controls, gated on `pre_label` in that job's own `allowed_actions`** -
-never on the batch's state read locally, the same rule every control on this screen follows. A
-batch's frames are partitioned into jobs and a run reaches one job's assets, so the job is what
-declares the action and what the dialog is opened over; the dialog is titled for both, *Pre-label
-BATCH · job N*. It is the reason the capability stopped being an orphan: a connection could
+**The control is in the batch's panel, gated on `pre_label` in the batch's own `allowed_actions`** -
+never on the batch's state read locally, the same rule every control on these screens follows.
+A batch's frames are partitioned into jobs and a run reaches each open job's assets, so the
+launch is one run per open job, and the dialog opened from the panel is over the batch
+([below](#auto-labeling-from-the-overview)). The dialog first built for this - over
+one job, titled for both, *Pre-label BATCH · job N*, gated on `pre_label` in that job's own
+`allowed_actions` - is still in `ui-core` as `PreLabelDialog`, and it holds the pieces the batch
+dialog reuses (the settings, the prompt listing, the replace tick), so everything below about
+those is true of both; no screen of the standalone app mounts the per-job launch. It is the reason the capability stopped being an orphan: a connection could
 declare `text_detect` from the day the Models page (then named Inference) described the ability,
 and nothing in the app ever asked one until this control existed to.
 
@@ -1390,7 +1421,7 @@ rule. The confidence field defaults to `0.35` and is labelled **prompt affinity*
 never "confidence" or "accuracy": a text-prompt model scores how well a region matches the words
 it was asked for, a point-prompt model's suggest tool scores mask quality against a click, and
 the two run on different scales - 37-78% observed for the first, 68-98% for the second - so a
-bare percentage next to a shape would not say which one it was on. The dialog states how many
+bare percentage next to a shape would not say which one it was on. The per-job dialog states how many
 of **the job's** assets are untouched, read from `GET /jobs/{id}/progress` and never from the
 batch's counts, because that is what the run will actually consider and a batch-wide number here
 would offer to label frames somebody else is holding - an
@@ -1438,18 +1469,38 @@ completed under it, a connection whose model answers places rather than words, a
 with no class a detection can be written as, and a local runtime that is not installed, whose
 message carries the exact `pip install` to run.
 
-#### Pre-labeling every open batch from the Overview
+#### Auto-labeling from the Overview
 
-The Overview's Batches table offers **Pre-label** in its band whenever some batch of the project declares `pre_label` in its
-own `allowed_actions` - read off the listing, never derived from state here - and is absent
-otherwise. A batch that declares it offers the same dialog from its row menu and its sheet, over
-that batch alone and titled *Pre-label* and the batch's name. The dialog takes the same model and prompt-affinity controls as the gallery's dialog
+The product's word for a pre-label run is **auto-label**: the person reads *Auto-label*, the wire
+and the CLI keep `pre_label`, and what a run writes is still *pre-labeled*. It is offered over the
+Batches table whenever some batch of the project declares `pre_label` in its own
+`allowed_actions` - read off the listing, never derived from state here - and is absent otherwise.
+
+**While images are waiting, it is a line between the band and the table**: a boxed robot, *233
+images have no labels yet. A model can draft them for you to check.*, then **Auto-label them** and
+a ✕ (*Not now*). The count is the `progress.unannotated` of every batch that declares the run,
+leaving out a batch a model is drafting now (its `pre_label_run` queued or running), so starting a
+run is what makes the line go. **Not now** puts it away into the band as a quiet icon button
+(*Auto-label*, its tooltip *Auto-label 233 images*) and is remembered per project in this
+browser, against the count it was said to: the line comes back only when more images are waiting
+than that - new images arrived. With batches that declare the run and nothing waiting, there is no
+line and the band's icon still offers it, since a re-run over pre-labeled work is legal where
+declared. Both open the project's dialog over every batch that declares the run; a batch's row
+menu and panel open it over that batch alone, titled *Auto-label* and the batch's name.
+
+The line arrives during a session - a batch approved, images ingested - by opening its row and
+rising into place, and leaves by closing it, the table following; a page that loads with work
+waiting simply shows it. Put away, its button travels into the band and becomes the icon
+([`DESIGN.md`](../../DESIGN.md#a-line-that-offers-work)).
+
+The dialog takes the same model and prompt-affinity controls as the per-job dialog
 (one component, one copy of the prose), then a checklist of the batches that declare the action,
-each with its untouched count and checked by default when that count is above zero. Start posts
-`POST /projects/{id}/batches/pre-label` with exactly the checked ids, so what runs is what was
-seen. **The pick is per batch and the launch is per job**: the answer holds one row for every
+each with its untouched count and checked by default when that count is above zero. Its start
+button says what it will reach - *Auto-label · 233 images*, the untouched images of the checked
+batches - and posts `POST /projects/{id}/batches/pre-label` with exactly the checked ids, so what
+runs is what was seen. **The pick is per batch and the launch is per job**: the answer holds one row for every
 open job of every checked batch, and the dialog lists each as queued or as having joined a run
-already in flight, under its batch's name and linking into that gallery, so a batch cut into
+already in flight, under its batch's name and linking into that batch's panel, so a batch cut into
 three jobs contributes three rows - each read as `BATCH · job N`, since a batch that fanned out
 would otherwise repeat one name over rows nothing tells apart. The batch's row in the Overview table shows a **Drafting n/m** meter while the
 batch's `pre_label_run` - the newest run across its jobs - is live, and each job's own dialog
@@ -1459,21 +1510,15 @@ launched.
 
 #### Reviewing a pre-labeled batch
 
-The gallery's segments are answered by the server - `Model-labeled (48)` asks for
-`progress=pre_labeled` and the page *is* the segment - and the counts still come off the
-batch's `ProgressCounts`. An **Order** control offers *Frame order* or *Lowest prompt
-affinity first* (`sort=confidence`): the frame whose weakest model label scored lowest comes
-first, so a reviewer's attention lands where the model doubted. A model-labeled card reads
-`3 pre-labeled · ≥41% affinity` - the number is always named, because a point-prompt mask
-score and a text-prompt affinity are different scales (pre-labeling runs only the second).
-
-The bulk bar adds two verbs over the selection. **Confirm labels** keeps a model's labels as
-the frames' own (`pre_labeled → annotated`, the `confirm` action); the annotator offers the
-same on an unedited model-labeled frame. **Discard model labels** deletes every label the
-model wrote on the selected frames through the existing all-or-nothing delete, after a
-dialog, and the frames return to `unannotated`. It cannot be undone; a replacing re-run from the
-Pre-label dialog is the way to redo the machine's pass over frames still `pre_labeled`. Per-class
-thresholds and a threshold filter are deliberately not here yet.
+A model's labels are reviewed in the annotator, a frame at a time. The batch's panel carries the
+run's progress (the row's **Drafting n/m** meter and the panel's *A model is drafting labels* line,
+while it is live) and the labeled share afterwards, and nothing more of them: confirming or discarding a model's labels is not available in bulk
+anywhere in the browser.
+In the editor a frame holding only a model's labels is `pre_labeled`, and an unedited one offers
+**Confirm labels** (`pre_labeled → annotated`, the `confirm` action) from its own
+`allowed_actions`. Removing a model's labels is the editor's ordinary delete, and a replacing
+re-run from the Pre-label dialog is the way to redo the machine's pass over frames still
+`pre_labeled`. Per-class thresholds and a threshold filter are deliberately not here yet.
 
 ### The ingest flow, and the order the domain forces
 
@@ -1641,7 +1686,7 @@ how many classes narrow and states that nothing already labeled is invalidated.
 It also names what the narrowing defers: a batch still open on the outgoing version keeps
 writing the class that was dropped, and those labels block a release rather than this save.
 
-**The Classes section is a table, and a class is edited in a sheet.** The section runs edge to
+**The Classes section is a table, and a class is edited in a panel beside it.** The section runs edge to
 edge under the project bar, as the Overview and Images do (below `lg`, inside the strip's
 column, it is framed instead), and from `lg` it is fitted to the window: the table scrolls
 inside it under a sticky header, its column hairlines carried on below the last row. It is
@@ -1650,7 +1695,9 @@ composed top to bottom as:
 1. **A band**, 48px: the tag icon, **Classes** and how many (*12*, or *3 of 12* while a lens or
    filter narrows it), and at the right how the table is looked at - a lens, **All** / **Changed
    in draft** / **Not used**; a **Filter** by name, which `/` focuses from anywhere on the page and
-   Escape clears; and **History · vN**, which opens the history sheet (below).
+   Escape clears; the **History** icon button (named *History, version N active*, its tooltip
+   *History · vN*), which opens the history panel (below); and beside it **New**, the section's
+   forward action and, until the draft holds a change, its one filled control.
 2. **Notices**, only when there is something to say, each a line across the section: a version
    published underneath a dirty draft, a stale draft, an autosave or publish refusal - always in
    prose, never as a code.
@@ -1668,13 +1715,13 @@ composed top to bottom as:
 4. **The commit bar**, floating over the table's foot once the draft holds something (below) -
    it takes no row of the layout.
 
-Pressing a row's name opens its class in the **class sheet**, at the right edge of the page;
-**Add class** opens the same sheet on a class that does not exist yet. ↑ and ↓ (or J and K) move
+Pressing a row's name opens its class in the **class panel**, at the right edge of the page;
+**New** opens the same sheet on a class that does not exist yet. ↑ and ↓ (or J and K) move
 between the rows, and Enter opens the focused one. A row's **⋯** menu offers **Edit class**,
 **Undo its changes** for a class the draft has edited, and **Remove class** - asked of the server
 first, like every removal, so a class frames already carry is refused in the dialog that says
-which frames; the item is never greyed out ahead of the answer. The sheet's
-header names the class - *Edit* and its name as the sheet opened, beside its colour, or **Add
+which frames; the item is never greyed out ahead of the answer. The panel's
+header names the class - *Edit* and its name as the panel opened, beside its colour, or **Add
 class** - over one status line: how much is drawn with the class, the version that introduced it and
 whether the draft has touched it (*427 annotations · since v1 · edited in draft*), or, when adding,
 that it joins the draft and ships with the next version. The same line says what stops the class
@@ -1712,12 +1759,13 @@ name, so none reaches the draft: Save quietly drops one nobody touched, and refu
 filled in but not named, saying so on the status line (*Name every attribute, or remove the one
 without a name.*) and putting focus in its name.
 
-The sheet edits a copy. Nothing reaches the draft until **Save** - or, when adding, **Add … to
+The panel edits a copy. Nothing reaches the draft until **Save** - or, when adding, **Add … to
 draft** - or ⌘↵ (Ctrl+Enter), and then the class, its fields and its place arrive as one change.
-**Cancel**, Escape and the close button leave the draft as it was; a press outside the sheet does
-nothing while it holds changes, so a stray click cannot throw them away. When editing, **Remove**
+**Cancel**, Escape and the close button leave the draft as it was. While the panel holds changes,
+pressing another row, **New** or **History** does not replace it — a toast says *Finish this
+class first* and the name field takes the focus back — so a stray click cannot throw them away. When editing, **Remove**
 sits at the left of the footer and is checked with the server before the class leaves the draft; a
-refusal opens over the sheet, and closing it comes back to the class. Closing the sheet returns
+refusal opens over the panel, and closing it comes back to the class. Closing the panel returns
 focus to the class's row, where it now sits. The body is the same `ClassFields` component the
 annotator's add-a-class dialog uses, in its stacked layout.
 
@@ -1730,8 +1778,8 @@ with **Restore**, which puts it back as the version in force declares it - a rem
 saving would publish, and it is seen as one. The filter never changes which class an edit
 addresses; when nothing matches, the table says so in its place. A schema with no classes shows
 an empty state under the band, *No classes yet. A class is a name for what you draw, and the
-shapes it may be drawn with.*, with its own **Add class**; otherwise **Add class** is the section's
-action in the project bar. Which class the sheet is open on is component state, not the URL: it is
+shapes it may be drawn with.*, with its own **New class**; otherwise **New** sits in the section's
+band beside the History button, and the project bar draws no Classes action. Which class the panel is open on is component state, not the URL: it is
 a lens on the section the person is already in, the same test the version being read passes. The
 status bar says what the section holds: *12 classes · 14,971 annotations*.
 
@@ -1740,7 +1788,7 @@ class is typed work, and the draft exists so typed work survives - but the publi
 contract refuses a blank name, so the preview refuses it too. The editor therefore keeps
 an unnamed class out of every preview body: removing one is a local edit with no request,
 and removing a *named* class while one waits for a name previews the named classes only.
-The sheet keeps new ones from arriving: **Add class** writes nothing until it is submitted, and
+The panel keeps new ones from arriving: **New** writes nothing until it is submitted, and
 it refuses a blank name in place (*Name this class.*). An unnamed class can still come from a
 draft saved before that; Save refuses the blank with its own message and opens that class's
 sheet - an answer rather than a greyed button.
@@ -1752,7 +1800,7 @@ same blocker view the preview feeds rather than through a second presentation th
 drift from it. The preview removes a doomed round trip; it does not decide.
 
 `compare` **is** routed since #231, and it answers the neighbouring question - what
-two *published* versions did to each other. The History sheet uses it for every version against
+two *published* versions did to each other. The History panel uses it for every version against
 the one before, and the table for the marks on a version being read, and the section
 never computes a diff here, any more than it does for the draft's own list: `domain/schema_diff.py` is the one spelling of that rule, and a
 TypeScript copy would drift until the screen called a change safe that the API then
@@ -1776,7 +1824,7 @@ structurally no way to publish something other than what is on screen - which me
 revision it names has to be current. Awaiting the flush before publishing is what stops a
 fast typist from publishing the version that predates their last keystroke.
 
-### The commit bar and the History sheet
+### The commit bar and the History panel
 
 **Versioning appears when there is something to version.** While the draft matches the version
 in force, nothing at the foot of the section says so. The first edit raises the **commit bar**:
@@ -1803,19 +1851,19 @@ holds:
 - **Discard**, which makes the draft the version in force again. Nothing is asked first: the
   toast that says so offers **Undo**.
 - **Save version N+1**, the page's filled control while the bar is up - the project bar's
-  **Add class** steps back to `outline` meanwhile.
+  **New** steps back to `outline` meanwhile.
 
 The bar has no field for a version's message: a version is published without one, except a
 restored version, whose draft carries *Restore version N* and publishes it as its description.
 
-**History · vN** in the band opens the **History sheet** at the page's right edge: every
+The band's **History** icon button opens the **History panel** at the page's right edge: every
 version, newest first, one line each - its message (*No message* when it has none), and at the
 line's end when it was published, or *Active* on the one in force - on a graph of lanes. The main
 lane is the curated contract; versions published while annotating, grouped by `provenance` (see
 [the annotator](ui/annotator.md#the-pinned-version-and-adding-a-class)), branch off it on a lane
 of their own and rejoin it. Pointing at or focusing a line puts **Restore** where its time was -
 not offered for the active one, which the draft already starts from. Pressing a line opens that
-version and puts the sheet away; pressing the version already open goes back to the draft. The
+version and puts the panel away; pressing the version already open goes back to the draft. The
 sheet says nothing about what changed: that is read in the table, where there is room for it.
 
 **Viewing a published version** shows its classes in the same table, read-only, under a head of
@@ -1836,10 +1884,10 @@ through. In a changed row the cell that changed is lifted, and in it only what m
 class the comparison calls destructive carries *Narrows*; whether a change narrows is the
 kernel's alone, and a class it speaks about is marked changed even when no cell shows what. A
 hotkey that moved shows its old digit struck beside the new one. Pressing a row opens the class
-in full, in a sheet laid out like the class sheet - the same inspector rows - with nothing to
+in full, in a panel laid out like the class panel - the same inspector rows - with nothing to
 change: its colour, key and shapes, and its attributes with their kind, whether each is required,
 and their choices or default, closed by **Close**. The section has no edit affordance at all - no
-commit bar, no Add class, no row menu, no restore of a class and no field - and those controls
+commit bar, no New, no row menu, no restore of a class and no field - and those controls
 are absent rather than disabled, because a published version is immutable and a disabled control
 says "not now" when there is no now. A version that declares no classes says so in place of the
 table.

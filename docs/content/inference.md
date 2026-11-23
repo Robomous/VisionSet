@@ -819,8 +819,8 @@ named for the noun the page catalogues - the models a workspace can run - rather
 use of them, because the same list serves the editor's suggest tool, pre-labeling, and whatever
 asks next.
 
-A workspace with none says so and offers one thing - **Add model**, the same dialog the
-header's button opens. Creating one is two steps, because the two kinds share almost no fields:
+A workspace with none says so and offers one thing - the toolbar's **New** (named *New
+model*), which opens the *New model* dialog. Creating one is two steps, because the two kinds share almost no fields:
 first where the model runs, offered as two tiles side by side - **Local**, weights this machine
 downloads and runs; **HTTP**, an endpoint that answers this project's inference contract - then
 that kind's form. The dialog is wider than it is tall, and the form lays its two halves side
@@ -867,8 +867,8 @@ two leave the free model id and revision fields on screen, because a model id ty
 no list at all - a catalog that could not be read is no reason to stop a connection being
 configured.
 
-The page is a full-bleed table, like the Projects list: a header band with the page's name and
-**Add model**, a toolbar band with the filters, and a grid running edge to edge with one row per
+The page is a full-bleed table, like the Projects list: a header band with the page's name, a toolbar band with the filters
+and, at its end, **New** with a plus (named *New model*), and a grid running edge to edge with one row per
 connection - a connection serving two abilities is one row, not two. Its columns, each named
 with an icon and a word: **Model**, the connection's name; **Weights**, `model @ revision` on one
 line, the revision being the part a short column gives up; **Origin**, where the weights come

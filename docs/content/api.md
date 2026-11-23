@@ -456,8 +456,8 @@ as separate resources would be a request per project per question.
 
 **`resume` declares its own kind, and that is the field to read first.** `annotate` means
 `next_asset_id` is a frame nobody has labeled, `review` means it is one awaiting a reviewer, and
-`open` means the batch is settled throughout and `next_asset_id` is null - so the caller opens its
-gallery rather than the editor. The three are in priority order and the order is resolved here: it
+`open` means the batch is settled throughout and `next_asset_id` is null - so the caller opens the
+batch rather than the editor. The three are in priority order and the order is resolved here: it
 is a judgment about what somebody should do next rather than a fact the rest of the response
 restates, and a client that worked it out again from the other fields would be keeping a second
 copy of a rule that can drift. Contrast the first-run state, which is deliberately *not* a field

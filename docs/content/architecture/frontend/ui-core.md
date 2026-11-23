@@ -29,7 +29,9 @@ This package imports **no router**. A screen that reached for `useNavigate` woul
 only work inside a `react-router` tree, which is a dependency the future
 enterprise UI has no reason to share. So every destination is a prop -
 `onOpenProject`, `onOpenGallery`, `onBack` - and [the app](app.md) turns each into
-a URL.
+a URL. (`onOpenGallery` is the annotator's name for "show me this batch": it is the back
+arrow's and *Correct this batch*'s destination, which the app points at the batch's panel
+on the Overview. The name is older than the page it once meant.)
 
 The same rule runs the other way and is worth stating because it decides a lot of
 small questions: a host that cannot honour a control **passes no callback and gets

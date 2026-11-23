@@ -178,7 +178,7 @@ pointer, and pressing it goes to the screen that owns the thing.
 - **The label is load-bearing, and the wire picks it.** The card renders one of three
   promises: **Continue Annotating** (a frame nobody has judged), **Review Annotations**
   (labeling done, frames waiting on a reviewer), **Open Batch** (nothing to open in the
-  editor). The first two go to the editor, the third to the gallery — a button claiming a
+  editor). The first two go to the editor, the third to the batch's panel on the project's Overview — a button claiming a
   frame that does not exist would land somewhere empty. Which applies is decided by the
   kernel and carried on the response, because a judgment spelled once in the kernel and
   again in the browser is one that drifts.
@@ -186,8 +186,8 @@ pointer, and pressing it goes to the screen that owns the thing.
   holding frames a model labeled and nobody has read, a failed background job, a running
   background job. The two batch rows must not read the same — the first waits on a
   *reviewer*, the second on an *annotator* — and a batch holding both gets both rows, since
-  one line cannot ask two people. Either batch row links to its gallery, where the
-  model-labeled segment and its bulk verbs are. A job row links nowhere and says so by not
+  one line cannot ask two people. Either batch row opens the batch's panel on the project's
+  Overview, where its jobs are and each opens in the editor. A job row links nowhere and says so by not
   being a link — no screen shows a background job, and inventing a destination would be
   principle 4's dead button with a friendlier label.
 - **Activity** is a projection over timestamps that already exist, never an event log,
@@ -223,7 +223,8 @@ The navigation carries the one dominant action, **Add images** beside it, and th
 menu (`⋯`) for the rest; each section's own header carries that section's actions as
 `secondary`, right-aligned. The Overview is the one place an action sits in a panel instead:
 batches have no section of their own, so the action on batches as a set — the project-wide
-Pre-label — is in the Batches panel's tool row ([navigation.md](navigation.md), *Two
+Auto-label — is offered over the Batches table, as a line while images are waiting and as an
+icon in its tool row once that line is put away ([navigation.md](navigation.md), *Two
 dashboards*).
 On the project page the dominant action is **Annotate**, because principle 3 asks what the
 user came to do and the answer is never "rename this".
@@ -234,7 +235,7 @@ Add images takes the dominant slot — principle 4, rather than a disabled contr
 says what would enable it. While Annotate holds the slot, Add images stays reachable as an
 `outline` control beside it, before it, in the same toolbar — one place on every section, and
 never repeated in a panel or a header. With exactly one, it jumps straight there — into that batch's one job where it
-has exactly one, and onto its gallery to pick a job otherwise, since a batch cut into several is
+has exactly one, and onto its panel to pick a job otherwise, since a batch cut into several is
 a second choice nobody has made yet. With two or more it
 reads `Annotate ▾` and opens a menu of those batches, each row carrying the batch name, its
 remaining count, and the schema version it is pinned to. The chevron is not decoration: a
@@ -257,14 +258,14 @@ to a secondary treatment.
 Editing classes comes first; versioning appears when there is something to version. While
 the draft matches the version in force there is nothing to save, so nothing on the page
 offers to: the Classes section is its table, and the version in force is named in the
-project bar (*Version 1 in force*) and on the band's **History · v1**. The first edit raises
+project bar (*Version 1 in force*) and on the band's **History** button (*History · v1*). The first edit raises
 a **commit bar** at the foot of the section — how many changes, a **Review** of them,
 **Discard** and **Save version N+1** — never a dialog, a tooltip
 or a disabled save button: what saving would do is on the bar before it is pressed. Its
 height is reserved whether or not it is up, so nothing moves when it rises, and while it is
 down it is inert. A status line that is always there (*Version 1 active · unsaved changes
 create v2*) tells a screen reader what the bar tells the eye. While the bar is up, its
-Save is the page's filled control and the project bar's **Add class** steps back to
+Save is the page's filled control and the band's **New** steps back to
 `outline`, so one filled control holds; Save is never disabled for "nothing to save" — a
 save of nothing answers with a toast and issues no request.
 
