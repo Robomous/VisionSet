@@ -2041,6 +2041,10 @@ export interface paths {
          * @description State this asset's own calibration, overriding its source's and replacing any override.
          *
          *     The only way a calibration reaches an imported asset, which has no source.
+         *     Replacing an override with a different one is refused with 409
+         *     `CALIBRATION_IN_USE` while the asset holds 3D labels, which were drawn
+         *     against it; stating the identical one again changes nothing. A point
+         *     cloud, which has no camera, is 409 `CALIBRATION_NOT_APPLICABLE`.
          *     One measured at a size other than the asset's is 422
          *     `CALIBRATION_RESOLUTION_MISMATCH`; a rotation that is not a proper rotation,
          *     or a non-positive focal length, is 422 `VALIDATION_ERROR`. An unknown
@@ -3264,6 +3268,11 @@ export interface paths {
          * Set Source Calibration
          * @description State the camera behind every frame of this source, replacing any already stated.
          *
+         *     Replacing it with a different calibration is refused with 409
+         *     `CALIBRATION_IN_USE` while an asset inheriting it holds 3D labels, which were
+         *     drawn against it; stating the identical one again changes nothing. A
+         *     point-cloud source, which has no camera, is 409 `CALIBRATION_NOT_APPLICABLE`.
+         *
          *     Every asset of the source that has no calibration of its own inherits it.
          *     Calibration is not part of the source's identity: registering the same files
          *     again returns this source with its calibration untouched.
@@ -3280,7 +3289,7 @@ export interface paths {
          * @description Remove the source's calibration. Clearing one that is not there is a 204 too.
          *
          *     Refused with 409 `CALIBRATION_IN_USE` while an asset inheriting it holds 3D
-         *     labels; replacing it with `PUT` stays allowed. An unknown source is 404
+         *     labels, as is replacing it with a different one. An unknown source is 404
          *     `SOURCE_NOT_FOUND`.
          */
         delete: operations["clear_source_calibration"];
@@ -11571,6 +11580,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             /** @description The request payload is not processable */
             422: {
                 headers: {
@@ -14526,6 +14544,15 @@ export interface operations {
             };
             /** @description No such resource */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

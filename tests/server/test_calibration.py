@@ -172,6 +172,33 @@ def test_clearing_a_calibration_3d_labels_need_is_409_by_code(rig: Rig) -> None:
     assert refused.json()["code"] == "CALIBRATION_IN_USE"
 
 
+def test_replacing_a_calibration_3d_labels_were_drawn_against_is_409_by_code(rig: Rig) -> None:
+    rig.client.put(rig.source_path, json=calibration_document())
+    opened = WorkspaceService.open(rig.root)
+    with opened.unit_of_work() as uow:
+        uow.annotations.add(
+            Annotation(
+                asset_id=UUID(rig.asset),
+                label_class="lane",
+                schema_version=1,
+                geometry=Polyline3DGeometry(points=[(0.0, 1.0, 5.0), (0.0, 1.0, 9.0)]),
+                provenance="human",
+            )
+        )
+    opened.close()
+
+    refused = rig.client.put(rig.source_path, json=calibration_document(fx=40.0))
+
+    assert refused.status_code == 409
+    assert refused.json()["code"] == "CALIBRATION_IN_USE"
+    assert rig.client.get(rig.source_path).json()["calibration"] == calibration_document()
+    assert rig.client.put(rig.source_path, json=calibration_document()).status_code == 200
+    assert rig.client.put(rig.asset_path, json=calibration_document(fx=11.0)).status_code == 200
+    overridden = rig.client.put(rig.asset_path, json=calibration_document(fx=12.0))
+    assert overridden.status_code == 409
+    assert overridden.json()["code"] == "CALIBRATION_IN_USE"
+
+
 def test_unknown_targets_are_404_by_code(rig: Rig) -> None:
     body = calibration_document()
     assert rig.client.get(f"/sources/{uuid4()}/calibration").json()["code"] == "SOURCE_NOT_FOUND"

@@ -58,7 +58,7 @@ POST   /projects/{project_id}/sources/point-clouds        multipart + frame; 409
 GET    /projects/{project_id}/sources
 GET    /sources/{source_id}
 GET    /sources/{source_id}/calibration                   null when none is stated
-PUT    /sources/{source_id}/calibration                   replaces whole
+PUT    /sources/{source_id}/calibration                   replaces whole; 409 CALIBRATION_IN_USE
 DELETE /sources/{source_id}/calibration                   204; 409 CALIBRATION_IN_USE
 POST   /sources/{source_id}/ingest-jobs                   launch
 GET    /sources/{source_id}/ingest-jobs
@@ -74,7 +74,7 @@ GET    /projects/{project_id}/assets/{asset_id}/content   bytes
 GET    /projects/{project_id}/assets/{asset_id}/thumbnail bytes
 GET    /projects/{project_id}/assets/{asset_id}/points    a scan thinned for a viewer, bytes
 GET    /projects/{project_id}/assets/{asset_id}/calibration  its override, and the one in effect
-PUT    /projects/{project_id}/assets/{asset_id}/calibration  the override, replaced whole
+PUT    /projects/{project_id}/assets/{asset_id}/calibration  the override, replaced whole; 409 CALIBRATION_IN_USE
 DELETE /projects/{project_id}/assets/{asset_id}/calibration  204; falls back to the source's, if it fits
 POST   /projects/{project_id}/thumbnail-backfill-jobs     launch; renders missing previews
 GET    /projects/{project_id}/assets/{asset_id}/batches    which batches carry it

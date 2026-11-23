@@ -36,6 +36,14 @@ nothing was being distributed. This is the first version that is.
   anything that imported a React adapter name (`AnnotatorCanvas`, `useAnnotatorSnapshot`, `classColor`, …)
   from the root: import it from `@visionset/annotator/react` instead (#843).
 
+### Fixed
+
+- **Replacing a calibration that 3D labels were drawn against is refused.** Setting a source's calibration, or
+  an asset's override, to a different value now answers `CALIBRATION_IN_USE` (409) while an asset it applies to
+  holds a `cuboid_3d` or `polyline_3d` label, on every surface, instead of silently re-reading those labels
+  against the new camera. Setting the identical calibration again changes nothing, and a first calibration, or
+  a replacement nothing depends on, is still accepted (#1067).
+
 ## [0.0.1b4] — 2026-09-15
 
 ### Changed
