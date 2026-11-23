@@ -104,6 +104,15 @@ const CUBOID_SCHEMA = {
   ],
 } satisfies Wire["SchemaVersionOut"];
 
+/** The same schema with `lane` accepting a 3D polyline. */
+const POLYLINE_SCHEMA = {
+  ...CUBOID_SCHEMA,
+  classes: [
+    CUBOID_SCHEMA.classes[0],
+    { name: "lane", geometries: ["polygon", "polyline_3d"], color: "#f97316", attributes: [] },
+  ],
+} satisfies Wire["SchemaVersionOut"];
+
 interface ScanWorld {
   /** The frame the source declares; `null` declares none. */
   readonly frame?: Wire["SourceOut"]["frame"];
@@ -590,4 +599,97 @@ test("in Edit, the top-down view pulls a face and turns the yaw, the perspective
     await page.getByTestId("token-submit").click();
   }
   await expect(page.getByTestId("object-count")).toHaveText("2 objects");
+});
+
+async function vertexAt(page: Page, index: number, prefix = "scan-top"): Promise<readonly [number, number]> {
+  const vertex = page.getByTestId(`${prefix}-vertex-${index}`);
+  return [Number(await vertex.getAttribute("cx")), Number(await vertex.getAttribute("cy"))];
+}
+
+async function signInAgain(page: Page): Promise<void> {
+  const token = page.getByTestId("token-input");
+  if (await token.isVisible().catch(() => false)) {
+    await token.fill("a-token");
+    await page.getByTestId("token-submit").click();
+  }
+}
+
+test("in Edit, a polyline drawn on the ground saves, and a dragged vertex saves only that label", async ({ page }) => {
+  const sent = await openScan(page, { schema: POLYLINE_SCHEMA });
+  const view = page.getByTestId("point-cloud-canvas");
+  await expect.poll(() => drawCount(view)).toBeGreaterThan(0);
+
+  await page.getByTestId("scan-edit-toggle").click();
+  const top = page.getByTestId("scan-top-down-canvas");
+  await expect.poll(() => drawCount(top)).toBeGreaterThan(0);
+  await page.getByTestId("scan-tool-polyline").click();
+  await expect(page.getByTestId("scan-polyline-class")).toContainText("lane");
+  await expect(page.getByTestId("scan-polyline-hint")).toBeVisible();
+  // The hint keeps to one line of its own instead of squeezing the tools beside it.
+  expect((await page.getByTestId("scan-polyline-hint").boundingBox())?.height).toBeLessThan(24);
+
+  const box = await top.boundingBox();
+  if (box === null) throw new Error("the top-down view has no box");
+  const [cx, cy] = [box.width / 2, box.height / 2];
+  // Behind the car, on open ground, three clicks and Enter.
+  for (const [x, y] of [[cx - 160, cy + 60], [cx - 100, cy + 80], [cx - 40, cy + 60]] as const) {
+    await page.mouse.click(box.x + x, box.y + y);
+  }
+  await expect(page.getByTestId("scan-top-draft-vertex-2")).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("object-count")).toHaveText("2 objects");
+  await expect(top).toHaveAttribute("data-label-count", "2");
+  await expect(page.getByTestId("scan-top-vertex-2")).toBeVisible();
+
+  await page.getByTestId("point-cloud-gl").focus();
+  await page.keyboard.press("ControlOrMeta+s");
+  await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
+  const posts = sent.filter((request) => request.method() === "POST" && request.url().endsWith(`/jobs/${JOB}/annotations`));
+  expect(posts).toHaveLength(1);
+  const [created] = posts[0]?.postDataJSON() as Wire["AnnotationCreate"][];
+  expect(created).toMatchObject({ asset_id: "asset-1", label_class: "lane", geometry: { type: "polyline_3d" } });
+  const drawn = created?.geometry as Wire["Polyline3DBody"];
+  expect(drawn.points).toHaveLength(3);
+  // Every vertex sits on the ground the scan was sampled on; visibility is left out, so it stays unknown.
+  for (const point of drawn.points) expect(point[2]).toBeCloseTo(-0.8, 1);
+  expect(drawn.visibility).toBeUndefined();
+
+  await page.reload();
+  await signInAgain(page);
+  await expect(page.getByTestId("object-count")).toHaveText("2 objects");
+
+  await page.getByTestId("scan-edit-toggle").click();
+  await expect.poll(() => drawCount(top)).toBeGreaterThan(0);
+  await page.getByTestId("object-select-1").click();
+  await expect(page.getByTestId("scan-top-vertex-2")).toBeVisible();
+  const first = await vertexAt(page, 0);
+  const before = await vertexAt(page, 2);
+  await dragIn(page, top, before, [before[0] + 60, before[1] - 40]);
+  const moved = await vertexAt(page, 2);
+  expect(Math.hypot(moved[0] - before[0], moved[1] - before[1])).toBeGreaterThan(40);
+  expect(await vertexAt(page, 0)).toEqual(first);
+
+  const writesBefore = sent.length;
+  await page.getByTestId("point-cloud-gl").focus();
+  await page.keyboard.press("ControlOrMeta+s");
+  await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
+  const writes = sent.slice(writesBefore).filter((request) => request.url().includes("/annotations"));
+  expect(writes.filter((request) => request.method() === "POST" || request.method() === "DELETE")).toHaveLength(0);
+  const patches = sent.filter((request) => request.method() === "PATCH");
+  expect(patches).toHaveLength(1);
+  const updated = patches[0]?.postDataJSON() as Wire["AnnotationUpdate"][];
+  // Only the polyline: the cuboid beside it is not re-sent.
+  expect(updated).toHaveLength(1);
+  const geometry = updated[0]?.geometry as Wire["Polyline3DBody"];
+  expect(geometry.points).toHaveLength(3);
+  expect(geometry.points.slice(0, 2)).toEqual(drawn.points.slice(0, 2));
+  expect(geometry.points[2]).not.toEqual(drawn.points[2]);
+  expect(geometry.points[2]?.[2]).toBeCloseTo(-0.8, 1);
+
+  await page.reload();
+  await signInAgain(page);
+  await expect(page.getByTestId("object-count")).toHaveText("2 objects");
+  await page.getByTestId("scan-edit-toggle").click();
+  await page.getByTestId("object-select-1").click();
+  await expect.poll(() => vertexAt(page, 2)).toEqual(moved);
 });

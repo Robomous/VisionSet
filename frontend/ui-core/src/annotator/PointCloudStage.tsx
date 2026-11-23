@@ -3,9 +3,9 @@
  * to a budget, and the open job's 3D labels on it, in the frame the scan's
  * source declares. No calibration takes part.
  *
- * Given the page's scan workspace, it also hosts the cuboid editor: the Edit
+ * Given the page's scan workspace, it also hosts the 3D label editor: the Edit
  * toggle, the tool and class pick, undo and redo, the editor's keys, and the
- * handles over the selected box. In Edit a top-down view sits beside the
+ * handles over the selected box or polyline. In Edit a top-down view sits beside the
  * perspective one, driving the same editor and store through its own camera, so
  * a drag in either moves the box in both. Without one it is the read-only viewer.
  *
@@ -22,12 +22,15 @@ import {
   decodePoints,
   defaultColorMode,
   groundHeight,
+  isScanAnnotation,
   isScanFrame,
   parseAnnotations,
+  polylineSegments,
   scanKeyIntent,
   scanLabels,
   type AnnotationSchema,
   type ColorMode,
+  type Point3D,
   type PointSample,
   type ScanFrame,
 } from "@visionset/annotator";
@@ -38,8 +41,8 @@ import {
   type PointCloudStatus,
   type ScanView as ScanCamera,
 } from "@visionset/annotator/react";
-import { Box, Cuboid, MousePointer2, Pencil, Redo2, RotateCcw, Undo2 } from "lucide-react";
-import { useEffect, useMemo, useState, type JSX, type KeyboardEvent, type ReactNode } from "react";
+import { Box, Cuboid, MousePointer2, Pencil, Redo2, RotateCcw, Undo2, Waypoints } from "lucide-react";
+import { useEffect, useMemo, useState, type JSX, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 
 import {
   Button,
@@ -61,7 +64,7 @@ import { AssetThumbnail } from "../screens/AssetThumbnail";
 import { useSource } from "../screens/queries";
 import type { WireAnnotation } from "./jobQueries";
 import { ScanHandles } from "./ScanHandles";
-import type { ScanWorkspace } from "./scanWorkspace";
+import type { ScanDrawKind, ScanWorkspace } from "./scanWorkspace";
 
 type PointCloudMetadata = components["schemas"]["PointCloudMetadataOut"];
 
@@ -92,13 +95,14 @@ const VIEW_LABEL =
   "With the view focused, the arrow keys orbit, plus and minus zoom, and 0 resets the view.";
 
 const EDIT_LABEL =
-  "Point cloud, editing 3D labels. Drag to draw or adjust a cuboid, right-drag to orbit, " +
-  "middle-drag or shift and right-drag to pan, scroll to zoom. Delete removes the selected cuboid, " +
-  "Escape cancels, and Enter finishes a cuboid's height.";
+  "Point cloud, editing 3D labels. Drag to draw or adjust a cuboid, click to place a polyline's vertices, " +
+  "right-drag to orbit, middle-drag or shift and right-drag to pan, scroll to zoom. Delete removes the selected label, " +
+  "Escape cancels, and Enter finishes a cuboid's height or a polyline.";
 
 const TOP_DOWN_LABEL =
   "Top-down view of the point cloud, following the perspective view's centre. Drag to draw a footprint, " +
-  "move a cuboid, pull a side face or turn the yaw handle; right-drag or middle-drag to pan, scroll to zoom. " +
+  "move a cuboid, pull a side face or turn the yaw handle, or click to place a polyline's vertices; " +
+  "right-drag or middle-drag to pan, scroll to zoom. " +
   "A cuboid's height is set in the perspective view.";
 
 type Fetched =
@@ -208,25 +212,27 @@ function ScanView({
   const rendered = scan?.snapshot.rendered ?? null;
   const selection = scan?.snapshot.selection ?? EMPTY_SELECTION;
   const draft = scan?.editor.draft ?? null;
-  const drawingClass = scan?.cuboidClass ?? null;
+  const polylineDraft = scan?.editor.polylineDraft ?? null;
+  const placed = scan?.editor.state.type === "drawing-polyline" ? scan.editor.state.points : NO_POINTS;
+  const drawingClass = (scan?.toolKind === "polyline" ? scan.polylineClass : scan?.cuboidClass) ?? null;
 
   const labels = useMemo<readonly PointCloudLabel[]>(() => {
     if (frame === null) return [];
     const classes = new Map(schema.classes.map((declared) => [declared.name, declared]));
     const colorOf = (labelClass: string): string => classColor(classes.get(labelClass), labelClass);
     const parsed = parseAnnotations(loaded);
-    const carried = rendered === null ? parsed : parsed.filter((one) => one.geometry.type !== "cuboid_3d");
+    const carried = rendered === null ? parsed : parsed.filter((one) => !isScanAnnotation(one));
     const out: PointCloudLabel[] = scanLabels(carried, frame).map((label) => ({
       id: label.id,
       color: colorOf(label.labelClass),
       segments: label.segments,
     }));
-    for (const annotation of rendered?.annotations.values() ?? []) {
+    for (const label of scanLabels([...(rendered?.annotations.values() ?? [])], frame)) {
       out.push({
-        id: annotation.id,
-        color: colorOf(annotation.label_class),
-        segments: cuboidSegments(annotation.geometry, frame),
-        ...(selection.has(annotation.id) ? { emphasis: "selected" as const } : {}),
+        id: label.id,
+        color: colorOf(label.labelClass),
+        segments: label.segments,
+        ...(selection.has(label.id) ? { emphasis: "selected" as const } : {}),
       });
     }
     if (draft !== null) {
@@ -237,9 +243,17 @@ function ScanView({
         emphasis: "draft",
       });
     }
+    if (polylineDraft !== null && polylineDraft.points.length >= 2) {
+      out.push({
+        id: "draft",
+        color: colorOf(drawingClass ?? ""),
+        segments: polylineSegments(polylineDraft.points),
+        emphasis: "draft",
+      });
+    }
     return out;
-  }, [frame, loaded, schema, rendered, selection, draft, drawingClass]);
-  const labelCount = labels.length - (draft === null ? 0 : 1);
+  }, [frame, loaded, schema, rendered, selection, draft, polylineDraft, drawingClass]);
+  const labelCount = labels.filter((label) => label.emphasis !== "draft").length;
 
   const total = asset.point_cloud?.point_count ?? sample.count;
 
@@ -247,10 +261,13 @@ function ScanView({
     return <NoWebGl projectId={projectId} asset={asset} frame={frame} />;
   }
 
+  function onDoubleClick(event: MouseEvent<HTMLDivElement>): void {
+    if (scan === null || !editing || !inScanView(event.target)) return;
+    scan.editor.onDoubleClick();
+  }
+
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
-    if (scan === null) return;
-    const target = event.target as HTMLElement;
-    if (target.closest("[data-scan-view]") === null) return;
+    if (scan === null || !inScanView(event.target)) return;
     const intent = scanKeyIntent({
       key: event.key,
       shift: event.shiftKey,
@@ -293,7 +310,12 @@ function ScanView({
   const topDown = editing && scan !== null && frame !== null;
 
   return (
-    <div className="@container relative size-full" data-testid="point-cloud-stage" onKeyDown={onKeyDown}>
+    <div
+      className="@container relative size-full"
+      data-testid="point-cloud-stage"
+      onKeyDown={onKeyDown}
+      onDoubleClick={onDoubleClick}
+    >
       <div className="flex size-full flex-col @2xl:flex-row">
         <div className="relative min-h-0 min-w-0 flex-1" data-testid="scan-perspective">
           <PointCloudCanvas
@@ -315,6 +337,7 @@ function ScanView({
           {editing && rendered !== null && view !== null && frame !== null && (
             <ScanHandles
               scene={{ document: rendered, selection, frame, camera: view.camera, viewport: view.viewport }}
+              draft={placed}
             />
           )}
 
@@ -452,6 +475,7 @@ function ScanView({
             {rendered !== null && topView !== null && (
               <ScanHandles
                 testIdPrefix="scan-top"
+                draft={placed}
                 scene={{
                   document: rendered,
                   selection,
@@ -470,6 +494,12 @@ function ScanView({
       </div>
     </div>
   );
+}
+
+const NO_POINTS: readonly Point3D[] = [];
+
+function inScanView(target: EventTarget): boolean {
+  return target instanceof Element && target.closest("[data-scan-view]") !== null;
 }
 
 /** Leave focus on the view, whose root reads the shortcuts, as the 2D tool palette does. */
@@ -492,12 +522,14 @@ function WithReason({ reason, children }: { readonly reason: string; readonly ch
 }
 
 /**
- * The editor's strip: Edit, then — while editing — the tool, the class a cuboid
- * is drawn as, and undo and redo. Edit stays on screen when it cannot be used,
- * disabled with the reason.
+ * The editor's strip: Edit, then — while editing — the tools, the class the
+ * picked drawing tool draws as, and undo and redo. Edit and each drawing tool
+ * stay on screen when they cannot be used, disabled with the reason.
  */
-function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Element {
-  const { editing, editBlocked, drawBlocked, snapshot } = scan;
+const POLYLINE_HINT = "Click along the line. Enter or double-click finishes it.";
+
+export function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Element {
+  const { editing, editBlocked, toolBlocked, snapshot } = scan;
   const editToggle = (
     <Toggle
       size="sm"
@@ -513,19 +545,32 @@ function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Element {
       Edit
     </Toggle>
   );
-  const cuboidTool = (
-    <ToggleGroupItem value="cuboid" disabled={drawBlocked !== null} aria-label="Draw a cuboid"
-      data-testid="scan-tool-cuboid"
-      onMouseDown={keepFocus}
-    >
-      <Cuboid className="size-4" />
-    </ToggleGroupItem>
-  );
+  const drawTool = (kind: ScanDrawKind, label: string, icon: ReactNode): JSX.Element => {
+    const reason = toolBlocked[kind];
+    const item = (
+      <ToggleGroupItem
+        value={kind}
+        disabled={reason !== null}
+        aria-label={label}
+        data-testid={`scan-tool-${kind}`}
+        onMouseDown={keepFocus}
+      >
+        {icon}
+      </ToggleGroupItem>
+    );
+    return reason === null ? item : <WithReason reason={reason}>{item}</WithReason>;
+  };
+  const classPick =
+    scan.toolKind === "cuboid"
+      ? { kind: "cuboid", value: scan.cuboidClass, classes: scan.cuboidClasses, set: scan.setCuboidClass, label: "Cuboid class" }
+      : scan.toolKind === "polyline"
+        ? { kind: "polyline", value: scan.polylineClass, classes: scan.polylineClasses, set: scan.setPolylineClass, label: "Polyline class" }
+        : null;
 
   return (
     <div
       data-testid="scan-edit-strip"
-      className="pointer-events-auto ml-auto flex items-center gap-1 rounded-xl border border-border bg-muted p-1 shadow-lg"
+      className="pointer-events-auto ml-auto flex flex-wrap items-center gap-1 rounded-xl border border-border bg-muted p-1 shadow-lg"
     >
       {editBlocked === null ? editToggle : <WithReason reason={editBlocked}>{editToggle}</WithReason>}
 
@@ -538,7 +583,7 @@ function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Element {
             value={scan.toolKind}
             aria-label="Scan tool"
             onValueChange={(value) => {
-              if (value === "select" || value === "cuboid") scan.setToolKind(value);
+              if (value === "select" || value === "cuboid" || value === "polyline") scan.setToolKind(value);
             }}
           >
             <ToggleGroupItem value="select" aria-label="Select and adjust"
@@ -547,21 +592,35 @@ function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Element {
             >
               <MousePointer2 className="size-4" />
             </ToggleGroupItem>
-            {drawBlocked === null ? cuboidTool : <WithReason reason={drawBlocked}>{cuboidTool}</WithReason>}
+            {drawTool("cuboid", "Draw a cuboid", <Cuboid className="size-4" />)}
+            {drawTool("polyline", "Draw a polyline", <Waypoints className="size-4" />)}
           </ToggleGroup>
-          {scan.cuboidClass !== null && (
-            <Select value={scan.cuboidClass} onValueChange={scan.setCuboidClass}>
-              <SelectTrigger size="sm" className="text-xs" aria-label="Cuboid class" data-testid="scan-cuboid-class">
+          {classPick !== null && classPick.value !== null && (
+            <Select key={classPick.kind} value={classPick.value} onValueChange={classPick.set}>
+              <SelectTrigger size="sm" className="text-xs" aria-label={classPick.label} data-testid={`scan-${classPick.kind}-class`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {scan.cuboidClasses.map((declared) => (
-                  <SelectItem key={declared.name} value={declared.name} data-testid={`scan-cuboid-class-${declared.name}`}>
+                {classPick.classes.map((declared) => (
+                  <SelectItem
+                    key={declared.name}
+                    value={declared.name}
+                    data-testid={`scan-${classPick.kind}-class-${declared.name}`}
+                  >
                     {declared.name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+          )}
+          {scan.toolKind === "polyline" && (
+            <span
+              data-testid="scan-polyline-hint"
+              title={POLYLINE_HINT}
+              className="order-last basis-full truncate px-1 text-xs text-muted-foreground"
+            >
+              {POLYLINE_HINT}
+            </span>
           )}
           <span className="mx-0.5 h-5 w-px bg-border" />
           <Button

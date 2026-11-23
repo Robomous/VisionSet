@@ -142,6 +142,14 @@ export {
   yawOfHeading,
   type CuboidFace,
 } from "./core/pointcloud/cuboid";
+export {
+  MIN_POLYLINE_VERTICES,
+  insertPolylineVertex,
+  isDrawablePolyline,
+  movePolylineVertex,
+  nearestSegment,
+  removePolylineVertex,
+} from "./core/pointcloud/polyline";
 // The scan editor — a sibling of the image engine, sharing its log, store and selection
 export {
   addScanAnnotation,
@@ -170,6 +178,7 @@ export {
 export {
   SCAN_IDLE,
   draftCuboid,
+  draftPolyline,
   scanTransition,
   type ScanContext,
   type ScanEffect,
@@ -187,7 +196,14 @@ export {
   type ScanKeyPress,
   type ScanPointerRole,
 } from "./core/pointcloud/edit/input";
-export { scanHandleLayout, type ScanHandleLayout } from "./core/pointcloud/edit/overlay";
+export {
+  scanHandleLayout,
+  scanVertexLayout,
+  screenVertices,
+  type ScanHandleLayout,
+  type ScanVertexLayout,
+  type ScreenVertex,
+} from "./core/pointcloud/edit/overlay";
 export {
   colorModeAvailable,
   defaultColorMode,
@@ -196,6 +212,7 @@ export {
 } from "./core/pointcloud/ramp";
 export {
   cuboidSegments,
+  polylineSegments,
   scanCuboidCorners,
   scanLabels,
   type ScanLabel,

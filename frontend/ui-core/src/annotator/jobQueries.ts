@@ -40,6 +40,7 @@
  */
 
 import {
+  isCuboidScanAnnotation,
   isDrawnGeometryType,
   toAnnotationCreate,
   toAnnotationUpdate,
@@ -381,7 +382,7 @@ export function planSave(
 
 /**
  * The scan editor's document against what was loaded: `planSave`'s rules over
- * cuboids. Every other label on the scan — a `polyline_3d`, a whole-scan tag —
+ * cuboids and polylines. Every other label on the scan — a whole-scan tag —
  * is the image document's or nobody's, so it is left out and never reads as a
  * delete; the two plans are disjoint and a page may send both.
  *
@@ -397,7 +398,7 @@ export function planScanSave(
   minted: ReadonlyMap<string, string> = NOTHING_MINTED,
 ): SavePlan<ScanAnnotation> {
   const before = new Map(
-    loaded.filter((one) => geometryType(one.geometry) === "cuboid_3d").map((one) => [one.id, one]),
+    loaded.filter((one) => SCAN_EDITED.has(geometryType(one.geometry))).map((one) => [one.id, one]),
   );
   const created: ScanAnnotation[] = [];
   const updated: ScanAnnotation[] = [];
@@ -422,7 +423,10 @@ export function planScanSave(
   return { created, updated, deleted };
 }
 
+const SCAN_EDITED: ReadonlySet<unknown> = new Set(["cuboid_3d", "polyline_3d"]);
+
 function withKernelYaw(annotation: ScanAnnotation): ScanAnnotation {
+  if (!isCuboidScanAnnotation(annotation)) return annotation;
   const yaw = wrapYaw(annotation.geometry.yaw);
   return yaw === annotation.geometry.yaw ? annotation : { ...annotation, geometry: { ...annotation.geometry, yaw } };
 }

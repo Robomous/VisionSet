@@ -149,12 +149,12 @@ export interface AnnotatorPanelProps {
   /** Open the add-a-class dialog, or absent where there is nowhere to add one. */
   readonly onAddClass?: (name: string) => void;
   /**
-   * A scan's 3D labels the scan editor does not hold — a `polyline_3d` — listed
-   * and counted read-only.
+   * A scan's 3D labels when no scan editor holds them, listed and counted
+   * read-only.
    */
   readonly labels3D?: readonly WireAnnotation[];
   /**
-   * A scan's cuboids, from the scan editor's store: a row selects its box, and
+   * A scan's cuboids and polylines, from the scan editor's store: a row selects its label, and
    * deletes it through the same command log as the keyboard, unless `readOnly`
    * or the scan cannot be edited.
    */
@@ -793,7 +793,7 @@ function RowActions({
   );
 }
 
-/** One cuboid on a scan: select it, or delete it. No visibility toggle: the scan view has none per box. */
+/** One cuboid or polyline on a scan: select it, or delete it. No visibility toggle: the scan view has none per label. */
 function CuboidRow({
   annotation,
   index,
@@ -832,7 +832,7 @@ function CuboidRow({
         <span aria-hidden="true" className="size-2.5 shrink-0 rounded-sm" style={{ background: color }} />
         <span className="truncate">
           {index + 1}. {annotation.label_class}{" "}
-          <span className="text-muted-foreground">· {geometryLabel("cuboid_3d")}</span>
+          <span className="text-muted-foreground">· {geometryLabel3D(annotation.geometry)}</span>
         </span>
       </button>
       <Button

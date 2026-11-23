@@ -25,8 +25,6 @@ import {
   CLASSES,
   OTHER_PROJECT,
   PROJECT,
-  PreviewSchemaChangeProbe,
-  SchemaBlockingAssetsProbe,
   addNamedClass,
   barState,
   bodies,
@@ -42,6 +40,7 @@ import {
   viewVersion,
   type HandlerAnswer,
 } from "../testing/screensHarness";
+import { PreviewSchemaChangeProbe, SchemaBlockingAssetsProbe } from "../testing/screensProbes";
 
 installScreensHarness();
 

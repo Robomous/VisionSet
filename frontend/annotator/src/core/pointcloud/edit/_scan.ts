@@ -1,7 +1,18 @@
 /** Test harness for the scan editor: a scan, a schema, a camera that looks down on it. */
 
 import { EMPTY_SELECTION, type Selection } from "../../state/selection";
-import type { AnnotationSchema, AssetDescriptor, Cuboid3DGeometry, Point, Point3D, ScanAnnotation } from "../../types";
+import {
+  isCuboidScanAnnotation,
+  isPolylineScanAnnotation,
+  type AnnotationSchema,
+  type AssetDescriptor,
+  type Cuboid3DGeometry,
+  type CuboidScanAnnotation,
+  type Point,
+  type Point3D,
+  type PolylineScanAnnotation,
+  type ScanAnnotation,
+} from "../../types";
 import type { OrbitCamera } from "../camera";
 import type { ScanFrame } from "../frame";
 import { screenOf } from "../ray";
@@ -21,6 +32,12 @@ export const SCAN_SCHEMA: AnnotationSchema = {
       color: null,
       attributes: [{ name: "parked", kind: "boolean", required: false, options: null, default: false }],
     },
+    {
+      name: "lane",
+      geometries: ["polyline_3d"],
+      color: null,
+      attributes: [{ name: "dashed", kind: "boolean", required: false, options: null, default: true }],
+    },
   ],
   description: null,
   created_at: null,
@@ -31,7 +48,7 @@ export const LOOKING_DOWN: OrbitCamera = { yaw: Math.PI, pitch: 1.2, distance: 3
 
 export const VIEW = { width: 800, height: 600 };
 
-export function scanBox(id: string, geometry: Partial<Cuboid3DGeometry> = {}): ScanAnnotation {
+export function scanBox(id: string, geometry: Partial<Cuboid3DGeometry> = {}): CuboidScanAnnotation {
   return {
     id,
     asset_id: SCAN.id,
@@ -44,6 +61,31 @@ export function scanBox(id: string, geometry: Partial<Cuboid3DGeometry> = {}): S
     confidence: null,
     job_id: null,
   };
+}
+
+export function scanLine(id: string, points: readonly Point3D[]): PolylineScanAnnotation {
+  return {
+    id,
+    asset_id: SCAN.id,
+    label_class: "lane",
+    schema_version: 3,
+    geometry: { type: "polyline_3d", points, visibility: undefined },
+    attributes: {},
+    provenance: "import",
+    model_ref: null,
+    confidence: null,
+    job_id: null,
+  };
+}
+
+export function polylineOf(annotation: ScanAnnotation | undefined): PolylineScanAnnotation {
+  if (annotation === undefined || !isPolylineScanAnnotation(annotation)) throw new Error("not a polyline");
+  return annotation;
+}
+
+export function cuboidOf(annotation: ScanAnnotation | undefined): CuboidScanAnnotation {
+  if (annotation === undefined || !isCuboidScanAnnotation(annotation)) throw new Error("not a cuboid");
+  return annotation;
 }
 
 export function scanDocumentOf(...boxes: ScanAnnotation[]): ScanDocument {

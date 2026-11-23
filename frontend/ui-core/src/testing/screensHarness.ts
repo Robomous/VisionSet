@@ -1,7 +1,8 @@
 /**
  * The project screens' test harness: a stubbed `fetch` with a route table, the
  * requests it saw, a stand-in for the shared schema draft, and the helpers the
- * schema editor's suites drive the page with.
+ * schema editor's suites drive the page with. The two hook probes are
+ * `screensProbes.tsx`'s.
  *
  * Shared by `screens.test.tsx`, `schemaEditor.test.tsx` and
  * `schemaHistory.test.tsx`; each calls `installScreensHarness()` once at its top level.
@@ -10,14 +11,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, vi } from "vitest";
-import { useState, type JSX } from "react";
-
-import {
-  usePreviewSchemaChange,
-  useSchemaBlockingAssets,
-  type LabelClassBody,
-  type SchemaChangePreview,
-} from "../screens/queries";
 import { stubResizeObserver } from "./resizeObserver.js";
 import type { components as capComponents } from "../generated/api.js";
 
@@ -168,51 +161,6 @@ export const CLASSES = [
   { name: "lane", geometries: ["polygon"], color: null, attributes: [] },
 ];
 
-export function PreviewSchemaChangeProbe({
-  projectId,
-  classes,
-}: {
-  readonly projectId: string;
-  readonly classes: readonly LabelClassBody[];
-}): JSX.Element {
-  const preview = usePreviewSchemaChange(projectId);
-  const [result, setResult] = useState<SchemaChangePreview | null>(null);
-
-  return (
-    <div>
-      <button
-        data-testid="preview-schema-change"
-        onClick={() => {
-          void preview.mutateAsync({ classes }).then(setResult);
-        }}
-      >
-        preview
-      </button>
-      {result === null ? null : (
-        <p data-testid="preview-result">
-          {`${result.diff.destructive_classes.join(",")}:${result.blockers[0]?.annotations}:${result.blockers[0]?.assets}:${result.is_refused}`}
-        </p>
-      )}
-    </div>
-  );
-}
-
-export function SchemaBlockingAssetsProbe({
-  projectId,
-  classes,
-}: {
-  readonly projectId: string;
-  readonly classes: readonly LabelClassBody[] | null;
-}): JSX.Element {
-  const query = useSchemaBlockingAssets(projectId, classes);
-  return (
-    <div data-testid="blocking-assets-result">
-      {query.data === undefined
-        ? "pending"
-        : `${query.data.total}:${query.data.items[0]?.annotations}:${query.data.items[0]?.batch_ids.length}`}
-    </div>
-  );
-}
 
 
 export function classCards(): HTMLElement[] {

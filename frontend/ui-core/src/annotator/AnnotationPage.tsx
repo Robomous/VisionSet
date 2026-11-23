@@ -190,7 +190,7 @@ import { ANNOTATOR_MIN_VIEWPORT_PX, useViewportAtLeast } from "./viewportFloor";
 import { AssetImage } from "./AssetImage";
 import { PointCloudStage } from "./PointCloudStage";
 import { useScanWorkspace } from "./scanWorkspace";
-import { carries3DLabels, isCuboid3D, labels3D, overlay3DFor, overlay3DNotice, type Overlay3DWithheld } from "./overlay3d";
+import { carries3DLabels, labels3D, overlay3DFor, overlay3DNotice, type Overlay3DWithheld } from "./overlay3d";
 import type { AssetProgress, WireAnnotation } from "./jobQueries";
 import type { BatchAsset } from "../screens/queries";
 import { FrameSession } from "./frameSession";
@@ -1757,10 +1757,10 @@ function Workspace({
   const fromModel = [...snapshot.document.annotations.values()].filter(
     (annotation) => annotation.provenance === "model",
   ).length;
-  // The scan editor holds the cuboids; what it does not hold is listed read-only.
+  // The scan editor holds every cuboid and polyline; without it they are listed read-only.
   const scanEditor = scan !== null;
   const scanLabels = useMemo(
-    () => (isScan ? labels3D(loaded).filter((one) => !scanEditor || !isCuboid3D(one)) : []),
+    () => (isScan && !scanEditor ? labels3D(loaded) : []),
     [isScan, loaded, scanEditor],
   );
   // Every object on the frame: the drawn shapes, a scan's cuboids, and its 3D labels listed read-only.
