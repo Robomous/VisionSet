@@ -178,6 +178,22 @@ describe("a scan's 3D labels (#1061)", () => {
     expect(screen.getByTestId("object-delete-0").hasAttribute("disabled")).toBe(true);
   });
 
+  it("lists a polyline the scan editor holds as a 3D polyline, with its delete", () => {
+    const path = { ...cuboid, id: "p1", geometry: { type: "polyline_3d", points: [[0, 0, 0], [1, 0, 0]] } } as const;
+    const scan = new AnnotatorStore<ScanDocument>(
+      scanDocumentFromWire({
+        asset: { id: "asset-1", width: null, height: null, modality: "point_cloud" },
+        schema: SCHEMA,
+        annotations: [cuboid, path],
+      }),
+    );
+    render(mount(storeWith([]), { scan: { store: scan, onRemove: vi.fn() } }));
+    expect(screen.getByTestId("object-count").textContent).toBe("2 objects");
+    expect(screen.getByTestId("object-row-0").textContent).toContain("3D box");
+    expect(screen.getByTestId("object-row-1").textContent).toContain("3D polyline");
+    expect(screen.getByTestId("object-delete-1").hasAttribute("disabled")).toBe(false);
+  });
+
   it("numbers the read-only 3D labels after the cuboids", () => {
     const path = { ...cuboid, id: "p1", geometry: { type: "polyline_3d", points: [[0, 0, 0], [1, 0, 0]] } };
     render(mount(storeWith([]), { scan: { store: scanStoreOf(), onRemove: null }, labels3D: [path] }));
