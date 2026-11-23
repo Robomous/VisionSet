@@ -105,6 +105,61 @@ def test_clearing_a_calibration_3d_labels_need_is_refused_by_code(
     assert still["calibration"] == calibration_document()
 
 
+def test_replacing_a_calibration_3d_labels_were_drawn_against_is_refused_by_code(
+    rig: tuple[str, str, str], tmp_path: Path
+) -> None:
+    named, source_id, asset_id = rig
+    payload(
+        call(
+            "set_calibration",
+            project=named,
+            source_id=source_id,
+            calibration=calibration_document(),
+        )
+    )
+    workspace = WorkspaceService.open(tmp_path / "ws")
+    with workspace.unit_of_work() as uow:
+        uow.annotations.add(
+            Annotation(
+                asset_id=UUID(asset_id),
+                label_class="lane",
+                schema_version=1,
+                geometry=Polyline3DGeometry(points=[(0.0, 1.0, 5.0), (0.0, 1.0, 9.0)]),
+                provenance="human",
+            )
+        )
+    workspace.close()
+
+    refused = error(
+        call(
+            "set_calibration",
+            project=named,
+            source_id=source_id,
+            calibration=calibration_document(fx=40.0),
+        )
+    )
+
+    assert refused["code"] == "CALIBRATION_IN_USE"
+    still = payload(call("get_calibration", project=named, source_id=source_id))
+    assert still["calibration"] == calibration_document()
+    payload(
+        call(
+            "set_calibration",
+            project=named,
+            source_id=source_id,
+            calibration=calibration_document(),
+        )
+    )
+    other = calibration_document(fx=40.0)
+    first = error(call("set_calibration", project=named, asset_id=asset_id, calibration=other))
+    assert first["code"] == "CALIBRATION_IN_USE"
+    pinned = calibration_document()
+    payload(call("set_calibration", project=named, asset_id=asset_id, calibration=pinned))
+    payload(call("set_calibration", project=named, source_id=source_id, calibration=other))
+    cleared = error(call("clear_calibration", project=named, asset_id=asset_id))
+    assert cleared["code"] == "CALIBRATION_IN_USE"
+
+
 @pytest.mark.parametrize("targets", [{}, {"source_id": "x", "asset_id": "y"}])
 def test_exactly_one_target_is_required(rig: tuple[str, str, str], targets: Any) -> None:
     named, _, _ = rig

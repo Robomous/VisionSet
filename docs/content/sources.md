@@ -242,7 +242,8 @@ with no effective calibration.
 
 **An asset's effective calibration is its own override, else its source's, else none.** The
 override exists because an imported asset has no `source_id`, so it is the only way a calibration
-reaches one; it is curation rather than provenance, and replaceable.
+reaches one; it is curation rather than provenance, and replaceable until a 3D label is drawn
+against it.
 
 **Calibration is not identity.** It is outside the origin index like `capture_params`, and
 `register_images` takes none: registering the same directory again returns the same source with
@@ -253,7 +254,7 @@ get and clear.
 | Refusal | When |
 | --- | --- |
 | `CALIBRATION_RESOLUTION_MISMATCH` (422) | the intrinsics were measured at a size other than an asset they would apply to - for a source, any of its assets with no override of its own, or a clip's stored frame size; for clearing an asset's override, the source calibration it would fall back to. An asset of unknown size takes any |
-| `CALIBRATION_IN_USE` (409) | clearing would leave an asset holding 3D labels with no calibration: a source's, while an inheriting asset holds them, or an asset's override when its source has none to fall back to. Replacing is always allowed |
+| `CALIBRATION_IN_USE` (409) | a change would re-read an asset's 3D labels against another calibration, or leave them with none. Clearing: a source's, while an inheriting asset holds them, or an asset's override when its source has none to fall back to, or a different one. Replacing with a different calibration is refused the same way, because those labels were drawn against the stored one: a source's, while an asset inheriting it (one with no override of its own) holds 3D labels, and an asset's override - compared with the calibration in effect for it, its override or else its source's - while that asset holds them, so a first override other than the inherited calibration is refused too. Setting the identical calibration again is not a replacement and changes nothing; a first calibration where none applied, an override equal to the inherited one, and a change no 3D label depends on are accepted |
 
 An asset ingested after its source was calibrated is not measured against it at ingest. The check
 runs when a calibration is stated, and again wherever a 3D label is read against one - a write,

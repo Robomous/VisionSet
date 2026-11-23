@@ -557,13 +557,18 @@ class CalibrationResolutionMismatch(VisionSetError):
 
 
 class CalibrationInUse(VisionSetError):
-    """Clearing this calibration would leave stored 3D labels with none to be read against.
+    """Clearing or replacing this calibration would re-read stored 3D labels against another.
 
-    Replacing a calibration is allowed; removing the last one an annotated asset
-    resolves to is not. The remedy is to delete those labels first, or to give
-    the assets a calibration of their own before clearing this one. Declaring
-    another scan frame for a point-cloud source whose scans hold 3D labels is
-    refused the same way, since those labels would be re-read in other axes.
+    Removing the last calibration an annotated asset resolves to is refused, and
+    so is replacing it with a different one, or clearing an asset's override
+    onto a different source calibration, since the labels were drawn against
+    it. Storing the identical calibration again is not a replacement. The remedy
+    is to delete those labels first, or, before clearing or replacing a source's
+    calibration, to pin its current values on those assets as their own override.
+    Labels in a dataset cannot be deleted, so pinning is the only route there.
+    Declaring another scan frame for a point-cloud source whose scans hold 3D
+    labels is refused the same way, since those labels would be re-read in other
+    axes.
     """
 
 

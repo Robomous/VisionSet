@@ -3,8 +3,10 @@
 
 Registration never touches a calibration — ``SourceService.register_images``
 takes none and carries the stored one forward — so a re-registration cannot
-re-interpret labels already drawn against it. Setting replaces whole; clearing
-is refused while 3D labels would be left with no calibration to resolve to.
+re-interpret labels already drawn against it. Setting replaces whole, but
+changing the calibration 3D labels resolve to — setting a different one,
+clearing it, or clearing an override onto a different source calibration — is
+refused, since those labels were drawn against it.
 
 Composition follows ``SourceService``: an open ``WorkspaceService`` and nothing
 else.
@@ -62,13 +64,15 @@ class CalibrationService:
     def set_source_calibration(
         self, source_id: UUID, calibration: Calibration, *, project_id: UUID | None = None
     ) -> Source:
-        """Store the source's calibration, replacing any already there.
+        """Store the source's calibration. Storing the one already there is a no-op.
 
         Raises:
             SourceNotFound: no such source in this workspace, or in ``project_id``.
             CalibrationResolutionMismatch: a clip's stored frame size, or an asset
                 that would inherit it, is not the size it was measured at.
             CalibrationNotApplicable: the source is a point-cloud directory.
+            CalibrationInUse: it replaces a different calibration that an asset
+                inheriting it holds 3D labels against.
         """
         with self._workspace.unit_of_work() as uow:
             source = self._require_source(uow, source_id, project_id)
@@ -77,6 +81,7 @@ class CalibrationService:
                     f"source {source.id} is a point-cloud directory, which has no camera "
                     f"intrinsics; its scans are read against its declared {source.frame} frame"
                 )
+            source = _held(uow, source)
             if source.video is not None and not calibration.fits(
                 source.video.stored_width, source.video.stored_height
             ):
@@ -89,6 +94,15 @@ class CalibrationService:
                     raise CalibrationResolutionMismatch(
                         f"asset {asset.id} of source {source.id} is {asset.width}x"
                         f"{asset.height}; {_measured(calibration)}"
+                    )
+            if source.calibration == calibration:
+                return source
+            if source.calibration is not None:
+                dependent = _dependent(uow, _inheriting(uow, source))
+                if dependent:
+                    raise CalibrationInUse(
+                        f"{len(dependent)} asset(s) of source {source.id} hold 3D labels drawn "
+                        f"against its current calibration, among them {dependent[0].id}"
                     )
             return uow.sources.update(source.model_copy(update={"calibration": calibration}))
 
@@ -130,13 +144,15 @@ class CalibrationService:
     def set_asset_calibration(
         self, project_id: UUID, asset_id: UUID, calibration: Calibration
     ) -> AssetCalibration:
-        """Store the asset's own calibration, replacing any override already there.
+        """Store the asset's own calibration. Storing the override already there is a no-op.
 
         Raises:
             ProjectNotFound: no such project in this workspace.
             AssetNotFound: no such asset in that project.
             CalibrationResolutionMismatch: the asset is not the size it was measured at.
             CalibrationNotApplicable: the asset is a point cloud.
+            CalibrationInUse: the asset holds 3D labels and the calibration in
+                effect for it, its override or else its source's, is a different one.
         """
         with self._workspace.unit_of_work() as uow:
             asset = self._require_asset(uow, project_id, asset_id)
@@ -144,6 +160,14 @@ class CalibrationService:
             if not calibration.fits(asset.width, asset.height):
                 raise CalibrationResolutionMismatch(
                     f"asset {asset.id} is {asset.width}x{asset.height}; {_measured(calibration)}"
+                )
+            asset = _held(uow, asset)
+            if asset.calibration == calibration:
+                return _resolved(uow, asset)
+            current = effective_calibration(asset, _source_of(uow, asset))
+            if current not in (None, calibration) and _dependent(uow, [asset]):
+                raise CalibrationInUse(
+                    f"asset {asset.id} holds 3D labels drawn against its current calibration"
                 )
             stored = uow.assets.update(asset.model_copy(update={"calibration": calibration}))
             return _resolved(uow, stored)
@@ -156,8 +180,8 @@ class CalibrationService:
             AssetNotFound: no such asset in that project.
             CalibrationResolutionMismatch: the source's calibration it would fall
                 back to was measured at a size other than the asset's.
-            CalibrationInUse: the asset holds a label that needs one, and its
-                source has none to fall back to.
+            CalibrationInUse: the asset holds 3D labels, and its source has no
+                calibration to fall back to or a different one.
         """
         with self._workspace.unit_of_work() as uow:
             asset = self._require_asset(uow, project_id, asset_id)
@@ -171,9 +195,10 @@ class CalibrationService:
                     f"asset {asset.id} is {asset.width}x{asset.height} and would fall back to "
                     f"its source's calibration; {_measured(fallback)}"
                 )
-            if fallback is None and _dependent(uow, [asset]):
+            if fallback != asset.calibration and _dependent(uow, [asset]):
                 raise CalibrationInUse(
-                    f"asset {asset.id} holds 3D labels and its source has no calibration "
+                    f"asset {asset.id} holds 3D labels drawn against its own calibration, and "
+                    f"its source has {'none' if fallback is None else 'a different one'} "
                     f"to fall back to"
                 )
             return _resolved(uow, uow.assets.update(cleared))
@@ -206,7 +231,7 @@ def _held(uow: UnitOfWork, row: Source | Asset) -> Source | Asset:
     """The row re-read under the store's write lock.
 
     A read before a unit of work's first write can see a state another writer
-    is about to change, so a clear that checked for 3D labels and then wrote
+    is about to change, so a set or clear that checked for 3D labels and then wrote
     could interleave with a label write that checked for a calibration and then
     wrote, and both would land. Every label write already takes the lock before
     its calibration check (``hold_open_job``, ``hold_draft``); taking it here

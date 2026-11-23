@@ -174,11 +174,16 @@ def get_source_calibration(workspace: WorkspaceDep, source_id: UUID) -> SourceCa
     return SourceCalibrationOut.of(source_id, found)
 
 
-@router.put("/{source_id}/calibration", responses=documented(404))
+@router.put("/{source_id}/calibration", responses=documented(404, 409))
 def set_source_calibration(
     workspace: WorkspaceDep, source_id: UUID, body: CalibrationBody
 ) -> SourceCalibrationOut:
     """State the camera behind every frame of this source, replacing any already stated.
+
+    Replacing it with a different calibration is refused with 409
+    `CALIBRATION_IN_USE` while an asset inheriting it holds 3D labels, which were
+    drawn against it; stating the identical one again changes nothing. A
+    point-cloud source, which has no camera, is 409 `CALIBRATION_NOT_APPLICABLE`.
 
     Every asset of the source that has no calibration of its own inherits it.
     Calibration is not part of the source's identity: registering the same files
@@ -202,7 +207,7 @@ def clear_source_calibration(workspace: WorkspaceDep, source_id: UUID) -> None:
     """Remove the source's calibration. Clearing one that is not there is a 204 too.
 
     Refused with 409 `CALIBRATION_IN_USE` while an asset inheriting it holds 3D
-    labels; replacing it with `PUT` stays allowed. An unknown source is 404
+    labels, as is replacing it with a different one. An unknown source is 404
     `SOURCE_NOT_FOUND`.
     """
     CalibrationService(workspace).clear_source_calibration(source_id)
