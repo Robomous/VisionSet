@@ -5,6 +5,7 @@
  */
 
 import { refusalProse } from "../data/refusals";
+import type { Modality } from "../lib/assetNoun";
 import type { BatchRowView } from "../patterns/project/BatchTable";
 import type { ClassRow } from "../patterns/project/ClassRail";
 import { annotatedShare, hasJobs } from "./batchState";
@@ -33,7 +34,11 @@ export function isDrafting(batch: Pick<Batch, "pre_label_run">): boolean {
  * has not landed holds its cell blank, and a row whose read failed says so in
  * that row only.
  */
-export function batchRows(batches: readonly Batch[], jobsOf: ReadonlyMap<string, BatchJobsRead> | undefined): BatchRowView[] {
+export function batchRows(
+  batches: readonly Batch[],
+  jobsOf: ReadonlyMap<string, BatchJobsRead> | undefined,
+  modalities?: ReadonlyMap<string, Modality>,
+): BatchRowView[] {
   return batches
     .map((batch): BatchRowView => {
       const read = hasJobs(batch.state) ? jobsOf?.get(batch.id) : undefined;
@@ -46,6 +51,7 @@ export function batchRows(batches: readonly Batch[], jobsOf: ReadonlyMap<string,
         schemaVersion: batch.schema_version ?? null,
         done: hasJobs(batch.state) ? annotatedShare(batch.progress).done : null,
         total: batch.asset_count,
+        modality: modalities?.get(batch.id) ?? "image",
         prelabel: runningPrelabel(batch),
         assignees: !hasJobs(batch.state) ? null : read?.status === "ready" ? read.jobs.map((job) => job.assignee ?? null) : undefined,
         ...(read?.status === "error" ? { jobsError: refusalProse(read.error) } : {}),

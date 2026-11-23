@@ -229,6 +229,7 @@ import { computeSuggestBlocker } from "../inference/targetBlocker.js";
 import { REVIEW_ACTIONS } from "./reviewActions";
 import { readyBrowserTargets, staleStoredBrowserTarget, type StoredSuggestTarget } from "./suggestTargets";
 import { readPref, writePref } from "../data/prefs";
+import { assetNoun } from "../lib/assetNoun";
 
 /**
  * Where a project's suggest-through choice is remembered.
@@ -2218,7 +2219,7 @@ function Workspace({
           </span>
           <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
           <span className="shrink-0 font-medium tabular-nums" aria-current="page">
-            {`Job · ${assetCount} ${isScan ? "scan" : "frame"}${assetCount === 1 ? "" : "s"}`}
+            {`Job · ${assetCount} ${assetNoun(asset.modality, assetCount)}`}
           </span>
           {/* The batch's pin, not the project's active version. Named here because
               the pin is movable: "why can I not use the class I just made"

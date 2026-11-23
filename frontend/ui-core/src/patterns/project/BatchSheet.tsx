@@ -120,7 +120,7 @@ export function BatchSheet({ row, position, onStep, onClose, jobs, jobsError, no
 
       <div className="vs-scroll-fade-y min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
         <dl className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-baseline gap-x-4 gap-y-2.5 text-[13px]" data-testid="batch-sheet-facts">
-          <Fact label="Images">{formatCount(row.total)}</Fact>
+          <Fact label={row.modality === "point_cloud" ? "Scans" : "Images"}>{formatCount(row.total)}</Fact>
           {row.schemaVersion !== null && <Fact label="Schema">v{row.schemaVersion}</Fact>}
           <Fact label="Labeled">
             {row.done === null || labeled === null ? (

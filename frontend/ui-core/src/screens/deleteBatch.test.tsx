@@ -221,6 +221,102 @@ describe("what the dialog says", () => {
   });
 });
 
+describe("what the dialog calls a batch's assets", () => {
+  function source(kind: string, id: string) {
+    return { id, project_id: PROJECT, kind, name: id, registered_at: "2026-11-01T00:00:00Z", frame: null, video: null };
+  }
+  function sources(...kinds: string[]): void {
+    on("GET", /\/sources$/, { status: 200, body: { items: kinds.map((kind, at) => source(kind, `s${at}`)), total: kinds.length } });
+  }
+  function firstAsset(modality: "image" | "point_cloud"): void {
+    on("GET", new RegExp(`/batches/${BATCH}/assets$`), {
+      status: 200,
+      body: {
+        items: [
+          {
+            id: "a0",
+            project_id: PROJECT,
+            modality,
+            point_cloud: null,
+            content_hash: "00000000deadbeef",
+            width: null,
+            height: null,
+            format: null,
+            source_id: "s1",
+            frame_index: null,
+            frame_timestamp: null,
+            thumbnail_hash: null,
+            ingested_at: "2026-11-01T00:00:00Z",
+            job_id: null,
+            progress: null,
+            annotation_count: 0,
+            min_confidence: null,
+            allowed_actions: [],
+          },
+        ],
+        total: 48,
+      },
+    });
+  }
+
+  it("says scans for a project of point-cloud sources, without reading the batch", async () => {
+    sources("point_cloud_directory");
+    renderWithData(<BatchOverflowMenu batch={batch("draft")} projectId={PROJECT} />);
+
+    await userEvent.click(await openMenu());
+
+    const dialog = await screen.findByTestId("delete-batch-dialog");
+    await waitFor(() => expect(dialog.textContent).toContain("48 scans remain in the project"));
+    expect(dialog.textContent).toContain("how far each scan had got");
+    expect(dialog.textContent).not.toMatch(/frame/);
+    expect(sent.some((one) => new URL(one.url).pathname.endsWith("/assets"))).toBe(false);
+  });
+
+  it("says one scan in the singular", async () => {
+    sources("point_cloud_directory");
+    renderWithData(<BatchOverflowMenu batch={batch("draft", { asset_count: 1, promoted_asset_count: 1 })} projectId={PROJECT} />);
+
+    await userEvent.click(await openMenu());
+
+    const dialog = await screen.findByTestId("delete-batch-dialog");
+    await waitFor(() => expect(dialog.textContent).toContain("1 scan remains in the project with its work on it"));
+    expect(dialog.textContent).toContain("the 1 already promoted stays in the dataset");
+  });
+
+  it("reads the batch's first asset when the project holds scans and images", async () => {
+    sources("image_directory", "point_cloud_directory");
+    firstAsset("point_cloud");
+    renderWithData(<BatchOverflowMenu batch={batch("draft")} projectId={PROJECT} />);
+
+    await userEvent.click(await openMenu());
+
+    const dialog = await screen.findByTestId("delete-batch-dialog");
+    await waitFor(() => expect(dialog.textContent).toContain("48 scans remain in the project"));
+  });
+
+  it("keeps frames for a batch of images in a project that also holds scans", async () => {
+    sources("image_directory", "point_cloud_directory");
+    firstAsset("image");
+    renderWithData(<BatchOverflowMenu batch={batch("draft")} projectId={PROJECT} />);
+
+    await userEvent.click(await openMenu());
+
+    const dialog = await screen.findByTestId("delete-batch-dialog");
+    await waitFor(() => expect(sent.some((one) => new URL(one.url).pathname.endsWith("/assets"))).toBe(true));
+    expect(dialog.textContent).toContain("48 frames remain in the project");
+  });
+
+  it("keeps frames for a project of images", async () => {
+    sources("image_directory", "video");
+    renderWithData(<BatchOverflowMenu batch={batch("draft")} projectId={PROJECT} />);
+
+    await userEvent.click(await openMenu());
+
+    await waitFor(() => expect(sent.some((one) => new URL(one.url).pathname.endsWith("/sources"))).toBe(true));
+    expect((await screen.findByTestId("delete-batch-dialog")).textContent).toContain("48 frames remain in the project");
+  });
+});
+
 describe("what pressing Delete does", () => {
   it("sends the delete with the confirmation the dialog already took", async () => {
     on("DELETE", /\/batches\/[^/]+$/, { status: 204 });
@@ -266,14 +362,15 @@ describe("what pressing Delete does", () => {
     expect(screen.getByTestId("delete-batch-dialog")).toBeTruthy();
   });
 
-  it("closes with no request when Cancel is pressed", async () => {
+  it("closes with no write when Cancel is pressed", async () => {
     renderWithData(<BatchOverflowMenu batch={batch("draft")} projectId={PROJECT} />);
 
     await userEvent.click(await openMenu());
     await userEvent.click(screen.getByText("Cancel"));
 
     await waitFor(() => expect(screen.queryByTestId("delete-batch-dialog")).toBeNull());
-    expect(sent).toEqual([]);
+    // The open dialog reads the project's sources for its wording; nothing else goes out.
+    expect(sent.filter((one) => one.method !== "GET")).toEqual([]);
   });
 });
 

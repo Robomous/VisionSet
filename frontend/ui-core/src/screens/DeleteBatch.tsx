@@ -39,7 +39,8 @@ import { useState, type JSX } from "react";
 import { BATCH_ACTION, declares, withheldBecause } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FieldError, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@robomous/ui-core";
-import { useDeleteBatch, type Batch } from "./queries";
+import { assetNoun } from "../lib/assetNoun";
+import { useBatchModality, useDeleteBatch, type Batch } from "./queries";
 
 export interface BatchOverflowMenuProps {
   readonly batch: Batch;
@@ -143,18 +144,21 @@ function DeleteBatchDialog({
 }): JSX.Element {
   const remove = useDeleteBatch(projectId);
   const moved = batch === null ? 0 : batch.progress.total - batch.progress.unannotated;
+  const modality = useBatchModality(projectId, batch?.id ?? null);
+  const remaining = batch?.asset_count ?? 0;
 
   return (
     <Dialog open={batch !== null} onOpenChange={(next) => !next && onClose()}>
       <DialogContent data-testid="delete-batch-dialog">
         <DialogTitle>Delete {batch?.name}?</DialogTitle>
         <DialogDescription>
-          This removes the batch, its jobs, and how far each frame had got
+          This removes the batch, its jobs, and how far each {assetNoun(modality, 1)} had got
           {moved > 0 ? ` — progress on ${moved} of them` : ""}.{" "}
           <strong>The annotations stay.</strong> Labels belong to assets, not to batches, so the{" "}
-          {batch?.asset_count ?? 0} frames remain in the project with their work on them
+          {remaining} {assetNoun(modality, remaining)}{" "}
+          {remaining === 1 ? "remains in the project with its work on it" : "remain in the project with their work on them"}
           {batch !== null && batch.promoted_asset_count > 0
-            ? `, and the ${batch.promoted_asset_count} already promoted stay in the dataset`
+            ? `, and the ${batch.promoted_asset_count} already promoted ${batch.promoted_asset_count === 1 ? "stays" : "stay"} in the dataset`
             : ""}
           .
         </DialogDescription>

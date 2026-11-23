@@ -81,6 +81,10 @@ nothing was being distributed. This is the first version that is.
 
 ### Fixed
 
+- **Scan batches are counted in scans.** On a batch of point-cloud scans, the Overview's batch row ("1 scan",
+  "N scans") and its sheet ("Scans"), the batch-delete dialog and the Complete button's line ("N scans still to
+  annotate or skip") no longer say images or frames; image batches keep their wording. The delete dialog's count
+  is singular for one (#1090).
 - **Scan editing follow-ups.** After a cuboid footprint drag, focus moves to the perspective view and the height
   hint says Enter or a click finishes it; a click on an objects-panel row no longer takes keyboard focus off the
   view, in 2D and on scans; the editor's breadcrumb counts a scan job in scans ("Job · 1 scan", "Job · N scans")
