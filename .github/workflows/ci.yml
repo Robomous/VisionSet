@@ -1076,7 +1076,7 @@ jobs:
       # No `fail-on-severity`: the default is `low`, which fails on any advisory
       # at all. That is the strict end on purpose — a threshold here would be a
       # gate that lets some known vulnerabilities through by configuration.
-      - uses: actions/dependency-review-action@v5.0.0
+      - uses: actions/dependency-review-action@v5.0.1
 
   openapi:
     name: OpenAPI contract drift gate
