@@ -1,5 +1,6 @@
 import { formatCount } from "../../lib/format";
 import { labelSegments, type ProgressDetail } from "../progressDetail";
+import type { State } from "../StateChip";
 import type { BatchPhase } from "./BatchSummary";
 import type { BatchRowView } from "./BatchTable";
 
@@ -11,13 +12,35 @@ export const PHASE_LABEL: Record<BatchPhase, string> = {
   in_dataset: "In dataset",
 };
 
-export const PHASE_DOT: Record<BatchPhase, string> = {
-  draft: "bg-muted-foreground/40",
-  approved: "bg-muted-foreground",
-  annotating: "bg-info",
-  completed: "bg-success",
-  in_dataset: "bg-success",
+/**
+ * A phase's colour family (`product-principles.md` → *Status semantics*: nothing
+ * moving yet is neutral, work in flight `info`, finished `success`, in the dataset
+ * or not) and its shape: a draft's open membership is the dashed ring, an
+ * approved batch the solid one, labeling the pie, a finished batch still
+ * outside the dataset the ring with the arrow, a promoted one the check.
+ */
+const PHASE_LOOK: Record<BatchPhase, Pick<State, "tone" | "glyph" | "title" | "lines">> = {
+  draft: { tone: "draft", glyph: "backlog", title: "Membership still open", lines: ["Approve it to freeze its images and cut it into jobs."] },
+  approved: { tone: "draft", glyph: "todo", title: "Cut into jobs, not started", lines: ["Start it to open its jobs for labeling."] },
+  annotating: { tone: "active", glyph: "partway", title: "Being labeled", lines: ["Its jobs are open; the pie is the share of images labeled."] },
+  completed: { tone: "done", glyph: "ready", title: "Finished, not in the dataset yet", lines: ["Promote it to move its finished images into the dataset."] },
+  in_dataset: { tone: "done", glyph: "done", title: "Promoted", lines: ["Its finished images are in the dataset."] },
 };
+
+/**
+ * A batch's phase as a state chip. `fraction` fills the labeling pie; `card`
+ * adds what the phase means, for a place where the chip is not inside a row
+ * that already opens on a press.
+ */
+export function phaseState(phase: BatchPhase, { fraction, card = false }: { readonly fraction?: number; readonly card?: boolean } = {}): State {
+  const { title, lines, ...look } = PHASE_LOOK[phase];
+  return {
+    ...look,
+    label: PHASE_LABEL[phase],
+    ...(fraction === undefined ? {} : { fraction }),
+    ...(card ? { title, lines } : {}),
+  };
+}
 
 export function initials(name: string): string {
   const words = name.trim().split(/[\s._@-]+/).filter(Boolean);

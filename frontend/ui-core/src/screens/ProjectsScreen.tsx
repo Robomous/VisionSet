@@ -42,7 +42,6 @@ import { useRef, useState, type FormEvent, type JSX } from "react";
 import { Async } from "../data/Async";
 import { refusalProse } from "../data/refusals";
 import {
-  Badge,
   Button,
   Dialog,
   DialogContent,
@@ -68,6 +67,7 @@ import { formatCount, formatWhen } from "../lib/format";
 import { BODY_ROW, ColumnHeader, ListGrid, ListPage, type ListColumn } from "../patterns/ListPage";
 import { PageStatus } from "../patterns/PageStatus";
 import { ProgressReadout } from "../patterns/ProgressRing";
+import { StateChip, type State } from "../patterns/StateChip";
 import { usePagination } from "../patterns/pagination";
 import { clickedRowId, walkRowButtons } from "../patterns/rowDelegation";
 import { TableFooter } from "../patterns/TablePager";
@@ -101,20 +101,23 @@ function matches(project: ProjectListItem, query: string): boolean {
 // ── Stage, in words and a status family ───────────────────────────────────
 
 /**
- * One label and one status family per stage, on the product-wide mapping
- * (`docs/content/ui/product-principles.md` → *Status semantics*): `warning` only
- * for what waits on a person to judge, `info` for work in flight, `success` for
- * the settled facts, neutral for nothing-yet and for a decision with nothing
- * wrong. The word always rides with the colour.
+ * One label, one status family and one shape per stage, on the product-wide
+ * mapping (`docs/content/ui/product-principles.md` → *Status semantics*):
+ * `waiting` (warning) only for what waits on a person to judge, `active` (info)
+ * for work in flight, `done` (success) for the settled facts, `draft` (neutral)
+ * for nothing-yet and for a decision with nothing wrong. The shape is the state
+ * grammar's (`DESIGN.md` → *States*): an empty project the dashed ring, a
+ * released-since-changed one the dashed check — done, not frozen. The word
+ * always rides with the colour.
  */
-const STAGE: Record<ProjectStage, { label: string; variant: "warning" | "info" | "success" | "quiet" }> = {
-  in_review: { label: "In review", variant: "warning" },
-  annotating: { label: "Annotating", variant: "info" },
-  to_promote: { label: "Ready to promote", variant: "success" },
-  unreleased: { label: "Not released", variant: "quiet" },
-  up_to_date: { label: "Up to date", variant: "success" },
-  not_started: { label: "Not started", variant: "quiet" },
-  empty: { label: "No images", variant: "quiet" },
+const STAGE: Record<ProjectStage, Pick<State, "label" | "tone" | "glyph">> = {
+  in_review: { label: "In review", tone: "waiting", glyph: "review" },
+  annotating: { label: "Annotating", tone: "active", glyph: "partway" },
+  to_promote: { label: "Ready to promote", tone: "done", glyph: "ready" },
+  unreleased: { label: "Not released", tone: "draft", glyph: "drafted" },
+  up_to_date: { label: "Up to date", tone: "done", glyph: "done" },
+  not_started: { label: "Not started", tone: "draft", glyph: "todo" },
+  empty: { label: "No images", tone: "draft", glyph: "backlog" },
 };
 
 /**
@@ -524,9 +527,10 @@ function Row({
       <td className="text-right tabular-nums">{d.class_count === 0 ? "—" : formatCount(d.class_count)}</td>
       <td>
         <div className="flex min-w-0 items-center gap-2">
-          <Badge variant={stage.variant} data-testid="project-stage">
-            {stage.label}
-          </Badge>
+          <StateChip
+            state={d.stage === "annotating" && d.asset_count > 0 ? { ...stage, fraction: Math.min(d.annotated_asset_count, d.asset_count) / d.asset_count } : stage}
+            testId="project-stage"
+          />
           {detail !== null && <span className="truncate text-xs text-muted-foreground tabular-nums">{detail}</span>}
         </div>
       </td>

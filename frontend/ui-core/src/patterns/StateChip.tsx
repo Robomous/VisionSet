@@ -2,25 +2,47 @@
  * A state, as a chip: a tinted ground, a glyph that fills as the thing nears
  * done, and the word.
  *
- * The glyph is the state's whole vocabulary — a dashed ring for not started, a
- * pie for partway (it fills to the real fraction when there is one), a filled
- * check for done, a filled mark for failed — so a chip reads at a glance
+ * The glyph is the state's whole vocabulary, one grammar for every family
+ * (`DESIGN.md` → *States*): a dashed ring is not committed, a solid ring is
+ * committed and not started, the fill is how far along (in quarters), the
+ * arrow is on its way somewhere else, the slash is decided against, the check
+ * is done — dashed, done but not yet somebody's. So a chip reads at a glance
  * before its word is read, and the icon-only form still says it. What the
  * state means beyond its word is a card on hover or focus: a title and a line
- * or two, never the word again (`DESIGN.md` → *States*).
+ * or two, never the word again.
+ *
+ * The glyphs are lucide's where lucide has them, drawn on lucide's own grid
+ * where it does not (the quarter and three-quarter pies, the dashed cross), so
+ * the set reads as one family at one stroke.
  */
 
+import { Ban, Circle, CircleAlert, CircleCheck, CircleDashed, CircleDashedCheck, CircleFadingArrowUp } from "lucide-react";
 import type { JSX } from "react";
 
 import { cn, Tooltip, TooltipContent, TooltipTrigger } from "@robomous/ui-core";
 
-/** Not started · partway · waiting on someone · done · failed. */
-export type Tone = "draft" | "progress" | "review" | "done" | "failed";
+/**
+ * Not started · partway · something to look at · done · failed — and the two
+ * lifecycle families of the product-wide status mapping
+ * (`docs/content/ui/product-principles.md` → *Status semantics*): `active`, work
+ * in flight (`info`), and `waiting`, waiting on a person (`warning`).
+ */
+export type Tone = "draft" | "progress" | "review" | "done" | "failed" | "active" | "waiting";
+
+/**
+ * The shapes, by what they say: `backlog` a dashed ring, `todo` a ring,
+ * `partway` a pie, `review` the pie at three quarters, `ready` the ring with an
+ * arrow, `skipped` the slashed ring, `done` the check, `drafted` the dashed
+ * check, `cancelled` the dashed cross, `failed` the ring with a mark.
+ */
+export type GlyphKind = "backlog" | "todo" | "partway" | "review" | "ready" | "skipped" | "done" | "drafted" | "cancelled" | "failed";
 
 export interface State {
   readonly tone: Tone;
   readonly label: string;
-  /** How far along, 0–1, for a pie that fills with it; the tone's own share otherwise. */
+  /** The shape, where the tone's own one does not say it (`TONE_GLYPH`). */
+  readonly glyph?: GlyphKind;
+  /** How far along, 0–1, for a pie that fills with it, in quarters; the tone's own share otherwise. */
   readonly fraction?: number;
   /** The card's first line: the answer in a few words, never the label again. */
   readonly title?: string;
@@ -29,46 +51,125 @@ export interface State {
 
 const TONE: Record<Tone, string> = {
   draft: "bg-muted text-muted-foreground",
-  progress: "bg-warning/10 text-warning",
+  progress: "bg-progress/10 text-progress",
   review: "bg-info/10 text-info",
   done: "bg-success/10 text-success",
   failed: "bg-destructive/10 text-destructive",
+  active: "bg-info/10 text-info",
+  waiting: "bg-warning/10 text-warning",
 };
 
-/** The glyph: 14px, on a 14-unit box so every stroke lands on the pixel grid. */
-export function StateGlyph({ tone, fraction, className }: { readonly tone: Tone; readonly fraction?: number; readonly className?: string }): JSX.Element {
-  const box = cn("size-3.5 shrink-0", className);
-  if (tone === "draft") {
-    return (
-      <svg viewBox="0 0 14 14" className={box} aria-hidden="true">
-        <circle cx="7" cy="7" r="5.75" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="2.1 2.4" strokeLinecap="round" />
-      </svg>
-    );
+/** A tone's own shape, when the state names none. */
+const TONE_GLYPH: Record<Tone, GlyphKind> = {
+  draft: "backlog",
+  progress: "partway",
+  review: "review",
+  done: "done",
+  failed: "failed",
+  active: "partway",
+  waiting: "review",
+};
+
+/** One stroke for the whole set, whatever the size: lucide's grid, 1.5px on screen. */
+const STROKE = 1.5;
+
+/** lucide's own dashed ring (`CircleDashed`), so the drawn glyphs carry exactly its dashes. */
+const DASHES = [
+  "M10.1 2.182a10 10 0 0 1 3.8 0",
+  "M13.9 21.818a10 10 0 0 1-3.8 0",
+  "M17.609 3.721a10 10 0 0 1 2.69 2.7",
+  "M2.182 13.9a10 10 0 0 1 0-3.8",
+  "M20.279 17.609a10 10 0 0 1-2.7 2.69",
+  "M21.818 10.1a10 10 0 0 1 0 3.8",
+  "M3.721 6.391a10 10 0 0 1 2.7-2.69",
+  "M6.391 20.279a10 10 0 0 1-2.69-2.7",
+];
+
+/**
+ * A pie's share in quarters, as the glyph set draws it: never empty or full, so
+ * it is never read as the ring or the check.
+ */
+function quarters(fraction: number): number {
+  return Math.min(0.75, Math.max(0.25, Math.round(fraction * 4) / 4));
+}
+
+/** `Contrast`'s inner disc (r=6, from twelve o'clock clockwise), at any share. */
+function sector(share: number): string {
+  const a = share * 2 * Math.PI;
+  const x = 12 + 6 * Math.sin(a);
+  const y = 12 - 6 * Math.cos(a);
+  return `M12 12V6A6 6 0 ${share > 0.5 ? 1 : 0} 1 ${x.toFixed(3)} ${y.toFixed(3)}Z`;
+}
+
+/**
+ * The glyph, 14px unless sized. Lucide's icons as shipped where it has the
+ * shape — `CircleDashed`, `Circle`, `CircleCheck`, `CircleDashedCheck`,
+ * `CircleAlert`; `CircleFadingArrowUp` turned to point on; `Ban` mirrored to the
+ * set's slant — and the pies and the dashed cross drawn on its grid.
+ */
+export function StateGlyph({
+  tone,
+  glyph,
+  fraction,
+  size = 14,
+  className,
+}: {
+  readonly tone: Tone;
+  readonly glyph?: GlyphKind;
+  readonly fraction?: number;
+  readonly size?: number;
+  readonly className?: string;
+}): JSX.Element {
+  const kind = glyph ?? TONE_GLYPH[tone];
+  const icon = { size, strokeWidth: STROKE, absoluteStrokeWidth: true, "aria-hidden": true, className: cn("shrink-0", className) } as const;
+  switch (kind) {
+    case "backlog":
+      return <CircleDashed {...icon} />;
+    case "todo":
+      return <Circle {...icon} />;
+    case "ready":
+      return <CircleFadingArrowUp {...icon} className={cn(icon.className, "rotate-90")} />;
+    case "skipped":
+      return <Ban {...icon} className={cn(icon.className, "-scale-x-100")} />;
+    case "done":
+      return <CircleCheck {...icon} />;
+    case "drafted":
+      return <CircleDashedCheck {...icon} />;
+    case "failed":
+      return <CircleAlert {...icon} />;
+    case "cancelled":
+    case "partway":
+    case "review":
+      return (
+        <svg
+          width={size}
+          height={size}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={(STROKE * 24) / size}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={cn("shrink-0", className)}
+          aria-hidden="true"
+        >
+          {kind === "cancelled" ? (
+            <>
+              {DASHES.map((d) => (
+                <path key={d} d={d} />
+              ))}
+              <path d="m14.5 9.5-5 5" />
+              <path d="m9.5 9.5 5 5" />
+            </>
+          ) : (
+            <>
+              <circle cx="12" cy="12" r="10" />
+              <path d={sector(quarters(fraction ?? (kind === "review" ? 0.75 : 0.5)))} fill="currentColor" stroke="none" />
+            </>
+          )}
+        </svg>
+      );
   }
-  if (tone === "done" || tone === "failed") {
-    return (
-      <svg viewBox="0 0 14 14" className={box} aria-hidden="true">
-        <circle cx="7" cy="7" r="6.5" fill="currentColor" />
-        {tone === "done" ? (
-          <path d="M4.4 7.2 6.2 9 9.7 5.2" fill="none" stroke="var(--background)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-        ) : (
-          <path d="M7 4v3.6M7 9.9v.1" fill="none" stroke="var(--background)" strokeWidth="1.6" strokeLinecap="round" />
-        )}
-      </svg>
-    );
-  }
-  // A pie from twelve o'clock, never quite empty or full so it is never read as the ring or the check.
-  const share = Math.min(0.999, Math.max(0.04, fraction ?? (tone === "progress" ? 0.5 : 0.75)));
-  const angle = share * 2 * Math.PI;
-  const r = 3.5;
-  const x = 7 + r * Math.sin(angle);
-  const y = 7 - r * Math.cos(angle);
-  return (
-    <svg viewBox="0 0 14 14" className={box} aria-hidden="true">
-      <circle cx="7" cy="7" r="5.75" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      <path d={`M7 7V${7 - r}A${r} ${r} 0 ${share > 0.5 ? 1 : 0} 1 ${x.toFixed(3)} ${y.toFixed(3)}Z`} fill="currentColor" />
-    </svg>
-  );
 }
 
 /**
@@ -106,7 +207,7 @@ export function StateChip({
         className,
       )}
     >
-      <StateGlyph tone={state.tone} fraction={state.fraction} />
+      <StateGlyph tone={state.tone} glyph={state.glyph} fraction={state.fraction} />
       {!iconOnly && state.label}
     </span>
   );

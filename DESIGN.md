@@ -260,21 +260,51 @@ says 100 while anything is left.
 **A state is a chip: a tinted ground, a glyph that fills as the thing nears done, and the
 word.** The pattern is `StateChip` (`patterns/StateChip.tsx`), with the states themselves
 computed off the wire as plain functions beside the screen that shows them
-(`screens/dataset/states.ts`).
+(`screens/dataset/states.ts`, `phaseState` in `patterns/project/batchRowModel.ts`, the
+Projects list's `STAGE`). A batch's phase — the Overview table, the batch panel and its
+condensed line — and a project's stage on the Projects list are chips.
 
-| Tone | Glyph | Ground and ink | Reads as |
+**One glyph grammar for every family**, so a new state finds its shape without a meeting.
+The glyphs are lucide's at one 1.5px stroke (`absoluteStrokeWidth`), 14px in a chip; where
+lucide has no icon for a shape it is drawn on lucide's own grid from lucide's geometry.
+
+| Glyph | Shape | Says | For |
 | --- | --- | --- | --- |
-| `draft` | a dashed ring | `muted` / `muted-foreground` | not started, nothing to do, not asked — *Not verified*, *Same as v0.4* |
-| `progress` | a pie, filled to the real fraction when there is one | `warning/10` / `warning` | partway — *40 of 48 labeled*, *Exporting 12/48* |
-| `review` | a pie at three quarters, or the fraction | `info/10` / `info` | something to look at — *Changed since v0.4*, *1 of 2 classes used* |
-| `done` | a filled check | `success/10` / `success` | done — *Intact*, *All labeled*, *Downloaded* |
-| `failed` | a filled mark | `destructive/10` / `destructive` | failed — *Problems found*, *Failed* |
+| `backlog` | `CircleDashed` | not committed | a draft batch, an empty project, a tone-`draft` fact |
+| `todo` | `Circle` | committed, nothing done yet | an approved batch, a project not started |
+| `partway` | a pie in quarters — `Contrast` at a half; its inner disc at a quarter and three | how far along | a batch being labeled, a project annotating, *Exporting 12/48* |
+| `review` | the pie at three quarters | the turn that waits on a person | a project in review |
+| `ready` | `CircleFadingArrowUp`, turned to point on | on its way somewhere else | a finished batch outside the dataset, a project ready to promote |
+| `done` | `CircleCheck` | done | a batch in the dataset, a project up to date, *Intact* |
+| `drafted` | `CircleDashedCheck` | done, not yet somebody's | a project changed since its release; a model's draft |
+| `skipped` | `Ban`, mirrored | decided against | a skipped frame |
+| `cancelled` | `CircleDashed`'s dashes around `CircleX`'s cross | stopped on request | a cancelled run |
+| `failed` | `CircleAlert` | failed | *Problems found*, *Failed* |
+
+A pie is drawn in **quarters** — a quarter, a half, three quarters, rounded to the nearest
+and never empty or full — so it is never read as the ring or the check, and a glance
+reads the step rather than a percentage the number beside it already says.
+
+| Tone | Default glyph | Ground and ink | Reads as |
+| --- | --- | --- | --- |
+| `draft` | `backlog` | `muted` / `muted-foreground` | not started, nothing to do, not asked — *Not verified*, *Same as v0.4* |
+| `progress` | `partway` | `progress/10` / `progress` | partway — *40 of 48 labeled*, *Exporting 12/48* |
+| `review` | `review` | `info/10` / `info` | something to look at — *Changed since v0.4*, *1 of 2 classes used* |
+| `done` | `done` | `success/10` / `success` | done — *Intact*, *All labeled*, *Downloaded* |
+| `failed` | `failed` | `destructive/10` / `destructive` | failed — *Problems found*, *Failed* |
+| `active` | `partway` | `info/10` / `info` | work in flight, on the lifecycle mapping — a batch being labeled, a project annotating |
+| `waiting` | `review` | `warning/10` / `warning` | waiting on a person — a project in review |
+
+A lifecycle state — a batch's phase, a project's stage — takes its family from the
+product-wide mapping ([`product-principles.md`](docs/content/ui/product-principles.md#status-semantics)),
+hence `active` and `waiting`; a state names its glyph where its tone's default does not say it
+(an approved batch is `draft` with `todo`, a finished one `done` with `ready`).
 
 | Rule | Why |
 | --- | --- |
 | **The glyph carries the state, the word names it.** The icon-only form keeps the word as its accessible name. | A chip reads at a glance before its word is read, and the icon-only form still says it. |
 | **The glyph is the only icon a value gets.** A field's label may carry the icon that names the field (*Fact sections*, below); the value beside it never carries one but a state's glyph. | A state's icon is information; any other icon on a value is decoration. |
-| **What a state means beyond its word is its card** — a title and a line or two, on hover and on focus (the chip takes focus when it has one). Where the words beside an icon-only chip already say the title, the card drops it (`linesOnly`). | Said once, as an info button's card is. |
+| **What a state means beyond its word is its card** — a title and a line or two, on hover and on focus (the chip takes focus when it has one). Where the words beside an icon-only chip already say the title, the card drops it (`linesOnly`). A chip inside a row that opens on a press carries no card (the batch table, the Projects list): the row is the stop, and a second one per row is noise; the batch panel's chip has its card. | Said once, as an info button's card is. |
 | **`cancelled` is `draft`, not `failed`.** | Somebody asked for it: a decision is not an error. |
 
 ### Fact sections, and the action a thing is opened for

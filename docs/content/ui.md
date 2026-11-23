@@ -527,8 +527,8 @@ dataset since a release beside its wall's title. What blocks — a refusal, a co
 download — stays a sentence under its row.
 
 **States are chips** (`patterns/StateChip.tsx`, [`DESIGN.md`](../../DESIGN.md#states)): a
-tinted ground, a glyph that fills as the thing nears done — a dashed ring, a pie, a filled
-check, a filled mark — and the word; what it means beyond the word is a card on hover or focus.
+tinted ground, a glyph that fills as the thing nears done — lucide's dashed ring, a pie in
+quarters, a check, a mark — and the word; what it means beyond the word is a card on hover or focus.
 
 The history reads as a changelog: each version's entry says only what changed against the
 release before it — the images and annotations it gained or lost, a schema version or a split

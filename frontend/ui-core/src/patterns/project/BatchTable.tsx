@@ -36,11 +36,12 @@
 import { CircleCheckBig, CircleDashed, FolderOpen, Search, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 
-import { Badge, Kbd, cn } from "@robomous/ui-core";
+import { Kbd, cn } from "@robomous/ui-core";
 import { assetNoun, type Modality } from "../../lib/assetNoun";
 import { formatCount } from "../../lib/format";
 import type { BatchPhase } from "./BatchSummary";
-import { PHASE_DOT, PHASE_LABEL, initials, labeledDetail } from "./batchRowModel";
+import { initials, labeledDetail, phaseState } from "./batchRowModel";
+import { StateChip } from "../StateChip";
 import { BODY_ROW, ColumnHeader, ListGrid, type ListColumn } from "../ListPage";
 import { columnLines } from "../listColumns";
 import { usePagination, type Pagination } from "../pagination";
@@ -374,7 +375,7 @@ function Row({
         )}
       </td>
       <td>
-        <PhaseBadge phase={row.phase} />
+        <PhaseBadge phase={row.phase} {...(row.done === null || row.total === 0 ? {} : { fraction: row.done / row.total })} />
       </td>
       <td>
         <Progress row={row} />
@@ -398,13 +399,9 @@ function Row({
   );
 }
 
-export function PhaseBadge({ phase }: { readonly phase: BatchPhase }): JSX.Element {
-  return (
-    <Badge variant={phase === "in_dataset" ? "secondary" : "outline"} className="gap-1.5 font-normal" data-testid="batch-phase">
-      <span aria-hidden="true" className={cn("size-1.5 rounded-full", PHASE_DOT[phase])} />
-      {PHASE_LABEL[phase]}
-    </Badge>
-  );
+/** The phase as a state chip; no card, because the row it sits in already opens the batch. */
+export function PhaseBadge({ phase, fraction }: { readonly phase: BatchPhase; readonly fraction?: number }): JSX.Element {
+  return <StateChip state={phaseState(phase, fraction === undefined ? {} : { fraction })} testId="batch-phase" />;
 }
 
 /** How much is decided: the count, quiet, then its ring — a model's drafting in its own colour. */
