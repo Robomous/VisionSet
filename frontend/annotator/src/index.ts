@@ -178,6 +178,7 @@ export {
 export {
   SCAN_IDLE,
   draftCuboid,
+  draftPolyline,
   scanTransition,
   type ScanContext,
   type ScanEffect,

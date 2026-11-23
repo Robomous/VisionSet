@@ -24,7 +24,7 @@ const up = (point: Point): ScanEvent => ({ type: "pointer-up", point, button: "p
 
 function staged(turn: ScanTransition): Cuboid3DGeometry {
   const effect = turn.effects.find((one) => one.kind === "stage");
-  if (effect?.kind !== "stage") throw new Error(`no stage among ${JSON.stringify(turn.effects)}`);
+  if (effect?.kind !== "stage" || effect.geometry.type !== "cuboid_3d") throw new Error(`no cuboid stage among ${JSON.stringify(turn.effects)}`);
   return effect.geometry;
 }
 

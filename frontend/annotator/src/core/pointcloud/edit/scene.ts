@@ -1,16 +1,33 @@
 /**
- * What the scan editor can point at: the selected box's face handles and yaw
- * ring, then any box's body. Pure; the adapter hands over the camera and the
+ * What the scan editor can point at: the selected polyline's vertices, any
+ * polyline's segments, the selected box's face handles and yaw ring, then any
+ * box's body. Pure; the adapter hands over the camera and the
  * viewport it draws with, and the same two place the handles on screen.
  */
 
 import type { OrbitCamera } from "../camera";
 import { faceCenter, CUBOID_FACES, type CuboidFace } from "../cuboid";
 import { heightOf, type ScanFrame } from "../frame";
-import { metresPerPixel, rayCuboidHit, rayGroundHit, screenOf, screenRay, type ScanViewport } from "../ray";
-import { subtract } from "../vector";
+import {
+  closestOnAxis,
+  metresPerPixel,
+  rayCuboidHit,
+  rayGroundHit,
+  screenOf,
+  screenRay,
+  type Ray,
+  type ScanViewport,
+} from "../ray";
+import { add, dot, scale, subtract } from "../vector";
 import type { Selection } from "../../state/selection";
-import { isCuboidScanAnnotation, type Cuboid3DGeometry, type Point, type Point3D } from "../../types";
+import {
+  isCuboidScanAnnotation,
+  isPolylineScanAnnotation,
+  type Cuboid3DGeometry,
+  type Point,
+  type Point3D,
+  type Polyline3DGeometry,
+} from "../../types";
 import type { ScanDocument } from "./scanDocument";
 
 /**
@@ -50,7 +67,9 @@ export const DEFAULT_HIT_TOLERANCES_3D: HitTolerances3D = { handlePx: 8, ringPx:
 export type Hit3D =
   | { readonly kind: "face"; readonly id: string; readonly face: CuboidFace }
   | { readonly kind: "yaw-ring"; readonly id: string; readonly point: Point3D }
-  | { readonly kind: "body"; readonly id: string; readonly point: Point3D };
+  | { readonly kind: "body"; readonly id: string; readonly point: Point3D }
+  | { readonly kind: "vertex"; readonly id: string; readonly index: number }
+  | { readonly kind: "segment"; readonly id: string; readonly segment: number; readonly point: Point3D };
 
 export interface YawRing {
   /** The centre of the box's bottom face; the ring lies level through it. */
@@ -84,7 +103,15 @@ export function handleTarget(scene: Scene3D): { readonly id: string; readonly ge
   return annotation === undefined || !isCuboidScanAnnotation(annotation) ? null : { id, geometry: annotation.geometry };
 }
 
-/** What lies under a screen point: a handle of the selected box first, then the nearest body. */
+/** The one polyline whose vertices are live: the selection's, when it is exactly one polyline. */
+export function vertexTarget(scene: Scene3D): { readonly id: string; readonly geometry: Polyline3DGeometry } | null {
+  if (scene.selection.size !== 1) return null;
+  const [id] = scene.selection;
+  const annotation = scene.document.annotations.get(id);
+  return annotation === undefined || !isPolylineScanAnnotation(annotation) ? null : { id, geometry: annotation.geometry };
+}
+
+/** What lies under a screen point: polyline vertices and segments, then a handle of the selected box, then the nearest body. */
 export function hitTest3D(
   scene: Scene3D,
   point: Point,
@@ -92,6 +119,38 @@ export function hitTest3D(
 ): Hit3D | null {
   const { camera, frame, viewport } = scene;
   const ray = screenRay(camera, frame, viewport, point);
+  const pixelsTo = (at: Point3D): number => {
+    const onScreen = screenOf(camera, frame, viewport, at);
+    return onScreen === null ? Infinity : Math.hypot(onScreen[0] - point[0], onScreen[1] - point[1]);
+  };
+
+  const line = vertexTarget(scene);
+  if (line !== null) {
+    let vertex: { index: number; distance: number } | null = null;
+    for (const [index, at] of line.geometry.points.entries()) {
+      const distance = pixelsTo(at);
+      if (distance <= tolerances.handlePx && (vertex === null || distance < vertex.distance)) vertex = { index, distance };
+    }
+    if (vertex !== null) return { kind: "vertex", id: line.id, index: vertex.index };
+  }
+
+  let nearestSegment: { id: string; segment: number; point: Point3D; distance: number } | null = null;
+  for (const annotation of scene.document.annotations.values()) {
+    if (!isPolylineScanAnnotation(annotation)) continue;
+    const { points } = annotation.geometry;
+    for (let segment = 0; segment < points.length - 1; segment++) {
+      const on = closestOnSegment(ray, points[segment]!, points[segment + 1]!);
+      if (on === null) continue;
+      const distance = pixelsTo(on);
+      if (distance <= tolerances.handlePx && (nearestSegment === null || distance < nearestSegment.distance)) {
+        nearestSegment = { id: annotation.id, segment, point: on, distance };
+      }
+    }
+  }
+  if (nearestSegment !== null) {
+    return { kind: "segment", id: nearestSegment.id, segment: nearestSegment.segment, point: nearestSegment.point };
+  }
+
   const target = handleTarget(scene);
 
   if (target !== null) {
@@ -126,4 +185,14 @@ export function hitTest3D(
     }
   }
   return body === null ? null : { kind: "body", id: body.id, point: body.point };
+}
+
+/** The point of segment `a`–`b` nearest the ray, or `null` for a zero-length segment or one parallel to the ray. */
+function closestOnSegment(ray: Ray, a: Point3D, b: Point3D): Point3D | null {
+  const ab = subtract(b, a);
+  const length = Math.sqrt(dot(ab, ab));
+  if (length === 0) return null;
+  const axis = scale(ab, 1 / length);
+  const along = closestOnAxis(ray, a, axis);
+  return along === null ? null : add(a, scale(axis, Math.min(length, Math.max(0, along))));
 }

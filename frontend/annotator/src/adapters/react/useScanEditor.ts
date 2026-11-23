@@ -56,7 +56,7 @@ export function useScanEditor(options: ScanEditorOptions): ScanEditor {
   const stateRef = useRef<ScanState>(SCAN_IDLE);
   const viewRef = useRef<ScanView | null>(null);
   const live = enabled && store !== null && frame !== null;
-  const toolKey = tool.kind === "cuboid" ? `cuboid:${tool.labelClass}` : tool.kind;
+  const toolKey = tool.kind === "select" ? tool.kind : `${tool.kind}:${tool.labelClass}`;
 
   const turn = useCallback(
     (event: ScanEvent, at: ScanView): void => {

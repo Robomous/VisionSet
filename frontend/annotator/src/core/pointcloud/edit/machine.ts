@@ -1,6 +1,7 @@
 /**
  * The scan editor's interaction machine: draw a cuboid (footprint on the ground,
- * then height), move it, push a face, turn its yaw.
+ * then height), move it, push a face, turn its yaw; draw a polyline on the
+ * ground click by click, drag, insert or remove its vertices.
  *
  * The 2D machine's discipline, not its code: a turn is pure, the state is data,
  * and what it asks of the store is a closed list of plain-data effects, so a
@@ -23,7 +24,17 @@ import {
   toggleSelection,
   type Selection,
 } from "../../state/selection";
-import { isCuboidScanAnnotation, type AttributeValue, type Cuboid3DGeometry, type Point, type Point3D, type ScanAnnotation } from "../../types";
+import {
+  isCuboidScanAnnotation,
+  isPolylineScanAnnotation,
+  type Annotation,
+  type AttributeValue,
+  type Cuboid3DGeometry,
+  type Point,
+  type Point3D,
+  type Polyline3DGeometry,
+  type ScanAnnotation,
+} from "../../types";
 import {
   cuboidAxes,
   faceCenter,
@@ -35,14 +46,16 @@ import {
   type CuboidFace,
 } from "../cuboid";
 import { fromForwardLeftUp, heightOf } from "../frame";
+import { insertPolylineVertex, isDrawablePolyline, movePolylineVertex, removePolylineVertex } from "../polyline";
 import { closestOnAxis, rayGroundHit, screenRay } from "../ray";
 import { add, dot, scale, subtract } from "../vector";
-import { hitTest3D, yawRing, type HitTolerances3D, type Scene3D } from "./scene";
+import { hitTest3D, yawRing, type Hit3D, type HitTolerances3D, type Scene3D } from "./scene";
 import type { ScanDocument } from "./scanDocument";
 
 export type ScanTool =
   | { readonly kind: "select" }
-  | { readonly kind: "cuboid"; readonly labelClass: string };
+  | { readonly kind: "cuboid"; readonly labelClass: string }
+  | { readonly kind: "polyline"; readonly labelClass: string };
 
 export interface ScanContext extends Scene3D {
   readonly tool: ScanTool;
@@ -109,6 +122,19 @@ export type ScanState =
       readonly origin: Cuboid3DGeometry;
       readonly start: number;
       readonly level: number;
+    }
+  | {
+      readonly type: "drawing-polyline";
+      readonly labelClass: string;
+      readonly points: readonly Point3D[];
+      readonly cursor: Point3D | null;
+    }
+  | {
+      readonly type: "moving-vertex";
+      readonly id: string;
+      readonly origin: Polyline3DGeometry;
+      readonly index: number;
+      readonly level: number;
     };
 
 export type ScanStateType = ScanState["type"];
@@ -117,7 +143,7 @@ export const SCAN_IDLE: ScanState = { type: "idle" };
 
 export type ScanEffect =
   | { readonly kind: "select"; readonly selection: Selection }
-  | { readonly kind: "stage"; readonly id: string; readonly geometry: Cuboid3DGeometry }
+  | { readonly kind: "stage"; readonly id: string; readonly geometry: Cuboid3DGeometry | Polyline3DGeometry }
   | { readonly kind: "commit"; readonly label: string }
   | { readonly kind: "discard" }
   | { readonly kind: "add"; readonly label: string; readonly annotation: ScanAnnotation }
@@ -143,9 +169,12 @@ export function scanTransition(state: ScanState, event: ScanEvent, context: Scan
       return fromFootprint(state, event, context);
     case "drawing-height":
       return fromHeight(state, event, context);
+    case "drawing-polyline":
+      return fromPolyline(state, event, context);
     case "moving":
     case "resizing":
     case "rotating":
+    case "moving-vertex":
       return fromDrag(state, event, context);
     default:
       return unreachable(state);
@@ -165,10 +194,19 @@ export function draftCuboid(state: ScanState, context: Pick<ScanContext, "frame"
     case "moving":
     case "resizing":
     case "rotating":
+    case "drawing-polyline":
+    case "moving-vertex":
       return null;
     default:
       return unreachable(state);
   }
+}
+
+/** The polyline being drawn, its clicked vertices then the cursor, for a renderer to preview; `null` when nothing is. */
+export function draftPolyline(state: ScanState): Polyline3DGeometry | null {
+  if (state.type !== "drawing-polyline") return null;
+  const points = state.cursor === null ? state.points : [...state.points, state.cursor];
+  return { type: "polyline_3d", points, visibility: undefined };
 }
 
 function fromIdle(event: ScanEvent, context: ScanContext): ScanTransition {
@@ -185,12 +223,20 @@ function fromIdle(event: ScanEvent, context: ScanContext): ScanTransition {
     if (anchor === null) return to(SCAN_IDLE);
     return to({ type: "drawing-footprint", labelClass: tool.labelClass, anchor, corner: anchor });
   }
+  if (tool.kind === "polyline") {
+    const first = rayGroundHit(ray, frame, context.groundHeight);
+    if (first === null) return to(SCAN_IDLE);
+    return to({ type: "drawing-polyline", labelClass: tool.labelClass, points: [first], cursor: first });
+  }
 
   const hit = hitTest3D(context, event.point, context.tolerances);
   if (hit === null) {
     return context.selection.size === 0 ? to(SCAN_IDLE) : to(SCAN_IDLE, select(EMPTY_SELECTION));
   }
   const annotation = context.document.annotations.get(hit.id);
+  if (annotation !== undefined && isPolylineScanAnnotation(annotation)) {
+    return pressPolyline(annotation.id, annotation.label_class, annotation.geometry, hit, event.modifiers, context);
+  }
   if (annotation === undefined || !isCuboidScanAnnotation(annotation)) return to(SCAN_IDLE);
   const origin = annotation.geometry;
 
@@ -225,8 +271,80 @@ function fromIdle(event: ScanEvent, context: ScanContext): ScanTransition {
       const already = context.selection.size === 1 && context.selection.has(hit.id);
       return already ? to(moving) : to(moving, select(selectOnly(hit.id)));
     }
+    case "vertex":
+    case "segment":
+      return to(SCAN_IDLE);
     default:
       return unreachable(hit);
+  }
+}
+
+function pressPolyline(
+  id: string,
+  labelClass: string,
+  origin: Polyline3DGeometry,
+  hit: Hit3D,
+  modifiers: Modifiers,
+  context: ScanContext,
+): ScanTransition {
+  const { frame } = context;
+  switch (hit.kind) {
+    case "vertex": {
+      if (modifiers.alt) {
+        const removed = removePolylineVertex(origin, hit.index);
+        if (removed === null) return to(SCAN_IDLE);
+        return to(SCAN_IDLE, { kind: "stage", id, geometry: removed }, { kind: "commit", label: `remove vertex of ${labelClass}` });
+      }
+      const level = heightOf(frame, origin.points[hit.index]!);
+      return to({ type: "moving-vertex", id, origin, index: hit.index, level });
+    }
+    case "segment": {
+      const already = context.selection.size === 1 && context.selection.has(id);
+      if (!already) return to(SCAN_IDLE, select(selectOnly(id)));
+      const inserted = insertPolylineVertex(origin, hit.segment, hit.point);
+      const moving: ScanState = {
+        type: "moving-vertex",
+        id,
+        origin: inserted,
+        index: hit.segment + 1,
+        level: heightOf(frame, hit.point),
+      };
+      return to(moving, { kind: "stage", id, geometry: inserted });
+    }
+    default:
+      return to(SCAN_IDLE);
+  }
+}
+
+function fromPolyline(
+  state: Extract<ScanState, { type: "drawing-polyline" }>,
+  event: ScanEvent,
+  context: ScanContext,
+): ScanTransition {
+  switch (event.type) {
+    case "pointer-move":
+      return to({ ...state, cursor: groundUnder(event.point, context) });
+    case "pointer-down": {
+      if (event.button !== "primary") return to(state);
+      const next = groundUnder(event.point, context);
+      const last = state.points[state.points.length - 1]!;
+      if (next === null || next.every((value, i) => value === last[i])) return to(state);
+      return to({ ...state, points: [...state.points, next], cursor: next });
+    }
+    case "commit": {
+      if (!isDrawablePolyline(state.points)) return to(state);
+      const geometry: Polyline3DGeometry = { type: "polyline_3d", points: state.points, visibility: undefined };
+      const annotation = newScanAnnotation(context.document, state.labelClass, geometry, context.mint);
+      return to(
+        SCAN_IDLE,
+        { kind: "add", label: `draw ${state.labelClass}`, annotation },
+        select(selectOnly(annotation.id)),
+      );
+    }
+    case "cancel":
+      return to(SCAN_IDLE);
+    default:
+      return to(state);
   }
 }
 
@@ -298,7 +416,7 @@ function finishDraw(
   );
 }
 
-type Drag = Extract<ScanState, { type: "moving" | "resizing" | "rotating" }>;
+type Drag = Extract<ScanState, { type: "moving" | "resizing" | "rotating" | "moving-vertex" }>;
 
 function fromDrag(state: Drag, event: ScanEvent, context: ScanContext): ScanTransition {
   const annotation = context.document.annotations.get(state.id);
@@ -309,7 +427,7 @@ function fromDrag(state: Drag, event: ScanEvent, context: ScanContext): ScanTran
       return geometry === null ? to(state) : to(state, { kind: "stage", id: state.id, geometry });
     }
     case "pointer-up":
-      return to(SCAN_IDLE, { kind: "commit", label: `${VERB[state.type]} ${annotation.label_class}` });
+      return to(SCAN_IDLE, { kind: "commit", label: `${verbOf(state, annotation)} ${annotation.label_class}` });
     case "pointer-cancel":
     case "cancel":
       return to(SCAN_IDLE, { kind: "discard" });
@@ -322,11 +440,25 @@ const VERB: Readonly<Record<Drag["type"], string>> = {
   moving: "move",
   resizing: "resize",
   rotating: "rotate",
+  "moving-vertex": "move vertex of",
 };
 
-function dragged(state: Drag, point: Point, context: ScanContext): Cuboid3DGeometry | null {
+/** A vertex drag that started on a segment carries one vertex more than the committed polyline: an insert. */
+function verbOf(state: Drag, annotation: ScanAnnotation): string {
+  const inserting =
+    state.type === "moving-vertex" &&
+    isPolylineScanAnnotation(annotation) &&
+    annotation.geometry.points.length < state.origin.points.length;
+  return inserting ? "insert vertex of" : VERB[state.type];
+}
+
+function dragged(state: Drag, point: Point, context: ScanContext): Cuboid3DGeometry | Polyline3DGeometry | null {
   const { frame } = context;
   const ray = screenRay(context.camera, frame, context.viewport, point);
+  if (state.type === "moving-vertex") {
+    const at = rayGroundHit(ray, frame, state.level);
+    return at === null ? null : movePolylineVertex(state.origin, state.index, at);
+  }
   const { origin } = state;
   switch (state.type) {
     case "moving": {
@@ -382,12 +514,12 @@ function standing(
   };
 }
 
-function newScanAnnotation(
+function newScanAnnotation<G extends ScanAnnotation["geometry"]>(
   document: ScanDocument,
   labelClass: string,
-  geometry: Cuboid3DGeometry,
+  geometry: G,
   mint: IdFactory,
-): ScanAnnotation {
+): Omit<Annotation, "geometry"> & { readonly geometry: G } {
   const attributes: Record<string, AttributeValue> = {};
   const declared = document.schema.classes.find((one) => one.name === labelClass);
   for (const attribute of declared?.attributes ?? []) {
