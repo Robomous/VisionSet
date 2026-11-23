@@ -30,7 +30,7 @@
  */
 
 import { Ellipsis, Hash, Images, Keyboard, ListTree, Pencil, RotateCcw, Shapes, Tags, Trash2, Undo2 } from "lucide-react";
-import { useId, useMemo, type JSX, type KeyboardEvent, type ReactNode } from "react";
+import { useId, useMemo, useRef, type JSX, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 
 import {
   Button,
@@ -48,8 +48,11 @@ import {
 } from "@robomous/ui-core";
 import { formatGeometries } from "../data/geometryCategory";
 import { formatCount } from "../lib/format";
-import { BODY_ROW, ColumnHeader, ListGrid, columnLines, type ListColumn } from "../patterns/ListPage";
+import { BODY_ROW, ColumnHeader, ListGrid, type ListColumn } from "../patterns/ListPage";
+import { columnLines } from "../patterns/listColumns";
+import { usePagination } from "../patterns/pagination";
 import { ShapeGlyph } from "../patterns/ShapeGlyph";
+import { TableFooter } from "../patterns/TablePager";
 import type { AttributeBody, LabelClassBody } from "./queries";
 import type { ClassChange } from "./schemaClassDiff";
 import { AttributeDiff, KeyDiff, NarrowsPill, ShapeDiff, StatusPill } from "./SchemaVersionMarks";
@@ -109,13 +112,25 @@ export interface ClassTableProps {
   readonly onKeep?: (row: ClassRowView) => void;
   /** The row's open button, for focus to return to. */
   readonly rowRef: (row: ClassRowView, element: HTMLButtonElement | null) => void;
+  /**
+   * What the rows were narrowed by — the filter, the lens, the version read —
+   * as one string: a new value sends the table back to its first page.
+   */
+  readonly resetKey: string;
+  /** How many classes there are before a filter narrowed `rows`; the footer says so when it did. */
+  readonly unfiltered: number;
+  /**
+   * A row to bring into view: the one a sheet opened on, or focus is about to
+   * return to. A new `token` asks again; `key` is the row's.
+   */
+  readonly reveal?: { readonly key: string; readonly token: string } | null;
 }
 
 /**
  * The columns, declared once. Every width but the first is a plain `w-N`, so
  * `columnLines` can carry the hairlines on below the last row.
  */
-export function classColumns(mode: "draft" | "read"): readonly ListColumn[] {
+function classColumns(mode: "draft" | "read"): readonly ListColumn[] {
   return [
     { key: "class" },
     { key: "shapes", width: "w-36" },
@@ -142,11 +157,22 @@ export function ClassTable({
   onRevert,
   onKeep,
   rowRef,
+  resetKey,
+  unfiltered,
+  reveal = null,
 }: ClassTableProps): JSX.Element {
   const columns = useMemo(() => classColumns(mode), [mode]);
   const editable = mode === "draft";
+  // 25 to a page, in hotkey order: a row's digit is its place in the schema,
+  // never its place on the page.
+  const paging = usePagination(rows, {
+    pageSize: 25,
+    resetKey,
+    reveal: reveal === null ? null : { token: reveal.token, index: rows.findIndex((row) => row.key === reveal.key) },
+  });
+  const frame = useRef<HTMLDivElement>(null);
 
-  function onKey(event: KeyboardEvent<HTMLTableSectionElement>): void {
+  function onKey(event: KeyboardEvent<HTMLDivElement>): void {
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     const down = event.key === "ArrowDown" || event.key === "j";
     const up = event.key === "ArrowUp" || event.key === "k";
@@ -162,68 +188,88 @@ export function ClassTable({
     next?.focus();
   }
 
+  // A click anywhere else on a class's row opens it too — a pointer
+  // convenience. The keyboard's way in is the row's name button, so this is
+  // delegated to the table's frame rather than put on each (non-focusable) row.
+  function onTableClick(event: MouseEvent<HTMLDivElement>): void {
+    const key = event.target instanceof Element ? event.target.closest<HTMLElement>("tr[data-open-key]")?.dataset.openKey : undefined;
+    const row = key === undefined ? undefined : rows.find((one) => one.key === key);
+    if (row !== undefined) onOpen(row);
+  }
+
   return (
-    // Fills the section and scrolls inside it where the section is fitted to
-    // the window; the header row stays on top on the page's own surface, so
-    // rows never show through it. Below the last row the column hairlines run
-    // on to the foot, so a short list leaves table, not a blank page.
-    <div
-      className={cn(
-        "flex min-h-0 flex-1 flex-col bg-no-repeat [&_thead]:sticky [&_thead]:top-0 [&_thead]:z-10 [&_thead]:bg-background",
-        // The draft's commit bar floats over the table's foot: room below the
-        // last row, so every row scrolls clear of it. Wide, where the table
-        // scrolls inside the section; narrower, the page scrolls and the bar's
-        // own anchor makes the room.
-        editable && "lg:[&>div>div]:pb-24",
-      )}
-      style={columnLines(columns)}
-    >
-      <ListGrid
-        columns={columns}
-        minWidth={CLASS_TABLE_MIN_WIDTH}
-        label={label}
-        testId={testId}
-        head={
-          <>
-            <ColumnHeader icon={Tags} label="Class" />
-            <ColumnHeader icon={Shapes} label="Shapes" />
-            <ColumnHeader icon={ListTree} label="Attributes" />
-            <ColumnHeader icon={Hash} label="Annotations" align="right" />
-            <ColumnHeader icon={Images} label="Images" align="right" />
-            <ColumnHeader icon={Keyboard} label="Key" />
-            {editable && <ColumnHeader label="Actions" hidden />}
-          </>
-        }
+    <>
+      {/* Fills the section and scrolls inside it where the section is fitted to
+      the window; the header row stays on top on the page's own surface, so
+      rows never show through it. Below the last row the column hairlines run
+      on to the foot, so a short list leaves table, not a blank page. */}
+      <div
+        className={cn(
+          "flex min-h-0 flex-1 flex-col bg-no-repeat [&_thead]:sticky [&_thead]:top-0 [&_thead]:z-10 [&_thead]:bg-background",
+          // The draft's commit bar floats over the table's foot: room below the
+          // last row, so every row scrolls clear of it. Wide, where the table
+          // scrolls inside the section; narrower, the page scrolls and the bar's
+          // own anchor makes the room.
+          editable && "lg:[&>div>div]:pb-24",
+        )}
+        style={columnLines(columns)}
+        // A wrapper that only catches the rows' bubbled keys and clicks: the
+        // interactive things are the rows' own buttons, so it carries no
+        // semantics of its own.
+        role="presentation"
+        onKeyDown={onKey}
+        onClick={onTableClick}
       >
-        <tbody onKeyDown={onKey}>
-          {rows.map((row) =>
-            row.change !== undefined ? (
-              <VersionClassRow
-                key={row.key}
-                row={row}
-                change={row.change}
-                mostDrawn={mostDrawn}
-                onOpen={() => onOpen(row)}
-                buttonRef={(element) => rowRef(row, element)}
-              />
-            ) : (
-              <ClassRow
-                key={row.key}
-                row={row}
-                mode={mode}
-                mostDrawn={mostDrawn}
-                locked={locked}
-                onOpen={() => onOpen(row)}
-                {...(onRemove === undefined ? {} : { onRemove })}
-                {...(onRevert === undefined ? {} : { onRevert })}
-                {...(onKeep === undefined ? {} : { onKeep: () => onKeep(row) })}
-                buttonRef={(element) => rowRef(row, element)}
-              />
-            ),
-          )}
-        </tbody>
-      </ListGrid>
-    </div>
+        <ListGrid
+          columns={columns}
+          minWidth={CLASS_TABLE_MIN_WIDTH}
+          label={label}
+          testId={testId}
+          frameRef={frame}
+          head={
+            <>
+              <ColumnHeader icon={Tags} label="Class" />
+              <ColumnHeader icon={Shapes} label="Shapes" />
+              <ColumnHeader icon={ListTree} label="Attributes" />
+              <ColumnHeader icon={Hash} label="Annotations" align="right" />
+              <ColumnHeader icon={Images} label="Images" align="right" />
+              <ColumnHeader icon={Keyboard} label="Key" />
+              {editable && <ColumnHeader label="Actions" hidden />}
+            </>
+          }
+        >
+          <tbody>
+            {paging.slice.map((row) =>
+              row.change !== undefined ? (
+                <VersionClassRow
+                  key={row.key}
+                  row={row}
+                  change={row.change}
+                  mostDrawn={mostDrawn}
+                  onOpen={() => onOpen(row)}
+                  buttonRef={(element) => rowRef(row, element)}
+                />
+              ) : (
+                <ClassRow
+                  key={row.key}
+                  row={row}
+                  mode={mode}
+                  mostDrawn={mostDrawn}
+                  locked={locked}
+                  onOpen={() => onOpen(row)}
+                  {...(onRemove === undefined ? {} : { onRemove })}
+                  {...(onRevert === undefined ? {} : { onRevert })}
+                  {...(onKeep === undefined ? {} : { onKeep: () => onKeep(row) })}
+                  buttonRef={(element) => rowRef(row, element)}
+                />
+              ),
+            )}
+          </tbody>
+        </ListGrid>
+      </div>
+      {/* Under the table, outside the rows' delegating frame and its hairlines. */}
+      <TableFooter pagination={paging} frameRef={frame} noun="class" plural="classes" unfiltered={unfiltered} />
+    </>
   );
 }
 
@@ -273,16 +319,12 @@ function ClassRow({
   const editable = mode === "draft";
   const name = declared.name === "" ? "New class" : declared.name;
   const attributes = declared.attributes ?? [];
-  // The row's name is what pressing it does; the mark is said after it, as a
-  // description, so "Edit person" stays the name a person — or a test — finds.
-  const markId = useId();
   const slot = index === null ? row.key : String(index);
-  const markTestId = index === null ? `class-mark-removed-${declared.name}` : `class-mark-${index}`;
-  const kept = editable && removed && onKeep !== undefined;
 
   return (
     <tr
-      onClick={removed ? undefined : onOpen}
+      // Opened by the table frame's delegated click (`ClassTable`), unless removed.
+      data-open-key={removed ? undefined : row.key}
       className={cn(
         BODY_ROW,
         // Hover is a fill that appears at once: rows are scanned, and a fade on
@@ -294,87 +336,20 @@ function ClassRow({
       data-mark={mark ?? undefined}
     >
       <td className="relative">
-        {mark !== null && (
-          <Hint side="right" content={<MarkHint mark={mark} lines={row.markDetail} />}>
-            <button
-              type="button"
-              id={markId}
-              onClick={(event) => event.stopPropagation()}
-              data-testid={markTestId}
-              // The dot sits in the row's inset, beside the swatch; its hit
-              // area reaches 32px past the 6px it draws.
-              className={cn(
-                "absolute top-1/2 left-[5px] size-1.5 -translate-y-1/2 rounded-full outline-none after:absolute after:-inset-[13px] focus-visible:ring-2 focus-visible:ring-ring/50 md:left-[9px]",
-                MARK[mark].dot,
-              )}
-            >
-              <span className="sr-only">{MARK[mark].label}</span>
-            </button>
-          </Hint>
-        )}
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span aria-hidden="true" className={cn("size-2.5 shrink-0 rounded-[3px]", removed && "opacity-40")} style={{ background: swatch }} />
-          {removed ? (
-            <span className="flex min-w-0 flex-1 items-baseline gap-2">
-              <span className="min-w-0 truncate text-muted-foreground line-through decoration-muted-foreground/60">{name}</span>
-              <span className={cn("shrink-[100] truncate text-xs", mark === "blocked" ? "text-warning" : "text-muted-foreground")}>
-                {mark === "blocked" ? `In use · ${formatCount(row.annotations)}` : "Removed"}
-              </span>
-            </span>
-          ) : (
-            <button
-              type="button"
-              ref={buttonRef}
-              data-class-row=""
-              data-testid={`${editable ? "class-card" : "past-class"}-${index}`}
-              aria-label={`${editable ? "Edit" : "Show"} ${name}`}
-              aria-haspopup="dialog"
-              {...(mark === null ? {} : { "aria-describedby": markId })}
-              onClick={(event) => {
-                event.stopPropagation();
-                onOpen();
-              }}
-              className="-mx-1.5 flex min-w-0 flex-1 items-baseline gap-2 rounded-md px-1.5 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-            >
-              <span className={cn("min-w-0 truncate font-medium", declared.name === "" && "text-muted-foreground")}>{name}</span>
-              {mark === "new" && <span className="shrink-0 text-xs text-success">New</span>}
-              {attributes.length > 0 && (
-                // Gives way before the name does.
-                <span className="min-w-0 shrink-[100] truncate text-xs text-muted-foreground tabular-nums">
-                  {formatCount(attributes.length)} {attributes.length === 1 ? "attribute" : "attributes"}
-                </span>
-              )}
-            </button>
-          )}
-          {kept && (
-            <Button
-              variant="ghost"
-              size="sm"
-              // Its word folds away before the name does; the icon and its
-              // name for a screen reader stay.
-              className="ml-auto shrink-0 max-xl:px-2"
-              disabled={locked}
-              data-testid={`keep-class-${declared.name}`}
-              aria-label={`Restore ${name}`}
-              onClick={(event) => {
-                event.stopPropagation();
-                onKeep?.();
-              }}
-            >
-              <RotateCcw data-icon="inline-start" className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
-              <span className="max-xl:hidden">Restore</span>
-            </Button>
-          )}
-        </div>
+        <ClassNameCell
+          row={row}
+          editable={editable}
+          removed={removed}
+          name={name}
+          locked={locked}
+          onOpen={onOpen}
+          onKeep={onKeep}
+          buttonRef={buttonRef}
+        />
       </td>
 
       <td>
-        <span className={cn("flex items-center gap-0.5 overflow-hidden", removed && "opacity-50")} title={formatGeometries(declared.geometries)}>
-          <span className="sr-only">{formatGeometries(declared.geometries)}</span>
-          {declared.geometries.map((geometry) => (
-            <ShapeGlyph key={geometry} geometry={geometry} color={swatch} className="h-5 w-7 shrink-0" />
-          ))}
-        </span>
+        <ClassShapes geometries={declared.geometries} swatch={swatch} faded={removed} />
       </td>
 
       <td>
@@ -382,68 +357,262 @@ function ClassRow({
       </td>
 
       <td className="text-right">
-        {row.annotations === 0 ? (
-          <span className="text-xs text-muted-foreground" data-testid={index === null ? undefined : `class-card-count-${index}`}>
-            Not used yet
-          </span>
-        ) : (
-          <span className="flex items-center justify-end gap-2.5">
-            {/* In the class's own colour, so a bar is found by the swatch at the
-                row's start; the track is the same hue, faint — `color-mix`
-                because the colour may be any CSS spelling. */}
-            <Progress
-              value={(row.annotations / mostDrawn) * 100}
-              aria-label={`${name}: share of the most-drawn class`}
-              data-testid={index === null ? undefined : `class-card-bar-${index}`}
-              className="min-w-0 flex-1 bg-(--bar-track) [&>[data-slot=progress-indicator]]:bg-(--bar)"
-              style={{
-                ["--bar" as string]: swatch,
-                ["--bar-track" as string]: `color-mix(in oklab, ${swatch} 16%, transparent)`,
-              }}
-            />
-            <span className="w-14 shrink-0 tabular-nums" data-testid={index === null ? undefined : `class-card-count-${index}`}>
-              {formatCount(row.annotations)}
-              <span className="sr-only"> {row.annotations === 1 ? "annotation" : "annotations"}</span>
-            </span>
-          </span>
-        )}
+        <ClassAnnotationShare row={row} name={name} mostDrawn={mostDrawn} />
       </td>
 
       <td className="text-right tabular-nums">
-        {row.images === 0 ? (
-          <span className="text-muted-foreground">
-            <span aria-hidden="true">—</span>
-            <span className="sr-only">No images</span>
-          </span>
-        ) : (
-          formatCount(row.images)
-        )}
+        <ImageCount images={row.images} />
       </td>
 
-      <td>
-        {!removed && index !== null && index < 9 && (
-          <Kbd aria-label={`Hotkey ${index + 1}`} className="tabular-nums">
-            {index + 1}
-          </Kbd>
-        )}
-      </td>
+      <td>{!removed && index < 9 && <Hotkey index={index} />}</td>
 
       {editable && (
         <td className="text-right" onClick={(event) => event.stopPropagation()}>
-          {!removed && index !== null && (
+          {!removed && (
             <RowMenu
               name={name}
               index={index}
               revertable={row.revertable}
               locked={locked}
               onEdit={onOpen}
-              {...(onRemove === undefined ? {} : { onRemove })}
-              {...(onRevert === undefined ? {} : { onRevert })}
+              onRemove={onRemove}
+              onRevert={onRevert}
             />
           )}
         </td>
       )}
     </tr>
+  );
+}
+
+/** The shapes a class is drawn with, as glyphs in its own colour. */
+function ClassShapes({
+  geometries,
+  swatch,
+  faded,
+}: {
+  readonly geometries: ClassRowView["declared"]["geometries"];
+  readonly swatch: string;
+  readonly faded: boolean;
+}): JSX.Element {
+  return (
+    <span className={cn("flex items-center gap-0.5 overflow-hidden", faded && "opacity-50")} title={formatGeometries(geometries)}>
+      <span className="sr-only">{formatGeometries(geometries)}</span>
+      {geometries.map((geometry) => (
+        <ShapeGlyph key={geometry} geometry={geometry} color={swatch} className="h-5 w-7 shrink-0" />
+      ))}
+    </span>
+  );
+}
+
+/** The first cell of a draft row: the mark's dot, swatch, name, and a removed class's way back. */
+function ClassNameCell({
+  row,
+  editable,
+  removed,
+  name,
+  locked,
+  onOpen,
+  onKeep,
+  buttonRef,
+}: {
+  readonly row: ClassRowView;
+  readonly editable: boolean;
+  readonly removed: boolean;
+  readonly name: string;
+  readonly locked: boolean;
+  readonly onOpen: () => void;
+  readonly onKeep: (() => void) | undefined;
+  readonly buttonRef: (element: HTMLButtonElement | null) => void;
+}): JSX.Element {
+  const { declared, swatch, mark } = row;
+  // The row's name is what pressing it does; the mark is said after it, as a
+  // description, so "Edit person" stays the name a person — or a test — finds.
+  const markId = useId();
+  const kept = editable && removed && onKeep !== undefined;
+  return (
+    <>
+      {mark !== null && <ClassMarkDot row={row} mark={mark} markId={markId} />}
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span aria-hidden="true" className={cn("size-2.5 shrink-0 rounded-[3px]", removed && "opacity-40")} style={{ background: swatch }} />
+        {removed ? (
+          <RemovedClassName name={name} mark={mark} annotations={row.annotations} />
+        ) : (
+          <ClassOpenButton row={row} editable={editable} name={name} markId={markId} onOpen={onOpen} buttonRef={buttonRef} />
+        )}
+        {kept && <RestoreButton name={name} declaredName={declared.name} locked={locked} onKeep={onKeep} />}
+      </div>
+    </>
+  );
+}
+
+/** The dot in the row's inset that says the draft touches the class; its tooltip says how. */
+function ClassMarkDot({ row, mark, markId }: { readonly row: ClassRowView; readonly mark: RowMark; readonly markId: string }): JSX.Element {
+  const { declared, index } = row;
+  const markTestId = index === null ? `class-mark-removed-${declared.name}` : `class-mark-${index}`;
+  return (
+    <Hint side="right" content={<MarkHint mark={mark} lines={row.markDetail} />}>
+      <button
+        type="button"
+        id={markId}
+        onClick={(event) => event.stopPropagation()}
+        data-testid={markTestId}
+        // The dot sits in the row's inset, beside the swatch; its hit
+        // area reaches 32px past the 6px it draws.
+        className={cn(
+          "absolute top-1/2 left-[5px] size-1.5 -translate-y-1/2 rounded-full outline-none after:absolute after:-inset-[13px] focus-visible:ring-2 focus-visible:ring-ring/50 md:left-[9px]",
+          MARK[mark].dot,
+        )}
+      >
+        <span className="sr-only">{MARK[mark].label}</span>
+      </button>
+    </Hint>
+  );
+}
+
+/** A class the draft removed: struck through, with why it still shows. */
+function RemovedClassName({ name, mark, annotations }: { readonly name: string; readonly mark: RowMark | null; readonly annotations: number }): JSX.Element {
+  return (
+    <span className="flex min-w-0 flex-1 items-baseline gap-2">
+      <span className="min-w-0 truncate text-muted-foreground line-through decoration-muted-foreground/60">{name}</span>
+      <span className={cn("shrink-[100] truncate text-xs", mark === "blocked" ? "text-warning" : "text-muted-foreground")}>
+        {mark === "blocked" ? `In use · ${formatCount(annotations)}` : "Removed"}
+      </span>
+    </span>
+  );
+}
+
+/** The class's name as the real button that opens it. */
+function ClassOpenButton({
+  row,
+  editable,
+  name,
+  markId,
+  onOpen,
+  buttonRef,
+}: {
+  readonly row: ClassRowView;
+  readonly editable: boolean;
+  readonly name: string;
+  readonly markId: string;
+  readonly onOpen: () => void;
+  readonly buttonRef: (element: HTMLButtonElement | null) => void;
+}): JSX.Element {
+  const { declared, index, mark } = row;
+  const attributes = declared.attributes ?? [];
+  return (
+    <button
+      type="button"
+      ref={buttonRef}
+      data-class-row=""
+      data-testid={`${editable ? "class-card" : "past-class"}-${index}`}
+      aria-label={`${editable ? "Edit" : "Show"} ${name}`}
+      {...(mark === null ? {} : { "aria-describedby": markId })}
+      onClick={(event) => {
+        event.stopPropagation();
+        onOpen();
+      }}
+      className="-mx-1.5 flex min-w-0 flex-1 items-baseline gap-2 rounded-md px-1.5 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+    >
+      <span className={cn("min-w-0 truncate font-medium", declared.name === "" && "text-muted-foreground")}>{name}</span>
+      {mark === "new" && <span className="shrink-0 text-xs text-success">New</span>}
+      {attributes.length > 0 && (
+        // Gives way before the name does.
+        <span className="min-w-0 shrink-[100] truncate text-xs text-muted-foreground tabular-nums">
+          {formatCount(attributes.length)} {attributes.length === 1 ? "attribute" : "attributes"}
+        </span>
+      )}
+    </button>
+  );
+}
+
+/** A removed class's way back into the draft. */
+function RestoreButton({
+  name,
+  declaredName,
+  locked,
+  onKeep,
+}: {
+  readonly name: string;
+  /** The class's declared name, which names the control for a test. */
+  readonly declaredName: string;
+  readonly locked: boolean;
+  readonly onKeep: (() => void) | undefined;
+}): JSX.Element {
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      // Its word folds away before the name does; the icon and its
+      // name for a screen reader stay.
+      className="ml-auto shrink-0 max-xl:px-2"
+      disabled={locked}
+      data-testid={`keep-class-${declaredName}`}
+      aria-label={`Restore ${name}`}
+      onClick={(event) => {
+        event.stopPropagation();
+        onKeep?.();
+      }}
+    >
+      <RotateCcw data-icon="inline-start" className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+      <span className="max-xl:hidden">Restore</span>
+    </Button>
+  );
+}
+
+/** A draft row's annotation count and its share of the busiest class, with test hooks for the row's slot. */
+function ClassAnnotationShare({ row, name, mostDrawn }: { readonly row: ClassRowView; readonly name: string; readonly mostDrawn: number }): JSX.Element {
+  const { index, swatch } = row;
+  const countTestId = index === null ? undefined : `class-card-count-${index}`;
+  if (row.annotations === 0) {
+    return (
+      <span className="text-xs text-muted-foreground" data-testid={countTestId}>
+        Not used yet
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-center justify-end gap-2.5">
+      {/* In the class's own colour, so a bar is found by the swatch at the
+          row's start; the track is the same hue, faint — `color-mix`
+          because the colour may be any CSS spelling. */}
+      <Progress
+        value={(row.annotations / mostDrawn) * 100}
+        aria-label={`${name}: share of the most-drawn class`}
+        data-testid={index === null ? undefined : `class-card-bar-${index}`}
+        className="min-w-0 flex-1 bg-(--bar-track) [&>[data-slot=progress-indicator]]:bg-(--bar)"
+        style={{
+          ["--bar" as string]: swatch,
+          ["--bar-track" as string]: `color-mix(in oklab, ${swatch} 16%, transparent)`,
+        }}
+      />
+      <span className="w-14 shrink-0 tabular-nums" data-testid={countTestId}>
+        {formatCount(row.annotations)}
+        <span className="sr-only"> {row.annotations === 1 ? "annotation" : "annotations"}</span>
+      </span>
+    </span>
+  );
+}
+
+/** How many images carry the class, or a dash that says none do. */
+function ImageCount({ images }: { readonly images: number }): JSX.Element {
+  if (images === 0) {
+    return (
+      <span className="text-muted-foreground">
+        <span aria-hidden="true">—</span>
+        <span className="sr-only">No images</span>
+      </span>
+    );
+  }
+  return <>{formatCount(images)}</>;
+}
+
+/** The digit the annotator binds to the class. */
+function Hotkey({ index }: { readonly index: number }): JSX.Element {
+  return (
+    <Kbd aria-label={`Hotkey ${index + 1}`} className="tabular-nums">
+      {index + 1}
+    </Kbd>
   );
 }
 
@@ -574,14 +743,7 @@ function VersionClassRow({
         <AnnotationShare name={declared.name} annotations={row.annotations} mostDrawn={mostDrawn} swatch={swatch} />
       </td>
       <td className="text-right tabular-nums">
-        {row.images === 0 ? (
-          <span className="text-muted-foreground">
-            <span aria-hidden="true">—</span>
-            <span className="sr-only">No images</span>
-          </span>
-        ) : (
-          formatCount(row.images)
-        )}
+        <ImageCount images={row.images} />
       </td>
       <td>
         <KeyDiff before={change.slot.before} after={change.slot.after} />
@@ -619,7 +781,6 @@ function VersionClassName({
             data-class-row=""
             data-testid={`past-class-${index}`}
             aria-label={`Show ${declared.name}`}
-            aria-haspopup="dialog"
             onClick={onOpen}
             className="-mx-1.5 min-w-0 truncate rounded-md px-1.5 py-1 text-left font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           >
@@ -684,8 +845,8 @@ function RowMenu({
   readonly revertable: boolean;
   readonly locked: boolean;
   readonly onEdit: () => void;
-  readonly onRemove?: (index: number) => void;
-  readonly onRevert?: (index: number) => void;
+  readonly onRemove: ((index: number) => void) | undefined;
+  readonly onRevert: ((index: number) => void) | undefined;
 }): JSX.Element {
   return (
     <DropdownMenu>

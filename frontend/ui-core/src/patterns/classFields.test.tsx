@@ -21,7 +21,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AttributeBody, LabelClassBody } from "../screens/queries";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
-import { CLASS_PALETTE, ClassFields, hexOf } from "./ClassFields";
+import { ClassFields } from "./ClassFields";
+import { CLASS_PALETTE, hexOf } from "./classFieldsRules";
 
 // A Radix Checkbox or Switch measures itself through `ResizeObserver` once it
 // sits inside a `<form>`, which the sheet's body does and jsdom has no such thing.

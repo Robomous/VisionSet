@@ -28,6 +28,7 @@ import { useState, type JSX, type ReactNode } from "react";
 
 import { Tooltip, TooltipContent, TooltipTrigger, cn } from "@robomous/ui-core";
 import { formatCount } from "../../lib/format";
+import { ClassShareBar } from "./ClassShareBar";
 
 export interface ClassRow {
   readonly name: string;
@@ -97,10 +98,8 @@ function Hint({ content, children }: { readonly content: ReactNode; readonly chi
 
 export function ClassRail({ rows, totalAnnotations, note, onOpen, className }: ClassRailProps): JSX.Element {
   const shown = legend(rows);
-  const drawn = shown.filter((row) => row.annotations > 0);
   const [hover, setHover] = useState<string | null>(null);
   const [pinned, setPinned] = useState<string | null>(null);
-  const focus = shown.find((row) => row.name === (hover ?? pinned)) ?? drawn[0];
   const quiet = (name: string): boolean => hover !== null && hover !== name;
   const thin = rows.filter((row) => row.thin).length;
 
@@ -146,42 +145,7 @@ export function ClassRail({ rows, totalAnnotations, note, onOpen, className }: C
         <p className="px-4 py-4 text-xs text-pretty text-muted-foreground md:px-6">No classes yet. A class is what an annotation can say a shape is.</p>
       ) : (
         <div className="flex flex-col gap-3 px-4 pt-4 pb-3 md:px-6" onMouseLeave={() => setHover(null)}>
-          {drawn.length === 0 ? (
-            <div className="flex flex-col gap-3">
-              <span className="block h-2 rounded-[3px] bg-muted" aria-hidden="true" />
-              <p className="flex h-6 items-center text-xs text-muted-foreground">No annotations yet.</p>
-            </div>
-          ) : (
-            <>
-              <div
-                className="flex h-2 w-full gap-0.5 overflow-hidden"
-                role="img"
-                aria-label={drawn.map((row) => `${row.name} ${share(row.annotations, totalAnnotations)}`).join(", ")}
-              >
-                {drawn.map((row) => (
-                  <span
-                    key={row.name}
-                    // Pointing lifts a block; choosing one is the legend's — a real button.
-                    onMouseEnter={() => setHover(row.name)}
-                    className={cn(
-                      "h-full transition-opacity duration-150 ease-out first:rounded-l-[3px] last:rounded-r-[3px]",
-                      quiet(row.name) && "opacity-30",
-                    )}
-                    style={{ flexGrow: row.annotations, flexBasis: 0, minWidth: 2, background: row.color }}
-                  />
-                ))}
-              </div>
-              {focus !== undefined && (
-                <p className="flex h-6 items-baseline gap-2 tabular-nums" aria-live="polite" data-testid="class-readout">
-                  <span className="text-base font-semibold tracking-tight">{share(focus.annotations, totalAnnotations)}</span>
-                  <span className="min-w-0 truncate text-xs text-muted-foreground">
-                    <span className="text-foreground">{focus.name}</span> · {formatCount(focus.annotations)} on {formatCount(focus.images)}{" "}
-                    {focus.images === 1 ? "image" : "images"}
-                  </span>
-                </p>
-              )}
-            </>
-          )}
+          <ClassShareBar rows={shown} totalAnnotations={totalAnnotations} pointed={hover} onPoint={setHover} emphasis={pinned} className="gap-3" />
 
           {/* Two columns wherever the rail has stacked under the batches at full
               width, ranked down each column; one inside the rail. */}

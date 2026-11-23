@@ -109,13 +109,13 @@
  */
 
 import { History as HistoryIcon, Info, Plus, Search, Tags, Trash2, TriangleAlert, X } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState, type JSX, type ReactNode, type RefObject } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type JSX, type MutableRefObject, type ReactNode, type RefObject } from "react";
 
 import { asApiError } from "../data/errors";
 import { classBlockers, describeClassCount, refusalProse } from "../data/refusals";
-import { Alert, AlertDescription, AlertTitle, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Kbd, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, cn } from "@robomous/ui-core";
-import { SectionActions } from "../patterns/SectionActions";
-import { ClassFields, ClassReadout, swatchOf } from "../patterns/ClassFields";
+import { Alert, AlertDescription, AlertTitle, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Kbd, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tooltip, TooltipContent, TooltipTrigger, cn } from "@robomous/ui-core";
+import { ClassFields, ClassReadout } from "../patterns/ClassFields";
+import { swatchOf } from "../patterns/classFieldsRules";
 import { PAGE_INSET } from "../patterns/ListPage";
 import { PageStatus } from "../patterns/PageStatus";
 import { ViewSwitch } from "../patterns/project/ViewSwitch";
@@ -142,7 +142,10 @@ import {
 import { SchemaCommitBar } from "./SchemaCommitBar";
 import { ClassTable, type ClassRowView, type RowMark } from "./SchemaTable";
 import { compareClasses, tallyChanges } from "./schemaClassDiff";
-import { HistorySheet } from "./SchemaHistorySheet";
+import { closeOnEscape } from "./closeOnEscape";
+import { same } from "./schemaSame";
+import { HistoryPanel, PaneHeader } from "./SchemaHistorySheet";
+import { DetailPane } from "../patterns/DetailPane";
 import { VersionHead, type Comparison } from "./SchemaVersionHead";
 import { BlockingFrames, DRAFT_SETTLE_MS, useSettled } from "./SchemaVersions";
 
@@ -248,54 +251,6 @@ export interface SchemaEditorProps {
    * broken. The counts and the remedy are still said.
    */
   readonly onOpenBatch?: (batchId: string) => void;
-}
-
-/**
- * Two sets of classes describing the same contract, compared as contracts.
- *
- * Not `JSON.stringify` over the objects, which is what this used to be. The draft
- * and the wire describe one class with differently *shaped* objects: a class
- * added here is a literal in this file's key order, and one that came off the
- * wire carries every optional field `LabelClassBody` declares — a hand-added
- * attribute has no `options` key at all where the server sends `null`. Stringify
- * calls those unequal, and a comparison that answers "changed" about an
- * unchanged contract is exactly the bug this comparison exists to prevent.
- *
- * So the projection, in `LabelClassBody`'s own field order, with every optional
- * field defaulted the way the wire defaults it. Cheap at a schema's size.
- *
- * Exported for `ProjectScreen`, which asks the same question for a different
- * reason: not "does this differ from the active version" but "does this
- * differ from what it was seeded from", which is what tells a programmatic
- * re-seed apart from an actual edit before scheduling an autosave.
- */
-export function same(a: readonly LabelClassBody[], b: readonly LabelClassBody[]): boolean {
-  return canonical(a) === canonical(b);
-}
-
-function canonical(classes: readonly LabelClassBody[]): string {
-  return JSON.stringify(
-    classes.map((declared) => [
-      declared.name,
-      // Sorted, because a set has no order and the two sides spell it
-      // differently: the wire's copy comes back canonicalised by the domain,
-      // while a draft's is whatever order the checkboxes were ticked in.
-      // Comparing them as given would call an unchanged contract dirty the
-      // moment somebody ticked polygon before bbox — this projection's whole
-      // reason, one field over.
-      [...declared.geometries].sort(),
-      declared.color ?? null,
-      (declared.attributes ?? []).map((attribute) => [
-        attribute.name,
-        attribute.kind,
-        attribute.required ?? false,
-        // Order is authored and part of the contract, so options are compared as
-        // given rather than sorted.
-        attribute.options ?? null,
-        attribute.default ?? null,
-      ]),
-    ]),
-  );
 }
 
 /**
@@ -432,11 +387,22 @@ export function SchemaEditor({
   const addButton = useRef<HTMLButtonElement | null>(null);
   const filterInput = useRef<HTMLInputElement | null>(null);
   // Where focus goes once the sheet has closed and the rows are where they
-  // now are: the row the class landed on, or Add class when it is gone.
+  // now are: the row the class landed on, or New class when it is gone.
   const returnTo = useRef<string | null>(null);
+  // The row the table's page must show, so a class opened or put back from
+  // outside the table's current page is on the page when focus returns to it.
+  const [reveal, setReveal] = useState<{ readonly key: string; readonly token: string } | null>(null);
+  const reveals = useRef(0);
   const [filter, setFilter] = useState("");
   const [lens, setLens] = useState<Lens>("all");
   const [historyOpen, setHistoryOpen] = useState(false);
+  const historyButton = useRef<HTMLButtonElement | null>(null);
+  // Whether the open class form holds changes nobody has saved: another
+  // detail may not replace it while it does, so a stray press on a row cannot
+  // throw them away. Written by the form itself.
+  const formChanged = useRef(false);
+  // Set by a close that hands focus back to the row it came from.
+  const refocus = useRef(false);
   // True only across the `await onFlushDraft()` inside `save`, so a second
   // click cannot start a second flush racing the first one's publish.
   const [flushing, setFlushing] = useState(false);
@@ -725,11 +691,22 @@ export function SchemaEditor({
   const total = past !== undefined ? past.classes.length : classes.length;
   const shownCount = shownRows.filter((row) => row.index !== null).length;
   const narrowed = query !== "" || (past === undefined && lens !== "all");
+  // What the table is narrowed by: a new value sends it back to its first page.
+  const tableKey = `${past?.version ?? "draft"}|${query}|${past === undefined ? lens : ""}`;
   const hasRows = rows.length > 0;
 
   // The class the sheet is on: the draft's for an edit, the version's for a read.
   const dialogClass = dialog?.target.kind === "edit" ? classes[dialog.target.index] : undefined;
   const pastClass = dialog?.target.kind === "read" ? past?.classes[dialog.target.index] : undefined;
+  // Whether the panel is open, and on what. A class the draft no longer holds
+  // — reloaded underneath — closes it.
+  const classShown =
+    dialog !== null &&
+    dialog.open &&
+    (dialog.target.kind === "add" ||
+      (dialog.target.kind === "edit" ? classes[dialog.target.index] !== undefined : pastClass !== undefined && past !== undefined));
+  const paneOpen = historyOpen || classShown;
+  const paneLabel = historyOpen ? "Schema history" : dialog?.target.kind === "add" ? "New class" : "Class";
 
   /**
    * The edit sheet's line under its title: how much is drawn with the class,
@@ -750,8 +727,37 @@ export function SchemaEditor({
 
   /** Open the sheet on a class, remembering the row to come back to. */
   function openClass(next: ClassTarget): void {
+    if (unsavedForm()) return;
     returnTo.current = next.kind === "add" ? "add" : `${next.kind}-${next.index}`;
+    if (next.kind !== "add") setReveal({ key: `${next.kind}-${next.index}`, token: String(++reveals.current) });
+    setHistoryOpen(false);
     setDialog((current) => ({ target: next, open: true, serial: (current?.serial ?? 0) + 1 }));
+  }
+
+  /**
+   * An open class form with changes in it holds the panel: the press that
+   * would replace it is answered instead, and the form is where focus goes.
+   */
+  function unsavedForm(): boolean {
+    if (dialog === null || !dialog.open || !formChanged.current) return false;
+    toast("Finish this class first", { description: "Save it, or Cancel to drop the changes." });
+    document.querySelector<HTMLElement>('[data-testid="class-sheet"] input')?.focus();
+    return true;
+  }
+
+  /** Open the history in the panel, putting a class away first. */
+  function openHistory(): void {
+    if (unsavedForm()) return;
+    refocus.current = false;
+    returnTo.current = null;
+    setDialog((current) => (current === null ? null : { ...current, open: false }));
+    setHistoryOpen(true);
+  }
+
+  /** Put the history away, and hand focus back to the button that opened it. */
+  function closeHistory(): void {
+    setHistoryOpen(false);
+    historyButton.current?.focus();
   }
 
   /** Open the draft's class of that name — a line of the review names one. */
@@ -760,12 +766,22 @@ export function SchemaEditor({
     if (index !== -1) openClass({ kind: "edit", index });
   }
 
-  /** Close the sheet; focus returns once it has finished closing. */
+  /** Close the panel; focus goes back to the row at once, as the panel slides out. */
   function closeClass(): void {
+    refocus.current = true;
     setDialog((current) => (current === null ? null : { ...current, open: false }));
   }
 
-  /** Hand focus back to the row the class now sits on, or to Add class. */
+  // The row the class sits on, or New class, once the panel has been put away
+  // and the rows are where they now are.
+  const classOpen = dialog?.open ?? false;
+  useEffect(() => {
+    if (classOpen || dialog === null || !refocus.current) return;
+    refocus.current = false;
+    restoreFocus();
+  });
+
+  /** Hand focus back to the row the class now sits on, or to New class. */
   function restoreFocus(): void {
     const key = returnTo.current;
     returnTo.current = null;
@@ -785,6 +801,7 @@ export function SchemaEditor({
     edit(rest);
     setFilter("");
     returnTo.current = `edit-${position}`;
+    setReveal({ key: `edit-${position}`, token: String(++reveals.current) });
     closeClass();
   }
 
@@ -952,7 +969,7 @@ export function SchemaEditor({
     const before = showing;
     onDraftChange({ ...showing, classes: entry.classes, note: `Restore version ${entry.version}` });
     setViewing(null);
-    setHistoryOpen(false);
+    closeHistory();
     setFilter("");
     toast(`Version ${entry.version}'s classes are in the draft`, {
       description: `Saving publishes them as version ${(version ?? 0) + 1}.`,
@@ -1066,10 +1083,50 @@ export function SchemaEditor({
           )}
           {hasRows && <ClassFilter value={filter} onChange={setFilter} inputRef={filterInput} />}
           {active !== null && (
-            <Button variant="outline" size="sm" aria-haspopup="dialog" data-testid="open-history" onClick={() => setHistoryOpen(true)}>
-              <HistoryIcon data-icon="inline-start" className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
-              History{" "}
-              <span className="text-muted-foreground tabular-nums">· v{active.version}</span>
+            // An icon, named in full for whoever cannot see it; the version in
+            // force rides the name and the tooltip rather than the band.
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  ref={historyButton}
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label={`History, version ${active.version} active`}
+                  aria-expanded={historyOpen}
+                  data-testid="open-history"
+                  onClick={openHistory}
+                  className="transition-[background-color,scale] duration-100 ease-out active:scale-[0.97] motion-reduce:transition-none"
+                >
+                  <HistoryIcon className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                History <span className="tabular-nums opacity-70">· v{active.version}</span>
+              </TooltipContent>
+            </Tooltip>
+          )}
+          {/* The section's forward action, beside the history it adds to — only
+              while the draft is on screen with classes in it: a published
+              version, which nobody adds to, offers none, and the empty state
+              carries its own. */}
+          {past === undefined && hasRows && (
+            <Button
+              ref={addButton}
+              size="sm"
+              // The page's one filled control — until the draft holds
+              // something, when Save in the commit bar is, and this steps
+              // back, as Publish release does for the Dataset's recipe editor.
+              variant={dirty ? "outline" : "default"}
+              aria-label="New class"
+              data-testid="add-class"
+              disabled={draftLocked}
+              onClick={addClass}
+              className="transition-[background-color,scale] duration-100 ease-out active:scale-[0.97] motion-reduce:transition-none"
+            >
+              {/* A plus is drawn smaller than its box; the extra air on its
+                  side reads as padding, so it sits 1px further out. */}
+              <Plus data-icon="inline-start" className="-ml-px size-3.5" strokeWidth={1.75} aria-hidden="true" />
+              New
             </Button>
           )}
         </div>
@@ -1173,101 +1230,152 @@ export function SchemaEditor({
         </>
       )}
 
-      <div className="flex min-h-0 flex-1 flex-col">
-        {past !== undefined ? (
-          past.classes.length === 0 ? (
-            <div data-testid="past-version" className={cn("flex flex-col gap-1 py-6", PAGE_INSET)}>
-              <p className="text-sm font-medium">No classes</p>
-              <p className="text-sm text-pretty text-muted-foreground">
-                Version {past.version} declares none. A project can publish an empty contract.
-              </p>
-            </div>
-          ) : shownRows.length === 0 ? (
-            <p className={cn("py-6 text-sm text-pretty text-muted-foreground", PAGE_INSET)} data-testid="filter-empty">
-              {emptyLine}
-            </p>
-          ) : (
-            // A published version opens to read, never to edit: its sheet shows
-            // the whole class, with no field to change — not a disabled one.
-            <ClassTable
-              rows={shownRows}
-              mode="read"
-              mostDrawn={mostDrawn}
-              locked={draftLocked}
-              label={`Classes in version ${past.version}`}
-              testId="past-version"
-              onOpen={(row) => {
-                if (row.index !== null) openClass({ kind: "read", index: row.index });
-              }}
-              rowRef={(row, element) => {
-                if (element === null) rowButtons.current.delete(row.key);
-                else rowButtons.current.set(row.key, element);
-              }}
-            />
-          )
-        ) : !hasRows ? (
-          <div data-testid="classes-none" className={cn("flex flex-col items-start gap-3 py-6", PAGE_INSET)}>
-            <div className="flex flex-col gap-1">
-              <p className="text-sm font-medium">No classes yet</p>
-              <p className="max-w-prose text-sm text-pretty text-muted-foreground">
-                A class is a name for what you draw, and the shapes it may be drawn with.
-              </p>
-            </div>
-            <Button ref={addButton} data-testid="add-class" aria-haspopup="dialog" disabled={draftLocked} onClick={addClass}>
-              <Plus data-icon="inline-start" className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
-              Add class
-            </Button>
-          </div>
-        ) : (
-          <>
-            {shownRows.length === 0 ? (
+      {/* The class table and, at its right, the detail of whatever is open —
+          a class, one being added, a published version's, or the history: one
+          panel for all of them, so only one is ever open. */}
+      <div className="flex min-h-0 flex-1">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {past !== undefined ? (
+            past.classes.length === 0 ? (
+              <div data-testid="past-version" className={cn("flex flex-col gap-1 py-6", PAGE_INSET)}>
+                <p className="text-sm font-medium">No classes</p>
+                <p className="text-sm text-pretty text-muted-foreground">
+                  Version {past.version} declares none. A project can publish an empty contract.
+                </p>
+              </div>
+            ) : shownRows.length === 0 ? (
               <p className={cn("py-6 text-sm text-pretty text-muted-foreground", PAGE_INSET)} data-testid="filter-empty">
                 {emptyLine}
               </p>
             ) : (
+              // A published version opens to read, never to edit: its sheet shows
+              // the whole class, with no field to change — not a disabled one.
               <ClassTable
                 rows={shownRows}
-                mode="draft"
+                mode="read"
                 mostDrawn={mostDrawn}
                 locked={draftLocked}
-                label="Classes in the draft"
-                testId="class-list"
+                label={`Classes in version ${past.version}`}
+                testId="past-version"
+                resetKey={tableKey}
+                unfiltered={rows.length}
+                reveal={reveal}
                 onOpen={(row) => {
-                  if (row.index !== null) openClass({ kind: "edit", index: row.index });
+                  if (row.index !== null) openClass({ kind: "read", index: row.index });
                 }}
-                onRemove={(index) => void requestRemoveClass(index)}
-                onRevert={revertClass}
-                onKeep={(row) => keepClass(row.declared.name)}
                 rowRef={(row, element) => {
                   if (element === null) rowButtons.current.delete(row.key);
                   else rowButtons.current.set(row.key, element);
                 }}
               />
-            )}
-            {/* The section's forward action, drawn in the project bar — only
-                while the draft is on screen, so a published version, which
-                nobody adds to, offers none. The empty state carries its own. */}
-            <SectionActions>
-              <Button
-                ref={addButton}
-                size="lg"
-                // The page's one filled control — until the draft holds
-                // something, when Save in the commit bar is, and this steps
-                // back, as Publish release does for the Dataset's recipe editor.
-                variant={dirty ? "outline" : "default"}
-                data-testid="add-class"
-                aria-haspopup="dialog"
-                disabled={draftLocked}
-                onClick={addClass}
-              >
-                {/* A plus is drawn smaller than its box; the extra air on its
-                    side reads as padding, so it sits 1px further out. */}
-                <Plus data-icon="inline-start" className="-ml-px size-3.5" strokeWidth={1.75} aria-hidden="true" />
-                Add class
+            )
+          ) : !hasRows ? (
+            <div data-testid="classes-none" className={cn("flex flex-col items-start gap-3 py-6", PAGE_INSET)}>
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-medium">No classes yet</p>
+                <p className="max-w-prose text-sm text-pretty text-muted-foreground">
+                  A class is a name for what you draw, and the shapes it may be drawn with.
+                </p>
+              </div>
+              <Button ref={addButton} data-testid="add-class" disabled={draftLocked} onClick={addClass}>
+                <Plus data-icon="inline-start" className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+                New class
               </Button>
-            </SectionActions>
-          </>
-        )}
+            </div>
+          ) : (
+            <>
+              {shownRows.length === 0 ? (
+                <p className={cn("py-6 text-sm text-pretty text-muted-foreground", PAGE_INSET)} data-testid="filter-empty">
+                  {emptyLine}
+                </p>
+              ) : (
+                <ClassTable
+                  rows={shownRows}
+                  mode="draft"
+                  mostDrawn={mostDrawn}
+                  locked={draftLocked}
+                  label="Classes in the draft"
+                  testId="class-list"
+                  resetKey={tableKey}
+                  unfiltered={rows.length}
+                  reveal={reveal}
+                  onOpen={(row) => {
+                    if (row.index !== null) openClass({ kind: "edit", index: row.index });
+                  }}
+                  onRemove={(index) => void requestRemoveClass(index)}
+                  onRevert={revertClass}
+                  onKeep={(row) => keepClass(row.declared.name)}
+                  rowRef={(row, element) => {
+                    if (element === null) rowButtons.current.delete(row.key);
+                    else rowButtons.current.set(row.key, element);
+                  }}
+                />
+              )}
+            </>
+          )}
+        </div>
+        <DetailPane
+          id="classes"
+          open={paneOpen}
+          label={paneLabel}
+          defaultWidth={440}
+          onClose={() => {
+            if (historyOpen) closeHistory();
+            else if (!formChanged.current) closeClass();
+          }}
+        >
+          {historyOpen ? (
+            <HistoryPanel
+              query={history}
+              activeVersion={version}
+              viewing={viewing}
+              locked={draftLocked}
+              onView={(next) => {
+                setViewing(next);
+                closeHistory();
+              }}
+              onRestore={restore}
+              onClose={closeHistory}
+            />
+          ) : (
+            dialog !== null &&
+            dialog.target.kind !== "read" && (
+              <ClassPanel
+                // A fresh working copy for every open.
+                key={dialog.serial}
+                target={dialog.target}
+                classes={classes}
+                previous={dialogClass === undefined ? null : ((active?.classes ?? []).find((one) => one.name === dialogClass.name) ?? null)}
+                meta={dialogClass === undefined ? null : classMeta(dialogClass.name)}
+                nextVersion={nextVersion}
+                annotations={dialogClass === undefined ? 0 : countOf(dialogClass.name)}
+                frames={dialogClass === undefined ? 0 : framesOf(dialogClass.name)}
+                locked={draftLocked}
+                checking={flow.kind === "checking-removal"}
+                removeError={flow.kind === "preview-error" ? flow.error : null}
+                changedRef={formChanged}
+                onSubmit={(next, position) => {
+                  const from = dialog.target.kind === "edit" ? dialog.target.index : null;
+                  submitClass(next, from, position);
+                }}
+                onRemove={() => {
+                  if (dialog.target.kind === "edit") void requestRemoveClass(dialog.target.index);
+                }}
+                onClose={closeClass}
+              />
+            )
+          )}
+          {!historyOpen && dialog !== null && dialog.target.kind === "read" && pastClass !== undefined && past !== undefined && (
+            <PastClassPanel
+              key={dialog.serial}
+              declared={pastClass}
+              index={dialog.target.index}
+              version={past.version}
+              annotations={countOf(pastClass.name)}
+              onClose={closeClass}
+            />
+          )}
+        </DetailPane>
       </div>
 
       {/* Versioning, on demand: the bar rises only once the draft holds
@@ -1310,20 +1418,6 @@ export function SchemaEditor({
         </span>
       </PageStatus>
 
-      <HistorySheet
-        open={historyOpen}
-        onOpenChange={setHistoryOpen}
-        query={history}
-        activeVersion={version}
-        viewing={viewing}
-        locked={draftLocked}
-        onView={(next) => {
-          setViewing(next);
-          setHistoryOpen(false);
-        }}
-        onRestore={restore}
-      />
-
       <OrphanBlockersDialog
         projectId={projectId}
         reason={flow.kind === "blockers" ? flow.reason : { kind: "save" }}
@@ -1333,46 +1427,6 @@ export function SchemaEditor({
         onOpenBatch={onOpenBatch}
         onClose={closeBlockers}
       />
-
-      {dialog !== null && dialog.target.kind !== "read" && (
-        <ClassSheet
-          // A fresh working copy for every open.
-          key={dialog.serial}
-          // A class the draft no longer holds — reloaded underneath — closes it.
-          open={dialog.open && (dialog.target.kind === "add" || classes[dialog.target.index] !== undefined)}
-          target={dialog.target}
-          classes={classes}
-          previous={dialogClass === undefined ? null : ((active?.classes ?? []).find((one) => one.name === dialogClass.name) ?? null)}
-          meta={dialogClass === undefined ? null : classMeta(dialogClass.name)}
-          nextVersion={nextVersion}
-          annotations={dialogClass === undefined ? 0 : countOf(dialogClass.name)}
-          frames={dialogClass === undefined ? 0 : framesOf(dialogClass.name)}
-          locked={draftLocked}
-          checking={flow.kind === "checking-removal"}
-          removeError={flow.kind === "preview-error" ? flow.error : null}
-          onSubmit={(next, position) => {
-            const from = dialog.target.kind === "edit" ? dialog.target.index : null;
-            submitClass(next, from, position);
-          }}
-          onRemove={() => {
-            if (dialog.target.kind === "edit") void requestRemoveClass(dialog.target.index);
-          }}
-          onClose={closeClass}
-          onClosed={restoreFocus}
-        />
-      )}
-      {dialog !== null && dialog.target.kind === "read" && pastClass !== undefined && past !== undefined && (
-        <PastClassSheet
-          key={dialog.serial}
-          open={dialog.open}
-          declared={pastClass}
-          index={dialog.target.index}
-          version={past.version}
-          annotations={countOf(pastClass.name)}
-          onClose={closeClass}
-          onClosed={restoreFocus}
-        />
-      )}
 
       <DestructiveDialog
         preview={shownBlockers === null && flow.kind === "destructive" ? flow.preview : null}
@@ -1526,11 +1580,12 @@ function sameName(a: string, b: string): boolean {
 }
 
 /**
- * The class sheet: one class, at the page's right edge, edited on a working
- * copy and written to the draft once — by **Save**, or for a class being
- * added by **Add … to draft**, or by ⌘↵ (Ctrl+Enter) for either. Cancel, Escape
- * and the close button leave the draft as it was; a press outside does nothing
- * while there are changes, so a stray click cannot throw them away.
+ * The class panel: one class, in the panel at the right of the table, edited
+ * on a working copy and written to the draft once — by **Save**, or for a
+ * class being added by **Add … to draft**, or by ⌘↵ (Ctrl+Enter) for either.
+ * Cancel, Escape and the close button leave the draft as it was; while there
+ * are changes, a press on another row or on History is answered instead of
+ * obeyed, so a stray click cannot throw them away.
  *
  * Dense by intent, for people who edit their schema often. The title line *is*
  * the class: its colour as a swatch, its name typed where the title reads, and
@@ -1548,10 +1603,9 @@ function sameName(a: string, b: string): boolean {
  * the press, it is a choice rather than a refusal.
  *
  * **Remove** is asked of the server first, and says so while it asks; a refusal
- * opens over the sheet, and closing it comes back here.
+ * opens over the panel, and closing it comes back here.
  */
-function ClassSheet({
-  open,
+function ClassPanel({
   target,
   classes,
   previous,
@@ -1564,10 +1618,9 @@ function ClassSheet({
   removeError,
   onSubmit,
   onRemove,
+  changedRef,
   onClose,
-  onClosed,
 }: {
-  readonly open: boolean;
   readonly target: Exclude<ClassTarget, { readonly kind: "read" }>;
   readonly classes: readonly LabelClassBody[];
   readonly previous: LabelClassBody | null;
@@ -1580,42 +1633,34 @@ function ClassSheet({
   readonly removeError: unknown;
   readonly onSubmit: (next: LabelClassBody, position: number) => void;
   readonly onRemove: () => void;
+  /** Told whether the form holds changes, so the screen can refuse to replace it. */
+  readonly changedRef: MutableRefObject<boolean>;
   readonly onClose: () => void;
-  readonly onClosed: () => void;
 }): JSX.Element {
   const adding = target.kind === "add";
   const from = adding ? classes.length : target.index;
-  const initial: LabelClassBody = adding
-    ? { name: "", geometries: ["bbox"], color: null, attributes: [] }
-    : (classes[target.index] ?? { name: "", geometries: ["bbox"], color: null, attributes: [] });
+  const initial: LabelClassBody = (adding ? undefined : classes[target.index]) ?? { name: "", geometries: ["bbox"], color: null, attributes: [] };
   const [working, setWorking] = useState<LabelClassBody>(initial);
   const [position, setPosition] = useState(from);
   const [tried, setTried] = useState(false);
   const slot = String(from);
   const places = adding ? classes.length + 1 : classes.length;
   const changed = position !== from || !same([working], [initial]);
+  useEffect(() => {
+    changedRef.current = changed;
+    return () => {
+      changedRef.current = false;
+    };
+  }, [changed, changedRef]);
+  // Into the name: adding a class is typing its name.
+  useEffect(() => document.getElementById(`class-name-${slot}`)?.focus(), [slot]);
 
-  const clash = classes.find((other, at) => (adding || at !== from) && working.name.trim() !== "" && sameName(other.name, working.name));
-  // An attribute line nobody touched is an abandoned add, and goes quietly on
-  // Save; a nameless one somebody did fill in is a question, and Save asks it.
-  // The kernel refuses a blank attribute name either way, so neither may reach
-  // the draft — where it would fail every preview until removed by hand.
-  const kept = (working.attributes ?? []).filter((attribute) => !(attribute.name.trim() === "" && untouched(attribute)));
-  const unnamedAttribute = kept.findIndex((attribute) => attribute.name.trim() === "");
-  const nameError =
-    clash !== undefined
-      ? `“${clash.name}” already has this name — names ignore case.`
-      : tried && working.name.trim() === ""
-        ? "Name this class."
-        : null;
-  const attributeError = tried && unnamedAttribute !== -1 ? "Name every attribute, or remove the one without a name." : null;
-  const status = nameError ?? attributeError;
+  const { clash, kept, unnamedAttribute, nameError, attributeError } = checkClassDraft({ working, classes, from, adding, tried });
   const swatch = swatchOf(working, from);
   // The accessible title keeps the name the class had when the sheet opened,
   // so it still says which class this is while it is being renamed.
   const shown = initial.name.trim() === "" ? "new class" : initial.name.trim();
   const statusId = `class-status-${slot}`;
-  const modifier = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent) ? "⌘" : "Ctrl";
 
   function submit(): void {
     if (locked) return;
@@ -1639,167 +1684,291 @@ function ClassSheet({
     onSubmit(next, position);
   }
 
-  /** Who sits at `place` now, so picking a number says whose place it takes. */
-  function occupant(place: number): string {
-    if (place === from) return adding ? "at the end" : "where it is now";
-    const holder = classes[place];
-    return holder === undefined ? "" : holder.name === "" ? "an unnamed class" : holder.name;
-  }
-
   return (
-    <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
-      <SheetContent
-        side="right"
-        data-testid="class-sheet"
-        // Strong ease-out in, rather than the sheet's default ease-in-out: it
-        // is answering a press, and should start moving at once.
-        className="w-full gap-0 p-0 ease-[cubic-bezier(0.23,1,0.32,1)] sm:max-w-lg"
-        onOpenAutoFocus={(event) => {
-          // Into the name: adding a class is typing its name.
+    <form
+      data-testid="class-sheet"
+      className="flex min-h-0 min-w-0 flex-1 flex-col"
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
           event.preventDefault();
-          document.getElementById(`class-name-${slot}`)?.focus();
-        }}
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
-          onClosed();
-        }}
-        onInteractOutside={(event) => {
-          if (changed) event.preventDefault();
-        }}
+          submit();
+          return;
+        }
+        closeOnEscape(onClose)(event);
+      }}
+    >
+      {/* The header names the class — as it was when the panel opened, so it
+          still says which class this is mid-rename — and keeps one status
+          line: its facts, or what stops it saving. One line either way, so an
+          error never moves the rows. */}
+      <PaneHeader
+        leading={<span aria-hidden="true" className="size-2.5 shrink-0 rounded-[3px]" style={{ background: swatch }} />}
+        title={adding ? "New class" : `Edit ${shown}`}
+        closeLabel={adding ? "Close, without adding the class" : `Close ${shown}`}
+        onClose={onClose}
       >
-        <form
-          className="flex h-full min-h-0 flex-col"
-          onSubmit={(event) => {
-            event.preventDefault();
-            submit();
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-              event.preventDefault();
-              submit();
-            }
-          }}
-        >
-          {/* The header names the class — as it was when the sheet opened, so
-              it still says which class this is mid-rename — and keeps one
-              status line: its facts, or what stops it saving. One line either
-              way, so an error never moves the rows. */}
-          <SheetHeader className="flex-row items-start gap-3 border-b px-4 py-3.5 pr-12">
-            <span aria-hidden="true" className="mt-1.5 size-2.5 shrink-0 rounded-[3px]" style={{ background: swatch }} />
-            <span className="flex min-w-0 flex-col gap-0.5">
-              <SheetTitle className="truncate">{adding ? "Add class" : `Edit ${shown}`}</SheetTitle>
-              <SheetDescription
-                id={statusId}
-                aria-live="polite"
-                data-testid={
-                  nameError !== null ? `class-name-error-${slot}` : attributeError !== null ? `class-attribute-error-${slot}` : adding ? undefined : `class-meta-${slot}`
-                }
-                className={cn("truncate tabular-nums", status !== null && "text-destructive")}
-              >
-                {status ?? (adding ? `It joins the draft and ships with version ${nextVersion}.` : meta)}
-              </SheetDescription>
-            </span>
-          </SheetHeader>
+        <ClassStatusLine
+          id={statusId}
+          slot={slot}
+          adding={adding}
+          nameError={nameError}
+          attributeError={attributeError}
+          nextVersion={nextVersion}
+          meta={meta}
+        />
+      </PaneHeader>
 
-          <div className="vs-scroll-fade-y min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]" data-testid={`class-${slot}`}>
-            {removeError != null && (
-              <Alert variant="destructive" className="mx-4 mt-4 w-auto" data-testid="class-remove-error">
-                <AlertTitle>Could not check this removal</AlertTitle>
-                <AlertDescription>{refusalProse(removeError)}</AlertDescription>
-              </Alert>
-            )}
-            <ClassFields
-              layout="inspector"
-              declared={working}
+      <div className="vs-scroll-fade-y min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable] md:px-2" data-testid={`class-${slot}`}>
+        {removeError != null && (
+          <Alert variant="destructive" className="mx-4 mt-4 w-auto" data-testid="class-remove-error">
+            <AlertTitle>Could not check this removal</AlertTitle>
+            <AlertDescription>{refusalProse(removeError)}</AlertDescription>
+          </Alert>
+        )}
+        <ClassFields
+          layout="inspector"
+          declared={working}
+          slot={slot}
+          swatch={swatch}
+          hotkey={null}
+          disabled={locked}
+          previous={previous}
+          onChange={setWorking}
+          nameInvalid={nameError !== null}
+          nameDescribedBy={statusId}
+          shortcut={
+            <ClassPositionSelect
               slot={slot}
-              swatch={swatch}
-              hotkey={null}
-              disabled={locked}
-              previous={previous}
-              onChange={setWorking}
-              nameInvalid={nameError !== null}
-              nameDescribedBy={statusId}
-              shortcut={
-                <Select value={String(position)} onValueChange={(value) => setPosition(Number(value))} disabled={locked}>
-                  <SelectTrigger
-                    id={`class-position-${slot}`}
-                    size="sm"
-                    title={position < 9 ? `Pressing ${position + 1} picks this class while annotating` : "Only the first nine classes have a key"}
-                    data-testid={`class-position-${slot}`}
-                    className="w-full"
-                  >
-                    <SelectValue>
-                      {position < 9 ? (
-                        <span className="flex items-center gap-2">
-                          <Kbd className="tabular-nums">{position + 1}</Kbd>
-                          <span className="text-muted-foreground">{position === from ? "picks it while annotating" : `takes ${occupant(position)}'s place`}</span>
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">No key — past the ninth class</span>
-                      )}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: places }, (_, place) => (
-                      <SelectItem key={place} value={String(place)} data-testid={`class-position-${slot}-${place}`}>
-                        <Kbd className="tabular-nums">{place + 1}</Kbd>
-                        <span className="truncate text-muted-foreground">
-                          {occupant(place)}
-                          {place >= 9 && " · no key"}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              }
-              note={
-                adding ? undefined : (
-                  <span className="tabular-nums" data-testid={`class-count-${slot}`}>
-                    {annotations === 0
-                      ? "Not used yet, so any change here is free."
-                      : `${formatCount(annotations)} ${annotations === 1 ? "label" : "labels"} on ${formatCount(frames)} ${frames === 1 ? "frame" : "frames"} — removing the class, or a shape they use, waits until they are cleared.`}
-                  </span>
-                )
-              }
+              position={position}
+              from={from}
+              places={places}
+              adding={adding}
+              classes={classes}
+              locked={locked}
+              onChange={setPosition}
             />
-          </div>
+          }
+          note={adding ? undefined : <ClassUsageNote slot={slot} annotations={annotations} frames={frames} />}
+        />
+      </div>
 
-          <SheetFooter className="mt-0 flex-row items-center gap-2 border-t bg-muted/50 px-4 py-3">
-            {!adding && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="-ml-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                aria-label={checking ? "Checking class removal" : `Remove class ${from + 1}`}
-                data-testid={`remove-class-${from}`}
-                disabled={locked}
-                onClick={onRemove}
-              >
-                {checking ? (
-                  "Checking…"
-                ) : (
-                  <>
-                    <Trash2 data-icon="inline-start" />
-                    Remove
-                  </>
-                )}
-              </Button>
-            )}
-            <span className="ml-auto hidden items-center gap-1 pr-1 text-muted-foreground sm:flex" aria-hidden="true">
-              <Kbd>{modifier}</Kbd>
-              <Kbd>↵</Kbd>
+      <ClassPanelFooter
+        adding={adding}
+        from={from}
+        checking={checking}
+        locked={locked}
+        pendingName={working.name.trim()}
+        onRemove={onRemove}
+        onClose={onClose}
+      />
+    </form>
+  );
+}
+
+/**
+ * What is wrong with the class being edited, if anything.
+ *
+ * An attribute line nobody touched is an abandoned add, and goes quietly on
+ * Save; a nameless one somebody did fill in is a question, and Save asks it.
+ * The kernel refuses a blank attribute name either way, so neither may reach
+ * the draft — where it would fail every preview until removed by hand.
+ */
+function checkClassDraft({
+  working,
+  classes,
+  from,
+  adding,
+  tried,
+}: {
+  readonly working: LabelClassBody;
+  readonly classes: readonly LabelClassBody[];
+  readonly from: number;
+  readonly adding: boolean;
+  readonly tried: boolean;
+}): {
+  readonly clash: LabelClassBody | undefined;
+  readonly kept: AttributeBody[];
+  readonly unnamedAttribute: number;
+  readonly nameError: string | null;
+  readonly attributeError: string | null;
+} {
+  const clash = classes.find((other, at) => (adding || at !== from) && working.name.trim() !== "" && sameName(other.name, working.name));
+  const kept = (working.attributes ?? []).filter((attribute) => !(attribute.name.trim() === "" && untouched(attribute)));
+  const unnamedAttribute = kept.findIndex((attribute) => attribute.name.trim() === "");
+  const nameError =
+    clash !== undefined
+      ? `“${clash.name}” already has this name — names ignore case.`
+      : tried && working.name.trim() === ""
+        ? "Name this class."
+        : null;
+  const attributeError = tried && unnamedAttribute !== -1 ? "Name every attribute, or remove the one without a name." : null;
+  return { clash, kept, unnamedAttribute, nameError, attributeError };
+}
+
+/** The panel header's one status line: the class's facts, or what stops it saving. */
+function ClassStatusLine({
+  id,
+  slot,
+  adding,
+  nameError,
+  attributeError,
+  nextVersion,
+  meta,
+}: {
+  readonly id: string;
+  readonly slot: string;
+  readonly adding: boolean;
+  readonly nameError: string | null;
+  readonly attributeError: string | null;
+  readonly nextVersion: number;
+  readonly meta: string | null;
+}): JSX.Element {
+  const status = nameError ?? attributeError;
+  return (
+    <p
+      id={id}
+      aria-live="polite"
+      data-testid={nameError !== null ? `class-name-error-${slot}` : attributeError !== null ? `class-attribute-error-${slot}` : adding ? undefined : `class-meta-${slot}`}
+      className={cn("truncate text-xs text-muted-foreground tabular-nums", status !== null && "text-destructive")}
+    >
+      {status ?? (adding ? `It joins the draft and ships with version ${nextVersion}.` : meta)}
+    </p>
+  );
+}
+
+/** Who sits at `place` now, so picking a number says whose place it takes. */
+function occupantOf(classes: readonly LabelClassBody[], place: number, from: number, adding: boolean): string {
+  if (place === from) return adding ? "at the end" : "where it is now";
+  const holder = classes[place];
+  return holder === undefined ? "" : holder.name === "" ? "an unnamed class" : holder.name;
+}
+
+/** The class's place in the list, which is its key while annotating. */
+function ClassPositionSelect({
+  slot,
+  position,
+  from,
+  places,
+  adding,
+  classes,
+  locked,
+  onChange,
+}: {
+  readonly slot: string;
+  readonly position: number;
+  readonly from: number;
+  readonly places: number;
+  readonly adding: boolean;
+  readonly classes: readonly LabelClassBody[];
+  readonly locked: boolean;
+  readonly onChange: (position: number) => void;
+}): JSX.Element {
+  return (
+    <Select value={String(position)} onValueChange={(value) => onChange(Number(value))} disabled={locked}>
+      <SelectTrigger
+        id={`class-position-${slot}`}
+        size="sm"
+        title={position < 9 ? `Pressing ${position + 1} picks this class while annotating` : "Only the first nine classes have a key"}
+        data-testid={`class-position-${slot}`}
+        className="w-full"
+      >
+        <SelectValue>
+          {position < 9 ? (
+            <span className="flex items-center gap-2">
+              <Kbd className="tabular-nums">{position + 1}</Kbd>
+              <span className="text-muted-foreground">
+                {position === from ? "picks it while annotating" : `takes ${occupantOf(classes, position, from, adding)}'s place`}
+              </span>
             </span>
-            <Button type="button" variant="outline" size="sm" className="max-sm:ml-auto" data-testid="class-dialog-cancel" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" size="sm" data-testid="class-sheet-done" disabled={locked} aria-keyshortcuts="Meta+Enter Control+Enter">
-              {adding ? (working.name.trim() === "" ? "Add to draft" : `Add ${working.name.trim()} to draft`) : "Save"}
-            </Button>
-          </SheetFooter>
-        </form>
-      </SheetContent>
-    </Sheet>
+          ) : (
+            <span className="text-muted-foreground">No key — past the ninth class</span>
+          )}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {Array.from({ length: places }, (_, place) => (
+          <SelectItem key={place} value={String(place)} data-testid={`class-position-${slot}-${place}`}>
+            <Kbd className="tabular-nums">{place + 1}</Kbd>
+            <span className="truncate text-muted-foreground">
+              {occupantOf(classes, place, from, adding)}
+              {place >= 9 && " · no key"}
+            </span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+/** What an edit to an existing class costs, said before the press. */
+function ClassUsageNote({ slot, annotations, frames }: { readonly slot: string; readonly annotations: number; readonly frames: number }): JSX.Element {
+  return (
+    <span className="tabular-nums" data-testid={`class-count-${slot}`}>
+      {annotations === 0
+        ? "Not used yet, so any change here is free."
+        : `${formatCount(annotations)} ${annotations === 1 ? "label" : "labels"} on ${formatCount(frames)} ${frames === 1 ? "frame" : "frames"} — removing the class, or a shape they use, waits until they are cleared.`}
+    </span>
+  );
+}
+
+/** The class panel's foot: Remove for an existing class, the shortcut hint, Cancel and Save. */
+function ClassPanelFooter({
+  adding,
+  from,
+  checking,
+  locked,
+  pendingName,
+  onRemove,
+  onClose,
+}: {
+  readonly adding: boolean;
+  readonly from: number;
+  readonly checking: boolean;
+  readonly locked: boolean;
+  /** The trimmed name being typed, which a class being added is named by on its button. */
+  readonly pendingName: string;
+  readonly onRemove: () => void;
+  readonly onClose: () => void;
+}): JSX.Element {
+  const modifier = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent) ? "⌘" : "Ctrl";
+  return (
+    <footer className="flex shrink-0 items-center gap-2 border-t border-border/70 px-4 py-3 md:px-6">
+      {!adding && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="-ml-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          aria-label={checking ? "Checking class removal" : `Remove class ${from + 1}`}
+          data-testid={`remove-class-${from}`}
+          disabled={locked}
+          onClick={onRemove}
+        >
+          {checking ? (
+            "Checking…"
+          ) : (
+            <>
+              <Trash2 data-icon="inline-start" />
+              Remove
+            </>
+          )}
+        </Button>
+      )}
+      <span className="ml-auto hidden items-center gap-1 pr-1 text-muted-foreground xl:flex" aria-hidden="true">
+        <Kbd>{modifier}</Kbd>
+        <Kbd>↵</Kbd>
+      </span>
+      <Button type="button" variant="outline" size="sm" className="max-xl:ml-auto" data-testid="class-dialog-cancel" onClick={onClose}>
+        Cancel
+      </Button>
+      <Button type="submit" size="sm" data-testid="class-sheet-done" disabled={locked} aria-keyshortcuts="Meta+Enter Control+Enter">
+        {adding ? (pendingName === "" ? "Add to draft" : `Add ${pendingName} to draft`) : "Save"}
+      </Button>
+    </footer>
   );
 }
 
@@ -1813,55 +1982,46 @@ function untouched(attribute: AttributeBody): boolean {
   );
 }
 
-/** A published version's class, read in the class sheet's own layout. */
-function PastClassSheet({
-  open,
+/** A published version's class, read in the class panel's own layout. */
+function PastClassPanel({
   declared,
   index,
   version,
   annotations,
   onClose,
-  onClosed,
 }: {
-  readonly open: boolean;
   readonly declared: LabelClassBody;
   readonly index: number;
   readonly version: number;
   readonly annotations: number;
   readonly onClose: () => void;
-  readonly onClosed: () => void;
 }): JSX.Element {
+  const close = useRef<HTMLButtonElement>(null);
+  // A read has no field to type in, so focus goes to the way out.
+  useEffect(() => close.current?.focus(), []);
   return (
-    <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
-      <SheetContent
-        side="right"
-        data-testid="past-class-sheet"
-        className="w-full gap-0 p-0 ease-[cubic-bezier(0.23,1,0.32,1)] sm:max-w-lg"
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
-          onClosed();
-        }}
+    <div data-testid="past-class-sheet" className="flex min-h-0 min-w-0 flex-1 flex-col" onKeyDown={closeOnEscape(onClose)}>
+      <PaneHeader
+        leading={<span aria-hidden="true" className="size-2.5 shrink-0 rounded-[3px]" style={{ background: swatchOf(declared, index) }} />}
+        title={declared.name}
+        closeLabel={`Close ${declared.name}`}
+        closeRef={close}
+        onClose={onClose}
       >
-        <SheetHeader className="flex-row items-start gap-3 border-b px-4 py-3.5 pr-12">
-          <span aria-hidden="true" className="mt-1.5 size-2.5 shrink-0 rounded-[3px]" style={{ background: swatchOf(declared, index) }} />
-          <span className="flex min-w-0 flex-col gap-0.5">
-            <SheetTitle className="truncate">{declared.name}</SheetTitle>
-            <SheetDescription className="truncate tabular-nums">
-              As version {version} declares it ·{" "}
-              {annotations === 0 ? "not used yet" : `${formatCount(annotations)} ${annotations === 1 ? "annotation" : "annotations"} today`}
-            </SheetDescription>
-          </span>
-        </SheetHeader>
-        <div className="vs-scroll-fade-y min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
-          <ClassReadout declared={declared} index={index} />
-        </div>
-        <SheetFooter className="mt-0 flex-row justify-end border-t bg-muted/50 px-4 py-3">
-          <Button type="button" variant="outline" size="sm" onClick={onClose}>
-            Close
-          </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        <p className="truncate text-xs text-muted-foreground tabular-nums">
+          As version {version} declares it ·{" "}
+          {annotations === 0 ? "not used yet" : `${formatCount(annotations)} ${annotations === 1 ? "annotation" : "annotations"} today`}
+        </p>
+      </PaneHeader>
+      <div className="vs-scroll-fade-y min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable] md:px-2">
+        <ClassReadout declared={declared} index={index} />
+      </div>
+      <footer className="flex shrink-0 items-center justify-end border-t border-border/70 px-4 py-3 md:px-6">
+        <Button type="button" variant="outline" size="sm" onClick={onClose}>
+          Close
+        </Button>
+      </footer>
+    </div>
   );
 }
 

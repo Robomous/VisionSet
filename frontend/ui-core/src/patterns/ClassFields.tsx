@@ -23,9 +23,9 @@ import { ChevronRight, Plus, Trash2, X } from "lucide-react";
 import { useState, type JSX, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import { geometryLabel, groupGeometries } from "../data/geometryCategory";
-import { classColor, hexColor } from "../palette";
 import { Badge, Button, Collapsible, CollapsibleContent, CollapsibleTrigger, FieldDescription, Input, InputGroup, InputGroupAddon, InputGroupInput, Kbd, Label, Popover, PopoverContent, PopoverTrigger, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch, ToggleGroup, ToggleGroupItem, cn } from "@robomous/ui-core";
 import type { AttributeBody, GeometryType, LabelClassBody } from "../screens/queries";
+import { CLASS_PALETTE, describeGeometries, hexOf, swatchOf } from "./classFieldsRules";
 import { PropertyRow } from "./PropertyRow";
 import { ShapeGlyph } from "./ShapeGlyph";
 
@@ -52,22 +52,6 @@ const GEOMETRIES = [
 /** `Attribute.kind`, from the wire enum. */
 const KINDS = ["string", "number", "boolean", "select"] as const;
 type Kind = (typeof KINDS)[number];
-
-/**
- * What the chosen set means, said once under the group.
- *
- * The hint used to read *"Singular — picking a class picks a tool"*, which is no
- * longer true: a class accepts a set, and picking one narrows the tool strip
- * rather than deciding it. Naming the count rather than restating the rule keeps
- * the sentence useful in the case somebody is most likely to have got wrong —
- * having ticked one box and not realised a second was allowed.
- */
-export function describeGeometries(geometries: readonly GeometryType[]): string {
-  if (geometries.length <= 1) {
-    return "One shape for now. Tick another and this class accepts both.";
-  }
-  return `An annotation of this class may be any of the ${geometries.length}.`;
-}
 
 export interface ClassFieldsProps {
   readonly declared: LabelClassBody;
@@ -211,30 +195,6 @@ function StackedFields({
         onChange={(attributes) => onChange({ ...declared, attributes })}
       />
     </div>
-  );
-}
-
-/**
- * `classColor`'s answer for one drafted class.
- *
- * `classColor` takes the annotator's `LabelClass`; the wire's `LabelClassBody` is
- * the same four fields with `attributes` shaped differently. Rebuilt rather than
- * cast or spread, so the two shapes stay two shapes: the wire mirror and the
- * engine's model are deliberately separate types, and the *one* place they meet
- * should be an explicit projection.
- *
- * The index stands in for an unnamed class, so a row created a second ago has a
- * stable colour instead of every empty name deriving the same hue.
- */
-export function swatchOf(declared: LabelClassBody, index: number): string {
-  return classColor(
-    {
-      name: declared.name,
-      geometries: declared.geometries,
-      color: declared.color ?? null,
-      attributes: [],
-    },
-    declared.name || `class-${index}`,
   );
 }
 
@@ -402,24 +362,6 @@ function splitOptions(value: string): string[] {
 }
 
 /**
- * A colour input needs `#rrggbb` and nothing else.
- *
- * This used to answer a flat `#888888` for anything that was not already a hex,
- * which meant **every derived class showed grey** — `classColor`'s derived branch
- * returns `hsl(...)`. The dot beside the class name shows the real colour and the
- * annotator draws the real colour, so a grey input is the one control whose entire
- * job is to show what colour something is disagreeing with both.
- *
- * `hexColor` converts instead, so the preview is the truth. The neutral survives
- * for the case it was always right about: a schema authored elsewhere may hold any
- * CSS spelling — `rgb(255 0 0)`, `rebeccapurple` — and shipping a CSS colour parser
- * to fill in one input is not worth it. The dot still shows the real thing.
- */
-export function hexOf(color: string): string {
-  return hexColor(color) ?? "#888888";
-}
-
-/**
  * One category's shapes, as the design system's toggle group: each toggle is
  * the shape as the canvas draws it — in the class's colour when on, in the
  * text's when off — and its name. Toggling is instant.
@@ -487,28 +429,6 @@ function GeometryGroup({
     </ToggleGroup>
   );
 }
-
-/**
- * The class palette: twelve hues the class sheet's colour offers before the
- * custom picker. Suggestions for a *declared* colour and nothing more — a class with
- * none still takes `classColor`'s hue derived from its name, and **From the
- * name** goes back to it. Far enough apart to tell labels apart at the
- * canvas's fill, and saturated enough to read on a night-shift frame.
- */
-export const CLASS_PALETTE = [
-  "#DB2777",
-  "#2563EB",
-  "#D97706",
-  "#059669",
-  "#0D9488",
-  "#7C3AED",
-  "#0891B2",
-  "#65A30D",
-  "#EA580C",
-  "#C026D3",
-  "#0284C7",
-  "#4F46E5",
-] as const;
 
 /** What each shape asks of the person drawing it, said under its name. */
 const GEOMETRY_HINT: Record<(typeof GEOMETRIES)[number], string> = {
@@ -733,6 +653,20 @@ function AttributeGroups({
   const [open, setOpen] = useState<number | null>(null);
   // The group just added: it opens, takes focus and scrolls itself into view.
   const [added, setAdded] = useState<number | null>(null);
+  // Each group's React key. An attribute has no identity of its own — its name is
+  // the field being typed into, and a blank or duplicate name is legal mid-edit —
+  // and keying by position would hand a removed group's open/focus state to the
+  // one that slid into its place. So the keys travel with the groups: appended on
+  // add, dropped on remove, untouched by an edit. `next` only ever grows, so a key
+  // is never reused.
+  const [ids, setIds] = useState<{ readonly keys: readonly number[]; readonly next: number }>(() => ({
+    keys: attributes.map((_, at) => at),
+    next: attributes.length,
+  }));
+  // The caller may replace the whole list (discard, reset). Keys for positions this
+  // component never saw are derived from `next`, so they are stable across renders
+  // and cannot collide with a key it handed out.
+  const keys = attributes.map((_, at) => ids.keys[at] ?? ids.next + at);
   const before = previous?.attributes ?? [];
   return (
     <section className="flex flex-col border-t" aria-labelledby={`attributes-${slot}`}>
@@ -750,6 +684,7 @@ function AttributeGroups({
           disabled={disabled}
           onClick={() => {
             onChange([...attributes, BLANK_ATTRIBUTE]);
+            setIds({ keys: [...keys, ids.next + keys.length], next: ids.next + keys.length + 1 });
             setOpen(attributes.length);
             setAdded(attributes.length);
           }}
@@ -767,7 +702,7 @@ function AttributeGroups({
             const offered = was === undefined ? null : new Set(was.options ?? []);
             return (
               <AttributeGroup
-                key={index}
+                key={keys[index]}
                 attribute={attribute}
                 index={index}
                 slot={slot}
@@ -783,6 +718,7 @@ function AttributeGroups({
                 onChange={(next) => onChange(replace(attributes, index, next))}
                 onRemove={() => {
                   onChange(attributes.filter((_, i) => i !== index));
+                  setIds({ keys: keys.filter((_, i) => i !== index), next: ids.next + keys.length });
                   setOpen(null);
                   setAdded(null);
                 }}
