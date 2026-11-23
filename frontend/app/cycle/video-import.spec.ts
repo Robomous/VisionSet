@@ -501,20 +501,34 @@ test("a clip is inspected, cut and imported here, and never uploaded", async ({ 
   await test.step("the batch holds one asset per grid point", async () => {
     await expect(page.getByTestId("import-outcome")).toContainText("clip-batch");
     await page.getByTestId("open-batch").click();
-    await expect(page.getByTestId("gallery")).toBeVisible();
-    await expect(page.getByTestId("batch-title")).toHaveText("clip-batch");
+    // A batch opens in the Overview's panel, which names it and counts its images.
+    await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}\/overview\?batch=[0-9a-f-]{36}$/);
+    const panel = page.getByTestId("batch-sheet");
+    await expect(panel.getByRole("heading", { level: 2, name: "clip-batch" })).toBeVisible();
     // `WALK_RATE` is the clip's own rate, so every grid point is a different
-    // source frame and content-addressing collapses nothing.
-    await expect(page.getByTestId(/^tile-/)).toHaveCount(WALK_FRAMES);
+    // source frame and content-addressing collapses nothing: one asset per point.
+    await expect(panel.getByTestId("batch-sheet-facts").locator("dd").first()).toHaveText(
+      String(WALK_FRAMES),
+    );
   });
 
   await test.step("a frame says where it came from and how it was cut", async () => {
     // On screen first: the source's name, the count, the rate it was cut at and
-    // the size it is stored at — assembled from the assets, not from the batch.
-    const facts = page.getByTestId("batch-facts");
-    await expect(facts).toContainText("vp8.webm");
-    await expect(facts).toContainText(`${WALK_FRAMES} frames · ${WALK_RATE} fps`);
-    await expect(facts).toContainText("32×32");
+    // the size it is stored at — assembled from the assets and their source, which the
+    // Images section says on its source line (the batch's panel does not: it is about
+    // the batch's work, not about where its frames came from).
+    await page.getByTestId("nav-images").click();
+    const line = page.getByTestId("images-source-line");
+    await expect(line).toContainText("vp8.webm");
+    await expect(line).toContainText(`${WALK_FRAMES} frames`);
+    await expect(line).toContainText("32×32");
+    await expect(line).toContainText(
+      WALK_RATE === 1
+        ? "one every second"
+        : WALK_RATE > 1
+          ? `${WALK_RATE} a second`
+          : `one every ${Math.round(1 / WALK_RATE)}s`,
+    );
 
     // And in the kernel, which is what survives a reload: the whole extraction
     // policy the source's identity is made of.
