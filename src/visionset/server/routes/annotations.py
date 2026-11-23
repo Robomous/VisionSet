@@ -108,11 +108,16 @@ def add_annotations(
     `allowed_actions` on the batch's asset listing rather than guessing: it
     declares `annotate` exactly when this will be accepted.
 
-    A 3D label (`polyline_3d`, `cuboid_3d`) is read against its asset's
-    calibration — the asset's own, else its source's. With neither this is 409
-    `CALIBRATION_MISSING`, and with one measured at another size than the asset
-    it is 422 `CALIBRATION_RESOLUTION_MISMATCH`; set a fitting calibration and
-    resend.
+    A 3D label (`polyline_3d`, `cuboid_3d`) on an image is read against its
+    asset's calibration — the asset's own, else its source's. With neither this
+    is 409 `CALIBRATION_MISSING`, and with one measured at another size than the
+    asset it is 422 `CALIBRATION_RESOLUTION_MISMATCH`; set a fitting calibration
+    and resend.
+
+    On a point-cloud scan a 3D label is read against the frame its source
+    declares and needs no calibration; a source declaring no frame is 409
+    `CALIBRATION_MISSING`. A scan has no pixels, so a `bbox`, `polygon` or
+    `polyline` on one is 422 `INVALID_ANNOTATION`.
     """
     try:
         stored = AnnotationService(workspace).add(job_id, [a.to_domain() for a in body])
@@ -145,7 +150,9 @@ def update_annotations(
     is 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409
     `JOB_FINISHED`. An edit is a write, and every gate that stops a new label
     stops a replacement too — including 409 `CALIBRATION_MISSING` and 422
-    `CALIBRATION_RESOLUTION_MISMATCH` for a 3D label.
+    `CALIBRATION_RESOLUTION_MISMATCH` for a 3D label, and on a scan 409
+    `CALIBRATION_MISSING` for a source declaring no frame and 422
+    `INVALID_ANNOTATION` for a `bbox`, `polygon` or `polyline`.
     """
     try:
         stored = AnnotationService(workspace).update(job_id, [a.to_domain() for a in body])

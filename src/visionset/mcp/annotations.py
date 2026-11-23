@@ -58,7 +58,10 @@ class AnnotationInput(BaseModel):
     geometry: Geometry = Field(
         description=(
             "The shape, in the asset's own pixel coordinates — never normalized — "
-            "or, for polyline_3d and cuboid_3d, metres in its camera's sensor frame. "
+            "or, for polyline_3d and cuboid_3d, metres in its camera's sensor frame on "
+            "an image, or, on a point-cloud scan, the source's declared frame in the "
+            "scan's own units. A scan "
+            "takes only polyline_3d, cuboid_3d and classification_tag. "
             "Its 'type' field is required and selects the variant. A polyline's "
             "optional 'visibility' is one integer per point (0 unlabeled, 1 occluded, "
             "2 visible); omit it when unknown."

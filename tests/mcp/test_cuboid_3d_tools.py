@@ -50,3 +50,12 @@ def test_the_geometry_topic_describes_the_cuboid() -> None:
 
     assert "cuboid_3d" in ANNOTATION_GEOMETRY
     assert "[-pi, pi]" in ANNOTATION_GEOMETRY
+
+
+def test_the_geometry_topic_describes_labels_on_a_scan() -> None:
+    from visionset.mcp._topics import ANNOTATION_GEOMETRY
+
+    assert "`(cos yaw, sin yaw, 0)`" in ANNOTATION_GEOMETRY
+    assert "`lidar_flu`" in ANNOTATION_GEOMETRY
+    assert "`CALIBRATION_NOT_APPLICABLE`" in ANNOTATION_GEOMETRY
+    assert "are refused with `INVALID_ANNOTATION`" in ANNOTATION_GEOMETRY
