@@ -152,6 +152,40 @@ def test_clearing_a_calibration_3d_labels_need_is_refused_by_code(
     assert refused["code"] == "CALIBRATION_IN_USE"
 
 
+def test_replacing_a_calibration_3d_labels_were_drawn_against_is_refused_by_code(
+    root: Path, tmp_path: Path, rig: tuple[str, str, str]
+) -> None:
+    name, source, asset = rig
+    stated = _file(tmp_path, calibration_document())
+    ok(root, "calibration", "set", stated, "-p", name, "--source", source)
+    opened = WorkspaceService.open(root)
+    with opened.unit_of_work() as uow:
+        uow.annotations.add(
+            Annotation(
+                asset_id=UUID(asset),
+                label_class="lane",
+                schema_version=1,
+                geometry=Polyline3DGeometry(points=[(0.0, 1.0, 5.0), (0.0, 1.0, 9.0)]),
+                provenance="human",
+            )
+        )
+    opened.close()
+    other = _file(tmp_path, calibration_document(fx=40.0), name="other.json")
+
+    refused = _refusal(root, "calibration", "set", other, "-p", name, "--source", source)
+
+    assert refused["code"] == "CALIBRATION_IN_USE"
+    ok(root, "calibration", "set", stated, "-p", name, "--source", source)
+    refused = _refusal(root, "calibration", "set", other, "-p", name, "--asset", asset)
+    assert refused["code"] == "CALIBRATION_IN_USE"
+    ok(root, "calibration", "set", stated, "-p", name, "--asset", asset)
+    refused = _refusal(root, "calibration", "set", other, "-p", name, "--asset", asset)
+    assert refused["code"] == "CALIBRATION_IN_USE"
+    ok(root, "calibration", "set", other, "-p", name, "--source", source)
+    refused = _refusal(root, "calibration", "clear", "-p", name, "--asset", asset)
+    assert refused["code"] == "CALIBRATION_IN_USE"
+
+
 @pytest.mark.parametrize("targets", [(), ("--source", "x", "--asset", "y")])
 def test_exactly_one_target_is_a_usage_error(
     root: Path, rig: tuple[str, str, str], targets: tuple[str, ...]

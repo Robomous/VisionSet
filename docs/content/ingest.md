@@ -56,8 +56,9 @@ loses the second. A join table is the honest upgrade if that information is ever
 be its own migration and is not needed by anything today.
 
 An asset's `calibration` is neither identity nor provenance: it is an optional override of its
-source's camera, stated after the fact and replaceable. It is the only way a calibration reaches an
-imported asset, which has no `source_id` - see [sources.md](sources.md#camera-calibration).
+source's camera, stated after the fact and replaceable, or clearable, until a 3D label is drawn
+against it. It is the only way a calibration reaches an imported asset, which has no `source_id` -
+see [sources.md](sources.md#camera-calibration).
 
 Re-running an ingest is therefore not an error and not a no-op worth avoiding: it creates nothing,
 reports every item as deduplicated, and is how a folder that grew by three files is caught up. A
