@@ -459,9 +459,9 @@ What a viewer is:
   write is refused at the engine (`readOnly` on the canvas, `READ_ONLY_KINDS` for the
   keyboard).
 
-## Editing cuboids on a scan
+## Editing cuboids and polylines on a scan
 
-A scan's cuboids are edited in an explicit **Edit** mode, switched on from the strip at the top
+A scan's cuboids and polylines are edited in an explicit **Edit** mode, switched on from the strip at the top
 right of the scan view, so orbiting never competes with drawing. In Edit a left drag edits, a
 right drag orbits, and a middle drag - or shift + right drag, for a trackpad - pans; the wheel
 still zooms. Outside Edit the view keeps its own mapping: a left drag orbits.
@@ -470,10 +470,23 @@ still zooms. Outside Edit the view keeps its own mapping: a left drag orbits.
   scan's low robust height along the declared up), move the pointer to raise the height, and
   click or press Enter to finish. The class pick lists only classes that declare `cuboid_3d`;
   with none, the tool is disabled with that reason.
+- **Draw a polyline.** With the polyline tool and a class picked, click along the line; each
+  click places a vertex on the ground plane, at the same height a cuboid's footprint uses, and
+  the last segment follows the pointer. Enter or a double-click finishes the line, and Escape
+  cancels it. A line needs at least two vertices that are not all in one place; finishing one
+  that has fewer is refused and the drawing carries on. The class pick lists only classes that
+  declare `polyline_3d`; with none, the tool is disabled with that reason. While the tool is
+  active the strip says how to finish, on a line of its own.
 - **Adjust.** With the select tool, a press on a box selects it and drags it along the ground;
   the selected box shows a handle on each face, which pushes that face, and a dashed ring at
   its base, which turns its yaw about the declared up. Handles and ring are an overlay placed
   by the same projection the editor picks with.
+- **Adjust a polyline.** A click on a polyline's segment selects it, and the selected polyline
+  shows a handle on each vertex. Dragging a handle moves that vertex along the ground at its
+  own height. A press on a segment of the selected polyline inserts a vertex there and drags
+  it, as one undo step. Alt-click on a vertex removes it, never below two vertices. Delete
+  removes the whole label. Per-vertex visibility is not editable on a scan: every vertex is
+  saved visible.
 - **Top-down.** In Edit a second view sits beside the perspective one - below it on a narrow
   stage - looking straight down the declared up axis, forward up the screen. It is
   orthographic, so a box's top lies over its footprint at any zoom, and it follows the
@@ -486,15 +499,15 @@ still zooms. Outside Edit the view keeps its own mapping: a left drag orbits.
   it: raise the height in the perspective view, or finish with a click or Enter and pull the top
   face up later.
 - **Keys.** With the view focused: Delete removes the selection, Escape cancels a gesture or
-  lets go of the selection, Enter finishes a height, `mod+z` / `mod+shift+z` undo and redo,
+  lets go of the selection, Enter finishes a height or a polyline, `mod+z` / `mod+shift+z` undo and redo,
   `mod+s` saves. The strip carries undo and redo too. As in the 2D editor, a click on the
   strip or the view's controls leaves focus on the view; a click on a panel row takes it.
 
 The selected box and the box being drawn are drawn in the foreground token over the class
-colours. Labels stay on while editing. The Annotations panel lists each cuboid; its row
-selects the box and deletes it through the same history as the keyboard. The panel shows no
-Classes region on a scan: its classes arm the 2D tools, and a cuboid's class is picked in the
-strip.
+colours. Labels stay on while editing. The Annotations panel lists each cuboid and polyline; its row
+selects the label and deletes it through the same history as the keyboard. The panel shows no
+Classes region on a scan: its classes arm the 2D tools, and a scan label's class is picked in
+the strip.
 
 A scan's edits share the page's one save plan and dirty state with the image document: *Save and
 stay*, *Save and next* and the unsaved-changes guard all cover them, and an edited import keeps

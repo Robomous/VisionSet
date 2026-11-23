@@ -809,7 +809,7 @@ the generic *The server answered with something this app does not recognise.* un
 `MALFORMED_RESPONSE`. A refetch that fails while a calibration is already drawn keeps drawing it
 and raises no notice.
 
-#### Point-cloud scans are viewed in 3D, and their cuboids edited there
+#### Point-cloud scans are viewed in 3D, and their labels edited there
 
 A `point_cloud` asset appears in galleries and lists with its top-down thumbnail, and its tile,
 timeline cell and frame-gallery entry name it as a scan rather than as a frame (the timeline cell
@@ -825,11 +825,15 @@ The open job's `cuboid_3d` labels on the scan are drawn as their twelve edges, a
 `polyline_3d` as its segments, in the class colour, in the scan's own frame - no calibration is
 asked for or used. A cuboid's corners are its centre plus half its size along the heading
 `cos(yaw)·forward + sin(yaw)·left`, across it, and along up (`scanCuboidCorners`). Edges are drawn
-over the points rather than hidden inside them. The cuboids live in the page's scan document, so
-they can be selected, drawn, moved, resized, turned, deleted and saved in **Edit** mode, which
-adds an orthographic top-down view beside the perspective one (see
-[the scan editor](ui/annotator.md#editing-cuboids-on-a-scan)); a `polyline_3d` is not editable
-and is listed read-only. The Annotations panel and the object badge count both.
+over the points rather than hidden inside them. Both kinds live in the page's scan document, so
+in **Edit** mode, which adds an orthographic top-down view beside the perspective one, cuboids
+can be selected, drawn, moved, resized, turned, deleted and saved, and polylines drawn on the
+ground plane (Enter or a double-click finishes, Escape cancels), their vertices dragged, inserted
+by a click on the selected polyline's segment and removed by alt-click (never below two), and the
+whole label deleted with Delete (see
+[the scan editor](ui/annotator.md#editing-cuboids-and-polylines-on-a-scan)). A scan polyline's
+vertex visibility is not editable: every vertex is saved visible. The Annotations panel and the
+object badge count both kinds.
 
 Outside Edit, drag orbits, a right or middle drag (or shift-drag) pans, and the wheel zooms; with the view
 focused, the arrow keys orbit, `+`/`-` zoom and `0` resets. The orbit's pitch is held between

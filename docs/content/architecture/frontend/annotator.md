@@ -94,7 +94,7 @@ could set and never observe is a lie in the schema.
 
 ## The scan editor is a sibling, not a widening
 
-A point-cloud scan's labels are cuboids in the frame its source declares, and they are edited
+A point-cloud scan's labels are cuboids and polylines in the frame its source declares, and they are edited
 by a second engine under `src/core/pointcloud/edit/` rather than by pushing 3D through the
 image engine. `Geometry`, `Annotation` and the image interaction machine stay 2D, so every
 dispatch over them stays exhaustive without a 3D arm; the 3D variants never enter
@@ -102,14 +102,14 @@ dispatch over them stays exhaustive without a 3D arm; the 3D variants never ente
 
 | Piece | Image engine | Scan editor |
 | --- | --- | --- |
-| Document | `AnnotationDocument` (`documentFromWire`) | `ScanDocument` (`scanDocumentFromWire`), `cuboid_3d` only |
+| Document | `AnnotationDocument` (`documentFromWire`) | `ScanDocument` (`scanDocumentFromWire`), `cuboid_3d` and `polyline_3d` |
 | History, preview, selection | `CommandLog`, `AnnotatorStore`, `Selection` | the same classes, generic over the document |
-| Picking | `geometry/hitTest` in asset pixels | `pointcloud/ray` (screen to ray, ray vs ground and cuboid) and `edit/scene` |
+| Picking | `geometry/hitTest` in asset pixels | `pointcloud/ray` (screen to ray, ray vs ground and cuboid) and `edit/scene` (handles, vertices, segments, bodies) |
 | Machine and effects | `interaction/machine`, `Effect` | `edit/machine`, `ScanEffect`, `runScanEffects` |
 | Save | `planSave` | `planScanSave` |
 
 The two save plans are disjoint over one scan: `planSave` carries every 3D label past, and
-`planScanSave` carries past everything that is not a cuboid, so a page can send both through
+`planScanSave` carries past everything that is not a cuboid or a 3D polyline, so a page can send both through
 the same job-scoped calls. The scan plan wraps a yaw into `[-π, π]`, because the kernel
 refuses one outside rather than wrapping it, and sends the stored provenance, so an edited
 import stays `import`.
@@ -138,6 +138,20 @@ test and `scanHandleLayout` are unchanged. It follows the perspective camera's t
 the one `useScanEditor`; each `ScanView` names its `kind`, which reaches the machine as
 `Scene3D.view`. A `top-down` view offers only the four side faces (`handleFaces`) and never reads
 a height, so a draw can take its footprint there and its height in the perspective view.
+
+Polylines use the same machine, store and save plan. The machine adds a `drawing-polyline`
+state (the vertices placed so far and the cursor, previewed through `draftPolyline`) and a
+`moving-vertex` state; vertex edits are the pure `pointcloud/polyline` functions
+(`movePolylineVertex`, `insertPolylineVertex`, `removePolylineVertex`, `isDrawablePolyline`).
+Every vertex is placed with `rayGroundHit` at the ground height, and a dragged vertex keeps its
+own level; no vertex is picked from the scan's points. `commit` (Enter, or a double-click the
+adapter maps to it) adds the line only when it has two vertices not all equal, the kernel's
+rule, and otherwise keeps drafting. `hitTest3D` tries the selected label's handles first - a
+polyline's vertices or a cuboid's faces and yaw ring - then any polyline's segments, then cuboid
+bodies. A press on a segment of the selected polyline inserts a vertex and drags it as one
+command; alt on a vertex removes it, refused below two; `delete-selected` removes whole labels.
+A polyline is created with `visibility` omitted, so every vertex is saved visible, and
+`scanVertexLayout` places the vertex handles with the same `screenOf` as the hit test.
 
 ## Zero runtime dependencies
 
