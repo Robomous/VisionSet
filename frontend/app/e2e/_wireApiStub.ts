@@ -351,6 +351,18 @@ export async function serveApi(
         json: { items: written, total: written.length } satisfies Wire["AnnotationPage"],
       });
     }
+    if (path.endsWith("/annotations") && request.method() === "PATCH") {
+      const body = JSON.parse(request.postData() ?? "[]") as Wire["AnnotationUpdate"][];
+      const touched = body.flatMap((one) => {
+        const at = stored.findIndex((kept) => kept.id === one.id);
+        if (at < 0) return [];
+        stored[at] = { ...stored[at], ...one } as Wire["AnnotationOut"];
+        return [stored[at]];
+      });
+      return route.fulfill({
+        json: { items: touched, total: touched.length } satisfies Wire["AnnotationPage"],
+      });
+    }
     if (path.endsWith("/progress") && request.method() === "GET") {
       // **Derived from the same map the PUTs move**, not a frozen literal. It
       // was a literal — `unannotated: 2, annotated: 0` — which meant the counts

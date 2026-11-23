@@ -5405,19 +5405,21 @@ export interface components {
         };
         /**
          * Polyline3DGeometry
-         * @description An open path of at least two ``(x, y, z)`` vertices in its asset's sensor frame.
+         * @description An open path of at least two ``(x, y, z)`` vertices in its asset's 3D frame.
          *
          *     A sibling of :class:`PolylineGeometry`, never a subclass: every
          *     ``case PolylineGeometry()`` and ``isinstance`` check reads 2D pixel points,
          *     and a 3D path must not reach one by inheritance.
          *
-         *     Points are metres in the camera's OpenCV frame (x right, y down, z forward;
-         *     see :mod:`~visionset.kernel.domain.calibration`), and are interpretable only
-         *     against the asset's effective calibration. That is why no image-frame bounds
-         *     check applies: a point behind the camera, or outside the frame, is a legal
-         *     3D label. The path rules are the 2D polyline's — ordered, degenerate only
-         *     when every point is the same point — and ``visibility`` is the same
-         *     :class:`VertexVisibility` field under the same validator.
+         *     On an image, points are metres in the camera's OpenCV frame (x right, y down,
+         *     z forward; see :mod:`~visionset.kernel.domain.calibration`), read against the
+         *     asset's effective calibration. On a point-cloud scan they are in the frame
+         *     its source declares, in that scan's units, and need no calibration. Either
+         *     way no image-frame bounds check applies: a point behind the camera, or
+         *     outside the frame, is a legal 3D label. The path rules are the 2D
+         *     polyline's — ordered, degenerate only when every point is the same point —
+         *     and ``visibility`` is the same :class:`VertexVisibility` field under the
+         *     same validator.
          */
         Polyline3DGeometry: {
             /** Points */

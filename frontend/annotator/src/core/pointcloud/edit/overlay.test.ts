@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { EMPTY_SELECTION, selectOnly } from "../../state/selection";
-import { contextOf, pixelOf, scanBox, scanDocumentOf } from "./_scan";
-import { scanHandleLayout } from "./overlay";
+import { contextOf, pixelOf, scanBox, scanDocumentOf, scanLine } from "./_scan";
+import { scanHandleLayout, scanVertexLayout } from "./overlay";
 import { faceHandles, hitTest3D, yawRing } from "./scene";
 
 const document = scanDocumentOf(scanBox("near"), scanBox("far", { center: [12, 6, 1] }));
@@ -42,5 +42,25 @@ describe("scanHandleLayout", () => {
     const before = scanHandleLayout(contextOf(document, { selection: selectOnly("near") }));
     const after = scanHandleLayout(contextOf(moved, { selection: selectOnly("near") }));
     expect(after?.handles[0]?.point).not.toEqual(before?.handles[0]?.point);
+  });
+});
+
+describe("scanVertexLayout", () => {
+  const lane = scanLine("lane", [[0, -3, 0], [4, -3, 0], [8, -4, 0]]);
+  const withLane = scanDocumentOf(scanBox("near"), lane);
+
+  it("is empty unless exactly one polyline is selected", () => {
+    expect(scanVertexLayout(contextOf(withLane, { selection: EMPTY_SELECTION }))).toBeNull();
+    expect(scanVertexLayout(contextOf(withLane, { selection: selectOnly("near") }))).toBeNull();
+  });
+
+  it("puts each vertex where the hit test finds it", () => {
+    const scene = contextOf(withLane, { selection: selectOnly("lane") });
+    const layout = scanVertexLayout(scene);
+    expect(layout?.id).toBe("lane");
+    expect(layout?.vertices.map((one) => one.index)).toEqual([0, 1, 2]);
+    for (const vertex of layout?.vertices ?? []) {
+      expect(hitTest3D(scene, vertex.point)).toEqual({ kind: "vertex", id: "lane", index: vertex.index });
+    }
   });
 });

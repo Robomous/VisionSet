@@ -31,6 +31,12 @@ nothing was being distributed. This is the first version that is.
 - **Point-cloud scans are uploaded from the browser.** `.pcd` and `.ply` files dropped on the ingest screen
   register a point-cloud source in a frame chosen there (`lidar_flu`, `camera_rdf` or `lidar_rfu`, with no
   default) and ingest into a batch; a drop that mixes scans with other files is refused on the screen (#1057).
+- **Polylines are edited on a point-cloud scan.** In Edit, a polyline tool places `polyline_3d` vertices on the
+  ground plane; Enter or a double-click finishes the line and Escape cancels it. A vertex of the selected
+  polyline is dragged along the ground, a click on its segment inserts a vertex, alt-click removes one (never
+  below two), and Delete removes the label; an edit that would leave every vertex in one place is refused.
+  Vertex visibility is not editable on a scan: a new polyline leaves it out, so it stays unknown, and an imported
+  polyline keeps its declared visibility, with an inserted vertex recorded as unlabeled (#1065).
 
 ### Changed
 

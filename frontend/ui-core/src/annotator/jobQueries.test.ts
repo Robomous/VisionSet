@@ -11,9 +11,16 @@
 import {
   AnnotatorStore,
   addAnnotationCommand,
+  addScanAnnotation,
   documentFromWire,
+  isCuboidScanAnnotation,
+  isPolylineScanAnnotation,
+  movePolylineVertex,
+  removeScanAnnotations,
   replaceScanAnnotation,
   scanDocumentFromWire,
+  type CuboidScanAnnotation,
+  type PolylineScanAnnotation,
   type ScanDocument,
 } from "@visionset/annotator";
 import { describe, expect, it } from "vitest";
@@ -193,6 +200,7 @@ const SCAN_SCHEMA = {
   ...SCHEMA,
   classes: [
     { name: "car", geometries: ["cuboid_3d"], color: null, attributes: [] },
+    { name: "lane", geometries: ["polyline_3d"], color: null, attributes: [] },
     { name: "weather", geometries: ["classification_tag"], color: null, attributes: [] },
   ],
 };
@@ -205,6 +213,18 @@ function scanStoreOf(annotations: readonly WireAnnotation[]): AnnotatorStore<Sca
       annotations,
     }),
   );
+}
+
+function cuboidIn(document: ScanDocument, id: string): CuboidScanAnnotation {
+  const found = document.annotations.get(id);
+  if (found === undefined || !isCuboidScanAnnotation(found)) throw new Error(`no cuboid ${id}`);
+  return found;
+}
+
+function polylineIn(document: ScanDocument, id: string): PolylineScanAnnotation {
+  const found = document.annotations.get(id);
+  if (found === undefined || !isPolylineScanAnnotation(found)) throw new Error(`no polyline ${id}`);
+  return found;
 }
 
 describe("planScanSave", () => {
@@ -222,7 +242,7 @@ describe("planScanSave", () => {
   it("an edited import is an update that keeps its provenance", () => {
     const server = [loadedCuboid("a")];
     const store = scanStoreOf(server);
-    const box = store.document.annotations.get("a")!;
+    const box = cuboidIn(store.document, "a");
     store.execute({
       label: "move car",
       apply: (d) => replaceScanAnnotation(d, { ...box, geometry: { ...box.geometry, center: [11, 0, 0.8] } }),
@@ -230,7 +250,7 @@ describe("planScanSave", () => {
     const plan = planScanSave(store.document, server);
     expect(plan.created).toEqual([]);
     expect(plan.deleted).toEqual([]);
-    expect(plan.updated.map((one) => [one.id, one.provenance, one.geometry.center])).toEqual([
+    expect(plan.updated.filter(isCuboidScanAnnotation).map((one) => [one.id, one.provenance, one.geometry.center])).toEqual([
       ["a", "import", [11, 0, 0.8]],
     ]);
   });
@@ -238,7 +258,7 @@ describe("planScanSave", () => {
   it("wraps a yaw outside [-π, π] before it compares or sends", () => {
     const server = [loadedCuboid("a", { yaw: 3 })];
     const store = scanStoreOf(server);
-    const box = store.document.annotations.get("a")!;
+    const box = cuboidIn(store.document, "a");
     store.execute({
       label: "turn",
       apply: (d) => replaceScanAnnotation(d, { ...box, geometry: { ...box.geometry, yaw: 3 + 2 * Math.PI } }),
@@ -249,14 +269,14 @@ describe("planScanSave", () => {
       label: "turn more",
       apply: (d) => replaceScanAnnotation(d, { ...box, geometry: { ...box.geometry, yaw: 3.5 } }),
     });
-    const [sent] = planScanSave(store.document, server).updated;
+    const [sent] = planScanSave(store.document, server).updated.filter(isCuboidScanAnnotation);
     expect(sent.geometry.yaw).toBeCloseTo(3.5 - 2 * Math.PI, 12);
   });
 
   it("a drawn box is a create and a removed one a delete", () => {
     const server = [loadedCuboid("a"), loadedCuboid("b")];
     const store = scanStoreOf(server);
-    const kept = store.document.annotations.get("a")!;
+    const kept = cuboidIn(store.document, "a");
     store.execute({
       label: "session",
       apply: (d) => ({
@@ -280,14 +300,64 @@ describe("planScanSave", () => {
       documentFromWire({ asset: { id: "scan-1", width: null, height: null, modality: "point_cloud" }, schema: SCAN_SCHEMA, annotations: [] }),
       server,
     );
-    expect(scanPlan.deleted).toEqual(["a"]);
+    expect(scanPlan.deleted).toEqual(["a", "path"]);
     expect(imagePlan.deleted).toEqual(["tag"]);
 
     const merged = mergePlans(imagePlan, scanPlan);
-    expect(merged.deleted).toEqual(["tag", "a"]);
+    expect(merged.deleted).toEqual(["tag", "a", "path"]);
     expect(isEmptyPlan(merged)).toBe(false);
     expect(isEmptyPlan(mergePlans(imagePlan, { created: [], updated: [], deleted: [] }))).toBe(false);
     expect(isEmptyPlan(mergePlans({ created: [], updated: [], deleted: [] }, scanPlan))).toBe(false);
+  });
+
+  describe("polylines", () => {
+    const lane: WireAnnotation = {
+      ...loaded("lane", "lane"),
+      asset_id: "scan-1",
+      geometry: { type: "polyline_3d", points: [[0, 0, -1.7], [5, 0, -1.7], [10, 1, -1.7]] },
+    };
+    const seen: WireAnnotation = {
+      ...lane,
+      id: "seen",
+      geometry: { type: "polyline_3d", points: [[0, 2, -1.7], [5, 2, -1.7]], visibility: [2, 1] },
+    };
+
+    it("plans nothing for loaded polylines nobody touched, with or without visibility", () => {
+      const server = [lane, seen, loadedCuboid("car"), tag];
+      expect(isEmptyPlan(planScanSave(scanStoreOf(server).document, server))).toBe(true);
+    });
+
+    it("a moved vertex updates only that polyline, never the cuboids beside it", () => {
+      const server = [loadedCuboid("car"), lane, tag];
+      const store = scanStoreOf(server);
+      const line = polylineIn(store.document, "lane");
+      store.execute({
+        label: "move vertex",
+        apply: (d) => replaceScanAnnotation(d, { ...line, geometry: movePolylineVertex(line.geometry, 1, [5, 0.5, -1.7]) }),
+      });
+      const plan = planScanSave(store.document, server);
+      expect(plan.created).toEqual([]);
+      expect(plan.deleted).toEqual([]);
+      expect(plan.updated.map((one) => [one.id, one.geometry])).toEqual([
+        ["lane", { type: "polyline_3d", points: [[0, 0, -1.7], [5, 0.5, -1.7], [10, 1, -1.7]], visibility: undefined }],
+      ]);
+    });
+
+    it("a drawn polyline is a create and a removed one a delete, and a tag is never a delete", () => {
+      const server = [lane, tag];
+      const store = scanStoreOf(server);
+      const drawn: PolylineScanAnnotation = {
+        ...polylineIn(store.document, "lane"),
+        id: "local-1",
+        provenance: "human",
+        geometry: { type: "polyline_3d", points: [[1, 1, -1.7], [2, 2, -1.7]], visibility: undefined },
+      };
+      store.execute({ label: "draw", apply: (d) => addScanAnnotation(removeScanAnnotations(d, ["lane"]), drawn) });
+      const plan = planScanSave(store.document, server);
+      expect(plan.created.map((one) => one.id)).toEqual(["local-1"]);
+      expect(plan.deleted).toEqual(["lane"]);
+      expect(plan.updated).toEqual([]);
+    });
   });
 });
 

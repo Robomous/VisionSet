@@ -41,6 +41,15 @@ export function cuboidSegments(geometry: Cuboid3DGeometry, frame: ScanFrame): Fl
   return out;
 }
 
+export function polylineSegments(points: readonly Point3D[]): Float32Array {
+  const out = new Float32Array(Math.max(0, points.length - 1) * 6);
+  for (let at = 0; at + 1 < points.length; at += 1) {
+    out.set(points[at], at * 6);
+    out.set(points[at + 1], at * 6 + 3);
+  }
+  return out;
+}
+
 /** Every 3D label among `annotations`, as segments; every other geometry is left out. */
 export function scanLabels(annotations: readonly StoredAnnotation[], frame: ScanFrame): readonly ScanLabel[] {
   const labels: ScanLabel[] = [];
@@ -50,11 +59,7 @@ export function scanLabels(annotations: readonly StoredAnnotation[], frame: Scan
     if (geometry.type === "cuboid_3d") {
       segments = cuboidSegments(geometry, frame);
     } else if (geometry.type === "polyline_3d" && geometry.points.length >= 2) {
-      segments = new Float32Array((geometry.points.length - 1) * 6);
-      for (let at = 0; at + 1 < geometry.points.length; at += 1) {
-        segments.set(geometry.points[at], at * 6);
-        segments.set(geometry.points[at + 1], at * 6 + 3);
-      }
+      segments = polylineSegments(geometry.points);
     } else {
       continue;
     }

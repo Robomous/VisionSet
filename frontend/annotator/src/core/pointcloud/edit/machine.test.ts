@@ -4,13 +4,14 @@ import { mulberry32, SEEDS } from "../../_random";
 import { NO_MODIFIERS } from "../../interaction/events";
 import { EMPTY_SELECTION, selectOnly } from "../../state/selection";
 import { AnnotatorStore } from "../../state/store";
-import type { Cuboid3DGeometry, Point, Point3D } from "../../types";
+import type { Cuboid3DGeometry, Point, Point3D, Polyline3DGeometry } from "../../types";
 import { CUBOID_FACES, cuboidAxes, faceCenter, headingOfYaw, MIN_CUBOID_SIZE } from "../cuboid";
 import { fromForwardLeftUp, type ScanFrame } from "../frame";
 import { add, scale } from "../vector";
-import { contextOf, pixelOf, scanBox, scanDocumentOf } from "./_scan";
+import { contextOf, cuboidOf, pixelOf, polylineOf, scanBox, scanDocumentOf, scanLine } from "./_scan";
 import {
   draftCuboid,
+  draftPolyline,
   SCAN_IDLE,
   scanTransition,
   type ScanContext,
@@ -31,10 +32,22 @@ function expectClose(actual: readonly number[], expected: readonly number[], dig
   actual.forEach((value, i) => expect(value).toBeCloseTo(expected[i], digits));
 }
 
-function staged(turn: ScanTransition): Cuboid3DGeometry {
+function stagedGeometry(turn: ScanTransition): Cuboid3DGeometry | Polyline3DGeometry {
   const effect = turn.effects.find((one) => one.kind === "stage");
   if (effect?.kind !== "stage") throw new Error(`no stage among ${JSON.stringify(turn.effects)}`);
   return effect.geometry;
+}
+
+function staged(turn: ScanTransition): Cuboid3DGeometry {
+  const geometry = stagedGeometry(turn);
+  if (geometry.type !== "cuboid_3d") throw new Error("staged a polyline");
+  return geometry;
+}
+
+function stagedPolyline(turn: ScanTransition): Polyline3DGeometry {
+  const geometry = stagedGeometry(turn);
+  if (geometry.type !== "polyline_3d") throw new Error("staged a cuboid");
+  return geometry;
 }
 
 /** Feed events through the machine and a real store, as an adapter would. */
@@ -82,8 +95,8 @@ describe("drawing a cuboid", () => {
       model_ref: null,
       confidence: null,
     });
-    expect(add.annotation.geometry.yaw).toBe(0);
-    expectClose(add.annotation.geometry.center, [4, 0, 0.75]);
+    expect(cuboidOf(add.annotation).geometry.yaw).toBe(0);
+    expectClose(cuboidOf(add.annotation).geometry.center, [4, 0, 0.75]);
     expect(select).toEqual({ kind: "select", selection: selectOnly("drawn-1") });
   });
 
@@ -254,13 +267,13 @@ describe("through the store", () => {
     tool = { kind: "select" };
     const moving = drive(store, context, [down(pixelOf(c, [3.2, 1.5, 1.5])), move(pixelOf(c, [6.2, 1.5, 1.5]))]);
     expect(moving.type).toBe("moving");
-    expect(store.preview?.annotations.get(drawn.id)?.geometry.center[0]).toBeCloseTo(5, 6);
-    expect(store.document.annotations.get(drawn.id)?.geometry.center[0]).toBeCloseTo(2, 6);
+    expect(cuboidOf(store.preview?.annotations.get(drawn.id)).geometry.center[0]).toBeCloseTo(5, 6);
+    expect(cuboidOf(store.document.annotations.get(drawn.id)).geometry.center[0]).toBeCloseTo(2, 6);
     drive(store, context, [up([0, 0])], moving);
-    expect(store.document.annotations.get(drawn.id)?.geometry.center[0]).toBeCloseTo(5, 6);
+    expect(cuboidOf(store.document.annotations.get(drawn.id)).geometry.center[0]).toBeCloseTo(5, 6);
 
     expect(store.undo()).toBe(true);
-    expect(store.document.annotations.get(drawn.id)?.geometry.center[0]).toBeCloseTo(2, 6);
+    expect(cuboidOf(store.document.annotations.get(drawn.id)).geometry.center[0]).toBeCloseTo(2, 6);
     expect(store.undo()).toBe(true);
     expect(store.document.annotations.size).toBe(0);
     expect(store.redo()).toBe(true);
@@ -272,9 +285,9 @@ describe("through the store", () => {
     const context = () => contextOf(store.document, { selection: store.selection });
     const c = context();
     drive(store, context, [down(pixelOf(c, [0, 0, 2])), move(pixelOf(c, [1, 0, 2])), up([0, 0])]);
-    const edited = store.document.annotations.get("car-1");
-    expect(edited?.geometry.center[0]).toBeCloseTo(1, 6);
-    expect(edited?.provenance).toBe("import");
+    const edited = cuboidOf(store.document.annotations.get("car-1"));
+    expect(edited.geometry.center[0]).toBeCloseTo(1, 6);
+    expect(edited.provenance).toBe("import");
   });
 
   for (const seed of SEEDS) {
@@ -289,8 +302,7 @@ describe("through the store", () => {
       for (let step = 0; step < 25; step += 1) {
         const ids = [...store.document.annotations.keys()];
         const id = ids[Math.floor(random() * ids.length)];
-        const geometry = store.document.annotations.get(id)?.geometry;
-        if (geometry === undefined) continue;
+        const geometry = cuboidOf(store.document.annotations.get(id)).geometry;
         store.select(selectOnly(id));
         const c = context();
         const pick = random();
@@ -310,7 +322,7 @@ describe("through the store", () => {
         if (store.document !== before) committed += 1;
 
         for (const annotation of store.document.annotations.values()) {
-          const { center, size, yaw } = annotation.geometry;
+          const { center, size, yaw } = cuboidOf(annotation).geometry;
           expect([...center, ...size, yaw].every(Number.isFinite)).toBe(true);
           expect(Math.min(...size)).toBeGreaterThanOrEqual(MIN_CUBOID_SIZE);
           expect(Math.abs(yaw)).toBeLessThanOrEqual(Math.PI);
@@ -324,4 +336,159 @@ describe("through the store", () => {
       expect(store.document).toBe(start);
     });
   }
+});
+
+describe("drawing a polyline", () => {
+  const context = contextOf(scanDocumentOf(), { tool: { kind: "polyline", labelClass: "lane" } });
+
+  it("draws a polyline over three clicks and commits on commit", () => {
+    let state = scanTransition(SCAN_IDLE, down(pixelOf(context, [1, -1, 0])), context).state;
+    expect(state.type).toBe("drawing-polyline");
+    expect(draftPolyline(state)?.points).toHaveLength(1);
+    state = scanTransition(state, move(pixelOf(context, [3, -1, 0])), context).state;
+    expect(draftPolyline(state)?.points).toHaveLength(2);
+    state = scanTransition(state, down(pixelOf(context, [3, -1, 0])), context).state;
+    state = scanTransition(state, down(pixelOf(context, [5, 0, 0])), context).state;
+
+    const finished = scanTransition(state, { type: "commit" }, context);
+    expect(finished.state).toBe(SCAN_IDLE);
+    const [add, select] = finished.effects;
+    if (add?.kind !== "add") throw new Error("no add");
+    expect(add.label).toBe("draw lane");
+    expect(add.annotation).toMatchObject({
+      id: "drawn-1",
+      label_class: "lane",
+      attributes: { dashed: true },
+      provenance: "human",
+      model_ref: null,
+    });
+    const geometry = polylineOf(add.annotation).geometry;
+    expect(geometry.visibility).toBeUndefined();
+    [[1, -1, 0], [3, -1, 0], [5, 0, 0]].forEach((p, i) => expectClose(geometry.points[i] ?? [], p));
+    expect(select).toEqual({ kind: "select", selection: selectOnly("drawn-1") });
+    expect(draftPolyline(finished.state)).toBeNull();
+  });
+
+  it("commit with one vertex is refused and keeps drafting", () => {
+    const at = pixelOf(context, [1, 1, 0]);
+    let state = scanTransition(SCAN_IDLE, down(at), context).state;
+    state = scanTransition(state, down(at), context).state;
+    expect(state).toMatchObject({ type: "drawing-polyline", points: [expect.anything()] });
+    expect(scanTransition(state, { type: "commit" }, context)).toEqual({ state, effects: [] });
+  });
+
+  it("commit with two identical vertices is refused", () => {
+    const state: ScanState = { type: "drawing-polyline", labelClass: "lane", points: [[1, 1, 0], [1, 1, 0]], cursor: null };
+    expect(scanTransition(state, { type: "commit" }, context)).toEqual({ state, effects: [] });
+  });
+
+  it("cancel while drawing adds nothing", () => {
+    const state: ScanState = { type: "drawing-polyline", labelClass: "lane", points: [[1, 1, 0], [2, 1, 0]], cursor: null };
+    expect(scanTransition(state, { type: "cancel" }, context)).toEqual({ state: SCAN_IDLE, effects: [] });
+  });
+});
+
+describe("editing a polyline", () => {
+  const lane = scanLine("lane-1", [[-4, 6, 0], [0, 6, 0], [4, 6, 0]]);
+  const selected = contextOf(scanDocumentOf(lane), { selection: selectOnly("lane-1") });
+  const alt = (point: Point): ScanEvent => ({ type: "pointer-down", point, button: "primary", modifiers: { ...NO_MODIFIERS, alt: true } });
+
+  it("dragging a vertex stages the moved polyline and commits once on pointer-up", () => {
+    const raised = scanLine("lane-1", [[-4, 6, 1], [0, 6, 1], [4, 6, 1]]);
+    const store = new AnnotatorStore<ScanDocument>(scanDocumentOf(raised));
+    store.select(selectOnly("lane-1"));
+    const context = () => contextOf(store.document, { selection: store.selection });
+    const c = context();
+    const pressed = scanTransition(SCAN_IDLE, down(pixelOf(c, [0, 6, 1])), c);
+    expect(pressed).toEqual({ state: { type: "moving-vertex", id: "lane-1", origin: raised.geometry, index: 1, level: 1 }, effects: [] });
+    const dragged = scanTransition(pressed.state, move(pixelOf(c, [1, 7, 1])), c);
+    const points = stagedPolyline(dragged).points;
+    expectClose(points[1] ?? [], [1, 7, 1]);
+    expect([points[0], points[2]]).toEqual([[-4, 6, 1], [4, 6, 1]]);
+    expect(scanTransition(dragged.state, up([0, 0]), c).effects).toEqual([{ kind: "commit", label: "move vertex of lane" }]);
+
+    const moving = drive(store, context, [down(pixelOf(c, [0, 6, 1])), move(pixelOf(c, [1, 7, 1]))]);
+    expectClose(polylineOf(store.preview?.annotations.get("lane-1")).geometry.points[1] ?? [], [1, 7, 1]);
+    expect(polylineOf(store.document.annotations.get("lane-1")).geometry).toEqual(raised.geometry);
+    drive(store, context, [up([0, 0])], moving);
+    expectClose(polylineOf(store.document.annotations.get("lane-1")).geometry.points[1] ?? [], [1, 7, 1]);
+    expect(store.undo()).toBe(true);
+    expect(polylineOf(store.document.annotations.get("lane-1")).geometry).toEqual(raised.geometry);
+  });
+
+  it("escape while dragging a vertex discards", () => {
+    const state: ScanState = { type: "moving-vertex", id: "lane-1", origin: lane.geometry, index: 1, level: 0 };
+    expect(scanTransition(state, { type: "cancel" }, selected)).toEqual({ state: SCAN_IDLE, effects: [{ kind: "discard" }] });
+  });
+
+  it("a segment click on an unselected polyline selects it", () => {
+    const context = contextOf(scanDocumentOf(lane));
+    expect(scanTransition(SCAN_IDLE, down(pixelOf(context, [2, 6, 0])), context)).toEqual({
+      state: SCAN_IDLE,
+      effects: [{ kind: "select", selection: selectOnly("lane-1") }],
+    });
+  });
+
+  it("a toggle-click on a segment toggles it in the selection", () => {
+    const context = contextOf(scanDocumentOf(lane, scanBox("car-1")), { selection: selectOnly("car-1") });
+    const toggle = (modifiers: Partial<typeof NO_MODIFIERS>): ScanEvent => ({
+      type: "pointer-down",
+      point: pixelOf(context, [2, 6, 0]),
+      button: "primary",
+      modifiers: { ...NO_MODIFIERS, ...modifiers },
+    });
+    expect(scanTransition(SCAN_IDLE, toggle({ ctrl: true }), context)).toEqual({
+      state: SCAN_IDLE,
+      effects: [{ kind: "select", selection: new Set(["car-1", "lane-1"]) }],
+    });
+    expect(scanTransition(SCAN_IDLE, toggle({ meta: true }), selected)).toEqual({
+      state: SCAN_IDLE,
+      effects: [{ kind: "select", selection: EMPTY_SELECTION }],
+    });
+  });
+
+  it("a segment click on the selected polyline inserts and drags a vertex", () => {
+    const pressed = scanTransition(SCAN_IDLE, down(pixelOf(selected, [2, 6, 0])), selected);
+    expect(pressed.state).toMatchObject({ type: "moving-vertex", id: "lane-1", index: 2, level: expect.closeTo(0, 6) });
+    const inserted = stagedPolyline(pressed).points;
+    expect(inserted).toHaveLength(4);
+    expectClose(inserted[2] ?? [], [2, 6, 0]);
+    const dragged = stagedPolyline(scanTransition(pressed.state, move(pixelOf(selected, [2, 7, 0])), selected)).points;
+    expect(dragged).toHaveLength(4);
+    expectClose(dragged[2] ?? [], [2, 7, 0]);
+    expect(scanTransition(pressed.state, up([0, 0]), selected).effects).toEqual([{ kind: "commit", label: "insert vertex of lane" }]);
+  });
+
+  it("alt-click removes a vertex", () => {
+    const turn = scanTransition(SCAN_IDLE, alt(pixelOf(selected, [0, 6, 0])), selected);
+    expect(turn.state).toBe(SCAN_IDLE);
+    expect(stagedPolyline(turn).points).toEqual([[-4, 6, 0], [4, 6, 0]]);
+    expect(turn.effects.at(-1)).toEqual({ kind: "commit", label: "remove vertex of lane" });
+  });
+
+  it("alt-click on a vertex of a two-vertex polyline does nothing", () => {
+    const pair = contextOf(scanDocumentOf(scanLine("lane-2", [[-4, 6, 0], [4, 6, 0]])), { selection: selectOnly("lane-2") });
+    expect(scanTransition(SCAN_IDLE, alt(pixelOf(pair, [-4, 6, 0])), pair)).toEqual({ state: SCAN_IDLE, effects: [] });
+  });
+
+  it("alt-click on a segment of the selected polyline does nothing", () => {
+    expect(scanTransition(SCAN_IDLE, alt(pixelOf(selected, [2, 6, 0])), selected)).toEqual({ state: SCAN_IDLE, effects: [] });
+  });
+
+  it("alt-click that would leave every vertex in one place does nothing", () => {
+    const folded = contextOf(scanDocumentOf(scanLine("lane-3", [[-4, 6, 0], [0, 6, 0], [-4, 6, 0]])), {
+      selection: selectOnly("lane-3"),
+    });
+    expect(scanTransition(SCAN_IDLE, alt(pixelOf(folded, [0, 6, 0])), folded)).toEqual({ state: SCAN_IDLE, effects: [] });
+  });
+
+  it("dragging a vertex onto the only other one stages nothing, so the line stays drawable", () => {
+    const target = pixelOf(selected, [-4, 7, 0]);
+    const probe: ScanState = { type: "moving-vertex", id: "lane-1", origin: lane.geometry, index: 1, level: 0 };
+    const landed = stagedPolyline(scanTransition(probe, move(target), selected)).points[1]!;
+    const pair = scanLine("lane-1", [landed, [4, 6, 0]]);
+    const context = contextOf(scanDocumentOf(pair), { selection: selectOnly("lane-1") });
+    const state: ScanState = { type: "moving-vertex", id: "lane-1", origin: pair.geometry, index: 1, level: 0 };
+    expect(scanTransition(state, move(target), context)).toEqual({ state, effects: [] });
+  });
 });
