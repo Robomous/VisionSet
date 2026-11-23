@@ -170,6 +170,21 @@ describe("a scan's 3D labels (#1061)", () => {
     expect(onRemove).toHaveBeenCalledWith("c1");
   });
 
+  it("returns focus to the perspective view from the filter field on a scan row click", async () => {
+    const scan = scanStoreOf();
+    render(
+      <>
+        <div data-scan-view="perspective">
+          <canvas tabIndex={0} data-testid="persp-canvas" />
+        </div>
+        {mount(storeWith([]), { scan: { store: scan, onRemove: vi.fn() } })}
+      </>,
+    );
+    await userEvent.type(screen.getByLabelText("Filter objects"), "veh");
+    await userEvent.click(screen.getByTestId("object-select-0"));
+    expect(document.activeElement).toBe(screen.getByTestId("persp-canvas"));
+  });
+
   it("selects a cuboid from its row without taking focus off the view", async () => {
     const scan = scanStoreOf();
     render(
@@ -382,6 +397,34 @@ describe("the object list", () => {
     screen.getByTestId("annotator-root").focus();
     await userEvent.click(screen.getByTestId("object-select-0"));
     expect([...store.selection]).toEqual(["a"]);
+    expect(document.activeElement).toBe(screen.getByTestId("annotator-root"));
+  });
+
+  it("returns focus to the annotator root from the filter field, so Backspace does not edit the filter", async () => {
+    const store = storeWith([annotation("a", "vehicle", "bbox")]);
+    render(
+      <>
+        <div tabIndex={0} data-testid="annotator-root" />
+        {mount(store)}
+      </>,
+    );
+    const filter = screen.getByLabelText("Filter objects") as HTMLInputElement;
+    await userEvent.type(filter, "veh");
+    await userEvent.click(screen.getByTestId("object-select-0"));
+    expect(document.activeElement).toBe(screen.getByTestId("annotator-root"));
+    await userEvent.keyboard("{Backspace}");
+    expect(filter.value).toBe("veh");
+  });
+
+  it("moves focus from the page body to the annotator root on a row click", async () => {
+    const store = storeWith([annotation("a", "vehicle", "bbox")]);
+    render(
+      <>
+        <div tabIndex={0} data-testid="annotator-root" />
+        {mount(store)}
+      </>,
+    );
+    await userEvent.click(screen.getByTestId("object-select-0"));
     expect(document.activeElement).toBe(screen.getByTestId("annotator-root"));
   });
 

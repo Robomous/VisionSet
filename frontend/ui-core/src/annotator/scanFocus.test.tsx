@@ -175,7 +175,7 @@ describe("keyboard focus in the scan editor", () => {
     expect(screen.queryByTestId("scan-height-hint")).toBeNull();
     footprint();
     expect(screen.getByTestId("scan-height-hint").textContent).toBe(
-      "Move the pointer in the perspective view to set the height. Enter or a click there finishes it.",
+      "Move the pointer in the perspective view to set the height. Enter or a click in either view finishes it.",
     );
   });
 });

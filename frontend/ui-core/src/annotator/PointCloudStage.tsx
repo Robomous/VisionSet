@@ -97,13 +97,13 @@ const VIEW_LABEL =
 const EDIT_LABEL =
   "Point cloud, editing 3D labels. Drag to draw or adjust a cuboid, click to place a polyline's vertices, " +
   "right-drag to orbit, middle-drag or shift and right-drag to pan, scroll to zoom. Delete removes the selected label, " +
-  "Escape cancels, and Enter finishes a polyline, or a cuboid's height, which a click in this view also finishes.";
+  "Escape cancels, and Enter finishes a polyline, or a cuboid's height, which a click in either view also finishes.";
 
 const TOP_DOWN_LABEL =
   "Top-down view of the point cloud, following the perspective view's centre. Drag to draw a footprint, " +
   "move a cuboid, pull a side face or turn the yaw handle, or click to place a polyline's vertices; " +
   "right-drag or middle-drag to pan, scroll to zoom. " +
-  "A cuboid's height is set in the perspective view, and Enter or a click there finishes it.";
+  "A cuboid's height is set in the perspective view, and Enter or a click in either view finishes it.";
 
 type Fetched =
   | { readonly kind: "loading" }
@@ -535,7 +535,7 @@ function WithReason({ reason, children }: { readonly reason: string; readonly ch
  * stay on screen when they cannot be used, disabled with the reason.
  */
 const POLYLINE_HINT = "Click along the line. Enter or double-click finishes it.";
-const HEIGHT_HINT = "Move the pointer in the perspective view to set the height. Enter or a click there finishes it.";
+const HEIGHT_HINT = "Move the pointer in the perspective view to set the height. Enter or a click in either view finishes it.";
 
 export function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Element {
   const { editing, editBlocked, toolBlocked, snapshot } = scan;

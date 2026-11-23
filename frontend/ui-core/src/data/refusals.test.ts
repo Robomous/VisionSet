@@ -31,7 +31,7 @@ describe("refusalProse — browser target refusals", () => {
 describe("refusalProse — CALIBRATION_IN_USE", () => {
   it("returns the fixed sentence, not the server message", () => {
     const prose = refusalProse(new ApiError({ code: "CALIBRATION_IN_USE", message: "server wording" }));
-    expect(prose).toMatch(/already carry 3D labels/);
+    expect(prose).toMatch(/already carry 3D labels drawn in their declared frame/);
     expect(prose).not.toContain("server wording");
   });
 });

@@ -47,6 +47,10 @@ nothing was being distributed. This is the first version that is.
 
 ### Fixed
 
+- **Scan editing follow-ups.** After a cuboid footprint drag, focus moves to the perspective view and the height
+  hint says Enter or a click finishes it; a click on an objects-panel row no longer takes keyboard focus off the
+  view, in 2D and on scans; the editor's breadcrumb counts a scan job in scans ("Job · 1 scan", "Job · N scans")
+  rather than frames; a `CALIBRATION_IN_USE` refusal shows a browser-worded message.
 - **Replacing a calibration that 3D labels were drawn against is refused.** Setting a source's calibration, or
   an asset's override, to a different value - including a first override other than the source calibration the
   asset inherits - and clearing an override onto a different source calibration now answer `CALIBRATION_IN_USE`
