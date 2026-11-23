@@ -507,9 +507,10 @@ test("a clip is inspected, cut and imported here, and never uploaded", async ({ 
     await expect(panel.getByRole("heading", { level: 2, name: "clip-batch" })).toBeVisible();
     // `WALK_RATE` is the clip's own rate, so every grid point is a different
     // source frame and content-addressing collapses nothing: one asset per point.
-    await expect(panel.getByTestId("batch-sheet-facts").locator("dd").first()).toHaveText(
-      String(WALK_FRAMES),
-    );
+    // The Images property, read by its label: the panel lists the state first.
+    await expect(
+      panel.getByTestId("batch-sheet-facts").locator("div", { has: page.locator("dt", { hasText: /^Images$/ }) }).locator("dd"),
+    ).toHaveText(String(WALK_FRAMES));
   });
 
   await test.step("a frame says where it came from and how it was cut", async () => {

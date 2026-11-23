@@ -207,6 +207,8 @@ function Pane({ projectId, projectTotal }: { readonly projectId: string; readonl
   // With nothing focused, the keys are the grid's.
   useEffect(() => {
     function onKey(event: globalThis.KeyboardEvent): void {
+      // A popover or menu that dismissed itself on this key has already spent it.
+      if (event.defaultPrevented) return;
       if (document.activeElement !== document.body || event.metaKey || event.ctrlKey || event.altKey) return;
       if (walk(event.key)) event.preventDefault();
     }

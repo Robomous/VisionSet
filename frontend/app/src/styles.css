@@ -15,6 +15,19 @@
 @source ".";
 
 /*
+ * Grayscale antialiasing, everywhere: macOS thickens every glyph's edges by
+ * default, and on the dark theme that reads as bloom — every label half a
+ * weight heavier than drawn. The product's text is 400 and up, where the true
+ * weight only looks cleaner; nothing here relies on the thickening.
+ */
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/*
  * The standalone shell's own layout values.
  *
  * The rail's two widths: collapsed, one 40px-wide control per row inside a 4px

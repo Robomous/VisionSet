@@ -36,17 +36,29 @@
 import { CircleCheckBig, CircleDashed, FolderOpen, Search, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 
-import { Badge, Kbd, cn } from "@robomous/ui-core";
+import { Kbd, cn } from "@robomous/ui-core";
 import { assetNoun, type Modality } from "../../lib/assetNoun";
 import { formatCount } from "../../lib/format";
 import type { BatchPhase } from "./BatchSummary";
-import { PHASE_DOT, PHASE_LABEL, initials } from "./batchRowModel";
+import { initials, labeledDetail, phaseState } from "./batchRowModel";
+import { StateChip } from "../StateChip";
 import { BODY_ROW, ColumnHeader, ListGrid, type ListColumn } from "../ListPage";
 import { columnLines } from "../listColumns";
 import { usePagination, type Pagination } from "../pagination";
 import { InlinePager } from "../TablePager";
-import { Meter } from "./ConsolePanel";
+import { ProgressReadout } from "../ProgressRing";
 import { ViewSwitch } from "./ViewSwitch";
+
+/** The wire's split of a batch's or a job's assets by annotation state. */
+export interface LabelCounts {
+  readonly total: number;
+  readonly accepted: number;
+  readonly annotated: number;
+  readonly review_pending: number;
+  readonly skipped: number;
+  readonly pre_labeled: number;
+  readonly unannotated: number;
+}
 
 export interface BatchRowView {
   readonly id: string;
@@ -60,6 +72,8 @@ export interface BatchRowView {
   readonly modality?: Modality;
   /** A model drafting labels, while it runs. */
   readonly prelabel: { readonly processed: number; readonly total: number | null } | null;
+  /** How the batch's assets split by annotation state, once it has jobs — what its progress says when pointed at. */
+  readonly counts?: LabelCounts | null;
   /**
    * Who holds the batch's jobs, in job order: `null` before it has any,
    * `undefined` while they are being read.
@@ -361,7 +375,7 @@ function Row({
         )}
       </td>
       <td>
-        <PhaseBadge phase={row.phase} />
+        <PhaseBadge phase={row.phase} {...(row.done === null || row.total === 0 ? {} : { fraction: row.done / row.total })} />
       </td>
       <td>
         <Progress row={row} />
@@ -385,36 +399,26 @@ function Row({
   );
 }
 
-export function PhaseBadge({ phase }: { readonly phase: BatchPhase }): JSX.Element {
-  return (
-    <Badge variant={phase === "in_dataset" ? "secondary" : "outline"} className="gap-1.5 font-normal" data-testid="batch-phase">
-      <span aria-hidden="true" className={cn("size-1.5 rounded-full", PHASE_DOT[phase])} />
-      {PHASE_LABEL[phase]}
-    </Badge>
-  );
+/** The phase as a state chip; no card, because the row it sits in already opens the batch. */
+export function PhaseBadge({ phase, fraction }: { readonly phase: BatchPhase; readonly fraction?: number }): JSX.Element {
+  return <StateChip state={phaseState(phase, fraction === undefined ? {} : { fraction })} testId="batch-phase" />;
 }
 
-/** One plain bar — how much is decided — and the count beside it. */
+/** How much is decided: the count, quiet, then its ring — a model's drafting in its own colour. */
 function Progress({ row }: { readonly row: BatchRowView }): JSX.Element {
   if (row.prelabel !== null) {
     const total = row.prelabel.total ?? row.total;
     return (
-      <span className="flex items-center gap-2.5 pr-5 text-xs text-info">
-        <Meter value={row.prelabel.processed} total={total} tone="bg-info/70" className="w-auto flex-1" />
-        <span className="shrink-0 tabular-nums">
-          Drafting {formatCount(row.prelabel.processed)}/{formatCount(total)}
-        </span>
-      </span>
+      <ProgressReadout value={row.prelabel.processed} total={total} tone="info" className="text-xs text-info">
+        Drafting {formatCount(row.prelabel.processed)}/{formatCount(total)}
+      </ProgressReadout>
     );
   }
   if (row.done === null) return <span className="text-xs text-muted-foreground">Not started</span>;
   return (
-    <span className="flex items-center gap-2.5 pr-5">
-      <Meter value={row.done} total={row.total} tone={row.done === row.total ? "bg-success" : "bg-foreground/70"} className="w-auto flex-1" />
-      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-        <span className="text-foreground">{formatCount(row.done)}</span>/{formatCount(row.total)}
-      </span>
-    </span>
+    <ProgressReadout value={row.done} total={row.total} className="text-xs" detail={labeledDetail(row)}>
+      {formatCount(row.done)}/{formatCount(row.total)}
+    </ProgressReadout>
   );
 }
 

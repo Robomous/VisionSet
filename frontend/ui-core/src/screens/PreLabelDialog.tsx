@@ -94,6 +94,7 @@ import { producesProse } from "../data/geometryCategory";
 import { useConnections, type Connection } from "../data/inferenceQueries";
 import { refusalProse } from "../data/refusals";
 import { Alert, AlertDescription, Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
+import { ProgressReadout } from "../patterns/ProgressRing";
 import type { BadgeTone, Segment } from "./batchState";
 import type { KnownMembers } from "../generated/api";
 import { jobKeys, useJobProgress } from "../annotator/jobQueries";
@@ -753,10 +754,11 @@ function PreLabelDialog({
               >
                 {JOB_STATE_LABEL[view.state] ?? view.state}
               </Badge>
+              {/* The count, then its ring — in the model's own colour, as a batch's drafting is in the table. */}
               {view.total !== null && (
-                <span>
+                <ProgressReadout value={view.processed} total={view.total} tone="info">
                   {view.processed} of {view.total}
-                </span>
+                </ProgressReadout>
               )}
             </p>
           )}

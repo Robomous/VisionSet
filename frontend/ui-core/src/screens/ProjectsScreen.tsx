@@ -42,7 +42,6 @@ import { useRef, useState, type FormEvent, type JSX } from "react";
 import { Async } from "../data/Async";
 import { refusalProse } from "../data/refusals";
 import {
-  Badge,
   Button,
   Dialog,
   DialogContent,
@@ -67,6 +66,8 @@ import {
 import { formatCount, formatWhen } from "../lib/format";
 import { BODY_ROW, ColumnHeader, ListGrid, ListPage, type ListColumn } from "../patterns/ListPage";
 import { PageStatus } from "../patterns/PageStatus";
+import { ProgressReadout } from "../patterns/ProgressRing";
+import { StateChip, type State } from "../patterns/StateChip";
 import { usePagination } from "../patterns/pagination";
 import { clickedRowId, walkRowButtons } from "../patterns/rowDelegation";
 import { TableFooter } from "../patterns/TablePager";
@@ -100,20 +101,23 @@ function matches(project: ProjectListItem, query: string): boolean {
 // ── Stage, in words and a status family ───────────────────────────────────
 
 /**
- * One label and one status family per stage, on the product-wide mapping
- * (`docs/content/ui/product-principles.md` → *Status semantics*): `warning` only
- * for what waits on a person to judge, `info` for work in flight, `success` for
- * the settled facts, neutral for nothing-yet and for a decision with nothing
- * wrong. The word always rides with the colour.
+ * One label, one status family and one shape per stage, on the product-wide
+ * mapping (`docs/content/ui/product-principles.md` → *Status semantics*):
+ * `waiting` (warning) only for what waits on a person to judge, `active` (info)
+ * for work in flight, `done` (success) for the settled facts, `draft` (neutral)
+ * for nothing-yet and for a decision with nothing wrong. The shape is the state
+ * grammar's (`DESIGN.md` → *States*): an empty project the dashed ring, a
+ * released-since-changed one the dashed check — done, not frozen. The word
+ * always rides with the colour.
  */
-const STAGE: Record<ProjectStage, { label: string; variant: "warning" | "info" | "success" | "quiet" }> = {
-  in_review: { label: "In review", variant: "warning" },
-  annotating: { label: "Annotating", variant: "info" },
-  to_promote: { label: "Ready to promote", variant: "success" },
-  unreleased: { label: "Not released", variant: "quiet" },
-  up_to_date: { label: "Up to date", variant: "success" },
-  not_started: { label: "Not started", variant: "quiet" },
-  empty: { label: "No images", variant: "quiet" },
+const STAGE: Record<ProjectStage, Pick<State, "label" | "tone" | "glyph">> = {
+  in_review: { label: "In review", tone: "waiting", glyph: "review" },
+  annotating: { label: "Annotating", tone: "active", glyph: "partway" },
+  to_promote: { label: "Ready to promote", tone: "done", glyph: "ready" },
+  unreleased: { label: "Not released", tone: "draft", glyph: "drafted" },
+  up_to_date: { label: "Up to date", tone: "done", glyph: "done" },
+  not_started: { label: "Not started", tone: "draft", glyph: "todo" },
+  empty: { label: "No images", tone: "draft", glyph: "backlog" },
 };
 
 /**
@@ -406,10 +410,10 @@ function SortMenu({
  * annotation). The cell says the larger, so a project of pre-labels nobody has
  * read never reads "All annotated" beside a Status of *Annotating*.
  *
- * **Nothing in it moves.** The ring is a fixed 14px whatever it shows, the
- * count is in tabular figures, and the arc is clamped: a project with anything
- * left never draws a closed ring (at 97% a true arc would read as done), and
- * one with anything annotated never draws an empty one.
+ * **Nothing in it moves.** The count is in tabular figures and the ring is the
+ * shared `ProgressReadout`'s, a fixed 14px whose arc is clamped: a project with
+ * anything left never draws a closed ring (at 97% a true arc would read as
+ * done), and one with anything annotated never draws an empty one.
  */
 function RemainingCell({ digest }: { readonly digest: ProjectListItem["digest"] }): JSX.Element {
   const total = digest.asset_count;
@@ -427,33 +431,23 @@ function RemainingCell({ digest }: { readonly digest: ProjectListItem["digest"] 
   // Floored, so a project one image short never says 100%.
   const share = Math.floor((done / total) * 100);
   return (
-    <span className="flex min-w-0 items-center gap-2" data-testid="remaining-cell" title={`${share}% of images annotated`}>
-      {/* The ring is the images' share; the clamp keeps it open while any
-          frame is still waiting, whichever count that is. */}
-      <ProgressRing fraction={done / total} />
-      <span className="truncate tabular-nums">
-        {formatCount(left)}
-        <span className="text-muted-foreground"> to annotate</span>
-      </span>
+    // The count, then the ring — the shared readout; the ring is the images' share, and stays open while any frame waits.
+    <span className="flex min-w-0" data-testid="remaining-cell" title={`${share}% of images annotated`}>
+      {/* `complete={false}`: frames are left, so the ring stays open whatever the images' share says. */}
+      <ProgressReadout
+        value={done}
+        total={total}
+        complete={false}
+        ringTestId="remaining-ring"
+        detail={{
+          title: "Annotated",
+          caption: `${formatCount(done)} of ${formatCount(total)} images · ${share}%`,
+          note: `${formatCount(left)} ${left === 1 ? "frame" : "frames"} still to annotate.`,
+        }}
+      >
+        <span className="text-foreground">{formatCount(left)}</span> to annotate
+      </ProgressReadout>
     </span>
-  );
-}
-
-const RING_RADIUS = 5.25;
-const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
-
-/** The share annotated as an arc, from twelve o'clock, clockwise. */
-function ProgressRing({ fraction }: { readonly fraction: number }): JSX.Element {
-  // Clamped so the glance never lies: open while anything is left, visible once
-  // anything is done.
-  const shown = fraction <= 0 ? 0 : Math.min(Math.max(fraction, 0.06), 0.92);
-  return (
-    <svg aria-hidden="true" viewBox="0 0 14 14" className="size-3.5 shrink-0 -rotate-90" data-testid="remaining-ring">
-      <circle cx="7" cy="7" r={RING_RADIUS} fill="none" strokeWidth="2" className="stroke-muted-foreground/25" />
-      {shown > 0 && (
-        <circle cx="7" cy="7" r={RING_RADIUS} fill="none" strokeWidth="2" className="stroke-foreground/80" strokeDasharray={`${shown * RING_LENGTH} ${RING_LENGTH}`} />
-      )}
-    </svg>
   );
 }
 
@@ -533,9 +527,10 @@ function Row({
       <td className="text-right tabular-nums">{d.class_count === 0 ? "—" : formatCount(d.class_count)}</td>
       <td>
         <div className="flex min-w-0 items-center gap-2">
-          <Badge variant={stage.variant} data-testid="project-stage">
-            {stage.label}
-          </Badge>
+          <StateChip
+            state={d.stage === "annotating" && d.asset_count > 0 ? { ...stage, fraction: Math.min(d.annotated_asset_count, d.asset_count) / d.asset_count } : stage}
+            testId="project-stage"
+          />
           {detail !== null && <span className="truncate text-xs text-muted-foreground tabular-nums">{detail}</span>}
         </div>
       </td>

@@ -18,7 +18,7 @@
  */
 
 import { parseLabelClass, type LabelClass } from "@visionset/annotator";
-import { useState, type JSX } from "react";
+import { useMemo, useState, type JSX } from "react";
 
 import { Button } from "@robomous/ui-core";
 import type { WireAnnotation } from "../../annotator/jobQueries";
@@ -49,11 +49,13 @@ export interface MemberDetailProps {
 export function MemberDetail({ projectId, datasetId, asset, at, count, focus, onPick, onToggle, onClose, onRemove }: MemberDetailProps): JSX.Element {
   const [showLabels, setShowLabels] = useState(true);
   const annotations = useDatasetAssetAnnotations(datasetId, asset.id);
-  const schema = useActiveSchema(projectId);
+  const declared = useDeclaredClasses(projectId);
   const sources = useSources(projectId);
-  const declared = new Map<string, LabelClass>();
-  for (const one of schema.data?.classes ?? []) declared.set(one.name, parseLabelClass(one));
-  const framed = asset.width != null && asset.height != null && asset.width > 0 && asset.height > 0;
+  const drawing = labelDrawing(asset);
+  const labels = annotations.data ?? NO_ANNOTATIONS;
+  const classes = useMemo(() => [...declared.values()], [declared]);
+  // One switch for both drawings: over a picture's frame, or in a scan's 3D view.
+  const scanLabels = useMemo(() => (drawing === "scan" && showLabels ? { annotations: labels, classes } : undefined), [drawing, showLabels, labels, classes]);
 
   return (
     <ImageDetail
@@ -67,13 +69,12 @@ export function MemberDetail({ projectId, datasetId, asset, at, count, focus, on
       onPick={onPick}
       onToggle={onToggle}
       onClose={onClose}
-      overlay={
-        framed && showLabels ? <AnnotationLayer width={asset.width ?? 0} height={asset.height ?? 0} annotations={annotations.data ?? []} classes={[...declared.values()]} /> : null
-      }
+      overlay={drawing === "frame" && showLabels ? <AnnotationLayer width={asset.width ?? 0} height={asset.height ?? 0} annotations={labels} classes={classes} /> : null}
+      scanLabels={scanLabels}
     >
       <div className="mt-4 flex flex-col gap-4 border-t border-border/70 pt-3 text-[13px]" data-testid="preview-panel">
-        <Labels annotations={annotations} colorOf={(name) => classColor(declared.get(name), name)} showLabels={showLabels} onToggle={framed ? () => setShowLabels((on) => !on) : null} />
-        {!framed && (
+        <Labels annotations={annotations} colorOf={(name) => classColor(declared.get(name), name)} showLabels={showLabels} onToggle={drawing === "none" ? null : () => setShowLabels((on) => !on)} />
+        {drawing === "none" && (
           <p className="text-xs text-muted-foreground" data-testid="preview-no-overlay">
             This image does not record its size, so its labels cannot be drawn over it.
           </p>
@@ -91,6 +92,26 @@ export function MemberDetail({ projectId, datasetId, asset, at, count, focus, on
     </ImageDetail>
   );
 }
+
+/**
+ * Where a member's labels are drawn: over its picture's frame, in a scan's 3D
+ * view, or nowhere — a picture whose size is not recorded has no frame to
+ * place coordinates in. A scan has no picture frame to miss.
+ */
+type LabelDrawing = "frame" | "scan" | "none";
+
+function labelDrawing(asset: DatasetAsset): LabelDrawing {
+  if (asset.modality === "point_cloud") return "scan";
+  return asset.width != null && asset.height != null && asset.width > 0 && asset.height > 0 ? "frame" : "none";
+}
+
+/** The active schema's classes, by name. */
+function useDeclaredClasses(projectId: string): ReadonlyMap<string, LabelClass> {
+  const classes = useActiveSchema(projectId).data?.classes;
+  return useMemo(() => new Map((classes ?? []).map((one) => [one.name, parseLabelClass(one)] as const)), [classes]);
+}
+
+const NO_ANNOTATIONS: readonly WireAnnotation[] = [];
 
 /** What is on the image, counted by class, and the switch for the drawing. */
 function Labels({

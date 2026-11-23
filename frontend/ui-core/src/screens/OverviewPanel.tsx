@@ -75,7 +75,7 @@ import {
 } from "@robomous/ui-core";
 import { formatCount, formatPercent } from "../lib/format";
 import { EmptyState, ErrorState } from "../patterns/AsyncStates";
-import { BatchSheet, type SheetJob } from "../patterns/project/BatchSheet";
+import { BatchSheet, type BatchDetails, type SheetJob } from "../patterns/project/BatchSheet";
 import { BatchTable, useBatchTableView, type BatchRowView } from "../patterns/project/BatchTable";
 import { ClassShares } from "../patterns/project/ClassShareBar";
 import { KPI_CARD_HEIGHT, KPI_GRID, KpiCards, type KpiCard, type KpiStep } from "../patterns/project/KpiCards";
@@ -367,7 +367,7 @@ function Kpis({
       icon: CircleCheckBig,
       value: done === null ? null : percentOf(done),
       unit: "%",
-      ...(done === null ? {} : { meter: { value: done, total: counted.asset_count, tone: "bg-success" } }),
+      ...(done === null ? {} : { meter: { value: done, total: counted.asset_count } }),
       // No door: the batches that answer it are the table right below.
       context:
         left === null
@@ -393,7 +393,7 @@ function Kpis({
       label: "In dataset",
       icon: PackageCheck,
       value: inTrunk === undefined ? null : formatCount(inTrunk),
-      ...(inTrunk === undefined ? {} : { meter: { value: inTrunk, total: counted.asset_count, tone: "bg-foreground/70" } }),
+      ...(inTrunk === undefined ? {} : { meter: { value: inTrunk, total: counted.asset_count } }),
       context:
         inTrunk === undefined || releases.data === undefined
           ? undefined
@@ -717,7 +717,8 @@ function Detail({
         data-testid="batch-sheet"
         onInteractOutside={(event) => {
           const target = event.target instanceof Element ? event.target : null;
-          if (target?.closest('[data-testid="overview-batches"], [role=menu], [role=listbox], [role=dialog]') != null) event.preventDefault();
+          // A progress card is portalled outside the sheet; pointing at it is reading the sheet, not leaving it.
+          if (target?.closest('[data-testid="overview-batches"], [role=menu], [role=listbox], [role=dialog], [data-testid="progress-card"]') != null) event.preventDefault();
         }}
         // Focus leaving is not a dismissal: a popover that opened a batch hands
         // the focus back to its trigger as it closes, and the sheet must stay.
@@ -751,6 +752,7 @@ function Detail({
           jobs={sheetJobs}
           {...(jobsError === undefined ? {} : { jobsError })}
           noJobs="No jobs yet. Approving the batch cuts it into jobs."
+          {...(batch === undefined ? {} : { details: detailsOf(batch) })}
           actions={
             batch === undefined ? undefined : (
               // Keyed on the batch: each control keeps the outcome of its own press, and stepping to the next batch must not carry it over.
@@ -774,6 +776,15 @@ function Detail({
   );
 }
 
+/** What the panel's folded properties say about a batch, read off the wire. */
+function detailsOf(batch: Batch): BatchDetails {
+  return {
+    review: hasJobs(batch.state) ? { accepted: batch.progress.accepted, waiting: batch.progress.review_pending, skipped: batch.progress.skipped } : null,
+    correction: batch.parent_batch_id !== null,
+    promoted: batch.promoted_asset_count,
+  };
+}
+
 /** Each job as the panel lists it: who holds it, how far it has come, and the way into it. */
 function sheetJobsOf(jobs: readonly Job[], counts: ReadonlyMap<string, ProgressCounts> | undefined, onOpenJob: ((jobId: string) => void) | undefined): SheetJob[] {
   return jobs.map((job, i) => {
@@ -786,6 +797,7 @@ function sheetJobsOf(jobs: readonly Job[], counts: ReadonlyMap<string, ProgressC
       done: progress === undefined ? undefined : annotatedShare(progress).done,
       state: JOB_STATE_LABEL[job.state] ?? job.state,
       finished: job.state === "completed",
+      ...(progress === undefined ? {} : { counts: progress }),
       ...(onOpenJob === undefined ? {} : { onOpen: () => onOpenJob(job.id) }),
     };
   });

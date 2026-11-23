@@ -64,6 +64,8 @@ let sources: Record<string, unknown>[] = [];
 let total: number | undefined;
 /** The sentinels the grid is watching, to bring one "into view" by hand. */
 let watching: { readonly fire: () => void }[] = [];
+/** Every path the screen fetched, in order. */
+let fetched: string[] = [];
 
 function json(body: unknown, status = 200): Promise<Response> {
   return Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }));
@@ -74,9 +76,11 @@ beforeEach(() => {
   held = [];
   sources = [];
   watching = [];
+  fetched = [];
   vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : new Request(String(input), init);
     const url = new URL(request.url);
+    fetched.push(url.pathname + url.search);
     if (/\/projects\/[^/]+\/assets$/.test(url.pathname)) {
       const offset = url.searchParams.get("offset");
       const limit = url.searchParams.get("limit");
@@ -88,6 +92,7 @@ beforeEach(() => {
       return json({ items, total: only === null ? (total ?? scope.length) : scope.length });
     }
     if (/\/projects\/[^/]+\/sources$/.test(url.pathname)) return json({ items: sources, total: sources.length });
+    if (/\/thumbnail$/.test(url.pathname)) return Promise.resolve(new Response(new Uint8Array([255, 216, 255]), { status: 200 }));
     if (/\/content$/.test(url.pathname)) return Promise.resolve(new Response(new Uint8Array([137, 80, 78, 71]), { status: 200 }));
     return json({ code: "NO_STUB", message: request.url }, 404);
   });
@@ -138,6 +143,18 @@ function twoSources(): void {
     ),
     ...assets(0, 5, { source_id: FOLDER }),
   ];
+}
+
+/** A 27,400-point scan with intensity, as `GET /assets` describes one. */
+function scanAsset(): Record<string, unknown> {
+  return asset("scan0", {
+    modality: "point_cloud",
+    point_cloud: { format: "pcd", point_count: 27400, fields: ["x", "y", "z", "intensity"], bounds: { minimum: [0, -40, -2], maximum: [40, 40, 4] } },
+    width: null,
+    height: null,
+    format: null,
+    thumbnail_hash: "f".repeat(64),
+  });
 }
 
 const selectedTile = (): HTMLElement | null => document.querySelector<HTMLElement>("[role=option][aria-selected=true]");
@@ -213,6 +230,66 @@ describe("the Images section", () => {
     expect(screen.getByTestId("image-focus-toggle").getAttribute("aria-label")).toBe("Back to grid");
     await userEvent.click(screen.getByTestId("image-focus-toggle"));
     expect(screen.getByTestId("image-focus-toggle").getAttribute("aria-label")).toBe("Focus on image");
+  });
+
+  it("shows a point-cloud scan as its picture from above, fetching no points until it is opened in 3D", async () => {
+    held = [scanAsset()];
+    renderImages();
+
+    // The only image is selected on arrival, so the detail is already open.
+    await waitFor(() => expect(screen.getByTestId("image-scan0").getAttribute("aria-selected")).toBe("true"));
+    const well = screen.getByTestId("scan-preview");
+    await waitFor(() => expect(within(well).queryByTestId("thumbnail")).not.toBeNull());
+    expect(screen.queryByTestId("image-detail-picture")).toBeNull();
+    // The well holds its own controls, so it is not itself the focus button.
+    expect(screen.queryByRole("button", { name: "Focus on this image" })).toBeNull();
+    const facts = within(screen.getByTestId("image-facts"));
+    expect(facts.getByText("Points")).toBeTruthy();
+    expect(facts.getByText((27400).toLocaleString())).toBeTruthy();
+    expect(facts.getByText("PCD")).toBeTruthy();
+    expect(fetched.some((path) => path.includes("/points"))).toBe(false);
+    expect(fetched.some((path) => path.endsWith("/content"))).toBe(false);
+
+    await userEvent.click(screen.getByTestId("scan-open"));
+    await waitFor(() => expect(fetched).toContain("/projects/" + PROJECT + "/assets/scan0/points?max_points=27400"));
+    expect(screen.getByTestId("scan-close")).toBeTruthy();
+  });
+
+  it("moves focus to the button that replaced the one pressed, and spends Escape on an open pill's list alone", async () => {
+    held = [scanAsset()];
+    renderImages();
+
+    await userEvent.click(await screen.findByTestId("scan-open"));
+    expect(document.activeElement).toBe(screen.getByTestId("scan-close"));
+
+    await userEvent.click(screen.getByTestId("scan-density"));
+    await screen.findByRole("radio", { name: "1,700 points" });
+    await userEvent.keyboard("{Escape}");
+    // The list closed; the detail and the open scan did not.
+    await waitFor(() => expect(screen.queryByRole("radio", { name: "1,700 points" })).toBeNull());
+    expect(screen.getByTestId("image-detail")).toBeTruthy();
+    expect(screen.getByTestId("scan-close")).toBeTruthy();
+
+    await userEvent.click(screen.getByTestId("scan-close"));
+    expect(document.activeElement).toBe(screen.getByTestId("scan-open"));
+  });
+
+  it("keeps a scan open in 3D across focus, and asks for the density chosen from the points pill", async () => {
+    held = [scanAsset()];
+    renderImages();
+
+    await userEvent.click(await screen.findByTestId("scan-open"));
+    await userEvent.click(screen.getByTestId("image-focus-toggle"));
+    // Focus re-lays the detail out; the scan stays open rather than falling back to its picture.
+    expect(screen.getByTestId("scan-close")).toBeTruthy();
+    expect(screen.queryByTestId("scan-open")).toBeNull();
+
+    await userEvent.click(screen.getByTestId("scan-density"));
+    await userEvent.click(await screen.findByRole("radio", { name: "1,700 points" }));
+    await waitFor(() => expect(fetched).toContain("/projects/" + PROJECT + "/assets/scan0/points?max_points=1700"));
+
+    await userEvent.click(screen.getByTestId("scan-close"));
+    expect(screen.getByTestId("scan-open")).toBeTruthy();
   });
 
   it("is one Tab stop, and its arrows move selection and focus together across sources", async () => {

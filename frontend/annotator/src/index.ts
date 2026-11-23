@@ -205,9 +205,12 @@ export {
   type ScreenVertex,
 } from "./core/pointcloud/edit/overlay";
 export {
+  HEIGHT_RAMP,
+  INTENSITY_RAMP,
   colorModeAvailable,
   defaultColorMode,
   pointColors,
+  robustRange,
   type ColorMode,
 } from "./core/pointcloud/ramp";
 export {

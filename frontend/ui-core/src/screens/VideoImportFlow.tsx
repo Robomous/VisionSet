@@ -72,13 +72,13 @@ import {
   FieldDescription,
   Input,
   Label,
-  Progress,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@robomous/ui-core";
+import { ProgressBar } from "../patterns/ProgressBar";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { ApiError } from "../data/errors";
@@ -524,7 +524,7 @@ export function VideoImportFlow({
                 <p className="text-xs text-muted-foreground" data-testid="import-progress">
                   {progress.materialized} of {progress.expected} frames
                 </p>
-                <Progress
+                <ProgressBar
                   aria-label="Video import progress"
                   value={
                     progress.expected === 0

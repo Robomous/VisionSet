@@ -39,6 +39,14 @@
   --origin-hub: oklch(0.8 0.16 85);
   --origin-custom: oklch(0.65 0.15 250);
   --origin-robomous: oklch(0.68 0.17 35);
+  /*
+   * Work partway done: the arc of a progress ring, the fill of a meter, the
+   * progress chip's ink. A warm, low-chroma bronze — present without shouting,
+   * and apart from warning's amber, because partway is not a problem. Its track
+   * is the same colour at 15%, a tint of the hue rather than a grey. Done is
+   * still `success`.
+   */
+  --progress: oklch(0.45 0.045 92);
 }
 
 .dark {
@@ -46,6 +54,7 @@
   --origin-hub: oklch(0.8 0.16 85);
   --origin-custom: oklch(0.65 0.15 250);
   --origin-robomous: oklch(0.68 0.17 35);
+  --progress: oklch(0.8 0.05 92);
 }
 
 @theme inline {
@@ -54,6 +63,7 @@
   --color-origin-hub: var(--origin-hub);
   --color-origin-custom: var(--origin-custom);
   --color-origin-robomous: var(--origin-robomous);
+  --color-progress: var(--progress);
 
   /* The page-content cap stays here, unlike the rail's width, because
      `PaddedContent` reads it — a reusable VisionSet surface, so the value is
@@ -68,6 +78,89 @@
 .vs-muted-player::-webkit-media-controls-volume-slider,
 .vs-muted-player::-webkit-media-controls-volume-control-container {
   display: none !important;
+}
+
+/*
+ * Something arriving in place of what was there — the scan preview's live
+ * view over its picture: opacity only, 200ms, a strong ease-out, and nothing
+ * at all for whoever asked for less motion.
+ */
+@keyframes vs-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+.vs-fade-in {
+  animation: vs-fade-in 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .vs-fade-in {
+    animation: none;
+  }
+}
+
+/*
+ * A progress card: in from its trigger (Radix's transform origin), scaled from
+ * 0.96 and faded over 160ms on the strong ease-out; out in 100ms. A card opened
+ * in a chain — right after another — has no entrance at all. Its bar's parts
+ * grow from their left edges, 30ms apart, just behind the card. Under reduced
+ * motion only the card's opacity changes.
+ */
+.vs-progress-card {
+  transform-origin: var(--radix-hover-card-content-transform-origin);
+  /* It rises toward the side it opens on: up above its trigger, down when flipped below it. */
+  --vs-rise: 4px;
+}
+.vs-progress-card[data-side="bottom"] {
+  --vs-rise: -4px;
+}
+.vs-progress-card[data-state="open"] {
+  animation: vs-progress-in 160ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+.vs-progress-card[data-state="closed"] {
+  animation: vs-progress-out 100ms ease-out both;
+}
+.vs-progress-card[data-instant],
+.vs-progress-card[data-instant] .vs-progress-grow {
+  animation: none;
+}
+@keyframes vs-progress-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(var(--vs-rise));
+  }
+}
+@keyframes vs-progress-out {
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+.vs-progress-grow {
+  transform-origin: left center;
+  animation: vs-progress-grow 260ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  animation-delay: calc(30ms * var(--vs-i, 0) + 40ms);
+}
+@keyframes vs-progress-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vs-progress-card[data-state="open"] {
+    animation: vs-fade-in 120ms ease-out both;
+  }
+  .vs-progress-card[data-state="closed"] {
+    animation: vs-progress-fade-out 100ms ease-out both;
+  }
+  .vs-progress-grow {
+    animation: none;
+  }
+}
+@keyframes vs-progress-fade-out {
+  to {
+    opacity: 0;
+  }
 }
 
 /*

@@ -366,6 +366,21 @@ toggle) widens the image to the pane and folds the grid into a two-column rail b
 every image but the selected one steps back; the same toggle, Enter or `Esc` folds it back. The
 two columns never swap places, so the toggle that expanded is under the pointer to collapse.
 
+*A point-cloud scan* takes the picture's place as its cached top-down thumbnail (`ScanPreview`),
+and fetches no points until **Open in 3D** asks for them; the live view then fades in over it, in
+place, and **Back to picture** returns. Open stays open across focus and closes with the next
+image. Its facts read Points and the scan's format where an image reads Size and Format. Every
+control sits on the view, and each is the readout of what it controls: the angle — 3D, Top, or
+Both side by side (stacked in the narrow detail) — at its top; at its foot a legend pill, the
+colour ramp with the values at its ends (the 2nd–98th percentiles the canvas stretches it over,
+in metres for height), which chooses Height, Intensity or RGB; and a points pill, *27,400 pts*,
+which lists the densities the scan can be read at — 1/16, 1/8, 1/4, 1/2 and all of it, at two
+significant figures inside the route's 1,000–2,000,000 — each with its share of the scan and
+what it costs to load. A new density keeps the current points and camera until its own arrive.
+The well holds these controls, so a scan's well is not itself the focus button. A dataset
+member's 3D labels are drawn in the view and follow the member's label switch. Without WebGL2
+the view is the thumbnail.
+
 *Keys.* The grid acts on a key only while one of its images holds focus — a heading, a button or
 the menu keeps its own — and, with nothing focused, the arrows still walk and bring focus in.
 Arrows move selection and focus together across sources (up and down keep the column); walking
@@ -416,11 +431,21 @@ filter. **Opening a row opens the batch's detail panel** at the right of the pag
 stays in view and the two are read together ([`DESIGN.md`](../../DESIGN.md#detail-panels): it
 comes from the right, its width is the person's to set, and it is not a dialog; below `lg` it is
 a sheet). The panel is the batch's only home: a batch has no page, and the old
-`/projects/:id/batches/:batchId` address redirects here. It reads *Batch n of N* with previous
-and next (J/K walk the batches without closing it), the name and state, the batch's facts -
-images, schema pin, how much is labeled - and its **jobs**: who holds each, how far it has come
-(`done/images`, read per job), and *Open* into the editor on that job, or *Done*. The panel opens
-with focus on the batch's forward step, and Escape closes it.
+`/projects/:id/batches/:batchId` address redirects here. A slim toolbar reads *Batch n of N*
+with previous and next (J/K walk the batches without closing it) and close; under it the
+batch's name is the page's title, and its **properties** follow one per row, an icon and a
+label beside the value. The state is one of them - a state chip whose glyph says the phase
+(the dashed ring, the ring, the labeling pie, the arrow to the dataset, the check) and whose
+card says what it means, not a badge beside the name - with Labeled (*18 of 48 · 38%* over a meter), Images and Assigned (who holds
+the jobs, and how many nobody does). The rest - Review (accepted, waiting, skipped), the schema
+version, Kind (a correction or not) and how many of its images are In dataset - wait behind
+*N more properties*, which opens in place, cannot be tabbed into while folded, and stays open
+as J/K walks the batches. Then its **jobs**: who holds each, how far it has come
+(`done/images`, read per job), and *Open* into the editor on that job, or *Done*. When the
+title scrolls out of view on the way down the jobs, the name, the state and how far it has come
+gather into one line pinned under the toolbar; it echoes the page, so assistive tech is not told
+twice, and pressing it scrolls back up. The panel opens with focus on the batch's forward step,
+and Escape closes it.
 
 **The panel's footer carries every action on the batch**, each offered from the batch's
 `allowed_actions` - never from its state read here - and each with its own gating, refusals and
@@ -512,8 +537,8 @@ dataset since a release beside its wall's title. What blocks — a refusal, a co
 download — stays a sentence under its row.
 
 **States are chips** (`patterns/StateChip.tsx`, [`DESIGN.md`](../../DESIGN.md#states)): a
-tinted ground, a glyph that fills as the thing nears done — a dashed ring, a pie, a filled
-check, a filled mark — and the word; what it means beyond the word is a card on hover or focus.
+tinted ground, a glyph that fills as the thing nears done — lucide's dashed ring, a pie in
+quarters, a check, a mark — and the word; what it means beyond the word is a card on hover or focus.
 
 The history reads as a changelog: each version's entry says only what changed against the
 release before it — the images and annotations it gained or lost, a schema version or a split

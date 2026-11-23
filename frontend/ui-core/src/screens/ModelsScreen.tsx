@@ -179,7 +179,8 @@ import {
   type WeightDownload,
 } from "../data/inferenceQueries";
 import { jobFailureProse, refusalProse } from "../data/refusals";
-import { cn, Badge, Button, Progress, SearchInput, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@robomous/ui-core";
+import { cn, Badge, Button, SearchInput, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@robomous/ui-core";
+import { ProgressBar } from "../patterns/ProgressBar";
 import { ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { DetailPane } from "../patterns/DetailPane";
 import { BODY_ROW, ColumnHeader, ListGrid, ListPage, type ListColumn } from "../patterns/ListPage";
@@ -1092,7 +1093,7 @@ function RunProgress({
         </span>
       </span>
       {percent !== null ? (
-        <Progress value={percent} aria-label={label} className="h-1" data-testid={`${testId}-bar`} data-phase={phase} />
+        <ProgressBar value={percent} aria-label={label} className="h-1" data-testid={`${testId}-bar`} data-phase={phase} />
       ) : (
         // The bar's room, kept: the line above stays put when the bar arrives.
         <span aria-hidden="true" className="h-1" />

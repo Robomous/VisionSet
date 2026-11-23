@@ -60,6 +60,8 @@ function forWall(event: KeyboardEvent): boolean {
   if (event.metaKey || event.ctrlKey || event.altKey) return false;
   const target = event.target as HTMLElement | null;
   if (target === null) return true;
+  // A scan preview's keys are its own — the view orbits, the angle tabs and menus walk; only Escape leaves it.
+  if (event.key !== "Escape" && target.closest('[data-testid="scan-preview"]') !== null) return false;
   return target === document.body || target.closest('[data-testid="trunk-grid"],[data-testid="image-detail"]') !== null;
 }
 

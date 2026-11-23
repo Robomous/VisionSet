@@ -17,6 +17,7 @@ a value in `:root`, a dark counterpart in `.dark`, exposure through `@theme inli
 | --- | --- |
 | `stage` | The annotator's surround — the neutral a photograph is judged against. Its own role: not `muted`'s subtle fill, not `card`'s surface, distinguishable from `background` so a white asset edge still shows where it ends. Usage: [`docs/content/ui/annotator.md`](docs/content/ui/annotator.md#the-stage) |
 | `origin-hub` / `origin-custom` / `origin-robomous` | A model's provenance, as the small square beside its origin on the Models table. A mark: never a surface, never ink, and an origin is a kind rather than a state, so these never stand in for a status. Theme-stable, like the chart palette |
+| `progress` | Work partway done: a progress ring's arc, a meter's or an operation bar's fill, the `progress` state chip's ink. A warm, low-chroma bronze, apart from `warning` because partway is not a problem; its track is the same colour at 15%, a tint of the hue rather than a grey. Done is still `success`. Drawn by `ProgressReadout` / `ProgressRing` (`patterns/ProgressRing.tsx`) and `ProgressBar` (`patterns/ProgressBar.tsx`) |
 | `--container-page` | The 96rem page cap — read by `PaddedContent`, a reusable VisionSet surface |
 | `--page-inset-bottom` | Not a declared token: a variable a host sets to the height of chrome it pins to the viewport's bottom, read by the sections that fit the window (Overview, Images, Classes, Dataset and Models) and by the Classes commit bar, which floats above it. Unset means 0 |
 | `--page-inset-top` | Not a declared token: the same for chrome a host pins to the viewport's top (the standalone app's tab strip), read by the Images section so its pane takes exactly the height between the two. Unset means 0 |
@@ -229,26 +230,81 @@ has labeled sit in batches that declare `pre_label`.
 The motion values are named once, in `lib/motion.ts` (`EASE_OUT`, `EASE_SETTLE`, `DURATION`), and
 read from there.
 
+### Progress
+
+**Progress is said one way: the number, then a small ring.** `ProgressReadout` — the number
+quiet (`muted-foreground`, regular weight, tabular figures, a `%` the digits' own size), then a
+ring a ring's width after it: 14px unless sized to a larger figure, a stroke about a sixth of
+its diameter with round ends, from twelve o'clock clockwise, the arc `progress` on a track of
+`progress/15`, closing in `success` once done. The glance never lies: the ring stays open while
+anything is left and shows once anything is done, and a caller who knows better than the count
+says so (`complete`). A model's own work — drafting labels — takes `info` instead. Where a bar's
+length is the point (a long operation: an import, an ingest, a model's download) the bar is
+`ProgressBar`, in the same colours. Nothing in either animates.
+
+**Pointed at or focused, an indicator that has more to say opens its card** (`ProgressHoverCard`):
+*Labeled 10 of 24 · 42%* on one line, the whole split as one segmented bar in its states'
+colours — the wire's own `ProgressCounts`, so the parts add up — the parts named inline, count
+first, and whose it is under a hairline. The card's percent rounds as the readout's does and never
+says 100 while anything is left.
+
+| Rule | Why |
+| --- | --- |
+| **The first card waits 450 ms; the next, within 400 ms of one closing, opens at once and without motion.** | A pointer crossing a table is passing through; one reading down a column has shown it wants the cards. |
+| **Focus opens it at once, and the indicator is a tab stop** only when it has a card. | What the pointer can learn, the keyboard can too; a plain readout adds no stop. |
+| **It enters from its trigger** (Radix's transform origin), scaled from 0.96 and faded over 160 ms on the strong ease-out, and leaves in 100 ms; the bar's parts grow from their left edges 30 ms apart, just behind it. | Out faster than in; the parts arriving in order read as the split. |
+| **Under reduced motion only the card's opacity changes**, and the bar is simply there. | A fade carries the change without the journey. |
+
 ### States
 
 **A state is a chip: a tinted ground, a glyph that fills as the thing nears done, and the
 word.** The pattern is `StateChip` (`patterns/StateChip.tsx`), with the states themselves
 computed off the wire as plain functions beside the screen that shows them
-(`screens/dataset/states.ts`).
+(`screens/dataset/states.ts`, `phaseState` in `patterns/project/batchRowModel.ts`, the
+Projects list's `STAGE`). A batch's phase — the Overview table, the batch panel and its
+condensed line — and a project's stage on the Projects list are chips.
 
-| Tone | Glyph | Ground and ink | Reads as |
+**One glyph grammar for every family**, so a new state finds its shape without a meeting.
+The glyphs are lucide's at one 1.5px stroke (`absoluteStrokeWidth`), 14px in a chip; where
+lucide has no icon for a shape it is drawn on lucide's own grid from lucide's geometry.
+
+| Glyph | Shape | Says | For |
 | --- | --- | --- | --- |
-| `draft` | a dashed ring | `muted` / `muted-foreground` | not started, nothing to do, not asked — *Not verified*, *Same as v0.4* |
-| `progress` | a pie, filled to the real fraction when there is one | `warning/10` / `warning` | partway — *40 of 48 labeled*, *Exporting 12/48* |
-| `review` | a pie at three quarters, or the fraction | `info/10` / `info` | something to look at — *Changed since v0.4*, *1 of 2 classes used* |
-| `done` | a filled check | `success/10` / `success` | done — *Intact*, *All labeled*, *Downloaded* |
-| `failed` | a filled mark | `destructive/10` / `destructive` | failed — *Problems found*, *Failed* |
+| `backlog` | `CircleDashed` | not committed | a draft batch, an empty project, a tone-`draft` fact |
+| `todo` | `Circle` | committed, nothing done yet | an approved batch, a project not started |
+| `partway` | a pie in quarters — `Contrast` at a half; its inner disc at a quarter and three | how far along | a batch being labeled, a project annotating, *Exporting 12/48* |
+| `review` | the pie at three quarters | the turn that waits on a person | a project in review |
+| `ready` | `CircleFadingArrowUp`, turned to point on | on its way somewhere else | a finished batch outside the dataset, a project ready to promote |
+| `done` | `CircleCheck` | done | a batch in the dataset, a project up to date, *Intact* |
+| `drafted` | `CircleDashedCheck` | done, not yet somebody's | a project changed since its release; a model's draft |
+| `skipped` | `Ban`, mirrored | decided against | a skipped frame |
+| `cancelled` | `CircleDashed`'s dashes around `CircleX`'s cross | stopped on request | a cancelled run |
+| `failed` | `CircleAlert` | failed | *Problems found*, *Failed* |
+
+A pie is drawn in **quarters** — a quarter, a half, three quarters, rounded to the nearest
+and never empty or full — so it is never read as the ring or the check, and a glance
+reads the step rather than a percentage the number beside it already says.
+
+| Tone | Default glyph | Ground and ink | Reads as |
+| --- | --- | --- | --- |
+| `draft` | `backlog` | `muted` / `muted-foreground` | not started, nothing to do, not asked — *Not verified*, *Same as v0.4* |
+| `progress` | `partway` | `progress/10` / `progress` | partway — *40 of 48 labeled*, *Exporting 12/48* |
+| `review` | `review` | `info/10` / `info` | something to look at — *Changed since v0.4*, *1 of 2 classes used* |
+| `done` | `done` | `success/10` / `success` | done — *Intact*, *All labeled*, *Downloaded* |
+| `failed` | `failed` | `destructive/10` / `destructive` | failed — *Problems found*, *Failed* |
+| `active` | `partway` | `info/10` / `info` | work in flight, on the lifecycle mapping — a batch being labeled, a project annotating |
+| `waiting` | `review` | `warning/10` / `warning` | waiting on a person — a project in review |
+
+A lifecycle state — a batch's phase, a project's stage — takes its family from the
+product-wide mapping ([`product-principles.md`](docs/content/ui/product-principles.md#status-semantics)),
+hence `active` and `waiting`; a state names its glyph where its tone's default does not say it
+(an approved batch is `draft` with `todo`, a finished one `done` with `ready`).
 
 | Rule | Why |
 | --- | --- |
 | **The glyph carries the state, the word names it.** The icon-only form keeps the word as its accessible name. | A chip reads at a glance before its word is read, and the icon-only form still says it. |
 | **The glyph is the only icon a value gets.** A field's label may carry the icon that names the field (*Fact sections*, below); the value beside it never carries one but a state's glyph. | A state's icon is information; any other icon on a value is decoration. |
-| **What a state means beyond its word is its card** — a title and a line or two, on hover and on focus (the chip takes focus when it has one). Where the words beside an icon-only chip already say the title, the card drops it (`linesOnly`). | Said once, as an info button's card is. |
+| **What a state means beyond its word is its card** — a title and a line or two, on hover and on focus (the chip takes focus when it has one). Where the words beside an icon-only chip already say the title, the card drops it (`linesOnly`). A chip inside a row that opens on a press carries no card (the batch table, the Projects list): the row is the stop, and a second one per row is noise; the batch panel's chip has its card. | Said once, as an info button's card is. |
 | **`cancelled` is `draft`, not `failed`.** | Somebody asked for it: a decision is not an error. |
 
 ### Fact sections, and the action a thing is opened for

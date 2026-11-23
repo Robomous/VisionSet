@@ -17,12 +17,13 @@
 
 import { Button, Kbd, Tooltip, TooltipContent, TooltipTrigger, cn } from "@robomous/ui-core";
 import { ChevronLeft, ChevronRight, Maximize2, Minimize2, X } from "lucide-react";
-import type { JSX, ReactNode } from "react";
+import { useState, type JSX, type ReactNode } from "react";
 
 import { formatCount } from "../../lib/format";
 import type { Source } from "../queries";
 import type { ImageItem } from "./imageFacts";
-import { Facts, FitImage, SourceIcon, SWAP, SWAP_OUT, Where } from "./ImageParts";
+import { Facts, FitImage, SourceIcon, SWAP, SWAP_OUT, Where, type ScanState } from "./ImageParts";
+import type { ScanLabels } from "./ScanPreview";
 
 export function ImageDetail({
   projectId,
@@ -36,6 +37,7 @@ export function ImageDetail({
   onToggle,
   onClose,
   overlay,
+  scanLabels,
   children,
 }: {
   readonly projectId: string;
@@ -53,9 +55,22 @@ export function ImageDetail({
   readonly onClose?: () => void;
   /** Drawn over the picture, in both forms: a dataset member's labels. */
   readonly overlay?: ReactNode;
+  /** A scan's 3D labels, drawn in its focused view: a dataset member's. */
+  readonly scanLabels?: ScanLabels | undefined;
   /** What the surface knows beyond the image's own facts, under them: a dataset member's labels and its removal. */
   readonly children?: ReactNode;
 }): JSX.Element {
+  // Which scan is open in 3D: kept here, above the well's two forms, so widening into focus keeps
+  // it open, and keyed by the asset, so the next scan opens as a picture.
+  const [openScan, setOpenScan] = useState<string | null>(null);
+  const isScan = item.asset.modality === "point_cloud";
+  const scan = (wide: boolean): ScanState => ({
+    open: openScan === item.asset.id,
+    onOpenChange: (open) => setOpenScan(open ? item.asset.id : null),
+    focus: wide,
+    labels: scanLabels,
+  });
+
   return (
     <section
       aria-label="Selected image"
@@ -104,21 +119,29 @@ export function ImageDetail({
       {focus ? (
         <>
           <div className="flex min-h-0 flex-1 bg-stage p-6">
-            <FitImage projectId={projectId} item={item} source={source} className="flex-1" frameClassName="rounded-lg shadow-md" overlay={overlay} />
+            <FitImage projectId={projectId} item={item} source={source} className="flex-1" frameClassName="rounded-lg shadow-md" overlay={overlay} scan={scan(true)} />
           </div>
           <Facts item={item} source={source} layout="row" className="shrink-0 border-t border-border/70 px-4 py-3 md:px-6" />
         </>
       ) : (
         <>
-          {/* The well opens focus too; the toggle above stays the way back. */}
-          <button
-            type="button"
-            onClick={onToggle}
-            aria-label="Focus on this image"
-            className="h-[min(48dvh,24rem)] shrink-0 cursor-zoom-in border-b border-border/70 bg-stage p-4 outline-none focus-visible:outline-[3px] focus-visible:-outline-offset-[3px] focus-visible:outline-solid focus-visible:outline-ring"
-          >
-            <FitImage projectId={projectId} item={item} source={source} className="size-full" frameClassName="rounded-md shadow-sm" overlay={overlay} />
-          </button>
+          {isScan ? (
+            // A scan's well holds its own controls — Open in 3D, then the view's — so it is not
+            // itself a button; the toggle above and Enter still open focus.
+            <div className="h-[min(48dvh,24rem)] shrink-0 border-b border-border/70 bg-stage p-4">
+              <FitImage projectId={projectId} item={item} source={source} className="size-full" frameClassName="rounded-md shadow-sm" scan={scan(false)} />
+            </div>
+          ) : (
+            // The well opens focus too; the toggle above stays the way back.
+            <button
+              type="button"
+              onClick={onToggle}
+              aria-label="Focus on this image"
+              className="h-[min(48dvh,24rem)] shrink-0 cursor-zoom-in border-b border-border/70 bg-stage p-4 outline-none focus-visible:outline-[3px] focus-visible:-outline-offset-[3px] focus-visible:outline-solid focus-visible:outline-ring"
+            >
+              <FitImage projectId={projectId} item={item} source={source} className="size-full" frameClassName="rounded-md shadow-sm" overlay={overlay} />
+            </button>
+          )}
           <div className="vs-scroll-fade-y min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6" data-testid="image-detail-facts">
             <Facts item={item} source={source} />
             {children}

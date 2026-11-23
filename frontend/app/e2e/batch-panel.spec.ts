@@ -427,7 +427,8 @@ test("the panel says which batch it is showing and how far it has come", async (
   await expect(panel.getByTestId("batch-phase")).toHaveText("Labeling");
   const facts = panel.getByTestId("batch-sheet-facts");
   await expect(facts).toContainText("48");
-  await expect(facts).toContainText("v3");
+  // The schema is among the folded properties: present, and read out once opened.
+  await expect(facts).toContainText("Version 3");
   // Done is everything past `unannotated`: 18 of 48, so the readout is a count,
   // not a state word.
   await expect(facts).toContainText("18 of 48");

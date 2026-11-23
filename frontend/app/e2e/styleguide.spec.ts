@@ -119,7 +119,7 @@ const BRAND = [245, 88, 11];
  * anyway, because the roles are separate and the values may part again.
  */
 const INK = [23, 23, 23];
-/** `--color-muted`, `oklch(0.97 0 0)` — the hover/focus fill and the progress track. */
+/** `--color-muted`, `oklch(0.97 0 0)` — the hover/focus fill. */
 const MUTED = [245, 245, 245];
 /** `--color-background`, `oklch(1 0 0)` — pure white in this preset (unlike the
  * previous foundation, `background` and `card` are no longer distinguishable
@@ -159,20 +159,43 @@ test("the token utilities reach the browser as the contract's values", async ({ 
  * indicator back at `brand` would satisfy every unit test in the repository
  * and fail here.
  */
-test("the progress fill wears the functional primary colour, not the brand", async ({ page }) => {
+/**
+ * Since progress got a colour of its own, the claim is that the bar wears it:
+ * the fill is the `progress` token, the track the same token at 15% — a tint
+ * of the fill, not `muted` — and neither is the brand or the primary button's
+ * fill. `ProgressBar` (`ui-core/src/patterns/ProgressBar.tsx`) is the bar every
+ * long operation uses, so a revert to the bare primitive fails here.
+ */
+test("the progress fill wears its own colour, on a tint of it — not the primary, not the brand", async ({ page }) => {
   const filled = page.getByTestId("button-primary");
   const filledRgb = await rgbaOf(page, filled, "background-color");
   expect(filledRgb.slice(0, 3)).toEqual(PRIMARY);
 
-  // Radix's indicator is the fill inside the track; the track itself is `muted`.
+  // The token, resolved by the browser itself, so the test holds whatever value `progress` has.
+  const progressRgb = await channelsOf(
+    page,
+    await page.evaluate(() => {
+      const probe = document.createElement("span");
+      probe.style.backgroundColor = "var(--progress)";
+      document.body.append(probe);
+      const value = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return value;
+    }),
+  );
+
+  // Radix's indicator is the fill inside the track.
   const bar = page.getByRole("progressbar").first();
   const trackRgb = await rgbaOf(page, bar, "background-color");
   const indicator = bar.locator("> *").first();
   const indicatorRgb = await rgbaOf(page, indicator, "background-color");
 
-  expect(indicatorRgb).toEqual(filledRgb);
+  expect(indicatorRgb.slice(0, 3)).toEqual(progressRgb.slice(0, 3));
   expect(indicatorRgb.slice(0, 3)).not.toEqual(BRAND);
-  expect(trackRgb.slice(0, 3)).toEqual(MUTED);
+  expect(indicatorRgb.slice(0, 3)).not.toEqual(PRIMARY);
+  // The same hue, faint: its channels match the fill's (to a canvas's rounding at low alpha) and only its alpha drops.
+  for (const [i, channel] of trackRgb.slice(0, 3).entries()) expect(Math.abs(channel - progressRgb[i]!)).toBeLessThanOrEqual(8);
+  expect(trackRgb[3]).toBeLessThan(255);
 });
 
 /**
