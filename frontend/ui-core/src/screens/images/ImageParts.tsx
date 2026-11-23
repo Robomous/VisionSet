@@ -10,6 +10,7 @@ import { useEffect, useRef, useState, type CSSProperties, type JSX, type ReactNo
 import { AssetImage } from "../../annotator/AssetImage";
 import { AssetThumbnail } from "../AssetThumbnail";
 import type { Asset, Source } from "../queries";
+import { ScanPreview, type ScanLabels } from "./ScanPreview";
 import { arrived, aspectOf, clock, dimsOf, formatName, type ImageItem } from "./imageFacts";
 
 /**
@@ -67,6 +68,7 @@ export function FitImage({
   className,
   frameClassName,
   overlay,
+  scan,
 }: {
   readonly projectId: string;
   readonly item: ImageItem;
@@ -75,7 +77,27 @@ export function FitImage({
   readonly frameClassName?: string;
   /** Drawn over the picture, in a box exactly the picture's: a dataset member's labels. */
   readonly overlay?: ReactNode;
+  /**
+   * A scan only: whether it is open in 3D, the detail's focus, and a dataset
+   * member's 3D labels. A scan's bytes are a scan, not a picture, so it takes
+   * `ScanPreview` in the picture's place.
+   */
+  readonly scan?: ScanState;
 }): JSX.Element {
+  if (item.asset.modality === "point_cloud") {
+    return (
+      <ScanPreview
+        projectId={projectId}
+        asset={item.asset}
+        alt={`${item.label} from ${source?.name ?? "an unknown source"}, seen from above`}
+        open={scan?.open ?? false}
+        onOpenChange={scan?.onOpenChange ?? (() => undefined)}
+        focus={scan?.focus ?? false}
+        labels={scan?.labels}
+        className={cn(className, frameClassName)}
+      />
+    );
+  }
   const aspect = aspectOf(item.asset);
   const style: CSSProperties = { aspectRatio: String(aspect), width: `min(100cqw, calc(100cqh * ${aspect}))` };
   return (
@@ -96,6 +118,14 @@ export function FitImage({
       </div>
     </div>
   );
+}
+
+/** What the detail tells a scan's preview. */
+export interface ScanState {
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly focus: boolean;
+  readonly labels?: ScanLabels | undefined;
 }
 
 /** "Frame 12 · 0:12" — the label, and the time in the video when there is one. */
@@ -142,9 +172,10 @@ export function Facts({
       </>,
     ]);
   }
+  const scan = asset.point_cloud;
   rows.push(
-    ["Size", dimsOf(asset) ?? "—"],
-    ["Format", formatName(asset.format) ?? "—"],
+    scan == null ? ["Size", dimsOf(asset) ?? "—"] : ["Points", scan.point_count.toLocaleString()],
+    ["Format", formatName(scan?.format ?? asset.format) ?? "—"],
     ["Added", arrived(asset.ingested_at) ?? "—"],
     ["Content", <CopyHash key="hash" hash={asset.content_hash} />],
   );

@@ -71,6 +71,25 @@
 }
 
 /*
+ * Something arriving in place of what was there — the scan preview's live
+ * view over its picture: opacity only, 200ms, a strong ease-out, and nothing
+ * at all for whoever asked for less motion.
+ */
+@keyframes vs-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+.vs-fade-in {
+  animation: vs-fade-in 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .vs-fade-in {
+    animation: none;
+  }
+}
+
+/*
  * An image's faint inner edge, so a pale frame on a pale card still has a
  * shape. Painted over the image's outermost pixels (an outline with a negative
  * offset on a pseudo-element), never around it, so it takes no space. Pure

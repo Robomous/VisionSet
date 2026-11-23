@@ -366,6 +366,21 @@ toggle) widens the image to the pane and folds the grid into a two-column rail b
 every image but the selected one steps back; the same toggle, Enter or `Esc` folds it back. The
 two columns never swap places, so the toggle that expanded is under the pointer to collapse.
 
+*A point-cloud scan* takes the picture's place as its cached top-down thumbnail (`ScanPreview`),
+and fetches no points until **Open in 3D** asks for them; the live view then fades in over it, in
+place, and **Back to picture** returns. Open stays open across focus and closes with the next
+image. Its facts read Points and the scan's format where an image reads Size and Format. Every
+control sits on the view, and each is the readout of what it controls: the angle — 3D, Top, or
+Both side by side (stacked in the narrow detail) — at its top; at its foot a legend pill, the
+colour ramp with the values at its ends (the 2nd–98th percentiles the canvas stretches it over,
+in metres for height), which chooses Height, Intensity or RGB; and a points pill, *27,400 pts*,
+which lists the densities the scan can be read at — 1/16, 1/8, 1/4, 1/2 and all of it, at two
+significant figures inside the route's 1,000–2,000,000 — each with its share of the scan and
+what it costs to load. A new density keeps the current points and camera until its own arrive.
+The well holds these controls, so a scan's well is not itself the focus button. A dataset
+member's 3D labels are drawn in the view and follow the member's label switch. Without WebGL2
+the view is the thumbnail.
+
 *Keys.* The grid acts on a key only while one of its images holds focus — a heading, a button or
 the menu keeps its own — and, with nothing focused, the arrows still walk and bring focus in.
 Arrows move selection and focus together across sources (up and down keep the column); walking
