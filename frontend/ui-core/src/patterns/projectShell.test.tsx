@@ -10,7 +10,7 @@ import { userEvent } from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useState, type JSX } from "react";
 
-import { PROJECT_SECTIONS } from "./ProjectNav";
+import { PROJECT_SECTIONS } from "./projectSections";
 import { ProjectShell, type ProjectNavData } from "./ProjectShell";
 
 function controllableMatchMedia(initial: boolean): (matches: boolean) => void {

@@ -15,7 +15,8 @@ import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { PROJECT_SECTIONS, ProjectNav, type ProjectNavProps } from "./ProjectNav";
+import { ProjectNav, type ProjectNavProps } from "./ProjectNav";
+import { PROJECT_SECTIONS } from "./projectSections";
 
 function props(overrides: Partial<ProjectNavProps> = {}): ProjectNavProps {
   return {

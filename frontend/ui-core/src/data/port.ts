@@ -21,7 +21,7 @@
  *
  * ## Two clauses beyond the result shape
  *
- * **A request cancelled through its `signal` rejects.** The gallery and the
+ * **A request cancelled through its `signal` rejects.** The thumbnail grids and the
  * annotator cancel transfers they no longer need, and they tell a cancellation
  * apart from a failure by catching it — a host that reported an abort as
  * `unreachable` would paint every scrolled-past tile as broken. Cancellation is
@@ -111,7 +111,7 @@ export interface VisionSetRequestIntent {
   /**
    * Cancel the request.
    *
-   * The gallery and the annotator abandon transfers they no longer need. A cancelled
+   * The thumbnail grids and the annotator abandon transfers they no longer need. A cancelled
    * request **rejects** — see the contract clause below — so a caller can tell "I changed
    * my mind" from "this failed".
    */

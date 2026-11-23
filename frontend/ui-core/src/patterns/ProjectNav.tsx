@@ -33,7 +33,7 @@
  * ## The actions are the open section's
  *
  * Annotate opens the batch that is `in_annotation` — straight into its one job
- * when it has exactly one, onto the gallery otherwise; with two or more open it
+ * when it has exactly one, onto the batch's panel on the Overview otherwise; with two or more open it
  * reads `Annotate ▾` and asks which, because the batch decides the schema
  * version you annotate under. It is offered where batches are, the Overview.
  * Add images is a button where images are the subject (`ingest: "action"`,
@@ -72,30 +72,8 @@ import {
 } from "@robomous/ui-core";
 
 import { formatCount } from "../lib/format";
+import { isProjectSection, destinationOf, type AnnotateTarget, type ProjectSection } from "./projectSections";
 import { SectionActionsOutlet } from "./SectionActions";
-
-/**
- * The four sections of a project, in the order work happens in: what a project
- * *is* and what needs doing (the Overview, where batches are listed and opened),
- * what came *in* (every image), what it *means* (the classes), what came *out*
- * (the dataset).
- *
- * The ids are URL segments and stay the product's nouns — `schema` is what
- * links, the CLI and the API call it — while the labels below are the words a
- * person reads. A bookmarked URL is a promise, so a relabel never renames a
- * segment. Batches have no section: a batch is opened from the Overview, at
- * `/projects/:id/batches/:batchId`, and the old `batches` segment redirects.
- */
-export type ProjectSection = "overview" | "images" | "schema" | "dataset";
-
-export const PROJECT_SECTIONS: readonly ProjectSection[] = ["overview", "images", "schema", "dataset"];
-
-export function isProjectSection(value: string | undefined): value is ProjectSection {
-  return PROJECT_SECTIONS.includes(value as ProjectSection);
-}
-
-/** The section a project opens on, and where anything unrecognised lands. */
-export const DEFAULT_PROJECT_SECTION: ProjectSection = "overview";
 
 interface SectionLabel {
   readonly label: string;
@@ -123,25 +101,6 @@ const SECTION_LABELS: Record<ProjectSection, SectionLabel> = {
   schema: { label: "Classes", icon: Tags },
   dataset: { label: "Dataset", icon: Database },
 };
-
-/** One batch the annotator can be opened on: what the `Annotate ▾` menu lists. */
-export interface AnnotateTarget {
-  readonly id: string;
-  /** Already carries the `— correction` suffix where one applies. */
-  readonly name: string;
-  /** Frames still `unannotated` — the batch table's `N to do`. */
-  readonly remaining: number;
-  /** The schema version the batch is pinned to; null only for a row the wire left unpinned. */
-  readonly schemaVersion: number | null;
-  /** The batch's job ids, or undefined while unknown — unknown lands on the gallery. */
-  readonly jobIds?: readonly string[] | undefined;
-}
-
-/** Exactly one job → straight into it; otherwise the gallery, where a job is chosen. */
-export function destinationOf(target: AnnotateTarget): { kind: "job"; id: string } | { kind: "batch"; id: string } {
-  const [only] = target.jobIds ?? [];
-  return target.jobIds?.length === 1 && only !== undefined ? { kind: "job", id: only } : { kind: "batch", id: target.id };
-}
 
 export interface ProjectNavProps {
   readonly layout: "bar" | "strip";

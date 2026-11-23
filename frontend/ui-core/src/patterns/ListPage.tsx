@@ -17,11 +17,12 @@
  *    rows, so a column reads down as one thing; every header names its column
  *    with an icon and a word.
  *
- * Nothing is said twice. What the list holds — how many, of how many while a
- * search or filter narrows it, and what they add up to — is said in the
- * workbench's status bar (`PageStatus`), and nowhere on the page: no count
- * beside the heading, no totals row at the foot, no second "New …" row under
- * the last one competing with the header's action.
+ * Nothing is said twice. What the rows add up to — their images, how many are
+ * ready — is said in the workbench's status bar (`PageStatus`); which rows are
+ * on screen, of how many while a search or filter narrows them, is said by the
+ * footer a long list is paged from (`TableFooter`). Neither is said beside the
+ * heading, in a totals row at the foot, or in a second "New …" row under the
+ * last one competing with the header's action.
  *
  * ## One edge, from the header down
  *
@@ -40,7 +41,7 @@
  */
 
 import { ArrowDown, ArrowUp, type LucideIcon } from "lucide-react";
-import type { CSSProperties, JSX, ReactNode } from "react";
+import type { JSX, ReactNode, Ref } from "react";
 
 import { cn } from "@robomous/ui-core";
 
@@ -96,6 +97,7 @@ export function ListGrid({
   head,
   children,
   testId,
+  frameRef,
 }: {
   readonly columns: readonly ListColumn[];
   /** Below this the grid scrolls inside its frame, e.g. `min-w-[1100px]`. */
@@ -105,11 +107,17 @@ export function ListGrid({
   /** One or more `<tbody>`s. */
   readonly children: ReactNode;
   readonly testId?: string;
+  /**
+   * The frame, so a pager can bring the grid's top back into view when the page
+   * changes (`revealTableTop`).
+   */
+  readonly frameRef?: Ref<HTMLDivElement>;
 }): JSX.Element {
   return (
     // `relative`: the header's visually hidden labels are absolutely positioned
     // and must be contained by this frame, not by the page.
-    <div className="relative flex min-h-0 flex-1 flex-col overflow-x-auto">
+    // `scroll-mt`: a page change brings the frame's top in under the pinned tabs.
+    <div ref={frameRef} className="relative flex min-h-0 flex-1 scroll-mt-(--page-inset-top) flex-col overflow-x-auto">
       <div className={minWidth}>
         <table aria-label={label} className={cn(GRID, "text-sm")} data-testid={testId}>
           <colgroup>
@@ -147,40 +155,6 @@ const GRID = cn(
 /** A body row's cell classes: 44px, a hairline under it. Spread on a `<tr>`. */
 export const BODY_ROW = "[&>td]:h-11 [&>td]:border-b";
 
-/** Tailwind's spacing step, for turning a column's `w-N` into pixels. */
-const STEP_PX = 4;
-
-/**
- * The column hairlines, carried on below a grid's last row.
- *
- * A grid that fills a cell taller than its rows would otherwise stop as a
- * table and go on as a blank page; painting each hairline down the whole cell
- * keeps a short list reading as table to the cell's foot. Spread as the
- * `style` of the element the grid fills, with `bg-no-repeat` on it.
- *
- * Only the fixed columns at the right are drawn: each one's left edge sits a
- * constant distance from the right edge whatever the width, so one 1px
- * gradient per line, on the cell border's own colour, is the whole of it. The
- * widths are read off the same `w-N` the grid's `<col>`s are declared with, so
- * the two cannot disagree.
- */
-export function columnLines(columns: readonly ListColumn[]): CSSProperties {
-  const offsets: number[] = [];
-  let fromRight = 0;
-  for (const column of [...columns].reverse()) {
-    const step = /^w-(\d+)$/.exec(column.width ?? "")?.[1];
-    if (step === undefined) break;
-    fromRight += Number(step) * STEP_PX;
-    offsets.push(fromRight - 1);
-  }
-  const line = "linear-gradient(color-mix(in oklab, var(--color-border) 70%, transparent), color-mix(in oklab, var(--color-border) 70%, transparent))";
-  return {
-    backgroundImage: offsets.map(() => line).join(", "),
-    backgroundSize: offsets.map(() => "1px 100%").join(", "),
-    backgroundPosition: offsets.map((px) => `right ${px}px top`).join(", "),
-  };
-}
-
 /**
  * A column's header: its icon and its name, in the muted ink a header reads in.
  * With `onSort`, the name is a button that sorts by the column and the cell
@@ -188,7 +162,7 @@ export function columnLines(columns: readonly ListColumn[]): CSSProperties {
  * never shifts a header.
  */
 export function ColumnHeader({
-  icon: Icon,
+  icon,
   label,
   align = "left",
   sort,
@@ -213,37 +187,69 @@ export function ColumnHeader({
       </th>
     );
   }
-  const content = (
+  return (
+    <th scope="col" aria-sort={onSort === undefined ? undefined : (sort ?? "none")} className={align === "right" ? "text-right" : undefined}>
+      {onSort === undefined ? (
+        <span className={cn("flex min-w-0 items-center gap-1.5", align === "right" && "justify-end")}>
+          <HeaderContent icon={icon} label={label} />
+        </span>
+      ) : (
+        <SortButton icon={icon} label={label} align={align} sort={sort} onSort={onSort} testId={testId} />
+      )}
+    </th>
+  );
+}
+
+/** A header's icon and its name. */
+function HeaderContent({ icon: Icon, label }: { readonly icon?: LucideIcon; readonly label: string }): JSX.Element {
+  return (
     <>
       {Icon !== undefined && <Icon aria-hidden="true" className="size-3.5 shrink-0" strokeWidth={1.75} />}
       <span className="truncate">{label}</span>
     </>
   );
-  const active = sort === "ascending" || sort === "descending";
+}
+
+/** The sort arrow; its room is kept while inactive so a header never shifts. */
+function SortArrow({ sort, active }: { readonly sort?: "ascending" | "descending" | "none"; readonly active: boolean }): JSX.Element {
   const Arrow = sort === "ascending" ? ArrowUp : ArrowDown;
+  return <Arrow aria-hidden="true" className={cn("size-3 shrink-0", !active && "invisible")} />;
+}
+
+/** The header's name as a button that sorts by the column. */
+function SortButton({
+  icon,
+  label,
+  align,
+  sort,
+  onSort,
+  testId,
+}: {
+  readonly icon?: LucideIcon;
+  readonly label: string;
+  readonly align: "left" | "right";
+  readonly sort?: "ascending" | "descending" | "none";
+  readonly onSort: () => void;
+  readonly testId?: string;
+}): JSX.Element {
+  const active = sort === "ascending" || sort === "descending";
   return (
-    <th scope="col" aria-sort={onSort === undefined ? undefined : (sort ?? "none")} className={align === "right" ? "text-right" : undefined}>
-      {onSort === undefined ? (
-        <span className={cn("flex min-w-0 items-center gap-1.5", align === "right" && "justify-end")}>{content}</span>
-      ) : (
-        <button
-          type="button"
-          data-testid={testId}
-          onClick={onSort}
-          className={cn(
-            // The cell's height is the hit area; hover answers at once.
-            "-my-1 flex h-8 max-w-full min-w-0 items-center gap-1.5 rounded-sm outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
-            active && "font-medium text-foreground",
-            align === "right" && "ml-auto",
-          )}
-        >
-          {/* The arrow leads a right-aligned label, so the label's own edge
-              stays on the numbers' edge below it. */}
-          {align === "right" && <Arrow aria-hidden="true" className={cn("size-3 shrink-0", !active && "invisible")} />}
-          {content}
-          {align === "left" && <Arrow aria-hidden="true" className={cn("size-3 shrink-0", !active && "invisible")} />}
-        </button>
+    <button
+      type="button"
+      data-testid={testId}
+      onClick={onSort}
+      className={cn(
+        // The cell's height is the hit area; hover answers at once.
+        "-my-1 flex h-8 max-w-full min-w-0 items-center gap-1.5 rounded-sm outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
+        active && "font-medium text-foreground",
+        align === "right" && "ml-auto",
       )}
-    </th>
+    >
+      {/* The arrow leads a right-aligned label, so the label's own edge
+          stays on the numbers' edge below it. */}
+      {align === "right" && <SortArrow sort={sort} active={active} />}
+      <HeaderContent icon={icon} label={label} />
+      {align === "left" && <SortArrow sort={sort} active={active} />}
+    </button>
   );
 }
