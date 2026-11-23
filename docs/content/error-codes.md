@@ -35,7 +35,7 @@ and `INTERNAL_ERROR` - are not raised by the kernel and are described in [api.md
 | `BATCH_NOT_EDITABLE` | 409 | Membership was changed on a batch that is no longer a draft. |  |  |
 | `BATCH_NOT_FOUND` | 404 | No batch with that id lives in this workspace. |  |  |
 | `BATCH_NOT_IN_ANNOTATION` | 409 | Work was attempted on a job whose batch is not open for annotation. |  |  |
-| `CALIBRATION_IN_USE` | 409 | Clearing this calibration would leave stored 3D labels with none to be read against. |  |  |
+| `CALIBRATION_IN_USE` | 409 | Clearing or replacing this calibration would re-read stored 3D labels against another. |  |  |
 | `CALIBRATION_MISSING` | 409 | A 3D label was written or published for an asset with nothing to read it against. |  |  |
 | `CALIBRATION_NOT_APPLICABLE` | 409 | A camera calibration was stated for something that has no camera intrinsics. |  |  |
 | `CALIBRATION_RESOLUTION_MISMATCH` | 422 | A calibration was measured at a resolution the asset it would apply to does not have. |  |  |

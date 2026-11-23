@@ -86,7 +86,9 @@ def set_calibration(
     calibration as they are.
 
     Refuses a calibration measured at a size other than the asset it would apply
-    to, and a rotation that is not a proper rotation.
+    to, and a rotation that is not a proper rotation. Replacing a calibration
+    with a different one is refused while 3D labels resolve to it, since they
+    were drawn against it; stating the identical one again changes nothing.
     """
     if (source_id is None) == (asset_id is None):
         return refused(_ONE_TARGET)
@@ -111,7 +113,7 @@ def clear_calibration(
     Clearing an asset's override makes it inherit its source's again, and is
     refused when that calibration was measured at a size other than the
     asset's. Refused too while 3D labels would be left with no calibration to
-    resolve to; replacing with `set_calibration` stays allowed.
+    resolve to, as is replacing it with a different one through `set_calibration`.
     """
     if (source_id is None) == (asset_id is None):
         return refused(_ONE_TARGET)

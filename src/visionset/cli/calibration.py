@@ -4,8 +4,9 @@
 Every command names its target with exactly one of ``--source`` and ``--asset``.
 ``set`` reads the whole calibration from a JSON file in the wire's own shape —
 what ``show --json`` prints under ``calibration`` (a source) or ``override`` (an
-asset) — and replaces whatever was stated. A file that does not parse as one is
-refused at exit 2, before the workspace is opened.
+asset) — and replaces whatever was stated, unless 3D labels were drawn against
+it. A file that does not parse as one is refused at exit 2, before the
+workspace is opened.
 """
 
 from __future__ import annotations
@@ -121,7 +122,9 @@ def calibration_set(
     """State a source's calibration, or override it for one asset, replacing any already set.
 
     The intrinsics' `width` and `height` must be the size of every asset it would
-    apply to. Registering the same directory again keeps the calibration.
+    apply to. Replacing a calibration with a different one is refused while 3D
+    labels resolve to it; setting the identical one again changes nothing.
+    Registering the same directory again keeps the calibration.
     """
     _one_target(source, asset)
     stated = _read(file)

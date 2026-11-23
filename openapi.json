@@ -13663,7 +13663,7 @@
         ]
       },
       "put": {
-        "description": "State this asset's own calibration, overriding its source's and replacing any override.\n\nThe only way a calibration reaches an imported asset, which has no source.\nOne measured at a size other than the asset's is 422\n`CALIBRATION_RESOLUTION_MISMATCH`; a rotation that is not a proper rotation,\nor a non-positive focal length, is 422 `VALIDATION_ERROR`. An unknown\nproject is 404 `PROJECT_NOT_FOUND` and an unknown asset 404 `ASSET_NOT_FOUND`.",
+        "description": "State this asset's own calibration, overriding its source's and replacing any override.\n\nThe only way a calibration reaches an imported asset, which has no source.\nReplacing an override with a different one is refused with 409\n`CALIBRATION_IN_USE` while the asset holds 3D labels, which were drawn\nagainst it; stating the identical one again changes nothing. A point\ncloud, which has no camera, is 409 `CALIBRATION_NOT_APPLICABLE`.\nOne measured at a size other than the asset's is 422\n`CALIBRATION_RESOLUTION_MISMATCH`; a rotation that is not a proper rotation,\nor a non-positive focal length, is 422 `VALIDATION_ERROR`. An unknown\nproject is 404 `PROJECT_NOT_FOUND` and an unknown asset 404 `ASSET_NOT_FOUND`.",
         "operationId": "set_asset_calibration",
         "parameters": [
           {
@@ -13727,6 +13727,16 @@
               }
             },
             "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
           },
           "422": {
             "content": {
@@ -17693,7 +17703,7 @@
     },
     "/sources/{source_id}/calibration": {
       "delete": {
-        "description": "Remove the source's calibration. Clearing one that is not there is a 204 too.\n\nRefused with 409 `CALIBRATION_IN_USE` while an asset inheriting it holds 3D\nlabels; replacing it with `PUT` stays allowed. An unknown source is 404\n`SOURCE_NOT_FOUND`.",
+        "description": "Remove the source's calibration. Clearing one that is not there is a 204 too.\n\nRefused with 409 `CALIBRATION_IN_USE` while an asset inheriting it holds 3D\nlabels, as is replacing it with a different one. An unknown source is 404\n`SOURCE_NOT_FOUND`.",
         "operationId": "clear_source_calibration",
         "parameters": [
           {
@@ -17870,7 +17880,7 @@
         ]
       },
       "put": {
-        "description": "State the camera behind every frame of this source, replacing any already stated.\n\nEvery asset of the source that has no calibration of its own inherits it.\nCalibration is not part of the source's identity: registering the same files\nagain returns this source with its calibration untouched.\n\nA calibration measured at a size other than a clip's stored frame size, or\nthan an asset that would inherit it, is 422 `CALIBRATION_RESOLUTION_MISMATCH`.\nA rotation that is not a proper rotation, or a non-positive focal length, is\n422 `VALIDATION_ERROR`. An unknown source is 404 `SOURCE_NOT_FOUND`.",
+        "description": "State the camera behind every frame of this source, replacing any already stated.\n\nReplacing it with a different calibration is refused with 409\n`CALIBRATION_IN_USE` while an asset inheriting it holds 3D labels, which were\ndrawn against it; stating the identical one again changes nothing. A\npoint-cloud source, which has no camera, is 409 `CALIBRATION_NOT_APPLICABLE`.\n\nEvery asset of the source that has no calibration of its own inherits it.\nCalibration is not part of the source's identity: registering the same files\nagain returns this source with its calibration untouched.\n\nA calibration measured at a size other than a clip's stored frame size, or\nthan an asset that would inherit it, is 422 `CALIBRATION_RESOLUTION_MISMATCH`.\nA rotation that is not a proper rotation, or a non-positive focal length, is\n422 `VALIDATION_ERROR`. An unknown source is 404 `SOURCE_NOT_FOUND`.",
         "operationId": "set_source_calibration",
         "parameters": [
           {
@@ -17924,6 +17934,16 @@
               }
             },
             "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
           },
           "422": {
             "content": {
