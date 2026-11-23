@@ -37,6 +37,7 @@ import { CircleCheckBig, CircleDashed, FolderOpen, Search, Users } from "lucide-
 import { useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 
 import { Badge, Kbd, cn } from "@robomous/ui-core";
+import { assetNoun, type Modality } from "../../lib/assetNoun";
 import { formatCount } from "../../lib/format";
 import type { BatchPhase } from "./BatchSummary";
 import { PHASE_DOT, PHASE_LABEL, initials } from "./batchRowModel";
@@ -55,6 +56,8 @@ export interface BatchRowView {
   /** Images decided; `null` before the batch has jobs. */
   readonly done: number | null;
   readonly total: number;
+  /** What the batch holds; absent, images. */
+  readonly modality?: Modality;
   /** A model drafting labels, while it runs. */
   readonly prelabel: { readonly processed: number; readonly total: number | null } | null;
   /**
@@ -343,7 +346,7 @@ function Row({
           <span className="min-w-0 truncate font-medium">{row.name}</span>
           {/* Gives way before the name does. */}
           <span className="min-w-0 shrink-[100] truncate text-xs text-muted-foreground tabular-nums">
-            {formatCount(row.total)} {row.total === 1 ? "image" : "images"}
+            {formatCount(row.total)} {assetNoun(row.modality ?? "image", row.total, "image")}
             {row.schemaVersion !== null && ` · schema v${row.schemaVersion}`}
           </span>
         </button>

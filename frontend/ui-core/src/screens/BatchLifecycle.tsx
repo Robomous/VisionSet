@@ -27,9 +27,11 @@ import { SquareCheck } from "lucide-react";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError, Progress, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
+import { assetNoun } from "../lib/assetNoun";
 import { annotatedShare, outstandingWork } from "./batchState";
 import {
   useApproveBatch,
+  useBatchModality,
   useBatchTransition,
   useFinishBatch,
   type Batch,
@@ -134,6 +136,7 @@ export function CompleteBatchButton({
 }): JSX.Element {
   const finish = useFinishBatch(batch.id);
   const outstanding = outstandingWork(batch.progress);
+  const modality = useBatchModality(batch.project_id, batch.id);
   const refusal = finish.isError ? asApiError(finish.error) : null;
 
   return (
@@ -154,7 +157,7 @@ export function CompleteBatchButton({
           className="text-xs text-muted-foreground"
           data-testid={`complete-blocked-${batch.name}`}
         >
-          {outstanding} frame{outstanding === 1 ? "" : "s"} still to annotate or skip
+          {outstanding} {assetNoun(modality, outstanding)} still to annotate or skip
         </span>
       )}
 

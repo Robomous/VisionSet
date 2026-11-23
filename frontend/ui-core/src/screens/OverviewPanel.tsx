@@ -90,6 +90,7 @@ import { imbalanceNote } from "./imbalance";
 import { batchRows, classRows } from "./overviewRows";
 import { batchPhase } from "./overviewView";
 import {
+  useBatchModalities,
   useBatches,
   useDatasetStats,
   useJobsByBatch,
@@ -520,7 +521,9 @@ function useBatchesModel(projectId: string, heldId: string | null | undefined, o
     const read = jobsOf.get(batchId);
     return read?.status === "ready" ? read.jobs : undefined;
   };
-  const rows = useMemo(() => batchRows(items ?? [], jobsOf), [items, jobsOf]);
+  const ids = useMemo(() => (items ?? []).map((batch) => batch.id), [items]);
+  const modalities = useBatchModalities(projectId, ids);
+  const rows = useMemo(() => batchRows(items ?? [], jobsOf, modalities), [items, jobsOf, modalities]);
   const [ownId, setOwnId] = useState<string | null>(null);
   // The host's (the URL's) when it holds one, so a batch named anywhere opens here.
   const held = onHeldChange !== undefined;

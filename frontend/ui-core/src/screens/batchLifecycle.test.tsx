@@ -18,7 +18,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApproveDialog, BatchProgressBar } from "./BatchLifecycle";
+import { ApproveDialog, BatchProgressBar, CompleteBatchButton } from "./BatchLifecycle";
 import type { Batch } from "./queries";
 import { renderWithData } from "../testing/dataHarness";
 import { batchActions } from "../testing/wire.fixtures.js";
@@ -202,5 +202,46 @@ describe("BatchProgressBar", () => {
     expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("0");
     expect(screen.getByText("Not approved yet")).toBeTruthy();
     expect(screen.queryByText(/to do/)).toBeNull();
+  });
+});
+
+describe("the Complete button's count of what is left", () => {
+  const ANNOTATING: Batch = {
+    ...DRAFT,
+    state: "in_annotation",
+    schema_version: 1,
+    allowed_actions: batchActions("in_annotation"),
+    progress: { ...DRAFT.progress, unannotated: 3, annotated: 45 },
+  };
+  function sources(kind: string): void {
+    on("GET", /\/sources$/, {
+      status: 200,
+      body: {
+        items: [{ id: "s0", project_id: PROJECT, kind, name: "s0", registered_at: "2026-11-01T00:00:00Z", frame: null, video: null }],
+        total: 1,
+      },
+    });
+  }
+
+  it("counts scans on a batch of point-cloud scans", async () => {
+    sources("point_cloud_directory");
+    renderWithData(<CompleteBatchButton batch={ANNOTATING} />);
+
+    await waitFor(() => expect(screen.getByTestId("complete-blocked-drive-01").textContent).toBe("3 scans still to annotate or skip"));
+  });
+
+  it("says one scan in the singular", async () => {
+    sources("point_cloud_directory");
+    renderWithData(<CompleteBatchButton batch={{ ...ANNOTATING, progress: { ...ANNOTATING.progress, unannotated: 1, annotated: 47 } }} />);
+
+    await waitFor(() => expect(screen.getByTestId("complete-blocked-drive-01").textContent).toBe("1 scan still to annotate or skip"));
+  });
+
+  it("counts frames on a batch of images", async () => {
+    sources("image_directory");
+    renderWithData(<CompleteBatchButton batch={ANNOTATING} />);
+
+    await waitFor(() => expect(sent.some((one) => new URL(one.url).pathname.endsWith("/sources"))).toBe(true));
+    expect(screen.getByTestId("complete-blocked-drive-01").textContent).toBe("3 frames still to annotate or skip");
   });
 });
