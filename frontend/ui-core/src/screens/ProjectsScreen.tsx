@@ -117,7 +117,7 @@ const STAGE: Record<ProjectStage, Pick<State, "label" | "tone" | "glyph">> = {
   unreleased: { label: "Not released", tone: "draft", glyph: "drafted" },
   up_to_date: { label: "Up to date", tone: "done", glyph: "done" },
   not_started: { label: "Not started", tone: "draft", glyph: "todo" },
-  empty: { label: "No images", tone: "draft", glyph: "backlog" },
+  empty: { label: "No assets", tone: "draft", glyph: "backlog" },
 };
 
 /**
@@ -134,7 +134,7 @@ function stageDetail(p: ProjectListItem): string | null {
 
 const SORT_LABEL: Record<ProjectSortKey, string> = {
   name: "Name",
-  images: "Images",
+  images: "Assets",
   annotated: "Annotated",
   classes: "Classes",
   activity: "Activity",
@@ -255,7 +255,7 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
                 head={
                   <>
                     <ColumnHeader icon={FolderOpen} label="Project" sort={sortOf("name")} onSort={() => sortBy("name")} testId="sort-name" />
-                    <ColumnHeader icon={Images} label="Images" align="right" sort={sortOf("images")} onSort={() => sortBy("images")} testId="sort-images" />
+                    <ColumnHeader icon={Images} label="Assets" align="right" sort={sortOf("images")} onSort={() => sortBy("images")} testId="sort-images" />
                     <ColumnHeader icon={CircleCheckBig} label="Annotated" sort={sortOf("annotated")} onSort={() => sortBy("annotated")} testId="sort-annotated" />
                     <ColumnHeader icon={Tags} label="Classes" align="right" sort={sortOf("classes")} onSort={() => sortBy("classes")} testId="sort-classes" />
                     <ColumnHeader icon={CircleDashed} label="Status" />
@@ -342,7 +342,7 @@ function ProjectsStatus({ shown }: { readonly shown: readonly ProjectListItem[] 
     <PageStatus>
       {images > 0 && (
         <span data-testid="projects-images">
-          {formatCount(images)} {images === 1 ? "image" : "images"} · {left === 0 ? "all annotated" : `${formatCount(left)} to annotate`}
+          {formatCount(images)} {images === 1 ? "asset" : "assets"} · {left === 0 ? "all annotated" : `${formatCount(left)} to annotate`}
         </span>
       )}
       {review > 0 && (
@@ -401,7 +401,7 @@ function SortMenu({
  * A 14px ring for the glance and the count in words: "248 to annotate". A
  * finished project trades both for a check and "All annotated"; a project with
  * no images gets the dash every other column uses, since its Status already
- * says *No images*.
+ * says *No assets*.
  *
  * **Left means left for a person.** Two counts can say it and neither is
  * whole on its own: images with no annotation at all, and `frames_left` —
@@ -431,9 +431,9 @@ function RemainingCell({ digest }: { readonly digest: ProjectListItem["digest"] 
   // Floored, so a project one image short never says 100%.
   const share = Math.floor((done / total) * 100);
   return (
-    // The count, then the ring — the shared readout; the ring is the images' share, and stays open while any frame waits.
-    <span className="flex min-w-0" data-testid="remaining-cell" title={`${share}% of images annotated`}>
-      {/* `complete={false}`: frames are left, so the ring stays open whatever the images' share says. */}
+    // The count, then the ring — the shared readout; the ring is the assets' share, and stays open while any asset waits.
+    <span className="flex min-w-0" data-testid="remaining-cell" title={`${share}% of assets annotated`}>
+      {/* `complete={false}`: assets are left, so the ring stays open whatever the assets' share says. */}
       <ProgressReadout
         value={done}
         total={total}
@@ -441,8 +441,8 @@ function RemainingCell({ digest }: { readonly digest: ProjectListItem["digest"] 
         ringTestId="remaining-ring"
         detail={{
           title: "Annotated",
-          caption: `${formatCount(done)} of ${formatCount(total)} images · ${share}%`,
-          note: `${formatCount(left)} ${left === 1 ? "frame" : "frames"} still to annotate.`,
+          caption: `${formatCount(done)} of ${formatCount(total)} assets · ${share}%`,
+          note: `${formatCount(left)} ${left === 1 ? "asset" : "assets"} still to annotate.`,
         }}
       >
         <span className="text-foreground">{formatCount(left)}</span> to annotate
@@ -482,7 +482,7 @@ function Row({
         <div className="flex min-w-0 items-center gap-2.5">
           {project.thumbnail_asset_id === null ? (
             <ThumbnailPlaceholder
-              title="No images in this project yet."
+              title="No assets in this project yet."
               alt=""
               className="size-6 shrink-0 rounded-[5px] outline-1 -outline-offset-1 outline-foreground/10"
             />
@@ -534,14 +534,14 @@ function Row({
           {detail !== null && <span className="truncate text-xs text-muted-foreground tabular-nums">{detail}</span>}
         </div>
       </td>
-      {/* The tag and nothing else. Its image count was the Images column's
+      {/* The tag and nothing else. Its asset count was the Assets column's
           number again on most rows, and "no release" was the Status column's
           word again — the status already says Not released or Ready to promote. */}
       <td className="text-xs tabular-nums">
         {d.latest_release !== null ? (
           <span
             className="block truncate font-mono font-medium"
-            title={`${formatCount(d.latest_release.asset_count)} images · published ${formatWhen(d.latest_release.published_at)}`}
+            title={`${formatCount(d.latest_release.asset_count)} ${d.latest_release.asset_count === 1 ? "asset" : "assets"} · published ${formatWhen(d.latest_release.published_at)}`}
           >
             {d.latest_release.tag}
           </span>

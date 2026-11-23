@@ -298,7 +298,7 @@ pointer to the ingest flow whose result is a new batch (see *Inside a project*).
   place that answers "what projects exist".
 - **The status bar states, and changes nothing.** Two halves. At the left, the page's own
   facts, written there by the screen (`ui-core`'s `PageStatus`): what the list on screen
-  adds up to - *13 images · 11 to annotate*, *3 ready · 1 not set up* - which the page then does
+  adds up to - *13 assets · 11 to annotate*, *3 ready · 1 not set up* - which the page then does
   not repeat. How many rows the list holds, and of how many while a filter narrows it, is the
   paged table's footer's (`DESIGN.md`, *Paging a table*), not the bar's. At the right, the workspace's: any
   weight download in flight with its progress, how many model connections are ready, and

@@ -4,7 +4,7 @@
  * **Two halves: this page at the left, the workspace at the right.**
  *
  * The left is the page's own: what the list on screen holds and adds up to —
- * *2 of 4 models · 3 ready*, *2 projects · 61 images · 11 to annotate* — written
+ * *2 of 4 models · 3 ready*, *2 projects · 61 assets · 11 to annotate* — written
  * there by the screen through `PageStatus`, so the page itself does not say it
  * again beside its heading or in a totals row.
  *

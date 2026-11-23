@@ -227,8 +227,8 @@ inset, the status bar's, so the page has one left edge.
 
 `/projects` is that table, one 44px row per project: the project (cover thumbnail, its name
 with a link's hairline under it and an arrow that appears when the row is pointed at, and one
-truncated line of description beside it), **Images**, **Annotated**, **Classes**, **Status**,
-**Release** (the latest release's tag, its image count and date in the tooltip; a dash without one
+truncated line of description beside it), **Assets**, **Annotated**, **Classes**, **Status**,
+**Release** (the latest release's tag, its asset count and date in the tooltip; a dash without one
 - the Status column already says *Not released*) and **Activity**.
 
 **Annotated says the work left, not the work done** - *248 to annotate* beside a 14px ring for the
@@ -260,7 +260,7 @@ Every number is in the **same request** as the list: each item of `GET /projects
 (`ProjectService.digests`). The **Status** column says the digest's `stage` in words with
 the product-wide status families — `In review` (warning, with the frames waiting),
 `Annotating` (info; what is left is the Annotated column's), `Ready to promote` and `Up to date` (success),
-`Not released`, `Not started` and `No images` (neutral). The stage is the kernel's
+`Not released`, `Not started` and `No assets` (neutral). The stage is the kernel's
 description of where a project is, never a capability: nothing on the page is gated on it,
 and the screen derives none of it from batch states.
 
@@ -395,10 +395,10 @@ of cells with a hairline between them, and every text starting on the pane's one
 never scrolls; the batch table and the images scroll inside their own cells - with a floor below
 which the page scrolls rather than crushing the table.
 
-**Four cells** across the top - Images, Labeled, In dataset, Classes - each with its icon and
+**Four cells** across the top - Assets, Labeled, In dataset, Classes - each with its icon and
 name, its figure, and one context line, with a short meter ahead of it where the figure is a
 share of something; the Classes cell, last, draws its bar of shares instead (below). Three are a door into the section that owns them: the whole cell is the
-target (Images to Images, Classes to Classes, In dataset to Dataset), with an arrow on hover.
+target (Assets to Images, Classes to Classes, In dataset to Dataset), with an arrow on hover.
 *Labeled* is a plain figure, because the batches that answer it are the table right below.
 **Labeled counts the images a person has decided**, read from batch progress: across every batch
 that has been cut into jobs (a draft has none), the images that are neither unannotated nor
@@ -1511,11 +1511,11 @@ Batches table whenever some batch of the project declares `pre_label` in its own
 `allowed_actions` - read off the listing, never derived from state here - and is absent otherwise.
 
 **While images are waiting, it is a line between the band and the table**: a boxed robot, *233
-images have no labels yet. A model can draft them for you to check.*, then **Auto-label them** and
+assets have no labels yet. A model can draft them for you to check.*, then **Auto-label them** and
 a ✕ (*Not now*). The count is the `progress.unannotated` of every batch that declares the run,
 leaving out a batch a model is drafting now (its `pre_label_run` queued or running), so starting a
 run is what makes the line go. **Not now** puts it away into the band as a quiet icon button
-(*Auto-label*, its tooltip *Auto-label 233 images*) and is remembered per project in this
+(*Auto-label*, its tooltip *Auto-label 233 assets*) and is remembered per project in this
 browser, against the count it was said to: the line comes back only when more images are waiting
 than that - new images arrived. With batches that declare the run and nothing waiting, there is no
 line and the band's icon still offers it, since a re-run over pre-labeled work is legal where
