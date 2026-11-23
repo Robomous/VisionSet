@@ -211,13 +211,16 @@ override, else its source's (see [sources](sources.md#camera-calibration)) - mus
 write is `CALIBRATION_MISSING` (409), and must have been measured at the asset's size, or it is
 `CALIBRATION_RESOLUTION_MISMATCH` (422). The check sits in the one funnel every write goes
 through, so `add`, `update`, the import door and the pre-labeling door all hold it, on every
-surface. An import refuses a 3D label before writing anything: it creates its assets, and a new
-asset has no calibration yet.
+surface. An import refuses a 3D label on an image before writing anything: it creates its
+assets, and a new image asset has no calibration yet. A scan needs none, so the `kitti` and
+`nuscenes` importers write `cuboid_3d` labels on the scans they import (see [import.md](import.md)).
 
-No drawing tool exists for it. The browser parses one, keeps it out of the scene, and leaves it
+On an image no drawing tool exists for it. The browser parses one, keeps it out of the scene, and leaves it
 out of what a save compares, so a job holding a 3D label loads and every other label saves
 around it untouched. The annotation page draws it read-only, projected through the asset's
-effective calibration; see [ui](ui.md#3d-labels-are-drawn-not-edited). No installed export format writes one either; see
+effective calibration; see [ui](ui.md#3d-labels-are-drawn-not-edited). On a scan it is drawn
+and edited; see [below](#on-a-point-cloud-scan-3d-labels-are-read-in-the-sources-frame) and
+[the scan editor](ui/annotator.md#editing-cuboids-and-polylines-on-a-scan). No installed export format writes one either; see
 [releases](releases.md#a-3d-label-travels-with-its-calibration).
 
 ## A 3D cuboid is a center, a size and a yaw
@@ -239,9 +242,11 @@ number that was sent, as a float, and a round trip never changes it. Every field
 
 Roll and pitch are not modelled: the box stands upright in the camera's frame. A full rotation
 would be an extension of this shape, not an alternative to it. There is no `visibility`: a box is
-not an ordered path, and the key is refused. Like `polyline_3d` it has no drawing tool; the
-annotation page draws its twelve edges read-only, under the same rules (see
-[ui](ui.md#3d-labels-are-drawn-not-edited)).
+not an ordered path, and the key is refused. Like `polyline_3d` it has no drawing tool on an
+image; the annotation page draws its twelve edges read-only, under the same rules (see
+[ui](ui.md#3d-labels-are-drawn-not-edited)). On a scan it is drawn and edited; see
+[below](#on-a-point-cloud-scan-3d-labels-are-read-in-the-sources-frame) and
+[the scan editor](ui/annotator.md#editing-cuboids-and-polylines-on-a-scan).
 
 ## On a point-cloud scan, 3D labels are read in the source's frame
 

@@ -10,7 +10,8 @@ what each one exposes. This page says, step by step, which surface can do what.
   drawn in the browser app, written over REST or MCP, or produced by a model with `pre-label`.
 - **Video import is a browser feature.** A clip's frames are cut in the browser (range, frame
   rate, downscale) and posted to the server in a session. `visionset ingest` and the MCP `ingest`
-  tool take a directory of still images and refuse a video file. A script can drive the REST
+  tool take a directory of still images, or of point-cloud scans with a frame, and refuse a video
+  file. A script can drive the REST
   session itself, but must cut the frames; see [ingest.md](ingest.md).
 
 ## What each surface can do
@@ -21,13 +22,14 @@ what each one exposes. This page says, step by step, which surface can do what.
 | Create a project | yes | yes | `project create` | `create_project` |
 | Define a schema | yes | yes | `schema apply`, `schema draft ...` | `create_schema_version`, `*_schema_draft` |
 | Add still images | upload | multipart upload, then an ingest job | `ingest DIR` (a directory on this machine) | `ingest` (same) |
-| Add point-cloud scans | - | multipart upload with a `frame`, then an ingest job | `ingest DIR --point-clouds FRAME` | `ingest` with `frame` |
+| Add point-cloud scans | upload, with a frame chosen on the screen | multipart upload with a `frame`, then an ingest job | `ingest DIR --point-clouds FRAME` | `ingest` with `frame` |
 | Import a labeled dataset | - | - | `import FORMAT DIR` (a directory on this machine) | `inspect_import`, `import_dataset` (same) |
 | Import a video clip | yes | the video-import session endpoints, which the browser drives | **no** | **no** |
 | Build and approve batches | yes | yes | `batch approve` | `create_batch`, `approve_batch` |
 | Work a job: read assets, set progress | yes | yes | `job next`, `job mark` | `next_pending_assets`, `set_asset_progress` |
 | Create and edit annotations | yes | yes | **no** | `add_annotations`, `update_annotations`, `delete_annotations` |
 | See the image | yes | yes | no | `get_asset_image` |
+| View a scan | a 3D view | `GET .../points` (thinned points) | no | `get_asset_image` (the top-down thumbnail only) |
 | Camera calibration of a source or an asset | - | `GET/PUT/DELETE .../calibration` | `calibration show/set/clear` | `get_calibration`, `set_calibration`, `clear_calibration` |
 | Pre-label with a model | yes | yes | `batch pre-label`, `job pre-label` | `pre_label_batch`, `pre_label_job` |
 | Configure model connections | yes | yes | `inference ...` | `*_inference_connection`, `download_connection_weights` |

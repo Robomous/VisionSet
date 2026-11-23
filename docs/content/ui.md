@@ -962,13 +962,17 @@ whole image, and the Labels tab is where it is toggled.
 as this section's worked example of declared-but-not-drawable - #223 shipped the
 geometry end to end and stopped short of the tool - and it is a live button now.
 
-The rule that example demonstrated is unchanged, and `PENDING_TOOLS` still holds it
-with nothing in it: **a geometry a schema declares and no tool draws gets a disabled
+The rule that example demonstrated is kept as a mechanism, and `PENDING_TOOLS` holds it
+with nothing in it: **a geometry listed there that a schema declares gets a disabled
 button carrying the reason**, placed after every usable tool, never a gap. A missing
 control would say "this schema has no lanes", which is false, and it is exactly the
 ambiguity `ui-capabilities` forbids: absent and not-yet-available look identical and
-only one of them is true. `mask`, `keypoints` and the two 3D geometries are all
-still in that position the day a schema declares one.
+only one of them is true. While the record is empty, no geometry gets that button:
+`mask` and `keypoints` are refused when a schema version is written, so no schema
+declares one, and a class declaring `polyline_3d` or `cuboid_3d` gets **no** button on
+an image - those two are drawn on a scan, in its own
+[editor](ui/annotator.md#editing-cuboids-and-polylines-on-a-scan), and drawn read-only
+on an image (see [below](#3d-labels-are-drawn-not-edited)).
 
 When a button is disabled it uses **`aria-disabled`, never the native `disabled`
 attribute**. A disabled `<button>` receives no pointer events, so the tooltip would

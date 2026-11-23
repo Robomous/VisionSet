@@ -15,6 +15,35 @@ nothing was being distributed. This is the first version that is.
 
 - **A `darknet` export dialect.** Writes `obj.data`, `obj.names`, `train.txt` and `valid.txt` over the shared
   images-and-labels layout, with `yolov4` as its target (#787).
+- **Camera calibration per source, with a per-asset override.** Intrinsics, extrinsics and optional `plumb_bob`
+  distortion are stored on a source and can be overridden on an asset (migration 21), over REST
+  (`GET/PUT/DELETE .../calibration` on a source and on an asset), the CLI (`calibration show`, `set`, `clear`) and
+  MCP (`get_calibration`, `set_calibration`, `clear_calibration`) (#1041).
+- **The `polyline_3d` geometry.** An ordered path of `[x, y, z]` points in metres in the camera's sensor frame,
+  with the polyline's per-vertex visibility and no image-frame bounds check. Every write, import, publish and
+  pre-processing preview needs the asset's effective calibration: `CALIBRATION_MISSING` (409) when there is none,
+  `CALIBRATION_RESOLUTION_MISMATCH` (422) when it was measured at another size. No export format writes it, so an
+  export reports it as lost (#1038).
+- **The `cuboid_3d` geometry.** A box in the same sensor frame, in metres: `center`, `size` (`[length, width,
+  height]`) and a `yaw` in `[-pi, pi]`, under the same calibration rules as `polyline_3d` (#1045).
+- **A read-only 3D overlay on images.** The annotation page projects a frame's `polyline_3d` and `cuboid_3d`
+  labels through the asset's effective calibration and draws them under the 2D annotations; they are not
+  selectable, edited or saved, and a missing or mismatched calibration draws nothing, with a notice (#1039).
+- **The `point_cloud` modality.** A directory of PCD or PLY scans is registered with a declared frame
+  (`lidar_flu` or `camera_rdf`) and each scan ingested as one `point_cloud` asset with a top-down thumbnail
+  (migration 22; CLI `visionset ingest DIR --point-clouds FRAME`). A `polyline_3d` or `cuboid_3d` on a scan is
+  read in that frame and needs no calibration; a `bbox`, `polygon` or `polyline` on one is `INVALID_ANNOTATION`
+  (#1046).
+- **`GET /projects/{project_id}/assets/{asset_id}/points`.** Serves a stored scan thinned to `max_points`
+  (1,000 to 2,000,000, default 500,000) as a little-endian `VSPC` buffer of positions, with intensity and colour
+  when the scan has them (#1048).
+- **A point-cloud viewer.** On the annotation page a scan opens in a WebGL2 view that orbits about its frame's up
+  axis, colours points by height, intensity or the scan's own colour, and draws its `cuboid_3d` and `polyline_3d`
+  labels over the points. `@visionset/annotator` exports the scan buffer decoder, the frame axes, the orbit
+  camera, the colour ramps and the label geometry from its root, and `PointCloudCanvas` from
+  `@visionset/annotator/react` (#1048).
+- **Scan sources over REST and MCP.** `POST /projects/{project_id}/sources/point-clouds` takes a multipart upload
+  with a `frame`, and the MCP `ingest` tool takes a `frame` to read a directory as scans (#1050).
 - **A `kitti` importer.** Reads a KITTI 3D object detection split (`velodyne/*.bin`, `label_2`, `calib`) into
   `point_cloud` assets under a `lidar_flu` source, with each box converted from the camera frame into the lidar
   frame as a `cuboid_3d`; a new `scan` loss kind covers a scan whose points repeat another's (#1049).
@@ -40,6 +69,11 @@ nothing was being distributed. This is the first version that is.
 
 ### Changed
 
+- **Release manifests gain versions 4 and 5.** A release holding a 3D label is written as manifest version 4, with
+  the asset's `calibration` embedded beside it (#1038); a release holding a scan is written as version 5, whose
+  assets record `modality`, their `point_cloud` metadata and the source's `frame` (#1046). Both keys are omitted
+  where they do not apply, so a release of 2D images is still written as version 3 with the bytes and hash it had;
+  an older build refuses a manifest that carries either.
 - **`@visionset/annotator` is headless at its root; the React adapter moved to `@visionset/annotator/react`.**
   Importing the root no longer pulls in `react`, so the optional peer is genuinely optional. Breaking for
   anything that imported a React adapter name (`AnnotatorCanvas`, `useAnnotatorSnapshot`, `classColor`, …)

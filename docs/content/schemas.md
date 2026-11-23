@@ -226,12 +226,16 @@ silently reinterpreted.
 Declaring a class whose geometry has no implementation would create a class nobody could
 ever label. Refusing at the schema is better than discovering it at the first annotation.
 
-**`polyline_3d` (#1038) and `cuboid_3d` (#1045) are the newest, and neither has a drawing
-tool.** Each is a class like any other to the SDK, REST, MCP and the CLI, and the browser loads
-a job holding one and saves it untouched, but the schema editor does not offer them - a class
-there would be one nobody could draw. Their labels arrive by script, agent or a future importer;
-see [annotations](annotations.md#a-3d-polyline-is-read-against-a-calibration) and
-[the cuboid's fields](annotations.md#a-3d-cuboid-is-a-center-a-size-and-a-yaw).
+**`polyline_3d` (#1038) and `cuboid_3d` (#1045) are the newest, and the browser draws them on
+scans only.** Each is a class like any other to the SDK, REST, MCP and the CLI. On a point-cloud
+scan the browser draws, edits and saves both (see
+[the scan editor](ui/annotator.md#editing-cuboids-and-polylines-on-a-scan)); on an image it has
+no tool for either, and loads a job holding one and saves it untouched. The `kitti` and
+`nuscenes` importers write `cuboid_3d` labels on the scans they import, and a project with no
+schema gets its classes from the dataset (see [import.md](import.md)). **The schema editor does
+not offer either geometry yet**: a class that allows one is created through the SDK, REST, the
+CLI, MCP or an import. See [annotations](annotations.md#a-3d-polyline-is-read-against-a-calibration)
+and [the cuboid's fields](annotations.md#a-3d-cuboid-is-a-center-a-size-and-a-yaw).
 
 **`polyline` is complete end to end.** It joined the
 union in #223 so that lane datasets work — the SDK, the REST API and MCP all accept one, and

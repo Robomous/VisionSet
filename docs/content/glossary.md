@@ -7,8 +7,12 @@ the page that owns the rule.
 | --- | --- |
 | **Workspace** | The directory holding everything VisionSet knows: the metadata database (`visionset.db`) and the content-addressed blobs. One server or CLI invocation works on one workspace. Created by `visionset init`. See [workspaces.md](workspaces.md). |
 | **Project** | One dataset effort inside a workspace, such as `road-signs`. Has a unique name, a schema, sources, batches, a trunk and releases. Commands take its name or its id. See [projects.md](projects.md). |
-| **Source** | Where assets came from: a directory of still images registered with the project, or a video imported through the browser. See [sources.md](sources.md). |
-| **Asset** | One image. Stored once by content hash, so identical bytes are one asset however often they are ingested. See [ingest.md](ingest.md). |
+| **Source** | Where assets came from: a directory of still images registered with the project, a directory of point-cloud scans registered with its frame, or a video imported through the browser. See [sources.md](sources.md). |
+| **Asset** | One image or one point-cloud scan. Stored once by content hash, so identical bytes are one asset however often they are ingested. See [ingest.md](ingest.md). |
+| **Modality** | What an asset holds: `image` or `point_cloud`. A scan has no pixels, so the pixel-space geometries (`bbox`, `polygon`, `polyline`) are refused on one. See [media.md](media.md#point-cloud-scans). |
+| **Scan** (point cloud) | One PCD or PLY file of 3D points, ingested as one `point_cloud` asset. Viewed and labeled in a 3D view in the browser. See [media.md](media.md#point-cloud-scans). |
+| **Scan frame** | The axis convention a point-cloud source declares for its scans: `lidar_flu`, `camera_rdf` or `lidar_rfu`. A scan's coordinates and 3D labels are stored in it, never re-expressed. See [sources.md](sources.md#point-cloud-directories-and-their-frame). |
+| **Calibration** | A camera's intrinsics, extrinsics and optional distortion, stated on an image source with an optional per-asset override. A 3D label on an image is read against it; a scan needs none. See [sources.md](sources.md#camera-calibration). |
 | **Schema** | The versioned definition of what may be labeled: classes, the geometries each allows, and their attributes. A new version is published; versions are never edited. See [schemas.md](schemas.md). |
 | **Schema draft** | A schema version still being written. It may be empty or incomplete; publishing is where the rules are enforced. See [schemas.md](schemas.md). |
 | **Schema pin** | The schema version a batch was approved under. Every label in that batch is judged against that version, whatever is published later. See [batches.md](batches.md). |
