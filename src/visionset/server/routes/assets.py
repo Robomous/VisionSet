@@ -158,8 +158,9 @@ def list_project_assets(
 
     `source_id` narrows the listing to one source, in the same order, and
     `total` then counts that source — so a client filtering by source pages and
-    counts exactly as it would the whole project. A source that is not this
-    project's is 404 `SOURCE_NOT_FOUND`, never an empty page.
+    counts exactly as it would the whole project. An unknown project is 404
+    `PROJECT_NOT_FOUND`, and a source that is not this project's is 404
+    `SOURCE_NOT_FOUND`, never an empty page.
 
     `total` is every asset matched, never the size of this page.
     """
