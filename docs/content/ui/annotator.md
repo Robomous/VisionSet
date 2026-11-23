@@ -31,7 +31,10 @@ the hand. Nothing in a zone changes position from frame to frame.
 | Panel | the classes, tags and objects |
 
 **The bar says where you are and where the work stands, and nothing on it moves between
-frames.** The breadcrumb truncates before anything on the right gives way.
+frames.** The breadcrumb truncates before anything on the right gives way. Below a 56rem bar
+(the 768 px viewport floor) the progress drops its bar and keeps `settled / total`, and the save
+state keeps its icon and drops its word, except `Not saved`; both stay full in the
+accessible name.
 
 - **The job's progress is shown here and nowhere else**: a slim bar split by frame state —
   one segment per state, in the same tokens as the Overview's timeline cells
@@ -74,10 +77,10 @@ press, so the canvas keeps the keyboard.
   at 15% — a muted chip inverts into a smudge on a filled ground. There is no `›`: Next is the
   forward move, and back is only an icon because it is the rarer one.
 - **On the last frame `Finish job` takes Next's slot**, in place, and is not rendered anywhere
-  else. Where it renders and cannot be pressed inside an open batch, it carries why
-  (`aria-disabled` and a tooltip). On a read-only page whose batch is not open, it is natively
-  `disabled`: the banner is the explanation, so there is no reason left to make it focusable
-  for. `complete` is reachable from the last frame only.
+  else. Where it renders and cannot be pressed on an editable page, it carries why
+  (`aria-disabled` and a tooltip). On a read-only page it is natively `disabled`, and the same
+  tooltip moves to a focusable wrapper around it, so the reason is still read on hover and on
+  keyboard focus. `complete` is reachable from the last frame only.
 - **`⊞ n / m` is which frame, and the way into all of them**: it opens the frame gallery, in
   tabular figures so walking a job does not shuffle the arrows under a cursor that has not
   moved.

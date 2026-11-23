@@ -57,6 +57,10 @@ nothing was being distributed. This is the first version that is.
   (409) while an asset it applies to holds a `cuboid_3d` or `polyline_3d` label, on every surface, instead of
   silently re-reading those labels against the new camera. Setting the identical calibration again changes
   nothing, and a first calibration where none applied, or a change nothing depends on, is still accepted (#1067).
+- **Annotator: Finish job on a read-only page, and the header at 768 px.** On a read-only page Finish job is
+  natively `disabled`, and its reason stays reachable by hover and keyboard focus on a wrapper around it. Below a
+  56rem header the job progress drops its bar (the count stays) and the save state shows its icon alone (`Not
+  saved` keeps its word), so the breadcrumb keeps the batch name readable at the 768 px viewport floor (#1063).
 
 ## [0.0.1b4] — 2026-09-15
 

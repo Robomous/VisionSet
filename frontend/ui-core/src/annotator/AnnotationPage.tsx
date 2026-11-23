@@ -2024,6 +2024,12 @@ function Workspace({
             : `${unresolved} frames unresolved — annotate or skip them to finish the job.`));
 
   const finishInert = jobState === "completed" || withheld !== null;
+  /**
+   * A viewer has nothing to finish from, so the withheld control is natively
+   * disabled there; the reason moves to a focusable wrapper so it is still read.
+   */
+  const finishReadOnly = readOnly && finishWithheld !== null && jobState !== "completed";
+  const finishDisabled = finishInert || finishReadOnly;
 
   /**
    * Whether the frame's own verbs render at all.
@@ -2125,6 +2131,42 @@ function Workspace({
           onChoose: (kind) => onActivateTool(kind),
         };
 
+  const finishButton = (
+    <Button
+      variant="default"
+      className={cn(
+        "h-9 min-w-28 gap-2 rounded-lg px-3.5 @max-[36rem]:min-w-0",
+        finishWithheld !== null && !finishDisabled && "cursor-not-allowed opacity-40",
+      )}
+      data-testid="finish-job"
+      data-withheld={finishWithheld === null ? "false" : "true"}
+      disabled={finishDisabled || finishJob.isPending}
+      aria-disabled={(!finishDisabled && finishWithheld !== null) || undefined}
+      onMouseDown={keepCanvasFocus}
+      onClick={() => {
+        if (finishWithheld !== null || finishJob.isPending) return;
+        // **Said out loud**, because the rest of what this press
+        // does is a subtraction: the tool strip, the classes
+        // region and the frame's own verbs all leave, which is a
+        // screen with less on it and no statement of why. The
+        // banner arrives in the same paint and stays; the toast is
+        // the moment, and this is the add-a-class chain's idiom
+        // (`toast.success`) rather than a second one.
+        //
+        // On the mutation and not in `useJobTransition`, which
+        // also spells `start` — a job starting is a consequence of
+        // opening the page and nobody asked for it.
+        finishJob.mutate(undefined, {
+          onSuccess: () =>
+            toast.success("Job finished — its frames are read-only now"),
+        });
+      }}
+    >
+      <CheckCheck className="size-4" />
+      {jobState === "completed" ? "Finished" : "Finish job"}
+    </Button>
+  );
+
   return (
     // `data-asset` names the frame on screen, the way a rendered shape carries
     // `data-annotation-id`. The asset travels as a *query parameter* and the
@@ -2143,7 +2185,7 @@ function Workspace({
       data-testid="annotation-page"
       data-asset={asset.id}
     >
-      <header className="col-span-3 flex min-w-0 items-center border-b border-border bg-card">
+      <header className="@container col-span-3 flex min-w-0 items-center border-b border-border bg-card">
         {/* The back arrow heads the tool rail's column, so the rail reads as one strip. */}
         <div className="flex w-12 shrink-0 items-center justify-center self-stretch border-r border-border">
           {/*
@@ -2870,55 +2912,30 @@ function Workspace({
                 finished from the workspace at all. Where it is withheld it says
                 why; once the job is completed it reads `Finished`.
 
-                **The reason is a real tooltip, and the withheld state is
-                `aria-disabled`, never the native attribute**: a disabled
+                **The reason is a real tooltip.** On an editable page the withheld
+                state is `aria-disabled`, never the native attribute: a disabled
                 `<button>` receives no pointer events and cannot take focus, so the
-                reason could not be read (principles 4 and 9). Native `disabled`
-                survives only where there is nothing for it to explain — a
-                `Finished` job, whose label is the explanation, a closed batch,
-                whose banner already says why the page is read-only, and the
-                in-flight press.
+                reason could not be read (principles 4 and 9). On a read-only page
+                it is natively `disabled` — there is nothing to finish from a
+                viewer — and the tooltip moves to a focusable wrapper so the reason
+                is still reachable by hover and keyboard. Native `disabled` with no
+                reason is only a `Finished` job, whose label is the explanation,
+                and the in-flight press.
               */
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button
-                    variant="default"
-                    className={cn(
-                      "h-9 min-w-28 gap-2 rounded-lg px-3.5 @max-[36rem]:min-w-0",
-                      finishWithheld !== null && !finishInert && "cursor-not-allowed opacity-40",
-                    )}
-                    data-testid="finish-job"
-                    data-withheld={finishWithheld === null ? "false" : "true"}
-                    disabled={finishInert || finishJob.isPending}
-                    aria-disabled={(!finishInert && finishWithheld !== null) || undefined}
-                    onMouseDown={keepCanvasFocus}
-                    onClick={() => {
-                      if (finishWithheld !== null || finishJob.isPending) return;
-                      // **Said out loud**, because the rest of what this press
-                      // does is a subtraction: the tool strip, the classes
-                      // region and the frame's own verbs all leave, which is a
-                      // screen with less on it and no statement of why. The
-                      // banner arrives in the same paint and stays; the toast is
-                      // the moment, and this is the add-a-class chain's idiom
-                      // (`toast.success`) rather than a second one.
-                      //
-                      // On the mutation and not in `useJobTransition`, which
-                      // also spells `start` — a job starting is a consequence of
-                      // opening the page and nobody asked for it.
-                      finishJob.mutate(undefined, {
-                        onSuccess: () =>
-                          toast.success("Job finished — its frames are read-only now"),
-                      });
-                    }}
-                  >
-                    <CheckCheck className="size-4" />
-                    {jobState === "completed" ? "Finished" : "Finish job"}
-                  </Button>
+                  {finishReadOnly ? (
+                    <span tabIndex={0} className="inline-flex" data-testid="finish-job-reason">
+                      {finishButton}
+                    </span>
+                  ) : (
+                    finishButton
+                  )}
                 </TooltipTrigger>
                 {/* Only while withheld: an enabled Finish job explains itself by
                     being pressable, and a tooltip repeating the label would be
                     noise over the one control the frame exists to end on. */}
-                {finishWithheld !== null && !finishInert && (
+                {finishWithheld !== null && (finishReadOnly || !finishInert) && (
                   <TooltipContent side="top" data-testid="finish-withheld">
                     {finishWithheld}
                   </TooltipContent>
@@ -3545,7 +3562,7 @@ function JobProgress({ counts }: { readonly counts: JobCounts | null }): JSX.Ele
           data-testid="job-progress"
           data-settled={settled}
         >
-          <StackedBar counts={counts} className="h-1.5 w-28" />
+          <StackedBar counts={counts} className="h-1.5 w-28 @max-[56rem]:hidden" />
           {/* Read as `12 / 48`; the spaces are margins, so the text is `12/48`. */}
           <span className="text-sm tabular-nums">
             <RollingNumber value={settled} />
@@ -3646,7 +3663,8 @@ function SaveStatus({
           </span>
         ))}
       </span>
-      <span className="grid" aria-hidden="true">
+      {/* A narrow header keeps the icon alone; a refusal keeps its word. */}
+      <span className={cn("grid", state !== "failed" && "@max-[56rem]:hidden")} aria-hidden="true">
         {keys.map((key) => (
           <span
             key={key}

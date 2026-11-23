@@ -686,7 +686,7 @@ describe("the flow verb", () => {
     expect(sent.some((request) => request.path.endsWith("/complete"))).toBe(false);
   });
 
-  it("is natively disabled on a closed batch, where the banner already says why (#1063)", async () => {
+  it("is natively disabled on a closed batch, with its reason still reachable (#1063)", async () => {
     assetCount = 1;
     closedBatch = true;
     await open();
@@ -695,6 +695,31 @@ describe("the flow verb", () => {
     expect(finish.disabled).toBe(true);
     expect(finish.getAttribute("aria-disabled")).toBeNull();
     expect(screen.getByTestId("readonly-banner").textContent).toContain("Viewing only");
+
+    const reason = screen.getByTestId("finish-job-reason");
+    expect(reason.tabIndex).toBe(0);
+    reason.focus();
+    expect((await screen.findByTestId("finish-withheld")).textContent).toContain("This batch is completed");
+  });
+
+  it("is natively disabled on a settled frame's read-only page, with its reason still reachable (#1063)", async () => {
+    assetCount = 1;
+    jobSettled = false;
+    progress = "accepted";
+    await open();
+
+    expect(screen.getByTestId("readonly-banner")).toBeDefined();
+    const finish = screen.getByTestId("finish-job") as HTMLButtonElement;
+    expect(finish.disabled).toBe(true);
+    expect(finish.getAttribute("aria-disabled")).toBeNull();
+
+    const reason = screen.getByTestId("finish-job-reason");
+    reason.focus();
+    expect(document.activeElement).toBe(reason);
+    expect((await screen.findByTestId("finish-withheld")).textContent).toMatch(/before this job can finish/i);
+
+    await userEvent.click(reason);
+    expect(sent.some((request) => request.path.endsWith("/complete"))).toBe(false);
   });
 
   it("names the blocker with its count, from the same progress the readout shows (#427)", async () => {
