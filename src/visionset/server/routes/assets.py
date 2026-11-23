@@ -201,9 +201,10 @@ def set_asset_calibration(
     """State this asset's own calibration, overriding its source's and replacing any override.
 
     The only way a calibration reaches an imported asset, which has no source.
-    Replacing an override with a different one is refused with 409
-    `CALIBRATION_IN_USE` while the asset holds 3D labels, which were drawn
-    against it; stating the identical one again changes nothing. A point
+    One other than the calibration in effect for the asset (its override, else
+    its source's) is refused with 409 `CALIBRATION_IN_USE` while the asset holds
+    3D labels, which were drawn against it; stating the identical one again
+    changes nothing. A point
     cloud, which has no camera, is 409 `CALIBRATION_NOT_APPLICABLE`.
     One measured at a size other than the asset's is 422
     `CALIBRATION_RESOLUTION_MISMATCH`; a rotation that is not a proper rotation,
@@ -224,7 +225,7 @@ def clear_asset_calibration(workspace: WorkspaceDep, project_id: UUID, asset_id:
     """Remove the asset's override, so it inherits its source's again. None is a 204 too.
 
     Refused with 409 `CALIBRATION_IN_USE` when the asset holds 3D labels and its
-    source has no calibration to fall back to, and with 422
+    source has no calibration to fall back to, or a different one, and with 422
     `CALIBRATION_RESOLUTION_MISMATCH` when the source's calibration was measured
     at a size other than the asset's. An unknown project is 404
     `PROJECT_NOT_FOUND` and an unknown asset 404 `ASSET_NOT_FOUND`.

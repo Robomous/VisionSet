@@ -166,7 +166,7 @@ def test_clearing_a_calibration_3d_labels_need_is_409_by_code(rig: Rig) -> None:
 
     assert response.status_code == 409
     assert response.json()["code"] == "CALIBRATION_IN_USE"
-    rig.client.put(rig.asset_path, json=calibration_document(fx=11.0))
+    assert rig.client.put(rig.asset_path, json=calibration_document()).status_code == 200
     assert rig.client.delete(rig.source_path).status_code == 204
     refused = rig.client.delete(rig.asset_path)
     assert refused.json()["code"] == "CALIBRATION_IN_USE"
@@ -193,10 +193,15 @@ def test_replacing_a_calibration_3d_labels_were_drawn_against_is_409_by_code(rig
     assert refused.json()["code"] == "CALIBRATION_IN_USE"
     assert rig.client.get(rig.source_path).json()["calibration"] == calibration_document()
     assert rig.client.put(rig.source_path, json=calibration_document()).status_code == 200
-    assert rig.client.put(rig.asset_path, json=calibration_document(fx=11.0)).status_code == 200
-    overridden = rig.client.put(rig.asset_path, json=calibration_document(fx=12.0))
-    assert overridden.status_code == 409
-    assert overridden.json()["code"] == "CALIBRATION_IN_USE"
+    first = rig.client.put(rig.asset_path, json=calibration_document(fx=11.0))
+    assert first.status_code == 409
+    assert first.json()["code"] == "CALIBRATION_IN_USE"
+    assert rig.client.put(rig.asset_path, json=calibration_document()).status_code == 200
+    assert rig.client.put(rig.source_path, json=calibration_document(fx=40.0)).status_code == 200
+    cleared = rig.client.delete(rig.asset_path)
+    assert cleared.status_code == 409
+    assert cleared.json()["code"] == "CALIBRATION_IN_USE"
+    assert rig.client.get(rig.asset_path).json()["override"] == calibration_document()
 
 
 def test_unknown_targets_are_404_by_code(rig: Rig) -> None:
