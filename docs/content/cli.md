@@ -447,10 +447,12 @@ The batch id goes to stdout; a re-run that finds nothing new creates no batch an
 `--asset` - the camera behind a source, or one asset's own override (see
 [sources.md](sources.md#camera-calibration)). `FILE` is the calibration as JSON, the shape
 `show --json` prints under `calibration` for a source and `override` for an asset; one that does
-not parse is a usage error (exit 2). `set` replaces whole. A calibration measured at a size other
+not parse is a usage error (exit 2). `set` replaces whole, and setting the identical calibration
+again changes nothing. A calibration measured at a size other
 than an asset it would apply to - including the source's, when `clear --asset` would fall back to
 it - is refused with `CALIBRATION_RESOLUTION_MISMATCH`, and clearing
-one that 3D labels still resolve to with `CALIBRATION_IN_USE`.
+one that 3D labels still resolve to, or replacing it with a different one, with
+`CALIBRATION_IN_USE`.
 
 ### `visionset batch`
 
