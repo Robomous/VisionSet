@@ -1517,11 +1517,16 @@ export interface paths {
          *     `allowed_actions` on the batch's asset listing rather than guessing: it
          *     declares `annotate` exactly when this will be accepted.
          *
-         *     A 3D label (`polyline_3d`, `cuboid_3d`) is read against its asset's
-         *     calibration — the asset's own, else its source's. With neither this is 409
-         *     `CALIBRATION_MISSING`, and with one measured at another size than the asset
-         *     it is 422 `CALIBRATION_RESOLUTION_MISMATCH`; set a fitting calibration and
-         *     resend.
+         *     A 3D label (`polyline_3d`, `cuboid_3d`) on an image is read against its
+         *     asset's calibration — the asset's own, else its source's. With neither this
+         *     is 409 `CALIBRATION_MISSING`, and with one measured at another size than the
+         *     asset it is 422 `CALIBRATION_RESOLUTION_MISMATCH`; set a fitting calibration
+         *     and resend.
+         *
+         *     On a point-cloud scan a 3D label is read against the frame its source
+         *     declares and needs no calibration; a source declaring no frame is 409
+         *     `CALIBRATION_MISSING`. A scan has no pixels, so a `bbox`, `polygon` or
+         *     `polyline` on one is 422 `INVALID_ANNOTATION`.
          */
         post: operations["add_annotations"];
         /**
@@ -1563,7 +1568,9 @@ export interface paths {
          *     is 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409
          *     `JOB_FINISHED`. An edit is a write, and every gate that stops a new label
          *     stops a replacement too — including 409 `CALIBRATION_MISSING` and 422
-         *     `CALIBRATION_RESOLUTION_MISMATCH` for a 3D label.
+         *     `CALIBRATION_RESOLUTION_MISMATCH` for a 3D label, and on a scan 409
+         *     `CALIBRATION_MISSING` for a source declaring no frame and 422
+         *     `INVALID_ANNOTATION` for a `bbox`, `polygon` or `polyline`.
          */
         patch: operations["update_annotations"];
         trace?: never;
@@ -4527,18 +4534,26 @@ export interface components {
         };
         /**
          * Cuboid3DBody
-         * @description A box in metres in the asset's camera sensor frame: a center, a size and a yaw.
+         * @description A box: a center, a size and a yaw.
          *
-         *     The frame is x right, y down, z forward. `center` is the box's geometric
-         *     centre; `size` is `[length, width, height]`, each strictly positive, with
-         *     `length` along the heading, `width` across it and `height` along the sensor
-         *     y axis. `yaw` is radians about the sensor +y axis, within `[-pi, pi]` and
-         *     refused outside it rather than wrapped; at `yaw = 0` the heading is sensor
-         *     +x, and in general it is `(cos yaw, 0, -sin yaw)`. Read against the asset's
-         *     effective calibration; writing one to an asset with no calibration is
-         *     refused with `CALIBRATION_MISSING`, and one written against a calibration measured at a
-         *     different resolution with `CALIBRATION_RESOLUTION_MISMATCH`. No image-frame bounds check
-         *     applies.
+         *     `center` is the box's geometric centre; `size` is `[length, width, height]`,
+         *     each strictly positive, with `length` along the heading and `width` across
+         *     it. `yaw` is radians within `[-pi, pi]`, refused outside it rather than
+         *     wrapped. No image-frame bounds check applies.
+         *
+         *     On an image the box is in metres in the camera sensor frame (x right, y
+         *     down, z forward): `height` runs along y, `yaw` turns about +y and the heading
+         *     is `(cos yaw, 0, -sin yaw)`. It is read against the asset's effective
+         *     calibration: with none the write is `CALIBRATION_MISSING`, and with one
+         *     measured at another resolution `CALIBRATION_RESOLUTION_MISMATCH`.
+         *
+         *     On a point-cloud scan the box is in the frame its source declares and needs
+         *     no calibration: `height` runs along that frame's up axis, `yaw` turns
+         *     counter-clockwise about up seen from above, and at 0 the heading is the
+         *     frame's forward axis — `(cos yaw, sin yaw, 0)` on `lidar_flu`, `(-sin yaw,
+         *     cos yaw, 0)` on `lidar_rfu`. On `camera_rdf` `height` runs along -y and the
+         *     heading is `(-sin yaw, 0, cos yaw)`: +z at 0, not the image convention's +x.
+         *     A source declaring no frame is `CALIBRATION_MISSING`.
          */
         Cuboid3DBody: {
             /** Center */
@@ -5382,12 +5397,14 @@ export interface components {
         };
         /**
          * Polyline3DBody
-         * @description An open path of at least two `(x, y, z)` points, in order, in metres.
+         * @description An open path of at least two `(x, y, z)` points, in order.
          *
-         *     Points are in the asset's camera sensor frame — x right, y down, z forward —
-         *     and are read against the asset's effective calibration; writing one to an
-         *     asset with no calibration is refused with `CALIBRATION_MISSING`. No
-         *     image-frame bounds check applies. `visibility` follows the 2D polyline's
+         *     On an image, points are metres in the camera sensor frame (x right, y down,
+         *     z forward), read against the asset's effective calibration; with none the
+         *     write is refused with `CALIBRATION_MISSING`. On a point-cloud scan they are
+         *     in the frame its source declares (`lidar_flu`, `lidar_rfu`, `camera_rdf`)
+         *     and need no calibration; a source declaring no frame is `CALIBRATION_MISSING`.
+         *     No image-frame bounds check applies. `visibility` follows the 2D polyline's
          *     rules exactly.
          */
         Polyline3DBody: {

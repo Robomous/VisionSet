@@ -421,3 +421,23 @@ def test_the_points_route_is_scoped_and_guarded_like_content(
     assert (foreign.status_code, foreign.json()["code"]) == (404, "ASSET_NOT_FOUND")
     assert (unknown.status_code, unknown.json()["code"]) == (404, "PROJECT_NOT_FOUND")
     assert anonymous.status_code == 401
+
+
+def test_the_published_contract_describes_labels_on_a_scan() -> None:
+    from visionset.server.main import app
+
+    spec = app.openapi()
+    schemas = spec["components"]["schemas"]
+    cuboid = schemas["Cuboid3DBody"]["description"]
+    assert "(cos yaw, sin yaw, 0)` on `lidar_flu`" in cuboid
+    assert "up axis" in cuboid
+    assert "point-cloud scan" in schemas["Polyline3DBody"]["description"]
+    refusals = {
+        "post": "a `bbox`, `polygon` or `polyline` on one is 422 `INVALID_ANNOTATION`",
+        "patch": "422 `INVALID_ANNOTATION` for a `bbox`, `polygon` or `polyline`",
+    }
+    for method, refusal in refusals.items():
+        operation = spec["paths"]["/jobs/{job_id}/annotations"][method]
+        description = " ".join(operation["description"].split())
+        assert "declaring no frame" in description
+        assert refusal in description

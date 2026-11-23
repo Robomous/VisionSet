@@ -266,21 +266,39 @@ asset's own pixels, never normalized. `type` selects the shape:
 - `bbox`: `x`, `y` (top-left corner), `width`, `height`.
 - `polygon`: `points`, at least three `[x, y]` pairs; the ends join.
 - `polyline`: `points`, at least two `[x, y]` pairs in order; the ends do not join.
-- `polyline_3d`: `points`, at least two `[x, y, z]` triples in order, in metres in the
-  camera's sensor frame (x right, y down, z forward), never pixels.
+- `polyline_3d`: `points`, at least two `[x, y, z]` triples in order, never pixels.
 - `cuboid_3d`: `center` `[x, y, z]` (the box's middle), `size` `[length, width, height]`
-  and `yaw`, in metres and radians in the same sensor frame. Every size is above zero:
-  `length` runs along the heading, `width` across it, `height` along y. `yaw` turns
-  about +y (down), within `[-pi, pi]`, and is refused outside it rather than wrapped;
-  at `0` the heading is +x, in general `(cos yaw, 0, -sin yaw)`. No `visibility`.
+  and `yaw` in radians. Every size is above zero: `length` runs along the heading,
+  `width` across it. `yaw` lies within `[-pi, pi]` and is refused outside it rather
+  than wrapped. No `visibility`.
 - `classification_tag`: no coordinates.
 
-## 3D labels need a calibration
+The 3D frame depends on the asset's modality; see the next two sections.
+
+## On an image, 3D labels need a calibration
+
+On an image, 3D coordinates are metres in the camera's sensor frame (x right, y down,
+z forward). A cuboid's `height` runs along y, `yaw` turns about +y (down), and the
+heading is +x at `0`, in general `(cos yaw, 0, -sin yaw)`.
 
 A `polyline_3d` or `cuboid_3d` is read against its asset's calibration: the asset's own override
 when it has one, else its source's (`get_calibration`). Writing one to an asset with
 neither is refused with `CALIBRATION_MISSING`; `set_calibration` first. No image-frame
 bounds check applies to a 3D point.
+
+## On a point-cloud scan, 3D labels use the source's frame
+
+On a scan, 3D coordinates are in the frame its source declares (`lidar_flu`,
+`lidar_rfu` or `camera_rdf`; the source's `frame`), not the camera's. A cuboid's
+`height` runs along that frame's up axis; `yaw` turns counter-clockwise about up seen
+from above, and at `0` the heading is the frame's forward axis: `(cos yaw, sin yaw, 0)`
+on `lidar_flu`, `(-sin yaw, cos yaw, 0)` on `lidar_rfu`. On `camera_rdf` up is -y and the
+heading is `(-sin yaw, 0, cos yaw)`: +z at `0`, not the +x an image uses on the same axes.
+
+A scan needs no calibration, and `set_calibration` on one is refused with
+`CALIBRATION_NOT_APPLICABLE`. A 3D label on a scan whose source declares no frame is
+`CALIBRATION_MISSING`. A scan has no pixels: `bbox`, `polygon` and `polyline` on one
+are refused with `INVALID_ANNOTATION`; `classification_tag` is accepted.
 
 ## Polyline vertex visibility
 
