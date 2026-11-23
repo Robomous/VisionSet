@@ -127,7 +127,9 @@ export function VertexRegion({
           Press a vertex to mark it occluded.
         </p>
       )}
-      <div className="max-h-64 overflow-y-auto" data-testid="vertex-scroller">
+      {/* About seven rows of the foundation's `sm` toggle (24px), and a part of the
+          next, so a long lane says there is more by being cut, not by a count. */}
+      <div className="max-h-52 overflow-y-auto" data-testid="vertex-scroller">
         <div
           ref={toolbar}
           role="toolbar"

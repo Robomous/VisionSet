@@ -1,22 +1,38 @@
 /**
  * The annotation page: the headless engine meeting the REST API.
  *
- * ## Autosave: there is none, and that is the documented decision
+ * ## Autosave, and what it may never do
  *
- * The page saves explicitly and on navigate. The policy is **no autosave**, for
- * three reasons that are about this system rather than about taste:
+ * The page saves on its own: once the document has been still for
+ * `AUTOSAVE_MS`, whatever differs from the server is sent. Navigating still
+ * saves first and at once — the arrows, the gallery, the back arrow, Next and the
+ * review moves all wait for the save — and `mod+s` is "save now". There is no
+ * Save button: the save state on the bar says where the work is (Edited, Saving,
+ * Saved, or Not saved), and a refusal is a sentence in the notice column.
  *
- * 1. **A save is followed by a reload.** The annotator mints client-side ids and
- *    the kernel mints its own, so the page cannot merge a save's response back in
- *    — it refetches. A debounced autosave would therefore rebuild the document
- *    under the user's cursor every few seconds, and a rebuild mid-gesture is a
- *    dropped drag.
- * 2. **Every call is all-or-nothing.** A partial autosave has no meaning here: the
- *    kernel refuses a batch of annotations as a unit and reports the offending
- *    *index*. Firing that on a timer means reporting it about work the user was
- *    not doing at the time.
- * 3. **The two cases autosave exists for are already covered.** "I forgot" is
- *    save-on-navigate; "I closed the tab" is the unsaved-changes guard.
+ * It used to be the documented policy that there was no autosave, for three
+ * reasons. Each is answered rather than waved away:
+ *
+ * 1. **A save was followed by a rebuild.** The page refetched after every save to
+ *    learn the kernel's ids and rebuilt the document from the answer, so a timed
+ *    save would have rebuilt it under the cursor and dropped a drag — and taken
+ *    back anything drawn while the save was out. Now nothing a save answers
+ *    rewrites the document: the kernel's answer updates this page's record of
+ *    the server and the local-to-server id map (`frameSession.ts`), the store and
+ *    its undo history stay as they are, and work done while a save was out is
+ *    simply the next save's. A read is taken in only when there is nothing it
+ *    could take back.
+ * 2. **Every call is all-or-nothing, and a refusal names an index.** So an
+ *    autosave never fires mid-gesture — not during a drag, not while a polygon's
+ *    points are being placed (the canvas reports it, `onGestureChange`), not
+ *    while a suggestion waits to be accepted — and a refused autosave is not
+ *    retried on a timer: it waits for the document to change, so the refusal on
+ *    screen is about the work the person just did, once, and not a loop.
+ * 3. **"I forgot" and "I closed the tab"** are still covered the way they were:
+ *    navigating saves first, and the unsaved-changes guard holds the tab while
+ *    anything is unsaved or a save is still out.
+ *
+ * A read-only frame never saves: no dirty state is possible there.
  *
  * ## The schema is the batch's pinned version, never the project's active one
  *
@@ -57,7 +73,7 @@
  * (`PROMOTABLE_PROGRESS` excludes `skipped`).
  *
  * Of the three ways to close that hole, this page takes the **explicit** one: the
- * asset's progress is always on the bar, and on a skipped asset `Skip` is replaced
+ * asset's progress is always on the picture's status tag, and on a skipped asset `Skip` is replaced
  * by `Un-skip`. Not automatic-on-save, which is friendlier and was rejected —
  * un-skipping silently would overwrite a recorded decision without asking, and
  * this repository's standing rule is that a decision is somebody's action
@@ -66,8 +82,8 @@
  * interrupts the one gesture the page exists for, and it would still leave a user
  * who simply wants to un-skip with nothing to press.
  *
- * What the automatic reading was right about is that `Save` must never look inert.
- * It does not: the save happens, and the notice beside it says why the counter
+ * What the automatic reading was right about is that a save must never look inert.
+ * It does not: the save happens, and the skipped notice says why the counter
  * stayed where it is and what to press.
  */
 
@@ -97,7 +113,6 @@ import {
   createClipboard,
   defaultRegistry,
   annotationsInDrawOrder,
-  documentFromWire,
   hasPending,
   isParked,
   isTagAnnotation,
@@ -110,12 +125,14 @@ import {
   steppedTolerance,
   suggestClassFor,
   suggestGeometriesFor,
+  allowedGeometriesFor,
   suggestibleClassIn,
   toolFor,
   withClass,
   withPoint,
   withTolerance,
   type Answer,
+  type AnnotationDocument,
   type AnnotatorStore,
   type Clipboard,
   type Point,
@@ -131,8 +148,8 @@ import {
   usePendingIndicator,
   type AnnotatorView,
 } from "@visionset/annotator/react";
-import { AnnotatorStore as Store, WireFormatError, parseAssetDescriptor } from "@visionset/annotator";
-import { ArrowLeft, Box, Check, CheckCheck, ChevronLeft, ChevronRight, CircleHelp, Eye, Grid3x3, MonitorSmartphone, MoreHorizontal, SkipForward, TriangleAlert, Undo2 } from "lucide-react";
+import { WireFormatError, parseAssetDescriptor } from "@visionset/annotator";
+import { ArrowLeft, Box, CheckCheck, ChevronLeft, ChevronRight, CircleHelp, CloudAlert, CloudCheck, CloudUpload, Eye, Grid3x3, Hand, LayoutGrid, Loader2, MonitorSmartphone, MoreHorizontal, Redo2, SkipForward, Sparkles, TriangleAlert, Undo2 } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -141,6 +158,7 @@ import {
   useState,
   useSyncExternalStore,
   type JSX,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -158,9 +176,11 @@ import {
 import type { OpenMember } from "../generated/api.js";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
-import { Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Tooltip, TooltipContent, TooltipTrigger } from "@robomous/ui-core";
+import { Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, HoverCard, HoverCardContent, HoverCardTrigger, Kbd, Tooltip, TooltipContent, TooltipTrigger, cn } from "@robomous/ui-core";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { AnnotatorPanel } from "./AnnotatorPanel";
+import { GeometryIcon } from "./GeometryIcon";
+import { classColor } from "../palette";
 import { CanvasReassign } from "./CanvasReassign";
 import { EditorNotice, EditorNotices } from "./EditorNotice";
 import { ShortcutSheet, modKey } from "./ShortcutSheet";
@@ -173,6 +193,7 @@ import { useScanWorkspace } from "./scanWorkspace";
 import { carries3DLabels, labels3D, overlay3DFor, overlay3DNotice, type Overlay3DWithheld } from "./overlay3d";
 import type { AssetProgress, WireAnnotation } from "./jobQueries";
 import type { BatchAsset } from "../screens/queries";
+import { FrameSession } from "./frameSession";
 import {
   jobKeys,
   assetPositionOf,
@@ -190,9 +211,10 @@ import {
   useSaveAnnotations,
   useSetAssetProgress,
 } from "./jobQueries";
-import { AddClassDialog, runAddClass } from "./AddClassDialog";
+import { AddClassDialog } from "./AddClassDialog";
+import { runAddClass } from "./addClassRules";
 import { FrameGallery } from "./FrameGallery";
-import { SuggestPanel } from "./SuggestPanel";
+import { SuggestBar, type SuggestShapeChoice } from "./SuggestBar";
 import { useConnections, usableConnection } from "../data/inferenceQueries";
 import type { SuggestionOut } from "../data/inferenceQueries";
 import { useServerSuggestionExecutor } from "../inference/suggestionExecutor";
@@ -200,11 +222,12 @@ import type { SuggestionExecutor } from "../inference/suggestionExecutor";
 import { useBrowserInferenceRuntime } from "../inference/VisionSetBrowserInferenceProvider.js";
 import type {
   ActiveSuggestionTarget,
-  BrowserModelCatalogEntry,
   BrowserSuggestionAssetSource,
   BrowserSuggestionTarget,
 } from "../inference/browserPort.js";
 import { computeSuggestBlocker } from "../inference/targetBlocker.js";
+import { REVIEW_ACTIONS } from "./reviewActions";
+import { readyBrowserTargets, staleStoredBrowserTarget, type StoredSuggestTarget } from "./suggestTargets";
 import { readPref, writePref } from "../data/prefs";
 
 /**
@@ -225,7 +248,6 @@ function suggestTargetKey(projectId: string): string {
   return `suggest.target.${projectId}`;
 }
 
-type StoredSuggestTarget = { readonly kind: "server" } | { readonly kind: "browser"; readonly targetId: string };
 
 function readStoredSuggestTarget(projectId: string): StoredSuggestTarget {
   const raw = readPref(suggestTargetKey(projectId));
@@ -239,41 +261,6 @@ function writeStoredSuggestTarget(projectId: string, target: ActiveSuggestionTar
   writePref(suggestTargetKey(projectId), target.kind === "browser" ? `browser:${target.targetId}` : "server");
 }
 
-/**
- * Whether a stored browser-target preference is stale enough to fall back to Server
- * silently.
- *
- * A catalog-known target may be installed, activating, or awaiting an explicit download;
- * none of those make its preference stale. Only an ID unknown to the build falls back.
- * `explicitlyChosen` separately keeps a target picked in this session pinned if it later
- * drops out, so failure stays visible instead of silently switching to Server.
- */
-export function staleStoredBrowserTarget(
-  storedTarget: StoredSuggestTarget,
-  browserTargets: readonly BrowserSuggestionTarget[] | undefined,
-  explicitlyChosen: boolean,
-  knownByCatalog = false,
-): boolean {
-  if (browserTargets === undefined) return false;
-  if (storedTarget.kind !== "browser") return false;
-  if (explicitlyChosen) return false;
-  if (knownByCatalog) return false;
-  return !browserTargets.some((row) => row.id === storedTarget.targetId);
-}
-
-/**
- * Reconciles the asynchronously resolved Phase F target list with the catalog's synchronous
- * lifecycle snapshot. Removal and corruption invalidate an executor before the next
- * `listTargets()` promise settles, so a target is answerable only while both views say ready.
- */
-export function readyBrowserTargets(
-  browserTargets: readonly BrowserSuggestionTarget[] | undefined,
-  browserModels: readonly BrowserModelCatalogEntry[],
-): readonly BrowserSuggestionTarget[] | undefined {
-  if (browserTargets === undefined) return browserTargets;
-  const readyIds = new Set(browserModels.filter((entry) => entry.state === "ready").map((entry) => entry.id));
-  return browserTargets.filter((target) => readyIds.has(target.id));
-}
 
 const EMPTY_BROWSER_MODELS = Object.freeze([]);
 const emptyBrowserModels = () => EMPTY_BROWSER_MODELS;
@@ -289,7 +276,22 @@ const subscribeToNothing = () => () => {};
  * one gesture, not an error.
  */
 const PRECISE_DEVICE_PREF = "annotator.precise-device";
-import { PROGRESS_LABEL, outstandingWork, progressDotClass, progressTone } from "../screens/batchState";
+
+/**
+ * How long the document has to be still before it saves on its own.
+ *
+ * Long enough that a run of nudges or a few boxes drawn in a row is one save
+ * rather than one per shape, short enough that "did it save?" is answered by the
+ * bar before anybody thinks to ask.
+ */
+export const AUTOSAVE_MS = 1200;
+
+/** A settled promise's outcome, when it belongs to somebody else. */
+function nothing(): void {}
+
+/** The save queue's start: no save out. One value, so a render allocates nothing. */
+const NOTHING_OUT: Promise<void> = Promise.resolve();
+import { PROGRESS_LABEL, outstandingWork, progressCellClass, progressDotClass, progressTone } from "../screens/batchState";
 import type { DraftLabelClassBody, LabelClassBody, SchemaDiff, SchemaVersion } from "../screens/queries";
 import {
   batchKeys,
@@ -303,51 +305,6 @@ import {
 } from "../screens/queries";
 import { toast } from "sonner";
 
-/**
- * The frame-level *review* actions, in the order they take their slot.
- *
- * Module scope and exported so a test can sweep it against the wire's own
- * declarations rather than against a copy. Each row names an action the wire
- * declares — this is a *presentation* order over `allowed_actions`, never a
- * second opinion about legality.
- *
- * They are an **outline** control rather than the bar's filled primary:
- * the filled slot belongs to the flow verb, because the thing a person does
- * on nine frames out of ten is finish this one and go to the next, and submitting
- * for review is the tenth. The list itself is unchanged — what moved is which
- * variant it wears and what sits to its right.
- */
-export const REVIEW_ACTIONS: readonly {
-  readonly action: AssetAction;
-  readonly label: string;
-  readonly testId: string;
-  readonly progress: "annotated" | "review_pending" | "accepted";
-  /** What the move means, for a product with no annotator identity. */
-  readonly tooltip: string;
-}[] = [
-  {
-    action: ASSET_ACTION.confirm,
-    label: "Confirm labels",
-    testId: "confirm",
-    progress: "annotated",
-    tooltip: "Keeps the model's labels as this frame's own — nothing else changes",
-  },
-  {
-    action: ASSET_ACTION.submitForReview,
-    label: "Submit for review",
-    testId: "submit-for-review",
-    progress: "review_pending",
-    tooltip:
-      "Marks this frame for a review pass — anyone opening the job can accept or return it",
-  },
-  {
-    action: ASSET_ACTION.accept,
-    label: "Accept",
-    testId: "accept",
-    progress: "accepted",
-    tooltip: "Takes this frame as final — accepted work is corrected in a new batch, not here",
-  },
-];
 
 
 /**
@@ -419,54 +376,35 @@ function toDraft(classes: readonly LabelClassBody[]): DraftLabelClassBody[] {
  * reminder is more design than a hint is worth, and the shortcut sheet already
  * carries every chord, derived from the live registry.
  */
-function Chip({ children }: { readonly children: ReactNode }): JSX.Element {
-  return (
-    <kbd className="ml-1 rounded-sm border border-border bg-muted px-1 font-mono text-xs text-muted-foreground">
-      {children}
-    </kbd>
-  );
-}
-
-/**
- * The bar's divider, and the one idiom for it — `ZoomWidget` draws the same rule
- * between its own sub-groups.
- *
- * Inside the navigation cluster it carries the whole grouping claim: the three
- * sub-groups are *instrument*, *browse* and *resolve*, and what tells them apart
- * on screen is one hairline each. Without them the cluster is eight controls in a
- * row and the browse/resolve distinction is back to being learned rather than
- * read.
- */
-function Divider(): JSX.Element {
-  return <span className="h-5 w-px shrink-0 bg-border" aria-hidden="true" />;
-}
-
 export interface AnnotationPageProps {
   readonly jobId: string;
   /**
    * Which asset of the job to open on. Defaults to the first.
    *
-   * A gallery tile that opened the job at its *first* asset would read as the
-   * click being ignored — press the fifth picture, get the first. An id rather
+   * A frame-gallery tile (or a link that names one) that opened the job at its
+   * *first* asset would read as the click being ignored — press the fifth
+   * picture, get the first. An id rather
    * than a position, because the caller is holding an asset and the position is
    * this page's own idea; an id nobody in this job carries falls back to the
    * first rather than showing nothing, since a stale link is not an error state.
    */
   readonly initialAssetId?: string;
   /**
-   * The gallery — the batch this job's assets belong to, and this page's
-   * **parent**. Both the back arrow and the design's grid button go there.
+   * The batch this job's assets belong to, and this page's **parent** — which
+   * the host opens as the batch's panel on the project's Overview. The back arrow
+   * and *Correct this batch* go there. (The name is older than the page it once
+   * meant: batches have no gallery page of their own any more.)
    *
    * Not a `navigate(-1)`-style `onBack`: that is history rather than structure, so
    * it means a
-   * different thing depending on how the page was reached — the gallery from a
-   * tile, nothing at all on a fresh tab, and one asset at a time after walking
+   * different thing depending on how the page was reached — the previous frame
+   * after walking a job, nothing at all on a fresh tab, and one asset at a time after walking
    * forward through the job. The argument against it is the one this file already
    * makes two paragraphs down about the grid button, applied to going up.
    *
-   * Two controls, one destination, and that is not redundancy: the arrow means
-   * *up* and the grid means *show me the grid*. They coincide because the
-   * annotator's parent is the grid, and `DESIGN.md`'s top bar draws both.
+   * The arrow means *up*; the top bar's grid button is a different intention —
+   * *show me this job's frames* — and opens the frame gallery overlay in place
+   * rather than going anywhere, so the two no longer share a destination.
    *
    * Handed the project and batch it belongs to, because only this page knows
    * them: a job records its task group, and `job → batch → project` is the walk
@@ -724,6 +662,7 @@ function JobScreen({
     <Workspace
       key={asset.id}
       jobId={jobId}
+      batchName={batch.data.name}
       jobState={job.data?.state ?? "pending"}
       jobActions={job.data?.allowed_actions ?? []}
       batchState={batch.data.state}
@@ -764,6 +703,8 @@ function JobScreen({
 
 interface WorkspaceProps {
   readonly jobId: string;
+  /** The batch's name, for the bar's breadcrumb. */
+  readonly batchName: string;
   readonly jobState: string;
   /** What the wire says this job can be asked to do. Never re-derived here. */
   readonly jobActions: readonly OpenMember<JobAction>[];
@@ -822,6 +763,9 @@ interface WorkspaceProps {
      */
     readonly pre_labeled: number;
     readonly review_pending: number;
+    /** With the five above, what the bar's progress breakdown counts. */
+    readonly skipped: number;
+    readonly accepted: number;
   } | null;
   /** Held by `JobScreen`, so `mod+c` here and `mod+v` on the next frame is one clipboard. */
   readonly clipboard: Clipboard;
@@ -855,13 +799,17 @@ interface WorkspaceProps {
  * seconds and took any unsaved work with it — observed as a panel button that
  * could never be clicked, because the element kept detaching.
  *
- * What rebuilds the store after a save is the `useMemo` below, keyed on `loaded`.
- * TanStack Query structurally shares its results, so a refetch that finds identical
- * JSON returns the *same array* and the memo holds; a save changes the ids and it
- * does not.
+ * **Nothing rebuilds the store after a save.** It used to be a `useMemo` keyed
+ * on `loaded`, so every save's refetch rebuilt the document — and with autosave
+ * that would take back whatever was drawn while the save was out, and empty the
+ * undo history every second or two. The frame is a `FrameSession` now
+ * (`frameSession.ts`): built once from the first read, it keeps the kernel's
+ * answer to each save as its record of the server, and takes a later read in
+ * only when there is nothing unsaved, nothing in flight and nothing in progress.
  */
 function Workspace({
   jobId,
+  batchName,
   jobState,
   jobActions,
   batchState,
@@ -887,27 +835,32 @@ function Workspace({
   onOpenGallery,
   onConfigureInference,
 }: WorkspaceProps): JSX.Element {
-  const store = useMemo<AnnotatorStore>(
+  // One per mounted frame — `key={asset.id}` is what makes it per asset.
+  const [frameSession] = useState(
     () =>
-      new Store(
-        documentFromWire({
-          asset: parseAssetDescriptor({
-            id: asset.id,
-            width: asset.width,
-            height: asset.height,
-            modality: asset.modality,
-          }),
-          schema,
-          annotations: loaded,
-        }),
+      new FrameSession(
+        { id: asset.id, width: asset.width, height: asset.height, modality: asset.modality },
+        schema,
+        loaded,
       ),
-    [asset.id, asset.width, asset.height, asset.modality, schema, loaded],
   );
+  const frame = useSyncExternalStore(frameSession.subscribe, frameSession.getSnapshot, frameSession.getSnapshot);
+  const store: AnnotatorStore = frame.store;
 
   const isScan = asset.modality === "point_cloud";
-  // The scan's cuboids live in their own store beside the image one. Read-only is
+  // The scan's cuboids live in their own store beside the image one, held by the
+  // same frame session so an autosave keeps them as it keeps a box. Read-only is
   // the same wire declaration `readOnly` below reads.
-  const scan = useScanWorkspace({ asset, schema, loaded, readOnly: !declares(asset, ASSET_ACTION.annotate) });
+  const scan = useScanWorkspace({
+    asset,
+    schema,
+    loaded,
+    readOnly: !declares(asset, ASSET_ACTION.annotate),
+    session:
+      frame.scanStore === null
+        ? null
+        : { store: frame.scanStore, server: frame.server, minted: frame.minted },
+  });
   // A scan's labels are read in its source's frame, never through a calibration.
   const carries3d = useMemo(() => !isScan && carries3DLabels(loaded), [isScan, loaded]);
   const calibration = useAssetCalibration(projectId, asset.id, carries3d);
@@ -1019,15 +972,6 @@ function Workspace({
    * It does survive a **class** switch — see the effect below.
    */
   const [session, setSession] = useState<SuggestionState | null>(null);
-
-  /**
-   * Whether the adjustments are open, which is what makes `Esc` three layers.
-   *
-   * Panel state rather than session state, and outside `@visionset/annotator`
-   * for the reason `AnnotatorPanel` is: whether a disclosure is open is chrome,
-   * and the engine ships none. What the engine owns is the settings themselves.
-   */
-  const [adjusting, setAdjusting] = useState(false);
 
   const browserRuntime = useBrowserInferenceRuntime();
   const browserCatalog = browserRuntime?.modelCatalog;
@@ -1301,7 +1245,6 @@ function Workspace({
     // not have, and it is tracked as its own piece of work.
     store.execute(addAnnotationsCommand(drawn));
     store.select(selectionOf(drawn.map((one) => one.id)));
-    setAdjusting(false);
     setSession(cleared(session));
   }
 
@@ -1328,20 +1271,15 @@ function Workspace({
   }
 
   /**
-   * Escape, in three layers: close the adjustments, clear what is pending, then
-   * put the tool away.
+   * Escape, in two layers: clear what is pending, then put the tool away.
    *
-   * The order is most-recent-first, which is what the two existing layers already
-   * were: a section somebody opened a moment ago is nearer to hand than the
-   * points, and the points are nearer than the tool. Each press undoes one thing,
-   * and nothing is ever undone that the person cannot see.
+   * Most-recent-first: the points are nearer to hand than the tool. Each press
+   * undoes one thing, and nothing is ever undone that the person cannot see. The
+   * Detail setting is inline in the bar, not behind a disclosure, so there is no
+   * section for a first press to close.
    */
   function discardSuggestion(): void {
     if (session === null) return;
-    if (adjusting) {
-      setAdjusting(false);
-      return;
-    }
     // Ahead of the state change and not merely as a consequence of it. Dropping
     // `asking` would hide the halo through the ordinary path, which honours the
     // visibility floor — so a take-back would leave its own indicator on screen
@@ -1562,24 +1500,49 @@ function Workspace({
     });
   }, [jobId, mayStartJob, openingFailed, startJob]);
 
+  /**
+   * What a save would carry, for what the bar says about the work. A save
+   * itself plans afresh at the moment it is sent (`commit`), against the record
+   * the save before it left — never against this render's copy. A scan's
+   * cuboids are planned by the scan workspace against the same record.
+   */
   const scanPlan = scan?.plan ?? null;
   const plan = useMemo(() => {
-    const image = planSave(snapshot.document, loaded);
+    const image = planSave(snapshot.document, frame.server, frame.minted);
     return scanPlan === null ? image : mergePlans(image, scanPlan);
-  }, [snapshot.document, loaded, scanPlan]);
+  }, [snapshot.document, frame.server, frame.minted, scanPlan]);
   const dirty = !isEmptyPlan(plan);
 
-  const commit = useCallback(
-    async (then?: () => void) => {
-      if (!dirty) {
-        then?.();
-        return;
-      }
-      await save.mutateAsync(plan);
-      then?.();
-    },
-    [dirty, plan, save],
-  );
+  /**
+   * The saves, one at a time.
+   *
+   * A second save planned while the first was out would plan against a record
+   * that does not know the first one's ids yet, and create its shapes twice. So
+   * every save — the timer's, `mod+s`, the one a navigation makes first — joins
+   * the end of this chain and plans when its turn comes, against what the one
+   * before it left. A ref rather than state: it is read at the moment of sending,
+   * and nothing renders from it (`save.isPending` is what the bar reads).
+   */
+  const saveQueue = useRef<Promise<void>>(NOTHING_OUT);
+  const { mutateAsync: sendSave } = save;
+
+  /**
+   * Save whatever differs from the server, now — or nothing, when nothing does.
+   *
+   * Rejects with the kernel's refusal, which renders off `save.error`; see
+   * `attempt` for the callers that must not move on when it does.
+   */
+  const commit = useCallback((): Promise<void> => {
+    const turn = saveQueue.current.then(async () => {
+      const next = frameSession.plan();
+      if (isEmptyPlan(next)) return;
+      frameSession.saved(next, await sendSave(next));
+    });
+    // The chain carries on whatever this turn's outcome; the outcome is the
+    // caller's, who holds `turn`.
+    saveQueue.current = turn.then(nothing, nothing);
+    return turn;
+  }, [sendSave, frameSession]);
 
   /**
    * Adding a class, and the reason this is one callback rather than three buttons.
@@ -1686,17 +1649,18 @@ function Workspace({
    * hook, because this component does not know it is on a route — the app owns
    * that, and a screen that reached for a router would only work inside one.
    */
+  const unsettled = dirty || save.isPending;
   useEffect(() => {
-    if (!dirty) return;
+    if (!unsettled) return;
     const warn = (event: BeforeUnloadEvent): void => {
       event.preventDefault();
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  }, [unsettled]);
 
   /**
-   * Run a commit and swallow its rejection **here**, not into the void.
+   * Save, then — only if the save stored everything — do `then`.
    *
    * `commit` goes through `mutateAsync`, which rejects on a refusal. Four call
    * sites used to spell that `void commit(...)`, which is not a handler: with no
@@ -1704,17 +1668,22 @@ function Workspace({
    * each rejection was invisible in production and a console warning nowhere
    * anybody was looking (audit F7).
    *
-   * Swallowing is correct *because* the refusal is rendered off `save.error` a
-   * few lines below — this is not "ignore the failure", it is "the failure has a
-   * home and it is not this promise". The `then` callback is the part that must
-   * not run, and awaiting is what guarantees it does not: a save that refused
-   * must not navigate away from the work it failed to store.
+   * The rejection handler is empty *because* the refusal is rendered off
+   * `save.error` — the `save-refusal` notice, and `Not saved` on the bar. This is
+   * not "ignore the failure", it is "the failure has a home and it is not this
+   * promise". `then` is the part that must not run on a refusal: a save that
+   * refused must not navigate away from the work it failed to store. Two
+   * handlers on one promise, so a failure *inside* `then` is not mistaken for
+   * the save's and stays loud.
    */
   const attempt = useCallback(
     (then?: () => void): void => {
-      void commit(then).catch(() => {
-        // Rendered by `SaveState` off `save.error`. Nothing to do here but stop.
-      });
+      commit().then(
+        () => then?.(),
+        () => {
+          // Rendered off `save.error`. Nothing to do here but stop.
+        },
+      );
     },
     [commit],
   );
@@ -1778,8 +1747,15 @@ function Workspace({
 
   // A tag renders in neither canvas layer, so counting it here made the badge
   // disagree with the picture. Same filter as the panel's own counter.
-  const drawn = annotationsInDrawOrder(snapshot.document).filter(
+  const objects = annotationsInDrawOrder(snapshot.document).filter(
     (annotation) => !isTagAnnotation(annotation),
+  );
+  const drawn = objects.length;
+  /** "All" for the rail's hide-all — the one there is: drawn objects only, never a tag. */
+  const allObjectsHidden = drawn > 0 && objects.every((one) => hiddenIds.has(one.id));
+  /** How many of the frame's labels a model wrote — what the status tag says beside a pre-label. */
+  const fromModel = [...snapshot.document.annotations.values()].filter(
+    (annotation) => annotation.provenance === "model",
   ).length;
   // The scan editor holds every cuboid and polyline; without it they are listed read-only.
   const scanEditor = scan !== null;
@@ -1787,7 +1763,8 @@ function Workspace({
     () => (isScan && !scanEditor ? labels3D(loaded) : []),
     [isScan, loaded, scanEditor],
   );
-  const objects = drawn + (scan?.snapshot.document.annotations.size ?? 0) + scanLabels.length;
+  // Every object on the frame: the drawn shapes, a scan's cuboids, and its 3D labels listed read-only.
+  const objectCount = drawn + (scan?.snapshot.document.annotations.size ?? 0) + scanLabels.length;
 
 
   /**
@@ -1834,6 +1811,76 @@ function Workspace({
    * parked is the thing they are there to say.
    */
   const diverting = suggesting !== null && !isParked(suggesting) ? suggesting : null;
+
+  /**
+   * A gesture in flight on the canvas — a press, a box being dragged out, a
+   * polygon's points still being placed — as the canvas reports it
+   * (`onGestureChange`). The machine's own state, which nothing on the store
+   * shows: an open polygon is not in the document until it closes.
+   */
+  const [gesturing, setGesturing] = useState(false);
+  /**
+   * Whether somebody is in the middle of changing the document: that gesture, a
+   * drag the store is previewing, or a suggestion on screen waiting to be
+   * accepted or thrown away. Autosave waits for all three to end, and a read is
+   * never taken in during any of them.
+   */
+  const busy =
+    gesturing || snapshot.preview !== null || (suggesting !== null && hasPending(suggesting));
+
+  /**
+   * The document an autosave was last sent for.
+   *
+   * What keeps a refusal from becoming a loop: the timer is armed only for a
+   * document it has not already tried, so once one refused, nothing is sent
+   * again until the person changes something — and the refusal on screen stays
+   * about the work they just did. Explicit saves (`mod+s`, a navigation) do not
+   * read it: a person asking again is asking again.
+   */
+  const autosavedFor = useRef<AnnotationDocument | null>(null);
+  const current = snapshot.document;
+  /**
+   * The document whose wait ran out while somebody was mid-gesture. It is held,
+   * not dropped: the save goes the moment the gesture ends, unless the gesture
+   * changed the document — then the wait starts again for the new one. State
+   * rather than a ref because it is also *said*: the save state carries
+   * `data-autosave="held"` while it is true, which is the settled state a
+   * browser test waits on instead of on a clock.
+   */
+  const [heldFor, setHeldFor] = useState<AnnotationDocument | null>(null);
+  const autosaveHeld = heldFor === current && busy && dirty && !readOnly;
+  useEffect(() => {
+    if (readOnly || !dirty || save.isPending) return;
+    if (autosavedFor.current === current) return;
+    const send = (): void => {
+      autosavedFor.current = current;
+      // The refusal renders off `save.error`, as every save's does.
+      commit().then(nothing, nothing);
+    };
+    if (heldFor === current) {
+      if (!busy) send();
+      return;
+    }
+    // Every change to the document re-runs this and so restarts the wait —
+    // which is the debounce: the save goes once the document has been still.
+    const timer = window.setTimeout(() => {
+      if (busy) setHeldFor(current);
+      else send();
+    }, AUTOSAVE_MS);
+    return () => window.clearTimeout(timer);
+  }, [current, dirty, readOnly, save.isPending, busy, heldFor, commit]);
+
+  /**
+   * Every read of the frame's annotations goes to the session, which takes it
+   * in only when there is nothing it could take back (`FrameSession.receive`).
+   */
+  const quiet = !dirty && !save.isPending && !busy;
+  useEffect(() => {
+    frameSession.receive(loaded, quiet);
+  }, [frameSession, loaded, quiet]);
+  useEffect(() => {
+    frameSession.repin(schema);
+  }, [frameSession, schema]);
 
   /**
    * Why it is read-only, in the words a person can act on.
@@ -1885,32 +1932,49 @@ function Workspace({
     (finishJob.isError ? finishJob.error : null);
 
   /**
-   * The one review action this frame's own state puts forward.
+   * The frame's review move on the bar: Submit for review, or Accept.
    *
    * A bar rendering five buttons — Save, Skip, Submit for review, Return to
    * annotator, Accept, Finish job — leaves most of them disabled most of the
    * time, and a person has to read all six to find the one that would do
-   * anything.
+   * anything. So the bar holds **one** slot for the frame's review move.
    *
    * **Asset actions only, and that is a decision.**
    * `submit_for_review` and the job's `complete` co-declare on the
    * commonest path there is — an `annotated` frame in a job whose every frame is
    * settled — because `SETTLED_PROGRESS` includes `annotated`. A priority that
    * ranked them against each other would have hidden **Finish job** behind
-   * Submit for review on exactly the frame most jobs end on, so finishing a job
-   * would have needed a walk to a skipped or accepted frame first. So `complete`
-   * keeps its own control (below) and this slot is about the *frame*.
+   * Submit for review on exactly the frame most jobs end on. So `complete`
+   * keeps its own control (the island's last slot) and this one is about the
+   * *frame*.
    *
-   * The three that remain are mutually exclusive by construction: `confirm` is
-   * offered from `pre_labeled`, `submit_for_review` from `annotated`, `accept`
-   * from `review_pending`, so the order below can never actually arbitrate. It is
-   * written as a list anyway because that is what makes the claim checkable —
-   * `test_asset_actions` sweeps the whole progress square, and a third reviewer
-   * action landing in one of those states would fail the test that pins this
-   * list rather than silently changing what the bar offers.
+   * `confirm` is not here: it lives on the frame's status tag, beside the word
+   * that says the labels came from a model, which is where the eye already is
+   * when it decides to keep them. The two that remain are mutually exclusive by
+   * construction — `submit_for_review` is offered from `annotated`, `accept` from
+   * `review_pending` — so the order below can never actually arbitrate; it is a
+   * list because that is what makes the claim checkable (`test_asset_actions`
+   * sweeps the whole progress square).
+   *
+   * **Disabled with its reason when the wire declares neither**, rather than
+   * absent: the review move is meaningful on every frame of an open job, and a
+   * slot that came and went frame by frame would move the save state under the
+   * pointer. Which of the two is shown then is copy, not legality — the frame
+   * waiting on a review shows Accept, every other frame Submit for review — and
+   * whether it can be pressed is `declares` and nothing else.
    */
-  const reviewAction = REVIEW_ACTIONS.find((candidate) =>
-    declares(asset, candidate.action),
+  const barMoves = REVIEW_ACTIONS.filter((candidate) => candidate.action !== ASSET_ACTION.confirm);
+  const reviewAction = barMoves.find((candidate) => declares(asset, candidate.action));
+  const reviewSlot =
+    reviewAction ??
+    barMoves.find((candidate) =>
+      asset.progress === "review_pending" || asset.progress === "accepted"
+        ? candidate.action === ASSET_ACTION.accept
+        : candidate.action === ASSET_ACTION.submitForReview,
+    );
+  /** The status tag's one move, and it is there only while the wire offers it. */
+  const confirmMove = REVIEW_ACTIONS.find(
+    (candidate) => candidate.action === ASSET_ACTION.confirm && declares(asset, candidate.action),
   );
 
   /**
@@ -1919,10 +1983,10 @@ function Workspace({
    *
    * Not a wire declaration and it could not be: which frame of a job somebody is
    * looking at is this page's own state, and no resource has an opinion about it.
-   * That is also why it cannot collide with one — the filled slot is
-   * `Save and next` while a next frame exists and `Finish job` when none does, so
-   * the two are exclusive by arithmetic rather than by a priority anybody has to
-   * maintain. Every other control on the bar is outline or ghost.
+   * That is also why it cannot collide with one — the island's filled slot is
+   * `Next` while a next frame exists and `Finish job` when none does, so the two
+   * are exclusive by arithmetic rather than by a priority anybody has to
+   * maintain. Every other control on the page is outline or ghost.
    */
   const lastFrame = assetIndex >= assetCount - 1;
 
@@ -1962,27 +2026,14 @@ function Workspace({
   const finishInert = jobState === "completed" || withheld !== null;
 
   /**
-   * Whether pressing the flow verb will actually store anything.
-   *
-   * The button never promises a save it will not perform. The case it must catch
-   * is *no annotations and no unsaved changes* — a
-   * frame nobody has drawn on yet, where the honest word is `Next`.
-   *
-   * `readOnly` is the same rule applied to the case the key does not enumerate:
-   * a settled frame cannot be dirty and cannot be written to by anyone, so
-   * `drawn > 0` would otherwise put `Save and next` on a canvas where no save is
-   * reachable at all.
-   */
-  const flowLabel = !readOnly && (dirty || drawn > 0) ? "Save and next" : "Next";
-  /**
    * Whether the frame's own verbs render at all.
    *
    * **A job-level question, deliberately, and not `readOnly`.** Two invariants
-   * meet here and only this reading keeps both. The navigation cluster is
-   * measured to a constant width so that walking a job does not move the arrows
-   * under a cursor — which is why `Skip` is `min-w-27` and disabled rather than
-   * absent on a frame that cannot take it. And `Un-skip` is the one way
-   * back out of a skipped frame, which is a *read-only* frame in an open batch.
+   * meet here and only this reading keeps both. The island should not change
+   * shape as a job is walked, so that the arrows stay under the cursor — which is
+   * why `Skip` is disabled with its reason rather than absent on a frame that
+   * cannot take it. And `Un-skip` is the one way back out of a skipped frame,
+   * which is a *read-only* frame in an open batch.
    *
    * Gating on the mode would break both: the slot would empty and refill frame
    * by frame as somebody walked a mixed job, and a skipped frame would lose the
@@ -2020,6 +2071,60 @@ function Workspace({
           ? `${thisAsset} has been accepted, and accepted work is not edited in place — a correction batch is how it changes.`
           : `${thisAsset} is ${progressWord} — its labels are settled and cannot be changed here.`;
 
+  /**
+   * Why the bar's review move cannot be pressed, when the wire does not declare
+   * it — or null when it can.
+   *
+   * Copy picked by the state the wire reports, the way `settledBecause` picks
+   * its sentence: whether the move is possible was `declares`' answer above, and
+   * this only says why in words a person can act on.
+   */
+  const reviewWithheld =
+    reviewAction !== undefined
+      ? null
+      : (workflowBecause ??
+        (asset.progress === "pre_labeled"
+          ? "These labels came from a model — confirm them first, with the check on the frame's tag."
+          : asset.progress === "skipped"
+            ? "This frame is skipped — un-skip it to put it back in play."
+            : asset.progress === "accepted"
+              ? "This frame has been accepted — there is nothing left to review."
+              : asset.progress === "review_pending"
+                ? "This frame cannot be accepted from here right now."
+                : "Label this frame first — there is nothing to review yet."));
+  /** Why Skip cannot be pressed, in the same terms. */
+  const skipWithheld = declares(asset, ASSET_ACTION.skip)
+    ? null
+    : ((readOnly ? settledBecause : null) ?? "This frame cannot be skipped from where it stands.");
+
+  // The tool the canvas will act with, resolved — never stored (`tool.ts`).
+  const tool = toolFor(store.document, activeClass, activeTool);
+  const heldDeclared =
+    activeClass === null ? undefined : store.document.schema.classes.find((one) => one.name === activeClass);
+  const heldClass =
+    readOnly || activeClass === null ? null : { name: activeClass, color: classColor(heldDeclared, activeClass) };
+  const hint = canvasHint({ readOnly, hand: handTool, suggesting: suggesting !== null, tool, selected: snapshot.selection.size > 0 });
+  /*
+    Box or polygon, for a class the schema declares both for — the same
+    preference the strip's tools and the class row's shape chips write, and the
+    one `suggestAt` reads through `suggestGeometriesFor`. A one-shape class is
+    offered no choice; nothing here invents a shape the class does not admit.
+  */
+  const suggestDeclared =
+    suggesting === null || suggesting.labelClass === null
+      ? undefined
+      : store.document.schema.classes.find((one) => one.name === suggesting.labelClass);
+  const suggestKinds = suggestDeclared === undefined ? [] : allowedGeometriesFor(suggestDeclared);
+  const suggestAsks = suggestDeclared === undefined ? [] : suggestGeometriesFor(suggestDeclared, activeTool);
+  const suggestShape: SuggestShapeChoice | undefined =
+    suggestKinds.length < 2
+      ? undefined
+      : {
+          kinds: suggestKinds,
+          value: suggestAsks.length === 1 ? (suggestAsks[0] ?? null) : null,
+          onChoose: (kind) => onActivateTool(kind),
+        };
+
   return (
     // `data-asset` names the frame on screen, the way a rendered shape carries
     // `data-annotation-id`. The asset travels as a *query parameter* and the
@@ -2027,41 +2132,20 @@ function Workspace({
     // the URL names where the page was entered rather than where it is — and a
     // harness reading the URL addresses the wrong frame while every assertion it
     // makes still passes.
-    <div className="flex h-screen flex-col" data-testid="annotation-page" data-asset={asset.id}>
-      {/*
-        Three zones: **where you are**, **what changes
-        the frame**, **the session**. The bar was one undifferentiated row of
-        thirteen controls in which a navigation arrow, the save state and the
-        button that ends the job all looked alike.
-
-        The zones fix *which* controls belong to which. The
-        four that change the picture on screen — the gallery, `‹` / `›`, Skip and
-        the flow verb — were split across the two far ends of a 44px row, one pair
-        beside the back arrow and the other beside the overflow. Two motion
-        clusters at opposite ends with the same destination and different meanings
-        is a hierarchy nothing on screen explains, so the distinction between
-        *browse* and *resolve* had to be learned. They are one centred cluster
-        now, and one hairline apart.
-
-        **The grid is what centres it, and it is `1fr auto 1fr` rather than two
-        flex spacers.** The two flexible tracks take an equal share of whatever is
-        left by definition, so the middle track sits on the bar's geometric
-        centre — not on the midpoint of what the side zones happened to leave. The
-        side tracks are `minmax(0, …)` so their content truncates instead of
-        pushing, and the centre track is `auto`, so it is sized by its contents and
-        never compresses or wraps. `e2e/annotate.spec.ts` measures all of it in a
-        real browser, which is the only place a layout claim means anything.
-      */}
-      <header className="grid h-11 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b border-border bg-card px-2">
-        {/* --- where you are ------------------------------------------- */}
-        {/* Identity and state, and **nothing that changes the frame** —
-            that is the whole rule this zone is now held to.
-
-            `overflow-hidden` is how a side zone *yields*: it is a `minmax(0, 1fr)`
-            track, so it is handed exactly half of whatever the cluster leaves, and
-            clipping is what keeps a long readout from reaching under the cluster
-            instead of pushing it off centre. */}
-        <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+    //
+    // **Three fixed zones under one bar.** The bar says where you are and where
+    // the work stands — the job's progress, the save state, the frame's review
+    // move; the tools run down a rail on the left; the picture takes the middle,
+    // and the moves made on every frame float over it in one island under the
+    // hand; the right column is the panel — what can be drawn and what is drawn.
+    <div
+      className="grid h-screen grid-cols-[3rem_minmax(0,1fr)_auto] grid-rows-[3rem_minmax(0,1fr)] bg-background"
+      data-testid="annotation-page"
+      data-asset={asset.id}
+    >
+      <header className="col-span-3 flex min-w-0 items-center border-b border-border bg-card">
+        {/* The back arrow heads the tool rail's column, so the rail reads as one strip. */}
+        <div className="flex w-12 shrink-0 items-center justify-center self-stretch border-r border-border">
           {/*
             Principle 10: no exit may lose work. Both routes out of the editor go
             through `attempt`, which is the same save-first path `go()` gives the
@@ -2083,15 +2167,22 @@ function Workspace({
           >
             <ArrowLeft className="size-4" />
           </Button>
+        </div>
 
+        {/* --- where you are ------------------------------------------- */}
+        <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden px-3 text-sm">
+          <span className="truncate text-muted-foreground" data-testid="batch-name">
+            {batchName}
+          </span>
+          <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+          <span className="shrink-0 font-medium tabular-nums" aria-current="page">
+            {assetCount === 1 ? "Job · 1 frame" : `Job · ${assetCount} frames`}
+          </span>
           {/* The batch's pin, not the project's active version. Named here because
               the pin is movable: "why can I not use the class I just made"
               is answerable only if the screen says which contract it is judged
-              against. Null exactly while a batch is a draft, which an annotator
-              cannot reach.
-
-              It also *answers* that question rather than only raising it — see
-              `PinBadge`. */}
+              against — and `PinBadge` answers it. Null exactly while a batch is
+              a draft, which an annotator cannot reach. */}
           {schemaVersion !== null && (
             <PinBadge
               projectId={projectId}
@@ -2102,480 +2193,37 @@ function Workspace({
               activeFailed={activeSchema.isError}
             />
           )}
+        </nav>
 
-          {/*
-            Which frame this is, as a label and not as a control.
-
-            It is the head of the content-addressed hash, because **there is no
-            filename to show**: `Asset.uri` is deliberately not on the wire (the
-            kernel publishes no server-side path), so the hash prefix is the only
-            identity a client holds. It reads as an identifier rather than as
-            prose, which is what `font-mono` is saying.
-
-            It used to be the first half of the navigator's own readout, glued to
-            `n/m` inside the `‹ ›` pair. The count went with the arrows to the
-            centre cluster; this stayed, because *which picture is this* is a fact
-            about where you are and not a way to go somewhere else.
-
-            `truncate` earns its keep here rather than being defensive: this is a
-            side track of a `1fr auto 1fr` grid, and truncating is exactly how a
-            side zone yields to the centre instead of pushing it off the middle.
-          */}
-          <span
-            className="truncate font-mono text-xs text-muted-foreground"
-            data-testid="asset-identity"
-          >
-            {asset.content_hash.slice(0, 8)}
-          </span>
-
-          {/*
-            Where the frame is and whether it is stored, as one microtext
-            (decision 5): `● annotated · Saved`. The save half is absent until
-            something on this visit is unsaved or has been saved: `Saved` claims
-            a save, and a frame only looked at has had none. `Workspace` is keyed
-            by the asset, so the mutation's success never carries to another frame.
-
-            They were two controls a bar apart — a colour-only dot beside the
-            navigator and a save badge here — and reading either meant knowing
-            what a colour or a tick stood for. Together they are the sentence
-            somebody actually wants before they press anything, and the dot's word
-            is now on screen rather than in a tooltip: **status is never colour
-            alone** (`DESIGN.md`), and prose is the strongest form of that.
-          */}
-          <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
-            <AssetProgressDot progress={asset.progress ?? "unannotated"} />
-            {(dirty || save.isPending || save.isSuccess) && (
-              <>
-                <span aria-hidden="true">·</span>
-                <SaveState dirty={dirty} pending={save.isPending} />
-              </>
-            )}
-          </span>
-        </div>
-
-        {/* --- what changes the frame ---------------------------------- */}
-        {/*
-          The navigation cluster: every control that changes the picture on
-          screen, in one place, read left to right as **browse | resolve**.
-
-          The divider is what tells them apart, and it is the reason the cluster
-          exists: `‹` and `›` *browse*, Skip and the flow verb *resolve*. They
-          were a bar apart and both advanced, so `›` and `Save and next` looked
-          like two spellings of one thing. Side
-          by side, one hairline apart, the difference is the hairline.
-
-          **There is no instrument sub-group.** A class field would hold a
-          192px reservation here and now lives in the side panel, where the
-          ontology is a list rather than a popup. What the bar gets back is that
-          width — which is what pays for `Save and stay` and the review move
-          being visible buttons again at every supported width instead of
-          reabsorbing into the overflow one breakpoint early.
-
-          `shrink-0` on the whole cluster, and it is load-bearing rather than
-          defensive: this is the `auto` track of the header's grid, and the
-          acceptance criterion is that the side zones truncate *before* anything
-          in here compresses or wraps.
-        */}
-        <div className="flex shrink-0 items-center gap-2" data-testid="frame-navigation">
-          {/* --- browse: move without resolving anything ---------------- */}
-          <div className="flex shrink-0 items-center gap-1" data-testid="asset-navigator">
-            {/*
-              The frame switcher. It opens an overlay *inside* the editor —
-              no route change, nothing torn down, and no save on the way in because
-              nothing is being left.
-
-              It used to call `onOpenGallery`, the back arrow's own exit, so the
-              only way to look at your own frames was to stop looking at the one
-              you were on. `DESIGN.md` principle 10 forbids exactly that trip; the
-              back arrow still means *up* and keeps its guard.
-
-              It leads the browse group because it is the same question the arrows
-              ask, asked of all the frames at once, which is why it sits here
-              rather than in the left zone.
-            */}
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Show the job's frames"
-              data-testid="open-gallery"
-              onClick={() => setGalleryOpen(true)}
-            >
-              <Grid3x3 className="size-4" />
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Previous asset"
-              data-testid="prev-asset"
-              disabled={assetIndex === 0}
-              onClick={() => go(-1)}
-            >
-              <ChevronLeft className="size-4" />
-            </Button>
-            {/*
-              `tabular-nums` is the whole reason this is a separate span rather
-              than part of a label: proportional digits make `1/48` and `11/48`
-              different widths, so walking a job would shuffle the two arrows
-              under a cursor that had not moved. A fixed advance width is what
-              makes `›` a target you can press twice without looking.
-            */}
-            <span
-              className="px-1 font-mono text-xs tabular-nums text-muted-foreground"
-              data-testid="asset-position"
-            >
-              {assetIndex + 1}/{assetCount}
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Next asset"
-              data-testid="next-asset"
-              disabled={assetIndex >= assetCount - 1}
-              onClick={() => go(1)}
-            >
-              <ChevronRight className="size-4" />
-            </Button>
-          </div>
-
-          {/*
-            The hairline between *look at another frame* and *finish this one*,
-            and it renders only while there is a second group to divide from
-            Everything on its right can be absent at once — a middle
-            frame of a closed batch or a finished job offers no resolution move
-            and no save-first advance — and a divider drawn around an absence is
-            a rule with nothing on one side of it.
-          */}
-          {(frameVerbs || lastFrame) && <Divider />}
-
-          {/* --- resolve: finish with this frame ------------------------ */}
-          <div className="flex shrink-0 items-center gap-2">
-            {/*
-              One slot, two moves, because they are the same decision read
-              forwards and backwards. Offering `Skip` on an already-skipped asset
-              would be offering a refusal — `ASSET_PROGRESS_TRANSITIONS` gives
-              `skipped` one exit and it is not itself.
-
-              Skip and the flow verb are **siblings**: two ways of resolving
-              this frame — skipped or annotated — that both advance. Neither ever
-              collapses into the overflow, which is what stops Skip inheriting
-              prominence from a bar where nothing else advances. They sit beside
-              the arrows they are the counterpart of.
-
-              **Absent once the job is closed** — see `frameVerbs`, which
-              is a question about the job rather than about this frame. Inside a
-              working job the pair keeps its slot and its disabled state, which
-              is what holds the cluster still and what keeps `Un-skip` reachable
-              on a skipped frame; once a batch or a job has closed there is no
-              move behind either label on any frame, and a greyed pair there was
-              repeating the banner's sentence with nothing attached.
-            */}
-            {!frameVerbs ? null : skipped ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-w-27"
-                data-testid="unskip"
-                disabled={!declares(asset, ASSET_ACTION.restore) || setProgress.isPending}
-                onClick={unskip}
-              >
-                <Undo2 className="size-4" />
-                Un-skip
-              </Button>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-w-27"
-                data-testid="skip"
-                disabled={!declares(asset, ASSET_ACTION.skip) || setProgress.isPending}
-                onClick={() => settle("skipped")}
-              >
-                <SkipForward className="size-4" />
-                Skip
-                <Chip>X</Chip>
-              </Button>
-            )}
-
-            {/*
-              The filled slot, and the two controls that share it by arithmetic.
-
-              `min-w-36` on both: `Next`, `Save and next`, `Finish job` and
-              `Finished` are four labels for one position, and without a floor the
-              cluster's right edge — and therefore the arrows, and therefore the
-              cluster's centre — would move whenever the label did. The width is
-              the widest of the four, so nothing is ever clipped and nothing ever
-              moves.
-
-              `min-w-27` on the resolution pair above it, for the same reason and
-              measured the same way: `Skip` is 104px and `Un-skip` 96px, so a
-              skipped frame used to pull the whole cluster 4px sideways. 108px
-              rather than 104 because a floor equal to the wider label is not a
-              floor at all — `Skip` measures 104.09, so clamping `Un-skip` to 104
-              left 0.39px of drift, which a browser test catches and a person
-              would not. These two floors are the whole of what keeps the cluster
-              a constant width.
-            */}
-            {lastFrame ? (
-              /*
-                **Finish job renders on the last frame and nowhere else.**
-
-                It used to render on every frame, disabled with nothing attached
-                for as long as one frame was unannotated — a bare greyed control
-                on a fresh job at 0 of 48, which is `DESIGN.md` principle 9's
-                exact prohibition. The comment here claimed it was "disabled with
-                a reason"; there was no reason.
-
-                Two things are true and only together do they fix it: it does not
-                appear until the frame it belongs on, and when it does appear it
-                carries why it cannot be pressed. Which frame that is was already
-                settled elsewhere — the filled slot is `Save and next` while there
-                is somewhere to advance to and `Finish job` when there is not, so
-                the two are exclusive by arithmetic rather than by a priority
-                anybody maintains. It is not in `REVIEW_ACTIONS` and never was: it
-                is the *job's* action and it co-declares with `submit_for_review`
-                on the frame most jobs end on.
-
-                The consequence, stated rather than discovered: `complete` is
-                reachable from the last frame only. Pressing it from frame three
-                of forty-eight was possible before and is not now — which is the
-                same rule that already governs its filled treatment, applied to
-                whether it is on screen at all.
-
-                **The reason is a real tooltip, and the withheld state is
-                `aria-disabled`, never the native attribute**. A `title` alone is a
-                `title` spread — invisible to the keyboard and to most pointers.
-                `ZoomWidget` earned the pattern: a disabled `<button>` receives
-                no pointer events and cannot take focus, so Radix's trigger
-                never opens and the reason cannot be read (principles 4 and 9).
-                `aria-disabled` keeps the hover and the focus, and the press is
-                refused in the handler. Native `disabled` survives only where
-                there is nothing for it to explain — a `Finished` job, whose label
-                is the explanation, a closed batch, whose banner already says why
-                the page is read-only, and the in-flight press.
-              */
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className={
-                      finishWithheld === null || finishInert
-                        ? "min-w-36"
-                        : "min-w-36 cursor-not-allowed opacity-40"
-                    }
-                    data-testid="finish-job"
-                    data-withheld={finishWithheld === null ? "false" : "true"}
-                    disabled={finishInert || finishJob.isPending}
-                    aria-disabled={(!finishInert && finishWithheld !== null) || undefined}
-                    onClick={() => {
-                      if (finishWithheld !== null || finishJob.isPending) return;
-                      // **Said out loud**, because the rest of what this press
-                      // does is a subtraction: the tool strip, the classes
-                      // region and the frame's own verbs all leave, which is a
-                      // screen with less on it and no statement of why. The
-                      // banner arrives in the same paint and stays; the toast is
-                      // the moment, and this is the add-a-class chain's idiom
-                      // (`toast.success`) rather than a second one.
-                      //
-                      // On the mutation and not in `useJobTransition`, which
-                      // also spells `start` — a job starting is a consequence of
-                      // opening the page and nobody asked for it.
-                      finishJob.mutate(undefined, {
-                        onSuccess: () =>
-                          toast.success("Job finished — its frames are read-only now"),
-                      });
-                    }}
-                  >
-                    <CheckCheck className="size-4" />
-                    {jobState === "completed" ? "Finished" : "Finish job"}
-                  </Button>
-                </TooltipTrigger>
-                {/* Only while withheld: an enabled Finish job explains itself by
-                    being pressable, and a tooltip repeating the label would be
-                    noise over the one control the frame exists to end on. */}
-                {finishWithheld !== null && !finishInert && (
-                  <TooltipContent side="bottom" data-testid="finish-withheld">
-                    {finishWithheld}
-                  </TooltipContent>
-                )}
-              </Tooltip>
-            ) : !frameVerbs ? null : (
-              /*
-                The flow verb.
-
-                **Absent once the job is closed**, beside Skip and on its
-                terms: this slot is the *save*-first advance, and a job nobody
-                can write to has nothing to save on any of its frames. `‹` `›`
-                and the gallery are what move between frames there, and they are
-                untouched — the decision this implements keeps navigation whole
-                and takes editing only.
-
-                Finish job, in the branch above, deliberately does **not** follow
-                that rule. It is the *job's* action rather than the frame's, and
-                a job whose last frame happens to be settled — accepted, say,
-                while other frames are still outstanding — would otherwise have
-                no way to be finished from the workspace at all. Where it is
-                withheld it already says why; once the job is completed it
-                reads `Finished`, which is this page's standing statement that
-                the work is over.
-
-                After finishing a frame the right move is *this one is done, show
-                me the next*. The
-                navigator's `›` is chrome rather than a verb, so `Skip` was the
-                most prominent thing to press on a frame somebody had just
-                annotated, which is how work gets skipped by people who meant to
-                keep it.
-
-                It is `go(1)` and deliberately nothing more: the same save-first
-                advance the navigator has always used, so there is one save
-                pipeline and one place principle 10 is enforced. The settle to
-                `annotated` is not sent from here either — `progress_after_annotating`
-                makes that move in the same transaction as the write, which is why
-                an asset with labels on it is already `annotated` by the time this
-                lands.
-
-                **`Next` when there is nothing to save**, per decision 2, so the
-                button never promises a save it will not perform.
-
-                **No hotkey chip, unlike its two neighbours.** `Chip` is a
-                muted box on a bordered ground, which is right on the ghost and the
-                outline controls and wrong on the only filled one: on near-black it
-                reads as a smudge beside the chevron rather than as a key. The
-                chord is unchanged and still listed in the shortcut sheet, which
-                derives its rows from the live registry — so `↵` stays discoverable
-                in the one place that cannot go stale.
-              */
-              <Button
-                variant="default"
-                size="sm"
-                className="min-w-36"
-                data-testid="save-and-next"
-                disabled={save.isPending}
-                onClick={() => go(1)}
-              >
-                {flowLabel}
-                <ChevronRight className="size-4" />
-              </Button>
-            )}
-
-            {/*
-              The other half of the forward gesture, and the reason it is here
-              rather than a zone away on the right.
-
-              *Advance* and *persist in place* are one decision read two ways —
-              having finished with this frame, do you move on or stay on it — and
-              they were a bar apart, the second of them a ghost behind a `⌘S` chip
-              in the zone that also holds the progress readout and the overflow.
-              Adjacency is what says they are alternatives; a ghost at the far end
-              said the quieter thing, that saving without moving is a convenience.
-
-              **No hotkey chip.** `Chip` is a muted box on a bordered ground,
-              which inverts into a smudge inside a filled control — the same
-              finding that keeps one off the flow verb. The chord is unchanged and
-              is taught by the tooltip instead, which is the tool strip's own
-              pattern (`Box (B)`). Native `disabled` rather than `aria-disabled`,
-              so the tooltip opens exactly while there is something to save — the
-              moment the chord is worth learning — and the shortcut sheet, which
-              derives its rows from the live registry, carries it unconditionally.
-
-              It keeps the frame verbs' lifetime rather than `readOnly`'s: a
-              closed batch or a finished job has nothing to save on any frame, and
-              inside a working job the slot holds so the cluster does not change
-              width as somebody walks a mixed job. Reabsorption is unchanged — it
-              is still the first control the bar gives up below `xl`.
-            */}
-            {frameVerbs && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="hidden xl:inline-flex"
-                    data-testid="save-and-stay"
-                    disabled={readOnly || !dirty || save.isPending}
-                    onClick={() => attempt()}
-                  >
-                    <Check className="size-4" />
-                    Save and stay
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" data-testid="save-and-stay-shortcut">
-                  Save and stay ({modKey()}S)
-                </TooltipContent>
-              </Tooltip>
-            )}
-          </div>
-        </div>
-
-        {/* --- the session --------------------------------------------- */}
-        {/* The other yielding track, clipped for the same reason — and
-            `justify-end` decides the order it gives way in: the progress readout
-            is what disappears first, and the overflow, which is the way to
-            everything reabsorbed into it, is what survives. */}
-        <div className="flex min-w-0 items-center justify-end gap-2 overflow-hidden">
-          {/*
-            **Past `unannotated`**, not the `annotated` count — the same rule the
-            gallery's own bar states, and for the reason it states: a readout that
-            counted only `annotated` goes *backwards* when a frame is accepted,
-            which is the one thing a progress readout must never do.
-          */}
-          {/* `truncate`, not `shrink-0`: this is the readout the right zone gives
-              way with, and an ellipsis is a graceful way to lose the tail of a
-              sentence where clipping a button would be a control nobody can press. */}
-          <span className="truncate text-xs text-muted-foreground" data-testid="job-progress">
-            {counts === null
-              ? "—"
-              : `${Math.max(0, counts.total - counts.unannotated)} / ${counts.total} annotated`}
-          </span>
-
-          {/*
-            The review move, when the frame declares one — outline,
-            because the filled slot belongs to the flow verb. Rendered rather than
-            disabled-with-reason because there is nothing to explain: the states
-            that withhold both of these are the states where the *other* controls
-            on this bar are the whole answer, and a permanently greyed "Accept" on
-            every unannotated frame is the noise this zone exists to remove. See
-            `REVIEW_ACTIONS` for why `complete` is not in the list.
-
-            Second to be reabsorbed, so it survives one breakpoint
-            longer than the save: it is a decision about the work, and the save is
-            a convenience.
-          */}
-          {reviewAction !== undefined && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="hidden lg:inline-flex"
-                  data-testid={reviewAction.testId}
-                  disabled={setProgress.isPending}
-                  onClick={() => settle(reviewAction.progress)}
-                >
-                  <CheckCheck className="size-4" />
-                  {reviewAction.label}
-                </Button>
-              </TooltipTrigger>
-              {/*
-                The sentence is careful about what this product
-                does not have: there is no annotator identity, so
-                submitting routes the frame to nobody — it marks a state that the
-                next person to open the job can act on.
-              */}
-              <TooltipContent side="bottom">{reviewAction.tooltip}</TooltipContent>
-            </Tooltip>
+        {/* --- where the work stands ----------------------------------- */}
+        <div className="flex shrink-0 items-center gap-3 pr-2">
+          {/* The one place the job's progress is shown. */}
+          <JobProgress counts={counts} />
+          {/* Absent until this visit has something to say: `Saved` claims a save,
+              and a frame only looked at has had none. `Workspace` is keyed by the
+              asset, so a save's success never carries to another frame. */}
+          {(dirty || save.isPending || save.isSuccess || save.isError) && (
+            <>
+              <span className="h-5 w-px shrink-0 bg-foreground/10" aria-hidden="true" />
+              <SaveStatus
+                state={
+                  save.isPending ? "saving" : !dirty ? "saved" : save.isError ? "failed" : "edited"
+                }
+                held={autosaveHeld}
+              />
+            </>
           )}
-
+          {reviewSlot !== undefined && (
+            <ReviewMove
+              move={reviewSlot}
+              withheld={reviewWithheld}
+              pending={setProgress.isPending}
+              onSettle={() => settle(reviewSlot.progress)}
+            />
+          )}
           {/*
-            Rarities, and whatever the bar could not fit.
-
-            `Return to annotator` is here rather than beside Accept because it is
-            the reviewer's *less* common answer; the help sheet follows because it
-            is about the session rather than about the work. The two reabsorbed
-            controls sit above them with the inverse of their own breakpoints, so
-            each is in exactly one place at any width — visible on the bar and
-            absent here, or the other way round (decision 4).
+            Rarities: `Return to annotator` is the reviewer's *less* common answer,
+            and the help sheet is about the session rather than the work.
           */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -2590,35 +2238,6 @@ function Workspace({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {/* `Save and stay`, reabsorbed — `xl:hidden` is the exact inverse of
-                  the button's `hidden xl:inline-flex`, so the control exists once
-                  at every width. Gated on `frameVerbs` for the same reason the
-                  button is: a closed batch or a finished job has nothing to save
-                  on any frame, and a reabsorbed copy that outlived its button
-                  would be the control existing in two states rather than one. */}
-              {frameVerbs && (
-                <DropdownMenuItem
-                  className="xl:hidden"
-                  data-testid="menu-save"
-                  disabled={readOnly || !dirty || save.isPending}
-                  onSelect={() => attempt()}
-                >
-                  <Check className="size-4" />
-                  Save and stay
-                </DropdownMenuItem>
-              )}
-              {/* The review move, reabsorbed one breakpoint later. */}
-              {reviewAction !== undefined && (
-                <DropdownMenuItem
-                  className="lg:hidden"
-                  data-testid={`menu-${reviewAction.testId}`}
-                  disabled={setProgress.isPending}
-                  onSelect={() => settle(reviewAction.progress)}
-                >
-                  <CheckCheck className="size-4" />
-                  {reviewAction.label}
-                </DropdownMenuItem>
-              )}
               {/*
                 Sending it back, which is the reviewer's "no". Named for the act
                 rather than for the edge it rides — `capabilities.py` makes the
@@ -2634,10 +2253,6 @@ function Workspace({
                     <Undo2 className="size-4" />
                     Return to annotator
                   </DropdownMenuItem>
-                  {/* Inside the conditional, not above the row below it: the two
-                      items over it are responsive, so a separator at fixed
-                      position would lead the menu at any width that reabsorbed
-                      nothing. */}
                   <DropdownMenuSeparator />
                 </>
               )}
@@ -2651,89 +2266,196 @@ function Workspace({
       </header>
 
       {/*
-        Read-only, said out loud and at the top (F2). The `ui-capabilities` rule is
-        that read-only is a *mode*, not an accident: "open it and let the saves
-        fail" is what shipped, and what it looked like from the other side was a
-        working editor that lost your work.
-
-        Not rendered for a skipped frame **in an open batch** — the notice below
-        is the same fact with the remedy attached, and two banners saying one
-        thing is how a person learns to ignore both. In a closed batch the yield
-        runs the other way: the notice's Un-skip is a move the wire
-        withholds there, so this banner — and the correction route it carries —
-        is the one surface that can still say something actionable. The old
-        guard predated the correction link and hid it on exactly that frame.
+        The tool rail. A viewer gets the hand, the objects' visibility and the
+        shortcut sheet and nothing else: those are about looking, not drawing,
+        and the drawing half is hidden rather than disabled, with the banner
+        carrying that reason once. `toolFor` is read here rather than held: the
+        tool is *resolved* from the active class and the preference beside it
+        (`core/interaction/tool.ts`). Adding a class is the panel's — its class
+        region's `+` — and not the rail's: the rail picks how to draw.
       */}
-      {readOnly && (!skipped || workflowBecause !== null) && (
-        <p
-          className="flex shrink-0 items-center gap-2 border-b border-border bg-muted px-3 py-1.5 text-xs text-muted-foreground"
-          data-testid="readonly-banner"
-        >
-          <Eye className="size-3.5 shrink-0" aria-hidden="true" />
-          <span className="font-medium">Viewing only.</span>
-          {workflowBecause ?? settledBecause}
-          {mayStartBatch && (
-            <Button
-              variant="outline"
-              size="xs"
-              className="ml-auto"
-              data-testid="banner-start-batch"
-              disabled={startBatch.isPending}
-              onClick={startAnnotating}
-            >
-              {startBatch.isPending ? "Starting…" : "Start annotating"}
-            </Button>
-          )}
-          {/*
-            The sentence names a correction batch, and now it can reach one — the
-            last link in the forward-only story. The sentence was written
-            pointing at something that did not exist yet, on the grounds that
-            naming the route onward beats a friendlier lie.
-            This is what it was waiting for.
+      <nav aria-label="Tools" className="row-start-2 min-h-0 overflow-y-auto border-r border-border bg-card">
+        {/* A scan's tools are the stage's own (`PointCloudStage`'s edit strip). */}
+        {!isScan && (
+        <ToolPalette
+          layout="rail"
+          readOnly={readOnly}
+          hand={{ active: handTool, onToggle: () => setHandTool((on) => !on) }}
+          visibility={{
+            allHidden: allObjectsHidden,
+            empty: objects.length === 0,
+            onToggle: () =>
+              setHiddenIds(allObjectsHidden ? new Set() : new Set(objects.map((one) => one.id))),
+          }}
+          schema={store.document.schema}
+          tool={toolFor(store.document, activeClass, activeTool)}
+          activeClass={activeClass}
+          onActivateClass={activateClass}
+          onActivateTool={onActivateTool}
+          onToggleHelp={() => setHelpOpen((open) => !open)}
+          // The strip hides it on a schema no class of which could
+          // hold the answer; this page offers it because it has an API
+          // behind it, which the showcase does not.
+          //
+          // `unavailable` is the parked reading: the schema can
+          // suggest, so the button is present, but the class the workspace is
+          // sitting on cannot hold one — which is a fact to state rather than
+          // a control that quietly stops working. Lit *and* dimmed, because
+          // both halves are true: the tool is still armed, and it cannot act.
+          suggest={{
+            active: suggesting !== null,
+            onToggle: toggleSuggest,
+            unavailable:
+              suggesting !== null && isParked(suggesting)
+                ? `Suggest is on, but “${activeClass ?? ""}” cannot hold a suggested shape`
+                : null,
+          }}
+        />
+        )}
+      </nav>
 
-            It goes to the **gallery** rather than opening a dialog here, and that
-            is a product call rather than a shortcut: creating a batch is a
-            curation act, curation lives on the batch view, and a second place
-            batches are made is a second place the rules can drift. The annotator
-            says which way is forward and hands the person to the screen that
-            owns it, with the batch already in view.
+      <main className="row-start-2 flex min-h-0 min-w-0 flex-col">
+        <ToolOptions
+          tool={tool}
+          hand={handTool}
+          suggesting={suggesting !== null}
+          heldClass={heldClass}
+          suggest={(classSlot) =>
+            suggesting === null ? null : (
+              /*
+                The suggest tool's own voice, in the tool's own bar.
 
-            Only for a batch the wire says can be corrected, so it is absent on a
-            frame that is merely settled inside an open batch — there the remedy
-            is on this toolbar and the banner already names the control.
-          */}
-          {onOpenGallery !== undefined &&
-            declares({ allowed_actions: batchActions }, BATCH_ACTION.createCorrection) && (
+                Rendered for the whole session rather than only for its refusals:
+                the asking state, the found-nothing state and the accept
+                affordance are the same question answered differently, and
+                scattering them would leave a person assembling one answer from
+                three places. The notice column keeps the messages that are not
+                this tool's.
+              */
+              <SuggestBar
+                session={suggesting}
+                // The class the workspace is on, which the session's own only stops
+                // matching while parked — the one reading that has to name it.
+                heldClass={activeClass}
+                blocker={blocker}
+                browserTargets={browserRuntime === null ? undefined : answerableBrowserTargets}
+                browserAcquisitions={browserRuntime?.listAcquisitions?.()}
+                {...(browserCatalog === undefined
+                  ? {}
+                  : {
+                      browserModels,
+                      onAcquireBrowserModel: (id: string) => browserCatalog.acquire(id),
+                      onRemoveBrowserModel: (id: string) => browserCatalog.remove(id),
+                    })}
+                activeTarget={activeTarget}
+                onChooseTarget={chooseTarget}
+                onAcquired={() => setBrowserTargetsRefreshKey((key) => key + 1)}
+                refusal={suggesting.refusal}
+                candidates={candidates}
+                connectionId={connection?.id ?? null}
+                onChooseConnection={chooseConnection}
+                onAccept={acceptSuggestion}
+                onDiscard={discardSuggestion}
+                onTolerance={applyTolerance}
+                // Off the same clock the canvas reads, so the bar and the canvas are
+                // one report of one wait. The phrase follows the session's status
+                // directly; only the cold-start sentence needs a threshold.
+                pendingEscalated={pending.escalated}
+                {...(suggestShape === undefined ? {} : { shape: suggestShape })}
+                {...(classSlot === null ? {} : { classSlot })}
+                {...(onConfigureInference === undefined
+                  ? {}
+                  : { onConfigure: onConfigureInference })}
+              />
+            )
+          }
+        />
+
+        {/*
+          Read-only, said out loud (F2). The `ui-capabilities` rule is that
+          read-only is a *mode*, not an accident: "open it and let the saves
+          fail" is what shipped, and what it looked like from the other side was
+          a working editor that lost your work.
+
+          Not rendered for a skipped frame **in an open batch** — the notice
+          below is the same fact with the remedy attached. In a closed batch the
+          yield runs the other way: the notice's Un-skip is a move the wire
+          withholds there, so this banner — and the correction route it carries —
+          is the one surface that can still say something actionable.
+        */}
+        {readOnly && (!skipped || workflowBecause !== null) && (
+          <p
+            className="flex shrink-0 items-center gap-2 border-b border-border bg-muted px-3 py-1.5 text-xs text-muted-foreground"
+            data-testid="readonly-banner"
+          >
+            <Eye className="size-3.5 shrink-0" aria-hidden="true" />
+            <span className="font-medium">Viewing only.</span>
+            {workflowBecause ?? settledBecause}
+            {/* Looking never starts a batch: this is the one control on the page
+                that sends the batch start, and only while the batch declares it. */}
+            {mayStartBatch && (
               <Button
-                variant="link"
-                className="h-auto p-0 text-xs"
-                data-testid="banner-create-correction"
-                onClick={onOpenGallery}
+                variant="outline"
+                size="xs"
+                className="ml-auto"
+                data-testid="banner-start-batch"
+                disabled={startBatch.isPending}
+                onClick={startAnnotating}
               >
-                Correct this batch
+                {startBatch.isPending ? "Starting…" : "Start annotating"}
               </Button>
             )}
-        </p>
-      )}
+            {/*
+              The sentence names a correction batch, and now it can reach one — the
+              last link in the forward-only story. The sentence was written
+              pointing at something that did not exist yet, on the grounds that
+              naming the route onward beats a friendlier lie.
+              This is what it was waiting for.
 
-      {/* Only while the batch is open: "Un-skip it" is this notice's whole
-          remedy, and in a closed batch the wire withholds that move — the
-          read-only banner above speaks for that frame instead. */}
-      {skipped && workflowBecause === null && (
-        <p
-          className="flex shrink-0 items-center gap-2 border-b border-destructive/30 bg-destructive/5 px-3 py-1.5 text-xs text-destructive"
-          data-testid="skipped-notice"
-        >
-          <SkipForward className="size-3.5 shrink-0" aria-hidden="true" />
-          This asset is skipped, so it will not reach the dataset and its annotations will not
-          count towards the job. Un-skip it to put it back in play.
-        </p>
-      )}
+              It goes to the **batch's panel** rather than opening a dialog here, and
+              that is a product call rather than a shortcut: creating a batch is a
+              curation act, curation lives in that panel, and a second place
+              batches are made is a second place the rules can drift. The annotator
+              says which way is forward and hands the person to the screen that
+              owns it, with the batch already in view.
 
-      <div className="flex min-h-0 flex-1 gap-3 p-3">
+              Only for a batch the wire says can be corrected, so it is absent on a
+              frame that is merely settled inside an open batch — there the remedy
+              is on this toolbar and the banner already names the control.
+            */}
+            {onOpenGallery !== undefined &&
+              declares({ allowed_actions: batchActions }, BATCH_ACTION.createCorrection) && (
+                <Button
+                  variant="link"
+                  className="h-auto p-0 text-xs"
+                  data-testid="banner-create-correction"
+                  onClick={onOpenGallery}
+                >
+                  Correct this batch
+                </Button>
+              )}
+          </p>
+        )}
+
+        {/* Only while the batch is open: "Un-skip it" is this notice's whole
+            remedy, and in a closed batch the wire withholds that move — the
+            read-only banner above speaks for that frame instead. */}
+        {skipped && workflowBecause === null && (
+          <p
+            className="flex shrink-0 items-center gap-2 border-b border-destructive/30 bg-destructive/5 px-3 py-1.5 text-xs text-destructive"
+            data-testid="skipped-notice"
+          >
+            <SkipForward className="size-3.5 shrink-0" aria-hidden="true" />
+            This asset is skipped, so it will not reach the dataset and its annotations will not
+            count towards the job. Un-skip it to put it back in play.
+          </p>
+        )}
+
+        {/* A size container, so the stage's own chrome can make room for itself
+            on a narrow picture rather than on a narrow window. */}
         <div
           ref={setStage}
-          className="relative min-w-0 flex-1 overflow-hidden rounded-lg border border-border bg-stage"
+          className="@container relative min-h-0 flex-1 overflow-hidden bg-stage"
           data-testid="canvas-stage"
         >
           {isScan ? (
@@ -2817,6 +2539,8 @@ function Workspace({
                   onPreciseDevice={noteTrackpadSeen}
                   suggestion={diverting}
                   onSuggestPoint={suggestAt}
+                  // Autosave waits for a gesture to end — see `busy`.
+                  onGestureChange={setGesturing}
                   // The halo and the busy cursor. Keyed to `diverting` for the same
                   // reason the session is: a parked tool has nothing in flight, so a
                   // halo over one would be reporting a wait nobody started.
@@ -2840,94 +2564,38 @@ function Workspace({
             />
           )}
 
-          {/*
-            The strip is a sibling of the canvas, not a child of it, and the stage
-            is `relative` for exactly this. Putting it inside `AnnotatorCanvas`
-            would mean the engine shipping chrome, and putting it outside the stage
-            would mean it was not floating over the picture.
 
-            `toolFor` is read here rather than held: the tool is *resolved* from
-            the active class and the preference beside it and never stored
-            (`core/interaction/tool.ts`), and a second copy of the answer on this
-            page would be the pair v1 spent two mechanisms keeping in step. What
-            this page does hold is the preference, which is an input to that
-            function rather than a second copy of its output.
-          */}
-          {/*
-            A viewer gets the strip, carrying the hand and the shortcut sheet and
-            nothing else. It used to get no strip at all, and the reason was sound
-            while it held: every control on it picked a *drawing* tool, and a tool
-            palette over a canvas that cannot be drawn on is not an explanation of
-            anything. The hand is not about drawing — it is what a person reaches
-            for when the picture is in the wrong place — so the sentence stopped
-            being true and the exception with it. The drawing half is still fully
-            hidden rather than disabled, and the banner above still carries that
-            reason once.
-          */}
-          {!isScan && (
-            <ToolPalette
-              readOnly={readOnly}
-              hand={{ active: handTool, onToggle: () => setHandTool((on) => !on) }}
-              schema={store.document.schema}
-              tool={toolFor(store.document, activeClass, activeTool)}
-              activeClass={activeClass}
-              onActivateClass={activateClass}
-              onActivateTool={onActivateTool}
-              onToggleHelp={() => setHelpOpen((open) => !open)}
-              // Empty, unlike the class field's create row: `+` means "I want a
-              // class", not a particular one, and carrying the previous
-              // opening's name into it would be a prefill nobody asked for.
-              onAddClass={() => {
-                setNewClassName("");
-                setAddingClass(true);
-              }}
-              // The chords work whether or not the page draws them; this is where
-              // it says so. `canUndo`/`canRedo` come off the snapshot, so the
-              // buttons and the keyboard read one command log.
-              history={{
-                canUndo: snapshot.canUndo,
-                canRedo: snapshot.canRedo,
-                onUndo: () => store.undo(),
-                onRedo: () => store.redo(),
-              }}
-              // The strip hides it on a schema no class of which could
-              // hold the answer; this page offers it because it has an API
-              // behind it, which the showcase does not.
-              //
-              // `unavailable` is the parked reading: the schema can
-              // suggest, so the button is present, but the class the workspace is
-              // sitting on cannot hold one — which is a fact to state rather than
-              // a control that quietly stops working. Lit *and* dimmed, because
-              // both halves are true: the tool is still armed, and it cannot act.
-              suggest={{
-                active: suggesting !== null,
-                onToggle: toggleSuggest,
-                unavailable:
-                  suggesting !== null && isParked(suggesting)
-                    ? `Suggest is on, but “${activeClass ?? ""}” cannot hold a suggested shape`
-                    : null,
-              }}
-              />
-          )}
+          {/* Top-left, what this frame is and what the canvas expects next. The
+              column itself takes no pointer; the tag's one button does. */}
+          <div className="pointer-events-none absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-col items-start gap-2">
+            <StatusTag
+              hash={asset.content_hash}
+              progress={asset.progress ?? "unannotated"}
+              fromModel={fromModel}
+              confirm={
+                confirmMove === undefined
+                  ? null
+                  : {
+                      label: confirmMove.label,
+                      testId: confirmMove.testId,
+                      pending: setProgress.isPending,
+                      onConfirm: () => settle(confirmMove.progress),
+                    }
+              }
+            />
+            <p className="flex h-8 max-w-full items-center gap-2 truncate rounded-lg bg-background/95 px-3 text-xs text-muted-foreground backdrop-blur-md vs-stage-chip">
+              <span className="shrink-0 tabular-nums" data-testid="object-total">
+                {objectCount === 1 ? "1 object" : `${objectCount} objects`}
+              </span>
+              {hint !== null && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span className="flex min-w-0 items-center gap-1 truncate" data-testid="canvas-hint">{hint}</span>
+                </>
+              )}
+            </p>
+          </div>
 
-          {/*
-            Everything the editor floats over the picture, in one column.
-
-            The order is *how much it stops you*, read downwards. An opening
-            refusal says nothing on this page can be written at all; a save
-            refusal says this frame's work did not land; an action refusal is one
-            button that did not fire; the suggest session is the tool talking
-            about itself. On the ordinary path only the last of the four is ever
-            present, so the ordering only decides what happens on the rare frame
-            where two things are true at once — and there, the one that is not
-            recoverable goes first.
-
-            All four used to live somewhere else: two as badges inside the top
-            bar's microtext, one as a full-bleed strip under the header, and the
-            suggest card bottom-right over the zoom cluster. Four placements for
-            one class of message meant *where* a sentence appeared depended on
-            which mutation produced it.
-          */}
           <EditorNotices>
             {openingRefusal !== null && openingRefusal !== undefined && (
               <EditorNotice
@@ -3007,92 +2675,290 @@ function Workspace({
               </EditorNotice>
             )}
 
-            {/*
-              The suggest tool's own voice.
-
-              Rendered for the whole session rather than only for its refusals:
-              the asking state, the found-nothing state and the accept affordance
-              are the same question answered differently, and scattering them
-              would leave a person assembling one answer from three places.
-            */}
-            {suggesting !== null && (
-              <SuggestPanel
-                session={suggesting}
-                // The class the workspace is on, which the session's own only stops
-                // matching while parked — the one reading that has to name it.
-                heldClass={activeClass}
-                blocker={blocker}
-                browserTargets={browserRuntime === null ? undefined : answerableBrowserTargets}
-                browserAcquisitions={browserRuntime?.listAcquisitions?.()}
-                {...(browserCatalog === undefined
-                  ? {}
-                  : {
-                      browserModels,
-                      onAcquireBrowserModel: (id: string) => browserCatalog.acquire(id),
-                      onRemoveBrowserModel: (id: string) => browserCatalog.remove(id),
-                    })}
-                activeTarget={activeTarget}
-                onChooseTarget={chooseTarget}
-                onAcquired={() => setBrowserTargetsRefreshKey((key) => key + 1)}
-                refusal={suggesting.refusal}
-                candidates={candidates}
-                connectionId={connection?.id ?? null}
-                onChooseConnection={chooseConnection}
-                onAccept={acceptSuggestion}
-                onDiscard={discardSuggestion}
-                adjusting={adjusting}
-                onAdjusting={setAdjusting}
-                onTolerance={applyTolerance}
-                // Off the same clock the halo is drawn from, which is what lets
-                // the card and the canvas be read as one report of one wait
-                // rather than as two. The card's own appearance follows the
-                // session's status directly; only the sentence needs a threshold.
-                pendingEscalated={pending.escalated}
-                {...(onConfigureInference === undefined
-                  ? {}
-                  : { onConfigure: onConfigureInference })}
-              />
-            )}
           </EditorNotices>
 
-          <span className="pointer-events-none absolute bottom-2 left-2 rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground" data-testid="object-total">
-            {objects} object{objects === 1 ? "" : "s"}
-          </span>
+          {/*
+            Bottom-right, beside the island and on its baseline. Where the
+            picture is too narrow for both side by side, it rises above the
+            island's top instead — the threshold is the island's widest
+            occupancy plus this widget, so the two never overlap down to the
+            annotator's minimum viewport (`viewportFloor.ts`).
+          */}
+          {/* A scan's view zooms in the stage itself (`PointCloudStage`). */}
+          {!isScan && (
+          <ZoomWidget
+            className="bottom-4 @max-[52rem]:bottom-17"
+            zoom={view?.zoom ?? null}
+            atFloor={view !== null && atZoomFloor(view.zoom)}
+            atCeiling={view !== null && atZoomCeiling(view.zoom)}
+            floorReason={`Minimum zoom — ${Math.round(MIN_ZOOM * 100)}% of the asset`}
+            ceilingReason={`Maximum zoom — ${MAX_ZOOM}× image pixels`}
+            onZoomIn={() => viewRef.current?.zoomBy(ZOOM_STEP)}
+            onZoomOut={() => viewRef.current?.zoomBy(1 / ZOOM_STEP)}
+            onFit={() => viewRef.current?.fit()}
+            fullscreenTarget={stage}
+          />
+          )}
 
           {/*
-            Zoom lives on the picture it scales. The bounds still come from
-            `@visionset/annotator` rather than from a number here: `clampZoom` is
-            the one thing that decides them, so a control re-deriving `>= 8` would
-            be a second spelling free to disagree with the stage it is driving.
+            The island: the moves made on every frame, in one place under the
+            hand — take back, put back, skip, back a frame, which frame, next.
+            Forward is the verb and the page's one filled control; back is an
+            icon, because it is the rarer move.
+
+            **Next is the save-first advance**, and deliberately nothing more:
+            `go(1)`, the same path the arrows and the gallery take, so there is one
+            save pipeline and one place principle 10 is enforced. It is never
+            disabled by a save in flight — the advance waits its turn behind it.
+            The settle to `annotated` is not sent from here either —
+            `progress_after_annotating` makes that move in the same transaction as
+            the write.
           */}
-          {!isScan && (
-            <ZoomWidget
-              zoom={view?.zoom ?? null}
-              atFloor={view !== null && atZoomFloor(view.zoom)}
-              atCeiling={view !== null && atZoomCeiling(view.zoom)}
-              floorReason={`Minimum zoom — ${Math.round(MIN_ZOOM * 100)}% of the asset`}
-              ceilingReason={`Maximum zoom — ${MAX_ZOOM}× image pixels`}
-              onZoomIn={() => viewRef.current?.zoomBy(ZOOM_STEP)}
-              onZoomOut={() => viewRef.current?.zoomBy(1 / ZOOM_STEP)}
-              onFit={() => viewRef.current?.fit()}
-              fullscreenTarget={stage}
-            />
-          )}
+          <div
+            data-stage-ui
+            role="toolbar"
+            aria-label="Frame"
+            data-testid="frame-island"
+            className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-xl bg-background/95 p-1 backdrop-blur-md vs-stage-island"
+          >
+            {/* Undo and redo keep the frame verbs' lifetime, not the mode's: on a
+                settled frame inside an open job they are withheld with the reason,
+                so the island keeps its shape as the job is walked; once the whole
+                job is closed they leave with Skip. On a scan they walk the
+                cuboids' history, the one the scan's own strip walks. */}
+            {frameVerbs && (
+              <>
+                {(
+                  [
+                    { testId: "tool-undo", can: !readOnly && (scan?.snapshot ?? snapshot).canUndo, label: "Undo", empty: readOnly ? "Viewing only — nothing here can be undone" : "Nothing to undo", keys: `${modKey()}Z`, run: () => (scan?.store ?? store).undo(), Icon: Undo2 },
+                    { testId: "tool-redo", can: !readOnly && (scan?.snapshot ?? snapshot).canRedo, label: "Redo", empty: readOnly ? "Viewing only — nothing here can be redone" : "Nothing to redo", keys: `⇧${modKey()}Z`, run: () => (scan?.store ?? store).redo(), Icon: Redo2 },
+                  ] as const
+                ).map(({ testId, can, label, empty, keys, run, Icon }) => (
+                  <Tooltip key={testId}>
+                    <TooltipTrigger asChild>
+                      {/* `aria-disabled`, not `disabled`, so the reason stays readable on hover and focus. */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        data-testid={testId}
+                        aria-label={can ? label : empty}
+                        aria-disabled={!can || undefined}
+                        className={cn("size-9 rounded-lg", !can && "cursor-not-allowed opacity-40")}
+                        onMouseDown={keepCanvasFocus}
+                        onClick={() => {
+                          if (can) run();
+                        }}
+                      >
+                        <Icon className="size-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      {can ? (
+                        <>
+                          {label} <Kbd>{keys}</Kbd>
+                        </>
+                      ) : (
+                        empty
+                      )}
+                    </TooltipContent>
+                  </Tooltip>
+                ))}
+                <IslandSeparator />
+              </>
+            )}
+
+            {/* Skip and Un-skip: the frame's own verbs, on its terms — absent
+                once the whole job is closed (`frameVerbs`), and otherwise gated
+                on the wire's declaration with the reason beside it. */}
+            {frameVerbs && (
+              <>
+                {skipped ? (
+                  <IslandVerb
+                    testId="unskip"
+                    withheld={
+                      declares(asset, ASSET_ACTION.restore)
+                        ? null
+                        : "This frame cannot be put back in play from here."
+                    }
+                    pending={setProgress.isPending}
+                    tip="Puts this frame back in play"
+                    onPress={unskip}
+                  >
+                    <Undo2 className="size-4" />
+                    Un-skip
+                  </IslandVerb>
+                ) : (
+                  <IslandVerb
+                    testId="skip"
+                    withheld={skipWithheld}
+                    pending={setProgress.isPending}
+                    tip="Nothing to label here — move on"
+                    keys="X"
+                    onPress={() => settle("skipped")}
+                  >
+                    Skip
+                  </IslandVerb>
+                )}
+                <IslandSeparator />
+              </>
+            )}
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-9 rounded-lg"
+                  aria-label="Previous frame"
+                  data-testid="prev-asset"
+                  disabled={assetIndex === 0}
+                  onMouseDown={keepCanvasFocus}
+                  onClick={() => go(-1)}
+                >
+                  <ChevronLeft className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Previous frame</TooltipContent>
+            </Tooltip>
+            {/* Which frame, and the way into all of them: the gallery opens as an
+                overlay inside the editor — no route change, nothing torn down. */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="h-9 gap-2 rounded-lg px-2.5 tabular-nums"
+                  aria-label={`Frame ${assetIndex + 1} of ${assetCount} — show the job's frames`}
+                  data-testid="open-gallery"
+                  onMouseDown={keepCanvasFocus}
+                  onClick={() => setGalleryOpen(true)}
+                >
+                  <LayoutGrid className="size-4 text-muted-foreground" aria-hidden="true" />
+                  {/* Read as `3 / 12`; the spaces are margins, so the text is `3/12`. */}
+                  <span className="text-sm" data-testid="asset-position">
+                    <span className="font-medium">{assetIndex + 1}</span>
+                    <span className="text-muted-foreground">
+                      <span className="mx-1">/</span>
+                      {assetCount}
+                    </span>
+                  </span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">All frames</TooltipContent>
+            </Tooltip>
+            <IslandSeparator />
+
+            {lastFrame ? (
+              /*
+                **Finish job takes Next's place on the last frame, and renders
+                nowhere else.**
+
+                It used to render on every frame, disabled with nothing attached
+                for as long as one frame was unannotated — a bare greyed control
+                on a fresh job at 0 of 48, which is `DESIGN.md` principle 9's
+                exact prohibition. Two things are true and only together do they
+                fix it: it does not appear until the frame it belongs on, and
+                when it does appear it carries why it cannot be pressed. The slot
+                is `Next` while there is somewhere to advance to and `Finish job`
+                when there is not, so the two are exclusive by arithmetic rather
+                than by a priority anybody maintains. It is not in
+                `REVIEW_ACTIONS` and never was: it is the *job's* action and it
+                co-declares with `submit_for_review` on the frame most jobs end on.
+
+                It does not follow the frame verbs' closed-job rule: a job whose
+                last frame happens to be settled — accepted, say, while other
+                frames are still outstanding — would otherwise have no way to be
+                finished from the workspace at all. Where it is withheld it says
+                why; once the job is completed it reads `Finished`.
+
+                **The reason is a real tooltip, and the withheld state is
+                `aria-disabled`, never the native attribute**: a disabled
+                `<button>` receives no pointer events and cannot take focus, so the
+                reason could not be read (principles 4 and 9). Native `disabled`
+                survives only where there is nothing for it to explain — a
+                `Finished` job, whose label is the explanation, a closed batch,
+                whose banner already says why the page is read-only, and the
+                in-flight press.
+              */
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="default"
+                    className={cn(
+                      "h-9 min-w-28 gap-2 rounded-lg px-3.5 @max-[36rem]:min-w-0",
+                      finishWithheld !== null && !finishInert && "cursor-not-allowed opacity-40",
+                    )}
+                    data-testid="finish-job"
+                    data-withheld={finishWithheld === null ? "false" : "true"}
+                    disabled={finishInert || finishJob.isPending}
+                    aria-disabled={(!finishInert && finishWithheld !== null) || undefined}
+                    onMouseDown={keepCanvasFocus}
+                    onClick={() => {
+                      if (finishWithheld !== null || finishJob.isPending) return;
+                      // **Said out loud**, because the rest of what this press
+                      // does is a subtraction: the tool strip, the classes
+                      // region and the frame's own verbs all leave, which is a
+                      // screen with less on it and no statement of why. The
+                      // banner arrives in the same paint and stays; the toast is
+                      // the moment, and this is the add-a-class chain's idiom
+                      // (`toast.success`) rather than a second one.
+                      //
+                      // On the mutation and not in `useJobTransition`, which
+                      // also spells `start` — a job starting is a consequence of
+                      // opening the page and nobody asked for it.
+                      finishJob.mutate(undefined, {
+                        onSuccess: () =>
+                          toast.success("Job finished — its frames are read-only now"),
+                      });
+                    }}
+                  >
+                    <CheckCheck className="size-4" />
+                    {jobState === "completed" ? "Finished" : "Finish job"}
+                  </Button>
+                </TooltipTrigger>
+                {/* Only while withheld: an enabled Finish job explains itself by
+                    being pressable, and a tooltip repeating the label would be
+                    noise over the one control the frame exists to end on. */}
+                {finishWithheld !== null && !finishInert && (
+                  <TooltipContent side="top" data-testid="finish-withheld">
+                    {finishWithheld}
+                  </TooltipContent>
+                )}
+              </Tooltip>
+                        ) : (
+              <Button
+                variant="default"
+                // The key's side carries less padding: its box is mostly air.
+                // Finish job's width, so the last frame does not move the island.
+                className="h-9 min-w-28 gap-2 rounded-lg pl-3.5 pr-2 @max-[36rem]:min-w-0"
+                data-testid="save-and-next"
+                onMouseDown={keepCanvasFocus}
+                onClick={() => go(1)}
+              >
+                Next
+                {/* Inverted for the filled ground — a muted chip there read as a
+                    smudge. Hidden where the picture is narrow, so the island fits. */}
+                <Kbd className="bg-primary-foreground/15 text-primary-foreground @max-[36rem]:hidden">↵</Kbd>
+              </Button>
+            )}
+          </div>
         </div>
+      </main>
 
+      {/*
+        The panel, full height: what can be drawn and what is drawn. 288px, and
+        320px only from `2xl` — the panel's own reasoning about the smallest
+        screen the editor opens on. Moving between frames and settling this one
+        are the island's and the bar's, not this column's.
+      */}
+      <aside className="row-start-2 flex min-h-0 w-72 flex-col border-l border-border bg-card 2xl:w-80" aria-label="Frame">
         {/*
-          The panel arms the drawing class — a top-bar combobox would be clipped
-          into invisibility by the reservation it sat in. `activeClass` is still
-          the page's: the panel
-          renders it and reports a choice, so the canvas, the tool strip, a digit
-          and this list all land on the one `activateClass`.
-
-          In the read-only mode the panel renders no classes region at all —
-          rather than rendering it as information — so this page owes it no
-          refusal sentence; the
-          banner above is the one surface that says why the frame is a viewer.
+          The panel arms the drawing class; `activeClass` is still the page's, so
+          the canvas, the tool rail, a digit and this list all land on the one
+          `activateClass`. In the read-only mode it renders no classes region —
+          the banner is the one surface that says why the frame is a viewer.
         */}
         <AnnotatorPanel
+          layout="flush"
           store={store}
           readOnly={readOnly}
           labels3D={scanLabels}
@@ -3119,7 +2985,8 @@ function Workspace({
             setAddingClass(true);
           }}
         />
-      </div>
+
+      </aside>
 
       <AddClassDialog
         open={addingClass}
@@ -3181,6 +3048,105 @@ function Workspace({
         currentIndex={assetIndex}
         onPick={pickFrame}
       />
+    </div>
+  );
+}
+
+const TOOL_WORD: Readonly<Record<Tool, string>> = {
+  select: "Select",
+  bbox: "Box",
+  polygon: "Polygon",
+  polyline: "Polyline",
+};
+
+/**
+ * What the canvas expects next, as one short line — or `null` when the frame
+ * cannot be drawn on, which the read-only banner already says. Every chord
+ * named here is a live binding (`core/input/bindings.ts`).
+ */
+function canvasHint({
+  readOnly,
+  hand,
+  suggesting,
+  tool,
+  selected,
+}: {
+  readonly readOnly: boolean;
+  readonly hand: boolean;
+  readonly suggesting: boolean;
+  readonly tool: Tool;
+  readonly selected: boolean;
+}): ReactNode {
+  if (readOnly) return null;
+  if (hand) return <>Drag to move the picture · <Kbd>H</Kbd> puts the hand down</>;
+  if (suggesting) return <>Click an object to suggest its outline · <Kbd>S</Kbd> turns Suggest off</>;
+  if (tool === "bbox") return "Drag to draw a box";
+  if (tool === "polygon") return <>Click to place points · <Kbd>↵</Kbd> closes the shape</>;
+  if (tool === "polyline") return <>Click to place points · <Kbd>↵</Kbd> finishes the line</>;
+  return selected ? (
+    <>
+      <Kbd>Delete</Kbd> removes the selection · right-click changes its class
+    </>
+  ) : (
+    <>
+      Click a shape to select it · <Kbd>1</Kbd>–<Kbd>9</Kbd> picks a class to draw
+    </>
+  );
+}
+
+/**
+ * The tool's own bar over the picture: which tool the next press uses and the
+ * class it draws. Undo and redo moved to the island, with the other moves made
+ * on every frame.
+ *
+ * While Suggest is armed the bar carries the tool's options and its state
+ * (`SuggestBar`), with the class chip placed among them. It is a size container:
+ * below 48rem of bar the words drop and icons stay, and where even that does not
+ * fit the row scrolls inside itself, scrollbar hidden — it never wraps and never
+ * widens the page.
+ */
+function ToolOptions({
+  tool,
+  hand,
+  suggesting,
+  heldClass,
+  suggest,
+}: {
+  readonly tool: Tool;
+  readonly hand: boolean;
+  readonly suggesting: boolean;
+  readonly heldClass: { readonly name: string; readonly color: string } | null;
+  /** The armed suggest tool's options, handed the class chip to place among them. */
+  readonly suggest: (classSlot: ReactNode) => ReactNode;
+}): JSX.Element {
+  const word = hand ? "Hand" : suggesting ? "Suggest" : TOOL_WORD[tool];
+  const held =
+    heldClass !== null && !hand ? (
+      <span className="flex min-w-0 shrink-0 items-center gap-1.5 text-sm" data-testid="held-class">
+        <span className="text-muted-foreground @max-[48rem]:sr-only">Class</span>
+        <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: heldClass.color }} aria-hidden="true" />
+        <span className="max-w-40 truncate">{heldClass.name}</span>
+      </span>
+    ) : null;
+  const options = suggest(held);
+  return (
+    <div
+      className="@container flex h-12 shrink-0 items-center gap-3 overflow-x-auto border-b border-border bg-card px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      role="toolbar"
+      aria-label="Tool"
+      data-testid="tool-options"
+    >
+      <span className="flex shrink-0 items-center gap-2 text-sm font-medium" data-testid="active-tool">
+        {hand ? (
+          <Hand className="size-4" aria-hidden="true" />
+        ) : suggesting ? (
+          <Sparkles className="size-4" aria-hidden="true" />
+        ) : (
+          <GeometryIcon tool={tool} />
+        )}
+        <span className={suggesting ? "@max-[48rem]:sr-only" : undefined}>{word}</span>
+      </span>
+      {options ?? held}
     </div>
   );
 }
@@ -3383,83 +3349,394 @@ function PinDiff({
 }
 
 /**
- * The frame's own progress: a dot **and its word**.
+ * A press on the stage's chrome keeps the keyboard where it was.
  *
- * A bare dot beside the navigator puts the word in a tooltip, and a tooltip is a
- * place a word goes to not
- * be read — it needs a hover, it is unreachable on a touch screen, and the whole
- * reason the dot exists is to be glanced at. So the word is on the bar, in the
- * microtext the save state shares, and the dot in front of it is now decoration:
- * the colour is the glance and the prose is the answer, which is the strongest
- * reading of **status is never colour alone** (`DESIGN.md`).
- *
- * The words come from `batchState.ts`'s `PROGRESS_LABEL` rather than a second
- * copy: two spellings of the same six states are free to drift.
- *
- * **The colour comes from there too.** Unifying the words and not the colours
- * left `accepted` green here and near-black in the gallery — and, worse,
- * `skipped` **`destructive`**, which told somebody who had deliberately passed
- * over a frame that something had gone wrong with it. What stays local is the
- * dot's size, because a 44px bar and a gallery card are the same status at two
- * scales.
+ * `AnnotatorCanvas` reads the keyboard off its own root, so a button over the
+ * picture that took the focus would leave every chord dead until the next click
+ * on the picture. `mousedown` is where the browser moves focus, so that is where
+ * it is refused — the tool rail's rule.
  */
-function AssetProgressDot({ progress }: { readonly progress: string }): JSX.Element {
-  const state = progress as AssetProgress;
-  const word = PROGRESS_LABEL[progress] ?? progress;
+function keepCanvasFocus(event: ReactMouseEvent): void {
+  event.preventDefault();
+}
+
+/** A hairline between the island's groups. */
+function IslandSeparator(): JSX.Element {
+  return <span aria-hidden="true" className="mx-0.5 h-5 w-px shrink-0 bg-foreground/10" />;
+}
+
+/**
+ * Skip or Un-skip in the island: a ghost button whose chord rides inside it,
+ * withheld with its reason when the wire does not declare the move.
+ *
+ * `aria-disabled`, never the native attribute, for Finish job's reason: a
+ * disabled `<button>` takes no pointer and no focus, so its reason could not be
+ * read. The press is refused in the handler. The chord shows only while the move
+ * is live — a keycap on a move that cannot be made teaches a key that does
+ * nothing.
+ */
+function IslandVerb({
+  testId,
+  withheld,
+  pending,
+  tip,
+  keys,
+  onPress,
+  children,
+}: {
+  readonly testId: string;
+  readonly withheld: string | null;
+  readonly pending: boolean;
+  readonly tip: string;
+  readonly keys?: string;
+  readonly onPress: () => void;
+  readonly children: ReactNode;
+}): JSX.Element {
+  const live = withheld === null;
   return (
-    <span
-      className="flex items-center gap-1.5"
-      data-testid="asset-progress"
-      data-progress={progress}
-      data-tone={progressTone(state)}
-    >
-      <span
-        className={`size-2 shrink-0 rounded-full border ${progressDotClass(state)}`}
-        aria-hidden="true"
-      />
-      {word}
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          // One width for Skip and Un-skip, so walking onto a skipped frame does
+          // not move the arrows; narrow pictures drop it with the keycaps.
+          className={cn(
+            "h-9 min-w-24 justify-center gap-1.5 rounded-lg px-3 @max-[36rem]:min-w-0",
+            !live && "cursor-not-allowed opacity-40",
+          )}
+          data-testid={testId}
+          aria-disabled={!live || undefined}
+          disabled={pending}
+          onMouseDown={keepCanvasFocus}
+          onClick={() => {
+            if (live) onPress();
+          }}
+        >
+          {children}
+          {live && keys !== undefined && <Kbd className="@max-[36rem]:hidden">{keys}</Kbd>}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="top">{withheld ?? tip}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/**
+ * The frame's review move on the bar — outline, because the island's Next is the
+ * page's one filled control. Live, its tooltip says what the move means; withheld,
+ * it says why not, and the press is refused in the handler (`aria-disabled`).
+ */
+function ReviewMove({
+  move,
+  withheld,
+  pending,
+  onSettle,
+}: {
+  readonly move: (typeof REVIEW_ACTIONS)[number];
+  readonly withheld: string | null;
+  readonly pending: boolean;
+  readonly onSettle: () => void;
+}): JSX.Element {
+  const live = withheld === null;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className={cn("h-8", !live && "cursor-not-allowed opacity-40")}
+          data-testid={move.testId}
+          data-withheld={live ? "false" : "true"}
+          aria-disabled={!live || undefined}
+          disabled={pending}
+          onClick={() => {
+            if (live) onSettle();
+          }}
+        >
+          {move.label}
+        </Button>
+      </TooltipTrigger>
+      {/*
+        The sentence is careful about what this product does not have: there is
+        no annotator identity, so submitting routes the frame to nobody — it
+        marks a state that the next person to open the job can act on.
+      */}
+      <TooltipContent side="bottom">{withheld ?? move.tooltip}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** The order a job's frames stack in the progress bar: settled first, waiting last. */
+const PROGRESS_ORDER = [
+  "accepted",
+  "annotated",
+  "review_pending",
+  "skipped",
+  "pre_labeled",
+  "unannotated",
+] as const satisfies readonly AssetProgress[];
+
+/** The counts the progress readout needs — the wire's six, and the total. */
+type JobCounts = Readonly<Record<(typeof PROGRESS_ORDER)[number], number>> & { readonly total: number };
+
+/** A count that rolls in when it changes, so progress reads as movement. */
+function RollingNumber({ value }: { readonly value: number }): JSX.Element {
+  return (
+    <span className="inline-flex overflow-hidden tabular-nums">
+      {/* A new element per value: the keyframe runs once, on arrival. */}
+      <span key={value} className="vs-roll">
+        {value}
+      </span>
+    </span>
+  );
+}
+
+/** The job's frames as one bar, a segment per state, each easing to its width. */
+function StackedBar({ counts, className }: { readonly counts: JobCounts; readonly className?: string }): JSX.Element {
+  return (
+    <span className={cn("flex overflow-hidden rounded-full bg-muted", className)} aria-hidden="true">
+      {/* `unannotated` is the track itself, `progressCellClass`'s own `bg-muted`. */}
+      {PROGRESS_ORDER.filter((state) => state !== "unannotated").map((state) => (
+        <span
+          key={state}
+          data-progress={state}
+          className={cn(
+            "h-full transition-[width] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none",
+            progressCellClass(state),
+          )}
+          style={{ width: counts.total === 0 ? "0%" : `${(counts[state] / counts.total) * 100}%` }}
+        />
+      ))}
     </span>
   );
 }
 
 /**
- * `DESIGN.md`'s save-state indicator: saving, saved, or not yet stored. Rendered
- * only once there is something to say; `Saved` follows an actual save.
+ * The job's progress — the one place it is shown.
  *
- * **Three readings, not four.** It used to carry a fourth — the refusal itself,
- * as a destructive badge — and that reading has moved to the stage's notice
- * column, where a sentence has room. What is left is the question this readout
- * actually answers, *where is the work*, and after a refused save the honest
- * answer is the one it now gives: `unsaved`. The two are not the same fact, and a
- * readout that swapped one for the other left the person who had just been
- * refused with no statement at all about whether their boxes still existed.
+ * **Settled is the product's own word**: `SETTLED_PROGRESS` is `{annotated,
+ * skipped, accepted}`, and `outstandingWork` is the other three — so settled is
+ * the total less that, never a second definition. A readout of `annotated`
+ * alone would go backwards when a frame is accepted, which is the one thing a
+ * progress readout must never do.
+ *
+ * Hovering (or focusing) it opens every state counted. The "Tab jumps to the
+ * next" clause the design carries is left out: no binding moves to the next
+ * frame that needs a person, and a hint naming a key that does nothing is worse
+ * than none.
  */
-function SaveState({
-  dirty,
-  pending,
-}: {
-  readonly dirty: boolean;
-  readonly pending: boolean;
-}): JSX.Element {
-  if (pending) {
+function JobProgress({ counts }: { readonly counts: JobCounts | null }): JSX.Element {
+  if (counts === null) {
     return (
-      <span className="animate-pulse text-xs text-muted-foreground" data-testid="save-state">
-        Saving…
+      <span className="px-2 text-sm text-muted-foreground" data-testid="job-progress">
+        —
       </span>
     );
   }
-  if (dirty) {
-    return (
-      <Badge variant="default" data-testid="save-state">
-        unsaved
-      </Badge>
-    );
-  }
+  const waiting = outstandingWork(counts);
+  const settled = Math.max(0, counts.total - waiting);
   return (
-    <Badge variant="success" data-testid="save-state">
-      <Check aria-hidden="true" />
-      Saved
-    </Badge>
+    <HoverCard openDelay={120} closeDelay={80}>
+      <HoverCardTrigger asChild>
+        <button
+          type="button"
+          className="flex h-8 items-center gap-2.5 rounded-md px-2 transition-colors duration-100 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={`${settled} of ${counts.total} frames settled`}
+          data-testid="job-progress"
+          data-settled={settled}
+        >
+          <StackedBar counts={counts} className="h-1.5 w-28" />
+          {/* Read as `12 / 48`; the spaces are margins, so the text is `12/48`. */}
+          <span className="text-sm tabular-nums">
+            <RollingNumber value={settled} />
+            <span className="text-muted-foreground">
+              <span className="mx-1">/</span>
+              {counts.total}
+            </span>
+          </span>
+        </button>
+      </HoverCardTrigger>
+      <HoverCardContent align="end" className="w-auto" data-testid="job-progress-breakdown">
+        <div className="flex w-64 flex-col gap-3">
+          <p className="text-sm">
+            <span className="font-medium tabular-nums">{settled}</span>
+            <span className="text-muted-foreground"> of {counts.total} frames settled</span>
+          </p>
+          <StackedBar counts={counts} className="h-1.5" />
+          <dl className="grid grid-cols-[auto_1fr_auto_2.75rem] items-center gap-x-2.5 gap-y-1.5 text-xs">
+            {PROGRESS_ORDER.map((state) => (
+              <div key={state} className="contents" data-testid={`progress-row-${state}`}>
+                <span className={cn("size-2 rounded-full border", progressDotClass(state))} aria-hidden="true" />
+                <dt className="text-muted-foreground">{PROGRESS_LABEL[state]}</dt>
+                <dd className="text-right font-medium tabular-nums">{counts[state]}</dd>
+                <dd className="text-right tabular-nums text-muted-foreground">
+                  {counts.total === 0 ? "0.0" : ((counts[state] / counts.total) * 100).toFixed(1)}%
+                </dd>
+              </div>
+            ))}
+          </dl>
+          {waiting > 0 && (
+            <p className="border-t pt-2.5 text-xs text-muted-foreground">
+              <span className="font-medium tabular-nums text-foreground">{waiting}</span> still need a
+              person
+            </p>
+          )}
+        </div>
+      </HoverCardContent>
+    </HoverCard>
+  );
+}
+
+const SAVE_STATES = {
+  edited: { word: "Edited", icon: <CloudUpload aria-hidden="true" /> },
+  saving: { word: "Saving", icon: <Loader2 className="motion-safe:animate-spin" aria-hidden="true" /> },
+  saved: { word: "Saved", icon: <CloudCheck aria-hidden="true" /> },
+  failed: { word: "Not saved", icon: <CloudAlert aria-hidden="true" /> },
+} as const;
+
+type SaveStatusState = keyof typeof SAVE_STATES;
+
+/**
+ * Where the work is, read without a tooltip: a cloud that fills in as the change
+ * lands.
+ *
+ * Every state is in the DOM at once and crossfades — opacity, scale and blur on
+ * the icons, opacity on the words — and the words share one grid cell, so the
+ * width is the widest word's and nothing beside it moves when they swap. The
+ * words are drawn from an attribute (`before:content-[attr(data-word)]`), so
+ * the element's text — and what `role="status"` announces — is the current word
+ * alone, in the visually hidden span.
+ *
+ * `Not saved` is the fourth reading, in the warning tone: a save refused. *Why*
+ * is a sentence, and it is in the stage's notice column (`save-refusal`); this
+ * says only where the work is, which after a refusal is still here and unsaved.
+ */
+function SaveStatus({
+  state,
+  held,
+}: {
+  readonly state: SaveStatusState;
+  /** The autosave's wait is up, and a gesture in progress is holding it. */
+  readonly held: boolean;
+}): JSX.Element {
+  const keys = Object.keys(SAVE_STATES) as SaveStatusState[];
+  return (
+    <span
+      role="status"
+      aria-live="polite"
+      className={cn(
+        "flex h-7 items-center gap-1.5 text-xs",
+        state === "failed" ? "text-warning" : "text-muted-foreground",
+      )}
+      data-testid="save-state"
+      data-state={state}
+      data-autosave={held ? "held" : undefined}
+    >
+      <span className="relative size-4 shrink-0 [&_svg]:absolute [&_svg]:inset-0 [&_svg]:size-4">
+        {keys.map((key) => (
+          <span
+            key={key}
+            aria-hidden="true"
+            className={cn(
+              "absolute inset-0 transition-[opacity,scale,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-opacity",
+              key === state ? "scale-100 opacity-100 blur-none" : "scale-25 opacity-0 blur-[4px]",
+            )}
+          >
+            {SAVE_STATES[key].icon}
+          </span>
+        ))}
+      </span>
+      <span className="grid" aria-hidden="true">
+        {keys.map((key) => (
+          <span
+            key={key}
+            data-word={SAVE_STATES[key].word}
+            className={cn(
+              "col-start-1 row-start-1 whitespace-nowrap transition-opacity duration-200 before:content-[attr(data-word)]",
+              key === state ? "opacity-100" : "opacity-0",
+            )}
+          />
+        ))}
+      </span>
+      <span className="sr-only">{SAVE_STATES[state].word}</span>
+    </span>
+  );
+}
+
+/**
+ * The frame's state, top-left on the picture: which frame (the hash head — the
+ * only identity a client holds, `Asset.uri` being deliberately off the wire), a
+ * dot **and its word**, how many of its labels a model wrote, and — while the
+ * wire offers `confirm` — the check that keeps them, attached to the word it is
+ * about.
+ *
+ * The word is on screen rather than in a tooltip because a tooltip is a place a
+ * word goes to not be read; the dot is the glance and the prose is the answer
+ * (**status is never colour alone**, `DESIGN.md`). Words and colours both come
+ * from `batchState.ts` (`PROGRESS_LABEL`, `progressDotClass`), so the tag, the
+ * gallery and the Overview's strip cannot come to mean different things.
+ */
+function StatusTag({
+  hash,
+  progress,
+  fromModel,
+  confirm,
+}: {
+  readonly hash: string;
+  readonly progress: string;
+  readonly fromModel: number;
+  readonly confirm: {
+    readonly label: string;
+    readonly testId: string;
+    readonly pending: boolean;
+    readonly onConfirm: () => void;
+  } | null;
+}): JSX.Element {
+  const state = progress as AssetProgress;
+  return (
+    <div
+      data-stage-ui
+      className="pointer-events-auto flex h-8 max-w-full items-center rounded-lg bg-background/95 text-sm backdrop-blur-md vs-stage-chip"
+      data-testid="status-tag"
+    >
+      <span className="flex min-w-0 items-center gap-2 px-2.5">
+        <span className="truncate font-mono text-xs text-muted-foreground" data-testid="asset-identity">
+          {hash.slice(0, 8)}
+        </span>
+        <span
+          className="flex shrink-0 items-center gap-2"
+          data-testid="asset-progress"
+          data-progress={progress}
+          data-tone={progressTone(state)}
+        >
+          <span className={cn("size-2 shrink-0 rounded-full border", progressDotClass(state))} aria-hidden="true" />
+          <span className="font-medium">{PROGRESS_LABEL[progress] ?? progress}</span>
+        </span>
+        {fromModel > 0 && (
+          <span className="shrink-0 tabular-nums text-muted-foreground" data-testid="from-model">
+            {fromModel} from the model
+          </span>
+        )}
+      </span>
+      {confirm !== null && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label={confirm.label}
+              data-testid={confirm.testId}
+              disabled={confirm.pending}
+              onMouseDown={keepCanvasFocus}
+              onClick={confirm.onConfirm}
+              className="flex h-8 w-9 shrink-0 items-center justify-center rounded-r-lg border-l border-foreground/10 text-primary transition-[background-color,scale] duration-150 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.96] disabled:opacity-50 motion-reduce:transition-none [&_svg]:size-4"
+            >
+              <CheckCheck aria-hidden="true" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{confirm.label}</TooltipContent>
+        </Tooltip>
+      )}
+    </div>
   );
 }
 

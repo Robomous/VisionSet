@@ -4,7 +4,7 @@
  * The workspace is built once per *server* start — `scripts/cycle_server.sh`
  * `rm -rf`s it and runs `visionset init`, and `playwright.cycle.config.ts` starts
  * that script once as its `webServer`. So every attempt after the first inherits
- * the one before it, and the walk's third step asserts Home's first-run
+ * the one before it, and the walk's third step asserts the project list's first-run
  * invitation, which is gated on the workspace holding no projects at all.
  * Without this, a retry could never reach whatever failed: it died on that
  * assertion, three steps in, naming a screen that had nothing to do with the

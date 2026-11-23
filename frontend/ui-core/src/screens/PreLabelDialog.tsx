@@ -111,14 +111,13 @@ import {
   type PreLabelPlan,
   type PreLabelRun,
 } from "./queries";
+import { NO_SHAPES, selectedShapes } from "./preLabelShapes";
 
 /** The capability a candidate connection has to declare. Read off the wire, never guessed. */
 export const TEXT_DETECT = "text_detect" as const;
 
 export const DEFAULT_CONFIDENCE = "0.35";
 
-/** Nothing unticked — every shape the model produces is written. */
-export const NO_SHAPES: ReadonlySet<GeometryType> = new Set();
 
 function isSettled(state: BackgroundJob["state"]): boolean {
   return state === "succeeded" || state === "failed" || state === "cancelled";
@@ -402,17 +401,6 @@ function shapeLabel(shape: string): string {
   return prose.charAt(0).toUpperCase() + prose.slice(1);
 }
 
-/**
- * What a ticked-box state says a run writes: the shapes the model produces,
- * less the unticked ones, or `null` when the model writes one shape and there
- * was nothing to tick — the body then carries no selection at all.
- */
-export function selectedShapes(
-  shapes: readonly GeometryType[],
-  unticked: ReadonlySet<GeometryType>,
-): readonly GeometryType[] | null {
-  return shapes.length > 1 ? shapes.filter((one) => !unticked.has(one)) : null;
-}
 
 export interface PreLabelSettingsProps {
   readonly candidates: readonly Connection[];
@@ -534,11 +522,11 @@ export interface PreLabelButtonProps {
   /** Which job of the batch this is, as the row beside it counts them. */
   readonly ordinal: number;
   readonly className?: string;
-  /** Where "Edit these frames" sends the gallery once a run has succeeded. */
+  /** Where "Edit these frames" sends the host once a run has succeeded. */
   readonly onSegment: (segment: Segment) => void;
 }
 
-/** The job panel's trigger, gated on the job's own declaration and nothing else. */
+/** The per-job trigger, gated on the job's own declaration and nothing else. No screen mounts it now; a batch's panel opens `ProjectPreLabelDialog` over the batch instead. */
 export function PreLabelButton({
   batch,
   job,
@@ -615,7 +603,7 @@ function PreLabelDialog({
   const noShape = selection !== null && selection.length === 0;
   // Read while the dialog is open and not before: the prompt is a property of
   // the pinned schema, of the chosen model and of the ticked shapes, so a
-  // gallery that never opens this never asks for it, and changing the model or
+  // screen that never opens this never asks for it, and changing the model or
   // a tick asks again. Not read with nothing ticked — the error beside the
   // checkboxes is the whole answer, and a read with no selection would be a
   // plan for every shape.

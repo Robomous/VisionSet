@@ -139,7 +139,7 @@ export function declares<A extends string>(
  * How many of these resources declare the action — the count a bulk control puts
  * on its own button.
  *
- * Separate from `declares` because a bulk bar needs the *targets*, not a boolean,
+ * Separate from `declares` because a bulk control needs the *targets*, not a boolean,
  * and counting them in each caller is how two spellings of "which frames can be
  * skipped" start disagreeing.
  */

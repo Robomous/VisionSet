@@ -238,6 +238,26 @@ async function census(page: Page, png: Buffer): Promise<{ readonly content: numb
   );
 }
 
+
+/**
+ * The cuboid as the server was last told it: autosave may store a box mid-edit and
+ * send the rest as an update under the server's id, so the newest write that
+ * carries a cuboid is the box as it was left.
+ */
+function lastCuboidSent(sent: readonly Request[]): Wire["Cuboid3DBody"] {
+  const writes = sent.filter(
+    (request) =>
+      (request.method() === "POST" || request.method() === "PATCH") &&
+      request.url().endsWith(`/jobs/${JOB}/annotations`),
+  );
+  for (const request of [...writes].reverse()) {
+    const rows = request.postDataJSON() as { readonly geometry?: { readonly type?: string } }[];
+    const cuboid = rows.find((row) => row.geometry?.type === "cuboid_3d");
+    if (cuboid !== undefined) return cuboid.geometry as Wire["Cuboid3DBody"];
+  }
+  throw new Error("no cuboid was sent");
+}
+
 test("a scan draws its points and its cuboid, and never asks for a calibration", async ({ page }) => {
   const sent = await openScan(page);
   const view = page.getByTestId("point-cloud-canvas");
@@ -355,15 +375,17 @@ test("in Edit, a drawn cuboid moves, the move undoes, and the save sends the box
   await page.getByTestId("scan-undo").click();
   await expect.poll(() => handleAt(page, "top")).toEqual(drawn);
 
-  await page.getByTestId("save-and-stay").click();
-  await expect(page.getByTestId("save-state")).toContainText(/saved/i);
+  // Autosave may already have stored part of the work; mod+s sends the rest now.
+  await page.getByTestId("point-cloud-gl").focus();
+  await page.keyboard.press("ControlOrMeta+s");
+  await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
   const posts = sent.filter((request) => request.method() === "POST" && request.url().endsWith(`/jobs/${JOB}/annotations`));
   expect(posts).toHaveLength(1);
   const body = posts[0]?.postDataJSON() as Wire["AnnotationCreate"][];
   expect(body).toHaveLength(1);
   const [created] = body;
   expect(created).toMatchObject({ asset_id: "asset-1", label_class: "vehicle", geometry: { type: "cuboid_3d", yaw: 0 } });
-  const geometry = created?.geometry as Wire["Cuboid3DBody"];
+  const geometry = lastCuboidSent(sent);
   for (const side of geometry.size) expect(side).toBeGreaterThan(0.05);
   // It stands on the ground the scan was sampled on, left of the car and short of it.
   expect(geometry.center[2] - geometry.size[2] / 2).toBeCloseTo(-0.8, 1);
@@ -427,7 +449,8 @@ test("in Edit, a right drag orbits and a left drag on open ground draws nothing 
 
   await dragIn(page, view, [box.width / 2 - 200, box.height - 80], [box.width / 2 - 100, box.height - 40]);
   await expect(page.getByTestId("object-count")).toHaveText("1 object");
-  await expect(page.getByTestId("save-and-stay")).toBeDisabled();
+  // Nothing was drawn, so there is nothing to save and no save to report.
+  await expect(page.getByTestId("save-state")).toHaveCount(0);
 });
 
 test("a scan whose source declares no frame cannot be edited, and says why", async ({ page }) => {
@@ -454,7 +477,6 @@ test("in Edit, the keys delete, undo, and let go of the selection", async ({ pag
 
   await page.keyboard.press("Delete");
   await expect(page.getByTestId("object-count")).toHaveText("1 object");
-  await expect(page.getByTestId("save-and-stay")).toBeDisabled();
 
   await page.keyboard.press("ControlOrMeta+z");
   await expect(page.getByTestId("object-count")).toHaveText("2 objects");
@@ -463,7 +485,8 @@ test("in Edit, the keys delete, undo, and let go of the selection", async ({ pag
   await page.getByTestId("point-cloud-gl").focus();
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("scan-handles")).toHaveCount(0);
-  await expect(page.getByTestId("save-and-stay")).toBeEnabled();
+  // The undone delete is work again, and the bar says so.
+  await expect(page.getByTestId("save-state")).toBeVisible();
 });
 
 test("a selected cuboid is drawn in the highlight colour instead of its class colour", async ({ page }) => {
@@ -556,12 +579,13 @@ test("in Edit, the top-down view pulls a face and turns the yaw, the perspective
   await page.getByTestId("scan-redo").click();
   await expect.poll(() => yawHandle(page)).toEqual(turned);
 
-  await page.getByTestId("save-and-stay").click();
-  await expect(page.getByTestId("save-state")).toContainText(/saved/i);
+  // Autosave may already have stored part of the work; mod+s sends the rest now.
+  await page.getByTestId("point-cloud-gl").focus();
+  await page.keyboard.press("ControlOrMeta+s");
+  await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
   const posts = sent.filter((request) => request.method() === "POST" && request.url().endsWith(`/jobs/${JOB}/annotations`));
   expect(posts).toHaveLength(1);
-  const [created] = posts[0]?.postDataJSON() as Wire["AnnotationCreate"][];
-  const geometry = created?.geometry as Wire["Cuboid3DBody"];
+  const geometry = lastCuboidSent(sent);
   expect(geometry.type).toBe("cuboid_3d");
   expect(geometry.yaw).toBeCloseTo(Math.PI / 2, 1);
   // Forward was pulled out: the box is longer along its heading than across it, as drawn it was not.
@@ -617,8 +641,9 @@ test("in Edit, a polyline drawn on the ground saves, and a dragged vertex saves 
   await expect(top).toHaveAttribute("data-label-count", "2");
   await expect(page.getByTestId("scan-top-vertex-2")).toBeVisible();
 
-  await page.getByTestId("save-and-stay").click();
-  await expect(page.getByTestId("save-state")).toContainText(/saved/i);
+  await page.getByTestId("point-cloud-gl").focus();
+  await page.keyboard.press("ControlOrMeta+s");
+  await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
   const posts = sent.filter((request) => request.method() === "POST" && request.url().endsWith(`/jobs/${JOB}/annotations`));
   expect(posts).toHaveLength(1);
   const [created] = posts[0]?.postDataJSON() as Wire["AnnotationCreate"][];
@@ -645,8 +670,9 @@ test("in Edit, a polyline drawn on the ground saves, and a dragged vertex saves 
   expect(await vertexAt(page, 0)).toEqual(first);
 
   const writesBefore = sent.length;
-  await page.getByTestId("save-and-stay").click();
-  await expect(page.getByTestId("save-state")).toContainText(/saved/i);
+  await page.getByTestId("point-cloud-gl").focus();
+  await page.keyboard.press("ControlOrMeta+s");
+  await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
   const writes = sent.slice(writesBefore).filter((request) => request.url().includes("/annotations"));
   expect(writes.filter((request) => request.method() === "POST" || request.method() === "DELETE")).toHaveLength(0);
   const patches = sent.filter((request) => request.method() === "PATCH");

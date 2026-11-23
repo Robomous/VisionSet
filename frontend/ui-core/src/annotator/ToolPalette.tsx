@@ -84,148 +84,22 @@
  * here too.
  */
 
-import {
-  drawableGeometries,
-  hotkeyForClass,
-  schemaCanSuggest,
-  type AnnotationSchema,
-  type GeometryType,
-  type Tool,
-} from "@visionset/annotator";
+import { schemaCanSuggest, type AnnotationSchema, type Tool } from "@visionset/annotator";
 
-import { geometryLabel } from "../data/geometryCategory";
-import { CircleHelp, Hand, Plus, Redo2, Sparkles, Undo2 } from "lucide-react";
+import { CircleHelp, Eye, EyeOff, Hand, Redo2, Sparkles, Undo2 } from "lucide-react";
 
 import { GeometryIcon } from "./GeometryIcon";
+import { accepts, toolChoices, type ToolChoice } from "./toolChoices";
 import type { JSX, MouseEvent, ReactNode } from "react";
 
-import { Button, Tooltip, TooltipContent, TooltipTrigger } from "@robomous/ui-core";
-
-/**
- * Why a declared geometry has no tool yet, keyed by the geometry.
- *
- * **Empty**, and kept rather than deleted along with its last entry.
- * The mechanism is what earns its place: the day `mask` or `keypoints` is declared
- * in a schema, the strip says so without anyone remembering that it should, and
- * that is a property worth more than the twelve lines it costs.
- *
- * The record is typed on `string` rather than on the geometry union so an entry
- * can name a geometry `drawableGeometries` never returns, which is the case it
- * exists for.
- */
-const PENDING_TOOLS: Readonly<Record<string, string>> = {};
-
-/**
- * What each drawing tool is called on the strip.
- *
- * Read off the product's one geometry vocabulary rather than kept here. This used
- * to be a private map saying `Box` while every other surface printed `bbox`, so
- * the same tool had two names depending on which side of the canvas you read it
- * from. `geometryLabel` is now the single source; this only capitalises, because
- * a control label takes a capital and a word inside a sentence does not.
- */
-function toolLabel(geometry: GeometryType): string {
-  const word = geometryLabel(geometry);
-  return word.charAt(0).toUpperCase() + word.slice(1);
-}
-
-/** A schema's tools, in the order the strip lists them. */
-interface ToolChoice {
-  /** A real `Tool`, or a geometry the strip shows as not-yet-drawable. */
-  readonly tool: Tool | keyof typeof PENDING_TOOLS;
-  readonly label: string;
-  /** The class this button activates — `null` is select mode. */
-  readonly labelClass: string | null;
-  readonly hotkey: string;
-  /**
-   * Why this tool cannot be picked, or `null` when it can.
-   *
-   * Disabled-with-reason rather than hidden: see the module docstring. A button
-   * carrying this never calls `onActivateClass`, because activating a class whose
-   * tool does not exist would leave the canvas in `select` with a lane class held
-   * — inert, and indistinguishable from a canvas with no tool strip at all.
-   */
-  readonly unavailable: string | null;
-}
-
-/**
- * The tools this schema can reach, `select` first.
- *
- * A geometry is represented by the **first** class declaring it, in authored
- * order, which is the same order `classHotkeys` binds the digit row in. Nothing
- * here dedupes by class: two bbox classes are one bbox tool.
- *
- * **`activeClass` narrows it.** With a class selected the strip offers only that
- * class's own geometries, because those are the only shapes a gesture could
- * produce — a bbox button that armed a different class the moment it was pressed
- * would answer "what can I draw here?" with something about somewhere else. With
- * none selected it is the union, which is what the strip has always shown and is
- * still the right answer to "what does this project label?".
- *
- * A class is only narrowed *to* when it can be drawn: selecting a pure tag class
- * leaves the full union rather than emptying the strip, since the tag lives in a
- * panel and the strip would otherwise vanish for a reason nothing on it explains.
- */
-export function toolChoices(
-  schema: AnnotationSchema,
-  activeClass: string | null = null,
-): readonly ToolChoice[] {
-  const selected = schema.classes.find((declared) => declared.name === activeClass);
-  const narrowed =
-    selected !== undefined && drawableGeometries(selected).length > 0 ? selected : undefined;
-  const offered = narrowed === undefined ? schema.classes : [narrowed];
-
-  const choices: ToolChoice[] = [
-    { tool: "select", label: "Select", labelClass: null, hotkey: "V", unavailable: null },
-  ];
-  for (const declared of offered) {
-    for (const geometry of drawableGeometries(declared)) {
-      if (choices.some((choice) => choice.tool === geometry)) continue;
-      choices.push({
-        tool: geometry,
-        label: toolLabel(geometry),
-        labelClass: declared.name,
-        hotkey: hotkeyForClass(schema, declared.name) ?? "—",
-        unavailable: null,
-      });
-    }
-  }
-  // After the usable tools, never interleaved: the strip reads top to bottom as
-  // "what you can do", and a disabled control in the middle of that list reads as
-  // a broken one rather than as a coming one.
-  //
-  // Read off `schema.classes` rather than `offered`, deliberately: a geometry with
-  // no tool is a fact about the *project*, and hiding it while a class is selected
-  // would make the explanation come and go with the selection.
-  for (const declared of schema.classes) {
-    for (const geometry of declared.geometries) {
-      const pending = PENDING_TOOLS[geometry];
-      if (pending === undefined) continue;
-      if (choices.some((choice) => choice.tool === geometry)) continue;
-      choices.push({
-        tool: geometry,
-        label: geometry,
-        // No class to activate, because there is no tool to activate it for.
-        labelClass: null,
-        hotkey: "—",
-        unavailable: pending,
-      });
-    }
-  }
-  return choices;
-}
-
-/** Whether the held class can produce this shape. `false` when it holds none. */
-function accepts(
-  schema: AnnotationSchema,
-  activeClass: string | null,
-  tool: ToolChoice["tool"],
-): boolean {
-  const declared = schema.classes.find((one) => one.name === activeClass);
-  return declared !== undefined && drawableGeometries(declared).some((one) => one === tool);
-}
+import { Button, Tooltip, TooltipContent, TooltipTrigger, cn } from "@robomous/ui-core";
 
 export interface ToolPaletteProps {
+  /**
+   * `floating` is the card over the picture the showcase uses; `rail` is the
+   * editor's fixed tool column, flush with the page, with the help at its foot.
+   */
+  readonly layout?: "floating" | "rail";
   readonly schema: AnnotationSchema;
   /** What `toolFor` currently answers. Reported, never stored here. */
   readonly tool: Tool;
@@ -284,11 +158,19 @@ export interface ToolPaletteProps {
     readonly unavailable?: string | null;
   };
   /**
-   * Open the add-a-class dialog, or absent where there is nowhere to add
-   * one — the demo has no project behind it. The `onOpenGallery` rule: a host
-   * that cannot honour a control renders no control rather than a dead one.
+   * Hide or show every object on the picture at once — the same view state the
+   * panel's per-row eyes write, all hidden ↔ none hidden.
+   *
+   * A way of *looking*, not of drawing, so it stays in the read-only mode with
+   * the hand and the shortcut sheet. Optional: a host with no object list to
+   * hide from (the showcase) renders none rather than a dead one. `empty` is a
+   * frame with nothing on it, where the button is disabled with that reason.
    */
-  readonly onAddClass?: () => void;
+  readonly visibility?: {
+    readonly allHidden: boolean;
+    readonly empty: boolean;
+    readonly onToggle: () => void;
+  };
   /**
    * The command log's two steps, made visible.
    *
@@ -357,11 +239,12 @@ export function ToolPalette({
   onActivateClass,
   onActivateTool,
   onToggleHelp,
-  onAddClass,
+  visibility,
   history,
   suggest,
   hand,
   readOnly = false,
+  layout = "floating",
 }: ToolPaletteProps): JSX.Element {
   /**
    * The canvas keeps the focus.
@@ -379,7 +262,12 @@ export function ToolPalette({
   return (
     <div
       data-testid="tool-palette"
-      className="absolute left-3 top-3 flex w-12 flex-col items-center gap-1 rounded-xl border border-border bg-muted p-2 shadow-lg"
+      data-layout={layout}
+      className={
+        layout === "rail"
+          ? "flex h-full w-12 flex-col items-center gap-1 py-2"
+          : "absolute left-3 top-3 flex w-12 flex-col items-center gap-1 rounded-xl border border-border bg-muted p-2 shadow-lg"
+      }
     >
       {!readOnly &&
         toolChoices(schema, activeClass).map((choice) => (
@@ -415,8 +303,7 @@ export function ToolPalette({
           </PaletteButton>
         ))}
 
-      {/* After the drawing tools and before the `+`, because it is a way of
-          drawing rather than a way of managing the schema — and a mode, so it is
+      {/* After the drawing tools, because it is a way of drawing — and a mode, so it is
           the one control here whose `active` is not `tool === choice.tool`. */}
       {!readOnly && suggest !== undefined && schemaCanSuggest(schema) && (
         <PaletteButton
@@ -435,22 +322,7 @@ export function ToolPalette({
         </PaletteButton>
       )}
 
-      {/* Beside the tools, because "the class I need is not here" is a thought
-          somebody has while looking at this strip — and a digit hotkey for the
-          new class arrives free, since the palette *is* the hotkey order. */}
-      {!readOnly && onAddClass !== undefined && (
-        <PaletteButton
-          testId="tool-add-class"
-          label="Add a label class"
-          active={false}
-          onMouseDown={keepFocus}
-          onClick={onAddClass}
-        >
-          <Plus className="size-4" />
-        </PaletteButton>
-      )}
-
-      {/* Last in the block, below the `+`, and in the block rather than above it.
+      {/* Last in the block, and in the block rather than above it.
           It sat on top for a release, as the one control that does not draw —
           which read as a heading over the tools instead of as one of them, and
           the strip lit it *and* whichever tool was derived, so two buttons
@@ -467,40 +339,13 @@ export function ToolPalette({
         <Hand className="size-4" />
       </PaletteButton>
 
-      {!readOnly && history !== undefined && (
-        <>
-          <div className="my-1 h-px w-6 bg-border" />
-          {/*
-            Disabled *with the reason*, which is principle 9's treatment and the
-            right one here: an empty history is a real state a person reaches
-            constantly — every freshly opened frame is in it — and a control that
-            simply vanished when there was nothing to undo would make the button
-            appear and disappear as they worked.
-          */}
-          <PaletteButton
-            testId="tool-undo"
-            label={history.canUndo ? "Undo (\u2318Z)" : "Nothing to undo"}
-            active={false}
-            disabled={!history.canUndo}
-            onMouseDown={keepFocus}
-            onClick={history.onUndo}
-          >
-            <Undo2 className="size-4" />
-          </PaletteButton>
-          <PaletteButton
-            testId="tool-redo"
-            label={history.canRedo ? "Redo (\u21e7\u2318Z)" : "Nothing to redo"}
-            active={false}
-            disabled={!history.canRedo}
-            onMouseDown={keepFocus}
-            onClick={history.onRedo}
-          >
-            <Redo2 className="size-4" />
-          </PaletteButton>
-        </>
-      )}
+      {!readOnly && history !== undefined && <HistoryButtons history={history} keepFocus={keepFocus} />}
 
-      <div className="my-1 h-px w-6 bg-border" />
+      {/* In the rail the help sits at the foot, out of the tools' run — with the
+          objects' visibility above it, the other control about looking. */}
+      <div className={layout === "rail" ? "mt-auto" : "my-1 h-px w-6 bg-border"} />
+
+      {visibility !== undefined && <VisibilityButton visibility={visibility} keepFocus={keepFocus} />}
 
       <PaletteButton
         testId="tool-help"
@@ -512,6 +357,75 @@ export function ToolPalette({
         <CircleHelp className="size-4" />
       </PaletteButton>
     </div>
+  );
+}
+
+/** The command log's two steps — disabled *with the reason*, see `history`. */
+function HistoryButtons({
+  history,
+  keepFocus,
+}: {
+  readonly history: NonNullable<ToolPaletteProps["history"]>;
+  readonly keepFocus: (event: MouseEvent) => void;
+}): JSX.Element {
+  return (
+    <>
+      <div className="my-1 h-px w-6 bg-border" />
+      {/*
+        Disabled *with the reason*, which is principle 9's treatment and the
+        right one here: an empty history is a real state a person reaches
+        constantly — every freshly opened frame is in it — and a control that
+        simply vanished when there was nothing to undo would make the button
+        appear and disappear as they worked.
+      */}
+      <PaletteButton
+        testId="tool-undo"
+        label={history.canUndo ? "Undo (\u2318Z)" : "Nothing to undo"}
+        active={false}
+        disabled={!history.canUndo}
+        onMouseDown={keepFocus}
+        onClick={history.onUndo}
+      >
+        <Undo2 className="size-4" />
+      </PaletteButton>
+      <PaletteButton
+        testId="tool-redo"
+        label={history.canRedo ? "Redo (\u21e7\u2318Z)" : "Nothing to redo"}
+        active={false}
+        disabled={!history.canRedo}
+        onMouseDown={keepFocus}
+        onClick={history.onRedo}
+      >
+        <Redo2 className="size-4" />
+      </PaletteButton>
+    </>
+  );
+}
+
+/** Hide or show every object — see `visibility`. Pressed while all are hidden. */
+function VisibilityButton({
+  visibility,
+  keepFocus,
+}: {
+  readonly visibility: NonNullable<ToolPaletteProps["visibility"]>;
+  readonly keepFocus: (event: MouseEvent) => void;
+}): JSX.Element {
+  const label = visibility.empty
+    ? "No objects to hide"
+    : visibility.allHidden
+      ? "Show all objects"
+      : "Hide all objects";
+  return (
+    <PaletteButton
+      testId="tool-visibility"
+      label={label}
+      active={visibility.allHidden}
+      disabled={visibility.empty}
+      onMouseDown={keepFocus}
+      onClick={visibility.onToggle}
+    >
+      {visibility.allHidden ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+    </PaletteButton>
   );
 }
 
@@ -537,7 +451,9 @@ function PaletteButton({
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          variant={active ? "default" : "ghost"}
+          // A surface step, not a fill: the frame's verb is the screen's one
+          // filled control.
+          variant="ghost"
           size="icon"
           aria-label={label}
           aria-pressed={active}
@@ -548,7 +464,10 @@ function PaletteButton({
           aria-disabled={disabled || undefined}
           data-testid={testId}
           data-active={active ? "true" : "false"}
-          className={disabled ? "cursor-not-allowed opacity-40" : undefined}
+          className={cn(
+            active && "bg-muted text-foreground ring-1 ring-inset ring-foreground/10",
+            disabled && "cursor-not-allowed opacity-40",
+          )}
           onMouseDown={onMouseDown}
           onClick={() => {
             // The press is refused here rather than by the native attribute, which

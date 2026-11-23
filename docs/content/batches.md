@@ -594,7 +594,7 @@ carries `annotation_count` and `min_confidence`.
 
 **A batch is born from an ingest in the ordinary case**, and that has not changed: an ingest run
 puts what it gathered into a batch (`batch_name` for a new one, `batch_id` to join an existing
-draft - see [ingest.md](ingest.md)). What the gallery needed and the API did not have was curating
+draft - see [ingest.md](ingest.md)). What a gallery client needed and the API did not have was curating
 one by hand, so creation landed with #312 and membership editing with #281, and **deleting a
 batch landed with #376** - the last of the three, and the one that had to wait for somebody to
 ask for it.
@@ -638,7 +638,7 @@ refusal this service already makes: a non-draft approve and an unapproved start 
 `INVALID_TRANSITION`, an empty batch is 409 `EMPTY_BATCH`, a project with no schema to pin is
 404 `SCHEMA_NOT_FOUND`, and a batch with an unfinished job is 409 `BATCH_NOT_COMPLETE`.
 
-The **asset listing was the API's first paged collection**, and the gallery is why; the trunk's
+The **asset listing was the API's first paged collection**, and a batch of fifty thousand frames is why; the trunk's
 own listing is the other one. `limit` and `offset` bound the *response*, never the read: `total` is the size of the whole batch, so a
 client pages until it has seen `total` items rather than until the total moves. Each item
 carries the job that holds it and where it has got to, both null while the batch is a draft -
@@ -648,8 +648,9 @@ query; the partition is exact, so every asset appears under exactly one job.
 
 ## In the browser
 
-The batch table renders the row of `BATCH_TRANSITIONS` a batch is on and offers the
-one action that row allows - never a revert, because there is none. The version
-column is empty until approval, since that is when the pin happens. The approval
+The Overview's Batches table lists a project's batches, and a batch's panel beside it offers the
+actions the row of `BATCH_TRANSITIONS` a batch is on allows - never a revert, because there
+is none. A batch shows no schema pin until approval, since that is when the pin
+happens. The approval
 dialog offers `single` and `by_size`; `by_segments` is the SDK's and the API's. See
 [ui.md](ui.md#batches-and-a-machine-that-only-goes-forwards).

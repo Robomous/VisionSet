@@ -3,8 +3,11 @@
  * store, the Edit mode, the cuboid and polyline tools and their classes, and the
  * save plan for the scan's 3D labels.
  *
- * Built per asset and rebuilt on `loaded` exactly as the image store is, so a
- * save lands the server's ids and the history starts again. Editing is derived,
+ * On the annotation page the store is the frame's (`FrameSession`), built once
+ * and kept across autosaves, and the plan is read against the session's record
+ * of the server and the ids it minted. Without a session — a test, a host with
+ * no autosave — the hook builds its own store per asset and rebuilds it on
+ * `loaded`, so a save lands the server's ids and the history starts again. Editing is derived,
  * never mirrored: a scan whose source declares no frame, or a frame that turns
  * read-only under somebody, drops out of Edit on the render that learns it.
  */
@@ -94,22 +97,33 @@ function useDrawClass(
   return { classes, labelClass, setLabelClass };
 }
 
+/** The frame's scan store and its record of the server, when a `FrameSession` holds them. */
+export interface ScanSession {
+  readonly store: AnnotatorStore<ScanDocument>;
+  readonly server: readonly WireAnnotation[];
+  readonly minted: ReadonlyMap<string, string>;
+}
+
 export function useScanWorkspace({
   asset,
   schema,
   loaded,
   readOnly,
+  session,
 }: {
   readonly asset: ScanWorkspaceAsset;
   /** The pinned schema as the wire sent it; the store parses it. */
   readonly schema: unknown;
   readonly loaded: readonly WireAnnotation[];
   readonly readOnly: boolean;
+  /** The page's frame session; absent, the hook keeps its own store. */
+  readonly session?: ScanSession | null;
 }): ScanWorkspace | null {
   const isScan = asset.modality === "point_cloud";
-  const store = useMemo(
+  const held = session?.store ?? null;
+  const own = useMemo(
     () =>
-      isScan
+      isScan && session === undefined
         ? new AnnotatorStore<ScanDocument>(
             scanDocumentFromWire({
               asset: { id: asset.id, width: 0, height: 0, modality: "point_cloud" },
@@ -118,8 +132,9 @@ export function useScanWorkspace({
             }),
           )
         : null,
-    [isScan, asset.id, schema, loaded],
+    [isScan, session, asset.id, schema, loaded],
   );
+  const store = isScan ? (held ?? own) : null;
   const snapshot = useAnnotatorSnapshot(store);
 
   const source = useSource(isScan ? (asset.source_id ?? undefined) : undefined);
@@ -170,9 +185,11 @@ export function useScanWorkspace({
     enabled: editing,
   });
 
+  const server = session?.server ?? loaded;
+  const minted = session?.minted;
   const plan = useMemo(
-    () => (snapshot === null ? EMPTY_PLAN : planScanSave(snapshot.document, loaded)),
-    [snapshot, loaded],
+    () => (snapshot === null ? EMPTY_PLAN : planScanSave(snapshot.document, server, minted)),
+    [snapshot, server, minted],
   );
 
   const remove = useCallback(

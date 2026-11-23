@@ -41,7 +41,7 @@ PATCH  /projects/{project_id}
 DELETE /projects/{project_id}
 GET    /projects/{project_id}/stats                       everything ingested
 GET    /projects/{project_id}/progress                    assets by annotation state, every batch
-GET    /projects/{project_id}/assets                      paged, every asset
+GET    /projects/{project_id}/assets                      paged, every asset, newest first; ?source_id=
 GET    /projects/{project_id}/schema                      the version in force
 POST   /projects/{project_id}/schema/versions
 GET    /projects/{project_id}/schema/versions
@@ -169,6 +169,13 @@ property of the schema rather than a version number a client could guess.
 `GET /batches/{id}/assets` is one work unit's, in membership order;
 `GET /datasets/{id}/assets` is the curated trunk's. A project page reads the first, a gallery
 the second, a release the third.
+
+**The project listing is newest first, and `?source_id=` narrows it.** The order is the most
+recent ingest first; inside one ingest it is source, then file, then frame index, then id, so a
+clip's frames come back in order and two calls never disagree. `source_id` keeps only what that
+source produced, in the same order, and `total` then counts that source - so a client filtering
+by source pages and counts exactly as it would the whole project (`limit=1` is a count). A source
+that is not this project's, or does not exist, is 404 `SOURCE_NOT_FOUND`, never an empty page.
 
 **One job's frames are the batch listing narrowed, not a listing of their own.** `?job=` keeps
 the assets that job carries, composing with `progress` and `sort`, and `total` is the size of
@@ -449,8 +456,8 @@ as separate resources would be a request per project per question.
 
 **`resume` declares its own kind, and that is the field to read first.** `annotate` means
 `next_asset_id` is a frame nobody has labeled, `review` means it is one awaiting a reviewer, and
-`open` means the batch is settled throughout and `next_asset_id` is null - so the caller opens its
-gallery rather than the editor. The three are in priority order and the order is resolved here: it
+`open` means the batch is settled throughout and `next_asset_id` is null - so the caller opens the
+batch rather than the editor. The three are in priority order and the order is resolved here: it
 is a judgment about what somebody should do next rather than a fact the rest of the response
 restates, and a client that worked it out again from the other fields would be keeping a second
 copy of a rule that can drift. Contrast the first-run state, which is deliberately *not* a field

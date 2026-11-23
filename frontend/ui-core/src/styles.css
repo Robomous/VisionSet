@@ -55,11 +55,9 @@
   --color-origin-custom: var(--origin-custom);
   --color-origin-robomous: var(--origin-robomous);
 
-  /* The project navigation's width and the page-content cap stay here,
-     unlike the rail's widths, because `ProjectNav` and `PaddedContent` read
-     them — they are reusable VisionSet surfaces, so these values are part of
-     the domain experience rather than the standalone shell. */
-  --spacing-project-nav: 180px;
+  /* The page-content cap stays here, unlike the rail's width, because
+     `PaddedContent` reads it — a reusable VisionSet surface, so the value is
+     part of the domain experience rather than the standalone shell. */
   --container-page: 96rem;
 }
 
@@ -70,4 +68,478 @@
 .vs-muted-player::-webkit-media-controls-volume-slider,
 .vs-muted-player::-webkit-media-controls-volume-control-container {
   display: none !important;
+}
+
+/*
+ * An image's faint inner edge, so a pale frame on a pale card still has a
+ * shape. Painted over the image's outermost pixels (an outline with a negative
+ * offset on a pseudo-element), never around it, so it takes no space. Pure
+ * black in light and pure white in dark at 10% — a tinted neutral would pick
+ * up the surface under it and read as dirt on the edge. A rule rather than a
+ * class string because the package closes Tailwind's black and white.
+ */
+.vs-image-outline {
+  position: relative;
+}
+.vs-image-outline::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  outline: 1px solid oklch(0 0 0 / 0.1);
+  outline-offset: -1px;
+  pointer-events: none;
+}
+.dark .vs-image-outline::after {
+  outline-color: oklch(1 0 0 / 0.1);
+}
+
+/*
+ * The empty state's drawing: cards with elevation, fanned (`EmptyArt`).
+ *
+ * A card's shadow is three transparent layers — a hairline, a contact shadow
+ * and a soft drop — rather than a border, because the edge exists only to lift
+ * it. Pure black, and in dark a pure white hairline, for the image-outline
+ * reason: a tinted neutral would pick up the surface under it.
+ *
+ * Each card rests at an offset and a tilt from the stage's centre, both scaled
+ * by `--vs-empty-spread`; the invitation raises that under the pointer, and
+ * because it is a transition the cards turn around wherever they are. The
+ * entrance is a keyframe on the card's wrapper, so the two never share an
+ * element. Transform and opacity only; all of it off under reduced motion.
+ */
+.vs-empty-tile {
+  position: absolute;
+  box-shadow:
+    0 0 0 1px oklch(0 0 0 / 0.06),
+    0 1px 2px oklch(0 0 0 / 0.05),
+    0 8px 20px -6px oklch(0 0 0 / 0.14);
+  transform: translate(
+      calc(-50% + var(--vs-empty-x, 0px) * var(--vs-empty-spread, 1)),
+      calc(-50% + var(--vs-empty-y, 0px) * var(--vs-empty-spread, 1))
+    )
+    rotate(calc(var(--vs-empty-r, 0deg) * var(--vs-empty-spread, 1)));
+  transition: transform 240ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.dark .vs-empty-tile {
+  box-shadow:
+    0 0 0 1px oklch(1 0 0 / 0.1),
+    0 8px 20px -6px oklch(0 0 0 / 0.6);
+}
+@keyframes vs-empty-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+}
+@keyframes vs-empty-rise-text {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .vs-empty-rise {
+    animation: vs-empty-rise 420ms cubic-bezier(0.23, 1, 0.32, 1) both;
+    animation-delay: calc(var(--vs-empty-i, 0) * 70ms);
+  }
+  .vs-empty-rise-text {
+    animation: vs-empty-rise-text 360ms cubic-bezier(0.23, 1, 0.32, 1) both;
+    animation-delay: calc(var(--vs-empty-i, 0) * 60ms);
+  }
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .vs-empty:hover {
+    --vs-empty-spread: 1.22;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vs-empty-tile {
+    transition: none;
+  }
+}
+
+/*
+ * A colour swatch: round, with the image-outline edge — 1px inside, pure black
+ * or white at 10% — so a pale colour still reads as a circle on a pale
+ * surface. Chosen, it gains a ring in its own colour, set off from it by a 2px
+ * gap of the popover behind it; a ring in a neutral would say "focused", this
+ * one says "this colour". Pressing scales it to 0.97 over 100ms, and a press
+ * is the only motion: choosing is frequent, so the ring itself is instant.
+ * Rules rather than class strings, because the package closes black and white.
+ */
+.vs-swatch {
+  --vs-swatch-edge: oklch(0 0 0 / 0.1);
+  border-radius: 9999px;
+  box-shadow:
+    inset 0 0 0 1px var(--vs-swatch-edge),
+    var(--vs-swatch-ring, 0 0 #0000);
+  transition: transform 100ms ease-out;
+  -webkit-tap-highlight-color: transparent;
+}
+.dark .vs-swatch {
+  --vs-swatch-edge: oklch(1 0 0 / 0.1);
+}
+.vs-swatch:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.vs-swatch[data-state="on"],
+.vs-swatch[data-ringed] {
+  --vs-swatch-ring: 0 0 0 2px var(--popover), 0 0 0 4px var(--vs-swatch-color);
+}
+@media (prefers-reduced-motion: reduce) {
+  .vs-swatch {
+    transition: none;
+  }
+}
+
+/*
+ * A horizontal row that fades only at the edge that can still scroll, so the
+ * row says "there is more this way" and never fades the last item when there
+ * is nothing past it. The fades are driven by the row's own scroll position;
+ * where scroll timelines are missing, both ends fade.
+ */
+@property --vs-fade-start {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --vs-fade-end {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@keyframes vs-fade-start {
+  from { --vs-fade-start: 0px; }
+  to { --vs-fade-start: 2.5rem; }
+}
+@keyframes vs-fade-end {
+  from { --vs-fade-end: 2.5rem; }
+  to { --vs-fade-end: 0px; }
+}
+.vs-scroll-fade-x {
+  scrollbar-width: none;
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black var(--vs-fade-start),
+    black calc(100% - var(--vs-fade-end)),
+    transparent
+  );
+}
+.vs-scroll-fade-x::-webkit-scrollbar {
+  display: none;
+}
+@supports (animation-timeline: scroll()) {
+  .vs-scroll-fade-x {
+    animation:
+      vs-fade-start 1ms linear both,
+      vs-fade-end 1ms linear both;
+    animation-range:
+      0 3rem,
+      calc(100% - 3rem) 100%;
+    animation-timeline: scroll(self x);
+  }
+}
+@supports not (animation-timeline: scroll()) {
+  .vs-scroll-fade-x {
+    --vs-fade-start: 2.5rem;
+    --vs-fade-end: 2.5rem;
+  }
+}
+
+/*
+ * The same fade down a pane: a wall of images or a long list dissolves at the
+ * edge that still has content behind it, and only there. It keeps its
+ * scrollbar — a vertical pane's bar says how much is left — so the bar fades
+ * at the ends with the content, which is the price of a mask on the scroller.
+ */
+.vs-scroll-fade-y {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black var(--vs-fade-start),
+    black calc(100% - var(--vs-fade-end)),
+    transparent
+  );
+}
+@supports (animation-timeline: scroll()) {
+  .vs-scroll-fade-y {
+    animation:
+      vs-fade-start 1ms linear both,
+      vs-fade-end 1ms linear both;
+    animation-range:
+      0 3rem,
+      calc(100% - 3rem) 100%;
+    animation-timeline: scroll(self y);
+  }
+}
+@supports not (animation-timeline: scroll()) {
+  .vs-scroll-fade-y {
+    --vs-fade-start: 2.5rem;
+    --vs-fade-end: 2.5rem;
+  }
+}
+/* The vertical twin, for a list that scrolls inside a panel (the Classes
+   history rail). The scrollbar stays: down a column it is the only cue to how
+   much is left, and it costs no row of noise the way a horizontal one does. */
+.vs-scroll-fade-y {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black var(--vs-fade-start),
+    black calc(100% - var(--vs-fade-end)),
+    transparent
+  );
+}
+@supports (animation-timeline: scroll()) {
+  .vs-scroll-fade-y {
+    animation:
+      vs-fade-start 1ms linear both,
+      vs-fade-end 1ms linear both;
+    animation-range:
+      0 3rem,
+      calc(100% - 3rem) 100%;
+    animation-timeline: scroll(self y);
+  }
+}
+@supports not (animation-timeline: scroll()) {
+  .vs-scroll-fade-y {
+    --vs-fade-start: 2.5rem;
+    --vs-fade-end: 2.5rem;
+  }
+}
+
+/* The design system's accordion opens by animating its height, and does not
+   stand down for reduced motion; the Classes ledger opens a row often enough
+   that somebody who asked for less motion should get none. */
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="accordion-content"] {
+    animation: none !important;
+  }
+}
+
+/*
+ * The recipe's modal (`screens/dataset/recipe/`).
+ *
+ * The step that arrives settles in with a short blur-fade, just behind the
+ * modal's height following it (a transition, in `steps.tsx`); the step that
+ * leaves goes at once, so a quick Next, Next never queues anything up. The
+ * opening step plays nothing. Brightness's amount opens under its switch by
+ * its height and shuts back into it — Radix measures it
+ * (`--radix-collapsible-content-height`) and keeps it mounted until it has
+ * shut; the frame follows it. A value that changes swaps with a short
+ * blur-fade, so the change reads as one thing changing. The saved view
+ * settles in and its check arrives after it. Under reduced motion all of it
+ * is a plain fade.
+ */
+@keyframes vs-recipe-step {
+  from {
+    opacity: 0;
+    filter: blur(2px);
+  }
+}
+@keyframes vs-recipe-reveal-open {
+  from {
+    height: 0;
+    opacity: 0;
+    filter: blur(2px);
+  }
+  to {
+    height: var(--radix-collapsible-content-height);
+  }
+}
+@keyframes vs-recipe-reveal-shut {
+  from {
+    height: var(--radix-collapsible-content-height);
+  }
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}
+@keyframes vs-recipe-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes vs-recipe-label {
+  from {
+    opacity: 0;
+    filter: blur(3px);
+    transform: translateY(2px);
+  }
+}
+@keyframes vs-recipe-saved {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+@keyframes vs-recipe-check {
+  from {
+    opacity: 0;
+    transform: scale(0.25);
+    filter: blur(4px);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .vs-recipe-step[data-dir] {
+    animation: vs-recipe-step 200ms cubic-bezier(0.23, 1, 0.32, 1) 40ms both;
+  }
+  .vs-recipe-reveal[data-state="open"] {
+    animation: vs-recipe-reveal-open 220ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  .vs-recipe-reveal[data-state="closed"] {
+    animation: vs-recipe-reveal-shut 160ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  .vs-recipe-label {
+    animation: vs-recipe-label 180ms cubic-bezier(0.2, 0, 0, 1);
+  }
+  .vs-recipe-saved {
+    animation: vs-recipe-saved 260ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  .vs-recipe-check {
+    animation: vs-recipe-check 300ms cubic-bezier(0.2, 0, 0, 1) 80ms both;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vs-recipe-step[data-dir],
+  .vs-recipe-label,
+  .vs-recipe-saved {
+    animation: vs-recipe-fade 160ms ease-out;
+  }
+}
+
+/*
+ * The inspector's row (`PropertyRow`): a 7rem label column and the value.
+ * A surface whose labels are all short narrows the column for every row in
+ * it at once by setting `--vs-label-column` (the recipe modal: 6rem); a dense
+ * one sets `--vs-row-height` and `--vs-row-pad` (the recipe modal: 36px rows,
+ * 4px above and below a 28px control, so two controls stand 8px apart).
+ */
+.vs-property-row {
+  grid-template-columns: var(--vs-label-column, 7rem) minmax(0, 1fr);
+  min-height: var(--vs-row-height, 2.5rem);
+  padding-block: var(--vs-row-pad, 0.375rem);
+}
+
+/*
+ * The recipe's drawings (`screens/dataset/recipe/art.tsx`). A drawing's moving
+ * part is a transition, so a choice changed mid-move turns it around; its
+ * cards carry the empty states' elevation (a hairline and soft shadows, pure
+ * black or, in dark, a pure white hairline); the resize's stage surface lifts
+ * off its ground the same way. None of it moves under reduced motion.
+ */
+.vs-recipe-art-move {
+  transform-origin: 0 0;
+  transition:
+    transform 240ms cubic-bezier(0.23, 1, 0.32, 1),
+    opacity 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+span.vs-recipe-art-move {
+  transform-origin: 50% 50%;
+}
+.vs-recipe-art-card {
+  box-shadow:
+    0 0 0 1px oklch(0 0 0 / 0.08),
+    0 1px 2px oklch(0 0 0 / 0.06),
+    0 4px 10px -4px oklch(0 0 0 / 0.16);
+}
+.dark .vs-recipe-art-card {
+  box-shadow:
+    0 0 0 1px oklch(1 0 0 / 0.1),
+    0 4px 10px -4px oklch(0 0 0 / 0.6);
+}
+.vs-recipe-art-surface {
+  box-shadow:
+    0 0 0 1px oklch(0 0 0 / 0.06),
+    0 10px 24px -10px oklch(0 0 0 / 0.2);
+}
+.dark .vs-recipe-art-surface {
+  box-shadow: 0 0 0 1px oklch(1 0 0 / 0.1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .vs-recipe-art-move {
+    transition: none;
+  }
+}
+
+/*
+ * An illustrated info card (`patterns/ArtTip.tsx`): the first one scales in
+ * from its button (150ms, strong ease-out); a warm one, and every close, has
+ * no motion at all. Under reduced motion it only appears.
+ */
+@keyframes vs-art-tip-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+.vs-art-tip {
+  transform-origin: var(--radix-popover-content-transform-origin);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .vs-art-tip[data-cold] {
+    animation: vs-art-tip-in 150ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+}
+
+/*
+ * The annotator's stage chrome (`AnnotationPage`): the floating island, the
+ * zoom widget and the frame's status tag sit on the picture, so they lift off
+ * it the way a drawing's card does — a hairline and soft shadows, pure black,
+ * and in dark a pure white hairline. The island is the one under the hand, so
+ * it carries the deeper drop; the two smaller pieces share the shallow one.
+ */
+.vs-stage-island {
+  box-shadow:
+    0 0 0 1px oklch(0 0 0 / 0.07),
+    0 2px 4px -1px oklch(0 0 0 / 0.06),
+    0 12px 28px -6px oklch(0 0 0 / 0.16);
+}
+.dark .vs-stage-island {
+  box-shadow:
+    0 0 0 1px oklch(1 0 0 / 0.1),
+    0 12px 28px -6px oklch(0 0 0 / 0.5);
+}
+.vs-stage-chip {
+  box-shadow:
+    0 0 0 1px oklch(0 0 0 / 0.07),
+    0 2px 6px -2px oklch(0 0 0 / 0.12);
+}
+.dark .vs-stage-chip {
+  box-shadow: 0 0 0 1px oklch(1 0 0 / 0.1);
+}
+
+/*
+ * A count that changed rolls in from below (the job's progress on the
+ * annotator's bar): the new number is a new element, so it enters once and a
+ * second change mid-roll simply starts the next one. Progress only, never a
+ * keystroke's echo. A fade under reduced motion.
+ */
+@keyframes vs-roll {
+  from {
+    opacity: 0;
+    transform: translateY(45%);
+    filter: blur(2px);
+  }
+}
+@keyframes vs-roll-fade {
+  from {
+    opacity: 0;
+  }
+}
+.vs-roll {
+  display: inline-block;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .vs-roll {
+    animation: vs-roll 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vs-roll {
+    animation: vs-roll-fade 160ms ease-out both;
+  }
 }

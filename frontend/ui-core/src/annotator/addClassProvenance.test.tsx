@@ -257,7 +257,7 @@ function mount(node: ReactNode): JSX.Element {
 it("publishes a class added mid-job through the project's `annotation` draft", async () => {
   renderWithData(mount(<AnnotationPage jobId={JOB} />));
 
-  await userEvent.click(await screen.findByTestId("tool-add-class"));
+  await userEvent.click(await screen.findByTestId("class-add"));
   await userEvent.type(await screen.findByTestId("class-name-new"), "crossing");
   await userEvent.click(screen.getByTestId("add-class-submit"));
 
@@ -289,7 +289,7 @@ it("publishes a class added mid-job through the project's `annotation` draft", a
 it("publishes a whole session as one version, in the order they were written", async () => {
   renderWithData(mount(<AnnotationPage jobId={JOB} />));
 
-  await userEvent.click(await screen.findByTestId("tool-add-class"));
+  await userEvent.click(await screen.findByTestId("class-add"));
   await userEvent.type(await screen.findByTestId("class-name-new"), "cone");
   await userEvent.click(screen.getByTestId("add-another"));
   await userEvent.type(screen.getByTestId("class-name-new"), "barrier");
@@ -329,9 +329,10 @@ it("opens the dialog on the name the class list's create row was typed with", as
   expect(await screen.findByTestId("class-name-new")).toHaveProperty("value", "crossing");
 });
 
-it("opens empty from the tool strip, where nobody named a class", async () => {
+it("opens empty from the class region's `+`, where nobody named a class", async () => {
   // `+` means "I want a class", not a particular one — and carrying the previous
-  // opening's name into it would be a prefill nobody asked for.
+  // opening's name into it would be a prefill nobody asked for. It is the panel's
+  // `+` now: the tool rail no longer carries one, and this is the door left.
   renderWithData(mount(<AnnotationPage jobId={JOB} />));
 
   await userEvent.type(await screen.findByTestId("class-filter"), "crossing");
@@ -339,7 +340,7 @@ it("opens empty from the tool strip, where nobody named a class", async () => {
   await screen.findByTestId("add-class-dialog");
   await userEvent.click(screen.getByTestId("add-class-cancel"));
 
-  await userEvent.click(screen.getByTestId("tool-add-class"));
+  await userEvent.click(screen.getByTestId("class-add"));
 
   expect(await screen.findByTestId("class-name-new")).toHaveProperty("value", "");
 });
@@ -356,7 +357,7 @@ it("opens empty from the tool strip, where nobody named a class", async () => {
 it("arms the last class written and names it", async () => {
   renderWithData(mount(<AnnotationPage jobId={JOB} />));
 
-  await userEvent.click(await screen.findByTestId("tool-add-class"));
+  await userEvent.click(await screen.findByTestId("class-add"));
   await userEvent.type(await screen.findByTestId("class-name-new"), "cone");
   await userEvent.click(screen.getByTestId("add-another"));
   await userEvent.type(screen.getByTestId("class-name-new"), "barrier");

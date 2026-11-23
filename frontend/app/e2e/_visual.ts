@@ -30,7 +30,7 @@
 
 import { expect, type Page, type Route } from "@playwright/test";
 
-import { assetActions, batchActions, jobActions, type Wire } from "./_wire";
+import { assetActions, batchActions, jobActions, projectDigest, type Wire } from "./_wire";
 
 export const VISUAL = {
   project: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
@@ -138,7 +138,7 @@ function project(options: VisualOptions): Wire["ProjectOut"] {
  * relative-age window so each prints a fixed string.
  */
 function projectList(options: VisualOptions): Wire["ProjectPage"] {
-  const rest: Wire["ProjectOut"][] = [
+  const rest: Wire["ProjectListItemOut"][] = [
     {
       id: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaab",
       name: "urban-intersections",
@@ -146,6 +146,7 @@ function projectList(options: VisualOptions): Wire["ProjectPage"] {
       thumbnail_asset_id: VISUAL.asset,
       thumbnail_hash: LONG_CONTENT_HASH,
       created_at: "2024-02-29T09:00:00Z",
+      digest: projectDigest({ asset_count: 4210, annotated_asset_count: 2947, annotated_fraction: 0.7, class_count: 6, batch_count: 3, frames_left: 1263, stage: "annotating", last_activity_at: "2024-03-01T09:00:00Z" }),
     },
     {
       id: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaac",
@@ -154,6 +155,7 @@ function projectList(options: VisualOptions): Wire["ProjectPage"] {
       thumbnail_asset_id: null,
       thumbnail_hash: null,
       created_at: "2024-02-11T09:00:00Z",
+      digest: projectDigest(),
     },
     {
       id: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaad",
@@ -162,9 +164,10 @@ function projectList(options: VisualOptions): Wire["ProjectPage"] {
       thumbnail_asset_id: VISUAL.asset,
       thumbnail_hash: LONG_CONTENT_HASH,
       created_at: "2024-01-05T09:00:00Z",
+      digest: projectDigest({ asset_count: 860, annotated_asset_count: 860, annotated_fraction: 1, class_count: 3, batch_count: 2, dataset_asset_count: 860, latest_release: { tag: "v1.0", asset_count: 860, published_at: "2024-01-20T09:00:00Z" }, stage: "up_to_date", last_activity_at: "2024-01-20T09:00:00Z" }),
     },
   ];
-  return { items: [project(options), ...rest], total: 4 };
+  return { items: [{ ...project(options), digest: projectDigest({ asset_count: 12480, annotated_asset_count: 9312, annotated_fraction: 0.746, class_count: 8, batch_count: 5, frames_in_review: 37, frames_left: 2388, dataset_asset_count: 8460, latest_release: { tag: "v0.6", asset_count: 8460, published_at: "2024-02-20T09:00:00Z" }, stage: "in_review", last_activity_at: "2024-03-02T09:00:00Z" }) }, ...rest], total: 4 };
 }
 
 function schema(options: VisualOptions): Wire["SchemaVersionOut"] {

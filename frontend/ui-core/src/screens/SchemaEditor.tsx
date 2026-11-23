@@ -10,10 +10,11 @@
  * and **Save publishes version N+1**. Past versions are read-only because they are
  * read-only, not because a control is disabled.
  *
- * The same rule reaches the description: it is a version's commit message, written
- * once at publish, so the field sits beside Save and there is nowhere to edit one
- * afterwards. That is not a missing screen — there is no route, because there is
- * no service method, because a version is immutable.
+ * The same rule reaches the description: it is a version's commit message, fixed
+ * at publish. The page offers no field for one — the draft's `note` is empty
+ * unless a restore wrote *Restore version N* into it — and there is nowhere to
+ * edit one afterwards. That is not a missing screen — there is no route, because
+ * there is no service method, because a version is immutable.
  *
  * ## The draft belongs to the screen, not to this component
  *
@@ -45,13 +46,24 @@
  * picker — the tool strip is where a person finds out, and it says so rather than
  * showing a gap.
  *
+ * ## The page is the table; versioning rises when there is something to version
+ *
+ * The section is its class table (`SchemaTable`), edge to edge under the
+ * project bar, one row per class opening in a sheet to edit it. What saving
+ * would publish is not on the page until the draft differs from the version in
+ * force: then the commit bar (`SchemaCommitBar`) rises into a slot that was
+ * always reserved for it, so nothing shifts. Every published version is one
+ * press away in the History sheet (`SchemaVersions`).
+ *
  * ## The history is read-only, and that is honest rather than a limitation
  *
- * Every version is reachable through the navigator; selecting a past one shows
- * what it contained, why it was made and what it changed,
- * with **no edit affordance at all** — not a disabled one. A disabled control
- * says "not now"; there is no now. Editing the active version is unchanged, and
- * leaving the navigator alone is byte-for-byte the screen that shipped before.
+ * Viewing a published version shows its classes in the same table, as rows
+ * that open to read the class in full, with **no edit affordance at all** —
+ * not a disabled one. A disabled control says "not now"; there is no now. A
+ * band across the table says which version it is and why it was made, and
+ * offers the way back to the draft or a restore — which makes the draft those
+ * classes and publishes nothing until Save, because a version is never
+ * rewritten.
  *
  * The per-version diff comes from `GET .../schema/compare` and is never
  * computed here. `domain/schema_diff.py` is the one spelling of that rule and it
@@ -96,18 +108,21 @@
  * omission.
  */
 
-import { Plus, Trash2 } from "lucide-react";
-import { useId, useMemo, useRef, useState, type JSX, type KeyboardEvent } from "react";
+import { History as HistoryIcon, Info, Plus, Search, Tags, Trash2, TriangleAlert, X } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState, type JSX, type MutableRefObject, type ReactNode, type RefObject } from "react";
 
-import { formatGeometries } from "../data/geometryCategory";
 import { asApiError } from "../data/errors";
 import { classBlockers, describeClassCount, refusalProse } from "../data/refusals";
-import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardAction, CardContent, CardHeader, CardTitle, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
-import { ClassFields, swatchOf } from "../patterns/ClassFields";
-import { ClassListRow } from "../patterns/DataDisplay";
-import { formatCount, formatWhen } from "../lib/format";
+import { Alert, AlertDescription, AlertTitle, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Kbd, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tooltip, TooltipContent, TooltipTrigger, cn } from "@robomous/ui-core";
+import { ClassFields, ClassReadout } from "../patterns/ClassFields";
+import { swatchOf } from "../patterns/classFieldsRules";
+import { PAGE_INSET } from "../patterns/ListPage";
+import { PageStatus } from "../patterns/PageStatus";
+import { ViewSwitch } from "../patterns/project/ViewSwitch";
+import { formatCount } from "../lib/format";
 import { toast } from "sonner";
 import type {
+  AttributeBody,
   ClassCount,
   DraftLabelClassBody,
   LabelClassBody,
@@ -120,22 +135,39 @@ import {
   usePublishSchemaDraft,
   usePreviewSchemaChange,
   useProjectStats,
+  useSchemaChangePreview,
   useSchemaComparison,
   useSchemaVersions,
 } from "./queries";
+import { SchemaCommitBar } from "./SchemaCommitBar";
+import { ClassTable, type ClassRowView, type RowMark } from "./SchemaTable";
+import { compareClasses, tallyChanges } from "./schemaClassDiff";
+import { closeOnEscape } from "./closeOnEscape";
+import { same } from "./schemaSame";
+import { HistoryPanel, PaneHeader } from "./SchemaHistorySheet";
+import { DetailPane } from "../patterns/DetailPane";
+import { VersionHead, type Comparison } from "./SchemaVersionHead";
+import { BlockingFrames, DRAFT_SETTLE_MS, useSettled } from "./SchemaVersions";
 
 /** The terminal 409: annotations already exist that this change would orphan. */
 const WOULD_ORPHAN = "SCHEMA_CHANGE_WOULD_ORPHAN";
+
 /** The third, and the only one whose remedy is to throw your own copy away. */
 const STALE_DRAFT = "STALE_WRITE";
+
+type BlockedReason = { readonly kind: "remove"; readonly name: string } | { readonly kind: "save" };
 
 type SchemaChangeFlow =
   | { readonly kind: "idle" }
   | { readonly kind: "checking-removal" }
   | {
       readonly kind: "blockers";
+      /** What was refused: one class's removal, or the draft as a whole. */
+      readonly reason: BlockedReason;
       readonly blockers: readonly ClassCount[];
       readonly diff: SchemaDiff | null;
+      /** The class list the refusal was about, so the dialog can show its frames. */
+      readonly proposal: readonly LabelClassBody[];
     }
   | { readonly kind: "destructive"; readonly preview: SchemaChangePreview }
   | { readonly kind: "preview-error"; readonly error: unknown };
@@ -212,61 +244,13 @@ export interface SchemaEditorProps {
    */
   readonly onReloadDraft: () => void;
   /**
-   * Whether the frames-in-the-way section is on the page below this editor.
+   * Where a frame in the way is reached: the batch holding it.
    *
-   * The orphan refusal names it as where to look, and that section is offered
-   * only to a host that can open a batch — so the sentence is conditional on the
-   * same fact the section is, rather than promising a place that may not exist.
+   * Absent means the refusal dialogs list no frames at all — every frame's only
+   * way onward is a batch, and a list whose links all lead nowhere reads as
+   * broken. The counts and the remedy are still said.
    */
-  readonly framesListed?: boolean;
-}
-
-/**
- * Two sets of classes describing the same contract, compared as contracts.
- *
- * Not `JSON.stringify` over the objects, which is what this used to be. The draft
- * and the wire describe one class with differently *shaped* objects: a class
- * added here is a literal in this file's key order, and one that came off the
- * wire carries every optional field `LabelClassBody` declares — a hand-added
- * attribute has no `options` key at all where the server sends `null`. Stringify
- * calls those unequal, and a comparison that answers "changed" about an
- * unchanged contract is exactly the bug this comparison exists to prevent.
- *
- * So the projection, in `LabelClassBody`'s own field order, with every optional
- * field defaulted the way the wire defaults it. Cheap at a schema's size.
- *
- * Exported for `ProjectScreen`, which asks the same question for a different
- * reason: not "does this differ from the active version" but "does this
- * differ from what it was seeded from", which is what tells a programmatic
- * re-seed apart from an actual edit before scheduling an autosave.
- */
-export function same(a: readonly LabelClassBody[], b: readonly LabelClassBody[]): boolean {
-  return canonical(a) === canonical(b);
-}
-
-function canonical(classes: readonly LabelClassBody[]): string {
-  return JSON.stringify(
-    classes.map((declared) => [
-      declared.name,
-      // Sorted, because a set has no order and the two sides spell it
-      // differently: the wire's copy comes back canonicalised by the domain,
-      // while a draft's is whatever order the checkboxes were ticked in.
-      // Comparing them as given would call an unchanged contract dirty the
-      // moment somebody ticked polygon before bbox — this projection's whole
-      // reason, one field over.
-      [...declared.geometries].sort(),
-      declared.color ?? null,
-      (declared.attributes ?? []).map((attribute) => [
-        attribute.name,
-        attribute.kind,
-        attribute.required ?? false,
-        // Order is authored and part of the contract, so options are compared as
-        // given rather than sorted.
-        attribute.options ?? null,
-        attribute.default ?? null,
-      ]),
-    ]),
-  );
+  readonly onOpenBatch?: (batchId: string) => void;
 }
 
 /**
@@ -345,13 +329,12 @@ function freshFromActive(
  * tab — outranks `active` because it is closer to what is actually being worked
  * on. Only a project with neither seeds fresh from the published contract.
  *
- * **Exported because the editor is not the only thing that has to know.** The
- * "Frames in the way" panel below the editor asks the API what *this* class list
- * would orphan, and a second spelling of these tiers is a panel answering about a
- * proposal nobody is looking at — at worst one project's dirty draft, posted to
- * another project's API.
+ * Every question the page asks the server — what would change, which frames are
+ * in the way — is asked about this list and no other, so a panel can never
+ * answer about a proposal nobody is looking at, nor post one project's dirty
+ * draft to another project's API.
  */
-export function shownDraft({
+function shownDraft({
   projectId,
   active,
   draft,
@@ -388,39 +371,71 @@ export function SchemaEditor({
   draftSaveError,
   onFlushDraft,
   onReloadDraft,
-  framesListed = false,
+  onOpenBatch,
 }: SchemaEditorProps): JSX.Element {
   const [flow, setFlow] = useState<SchemaChangeFlow>({ kind: "idle" });
-  const [selected, setSelected] = useState(0);
+  // Which class the sheet is open on, if any: one of the draft's to edit, a
+  // new one to add, or one of a published version's to read.
+  //
+  // Closing keeps the target, so the sheet finishes animating out over the
+  // class it was showing rather than vanishing; the next open replaces it.
+  //
+  // `serial` counts opens, and keys the sheet: every open starts a fresh
+  // working copy, even on the class — or the Add — the last one was on.
+  const [dialog, setDialog] = useState<{ readonly target: ClassTarget; readonly open: boolean; readonly serial: number } | null>(null);
+  const rowButtons = useRef(new Map<string, HTMLButtonElement>());
+  const addButton = useRef<HTMLButtonElement | null>(null);
+  const filterInput = useRef<HTMLInputElement | null>(null);
+  // Where focus goes once the sheet has closed and the rows are where they
+  // now are: the row the class landed on, or New class when it is gone.
+  const returnTo = useRef<string | null>(null);
+  // The row the table's page must show, so a class opened or put back from
+  // outside the table's current page is on the page when focus returns to it.
+  const [reveal, setReveal] = useState<{ readonly key: string; readonly token: string } | null>(null);
+  const reveals = useRef(0);
   const [filter, setFilter] = useState("");
+  const [lens, setLens] = useState<Lens>("all");
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const historyButton = useRef<HTMLButtonElement | null>(null);
+  // Whether the open class form holds changes nobody has saved: another
+  // detail may not replace it while it does, so a stray press on a row cannot
+  // throw them away. Written by the form itself.
+  const formChanged = useRef(false);
+  // Set by a close that hands focus back to the row it came from.
+  const refocus = useRef(false);
   // True only across the `await onFlushDraft()` inside `save`, so a second
   // click cannot start a second flush racing the first one's publish.
   const [flushing, setFlushing] = useState(false);
   const [saving, setSaving] = useState(false);
   const saveInFlight = useRef(false);
-  // Which version the tab is showing. `null` is the active one — the editor —
-  // and a number is a past version, read-only.
+  // Which version the page is showing. `null` is the draft — the editor —
+  // and a number is a published version, read-only.
   //
-  // Component state and not the query string, deliberately. `?tab=` carries the
-  // *tab* because a tab is a destination somebody links to; a version somebody is
-  // glancing at is not, and ui-core imports no router. Nothing about this
-  // is a new navigation pattern, which is what `DESIGN.md` asks of a tab's
-  // internals.
+  // Component state and not the URL, deliberately. The section is a
+  // destination somebody links to; a version somebody is glancing at is not,
+  // and ui-core imports no router. Nothing about this is a new navigation
+  // pattern, which is what `DESIGN.md` asks of a section's internals.
   const [viewing, setViewing] = useState<number | null>(null);
   const publish = usePublishSchemaDraft(projectId, "curated");
   const preview = usePreviewSchemaChange(projectId);
   const history = useSchemaVersions(projectId);
-  // Per-class annotation counts, for the list's secondary line and for the blast
-  // radius a delete has to state. Shared query key with the Overview, so opening
-  // this tab after that one costs no request.
+  // Per-class annotation counts, for the table and for the blast radius a
+  // removal has to state. Shared query key with the Overview, so opening this
+  // section after that one costs no request.
   const stats = useProjectStats(projectId);
 
   const version = active?.version ?? null;
   const held = heldDraft(projectId, draft);
   const showing = shownDraft({ projectId, active, draft, serverDraft });
+  // The draft as it is *now*, for an Undo pressed later: the revision it holds
+  // by then is the server's latest, and putting an older one back would have
+  // the next autosave refused as stale.
+  const latestShowing = useRef(showing);
+  useEffect(() => {
+    latestShowing.current = showing;
+  });
 
   const classes = showing.classes;
-  const note = showing.note;
   const failure = publish.isError ? asApiError(publish.error) : null;
   const publishBlockers = failure?.code === WOULD_ORPHAN ? classBlockers(failure.detail) : null;
   const shownBlockers = flow.kind === "blockers" ? flow.blockers : publishBlockers;
@@ -482,32 +497,349 @@ export function SchemaEditor({
     onDraftChange({ ...showing, classes: next });
   }
 
-  // Filtering is a *view* of the draft and never a change to it, so every edit
-  // still addresses a real index. The pair travels together for that reason: a
-  // row's position in this list is not its position in the schema, and writing
-  // through the filtered index is how a filter silently edits the wrong class.
-  const shown = useMemo(
-    () =>
-      classes
-        .map((declared, index) => ({ declared, index }))
-        .filter(({ declared }) =>
-          declared.name.toLowerCase().includes(filter.trim().toLowerCase()),
-        ),
-    [classes, filter],
-  );
+  // `/` from anywhere on the page focuses the filter, the way search works in
+  // most tools — but never while somebody is typing, holding a modifier, or
+  // inside a dialog or a menu.
+  useEffect(() => {
+    function onKey(event: KeyboardEvent): void {
+      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target)) return;
+      if (document.querySelector("[role=dialog],[role=menu]") !== null) return;
+      if (filterInput.current === null) return;
+      event.preventDefault();
+      filterInput.current.focus();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
 
-  // The version being read, or `undefined` while the tab is on the editor. The
+  // The version being read, or `undefined` while the page is on the draft. The
   // active version is deliberately not resolvable this way — it is `active`, the
   // prop, so the editor keeps working for a project whose history has not loaded.
   const past =
     viewing === null
       ? undefined
       : history.data?.items.find((entry) => entry.version === viewing);
+  // Newest first; the history sheet sorts its own copy.
+  const ordered = useMemo(
+    () => [...(history.data?.items ?? [])].sort((a, b) => b.version - a.version),
+    [history.data],
+  );
+  // What the version being read did to its predecessor. Called with nulls when
+  // there is none — Rules of Hooks, and the hook disables itself rather than
+  // asking about version 0, which is a 422.
+  const pastPrevious = past === undefined || past.version <= 1 ? null : past.version - 1;
+  const pastDiff = useSchemaComparison(projectId, pastPrevious, pastPrevious === null ? null : (past?.version ?? null));
 
-  const current = classes[selected];
+  /*
+   * The draft as the server can be asked about it, once it holds still.
+   *
+   * Unnamed classes are left out: one is not a class `POST /preview` accepts,
+   * and it was never published, so nothing can carry it. Settled on the
+   * serialised list rather than on the array, because a draft seeded from the
+   * server is a fresh array every render — settling on identity would restart
+   * the timer forever.
+   */
+  const namedJson = JSON.stringify(classes.filter((declared) => declared.name.trim() !== ""));
+  const namedClasses = useMemo(() => JSON.parse(namedJson) as LabelClassBody[], [namedJson]);
+  const settledJson = useSettled(namedJson, DRAFT_SETTLE_MS);
+  const settled = useMemo(() => JSON.parse(settledJson) as LabelClassBody[], [settledJson]);
+  // Asked only while there is something to say: a clean draft publishes
+  // nothing, and a project with no version has no contract to change.
+  const draftPreview = useSchemaChangePreview(
+    projectId,
+    active !== null && dirty && past === undefined ? settled : null,
+  );
+  const changes = dirty ? (draftPreview.data?.diff.changes ?? []) : [];
+  const blockedBy = dirty && draftPreview.data?.is_refused === true ? draftPreview.data.blockers : [];
+  const framesInTheWay = blockedBy.reduce((sum, blocker) => sum + blocker.assets, 0);
+
+  const activeClasses = active?.classes ?? NO_CLASSES;
+  const activeNames = useMemo(() => new Set(activeClasses.map((declared) => declared.name)), [activeClasses]);
+  const draftNames = useMemo(() => new Set(classes.map((declared) => declared.name)), [classes]);
+  // Classes the version in force declares and the draft does not. They stay
+  // in the table where they stood, struck through, until the draft is saved or
+  // they are kept — a removal is about to be published like any other change.
+  const removed = useMemo(
+    () => activeClasses.map((declared, at) => ({ declared, at })).filter(({ declared }) => !draftNames.has(declared.name)),
+    [activeClasses, draftNames],
+  );
+
+  /** The kernel's lines about one class, verbatim. */
+  function linesAbout(name: string): string[] {
+    return changes.filter((change) => change.label_class === name).map((change) => change.detail);
+  }
+
+  function draftMarkOf(name: string, gone = false): RowMark | null {
+    if (!dirty || active === null) return null;
+    if (blockedBy.some((blocker) => blocker.label_class === name)) return "blocked";
+    if (gone) return "removed";
+    if (!activeNames.has(name)) return "new";
+    return changes.some((change) => change.label_class === name) ? "changed" : null;
+  }
+  function draftMarkDetail(mark: RowMark | null, name: string): string[] {
+    if (mark === null) return [];
+    const lines = linesAbout(name);
+    if (mark === "blocked") {
+      const blocker = blockedBy.find((one) => one.label_class === name);
+      return [
+        ...(blocker === undefined ? [] : [describeClassCount(blocker)]),
+        "Saving waits until those labels are cleared, or the change is undone.",
+      ];
+    }
+    if (mark === "new") return lines.length > 0 ? lines : ["New in this draft."];
+    if (mark === "removed") return lines.length > 0 ? lines : ["Removed in this draft."];
+    return lines;
+  }
+  // The version being read, compared class by class with the one before it:
+  // what each cell gained and lost, read off the two lists; whether any of it
+  // narrows, from the API's comparison (`schemaClassDiff.ts`). Version 1 is
+  // compared with itself — nothing before it, so nothing moved.
+  const pastParent = pastPrevious === null ? undefined : ordered.find((entry) => entry.version === pastPrevious);
+  const pastChanges = useMemo(
+    () => (past === undefined ? [] : compareClasses(pastParent?.classes ?? past.classes, past.classes, pastDiff.data?.changes)),
+    [past, pastParent, pastDiff.data],
+  );
+  const comparison: Comparison =
+    pastPrevious === null
+      ? { kind: "first" }
+      : pastDiff.isError
+        ? { kind: "failed" }
+        : pastDiff.data === undefined || pastParent === undefined
+          ? { kind: "pending" }
+          : { kind: "ready", tally: tallyChanges(pastChanges) };
+  const PAST_MARK = { added: "new", changed: "changed", removed: "removed", same: null } as const;
+
   const counts = stats.data?.classes ?? [];
   const countOf = (name: string): number =>
     counts.find((entry) => entry.label_class === name)?.annotations ?? 0;
+  const framesOf = (name: string): number =>
+    counts.find((entry) => entry.label_class === name)?.assets ?? 0;
+  // The bar's full width: the project's most-drawn class, never zero.
+  const mostDrawn = Math.max(1, ...counts.map((entry) => entry.annotations));
+
+  // Every row the table could show, in hotkey order. Each carries its real
+  // index, so filtering is a *view* of the draft and never a change to it: a
+  // row's position on screen is not its position in the schema, and writing
+  // through the filtered position is how a filter silently edits the wrong
+  // class.
+  const rows: ClassRowView[] =
+    past !== undefined
+      ? pastChanges.map((change) => {
+          const declared = (change.after ?? change.before)!;
+          const index = change.slot.after;
+          const mark = PAST_MARK[change.status];
+          return {
+            key: index === null ? `removed-${change.name}` : `read-${index}`,
+            declared,
+            index,
+            swatch: swatchOf(declared, index ?? change.slot.before ?? 0),
+            annotations: countOf(declared.name),
+            images: framesOf(declared.name),
+            mark,
+            markDetail:
+              change.lines.length > 0 || mark === null
+                ? change.lines
+                : [`${mark === "new" ? "Added" : mark === "removed" ? "Removed" : "Changed"} in version ${past.version}.`],
+            revertable: false,
+            change,
+          };
+        })
+      : (() => {
+          const drafted: ClassRowView[] = classes.map((declared, index) => {
+            const mark = draftMarkOf(declared.name);
+            const before = activeClasses.find((one) => one.name === declared.name);
+            return {
+              key: `edit-${index}`,
+              declared,
+              index,
+              swatch: swatchOf(declared, index),
+              annotations: countOf(declared.name),
+              images: framesOf(declared.name),
+              mark,
+              markDetail: draftMarkDetail(mark, declared.name),
+              revertable: before !== undefined && !same([declared], [before]),
+            };
+          });
+          // Back where each stood in the version in force.
+          for (const { declared, at } of removed) {
+            const mark = draftMarkOf(declared.name, true);
+            drafted.splice(Math.min(at, drafted.length), 0, {
+              key: `removed-${declared.name}`,
+              declared,
+              index: null,
+              swatch: swatchOf(declared, at),
+              annotations: countOf(declared.name),
+              images: framesOf(declared.name),
+              mark,
+              markDetail: draftMarkDetail(mark, declared.name),
+              revertable: false,
+            });
+          }
+          return drafted;
+        })();
+  const keepable = useMemo(() => new Set(removed.map(({ declared }) => declared.name)), [removed]);
+  const query = filter.trim().toLowerCase();
+  const shownRows = rows
+    .filter((row) =>
+      past !== undefined || lens === "all"
+        ? true
+        : lens === "changed"
+          ? row.mark !== null
+          : row.index !== null && row.annotations === 0,
+    )
+    .filter((row) => query === "" || row.declared.name.toLowerCase().includes(query));
+  const total = past !== undefined ? past.classes.length : classes.length;
+  const shownCount = shownRows.filter((row) => row.index !== null).length;
+  const narrowed = query !== "" || (past === undefined && lens !== "all");
+  // What the table is narrowed by: a new value sends it back to its first page.
+  const tableKey = `${past?.version ?? "draft"}|${query}|${past === undefined ? lens : ""}`;
+  const hasRows = rows.length > 0;
+
+  // The class the sheet is on: the draft's for an edit, the version's for a read.
+  const dialogClass = dialog?.target.kind === "edit" ? classes[dialog.target.index] : undefined;
+  const pastClass = dialog?.target.kind === "read" ? past?.classes[dialog.target.index] : undefined;
+  // Whether the panel is open, and on what. A class the draft no longer holds
+  // — reloaded underneath — closes it.
+  const classShown =
+    dialog !== null &&
+    dialog.open &&
+    (dialog.target.kind === "add" ||
+      (dialog.target.kind === "edit" ? classes[dialog.target.index] !== undefined : pastClass !== undefined && past !== undefined));
+  const paneOpen = historyOpen || classShown;
+  const paneLabel = historyOpen ? "Schema history" : dialog?.target.kind === "add" ? "New class" : "Class";
+
+  /**
+   * The edit sheet's line under its title: how much is drawn with the class,
+   * the version that introduced it, and whether the draft has touched it.
+   */
+  function classMeta(name: string): string {
+    const annotations = countOf(name);
+    const parts = [annotations === 0 ? "Not used yet" : `${formatCount(annotations)} ${annotations === 1 ? "annotation" : "annotations"}`];
+    const first = [...(history.data?.items ?? [])]
+      .sort((a, b) => a.version - b.version)
+      .find((entry) => entry.classes.some((declared) => declared.name === name));
+    if (first !== undefined) parts.push(`since v${first.version}`);
+    const mark = draftMarkOf(name);
+    if (mark === "new") parts.push("new in this draft");
+    else if (mark === "changed") parts.push("edited in draft");
+    return parts.join(" · ");
+  }
+
+  /** Open the sheet on a class, remembering the row to come back to. */
+  function openClass(next: ClassTarget): void {
+    if (unsavedForm()) return;
+    returnTo.current = next.kind === "add" ? "add" : `${next.kind}-${next.index}`;
+    if (next.kind !== "add") setReveal({ key: `${next.kind}-${next.index}`, token: String(++reveals.current) });
+    setHistoryOpen(false);
+    setDialog((current) => ({ target: next, open: true, serial: (current?.serial ?? 0) + 1 }));
+  }
+
+  /**
+   * An open class form with changes in it holds the panel: the press that
+   * would replace it is answered instead, and the form is where focus goes.
+   */
+  function unsavedForm(): boolean {
+    if (dialog === null || !dialog.open || !formChanged.current) return false;
+    toast("Finish this class first", { description: "Save it, or Cancel to drop the changes." });
+    document.querySelector<HTMLElement>('[data-testid="class-sheet"] input')?.focus();
+    return true;
+  }
+
+  /** Open the history in the panel, putting a class away first. */
+  function openHistory(): void {
+    if (unsavedForm()) return;
+    refocus.current = false;
+    returnTo.current = null;
+    setDialog((current) => (current === null ? null : { ...current, open: false }));
+    setHistoryOpen(true);
+  }
+
+  /** Put the history away, and hand focus back to the button that opened it. */
+  function closeHistory(): void {
+    setHistoryOpen(false);
+    historyButton.current?.focus();
+  }
+
+  /** Open the draft's class of that name — a line of the review names one. */
+  function openByName(name: string): void {
+    const index = classes.findIndex((declared) => declared.name === name);
+    if (index !== -1) openClass({ kind: "edit", index });
+  }
+
+  /** Close the panel; focus goes back to the row at once, as the panel slides out. */
+  function closeClass(): void {
+    refocus.current = true;
+    setDialog((current) => (current === null ? null : { ...current, open: false }));
+  }
+
+  // The row the class sits on, or New class, once the panel has been put away
+  // and the rows are where they now are.
+  const classOpen = dialog?.open ?? false;
+  useEffect(() => {
+    if (classOpen || dialog === null || !refocus.current) return;
+    refocus.current = false;
+    restoreFocus();
+  });
+
+  /** Hand focus back to the row the class now sits on, or to New class. */
+  function restoreFocus(): void {
+    const key = returnTo.current;
+    returnTo.current = null;
+    const row = key === null ? undefined : rowButtons.current.get(key);
+    (row ?? addButton.current)?.focus();
+  }
+
+  /**
+   * Write one class back to the draft at `position`. Its position is its hotkey
+   * and part of the contract, so a move rides on the same single edit as the
+   * fields — one Save in the sheet is one change to the draft.
+   */
+  function submitClass(next: LabelClassBody, from: number | null, position: number): void {
+    if (saveInFlight.current || preview.isPending) return;
+    const rest = from === null ? [...classes] : classes.filter((_, i) => i !== from);
+    rest.splice(Math.min(position, rest.length), 0, next);
+    edit(rest);
+    setFilter("");
+    returnTo.current = `edit-${position}`;
+    setReveal({ key: `edit-${position}`, token: String(++reveals.current) });
+    closeClass();
+  }
+
+  /**
+   * Put a class the draft removed back, as the version in force declares it,
+   * after the class that preceded it there. The name is checked the way the
+   * sheet checks one typed: a draft that has since taken it, in any case, would
+   * be refused at publish, so it is refused here first and said.
+   */
+  function keepClass(name: string): void {
+    if (saveInFlight.current || preview.isPending) return;
+    const at = activeClasses.findIndex((declared) => declared.name === name);
+    const declared = activeClasses[at];
+    if (declared === undefined || draftNames.has(name)) return;
+    const clash = classes.find((other) => sameName(other.name, name));
+    if (clash !== undefined) {
+      toast(`“${clash.name}” already has this name — names ignore case.`, {
+        description: `Rename it to keep ${name}.`,
+      });
+      return;
+    }
+    const before = new Set(activeClasses.slice(0, at).map((one) => one.name));
+    let place = 0;
+    classes.forEach((one, i) => {
+      if (before.has(one.name)) place = i + 1;
+    });
+    const next = [...classes];
+    next.splice(place, 0, declared);
+    edit(next);
+  }
+
+  /** Every edit to one class undone: it is the version in force's again. */
+  function revertClass(index: number): void {
+    const name = classes[index]?.name;
+    const before = activeClasses.find((declared) => declared.name === name);
+    if (before === undefined) return;
+    edit(classes.map((declared, i) => (i === index ? before : declared)));
+  }
 
   function closeBlockers(): void {
     setFlow({ kind: "idle" });
@@ -530,12 +862,12 @@ export function SchemaEditor({
     }
     // The same rule for the other reason a save used to be disabled. `normalize_name`
     // refuses a blank, so this mirrors the API rather than inventing a second rule —
-    // and it *selects* the offending class, because a message about a field nobody
+    // and it *opens* the offending class, because a message about a field nobody
     // is looking at is barely better than a grey button.
     const blank = classes.findIndex((declared) => declared.name.trim() === "");
     if (blank !== -1) {
-      setSelected(blank);
       setFilter("");
+      openClass({ kind: "edit", index: blank });
       toast("Every class needs a name");
       return;
     }
@@ -559,7 +891,13 @@ export function SchemaEditor({
     try {
       const previewed = await preview.mutateAsync({ classes });
       if (previewed.is_refused) {
-        setFlow({ kind: "blockers", blockers: previewed.blockers, diff: previewed.diff });
+        setFlow({
+          kind: "blockers",
+          reason: { kind: "save" },
+          blockers: previewed.blockers,
+          diff: previewed.diff,
+          proposal: classes,
+        });
         finishSave();
         return;
       }
@@ -597,7 +935,7 @@ export function SchemaEditor({
                 : `Published — ${moved} open batches moved onto it`,
             );
           }
-          // The tab returns to the editor: after a save the version somebody was
+          // The page returns to the draft: after a save the version somebody was
           // reading is no longer the newest, and staying put would silently show
           // a past version as though nothing had happened.
           setViewing(null);
@@ -621,32 +959,59 @@ export function SchemaEditor({
     );
   }
 
+  /**
+   * Make the draft a published version's classes. History is not rewritten —
+   * saving publishes them as the next version — and what the draft held is one
+   * Undo away, because a restore over unsaved work replaces it.
+   */
+  function restore(entry: SchemaVersion): void {
+    if (saveInFlight.current || preview.isPending) return;
+    const before = showing;
+    onDraftChange({ ...showing, classes: entry.classes, note: `Restore version ${entry.version}` });
+    setViewing(null);
+    closeHistory();
+    setFilter("");
+    toast(`Version ${entry.version}'s classes are in the draft`, {
+      description: `Saving publishes them as version ${(version ?? 0) + 1}.`,
+      ...(dirty ? { action: { label: "Undo", onClick: () => onDraftChange({ ...before, revision: latestShowing.current.revision }) } } : {}),
+    });
+  }
+
+  /**
+   * Throw the draft's changes away: it is the version in force again, and the
+   * server's copy says so on the next autosave. Nothing is asked first — what
+   * was there is one Undo away, which is the cheaper way to be safe.
+   */
+  function discard(): void {
+    if (saveInFlight.current || preview.isPending) return;
+    const before = showing;
+    setFlow({ kind: "idle" });
+    publish.reset();
+    onDraftChange(freshFromActive(projectId, active, showing.revision));
+    setFilter("");
+    toast("Draft discarded", {
+      description: active === null ? "Nothing has been published yet." : `Back to version ${active.version} as published.`,
+      action: { label: "Undo", onClick: () => onDraftChange({ ...before, revision: latestShowing.current.revision }) },
+    });
+  }
+
+  /**
+   * Open the sheet on a class that does not exist yet. Nothing reaches the
+   * draft until the sheet's own submit, so an abandoned add leaves no unnamed
+   * class behind for `save` to refuse.
+   */
   function addClass(): void {
     if (saveInFlight.current || preview.isPending) return;
-    // One unnamed class at a time: a second one is indistinguishable from the
-    // first, and `save` would refuse the draft anyway. Same remedy as there —
-    // land on the class that still needs a name rather than grey the button.
-    const blank = classes.findIndex((declared) => declared.name.trim() === "");
-    if (blank !== -1) {
-      setSelected(blank);
-      setFilter("");
-      toast("Name the new class first");
-      return;
-    }
-    edit([...classes, { name: "", geometries: ["bbox"], color: null, attributes: [] }]);
-    // Selected, and the filter cleared — a new class has an empty name, so any
-    // filter at all would hide the row that was just created.
-    setSelected(classes.length);
-    setFilter("");
+    openClass({ kind: "add" });
   }
 
   function removeClass(index: number): void {
     edit(classes.filter((_, i) => i !== index));
-    // Land on the neighbour rather than on nothing: deleting the last class in a
-    // list should leave the one above selected, not an empty panel.
-    setSelected((chosen) =>
-      Math.max(0, chosen > index ? chosen - 1 : Math.min(chosen, classes.length - 2)),
-    );
+    // The class is gone, so the sheet closes with it, and focus lands on the
+    // neighbour that took its place — or the one above, for the last row.
+    const neighbour = Math.min(index, classes.length - 2);
+    returnTo.current = neighbour < 0 ? null : `edit-${neighbour}`;
+    closeClass();
   }
 
   async function requestRemoveClass(index: number): Promise<void> {
@@ -665,7 +1030,13 @@ export function SchemaEditor({
     try {
       const previewed = await preview.mutateAsync({ classes: candidate });
       if (previewed.is_refused) {
-        setFlow({ kind: "blockers", blockers: previewed.blockers, diff: previewed.diff });
+        setFlow({
+          kind: "blockers",
+          reason: { kind: "remove", name: classes[index]?.name ?? "" },
+          blockers: previewed.blockers,
+          diff: previewed.diff,
+          proposal: candidate,
+        });
         return;
       }
       setFlow({ kind: "idle" });
@@ -675,303 +1046,385 @@ export function SchemaEditor({
     }
   }
 
-  /** Arrow keys walk the list; Enter and Space are the button's own. */
-  function onListKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
-    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-    const position = shown.findIndex((row) => row.index === selected);
-    const next = shown[position + (event.key === "ArrowDown" ? 1 : -1)];
-    if (next === undefined) return;
-    event.preventDefault();
-    setSelected(next.index);
-    // Focus follows selection, so the next arrow press continues from the row a
-    // person is looking at rather than from wherever the browser left the ring.
-    listRef.current?.querySelector<HTMLButtonElement>(`[data-row="${next.index}"] button`)?.focus();
-  }
-
-  const listRef = useRef<HTMLDivElement>(null);
+  const nextVersion = (version ?? 0) + 1;
+  const status =
+    active === null
+      ? "This project has no schema yet. Saving creates version 1."
+      : dirty
+        ? `Version ${active.version} active · unsaved changes create v${nextVersion}`
+        : `Version ${active.version} active · the draft matches it`;
+  const emptyLine =
+    query !== ""
+      ? `No class matches “${filter.trim()}”.`
+      : lens === "changed"
+        ? "Nothing changed yet. Open a class to edit it."
+        : "Every class is in use.";
 
   return (
-    <section className="flex flex-col gap-4" data-testid="schema-editor">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {/* Versioning is ambient, not modal (`DESIGN.md`): one persistent line
-            saying what saving would do, rather than a tooltip or a disabled
-            button somebody has to press to find out. */}
-        <p className="text-xs text-muted-foreground" data-testid="schema-status">
-          {past !== undefined
-            ? `Version ${past.version} · read-only`
-            : active === null
-              ? "This project has no schema yet. Saving creates version 1."
-              : `Version ${active.version} active`}
-          {past === undefined &&
-            active !== null &&
-            (dirty ? " · unsaved changes create v" : " · saving creates v")}
-          {past === undefined && active !== null && active.version + 1}
-        </p>
-        {/* Absent, not hidden and not disabled. A disabled Save would say "not
-            now"; there is no now — a published version is immutable, and the
-            navigator is the way back to the one that can be edited. Rendering it
-            greyed would also leave it in the DOM, where a test could click it. */}
-        {/* The row wraps rather than widening the page: the note field and the
-            two controls come to 460px, which stops fitting below about 500px.
-            Nova buttons do not shrink, by design, so the row is what gives. */}
-        {past === undefined && (
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Optional, and unlabelled beyond its placeholder because it is one
-              field: a version's commit message, written once at publish. There is
-              no edit path for it afterwards, so this is the only place it exists. */}
-          <Input
-            aria-label="Why this version"
-            placeholder="Why this version? (optional)"
-            data-testid="version-note"
-            // Full width while the row is wrapped, its own width once the row fits.
-            className="w-full min-w-0 sm:w-56"
-            disabled={draftLocked}
-            value={note}
-            onChange={(event) => {
-              if (saveInFlight.current || preview.isPending) return;
-              onDraftChange({ ...showing, note: event.target.value });
-            }}
-          />
-          <Button
-            variant="outline"
-            data-testid="add-class"
-            disabled={draftLocked}
-            onClick={addClass}
-          >
-            <Plus className="size-4" aria-hidden="true" />
-            Add class
-          </Button>
-          <Button
-            // `secondary`: the project's navigation holds the one filled
-            // control of the project shell, and a section's own actions sit
-            // a weight below it. Still never disabled for "nothing to save".
-            variant="outline"
-            data-testid="save-schema"
-            // Never disabled for "nothing to save" — `save` answers that with a
-            // toast. It is also disabled while a removal preview, flush, or
-            // publish is in flight, so none can race a draft-changing action.
-            disabled={draftLocked}
-            onClick={() => void save()}
-          >
-            {saving || publish.isPending || flushing ? "Saving…" : "Save version"}
-          </Button>
+    // The section from edge to edge under the project bar: its band, the class
+    // table, and the slot the commit bar rises into. Wide, it is fitted to the
+    // window and the table scrolls inside it; narrower, it is framed in the
+    // strip's column and the page scrolls, the bar sticking above the status bar.
+    <section
+      aria-label="Classes"
+      data-testid="schema-editor"
+      className={cn("flex min-w-0 flex-col bg-background", FIT, FRAMED_BELOW_LG)}
+    >
+      {/* The section's band: its name and size, and how it is being looked at. */}
+      <header className={cn("flex min-h-12 shrink-0 flex-wrap items-center gap-x-2.5 gap-y-2 border-b border-border/70 py-2", PAGE_INSET)}>
+        <Tags aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" strokeWidth={1.75} />
+        <h2 className="text-sm font-semibold tracking-tight">{past === undefined ? "Classes" : `Classes in version ${past.version}`}</h2>
+        <span className="text-xs text-muted-foreground tabular-nums" data-testid="classes-count">
+          {narrowed && shownCount !== total ? `${formatCount(shownCount)} of ${formatCount(total)}` : formatCount(total)}
+        </span>
+        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+          {past === undefined && hasRows && (
+            <ViewSwitch label="Show" value={lens} options={LENSES} onChange={setLens} data-testid="classes-lens" />
+          )}
+          {hasRows && <ClassFilter value={filter} onChange={setFilter} inputRef={filterInput} />}
+          {active !== null && (
+            // An icon, named in full for whoever cannot see it; the version in
+            // force rides the name and the tooltip rather than the band.
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  ref={historyButton}
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label={`History, version ${active.version} active`}
+                  aria-expanded={historyOpen}
+                  data-testid="open-history"
+                  onClick={openHistory}
+                  className="transition-[background-color,scale] duration-100 ease-out active:scale-[0.97] motion-reduce:transition-none"
+                >
+                  <HistoryIcon className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                History <span className="tabular-nums opacity-70">· v{active.version}</span>
+              </TooltipContent>
+            </Tooltip>
+          )}
+          {/* The section's forward action, beside the history it adds to — only
+              while the draft is on screen with classes in it: a published
+              version, which nobody adds to, offers none, and the empty state
+              carries its own. */}
+          {past === undefined && hasRows && (
+            <Button
+              ref={addButton}
+              size="sm"
+              // The page's one filled control — until the draft holds
+              // something, when Save in the commit bar is, and this steps
+              // back, as Publish release does for the Dataset's recipe editor.
+              variant={dirty ? "outline" : "default"}
+              aria-label="New class"
+              data-testid="add-class"
+              disabled={draftLocked}
+              onClick={addClass}
+              className="transition-[background-color,scale] duration-100 ease-out active:scale-[0.97] motion-reduce:transition-none"
+            >
+              {/* A plus is drawn smaller than its box; the extra air on its
+                  side reads as padding, so it sits 1px further out. */}
+              <Plus data-icon="inline-start" className="-ml-px size-3.5" strokeWidth={1.75} aria-hidden="true" />
+              New
+            </Button>
+          )}
         </div>
-        )}
-      </div>
+      </header>
 
-      {flow.kind === "preview-error" && (
-        <Alert variant="destructive" data-testid="schema-preview-error">
-          <AlertTitle>Could not preview this change</AlertTitle>
-          <AlertDescription>{refusalProse(flow.error)}</AlertDescription>
-        </Alert>
+      {past !== undefined && (
+        <VersionHead
+          versions={ordered}
+          entry={past}
+          activeVersion={version}
+          comparison={comparison}
+          locked={draftLocked}
+          onView={setViewing}
+          onRestore={() => restore(past)}
+        />
       )}
 
-      {/* One line of prose beside the ambient status line, in the same register
-          as it: a version arriving underneath is news, not a failure and not a
-          question, so it is neither an `Alert` nor a dialog. The reload is the
-          one thing a person might want and cannot otherwise reach — reverting to
-          the new active version means discarding what they typed, which is
-          exactly the choice a re-seeding effect makes for them.
+      {past === undefined && (
+        <>
+          {/* A version arriving underneath is news, not a failure and not a
+              question, so it is said in a band, in the status's register.
+              Reloading is the one thing a person might want and cannot
+              otherwise reach.
 
-          `onDraftChange(freshFromActive(…, showing.revision))` rather than
-          `onDraftChange(null)`: `showing` can be `held` *or* the server draft,
-          and passing `null` only ever clears the first of those — over a draft
-          seeded from the server, with nothing local held, it is a no-op that
-          leaves this very banner on screen. Naming the destination directly
-          reaches it from either tier, and carrying `showing.revision` rather
-          than a bare `null` is what keeps the write that follows from asking
-          to create a draft the server already has — see `freshFromActive`'s
-          own comment.
+              `freshFromActive(…, showing.revision)` rather than `null`:
+              `showing` can be `held` *or* the server draft, and `null` only
+              clears the first — see `freshFromActive`. Branched on `held`
+              because "your changes" is true only of what this session typed;
+              a server-seeded draft may be a colleague's. */}
+          {moved !== null && (
+            <Notice tone="info" testId="schema-moved">
+              {held !== null ? (
+                <>
+                  Version {moved} was published while you were editing. Your changes are still here, and saving
+                  publishes v{moved + 1}.{" "}
+                </>
+              ) : (
+                <>
+                  This draft is behind version {moved}, published since it was last saved. Saving would publish v
+                  {moved + 1} on top of it.{" "}
+                </>
+              )}
+              <Button
+                variant="link"
+                className="h-auto p-0 align-baseline"
+                data-testid="schema-reload"
+                disabled={draftLocked}
+                onClick={() => {
+                  if (saveInFlight.current || preview.isPending) return;
+                  onDraftChange(freshFromActive(projectId, active, showing.revision));
+                }}
+              >
+                {held !== null ? <>Discard mine and load v{moved}</> : <>Load v{moved}</>}
+              </Button>
+            </Notice>
+          )}
 
-          Branched on that same `held`, because the two tiers are not the same
-          claim. "Your changes are still here" is true of `held` — somebody in
-          this session typed it. It is not true of a server-seeded draft
-          nobody here has touched, which may be a colleague's unfinished work
-          rather than "yours" at all, so that branch names the draft rather
-          than the person. */}
-      {past === undefined && moved !== null && (
-        <p className="text-xs text-muted-foreground" data-testid="schema-moved">
-          {held !== null ? (
-            <>
-              Version {moved} was published while you were editing. Your changes are
-              still here, and saving publishes v{moved + 1}.{" "}
-            </>
+          {/* `STALE_WRITE` on the draft: announce, never merge. Reloading
+              discards what is here, so nothing is thrown away before the
+              button is pressed. `publish.reset()` alongside, because the
+              code may have arrived via a publish rather than an autosave. */}
+          {staleDraft && (
+            <Notice tone="info" testId="schema-stale-draft">
+              {refusalProse(staleDraftError)}{" "}
+              <Button
+                variant="link"
+                className="h-auto p-0 align-baseline"
+                data-testid="schema-reload-draft"
+                disabled={draftLocked}
+                onClick={() => {
+                  if (saveInFlight.current || preview.isPending) return;
+                  publish.reset();
+                  onReloadDraft();
+                }}
+              >
+                Reload the draft
+              </Button>
+            </Notice>
+          )}
+
+          {flow.kind === "preview-error" && (
+            <Notice tone="error" testId="schema-preview-error" title="Could not preview this change.">
+              {refusalProse(flow.error)}
+            </Notice>
+          )}
+          {/* Any other autosave failure — a dropped connection, most likely —
+              is not the shared-draft conflict `STALE_WRITE` is. Rendered
+              rather than swallowed. */}
+          {draftFailure !== null && !staleDraft && (
+            <Notice tone="error" testId="schema-draft-error" title="Could not save this change.">
+              {refusalProse(draftSaveError)}
+            </Notice>
+          )}
+          {failure !== null &&
+            failure.code !== STALE_DRAFT &&
+            (failure.code !== WOULD_ORPHAN || shownBlockers === null) && (
+              <Notice tone="error" testId="schema-error" title="Could not save this version.">
+                {refusalProse(publish.error)}
+              </Notice>
+            )}
+        </>
+      )}
+
+      {/* The class table and, at its right, the detail of whatever is open —
+          a class, one being added, a published version's, or the history: one
+          panel for all of them, so only one is ever open. */}
+      <div className="flex min-h-0 flex-1">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {past !== undefined ? (
+            past.classes.length === 0 ? (
+              <div data-testid="past-version" className={cn("flex flex-col gap-1 py-6", PAGE_INSET)}>
+                <p className="text-sm font-medium">No classes</p>
+                <p className="text-sm text-pretty text-muted-foreground">
+                  Version {past.version} declares none. A project can publish an empty contract.
+                </p>
+              </div>
+            ) : shownRows.length === 0 ? (
+              <p className={cn("py-6 text-sm text-pretty text-muted-foreground", PAGE_INSET)} data-testid="filter-empty">
+                {emptyLine}
+              </p>
+            ) : (
+              // A published version opens to read, never to edit: its sheet shows
+              // the whole class, with no field to change — not a disabled one.
+              <ClassTable
+                rows={shownRows}
+                mode="read"
+                mostDrawn={mostDrawn}
+                locked={draftLocked}
+                label={`Classes in version ${past.version}`}
+                testId="past-version"
+                resetKey={tableKey}
+                unfiltered={rows.length}
+                reveal={reveal}
+                onOpen={(row) => {
+                  if (row.index !== null) openClass({ kind: "read", index: row.index });
+                }}
+                rowRef={(row, element) => {
+                  if (element === null) rowButtons.current.delete(row.key);
+                  else rowButtons.current.set(row.key, element);
+                }}
+              />
+            )
+          ) : !hasRows ? (
+            <div data-testid="classes-none" className={cn("flex flex-col items-start gap-3 py-6", PAGE_INSET)}>
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-medium">No classes yet</p>
+                <p className="max-w-prose text-sm text-pretty text-muted-foreground">
+                  A class is a name for what you draw, and the shapes it may be drawn with.
+                </p>
+              </div>
+              <Button ref={addButton} data-testid="add-class" disabled={draftLocked} onClick={addClass}>
+                <Plus data-icon="inline-start" className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+                New class
+              </Button>
+            </div>
           ) : (
             <>
-              This draft is behind version {moved}, published since it was last saved.
-              Saving would publish v{moved + 1} on top of it.{" "}
-            </>
-          )}
-          <Button
-            variant="link"
-            className="h-auto p-0 align-baseline text-xs"
-            data-testid="schema-reload"
-            disabled={draftLocked}
-            onClick={() => {
-              if (saveInFlight.current || preview.isPending) return;
-              onDraftChange(freshFromActive(projectId, active, showing.revision));
-            }}
-          >
-            {held !== null ? <>Discard mine and load v{moved}</> : <>Load v{moved}</>}
-          </Button>
-        </p>
-      )}
-
-      {/* `STALE_WRITE` on the draft is the second instance of the announce-never-
-          merge pattern above: somebody else's write landed between this draft's
-          last read and its last save, so the local copy no longer names a
-          revision the server recognises. The remedy is the same shape for the
-          same reason — reloading discards what is here, so nothing is thrown
-          away before the button is pressed.
-
-          Reached from either mutation — `staleDraftError` is whichever one
-          actually carries the code — so `publish.reset()` runs alongside
-          `onReloadDraft()` the same way `DestructiveDialog`'s Cancel and
-          the blocker dialog's Close already reset it: without this, a `STALE_WRITE`
-          that reached this banner via a *publish* would leave `publish.isError`
-          true after the reload, and the banner would still be here to greet the
-          freshly reloaded draft. */}
-      {past === undefined && staleDraft && (
-        <p className="text-xs text-muted-foreground" data-testid="schema-stale-draft">
-          {refusalProse(staleDraftError)}{" "}
-          <Button
-            variant="link"
-            className="h-auto p-0 align-baseline text-xs"
-            data-testid="schema-reload-draft"
-            disabled={draftLocked}
-            onClick={() => {
-              if (saveInFlight.current || preview.isPending) return;
-              publish.reset();
-              onReloadDraft();
-            }}
-          >
-            Reload the draft
-          </Button>
-        </p>
-      )}
-
-      {/* Any other autosave failure — a dropped connection, most likely — is not
-          worth its own sentence: it is not the shared-draft conflict `STALE_WRITE`
-          is, and typing is unaffected either way. Still rendered rather than
-          swallowed, in the same register as a publish failure below. */}
-      {draftFailure !== null && !staleDraft && (
-        <Alert variant="destructive" data-testid="schema-draft-error">
-          <AlertTitle>Could not save this change</AlertTitle>
-          <AlertDescription>{refusalProse(draftSaveError)}</AlertDescription>
-        </Alert>
-      )}
-
-      <VersionNavigator
-        projectId={projectId}
-        versions={history.data?.items ?? []}
-        activeVersion={version}
-        viewing={viewing}
-        onView={setViewing}
-      />
-
-      {failure !== null &&
-        failure.code !== STALE_DRAFT &&
-        (failure.code !== WOULD_ORPHAN || shownBlockers === null) && (
-          <Alert variant="destructive" data-testid="schema-error">
-            <AlertTitle>Could not save this version</AlertTitle>
-            <AlertDescription>{refusalProse(publish.error)}</AlertDescription>
-          </Alert>
-        )}
-
-      {past !== undefined ? (
-        <PastVersion declared={past} />
-      ) : classes.length === 0 ? (
-        <Alert>
-          <AlertTitle>No classes yet</AlertTitle>
-          <AlertDescription>
-          A class is a label plus the one geometry it carries — picking a class picks a tool.
-          </AlertDescription>
-        </Alert>
-      ) : (
-        // 240px and then everything else. `minmax(0, 1fr)` rather than `1fr`, so a
-        // long attribute row inside the panel scrolls its own container instead of
-        // widening the grid and pushing the list off screen.
-        <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
-          {/* Below `lg` the master list is a dropdown. `DESIGN.md`'s Layout section
-              already stacks two-column detail views at that breakpoint, and
-              inventing a fifth breakpoint for one panel is the kind of one-off the
-              token discipline exists to stop. */}
-          <div className="min-w-0 lg:hidden">
-            <Label htmlFor="class-picker">Class</Label>
-            <Select value={String(selected)} onValueChange={(value) => setSelected(Number(value))}>
-              <SelectTrigger id="class-picker" data-testid="class-picker" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {classes.map((declared, index) => (
-                  <SelectItem key={index} value={String(index)}>
-                    {declared.name === "" ? "New class" : declared.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="hidden flex-col gap-2 lg:flex">
-            <Input
-              aria-label="Filter classes"
-              placeholder="Filter classes"
-              data-testid="class-filter"
-              value={filter}
-              onChange={(event) => setFilter(event.target.value)}
-            />
-            <div
-              ref={listRef}
-              role="list"
-              onKeyDown={onListKeyDown}
-              data-testid="class-list"
-              className="flex max-h-[28rem] flex-col overflow-y-auto rounded-lg border border-border"
-            >
-              {shown.length === 0 ? (
-                <p className="p-3 text-xs text-muted-foreground" data-testid="filter-empty">
-                  No class matches “{filter}”.
+              {shownRows.length === 0 ? (
+                <p className={cn("py-6 text-sm text-pretty text-muted-foreground", PAGE_INSET)} data-testid="filter-empty">
+                  {emptyLine}
                 </p>
               ) : (
-                shown.map(({ declared, index }) => (
-                  // Wrapped so the *draft* index is on an element this file owns.
-                  // `ClassListRow` takes a fixed set of props and does not spread
-                  // the rest, so a `data-row` on it would type-check — JSX permits
-                  // hyphenated attributes on a component — and reach nothing.
-                  <div key={index} data-row={index} className="contents">
-                    <ClassListRow
-                      name={declared.name === "" ? "New class" : declared.name}
-                      geometry={formatGeometries(declared.geometries)}
-                      count={countOf(declared.name)}
-                      color={swatchOf(declared, index)}
-                      selected={index === selected}
-                      onSelect={() => setSelected(index)}
-                    />
-                  </div>
-                ))
+                <ClassTable
+                  rows={shownRows}
+                  mode="draft"
+                  mostDrawn={mostDrawn}
+                  locked={draftLocked}
+                  label="Classes in the draft"
+                  testId="class-list"
+                  resetKey={tableKey}
+                  unfiltered={rows.length}
+                  reveal={reveal}
+                  onOpen={(row) => {
+                    if (row.index !== null) openClass({ kind: "edit", index: row.index });
+                  }}
+                  onRemove={(index) => void requestRemoveClass(index)}
+                  onRevert={revertClass}
+                  onKeep={(row) => keepClass(row.declared.name)}
+                  rowRef={(row, element) => {
+                    if (element === null) rowButtons.current.delete(row.key);
+                    else rowButtons.current.set(row.key, element);
+                  }}
+                />
               )}
-            </div>
-          </div>
-
-          {current === undefined ? (
-            <p className="text-sm text-muted-foreground">Select a class to edit it.</p>
-          ) : (
-            <ClassDetail
-              declared={current}
-              index={selected}
-              annotations={countOf(current.name)}
-              onChange={(next) => edit(classes.map((c, i) => (i === selected ? next : c)))}
-              locked={draftLocked}
-              checking={flow.kind === "checking-removal"}
-              onRemove={() => void requestRemoveClass(selected)}
-            />
+            </>
           )}
         </div>
-      )}
+        <DetailPane
+          id="classes"
+          open={paneOpen}
+          label={paneLabel}
+          defaultWidth={440}
+          onClose={() => {
+            if (historyOpen) closeHistory();
+            else if (!formChanged.current) closeClass();
+          }}
+        >
+          {historyOpen ? (
+            <HistoryPanel
+              query={history}
+              activeVersion={version}
+              viewing={viewing}
+              locked={draftLocked}
+              onView={(next) => {
+                setViewing(next);
+                closeHistory();
+              }}
+              onRestore={restore}
+              onClose={closeHistory}
+            />
+          ) : (
+            dialog !== null &&
+            dialog.target.kind !== "read" && (
+              <ClassPanel
+                // A fresh working copy for every open.
+                key={dialog.serial}
+                target={dialog.target}
+                classes={classes}
+                previous={dialogClass === undefined ? null : ((active?.classes ?? []).find((one) => one.name === dialogClass.name) ?? null)}
+                meta={dialogClass === undefined ? null : classMeta(dialogClass.name)}
+                nextVersion={nextVersion}
+                annotations={dialogClass === undefined ? 0 : countOf(dialogClass.name)}
+                frames={dialogClass === undefined ? 0 : framesOf(dialogClass.name)}
+                locked={draftLocked}
+                checking={flow.kind === "checking-removal"}
+                removeError={flow.kind === "preview-error" ? flow.error : null}
+                changedRef={formChanged}
+                onSubmit={(next, position) => {
+                  const from = dialog.target.kind === "edit" ? dialog.target.index : null;
+                  submitClass(next, from, position);
+                }}
+                onRemove={() => {
+                  if (dialog.target.kind === "edit") void requestRemoveClass(dialog.target.index);
+                }}
+                onClose={closeClass}
+              />
+            )
+          )}
+          {!historyOpen && dialog !== null && dialog.target.kind === "read" && pastClass !== undefined && past !== undefined && (
+            <PastClassPanel
+              key={dialog.serial}
+              declared={pastClass}
+              index={dialog.target.index}
+              version={past.version}
+              annotations={countOf(pastClass.name)}
+              onClose={closeClass}
+            />
+          )}
+        </DetailPane>
+      </div>
+
+      {/* Versioning, on demand: the bar rises only once the draft holds
+          something, into a slot that is always there. */}
+      <SchemaCommitBar
+        offered={past === undefined}
+        up={dirty && past === undefined}
+        status={status}
+        activeVersion={version}
+        nextVersion={nextVersion}
+        changes={changes}
+        previewError={draftPreview.isError ? draftPreview.error : null}
+        classes={classes}
+        framesInTheWay={framesInTheWay}
+        onShowFrames={() =>
+          setFlow({
+            kind: "blockers",
+            reason: { kind: "save" },
+            blockers: blockedBy,
+            diff: draftPreview.data?.diff ?? null,
+            proposal: settled,
+          })
+        }
+        openable={draftNames}
+        keepable={keepable}
+        onOpenClass={openByName}
+        onKeepClass={keepClass}
+        locked={draftLocked}
+        saving={saving || publish.isPending || flushing}
+        onSave={() => void save()}
+        onDiscard={discard}
+      />
+
+      {/* What the page holds, said once, in the status bar. */}
+      <PageStatus>
+        <span className="tabular-nums" data-testid="schema-page-status">
+          {formatCount(total)} {total === 1 ? "class" : "classes"}
+          {stats.data !== undefined &&
+            ` · ${formatCount(stats.data.annotation_count)} ${stats.data.annotation_count === 1 ? "annotation" : "annotations"}`}
+        </span>
+      </PageStatus>
 
       <OrphanBlockersDialog
+        projectId={projectId}
+        reason={flow.kind === "blockers" ? flow.reason : { kind: "save" }}
         blockers={shownBlockers}
         diff={shownNarrowing}
-        framesListed={framesListed}
+        proposal={flow.kind === "blockers" ? flow.proposal : namedClasses}
+        onOpenBatch={onOpenBatch}
         onClose={closeBlockers}
       />
 
@@ -989,286 +1442,586 @@ export function SchemaEditor({
   );
 }
 
+/** No classes, as one constant, so a memo keyed on it holds still. */
+const NO_CLASSES: readonly LabelClassBody[] = [];
+
 /**
- * Every version, newest first, and what the selected one changed.
- *
- * A bar above the two-panel grid rather than a list inside the master column: the
- * master column *is* the class list, and a second list in it would be two masters
- * competing for the same 240px. It also has to survive a version that declares no
- * classes, where the grid is replaced by an empty-state alert.
- *
- * Absent entirely while a project has one version or none — there is no history to
- * navigate, and a selector with one entry is furniture.
+ * From `lg` — where the project bar is a toolbar and the section runs edge to
+ * edge under it — the section is exactly the window between the project bar
+ * (3rem) and the status bar, as the Overview is: the workbench publishes the
+ * tab strip's and the status bar's heights. The table scrolls inside it, and
+ * the commit bar's slot is its foot. A short window keeps a floor, and the page
+ * scrolls rather than crushing the table.
  */
-function VersionNavigator({
-  projectId,
-  versions,
-  activeVersion,
-  viewing,
-  onView,
+const FIT = "lg:h-[calc(100dvh-var(--page-inset-top,0px)-var(--page-inset-bottom,0px)-3rem)] lg:min-h-[28rem]";
+
+/**
+ * Below `lg` the project bar is a strip over a padded column, so the section is
+ * framed there instead of running edge to edge. `overflow-clip`, not hidden:
+ * a hidden overflow is a scroll container, and the commit bar's sticky slot
+ * would stick to it rather than to the window.
+ */
+const FRAMED_BELOW_LG = "max-lg:overflow-clip max-lg:rounded-lg max-lg:border max-lg:border-border/70";
+
+type Lens = "all" | "changed" | "unused";
+
+const LENSES = [
+  { value: "all", label: "All" },
+  { value: "changed", label: "Changed in draft" },
+  { value: "unused", label: "Not used" },
+] as const;
+
+function isTyping(target: EventTarget | null): boolean {
+  const element = target as HTMLElement | null;
+  return element !== null && (/^(INPUT|TEXTAREA|SELECT)$/.test(element.tagName) || element.isContentEditable);
+}
+
+/**
+ * The band's filter: by name, case-insensitive, on a substring. `/` focuses
+ * it from anywhere on the page; Escape clears it and lets go.
+ */
+function ClassFilter({
+  value,
+  onChange,
+  inputRef,
 }: {
-  readonly projectId: string;
-  readonly versions: readonly SchemaVersion[];
-  readonly activeVersion: number | null;
-  readonly viewing: number | null;
-  readonly onView: (version: number | null) => void;
-}): JSX.Element | null {
-  // Newest first: a history is read from the top, and the version somebody wants
-  // is nearly always the last one or the one before it.
-  const ordered = useMemo(
-    () => [...versions].sort((a, b) => b.version - a.version),
-    [versions],
-  );
-  const shown = viewing ?? activeVersion;
-  const entry = ordered.find((version) => version.version === shown);
-  // Against its predecessor, which is the question a history entry answers. The
-  // hook is called unconditionally with nulls when there is no predecessor —
-  // Rules of Hooks, and `useSchemaComparison` disables itself rather than asking
-  // for version 0, which is a 422.
-  const previous = shown === null || shown <= 1 ? null : shown - 1;
-  const diff = useSchemaComparison(projectId, previous, previous === null ? null : shown);
-
-  if (ordered.length < 2) return null;
-
+  readonly value: string;
+  readonly onChange: (value: string) => void;
+  readonly inputRef: RefObject<HTMLInputElement | null>;
+}): JSX.Element {
   return (
-    <div
-      className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3"
-      data-testid="version-navigator"
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <Label htmlFor="version-picker">Version</Label>
-        <Select
-          value={String(shown ?? "")}
-          onValueChange={(value) =>
-            onView(Number(value) === activeVersion ? null : Number(value))
-          }
-        >
-          <SelectTrigger id="version-picker" className="w-44" data-testid="version-picker">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {ordered.map((version) => (
-              <SelectItem key={version.version} value={String(version.version)}>
-                v{version.version}
-                {version.version === activeVersion ? " · active" : ""}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {entry?.created_at != null && (
-          <span className="text-xs text-muted-foreground" data-testid="version-created">
-            published {formatWhen(entry.created_at)}
-          </span>
-        )}
-        {viewing !== null && (
-          <Button variant="ghost" data-testid="back-to-active" onClick={() => onView(null)}>
-            Back to the active version
-          </Button>
-        )}
-      </div>
-
-      {/* Written once at publish and never editable, so an empty one stays empty
-          — saying so is more useful than an absent line somebody reads as a bug. */}
-      <p className="text-sm text-muted-foreground" data-testid="version-description">
-        {entry?.description != null && entry.description !== ""
-          ? entry.description
-          : "No description was written for this version."}
-      </p>
-
-      {previous === null ? (
-        <p className="text-xs text-muted-foreground" data-testid="version-diff-none">
-          Version 1 is the first contract, so there is nothing to compare it against.
-        </p>
+    <div className="relative flex items-center">
+      <Search className="pointer-events-none absolute left-2 size-3.5 text-muted-foreground" strokeWidth={1.75} aria-hidden="true" />
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") return;
+          onChange("");
+          event.currentTarget.blur();
+        }}
+        aria-label="Filter classes"
+        placeholder="Filter"
+        aria-keyshortcuts="/"
+        data-testid="class-filter"
+        className="h-7 w-40 rounded-md border bg-background pr-7 pl-7 text-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+      />
+      {value === "" ? (
+        <Kbd className="pointer-events-none absolute right-1.5" aria-hidden="true">
+          /
+        </Kbd>
       ) : (
-        <VersionDiff
-          from={previous}
-          to={shown ?? 0}
-          diff={diff.data}
-          failed={diff.isError}
-        />
+        <button
+          type="button"
+          aria-label="Clear search"
+          onClick={() => {
+            onChange("");
+            inputRef.current?.focus();
+          }}
+          // 20px drawn, 32px to press.
+          className="absolute right-1 grid size-5 place-items-center rounded-sm text-muted-foreground outline-none after:absolute after:-inset-1.5 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          <X className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+        </button>
       )}
     </div>
   );
 }
 
 /**
- * What one version did to the one before it, in the API's own words.
- *
- * `detail` is rendered verbatim: it is the string the kernel's own refusals are
- * built from, so a sentence here and the sentence in a 409 are the same sentence.
- * Rewording it in TypeScript would give the same change two descriptions.
+ * A line across the section, under its band: news about the draft, or a
+ * refusal in prose. Never a raw code — `refusalProse` is the one vocabulary.
  */
-function VersionDiff({
-  from,
-  to,
-  diff,
-  failed,
+function Notice({
+  tone,
+  title,
+  testId,
+  children,
 }: {
-  readonly from: number;
-  readonly to: number;
-  readonly diff: SchemaDiff | undefined;
-  readonly failed: boolean;
+  readonly tone: "info" | "error";
+  readonly title?: string;
+  readonly testId: string;
+  readonly children: ReactNode;
 }): JSX.Element {
-  if (failed) {
-    return (
-      <p className="text-xs text-muted-foreground" data-testid="version-diff-error">
-        Could not load what changed between v{from} and v{to}.
-      </p>
-    );
-  }
-  if (diff === undefined) {
-    return (
-      <p className="text-xs text-muted-foreground" data-testid="version-diff-pending">
-        Comparing v{from} with v{to}…
-      </p>
-    );
-  }
-  if (diff.changes.length === 0) {
-    return (
-      <p className="text-xs text-muted-foreground" data-testid="version-diff-empty">
-        Nothing changed between v{from} and v{to}.
-      </p>
-    );
-  }
-  return (
-    <ul className="flex flex-col gap-1" data-testid="version-diff">
-      {diff.changes.map((change, index) => (
-        <li key={index} className="flex items-start gap-2 text-xs">
-          {/* The kernel's own words — they are accurate — sentence-cased for a
-              badge. `detail` below stays verbatim; see the docstring. */}
-          <Badge variant={change.kind === "destructive" ? "destructive" : "secondary"}>
-            {change.kind === "destructive" ? "Destructive" : change.kind === "additive" ? "Additive" : change.kind}
-          </Badge>
-          <span className="text-muted-foreground">{change.detail}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/**
- * A published version, shown as what it is.
- *
- * No filter, no selection, no detail panel: those exist so an edit can address a
- * class, and there is no edit here. What is left is the contract itself — every
- * class, its geometry, and the attributes it declares.
- */
-function PastVersion({ declared }: { readonly declared: SchemaVersion }): JSX.Element {
-  if (declared.classes.length === 0) {
-    return (
-      <Alert>
-        <AlertTitle>No classes</AlertTitle>
-        <AlertDescription>
-        Version {declared.version} declares nothing. A project can publish an empty contract.
-        </AlertDescription>
-      </Alert>
-    );
-  }
+  const Icon = tone === "error" ? TriangleAlert : Info;
   return (
     <div
-      className="flex flex-col overflow-hidden rounded-lg border border-border"
-      data-testid="past-version"
+      role={tone === "error" ? "alert" : "status"}
+      data-testid={testId}
+      className={cn(
+        "flex shrink-0 items-start gap-2.5 border-b border-border/70 py-2.5 text-sm",
+        PAGE_INSET,
+        tone === "error" ? "bg-destructive/5" : "bg-info/5",
+      )}
     >
-      {declared.classes.map((entry, index) => (
-        <div
-          key={entry.name}
-          className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 last:border-b-0"
-        >
-          <span
-            aria-hidden="true"
-            className="size-3 shrink-0 rounded-full"
-            style={{ backgroundColor: swatchOf(entry, index) }}
-          />
-          <span className="text-sm font-medium">{entry.name}</span>
-          <Badge variant="outline">{formatGeometries(entry.geometries)}</Badge>
-          {entry.attributes.length > 0 && (
-            <span className="text-xs text-muted-foreground">
-              {formatCount(entry.attributes.length)}{" "}
-              {entry.attributes.length === 1 ? "attribute" : "attributes"}:{" "}
-              {entry.attributes.map((attribute) => attribute.name).join(", ")}
-            </span>
-          )}
-        </div>
-      ))}
+      <Icon aria-hidden="true" strokeWidth={1.75} className={cn("mt-0.5 size-4 shrink-0", tone === "error" ? "text-destructive" : "text-info")} />
+      <p className="min-w-0 flex-1 text-pretty">
+        {title !== undefined && <span className="font-medium">{title} </span>}
+        <span className="text-muted-foreground">{children}</span>
+      </p>
     </div>
   );
 }
 
+/** Which class the sheet is on. */
+type ClassTarget =
+  | { readonly kind: "edit"; readonly index: number }
+  | { readonly kind: "add" }
+  | { readonly kind: "read"; readonly index: number };
+
 /**
- * The right-hand panel: one class, in full.
- *
- * What was a full-width card per class, stacked. At three classes that was airy;
- * at fifty — an ordinary Physical AI ontology — finding one meant reading every
- * card above it. The fields are unchanged; where they sit is not.
+ * Two classes are one name to the kernel when they match ignoring case, once
+ * trimmed — `SchemaService` refuses the second. Said here as the person types,
+ * from the same rule; the publish still decides.
  */
-function ClassDetail({
-  declared,
-  index,
+function sameName(a: string, b: string): boolean {
+  return a.trim().toLocaleLowerCase() === b.trim().toLocaleLowerCase();
+}
+
+/**
+ * The class panel: one class, in the panel at the right of the table, edited
+ * on a working copy and written to the draft once — by **Save**, or for a
+ * class being added by **Add … to draft**, or by ⌘↵ (Ctrl+Enter) for either.
+ * Cancel, Escape and the close button leave the draft as it was; while there
+ * are changes, a press on another row or on History is answered instead of
+ * obeyed, so a stray click cannot throw them away.
+ *
+ * Dense by intent, for people who edit their schema often. The title line *is*
+ * the class: its colour as a swatch, its name typed where the title reads, and
+ * its shortcut — its place in the list — as a key. Under it, one line says how
+ * much is drawn with it and where it came from, and the same line says what is
+ * wrong with the name, so an error never pushes the form down.
+ *
+ * The header and footer hold still; only the body scrolls, with its gutter
+ * reserved so a scrollbar arriving does not narrow the lines, and its edges
+ * fading where there is more. The body is `ClassFields` in its `compact`
+ * layout — the same component the annotator's add-a-class dialog stacks — and
+ * under its shapes one sentence says what an edit costs: a class nothing is
+ * drawn with changes freely, while one frames already carry refuses removal,
+ * and dropping a shape those frames use, until they are cleared. Said before
+ * the press, it is a choice rather than a refusal.
+ *
+ * **Remove** is asked of the server first, and says so while it asks; a refusal
+ * opens over the panel, and closing it comes back here.
+ */
+function ClassPanel({
+  target,
+  classes,
+  previous,
+  meta,
+  nextVersion,
   annotations,
+  frames,
   locked,
   checking,
-  onChange,
+  removeError,
+  onSubmit,
   onRemove,
+  changedRef,
+  onClose,
+}: {
+  readonly target: Exclude<ClassTarget, { readonly kind: "read" }>;
+  readonly classes: readonly LabelClassBody[];
+  readonly previous: LabelClassBody | null;
+  readonly meta: string | null;
+  readonly nextVersion: number;
+  readonly annotations: number;
+  readonly frames: number;
+  readonly locked: boolean;
+  readonly checking: boolean;
+  readonly removeError: unknown;
+  readonly onSubmit: (next: LabelClassBody, position: number) => void;
+  readonly onRemove: () => void;
+  /** Told whether the form holds changes, so the screen can refuse to replace it. */
+  readonly changedRef: MutableRefObject<boolean>;
+  readonly onClose: () => void;
+}): JSX.Element {
+  const adding = target.kind === "add";
+  const from = adding ? classes.length : target.index;
+  const initial: LabelClassBody = (adding ? undefined : classes[target.index]) ?? { name: "", geometries: ["bbox"], color: null, attributes: [] };
+  const [working, setWorking] = useState<LabelClassBody>(initial);
+  const [position, setPosition] = useState(from);
+  const [tried, setTried] = useState(false);
+  const slot = String(from);
+  const places = adding ? classes.length + 1 : classes.length;
+  const changed = position !== from || !same([working], [initial]);
+  useEffect(() => {
+    changedRef.current = changed;
+    return () => {
+      changedRef.current = false;
+    };
+  }, [changed, changedRef]);
+  // Into the name: adding a class is typing its name.
+  useEffect(() => document.getElementById(`class-name-${slot}`)?.focus(), [slot]);
+
+  const { clash, kept, unnamedAttribute, nameError, attributeError } = checkClassDraft({ working, classes, from, adding, tried });
+  const swatch = swatchOf(working, from);
+  // The accessible title keeps the name the class had when the sheet opened,
+  // so it still says which class this is while it is being renamed.
+  const shown = initial.name.trim() === "" ? "new class" : initial.name.trim();
+  const statusId = `class-status-${slot}`;
+
+  function submit(): void {
+    if (locked) return;
+    if (working.name.trim() === "" || clash !== undefined) {
+      setTried(true);
+      document.getElementById(`class-name-${slot}`)?.focus();
+      return;
+    }
+    if (unnamedAttribute !== -1) {
+      setTried(true);
+      // Its index among all the lines, which is what its field is named by.
+      const line = (working.attributes ?? []).indexOf(kept[unnamedAttribute]!);
+      document.getElementById(`attr-name-${slot}-${line}`)?.focus();
+      return;
+    }
+    const next = { ...working, name: working.name.trim(), attributes: kept };
+    if (position === from && same([next], [initial])) {
+      onClose();
+      return;
+    }
+    onSubmit(next, position);
+  }
+
+  return (
+    <form
+      data-testid="class-sheet"
+      className="flex min-h-0 min-w-0 flex-1 flex-col"
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+          event.preventDefault();
+          submit();
+          return;
+        }
+        closeOnEscape(onClose)(event);
+      }}
+    >
+      {/* The header names the class — as it was when the panel opened, so it
+          still says which class this is mid-rename — and keeps one status
+          line: its facts, or what stops it saving. One line either way, so an
+          error never moves the rows. */}
+      <PaneHeader
+        leading={<span aria-hidden="true" className="size-2.5 shrink-0 rounded-[3px]" style={{ background: swatch }} />}
+        title={adding ? "New class" : `Edit ${shown}`}
+        closeLabel={adding ? "Close, without adding the class" : `Close ${shown}`}
+        onClose={onClose}
+      >
+        <ClassStatusLine
+          id={statusId}
+          slot={slot}
+          adding={adding}
+          nameError={nameError}
+          attributeError={attributeError}
+          nextVersion={nextVersion}
+          meta={meta}
+        />
+      </PaneHeader>
+
+      <div className="vs-scroll-fade-y min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable] md:px-2" data-testid={`class-${slot}`}>
+        {removeError != null && (
+          <Alert variant="destructive" className="mx-4 mt-4 w-auto" data-testid="class-remove-error">
+            <AlertTitle>Could not check this removal</AlertTitle>
+            <AlertDescription>{refusalProse(removeError)}</AlertDescription>
+          </Alert>
+        )}
+        <ClassFields
+          layout="inspector"
+          declared={working}
+          slot={slot}
+          swatch={swatch}
+          hotkey={null}
+          disabled={locked}
+          previous={previous}
+          onChange={setWorking}
+          nameInvalid={nameError !== null}
+          nameDescribedBy={statusId}
+          shortcut={
+            <ClassPositionSelect
+              slot={slot}
+              position={position}
+              from={from}
+              places={places}
+              adding={adding}
+              classes={classes}
+              locked={locked}
+              onChange={setPosition}
+            />
+          }
+          note={adding ? undefined : <ClassUsageNote slot={slot} annotations={annotations} frames={frames} />}
+        />
+      </div>
+
+      <ClassPanelFooter
+        adding={adding}
+        from={from}
+        checking={checking}
+        locked={locked}
+        pendingName={working.name.trim()}
+        onRemove={onRemove}
+        onClose={onClose}
+      />
+    </form>
+  );
+}
+
+/**
+ * What is wrong with the class being edited, if anything.
+ *
+ * An attribute line nobody touched is an abandoned add, and goes quietly on
+ * Save; a nameless one somebody did fill in is a question, and Save asks it.
+ * The kernel refuses a blank attribute name either way, so neither may reach
+ * the draft — where it would fail every preview until removed by hand.
+ */
+function checkClassDraft({
+  working,
+  classes,
+  from,
+  adding,
+  tried,
+}: {
+  readonly working: LabelClassBody;
+  readonly classes: readonly LabelClassBody[];
+  readonly from: number;
+  readonly adding: boolean;
+  readonly tried: boolean;
+}): {
+  readonly clash: LabelClassBody | undefined;
+  readonly kept: AttributeBody[];
+  readonly unnamedAttribute: number;
+  readonly nameError: string | null;
+  readonly attributeError: string | null;
+} {
+  const clash = classes.find((other, at) => (adding || at !== from) && working.name.trim() !== "" && sameName(other.name, working.name));
+  const kept = (working.attributes ?? []).filter((attribute) => !(attribute.name.trim() === "" && untouched(attribute)));
+  const unnamedAttribute = kept.findIndex((attribute) => attribute.name.trim() === "");
+  const nameError =
+    clash !== undefined
+      ? `“${clash.name}” already has this name — names ignore case.`
+      : tried && working.name.trim() === ""
+        ? "Name this class."
+        : null;
+  const attributeError = tried && unnamedAttribute !== -1 ? "Name every attribute, or remove the one without a name." : null;
+  return { clash, kept, unnamedAttribute, nameError, attributeError };
+}
+
+/** The panel header's one status line: the class's facts, or what stops it saving. */
+function ClassStatusLine({
+  id,
+  slot,
+  adding,
+  nameError,
+  attributeError,
+  nextVersion,
+  meta,
+}: {
+  readonly id: string;
+  readonly slot: string;
+  readonly adding: boolean;
+  readonly nameError: string | null;
+  readonly attributeError: string | null;
+  readonly nextVersion: number;
+  readonly meta: string | null;
+}): JSX.Element {
+  const status = nameError ?? attributeError;
+  return (
+    <p
+      id={id}
+      aria-live="polite"
+      data-testid={nameError !== null ? `class-name-error-${slot}` : attributeError !== null ? `class-attribute-error-${slot}` : adding ? undefined : `class-meta-${slot}`}
+      className={cn("truncate text-xs text-muted-foreground tabular-nums", status !== null && "text-destructive")}
+    >
+      {status ?? (adding ? `It joins the draft and ships with version ${nextVersion}.` : meta)}
+    </p>
+  );
+}
+
+/** Who sits at `place` now, so picking a number says whose place it takes. */
+function occupantOf(classes: readonly LabelClassBody[], place: number, from: number, adding: boolean): string {
+  if (place === from) return adding ? "at the end" : "where it is now";
+  const holder = classes[place];
+  return holder === undefined ? "" : holder.name === "" ? "an unnamed class" : holder.name;
+}
+
+/** The class's place in the list, which is its key while annotating. */
+function ClassPositionSelect({
+  slot,
+  position,
+  from,
+  places,
+  adding,
+  classes,
+  locked,
+  onChange,
+}: {
+  readonly slot: string;
+  readonly position: number;
+  readonly from: number;
+  readonly places: number;
+  readonly adding: boolean;
+  readonly classes: readonly LabelClassBody[];
+  readonly locked: boolean;
+  readonly onChange: (position: number) => void;
+}): JSX.Element {
+  return (
+    <Select value={String(position)} onValueChange={(value) => onChange(Number(value))} disabled={locked}>
+      <SelectTrigger
+        id={`class-position-${slot}`}
+        size="sm"
+        title={position < 9 ? `Pressing ${position + 1} picks this class while annotating` : "Only the first nine classes have a key"}
+        data-testid={`class-position-${slot}`}
+        className="w-full"
+      >
+        <SelectValue>
+          {position < 9 ? (
+            <span className="flex items-center gap-2">
+              <Kbd className="tabular-nums">{position + 1}</Kbd>
+              <span className="text-muted-foreground">
+                {position === from ? "picks it while annotating" : `takes ${occupantOf(classes, position, from, adding)}'s place`}
+              </span>
+            </span>
+          ) : (
+            <span className="text-muted-foreground">No key — past the ninth class</span>
+          )}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {Array.from({ length: places }, (_, place) => (
+          <SelectItem key={place} value={String(place)} data-testid={`class-position-${slot}-${place}`}>
+            <Kbd className="tabular-nums">{place + 1}</Kbd>
+            <span className="truncate text-muted-foreground">
+              {occupantOf(classes, place, from, adding)}
+              {place >= 9 && " · no key"}
+            </span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+/** What an edit to an existing class costs, said before the press. */
+function ClassUsageNote({ slot, annotations, frames }: { readonly slot: string; readonly annotations: number; readonly frames: number }): JSX.Element {
+  return (
+    <span className="tabular-nums" data-testid={`class-count-${slot}`}>
+      {annotations === 0
+        ? "Not used yet, so any change here is free."
+        : `${formatCount(annotations)} ${annotations === 1 ? "label" : "labels"} on ${formatCount(frames)} ${frames === 1 ? "frame" : "frames"} — removing the class, or a shape they use, waits until they are cleared.`}
+    </span>
+  );
+}
+
+/** The class panel's foot: Remove for an existing class, the shortcut hint, Cancel and Save. */
+function ClassPanelFooter({
+  adding,
+  from,
+  checking,
+  locked,
+  pendingName,
+  onRemove,
+  onClose,
+}: {
+  readonly adding: boolean;
+  readonly from: number;
+  readonly checking: boolean;
+  readonly locked: boolean;
+  /** The trimmed name being typed, which a class being added is named by on its button. */
+  readonly pendingName: string;
+  readonly onRemove: () => void;
+  readonly onClose: () => void;
+}): JSX.Element {
+  const modifier = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent) ? "⌘" : "Ctrl";
+  return (
+    <footer className="flex shrink-0 items-center gap-2 border-t border-border/70 px-4 py-3 md:px-6">
+      {!adding && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="-ml-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          aria-label={checking ? "Checking class removal" : `Remove class ${from + 1}`}
+          data-testid={`remove-class-${from}`}
+          disabled={locked}
+          onClick={onRemove}
+        >
+          {checking ? (
+            "Checking…"
+          ) : (
+            <>
+              <Trash2 data-icon="inline-start" />
+              Remove
+            </>
+          )}
+        </Button>
+      )}
+      <span className="ml-auto hidden items-center gap-1 pr-1 text-muted-foreground xl:flex" aria-hidden="true">
+        <Kbd>{modifier}</Kbd>
+        <Kbd>↵</Kbd>
+      </span>
+      <Button type="button" variant="outline" size="sm" className="max-xl:ml-auto" data-testid="class-dialog-cancel" onClick={onClose}>
+        Cancel
+      </Button>
+      <Button type="submit" size="sm" data-testid="class-sheet-done" disabled={locked} aria-keyshortcuts="Meta+Enter Control+Enter">
+        {adding ? (pendingName === "" ? "Add to draft" : `Add ${pendingName} to draft`) : "Save"}
+      </Button>
+    </footer>
+  );
+}
+
+/** An attribute line exactly as **Add attribute** made it. */
+function untouched(attribute: AttributeBody): boolean {
+  return (
+    attribute.kind === "string" &&
+    attribute.required !== true &&
+    attribute.default == null &&
+    (attribute.options ?? []).length === 0
+  );
+}
+
+/** A published version's class, read in the class panel's own layout. */
+function PastClassPanel({
+  declared,
+  index,
+  version,
+  annotations,
+  onClose,
 }: {
   readonly declared: LabelClassBody;
   readonly index: number;
+  readonly version: number;
   readonly annotations: number;
-  readonly locked: boolean;
-  readonly checking: boolean;
-  readonly onChange: (next: LabelClassBody) => void;
-  readonly onRemove: () => void;
+  readonly onClose: () => void;
 }): JSX.Element {
-  const swatch = swatchOf(declared, index);
-
+  const close = useRef<HTMLButtonElement>(null);
+  // A read has no field to type in, so focus goes to the way out.
+  useEffect(() => close.current?.focus(), []);
   return (
-    <Card data-testid={`class-${index}`}>
-      <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2">
-          <span
-            aria-hidden="true"
-            className="size-3 shrink-0 rounded-sm"
-            // A schema colour cannot be a utility — Tailwind has never seen it.
-            // `DESIGN.md` names this the one sanctioned inline colour.
-            style={{ background: swatch }}
-          />
-          {declared.name === "" ? (
-            <span className="text-muted-foreground">New class</span>
-          ) : (
-            declared.name
-          )}
-        </CardTitle>
-        <CardAction>
-          <div className="flex items-center gap-2">
-            <span
-              className="text-xs tabular-nums text-muted-foreground"
-              data-testid={`class-count-${index}`}
-            >
-              {formatCount(annotations)} {annotations === 1 ? "annotation" : "annotations"}
-            </span>
-            <Button
-              variant="ghost"
-              size={checking ? "sm" : "icon"}
-              aria-label={checking ? "Checking class removal" : `Remove class ${index + 1}`}
-              data-testid={`remove-class-${index}`}
-              disabled={locked}
-              onClick={onRemove}
-            >
-              {checking ? "Checking…" : <Trash2 className="size-4" aria-hidden="true" />}
-            </Button>
-          </div>
-        </CardAction>
-      </CardHeader>
-      <CardContent>
-        <ClassFields
-          declared={declared}
-          slot={String(index)}
-          swatch={swatch}
-          hotkey={index < 9 ? index + 1 : null}
-          disabled={locked}
-          onChange={onChange}
-        />
-      </CardContent>
-    </Card>
+    <div data-testid="past-class-sheet" className="flex min-h-0 min-w-0 flex-1 flex-col" onKeyDown={closeOnEscape(onClose)}>
+      <PaneHeader
+        leading={<span aria-hidden="true" className="size-2.5 shrink-0 rounded-[3px]" style={{ background: swatchOf(declared, index) }} />}
+        title={declared.name}
+        closeLabel={`Close ${declared.name}`}
+        closeRef={close}
+        onClose={onClose}
+      >
+        <p className="truncate text-xs text-muted-foreground tabular-nums">
+          As version {version} declares it ·{" "}
+          {annotations === 0 ? "not used yet" : `${formatCount(annotations)} ${annotations === 1 ? "annotation" : "annotations"} today`}
+        </p>
+      </PaneHeader>
+      <div className="vs-scroll-fade-y min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable] md:px-2">
+        <ClassReadout declared={declared} index={index} />
+      </div>
+      <footer className="flex shrink-0 items-center justify-end border-t border-border/70 px-4 py-3 md:px-6">
+        <Button type="button" variant="outline" size="sm" onClick={onClose}>
+          Close
+        </Button>
+      </footer>
+    </div>
   );
 }
 
@@ -1295,23 +2048,32 @@ function NarrowingChanges({ diff }: { readonly diff: SchemaDiff | null }): JSX.E
 }
 
 /**
- * The terminal refusal, and where the frames behind it are.
+ * The terminal refusal, with the frames behind it.
+ *
+ * One dialog for the three ways to meet it — a removal the preview refused, a
+ * Save the preview refused, and the "frames in the way" badge that says so
+ * before Save is pressed — so the page needs no section of its own for the
+ * frames: they are one press from every place that mentions them.
  *
  * `diff` is the preview this refusal came from, when it came from one: a publish
- * that was refused without a preview has none, and the dialog then names only
- * the classes. `framesListed` is threaded rather than assumed: the section this
- * points at is offered only to a host that can open a batch, and a dialog naming
- * a section that is not on the page is worse than one naming nothing.
+ * refused without a preview has none, and the dialog then names only the
+ * classes. The frames are listed only for a host that can open a batch.
  */
 function OrphanBlockersDialog({
+  projectId,
+  reason,
   blockers,
   diff,
-  framesListed,
+  proposal,
+  onOpenBatch,
   onClose,
 }: {
+  readonly projectId: string;
+  readonly reason: BlockedReason;
   readonly blockers: readonly ClassCount[] | null;
   readonly diff: SchemaDiff | null;
-  readonly framesListed: boolean;
+  readonly proposal: readonly LabelClassBody[];
+  readonly onOpenBatch: ((batchId: string) => void) | undefined;
   readonly onClose: () => void;
 }): JSX.Element {
   // Radix mints one description id per dialog root, so a dialog with several
@@ -1321,10 +2083,17 @@ function OrphanBlockersDialog({
   const uid = useId();
   const blockerIds = blockers?.map((_blocker, index) => `${uid}-blocker-${index}`) ?? [];
   const noteId = `${uid}-note`;
+  const removing = reason.kind === "remove" ? reason.name : null;
   return (
     <Dialog open={blockers !== null} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent data-testid="orphan-dialog" aria-describedby={[...blockerIds, noteId].join(" ")}>
-        <DialogTitle>Annotations already use these classes</DialogTitle>
+      <DialogContent
+        data-testid="orphan-dialog"
+        className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-xl"
+        aria-describedby={[...blockerIds, noteId].join(" ")}
+      >
+        <DialogTitle className="text-balance">
+          {removing !== null ? `“${removing}” can’t be removed yet` : "This draft can’t be saved yet"}
+        </DialogTitle>
         <NarrowingChanges diff={diff} />
         {blockers?.map((blocker, index) => (
           <DialogDescription key={blocker.label_class} id={blockerIds[index]}>
@@ -1332,12 +2101,16 @@ function OrphanBlockersDialog({
           </DialogDescription>
         ))}
         <DialogDescription id={noteId}>
-          There is no override for this one. Keep the class, or clear those labels first
-          {framesListed ? " — the frames carrying them are under “Frames in the way”, below the editor" : ""}.
+          There is no override for this one.{" "}
+          {removing !== null ? "Keep the class, or clear those labels first" : "Undo the change, or clear those labels first"}
+          {onOpenBatch !== undefined ? " — open a batch below to clear or relabel a frame" : ""}.
         </DialogDescription>
+        {onOpenBatch !== undefined && blockers !== null && (
+          <BlockingFrames projectId={projectId} classes={proposal} onOpenBatch={onOpenBatch} />
+        )}
         <DialogFooter>
           <Button variant="outline" data-testid="orphan-close" onClick={onClose}>
-            Close
+            {removing !== null ? `Keep ${removing}` : "Close"}
           </Button>
         </DialogFooter>
       </DialogContent>

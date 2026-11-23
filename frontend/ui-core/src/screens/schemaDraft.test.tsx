@@ -22,7 +22,7 @@
  */
 
 import { focusManager, QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
@@ -35,9 +35,10 @@ import type { JSX, ReactNode } from "react";
 // `ProjectScreen` — defeating the very thing those two tests assert (that a
 // project switch re-renders, not remounts). See `mountLive` below.
 import { VisionSetDataProvider } from "../data/VisionSetDataProvider";
-import { Toaster } from "@robomous/ui-core";
+import { Toaster, TooltipProvider } from "@robomous/ui-core";
 import { ProjectScreen } from "./ProjectScreen";
 import { harnessClient, renderWithData } from "../testing/dataHarness";
+import { stubResizeObserver } from "../testing/resizeObserver.js";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const OTHER = "33333333-3333-4333-8333-333333333333";
@@ -92,6 +93,9 @@ function draftProjectId(path: string): string | null {
 }
 
 beforeEach(() => {
+  // The class dialog's fields sit in a form element, where a Radix Checkbox measures
+  // itself through `ResizeObserver`; jsdom has none. `afterEach` unstubs it.
+  stubResizeObserver();
   handlers = [];
   schemaReads = 0;
   draftPuts = 0;
@@ -265,16 +269,37 @@ const LIVE_SCOPE = Symbol("schema-draft-live-test");
 
 function mountLive(node: ReactNode): JSX.Element {
   return (
-    <VisionSetDataProvider client={LIVE_CLIENT} scope={LIVE_SCOPE} makeQueryClient={freshClient}>
-      {node}
-    </VisionSetDataProvider>
+    // The host's tooltip provider, as every shell mounts one at its root.
+    <TooltipProvider>
+      <VisionSetDataProvider client={LIVE_CLIENT} scope={LIVE_SCOPE} makeQueryClient={freshClient}>
+        {node}
+      </VisionSetDataProvider>
+    </TooltipProvider>
   );
 }
 
-/** Add a class and name it — the smallest piece of typed work this screen holds. */
+/** The class rows, in order — the buttons that open them, not their detail. */
+function classCards(): HTMLElement[] {
+  const list = screen.queryByTestId("class-list");
+  return list === null ? [] : [...list.querySelectorAll<HTMLElement>('button[data-testid^="class-card-"]')];
+}
+
+/**
+ * Put the open class dialog away with its submit — Save, or Add to draft — the
+ * order a person finishes a class in before pressing Save. Nothing the dialog
+ * holds reaches the draft until then.
+ */
+async function closeSheet(): Promise<void> {
+  if (screen.queryByTestId("class-sheet") === null) return;
+  await userEvent.click(screen.getByTestId("class-sheet-done"));
+  await waitFor(() => expect(screen.queryByTestId("class-sheet")).toBeNull());
+}
+
+/** Add a class and name it, and add it to the draft — the smallest piece of typed work this screen holds. */
 async function draftAClass(name: string): Promise<void> {
   await userEvent.click(screen.getByTestId("add-class"));
   await userEvent.type(screen.getByTestId(`class-name-${CLASSES.length}`), name);
+  await closeSheet();
   expect(screen.getByTestId("schema-status").textContent).toContain("unsaved changes");
 }
 
@@ -340,8 +365,11 @@ describe("the schema draft survives a version published underneath", () => {
     );
 
     // Kept, not merged and not discarded. This is the data loss.
-    expect(screen.getByTestId("schema-editor").textContent).toContain("pedestrian");
-    expect(screen.getByTestId("schema-editor").textContent).not.toContain("traffic light");
+    expect(classCards().map((card) => card.getAttribute("aria-label"))).toContain("Edit pedestrian");
+    expect(classCards().map((card) => card.getAttribute("aria-label"))).not.toContain("Edit traffic light");
+    // The class the new version brought is not in the draft, and the table says
+    // what saving this draft would do to it: it would be gone.
+    expect(screen.getByTestId("class-removed-traffic light")).not.toBeNull();
     expect(screen.getByTestId("schema-status").textContent).toContain("unsaved changes");
     // And it is said out loud, because a draft that no longer describes the
     // active version has to be told so before its next save surprises somebody.
@@ -379,7 +407,7 @@ describe("the schema draft survives a version published underneath", () => {
     expect(screen.getByTestId("schema-status").textContent).not.toContain("unsaved");
   });
 
-  it("re-bases on the version it just published, and empties the message", async () => {
+  it("re-bases on the version it just published", async () => {
     on("POST", /schema\/drafts\/curated\/publish$/, {
       status: 201,
       // A publication since #381 — the version, and the batches it moved. None
@@ -392,7 +420,6 @@ describe("the schema draft survives a version published underneath", () => {
     renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />, { queryClient: freshClient() });
     await screen.findByTestId("schema-editor");
     await draftAClass("pedestrian");
-    await userEvent.type(screen.getByTestId("version-note"), "adds pedestrian");
     activeSchema = { project_id: PROJECT, version: 4, classes: [...CLASSES, PEDESTRIAN] };
 
     await userEvent.click(screen.getByTestId("save-schema"));
@@ -405,9 +432,6 @@ describe("the schema draft survives a version published underneath", () => {
     );
     expect(screen.queryByTestId("schema-moved")).toBeNull();
     expect(screen.getByTestId("schema-status").textContent).not.toContain("unsaved");
-    // A version's message belongs to that version, so the box empties rather than
-    // carrying the last one into the next save.
-    expect(screen.getByTestId("version-note")).toHaveProperty("value", "");
   });
 
   it("is not disturbed by a refetch that finds the same document", async () => {
@@ -562,6 +586,7 @@ describe("saving twice with nothing edited in between", () => {
     // `draftAClass` above — which counts from the fixture's two — cannot be used.
     await userEvent.click(screen.getByTestId("add-class"));
     await userEvent.type(screen.getByTestId("class-name-0"), "pedestrian");
+    await closeSheet();
 
     await userEvent.click(screen.getByTestId("save-schema"));
     await waitFor(
@@ -627,6 +652,7 @@ describe("saving twice with nothing edited in between", () => {
     await userEvent.type(screen.getByTestId("class-name-0"), "pedestrian");
     await userEvent.click(screen.getByTestId("add-attribute-0"));
     await userEvent.type(screen.getByTestId("attr-name-0-0"), "occluded");
+    await closeSheet();
 
     await userEvent.click(screen.getByTestId("save-schema"));
     await waitFor(
@@ -644,8 +670,8 @@ describe("saving twice with nothing edited in between", () => {
    *
    * A set has no order, and the two sides spell it differently: the domain sorts
    * and dedupes, so the active version always reads canonical, while the draft's
-   * copy is whatever order the boxes were ticked in. Untick the shape a class
-   * already had and tick it back and the draft holds `["polygon", "bbox"]` for
+   * copy is whatever order the toggles were pressed in. Unpress the shape a class
+   * already had and press it back and the draft holds `["polygon", "bbox"]` for
    * the contract the server holds as `["bbox", "polygon"]`.
    *
    * Asserted on `dirty` rather than through a save, deliberately: the two clicks
@@ -669,8 +695,11 @@ describe("saving twice with nothing edited in between", () => {
     expect(screen.getByTestId("schema-status").textContent).not.toContain("unsaved");
 
     // Reach an order the active version does not have, changing nothing.
+    await userEvent.click(screen.getByTestId("class-card-0"));
+    await userEvent.click(await screen.findByTestId("class-geometry-0-bbox"));
     await userEvent.click(screen.getByTestId("class-geometry-0-bbox"));
-    await userEvent.click(screen.getByTestId("class-geometry-0-bbox"));
+    // The dialog buffers, so the order only matters once it is saved.
+    await closeSheet();
 
     expect(screen.getByTestId("schema-status").textContent).not.toContain("unsaved");
   });
@@ -685,8 +714,13 @@ describe("saving twice with nothing edited in between", () => {
  * merged, and a publish always carries what was actually typed, including the
  * keystroke still inside the debounce window when Save was pressed.
  */
-describe("one unnamed class at a time", () => {
-  it("refuses a second Add and lands on the class still waiting for a name", async () => {
+describe("a class nobody has named", () => {
+  /**
+   * The dialog adds a class whole, so the draft is never given one without a
+   * name — which is what used to need a refusal on the second Add, and a
+   * message on Save, for a class that sat in the draft while it waited.
+   */
+  it("is refused at the dialog, so the draft never holds one", async () => {
     renderWithData(
       <>
         <ProjectScreen projectId={PROJECT} tab="schema" />
@@ -696,21 +730,61 @@ describe("one unnamed class at a time", () => {
     );
     await screen.findByTestId("schema-editor");
     await userEvent.click(screen.getByTestId("add-class"));
-    await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[0]);
+    await screen.findByTestId(`class-${CLASSES.length}`);
 
-    await userEvent.click(screen.getByTestId("add-class"));
+    await userEvent.click(screen.getByTestId("class-sheet-done"));
 
-    expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(
-      CLASSES.length + 1,
+    expect((await screen.findByTestId(`class-name-error-${CLASSES.length}`)).textContent).toBe("Name this class.");
+    expect(screen.getByTestId("class-sheet")).not.toBeNull();
+    expect(classCards()).toHaveLength(CLASSES.length);
+    expect(screen.getByTestId("schema-status").textContent).not.toContain("unsaved");
+    await userEvent.click(screen.getByTestId("class-dialog-cancel"));
+    await waitFor(() => expect(screen.queryByTestId("class-sheet")).toBeNull());
+
+    // Nothing was added, so there is nothing to refuse a save over either.
+    await userEvent.click(screen.getByTestId("save-schema"));
+    expect(await screen.findByText("No changes to save")).toBeDefined();
+    expect(screen.queryByText("Every class needs a name")).toBeNull();
+    expect(classCards()).toHaveLength(CLASSES.length);
+  });
+});
+
+describe("saving with an unnamed class", () => {
+  /**
+   * The dialog cannot make one, but the shared draft can arrive holding one — a
+   * colleague's unfinished work, written from another surface. Save still
+   * refuses it, and still opens the class that needs the name.
+   */
+  it("refuses the save and opens the class still waiting for a name", async () => {
+    curatedDrafts.set(PROJECT, {
+      project_id: PROJECT,
+      kind: "curated",
+      classes: [...CLASSES, { name: "", geometries: ["bbox"], color: null, attributes: [] }],
+      note: "",
+      based_on: 3,
+      revision: 4,
+      updated_at: "2024-01-01T00:00:00Z",
+    });
+    renderWithData(
+      <>
+        <ProjectScreen projectId={PROJECT} tab="schema" />
+        <Toaster />
+      </>,
+      { queryClient: freshClient() },
     );
-    expect(await screen.findByText("Name the new class first")).toBeDefined();
+    await screen.findByTestId("schema-editor");
+    await screen.findByTestId(`class-card-${CLASSES.length}`);
+    expect(screen.queryByTestId("class-sheet")).toBeNull();
+
+    await userEvent.click(screen.getByTestId("save-schema"));
+
+    expect(await screen.findByText("Every class needs a name")).toBeDefined();
+    // A message about a field nobody is looking at is not enough: the dialog
+    // of the class that needs the name opens.
+    expect(await screen.findByTestId(`class-${CLASSES.length}`)).not.toBeNull();
+    expect(screen.getByTestId("class-sheet")).not.toBeNull();
     expect(screen.getByTestId(`class-name-${CLASSES.length}`)).toHaveProperty("value", "");
-
-    await userEvent.type(screen.getByTestId(`class-name-${CLASSES.length}`), "pedestrian");
-    await userEvent.click(screen.getByTestId("add-class"));
-    expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(
-      CLASSES.length + 2,
-    );
+    expect(sent.some((request) => request.method === "POST" && new URL(request.url).pathname.endsWith("/publish"))).toBe(false);
   });
 });
 
@@ -730,8 +804,10 @@ describe("the draft lives on the server", () => {
     const editor = await screen.findByTestId("schema-editor");
 
     // Nobody typed anything in this render — the class came off the server.
-    expect(editor.textContent).toContain("lane");
-    expect(editor.textContent).not.toContain("vehicle");
+    await waitFor(() => expect(classCards().map((card) => card.getAttribute("aria-label"))).toEqual(["Edit lane"]));
+    // `vehicle` is the active version's and not the draft's: it is listed as
+    // what saving would remove, never as a class the draft holds.
+    expect(within(editor).getByTestId("class-removed-vehicle")).not.toBeNull();
   });
 
   /**
@@ -793,7 +869,9 @@ describe("the draft lives on the server", () => {
 
     // The next keystroke's autosave now names a revision the server no
     // longer holds.
-    await userEvent.type(screen.getByTestId(`class-name-${CLASSES.length}`), "!");
+    await userEvent.click(screen.getByTestId(`class-card-${CLASSES.length}`));
+    await userEvent.type(await screen.findByTestId(`class-name-${CLASSES.length}`), "!");
+    await closeSheet();
     await screen.findByTestId("schema-stale-draft", {}, { timeout: 2000 });
 
     // Kept, not merged and not discarded — the same rule a version arriving
@@ -802,16 +880,21 @@ describe("the draft lives on the server", () => {
     expect(screen.getByTestId("schema-editor").textContent).not.toContain("cyclist");
   });
 
-  it("autosaves after the debounce and not on every keystroke", async () => {
+  it("autosaves after the debounce, once the class is added and not on every keystroke", async () => {
     renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />, { queryClient: freshClient() });
     await screen.findByTestId("schema-editor");
     await userEvent.click(screen.getByTestId("add-class"));
     await userEvent.type(screen.getByTestId(`class-name-${CLASSES.length}`), "cat");
 
+    // The dialog buffers: three keystrokes change nothing the draft holds, so
+    // there is nothing to write however long it is left.
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(draftPuts).toBe(0);
+
+    await userEvent.click(screen.getByTestId("class-sheet-done"));
     await waitFor(() => expect(draftPuts).toBe(1), { timeout: 2000 });
-    // Held a moment longer: three keystrokes each reset the timer, and a
-    // debounce that fired per keystroke rather than once would have written
-    // again by now.
+    // Held a moment longer: a debounce that fired more than once for one edit
+    // would have written again by now.
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(draftPuts).toBe(1);
   });

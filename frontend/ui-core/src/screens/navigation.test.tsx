@@ -20,7 +20,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BackLink } from "../patterns/BackLink";
 import { parentLabel } from "../patterns/parentLabel";
-import { GalleryScreen } from "./GalleryScreen";
 import { IngestScreen } from "./IngestScreen";
 import { ProjectScreen } from "./ProjectScreen";
 import { renderWithData } from "../testing/dataHarness";
@@ -154,15 +153,6 @@ const SUBVIEWS = [
     render: (nav?: () => void) =>
       <IngestScreen projectId={PROJECT} {...(nav === undefined ? {} : { onBack: nav })} />,
   },
-  {
-    name: "the gallery",
-    // The section this batch belongs to, not the project: landing on Overview
-    // after leaving a batch is landing somewhere you were not.
-    parent: "Batches",
-    sentinel: "gallery",
-    render: (nav?: () => void) =>
-      <GalleryScreen projectId={PROJECT} batchId={BATCH} {...(nav === undefined ? {} : { onBack: nav })} />,
-  },
 ] as const;
 
 describe.each(SUBVIEWS)("$name", ({ parent, sentinel, render: renderScreen }) => {
@@ -199,15 +189,5 @@ describe("a section has no way out of its own", () => {
     renderWithData(<ProjectScreen projectId={PROJECT} />);
     await screen.findByTestId("project-screen");
     expect(screen.queryByTestId("back-link")).toBeNull();
-  });
-});
-
-describe("the gallery says which batch you are looking at", () => {
-  it("names the batch, which it never did before", async () => {
-    // The one page in the product with no header: a grid of thumbnails and a
-    // count, legible only if you remembered which tile you clicked.
-    renderWithData(<GalleryScreen projectId={PROJECT} batchId={BATCH} />);
-    const title = await screen.findByTestId("batch-title");
-    await waitFor(() => expect(title.textContent).toBe("drive-01"));
   });
 });

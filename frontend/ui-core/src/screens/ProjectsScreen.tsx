@@ -1,5 +1,17 @@
 /**
- * The project list, and the two things you can do to one from outside it.
+ * The project list — a ledger: one dense row per project, and every number that
+ * tells projects apart in its own sortable, right-aligned, tabular column.
+ *
+ * ## The numbers come from the server, in the same request as the list
+ *
+ * Each row carries a `digest` the kernel computes for the whole workspace in one
+ * pass (`ProjectService.digests`): images, how much of it is annotated, the
+ * active schema's class count, open work, what is in the dataset and its latest
+ * release, when anything last happened, and the project's `stage`. Nothing here
+ * derives a stage from batch states — the stage is the kernel's description of
+ * where a project is, and this screen only says it in words and a status colour.
+ * It is a description, never a capability: no control on this page is gated on
+ * it.
  *
  * ## Why this takes `onOpenProject` instead of importing a router
  *
@@ -7,7 +19,7 @@
  * routing (the enterprise rule, from the other side): a screen that reached for
  * `useNavigate` would only work inside a `react-router` tree, which is a
  * dependency the future enterprise UI has no reason to share. So navigation
- * arrives as a callback and leaves as one, and the app turns it into a `<Link>`.
+ * arrives as a callback and leaves as one.
  *
  * ## Delete asks twice, and the two questions are not the same question
  *
@@ -24,181 +36,267 @@
  * rather than disk.
  */
 
-import { ArrowDown, ArrowUp, FolderPlus, Trash2 } from "lucide-react";
-import { useState, type FormEvent, type JSX } from "react";
+import { ArrowDown, ArrowUp, ArrowUpRight, CircleCheck, CircleCheckBig, CircleDashed, Clock, FolderOpen, Folders, Images, MoreHorizontal, PackageCheck, Pencil, Plus, Tags, Trash2 } from "lucide-react";
+import { useRef, useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
 import { refusalProse } from "../data/refusals";
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Textarea, Label, FieldDescription, FieldError, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
-import { formatWhen } from "../lib/format";
+import {
+  Badge,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  Input,
+  Textarea,
+  Label,
+  FieldDescription,
+  FieldError,
+  SearchInput,
+  cn,
+} from "@robomous/ui-core";
+import { formatCount, formatWhen } from "../lib/format";
+import { BODY_ROW, ColumnHeader, ListGrid, ListPage, type ListColumn } from "../patterns/ListPage";
+import { PageStatus } from "../patterns/PageStatus";
+import { usePagination } from "../patterns/pagination";
+import { clickedRowId, walkRowButtons } from "../patterns/rowDelegation";
+import { TableFooter } from "../patterns/TablePager";
 import { AssetThumbnail, ThumbnailPlaceholder } from "./AssetThumbnail";
-import { useCreateProject, useDeleteProject, useProjects, type Project } from "./queries";
+import { RenameProjectDialog } from "./ProjectFrame";
+import { lastMoved, leftToAnnotate, orderedProjects, type Direction, type ProjectSortKey } from "./projectOrder";
+import { useCreateProject, useDeleteProject, useProjects, type Project, type ProjectListItem, type ProjectStage } from "./queries";
 
 export interface ProjectsScreenProps {
   /** The app turns this into a route change. See the note above. */
   readonly onOpenProject: (projectId: string) => void;
 }
 
-type CreatedOrder = "newest" | "oldest";
+// ── Ordering ──────────────────────────────────────────────────────────────
+
+/** The first click on a column sorts the way that column is usually read. */
+const FIRST_DIRECTION: Record<ProjectSortKey, Direction> = {
+  name: "ascending",
+  images: "descending",
+  annotated: "descending",
+  classes: "descending",
+  activity: "descending",
+};
+
+function matches(project: ProjectListItem, query: string): boolean {
+  const q = query.trim().toLocaleLowerCase();
+  if (q === "") return true;
+  return project.name.toLocaleLowerCase().includes(q) || (project.description ?? "").toLocaleLowerCase().includes(q);
+}
+
+// ── Stage, in words and a status family ───────────────────────────────────
 
 /**
- * The list in the chosen order. The wire's order is creation order, oldest
- * first, so the default view inverts it. A project the workspace never dated
- * goes last in both directions, in the order the wire gave it: a missing date
- * is a missing date, never a guessed position among the dated rows.
+ * One label and one status family per stage, on the product-wide mapping
+ * (`docs/content/ui/product-principles.md` → *Status semantics*): `warning` only
+ * for what waits on a person to judge, `info` for work in flight, `success` for
+ * the settled facts, neutral for nothing-yet and for a decision with nothing
+ * wrong. The word always rides with the colour.
  */
-function orderedByCreation(
-  items: readonly Project[],
-  order: CreatedOrder,
-): readonly Project[] {
-  const dated = items.filter((project) => project.created_at !== null);
-  const undated = items.filter((project) => project.created_at === null);
-  const sign = order === "newest" ? -1 : 1;
-  dated.sort(
-    (a, b) => sign * (Date.parse(a.created_at ?? "") - Date.parse(b.created_at ?? "")),
-  );
-  return [...dated, ...undated];
+const STAGE: Record<ProjectStage, { label: string; variant: "warning" | "info" | "success" | "quiet" }> = {
+  in_review: { label: "In review", variant: "warning" },
+  annotating: { label: "Annotating", variant: "info" },
+  to_promote: { label: "Ready to promote", variant: "success" },
+  unreleased: { label: "Not released", variant: "quiet" },
+  up_to_date: { label: "Up to date", variant: "success" },
+  not_started: { label: "Not started", variant: "quiet" },
+  empty: { label: "No images", variant: "quiet" },
+};
+
+/**
+ * The stage's detail line: the size of the thing waiting on a reviewer, where
+ * there is one. Not for `annotating` — what is left to annotate is the
+ * Annotated column's whole job, and saying it twice in one row is noise.
+ */
+function stageDetail(p: ProjectListItem): string | null {
+  const d = p.digest;
+  return d.stage === "in_review" ? `${formatCount(d.frames_in_review)} to review` : null;
 }
+
+// ── The screen ────────────────────────────────────────────────────────────
+
+const SORT_LABEL: Record<ProjectSortKey, string> = {
+  name: "Name",
+  images: "Images",
+  annotated: "Annotated",
+  classes: "Classes",
+  activity: "Activity",
+};
+
+/**
+ * The grid's columns, on two widths and no others: `FIGURE` for a column that
+ * holds a short figure — a count, a tag, a date — and `PHRASE` for one that
+ * holds a few words — what is left to annotate, the stage and its detail. Equal
+ * columns read as a rhythm; a column a few pixels wider than its neighbour
+ * reads as a mistake. The project column takes what the others leave (they take
+ * 864px), so the grid needs 1100px before it scrolls inside its frame.
+ */
+const FIGURE = "w-28";
+const PHRASE = "w-44";
+const COLUMNS: readonly ListColumn[] = [
+  { key: "project" },
+  { key: "images", width: FIGURE },
+  { key: "annotated", width: PHRASE },
+  { key: "classes", width: FIGURE },
+  { key: "status", width: PHRASE },
+  { key: "release", width: FIGURE },
+  { key: "activity", width: FIGURE },
+  { key: "actions", width: "w-16" },
+];
 
 export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Element {
   const projects = useProjects();
   const [creating, setCreating] = useState(false);
   const [doomed, setDoomed] = useState<Project | null>(null);
-  const [order, setOrder] = useState<CreatedOrder>("newest");
-  const OrderIcon = order === "newest" ? ArrowDown : ArrowUp;
+  const [renaming, setRenaming] = useState<Project | null>(null);
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<{ key: ProjectSortKey; direction: Direction }>({
+    key: "activity",
+    direction: "descending",
+  });
+
+  function sortBy(key: ProjectSortKey): void {
+    setSort((current) =>
+      current.key === key
+        ? { key, direction: current.direction === "descending" ? "ascending" : "descending" }
+        : { key, direction: FIRST_DIRECTION[key] },
+    );
+  }
+  const sortOf = (key: ProjectSortKey): "ascending" | "descending" | "none" => (sort.key === key ? sort.direction : "none");
+
+  const items = projects.data?.items ?? [];
+  const searching = query.trim() !== "";
+  const found = searching ? items.filter((p) => matches(p, query)) : items;
+  // In the order the table shows, so a page is a slice of what somebody sees.
+  const ordered = orderedProjects(found, sort.key, sort.direction);
+  // The same pager as every full-page table; a search or a new order starts it over.
+  const paging = usePagination(ordered, { pageSize: 25, resetKey: `${query.trim()}|${sort.key}|${sort.direction}` });
+  const frame = useRef<HTMLDivElement>(null);
 
   return (
-    <div className="flex flex-col gap-6" data-testid="projects-screen">
-      <header className="flex items-end justify-between gap-4 border-b border-border pb-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
-          <p className="text-xs text-muted-foreground">
-            A project owns a schema, its batches and one dataset.
-          </p>
-        </div>
-        <Button variant="default" data-testid="new-project" onClick={() => setCreating(true)}>
-          <FolderPlus aria-hidden="true" />
-          New project
-        </Button>
-      </header>
-
+    <ListPage
+      testId="projects-screen"
+      icon={Folders}
+      title="Projects"
+      toolbar={
+        <>
+          <SearchInput
+            value={query}
+            onValueChange={setQuery}
+            shortcut
+            placeholder="Search projects"
+            aria-label="Search projects"
+            id="projects-search"
+            data-testid="projects-search"
+            className="w-64 max-w-full"
+          />
+          {/* The order, then the page's one action, at the end of the bar that
+              shapes the list: "New" on the page that names the noun, its full
+              name for whoever cannot see the page's title. */}
+          <div className="ml-auto flex items-center gap-2">
+            <SortMenu sort={sort} onSort={setSort} />
+            <Button size="sm" aria-label="New project" data-testid="new-project" onClick={() => setCreating(true)}>
+              <Plus aria-hidden="true" />
+              New
+            </Button>
+          </div>
+        </>
+      }
+    >
+      {projects.isSuccess && items.length > 0 && <ProjectsStatus shown={found} />}
       <Async
         query={projects}
         loadingRows={4}
         empty={{
+          art: "projects",
           title: "No projects yet",
-          description: "A project is where a schema, its batches and its dataset live.",
-          // `secondary`, not `primary`: the header's "New project" is always on
-          // screen and is the same label calling the same handler, so on an empty
-          // list the two used to render as a pair of identical filled buttons.
-          // One filled action per view — and the header's is the one that
-          // survives when the list fills up.
-          action: (
-            <Button variant="outline" onClick={() => setCreating(true)}>
-              New project
-            </Button>
-          ),
+          // No button of its own: the header's "New" is on screen, the
+          // same label calling the same handler. One way to make a project.
+          description: "A project holds a schema, its batches and one dataset. Start one with New.",
         }}
       >
-        {(page) => (
-          <Table data-testid="projects-table">
-            <TableHeader>
-              <TableRow>
-                {/* Unlabeled like the actions column: the picture explains
-                    itself, and a "Preview" caption would label the only cell a
-                    reader never needs help with. */}
-                <TableHead className="w-20" />
-                <TableHead>Name</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead
-                  className="w-32"
-                  aria-sort={order === "newest" ? "descending" : "ascending"}
-                >
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="-ml-2 text-xs font-medium text-muted-foreground"
-                    data-testid="sort-created"
-                    title={order === "newest" ? "Newest first" : "Oldest first"}
-                    onClick={() => setOrder(order === "newest" ? "oldest" : "newest")}
-                  >
-                    Created
-                    <OrderIcon aria-hidden="true" />
-                  </Button>
-                </TableHead>
-                <TableHead className="w-24" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {orderedByCreation(page.items, order).map((project) => (
-                <TableRow key={project.id} data-testid={`project-${project.name}`}>
-                  <TableCell>
-                    {/* Decorative either way (`alt=""`): the name link beside it
-                        is the row's voice, and a screen reader should hear each
-                        project once. */}
-                    {project.thumbnail_asset_id === null ? (
-                      <ThumbnailPlaceholder
-                        title="No images in this project yet."
-                        alt=""
-                        className="size-12 rounded-md border border-border"
-                      />
-                    ) : (
-                      <AssetThumbnail
-                        projectId={project.id}
-                        assetId={project.thumbnail_asset_id}
-                        thumbnailHash={project.thumbnail_hash}
-                        alt=""
-                        className="size-12 rounded-md border border-border object-cover"
-                      />
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      variant="link"
-                      className="h-auto p-0"
-                      data-testid={`open-${project.name}`}
-                      onClick={() => onOpenProject(project.id)}
-                    >
-                      {project.name}
-                    </Button>
-                  </TableCell>
-                  {/* Clamped, because the column is narrow and a description is
-                      free text: unclamped, a long one wraps a word-fragment per
-                      line and takes the row to several hundred pixels, which at a
-                      narrow width is a tall empty row with its text scrolled out
-                      of sight. Two lines here, and the project's own page carries
-                      the whole of it. */}
-                  <TableCell className="max-w-64 text-muted-foreground">
-                    {project.description === null || project.description === undefined ? (
-                      <span className="text-xs">—</span>
-                    ) : (
-                      <span className="line-clamp-2" title={project.description}>
-                        {project.description}
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {project.created_at === null ? (
-                      "—"
-                    ) : (
-                      <time dateTime={project.created_at}>{formatWhen(project.created_at)}</time>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Delete ${project.name}`}
-                      data-testid={`delete-${project.name}`}
-                      onClick={() => setDoomed(project)}
-                    >
-                      <Trash2 aria-hidden="true" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        {() => (
+          <>
+            {/* A wrapper that only catches the rows' bubbled clicks and arrows:
+                the interactive things are the rows' own name buttons, so it
+                carries no semantics of its own. */}
+            <div
+              className="flex min-h-0 flex-1 flex-col"
+              role="presentation"
+              onKeyDown={walkRowButtons}
+              onClick={(event) => {
+                const id = clickedRowId(event);
+                if (id !== null) onOpenProject(id);
+              }}
+            >
+              <ListGrid
+                columns={COLUMNS}
+                minWidth="min-w-[1100px]"
+                label="Projects"
+                testId="projects-table"
+                frameRef={frame}
+                head={
+                  <>
+                    <ColumnHeader icon={FolderOpen} label="Project" sort={sortOf("name")} onSort={() => sortBy("name")} testId="sort-name" />
+                    <ColumnHeader icon={Images} label="Images" align="right" sort={sortOf("images")} onSort={() => sortBy("images")} testId="sort-images" />
+                    <ColumnHeader icon={CircleCheckBig} label="Annotated" sort={sortOf("annotated")} onSort={() => sortBy("annotated")} testId="sort-annotated" />
+                    <ColumnHeader icon={Tags} label="Classes" align="right" sort={sortOf("classes")} onSort={() => sortBy("classes")} testId="sort-classes" />
+                    <ColumnHeader icon={CircleDashed} label="Status" />
+                    <ColumnHeader icon={PackageCheck} label="Release" />
+                    <ColumnHeader icon={Clock} label="Activity" align="right" sort={sortOf("activity")} onSort={() => sortBy("activity")} testId="sort-activity" />
+                    <ColumnHeader label="Actions" hidden />
+                  </>
+                }
+              >
+                <tbody>
+                  {paging.slice.map((project) => (
+                    <Row
+                      key={project.id}
+                      project={project}
+                      onOpen={() => onOpenProject(project.id)}
+                      onRename={() => setRenaming(project)}
+                      onDelete={() => setDoomed(project)}
+                    />
+                  ))}
+                  {ordered.length === 0 && (
+                    <tr className={BODY_ROW}>
+                      <td colSpan={COLUMNS.length} data-testid="projects-no-match" className="h-24 text-center text-muted-foreground">
+                        No project matches <span className="font-medium text-foreground">“{query.trim()}”</span>.{" "}
+                        <button
+                          type="button"
+                          data-testid="projects-clear-search"
+                          onClick={() => {
+                            setQuery("");
+                            // The button leaves with the empty result; focus goes
+                            // back to the field it cleared rather than to the page.
+                            document.getElementById("projects-search")?.focus();
+                          }}
+                          className="rounded-sm font-medium text-foreground underline decoration-foreground/30 underline-offset-4 outline-none hover:decoration-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                        >
+                          Clear search
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </ListGrid>
+            </div>
+            {/* Under the table, outside the rows' delegating wrapper. */}
+            <TableFooter pagination={paging} frameRef={frame} noun="project" unfiltered={items.length} />
+          </>
         )}
       </Async>
 
@@ -208,7 +306,297 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
         onCreated={onOpenProject}
       />
       <DeleteProjectDialog project={doomed} onClose={() => setDoomed(null)} />
-    </div>
+      {renaming !== null && (
+        <RenameProjectDialog
+          projectId={renaming.id}
+          current={renaming.name}
+          open
+          onClose={() => setRenaming(null)}
+        />
+      )}
+    </ListPage>
+  );
+}
+
+/**
+ * What the list on screen adds up to, in the workbench's status bar — said
+ * there and not on the page (`PageStatus`): the images in it and how much is
+ * left to annotate, and how many projects are waiting on a person to review,
+ * the one stage that asks something of whoever is reading. Every figure is over
+ * every project the search leaves, not the page of them on screen. How many
+ * projects there are, and of how many while a search narrows them (never hiding
+ * what it left out, `product-principles.md`), is the footer's to say
+ * (`TableFooter`): said once.
+ */
+function ProjectsStatus({ shown }: { readonly shown: readonly ProjectListItem[] }): JSX.Element {
+  const images = shown.reduce((sum, p) => sum + p.digest.asset_count, 0);
+  // The same count the Annotated column says per row, so the bar and the rows
+  // never disagree about whether there is work left.
+  const left = shown.reduce((sum, p) => sum + leftToAnnotate(p.digest), 0);
+  const review = shown.filter((p) => p.digest.stage === "in_review").length;
+  return (
+    <PageStatus>
+      {images > 0 && (
+        <span data-testid="projects-images">
+          {formatCount(images)} {images === 1 ? "image" : "images"} · {left === 0 ? "all annotated" : `${formatCount(left)} to annotate`}
+        </span>
+      )}
+      {review > 0 && (
+        <span data-testid="projects-review" className="text-foreground">
+          {formatCount(review)} in review
+        </span>
+      )}
+    </PageStatus>
+  );
+}
+
+/**
+ * The order the grid is in, said in the toolbar — "Sorted by Activity" — and
+ * changed there too: a key, then which way. The column headers sort the same
+ * state, so the two never disagree.
+ */
+function SortMenu({
+  sort,
+  onSort,
+}: {
+  readonly sort: { key: ProjectSortKey; direction: Direction };
+  readonly onSort: (next: { key: ProjectSortKey; direction: Direction }) => void;
+}): JSX.Element {
+  const Arrow = sort.direction === "ascending" ? ArrowUp : ArrowDown;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" className="font-normal" data-testid="projects-sort">
+          <Arrow aria-hidden="true" />
+          <span className="text-muted-foreground">Sorted by</span>
+          <span className="font-medium">{SORT_LABEL[sort.key]}</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuRadioGroup value={sort.key} onValueChange={(key) => onSort({ key: key as ProjectSortKey, direction: FIRST_DIRECTION[key as ProjectSortKey] })}>
+          {(Object.keys(SORT_LABEL) as ProjectSortKey[]).map((key) => (
+            <DropdownMenuRadioItem key={key} value={key} data-testid={`projects-sort-${key}`}>
+              {SORT_LABEL[key]}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuRadioGroup value={sort.direction} onValueChange={(direction) => onSort({ key: sort.key, direction: direction as Direction })}>
+          <DropdownMenuRadioItem value="ascending">Ascending</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="descending">Descending</DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/**
+ * How much of a project is left to annotate — the work, not the work done,
+ * because the question this list answers is usually "where is there work?".
+ *
+ * A 14px ring for the glance and the count in words: "248 to annotate". A
+ * finished project trades both for a check and "All annotated"; a project with
+ * no images gets the dash every other column uses, since its Status already
+ * says *No images*.
+ *
+ * **Left means left for a person.** Two counts can say it and neither is
+ * whole on its own: images with no annotation at all, and `frames_left` —
+ * frames in active batches an annotator still has to do, which counts a
+ * model's pre-label nobody has judged (and that image already *has* an
+ * annotation). The cell says the larger, so a project of pre-labels nobody has
+ * read never reads "All annotated" beside a Status of *Annotating*.
+ *
+ * **Nothing in it moves.** The ring is a fixed 14px whatever it shows, the
+ * count is in tabular figures, and the arc is clamped: a project with anything
+ * left never draws a closed ring (at 97% a true arc would read as done), and
+ * one with anything annotated never draws an empty one.
+ */
+function RemainingCell({ digest }: { readonly digest: ProjectListItem["digest"] }): JSX.Element {
+  const total = digest.asset_count;
+  if (total === 0) return <span className="text-muted-foreground">—</span>;
+  const done = Math.min(digest.annotated_asset_count, total);
+  const left = leftToAnnotate(digest);
+  if (left === 0) {
+    return (
+      <span className="flex items-center gap-2 text-muted-foreground" data-testid="remaining-cell">
+        <CircleCheck aria-hidden="true" className="size-3.5 shrink-0 text-success" strokeWidth={2} />
+        All annotated
+      </span>
+    );
+  }
+  // Floored, so a project one image short never says 100%.
+  const share = Math.floor((done / total) * 100);
+  return (
+    <span className="flex min-w-0 items-center gap-2" data-testid="remaining-cell" title={`${share}% of images annotated`}>
+      {/* The ring is the images' share; the clamp keeps it open while any
+          frame is still waiting, whichever count that is. */}
+      <ProgressRing fraction={done / total} />
+      <span className="truncate tabular-nums">
+        {formatCount(left)}
+        <span className="text-muted-foreground"> to annotate</span>
+      </span>
+    </span>
+  );
+}
+
+const RING_RADIUS = 5.25;
+const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
+
+/** The share annotated as an arc, from twelve o'clock, clockwise. */
+function ProgressRing({ fraction }: { readonly fraction: number }): JSX.Element {
+  // Clamped so the glance never lies: open while anything is left, visible once
+  // anything is done.
+  const shown = fraction <= 0 ? 0 : Math.min(Math.max(fraction, 0.06), 0.92);
+  return (
+    <svg aria-hidden="true" viewBox="0 0 14 14" className="size-3.5 shrink-0 -rotate-90" data-testid="remaining-ring">
+      <circle cx="7" cy="7" r={RING_RADIUS} fill="none" strokeWidth="2" className="stroke-muted-foreground/25" />
+      {shown > 0 && (
+        <circle cx="7" cy="7" r={RING_RADIUS} fill="none" strokeWidth="2" className="stroke-foreground/80" strokeDasharray={`${shown * RING_LENGTH} ${RING_LENGTH}`} />
+      )}
+    </svg>
+  );
+}
+
+function Row({
+  project,
+  onOpen,
+  onRename,
+  onDelete,
+}: {
+  readonly project: ProjectListItem;
+  readonly onOpen: () => void;
+  readonly onRename: () => void;
+  readonly onDelete: () => void;
+}): JSX.Element {
+  const d = project.digest;
+  const stage = STAGE[d.stage];
+  const detail = stageDetail(project);
+  const moved = lastMoved(project);
+
+  // The whole row opens the project for a pointer — the table body takes that
+  // click (`clickedRowId`) — and the name is the row's one real control for the
+  // keyboard and a screen reader, so each project is heard once. The menu's cell
+  // says it is its own (`data-row-action`).
+  return (
+    <tr
+      data-testid={`project-${project.name}`}
+      data-row-id={project.id}
+      // No transition on the hover fill: the pointer sweeps this list.
+      className={cn(BODY_ROW, "group cursor-pointer hover:bg-muted/40")}
+    >
+      <td>
+        <div className="flex min-w-0 items-center gap-2.5">
+          {project.thumbnail_asset_id === null ? (
+            <ThumbnailPlaceholder
+              title="No images in this project yet."
+              alt=""
+              className="size-6 shrink-0 rounded-[5px] outline-1 -outline-offset-1 outline-foreground/10"
+            />
+          ) : (
+            <AssetThumbnail
+              projectId={project.id}
+              assetId={project.thumbnail_asset_id}
+              thumbnailHash={project.thumbnail_hash}
+              alt=""
+              className="size-6 shrink-0 rounded-[5px] object-cover outline-1 -outline-offset-1 outline-foreground/10"
+            />
+          )}
+          <button
+            type="button"
+            data-testid={`open-${project.name}`}
+            data-row-open={project.id}
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpen();
+            }}
+            // A link's hairline under the name — it goes somewhere — and the
+            // arrow says where, once the row is pointed at.
+            className="flex min-w-0 shrink items-center gap-1 rounded-sm text-left font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span className="truncate underline decoration-foreground/20 underline-offset-[5px] group-hover:decoration-foreground/50">{project.name}</span>
+            <ArrowUpRight aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100" />
+          </button>
+          {/* One line: the row's height is fixed so the columns stay a grid, and
+              the project's own page carries the whole of it. Absent rather than
+              "No description": the same placeholder on every row is noise. */}
+          {project.description !== null && project.description !== "" && (
+            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={project.description}>
+              {project.description}
+            </span>
+          )}
+        </div>
+      </td>
+      <td className="text-right tabular-nums">{d.asset_count === 0 ? "—" : formatCount(d.asset_count)}</td>
+      <td>
+        <RemainingCell digest={d} />
+      </td>
+      <td className="text-right tabular-nums">{d.class_count === 0 ? "—" : formatCount(d.class_count)}</td>
+      <td>
+        <div className="flex min-w-0 items-center gap-2">
+          <Badge variant={stage.variant} data-testid="project-stage">
+            {stage.label}
+          </Badge>
+          {detail !== null && <span className="truncate text-xs text-muted-foreground tabular-nums">{detail}</span>}
+        </div>
+      </td>
+      {/* The tag and nothing else. Its image count was the Images column's
+          number again on most rows, and "no release" was the Status column's
+          word again — the status already says Not released or Ready to promote. */}
+      <td className="text-xs tabular-nums">
+        {d.latest_release !== null ? (
+          <span
+            className="block truncate font-mono font-medium"
+            title={`${formatCount(d.latest_release.asset_count)} images · published ${formatWhen(d.latest_release.published_at)}`}
+          >
+            {d.latest_release.tag}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </td>
+      <td className="text-right text-xs text-muted-foreground tabular-nums">
+        {moved === null ? "—" : <time dateTime={moved}>{formatWhen(moved)}</time>}
+      </td>
+      <td className="text-right" data-row-action="">
+        <RowMenu project={project} onRename={onRename} onDelete={onDelete} />
+      </td>
+    </tr>
+  );
+}
+
+function RowMenu({
+  project,
+  onRename,
+  onDelete,
+}: {
+  readonly project: ProjectListItem;
+  readonly onRename: () => void;
+  readonly onDelete: () => void;
+}): JSX.Element {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`More actions for ${project.name}`}
+          data-testid={`menu-${project.name}`}
+        >
+          <MoreHorizontal aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem data-testid={`rename-${project.name}`} onSelect={onRename}>
+          <Pencil aria-hidden="true" />
+          Rename
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" data-testid={`delete-${project.name}`} onSelect={onDelete}>
+          <Trash2 aria-hidden="true" />
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

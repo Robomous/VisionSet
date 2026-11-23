@@ -1,6 +1,7 @@
 /**
- * The Batches tab's project-wide launch: offered off the wire, the checklist
- * defaults to what has work, and the POST carries exactly what was checked.
+ * The Overview's project-wide auto-label, opened from the line over the Batches
+ * table (`AutoLabel.tsx`): offered off the wire, the checklist defaults to what
+ * has work, and the POST carries exactly what was checked.
  *
  * Reuses the fetch-stub harness `preLabel.test.tsx` established — `on`, `mount`,
  * a `handlers` array consulted in registration order — copied rather than shared,
@@ -11,7 +12,8 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import { BatchesScreen } from "./BatchesScreen";
+import { clearPrefs } from "../data/prefs";
+import { OverviewPanel } from "./OverviewPanel";
 import { renderWithData } from "../testing/dataHarness";
 import { batchActions } from "../testing/wire.fixtures.js";
 import type { Connection } from "../data/inferenceQueries";
@@ -51,6 +53,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   globalThis.sessionStorage.clear();
+  // "Not now" is remembered per project; no test inherits the last one's.
+  clearPrefs();
 });
 
 function on(method: string, pattern: RegExp, answer: Answer): void {
@@ -132,6 +136,19 @@ function planFor(request: Request): Answer {
 }
 
 function stubBatches(items: unknown[], connections: readonly Connection[] = [connectionOf()]): void {
+  // The Overview draws the batches panel only for a project that has images.
+  on("GET", /\/stats$/, {
+    status: 200,
+    body: {
+      project_id: PROJECT,
+      asset_count: 8,
+      annotated_asset_count: 0,
+      annotation_count: 0,
+      class_count: 0,
+      annotated_pct: 0,
+      classes: [],
+    },
+  });
   on("GET", new RegExp(`/projects/${PROJECT}/batches$`), {
     status: 200,
     body: { items, total: items.length },
@@ -148,7 +165,7 @@ function stubBatches(items: unknown[], connections: readonly Connection[] = [con
 }
 
 function renderBatches(): void {
-  renderWithData(<BatchesScreen projectId={PROJECT} onOpenBatch={() => undefined} />);
+  renderWithData(<OverviewPanel projectId={PROJECT} />);
 }
 
 /** A full `BackgroundJobOut`, the shape every `PreLabelFanOutItemOut.job` carries. */
@@ -179,8 +196,10 @@ function textOf(element: HTMLElement): string {
 it("offers the project launch only when some batch declares pre_label", async () => {
   stubBatches([batch(DRAFT, "draft-01", "draft", 0)]);
   renderBatches();
-  await screen.findByTestId("batches-table");
+  await screen.findByTestId("overview-batches");
   expect(screen.queryByTestId("project-prelabel")).toBeNull();
+  // The line stays closed: no row, nothing to reach.
+  expect(screen.getByTestId("prelabel-offer").dataset.state).toBe("closed");
 });
 
 it("checks every open batch with untouched assets by default and posts exactly those", async () => {
@@ -220,7 +239,7 @@ it("checks every open batch with untouched assets by default and posts exactly t
     },
   });
   renderBatches();
-  await userEvent.click(await screen.findByTestId("project-prelabel"));
+  await userEvent.click(await screen.findByTestId("prelabel-offer-start"));
   const dialog = await screen.findByTestId("project-prelabel-dialog");
   expect(dialog).toBeTruthy();
   expect((screen.getByTestId(`prelabel-pick-${OPEN}`) as HTMLInputElement).checked).toBe(true);
@@ -229,6 +248,9 @@ it("checks every open batch with untouched assets by default and posts exactly t
   );
   expect(screen.queryByTestId(`prelabel-pick-${DRAFT}`)).toBeNull();
   expect(screen.getByText(/8 untouched/)).toBeTruthy();
+  // Titled with the verb, and Start says what it will reach.
+  expect(within(dialog).getByText("Auto-label batches")).toBeTruthy();
+  await waitFor(() => expect(textOf(screen.getByTestId("project-prelabel-start"))).toBe("Auto-label · 8 images"));
 
   await userEvent.click(screen.getByTestId("project-prelabel-start"));
 
@@ -250,7 +272,7 @@ it("checks every open batch with untouched assets by default and posts exactly t
 it("cannot start with nothing checked", async () => {
   stubBatches([batch(OPEN, "drive-01", "in_annotation", 8)]);
   renderBatches();
-  await userEvent.click(await screen.findByTestId("project-prelabel"));
+  await userEvent.click(await screen.findByTestId("prelabel-offer-start"));
   await screen.findByTestId("project-prelabel-dialog");
 
   const start = (): HTMLButtonElement =>
@@ -278,7 +300,7 @@ it("renders a refusal as prose", async () => {
     },
   });
   renderBatches();
-  await userEvent.click(await screen.findByTestId("project-prelabel"));
+  await userEvent.click(await screen.findByTestId("prelabel-offer-start"));
   await screen.findByTestId("project-prelabel-dialog");
   await userEvent.click(screen.getByTestId("project-prelabel-start"));
   const refusal = await screen.findByTestId("project-prelabel-error");
@@ -286,7 +308,7 @@ it("renders a refusal as prose", async () => {
   expect(textOf(refusal)).toMatch(/no class that a box can be written as/);
 });
 
-it("marks a batch whose remembered run is live", async () => {
+it("marks a batch whose remembered run is live, on its row in the batches panel", async () => {
   stubBatches([
     {
       ...batch(OPEN, "drive-01", "in_annotation", 8),
@@ -307,7 +329,9 @@ it("marks a batch whose remembered run is live", async () => {
     },
   ]);
   renderBatches();
-  expect(await screen.findByTestId(`prelabel-live-${OPEN}`)).toBeTruthy();
+  // The Overview draws a live run as "Drafting n/total" on the batch's own row.
+  const row = await screen.findByTestId("overview-batch-drive-01");
+  expect(textOf(row)).toContain("Drafting 3/8");
 });
 
 // --- what each run would ask for and write, and which shapes ---------------------
@@ -318,7 +342,7 @@ it("names what each batch's run would ask for and write, beside the batch", asyn
     batch(OPEN_EMPTY, "drive-02", "in_annotation", 0),
   ]);
   renderBatches();
-  await userEvent.click(await screen.findByTestId("project-prelabel"));
+  await userEvent.click(await screen.findByTestId("prelabel-offer-start"));
   await screen.findByTestId("project-prelabel-dialog");
 
   const asked = await screen.findAllByTestId("prelabel-asked-classes");
@@ -337,7 +361,7 @@ it("offers a ticked checkbox per shape, re-reads every plan for the selection, a
     body: { items: [], total: 0 },
   });
   renderBatches();
-  await userEvent.click(await screen.findByTestId("project-prelabel"));
+  await userEvent.click(await screen.findByTestId("prelabel-offer-start"));
   await screen.findByTestId("project-prelabel-dialog");
   const boxes = (await screen.findByTestId("prelabel-shape-bbox")) as HTMLInputElement;
   const polygons = screen.getByTestId("prelabel-shape-polygon") as HTMLInputElement;
@@ -365,7 +389,7 @@ it("offers a ticked checkbox per shape, re-reads every plan for the selection, a
 it("cannot start with no shape ticked, and says why", async () => {
   stubBatches([batch(OPEN, "drive-01", "in_annotation", 8)]);
   renderBatches();
-  await userEvent.click(await screen.findByTestId("project-prelabel"));
+  await userEvent.click(await screen.findByTestId("prelabel-offer-start"));
   await screen.findByTestId("project-prelabel-dialog");
   const start = (): HTMLButtonElement =>
     screen.getByTestId("project-prelabel-start") as HTMLButtonElement;
@@ -388,7 +412,7 @@ it("shows no shape control for a model that writes one shape, and sends no selec
     body: { items: [], total: 0 },
   });
   renderBatches();
-  await userEvent.click(await screen.findByTestId("project-prelabel"));
+  await userEvent.click(await screen.findByTestId("prelabel-offer-start"));
   await screen.findByTestId("project-prelabel-dialog");
   await screen.findByTestId("prelabel-asked-classes");
 
@@ -423,7 +447,7 @@ it("will not start while a checked batch's plan is refused, and names it", async
       : undefined,
   );
   renderBatches();
-  await userEvent.click(await screen.findByTestId("project-prelabel"));
+  await userEvent.click(await screen.findByTestId("prelabel-offer-start"));
   await screen.findByTestId("project-prelabel-dialog");
 
   expect(textOf(await screen.findByTestId("prelabel-plan-error"))).toMatch(
@@ -467,7 +491,7 @@ it("renders one row per job when a batch fans out to more than one, without a du
   const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
   renderBatches();
-  await userEvent.click(await screen.findByTestId("project-prelabel"));
+  await userEvent.click(await screen.findByTestId("prelabel-offer-start"));
   await screen.findByTestId("project-prelabel-dialog");
   await userEvent.click(screen.getByTestId("project-prelabel-start"));
 

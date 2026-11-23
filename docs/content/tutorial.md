@@ -92,7 +92,7 @@ which somebody is going to label.
 
 > **Starting from a video instead?** `visionset ingest` takes a directory of stills only, and
 > refuses a video file by name rather than guessing what you meant. Importing a clip is a
-> **browser** capability: run `visionset server`, open the project's Ingest screen, and choose the
+> **browser** capability: run `visionset server`, open the project's *Add images* page, and choose the
 > file there - it is demuxed and decoded on your own machine, and only the JPEG frames it produces
 > ever reach the server. Nothing in this process decodes video, so there is no CLI or MCP
 > equivalent of this step; once the import finishes you have a batch, and step 4 onward is
@@ -141,9 +141,10 @@ That prints the secret **exactly once** - it is stored as a digest, so there is 
 it and no "show token" anywhere. Paste it into the form; it is verified against the server before
 anything is stored, so a typo is refused immediately rather than becoming a broken session.
 
-From there: **Projects → road-signs → the batch → a job**. The annotation page is the left rail,
-the image, a floating tool strip carrying the shapes the selected class accepts, and the
-Objects/Labels panel on the right.
+From there: **Projects → road-signs → the batch → a job**. The annotation page is a tool rail
+on the left carrying the shapes the selected class accepts, the image in the middle with the
+frame's moves floating at its foot (undo, skip, back, which frame, **Next**), and the classes
+and objects on the right. The job's progress and whether your work is saved are on the bar.
 
 | | |
 | --- | --- |
@@ -154,9 +155,10 @@ Objects/Labels panel on the right.
 | Delete | select it and press <kbd>Delete</kbd> |
 | Undo / redo | <kbd>Ctrl/⌘ Z</kbd> / <kbd>Ctrl/⌘ ⇧ Z</kbd> |
 | Zoom | mouse wheel, or trackpad pinch; <kbd>Ctrl/⌘ 0</kbd> fits. A trackpad two-finger scroll pans instead |
-| Next asset | the navigator at the top of the page |
+| Next asset | **Next** at the foot of the image, or <kbd>↵</kbd> |
 
-Every edit saves as you go - there is no save button and nothing to lose. The full shortcut table
+Every edit saves as you go - a moment after you stop, and at once when you move to another
+frame or press <kbd>Ctrl/⌘ S</kbd>. There is no save button and nothing to lose. The full shortcut table
 is in [annotations.md](annotations.md).
 
 Prefer not to click? [`examples/thirty_minute_flow.py`](../../examples/thirty_minute_flow.py) writes

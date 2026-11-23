@@ -188,7 +188,7 @@ test("the progress fill wears the functional primary colour, not the brand", asy
  * Those three are what this now asserts; a body-wide font-size is no longer
  * part of the claim because it is no longer part of the contract.
  *
- * Both hooks resolve to Geist under `b2iH`, which sets `--font-heading` to
+ * Both hooks resolve to Inter under `b2iH`, which sets `--font-heading` to
  * `--font-sans`. Each is still asserted by name rather than against the other: a
  * heading that had fallen back to the browser's default would satisfy "the two
  * agree" while proving the hook was never wired.
@@ -202,9 +202,9 @@ test("the base layer wires fonts and background, not a per-screen font-size", as
   const bodyBg = await rgbaOf(page, body, "background-color");
 
   // `html { @apply font-sans }` — every screen, not a class on each page.
-  expect(bodyFont).toContain("Geist");
+  expect(bodyFont).toContain("Inter");
   // `h1`–`h4` carry `font-heading` in the base layer, so a heading never repeats it.
-  expect(headingFont).toContain("Geist");
+  expect(headingFont).toContain("Inter");
   // `body { @apply bg-background }` — the preset's own white, applied once.
   expect(bodyBg.slice(0, 3)).toEqual(BACKGROUND);
 });
@@ -218,6 +218,12 @@ test("the base layer wires fonts and background, not a per-screen font-size", as
  * nothing alike from the outside.
  */
 test("a merged font size survives to the rendered element", async ({ page }) => {
+  // The foundation's `Input` is `text-sm md:text-xs/relaxed`: 14px on a phone, so
+  // iOS does not zoom a focused field, and the 12px control size from `md` up.
+  // Both ends are read, because either class being dropped by the merge would
+  // leave the browser's default 13.33px instead of either.
+  await expect(page.getByLabel("Project name")).toHaveCSS("font-size", "12px");
+  await page.setViewportSize({ width: 600, height: 900 });
   await expect(page.getByLabel("Project name")).toHaveCSS("font-size", "14px");
 });
 
@@ -246,10 +252,10 @@ test("a dialog traps focus, closes on Escape and returns focus to its trigger", 
  *
  * What that difference *is* moved with Nova: `TabsList`'s default is a **segmented
  * control**, not an underlined row. The list is a `muted` trough and the active tab
- * is a `background` chip lifted out of it on a hairline shadow, so the active
- * claim is a fill plus a shadow rather than a `border-bottom-color`. The inactive
- * claim is untouched and reads stronger for it: "no fill, no shadow" is now
- * exactly the pair the active tab has, rather than the absence of an underline.
+ * is a `background` chip in it. Since the 0.6.0 foundation the chip carries no
+ * shadow, so the active claim is the fill plus the ink: the active label is the
+ * foreground and an inactive one is the same ink at 60%. The inactive claim is
+ * untouched: no fill, no border, no shadow.
  */
 test("the active tab is lifted out of the trough and an inactive one wears no chrome", async ({
   page,
@@ -270,11 +276,14 @@ test("the active tab is lifted out of the trough and an inactive one wears no ch
   await expect
     .poll(async () => (await rgbaOf(page, open, "background-color")).slice(0, 3))
     .toEqual(BACKGROUND);
-  // `shadow-sm`, and it is the second half of "lifted": the fill alone would read
-  // as a flat swap on a page whose own background is the same white.
-  await expect
-    .poll(async () => open.evaluate((node) => getComputedStyle(node).boxShadow))
-    .not.toBe("none");
+  // The second half of "current" is the ink, since the chip has no shadow of its
+  // own now: the active label is the foreground, an inactive one is dimmer.
+  // Darkness over the page's white: the alpha counts as lightness.
+  const inkOf = async (tab: typeof open): Promise<number> => {
+    const [r, g, b, a] = await rgbaOf(page, tab, "color");
+    return ((r! + g! + b!) / 3) * (a! / 255) + 255 * (1 - a! / 255);
+  };
+  expect(await inkOf(open)).toBeLessThan(await inkOf(shut));
 
   // The report's complaint, inverted into an assertion: no fill, no border, no
   // shadow. An inactive tab must not read as a button somebody has not pressed.
@@ -425,14 +434,15 @@ test("a line tab bar sits a layout unit above its content", async ({ page }) => 
  * a control measured for one line. A revert to a fixed height leaves every unit
  * test green and fails here.
  *
- * The one-line number is Nova's control height, 32px, and it is asserted twice:
+ * The one-line number is the foundation's control height, 28px (`h-7`, which the
+ * 0.6.0 foundation took from 32px for every field), and it is asserted twice:
  * against the constant, and against the `Input` in the same field row. The second
- * is the one that catches the interesting failure — `SelectTrigger` is `min-h-8`
- * rather than `h-8` so the second line can grow it, and a *minimum* height is one
+ * is the one that catches the interesting failure — `SelectTrigger` is `min-h-7`
+ * rather than `h-7` so the second line can grow it, and a *minimum* height is one
  * the padding can quietly overshoot. A trigger standing taller than the text field
  * beside it is a broken row whatever the absolute number turns out to be.
  */
-test("a two-line option grows its trigger, and a one-line one is Nova's 32px", async ({
+test("a two-line option grows its trigger, and a one-line one is Nova's 28px", async ({
   page,
 }) => {
   const plain = await page.getByLabel("Geometry").boundingBox();
@@ -442,8 +452,8 @@ test("a two-line option grows its trigger, and a one-line one is Nova's 32px", a
   expect(stacked).not.toBeNull();
   expect(field).not.toBeNull();
 
-  // Nova's own control height: `min-h-8`, and the padding does not overshoot it.
-  expect(plain!.height).toBeCloseTo(32, 0);
+  // The control height: `h-7`, and the padding does not overshoot it.
+  expect(plain!.height).toBeCloseTo(28, 0);
   // The same height as the `Input` beside it, which is what the field row reads as.
   expect(plain!.height).toBeCloseTo(field!.height, 0);
   // Grown, not squashed: the second line is inside the box rather than over it.
@@ -466,7 +476,8 @@ test("a two-line option grows its trigger, and a one-line one is Nova's 32px", a
 test("the Combobox filters as you type, ArrowDown+Enter selects and closes, and Escape backs out", async ({
   page,
 }) => {
-  const input = page.getByLabel("Class");
+  // By role: "Class" is also a substring of the class-filter group's "Filter by class".
+  const input = page.getByRole("combobox", { name: "Class", exact: true });
   await input.click();
   await input.fill("an");
 

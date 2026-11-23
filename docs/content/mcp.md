@@ -133,7 +133,7 @@ page groups them by what they are for.
 | `create_correction_batch` | Start a draft that corrects a completed one. |
 
 A batch is born from an ingest in the ordinary case, and the three composition tools are for
-the other one: picking a subset by hand, which is what the browser's gallery does and what an
+the other one: picking a subset by hand, which is what a person curating in a gallery client does and what an
 agent doing the same work needs. All three are `draft` only, because past approval the batch
 is already cut into jobs — see [batches.md](batches.md).
 

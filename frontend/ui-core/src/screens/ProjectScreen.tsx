@@ -65,39 +65,32 @@
  * and the editor already spells that.
  */
 
-import { ChevronDown, ChevronRight, Upload } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
+import { useEffect, useRef, useState, type JSX } from "react";
 
-import { formatGeometries } from "../data/geometryCategory";
-import { Async } from "../data/Async";
 import { useApiClient } from "../data/VisionSetDataProvider";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
-import { Badge, Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
-import { formatCount, formatWhen } from "../lib/format";
 import { ErrorState, LoadingState } from "../patterns/AsyncStates";
-import { DEFAULT_PROJECT_SECTION, PROJECT_SECTIONS, type ProjectSection } from "../patterns/ProjectNav";
-import { SectionHeader } from "../patterns/SectionHeader";
-import { BatchesScreen } from "./BatchesScreen";
+import { DEFAULT_PROJECT_SECTION, PROJECT_SECTIONS, type ProjectSection } from "../patterns/projectSections";
+import { formatCount, formatPercent, formatWhen } from "../lib/format";
 import { DatasetScreen, type DatasetTab } from "./DatasetScreen";
-import { AssetThumbnail } from "./AssetThumbnail";
-import { firstRunInvitation, invitationOwnsTheAction, OverviewPanel } from "./OverviewPanel";
-import { openForAnnotation, ProjectFrame } from "./ProjectFrame";
-import { same, SchemaEditor, shownDraft, type SchemaDraft } from "./SchemaEditor";
-import { groupByProvenance } from "./schemaHistory";
+import { ImagesScreen } from "./ImagesScreen";
+import { firstRunInvitation, invitationOwnsTheAction } from "./firstRunInvitation";
+import { OverviewPanel } from "./OverviewPanel";
+import { ProjectFrame } from "./ProjectFrame";
+import { SchemaEditor, type SchemaDraft } from "./SchemaEditor";
+import { same } from "./schemaSame";
 import {
   useActiveSchema,
-  useBatches,
   useProject,
+  useProjectDataset,
   useProjectReadiness,
   useProjectStats,
+  useReleases,
   saveSchemaDraftRequest,
   useSaveSchemaDraft,
-  useSchemaBlockingAssets,
   useSchemaDraft,
-  useSchemaVersions,
   type LabelClassBody,
-  type SchemaVersion,
 } from "./queries";
 
 /** What `SchemaService.require_active` raises for a project that has none. */
@@ -119,34 +112,26 @@ const SCHEMA_NOT_FOUND = "SCHEMA_NOT_FOUND";
  * list whose fourth entry is a read-only history of its second is offering a
  * subsection as a peer, which is how "Schema history" and "Releases" came to be
  * confusable enough that one of them had to be renamed. The history nests
- * inside Schema, where the `VersionNavigator` seam already lives.
+ * inside Schema, as the Classes section's History sheet.
  *
  * `?tab=versions` is still honoured and lands on Schema — see `resolveProjectTab`.
  * A URL somebody bookmarked is a promise.
  */
 export type ProjectTab = ProjectSection;
 
-/**
- * What a raw `?tab=` value resolves to, including the ones that have moved.
- *
- * Pure and exported because the *host* has to know: `ui-core` never imports a
- * router, so rewriting a stale URL is the app's job, and it can only do that if
- * it can ask what the value became without rendering anything.
- *
- * Returns `null` for a value that is already canonical, so a caller can tell "no
- * rewrite needed" from "rewrite to overview" without comparing strings itself.
- */
-export function resolveProjectTab(raw: string | undefined): ProjectTab | null {
-  if (raw === undefined) return null;
-  if (raw === "versions") return "schema";
-  return PROJECT_SECTIONS.includes(raw as ProjectTab) ? null : DEFAULT_PROJECT_SECTION;
-}
-
 export interface ProjectScreenProps {
   readonly projectId: string;
   /** Route changes, supplied by the app. See `ProjectsScreen`'s note. */
   readonly onIngest?: () => void;
+  /** A batch, opened in the Overview's panel — the one place a batch is shown and moved. */
   readonly onOpenBatch?: (batchId: string) => void;
+  /**
+   * The batch open in the Overview's panel, as the URL holds it (`?batch=`),
+   * and the write when the panel opens another or closes. Absent, the Overview
+   * holds it itself.
+   */
+  readonly openBatchId?: string | null;
+  readonly onOpenBatchChange?: (batchId: string | null) => void;
   readonly onOpenJob?: (jobId: string) => void;
   /**
    * Where to go once the project is gone. Absent means the overflow menu still
@@ -169,6 +154,8 @@ export function ProjectScreen({
   projectId,
   onIngest,
   onOpenBatch,
+  openBatchId,
+  onOpenBatchChange,
   onOpenJob,
   onDeleted,
   tab,
@@ -176,13 +163,10 @@ export function ProjectScreen({
   hrefFor,
 }: ProjectScreenProps): JSX.Element {
   // Already read by the frame; naming them here too costs nothing (one query
-  // key, one request) and is what lets the Overview colour its bars from the
-  // schema, head itself with the counts and the description, and say whether
-  // Annotate holds the navigation's slot.
+  // key, one request) and is what lets the Overview colour its classes from the
+  // schema and head itself with the description.
   const project = useProject(projectId);
   const schema = useActiveSchema(projectId);
-  const stats = useProjectStats(projectId);
-  const batches = useBatches(projectId);
   // The section, for a host that wired no `onTabChange`: held here rather than
   // nowhere, so the navigation still moves and a test can walk the sections.
   const [held, setHeld] = useState<ProjectTab | undefined>(undefined);
@@ -417,14 +401,11 @@ export function ProjectScreen({
     return writeSchemaDraftRef.current();
   }
 
-  // Batches are offered only when the host can open one. A table whose every row
-  // is a dead link is a tile that reads as broken, and a host that cannot
-  // navigate to a batch is better off not being told there is a section it cannot
-  // use — which is exactly what this screen did with the section before the split.
-  const available: readonly ProjectTab[] =
-    onOpenBatch === undefined ? PROJECT_SECTIONS.filter((one) => one !== "batches") : PROJECT_SECTIONS;
-  // `find`, not a cast: an unknown value, a stale link, or `batches` on a host that
-  // has no batch route all resolve to the default rather than to an empty page.
+  // Batches have no section of their own: they are listed, inspected and
+  // pre-labeled on the Overview, and each opens in its panel. So `batches` — a
+  // bookmarked section from before — resolves to the Overview, like any value
+  // this screen does not offer. `find`, not a cast, for the same reason.
+  const available: readonly ProjectTab[] = PROJECT_SECTIONS;
   // `?tab=versions` is the one stale value with a *destination* rather than a
   // fallback — the history moved inside Schema, so that is where it lands.
   const asked = onTabChange === undefined && held !== undefined ? held : tab === "versions" ? "schema" : tab;
@@ -439,19 +420,14 @@ export function ProjectScreen({
   const readiness = useProjectReadiness(projectId);
   const overviewOwnsTheAction =
     current === "overview" && readiness !== null && invitationOwnsTheAction(firstRunInvitation(readiness));
-  // The Dataset's view is held here rather than in `DatasetScreen`, because the
-  // Pre-processing view's editor carries the page's filled control — Save
-  // recipe, or the invitation to write one — and the navigation column that has
-  // to step back for it is drawn outside the section. Component state, like the
-  // section's other views: a view of the same resource, not a place.
+  // The Dataset's view name, held here so a host that passes one keeps working;
+  // every name opens the working copy, since recipes now live in a release's
+  // export. Component state: a view of the same resource, not a place.
   const [datasetTab, setDatasetTab] = useState<DatasetTab>("overview");
-  const preprocessingOwnsTheAction = current === "dataset" && datasetTab === "preprocessing";
+  const meta = useSectionMeta(projectId, current, project.data?.description ?? null);
 
-  const holdsAnnotate = openForAnnotation(batches.data?.items).length > 0 && onOpenBatch !== undefined;
-  // Ingest is reachable from every section: in the navigation's slot while
-  // nothing is open for annotation, and as a `secondary` header action on the
-  // sections that ingest feeds once Annotate has taken the slot. Never both.
-  const ingestInHeader = holdsAnnotate && onIngest !== undefined ? onIngest : undefined;
+  // Add images lives in the toolbar alone — filled while nothing is open for
+  // annotation, outlined beside Annotate otherwise — so no section draws one.
 
   return (
     <ProjectFrame
@@ -460,25 +436,33 @@ export function ProjectScreen({
       sections={available}
       onNavigate={go}
       {...(hrefFor === undefined ? {} : { hrefFor })}
-      chain="frame"
+      // The bar offers what the open section is about: Annotate on the
+      // Overview, where batches are; Add images on the two sections images are
+      // the subject of, and in the overflow everywhere else. Classes and
+      // Dataset draw their own actions into the bar (`SectionActions`).
       cta={{
-        ...(onOpenBatch === undefined ? {} : { onOpenBatch }),
+        ...(onOpenBatch === undefined || current !== "overview" ? {} : { onOpenBatch }),
         ...(onOpenJob === undefined ? {} : { onOpenJob }),
         ...(onIngest === undefined ? {} : { onIngest }),
-        contentOwnsTheAction: overviewOwnsTheAction || preprocessingOwnsTheAction,
+        ingest: current === "overview" || current === "images" ? "action" : "menu",
+        contentOwnsTheAction: overviewOwnsTheAction,
       }}
+      {...(meta === null ? {} : { meta })}
       {...(onDeleted === undefined ? {} : { onDeleted })}
+      // Images lays out its own grid and detail across the pane; the Overview
+      // is one sheet of cells fitted to the window, and Classes is its table
+      // with the draft's commit bar at its foot.
+      bleed={current === "images" || current === "overview" || current === "schema" || current === "dataset"}
     >
       <Section
         current={current}
         projectId={projectId}
-        overviewMeta={overviewMeta(stats.data)}
-        description={project.data?.description ?? null}
-        ingestInHeader={ingestInHeader}
         classes={schema.data?.classes}
         go={go}
         onIngest={onIngest}
         onOpenBatch={onOpenBatch}
+        openBatch={onOpenBatchChange === undefined ? undefined : { id: openBatchId ?? null, onChange: onOpenBatchChange }}
+        onOpenJob={onOpenJob}
         datasetTab={datasetTab}
         onDatasetTabChange={setDatasetTab}
         schema={{
@@ -493,21 +477,33 @@ export function ProjectScreen({
 }
 
 /**
- * The Overview header's one line: how much data the project holds, and when it
- * last grew. `N images` is the count the page exists to show; the ingest moment
- * is appended only when the wire recorded one — `last_ingest_at` is nullable
- * forever, since rows written before the column existed cannot be backfilled —
- * and only when it parses, because the response check validates `date-time` as
- * a string and no further. Nothing while the stats are still loading: a
- * placeholder would be a line about a field rather than about the project.
+ * One line about the open section, for the bar — what the tabs' counts do not
+ * already say. The Overview leads with the project's description, its face;
+ * without one, how far the labelling has come. Classes names the version in
+ * force; Dataset, its latest release. Images says nothing here: its own band
+ * describes its sources, and saying it twice would be noise.
  */
-function overviewMeta(
-  counted: { readonly asset_count: number; readonly last_ingest_at?: string | null } | undefined,
-): string | undefined {
-  if (counted === undefined) return undefined;
-  const images = `${formatCount(counted.asset_count)} ${counted.asset_count === 1 ? "image" : "images"}`;
-  const when = counted.last_ingest_at == null ? "" : formatWhen(counted.last_ingest_at);
-  return when === "" ? images : `${images} · ingested ${when}`;
+function useSectionMeta(projectId: string, section: ProjectTab, description: string | null): string | null {
+  const stats = useProjectStats(projectId);
+  const schema = useActiveSchema(projectId, section === "schema");
+  const dataset = useProjectDataset(projectId);
+  const releases = useReleases(section === "dataset" ? dataset.data?.id : undefined);
+  let line: string | null = null;
+  if (section === "overview") {
+    if (description !== null && description !== "") line = description;
+    else if (stats.data !== undefined && stats.data.asset_count > 0)
+      line = `${formatPercent(stats.data.annotated_pct)} labeled · ${formatCount(stats.data.annotation_count)} ${stats.data.annotation_count === 1 ? "annotation" : "annotations"}`;
+  }
+  if (section === "schema") {
+    if (schema.data !== undefined) line = `Version ${schema.data.version} in force`;
+    else if (asApiError(schema.error).code === SCHEMA_NOT_FOUND) line = "No version published yet";
+  }
+  if (section === "dataset" && releases.data !== undefined) {
+    // Oldest first, so the latest is the last entry.
+    const latest = releases.data.items.at(-1);
+    line = latest === undefined ? "No releases yet" : `Latest release ${latest.tag} · ${formatWhen(latest.created_at)}`;
+  }
+  return line;
 }
 
 /**
@@ -522,27 +518,24 @@ function overviewMeta(
 function Section({
   current,
   projectId,
-  overviewMeta: meta,
-  description,
-  ingestInHeader,
   classes,
   go,
   onIngest,
   onOpenBatch,
+  openBatch,
+  onOpenJob,
   datasetTab,
   onDatasetTabChange,
   schema,
 }: {
   readonly current: ProjectTab;
   readonly projectId: string;
-  readonly overviewMeta: string | undefined;
-  /** Shown on Overview only, under its meta line — the project's face is where a description belongs. */
-  readonly description: string | null;
-  readonly ingestInHeader: (() => void) | undefined;
   readonly classes: readonly LabelClassBody[] | undefined;
   readonly go: (tab: ProjectTab) => void;
   readonly onIngest: (() => void) | undefined;
   readonly onOpenBatch: ((batchId: string) => void) | undefined;
+  readonly openBatch: { readonly id: string | null; readonly onChange: (batchId: string | null) => void } | undefined;
+  readonly onOpenJob: ((jobId: string) => void) | undefined;
   readonly datasetTab: DatasetTab;
   readonly onDatasetTabChange: (tab: DatasetTab) => void;
   readonly schema: {
@@ -552,26 +545,13 @@ function Section({
     readonly onFlushDraft: () => Promise<number | null>;
   };
 }): JSX.Element | null {
-  const headerIngest: ReactNode =
-    ingestInHeader === undefined ? undefined : (
-      <Button variant="outline" data-testid="go-ingest" onClick={ingestInHeader}>
-        <Upload className="size-4" aria-hidden="true" />
-        Ingest
-      </Button>
-    );
   switch (current) {
     case "overview":
       return (
         <>
-          <SectionHeader
-            title="Overview"
-            meta={meta}
-            // Nothing at all when there is no description — not a placeholder.
-            {...(description === null || description === ""
-              ? {}
-              : { description: <span data-testid="project-description">{description}</span> })}
-            actions={headerIngest}
-          />
+          {/* The bar is the section's header: its tab names the page to the
+              eye, and this names it to the outline. */}
+          <h1 className="sr-only">Overview</h1>
           {/* The declared classes travel down so a distribution bar shows the
               colour the schema authored rather than only the derived hue. The
               query is shared with the Schema section, so this costs no request. */}
@@ -579,16 +559,25 @@ function Section({
             projectId={projectId}
             {...(classes === undefined ? {} : { classes })}
             {...(onIngest === undefined ? {} : { onIngest })}
-            onBrowseDataset={() => go("dataset")}
+            onBrowseDataset={() => {
+              onDatasetTabChange("overview");
+              go("dataset");
+            }}
+            onOpenReleases={() => {
+              onDatasetTabChange("releases");
+              go("dataset");
+            }}
             onOpenSchema={() => go("schema")}
-            {...(onOpenBatch === undefined ? {} : { onOpenBatches: () => go("batches") })}
+            onOpenImages={() => go("images")}
+            {...(openBatch === undefined ? {} : { openBatchId: openBatch.id, onOpenBatchChange: openBatch.onChange })}
+            {...(onOpenJob === undefined ? {} : { onOpenJob })}
           />
         </>
       );
     case "schema":
       return (
         <>
-          <SectionHeader title="Schema" meta="The classes a label may carry, and the shapes each one takes." />
+          <h1 className="sr-only">Classes</h1>
           <SchemaSection
             projectId={projectId}
             draft={schema.draft}
@@ -599,15 +588,11 @@ function Section({
           />
         </>
       );
-    case "batches":
-      if (onOpenBatch === undefined) return null;
+    case "images":
       return (
-        <BatchesScreen
+        <ImagesScreen
           projectId={projectId}
-          onOpenBatch={onOpenBatch}
-          onOpenSchema={() => go("schema")}
-          onOpenDataset={() => go("dataset")}
-          {...(ingestInHeader === undefined ? {} : { onIngest: ingestInHeader })}
+          {...(onIngest === undefined ? {} : { onIngest })}
         />
       );
     case "dataset":
@@ -641,8 +626,8 @@ function SchemaSection({
   /**
    * Where a blocking frame is reached, forwarded from `ProjectScreen`.
    *
-   * Absent means no `BlockingAssets` at all: every row's only way onward is a
-   * batch, and a panel whose links all lead nowhere reads as broken.
+   * Absent means the refusal dialogs list no frames: every frame's only way
+   * onward is a batch, and a list whose links all lead nowhere reads as broken.
    */
   readonly onOpenBatch?: (batchId: string) => void;
 }): JSX.Element {
@@ -653,23 +638,6 @@ function SchemaSection({
   const serverDraft = useSchemaDraft(projectId, "curated");
   const failure = schema.isError ? asApiError(schema.error) : null;
   const schemaless = failure?.code === SCHEMA_NOT_FOUND;
-  /*
-   * The class list `BlockingAssets` asks about: the very one the editor below is
-   * showing, from `shownDraft` — the editor's own derivation, shared rather than
-   * repeated. A second spelling of those tiers is a panel answering about a
-   * proposal nobody is looking at, and its `projectId` guard is what keeps a
-   * dirty draft typed in one project from being asked about in another.
-   *
-   * `null` while the server draft is unknown, and for a project with no
-   * published version: there is no contract to narrow, so nothing to ask.
-   */
-  const proposed: readonly LabelClassBody[] | null = useMemo(() => {
-    // A project with no published version has nothing to narrow — its first save
-    // *creates* the contract — so there is no question to ask on its behalf.
-    const active = schemaless ? null : (schema.data ?? null);
-    if (active === null || serverDraft.isPending) return null;
-    return shownDraft({ projectId, active, draft, serverDraft: serverDraft.data ?? null }).classes;
-  }, [projectId, draft, schema.data, schemaless, serverDraft.data, serverDraft.isPending]);
 
   if (schema.isPending) return <LoadingState rows={3} />;
   if (failure !== null && !schemaless) {
@@ -682,389 +650,27 @@ function SchemaSection({
     );
   }
   return (
-    <div className="flex flex-col gap-8">
-      <SchemaEditor
-        projectId={projectId}
-        framesListed={onOpenBatch !== undefined}
-        active={schemaless ? null : (schema.data ?? null)}
-        draft={draft}
-        onDraftChange={onDraftChange}
-        serverDraft={serverDraft.data ?? null}
-        draftSaveError={draftSaveError}
-        onFlushDraft={onFlushDraft}
-        onReloadDraft={() => {
-          // Refetched before the local copy is discarded, so the next render
-          // seeds from what the server actually holds now rather than
-          // flashing back to the published version while the request flies.
-          void serverDraft.refetch().then(() => onDraftChange(null));
-        }}
-      />
-      {/*
-        The ledger, below the editor rather than beside it in the tab bar.
-        Version history is a *view of* the schema, not a peer of it — a fourth
-        tab holding a read-only history of the second was offering a subsection
-        as a sibling, which is how "Schema history" and "Releases" came to be
-        confusable enough that one of them had to be renamed.
-
-        It still overlaps with the editor's own `VersionNavigator` and still
-        answers a different question: this is every version at once, scannable;
-        that is one version at a time, with what it changed. Both, on one screen,
-        is what the seam was always for.
-      */}
-      <VersionHistory projectId={projectId} />
-      {onOpenBatch !== undefined && proposed !== null && (
-        // Keyed by project, because the panel *settles* its proposal: this
-        // screen is re-rendered rather than remounted on a route change, and a
-        // held value carrying the previous project's classes is precisely the
-        // cross-project question `shownDraft`'s guard exists to prevent.
-        <BlockingAssets
-          key={projectId}
-          projectId={projectId}
-          classes={proposed}
-          onOpenBatch={onOpenBatch}
-        />
-      )}
-    </div>
+    // Keyed by project: this screen is re-rendered rather than remounted on a
+    // route change, and the editor settles the draft it asks the server about —
+    // a held value carrying the previous project's classes is the cross-project
+    // question `shownDraft`'s guard exists to prevent. The version being read
+    // belongs to the project too.
+    <SchemaEditor
+      key={projectId}
+      projectId={projectId}
+      active={schemaless ? null : (schema.data ?? null)}
+      draft={draft}
+      onDraftChange={onDraftChange}
+      serverDraft={serverDraft.data ?? null}
+      draftSaveError={draftSaveError}
+      onFlushDraft={onFlushDraft}
+      onReloadDraft={() => {
+        // Refetched before the local copy is discarded, so the next render
+        // seeds from what the server actually holds now rather than
+        // flashing back to the published version while the request flies.
+        void serverDraft.refetch().then(() => onDraftChange(null));
+      }}
+      {...(onOpenBatch === undefined ? {} : { onOpenBatch })}
+    />
   );
-}
-
-/**
- * How many blocking frames the panel shows before it says how many more there are.
- *
- * The route's limit defaults to *everything*, and `AssetThumbnail` fetches on
- * mount — so an unwindowed page for a narrowing that orphans five thousand frames
- * is five thousand rows firing five thousand credentialed requests at once.
- */
-const BLOCKING_ASSET_WINDOW = 12;
-
-/** The draft autosave's settle point, reused so one pause answers both. */
-const DRAFT_SETTLE_MS = 400;
-
-/**
- * `value`, once it has held still for `ms`.
- *
- * For a read whose cost is a server-side walk rather than a render: the value it
- * follows changes per keystroke, and every intermediate one is a question nobody
- * asked. Identity is what settles, so a caller passing a derived array memoises
- * it — otherwise every render restarts the timer and nothing ever settles.
- *
- * **It holds the last value across anything short of a remount**, which is a bug
- * wherever the value belongs to something the component can be re-rendered onto:
- * a settled value from the previous subject is live until the next timer fires.
- * A caller whose subject can change under it gives the component a `key` on that
- * subject, so the identity change is a remount rather than a stale hold.
- */
-function useSettled<T>(value: T, ms: number): T {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(value), ms);
-    return () => clearTimeout(timer);
-  }, [value, ms]);
-  return settled;
-}
-
-/**
- * The frames a proposed narrowing would orphan, below the editor.
- *
- * A refused publish states a count per class; this is where those frames can be
- * reached. Both read the same server-side walk, so the number in the dialog and
- * the rows here are answering one question.
- *
- * **A row links to every batch holding its frame, never to one.** An annotation
- * carries an `asset_id` and nothing else — no batch, no job — so a blocking
- * annotation has no single annotator address to send anybody to. A frame in three
- * batches offers three links; a frame in none offers no link rather than a guess.
- */
-function BlockingAssets({
-  projectId,
-  classes,
-  onOpenBatch,
-}: {
-  readonly projectId: string;
-  readonly classes: readonly LabelClassBody[];
-  readonly onOpenBatch: (batchId: string) => void;
-}): JSX.Element {
-  // Answering costs the server a walk over every annotation in the project, and
-  // `ClassFields` emits an edit per character typed into a class name — so the
-  // panel reads the proposal only once it has stopped changing, at the same 400ms
-  // the draft's own autosave settles on. A half-typed class name is a narrowing
-  // nobody proposed, and asking about it is an N+1 over the whole dataset.
-  const settled = useSettled(classes, DRAFT_SETTLE_MS);
-  const query = useSchemaBlockingAssets(projectId, settled, BLOCKING_ASSET_WINDOW);
-  // The header above already read this list under the same key, so naming the
-  // batches costs no request — and three links all reading "Open batch" would
-  // name no destination between them.
-  const batches = useBatches(projectId);
-  const names = new Map((batches.data?.items ?? []).map((batch) => [batch.id, batch.name]));
-  return (
-    <div className="flex flex-col gap-4" data-testid="blocking-assets">
-      <header className="border-b border-border pb-4">
-        <h2 className="text-base font-semibold tracking-tight">Frames in the way</h2>
-        <p className="text-xs text-muted-foreground">
-          These frames carry labels the draft would drop. This schema version cannot be
-          published while they do — open one of the batches holding a frame to clear or relabel
-          it.
-        </p>
-      </header>
-      <Async
-        query={query}
-        loadingRows={2}
-        empty={{
-          title: "Nothing is in the way",
-          description: "No frame carries a label this draft would drop.",
-        }}
-      >
-        {(page) => (
-          <div className="flex flex-col gap-2">
-            {/* `total` is every blocking frame, never this page's size, so the
-                count is the honest one and the overflow is what the window did
-                not show. There is no "see all" route to offer, so the remainder
-                is text rather than a control leading nowhere. */}
-            <p className="text-xs text-muted-foreground" data-testid="blocking-asset-count">
-              <span className="tabular-nums">{formatCount(page.total)}</span>{" "}
-              {page.total === 1 ? "frame is" : "frames are"} in the way
-              {page.total > page.items.length
-                ? `, showing the first ${formatCount(page.items.length)}`
-                : ""}
-              .
-            </p>
-            <ul className="flex flex-col gap-2" data-testid="blocking-asset-list">
-              {page.items.map((item) => (
-                <li key={item.asset.id} className="flex items-center gap-3">
-                  <div className="size-12 shrink-0 overflow-hidden rounded-sm bg-muted">
-                    <AssetThumbnail
-                      projectId={projectId}
-                      assetId={item.asset.id}
-                      thumbnailHash={item.asset.thumbnail_hash}
-                      alt=""
-                      className="size-full object-cover"
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    {/* Named, because two rows reading "12 labels under lane" are
-                        one row to a screen reader, and the thumbnail is the only
-                        thing telling them apart for everybody else. `frame_index`
-                        is what a clip's frames carry; a still has none and falls
-                        back to the short id the API's own errors quote. */}
-                    <p className="truncate text-sm">
-                      <span className="font-medium">
-                        Frame{" "}
-                        {item.asset.frame_index ?? item.asset.id.slice(0, 8)}
-                      </span>{" "}
-                      ·{" "}
-                      <span className="tabular-nums">{formatCount(item.annotations)}</span>{" "}
-                      {item.annotations === 1 ? "label" : "labels"} under{" "}
-                      {item.label_classes.join(", ")}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {item.batch_ids.map((batchId) => (
-                        <Button
-                          key={batchId}
-                          variant="link"
-                          className="h-auto p-0 text-xs"
-                          data-testid="blocking-asset-batch"
-                          onClick={() => onOpenBatch(batchId)}
-                        >
-                          Open {names.get(batchId) ?? "batch"}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </Async>
-    </div>
-  );
-}
-
-function VersionHistory({ projectId }: { readonly projectId: string }): JSX.Element {
-  const query = useSchemaVersions(projectId);
-  return (
-    <div className="flex flex-col gap-4" data-testid="version-history">
-      {/* It has a heading of its own now that it is a section rather than a tab:
-          a tab is titled by its trigger, and a panel below an editor is not.
-
-          This table and the editor's navigator overlap on purpose and
-          answer different questions. This is the *ledger* — every version at
-          once, scannable. That one is the *reader* — one version at a time, with
-          what it changed against its predecessor. */}
-      <header className="border-b border-border pb-4">
-        <h2 className="text-base font-semibold tracking-tight">Version history</h2>
-        <p className="text-xs text-muted-foreground">
-          Every schema version this project has declared. They are 1..N, never updated and
-          never deleted — a restore is a new version with the old classes. Versions published
-          while annotating are grouped; expand a group to read them one by one.
-        </p>
-      </header>
-      <div>
-        <Async
-          query={query}
-          loadingRows={2}
-          empty={{
-            title: "No versions yet",
-            description: "Publishing a schema creates version 1.",
-          }}
-        >
-          {(page) => {
-            // The highest version is the active one — derived, never a stored flag,
-            // which is why this is computed here rather than read off a field.
-            const active = Math.max(...page.items.map((entry) => entry.version));
-            // Newest first, then grouped: the sort is what makes "consecutive"
-            // mean anything, and `groupByProvenance` works on whatever order it
-            // is handed. See `schemaHistory.ts` for the three decisions inside it.
-            const rows = groupByProvenance(
-              [...page.items].sort((a, b) => b.version - a.version),
-            );
-            return (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-24">Version</TableHead>
-                    <TableHead className="w-40">Published</TableHead>
-                    <TableHead>Why</TableHead>
-                    <TableHead>Classes</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map((row) =>
-                    row.kind === "version" ? (
-                      <VersionRow key={row.version.version} entry={row.version} active={active} />
-                    ) : (
-                      <AnnotationRun
-                        key={`run-${row.versions[0]?.version ?? 0}`}
-                        versions={row.versions}
-                        active={active}
-                      />
-                    ),
-                  )}
-                </TableBody>
-              </Table>
-            );
-          }}
-        </Async>
-      </div>
-    </div>
-  );
-}
-
-/** One published version. The ledger's unit, and what a run expands into. */
-function VersionRow({
-  entry,
-  active,
-  nested = false,
-}: {
-  readonly entry: SchemaVersion;
-  readonly active: number;
-  /** Inside an expanded run: indented, so the grouping survives being opened. */
-  readonly nested?: boolean;
-}): JSX.Element {
-  return (
-    <TableRow data-testid={`version-${entry.version}`} {...(nested ? { "data-nested": "true" } : {})}>
-      <TableCell className={`flex items-center gap-2${nested ? " pl-8" : ""}`}>
-        v{entry.version}
-        {entry.version === active && <Badge variant="default">active</Badge>}
-      </TableCell>
-      {/* Both are null for a version published before the fields existed, and nothing backfills
-          either — an em dash is the honest rendering of a moment nobody recorded. */}
-      <TableCell className="text-muted-foreground">
-        {entry.created_at == null ? "—" : formatWhen(entry.created_at)}
-      </TableCell>
-      <TableCell className="text-muted-foreground">
-        {entry.description == null || entry.description === "" ? "—" : entry.description}
-      </TableCell>
-      <TableCell className="text-muted-foreground">{summarise(entry)}</TableCell>
-    </TableRow>
-  );
-}
-
-/**
- * A run of versions published while somebody was annotating.
- *
- * ## Why the ledger needs this
- *
- * The annotator publishes versions, and one sitting can publish
- * several. Left flat, the two *curated* milestones a person opens this table to
- * read end up beneath nine rows of `Added class "cone" from the annotation view`
- * — every one of them true, and collectively the reason nobody scrolls to the
- * one that matters. Collapsing them is not hiding: the run says how many, when,
- * and what the schema looked like at the end of it, and one press has them all.
- *
- * ## Collapsed by default, and never for a milestone
- *
- * `provenance` is what tells the two apart, and only `annotation` groups —
- * `curated` and a null from before the column existed always render individually.
- * That is the conservative direction: a fact nobody recorded must not be read as
- * "incidental".
- *
- * ## The summary cells describe the *end* of the run
- *
- * `Classes` is the newest version's contract, because that is what the run left
- * behind and what the next version was composed on. `Published` is the newest
- * one's moment for the same reason — a range would be two dates for a row whose
- * whole point is being one line.
- */
-function AnnotationRun({
-  versions,
-  active,
-}: {
-  readonly versions: readonly SchemaVersion[];
-  readonly active: number;
-}): JSX.Element {
-  const [open, setOpen] = useState(false);
-  // Handed in newest-first, so the first is the newest and the last is where the
-  // run started. Read by position rather than re-sorted: re-deriving the order
-  // here would be a second opinion about the one the caller established.
-  const newest = versions[0];
-  const oldest = versions[versions.length - 1];
-  if (newest === undefined || oldest === undefined) return <></>;
-
-  return (
-    <>
-      <TableRow data-testid={`version-run-${oldest.version}-${newest.version}`}>
-        <TableCell>
-          <button
-            type="button"
-            className="flex items-center gap-1.5 rounded text-left hover:text-foreground"
-            aria-expanded={open}
-            data-testid={`version-run-toggle-${oldest.version}`}
-            onClick={() => setOpen((shown) => !shown)}
-          >
-            {open ? (
-              <ChevronDown className="size-4 shrink-0" aria-hidden="true" />
-            ) : (
-              <ChevronRight className="size-4 shrink-0" aria-hidden="true" />
-            )}
-            v{oldest.version}–v{newest.version}
-            {newest.version === active && <Badge variant="default">active</Badge>}
-          </button>
-        </TableCell>
-        <TableCell className="text-muted-foreground">
-          {newest.created_at == null ? "—" : formatWhen(newest.created_at)}
-        </TableCell>
-        <TableCell className="text-muted-foreground">
-          {versions.length} versions published while annotating
-        </TableCell>
-        <TableCell className="text-muted-foreground">{summarise(newest)}</TableCell>
-      </TableRow>
-      {/* Every version of the run, in the same shape as an ungrouped one — so a
-          `data-testid` a test or a link already knows still resolves once the
-          group is open, and the row a person finds by expanding reads exactly
-          like the row they would have found in a flat table. */}
-      {open &&
-        versions.map((entry) => (
-          <VersionRow key={entry.version} entry={entry} active={active} nested />
-        ))}
-    </>
-  );
-}
-
-/** `name (geometries)`, in the schema's own authored order — which is the palette's. */
-function summarise(version: SchemaVersion): string {
-  if (version.classes.length === 0) return "no classes";
-  return version.classes
-    .map((declared) => `${declared.name} (${formatGeometries(declared.geometries)})`)
-    .join(", ");
 }

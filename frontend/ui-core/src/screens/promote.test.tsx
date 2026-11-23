@@ -20,8 +20,9 @@ import { screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CorrectionButton, CorrectionOf, defaultCorrectionName } from "./CorrectionBatch";
-import { PromoteButton, promotionSummary } from "./PromoteButton";
+import { defaultCorrectionName, promotionSummary } from "./batchWords";
+import { CorrectionButton, CorrectionOf } from "./CorrectionBatch";
+import { PromoteButton } from "./PromoteButton";
 import { renderWithData } from "../testing/dataHarness";
 import { batchActions } from "../testing/wire.fixtures.js";
 import type { Batch } from "./queries";

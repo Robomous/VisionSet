@@ -6,7 +6,7 @@
  * Nothing, which is the point. A `completed` batch is immutable as a workflow
  * unit: the kernel gives it no exit and none is coming. The product's answer to
  * "this frame is wrong" would otherwise be a dead end dressed three different
- * ways — an annotator that opens fully editable and refuses every save, a bulk bar
+ * ways — an annotator that opens fully editable and refuses every save, a bulk action
  * whose buttons are live and whose every request 409s, and a sentence naming a
  * correction batch that nothing can create.
  *
@@ -21,11 +21,11 @@
  * telling the API something it already knows.
  *
  * `selection` exists because the other ordinary ask is *the three frames
- * somebody found wrong*, and the gallery already has a selection to hand. It is
- * offered only when there is one: a scope choice with an empty option is a
+ * somebody found wrong*, and a host whose screen holds a selection can hand it over (the
+ * batch panel draws no frames and passes none). It is offered only when there is one: a scope choice with an empty option is a
  * choice between doing something and doing nothing.
  *
- * There is deliberately no "filtered set" option. The gallery's segments are a
+ * There is deliberately no "filtered set" option. A screen's segment filter is a
  * *view*, and a correction cut from whatever happens to be filtered at the
  * moment of pressing is a batch nobody can describe afterwards — where a
  * selection is a thing somebody chose.
@@ -37,23 +37,12 @@ import { useState, type JSX } from "react";
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError } from "@robomous/ui-core";
+import { defaultCorrectionName } from "./batchWords";
 import { useCreateCorrection, type Batch } from "./queries";
 
 /** What a correction covers. `all` sends nothing and lets the server default. */
 export type CorrectionScope = "all" | "selection";
 
-/**
- * What to call a correction of this batch, before anybody types anything.
- *
- * Pure and exported because it is the part with a decision in it: a name is
- * required, and a dialog that opened blank would make the common case — "yes,
- * correct this, that is all I meant" — cost a sentence of typing. Numbering by
- * how many corrections already exist keeps a chain readable in a listing, and
- * counting is the caller's job because only it has the listing.
- */
-export function defaultCorrectionName(parent: string, existing: number): string {
-  return existing === 0 ? `${parent} — correction` : `${parent} — correction ${existing + 1}`;
-}
 
 export interface CorrectionButtonProps {
   readonly batch: Batch;
@@ -74,13 +63,14 @@ export interface CorrectionButtonProps {
   /**
    * Drive the dialog from outside, for a caller with a second way in.
    *
-   * The gallery has two — the header button and the bulk bar's "Create one" —
-   * and two independent dialogs would be two states that can both be true. When
+   * A screen with two — a button and, say, a selection bar's "Create one" —
+   * would otherwise get two independent dialogs, two states that can both be true. When
    * this is supplied the component is controlled and its own button reports
    * through `onOpenChange` rather than to itself.
    */
   readonly open?: boolean;
   readonly onOpenChange?: (open: boolean) => void;
+  readonly size?: "sm" | "lg";
 }
 
 export function CorrectionButton({
@@ -92,6 +82,7 @@ export function CorrectionButton({
   className,
   open,
   onOpenChange,
+  size = "sm",
 }: CorrectionButtonProps): JSX.Element | null {
   const [own, setOwn] = useState(false);
   const showing = open ?? own;
@@ -106,7 +97,7 @@ export function CorrectionButton({
     <>
       <Button
         variant="outline"
-        size="sm"
+        size={size}
         className={className}
         data-testid={`correct-${batch.name}`}
         onClick={() => setShowing(true)}

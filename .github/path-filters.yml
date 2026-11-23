@@ -125,6 +125,7 @@ inert:
   - ".github/dependabot.yml"
   - ".github/workflows/publish-npm.yml"
   - ".github/workflows/publish-pypi.yml"
+  - ".github/workflows/react-doctor.yml"
   # The committed skills, read by coding agents and by no check.
   - ".agents/**"
   # The placeholder that keeps the dev stack's data directory in the tree while

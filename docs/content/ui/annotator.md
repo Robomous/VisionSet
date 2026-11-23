@@ -11,95 +11,125 @@ implementation renders it, using the current implementation's token names.
 
 No flow may force navigation out of the editor, and no exit may lose work. Back saves
 first; a class the schema lacks is created from the class list without leaving the page;
-looking at the job's other frames is an **overlay, not an exit** — the grid button opens a
+looking at the job's other frames is an **overlay, not an exit** — the island's frame button opens a
 gallery over the workspace and the URL does not move. Every trip out of the editor is a
 trip back through a list, a tab and a scroll position to the frame you were looking at,
 which is why this rule is immovable.
 
-## The top bar
+## The layout
 
-One 44px row on `card` with a bottom hairline, 32px controls, in **three zones** — *where
-you are*, *what changes the frame*, *the session*:
+**Three fixed zones under one bar, and one island on the picture.** A 48px bar runs the full
+width; under it, the tool rail on the left, the stage in the middle, and the panel on the
+right, full height. The moves made on every frame float over the stage in one island under
+the hand. Nothing in a zone changes position from frame to frame.
 
 | Zone | Contents |
 | --- | --- |
-| Left | back · pinned `v{n}` badge · the frame's identity as a label (the content-hash head — there is no filename on the wire) · the frame microtext `● annotated · Saved` |
-| Centre | the **navigation cluster**: `[⊞] [‹] n/m [›] │ [Skip] [Save and next] [Save and stay]` |
-| Right | `n / m annotated` · the review move (outline) · overflow `⋯` |
+| Bar | back (heading the rail's column) · the batch's name `›` `Job · n frames` · pinned `v{n}` badge — then, at the far end, the job's progress · a hairline · the save state · the frame's review move · overflow `⋯` |
+| Rail | the tools, the hand; at the foot, hide/show all objects, then help |
+| Stage | the tool's own bar (the active tool and the class it draws; while Suggest is armed, its options and its state) over the picture; on the picture, the status tag and under it the object count and hint top-left, notices top-right, the island bottom-centre, zoom bottom-right |
+| Panel | the classes, tags and objects |
 
-**Everything that changes the picture on screen is in the centre cluster, and nothing else
-is.** One hairline divider separates the two sub-groups — **browse | resolve** — so the
-difference between *look at another frame* and *finish this one* is adjacency rather than
-something learned. `‹` `›` browse: they move without settling progress, under the same
-save-first guard as back and the gallery. `n/m` renders between them in tabular figures, so
-walking a job does not shuffle the arrows under a cursor that has not moved.
+**The bar says where you are and where the work stands, and nothing on it moves between
+frames.** The breadcrumb truncates before anything on the right gives way.
 
-**The centre is anchored on the bar's geometric centre** — the header is a `1fr auto 1fr`
-grid — and the side tracks yield: a label truncates, never a control. Two widths inside the
-cluster are pinned so it is the same size on every frame: the resolution pair's minimum
-(covering `Skip` and `Un-skip`) and the flow verb's minimum (the widest of `Next` /
-`Save and next` / `Finish job` / `Finished`). The readout that gives way is a readout:
-`n / m annotated` truncates, and no button is ever clipped.
+- **The job's progress is shown here and nowhere else**: a slim bar split by frame state —
+  one segment per state, in the same tokens as the Overview's timeline cells
+  (`progressCellClass`), easing to their new widths — beside `settled / total` in tabular
+  figures. *Settled* is the product's own word, `SETTLED_PROGRESS` (annotated, skipped,
+  accepted): the total less `outstandingWork`, so it never goes backwards when a frame is
+  accepted. The settled number rolls in from below when it changes (220ms; a fade under
+  reduced motion). Hovering or focusing it opens every state counted — dot, word, count and
+  share — with a mini bar and how many frames still need a person. There is no key that jumps
+  to the next such frame, so the card names none.
+- **The save state says where the work is, without a tooltip** — `Edited`, `Saving`, `Saved`,
+  or, after a refusal, `Not saved` in the `warning` tone. A cloud that fills in as the change
+  lands: the four icons are all mounted and crossfade (opacity, scale from 0.25, blur from
+  4px; 200ms on the strong ease-in-out), and the four words share one grid cell, so its width
+  never changes. It is a live `status`. *Why* a save was refused is a sentence in the notice
+  column, never here. The page saves on its own — see [`ui.md`](../ui.md#saving) — so there
+  is no Save button; `⌘S` saves at once.
+- **The review move is one outline control**, chosen from the frame's own `allowed_actions`:
+  `submit_for_review`, else `accept` — mutually exclusive by construction. When the wire
+  declares neither it stays, **disabled with its reason** (`Label this frame first`, `confirm
+  them first, with the check on the frame's tag`, the closed batch's sentence), because a slot
+  that came and went frame by frame would move the save state under the pointer; which of the
+  two words it shows then is copy, and whether it can be pressed is `declares` alone.
+  `complete` is deliberately not ranked against them: it is the *job's* action, and it
+  co-declares with `submit_for_review` on the commonest path, so ranking them would hide
+  Finish job exactly where most jobs end. Submitting carries a tooltip saying what it means,
+  because this product has no annotator identity — a submitted frame is marked for a review
+  pass, not routed to a person. `Confirm labels` is not on the bar: it is on the status tag.
 
-**The dominant slot is the flow verb.** After finishing a frame the right move is *this one
-is done, show me the next* — the navigator's `›` is chrome rather than a verb. **Skip and
-Save and next are siblings** — two ways to resolve this frame, skipped or annotated, both
-advancing — and neither ever collapses into the overflow.
+**The island holds the moves made on every frame**, bottom-centre over the picture:
+`[undo] [redo] | [Skip X] | [‹] [⊞ n / m] | [Next ↵]`. It is one `toolbar`, `rounded-xl` on
+`background` at 95% with a blur and a layered hairline-and-shadow lift, its controls 36px and
+`rounded-lg` inside a 4px inset. Like the rail's buttons, none of them takes the focus on
+press, so the canvas keeps the keyboard.
 
-- `Save and next` is the same save-first advance the navigator uses, so there is one save
-  pipeline and one place the no-lost-work rule is enforced. It reads **`Next` when no save
-  will happen** — an untouched frame — because the button never promises a save it will not
-  perform, and once the job is closed it is not rendered at all: there is no save-first
-  advance to offer, and `›` is what moves there.
-- **On the last frame `Finish job` takes the dominant slot**, in place: `Save and next` is
-  not rendered there, and Finish job is not rendered anywhere else. Where it renders and
-  cannot be pressed inside an open batch, it carries why (`aria-disabled` and a tooltip).
-  On a read-only page whose batch is not open, it is natively `disabled`: the banner is
-  the explanation, so there is no reason left to make it focusable for. The consequence
-  is worth stating: `complete` is reachable from the last frame only.
-- **The review move is an outline control**, chosen from the frame's own `allowed_actions`:
-  `submit_for_review`, else `accept` — mutually exclusive by construction. `complete` is
-  deliberately not ranked against them: it is the *job's* action, and it co-declares with
-  `submit_for_review` on the commonest path, so ranking them would hide Finish job exactly
-  where most jobs end. Submitting carries a tooltip saying what it means, because this
-  product has no annotator identity — a submitted frame is marked for a review pass, not
-  routed to a person.
-- **Save and stay is the second half of the forward gesture, and it sits beside the
-  first** as the third member of the resolve group — `Skip · [flow verb] · Save and stay`.
-  *Advance* and *persist in place* are one decision read two ways, so they are adjacent
-  rather than a bar apart. In the current implementation the flow verb is filled in
-  `primary` and Save and stay is an outline control beside it; adjacency is what says
-  they are alternatives, since a second filled `primary` beside the first would read as
-  a bar that could not decide. It keeps the frame verbs' lifetime rather than the mode's: a closed batch or a
-  finished job has nothing to save on any frame, so it leaves with Skip and the flow verb;
-  inside a working job it holds its slot, disabled, so the cluster does not change width as
-  somebody walks a mixed job.
-- **Reabsorption order when the bar runs out of room**: Save and stay first (below `xl`),
-  the review move second (below `lg`), into the overflow; the Skip/Save-and-next pair never
-  collapses. Each reabsorbed control carries the exact inverse of its button's breakpoint,
-  so it exists in exactly one place at any width.
-- **Hotkey chips go on the ghost and outline controls and on nothing else** — `X` on Skip,
-  from `core/input/bindings.ts`. A chip is a lighter-than-the-surface treatment: inside a
-  filled control it inverts and reads as a smudge rather than as a key, so neither filled
-  control carries one. `⌘S` is taught by Save and stay's tooltip — the tool strip's own
-  pattern (`Box (B)`) — and `enter` is the one key with two meanings, the polygon ring
-  close while a shape is in progress and *finish the frame* otherwise. Both are in the
-  shortcut sheet, which derives its rows from the live binding registry rather than from a
-  hand-written table.
-- The bar carries the frame microtext `● annotated · Saved`, which says *where the work
-  is*. The word is on the bar beside the save state because **status is never colour
-  alone**, and a tooltip is a place a word goes to not be read. After a refused save the
-  honest answer there is `unsaved`, and the reason is a sentence in the notice column.
-  `Saved` claims a save, so it appears only after one on this visit to the frame; a frame
-  that has only been looked at shows the progress word alone.
+- **`Next` is the page's one filled control**, and it always reads `Next`. It is the
+  save-first advance — the same path `‹`, the gallery and back take — so there is one save
+  pipeline and one place the no-lost-work rule is enforced; it waits behind a save already out
+  rather than being disabled by it. It carries its key, `↵`, drawn in the fill's own foreground
+  at 15% — a muted chip inverts into a smudge on a filled ground. There is no `›`: Next is the
+  forward move, and back is only an icon because it is the rarer one.
+- **On the last frame `Finish job` takes Next's slot**, in place, and is not rendered anywhere
+  else. Where it renders and cannot be pressed inside an open batch, it carries why
+  (`aria-disabled` and a tooltip). On a read-only page whose batch is not open, it is natively
+  `disabled`: the banner is the explanation, so there is no reason left to make it focusable
+  for. `complete` is reachable from the last frame only.
+- **`⊞ n / m` is which frame, and the way into all of them**: it opens the frame gallery, in
+  tabular figures so walking a job does not shuffle the arrows under a cursor that has not
+  moved.
+- **Skip** (`X`) — **Un-skip** in its place on a skipped frame — is gated on the wire's
+  declaration and, where the wire withholds it, disabled *with the reason*; its keycap shows
+  only while the move is live. Skip and Un-skip keep the frame verbs' lifetime rather than the
+  mode's: a closed batch or a finished job has nothing to skip on any frame, so they leave.
+- **Undo and redo** are disabled with the reason (`Nothing to undo`) rather than hidden,
+  because an empty history is a state a person is in constantly. They keep the frame verbs'
+  lifetime: on a settled frame inside an open job they stay, withheld (`Viewing only`), so the
+  island keeps its shape as the job is walked — Skip and Un-skip share one width, and so do
+  Next and Finish job, for the same reason — and once the whole job is closed they leave with
+  Skip.
+- **Autosave says when a gesture is holding it**: once the wait is up while a drag, an open
+  polygon or a pending suggestion is in progress, the save state carries
+  `data-autosave="held"`, and the save goes the moment the gesture ends. A scan's cuboids are
+  autosaved the same way: the frame keeps both documents, and one plan carries both.
+- **The save state claims a save only after one**: it is absent on a frame that has only been
+  looked at, and appears once this visit has unsaved work or has saved.
+- **Where the picture is too narrow for the island and the zoom widget side by side** (a
+  52rem stage), the zoom widget rises above the island instead, and below 36rem the island
+  drops its keycaps — so the two never overlap down to the editor's minimum viewport.
+
+**The status tag says which frame and where it stands**, top-left on the picture: the
+content-hash head (there is no filename on the wire), the progress word beside its dot —
+**status is never colour alone** — and, when a model wrote any of the frame's labels, `N from
+the model`. While the wire declares `confirm`, the tag carries the move that keeps them: an
+attached check (`CheckCheck` in `primary`, behind a hairline) named `Confirm labels`, beside
+the word that says where the labels came from. Under the tag, the object count and **the
+hint**, which says what the next press does with the active tool — `Drag to draw a box`,
+`Click an object to suggest its outline` — and names only live bindings, each as a keycap. A
+viewer gets no hint; the banner is that frame's one explanation.
+
+**A key is drawn one way, as a `Kbd` keycap** — on Skip (`X`), on the tag chips and in the
+hint; the hotkey goes on ghost and outline controls, from `core/input/bindings.ts` — and Next
+carries `↵` in its own colours. `enter` is the one key with two meanings: the polygon ring
+close while a shape is in progress, and *next frame* otherwise. Both are in the shortcut
+sheet, which derives its rows from the live binding registry. There is no binding for `←` /
+`→` between frames.
 
 ## In-editor messages, and waits
 
 **In-editor messages have one surface, top-right of the stage** (`EditorNotice`). Every
 sentence the editor floats over the picture goes into one column inset 16px from the
-stage's top and right edges: a suggest session, a refused save, a refused progress move,
-and a batch or job that could not be opened. Top-right is the corner nothing else occupies:
-the tool strip is top-left, the object counter bottom-left, the zoom cluster bottom-right.
+stage's top and right edges: a refused save, a refused progress move, and a batch or job
+that could not be opened. **The suggest tool is not in that column**: what it is doing,
+why it cannot, and its options are the tool's own, so they are said in the tool's bar
+above the picture (*The tool strip*, below) and never over the thing being outlined. Top-right is the corner nothing else occupies:
+the status tag and the hint are top-left, the island bottom-centre, the zoom cluster
+bottom-right. The tag, the hint and the zoom cluster are one chrome — `background` at 95%
+with a blur, lifted by a hairline and a small shadow (pure black; in dark, a pure white
+hairline), never an outline — and the island takes the same lift a step deeper.
 The column is a stack, most-blocking first, because more than one of those can be true at
 once. Its body wraps mid-token — a model reference is one unbroken string and no fixed
 width guarantees the next one fits, so wrapping is the invariant and the width is comfort.
@@ -109,15 +139,15 @@ Work that has begun and shows nothing is the state in which *working* and *broke
 alike, so the trigger is the request leaving. The floor is the asymmetry: appearing is
 free, and disappearing after two frames is the glitch. Where a wait has a second threshold
 worth crossing, what appears is **prose**, never a second indicator. The worked example is
-the suggest tool: the panel says `Looking at that…` from the moment the request is
-dispatched, and past 1.5s adds a sentence saying that the first click on a frame is the
-slow one.
+the suggest tool: its bar says `Looking at that…` from the moment the request is
+dispatched, and past 1.5s an ⓘ appears beside it whose card says that the first click on a
+frame is the slow one.
 
 **A wait is reported in one place, and never at the cursor.** An indicator sitting on the
 picture, next to the pointer, reads as the machine having *seized* rather than as work in
 progress — it is in the way of the thing being looked at, and it moves with the hand. The
-card is out of the way, says the same thing in words, and is where every other answer about
-the tool already appears. **An indicator is never brand-coloured**: quiet neutrals, at low
+tool's bar is out of the way, says the same thing in words, and is where every other answer
+about the tool already appears. **An indicator is never brand-coloured**: quiet neutrals, at low
 opacity, at the place the person is already looking.
 
 ## The classes region
@@ -174,9 +204,10 @@ the region's height rule reads.
 
 ## The side panel
 
-A 288px column (320px from 1536px — headroom for a class naming three shapes, withheld
-below that on purpose: the minimum supported viewport must not be charged for a width
-chosen on a large monitor). `muted` surface, hairline border, 12px radius. **Three stacked
+The whole of the right column, full height, which is 288px (320px from 1536px — headroom for a class
+naming three shapes, withheld below that on purpose: the minimum supported viewport must
+not be charged for a width chosen on a large monitor). Flush with the column on `card`;
+moving between frames and settling one are the island's and the bar's, not this column's. **Three stacked
 regions, no tabs and no splitter** — Classes, Tags, Annotations. A tab is a claim that
 things are alternatives, and these are three answers about one frame, read top to bottom:
 *what may I draw*, *what is true of the whole picture*, *what have I drawn*. All three are
@@ -212,10 +243,43 @@ if a real schema arrives with enough tag classes to disprove it.
 **drawn shapes only** — a tag has no coordinates, renders in neither canvas layer, and is
 assigned in the region above; counting it here would give a tagged-but-undrawn frame
 `1 object` and a hide button that hides nothing. Top to bottom: header (the word
-`Annotations`, the object count, the all-visibility toggle); the filter — *always*
+`Objects` and the object count — hiding every object is the rail's hide/show-all button at
+its foot, which writes the same hidden set the rows' eyes do, so there is one such control
+and nothing to keep in step); the filter — *always*
 rendered, because a control that appears once a list is long enough is a control nobody
-finds; then the object rows: meta-size `N. class`, selected = accent border + tint, hidden
-= 50% opacity, per-row tag / eye / trash as small ghost icon buttons.
+finds; then the object rows. A row reads `[swatch class ⌄] [values] [•] [✦] … #N [eye] [trash]`:
+the class name at the class rows' size, then a muted, truncating summary of the object's
+values (a select's, number's or string's value; a boolean by its name when it is true; the
+shape's name too, where the class accepts more than one geometry and so the class alone does
+not tell two rows apart), then a small warning dot when a required attribute has no value,
+then the model mark, and the object's number at the end. Selected = accent border + tint,
+hidden = 50% opacity. The whole row is the select target; the class name, the mark and the
+two icons sit on it as controls of their own. Eye and trash show on hover, on keyboard focus
+inside the row and on the selected row — a column of icons per object was the loudest thing
+in the list — and always where there is no hover; a hidden object's eye never hides, since it
+is the only sign the object is there. Every row, heading and swatch in the panel starts on
+one inset.
+
+**The selected row opens its attributes.** When the selected object's class declares
+attributes, their controls open beneath the row — a label column and the control, one line
+each, with the booleans as a wrap of chips on the control column — rising in over 200 ms
+(none under reduced motion; closing is a selection change and never waits on it). A select
+with four options or fewer is a segmented radiogroup, and pressing the chosen option again
+clears it; with more it is a select reading *Choose*, with a clear button beside it once it
+holds a value. A number or a string is a compact field that commits on blur or Enter and
+reverts on Escape — a number that does not parse is shown invalid and never written, and an
+emptied field clears the attribute. A boolean is a chip that says its own name: on writes
+`true`, off writes `false`, because the kernel reads *required* as a key being present and a
+boolean somebody switched off has been answered. Clearing removes the key. Every change is
+`replaceAnnotationCommand` with the new attributes — one change, one undo step, exactly like a
+reassignment — and a field's draft is committed even when a press on the canvas closes the row
+before the field could blur. Read-only renders the same controls, disabled.
+
+**Required is information.** The dot beside a row and beside an attribute's name (*Needs a
+value* on hover, and as its accessible name) says a required attribute is empty. Nothing is
+disabled or refused because of it, and a required value can be cleared like any other — the
+rule is the kernel's (`MissingRequiredAttribute`, on save), and a client that enforced it would
+be a second spelling of it.
 
 **Vertices, under the object rows, while exactly one polyline is selected.** A vertex has no
 selection of its own and every canvas gesture on one is already taken, so this is where a
@@ -262,7 +326,9 @@ kinds of thing and a person reads both at once. **The object number is draw orde
 filtering does not renumber it** — it is the object's identity on the canvas, and a panel
 that renumbered as somebody typed would disagree with the picture about which shape is "3".
 
-The per-row **tag icon** opens class reassignment: every class the schema declares, with
+The row's **class name** is the reassignment control — the name and a small chevron, never an
+icon beside it, because what the menu changes is what the name says. Pressing it opens the
+menu without selecting the row. The menu lists every class the schema declares, with
 the ones whose geometry does not match this annotation disabled and **carrying the reason**
 (`needs a polygon`). Listed-and-refused rather than filtered out: a short list with no
 explanation reads as a schema missing its classes, and the rule — the kernel judges
@@ -271,6 +337,13 @@ not there. Applied on selection, not behind an Apply, so there is no per-keystro
 keep out of the undo history. Each item that *can* be picked shows its class hotkey, and
 pressing that digit while the menu is open reassigns; a disabled item spends the same slot
 on the reason instead, because a key chip on a row that refuses the key is a lie.
+
+A reassignment also reconciles the object's attributes, at both anchors, in the same undo
+step (`reassignedAnnotation` in the annotator core, next to the seeding a drawn object gets):
+a value for an attribute the new class also declares is kept when it still fits — its kind,
+and for a select one of the new options — every other declared attribute takes the new
+class's default, and keys the new class does not declare are dropped, because the kernel
+refuses them on save (`UnknownAttribute`).
 
 **Class picker, second anchor**: the same menu, on the shape. With exactly one shape
 selected a small tag button rides above its top-right corner — above rather than on it,
@@ -313,66 +386,90 @@ one class, neither of which anybody watched happen. Cancelling with classes bank
 **asks**, on Escape and the overlay too: everything a session holds lives in the browser,
 so closing loses exactly what was typed and nothing else. The save-then-publish-then-repin
 order, the `canRepin` preflight that says *before* the press when a completed batch will
-keep its version, and the refusal that names the Schema tab are all described in
+keep its version, and the refusal that names the Classes section are all described in
 [`docs/content/ui.md`](../ui.md).
 
-**Version history grouping.** The project's Schema tab ends in a ledger of every version,
-and the annotator publishes versions too, so consecutive versions whose `provenance` is
-`annotation` collapse into one expandable row — `v3–v5`, how many, when the run ended, and
-the contract it left behind — while `curated` versions (and those from before the field
-existed) always render individually. A run of one is not a run. Expanding gives back
-exactly the rows a flat table would have had, indented.
+**Version history grouping.** The History sheet of the project's Classes section lists every
+version, newest first, and the annotator publishes versions too, so consecutive versions whose
+`provenance` is `annotation` are drawn on a lane of their own that branches off the main one and
+rejoins it — one detour per sitting, in its own colour — while `curated` versions (and those from
+before the field existed) stay on the main lane. A run of one is not a run. Every version keeps
+its own line, so nothing is hidden behind a disclosure; a version opened from a run names the
+sitting it came from.
 
 ## The tool strip
 
-Floating at the canvas's left edge — a 48px column on `muted`, hairline border, 12px
-radius, 8px padding; 36px icon buttons; **active tool = the filled action treatment**,
-inactive = ghost; a divider; help at the bottom. Tooltips open right with the shortcut
-("Select (V)", "Box (B)", "Polygon (P)"). Only tools the schema's geometries allow — and,
-**with a class selected, only that class's own**: offering a polygon button under a
-boxes-only class would answer *what can I draw here* with a lie. With no class selected it
-is the schema's union. Switching to a class that forbids the active tool never strands it —
-the derived tool resolves to the class's first allowed shape — and the route to a different
-class's geometry is the class list, which is where choosing a class belongs.
+The rail — a fixed 48px column on `card` beside the stage, under the back arrow; 36px icon
+buttons; **active tool = a surface step** (`muted` with a hairline ring), inactive = ghost —
+never a fill, because the island's Next is the page's one filled control. The showcase
+still floats the same strip over its canvas (`layout="floating"`). Tooltips open right with
+the shortcut ("Select (V)", "Box (B)", "Polygon (P)"). Only tools the schema's geometries
+allow — and, **with a class selected, only that class's own**: offering a polygon button
+under a boxes-only class would answer *what can I draw here* with a lie. With no class
+selected it is the schema's union. Switching to a class that forbids the active tool never
+strands it — the derived tool resolves to the class's first allowed shape — and the route to
+a different class's geometry is the class list, which is where choosing a class belongs.
+**The rail picks how to draw; it does not add classes** — a class is added from the panel's
+class region (its `+`, or the create row a filter with no match offers).
 
-**Last of the tools, below the `+`, the hand** (`H`) — the one button the schema does not
-gate, because it answers a question about the *device* rather than the project: a trackpad,
-a tablet and a pen have no second button to offer for panning. Cursor `grab`, `grabbing`
-while a drag is under way. **The hand and the derived tool are one lit button, not two**:
-while the hand is on, no tool row reads as active, because the canvas answers a primary
-press with a pan — and pressing any tool, or reaching for a class, puts the hand down.
-**Suggest is not in that group**: it is a mode over the class it borrows, so it is
-legitimately lit beside a tool and keeps its own state. While the hand is on there is no
-crosshair and no highlighted grip, because both would be offers the canvas cannot keep.
+**Last of the tools, the hand** (`H`) — the one button the schema does not gate, because it
+answers a question about the *device* rather than the project: a trackpad, a tablet and a
+pen have no second button to offer for panning. Cursor `grab`, `grabbing` while a drag is
+under way. **The hand and the derived tool are one lit button, not two**: while the hand is
+on, no tool row reads as active, because the canvas answers a primary press with a pan — and
+pressing any tool, or reaching for a class, puts the hand down. **Suggest is not in that
+group**: it is a mode over the class it borrows, so it is legitimately lit beside a tool and
+keeps its own state. While the hand is on there is no crosshair and no highlighted grip,
+because both would be offers the canvas cannot keep.
 
-Below a second divider, **undo and redo** — disabled *with the reason* (`Nothing to undo`)
-rather than hidden, because an empty history is a state a person is in constantly, and a
-control that vanished and reappeared as they worked would be worse than one that explains
-itself.
+**While Suggest is armed, the tool's bar carries its options and its state**, in one row:
+where the click runs (`Server | Local`, a radio group, shown only once a browser runtime is
+wired), the model answering (its name, or a picker once there are two; Local's model with
+Download and its size, `Downloading…`, `Loading…` or `Ready`, and Remove in a small menu on
+its name), the state in a few words — `Click the thing you want`, `Looking at that…`,
+`Proposed shape`, `Nothing to suggest there`, `Suggestion refused`, `No model connection`,
+`“lane” cannot hold a suggestion` — with an ⓘ whose card holds the full explanation word for
+word (a server refusal quoted exactly, because it carries the remedy) and is also the
+button's description, the way out where there is one (`Set up`, `Put the tool away`), then
+`Box | Polygon` for a class that admits both, Detail once the answer declares it, and the
+class; Accept `↵` and Discard `Esc` sit at the bar's far end while a proposal is shown.
+Where the click runs, the model and the shape are drawn only while nothing is pending. The
+bar is a size container: below 48rem of bar its words drop and its icons stay (each control
+keeps its name), and what still does not fit scrolls inside the row with no scrollbar — it
+never wraps and never widens the page. None of its buttons takes the focus on press, so the
+canvas keeps the keyboard.
+
+**At the rail's foot, the two controls about looking rather than drawing**: hide/show all
+objects (`Eye` / `EyeOff`, pressed while everything is hidden), which writes the same hidden
+set as the panel's per-row eyes — all hidden ↔ none hidden — and is disabled with its reason
+on a frame with no objects; then help. It has no key.
+
+**Undo and redo** are in the island, with the other moves made on every frame — see *The
+layout*.
 
 The geometries with no tool behind them, `aria-disabled` rather than `disabled`, and the
 suggest tool's whole flow are in [`docs/content/ui.md`](../ui.md).
 
 ## The frame gallery
 
-The grid button opens the job's frames as a thumbnail overlay over the workspace — square
+The island's frame button (`⊞ n / m`) opens the job's frames as a thumbnail overlay over the workspace — square
 tiles with the photo-icon fallback, each carrying its frame number and its status dot, with
 the **word** in the tile's accessible name and tooltip because a tile has no room for
 prose. The current frame is marked and takes the focus on open, which is also what scrolls
-it into view. Above the grid, the batch view's own four-segment filter
+it into view. Above the grid, a four-segment filter
 (`All / Unannotated / In review / Done`), counted over *this job's* frames. **One press
-opens a frame** — no select-then-open — through the same save-first path `‹` / `›` use, so
+opens a frame** — no select-then-open — through the same save-first path `‹` and Next use, so
 a refused save keeps the work and the frame. Escape or the scrim returns to exactly the
 frame, zoom, pan and armed class that were there. **No batch actions of any kind**: no
-approve, no promote, no selection, no bulk bar. It is a switcher; the batch view stays the
-home of batch operations.
+approve, no promote, no selection, no bulk bar. It is a switcher; the batch's panel on the
+Overview is the home of batch operations.
 
 ## Zoom, pan, and the device model
 
-**Zoom widget**: floating bottom-right of the stage, opposite the tool strip and sharing
-its chrome — `− / readout / + / fit / fullscreen`. Zoom changes how the work is looked at,
-not the work, which is why it is not in the top bar. Fullscreen is requested on the
-**stage** element rather than the document, so the tool strip and the widget go with it,
+**Zoom widget**: floating bottom-right of the stage, on the island's baseline — rising above
+it where the picture is too narrow for both — with the stage's own chip chrome — `− / readout / + / fit / fullscreen`. Zoom changes how the work is looked at,
+not the work, which is why it is not on the bar. Fullscreen is requested on the
+**stage** element rather than the document, so the picture and the widget go with it,
 and it is **absent rather than disabled** where the browser has no Fullscreen API — there
 is no state a person could change to get it. **5%–800%**: an 8K frame does not fit a laptop
 pane above about 18%, so a higher floor makes "zoom out until you can see the whole thing"
@@ -419,7 +516,7 @@ subtraction, and a screen with less on it is not an explanation.
 
 What a viewer is:
 
-- **One explanation surface.** The banner under the top bar says `Viewing only.` with the
+- **One explanation surface.** The banner over the stage says `Viewing only.` with the
   cause, and — when the wire declares `create_correction` — the route onward:
   `Correct this batch`. It renders on every frame of a closed batch or a finished job,
   including skipped ones, where the skipped notice would otherwise promise an Un-skip the
@@ -427,7 +524,7 @@ What a viewer is:
   correction route; a finished job names itself and offers nothing, because the job model
   has no way back and the batch is still open; a settled frame in an open batch points at
   the control on this very toolbar.
-- **No classes region.** The side panel is the objects region alone, at full height — the
+- **No classes region.** The panel is the objects region alone, at full height — the
   region, its filter, its quick-create and its hotkey badges are absent, not disabled, and
   `C` and the digits do nothing. *What may I draw* is not a question a viewer can ask.
 - **Selection highlights; it does not advertise.** A selected shape renders the selected
@@ -435,25 +532,24 @@ What a viewer is:
   default arrow everywhere: no resize keywords, because no such gesture exists. A polyline
   is the exception for dots: its vertices carry recorded visibility, so a selected lane
   draws them, the hollow occluded marker included, as something to read rather than drag.
-- **The tool strip renders, carrying navigation and nothing else.** The hand is not a
+- **The rail renders, carrying navigation and nothing else.** The hand is not a
   drawing tool — it is what a person reaches for when the picture is in the wrong place —
-  and navigating a batch nobody may edit is most of what a viewer does, so the strip keeps
-  the hand and the shortcut sheet and loses every other button.
+  and navigating a batch nobody may edit is most of what a viewer does, so the rail keeps
+  the hand, hide/show all objects and the shortcut sheet and loses every other button. The
+  island withholds undo and redo on a settled frame and drops them once the job is closed.
 - **Selection is one state, reflected everywhere.** A press on a shape selects it, and the
   objects panel's row highlights and scrolls into view. DOM focus stays with the canvas,
   which reads its chords off its own root.
 - **Once the job is closed, the frame's own verbs go with it — and the job's does not.**
-  `Skip` / `Un-skip` and the flow verb stop rendering on every frame of a completed batch
-  or a finished job, along with the browse | resolve divider. **The gate is the job, never
-  the frame**, and both halves are load-bearing: a merely *settled* frame inside a working
-  job keeps the pair, greyed — the cluster is measured to one width, and `Un-skip` is the
-  one way back out of a skipped frame — while a closed job withholds every move on every
-  frame alike, so the cluster is uniformly narrower and nothing jitters. `Finish job` stays
+  `Skip` / `Un-skip` stop rendering on every frame of a completed batch or a finished job. **The gate is the job, never the frame**, and both
+  halves are load-bearing: a merely *settled* frame inside a working job keeps them, greyed —
+  `Un-skip` is the one way back out of a skipped frame — while a closed job withholds every
+  move on every frame alike, so walking it changes nothing in the island. `Finish job` stays
   on the last frame: `complete` is the *job's* declaration, and a job whose last frame
   happens to be `accepted` would otherwise have no way to be finished. Once finished it
   reads `Finished`, the page's standing statement that the work is over.
-- **Navigation stays whole.** `‹` `›`, the counter and the frame gallery all work, and no
-  save-first guard engages — there is nothing to save.
+- **Navigation stays whole.** `‹`, Next, the counter and the frame gallery all work, and no
+  save-first guard engages — there is nothing to save, and nothing ever autosaves.
 - **Reads stay live.** Zoom, pan, fullscreen, visibility toggles, the object filter, and
   copy — the road a box takes into a correction batch — all work; paste and every other
   write is refused at the engine (`readOnly` on the canvas, `READ_ONLY_KINDS` for the
@@ -511,9 +607,11 @@ selects the label and deletes it through the same history as the keyboard. The p
 Classes region on a scan: its classes arm the 2D tools, and a scan label's class is picked in
 the strip.
 
-A scan's edits share the page's one save plan and dirty state with the image document: *Save and
-stay*, *Save and next* and the unsaved-changes guard all cover them, and an edited import keeps
-its provenance. Edit is disabled, with the reason on the control, when the scan's source
+A scan's edits share the page's one save plan and dirty state with the image document: the
+autosave, `Next`, `mod+s` and the unsaved-changes guard all cover them, a cuboid created on the
+page and already stored is saved again under the server's id, and an edited import keeps
+its provenance. On a scan the island's undo and redo walk the cuboids' history, and the tool
+rail and the zoom widget are absent: the strip and the view carry those. Edit is disabled, with the reason on the control, when the scan's source
 declares no frame (the server refuses every 3D write there) or the frame is open for viewing
 only; a frame that turns read-only mid-edit leaves Edit on the same render.
 
@@ -532,8 +630,8 @@ than the hex. `stage` is a VisionSet-specific semantic token and is recorded as 
 
 ## Shape rendering
 
-One class-colour rule shared by the canvas, the side panel swatches, and the gallery
-badges: `classColor` in `frontend/annotator/src/adapters/react/paint.ts`. `ui-core`
+One class-colour rule shared by the canvas, the side panel swatches, and the class
+badges elsewhere in the app: `classColor` in `frontend/annotator/src/adapters/react/paint.ts`. `ui-core`
 **imports it**; nothing respells it.
 
 - A class **with a schema colour** uses it. Fill is the same colour at an opacity the shape
@@ -590,8 +688,8 @@ provenance is unmarked until there is an importer whose mark would mean somethin
 **Confidence renders on the live suggestion preview and nowhere else in the editor.** The
 number tells somebody whether to accept a proposal; once accepted, the shape is a label
 like any other and the score is decoration on every subsequent reading of it. It is not
-discarded — `confidence` and `model_ref` are stored unchanged — and its home is the batch
-review loop, where a surface showing it must also name *what it measures*: a point-prompted
+discarded — `confidence` and `model_ref` are stored unchanged — and its home is the review of model
+labels, where a surface showing it must also name *what it measures*: a point-prompted
 mask score and a detection's prompt affinity are different quantities on different scales
 and cannot be pooled, thresholded or sorted together. **Where it is shown, it has one
 spelling, and that is whole percent**: `confidencePercent` in

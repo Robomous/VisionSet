@@ -11,7 +11,7 @@
  * The design names six. Two of them already exist and are deliberately not
  * rebuilt here:
  *
- * - **`EmptyState`** is in `patterns/AsyncStates.tsx`, and is already icon +
+ * - **`EmptyState`** is in `patterns/AsyncStates.tsx`, and is already drawing +
  *   title + description + one action — the spec, down to the "one primary
  *   action, two is a decision" comment.
  * - **Chip** is `primitives/badge.tsx`. It already carries the tinted-fill and

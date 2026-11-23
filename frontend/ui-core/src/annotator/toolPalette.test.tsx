@@ -14,7 +14,8 @@ import type { JSX } from "react";
 
 import { TooltipProvider } from "@robomous/ui-core";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
-import { ToolPalette, toolChoices } from "./ToolPalette";
+import { ToolPalette } from "./ToolPalette";
+import { toolChoices } from "./toolChoices";
 
 // Every button below is a Tooltip trigger, and `userEvent.click` opens the
 // tooltip on its way to the press. See `testing/resizeObserver.ts`.
@@ -301,27 +302,67 @@ describe("the canvas keeps the focus", () => {
   });
 });
 
-describe("adding a class from the palette (#233)", () => {
-  it("offers no button where the host cannot honour one", () => {
-    // The `onOpenGallery` rule: a host with nowhere to send anybody renders no
-    // control rather than a dead one. The annotator demo has no project behind it.
-    render(mount());
+describe("adding a class is the panel's, not the rail's", () => {
+  it("offers no add-class button on the strip at all", () => {
+    // The rail picks how to draw; a class is added from the panel's class
+    // region (`class-add`), where the classes are. The prop that used to put a
+    // `+` here is gone, so no host can bring it back by accident.
+    render(mount({ suggest: { active: false, onToggle: vi.fn() } }));
 
     expect(screen.queryByTestId("tool-add-class")).toBeNull();
   });
+});
 
-  it("asks the host to open the dialog, and keeps the canvas's focus", async () => {
-    const add = vi.fn();
-    render(mount({ onAddClass: add }));
+describe("hiding every object, from the strip's foot", () => {
+  it("is absent where the host has no objects to hide", () => {
+    render(mount());
 
-    const button = screen.getByTestId("tool-add-class");
+    expect(screen.queryByTestId("tool-visibility")).toBeNull();
+  });
+
+  it("sits above the help, out of the tools' run, and asks the host to toggle", async () => {
+    const onToggle = vi.fn();
+    render(mount({ visibility: { allHidden: false, empty: false, onToggle } }));
+
+    const strip = screen.getByTestId("tool-palette");
+    const order = [...strip.querySelectorAll("[data-testid^='tool-']")].map((node) =>
+      node.getAttribute("data-testid"),
+    );
+    expect(order.slice(-2)).toEqual(["tool-visibility", "tool-help"]);
+
+    const button = screen.getByTestId("tool-visibility");
+    expect(button.getAttribute("aria-label")).toBe("Hide all objects");
+    expect(button.getAttribute("aria-pressed")).toBe("false");
     await userEvent.click(button);
 
-    expect(add).toHaveBeenCalledTimes(1);
-    // Focus stays on the canvas for the reason every other palette button keeps
-    // it: `AnnotatorCanvas` reads the keyboard off its own root, so a button that
-    // took focus would leave every chord dead until the user clicked the picture.
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    // The canvas keeps the keyboard, as it does for every button on the strip.
     expect(document.activeElement).not.toBe(button);
+  });
+
+  it("reads as pressed, and offers to show them, once all are hidden", () => {
+    render(mount({ visibility: { allHidden: true, empty: false, onToggle: vi.fn() } }));
+
+    const button = screen.getByTestId("tool-visibility");
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    expect(button.getAttribute("aria-label")).toBe("Show all objects");
+  });
+
+  it("is disabled with its reason on a frame with nothing on it", async () => {
+    const onToggle = vi.fn();
+    render(mount({ visibility: { allHidden: false, empty: true, onToggle } }));
+
+    const button = screen.getByTestId("tool-visibility");
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+    expect(button.getAttribute("aria-label")).toBe("No objects to hide");
+    await userEvent.click(button);
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it("stays for a viewer — hiding objects is looking, not drawing", () => {
+    render(mount({ readOnly: true, visibility: { allHidden: false, empty: false, onToggle: vi.fn() } }));
+
+    expect(screen.getByTestId("tool-visibility")).toBeTruthy();
   });
 });
 
@@ -492,11 +533,11 @@ describe("the hand is the one button here that is not about the schema (#576)", 
     expect(screen.getByTestId("tool-suggest").getAttribute("data-active")).toBe("true");
   });
 
-  it("is the last of the tools, below the button that adds a class", () => {
+  it("is the last of the drawing tools, before the hand", () => {
     // Order, asserted because it is the half a `getByTestId` cannot see. It was
     // above the strip for a release, which read as a heading over the tools
     // rather than as one of them.
-    render(mount({ onAddClass: vi.fn(), suggest: { active: false, onToggle: vi.fn() } }));
+    render(mount({ suggest: { active: false, onToggle: vi.fn() } }));
 
     const strip = screen.getByTestId("tool-palette");
     const order = [...strip.querySelectorAll("[data-testid^='tool-']")].map((node) =>
@@ -504,12 +545,7 @@ describe("the hand is the one button here that is not about the schema (#576)", 
     );
 
     expect(order.slice(0, 3)).toEqual(["tool-select", "tool-bbox", "tool-polygon"]);
-    expect(order.slice(-4)).toEqual([
-      "tool-suggest",
-      "tool-add-class",
-      "tool-hand",
-      "tool-help",
-    ]);
+    expect(order.slice(-3)).toEqual(["tool-suggest", "tool-hand", "tool-help"]);
   });
 });
 
@@ -521,11 +557,10 @@ describe("a viewer gets the strip, carrying only what does not draw (#576)", () 
     expect(screen.getByTestId("tool-help")).toBeTruthy();
   });
 
-  it("drops every control that draws, adds a class or steps the command log", () => {
+  it("drops every control that draws or steps the command log", () => {
     render(
       mount({
         readOnly: true,
-        onAddClass: vi.fn(),
         suggest: { active: false, onToggle: vi.fn(), unavailable: null },
         history: { canUndo: true, canRedo: true, onUndo: vi.fn(), onRedo: vi.fn() },
       }),
@@ -540,7 +575,6 @@ describe("a viewer gets the strip, carrying only what does not draw (#576)", () 
       "tool-polygon",
       "tool-polyline",
       "tool-suggest",
-      "tool-add-class",
       "tool-undo",
       "tool-redo",
     ]) {

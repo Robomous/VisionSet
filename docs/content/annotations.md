@@ -1360,6 +1360,6 @@ out, and nothing else. On a phone there is no rail beside this page and, on a
 fresh tab, no history behind it, so an explanation with no exit would be the dead
 end #199 removed everywhere else.
 
-**Nothing else in the product gains a floor.** Lists, forms and the gallery are
+**Nothing else in the product gains a floor.** Lists and forms are
 usable on a phone and stay that way; `e2e/viewport.spec.ts` drives them at 390px
 and asserts it.

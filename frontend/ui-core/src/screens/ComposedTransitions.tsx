@@ -28,7 +28,7 @@ import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
 import { Button, FieldError } from "@robomous/ui-core";
 import { outstandingWork } from "./batchState";
-import { promotionSummary } from "./PromoteButton";
+import { promotionSummary } from "./batchWords";
 import {
   useActiveSchema,
   useApproveBatch,
@@ -136,6 +136,8 @@ export interface CompleteAndPromoteButtonProps {
   /** The dataset screen, so a promotion can be followed to where it landed. */
   readonly onOpenDataset?: () => void;
   readonly className?: string;
+  readonly variant?: "default" | "outline";
+  readonly size?: "sm" | "lg";
 }
 
 /**
@@ -148,6 +150,8 @@ export function CompleteAndPromoteButton({
   projectId,
   onOpenDataset,
   className,
+  variant = "outline",
+  size = "sm",
 }: CompleteAndPromoteButtonProps): JSX.Element | null {
   const finish = useFinishBatch(batch.id);
   const promote = usePromoteBatch(projectId);
@@ -171,8 +175,8 @@ export function CompleteAndPromoteButton({
     <div className={className ?? "flex flex-col items-end gap-1"}>
       {offered && (
         <Button
-          variant="outline"
-          size="sm"
+          variant={variant}
+          size={size}
           data-testid={`complete-promote-${batch.name}`}
           disabled={outstanding > 0 || pending}
           onClick={() =>
@@ -276,7 +280,7 @@ export function OutcomeNextStep({
               Define one
             </button>
           )}{" "}
-          and the batch can start from its row.
+          and the batch can start from its own page.
         </p>
       )}
       {composed && batch.data !== undefined && (

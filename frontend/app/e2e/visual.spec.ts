@@ -11,16 +11,16 @@
  *
  * - **Projects** is the shell and a data surface at once — rail, page header,
  *   table density, a thumbnail, buttons and meta text.
- * - **Schema** is the form vocabulary: inputs, labels, panels, the wrapped action
- *   row Phase 7 fixed.
- * - **Models** is cards, badges and technical text, which is where a card grid's
- *   geometry regresses without any assertion noticing.
+ * - **Schema** is the form vocabulary: inputs, labels, the wrapped action row Phase 7
+ *   fixed, and the class ledger with its drawn shape glyphs.
+ * - **Models** is a full-width table of badges and technical text, which is where
+ *   a column's width regresses without any assertion noticing.
  * - **An open menu** is the one surface whose palette is deliberately inverted, so
  *   it is the only place a `menuColor` regression shows.
  * - **The annotator** carries the densest chrome in the product: top bar, tool
  *   palette, stage, panel, zoom and the highest icon count anywhere.
  *
- * Home, Batches, Dataset, Gallery and Ingest are covered by behavioural specs and
+ * Home, Batches, Dataset and Ingest are covered by behavioural specs and
  * add no design-system vocabulary these five do not already hold. A baseline that
  * mostly photographs empty space is a baseline that fails for reasons nobody can
  * read.
@@ -96,12 +96,15 @@ test.describe("an inverted floating surface", () => {
   for (const theme of ["light", "dark"] as const) {
     test(`an open menu, ${theme}`, async ({ page }) => {
       await page.setViewportSize(DESKTOP);
-      await openVisual(page, `/projects/${VISUAL.project}/batches`);
-      await expect(page.getByTestId("batches-screen")).toBeVisible();
+      // The batch's overflow lives in its panel's footer: batches are listed on the
+      // Overview, open in a panel beside it, and every batch action is made there.
+      await openVisual(page, `/projects/${VISUAL.project}/overview?batch=${VISUAL.batch}`);
+      const panel = page.getByTestId("batch-sheet");
+      await expect(panel).toBeVisible();
       if (theme === "dark") await useDark(page);
       await readyForCapture(page);
 
-      await page.getByTestId("batch-overflow-drive-01").click();
+      await panel.getByTestId("batch-overflow-drive-01").click();
       const menu = page.getByRole("menu");
       await expect(menu).toBeVisible();
       // The menu carries the `dark` subtree in both themes; that inversion is the

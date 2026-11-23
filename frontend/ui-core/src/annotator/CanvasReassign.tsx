@@ -49,6 +49,7 @@
 import {
   imageToScreen,
   polygonBbox,
+  reassignedAnnotation,
   replaceAnnotationCommand,
   selectedAnnotations,
 } from "@visionset/annotator";
@@ -144,7 +145,9 @@ export function CanvasReassign({
             // guard, one anchor over, and the reason it is not a `readOnly` check
             // as well.
             if (labelClass === subject.label_class) return;
-            store.execute(replaceAnnotationCommand({ ...subject, label_class: labelClass }));
+            store.execute(
+              replaceAnnotationCommand(reassignedAnnotation(store.document, subject, labelClass)),
+            );
           }}
         />
       </DropdownMenu>

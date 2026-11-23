@@ -281,7 +281,14 @@ from visionset.kernel.domain.preprocessing_transform import (
     transform_manifest,
     variant_content_hash,
 )
-from visionset.kernel.domain.project import Project, ProjectPreview, ProjectStats
+from visionset.kernel.domain.project import (
+    Project,
+    ProjectDigest,
+    ProjectPreview,
+    ProjectStage,
+    ProjectStats,
+    ReleaseDigest,
+)
 from visionset.kernel.domain.release import (
     CALIBRATED_MANIFEST_VERSION,
     MANIFEST_VERSION,
@@ -655,11 +662,14 @@ __all__ = [
     "PredictionRequest",
     "PredictionTarget",
     "Project",
+    "ProjectDigest",
     "ProjectPreview",
+    "ProjectStage",
     "ProjectStats",
     "Prompt",
     "Provenance",
     "Release",
+    "ReleaseDigest",
     "ReleasePublished",
     "ReleaseVerification",
     "SchemaChange",

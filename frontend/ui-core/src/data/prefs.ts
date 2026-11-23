@@ -17,7 +17,7 @@
  * check is a probe write.
  *
  * The fallback is an in-memory map: the preference degrades to "until you
- * reload" instead of to "the batch view is white".
+ * reload" instead of to "the screen is white".
  */
 
 /** Namespaced, so a page sharing an origin cannot collide with us. */

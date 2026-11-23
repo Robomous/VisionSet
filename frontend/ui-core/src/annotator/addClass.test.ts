@@ -15,7 +15,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createElement, useState, type ReactNode } from "react";
 
 import { renderWithData } from "../testing/dataHarness";
-import { AddClassDialog, composeVersion, defaultNote, runAddClass } from "./AddClassDialog";
+import { AddClassDialog } from "./AddClassDialog";
+import { composeVersion, defaultNote, runAddClass } from "./addClassRules";
 import {
   useDiscardSchemaDraft,
   usePublishSchemaDraft,

@@ -20,6 +20,7 @@
  * case. Fifteen duplicated lines is the cheaper of the two mistakes.
  */
 import createClient from "openapi-fetch";
+import { TooltipProvider } from "@robomous/ui-core";
 import { QueryClient } from "@tanstack/react-query";
 import { render, type RenderResult } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -166,8 +167,11 @@ export function harnessClient(): VisionSetDataClient {
 export function renderWithData(ui: ReactNode, options: HarnessOptions = {}): RenderResult {
   const queryClient = options.queryClient ?? harnessQueryClient();
   return render(
-    <VisionSetDataProvider client={harnessClient()} scope={HARNESS_SCOPE} makeQueryClient={() => queryClient}>
-      {ui}
-    </VisionSetDataProvider>,
+    // The host's tooltip provider, as every shell mounts one at its root.
+    <TooltipProvider>
+      <VisionSetDataProvider client={harnessClient()} scope={HARNESS_SCOPE} makeQueryClient={() => queryClient}>
+        {ui}
+      </VisionSetDataProvider>
+    </TooltipProvider>,
   );
 }

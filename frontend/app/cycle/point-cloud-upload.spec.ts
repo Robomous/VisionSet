@@ -76,7 +76,10 @@ test("a scan dropped on the ingest screen lands in a new batch", async ({ page, 
   await expect(page.getByTestId("failures")).toHaveCount(0);
   await expect(page.getByTestId("run-outcome")).toContainText("scan-batch");
 
+  // A batch opens in the Overview's panel, which names it and counts its assets.
   await page.getByTestId("open-batch").click();
-  await expect(page.getByTestId("gallery")).toBeVisible();
-  await expect(page.getByTestId(/^tile-/)).toHaveCount(1);
+  await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}\/overview\?batch=[0-9a-f-]{36}$/);
+  const panel = page.getByTestId("batch-sheet");
+  await expect(panel.getByRole("heading", { level: 2, name: "scan-batch" })).toBeVisible();
+  await expect(panel.getByTestId("batch-sheet-facts").locator("dd").first()).toHaveText("1");
 });
