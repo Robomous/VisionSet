@@ -2925,7 +2925,13 @@ function Workspace({
               <Tooltip>
                 <TooltipTrigger asChild>
                   {finishReadOnly ? (
-                    <span tabIndex={0} className="inline-flex" data-testid="finish-job-reason">
+                    <span
+                      role="group"
+                      aria-label="Finish job"
+                      tabIndex={0}
+                      className="inline-flex"
+                      data-testid="finish-job-reason"
+                    >
                       {finishButton}
                     </span>
                   ) : (
