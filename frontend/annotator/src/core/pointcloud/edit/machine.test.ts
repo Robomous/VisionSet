@@ -8,7 +8,7 @@ import type { Cuboid3DGeometry, Point, Point3D } from "../../types";
 import { CUBOID_FACES, cuboidAxes, faceCenter, headingOfYaw, MIN_CUBOID_SIZE } from "../cuboid";
 import { fromForwardLeftUp, type ScanFrame } from "../frame";
 import { add, scale } from "../vector";
-import { contextOf, pixelOf, scanBox, scanDocumentOf } from "./_scan";
+import { contextOf, cuboidOf, pixelOf, scanBox, scanDocumentOf } from "./_scan";
 import {
   draftCuboid,
   SCAN_IDLE,
@@ -82,8 +82,8 @@ describe("drawing a cuboid", () => {
       model_ref: null,
       confidence: null,
     });
-    expect(add.annotation.geometry.yaw).toBe(0);
-    expectClose(add.annotation.geometry.center, [4, 0, 0.75]);
+    expect(cuboidOf(add.annotation).geometry.yaw).toBe(0);
+    expectClose(cuboidOf(add.annotation).geometry.center, [4, 0, 0.75]);
     expect(select).toEqual({ kind: "select", selection: selectOnly("drawn-1") });
   });
 
@@ -254,13 +254,13 @@ describe("through the store", () => {
     tool = { kind: "select" };
     const moving = drive(store, context, [down(pixelOf(c, [3.2, 1.5, 1.5])), move(pixelOf(c, [6.2, 1.5, 1.5]))]);
     expect(moving.type).toBe("moving");
-    expect(store.preview?.annotations.get(drawn.id)?.geometry.center[0]).toBeCloseTo(5, 6);
-    expect(store.document.annotations.get(drawn.id)?.geometry.center[0]).toBeCloseTo(2, 6);
+    expect(cuboidOf(store.preview?.annotations.get(drawn.id)).geometry.center[0]).toBeCloseTo(5, 6);
+    expect(cuboidOf(store.document.annotations.get(drawn.id)).geometry.center[0]).toBeCloseTo(2, 6);
     drive(store, context, [up([0, 0])], moving);
-    expect(store.document.annotations.get(drawn.id)?.geometry.center[0]).toBeCloseTo(5, 6);
+    expect(cuboidOf(store.document.annotations.get(drawn.id)).geometry.center[0]).toBeCloseTo(5, 6);
 
     expect(store.undo()).toBe(true);
-    expect(store.document.annotations.get(drawn.id)?.geometry.center[0]).toBeCloseTo(2, 6);
+    expect(cuboidOf(store.document.annotations.get(drawn.id)).geometry.center[0]).toBeCloseTo(2, 6);
     expect(store.undo()).toBe(true);
     expect(store.document.annotations.size).toBe(0);
     expect(store.redo()).toBe(true);
@@ -272,9 +272,9 @@ describe("through the store", () => {
     const context = () => contextOf(store.document, { selection: store.selection });
     const c = context();
     drive(store, context, [down(pixelOf(c, [0, 0, 2])), move(pixelOf(c, [1, 0, 2])), up([0, 0])]);
-    const edited = store.document.annotations.get("car-1");
-    expect(edited?.geometry.center[0]).toBeCloseTo(1, 6);
-    expect(edited?.provenance).toBe("import");
+    const edited = cuboidOf(store.document.annotations.get("car-1"));
+    expect(edited.geometry.center[0]).toBeCloseTo(1, 6);
+    expect(edited.provenance).toBe("import");
   });
 
   for (const seed of SEEDS) {
@@ -289,8 +289,7 @@ describe("through the store", () => {
       for (let step = 0; step < 25; step += 1) {
         const ids = [...store.document.annotations.keys()];
         const id = ids[Math.floor(random() * ids.length)];
-        const geometry = store.document.annotations.get(id)?.geometry;
-        if (geometry === undefined) continue;
+        const geometry = cuboidOf(store.document.annotations.get(id)).geometry;
         store.select(selectOnly(id));
         const c = context();
         const pick = random();
@@ -310,7 +309,7 @@ describe("through the store", () => {
         if (store.document !== before) committed += 1;
 
         for (const annotation of store.document.annotations.values()) {
-          const { center, size, yaw } = annotation.geometry;
+          const { center, size, yaw } = cuboidOf(annotation).geometry;
           expect([...center, ...size, yaw].every(Number.isFinite)).toBe(true);
           expect(Math.min(...size)).toBeGreaterThanOrEqual(MIN_CUBOID_SIZE);
           expect(Math.abs(yaw)).toBeLessThanOrEqual(Math.PI);

@@ -1,14 +1,14 @@
 /**
- * The scan editor's document: a scan, its schema, and the cuboids on it.
+ * The scan editor's document: a scan, its schema, and the cuboids and polylines on it.
  *
  * A sibling of `AnnotationDocument`, not a widening of it. The image document,
  * its tools and every dispatch over `Geometry` stay 2D; this one holds only
- * `cuboid_3d`, in the scan's declared frame, and shares the generic pieces —
+ * `cuboid_3d` and `polyline_3d`, in the scan's declared frame, and shares the generic pieces —
  * `CommandLog`, `AnnotatorStore`, `Selection` — rather than re-implementing them.
  * It keeps the same invariants and refusals: ids are the only handle, the order
  * is the draw order, and every operation returns a new document.
  *
- * Everything else a scan carries — a `polyline_3d`, a whole-scan tag — stays out
+ * Everything else a scan carries — a whole-scan tag — stays out
  * of it, and `planScanSave` leaves those out of its comparison in turn.
  */
 
@@ -71,7 +71,7 @@ export function createScanDocument(
   return { asset, schema, annotations: byId };
 }
 
-/** The scan document from the three responses, every non-cuboid label parsed and left out. */
+/** The scan document from the three responses, every other label parsed and left out. */
 export function scanDocumentFromWire(payload: {
   readonly asset: unknown;
   readonly schema: unknown;

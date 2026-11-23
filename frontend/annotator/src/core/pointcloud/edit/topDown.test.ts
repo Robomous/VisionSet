@@ -8,7 +8,7 @@ import { topDownCamera } from "../camera";
 import { cuboidAxes, faceCenter, faceSpec, headingOfYaw, MIN_CUBOID_SIZE } from "../cuboid";
 import { fromForwardLeftUp, type ScanFrame } from "../frame";
 import { add, scale } from "../vector";
-import { contextOf, pixelOf, scanBox, scanDocumentOf } from "./_scan";
+import { contextOf, cuboidOf, pixelOf, scanBox, scanDocumentOf } from "./_scan";
 import { SCAN_IDLE, scanTransition, type ScanContext, type ScanEvent, type ScanState, type ScanTransition } from "./machine";
 import { scanHandleLayout } from "./overlay";
 import { runScanEffects } from "./runScanEffects";
@@ -168,10 +168,10 @@ describe("drawing across the two views", () => {
       expect(state.type === "drawing-height" ? state.height : 0).toBeCloseTo(1.8, 3);
       state = turn(state, down([400, 300]), top());
       expect(state).toEqual(SCAN_IDLE);
-      const [drawn] = store.document.annotations.values();
-      expect(drawn?.geometry.size[0]).toBeCloseTo(4, 3);
-      expect(drawn?.geometry.size[1]).toBeCloseTo(2, 3);
-      expect(drawn?.geometry.size[2]).toBeCloseTo(1.8, 3);
+      const drawn = cuboidOf([...store.document.annotations.values()][0]);
+      expect(drawn.geometry.size[0]).toBeCloseTo(4, 3);
+      expect(drawn.geometry.size[1]).toBeCloseTo(2, 3);
+      expect(drawn.geometry.size[2]).toBeCloseTo(1.8, 3);
     });
   }
 });

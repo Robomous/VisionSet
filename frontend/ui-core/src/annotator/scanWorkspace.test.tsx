@@ -4,7 +4,7 @@
  * the editor takes from the server.
  */
 
-import { screenOf, selectOnly, type OrbitCamera } from "@visionset/annotator";
+import { isCuboidScanAnnotation, screenOf, selectOnly, type OrbitCamera } from "@visionset/annotator";
 import { act, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -173,7 +173,7 @@ describe("useScanWorkspace", () => {
     const plan = probe.current()?.plan;
     expect(plan?.created).toHaveLength(1);
     expect(plan?.created[0]).toMatchObject({ label_class: "vehicle", provenance: "human", asset_id: "scan-1" });
-    expect(plan?.created[0]?.geometry.size[1]).toBeCloseTo(2, 3);
+    expect(plan?.created.filter(isCuboidScanAnnotation)[0]?.geometry.size[1]).toBeCloseTo(2, 3);
     expect(probe.current()?.editor.draft).toBeNull();
     expect(probe.current()?.snapshot.selection.size).toBe(1);
   });
@@ -191,7 +191,7 @@ describe("useScanWorkspace", () => {
     act(() =>
       probe.current()?.editor.onScanPointer({ type: "pointer-up", point: to, button: "primary", modifiers: NONE }, VIEW),
     );
-    const [updated] = probe.current()?.plan.updated ?? [];
+    const [updated] = (probe.current()?.plan.updated ?? []).filter(isCuboidScanAnnotation);
     expect(updated).toMatchObject({ id: "car", provenance: "import", geometry: { yaw: 0.3 } });
     expect(updated?.geometry.center[1]).toBeLessThan(-1);
     expect(probe.current()?.snapshot.canUndo).toBe(true);

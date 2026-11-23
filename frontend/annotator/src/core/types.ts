@@ -244,14 +244,28 @@ export function isDrawnAnnotation(annotation: StoredAnnotation): annotation is A
   return isDrawnGeometryType(annotation.geometry.type);
 }
 
-/** A stored annotation the scan editor holds: a cuboid in the scan's declared frame. */
-export type ScanAnnotation = Omit<Annotation, "geometry"> & {
+export type CuboidScanAnnotation = Omit<Annotation, "geometry"> & {
   readonly geometry: Cuboid3DGeometry;
 };
 
+export type PolylineScanAnnotation = Omit<Annotation, "geometry"> & {
+  readonly geometry: Polyline3DGeometry;
+};
+
+/** A stored annotation the scan editor holds: a cuboid or a polyline in the scan's declared frame. */
+export type ScanAnnotation = CuboidScanAnnotation | PolylineScanAnnotation;
+
 /** Whether the scan editor holds this annotation; everything else on a scan is carried past it. */
 export function isScanAnnotation(annotation: StoredAnnotation): annotation is ScanAnnotation {
+  return annotation.geometry.type === "cuboid_3d" || annotation.geometry.type === "polyline_3d";
+}
+
+export function isCuboidScanAnnotation(annotation: StoredAnnotation): annotation is CuboidScanAnnotation {
   return annotation.geometry.type === "cuboid_3d";
+}
+
+export function isPolylineScanAnnotation(annotation: StoredAnnotation): annotation is PolylineScanAnnotation {
+  return annotation.geometry.type === "polyline_3d";
 }
 
 /** One stored annotation, in the asset's own pixel frame. Mirrors `AnnotationOut`. */
@@ -290,7 +304,7 @@ export interface Annotation {
 export interface AnnotationCreate {
   readonly asset_id: string;
   readonly label_class: string;
-  readonly geometry: Geometry | Cuboid3DGeometry;
+  readonly geometry: Geometry | Polyline3DGeometry | Cuboid3DGeometry;
   readonly attributes: Readonly<Record<string, AttributeValue>>;
   readonly provenance: Provenance;
   readonly model_ref: string | null;
@@ -306,7 +320,7 @@ export interface AnnotationCreate {
 export interface AnnotationUpdate {
   readonly id: string;
   readonly label_class: string;
-  readonly geometry: Geometry | Cuboid3DGeometry;
+  readonly geometry: Geometry | Polyline3DGeometry | Cuboid3DGeometry;
   readonly attributes: Readonly<Record<string, AttributeValue>>;
   readonly provenance: Provenance;
   readonly model_ref: string | null;

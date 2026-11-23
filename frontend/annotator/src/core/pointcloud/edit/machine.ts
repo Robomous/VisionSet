@@ -23,7 +23,7 @@ import {
   toggleSelection,
   type Selection,
 } from "../../state/selection";
-import type { AttributeValue, Cuboid3DGeometry, Point, Point3D, ScanAnnotation } from "../../types";
+import { isCuboidScanAnnotation, type AttributeValue, type Cuboid3DGeometry, type Point, type Point3D, type ScanAnnotation } from "../../types";
 import {
   cuboidAxes,
   faceCenter,
@@ -191,7 +191,7 @@ function fromIdle(event: ScanEvent, context: ScanContext): ScanTransition {
     return context.selection.size === 0 ? to(SCAN_IDLE) : to(SCAN_IDLE, select(EMPTY_SELECTION));
   }
   const annotation = context.document.annotations.get(hit.id);
-  if (annotation === undefined) return to(SCAN_IDLE);
+  if (annotation === undefined || !isCuboidScanAnnotation(annotation)) return to(SCAN_IDLE);
   const origin = annotation.geometry;
 
   switch (hit.kind) {

@@ -10,7 +10,7 @@ import { heightOf, type ScanFrame } from "../frame";
 import { metresPerPixel, rayCuboidHit, rayGroundHit, screenOf, screenRay, type ScanViewport } from "../ray";
 import { subtract } from "../vector";
 import type { Selection } from "../../state/selection";
-import type { Cuboid3DGeometry, Point, Point3D } from "../../types";
+import { isCuboidScanAnnotation, type Cuboid3DGeometry, type Point, type Point3D } from "../../types";
 import type { ScanDocument } from "./scanDocument";
 
 /**
@@ -81,7 +81,7 @@ export function handleTarget(scene: Scene3D): { readonly id: string; readonly ge
   if (scene.selection.size !== 1) return null;
   const [id] = scene.selection;
   const annotation = scene.document.annotations.get(id);
-  return annotation === undefined ? null : { id, geometry: annotation.geometry };
+  return annotation === undefined || !isCuboidScanAnnotation(annotation) ? null : { id, geometry: annotation.geometry };
 }
 
 /** What lies under a screen point: a handle of the selected box first, then the nearest body. */
@@ -119,6 +119,7 @@ export function hitTest3D(
 
   let body: { id: string; point: Point3D; distance: number } | null = null;
   for (const annotation of scene.document.annotations.values()) {
+    if (!isCuboidScanAnnotation(annotation)) continue;
     const hit = rayCuboidHit(ray, annotation.geometry, frame);
     if (hit !== null && (body === null || hit.distance <= body.distance)) {
       body = { id: annotation.id, point: hit.point, distance: hit.distance };

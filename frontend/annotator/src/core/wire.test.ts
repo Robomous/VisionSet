@@ -20,7 +20,7 @@ import {
   GEOMETRY_TYPES,
   IMPLEMENTED_GEOMETRY_TYPES,
   isDrawnAnnotation,
-  isScanAnnotation,
+  isCuboidScanAnnotation,
   type Annotation,
 } from "./types";
 import {
@@ -594,7 +594,7 @@ describe("what leaves for the API", () => {
   });
 
   it("sends a scan's cuboid with its stored provenance, as the scan editor holds it", () => {
-    const [cuboid] = parseAnnotations(fixture.annotations).filter(isScanAnnotation);
+    const [cuboid] = parseAnnotations(fixture.annotations).filter(isCuboidScanAnnotation);
     expect(cuboid.geometry.type).toBe("cuboid_3d");
     const update = toAnnotationUpdate(cuboid);
     expect(Object.keys(update).sort()).toEqual([...ANNOTATION_UPDATE_KEYS].sort());

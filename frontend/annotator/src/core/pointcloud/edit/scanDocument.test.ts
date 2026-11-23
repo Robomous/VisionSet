@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { DocumentError } from "../../state/document";
-import { SCAN, SCAN_SCHEMA, scanBox, scanDocumentOf } from "./_scan";
+import { cuboidOf, SCAN, SCAN_SCHEMA, scanBox, scanDocumentOf } from "./_scan";
 import {
   addScanAnnotation,
   createScanDocument,
@@ -12,7 +12,7 @@ import {
 } from "./scanDocument";
 
 describe("scanDocumentFromWire", () => {
-  it("holds the scan's cuboids and parses, then leaves out, everything else", () => {
+  it("holds the scan's cuboids and polylines and parses, then leaves out, everything else", () => {
     const path = { ...scanBox("path"), geometry: { type: "polyline_3d", points: [[0, 0, 0], [1, 1, 1]] } };
     const tag = { ...scanBox("tag"), geometry: { type: "classification_tag" } };
     const document = scanDocumentFromWire({
@@ -20,7 +20,8 @@ describe("scanDocumentFromWire", () => {
       schema: SCAN_SCHEMA,
       annotations: [path, scanBox("car-1"), tag],
     });
-    expect([...document.annotations.keys()]).toEqual(["car-1"]);
+    expect([...document.annotations.keys()]).toEqual(["path", "car-1"]);
+    expect(document.annotations.get("path")?.geometry.type).toBe("polyline_3d");
     expect(document.annotations.get("car-1")?.provenance).toBe("import");
   });
 
@@ -65,8 +66,8 @@ describe("the scan document's operations", () => {
     expect([...added.annotations.keys()]).toEqual(["a", "b", "c"]);
     const moved = replaceScanAnnotation(added, scanBox("a", { center: [5, 5, 1] }));
     expect([...moved.annotations.keys()]).toEqual(["a", "b", "c"]);
-    expect(moved.annotations.get("a")?.geometry.center).toEqual([5, 5, 1]);
-    expect(start.annotations.get("a")?.geometry.center).toEqual([0, 0, 1]);
+    expect(cuboidOf(moved.annotations.get("a")).geometry.center).toEqual([5, 5, 1]);
+    expect(cuboidOf(start.annotations.get("a")).geometry.center).toEqual([0, 0, 1]);
     expect(() => removeScanAnnotations(moved, ["b", "missing"])).toThrow(DocumentError);
     expect([...removeScanAnnotations(moved, ["b"]).annotations.keys()]).toEqual(["a", "c"]);
     expect(removeScanAnnotations(moved, [])).toBe(moved);

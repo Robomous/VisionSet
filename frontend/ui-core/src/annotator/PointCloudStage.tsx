@@ -22,6 +22,7 @@ import {
   decodePoints,
   defaultColorMode,
   groundHeight,
+  isScanAnnotation,
   isScanFrame,
   parseAnnotations,
   scanKeyIntent,
@@ -215,18 +216,18 @@ function ScanView({
     const classes = new Map(schema.classes.map((declared) => [declared.name, declared]));
     const colorOf = (labelClass: string): string => classColor(classes.get(labelClass), labelClass);
     const parsed = parseAnnotations(loaded);
-    const carried = rendered === null ? parsed : parsed.filter((one) => one.geometry.type !== "cuboid_3d");
+    const carried = rendered === null ? parsed : parsed.filter((one) => !isScanAnnotation(one));
     const out: PointCloudLabel[] = scanLabels(carried, frame).map((label) => ({
       id: label.id,
       color: colorOf(label.labelClass),
       segments: label.segments,
     }));
-    for (const annotation of rendered?.annotations.values() ?? []) {
+    for (const label of scanLabels([...(rendered?.annotations.values() ?? [])], frame)) {
       out.push({
-        id: annotation.id,
-        color: colorOf(annotation.label_class),
-        segments: cuboidSegments(annotation.geometry, frame),
-        ...(selection.has(annotation.id) ? { emphasis: "selected" as const } : {}),
+        id: label.id,
+        color: colorOf(label.labelClass),
+        segments: label.segments,
+        ...(selection.has(label.id) ? { emphasis: "selected" as const } : {}),
       });
     }
     if (draft !== null) {

@@ -142,6 +142,14 @@ export {
   yawOfHeading,
   type CuboidFace,
 } from "./core/pointcloud/cuboid";
+export {
+  MIN_POLYLINE_VERTICES,
+  insertPolylineVertex,
+  isDrawablePolyline,
+  movePolylineVertex,
+  nearestSegment,
+  removePolylineVertex,
+} from "./core/pointcloud/polyline";
 // The scan editor — a sibling of the image engine, sharing its log, store and selection
 export {
   addScanAnnotation,
