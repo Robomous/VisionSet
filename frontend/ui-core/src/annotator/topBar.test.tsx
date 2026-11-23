@@ -19,7 +19,8 @@ import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
-import { AnnotationPage, REVIEW_ACTIONS } from "./AnnotationPage";
+import { AnnotationPage } from "./AnnotationPage";
+import { REVIEW_ACTIONS } from "./reviewActions";
 import { TooltipProvider } from "@robomous/ui-core";
 import { TONE_BORDER, TONE_FILL } from "../screens/batchState";
 import { renderWithData } from "../testing/dataHarness";
@@ -80,6 +81,8 @@ let jobCounts: {
 
 /** Whether the frames arrive carrying a box — what `drawn > 0` reads. */
 let annotated = false;
+/** Whether that box came from a model rather than a person. */
+let modelBox = false;
 
 /**
  * Whether the batch has closed — the dimension that withholds every move on
@@ -180,9 +183,9 @@ function answer(path: string): unknown {
           schema_version: 1,
           geometry: { type: "bbox", x: 10, y: 10, width: 40, height: 30 },
           attributes: {},
-          provenance: "human",
-          model_ref: null,
-          confidence: null,
+          provenance: modelBox ? "model" : "human",
+          model_ref: modelBox ? "sam@1" : null,
+          confidence: modelBox ? 0.8 : null,
           job_id: JOB,
         },
       ],
@@ -199,6 +202,7 @@ beforeEach(() => {
   jobSettled = false;
   assetCount = 1;
   annotated = false;
+  modelBox = false;
   closedBatch = false;
   vi.stubGlobal("matchMedia", (query: string) => ({
     media: query,
@@ -349,31 +353,69 @@ describe("the class list, now in the panel (#420)", () => {
 });
 
 describe("the single review action", () => {
-  it("is nothing at all on a frame with no review move to make", async () => {
+  it("is Submit for review, withheld with its reason, on a frame with nothing to review yet", async () => {
+    // The slot stays on the bar on every frame of an open job — a slot that came
+    // and went frame by frame would move the save state under the pointer — and
+    // whether it can be pressed is the wire's `declares` and nothing else.
     progress = "unannotated";
     await open();
 
-    for (const candidate of REVIEW_ACTIONS) {
-      expect(screen.queryByTestId(candidate.testId)).toBeNull();
-    }
-    // Skip is the other resolution verb and stays visible — the bar is not empty.
+    const move = screen.getByTestId("submit-for-review");
+    expect(move.getAttribute("aria-disabled")).toBe("true");
+    expect(move.getAttribute("data-withheld")).toBe("true");
+    expect(move.getAttribute("data-variant")).toBe("outline");
+    await userEvent.hover(move);
+    expect((await screen.findAllByText(/nothing to review yet/i)).length).toBeGreaterThan(0);
+    await userEvent.click(move);
+    expect(sent.some((request) => request.path.endsWith("/progress"))).toBe(false);
+    // Skip is the other resolution verb and stays in the island.
     expect(screen.getByTestId("skip")).toBeDefined();
   });
 
-  it("is Confirm labels on a model-labeled frame nobody has edited", async () => {
+  it("puts Confirm labels on the frame's status tag, not on the bar", async () => {
+    // The check sits beside the word that says the labels came from a model —
+    // where the eye already is when it decides to keep them.
     progress = "pre_labeled";
     await open();
 
-    expect(screen.getByTestId("confirm").textContent).toMatch(/confirm labels/i);
-    expect(screen.queryByTestId("submit-for-review")).toBeNull();
+    const confirm = screen.getByTestId("confirm");
+    expect(screen.getByTestId("status-tag").contains(confirm)).toBe(true);
+    expect(document.querySelector("header")?.contains(confirm)).toBe(false);
+    expect(confirm.getAttribute("aria-label")).toMatch(/confirm labels/i);
+    // The bar's slot is withheld meanwhile, and says where the move is.
+    expect(screen.getByTestId("submit-for-review").getAttribute("aria-disabled")).toBe("true");
     expect(screen.queryByTestId("accept")).toBeNull();
+  });
+
+  it("runs Confirm labels from the tag through the same settle path", async () => {
+    progress = "pre_labeled";
+    await open();
+
+    await userEvent.click(screen.getByTestId("confirm"));
+
+    await waitFor(() =>
+      expect(sent.some((request) => request.path.endsWith("/progress"))).toBe(true),
+    );
+    expect(sent.find((request) => request.path.endsWith("/progress"))?.body).toContain("annotated");
+  });
+
+  it("offers no confirm on the tag where the wire does not declare it", async () => {
+    for (const state of ["unannotated", "annotated", "review_pending"] as const) {
+      progress = state;
+      const view = renderWithData(mount(<AnnotationPage jobId={JOB} />));
+      await screen.findByTestId("annotation-page");
+      expect(screen.queryByTestId("confirm"), state).toBeNull();
+      view.unmount();
+    }
   });
 
   it("is Submit for review on an annotated frame", async () => {
     progress = "annotated";
     await open();
 
-    expect(screen.getByTestId("submit-for-review")).toBeDefined();
+    const move = screen.getByTestId("submit-for-review");
+    expect(move.getAttribute("aria-disabled")).toBeNull();
+    expect(document.querySelector("header")?.contains(move)).toBe(true);
     expect(screen.queryByTestId("accept")).toBeNull();
   });
 
@@ -381,24 +423,30 @@ describe("the single review action", () => {
     progress = "review_pending";
     await open();
 
-    expect(screen.getByTestId("accept")).toBeDefined();
+    expect(screen.getByTestId("accept").getAttribute("aria-disabled")).toBeNull();
     expect(screen.queryByTestId("submit-for-review")).toBeNull();
   });
 
-  it("never renders two of them, across every progress the kernel declares", async () => {
-    // The claim the priority list exists to make. The two are mutually exclusive
-    // by construction — `submit_for_review` is offered from `annotated` and
-    // `accept` only from `review_pending` — and this is what would fail if a
-    // third reviewer action ever landed in one of those states.
+  it("never offers two live review moves, across every progress the kernel declares", async () => {
+    // The claim the list exists to make: at most one review move can be pressed
+    // on a frame — the bar's slot or the tag's confirm, never both — and this is
+    // what would fail if a third reviewer action ever landed in one of those
+    // states.
     for (const state of PROGRESS_STATES) {
       progress = state;
       const view = renderWithData(mount(<AnnotationPage jobId={JOB} />));
       await screen.findByTestId("annotation-page");
 
-      const offered = REVIEW_ACTIONS.filter(
-        (candidate) => screen.queryByTestId(candidate.testId) !== null,
+      const live = REVIEW_ACTIONS.filter((candidate) => {
+        const node = screen.queryByTestId(candidate.testId);
+        return node !== null && node.getAttribute("aria-disabled") !== "true";
+      });
+      expect(live.length, `${state} offered ${live.length}`).toBeLessThanOrEqual(1);
+      // And the bar holds exactly one slot.
+      const onBar = REVIEW_ACTIONS.filter(
+        (candidate) => document.querySelector("header")?.querySelector(`[data-testid="${candidate.testId}"]`) != null,
       );
-      expect(offered.length, `${state} offered ${offered.length}`).toBeLessThanOrEqual(1);
+      expect(onBar.length, `${state} put ${onBar.length} on the bar`).toBe(1);
       view.unmount();
     }
   });
@@ -441,61 +489,142 @@ function filled(): HTMLElement[] {
   // `classList.contains`, never `className.includes`: the substring form also
   // matches `hover:bg-primary/80`, which every filled *and* every hovered
   // control would answer to.
-  return [...document.querySelectorAll<HTMLElement>("header button")].filter((button) =>
-    button.classList.contains("bg-primary"),
+  // The whole page, the tool rail aside: an armed tool there is a pressed
+  // state, not a verb.
+  return [...document.querySelectorAll<HTMLElement>('[data-testid="annotation-page"] button')].filter(
+    (button) => button.closest('nav[aria-label="Tools"]') === null && button.classList.contains("bg-primary"),
   );
 }
 
-describe("the navigation cluster (#416)", () => {
-  /** Every control on the bar whose press puts a different picture on screen. */
-  const FRAME_CHANGING = ["open-gallery", "prev-asset", "next-asset", "skip", "save-and-next"];
+describe("the island", () => {
+  /** Every control whose press puts a different picture on screen. */
+  const FRAME_CHANGING = ["open-gallery", "prev-asset", "skip", "save-and-next"];
 
-  it("holds every control that changes the frame, and the count they move", async () => {
-    // The claim the regroup exists to make, written as a containment check rather
-    // than as prose: these were split across the two far ends of the bar, one
-    // pair beside the back arrow and the other beside the overflow. A control
-    // that drifted back out — or a new one added to the wrong zone — fails here.
+  it("holds every control that changes the frame, over the picture, and none on the bar or in the panel", async () => {
     assetCount = 2;
     await open();
 
-    const cluster = screen.getByTestId("frame-navigation");
+    const island = screen.getByTestId("frame-island");
+    expect(island.getAttribute("role")).toBe("toolbar");
+    // Marked like the stage's other chrome, so canvas gestures leave it alone.
+    expect(island.hasAttribute("data-stage-ui")).toBe(true);
+    expect(screen.getByTestId("canvas-stage").contains(island)).toBe(true);
+    const bar = document.querySelector<HTMLElement>("header")!;
+    const panel = document.querySelector<HTMLElement>('aside[aria-label="Frame"]')!;
     for (const testId of FRAME_CHANGING) {
-      expect(cluster.contains(screen.getByTestId(testId)), `${testId} is outside`).toBe(true);
+      expect(island.contains(screen.getByTestId(testId)), `${testId} is outside`).toBe(true);
+      expect(bar.contains(screen.getByTestId(testId)), `${testId} is on the bar`).toBe(false);
+      expect(panel.contains(screen.getByTestId(testId)), `${testId} is in the panel`).toBe(false);
     }
-    expect(cluster.contains(screen.getByTestId("asset-position"))).toBe(true);
   });
 
-  it("holds no instrument sub-group any more (#420)", async () => {
-    // A class field would hold a 192px reservation in the middle of this cluster;
-    // it lives in the side panel. The bar is *navigation only*, which is what
-    // pays for the right zone's two controls being visible at 1440 again.
+  it("reads undo, redo | skip | back, which frame | next, in that order", async () => {
     assetCount = 2;
     await open();
 
-    expect(screen.queryByTestId("class-field-slot")).toBeNull();
-    expect(screen.queryByTestId("class-field-trigger")).toBeNull();
-    expect(screen.getByTestId("frame-navigation").contains(screen.getByTestId("class-filter"))).toBe(
-      false,
+    const order = [...screen.getByTestId("frame-island").querySelectorAll("button[data-testid]")].map(
+      (button) => button.getAttribute("data-testid"),
+    );
+    expect(order).toEqual(["tool-undo", "tool-redo", "skip", "prev-asset", "open-gallery", "save-and-next"]);
+  });
+
+  it("has no second forward control and no frame column left", async () => {
+    // Next is the forward move; a chevron beside it was a second spelling.
+    assetCount = 2;
+    await open();
+
+    expect(screen.queryByTestId("next-asset")).toBeNull();
+    expect(screen.queryByTestId("frame-navigation")).toBeNull();
+    expect(screen.queryByTestId("frame-moves")).toBeNull();
+    // The panel is the whole of the right column.
+    const panel = document.querySelector<HTMLElement>('aside[aria-label="Frame"]')!;
+    expect(panel.querySelectorAll("[data-testid='annotator-panel']")).toHaveLength(1);
+    expect(panel.contains(screen.getByTestId("class-filter"))).toBe(true);
+  });
+
+  it("says which frame inside the gallery's button", async () => {
+    assetCount = 2;
+    await open();
+
+    const position = screen.getByTestId("asset-position");
+    expect(screen.getByTestId("open-gallery").contains(position)).toBe(true);
+    // Read as `1 / 2`; the spaces are margins.
+    expect(position.textContent).toBe("1/2");
+    expect(screen.getByTestId("prev-asset").hasAttribute("disabled")).toBe(true);
+    // The hash stays on the picture's tag, a label and not a control.
+    const identity = screen.getByTestId("asset-identity");
+    expect(identity.tagName).toBe("SPAN");
+    expect(identity.textContent).not.toContain("/");
+  });
+
+  it("keeps the keyboard on the canvas when one of its buttons is pressed", async () => {
+    assetCount = 2;
+    await open();
+    screen.getByTestId("annotator-root").focus();
+
+    await userEvent.click(screen.getByTestId("tool-undo"));
+
+    expect(document.activeElement).toBe(screen.getByTestId("annotator-root"));
+  });
+
+  it("withholds undo and redo with the reason on a settled frame, so the island keeps its shape", async () => {
+    progress = "accepted";
+    assetCount = 2;
+    await open();
+
+    for (const testId of ["tool-undo", "tool-redo"]) {
+      expect(screen.getByTestId(testId).getAttribute("aria-disabled")).toBe("true");
+      expect(screen.getByTestId(testId).getAttribute("aria-label")).toMatch(/viewing only/i);
+    }
+    expect(screen.getByTestId("save-and-next")).toBeDefined();
+  });
+
+  it("drops undo and redo with Skip once the whole job is closed", async () => {
+    closedBatch = true;
+    assetCount = 2;
+    await open();
+
+    expect(screen.queryByTestId("tool-undo")).toBeNull();
+    expect(screen.queryByTestId("tool-redo")).toBeNull();
+  });
+
+  it("drops Skip once the job is closed, and keeps the way through the frames", async () => {
+    closedBatch = true;
+    assetCount = 2;
+    await open();
+
+    expect(screen.queryByTestId("skip")).toBeNull();
+    expect(screen.queryByTestId("unskip")).toBeNull();
+    expect(screen.getByTestId("open-gallery")).toBeDefined();
+    expect(screen.getByTestId("save-and-next")).toBeDefined();
+  });
+
+  it("withholds Skip with its reason where the wire will not let the frame go", async () => {
+    progress = "review_pending";
+    assetCount = 2;
+    await open();
+
+    const skip = screen.getByTestId("skip");
+    expect(skip.getAttribute("aria-disabled")).toBe("true");
+    // No keycap on a move that cannot be made.
+    expect(skip.querySelector("kbd")).toBeNull();
+    await userEvent.hover(skip);
+    expect((await screen.findAllByText(/waiting on a review/i)).length).toBeGreaterThan(0);
+    await userEvent.click(skip);
+    expect(sent.some((request) => request.path.endsWith("/progress"))).toBe(false);
+  });
+
+  it("offers Un-skip in Skip's place on a skipped frame", async () => {
+    progress = "skipped";
+    assetCount = 2;
+    await open();
+
+    expect(screen.queryByTestId("skip")).toBeNull();
+    await userEvent.click(screen.getByTestId("unskip"));
+    await waitFor(() =>
+      expect(sent.find((request) => request.path.endsWith("/progress"))?.body).toContain("unannotated"),
     );
   });
-
-  it("leaves nothing in the left zone that changes the frame", async () => {
-    // The other direction, and the one that would go unnoticed: the identity
-    // label is what is left where the navigator used to be, and it is a label.
-    // `Back` is the zone's only control and it goes *up*, not sideways.
-    assetCount = 2;
-    await open();
-
-    const cluster = screen.getByTestId("frame-navigation");
-    const identity = screen.getByTestId("asset-identity");
-    expect(cluster.contains(identity)).toBe(false);
-    expect(identity.tagName).toBe("SPAN");
-    // The hash and the count were one readout; they are two things now, and the
-    // count is the half that travelled.
-    expect(identity.textContent).not.toContain("/");
-    expect(screen.getByTestId("asset-position").textContent).toBe("1/2");
-  });
-
 });
 
 describe("the flow verb", () => {
@@ -646,39 +775,31 @@ describe("the flow verb", () => {
     }
   });
 
-  it("reads Next on a frame nobody has drawn on, because no save will happen", async () => {
-    assetCount = 2;
-    progress = "unannotated";
-    await open();
-
-    expect(screen.getByTestId("save-and-next").textContent).toContain("Next");
-    expect(screen.getByTestId("save-and-next").textContent).not.toContain("Save and next");
+  it("reads Next, whatever the frame carries — the save before it is the page's business", async () => {
+    // It used to read `Save and next` over a frame with work on it. With autosave
+    // the save is not the button's promise any more: it always happens first,
+    // and the bar says where the work is.
+    for (const carries of [false, true]) {
+      annotated = carries;
+      assetCount = 2;
+      progress = carries ? "annotated" : "unannotated";
+      const view = renderWithData(mount(<AnnotationPage jobId={JOB} />));
+      await screen.findByTestId("annotation-page");
+      expect(screen.getByTestId("save-and-next").textContent).toBe("Next↵");
+      view.unmount();
+    }
   });
 
-  it("reads Save and next once the frame carries work", async () => {
-    // Loaded annotations, not drawn ones: jsdom's `getBoundingClientRect` returns
-    // all zeros, so a drag draws nothing — the limitation that keeps the ordering
-    // claim in the browser suite. What the label keys on is `drawn`, and an asset
-    // that arrives with a box has one.
-    assetCount = 2;
-    progress = "annotated";
-    annotated = true;
-    await open();
-
-    await waitFor(() =>
-      expect(screen.getByTestId("save-and-next").textContent).toContain("Save and next"),
-    );
-  });
-
-  it("carries no hotkey chip, and neither does the filled control beside it", async () => {
-    // `Chip` is a muted box on a bordered ground — right on the outline `Skip`,
-    // a smudge inside either fill. Both chords are unchanged, which is what the
-    // next test and the tooltip assert; this is about the pixels.
+  it("carries its ↵ in the fill's own colours, and Skip its X", async () => {
+    // `Chip` is a muted box on a bordered ground — right on the ghost `Skip`, a
+    // smudge inside a fill. The flow verb's key is drawn in the fill's own
+    // foreground instead.
     assetCount = 2;
     await open();
 
-    expect(screen.getByTestId("save-and-next").querySelector("kbd")).toBeNull();
-    expect(screen.getByTestId("save-and-stay").querySelector("kbd")).toBeNull();
+    const key = screen.getByTestId("save-and-next").querySelector("kbd");
+    expect(key?.textContent).toBe("↵");
+    expect(key?.classList.contains("text-primary-foreground")).toBe(true);
     expect(screen.getByTestId("skip").querySelector("kbd")?.textContent).toBe("X");
   });
 
@@ -735,71 +856,38 @@ describe("the flow verb", () => {
 });
 
 /**
- * The forward pair: one filled control and an outline second half beside it.
+ * One filled control on the page, and no Save button.
  *
- * `DESIGN.md`'s *one filled button per view* is a count and is tested as one,
- * and the outline half is why it stays a count of one — the pair is two
- * answers to *what do I do next* only in the filled sense; colour never had
- * to separate them. The sweep below is `filled()`'s twin over `data-variant`,
- * asserted as a whole set rather than as a membership.
+ * `DESIGN.md`'s *one filled button per view* is a count and is tested as one.
+ * Save and stay is gone: the page saves on its own, `mod+s` saves at once, and
+ * the bar says where the work is.
  */
-describe("the forward-action pair", () => {
-  /** Any bar control still carrying the retired `success` variant. */
+describe("one filled control, and nothing to press to save", () => {
+  /** Any control still carrying the retired `success` variant. */
   function successVariantButtons(): HTMLElement[] {
-    return [...document.querySelectorAll<HTMLElement>("header button")].filter(
+    return [...document.querySelectorAll<HTMLElement>("button")].filter(
       (button) => button.getAttribute("data-variant") === "success",
     );
   }
 
-  it("puts Save and stay in the resolve group, immediately after the primary", async () => {
-    // Adjacency is the whole claim: *advance* and *persist in place* are one
-    // decision read two ways, and they used to be a zone apart. Document order
-    // inside the cluster is what a reader gets.
-    assetCount = 2;
-    await open();
-
-    const cluster = screen.getByTestId("frame-navigation");
-    const order = [...cluster.querySelectorAll<HTMLElement>("button[data-testid]")]
-      .map((button) => button.getAttribute("data-testid"))
-      .filter((id) => id === "skip" || id === "save-and-next" || id === "save-and-stay");
-    expect(order).toEqual(["skip", "save-and-next", "save-and-stay"]);
-  });
-
-  it("leaves exactly one primary fill, with Save and stay outlined beside it", async () => {
-    assetCount = 2;
-    await open();
-
-    expect(filled().map((button) => button.getAttribute("data-testid"))).toEqual(["save-and-next"]);
-    expect(screen.getByTestId("save-and-stay").getAttribute("data-variant")).toBe("outline");
-    expect(successVariantButtons()).toEqual([]);
-  });
-
-  it("keeps the pair a pair on the last frame, where Finish job holds the primary", async () => {
-    // The filled slot is contended by arithmetic rather than by a declaration,
-    // and the outline half is not part of that contention: you can still save
-    // without leaving the frame you are finishing on.
-    assetCount = 1;
-    jobSettled = true;
-    progress = "annotated";
-    await open();
-
-    expect(filled().map((button) => button.getAttribute("data-testid"))).toEqual(["finish-job"]);
-    expect(screen.getByTestId("save-and-stay").getAttribute("data-variant")).toBe("outline");
-  });
-
-  it("leaves with the frame verbs once the job is closed, in both its places", async () => {
-    // A closed batch has nothing to save on any frame, so a filled control that
-    // could never fire would be a fill with nothing behind it — principle 9 at
-    // the loudest weight the bar has. It goes with Skip and the flow verb, and
-    // the overflow copy goes with it, or the control would exist in two states
-    // rather than one.
-    closedBatch = true;
+  it("has no Save and stay, and no tooltip teaching its chord", async () => {
     assetCount = 2;
     await open();
 
     expect(screen.queryByTestId("save-and-stay")).toBeNull();
+    expect(screen.queryByTestId("save-and-stay-shortcut")).toBeNull();
     expect(screen.queryByTestId("menu-save")).toBeNull();
+    expect(filled().map((button) => button.getAttribute("data-testid"))).toEqual(["save-and-next"]);
     expect(successVariantButtons()).toEqual([]);
+  });
+
+  it("keeps the review move outline beside it", async () => {
+    progress = "annotated";
+    assetCount = 2;
+    await open();
+
+    expect(screen.getByTestId("submit-for-review").getAttribute("data-variant")).toBe("outline");
+    expect(filled().map((button) => button.getAttribute("data-testid"))).toEqual(["save-and-next"]);
   });
 });
 
@@ -849,17 +937,41 @@ describe("the frame's state, in prose", () => {
     expect(state.innerHTML).toContain(TONE_BORDER.warning);
   });
 
-  it("claims no save on a frame that has only been looked at (#1063)", async () => {
+  it("says how many labels a model wrote, beside the word", async () => {
+    progress = "pre_labeled";
+    annotated = true;
+    modelBox = true;
+    await open();
+
+    const said = await screen.findByTestId("from-model");
+    expect(said.textContent).toBe("1 from the model");
+    expect(screen.getByTestId("status-tag").contains(said)).toBe(true);
+  });
+
+  it("says nothing about a model on a frame a person labelled", async () => {
+    annotated = true;
+    progress = "annotated";
+    await open();
+
+    await screen.findByTestId("object-delete-0");
+    expect(screen.queryByTestId("from-model")).toBeNull();
+  });
+
+  it("sits beside the frame's identity on the picture, and claims no save on a frame only looked at (#1063)", async () => {
+    // Where the frame stands is a fact about the picture, so it rides the frame's
+    // chip with the hash; whether the work is stored is a fact about the session,
+    // and a frame that has only been looked at has had no save to report.
     await open();
 
     const state = screen.getByTestId("asset-progress");
+    expect(state.parentElement?.contains(screen.getByTestId("asset-identity"))).toBe(true);
+    expect(screen.getByTestId("canvas-stage").contains(state)).toBe(true);
     expect(state.parentElement?.textContent).not.toContain("Saved");
-    expect(state.parentElement?.textContent).not.toContain("·");
     expect(screen.queryByTestId("save-state")).toBeNull();
   });
 });
 
-describe("undo and redo on the tool strip", () => {
+describe("undo and redo in the island", () => {
   it("start disabled with a reason, because an opened frame has no history", async () => {
     await open();
 
@@ -999,5 +1111,120 @@ describe("a pre_labeled frame opens editable, not viewed", () => {
     await open();
 
     expect(screen.getByTestId("class-region")).toBeDefined();
+  });
+});
+
+describe("the job's progress, the one place it is shown", () => {
+  it("counts settled frames the way the product does, never `n / m annotated`", async () => {
+    // Settled is `SETTLED_PROGRESS` — annotated, skipped, accepted — so it is the
+    // total less `outstandingWork`. 1 + 1 + 1 of 6 here.
+    jobCounts = { unannotated: 1, pre_labeled: 1, annotated: 1, skipped: 1, review_pending: 1, accepted: 1, total: 6 };
+    await open();
+
+    const readout = await screen.findByTestId("job-progress");
+    await waitFor(() => expect(readout.getAttribute("data-settled")).toBe("3"));
+    expect(readout.textContent).toBe("3/6");
+    expect(readout.getAttribute("aria-label")).toBe("3 of 6 frames settled");
+    expect(document.querySelector("header")?.contains(readout)).toBe(true);
+    // The old readout is gone everywhere, not moved.
+    expect(document.body.textContent).not.toMatch(/\d+ \/ \d+ annotated/);
+    expect(screen.getAllByTestId("job-progress")).toHaveLength(1);
+  });
+
+  it("draws one segment per state, from the tokens the timeline uses", async () => {
+    jobCounts = { unannotated: 2, pre_labeled: 0, annotated: 1, skipped: 0, review_pending: 1, accepted: 0, total: 4 };
+    await open();
+
+    const readout = await screen.findByTestId("job-progress");
+    await waitFor(() => expect(readout.querySelector('[data-progress="annotated"]')).not.toBeNull());
+    const annotatedSegment = readout.querySelector<HTMLElement>('[data-progress="annotated"]')!;
+    expect(annotatedSegment.style.width).toBe("25%");
+    expect(annotatedSegment.className).toContain(TONE_FILL.success);
+    expect(readout.querySelector<HTMLElement>('[data-progress="review_pending"]')!.className).toContain(
+      TONE_FILL.warning,
+    );
+  });
+
+  it("opens every state counted on hover, and names no key nothing is bound to", async () => {
+    jobCounts = { unannotated: 2, pre_labeled: 0, annotated: 1, skipped: 0, review_pending: 1, accepted: 0, total: 4 };
+    await open();
+
+    await userEvent.hover(await screen.findByTestId("job-progress"));
+
+    const card = await screen.findByTestId("job-progress-breakdown");
+    for (const state of PROGRESS_STATES) {
+      expect(card.querySelector(`[data-testid="progress-row-${state}"]`), state).not.toBeNull();
+    }
+    expect(card.textContent).toContain("1 of 4 frames settled");
+    expect(card.textContent).toContain("3 still need a person");
+    // No binding jumps to the next frame that needs one, so the hint is not drawn.
+    expect(card.textContent).not.toContain("Tab");
+    expect(card.querySelector("kbd")).toBeNull();
+  });
+});
+
+describe("the save state", () => {
+  it("is absent on arrival, and on the bar as a live status with no tooltip once there is work", async () => {
+    annotated = true;
+    progress = "annotated";
+    await open();
+    expect(screen.queryByTestId("save-state")).toBeNull();
+
+    await userEvent.click(await screen.findByTestId("object-delete-0"));
+
+    const state = screen.getByTestId("save-state");
+    expect(document.querySelector("header")?.contains(state)).toBe(true);
+    expect(state.getAttribute("role")).toBe("status");
+    expect(state.getAttribute("data-state")).toBe("edited");
+    await userEvent.hover(state);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
+  it("keeps every word in one cell, so its width never changes", async () => {
+    annotated = true;
+    progress = "annotated";
+    await open();
+    await userEvent.click(await screen.findByTestId("object-delete-0"));
+
+    const words = [...screen.getByTestId("save-state").querySelectorAll<HTMLElement>("[data-word]")];
+    expect(words.map((word) => word.dataset["word"])).toEqual(["Edited", "Saving", "Saved", "Not saved"]);
+    for (const word of words) expect(word.className).toContain("col-start-1 row-start-1");
+  });
+});
+
+describe("hiding every object from the rail", () => {
+  it("drives the same hidden set the panel reads, all hidden and back", async () => {
+    annotated = true;
+    progress = "annotated";
+    await open();
+    await screen.findByTestId("object-delete-0");
+
+    const toggle = screen.getByTestId("tool-visibility");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    await userEvent.click(toggle);
+
+    expect(screen.getByTestId("tool-visibility").getAttribute("aria-pressed")).toBe("true");
+    // The panel's rows read the same set — the rail is the one hide-all there is.
+    expect(screen.getByTestId("object-row-0").dataset["hidden"]).toBe("true");
+    expect(screen.queryByTestId("toggle-all-visibility")).toBeNull();
+
+    await userEvent.click(screen.getByTestId("tool-visibility"));
+    expect(screen.getByTestId("object-row-0").dataset["hidden"]).toBe("false");
+  });
+
+  it("is withheld, with its reason, on a frame with nothing on it", async () => {
+    await open();
+
+    const toggle = screen.getByTestId("tool-visibility");
+    expect(toggle.getAttribute("aria-disabled")).toBe("true");
+    expect(toggle.getAttribute("aria-label")).toBe("No objects to hide");
+  });
+
+  it("is not where a class is added any more", async () => {
+    await open(() => {});
+
+    expect(screen.queryByTestId("tool-add-class")).toBeNull();
+    await userEvent.click(screen.getByTestId("class-add"));
+    expect(await screen.findByTestId("add-class-dialog")).toBeDefined();
   });
 });

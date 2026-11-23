@@ -16,7 +16,7 @@ import {
   scanDocumentFromWire,
   type ScanDocument,
 } from "@visionset/annotator";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   assetParamFor,
@@ -25,8 +25,11 @@ import {
   mergePlans,
   planSave,
   planScanSave,
+  sameAnnotations,
+  settledSave,
   type WireAnnotation,
 } from "./jobQueries";
+import { FrameSession } from "./frameSession";
 
 const SCHEMA = {
   project_id: "11111111-1111-4111-8111-111111111111",
@@ -288,6 +291,194 @@ describe("planScanSave", () => {
     expect(isEmptyPlan(merged)).toBe(false);
     expect(isEmptyPlan(mergePlans(imagePlan, { created: [], updated: [], deleted: [] }))).toBe(false);
     expect(isEmptyPlan(mergePlans({ created: [], updated: [], deleted: [] }, scanPlan))).toBe(false);
+  });
+});
+
+/** A local shape, as the canvas would mint it. */
+function drawnLocally(id: string, x = 1): Parameters<typeof addAnnotationCommand>[0] {
+  return {
+    id,
+    asset_id: "asset-1",
+    label_class: "vehicle",
+    schema_version: 2,
+    geometry: { type: "bbox", x, y: 1, width: 5, height: 5 },
+    attributes: {},
+    provenance: "human",
+    model_ref: null,
+    confidence: null,
+    job_id: null,
+  };
+}
+
+/** What the kernel would answer for a create: the same row under its own id. */
+function storedAs(id: string, local: Parameters<typeof addAnnotationCommand>[0]): WireAnnotation {
+  return { ...local, id, geometry: local.geometry };
+}
+
+describe("a save's answer, kept (settledSave)", () => {
+  it("records the kernel's rows and maps each created shape to the id it minted", () => {
+    const server = [loaded("a"), loaded("b")];
+    const store = storeOf(server);
+    store.execute(addAnnotationCommand(drawnLocally("local-1")));
+    store.execute({
+      label: "drop b",
+      apply: (d) => ({ ...d, annotations: new Map([...d.annotations].filter(([id]) => id !== "b")) }),
+    });
+    const plan = planSave(store.document, server);
+
+    const after = settledSave(server, new Map(), plan, {
+      updated: [],
+      created: [storedAs("srv-9", drawnLocally("local-1"))],
+    });
+
+    expect(after.server.map((one) => one.id)).toEqual(["a", "srv-9"]);
+    expect(after.minted.get("local-1")).toBe("srv-9");
+    // The document did not change name, and against the new record it is clean.
+    expect(isEmptyPlan(planSave(store.document, after.server, after.minted))).toBe(true);
+  });
+
+  it("addresses a later edit of a saved shape by the server's id, never the local one", () => {
+    const server = [loaded("a")];
+    const store = storeOf(server);
+    store.execute(addAnnotationCommand(drawnLocally("local-1")));
+    const first = planSave(store.document, server);
+    const after = settledSave(server, new Map(), first, {
+      updated: [],
+      created: [storedAs("srv-1", drawnLocally("local-1"))],
+    });
+
+    store.execute({
+      label: "nudge",
+      apply: (d) => {
+        const moved = new Map(d.annotations);
+        moved.set("local-1", { ...d.annotations.get("local-1")!, geometry: { type: "bbox", x: 9, y: 1, width: 5, height: 5 } });
+        return { ...d, annotations: moved };
+      },
+    });
+    const next = planSave(store.document, after.server, after.minted);
+    expect(next.created).toEqual([]);
+    expect(next.updated.map((one) => one.id)).toEqual(["srv-1"]);
+
+    store.undo();
+    store.undo();
+    const removed = planSave(store.document, after.server, after.minted);
+    expect(removed.deleted).toEqual(["srv-1"]);
+  });
+
+  it("reads a shape back as a create when its server row is gone", () => {
+    // Deleted here and stored, then brought back by an undo: the mapping points
+    // at a row the server no longer has, so the shape has to be stored again.
+    const server = [loaded("a")];
+    const minted = new Map([["local-1", "srv-1"]]);
+    const store = storeOf(server);
+    store.execute(addAnnotationCommand(drawnLocally("local-1")));
+
+    const plan = planSave(store.document, server, minted);
+    expect(plan.created.map((one) => one.id)).toEqual(["local-1"]);
+    expect(plan.deleted).toEqual([]);
+  });
+
+  it("compares two reads by what a save would compare", () => {
+    expect(sameAnnotations([loaded("a"), loaded("b")], [loaded("b"), loaded("a")])).toBe(true);
+    expect(sameAnnotations([loaded("a")], [loaded("a", "pedestrian")])).toBe(false);
+    expect(sameAnnotations([loaded("a")], [loaded("a"), loaded("b")])).toBe(false);
+  });
+});
+
+describe("FrameSession: a read never takes back work", () => {
+  const ASSET = { id: "asset-1", width: 100, height: 100 };
+
+  it("keeps the store and its history through a save", () => {
+    const session = new FrameSession(ASSET, SCHEMA, [loaded("a")]);
+    const { store } = session.getSnapshot();
+    store.execute(addAnnotationCommand(drawnLocally("local-1")));
+    const plan = session.plan();
+
+    session.saved(plan, { updated: [], created: [storedAs("srv-1", drawnLocally("local-1"))] });
+
+    expect(session.getSnapshot().store).toBe(store);
+    expect(store.canUndo).toBe(true);
+    expect(isEmptyPlan(session.plan())).toBe(true);
+  });
+
+  it("leaves a read that arrives while there is work, and judges it once", () => {
+    const session = new FrameSession(ASSET, SCHEMA, [loaded("a")]);
+    const { store } = session.getSnapshot();
+    store.execute(addAnnotationCommand(drawnLocally("local-1")));
+
+    const elsewhere = [loaded("a"), loaded("z")];
+    session.receive(elsewhere, false);
+    expect(session.getSnapshot().store).toBe(store);
+    expect(store.document.annotations.has("local-1")).toBe(true);
+
+    // Going quiet later does not take the same read in after the fact.
+    session.receive(elsewhere, true);
+    expect(session.getSnapshot().store).toBe(store);
+  });
+
+  it("takes a new read in when nothing could be lost, and ignores one that says nothing new", () => {
+    const first = [loaded("a")];
+    const session = new FrameSession(ASSET, SCHEMA, first);
+    const { store } = session.getSnapshot();
+
+    session.receive([loaded("a")], true);
+    expect(session.getSnapshot().store).toBe(store);
+
+    session.receive([loaded("a"), loaded("z")], true);
+    expect(session.getSnapshot().store).not.toBe(store);
+    expect([...session.getSnapshot().store.document.annotations.keys()]).toEqual(["a", "z"]);
+    expect(isEmptyPlan(session.plan())).toBe(true);
+  });
+
+  it("re-pins against the document's own annotations, unsaved ones included", () => {
+    const session = new FrameSession(ASSET, SCHEMA, [loaded("a")]);
+    session.getSnapshot().store.execute(addAnnotationCommand(drawnLocally("local-1")));
+    const widened = { ...SCHEMA, version: 3, classes: [...SCHEMA.classes, { name: "cone", geometries: ["bbox"], color: null, attributes: [] }] };
+
+    session.repin(widened);
+
+    const { document } = session.getSnapshot().store;
+    expect(document.schema.classes.map((one) => one.name)).toContain("cone");
+    expect([...document.annotations.keys()]).toEqual(["a", "local-1"]);
+    expect(session.plan().created.map((one) => one.id)).toEqual(["local-1"]);
+  });
+
+  it("tells its subscribers, once per change", () => {
+    const session = new FrameSession(ASSET, SCHEMA, [loaded("a")]);
+    const heard = vi.fn();
+    session.subscribe(heard);
+    session.receive([loaded("a"), loaded("z")], true);
+    expect(heard).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a scan's cuboids through a save, and edits one later under the server's id", () => {
+    const SCAN = { id: "scan-1", width: null, height: null, modality: "point_cloud" };
+    const session = new FrameSession(SCAN, SCAN_SCHEMA, [loadedCuboid("a")]);
+    const scanStore = session.getSnapshot().scanStore!;
+    const kept = scanStore.document.annotations.get("a")!;
+    scanStore.execute({
+      label: "draw",
+      apply: (d) => ({
+        ...d,
+        annotations: new Map([...d.annotations, ["local-1", { ...kept, id: "local-1", provenance: "human" as const }]]),
+      }),
+    });
+    const plan = session.plan();
+    expect(plan.created.map((one) => one.id)).toEqual(["local-1"]);
+
+    const stored = { ...loadedCuboid("srv-1"), provenance: "human" };
+    session.saved(plan, { updated: [], created: [stored] });
+    expect(session.getSnapshot().scanStore).toBe(scanStore);
+    expect(isEmptyPlan(session.plan())).toBe(true);
+
+    const drawn = scanStore.document.annotations.get("local-1")!;
+    scanStore.execute({
+      label: "move",
+      apply: (d) => replaceScanAnnotation(d, { ...drawn, geometry: { ...drawn.geometry, center: [12, 0, 0.8] } }),
+    });
+    const next = session.plan();
+    expect(next.created).toEqual([]);
+    expect(next.updated.map((one) => one.id)).toEqual(["srv-1"]);
   });
 });
 

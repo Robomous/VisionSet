@@ -144,7 +144,7 @@ test("a save never sends the 3D labels it drew", async ({ page }) => {
 
 test("a frame with no calibration draws nothing and says why", async ({ page }) => {
   await openSeeded(page, { "asset-1": PINHOLE });
-  await page.getByTestId("next-asset").click();
+  await page.getByTestId("save-and-next").click();
   await expect(page).toHaveURL(/asset=asset-2/);
 
   const notice = page.getByTestId("overlay-3d-withheld");

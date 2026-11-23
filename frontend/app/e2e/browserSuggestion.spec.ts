@@ -5,19 +5,19 @@
  * the fixture is absent; VISIONSET_REQUIRE_BROWSER_MODELS=1 turns that into a hard failure,
  * the same bargain frontend/browser-inference/browser/efficientSam.spec.ts strikes.
  *
- * The Server/"This device" choice is a real `Tabs` component (`SuggestPanel.tsx`)
- * defaulting to the "server" tab, so every browser-target scenario here clicks
- * `suggest-target-browser` before touching the acquire button. There is no dedicated
- * "ready" testid: `DeviceTab` renders a plain `<Badge>Ready</Badge>` once
+ * The Server | Local choice is a radio group in the suggest tool's bar
+ * (`SuggestBar.tsx`) defaulting to Server, so every browser-target scenario here
+ * clicks `suggest-target-browser` before touching the acquire button. There is no
+ * dedicated "ready" testid: the Local control shows the word "Ready" once
  * `listTargets()` answers non-empty, so "now ready" is read as that text appearing
  * inside `suggest-device-section` — and a failed acquisition renders `role="alert"`
- * beside the still-present acquire button (`SuggestPanel.tsx`'s `DeviceTab`).
+ * beside the still-present acquire button. Remove lives in the small menu on the
+ * model's name (`suggest-device-menu`).
  *
- * `TargetChooser` — and with it `suggest-target-browser` — is only mounted while
- * the session is in its ordinary idle/blocked states (`SuggestPanel.tsx`'s final
- * fallback render). The "shown" and "refused" cards replace it entirely, so a
- * claim about the active tab or the tab list has to be made from idle, never from
- * mid-suggestion or mid-refusal.
+ * The choice — and with it `suggest-target-browser` — is only drawn while nothing
+ * is pending (`SuggestBar.tsx`'s `choosing`). While a proposal is shown or a
+ * refusal is up it is absent, so a claim about the active side has to be made
+ * from idle, never from mid-suggestion or mid-refusal.
  *
  * `_wireApiStub.ts`'s `/content` route serves a real but 1×1 PNG — fine for the
  * ~150 tests in `annotate.spec.ts`, because `AnnotatorCanvas.tsx` lays the picture
@@ -222,17 +222,17 @@ async function armSuggestTool(page: Page): Promise<void> {
 }
 
 /**
- * Switches to "This device" and downloads the model, then waits for the real
- * "ready" signal: `DeviceTab` swaps the acquire button for a `Badge` reading
- * "Ready" once `listTargets()` answers non-empty (`SuggestPanel.tsx`). There is no
- * separate target-selection control to click — Phase F ships exactly one browser
- * target, and choosing the tab already set it as the active suggestion target.
+ * Switches to Local and downloads the model, then waits for the real "ready"
+ * signal: the Local control swaps the acquire button for "Ready" once
+ * `listTargets()` answers non-empty (`SuggestBar.tsx`). There is no separate
+ * target-selection control to click — Phase F ships exactly one browser target,
+ * and choosing Local already set it as the active suggestion target.
  *
  * **Assumes the suggest tool is already armed** (see {@link armSuggestTool}).
  * Clicking `tool-suggest` again here would call `toggleSuggest()` a second time —
  * and `AnnotationPage.tsx`'s `toggleSuggest` clears the whole session when one
  * already exists (`session !== null` → `setSession(null)`), unmounting the very
- * panel this helper is trying to drive rather than doing nothing.
+ * bar this helper is trying to drive rather than doing nothing.
  */
 async function acquireAndSelectBrowserTarget(page: Page): Promise<void> {
   await page.getByTestId("suggest-target-browser").click();
@@ -266,7 +266,7 @@ test.describe("browser suggestion", () => {
     expect(suggestCallsOf(sent)).toHaveLength(1);
   });
 
-  test("This device target: a click never issues an /inference/suggest HTTP request", async ({ page }) => {
+  test("Local target: a click never issues an /inference/suggest HTTP request", async ({ page }) => {
     const sent: Request[] = [];
     await openJobWithBrowserRuntime(page, sent, true);
     await armSuggestTool(page);
@@ -323,7 +323,7 @@ test.describe("browser suggestion", () => {
     await openJobWithBrowserRuntime(page, sent, true, "live");
     await armSuggestTool(page);
     // Registry discovery is deliberately asynchronous and does not block the editor. Wait for
-    // its immutable manifest validation before selecting the controlled This device tab; a
+    // its immutable manifest validation before selecting the controlled Local option; a
     // machine-speed click before the catalog has any target is intentionally a no-op.
     await expect.poll(() => responses.some(({ url }) => url.endsWith("/manifest.json"))).toBe(true);
     const coldStarted = Date.now();
@@ -403,6 +403,7 @@ test.describe("browser suggestion", () => {
     await armSuggestTool(page);
     await acquireAndSelectBrowserTarget(page);
 
+    await page.getByTestId("suggest-device-menu").click();
     await page.getByTestId("suggest-device-remove-efficient-sam-ti").click();
     await expect(page.getByTestId("suggest-device-acquire-efficient-sam-ti")).toBeVisible();
     expect(await page.evaluate(async () => (await caches.open("visionset-browser-models-v1")).keys().then((keys) => keys.length))).toBe(0);
@@ -467,9 +468,9 @@ test.describe("browser suggestion", () => {
     await expect(page.getByTestId("suggest-idle")).toBeVisible();
     expect(modelRequests()).toBe(0);
 
-    // Merely switching to "This device" — without ever pressing Download — must
-    // not fetch anything either. Still idle here, so `suggest-target-browser` and
-    // the acquire button are both mounted.
+    // Merely switching to Local — without ever pressing Download — must not
+    // fetch anything either. Still idle here, so `suggest-target-browser` and the
+    // acquire button are both mounted.
     await page.getByTestId("suggest-target-browser").click();
     await expect(page.getByTestId("suggest-device-acquire-efficient-sam-ti")).toBeVisible();
     expect(modelRequests()).toBe(0);
@@ -533,19 +534,19 @@ test.describe("browser suggestion", () => {
     await page.keyboard.up("Alt");
 
     // "Refused", not "answered nothing": the executor throws before ever calling the
-    // model (`BrowserSuggestionExecutor.ts`), and the panel's refusal card carries its
-    // message verbatim, same as a server refusal would.
-    await expect(page.getByTestId("suggest-refusal")).toHaveText(/positive-point refinement only/i);
+    // model (`BrowserSuggestionExecutor.ts`), and the bar's ⓘ carries its message
+    // verbatim, same as a server refusal would.
+    await expect(page.getByTestId("suggest-refused")).toBeVisible();
+    await expect(page.getByTestId("suggest-tip")).toHaveText(/positive-point refinement only/i);
 
-    // The refusal card replaces `TargetChooser` entirely (`SuggestPanel.tsx`'s
-    // `status === "refused"` branch), so `suggest-target-browser` isn't mounted at
+    // A refused session is pending, so the Server | Local choice is not drawn at
     // this instant — asserting on it here would fail on a missing element, not a
     // real regression. Escape (`discardSuggestion` → `cleared`, since a refused
-    // session always `hasPending`) drops the session back to idle, which remounts
-    // the chooser without touching `activeTarget` — the fact this is actually
+    // session always `hasPending`) drops the session back to idle, which redraws
+    // the choice without touching `activeTarget` — the fact this is actually
     // proving no silent fallback to Server.
     await page.keyboard.press("Escape");
-    await expect(page.getByTestId("suggest-target-browser")).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("suggest-target-browser")).toHaveAttribute("aria-checked", "true");
     expect(suggestCallsOf(sent)).toHaveLength(0);
   });
 });

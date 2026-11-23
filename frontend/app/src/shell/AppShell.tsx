@@ -39,7 +39,7 @@
  * The width does **not** animate. A panel somebody flips many times a day is
  * the case where motion is a cost rather than a cue — the keyboard user in
  * particular already knows what the shortcut does — and animating `width`
- * would re-lay out the gallery and re-fit the annotator on every frame. What
+ * would re-lay out the Images grid and re-fit the annotator on every frame. What
  * keeps the change legible instead is that nothing the eye is holding moves:
  * every icon sits in the same 40px-wide slot in both states and the logo's mark
  * at the same x, so expanding only *adds* labels beside things that stay put.
@@ -56,15 +56,19 @@
  * for those. A project is that column under its own section toolbar. Both get the
  * workbench frame — tabs above, status bar below. The annotator is neither: it is
  * the one screen somebody sits in front of for an hour, and boxing it costs real
- * pixels — `fitToViewport` derives the zoom from the pane's rect — so it gets the
- * whole viewport beside the rail, with no tabs and no status bar.
+ * pixels — `fitToViewport` derives the zoom from the pane's rect — so it stands
+ * outside this shell altogether: the whole viewport, with no rail, no tabs and no
+ * status bar. It is left by its own back control.
  *
  * So the choice is a **route**, not a prop and not a `useMatch` here.
- * `PaddedPane`, `ProjectPane` and `FullBleedPane` are the three `<main>`s, and
- * `routes.tsx` puts each screen under the one it wants — which keeps this file
+ * `PaddedPane`, `ListPane` and `ProjectPane` are the `<main>`s inside the shell
+ * and `routes.tsx` puts each screen under the one it wants — which keeps this file
  * composition-only and keeps `ui-core` from fighting the container with negative
- * margins. One `AppShell` sits above all three in the route tree, so the rail is
- * continuous across panes rather than two copies that must be kept identical.
+ * margins. One `AppShell` sits above all of them in the route tree, so the rail is
+ * continuous across panes rather than copies that must be kept identical.
+ * `FullBleedPane` is the annotator's own layout route and a *sibling* of
+ * `AppShell`, not a child: the rail is the shell's, so a screen without it is a
+ * screen outside the shell.
  *
  * ## The document scrolls, and the chrome sticks
  *
@@ -72,8 +76,8 @@
  * and the tabs stick to the top and the status bar to the bottom. A sideways
  * overflow therefore stays a fact about the document — the thing a user drags —
  * which is what the responsive-floor checks measure. The status bar's height is
- * published as `--page-inset-bottom` so a page's own sticky bar (the gallery's
- * bulk bar) floats above it rather than under it, and the tab strip's as
+ * published as `--page-inset-bottom` so a page's own sticky bar (the Classes commit
+ * bar) floats above it rather than under it, and the tab strip's as
  * `--page-inset-top`, so a page that fits itself to the window (the Images
  * section) can take exactly the height between them.
  */
@@ -276,17 +280,20 @@ export function ListPane(): JSX.Element {
 }
 
 /**
- * The pane the editing surface gets: the whole viewport beside the rail.
+ * The layout the editing surface gets: the whole viewport, and nothing else.
  *
- * No tabs, no status bar, no cap, no padding, and `h-screen` rather than
- * `flex-1` — a flex item stretches to its *row*, and the row is `min-h-screen`,
- * so a page taller than the window would drag the row down with it. Pinning the
- * height here is what makes "nothing scrolls the document" structural: the only
- * thing with `overflow` is the canvas pane inside.
+ * It is a sibling of `AppShell` in the route tree, so there is no rail, no tabs
+ * and no status bar — and no `⌘B` chord, since that belongs to the rail. Nothing
+ * the annotator renders reads a context only the shell provides (the tooltip
+ * provider is the app root's), so there is nothing to re-provide here.
+ *
+ * `h-screen` rather than `min-h-screen` or `flex-1`: pinning the height is what
+ * makes "nothing scrolls the document" structural — the only thing with
+ * `overflow` is the canvas pane inside.
  */
 export function FullBleedPane(): JSX.Element {
   return (
-    <main className="h-screen min-w-0 flex-1 overflow-hidden">
+    <main className="h-screen w-full min-w-0 overflow-hidden bg-background">
       <Outlet />
     </main>
   );

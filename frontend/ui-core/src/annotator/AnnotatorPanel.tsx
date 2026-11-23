@@ -48,7 +48,13 @@
  * undo takes it back like anything else. It is offered per row rather than for the
  * selection, which is the one thing about it this file still decides — everything
  * else lives in `ReassignMenu.tsx`, because the same picker has a second
- * anchor on the canvas and a rule with two spellings is a rule that drifts.
+ * anchor on the canvas and a rule with two spellings is a rule that drifts. The
+ * row's anchor is the class name itself: the thing being changed is the control.
+ *
+ * An attribute edit is the same command with new `attributes` — one change, one
+ * history entry — built by `withAttribute` (`attributes.ts`); `AttributeControls.tsx`
+ * renders the selected row's controls. Required is shown, never enforced: the kernel's
+ * `MissingRequiredAttribute` is the rule, and a dot beside a name is not a second one.
  *
  * Applied on selection rather than behind an **Apply**, which the card this replaces
  * needed and a menu does not: a Radix menu highlights on arrow and commits only on
@@ -70,6 +76,7 @@ import {
   isTagAnnotation,
   isTaggableClass,
   randomUuid,
+  reassignedAnnotation,
   removeAnnotationsCommand,
   replaceAnnotationCommand,
   selectOnly,
@@ -78,18 +85,21 @@ import {
   type Annotation,
   type AnnotationSchema,
   type AnnotatorStore,
+  type AttributeValue,
   type LabelClass,
   type ScanAnnotation,
   type ScanDocument,
   type Tool,
 } from "@visionset/annotator";
 import { useAnnotatorSnapshot } from "@visionset/annotator/react";
-import { Check, Eye, EyeOff, Sparkles, Tag, Trash2 } from "lucide-react";
+import { Check, ChevronDown, Eye, EyeOff, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, type JSX, type RefObject } from "react";
 
 import { geometryLabel } from "../data/geometryCategory";
 import { classColor } from "../palette";
-import { Badge, Button, DropdownMenu, DropdownMenuTrigger, Input, Tooltip, TooltipContent, TooltipTrigger, cn } from "@robomous/ui-core";
+import { Badge, Button, DropdownMenu, DropdownMenuTrigger, Input, Kbd, Tooltip, TooltipContent, TooltipTrigger, cn } from "@robomous/ui-core";
+import { AttributeControls, NeedsValueDot } from "./AttributeControls";
+import { missingRequired, rowSummary, withAttribute } from "./attributes";
 import { ClassRegion } from "./ClassRegion";
 import { ReassignMenu } from "./ReassignMenu";
 import { VertexRegion } from "./VertexRegion";
@@ -102,6 +112,11 @@ function geometryLabel3D(geometry: unknown): string {
 }
 
 export interface AnnotatorPanelProps {
+  /**
+   * `card` is the bordered column the showcase floats beside its stage;
+   * `flush` is the editor's inspector, where the column itself is the surface.
+   */
+  readonly layout?: "card" | "flush";
   readonly store: AnnotatorStore;
   /** Held by the page, because the canvas needs the same set. */
   readonly hiddenIds: ReadonlySet<string>;
@@ -162,6 +177,7 @@ export function AnnotatorPanel({
   onAddClass,
   labels3D = [],
   scan = null,
+  layout = "card",
 }: AnnotatorPanelProps): JSX.Element {
   const snapshot = useAnnotatorSnapshot(store);
   const scanSnapshot = useAnnotatorSnapshot(scan?.store ?? null);
@@ -202,8 +218,6 @@ export function AnnotatorPanel({
     .filter((row) => row.label.label_class.toLowerCase().includes(query));
   const total = drawn.length + cuboids.length + labels3D.length;
 
-  const allHidden = drawn.length > 0 && drawn.every((one) => hiddenIds.has(one.id));
-
   const lane =
     snapshot.selection.size === 1
       ? drawn.find((one) => snapshot.selection.has(one.id) && one.geometry.type === "polyline")
@@ -238,7 +252,20 @@ export function AnnotatorPanel({
     // untestable. Removing the real enforcement would then turn no test red, since
     // the second copy silently keeps the behaviour correct.
     if (labelClass === annotation.label_class) return;
-    store.execute(replaceAnnotationCommand({ ...annotation, label_class: labelClass }));
+    store.execute(
+      replaceAnnotationCommand(reassignedAnnotation(store.document, annotation, labelClass)),
+    );
+  }
+
+  function setAttribute(id: string, name: string, value: AttributeValue | null): void {
+    // Read from the store, not from the render that drew the row: a field commits on
+    // blur and on unmount, which can land after the document moved on.
+    const current = store.document.annotations.get(id);
+    if (current === undefined) return;
+    const next = withAttribute(current, name, value);
+    // No change is no command — the identity trap `remove` and `reassign` guard too.
+    if (next === current) return;
+    store.execute(replaceAnnotationCommand(next));
   }
 
   return (
@@ -249,9 +276,13 @@ export function AnnotatorPanel({
       // already leaves a 384px stage, and a width chosen on a large monitor must
       // not be charged to the smallest screen the editor opens on at all.
       // `EditorNotice`'s clearance arithmetic is stated at 1280px and stays true.
-      className="flex w-72 min-h-0 flex-col gap-2 rounded-lg border border-border bg-muted p-2 2xl:w-80"
+      className={
+        layout === "flush"
+          ? "flex min-h-0 flex-1 flex-col gap-2 px-2 py-3"
+          : "flex w-72 min-h-0 flex-col gap-2 rounded-lg border border-border bg-muted p-2 2xl:w-80"
+      }
       data-testid="annotator-panel"
-      aria-label="Classes, tags and annotations"
+      aria-label="Classes, tags and objects"
     >
       {/* Upper region: the ontology — absent, not disabled, in the read-only
           mode: what may I draw is not a question a viewer can ask, so
@@ -304,23 +335,13 @@ export function AnnotatorPanel({
           flex child refuses to go below its content and the panel grows past the
           viewport instead. */}
       <div className="flex min-h-0 flex-1 flex-col gap-2" data-testid="objects-region">
-      <div className="flex items-center justify-between px-1">
-        <span className="text-sm font-medium">Annotations</span>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground" data-testid="object-count">
-            {total} object{total === 1 ? "" : "s"}
-          </span>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label={allHidden ? "Show all objects" : "Hide all objects"}
-            data-testid="toggle-all-visibility"
-            disabled={drawn.length === 0}
-            onClick={() => onHiddenChange(allHidden ? new Set() : new Set(drawn.map((o) => o.id)))}
-          >
-            {allHidden ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-          </Button>
-        </div>
+      <div className="flex items-center justify-between px-2">
+        <span className="text-sm font-medium">Objects</span>
+        {/* No hide-all here: the rail's `tool-visibility` writes the same
+            `hiddenIds`, and two buttons for one set is two places to read it. */}
+        <span className="text-xs text-muted-foreground" data-testid="object-count">
+          {total} object{total === 1 ? "" : "s"}
+        </span>
       </div>
 
       <Input
@@ -332,7 +353,7 @@ export function AnnotatorPanel({
         className="h-8"
       />
 
-      <div className="min-h-0 flex-1 overflow-y-auto" data-testid="objects-scroller">
+      <div className="vs-scroll-fade-y min-h-0 flex-1 overflow-y-auto" data-testid="objects-scroller">
         {rows.length + cuboidRows.length + rows3D.length === 0 ? (
           <p
             className="px-1 py-4 text-center text-xs text-muted-foreground"
@@ -341,7 +362,7 @@ export function AnnotatorPanel({
             {total === 0 ? "Nothing drawn yet." : "No object matches that filter."}
           </p>
         ) : (
-          <ul className="flex flex-col gap-1">
+          <ul className="flex flex-col">
             {rows.map(({ annotation, index }) => (
               <ObjectRow
                 key={annotation.id}
@@ -358,6 +379,8 @@ export function AnnotatorPanel({
                   : {
                       onRemove: () => remove(annotation.id),
                       onReassign: (labelClass: string) => reassign(annotation, labelClass),
+                      onAttributeChange: (name: string, value: AttributeValue | null) =>
+                        setAttribute(annotation.id, name, value),
                     })}
               />
             ))}
@@ -457,7 +480,7 @@ function TagRegion({
 
   return (
     <div className="flex shrink-0 flex-col gap-2" data-testid="tag-region">
-      <div className="flex items-center justify-between px-1">
+      <div className="flex items-center justify-between px-2">
         <span className="text-sm font-medium">Tags</span>
         <span className="text-xs text-muted-foreground" data-testid="tag-count">
           {assigned} assigned
@@ -466,7 +489,7 @@ function TagRegion({
 
       {/* Everything else in this panel is about a thing on the picture. This is
           the one line saying these are not. */}
-      <p className="px-1 text-xs text-muted-foreground" data-testid="tag-note">
+      <p className="px-2 text-xs text-muted-foreground" data-testid="tag-note">
         Tags apply to the whole image.
       </p>
 
@@ -474,7 +497,7 @@ function TagRegion({
         className="max-h-24 overflow-y-auto"
         data-testid="tag-scroller"
       >
-        <div className="flex flex-wrap gap-1 px-1" data-testid="tag-strip">
+        <div className="flex flex-wrap gap-1 px-2" data-testid="tag-strip">
           {tagClasses.map((declared) => {
             const on = tagged.has(declared.name);
             return (
@@ -505,9 +528,7 @@ function TagRegion({
                   {on ? (
                     <Check className="size-3 text-primary" aria-hidden="true" />
                   ) : (
-                    <kbd className="rounded-sm border border-border px-1 font-mono text-xs">
-                      {hotkeyForClass(schema, declared.name) ?? "—"}
-                    </kbd>
+                    <Kbd>{hotkeyForClass(schema, declared.name) ?? "—"}</Kbd>
                   )}
                 </button>
               </Badge>
@@ -561,7 +582,7 @@ function ModelMark({
           // The glyph is the sighted reading; the label is the claim in words,
           // because a sparkle is not self-describing.
           aria-label={`Model-produced by ${annotation.model_ref ?? "an unnamed model"}`}
-          className="flex shrink-0 items-center text-xs text-muted-foreground"
+          className="relative flex shrink-0 items-center text-xs text-muted-foreground"
         >
           <Sparkles className="size-3" aria-hidden="true" />
         </span>
@@ -572,6 +593,7 @@ function ModelMark({
     </Tooltip>
   );
 }
+
 
 interface ObjectRowProps {
   readonly annotation: Annotation;
@@ -587,8 +609,20 @@ interface ObjectRowProps {
   readonly onRemove?: () => void;
   /** Absent in read-only for the same reason — every item on it is a write. */
   readonly onReassign?: (labelClass: string) => void;
+  /** Absent in read-only: the attribute controls render, disabled. */
+  readonly onAttributeChange?: (name: string, value: AttributeValue | null) => void;
 }
 
+/**
+ * One drawn object: its class, its values at a glance, its number — and, selected,
+ * its values open beneath it.
+ *
+ * The row is one surface: an invisible select button fills it, and the few things
+ * that are controls of their own (the class name, the mark, hide and delete) sit
+ * above it as siblings, so a press on the class opens the class menu and never also
+ * selects, without a propagation rule anyone has to remember — a button cannot hold
+ * a button, so the two are never nested in the first place.
+ */
 function ObjectRow({
   annotation,
   index,
@@ -600,6 +634,7 @@ function ObjectRow({
   onToggleVisible,
   onRemove,
   onReassign,
+  onAttributeChange,
 }: ObjectRowProps): JSX.Element {
   const row = useRef<HTMLLIElement | null>(null);
   /**
@@ -617,6 +652,11 @@ function ObjectRow({
   useEffect(() => {
     if (selected) row.current?.scrollIntoView({ block: "nearest" });
   }, [selected]);
+  const number = index + 1;
+  const hasAttributes = declared !== undefined && declared.attributes.length > 0;
+  const summary = rowSummary(annotation, declared);
+  const swatch = classColor(declared, annotation.label_class);
+
   return (
     <li
       ref={row}
@@ -624,46 +664,115 @@ function ObjectRow({
       data-selected={selected ? "true" : "false"}
       data-hidden={hidden ? "true" : "false"}
       className={cn(
-        "flex items-center gap-1 rounded-md border px-1.5 py-1",
-        selected ? "border-primary bg-primary/10" : "border-transparent bg-card",
+        // A full border, unlike the class row's left rule — a different kind of
+        // selection (docs/content/ui/annotator.md).
+        "group flex flex-col rounded-md border transition-colors",
+        selected ? "border-primary bg-primary/10" : "border-transparent hover:bg-muted",
         hidden && "opacity-50",
       )}
     >
-      <button
-        type="button"
-        data-testid={`object-select-${index}`}
-        onClick={onSelect}
-        className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs"
-      >
-        <span
-          aria-hidden="true"
-          className="size-2.5 shrink-0 rounded-sm"
-          // The schema's colour, which no utility could name — the one sanctioned
-          // inline colour, and the same `classColor` the canvas draws with.
-          style={{ background: classColor(declared, annotation.label_class) }}
+      {/* 1px plus the border plus the class field's own 6px puts the swatch on the
+          panel's one inset, where the headings start. */}
+      <div className="relative flex h-8 items-center gap-1 pr-1 pl-px">
+        <button
+          type="button"
+          data-testid={`object-select-${index}`}
+          aria-label={`Select object ${number}, ${annotation.label_class}`}
+          aria-expanded={hasAttributes ? selected : undefined}
+          onClick={onSelect}
+          className="absolute inset-0 rounded-[5px] outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
         />
-        {/* A class accepts a *set*, so two rows reading `3. sign` may be a box and
-            a polygon, and this row is where one of them is picked. */}
-        <span className="truncate">
-          {index + 1}. {annotation.label_class}{" "}
-          <span className="text-muted-foreground">· {geometryLabel(annotation.geometry.type)}</span>
+        {onReassign === undefined ? (
+          <span className="pointer-events-none relative flex h-6 max-w-[70%] min-w-0 shrink-0 items-center gap-1.5 px-1.5 text-sm">
+            <span aria-hidden="true" className="size-2.5 shrink-0 rounded-sm" style={{ background: swatch }} />
+            <span className="truncate">{annotation.label_class}</span>
+          </span>
+        ) : (
+          <RowReassign
+            index={index}
+            annotation={annotation}
+            schema={schema}
+            swatch={swatch}
+            onReassign={onReassign}
+          />
+        )}
+        {summary !== "" && (
+          <span
+            className="pointer-events-none relative min-w-0 truncate text-xs text-muted-foreground"
+            data-testid={`object-summary-${index}`}
+          >
+            {summary}
+          </span>
+        )}
+        {missingRequired(annotation, declared).length > 0 && (
+          <NeedsValueDot testId={`object-missing-${index}`} className="relative" />
+        )}
+        {/* A mark, not a target: it sits above the row so its tooltip can open, and
+            nothing about it selects. */}
+        <ModelMark annotation={annotation} index={index} />
+        <span className="pointer-events-none relative ml-auto shrink-0 pr-1 text-xs text-muted-foreground tabular-nums">
+          #{number}
         </span>
-      </button>
-      {/* Outside the select button: it is a mark, not a target, and putting it
-          inside would make the score part of the row's click affordance. */}
-      <ModelMark annotation={annotation} index={index} />
-      {onReassign !== undefined && (
-        <RowReassign
+        <RowActions
           index={index}
-          annotation={annotation}
-          schema={schema}
-          onReassign={onReassign}
+          selected={selected}
+          hidden={hidden}
+          onToggleVisible={onToggleVisible}
+          {...(onRemove === undefined ? {} : { onRemove })}
         />
+      </div>
+      {/* Only while selected, and only for a class that declares something to set.
+          A short rise in — the row is opened by a press, not a keystroke repeated
+          down a list — and no exit: closing is a selection change, which never
+          waits on an animation. */}
+      {selected && declared !== undefined && hasAttributes && (
+        <div className="animate-in px-3 pt-1 pb-3 duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] fade-in-0 slide-in-from-bottom-1 motion-reduce:animate-none">
+          <AttributeControls
+            annotation={annotation}
+            declared={declared}
+            idPrefix={`object-attributes-${index}`}
+            {...(onAttributeChange === undefined ? {} : { onChange: onAttributeChange })}
+          />
+        </div>
       )}
+    </li>
+  );
+}
+
+/**
+ * Hide and delete, at the row's end.
+ *
+ * They show on hover, on keyboard focus inside the row and on the selected row — a
+ * column of icons per object was the loudest thing in the list. Always shown where
+ * there is no hover to reveal them, and a hidden object's eye stays put: it is the
+ * only sign the object is still there.
+ */
+function RowActions({
+  index,
+  selected,
+  hidden,
+  onToggleVisible,
+  onRemove,
+}: {
+  readonly index: number;
+  readonly selected: boolean;
+  readonly hidden: boolean;
+  readonly onToggleVisible: () => void;
+  readonly onRemove?: () => void;
+}): JSX.Element {
+  const number = index + 1;
+  const reveal = cn(
+    "transition-opacity duration-150",
+    !selected &&
+      "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100",
+  );
+  return (
+    <>
       <Button
         variant="ghost"
         size="icon-xs"
-        aria-label={hidden ? `Show object ${index + 1}` : `Hide object ${index + 1}`}
+        className={cn("relative", hidden ? undefined : reveal)}
+        aria-label={hidden ? `Show object ${number}` : `Hide object ${number}`}
         data-testid={`object-visibility-${index}`}
         onClick={onToggleVisible}
       >
@@ -672,14 +781,15 @@ function ObjectRow({
       <Button
         variant="ghost"
         size="icon-xs"
-        aria-label={`Delete object ${index + 1}`}
+        aria-label={`Delete object ${number}`}
+        className={cn("relative", reveal)}
         data-testid={`object-delete-${index}`}
         onClick={onRemove}
         disabled={onRemove === undefined}
       >
         <Trash2 className="size-3.5" />
       </Button>
-    </li>
+    </>
   );
 }
 
@@ -740,12 +850,13 @@ function CuboidRow({
 }
 
 /**
- * The row's anchor for `ReassignMenu` — and nothing else.
+ * The row's anchor for `ReassignMenu` — the class name itself.
  *
  * Everything this menu decides moved into `ReassignMenu.tsx` when the canvas grew
  * a second anchor for it: the class list, the disabled-with-reason rendering, the
  * hotkey and the apply. What is left here is a trigger and a row number, which are
- * the only two things a list legitimately has that a shape does not.
+ * the only two things a list legitimately has that a shape does not. The trigger
+ * is the name, not an icon beside it: what the menu changes is what it says.
  *
  * Open is held rather than left to Radix, because a hotkey is not an item
  * selection: nothing would dismiss the menu after a digit reassigns.
@@ -754,25 +865,40 @@ function RowReassign({
   index,
   annotation,
   schema,
+  swatch,
   onReassign,
 }: {
   readonly index: number;
   readonly annotation: Annotation;
   readonly schema: AnnotationSchema;
+  readonly swatch: string;
   readonly onReassign: (labelClass: string) => void;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          aria-label={`Reassign object ${index + 1}`}
+        <button
+          type="button"
+          // The visible name leads the accessible one, so a voice command that says
+          // what is on screen reaches it.
+          aria-label={`${annotation.label_class}, change class of object ${index + 1}`}
           data-testid={`object-reclass-${index}`}
+          className="group/name relative flex h-6 max-w-[70%] min-w-0 shrink-0 items-center gap-1.5 rounded-md px-1.5 text-left text-sm transition-colors outline-none hover:bg-foreground/5 focus-visible:ring-2 focus-visible:ring-ring/30 data-[state=open]:bg-foreground/5"
         >
-          <Tag className="size-3.5" />
-        </Button>
+          <span
+            aria-hidden="true"
+            className="size-2.5 shrink-0 rounded-sm"
+            // The schema's colour, which no utility could name — the one sanctioned
+            // inline colour, and the same `classColor` the canvas draws with.
+            style={{ background: swatch }}
+          />
+          <span className="truncate">{annotation.label_class}</span>
+          <ChevronDown
+            aria-hidden="true"
+            className="size-3 shrink-0 text-muted-foreground/60 transition-colors group-hover/name:text-muted-foreground"
+          />
+        </button>
       </DropdownMenuTrigger>
       <ReassignMenu
         annotation={annotation}
@@ -780,6 +906,7 @@ function RowReassign({
         idPrefix={`reclass-${index}`}
         onReassign={onReassign}
         onClose={() => setOpen(false)}
+        align="start"
       />
     </DropdownMenu>
   );

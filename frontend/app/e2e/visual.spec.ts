@@ -20,7 +20,7 @@
  * - **The annotator** carries the densest chrome in the product: top bar, tool
  *   palette, stage, panel, zoom and the highest icon count anywhere.
  *
- * Home, Batches, Dataset, Gallery and Ingest are covered by behavioural specs and
+ * Home, Batches, Dataset and Ingest are covered by behavioural specs and
  * add no design-system vocabulary these five do not already hold. A baseline that
  * mostly photographs empty space is a baseline that fails for reasons nobody can
  * read.
@@ -96,14 +96,15 @@ test.describe("an inverted floating surface", () => {
   for (const theme of ["light", "dark"] as const) {
     test(`an open menu, ${theme}`, async ({ page }) => {
       await page.setViewportSize(DESKTOP);
-      // The batch's overflow lives in the batch gallery's header: batches are
-      // listed on the Overview, and every batch action is made in the gallery.
-      await openVisual(page, `/projects/${VISUAL.project}/batches/${VISUAL.batch}`);
-      await expect(page.getByTestId("gallery")).toBeVisible();
+      // The batch's overflow lives in its panel's footer: batches are listed on the
+      // Overview, open in a panel beside it, and every batch action is made there.
+      await openVisual(page, `/projects/${VISUAL.project}/overview?batch=${VISUAL.batch}`);
+      const panel = page.getByTestId("batch-sheet");
+      await expect(panel).toBeVisible();
       if (theme === "dark") await useDark(page);
       await readyForCapture(page);
 
-      await page.getByTestId("batch-overflow-drive-01").click();
+      await panel.getByTestId("batch-overflow-drive-01").click();
       const menu = page.getByRole("menu");
       await expect(menu).toBeVisible();
       // The menu carries the `dark` subtree in both themes; that inversion is the

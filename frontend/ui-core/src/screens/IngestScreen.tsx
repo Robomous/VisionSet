@@ -46,9 +46,8 @@ export interface IngestScreenProps {
    * Open the batch a finished run filled.
    *
    * A callback rather than a route, because `ui-core` may not import a router —
-   * turning it into `/projects/{projectId}/batches/{batchId}` is the shell's
-   * job, the way `GalleryScreen`'s `onOpenAsset` and `ProjectScreen`'s
-   * `onOpenBatch` already work. Optional, so a host that has nowhere to send
+   * turning it into the batch's panel on the Overview is the shell's
+   * job, the way `ProjectScreen`'s `onOpenBatch` already works. Optional, so a host that has nowhere to send
    * anybody renders the outcome without the button rather than a dead link.
    */
   readonly onOpenBatch?: (batchId: string) => void;

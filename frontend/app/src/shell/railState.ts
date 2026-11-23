@@ -6,9 +6,9 @@
  * The rail carries the logo, Projects, Models, the toggle and sign out (the
  * thin-app rule keeps it that way), and every one of them is legible as an icon,
  * with its label as the accessible name and the tooltip when narrow. The screens
- * beside it are the ones that need the width: the gallery measures its column
+ * beside it are the ones that need the width: the Images grid measures its column
  * count off the pane, and the annotator derives its fit zoom off the pane's rect.
- * The 192px the expanded rail costs is most of a gallery column on a laptop.
+ * The 192px the expanded rail costs is most of a grid column on a laptop.
  *
  * It lives here rather than inline in `AppShell` so the answer has exactly one
  * home. A default spelled at a call site is a default that gets spelled twice.

@@ -72,6 +72,7 @@ const PROJECT_ASSET = {
   id: "asset-1",
   project_id: PROJECT,
   modality: "image",
+  point_cloud: null,
   content_hash: "abcdef01abcdef01",
   width: 640,
   height: 480,
@@ -220,8 +221,8 @@ async function openCold(page: Page, url: string): Promise<void> {
  * The same cold open, held until the open batch's jobs have been answered.
  *
  * Where the `Annotate` control lands is decided by that answer, and its absence
- * is not a failure but the fallback — the gallery. So a test that clicks before
- * it arrives proves nothing either way. Nothing is fetched until the token is
+ * is not a failure but the fallback — the batch's panel. So a test that clicks
+ * before it arrives proves nothing either way. Nothing is fetched until the token is
  * accepted, which is why the wait can be armed before the submit.
  */
 async function openWithJobs(page: Page, url: string, jobs: readonly string[]): Promise<void> {
@@ -477,6 +478,7 @@ async function serveSources(page: Page): Promise<string[]> {
     name,
     registered_at: "2026-08-01T08:00:00Z",
     video: null,
+    frame: null,
   });
   const frame = (id: string, from: string): Wire["AssetOut"] => ({
     ...PROJECT_ASSET,
@@ -551,6 +553,17 @@ test("the selected image sits beside the grid, the arrows walk it, and one toggl
 
   // The control that expands is the control that collapses, in the same place.
   const toggle = page.getByTestId("image-focus-toggle");
+  // The panel slides in from the right when it opens; a position read mid-slide
+  // is the motion's, not the layout's, so the slide is let finish first.
+  // (Transitions only: a loading shimmer inside it runs forever.)
+  await detail.evaluate((el) =>
+    Promise.all(
+      (el.closest("aside") ?? el)
+        .getAnimations({ subtree: true })
+        .filter((a) => a instanceof CSSTransition)
+        .map((a) => a.finished),
+    ),
+  );
   const before = await toggle.boundingBox();
   await page.keyboard.press("Enter");
   await expect(toggle).toHaveAttribute("aria-label", "Back to grid");
@@ -587,37 +600,40 @@ test("the filled control opens the open batch's one job", async ({ page }) => {
   await expect(page).toHaveURL(new RegExp(`/jobs/${JOB}(\\?asset=[^&]+)?$`));
 });
 
-test("with more than one job the filled control lands on the gallery, where a job is chosen", async ({
+test("with more than one job the filled control opens the batch's panel, where a job is chosen", async ({
   page,
 }) => {
   await openWithJobs(page, `/projects/${PROJECT}/overview`, [JOB, OTHER_JOB]);
   await page.getByTestId("go-annotate").click();
-  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/batches/${BATCH}$`));
-  await expect(page.getByTestId("gallery")).toBeVisible();
-  // Both jobs are offered, one panel each; only the open one carries a door,
-  // which is why the count is of headers rather than of `start-job-*`.
-  await expect(page.getByTestId("job-panels").getByTestId(/^job-header-/)).toHaveCount(2);
+  // No one job to open, so it opens the batch — on the Overview, in its panel.
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview\\?batch=${BATCH}$`));
+  const panel = page.getByTestId("batch-sheet");
+  await expect(panel).toBeVisible();
+  // Both jobs are offered, one card each, each with its own way into the editor.
+  await expect(panel.getByTestId("batch-sheet-jobs").getByTestId(/^batch-sheet-job-/)).toHaveCount(2);
+  await panel.getByRole("button", { name: "Open Job 2 in the editor" }).click();
+  await expect(page).toHaveURL(new RegExp(`/jobs/${OTHER_JOB}$`));
 });
 
-test("the toolbar frames the ingest flow and the batch gallery too, without a filled control of its own", async ({
+test("the toolbar frames the ingest flow and a batch's panel too, without a filled control of its own", async ({
   page,
 }) => {
   // Everything that belongs to one project lives inside the same navigation;
   // only the annotator, which needs the whole screen, stands outside it.
-  await openCold(page, `/projects/${PROJECT}/batches/${BATCH}`);
-  await expect(page.getByTestId("gallery")).toBeVisible();
+  await openCold(page, `/projects/${PROJECT}/overview?batch=${BATCH}`);
+  await expect(page.getByTestId("batch-sheet")).toBeVisible();
   const nav = page.getByTestId("project-nav");
   await expect(nav).toBeVisible();
-  // A batch is opened from the Overview, where batches are listed, so the
-  // Overview is lit.
+  // A batch is opened from the Overview, where batches are listed, and it opens
+  // on it — so the Overview is lit.
   await expect(page.getByTestId("nav-overview")).toHaveAttribute("aria-current", "page");
-  // The gallery heads itself, with its one way out — up to the Overview — so the
-  // frame draws no eyebrow above it.
+  // The batch has no page and so no way out of its own: the panel closes in place,
+  // and the frame draws no eyebrow above it.
   await expect(page.getByTestId("project-identity")).toHaveCount(0);
-  await expect(page.getByTestId("back-link")).toHaveText("Overview");
-  // The gallery owns its dominant action; the toolbar offers none beside it.
-  await expect(nav.getByTestId("go-annotate")).toHaveCount(0);
-  await expect(nav.getByTestId("go-ingest")).toHaveCount(0);
+  await expect(page.getByTestId("back-link")).toHaveCount(0);
+  // The Overview's toolbar still offers its own actions beside the open panel.
+  await expect(nav.getByTestId("go-annotate")).toHaveCount(1);
+  await expect(nav.getByTestId("go-ingest")).toHaveCount(1);
 
   await page.goto(`/projects/${PROJECT}/ingest`);
   await expect(page.getByTestId("ingest-screen")).toBeVisible();
@@ -700,8 +716,8 @@ test("the toolbar's items are real links, so the section has an address before i
  *
  * Every width here caught something real: the schema's action row came to 460px
  * and overflowed to about 500px, the dataset tabs could not shrink past their
- * labels and counts, and the gallery's batch actions and its state filter each
- * widened the page on their own. A regression in any of them is a sideways
+ * labels and counts, and the batch panel's actions and the Overview's state filter
+ * each widened the page on their own. A regression in any of them is a sideways
  * scrollbar on a screen somebody works in all day.
  *
  * One test per route rather than one sweep: fifteen navigations in a single test
@@ -710,10 +726,13 @@ test("the toolbar's items are real links, so the section has an address before i
  */
 const FLOOR_WIDTHS = [320, 375, 480] as const;
 
-for (const route of [...SECTIONS, "batches-detail"] as const) {
+for (const route of [...SECTIONS, "batch-panel"] as const) {
+  // The batch's panel is a sheet over the Overview below `lg`, so it is the one
+  // surface here that is not a section, and the address that opens it is the
+  // Overview's own.
   const path =
-    route === "batches-detail"
-      ? `/projects/${PROJECT}/batches/${BATCH}`
+    route === "batch-panel"
+      ? `/projects/${PROJECT}/overview?batch=${BATCH}`
       : `/projects/${PROJECT}/${route}`;
 
   test(`${route} does not scroll the document sideways at the responsive floor`, async ({
@@ -722,6 +741,9 @@ for (const route of [...SECTIONS, "batches-detail"] as const) {
     await page.setViewportSize({ width: FLOOR_WIDTHS[0], height: 800 });
     await openCold(page, path);
     await expect(page.getByTestId("project-tabs")).toBeVisible();
+    // The panel is the subject of its own case, so it has to be on screen when the
+    // width is measured rather than assumed to have opened.
+    if (route === "batch-panel") await expect(page.getByTestId("batch-sheet")).toBeVisible();
 
     for (const width of FLOOR_WIDTHS) {
       await page.setViewportSize({ width, height: 800 });

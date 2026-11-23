@@ -14,11 +14,8 @@ import type {
   VisionSetBrowserInferenceRuntime,
 } from "./browserPort";
 import { clearPrefs, writePref } from "../data/prefs";
-import {
-  AnnotationPage,
-  readyBrowserTargets,
-  staleStoredBrowserTarget,
-} from "../annotator/AnnotationPage";
+import { AnnotationPage } from "../annotator/AnnotationPage";
+import { readyBrowserTargets, staleStoredBrowserTarget } from "../annotator/suggestTargets";
 import { TooltipProvider } from "@robomous/ui-core";
 import { renderWithData } from "../testing/dataHarness";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
@@ -274,7 +271,7 @@ async function open(runtime?: VisionSetBrowserInferenceRuntime): Promise<() => v
 
 async function arm(): Promise<void> {
   await userEvent.click(screen.getByTestId("tool-suggest"));
-  await screen.findByTestId("suggest-panel");
+  await screen.findByTestId("suggest-bar");
 }
 
 function clickCanvas(): void {
@@ -413,7 +410,7 @@ describe("executor selection never calls executorFor on an unready browser targe
     // during render. A throw here would fail this test on its own, uncaught.
     await userEvent.click(screen.getByTestId("suggest-target-browser"));
     await screen.findByTestId("suggest-device-section");
-    expect(screen.queryByTestId("suggest-panel")).not.toBeNull();
+    expect(screen.queryByTestId("suggest-bar")).not.toBeNull();
     // The user-facing outcome this whole guard exists for: the tab lands on the actual
     // Download control rather than a blank or crashed panel.
     expect(screen.queryByTestId("suggest-device-acquire-efficient-sam-ti")).not.toBeNull();

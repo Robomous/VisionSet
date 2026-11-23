@@ -24,14 +24,19 @@
  * `next` is still useful — it is what "jump to the next unannotated" means — and
  * that is what it is used for.
  *
- * ## Saving is a diff, and then a reload
+ * ## Saving is a diff against what the server holds, and the answer is kept
  *
  * The annotator holds a local document with **client-minted ids**, and the kernel
- * mints its own on write (the document deliberately has no `rebaseAnnotationId`
- * for exactly this reason). So a save cannot merge its own response back in: it computes
- * created / updated / deleted against what was loaded, sends up to three
- * all-or-nothing calls, and then **refetches**. The reload is not laziness — it is
- * the only way the page ends up holding the ids the server actually assigned.
+ * mints its own on write (the document deliberately has no `rebaseAnnotationId`).
+ * A save computes created / updated / deleted against *what the server holds* and
+ * sends up to three all-or-nothing calls. The kernel answers each with the rows it
+ * stored, in the order they were sent, and `settledSave` folds that answer into
+ * the page's record of the server — the rows themselves, and which local id the
+ * server knows by which of its own (`minted`). The document is never rewritten:
+ * the next plan reads a shape created here through `minted`, so it addresses the
+ * server's id without the shape, its undo history or its selection having to
+ * change name. See `frameSession.ts` for why that is what lets a save run while
+ * somebody keeps drawing.
  */
 
 import {
@@ -209,7 +214,7 @@ export function useJobAssets(
 /**
  * Where in the job to open, given the asset a caller asked for.
  *
- * A gallery tile hands the annotator an **asset**, and this page counts in
+ * A link that names a frame hands the annotator an **asset**, and this page counts in
  * **positions**. Pure and exported for the same reason `planSave` is — it is the
  * part that decides something, and it is decidable without a browser.
  *
@@ -322,8 +327,11 @@ export function mergePlans(
   };
 }
 
+/** No shape created here has been stored yet. */
+const NOTHING_MINTED: ReadonlyMap<string, string> = new Map();
+
 /**
- * Local document against what was loaded.
+ * Local document against what the server holds.
  *
  * Membership decides create-versus-update and **content** decides whether an
  * update is needed at all: re-sending an unchanged annotation would be a write the
@@ -334,29 +342,40 @@ export function mergePlans(
  * A loaded annotation the document never holds — a 3D label, carried past
  * the scene — is left out of the comparison, so its absence from the document
  * never reads as a delete.
+ *
+ * `minted` names, for each shape created on this page and already stored, the id
+ * the server gave it. A local id found there is that server row — an update, sent
+ * under the server's id — and one that is not is still to be created. A mapping
+ * whose server row is gone (deleted here, then brought back by an undo) reads as
+ * a create, which is exactly what the server needs to hold the shape again.
  */
 export function planSave(
   document: AnnotationDocument,
   loaded: readonly WireAnnotation[],
+  minted: ReadonlyMap<string, string> = NOTHING_MINTED,
 ): SavePlan {
   const before = new Map(
     loaded.filter((one) => !carriedPast(one.geometry)).map((one) => [one.id, one]),
   );
   const created: Annotation[] = [];
   const updated: Annotation[] = [];
+  const kept = new Set<string>();
 
   for (const annotation of document.annotations.values()) {
-    const original = before.get(annotation.id);
+    const serverId = minted.get(annotation.id) ?? annotation.id;
+    const original = before.get(serverId);
     if (original === undefined) {
       created.push(annotation);
       continue;
     }
-    if (JSON.stringify(toAnnotationUpdate(annotation)) !== JSON.stringify(projected(original))) {
-      updated.push(annotation);
+    kept.add(serverId);
+    const addressed = serverId === annotation.id ? annotation : { ...annotation, id: serverId };
+    if (JSON.stringify(toAnnotationUpdate(addressed)) !== JSON.stringify(projected(original))) {
+      updated.push(addressed);
     }
   }
 
-  const deleted = [...before.keys()].filter((id) => !document.annotations.has(id));
+  const deleted = [...before.keys()].filter((id) => !kept.has(id));
   return { created, updated, deleted };
 }
 
@@ -368,31 +387,38 @@ export function planSave(
  *
  * A yaw outside `[-π, π]` is wrapped before it is compared or sent, because the
  * kernel refuses rather than wraps one. Provenance travels as stored, so an
- * imported box that was nudged stays `import`.
+ * imported box that was nudged stays `import`. `minted` is `planSave`'s: a
+ * cuboid created on this page and already stored is an update under the
+ * server's id.
  */
 export function planScanSave(
   document: ScanDocument,
   loaded: readonly WireAnnotation[],
+  minted: ReadonlyMap<string, string> = NOTHING_MINTED,
 ): SavePlan<ScanAnnotation> {
   const before = new Map(
     loaded.filter((one) => geometryType(one.geometry) === "cuboid_3d").map((one) => [one.id, one]),
   );
   const created: ScanAnnotation[] = [];
   const updated: ScanAnnotation[] = [];
+  const kept = new Set<string>();
 
   for (const stored of document.annotations.values()) {
     const annotation = withKernelYaw(stored);
-    const original = before.get(annotation.id);
+    const serverId = minted.get(annotation.id) ?? annotation.id;
+    const original = before.get(serverId);
     if (original === undefined) {
       created.push(annotation);
       continue;
     }
-    if (JSON.stringify(toAnnotationUpdate(annotation)) !== JSON.stringify(projected(original))) {
-      updated.push(annotation);
+    kept.add(serverId);
+    const addressed = serverId === annotation.id ? annotation : { ...annotation, id: serverId };
+    if (JSON.stringify(toAnnotationUpdate(addressed)) !== JSON.stringify(projected(original))) {
+      updated.push(addressed);
     }
   }
 
-  const deleted = [...before.keys()].filter((id) => !document.annotations.has(id));
+  const deleted = [...before.keys()].filter((id) => !kept.has(id));
   return { created, updated, deleted };
 }
 
@@ -408,6 +434,58 @@ function geometryType(geometry: unknown): unknown {
 function carriedPast(geometry: unknown): boolean {
   const type = geometryType(geometry);
   return typeof type === "string" && !isDrawnGeometryType(type);
+}
+
+/** What the kernel answered a save with: the rows it stored, in the order sent. */
+export interface SaveResult {
+  readonly updated: readonly WireAnnotation[];
+  readonly created: readonly WireAnnotation[];
+}
+
+/**
+ * The page's record of the server after a save landed.
+ *
+ * Built from the kernel's own answer rather than from what was sent, so a field
+ * the kernel keeps for itself (`model_ref` and `confidence` on an update) is
+ * recorded as stored. The deleted rows leave, the updated ones are replaced, the
+ * created ones join — and each created shape's local id is mapped to the id the
+ * kernel minted, by position, which is the order `add_annotations` stores and
+ * answers in.
+ */
+export function settledSave(
+  server: readonly WireAnnotation[],
+  minted: ReadonlyMap<string, string>,
+  plan: SavePlan<Annotation | ScanAnnotation>,
+  result: SaveResult,
+): { readonly server: readonly WireAnnotation[]; readonly minted: ReadonlyMap<string, string> } {
+  const gone = new Set(plan.deleted);
+  const replaced = new Map(result.updated.map((one) => [one.id, one]));
+  const next = server
+    .filter((one) => !gone.has(one.id))
+    .map((one) => replaced.get(one.id) ?? one)
+    .concat(result.created);
+  const names = new Map(minted);
+  plan.created.forEach((annotation, position) => {
+    const stored = result.created[position];
+    if (stored !== undefined) names.set(annotation.id, stored.id);
+  });
+  return { server: next, minted: names };
+}
+
+/**
+ * Whether two answers describe the same stored rows — the same ids, saying the
+ * same thing in every field a save would compare.
+ */
+export function sameAnnotations(
+  left: readonly WireAnnotation[],
+  right: readonly WireAnnotation[],
+): boolean {
+  if (left.length !== right.length) return false;
+  const byId = new Map(right.map((one) => [one.id, one]));
+  return left.every((one) => {
+    const other = byId.get(one.id);
+    return other !== undefined && JSON.stringify(projected(one)) === JSON.stringify(projected(other));
+  });
 }
 
 /** A loaded annotation in the shape an update would send, so the two compare. */
@@ -437,7 +515,9 @@ export function useSaveAnnotations(jobId: string, assetId: string | undefined) {
   const queries = useQueryClient();
 
   return useMutation({
-    mutationFn: async (plan: SavePlan<Annotation | ScanAnnotation>) => {
+    mutationFn: async (plan: SavePlan<Annotation | ScanAnnotation>): Promise<SaveResult> => {
+      let updated: readonly WireAnnotation[] = [];
+      let created: readonly WireAnnotation[] = [];
       if (plan.deleted.length > 0) {
         unwrap(
           await client.DELETE("/jobs/{job_id}/annotations", {
@@ -447,7 +527,7 @@ export function useSaveAnnotations(jobId: string, assetId: string | undefined) {
         );
       }
       if (plan.updated.length > 0) {
-        unwrap(
+        updated = unwrap(
           await client.PATCH("/jobs/{job_id}/annotations", {
             params: { path: { job_id: jobId } },
             // The one cast in the data layer, and it is the readonly boundary
@@ -458,21 +538,24 @@ export function useSaveAnnotations(jobId: string, assetId: string | undefined) {
             body: plan.updated.map(toAnnotationUpdate) as never,
           }),
         checkUpdateAnnotations,
-        );
+        ).items;
       }
       if (plan.created.length > 0) {
-        unwrap(
+        created = unwrap(
           await client.POST("/jobs/{job_id}/annotations", {
             params: { path: { job_id: jobId } },
             body: plan.created.map(toAnnotationCreate) as never,
           }),
         checkAddAnnotations,
-        );
+        ).items;
       }
+      return { updated, created };
     },
     onSuccess: () => {
-      // The reload that makes the client-minted ids real. Without it, editing a
-      // just-saved shape would PATCH an id the server has never seen.
+      // The page keeps the answer itself (`settledSave`), so this reload is for
+      // everybody else who reads the frame — the gallery's tiles, a later visit —
+      // and for the open page only as `FrameSession.receive` allows: a reload
+      // never rewrites a document somebody is still working on.
       void queries.invalidateQueries({ queryKey: jobKeys.annotations(jobId, assetId ?? "none") });
       void queries.invalidateQueries({ queryKey: jobKeys.progress(jobId) });
       // **A declaration goes stale exactly like a count does.** The job's

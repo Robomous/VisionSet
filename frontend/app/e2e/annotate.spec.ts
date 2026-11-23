@@ -27,11 +27,13 @@ test("the page loads the job's assets, its pinned schema and its progress", asyn
   await openJob(page, sent);
 
   await expect(page.getByTestId("asset-position")).toContainText("1/2");
-  // One of the two frames is past `unannotated` — the fixture's second one is
-  // `annotated`. This asserted `0 / 2` against a **frozen** progress stub that
-  // described a job nobody had touched; the stub is derived from the same map the
-  // PUTs move now, so the number is the one a server would have sent.
-  await expect(page.getByTestId("job-progress")).toHaveText("1 / 2 annotated");
+  // One of the two frames is settled — the fixture's second one is `annotated`.
+  // This asserted `0 / 2` against a **frozen** progress stub that described a job
+  // nobody had touched; the stub is derived from the same map the PUTs move now,
+  // so the number is the one a server would have sent. Read as `1 / 2`; the
+  // spaces are margins.
+  await expect(page.getByTestId("job-progress")).toHaveAttribute("data-settled", "1");
+  await expect(page.getByTestId("job-progress")).toHaveText("1/2");
 
   // The **pinned** version, not the project's active schema. A batch pins at
   // approval and never moves, so asking for the active one is asking a different
@@ -92,7 +94,7 @@ test("opening a frame completes exactly one download of its bytes", async ({ pag
  * "the boxes are still there on frame 2" is what a *lost* save also looks like
  * until the next reload.
  */
-test("Save and next stores the frame before it moves off it", async ({ page }) => {
+test("Next stores the frame before it moves off it", async ({ page }) => {
   const sent: Request[] = [];
   await openJob(page, sent);
 
@@ -104,9 +106,9 @@ test("Save and next stores the frame before it moves off it", async ({ page }) =
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
   await page.mouse.up();
-  await expect(page.getByTestId("save-state")).toContainText("unsaved");
-  // The label is the promise, and here it is one the press will keep.
-  await expect(page.getByTestId("save-and-next")).toContainText("Save and next");
+  await expect(page.getByTestId("save-state")).toContainText("Edited");
+  // Pressed before the autosave's wait is up, so the save it waits for is its own.
+  await expect(page.getByTestId("save-and-next")).toHaveText("Next↵");
 
   await page.getByTestId("save-and-next").click();
 
@@ -163,99 +165,92 @@ test("Enter closes a ring while one is open, and finishes the frame when none is
 });
 
 /**
- * The navigation cluster's geometry.
+ * The island's geometry.
  *
  * **In chromium and nowhere else.** jsdom's `getBoundingClientRect` returns all
- * zeros, so every claim below — centred, unmoved, unwrapped — is one a component
- * test would report as passing over a bar laid out any way at all. The cluster's
- * *membership* is asserted in `topBar.test.tsx`, which is what jsdom can see.
+ * zeros, so every claim below — over the picture, centred, unmoved, clear of the
+ * zoom widget — is one a component test would report as passing over a page laid
+ * out any way at all. The island's *membership* and order are asserted in
+ * `topBar.test.tsx`, which is what jsdom can see.
  */
-test("the navigation cluster sits on the bar's centre and stays there", async ({ page }) => {
+test("the island floats at the foot of the picture and stays put whatever the bar carries", async ({ page }) => {
   const sent: Request[] = [];
   await openJob(page, sent);
 
-  const header = page.locator("header").first();
-  const cluster = page.getByTestId("frame-navigation");
+  const stage = (await page.getByTestId("canvas-stage").boundingBox())!;
+  const island = (await page.getByTestId("frame-island").boundingBox())!;
+  // Over the picture, centred on it, at its foot.
+  expect(island.x).toBeGreaterThanOrEqual(stage.x);
+  expect(island.x + island.width).toBeLessThanOrEqual(stage.x + stage.width);
+  expect(Math.abs(island.x + island.width / 2 - (stage.x + stage.width / 2))).toBeLessThan(1);
+  expect(stage.y + stage.height - (island.y + island.height)).toBeCloseTo(16, 0);
+  // Nothing of it in the panel's column.
+  const panel = (await page.locator('aside[aria-label="Frame"]').boundingBox())!;
+  expect(island.x + island.width).toBeLessThanOrEqual(panel.x);
 
-  const headerBox = (await header.boundingBox())!;
-  const before = (await cluster.boundingBox())!;
-  const headerCentre = headerBox.x + headerBox.width / 2;
-  // Half a pixel of tolerance, because a grid track can land on a subpixel — but
-  // not more: the whole point of `1fr auto 1fr` over two flex spacers is that the
-  // answer is arithmetic rather than leftover.
-  expect(Math.abs(before.x + before.width / 2 - headerCentre)).toBeLessThan(0.5);
-
-  // Now make both side zones much wider than their contents ever are, without
-  // touching anything in the cluster. A bar balanced on what the sides left over
-  // would move here; one anchored on the header's centre cannot.
+  const before = (await page.getByTestId("save-and-next").boundingBox())!;
+  // Make the bar's readouts far longer than they ever are. The bar is a different
+  // row from the stage, so nothing in the island may move — and the breadcrumb must
+  // give way rather than push the session's readouts off.
   await page.evaluate(() => {
-    const identity = document.querySelector('[data-testid="asset-identity"]')!;
-    identity.textContent = `${"a-very-long-frame-identifier-".repeat(6)}end`;
-    const progress = document.querySelector('[data-testid="job-progress"]')!;
-    progress.textContent = `${"9".repeat(60)} / 9999999999 annotated`;
+    document.querySelector('[data-testid="batch-name"]')!.textContent =
+      `${"a-very-long-batch-name-".repeat(8)}end`;
   });
-
-  const after = (await cluster.boundingBox())!;
+  const after = (await page.getByTestId("save-and-next").boundingBox())!;
   expect(after.x).toBeCloseTo(before.x, 1);
-  expect(after.width).toBeCloseTo(before.width, 1);
-  // And the sides gave way rather than pushing: neither zone now reaches into
-  // the cluster's column.
-  const identityBox = (await page.getByTestId("asset-identity").boundingBox())!;
-  expect(identityBox.x + identityBox.width).toBeLessThanOrEqual(after.x + 1);
+  expect(after.y).toBeCloseTo(before.y, 1);
+
+  const name = (await page.getByTestId("batch-name").boundingBox())!;
+  const progress = (await page.getByTestId("job-progress").boundingBox())!;
+  expect(name.x + name.width).toBeLessThanOrEqual(progress.x);
+  const viewport = page.viewportSize()!;
+  const overflow = (await page.getByTestId("more-actions").boundingBox())!;
+  expect(overflow.x + overflow.width).toBeLessThanOrEqual(viewport.width);
 });
 
 /**
- * The width the class field gives back.
- *
- * The right zone measures 460px of demand against 366px offered at 1440, which
- * pushes `Save and stay` behind `2xl` and the review move behind `xl` — below
- * those widths they live only in the overflow. Keeping the class field out of the
- * cluster is what pays that back, so
- * this asserts the outcome rather than the patch: both are buttons on the bar at
- * the viewport the suite runs at, and the overflow trigger is at its full size
- * rather than squashed by a zone that had run out of room.
+ * Nothing the frame offers is reabsorbed: the review move is a button on the bar
+ * at every width, there is no Save to put anywhere, and the overflow's trigger
+ * keeps its own size.
  */
-test("both reabsorbable controls are on the bar again at 1440", async ({ page }) => {
+test("the review move is always a button on the bar, and there is no Save button anywhere", async ({ page }) => {
   const sent: Request[] = [];
   // An `annotated` frame, because that is the state that declares
-  // `submit_for_review` — the heavier of the two, and the one whose presence made
-  // the zone overflow in the first place.
+  // `submit_for_review`.
   await openJob(page, sent, progressStore({ "asset-1": "annotated", "asset-2": "annotated" }));
 
-  await expect(page.getByTestId("save-and-stay")).toBeVisible();
-  await expect(page.getByTestId("submit-for-review")).toBeVisible();
-  // Nothing was reabsorbed, so the overflow holds neither copy.
+  await expect(page.locator("header").getByTestId("submit-for-review")).toBeVisible();
+  await expect(page.getByTestId("save-and-stay")).toHaveCount(0);
   await expect(page.getByTestId("menu-save")).toHaveCount(0);
 
-  // The squash that reported the overflow before it was visible: `more-actions`
-  // measured 16px against its declared size while the zone was over-subscribed.
-  // The floor is the foundation's `icon` size, `size-7` — 28px since 0.6.0, where
-  // Nova's stood at 32 and the pre-Nova button at 36 — and it is a floor rather
-  // than an equality because what is being caught is a control compressed below
-  // its own declared box, at whatever that box currently is.
+  // The floor is the foundation's `icon` size, `size-7` — 28px since 0.6.0 — and
+  // it is a floor rather than an equality because what is being caught is a
+  // control compressed below its own declared box.
   const overflow = (await page.getByTestId("more-actions").boundingBox())!;
   expect(overflow.width).toBeGreaterThanOrEqual(28);
 });
 
-test("the cluster is the same width whichever resolution verb the frame offers", async ({
-  page,
-}) => {
-  // `Skip` is 104px and `Un-skip` 96px, so without a floor a skipped frame pulls
-  // the whole cluster 4px sideways — and the cluster is centred, so that moves
-  // the arrows under a cursor that has not moved. The class field's reservation
-  // used to be the cluster's width; these two floors are what replace it.
+test("the island does not move when the frame's resolution verb changes", async ({ page }) => {
+  // `Skip` and `Un-skip` are different words, and a skipped frame is a viewer —
+  // so walking onto one must leave the arrows, and Next, exactly where they were:
+  // the two verbs share one width and undo/redo stay, withheld.
   const sent: Request[] = [];
-  await openJob(page, sent, progressStore({ "asset-1": "annotated", "asset-2": "skipped" }));
+  await openJob(
+    page,
+    sent,
+    progressStore({ "asset-1": "annotated", "asset-2": "skipped" }),
+  );
 
-  const cluster = page.getByTestId("frame-navigation");
-  const before = (await cluster.boundingBox())!;
+  const prevBefore = (await page.getByTestId("prev-asset").boundingBox())!;
+  const islandBefore = (await page.getByTestId("frame-island").boundingBox())!;
 
-  await page.getByTestId("next-asset").click();
+  await page.getByTestId("save-and-next").click();
   await expect(page.getByTestId("unskip")).toBeVisible();
 
-  const after = (await cluster.boundingBox())!;
-  expect(after.width).toBeCloseTo(before.width, 1);
-  expect(after.x).toBeCloseTo(before.x, 1);
+  const prevAfter = (await page.getByTestId("prev-asset").boundingBox())!;
+  const islandAfter = (await page.getByTestId("frame-island").boundingBox())!;
+  expect(prevAfter.x).toBeCloseTo(prevBefore.x, 1);
+  expect(islandAfter.width).toBeCloseTo(islandBefore.width, 1);
 });
 
 /**
@@ -274,7 +269,9 @@ test("the panel stacks a sized classes region over an objects region that takes 
   const sent: Request[] = [];
   await openJob(page, sent);
 
-  const panel = (await page.getByTestId("annotator-panel").boundingBox())!;
+  const panelElement = page.getByTestId("annotator-panel");
+  const panel = (await panelElement.boundingBox())!;
+  const inset = await panelElement.evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom));
   const classes = (await page.getByTestId("class-region").boundingBox())!;
   const objects = (await page.getByTestId("objects-region").boundingBox())!;
 
@@ -283,9 +280,10 @@ test("the panel stacks a sized classes region over an objects region that takes 
   expect(Math.round(classes.width)).toBe(Math.round(objects.width));
   // The objects region reaches the bottom of the panel: it is what absorbs the
   // remainder, which is the half of the split that has no number of its own.
-  // Within the panel's own `p-2`, and to the pixel rather than the subpixel: what
-  // is being asserted is *reaches the bottom*, not a rounding mode.
-  expect(Math.abs(objects.y + objects.height - (panel.y + panel.height - 8))).toBeLessThan(2);
+  // Within the panel's own bottom padding, read off the element rather than
+  // restated, and to the pixel rather than the subpixel: what is being asserted
+  // is *reaches the bottom*, not a rounding mode.
+  expect(Math.abs(objects.y + objects.height - (panel.y + panel.height - inset))).toBeLessThan(2);
   // And the panel did not grow to fit its contents — the whole point of the cap.
   expect(panel.height).toBeLessThanOrEqual(page.viewportSize()!.height);
 });
@@ -316,27 +314,37 @@ test("the two regions scroll independently, neither pushing the other", async ({
   await expect(page.getByTestId("class-count")).toBeVisible();
 });
 
-test("the cluster never wraps or drops a control, down to the narrowest supported width", async ({
+test("the island never wraps, drops a control or meets the zoom widget, down to the narrowest supported width", async ({
   page,
 }) => {
   const sent: Request[] = [];
   await openJob(page, sent);
 
   // 768 is `ANNOTATOR_MIN_VIEWPORT_PX` — one pixel below it the page renders the
-  // too-narrow explanation instead, so this is the tightest the bar is ever asked
-  // to be. The side zones are what absorb it; the cluster is the `auto` track.
+  // too-narrow explanation instead, so this is the tightest the stage is ever
+  // asked to be. The panel keeps its width; the picture absorbs it.
   await page.setViewportSize({ width: 768, height: 900 });
   await expect(page.getByTestId("annotation-page")).toBeVisible();
 
-  const header = (await page.locator("header").first().boundingBox())!;
-  const cluster = (await page.getByTestId("frame-navigation").boundingBox())!;
-  // One row, not two: a wrapped cluster would be taller than the 44px bar.
-  expect(cluster.height).toBeLessThanOrEqual(header.height);
+  const stage = (await page.getByTestId("canvas-stage").boundingBox())!;
+  const island = (await page.getByTestId("frame-island").boundingBox())!;
+  // One row: 36px controls in a 4px inset.
+  expect(island.height).toBeLessThanOrEqual(46);
+  expect(island.x).toBeGreaterThanOrEqual(stage.x);
+  expect(island.x + island.width).toBeLessThanOrEqual(stage.x + stage.width);
 
-  for (const testId of ["open-gallery", "prev-asset", "asset-position", "next-asset", "skip"]) {
+  for (const testId of ["tool-undo", "tool-redo", "skip", "prev-asset", "open-gallery", "asset-position", "save-and-next"]) {
     await expect(page.getByTestId(testId), testId).toBeVisible();
   }
-  await expect(page.getByTestId("save-and-next")).toBeVisible();
+
+  // The zoom widget rose above the island rather than sitting on top of it.
+  const zoom = (await page.getByTestId("zoom-widget").boundingBox())!;
+  const apart =
+    zoom.y + zoom.height <= island.y ||
+    island.x + island.width <= zoom.x ||
+    zoom.x + zoom.width <= island.x;
+  expect(apart).toBe(true);
+  expect(zoom.x + zoom.width).toBeLessThanOrEqual(stage.x + stage.width);
 });
 
 test("Save is inert until something changes, then sends exactly the new annotation", async ({
@@ -358,7 +366,7 @@ test("Save is inert until something changes, then sends exactly the new annotati
   await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
   await page.mouse.up();
 
-  await expect(page.getByTestId("save-state")).toContainText("unsaved");
+  await expect(page.getByTestId("save-state")).toContainText("Edited");
   await expect(page.getByTestId("object-total")).toHaveText("1 object");
 
   await saveNow(page);
@@ -386,7 +394,8 @@ function startsSent(sent: Request[]): string[] {
 }
 
 /**
- * Every tile of an *approved* batch opens here, and looking must not start the
+ * The workspace routes into the annotator from an *approved* batch — a job's
+ * `Open` in the batch's panel, a pasted URL — and looking must not start the
  * batch. The page opens read-only, and the banner's `Start annotating` makes both
  * moves in their one legal order: the batch, then the job once it is startable.
  */
@@ -719,7 +728,7 @@ test("the address names the frame on screen, and keeps naming it as the job is w
   await expect(page).toHaveURL(/asset=asset-1/);
   expect(await frameOnScreen(page)).toEqual({ url: "asset-1", screen: "asset-1" });
 
-  await page.getByTestId("next-asset").click();
+  await page.getByTestId("save-and-next").click();
   await expect(page.getByTestId("asset-position")).toContainText("2/2");
   expect(await frameOnScreen(page)).toEqual({ url: "asset-2", screen: "asset-2" });
 
@@ -733,7 +742,8 @@ test("the address follows the walk even when the link named a frame to start on"
 }) => {
   const sent: Request[] = [];
   await serveApi(page, sent);
-  // The way in that actually happens: a gallery tile, which mints `?asset=`.
+  // The way in that actually happens: the annotator writes the frame it is showing
+  // into the address as it walks, so a reload or a shared link carries `?asset=`.
   // Entering *without* one cannot tell "reports the frame on screen" apart from
   // "reports the frame it was entered on" — they are the same value there, and
   // the second is the defect.
@@ -743,7 +753,7 @@ test("the address follows the walk even when the link named a frame to start on"
   await expect(page.getByTestId("annotation-page")).toBeVisible();
   expect(await frameOnScreen(page)).toEqual({ url: "asset-1", screen: "asset-1" });
 
-  await page.getByTestId("next-asset").click();
+  await page.getByTestId("save-and-next").click();
   await expect(page.getByTestId("asset-position")).toContainText("2/2");
   expect(await frameOnScreen(page)).toEqual({ url: "asset-2", screen: "asset-2" });
 });
@@ -758,7 +768,7 @@ test("walking the job leaves the history alone, so Back still means leave", asyn
   // — the browser's own button turned into an undo nobody asked for, two keys away
   // from the real one.
   const before = await page.evaluate(() => history.length);
-  await page.getByTestId("next-asset").click();
+  await page.getByTestId("save-and-next").click();
   await expect(page).toHaveURL(/asset=asset-2/);
   expect(await page.evaluate(() => history.length)).toBe(before);
 });
@@ -767,7 +777,7 @@ test("a reload lands on the frame the address names, not back at the start", asy
   const sent: Request[] = [];
   await openJob(page, sent);
 
-  await page.getByTestId("next-asset").click();
+  await page.getByTestId("save-and-next").click();
   await expect(page.getByTestId("asset-position")).toContainText("2/2");
 
   await page.reload();
@@ -1139,7 +1149,7 @@ test("finishing the job turns the workspace into a viewer in place, on every fra
   );
 
   // Frame 2 of 2 — where Finish job renders, and only there.
-  await page.getByTestId("next-asset").click();
+  await page.getByTestId("save-and-next").click();
   await expect(page.getByTestId("asset-position")).toHaveText("2/2");
 
   // The editor, before: the state the defect left behind afterwards.
@@ -1365,14 +1375,14 @@ test("a copied annotation can be pasted onto the next frame", async ({ page }) =
 
   // Navigating commits first, so frame 1 is saved on the way out — which is also
   // why the stub answers annotations per asset.
-  await page.getByTestId("next-asset").click();
+  await page.getByTestId("save-and-next").click();
   await expect(page.getByTestId("asset-position")).toContainText("2/2");
   await expect(page.getByTestId("object-total")).toHaveText("0 objects");
 
   await page.getByTestId("annotator-root").focus();
   await page.keyboard.press("ControlOrMeta+v");
   await expect(page.getByTestId("object-total")).toHaveText("1 object");
-  await expect(page.getByTestId("save-state")).toContainText("unsaved");
+  await expect(page.getByTestId("save-state")).toContainText("Edited");
 
   // And it is written against **this** frame, not the one it was copied from.
   await saveNow(page);
@@ -1420,7 +1430,7 @@ test("a viewer can still navigate between frames, because a read-only mode you c
   await openJob(page, sent, undefined, { batch: "completed", job: "completed" });
 
   await expect(page.getByTestId("asset-position")).toContainText("1/2");
-  await page.getByTestId("next-asset").click();
+  await page.getByTestId("save-and-next").click();
   // Never blocked: nothing can be dirty, so `go()`'s commit-first is a no-op
   // rather than a save that rejects and swallows the navigation with it.
   await expect(page.getByTestId("asset-position")).toContainText("2/2");
@@ -1460,14 +1470,14 @@ test("the versioning controls are absent, not disabled", async ({ page }) => {
  * at a zoom nobody chose.
  */
 
-/** Viewport width minus the rail, which is what the page is entitled to. */
+/** Viewport width minus the rail, which is what a page beside the rail is entitled to. */
 async function paneWidth(page: Page): Promise<number> {
   const rail = await page.getByTestId("app-rail").boundingBox();
   const width = page.viewportSize()?.width ?? 0;
   return width - (rail?.width ?? 0);
 }
 
-test("the annotation page fills the viewport beside the rail, with no cap and no padding", async ({
+test("the annotation page fills the whole viewport, with no rail, no cap and no padding", async ({
   page,
 }) => {
   // Wider than `max-w-7xl` (1280px), so the cap is a real constraint rather than
@@ -1480,8 +1490,11 @@ test("the annotation page fills the viewport beside the rail, with no cap and no
 
   const box = await page.getByTestId("annotation-page").boundingBox();
   expect(box).not.toBeNull();
-  // No gutters: the page is everything to the right of the rail.
-  expect(box!.width).toBeCloseTo(await paneWidth(page), 0);
+  // The main rail is not there at all, and the page is the whole width: no
+  // gutters, and nothing taken off the left edge.
+  await expect(page.getByTestId("app-rail")).toHaveCount(0);
+  expect(box!.x).toBe(0);
+  expect(box!.width).toBe(1800);
   // No padding above the top bar either.
   expect(box!.y).toBe(0);
   expect(box!.height).toBe(900);
@@ -1506,30 +1519,25 @@ test("nothing on the annotation page scrolls the document", async ({ page }) => 
   expect(badge!.y + badge!.height).toBeLessThanOrEqual(900);
 });
 
-test("collapsing the rail reflows the annotation page to the new width", async ({ page }) => {
+test("the annotation page has no main rail, and the rail's chord leaves it alone", async ({
+  page,
+}) => {
   const sent: Request[] = [];
   await openJob(page, sent);
 
-  // Expanded first: a fresh session starts collapsed, and this scenario is
-  // about what collapsing gives back. Measuring from the default would measure
-  // the same 180px in the other direction and read as the page shrinking.
-  await page.getByTestId("rail-collapse").click();
-  await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "false");
+  await expect(page.getByTestId("app-rail")).toHaveCount(0);
+  await expect(page.getByTestId("rail-projects")).toHaveCount(0);
+  await expect(page.getByTestId("rail-models")).toHaveCount(0);
+  await expect(page.getByTestId("rail-sign-out")).toHaveCount(0);
 
+  // ⌘B is the rail's chord, and the rail is not mounted: pressing it must move
+  // nothing and break nothing, so the page keeps the box it had.
   const before = (await page.getByTestId("annotation-page").boundingBox())!;
-  await page.getByTestId("rail-collapse").click();
-  await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "true");
-
-  const after = (await page.getByTestId("annotation-page").boundingBox())!;
-  // The whole 160px the rail gave back — 208px expanded, 48px collapsed, the
-  // tokens three things have to agree on.
-  //
-  // Before the fix this was **128**, which is the defect stating itself: at 1440
-  // the expanded pane is 1200 and `max-w-7xl` never engages, but collapsing frees
-  // enough width for the cap to start biting, so the page grew by less than the
-  // rail released and the difference went into gutters.
-  expect(after.width - before.width).toBeCloseTo(160, 0);
-  expect(after.width).toBeCloseTo(await paneWidth(page), 0);
+  await page.getByTestId("annotator-root").focus();
+  await page.keyboard.press("ControlOrMeta+b");
+  await expect(page.getByTestId("annotation-page")).toBeVisible();
+  await expect(page.getByTestId("app-rail")).toHaveCount(0);
+  expect(await page.getByTestId("annotation-page").boundingBox()).toEqual(before);
 });
 
 test("every other route keeps the padded, capped container", async ({ page }) => {
@@ -1537,10 +1545,11 @@ test("every other route keeps the padded, capped container", async ({ page }) =>
 
   const sent: Request[] = [];
   await serveApi(page, sent);
-  // A project section: the padded, capped column under the section bar. (The
-  // project and model lists are full-bleed tables, and Images lays itself out
-  // across its pane; neither is this column.)
-  await page.goto(`/projects/${PROJECT}/schema`);
+  // An address nothing answers: the padded, centred column is what "forms and
+  // everything else" render in. (The project and model lists are full-bleed tables, the
+  // project's sections lay themselves out across their own pane, and the annotator
+  // stands outside the workbench; none of them is this column.)
+  await page.goto(`/some/address/nothing/answers`);
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();
 
@@ -1561,42 +1570,35 @@ test("every other route keeps the padded, capped container", async ({ page }) =>
 });
 
 /**
- * The rail is continuous across the panes, and only the annotator stands outside
- * the workbench frame.
+ * The annotator stands outside the shell: no rail and no workbench chrome, and
+ * leaving it by its back control lands in a shell that has all of it.
  *
- * Crossing between the full-bleed pane and a padded one must move nothing beside
- * the page: same rail, same state. Expanded is the state asserted, because it is
- * the one that is not the default — what survives the crossing is a choice
- * somebody made, not what a freshly mounted shell would produce anyway. And the annotator, which
- * derives its fit zoom from its pane, gets the whole height: no open-project
- * tabs above it and no status bar below it, while every other pane has both.
+ * Crossing the boundary is a client-side navigation, because a reload would
+ * remount everything and prove nothing about the route tree. The annotator, which
+ * derives its fit zoom from its pane, gets the whole viewport: no rail beside it,
+ * no open-project tabs above it and no status bar below it, while every shell pane
+ * has all three.
  */
-test("the rail is the same on both panes, and the annotator gets no workbench chrome", async ({ page }) => {
+test("the annotator has no rail or workbench chrome, and its back control returns to the shell", async ({
+  page,
+}) => {
   const sent: Request[] = [];
-  // Start inside the **full-bleed** pane, so both crossings below are real.
   await openJob(page, sent);
-  const rail = page.getByTestId("app-rail");
-  await page.getByTestId("rail-collapse").click();
-  await expect(rail).toHaveAttribute("data-collapsed", "false");
-  const onAnnotator = (await rail.boundingBox())!;
-  expect(onAnnotator.width).toBe(208);
+  await expect(page.getByTestId("app-rail")).toHaveCount(0);
   await expect(page.getByTestId("project-tabs-bar")).toHaveCount(0);
   await expect(page.getByTestId("status-bar")).toHaveCount(0);
 
-  // Full-bleed → padded, by a client-side navigation. A reload would remount
-  // everything and prove nothing about the route tree.
-  await page.getByTestId("rail-projects").click();
-  // Projects is a full-bleed list pane now; what matters here is that it is a workbench pane.
-  await expect(page.getByTestId("projects-screen")).toBeVisible();
+  // Out of the annotator and into the shell, by its own back control.
+  await page.getByTestId("back").click();
   await expect(page.getByTestId("annotation-page")).toHaveCount(0);
-  expect((await rail.boundingBox())!.width).toBe(onAnnotator.width);
+  await expect(page.getByTestId("app-rail")).toBeVisible();
   await expect(page.getByTestId("project-tabs-bar")).toBeVisible();
   await expect(page.getByTestId("status-bar")).toBeVisible();
 
-  // …and back the other way.
+  // …and back the other way: the rail does not follow the user in.
   await page.goBack();
   await expect(page.getByTestId("annotation-page")).toBeVisible();
-  expect((await rail.boundingBox())!.width).toBe(onAnnotator.width);
+  await expect(page.getByTestId("app-rail")).toHaveCount(0);
   await expect(page.getByTestId("status-bar")).toHaveCount(0);
 });
 
@@ -1779,17 +1781,9 @@ test("the hand takes the crosshair off the picture, and gives it back", async ({
 });
 
 /**
- * The surround is its own role — not `background`, not `muted`, and (before
- * this foundation) not the rail's chrome either.
- *
- * That last comparison changed under the shadcn preset: the rail is `bg-sidebar`,
- * and `sidebar` now *follows the theme* rather than staying a fixed dark chrome —
- * in the light theme it is `oklch(0.985 0 0)`, a near-white a shade below
- * `background`. So "the surround is not the rail" can no longer mean "the rail
- * is dark"; what the contract (`docs/content/ui/annotator.md#the-stage`) still promises
- * is that `stage` is its own distinguishable token, not a shade some other
- * surface happens to produce. This asserts that directly, against the sidebar's
- * *actual* current value rather than an assumption about its brightness.
+ * The surround is its own role — not `background`, not `muted`
+ * (`docs/content/ui/annotator.md#the-stage`). Its distance from the page is
+ * asserted further down; this one pins what kind of colour it is.
  */
 
 /**
@@ -1814,30 +1808,19 @@ async function channelsOf(page: Page, colour: string): Promise<readonly number[]
   }, colour);
 }
 
-test("the canvas surround is a light neutral, distinguishable from the sidebar as well as the page", async ({
-  page,
-}) => {
+test("the canvas surround is a light neutral", async ({ page }) => {
   const sent: Request[] = [];
   await openJob(page, sent);
 
   const stageColour = await page
     .getByTestId("canvas-stage")
     .evaluate((node) => getComputedStyle(node).backgroundColor);
-  const sidebarColour = await page
-    .getByTestId("app-rail")
-    .evaluate((node) => getComputedStyle(node).backgroundColor);
-
   const stage = await channelsOf(page, stageColour);
-  const sidebar = await channelsOf(page, sidebarColour);
 
   // Light: every channel well above the midpoint. `#111827` fails all three.
   expect(stage.every((value) => value > 200)).toBe(true);
   // Neutral: no channel dominates, so the picture is judged against grey.
   expect(Math.max(...stage) - Math.min(...stage)).toBeLessThan(24);
-  // …and it is a step below the sidebar's own near-white, not the same surface
-  // wearing two names. The rail no longer guarantees this by being dark; the
-  // preset's actual values (`stage` 0.94 vs `sidebar` 0.985) do.
-  expect(Math.min(...sidebar) - Math.min(...stage)).toBeGreaterThanOrEqual(8);
 });
 
 /**
@@ -2144,7 +2127,7 @@ test("a withheld Finish job explains itself on focus, with the count", async ({ 
 
   // The last frame, the only one Finish job renders on. Frame 1 stays
   // unannotated behind us — the one unresolved frame the sentence counts.
-  await page.getByTestId("next-asset").click();
+  await page.getByTestId("save-and-next").click();
   await expect(page.getByTestId("asset-position")).toContainText("2/2");
 
   const finish = page.getByTestId("finish-job");
@@ -2176,7 +2159,7 @@ test("a refused Finish job says why, rather than re-enabling in silence", async 
   });
 
   // The last frame, because that is the only one Finish job renders on.
-  await page.getByTestId("next-asset").click();
+  await page.getByTestId("save-and-next").click();
   await expect(page.getByTestId("asset-position")).toContainText("2/2");
 
   await page.getByTestId("finish-job").click();
@@ -2211,8 +2194,8 @@ test("a refusal on the bar is a sentence now, not a kernel identifier", async ({
  * leave without a door.
  *
  * `annotated -> review_pending -> accepted | annotated` are three legal kernel
- * edges. Without controls for them the gallery's "In review"
- * segment can only be populated through the API or MCP, and `accepted` — the
+ * edges. Without controls for them `review_pending` can only be reached through
+ * the API or MCP, and `accepted` — the
  * one state that says a human checked the work — is unreachable by any sequence
  * of clicks.
  *
@@ -2283,7 +2266,8 @@ test("a frame goes out for review, comes back, and is accepted the second time",
   // 5. `accepted` has no exit at all, which is why correcting accepted work needs
   //    a new batch rather than a progress move — and the banner says so.
   await expectProgress(page, "accepted");
-  await expect(page.getByTestId("accept")).toHaveCount(0);
+  // The bar's review slot stays, withheld: the wire declares nothing here.
+  await expect(page.getByTestId("accept")).toHaveAttribute("aria-disabled", "true");
   await expect(page.getByTestId("submit-for-review")).toHaveCount(0);
   await openOverflow(page);
   await expect(page.getByTestId("return-to-annotator")).toHaveCount(0);
@@ -2296,9 +2280,14 @@ test("an unannotated frame is not offered to a reviewer at all", async ({ page }
   await openJob(page, sent, progressStore({ "asset-1": "unannotated", "asset-2": "annotated" }));
 
   // `annotated` is the only origin of `review_pending`: there is nothing to
-  // review until somebody has labelled it, and offering the press would be
-  // offering a refusal.
-  await expect(page.getByTestId("submit-for-review")).toHaveCount(0);
+  // review until somebody has labelled it. The slot stays on the bar, withheld
+  // with that reason — a press would be offering a refusal, so it sends nothing.
+  const move = page.getByTestId("submit-for-review");
+  await expect(move).toHaveAttribute("aria-disabled", "true");
+  await move.focus();
+  await expect(page.getByRole("tooltip")).toContainText(/nothing to review yet/i);
+  await move.click({ force: true });
+  expect(sent.filter((r) => r.method() === "PUT")).toEqual([]);
   await expect(page.getByTestId("accept")).toHaveCount(0);
   await openOverflow(page);
   await expect(page.getByTestId("return-to-annotator")).toHaveCount(0);
@@ -2319,31 +2308,34 @@ test("a refused review move says why, like every other one", async ({ page }) =>
   await expectProgress(page, "annotated");
 });
 
-test("the job counter never goes backwards when a frame is reviewed", async ({ page }) => {
+test("the job's progress counts settled frames, and accepting never takes it backwards", async ({ page }) => {
   const sent: Request[] = [];
   await openJob(page, sent, progressStore({ "asset-1": "annotated", "asset-2": "annotated" }));
 
   // **The readout counted `annotated` literally**, so accepting a frame moved it
-  // out of that bucket and the number dropped. It never bit before because
-  // nothing in the product could produce `accepted` (F24) — adding the review
-  // moves is what made it reachable, and the real-server cycle run is what
-  // caught it: 3 of 3 became 2 of 3 on an accept.
-  //
-  // "Annotated" means *past `unannotated`*, which is the same rule the gallery's
-  // bar already stated and the only reading that cannot go backwards.
-  await expect(page.getByTestId("job-progress")).toHaveText("2 / 2 annotated");
+  // out of that bucket and the number dropped — caught by the real-server cycle
+  // run: 3 of 3 became 2 of 3 on an accept. It counts *settled* frames now,
+  // `SETTLED_PROGRESS` (annotated, skipped, accepted): the total less
+  // `outstandingWork`, the same count Finish job's reason names.
+  const progress = page.getByTestId("job-progress");
+  await expect(progress).toHaveAttribute("data-settled", "2");
+  await expect(progress).toHaveText("2/2");
 
-  // Every settling move advances, so each step comes back to the first frame.
+  // Sending a frame out for review is handing it work it is owed, so it leaves
+  // the settled count until somebody accepts it…
   await page.getByTestId("submit-for-review").click();
-  await expect(page.getByTestId("job-progress")).toHaveText("2 / 2 annotated");
+  await expect(progress).toHaveAttribute("data-settled", "1");
 
   await page.getByTestId("prev-asset").click();
   await expectProgress(page, "review_pending");
   await page.getByTestId("accept").click();
 
+  // …and accepting it brings it back: `accepted` is settled, so the readout that
+  // used to drop here climbs.
   await page.getByTestId("prev-asset").click();
   await expectProgress(page, "accepted");
-  await expect(page.getByTestId("job-progress")).toHaveText("2 / 2 annotated");
+  await expect(progress).toHaveAttribute("data-settled", "2");
+  await expect(progress).toHaveText("2/2");
 });
 
 /**
@@ -2373,7 +2365,7 @@ async function drawOneUnsavedBox(page: Page): Promise<void> {
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
   await page.mouse.up();
-  await expect(page.getByTestId("save-state")).toContainText("unsaved");
+  await expect(page.getByTestId("save-state")).toContainText("Edited");
 }
 
 test("back saves the work before it leaves", async ({ page }) => {
@@ -2463,13 +2455,13 @@ test("right-clicking a shape opens its class picker, and the class lands through
 
   await page.getByTestId("canvas-reclass-pedestrian").click();
 
-  await expect(page.getByTestId("object-row-0")).toContainText("1. pedestrian");
+  await expect(page.getByTestId("object-row-0")).toContainText("pedestrian");
   // Through `replaceAnnotationCommand`, so it is one entry in the history and the
   // frame is dirty exactly as a drawn box makes it.
-  await expect(page.getByTestId("save-state")).toContainText("unsaved");
+  await expect(page.getByTestId("save-state")).toContainText("Edited");
   await page.getByTestId("annotator-root").focus();
   await page.keyboard.press("ControlOrMeta+z");
-  await expect(page.getByTestId("object-row-0")).toContainText("1. vehicle");
+  await expect(page.getByTestId("object-row-0")).toContainText("vehicle");
 });
 
 test("the picker's button rides the shape, above the corner its resize grip owns", async ({
@@ -2505,7 +2497,7 @@ test("a right-click on empty canvas opens nothing, because the hit test is real"
   await page.mouse.click(box.x + box.width * 0.9, box.y + box.height * 0.9, { button: "right" });
 
   await expect(page.getByTestId("canvas-reclass-pedestrian")).toHaveCount(0);
-  await expect(page.getByTestId("object-row-0")).toContainText("1. vehicle");
+  await expect(page.getByTestId("object-row-0")).toContainText("vehicle");
 });
 
 test("the no-connection panel now has somewhere to send you (#424 D6)", async ({ page }) => {
@@ -2518,7 +2510,7 @@ test("the no-connection panel now has somewhere to send you (#424 D6)", async ({
   await expect(page.getByTestId("suggest-no-connections")).toBeVisible();
 
   // The half that did not exist until this slice. `ui-core` imports no router,
-  // so the panel's action is a callback and `routes.tsx` is the only place that
+  // so the bar's action is a callback and `routes.tsx` is the only place that
   // can name a destination for it — which is why this is asserted here and not
   // in a component test.
   await page.getByTestId("suggest-configure").click();
@@ -2605,7 +2597,7 @@ async function openRefusingSave(page: Page, sent: Request[], message: string): P
     refuseSave: { code: "STUB_UNMAPPED_REFUSAL", message },
   });
   await drawOneUnsavedBox(page);
-  await page.getByTestId("save-and-stay").click();
+  await saveNow(page);
   await expect(page.getByTestId("save-refusal")).toBeVisible();
 }
 
@@ -2667,27 +2659,59 @@ test("a notice wraps a model reference no fixed width could have fitted", async 
 });
 
 /**
- * The chip's replacement, and it is only provable here.
+ * Autosave, in a browser — the half jsdom cannot draw.
  *
- * Radix opens a tooltip on hover and on focus, and jsdom runs neither for real —
- * so "the chord is still taught" is a claim about a real pointer over a real
- * button, on the one control that used to print `⌘S` inside itself.
+ * The component suite (`autosave.test.tsx`) pins the debounce, the queue and the
+ * reconciliation by changing the document through the panel; what only a real
+ * canvas can show is that a drawn shape saves on its own, and that a shape whose
+ * points are still being placed holds the save until it is finished.
  */
-test("Save and stay teaches its chord in a tooltip now the keycap is gone", async ({ page }) => {
+test("a drawn box saves on its own once the canvas is still, with nothing pressed", async ({ page }) => {
   const sent: Request[] = [];
   await openJob(page, sent);
+
   await drawOneUnsavedBox(page);
+  await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "edited");
 
-  const stay = page.getByTestId("save-and-stay");
-  await expect(stay.locator("kbd")).toHaveCount(0);
+  await expect
+    .poll(() => sent.filter((r) => r.method() === "POST" && r.url().endsWith("/annotations")).length)
+    .toBe(1);
+  await expect(page.getByTestId("save-state")).toContainText("Saved");
+  // Still on the frame it was drawn on, and the shape is still there.
+  await expect(page.getByTestId("asset-position")).toContainText("1/2");
+  await expect(page.getByTestId("object-total")).toHaveText("1 object");
+});
 
-  await stay.hover();
+test("a polygon whose points are still being placed holds the save until it closes", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent);
+  const posts = (): number =>
+    sent.filter((r) => r.method() === "POST" && r.url().endsWith("/annotations")).length;
 
-  const tip = page.getByTestId("save-and-stay-shortcut").first();
-  await expect(tip).toBeVisible();
-  // `modKey()` spells the platform's own modifier, so the assertion is on the
-  // half that does not move.
-  await expect(tip).toContainText(/Save and stay \((⌘|Ctrl)S\)/);
+  // Something to save — and then, before the wait is up, an open polygon.
+  await drawOneUnsavedBox(page);
+  const canvas = page.getByTestId("annotator-canvas");
+  const box = (await canvas.boundingBox())!;
+  await page.keyboard.press("2");
+  await page.mouse.click(box.x + box.width * 0.7, box.y + box.height * 0.2);
+  await page.mouse.click(box.x + box.width * 0.85, box.y + box.height * 0.2);
+
+  // The autosave's wait runs out while the polygon is open, and it is held — the
+  // page says so rather than the test sleeping past it — with nothing sent.
+  await expect(page.getByTestId("save-state")).toHaveAttribute("data-autosave", "held");
+  expect(posts()).toBe(0);
+  await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "edited");
+
+  await page.mouse.click(box.x + box.width * 0.78, box.y + box.height * 0.4);
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("object-total")).toHaveText("2 objects");
+
+  await expect.poll(posts).toBe(1);
+  const body = JSON.parse(
+    sent.find((r) => r.method() === "POST" && r.url().endsWith("/annotations"))?.postData() ?? "[]",
+  ) as Record<string, unknown>[];
+  expect(body).toHaveLength(2);
+  await expect(page.getByTestId("save-state")).toContainText("Saved");
 });
 
 /**
@@ -2727,11 +2751,10 @@ test("saving leaves the viewport exactly where it was", async ({ page }) => {
   // Something to actually store — a save with an empty plan sends no request and
   // rebuilds nothing, so a clean frame could not reproduce this at all.
   await drawOneUnsavedBox(page);
-  await page.getByTestId("save-and-stay").click();
+  await saveNow(page);
   await expect(page.getByTestId("save-state")).toContainText("Saved");
-  // The refetch the save triggers is what rebuilds the store; wait for the
-  // rebuilt document rather than for the button, or the assertion below can run
-  // in the window before the camera has been moved.
+  // A save no longer rebuilds the document at all; wait for the settled state
+  // anyway, so the assertion below runs after everything the save set off.
   await expect(page.getByTestId("object-total")).toContainText("1 object");
 
   expect(await page.getByTestId("zoom-readout").textContent()).toBe(zoomBefore);
@@ -2795,9 +2818,10 @@ test("a suggest request that is out says so on the panel and nowhere else", asyn
   const picture = (await page.getByTestId("annotator-canvas").boundingBox())!;
   await page.mouse.click(picture.x + picture.width / 2, picture.y + picture.height / 2);
 
-  // The card is the report, and it is up on the frame the request left.
+  // The bar is the report, and it is up on the frame the request left — with no
+  // cold-start note behind its ⓘ on a wait this short.
   await expect(page.getByTestId("suggest-asking")).toBeVisible();
-  await expect(page.getByTestId("suggest-cold-start")).toHaveCount(0);
+  await expect(page.getByTestId("suggest-tip")).toHaveCount(0);
 
   // The mutation test for the removal: restore the ring or the busy cursor and
   // one of these turns red (#557).
@@ -2863,8 +2887,8 @@ test("escape takes the wait back while the request is still out", async ({ page 
  * jsdom can say the section renders. What it cannot say is that a bracket
  * reaches it from the keyboard, that the shape changes without a request
  * leaving, that pressing a control leaves the keyboard working, or that a press
- * on the card never reaches the picture underneath — all of which are about a
- * live document with focus and hit-testing in it.
+ * in the bar never reaches the picture — all of which are about a live document
+ * with focus and hit-testing in it.
  */
 test("a box class is offered no adjustments at all", async ({ page }) => {
   const sent: Request[] = [];
@@ -2877,7 +2901,6 @@ test("a box class is offered no adjustments at all", async ({ page }) => {
 
   // The stub declares `[]`, which is what the kernel declares for a box — and the
   // editor renders exactly that. No condition in the app mentions a box at all.
-  await expect(page.getByTestId("suggest-adjust-open")).toHaveCount(0);
   await expect(page.getByTestId("suggest-adjustments")).toHaveCount(0);
   await expect(page.getByTestId("suggest-detail")).toHaveCount(0);
 });
@@ -2947,18 +2970,15 @@ test("a polygon class steps its tolerance from the keyboard, with no request", a
   await page.keyboard.press("[");
   await page.keyboard.press("[");
 
-  await page.getByTestId("suggest-adjust-open").click();
+  // The slider in the bar followed every press, with nothing opened.
   await expect(page.getByTestId("suggest-detail-label")).toHaveText(`2.0 px · ${coarse} pts`);
   await expect(page.getByTestId("suggest-detail")).toHaveValue("1");
 
-  // Opening the section must not switch the keyboard off.
   await page.keyboard.press("]");
   await expect(page.getByTestId("suggest-detail")).toHaveValue("0");
 
-  await page.keyboard.press("Escape");
-  await expect(page.getByTestId("suggest-adjustments")).toHaveCount(0);
-  await expect(page.getByTestId("suggestion-shape")).toBeVisible();
-
+  // Escape is two layers now — there is no section to close first — so one
+  // press takes the proposal back.
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("suggestion-shape")).toHaveCount(0);
   await expect(page.getByTestId("suggest-idle")).toBeVisible();
@@ -3008,7 +3028,6 @@ test("the detail slider moves under the pointer, and hands the keyboard back", a
   const picture = (await page.getByTestId("annotator-canvas").boundingBox())!;
   await page.mouse.click(picture.x + picture.width / 2, picture.y + picture.height / 2);
   await expect(page.getByTestId("suggestion-shape")).toBeVisible();
-  await page.getByTestId("suggest-adjust-open").click();
 
   const slider = page.getByTestId("suggest-detail");
   await expect(slider).toHaveValue("0");
@@ -3046,11 +3065,10 @@ test("the detail slider moves under the pointer, and hands the keyboard back", a
   await page.keyboard.press("[");
   await expect(slider).toHaveValue("-1");
   await page.keyboard.press("Escape");
-  await expect(page.getByTestId("suggest-adjustments")).toHaveCount(0);
-  await expect(page.getByTestId("suggestion-shape")).toBeVisible();
+  await expect(page.getByTestId("suggestion-shape")).toHaveCount(0);
 });
 
-test("a press on the suggest panel never reaches the picture underneath", async ({ page }) => {
+test("a press in the suggest bar never reaches the picture", async ({ page }) => {
   const sent: Request[] = [];
   await openJob(page, sent, undefined, undefined, undefined, undefined, true);
   await servePolygonSuggestion(page);
@@ -3063,12 +3081,11 @@ test("a press on the suggest panel never reaches the picture underneath", async 
   const seeded = await page.getByTestId("prompt-points").locator("circle").count();
   const before = asks(sent);
 
-  // Every interactive control on the card, in turn. None of them may fire a
-  // suggest or move the seed point — the card sits over the picture, so a press
-  // that fell through would place a prompt point where somebody was aiming at a
-  // button (#557).
-  await page.getByTestId("suggest-adjust-open").click();
+  // The bar's controls, in turn. None of them may fire a suggest or move the
+  // seed point — a press that fell through would place a prompt point where
+  // somebody was aiming at a control (#557).
   await expect(page.getByTestId("suggest-adjustments")).toBeVisible();
+  await page.getByTestId("suggest-info").hover();
 
   const slider = page.getByTestId("suggest-detail");
   const box = (await slider.boundingBox())!;

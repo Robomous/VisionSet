@@ -102,6 +102,19 @@ describe("the project's addresses", () => {
     );
   });
 
+  it("lands a batch's old gallery address on its panel in the Overview, replacing the entry", async () => {
+    // A batch had a page of its own; it now opens beside the Overview's list,
+    // where every action on it lives, and the old link still means that batch.
+    open(`/projects/${PROJECT}/batches/b-1`);
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(`/projects/${PROJECT}/overview?batch=b-1`),
+    );
+  });
+
+  it("spells a batch as the Overview holding it open", () => {
+    expect(PARENT.batch(PROJECT, "b-1")).toBe(`/projects/${PROJECT}/overview?batch=b-1`);
+  });
+
   it("lands a bookmarked ?tab=versions on Schema, where the history lives", async () => {
     open(`/projects/${PROJECT}?tab=versions`);
     expect(await landed()).toBe(`/projects/${PROJECT}/schema`);

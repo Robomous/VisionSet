@@ -218,7 +218,7 @@ describe("the three regions the panel is now", () => {
     render(mount(store));
 
     expect(screen.getByTestId("annotator-panel").getAttribute("aria-label")).toBe(
-      "Classes, tags and annotations",
+      "Classes, tags and objects",
     );
     expect(screen.getByTestId("object-count").textContent).toBe("2 objects");
   });
@@ -249,11 +249,13 @@ describe("the object list", () => {
     const store = storeWith([annotation("a", "vehicle", "bbox"), annotation("b", "lane", "polygon")]);
     render(mount(store));
 
-    expect(screen.getByTestId("object-row-0").textContent).toContain("1. vehicle");
-    expect(screen.getByTestId("object-row-1").textContent).toContain("2. lane");
+    expect(screen.getByTestId("object-reclass-0").textContent).toBe("vehicle");
+    expect(screen.getByTestId("object-row-0").textContent).toContain("#1");
+    expect(screen.getByTestId("object-reclass-1").textContent).toBe("lane");
+    expect(screen.getByTestId("object-row-1").textContent).toContain("#2");
   });
 
-  it("names each row's geometry, because the class name stopped identifying it", () => {
+  it("names a row's geometry where its class accepts more than one", () => {
     // A class accepts a *set*, so two rows reading `sign` may be a box and a
     // polygon — and this row is where somebody picks which one to select or
     // delete. The display word, never the wire value.
@@ -265,13 +267,20 @@ describe("the object list", () => {
       ],
     };
     const store = storeWith(
-      [annotation("a", "sign", "bbox"), annotation("b", "sign", "polygon")],
+      [
+        annotation("a", "sign", "bbox"),
+        annotation("b", "sign", "polygon"),
+        annotation("c", "vehicle", "bbox"),
+      ],
       multi,
     );
     render(mount(store));
 
-    expect(screen.getByTestId("object-row-0").textContent).toContain("1. sign · box");
-    expect(screen.getByTestId("object-row-1").textContent).toContain("2. sign · polygon");
+    expect(screen.getByTestId("object-summary-0").textContent).toBe("box");
+    expect(screen.getByTestId("object-summary-1").textContent).toBe("polygon");
+    // One geometry tells no two rows apart, so a whole list of boxes does not
+    // say "box" down its length.
+    expect(screen.queryByTestId("object-summary-2")).toBeNull();
   });
 
   it("leaves classification tags out of it entirely", async () => {
@@ -289,7 +298,7 @@ describe("the object list", () => {
     // The document holds both; the list holds one.
     expect(store.document.annotations.size).toBe(2);
     expect(screen.getByTestId("object-count").textContent).toBe("1 object");
-    expect(screen.getByTestId("object-row-0").textContent).toContain("1. vehicle");
+    expect(screen.getByTestId("object-reclass-0").textContent).toBe("vehicle");
     expect(screen.queryByTestId("object-row-1")).toBeNull();
   });
 
@@ -304,18 +313,14 @@ describe("the object list", () => {
     expect(screen.getByTestId("objects-empty").textContent).toBe("Nothing drawn yet.");
   });
 
-  it("hides all objects without reaching for a tag, which has nothing to hide", async () => {
-    const hidden = vi.fn();
+  it("carries no hide-all of its own — the rail's toggle writes the same hidden set", () => {
+    // Two buttons for one `hiddenIds` was two places to read it. The rail's
+    // `tool-visibility` is the one, and `topBar.test.tsx` drives it end to end.
     const store = storeWith([annotation("a", "vehicle", "bbox")]);
-    const { rerender } = render(mount(store, { onHiddenChange: hidden }));
-    await userEvent.click(screen.getByTestId("tag-chip-daytime"));
-    rerender(mount(store, { onHiddenChange: hidden }));
+    render(mount(store));
 
-    await userEvent.click(screen.getByTestId("toggle-all-visibility"));
-
-    // The drawn one, and only it — a tag renders in neither canvas layer, so an
-    // id for it in the hidden set would be an instruction about nothing.
-    expect(hidden).toHaveBeenLastCalledWith(new Set(["a"]));
+    expect(screen.queryByTestId("toggle-all-visibility")).toBeNull();
+    expect(screen.queryByRole("button", { name: /all objects/i })).toBeNull();
   });
 
   it("lists a lane like any other object, and selects it from its row", async () => {
@@ -330,7 +335,7 @@ describe("the object list", () => {
     render(mount(store));
 
     expect(screen.getByTestId("object-count").textContent).toBe("2 objects");
-    expect(screen.getByTestId("object-row-1").textContent).toContain("2. centerline");
+    expect(screen.getByTestId("object-reclass-1").textContent).toBe("centerline");
 
     await userEvent.click(screen.getByTestId("object-select-1"));
     expect([...store.selection]).toEqual(["b"]);
@@ -365,7 +370,7 @@ describe("the object list", () => {
     expect(store.document.annotations.size).toBe(1);
   });
 
-  it("asks the page to hide one object, and to hide or show all of them", async () => {
+  it("asks the page to hide one object, and to show it again", async () => {
     const changes: ReadonlySet<string>[] = [];
     const store = storeWith([annotation("a", "vehicle", "bbox"), annotation("b", "lane", "polygon")]);
     const { rerender } = render(mount(store, { onHiddenChange: (next) => changes.push(next) }));
@@ -373,13 +378,10 @@ describe("the object list", () => {
     await userEvent.click(screen.getByTestId("object-visibility-0"));
     expect([...changes[0]]).toEqual(["a"]);
 
-    await userEvent.click(screen.getByTestId("toggle-all-visibility"));
-    expect([...changes[1]].sort()).toEqual(["a", "b"]);
-
-    // …and with everything hidden, the same control shows them again.
+    // …and with it hidden, the same row's eye brings it back without touching the other.
     rerender(mount(store, { hiddenIds: new Set(["a", "b"]), onHiddenChange: (n) => changes.push(n) }));
-    await userEvent.click(screen.getByTestId("toggle-all-visibility"));
-    expect([...changes[2]]).toEqual([]);
+    await userEvent.click(screen.getByTestId("object-visibility-0"));
+    expect([...changes[1]]).toEqual(["b"]);
   });
 
   it("dims a hidden row rather than removing it — it is still an object", () => {
@@ -411,7 +413,7 @@ describe("the filter", () => {
     // rule would keep neither, and the top bar's own picker matches anywhere too.
     await userEvent.type(screen.getByTestId("object-filter"), "line");
     expect(screen.queryByTestId("object-row-0")).toBeNull();
-    expect(screen.getByTestId("object-row-2").textContent).toContain("3. centerline");
+    expect(screen.getByTestId("object-reclass-2").textContent).toBe("centerline");
   });
 
   it("keeps each object's number, because the number is its identity on the canvas", async () => {
@@ -419,9 +421,9 @@ describe("the filter", () => {
     render(mount(store));
 
     await userEvent.type(screen.getByTestId("object-filter"), "lane");
-    // Still "2.", not renumbered to "1." — the panel and the picture must not
+    // Still "#2", not renumbered to "#1" — the panel and the picture must not
     // disagree about which shape is which.
-    expect(screen.getByTestId("object-row-1").textContent).toContain("2. lane");
+    expect(screen.getByTestId("object-row-1").textContent).toContain("#2");
     expect(screen.queryByTestId("object-row-0")).toBeNull();
     // And the count is still the whole document, not the visible slice.
     expect(screen.getByTestId("object-count").textContent).toBe("2 objects");
@@ -530,6 +532,29 @@ describe("reassigning a class from a row", () => {
     await userEvent.click(screen.getByTestId(`object-reclass-${index}`));
   }
 
+  it("is opened from the class name itself, not from an icon beside it", () => {
+    const store = storeWith([annotation("a", "vehicle", "bbox")]);
+    render(mount(store));
+
+    const trigger = screen.getByTestId("object-reclass-0");
+    // The name is the control: its visible text is the class, and the accessible
+    // name starts with what is on screen.
+    expect(trigger.textContent).toBe("vehicle");
+    expect(trigger.getAttribute("aria-label")).toBe("vehicle, change class of object 1");
+    expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+  });
+
+  it("opens the menu without also selecting the row", async () => {
+    // The row is one surface and the name sits on it — a press on the name is a
+    // question about the class, not a selection.
+    const store = storeWith([annotation("a", "vehicle", "bbox")]);
+    render(mount(store));
+
+    await openMenu(0);
+    expect(screen.getByTestId("reclass-0-pedestrian")).not.toBeNull();
+    expect(store.selection.size).toBe(0);
+  });
+
   it("applies on selection and lands as one undoable history entry", async () => {
     const store = storeWith([annotation("a", "vehicle", "bbox")]);
     render(mount(store));
@@ -543,6 +568,69 @@ describe("reassigning a class from a row", () => {
 
     store.undo();
     expect(store.document.annotations.get("a")?.label_class).toBe("vehicle");
+  });
+
+  it("prunes what the new class does not declare, seeds its defaults, in one undo step", async () => {
+    const attr = (name: string, kind: string, extra: object = {}) => ({
+      name,
+      kind,
+      required: false,
+      options: null,
+      default: null,
+      ...extra,
+    });
+    const schema = {
+      ...SCHEMA,
+      classes: [
+        {
+          name: "light",
+          geometries: ["bbox"],
+          color: null,
+          attributes: [
+            attr("state", "select", { options: ["red", "green"] }),
+            attr("occluded", "boolean"),
+          ],
+        },
+        {
+          name: "sign",
+          geometries: ["bbox"],
+          color: null,
+          attributes: [
+            attr("occluded", "boolean", { default: false }),
+            attr("material", "select", {
+              options: ["metal", "plastic"],
+              default: "metal",
+            }),
+          ],
+        },
+      ],
+    };
+    const store = storeWith(
+      [
+        {
+          ...(annotation("a", "light", "bbox") as object),
+          attributes: { state: "red", occluded: true },
+        },
+      ],
+      schema,
+    );
+    render(mount(store));
+
+    await openMenu(0);
+    await userEvent.click(screen.getByTestId("reclass-0-sign"));
+
+    // `state` is undeclared by `sign` and dropped; `occluded` carries over;
+    // `material` is seeded from its default.
+    expect(store.document.annotations.get("a")?.attributes).toEqual({
+      occluded: true,
+      material: "metal",
+    });
+
+    store.undo();
+    const undone = store.document.annotations.get("a");
+    expect(undone?.label_class).toBe("light");
+    expect(undone?.attributes).toEqual({ state: "red", occluded: true });
+    expect(store.canUndo).toBe(false);
   });
 
   it("lists every class, disabling the ones whose geometry this object is not", async () => {
@@ -642,7 +730,9 @@ describe("what the panel offers when the document cannot be written", () => {
 
     // The control is gone rather than disabled: every item on the menu exists to
     // change the class, so a disabled one is an empty promise with a dropdown.
+    // The name stays — as text.
     expect(screen.queryByTestId("object-reclass-0")).toBeNull();
+    expect(screen.getByTestId("object-row-0").textContent).toContain("vehicle");
   });
 
   it("will not toggle a tag, which is the panel's quietest document change", async () => {

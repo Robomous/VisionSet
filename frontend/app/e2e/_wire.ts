@@ -65,7 +65,7 @@ export function projectDigest(overrides: Partial<Wire["ProjectDigestOut"]> = {})
 // Keyed and valued by the generated vocabularies rather than by `string`, so a
 // member the kernel drops fails here in the editor. It used to be `string[]` on
 // the grounds that this file stubs the wire rather than consuming it, and the
-// cost was that a drifted member surfaced only as every gallery spec timing out,
+// cost was that a drifted member surfaced only as every batch spec timing out,
 // because `checks.ts` rejects the payload inside a hook. It is also what lets a
 // stub embedding one of these rosters name its own shape at all.
 //

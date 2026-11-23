@@ -28,7 +28,7 @@
 import { Maximize2, Minimize2, Minus, Plus, Scan } from "lucide-react";
 import { useEffect, useState, type JSX } from "react";
 
-import { Button, Tooltip, TooltipContent, TooltipTrigger } from "@robomous/ui-core";
+import { Button, Tooltip, TooltipContent, TooltipTrigger, cn } from "@robomous/ui-core";
 
 export interface ZoomWidgetProps {
   /** The live scale, or `null` before the stage has measured itself. */
@@ -42,6 +42,12 @@ export interface ZoomWidgetProps {
   readonly onFit: () => void;
   /** The element fullscreen applies to — the stage, never the document. */
   readonly fullscreenTarget: HTMLElement | null;
+  /**
+   * Where it sits on its stage's bottom edge. The host owns this, because the
+   * host knows what else floats there — the annotator's island raises it where
+   * the picture is too narrow for both side by side.
+   */
+  readonly className?: string;
 }
 
 export function ZoomWidget({
@@ -54,13 +60,18 @@ export function ZoomWidget({
   onZoomOut,
   onFit,
   fullscreenTarget,
+  className,
 }: ZoomWidgetProps): JSX.Element {
   const fullscreen = useFullscreen(fullscreenTarget);
 
   return (
     <div
       data-testid="zoom-widget"
-      className="absolute bottom-3 right-3 flex items-center gap-1 rounded-xl border border-border bg-muted p-1 shadow-lg"
+      data-stage-ui
+      className={cn(
+        "absolute bottom-3 right-3 z-10 flex h-9 items-center gap-0.5 rounded-xl bg-background/95 px-1 backdrop-blur-md vs-stage-chip",
+        className,
+      )}
     >
       <ZoomButton
         testId="zoom-out"
@@ -183,7 +194,7 @@ function ZoomButton({
       <TooltipTrigger asChild>
         <Button
           variant="ghost"
-          size="icon"
+          size="icon-sm"
           aria-label={atBound ? reason : label}
           aria-disabled={atBound || undefined}
           data-testid={testId}

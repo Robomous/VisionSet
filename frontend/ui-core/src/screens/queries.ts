@@ -854,7 +854,7 @@ export type PreLabelExclusion = components["schemas"]["PreLabelExclusionOut"];
  * Is this background job still going?
  *
  * Here rather than in a screen because both pre-labeling surfaces ask it — the
- * gallery's dialog to pick its mode, the batch listing to decide whether to keep
+ * per-job dialog to pick its mode, the batch listing to decide whether to keep
  * polling — and a screen importing a screen is a cycle.
  */
 export function isLiveJobState(state: BackgroundJob["state"]): boolean {
@@ -1093,7 +1093,7 @@ export function useAbortVideoImport() {
   });
 }
 
-// --- batches, jobs and the gallery --------------------------------------------
+// --- batches and jobs -------------------------------------------------------
 
 export type BatchAsset = components["schemas"]["BatchAssetOut"];
 export type BatchAssetPage = components["schemas"]["BatchAssetPage"];
@@ -1257,7 +1257,7 @@ export function useAssignJob(batchId: string, jobId: string) {
   });
 }
 
-/** `pending → in_progress`: the job is taken. Only the job panel calls this. */
+/** `pending → in_progress`: the job is taken. The editor takes a pending job itself when it opens one, so no screen calls this. */
 export function useStartJob(batchId: string, jobId: string) {
   const client = useApiClient();
   const queries = useQueryClient();
@@ -1434,8 +1434,8 @@ export interface FinishBatchResult {
  * different questions — which is exactly what a person saw.
  *
  * `POST /jobs/{id}/complete` had one caller in the whole app: the `Finish job`
- * button *inside the annotator*. Settling frames from the gallery — which is the
- * entire point of bulk skip — never passes it, so the job stayed `in_progress`
+ * button *inside the annotator*. Settling frames in bulk — which is the
+ * entire point of bulk skip, and which a client of the API can do — never passes it, so the job stayed `in_progress`
  * forever and `Complete` refused forever, naming no remedy. So this sends the two
  * links nobody was sending, in the only order the machines allow.
  *
@@ -1738,7 +1738,7 @@ export interface BulkProgressResult {
  * consequences the caller has to render rather than hide:
  *
  * - **It is not atomic.** Forty of fifty succeeding is a real state, and the one
- *   the bulk bar has to be able to say out loud.
+ *   a caller has to be able to say out loud.
  * - **It needs the job id per asset**, which is null exactly while the batch is a
  *   draft. A draft has no jobs, so there is nothing to move progress on, and the
  *   caller does not offer the action at all rather than sending fifty 404s.
@@ -1764,7 +1764,7 @@ export interface BulkProgressResult {
  * The loop stays sequential anyway, for a different and much smaller reason: a
  * workspace is one SQLite file with one writer, so N concurrent moves queue on
  * the write lock regardless and only add N connections and N busy-waits to get
- * there. A bulk bar over a handful of frames loses nothing by taking its turn.
+ * there. A bulk move over a handful of frames loses nothing by taking its turn.
  * If that ever stops being true, this can go back to `allSettled` without the
  * kernel needing anything.
  *
@@ -1940,8 +1940,8 @@ export function useBulkDiscardModelLabels(batchId: string) {
  * distinguish "did N" from "nothing to do".
  *
  * Adding is deliberately not here. `POST /batches/{id}/assets` exists and has no
- * caller in this client: a batch is filled by an ingest, and the gallery a
- * person is looking at shows one batch, so there is nowhere to pick the assets
+ * caller in this client: a batch is filled by an ingest, and no screen of
+ * this client shows frames beside a batch, so there is nowhere to pick the assets
  * to add *from*. The hook arrives with the screen that needs it.
  */
 export function useRemoveBatchAssets(batchId: string) {

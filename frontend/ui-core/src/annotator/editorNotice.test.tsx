@@ -205,17 +205,20 @@ describe("the notice column", () => {
     expect(said.getAttribute("title")).toBe("BATCH_NOT_IN_ANNOTATION");
   });
 
-  it("is where the suggest tool speaks, whatever it has to say", async () => {
-    // The card that moved. It is the whole session's voice — an asking state and
-    // a refusal are the same question answered differently — so the surface has
-    // to hold the calm readings as well, or arming the tool would make a panel
-    // jump corners as its state changed.
+  it("is not where the suggest tool speaks — its bar over the picture is", async () => {
+    // The card that moved again. Suggest's state and options are the tool's, so
+    // they live in the tool's own bar (`tool-options`); the notice column keeps
+    // only the messages that are not the tool's — a refused save, a refused
+    // progress move, a refused opening.
     await open();
     await userEvent.click(screen.getByTestId("class-row-vehicle-name"));
     await userEvent.click(screen.getByTestId("tool-suggest"));
 
-    const panel = await screen.findByTestId("suggest-panel");
-    expect(screen.getByTestId("editor-notices").contains(panel)).toBe(true);
+    const bar = await screen.findByTestId("suggest-bar");
+    expect(screen.getByTestId("tool-options").contains(bar)).toBe(true);
+    expect(screen.getByTestId("editor-notices").contains(bar)).toBe(false);
+    expect(screen.getByTestId("editor-notices").querySelector("[data-testid^='suggest-']")).toBeNull();
+    expect(screen.queryByTestId("suggest-panel")).toBeNull();
   });
 
   it("leaves the top bar's microtext saying where the work is, not why it refused", async () => {

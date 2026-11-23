@@ -237,7 +237,7 @@ beforeEach(() => {
     ],
     applied: { tolerance: 1 },
     // Declared as the server declares it for a box class: nothing at all, so the
-    // panel renders no adjustments. It works none of that out for itself.
+    // bar renders no Detail. It works none of that out for itself.
     parameters: [],
   };
   suggestRefusal = null;
@@ -312,10 +312,10 @@ async function open(onConfigureInference?: () => void): Promise<void> {
   await screen.findByTestId("annotation-page");
 }
 
-/** Arm the suggest tool from the strip, and wait for the panel to answer. */
+/** Arm the suggest tool from the strip, and wait for its bar to answer. */
 async function arm(): Promise<void> {
   await userEvent.click(screen.getByTestId("tool-suggest"));
-  await screen.findByTestId("suggest-panel");
+  await screen.findByTestId("suggest-bar");
 }
 
 /**
@@ -385,7 +385,7 @@ describe("arming the tool", () => {
     await open();
     await arm();
     await userEvent.click(screen.getByTestId("tool-suggest"));
-    expect(screen.queryByTestId("suggest-panel")).toBeNull();
+    expect(screen.queryByTestId("suggest-bar")).toBeNull();
   });
 });
 
@@ -402,9 +402,9 @@ describe("the active class moves and the tool stays armed", () => {
 
     await userEvent.click(screen.getByTestId("class-row-lane-area-name"));
 
-    // Armed still — the panel is the tool's one voice, so its presence is the
+    // Armed still — the bar is the tool's one voice, so its presence is the
     // armed state and its absence is the tool put away.
-    expect(screen.getByTestId("suggest-panel")).toBeTruthy();
+    expect(screen.getByTestId("suggest-bar")).toBeTruthy();
     clickCanvas();
 
     await waitFor(() => expect(asks()).toHaveLength(1));
@@ -423,7 +423,7 @@ describe("the active class moves and the tool stays armed", () => {
     // The shape was answered under `vehicle`'s allowed kinds; accepting it as a
     // `lane-area` could write a geometry that class does not admit.
     expect(screen.queryByTestId("suggestion-shape")).toBeNull();
-    expect(screen.getByTestId("suggest-panel")).toBeTruthy();
+    expect(screen.getByTestId("suggest-bar")).toBeTruthy();
     // And nothing reached the document on the way past.
     expect(screen.getByTestId("tool-undo").getAttribute("aria-disabled")).toBe("true");
     expect(screen.getByTestId("object-total").textContent).toBe("0 objects");
@@ -480,7 +480,7 @@ describe("the active class moves and the tool stays armed", () => {
 
     await userEvent.click(screen.getByTestId("suggest-discard"));
 
-    expect(screen.queryByTestId("suggest-panel")).toBeNull();
+    expect(screen.queryByTestId("suggest-bar")).toBeNull();
     expect(screen.getByTestId("tool-suggest").getAttribute("aria-disabled")).toBeNull();
   });
 
@@ -490,11 +490,11 @@ describe("the active class moves and the tool stays armed", () => {
     clickCanvas();
     await screen.findByTestId("suggestion-shape");
 
-    await userEvent.click(screen.getByTestId("next-asset"));
+    await userEvent.click(screen.getByTestId("save-and-next"));
 
     // D2's other discard, enforced by the per-asset remount rather than by an
     // effect — and the one a class switch was wrongly grouped with.
-    await waitFor(() => expect(screen.queryByTestId("suggest-panel")).toBeNull());
+    await waitFor(() => expect(screen.queryByTestId("suggest-bar")).toBeNull());
     expect(screen.queryByTestId("suggestion-shape")).toBeNull();
   });
 });
@@ -553,6 +553,31 @@ describe("a click asks the model", () => {
 
     await waitFor(() => expect(asks()).toHaveLength(1));
     expect(asks()[0]["allowed_geometries"]).toEqual(["polygon"]);
+  });
+
+  it("offers the same choice in the tool's bar, for a class that admits both", async () => {
+    await open();
+    await userEvent.click(screen.getByTestId("class-row-sign-name"));
+    await arm();
+
+    // Box, the strip's resolution with no preference held — the bar reads the
+    // same preference and never one of its own.
+    expect(screen.getByTestId("suggest-shape-bbox").getAttribute("aria-checked")).toBe("true");
+    await userEvent.click(screen.getByTestId("suggest-shape-polygon"));
+    expect(screen.getByTestId("suggest-shape-polygon").getAttribute("aria-checked")).toBe("true");
+    // One preference, so the class row's chip follows the bar.
+    expect(screen.getByTestId("class-row-sign-shape-polygon").getAttribute("aria-pressed")).toBe("true");
+    clickCanvas();
+
+    await waitFor(() => expect(asks()).toHaveLength(1));
+    expect(asks()[0]["allowed_geometries"]).toEqual(["polygon"]);
+  });
+
+  it("offers no shape choice for a class with one shape", async () => {
+    await open();
+    await arm();
+    expect(screen.queryByTestId("suggest-shape-bbox")).toBeNull();
+    expect(screen.queryByRole("radiogroup", { name: "Shape" })).toBeNull();
   });
 
   it("draws the answer as a preview, dashed and faint", async () => {
@@ -700,17 +725,17 @@ describe("a press outside the asset is not a prompt", () => {
 
 describe("what the wait looks like, and where it is not reported", () => {
   /*
-    The panel is the only surface that says a request is out (#557). A ring at the
+    The bar is the only surface that says a request is out (#557). A ring at the
     click point and a busy cursor were both removed: sitting on the picture next
     to the pointer, they read as the machine having hung rather than as work in
-    progress, and the card already says so in words.
+    progress, and the tool's bar already says so in words.
 
     Real timers, because the request is real: the route is held open, so the wait
     is genuine rather than simulated, and `findBy*` does the waiting that a fixed
     sleep would guess at.
   */
 
-  it("says so on the card and puts nothing at all on the canvas", async () => {
+  it("says so in the bar and puts nothing at all on the canvas", async () => {
     const gate = held();
     await open();
     await arm();
@@ -728,7 +753,7 @@ describe("what the wait looks like, and where it is not reported", () => {
   });
 
   it("is up on the first render after the click, with no clock advanced", async () => {
-    // The load-bearing case for the delay's removal: the card is the report, so
+    // The load-bearing case for the delay's removal: the bar is the report, so
     // it has to be there on the frame the request leaves.
     const gate = held();
     await open();
@@ -740,7 +765,7 @@ describe("what the wait looks like, and where it is not reported", () => {
     await screen.findByTestId("suggest-shown");
   });
 
-  it("keeps the shape drawn through a refine, while the card reports the new ask", async () => {
+  it("keeps the shape drawn through a refine, while the bar reports the new ask", async () => {
     await open();
     await arm();
     clickCanvas();
@@ -766,7 +791,8 @@ describe("what the wait looks like, and where it is not reported", () => {
     suggestRefusal = { status: 422, code: "UNSUPPORTED_PROMPT", message: "not a segmenter" };
     gate.release();
 
-    await screen.findByTestId("suggest-refusal");
+    await screen.findByTestId("suggest-refused");
+    expect(screen.getByTestId("suggest-tip").textContent).toContain("not a segmenter");
     expect(screen.queryByTestId("suggest-asking")).toBeNull();
   });
 });
@@ -799,7 +825,7 @@ describe("the preview is outside the document and outside the history", () => {
     expect(screen.getByTestId("tool-undo").getAttribute("aria-disabled")).toBe("true");
     // Armed still, not put away: somebody who cleared a preview is about to
     // click again.
-    expect(screen.getByTestId("suggest-panel")).toBeTruthy();
+    expect(screen.getByTestId("suggest-bar")).toBeTruthy();
   });
 });
 
@@ -831,7 +857,9 @@ describe("acceptance", () => {
     await screen.findByTestId("suggestion-shape");
     await userEvent.click(screen.getByTestId("suggest-accept"));
 
-    await userEvent.click(screen.getByTestId("save-and-stay"));
+    // `mod+s`, the one explicit save left now that the page saves on its own.
+    screen.getByTestId("annotator-root").focus();
+    await userEvent.keyboard("{Control>}s{/Control}");
 
     await waitFor(() => {
       expect(sent.some((row) => row.path.endsWith("/annotations"))).toBe(true);
@@ -856,9 +884,10 @@ describe("the save state (#1063)", () => {
     clickCanvas();
     await screen.findByTestId("suggestion-shape");
     await userEvent.click(screen.getByTestId("suggest-accept"));
-    expect(screen.getByTestId("save-state").textContent).toBe("unsaved");
+    expect(screen.getByTestId("save-state").textContent).toBe("Edited");
 
-    await userEvent.click(screen.getByTestId("save-and-stay"));
+    screen.getByTestId("annotator-root").focus();
+    await userEvent.keyboard("{Control>}s{/Control}");
     await waitFor(() => expect(screen.getByTestId("save-state").textContent).toBe("Saved"));
   });
 });
@@ -983,8 +1012,10 @@ describe("a refusal", () => {
     await arm();
     clickCanvas();
 
-    const prose = await screen.findByTestId("suggest-refusal");
-    expect(prose.textContent).toContain("visionset[local-inference]");
+    await screen.findByTestId("suggest-refused");
+    // Behind the bar's ⓘ, verbatim — and the button's description, so it is
+    // reachable without opening anything.
+    expect(screen.getByTestId("suggest-tip").textContent).toContain("visionset[local-inference]");
     // No 500 page, no toast, no raw code — the editor stays where it is and the
     // work on it is untouched (principle 10).
     expect(screen.getByTestId("annotation-page")).toBeTruthy();

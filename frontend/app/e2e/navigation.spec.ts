@@ -210,7 +210,9 @@ async function openCold(page: Page, url: string): Promise<void> {
 /**
  * Every sub-view inside a project and the one parent it names — the control every
  * scenario below presses. A section has none: the project's navigation is beside
- * it and the list is on the rail, so the project itself is not here.
+ * it and the list is on the rail, so the project itself is not here. Nor is a
+ * batch: it has no page of its own any more, it opens in the Overview's panel,
+ * and the scenarios for that address are further down.
  */
 const SUBVIEWS = [
   {
@@ -219,13 +221,6 @@ const SUBVIEWS = [
     ready: "ingest-screen",
     // The project's default section outright, not the bare project URL: the
     // way out lands in one hop rather than bouncing through the redirect.
-    parent: new RegExp(`/projects/${PROJECT}/overview$`),
-  },
-  {
-    name: "the batch gallery",
-    url: `/projects/${PROJECT}/batches/${BATCH}`,
-    ready: "gallery",
-    // Up to the Overview, where the batch is listed and was opened from.
     parent: new RegExp(`/projects/${PROJECT}/overview$`),
   },
 ] as const;
@@ -244,7 +239,7 @@ for (const view of SUBVIEWS) {
  * The annotator, which is the one that fails today under this method.
  *
  * It had a back button all along, wired to `navigate(-1)`. Reached by clicking a
- * tile that resolves to the gallery; reached cold — a pasted link, a reload, a
+ * tile that resolves to the batch; reached cold — a pasted link, a reload, a
  * bookmark — it has nowhere to go at all. This is the scenario that says so.
  */
 test("the annotator returns to its batch from a cold open, not into an empty history", async ({
@@ -254,7 +249,11 @@ test("the annotator returns to its batch from a cold open, not into an empty his
   await expect(page.getByTestId("annotation-page")).toBeVisible();
 
   await page.getByTestId("back").click();
-  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/batches/${BATCH}$`));
+  // The batch is a panel on the Overview, so "back to the batch" is the Overview with
+  // that batch open — and the panel is really there, not just the address.
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview\\?batch=${BATCH}$`));
+  await expect(page.getByTestId("batch-sheet").getByRole("heading", { level: 2, name: "drive-01" })).toBeVisible();
+  await expect(page.getByTestId("nav-overview")).toHaveAttribute("aria-current", "page");
 });
 
 test("the annotator's grid button stays in the editor and the URL does not move", async ({
@@ -285,12 +284,24 @@ test("the annotator's grid button stays in the editor and the URL does not move"
   expect(page.url()).toBe(before);
 });
 
-test("the batch gallery says which batch it is showing", async ({ page }) => {
-  // A page with no header at all is a grid of
-  // thumbnails and a count, legible only if you remembered which tile you pressed
-  // — and unreadable entirely on a pasted link.
+test("a batch's old URL redirects to its panel on the Overview, and says which batch it is", async ({
+  page,
+}) => {
+  // A batch had a page of its own at this address; a bookmark of it is a promise, so it
+  // lands where the batch now is. A pasted link must still say which batch it is —
+  // the panel's heading is that, with no row to have remembered pressing.
   await openCold(page, `/projects/${PROJECT}/batches/${BATCH}`);
-  await expect(page.getByTestId("batch-title")).toHaveText("drive-01");
+
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview\\?batch=${BATCH}$`));
+  const panel = page.getByTestId("batch-sheet");
+  await expect(panel).toHaveAttribute("aria-label", "Batch");
+  await expect(panel.getByRole("heading", { level: 2, name: "drive-01" })).toBeVisible();
+  // The Overview is lit and showing its batches: the batch is a thing on it, not a
+  // place of its own — so there is no page to leave, and no gallery.
+  await expect(page.getByTestId("nav-overview")).toHaveAttribute("aria-current", "page");
+  await expect(page.getByTestId("overview-batches")).toBeVisible();
+  await expect(page.getByTestId("back-link")).toHaveCount(0);
+  await expect(page.getByTestId("gallery")).toHaveCount(0);
 });
 
 test("the way out names the project it goes to", async ({ page }) => {
@@ -304,20 +315,6 @@ test("a section has no way out of its own: the toolbar, the tabs and the rail ar
   await openCold(page, `/projects/${PROJECT}/overview`);
   await expect(page.getByTestId("project-screen")).toBeVisible();
   await expect(page.getByTestId("back-link")).toHaveCount(0);
-});
-
-test("the gallery's way out lands with the Overview actually open", async ({ page }) => {
-  // A section in the URL and a navigation showing something else is the failure
-  // this asserts against — the redirect-that-moved-only-the-URL shape. A section
-  // is a place, which is what makes it a legitimate parent.
-  await openCold(page, `/projects/${PROJECT}/batches/${BATCH}`);
-  await expect(page.getByTestId("nav-overview")).toHaveAttribute("aria-current", "page");
-  await expect(page.getByTestId("back-link")).toHaveText("Overview");
-  await page.getByTestId("back-link").click();
-
-  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview$`));
-  await expect(page.getByTestId("nav-overview")).toHaveAttribute("aria-current", "page");
-  await expect(page.getByTestId("overview-batches")).toBeVisible();
 });
 
 /**
@@ -390,51 +387,4 @@ test("the dataset is one press from every other section", async ({ page }) => {
   }
   await page.getByTestId("nav-dataset").click();
   await expect(page.getByTestId("dataset-screen")).toBeVisible();
-});
-
-/** A CSS colour as the sRGB bytes it paints, so two spellings of one token compare equal. */
-async function channelsOf(page: Page, colour: string): Promise<readonly number[]> {
-  return page.evaluate((value) => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 1;
-    canvas.height = 1;
-    const ctx = canvas.getContext("2d")!;
-    ctx.fillStyle = value;
-    ctx.fillRect(0, 0, 1, 1);
-    return Array.from(ctx.getImageData(0, 0, 1, 1).data);
-  }, colour);
-}
-
-test("a batch's progress bar fills with the primary colour on a bordered muted track", async ({
-  page,
-}) => {
-  // The Overview's rows draw a small decorative meter; the labelled progressbar
-  // is the batch gallery's.
-  await openCold(page, `/projects/${PROJECT}/batches/${BATCH}`);
-  await expect(page.getByTestId("gallery")).toBeVisible();
-
-  const bar = page
-    .getByTestId("batch-progress-row")
-    .getByRole("progressbar", { name: "Annotation progress" });
-  await expect(bar).toBeVisible();
-  const tokens = await page.evaluate(() => {
-    const style = getComputedStyle(document.documentElement);
-    return {
-      primary: style.getPropertyValue("--primary"),
-      muted: style.getPropertyValue("--muted"),
-      border: style.getPropertyValue("--border"),
-    };
-  });
-  const painted = async (locator: typeof bar, prop: string): Promise<readonly number[]> =>
-    channelsOf(page, await locator.evaluate((node, p) => getComputedStyle(node).getPropertyValue(p), prop));
-
-  const indicator = bar.locator('[data-slot="progress-indicator"]');
-  await expect(indicator).toHaveClass(/bg-primary/);
-  expect(await painted(indicator, "background-color")).toEqual(
-    await channelsOf(page, tokens.primary),
-  );
-  expect(await painted(bar, "background-color")).toEqual(await channelsOf(page, tokens.muted));
-  expect(await painted(bar, "border-top-color")).toEqual(await channelsOf(page, tokens.border));
-  // 8px, so an empty track is still a visible shape and not a hairline.
-  expect(await bar.evaluate((node) => node.getBoundingClientRect().height)).toBe(8);
 });

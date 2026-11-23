@@ -44,7 +44,6 @@ import {
   AnnotationPage,
   assetParamFor,
   DEFAULT_PROJECT_SECTION,
-  GalleryScreen,
   ModelsScreen,
   isProjectSection,
   resolveProjectTab,
@@ -104,7 +103,7 @@ export function AppRoutes(): JSX.Element {
           {/*
             Everything that belongs to one project: its navigation column beside
             the content, so the pane is the shell's own rather than the padded
-            one. The four sections, the ingest flow and the batch gallery all
+            one. The sections and the ingest flow all
             render inside the same column — only the annotator, which needs the
             whole screen, stands outside it. The bare project URL and the old
             `?tab=` addresses both land on a section, because a URL somebody
@@ -113,26 +112,24 @@ export function AppRoutes(): JSX.Element {
           <Route element={<ProjectPane />}>
             <Route path="projects/:projectId" element={<ProjectRedirect />} />
             <Route path="projects/:projectId/ingest" element={<Ingest />} />
-            <Route path="projects/:projectId/batches/:batchId" element={<Gallery />} />
+            <Route path="projects/:projectId/batches/:batchId" element={<BatchRedirect />} />
             <Route path="projects/:projectId/:section" element={<Project />} />
           </Route>
+        </Route>
 
-          {/*
-            The editing surface, and the only route that takes the whole viewport
-            It is a *route* rather than a prop on the shell because that
-            keeps `AppShell` composition-only and keeps `ui-core` from fighting
-            the container from the inside with negative margins.
-
-            Nested under the same shell as the padded pane, so there is one
-            `AppShell` in this tree rather than two that have to be kept
-            identical. It is *not* what preserves the rail's collapsed state —
-            that survives two sibling shells too, because React reconciles them
-            into one instance — and `annotate.spec.ts` asserts the behaviour
-            directly rather than through the structure.
-          */}
-          <Route element={<FullBleedPane />}>
-            <Route path="jobs/:jobId" element={<Annotate />} />
-          </Route>
+        {/*
+          The editing surface, and the only product route that stands outside the
+          shell: the whole viewport, no main rail, no tabs, no status bar. The
+          pixels are the reason — `fitToViewport` derives the zoom from the
+          pane's rect — and the way out is the page's own back control, which
+          knows the batch it came from. It is a *sibling* of `AppShell` under the
+          same `Gated`, so it still needs a workspace token and the shell stays
+          composition-only. A route rather than a `useMatch` in the shell, per
+          the rule in `AppShell.tsx`. The rail's collapsed preference is
+          persisted, so it is still what it was on the way back.
+        */}
+        <Route element={<FullBleedPane />}>
+          <Route path="jobs/:jobId" element={<Annotate />} />
         </Route>
       </Route>
 
@@ -192,9 +189,9 @@ function Projects(): JSX.Element {
  * screen supplies every label. What could silently drift is a URL, and a URL
  * still has exactly one spelling.
  *
- * A project's sections are path segments, and each is a place: the gallery's way
- * out is the Overview, because that is where a project's batches are listed and
- * where the batch was opened from. `project` itself
+ * A project's sections are path segments, and each is a place. A batch is not
+ * one: it opens in the Overview's panel, where batches are listed, and `batch`
+ * spells that as the Overview's `?batch=`. `project` itself
  * spells the default section outright rather than the bare project URL, so a
  * way out lands in one hop instead of bouncing through the redirect.
  */
@@ -208,6 +205,7 @@ export const PARENT = {
   project: (projectId: string) => PARENT.section(projectId, DEFAULT_PROJECT_SECTION),
   dataset: (projectId: string) => PARENT.section(projectId, "dataset"),
   schema: (projectId: string) => PARENT.section(projectId, "schema"),
+  batch: (projectId: string, batchId: string) => `${PARENT.project(projectId)}?batch=${encodeURIComponent(batchId)}`,
 } as const;
 
 /**
@@ -264,12 +262,13 @@ function ProjectRedirect(): JSX.Element {
  */
 function Project(): JSX.Element {
   const { projectId, section } = useParams();
+  const [query, setQuery] = useSearchParams();
   const navigate = useNavigate();
   // The router guarantees the segments exist for this path; the type does not.
   if (projectId === undefined) return <NotFound />;
   // `batches` was a section until its list moved onto the Overview. A link to it
   // is a promise somebody bookmarked, so it lands where the batches now are
-  // rather than on a 404. (A batch's own gallery keeps its URL under it.)
+  // rather than on a 404.
   if (section === "batches") return <Navigate to={PARENT.project(projectId)} replace />;
   if (!isProjectSection(section)) return <NotFound />;
   return (
@@ -279,7 +278,22 @@ function Project(): JSX.Element {
       onTabChange={(next) => void navigate(PARENT.section(projectId, next), { replace: true })}
       hrefFor={(next) => PARENT.section(projectId, next)}
       onIngest={() => void navigate(`/projects/${projectId}/ingest`)}
-      onOpenBatch={(batchId) => void navigate(`/projects/${projectId}/batches/${batchId}`)}
+      onOpenBatch={(batchId) => void navigate(PARENT.batch(projectId, batchId))}
+      // The open batch is the URL's, so a reload or a pasted link opens the same
+      // panel. `replace`: opening batches one after another is looking, not going
+      // somewhere, and Back should leave the Overview rather than walk the list.
+      openBatchId={query.get("batch")}
+      onOpenBatchChange={(batchId) =>
+        setQuery(
+          (now) => {
+            const next = new URLSearchParams(now);
+            if (batchId === null) next.delete("batch");
+            else next.set("batch", batchId);
+            return next;
+          },
+          { replace: true },
+        )
+      }
       onOpenJob={(jobId) => void navigate(`/jobs/${jobId}`)}
       // A deleted project's own URL is a 404 waiting to happen, so the parent is
       // where to land — and `replace`, because Back should not walk into it.
@@ -289,61 +303,15 @@ function Project(): JSX.Element {
 }
 
 /**
- * The gallery, and the one place the product joins its two halves.
- *
- * A route that passes no `onOpenAsset` renders every tile `disabled` and
- * **the annotator was unreachable from inside the app** — reachable only by typing
- * `/jobs/{id}` after reading the id out of the REST API. Every sibling route wired
- * its callbacks; this one looked like an omission because it was one.
- *
- * The two screens are keyed on different things — the gallery lists *assets in a
- * batch*, the annotator opens a *job* — and `asset.job_id` is the only bridge. It
- * is present exactly once the batch leaves `draft`, which is why `Tile`
- * refuses a null one on its own rather than trusting this callback to be careful.
- *
- * The asset travels as a query parameter, not a path segment: `/jobs/:jobId` is the
- * annotator's identity and the asset is *where to start*, which a person can change
- * with the next/previous buttons without the URL becoming a lie.
- *
- * `onOpenJob` is the job row's door: the job is the identity and no `?asset=` is
- * named, so the annotator opens on the job's first frame.
+ * A batch's old address. Batches had a gallery page; they now open in the
+ * Overview's panel, which is where every action on a batch lives. A link to the
+ * old page is a promise somebody bookmarked, so it lands on that panel —
+ * `replace`, so Back does not walk into a URL that only ever bounces.
  */
-function Gallery(): JSX.Element {
+function BatchRedirect(): JSX.Element {
   const { projectId, batchId } = useParams();
-  const navigate = useNavigate();
   if (projectId === undefined || batchId === undefined) return <NotFound />;
-  return (
-    // Inside the project's frame, with Overview lit: a batch is listed and
-    // opened there. No `cta` — the gallery owns its own dominant action.
-    <ProjectFrame {...frameProps(projectId, navigate)} active="overview">
-      <GalleryScreen
-        projectId={projectId}
-        batchId={batchId}
-        onBack={() => void navigate(PARENT.project(projectId))}
-        onOpenAsset={(asset) => {
-          if (asset.job_id === null || asset.job_id === undefined) return;
-          void navigate(`/jobs/${asset.job_id}?asset=${asset.id}`);
-        }}
-        onOpenJob={(jobId) => void navigate(`/jobs/${jobId}`)}
-        // The approve dialog's SCHEMA_NOT_FOUND remedy: the schema section of
-        // the project, and spelling that URL is this file's job.
-        onOpenSchema={() => void navigate(PARENT.schema(projectId))}
-        // Where a promotion from this screen lands (F18). The gallery is where a
-        // batch is finished, and it had no way to reach the one screen that shows
-        // what finishing it produced — a section of the project now, not a route.
-        onOpenDataset={() => void navigate(PARENT.dataset(projectId))}
-        // A correction just cut, or this batch's own parent (audit G6). Same
-        // route the batch table's rows use — a batch is a batch, whichever screen
-        // named it.
-        onOpenBatch={(next) => void navigate(`/projects/${projectId}/batches/${next}`)}
-        // This screen's whole subject has just stopped existing, so its own
-        // URL is a 404 waiting to happen — the Overview, where batches are
-        // listed, is where to land, and `replace` so Back does not walk into the
-        // gone batch.
-        onDeleted={() => void navigate(PARENT.project(projectId), { replace: true })}
-      />
-    </ProjectFrame>
-  );
+  return <Navigate to={PARENT.batch(projectId, batchId)} replace />;
 }
 
 /**
@@ -367,24 +335,23 @@ function frameProps(
 }
 
 /**
- * The annotator, and the return leg into the gallery.
+ * The annotator, and the return leg into its batch.
  *
- * `?asset=` is where the gallery said to start; absent — a deep link somebody
+ * `?asset=` is where somebody said to start; absent — a deep link somebody
  * pasted, or a reload — the page opens on the job's first asset, which is what it
  * always did.
  *
- * "Open the gallery" is passed the project and batch by `AnnotationPage`, because
+ * "Back to the batch" is passed the project and batch by `AnnotationPage`, because
  * that screen has already walked job → batch to find the pinned schema and this
- * one has not. It is a *navigate* rather than a `navigate(-1)` on purpose: the
- * grid button means "show me this batch", and it has to mean that whether the
- * annotator was reached by clicking a tile, by pasting a URL, or by walking
- * forward from another asset.
+ * one has not. It is a *navigate* rather than a `navigate(-1)` on purpose: it
+ * means "show me this batch" — its panel on the Overview — whether the annotator
+ * was reached from a job, by pasting a URL, or by walking forward from another
+ * asset.
  *
  * The same argument applies to the **back arrow**, the one control most likely to
  * be wired to history. So this route passes one callback and
- * the page drives both controls with it: the batch gallery is this page's parent,
- * the arrow means *up* and the grid means *show me the grid*, and they coincide
- * because the annotator's parent is the grid.
+ * the page drives both controls with it: the batch is this page's parent, and
+ * the arrow means *up*.
  *
  * The parameter is kept true rather than only read. The page says which
  * frame it is showing and this route writes it, which is the split the project's
@@ -404,9 +371,7 @@ function Annotate(): JSX.Element {
     <AnnotationPage
       jobId={jobId}
       {...(asset === null ? {} : { initialAssetId: asset })}
-      onOpenGallery={(projectId, batchId) =>
-        void navigate(`/projects/${projectId}/batches/${batchId}`)
-      }
+      onOpenGallery={(projectId, batchId) => void navigate(PARENT.batch(projectId, batchId))}
       onAssetChange={(showing) => {
         const next = assetParamFor(showing, query.get("asset"));
         if (next !== null) setQuery({ asset: next }, { replace: true });
@@ -442,7 +407,7 @@ function Ingest(): JSX.Element {
       <IngestScreen
         projectId={projectId}
         onBack={() => void navigate(PARENT.project(projectId))}
-        onOpenBatch={(batchId) => void navigate(`/projects/${projectId}/batches/${batchId}`)}
+        onOpenBatch={(batchId) => void navigate(PARENT.batch(projectId, batchId))}
         // The foreshadowing banner's link: the schema section of the project, and
         // spelling that URL is this file's job.
         onOpenSchema={() => void navigate(PARENT.schema(projectId))}

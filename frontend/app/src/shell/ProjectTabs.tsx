@@ -4,7 +4,7 @@
  * Visiting a project opens its tab; the tab stays until it is closed, so moving
  * between two projects is one click rather than a trip through the list. Each
  * tab remembers the last address you were at inside its project, so coming back
- * lands where you left — a section, a batch gallery, the ingest flow.
+ * lands where you left — a section, the ingest flow.
  *
  * ## The tabs are links
  *
@@ -39,7 +39,7 @@ import {
   useProject,
   useProjects,
 } from "@visionset/ui-core";
-import { createContext, useContext, useEffect, useRef, useState, type JSX, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import { Link, useLocation, useMatch, useNavigate } from "react-router";
 
 import { neighbourOf, readOpenProjects, withOpened, writeOpenProjects } from "./openProjects";
@@ -71,32 +71,51 @@ export function OpenProjectsProvider({ children }: { readonly children: ReactNod
   const [open, setOpen] = useState(readOpenProjects);
   // Where each tab was last, so returning to it lands there. Session memory only.
   const lastPath = useRef(new Map<string, string>());
+  const here = `${location.pathname}${location.search}`;
+
+  // Visiting a project opens its tab. The tab is opened while rendering, the
+  // moment the address changes, rather than in an effect that sets state: the
+  // effect would draw one frame without the tab and then draw it again. The
+  // marker makes the update converge — a tab closed by `forget` stays closed
+  // until the address moves again, as it did when this was an effect.
+  const place = current === null ? null : `${current}${here}`;
+  const [placeSeen, setPlaceSeen] = useState<string | null>(null);
+  if (place !== placeSeen) {
+    setPlaceSeen(place);
+    if (current !== null) setOpen((ids) => withOpened(ids, current));
+  }
 
   useEffect(() => {
     if (current === null) return;
-    lastPath.current.set(current, `${location.pathname}${location.search}`);
-    setOpen((ids) => withOpened(ids, current));
-  }, [current, location.pathname, location.search]);
+    lastPath.current.set(current, here);
+  }, [current, here]);
 
   useEffect(() => writeOpenProjects(open), [open]);
 
-  const pathOf = (id: string): string => lastPath.current.get(id) ?? `/projects/${id}`;
-
-  function close(id: string): void {
-    const next = neighbourOf(open, id);
-    setOpen((ids) => ids.filter((x) => x !== id));
-    if (id === current) void navigate(next === null ? "/projects" : pathOf(next));
-    lastPath.current.delete(id);
-  }
-
-  function forget(id: string): void {
-    setOpen((ids) => ids.filter((x) => x !== id));
-    lastPath.current.delete(id);
-  }
-
-  return (
-    <OpenProjectsContext.Provider value={{ open, current, pathOf, close, forget }}>{children}</OpenProjectsContext.Provider>
+  // The open tab is where the address is now; the others are where they were left.
+  const pathOf = useCallback(
+    (id: string): string => (id === current ? here : (lastPath.current.get(id) ?? `/projects/${id}`)),
+    [current, here],
   );
+
+  const close = useCallback(
+    (id: string): void => {
+      const next = neighbourOf(open, id);
+      setOpen((ids) => ids.filter((x) => x !== id));
+      if (id === current) void navigate(next === null ? "/projects" : pathOf(next));
+      lastPath.current.delete(id);
+    },
+    [open, current, navigate, pathOf],
+  );
+
+  const forget = useCallback((id: string): void => {
+    setOpen((ids) => ids.filter((x) => x !== id));
+    lastPath.current.delete(id);
+  }, []);
+
+  const value = useMemo(() => ({ open, current, pathOf, close, forget }), [open, current, pathOf, close, forget]);
+
+  return <OpenProjectsContext.Provider value={value}>{children}</OpenProjectsContext.Provider>;
 }
 
 function useOpenProjects(): OpenProjects {
@@ -239,7 +258,8 @@ function OpenProjectMenu({ open, onPick }: { readonly open: readonly string[]; r
 
 function ClosedProjects({ open, onPick }: { readonly open: readonly string[]; readonly onPick: (id: string) => void }): JSX.Element {
   const projects = useProjects();
-  const closed = (projects.data?.items ?? []).filter((p) => !open.includes(p.id));
+  const openIds = new Set(open);
+  const closed = (projects.data?.items ?? []).filter((p) => !openIds.has(p.id));
   return (
     <>
       {projects.isPending && <DropdownMenuItem disabled>Loading projects…</DropdownMenuItem>}

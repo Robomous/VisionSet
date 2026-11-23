@@ -5,7 +5,7 @@
  *
  * The grid button is the only affordance for *"show me the other frames"*. Wiring
  * it to `onOpenGallery` — what the back arrow does — **leaves the workspace** for
- * the full batch-management screen: getting back to the frame you were looking at
+ * the batch's panel on the Overview: getting back to the frame you were looking at
  * costs a scroll and a click, and the editor's viewport, zoom, pan, tool and armed
  * class all die on the way.
  *
@@ -18,18 +18,18 @@
  * ## It is a switcher and nothing else
  *
  * No approve, no complete, no promote, no selection, no bulk bar, no correction
- * batches, no timeline. Those are *batch operations* and the batch view stays
- * their home; none of them belongs to somebody choosing which frame to draw on
- * next. That is also why this renders `ThumbnailGrid` + `AssetThumbnail` rather
- * than `GalleryScreen` in a dialog — putting that screen in a `Dialog` would
- * import every one of them back through the side door.
+ * batches, no timeline. Those are *batch operations* and the batch's panel on
+ * the Overview is their home; none of them belongs to somebody choosing which frame to draw on
+ * next. That is also why this renders `ThumbnailGrid` + `AssetThumbnail` and
+ * nothing of batch management — a screen that carried those operations, put in
+ * a `Dialog`, would import every one of them back through the side door.
  *
  * ## The filter is reused, not respelled
  *
  * `SEGMENTS`, `SEGMENT_LABEL` and `inSegment` come from `screens/batchState.ts`,
  * so the grouping rule — which of the six states counts as *done* — has one
- * spelling for the batch view and this one. What differs is the **denominator**:
- * the batch view reads `ProgressCounts` off the batch because it is paging a
+ * spelling wherever it is grouped. What differs is the **denominator**: a
+ * screen that reads `ProgressCounts` off the batch does so because it is paging a
  * window over fifty thousand frames and a count describing the page would lie
  * about the collection. A job is loaded whole (`useJobAssets` takes one window of
  * 1000), so here the tally is over the frames in hand — which is the honest

@@ -141,7 +141,7 @@ it("keeps the drawing class when the next frame opens", async () => {
   await userEvent.click(await screen.findByTestId("class-row-vehicle-name"));
   expect(screen.getByTestId("class-row-vehicle").getAttribute("data-selected")).toBe("true");
 
-  await userEvent.click(screen.getByTestId("next-asset"));
+  await userEvent.click(screen.getByTestId("save-and-next"));
 
   expect(await screen.findByTestId("annotation-page")).toHaveProperty(
     "dataset.asset",

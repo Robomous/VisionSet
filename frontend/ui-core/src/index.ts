@@ -112,7 +112,8 @@ export {
 // The Overview's console: the same contract — view models in, callbacks out.
 export { CONSOLE_COLUMNS, CONSOLE_SURFACE, ConsoleEmpty, ConsolePanel, Meter, type ConsolePanelProps } from "./patterns/project/ConsolePanel.js";
 export { KPI_CARD_HEIGHT, KPI_GRID, KpiCards, type KpiAttention, type KpiCard, type KpiStep } from "./patterns/project/KpiCards.js";
-export { BatchTable, PHASE_DOT, PHASE_LABEL, PhaseBadge, useBatchTableView, type BatchRowView, type BatchTableProps, type BatchTableView } from "./patterns/project/BatchTable.js";
+export { BatchTable, PhaseBadge, useBatchTableView, type BatchRowView, type BatchTableProps, type BatchTableView } from "./patterns/project/BatchTable.js";
+export { PHASE_DOT, PHASE_LABEL } from "./patterns/project/batchRowModel.js";
 export { BatchSheet, type BatchSheetProps, type SheetJob } from "./patterns/project/BatchSheet.js";
 export { CLASS_RAIL_ROWS, ClassRail, type ClassRailProps, type ClassRow } from "./patterns/project/ClassRail.js";
 
@@ -195,10 +196,10 @@ export { DEFAULT_POLL_MS, usePollingQuery, type PollingQueryOptions } from "./da
 export { ProjectsScreen, type ProjectsScreenProps } from "./screens/ProjectsScreen.js";
 export {
   ProjectScreen,
-  resolveProjectTab,
   type ProjectScreenProps,
   type ProjectTab,
 } from "./screens/ProjectScreen.js";
+export { resolveProjectTab } from "./screens/projectTab.js";
 export {
   SchemaEditor,
   type SchemaDraft,
@@ -206,13 +207,12 @@ export {
 } from "./screens/SchemaEditor.js";
 export { IngestScreen, type IngestScreenProps } from "./screens/IngestScreen.js";
 export { HomeScreen, type HomeScreenProps } from "./screens/HomeScreen";
-export { GalleryScreen, type GalleryScreenProps } from "./screens/GalleryScreen.js";
 export { ApproveDialog, BatchProgressBar } from "./screens/BatchLifecycle.js";
-export { PromoteButton, promotionSummary, type PromoteButtonProps } from "./screens/PromoteButton.js";
+export { PromoteButton, type PromoteButtonProps } from "./screens/PromoteButton.js";
+export { defaultCorrectionName, promotionSummary } from "./screens/batchWords.js";
 export {
   CorrectionButton,
   CorrectionOf,
-  defaultCorrectionName,
   type CorrectionButtonProps,
   type CorrectionScope,
 } from "./screens/CorrectionBatch.js";
@@ -285,13 +285,8 @@ export {
 // The annotation page's side panel. Driven entirely by the `AnnotatorStore`
 // the page already holds — no second door to the document.
 export { AnnotatorPanel, type AnnotatorPanelProps } from "./annotator/AnnotatorPanel.js";
-export {
-  ClassRegion,
-  classListHeight,
-  MAX_CLASS_ROWS,
-  MIN_CLASS_ROWS,
-  type ClassRegionProps,
-} from "./annotator/ClassRegion.js";
+export { ClassRegion, type ClassRegionProps } from "./annotator/ClassRegion.js";
+export { classListHeight, MAX_CLASS_ROWS, MIN_CLASS_ROWS } from "./annotator/classRegionLayout.js";
 export { ShortcutSheet, type ShortcutSheetProps } from "./annotator/ShortcutSheet.js";
 
 // The one way out of a sub-view inside a project. Structural, never `navigate(-1)`.
@@ -300,15 +295,14 @@ export { parentLabel } from "./patterns/parentLabel.js";
 
 // Inside a project: the section toolbar, its strip form below `lg`, and the
 // section header every section opens with. Data-only; the host spells the URLs.
+export { ProjectNav, type ProjectNavProps } from "./patterns/ProjectNav.js";
 export {
   DEFAULT_PROJECT_SECTION,
   isProjectSection,
   PROJECT_SECTIONS,
-  ProjectNav,
   type AnnotateTarget,
-  type ProjectNavProps,
   type ProjectSection,
-} from "./patterns/ProjectNav.js";
+} from "./patterns/projectSections.js";
 export {
   PROJECT_NAV_MIN_VIEWPORT_PX,
   ProjectShell,
@@ -321,15 +315,14 @@ export { ProjectFrame, type ProjectFrameProps } from "./screens/ProjectFrame.js"
 export { PaddedContent } from "./patterns/PaddedContent.js";
 
 // The floating tool palette. Reports the derived tool; never stores one.
-export { ToolPalette, toolChoices, type ToolPaletteProps } from "./annotator/ToolPalette.js";
+export { ToolPalette, type ToolPaletteProps } from "./annotator/ToolPalette.js";
+export { toolChoices } from "./annotator/toolChoices.js";
 export { ZoomWidget, type ZoomWidgetProps } from "./annotator/ZoomWidget.js";
-export {
-  AddClassDialog,
-  runAddClass,
-  type AddClassDialogProps,
-} from "./annotator/AddClassDialog.js";
+export { AddClassDialog, type AddClassDialogProps } from "./annotator/AddClassDialog.js";
+export { runAddClass } from "./annotator/addClassRules.js";
 export { ClassFields, type ClassFieldsProps } from "./patterns/ClassFields.js";
-export { BODY_ROW, ColumnHeader, ListGrid, ListPage, PAGE_INSET, columnLines, type ListColumn } from "./patterns/ListPage.js";
+export { BODY_ROW, ColumnHeader, ListGrid, ListPage, PAGE_INSET, type ListColumn } from "./patterns/ListPage.js";
+export { columnLines } from "./patterns/listColumns.js";
 export { PageStatus, PageStatusOutlet, PageStatusProvider } from "./patterns/PageStatus.js";
 export { SectionActions, SectionActionsOutlet, SectionActionsProvider } from "./patterns/SectionActions.js";
 
@@ -360,7 +353,7 @@ export {
   type AssetProgress,
   type SavePlan,
 } from "./annotator/jobQueries.js";
-export { SuggestPanel, type SuggestPanelProps } from "./annotator/SuggestPanel.js";
+export { SuggestBar, type SuggestBarProps, type SuggestShapeChoice } from "./annotator/SuggestBar.js";
 export {
   inferenceKeys,
   isLive,
