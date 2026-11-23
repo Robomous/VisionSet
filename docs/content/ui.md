@@ -431,11 +431,21 @@ filter. **Opening a row opens the batch's detail panel** at the right of the pag
 stays in view and the two are read together ([`DESIGN.md`](../../DESIGN.md#detail-panels): it
 comes from the right, its width is the person's to set, and it is not a dialog; below `lg` it is
 a sheet). The panel is the batch's only home: a batch has no page, and the old
-`/projects/:id/batches/:batchId` address redirects here. It reads *Batch n of N* with previous
-and next (J/K walk the batches without closing it), the name and state, the batch's facts -
-images, schema pin, how much is labeled - and its **jobs**: who holds each, how far it has come
-(`done/images`, read per job), and *Open* into the editor on that job, or *Done*. The panel opens
-with focus on the batch's forward step, and Escape closes it.
+`/projects/:id/batches/:batchId` address redirects here. A slim toolbar reads *Batch n of N*
+with previous and next (J/K walk the batches without closing it) and close; under it the
+batch's name is the page's title, and its **properties** follow one per row, an icon and a
+label beside the value. The state is one of them - a state chip whose glyph says the phase
+(the dashed ring, the ring, the labeling pie, the arrow to the dataset, the check) and whose
+card says what it means, not a badge beside the name - with Labeled (*18 of 48 · 38%* over a meter), Images and Assigned (who holds
+the jobs, and how many nobody does). The rest - Review (accepted, waiting, skipped), the schema
+version, Kind (a correction or not) and how many of its images are In dataset - wait behind
+*N more properties*, which opens in place, cannot be tabbed into while folded, and stays open
+as J/K walks the batches. Then its **jobs**: who holds each, how far it has come
+(`done/images`, read per job), and *Open* into the editor on that job, or *Done*. When the
+title scrolls out of view on the way down the jobs, the name, the state and how far it has come
+gather into one line pinned under the toolbar; it echoes the page, so assistive tech is not told
+twice, and pressing it scrolls back up. The panel opens with focus on the batch's forward step,
+and Escape closes it.
 
 **The panel's footer carries every action on the batch**, each offered from the batch's
 `allowed_actions` - never from its state read here - and each with its own gating, refusals and

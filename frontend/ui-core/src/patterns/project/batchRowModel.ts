@@ -1,6 +1,8 @@
+import { assetNoun } from "../../lib/assetNoun";
 import { formatCount } from "../../lib/format";
 import { labelSegments, type ProgressDetail } from "../progressDetail";
 import type { State } from "../StateChip";
+import type { SheetJob } from "./BatchSheet";
 import type { BatchPhase } from "./BatchSummary";
 import type { BatchRowView } from "./BatchTable";
 
@@ -48,12 +50,23 @@ export function initials(name: string): string {
 }
 
 /** What a batch's Labeled says when pointed at: the batch, and how its images split. */
-export function labeledDetail(row: Pick<BatchRowView, "name" | "done" | "total" | "counts">): ProgressDetail {
+export function labeledDetail(row: Pick<BatchRowView, "name" | "done" | "total" | "counts" | "modality">): ProgressDetail {
   const left = row.done === null ? row.total : row.total - row.done;
+  const modality = row.modality ?? "image";
   return {
     title: "Labeled",
     caption: row.name,
     ...(row.counts == null ? {} : { segments: labelSegments(row.counts) }),
-    note: left === 0 ? "Every image is decided." : `${formatCount(left)} ${left === 1 ? "image" : "images"} still to annotate or skip.`,
+    note: left === 0 ? `Every ${assetNoun(modality, 1, "image")} is decided.` : `${formatCount(left)} ${assetNoun(modality, left, "image")} still to annotate or skip.`,
+  };
+}
+
+/** What a job's progress says when pointed at: the job, who holds it, and how its frames split. */
+export function jobDetail(job: SheetJob): ProgressDetail {
+  return {
+    title: job.label,
+    caption: job.assignee ?? "Unassigned",
+    ...(job.counts === undefined ? {} : { segments: labelSegments(job.counts) }),
+    note: job.finished ? "Done." : job.state,
   };
 }

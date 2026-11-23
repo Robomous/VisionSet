@@ -118,7 +118,7 @@ export { ProgressHoverCard, type ProgressHoverCardProps } from "./patterns/Progr
 export { KPI_CARD_HEIGHT, KPI_GRID, KpiCards, type KpiAttention, type KpiCard, type KpiStep } from "./patterns/project/KpiCards.js";
 export { BatchTable, PhaseBadge, useBatchTableView, type BatchRowView, type BatchTableProps, type BatchTableView } from "./patterns/project/BatchTable.js";
 export { PHASE_LABEL, phaseState } from "./patterns/project/batchRowModel.js";
-export { BatchSheet, type BatchSheetProps, type SheetJob } from "./patterns/project/BatchSheet.js";
+export { BatchSheet, type BatchDetails, type BatchSheetProps, type SheetJob } from "./patterns/project/BatchSheet.js";
 export { CLASS_RAIL_ROWS, ClassRail, type ClassRailProps, type ClassRow } from "./patterns/project/ClassRail.js";
 
 // The generated contract under the names every openapi-typescript consumer expects.

@@ -75,7 +75,7 @@ import {
 } from "@robomous/ui-core";
 import { formatCount, formatPercent } from "../lib/format";
 import { EmptyState, ErrorState } from "../patterns/AsyncStates";
-import { BatchSheet, type SheetJob } from "../patterns/project/BatchSheet";
+import { BatchSheet, type BatchDetails, type SheetJob } from "../patterns/project/BatchSheet";
 import { BatchTable, useBatchTableView, type BatchRowView } from "../patterns/project/BatchTable";
 import { ClassShares } from "../patterns/project/ClassShareBar";
 import { KPI_CARD_HEIGHT, KPI_GRID, KpiCards, type KpiCard, type KpiStep } from "../patterns/project/KpiCards";
@@ -752,6 +752,7 @@ function Detail({
           jobs={sheetJobs}
           {...(jobsError === undefined ? {} : { jobsError })}
           noJobs="No jobs yet. Approving the batch cuts it into jobs."
+          {...(batch === undefined ? {} : { details: detailsOf(batch) })}
           actions={
             batch === undefined ? undefined : (
               // Keyed on the batch: each control keeps the outcome of its own press, and stepping to the next batch must not carry it over.
@@ -775,6 +776,15 @@ function Detail({
   );
 }
 
+/** What the panel's folded properties say about a batch, read off the wire. */
+function detailsOf(batch: Batch): BatchDetails {
+  return {
+    review: hasJobs(batch.state) ? { accepted: batch.progress.accepted, waiting: batch.progress.review_pending, skipped: batch.progress.skipped } : null,
+    correction: batch.parent_batch_id !== null,
+    promoted: batch.promoted_asset_count,
+  };
+}
+
 /** Each job as the panel lists it: who holds it, how far it has come, and the way into it. */
 function sheetJobsOf(jobs: readonly Job[], counts: ReadonlyMap<string, ProgressCounts> | undefined, onOpenJob: ((jobId: string) => void) | undefined): SheetJob[] {
   return jobs.map((job, i) => {
@@ -787,6 +797,7 @@ function sheetJobsOf(jobs: readonly Job[], counts: ReadonlyMap<string, ProgressC
       done: progress === undefined ? undefined : annotatedShare(progress).done,
       state: JOB_STATE_LABEL[job.state] ?? job.state,
       finished: job.state === "completed",
+      ...(progress === undefined ? {} : { counts: progress }),
       ...(onOpenJob === undefined ? {} : { onOpen: () => onOpenJob(job.id) }),
     };
   });
