@@ -7,8 +7,8 @@
  *
  * ## One mapping
  *
- * `GalleryScreen` renders the lifecycle as a header badge, and any other screen
- * that names a batch's state reads the same map: "what colour is
+ * Any screen that names a batch's state — the Overview's table and panel, the
+ * ingest run card — reads the same map: "what colour is
  * `in_annotation`" and "what does a person call it" have one spelling, because
  * a second is free to drift — the promoted-not-copied rule.
  *
@@ -22,7 +22,7 @@
  * ## The tone is a token, and the word is not optional
  *
  * Left to each surface, the six per-asset states get **three** private
- * vocabularies: a monochrome ramp off `primary` for the gallery card and the
+ * vocabularies: a monochrome ramp off `primary` for a frame card and a
  * timeline, and a semantic one in the annotator in which `skipped` is
  * **`destructive`**. That makes `accepted` green on one screen and near-black on
  * another, and paints a frame somebody deliberately passed over in the
@@ -125,7 +125,7 @@ export function batchStateLabel(state: string): string {
  * on the screen that describes *work* has an answer.
  *
  * **This is a question about data, never about permission**, and the distinction
- * is the one this module got wrong. It used to gate the gallery's selection and
+ * is the one this module got wrong. It used to gate a frame selection and
  * its bulk bar, which made `hasJobs` the answer to "may work happen here" — and
  * the answer was wrong for two of the three states it admitted, because
  * `approved` and `completed` have jobs and refuse every write. Legality comes
@@ -189,7 +189,7 @@ export const SEGMENTS: readonly Segment[] = [
 export const SEGMENT_LABEL: Record<Segment, string> = {
   all: "All",
   unannotated: "Unannotated",
-  // "Model-labeled" rather than "Pre-labeled": the gallery's own Pre-label
+  // "Model-labeled" rather than "Pre-labeled": a batch's own Pre-label
   // button already owns that word, and a segment tab reading the same text
   // back would read as a second door to the same action rather than a filter.
   pre_labeled: "Model-labeled",
@@ -355,7 +355,7 @@ export function progressTone(progress: AssetProgress | null | undefined): Status
  * The dot, as the classes that draw it — border and fill, no geometry.
  *
  * The caller owns the size and the radius, because a dot on the annotator's
- * 44px bar and a dot on a gallery card are the same *status* at two scales. What
+ * 44px bar and a dot on a frame-gallery tile are the same *status* at two scales. What
  * they may not own is the colour: that is what three private vocabularies were.
  *
  * The shape decides outline-versus-solid and the tone decides which colour, so

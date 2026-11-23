@@ -11,6 +11,15 @@
  * the page. Nothing here animates but the row actions' fade: moving through
  * rows is the most frequent thing on the page, and it answers instantly.
  *
+ * ## Ten to a page
+ *
+ * The table pages client-side over the rows the lens and filter leave, ten at a
+ * time, from the band's own pager (`InlinePager`, after the filter; absent
+ * while everything fits on one page). Walking rows with the keys stays on the
+ * page; a batch opened from outside the table — the URL's `?batch=`, the
+ * panel's own J/K — brings its page in, and a new lens or filter starts over at
+ * the first.
+ *
  * ## Actions are the screen's
  *
  * The actions cell is a render prop: the screen labels the actions from the
@@ -25,12 +34,16 @@
  */
 
 import { CircleCheckBig, CircleDashed, FolderOpen, Search, Users } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 
 import { Badge, Kbd, cn } from "@robomous/ui-core";
 import { formatCount } from "../../lib/format";
 import type { BatchPhase } from "./BatchSummary";
-import { BODY_ROW, ColumnHeader, ListGrid, columnLines, type ListColumn } from "../ListPage";
+import { PHASE_DOT, PHASE_LABEL, initials } from "./batchRowModel";
+import { BODY_ROW, ColumnHeader, ListGrid, type ListColumn } from "../ListPage";
+import { columnLines } from "../listColumns";
+import { usePagination, type Pagination } from "../pagination";
+import { InlinePager } from "../TablePager";
 import { Meter } from "./ConsolePanel";
 import { ViewSwitch } from "./ViewSwitch";
 
@@ -53,22 +66,6 @@ export interface BatchRowView {
   readonly jobsError?: string;
 }
 
-export const PHASE_LABEL: Record<BatchPhase, string> = {
-  draft: "Draft",
-  approved: "Approved",
-  annotating: "Labeling",
-  completed: "Completed",
-  in_dataset: "In dataset",
-};
-
-export const PHASE_DOT: Record<BatchPhase, string> = {
-  draft: "bg-muted-foreground/40",
-  approved: "bg-muted-foreground",
-  annotating: "bg-info",
-  completed: "bg-success",
-  in_dataset: "bg-success",
-};
-
 type Lens = "all" | "open" | "in_dataset";
 
 const LENSES = [
@@ -82,8 +79,10 @@ export interface BatchTableView {
   readonly setLens: (lens: Lens) => void;
   readonly query: string;
   readonly setQuery: (query: string) => void;
-  /** The rows in the order the table shows them. */
+  /** Every row the lens and filter leave, in the order the table shows them. */
   readonly shown: readonly BatchRowView[];
+  /** The page of them on screen. */
+  readonly pagination: Pagination<BatchRowView>;
 }
 
 /**
@@ -91,7 +90,7 @@ export interface BatchTableView {
  * the rows on screen — for its detail's own J/K stepping — in the same render,
  * rather than being told them by an effect after it.
  */
-export function useBatchTableView(rows: readonly BatchRowView[]): BatchTableView {
+export function useBatchTableView(rows: readonly BatchRowView[], openId: string | null = null): BatchTableView {
   const [lens, setLens] = useState<Lens>("all");
   const [query, setQuery] = useState("");
   const shown = useMemo(() => {
@@ -100,8 +99,17 @@ export function useBatchTableView(rows: readonly BatchRowView[]): BatchTableView
       .filter((row) => (lens === "all" ? true : lens === "open" ? row.phase !== "in_dataset" : row.phase === "in_dataset"))
       .filter((row) => q === "" || row.name.toLowerCase().includes(q));
   }, [rows, lens, query]);
-  return { lens, setLens, query, setQuery, shown };
+  // Ten to a page. The open batch's page is the one shown when it was named
+  // from outside the table; from inside it is already on screen.
+  const pagination = usePagination(shown, {
+    pageSize: PAGE_SIZE,
+    resetKey: `${lens}|${query.trim()}`,
+    reveal: openId === null ? null : { token: openId, index: shown.findIndex((row) => row.id === openId) },
+  });
+  return { lens, setLens, query, setQuery, shown, pagination };
 }
+
+const PAGE_SIZE = 10;
 
 export interface BatchTableProps {
   readonly rows: readonly BatchRowView[];
@@ -114,6 +122,12 @@ export interface BatchTableProps {
   readonly actions?: (row: BatchRowView) => { readonly hover?: ReactNode; readonly menu?: ReactNode };
   /** Actions on the batches as a set, first in the panel's tool row. */
   readonly tools?: ReactNode;
+  /**
+   * A line between the band and the table — an offer about the batches as a
+   * set. It owns its own height and motion, and its own absence; the table
+   * follows it.
+   */
+  readonly note?: ReactNode;
   /** The empty table's one next step. */
   readonly emptyAction?: ReactNode;
   readonly className?: string;
@@ -124,9 +138,10 @@ function isTyping(target: EventTarget | null): boolean {
   return el !== null && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable);
 }
 
-export function BatchTable({ rows, view, openId, onOpen, actions, tools, emptyAction, className }: BatchTableProps): JSX.Element {
-  const { lens, setLens, query, setQuery, shown } = view;
+export function BatchTable({ rows, view, openId, onOpen, actions, tools, note, emptyAction, className }: BatchTableProps): JSX.Element {
+  const { lens, setLens, query, setQuery, shown, pagination } = view;
   const filter = useRef<HTMLInputElement>(null);
+  const frame = useRef<HTMLDivElement>(null);
   const rowButtons = useRef(new Map<string, HTMLButtonElement>());
 
 
@@ -143,7 +158,7 @@ export function BatchTable({ rows, view, openId, onOpen, actions, tools, emptyAc
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  function onTableKey(event: KeyboardEvent<HTMLTableSectionElement>): void {
+  function onTableKey(event: KeyboardEvent<HTMLDivElement>): void {
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     const down = event.key === "j" || event.key === "ArrowDown";
     const up = event.key === "k" || event.key === "ArrowUp";
@@ -152,9 +167,20 @@ export function BatchTable({ rows, view, openId, onOpen, actions, tools, emptyAc
     const target = event.target;
     if (!(target instanceof HTMLElement) || target.dataset.rowOpen === undefined) return;
     event.preventDefault();
-    const at = shown.findIndex((row) => row.id === target.dataset.rowOpen);
-    const next = shown[Math.min(shown.length - 1, Math.max(0, at + (down ? 1 : -1)))];
+    // Within the page: the next page is the pager's to go to.
+    const onPage = pagination.slice;
+    const at = onPage.findIndex((row) => row.id === target.dataset.rowOpen);
+    const next = onPage[Math.min(onPage.length - 1, Math.max(0, at + (down ? 1 : -1)))];
     if (next !== undefined) rowButtons.current.get(next.id)?.focus();
+  }
+
+  // A click anywhere else on a row opens it too — a pointer convenience. The
+  // keyboard's way in is the row's name button, so this is delegated to the
+  // table's frame rather than put on each (non-focusable) row; the actions stop
+  // their own clicks before they get here.
+  function onTableClick(event: MouseEvent<HTMLDivElement>): void {
+    const row = event.target instanceof Element ? event.target.closest<HTMLElement>("tr[data-row-id]") : null;
+    if (row?.dataset.rowId !== undefined) onOpen(row.dataset.rowId);
   }
 
   return (
@@ -189,9 +215,12 @@ export function BatchTable({ rows, view, openId, onOpen, actions, tools, emptyAc
                 /
               </Kbd>
             </label>
+            <InlinePager pagination={pagination} frameRef={frame} />
           </div>
         )}
       </header>
+
+      {note}
 
       {rows.length === 0 ? (
         <Empty data-testid="batches-none">
@@ -208,14 +237,21 @@ export function BatchTable({ rows, view, openId, onOpen, actions, tools, emptyAc
         <div
           className="flex min-h-0 flex-1 flex-col bg-no-repeat [&_thead]:sticky [&_thead]:top-0 [&_thead]:z-10 [&_thead]:bg-background"
           style={columnLines(actions === undefined ? COLUMNS.filter((column) => column.key !== "menu") : COLUMNS)}
+          // A wrapper that only catches the rows' bubbled keys and clicks: the
+          // interactive things are the rows' own buttons, so it carries no
+          // semantics of its own.
+          role="presentation"
+          onKeyDown={onTableKey}
+          onClick={onTableClick}
         >
           <ListGrid
             columns={actions === undefined ? COLUMNS.filter((column) => column.key !== "menu") : COLUMNS}
             minWidth="min-w-[42rem]"
             label="Batches"
+            frameRef={frame}
             head={
               <>
-                <ColumnHeader icon={FolderOpen} label="Batch" />
+                <ColumnHeader icon={FolderOpen} label="Name" />
                 <ColumnHeader icon={CircleDashed} label="State" />
                 <ColumnHeader icon={CircleCheckBig} label="Labeled" />
                 <ColumnHeader icon={Users} label="Jobs" />
@@ -223,8 +259,8 @@ export function BatchTable({ rows, view, openId, onOpen, actions, tools, emptyAc
               </>
             }
           >
-            <tbody onKeyDown={onTableKey}>
-              {shown.map((row) => (
+            <tbody>
+              {pagination.slice.map((row) => (
                 <Row
                   key={row.id}
                   row={row}
@@ -281,7 +317,6 @@ function Row({
 }): JSX.Element {
   return (
     <tr
-      onClick={onOpen}
       className={cn(
         BODY_ROW,
         // The fill a hover reveals; the next step's fade is painted in the same colour.
@@ -289,6 +324,7 @@ function Row({
         open && "bg-muted/60 [--row-fill:color-mix(in_oklab,var(--color-muted)_60%,var(--color-background))]",
       )}
       data-testid={`overview-batch-${row.name}`}
+      data-row-id={row.id}
       data-open={open ? "" : undefined}
     >
       <td className="relative">
@@ -297,7 +333,6 @@ function Row({
           ref={buttonRef}
           type="button"
           data-row-open={row.id}
-          aria-haspopup="dialog"
           aria-expanded={open}
           onClick={(event) => {
             event.stopPropagation();
@@ -378,11 +413,6 @@ function Progress({ row }: { readonly row: BatchRowView }): JSX.Element {
       </span>
     </span>
   );
-}
-
-export function initials(name: string): string {
-  const words = name.trim().split(/[\s._@-]+/).filter(Boolean);
-  return (words.length > 1 ? `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}` : name.trim().slice(0, 2)).toUpperCase();
 }
 
 /** Up to three job holders as initials, the rest as a count. */

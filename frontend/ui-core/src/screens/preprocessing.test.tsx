@@ -96,6 +96,13 @@ interface RecipeUsage {
   readonly format: string;
 }
 
+/** What a warning says: its button's name — the title — and the description under it. */
+function warningSaid(button: HTMLElement): string {
+  const described = button.getAttribute("aria-describedby");
+  const body = described === null ? "" : (document.getElementById(described)?.textContent ?? "");
+  return `${button.getAttribute("aria-label") ?? ""} ${body}`;
+}
+
 function recipeRow(name: string, spec: RecipeSpec, usedBy: RecipeUsage | null = null) {
   return {
     id: `cccccccc-0000-4000-8000-${name.padStart(12, "0")}`,
@@ -372,19 +379,30 @@ async function openExport(): Promise<HTMLElement> {
   return section;
 }
 
-/**
- * The radio of a recipe's row in the export's list (`~none` is No recipe).
- * `behindDialog` reads it while a recipe dialog is open over the page, which
- * hides the page from assistive technology.
- */
-function radio(exported: HTMLElement, name: string, behindDialog = false): HTMLInputElement {
-  return within(within(exported).getByTestId(`recipe-row-${name}`)).getByRole("radio", { hidden: behindDialog });
+/** The recipe the export's select shows chosen — "No recipe" for none. */
+function chosen(exported: HTMLElement): string {
+  return within(exported).getByTestId("export-recipe").textContent ?? "";
 }
 
-/** Choose a recipe in the export's list, once its row has arrived. */
+/** Open the export's recipe select and read its options, in order; Escape closes it again. */
+async function recipeOptions(exported: HTMLElement): Promise<string[]> {
+  await userEvent.click(within(exported).getByTestId("export-recipe"));
+  await screen.findByTestId("recipe-row-~none");
+  return screen.getAllByRole("option").map((one) => one.getAttribute("data-testid") ?? "");
+}
+
+/** Choose a recipe from the export's select, once its option has arrived. */
 async function chooseRecipe(exported: HTMLElement, name: string): Promise<void> {
-  await within(exported).findByTestId(`recipe-row-${name}`);
-  await userEvent.click(radio(exported, name));
+  await waitFor(async () => {
+    await userEvent.click(within(exported).getByTestId("export-recipe"));
+    await userEvent.click(await screen.findByTestId(`recipe-row-${name}`, {}, { timeout: 200 }));
+  });
+}
+
+/** The chosen recipe's Edit recipe or Delete, from the "⋯" beside what it does. */
+async function recipeAction(exported: HTMLElement, kind: "edit" | "delete"): Promise<void> {
+  await userEvent.click(within(exported).getByTestId("recipe-actions"));
+  await userEvent.click(await screen.findByTestId(`recipe-${kind}`));
 }
 
 /** Press Next, which moves one step on. */
@@ -575,41 +593,42 @@ describe("the recipe in a release's Export section", () => {
     baseline([recipeRow("yolo-640", LETTERBOX), recipeRow("plain", PLAIN)]);
     const exported = await openExport();
 
-    const list = within(exported).getByTestId("export-recipe");
-    await within(list).findByTestId("recipe-row-yolo-640");
-    const rows = [...list.querySelectorAll("[data-testid^='recipe-row-']")].map((one) => one.getAttribute("data-testid"));
-    expect(rows).toEqual(["recipe-row-~none", "recipe-row-yolo-640", "recipe-row-plain"]);
-    expect(radio(exported, "~none").checked).toBe(true);
-    expect(radio(exported, "yolo-640").checked).toBe(false);
+    expect(chosen(exported)).toBe("No recipe");
+    await waitFor(async () => {
+      await userEvent.keyboard("{Escape}");
+      expect(await recipeOptions(exported)).toEqual(["recipe-row-~none", "recipe-row-yolo-640", "recipe-row-plain"]);
+    });
+    expect(screen.getByTestId("recipe-row-~none").getAttribute("aria-selected")).toBe("true");
 
-    // The detail is on hover and, as words, with the radio for a screen reader.
-    const said = (name: string): string => within(exported).getByTestId(`recipe-row-${name}`).querySelector("span.sr-only")?.textContent ?? "";
+    // The detail is in a card beside the highlighted option and, as words, with the option for a screen reader.
+    const said = (name: string): string => screen.getByTestId(`recipe-row-${name}`).querySelector("span.sr-only")?.textContent ?? "";
     expect(said("yolo-640")).toContain("Letterbox 640×640");
     expect(said("yolo-640")).toContain("For YOLO11");
     expect(said("plain")).toContain("No transform");
     expect(said("plain")).toContain("For any model");
-    // Nothing is written until a row asks for it, and no recipe is chosen for the person.
+    await userEvent.keyboard("{Escape}");
+    // Nothing is written until the "+" asks for it, and no recipe is chosen for the person.
     expect(screen.queryByTestId("recipe-dialog")).toBeNull();
     // Edit and Delete belong to a chosen recipe.
-    expect(within(exported).queryByTestId("recipe-edit")).toBeNull();
-    expect(within(exported).queryByTestId("recipe-delete")).toBeNull();
+    expect(within(exported).queryByTestId("recipe-actions")).toBeNull();
   });
 
-  it("puts Edit and Delete on the chosen recipe's row alone", async () => {
+  it("says what the chosen recipe does under the select, with its Edit recipe and Delete, and nothing for No recipe", async () => {
     baseline([recipeRow("yolo-640", LETTERBOX), recipeRow("plain", PLAIN)]);
     const exported = await openExport();
     await chooseRecipe(exported, "yolo-640");
 
-    const edit = within(exported).getByTestId("recipe-edit");
-    expect(within(exported).getByTestId("recipe-row-yolo-640").contains(edit)).toBe(true);
-    expect(within(exported).getAllByTestId("recipe-delete")).toHaveLength(1);
+    expect(chosen(exported)).toBe("yolo-640");
+    expect(within(exported).getByTestId("recipe-chosen").textContent).toContain("Letterbox 640×640");
+    expect(within(exported).getByTestId("recipe-actions").getAttribute("aria-label")).toBe("Actions for yolo-640");
 
     await chooseRecipe(exported, "plain");
-    expect(within(exported).getByTestId("recipe-row-plain").contains(within(exported).getByTestId("recipe-edit"))).toBe(true);
-    expect(within(exported).getByTestId("recipe-row-yolo-640").querySelector("[data-testid='recipe-edit']")).toBeNull();
+    expect(within(exported).getByTestId("recipe-chosen").textContent).toContain("No transform");
+    expect(within(exported).getByTestId("recipe-actions").getAttribute("aria-label")).toBe("Actions for plain");
 
     await chooseRecipe(exported, "~none");
-    expect(within(exported).queryByTestId("recipe-edit")).toBeNull();
+    expect(within(exported).queryByTestId("recipe-chosen")).toBeNull();
+    expect(within(exported).queryByTestId("recipe-actions")).toBeNull();
   });
 
   it("shelves no recipes in the working copy, and the project bar publishes", async () => {
@@ -638,7 +657,7 @@ describe("the recipe in a release's Export section", () => {
     expect(screen.queryByTestId("recipe-dialog")).toBeNull();
   });
 
-  it("writes a new recipe from the list's last row, and the saved recipe becomes the export's", async () => {
+  it("writes a new recipe from the \"+\" beside the label, and the saved recipe becomes the export's", async () => {
     let created = false;
     handlers.push((request) => {
       if (request.method !== "GET" || !pathOf(request).endsWith("/preprocessing-recipes")) return undefined;
@@ -648,7 +667,7 @@ describe("the recipe in a release's Export section", () => {
     baseline();
     on("POST", /\/preprocessing-recipes$/, { status: 201, body: recipeRow("recipe", PLAIN) });
     const exported = await openExport();
-    expect(radio(exported, "~none").checked).toBe(true);
+    expect(chosen(exported)).toBe("No recipe");
 
     await userEvent.click(within(exported).getByTestId("recipe-new"));
     const dialog = await screen.findByTestId("recipe-dialog");
@@ -661,10 +680,8 @@ describe("the recipe in a release's Export section", () => {
     await userEvent.click(within(saved).getByTestId("recipe-saved-done"));
     await waitFor(() => expect(screen.queryByTestId("recipe-dialog")).toBeNull());
 
-    // The export now runs the recipe that was just written, and the list shows it chosen.
-    await within(exported).findByTestId("recipe-row-recipe");
-    await waitFor(() => expect(radio(exported, "recipe").checked).toBe(true));
-    expect(radio(exported, "~none").checked).toBe(false);
+    // The export now runs the recipe that was just written, and the select shows it chosen.
+    await waitFor(() => expect(chosen(exported)).toBe("recipe"));
   });
 
   it("opens the chosen recipe to edit, over the page, and the export keeps it chosen after a save", async () => {
@@ -673,7 +690,7 @@ describe("the recipe in a release's Export section", () => {
     const exported = await openExport();
     await chooseRecipe(exported, "yolo-640");
 
-    await userEvent.click(within(exported).getByTestId("recipe-edit"));
+    await recipeAction(exported, "edit");
     const dialog = await screen.findByTestId("recipe-dialog");
     await within(dialog).findByTestId("recipe-editor");
     expect(within(dialog).getByTestId("recipe-editor").getAttribute("data-mode")).toBe("edit");
@@ -688,14 +705,14 @@ describe("the recipe in a release's Export section", () => {
     expect(sent.some((r) => r.method === "PUT")).toBe(true);
     await userEvent.click(within(dialog).getByTestId("recipe-saved-done"));
     await waitFor(() => expect(screen.queryByTestId("recipe-dialog")).toBeNull());
-    expect(radio(exported, "yolo-640").checked).toBe(true);
+    expect(chosen(exported)).toBe("yolo-640");
   });
 
   it("asks before an edit's close throws changes away, and leaves the Export section and its choice standing", async () => {
     baseline([recipeRow("yolo-640", LETTERBOX)]);
     const exported = await openExport();
     await chooseRecipe(exported, "yolo-640");
-    await userEvent.click(within(exported).getByTestId("recipe-edit"));
+    await recipeAction(exported, "edit");
     const dialog = await screen.findByTestId("recipe-dialog");
     const name = await within(dialog).findByTestId("recipe-name");
     await userEvent.clear(name);
@@ -708,7 +725,7 @@ describe("the recipe in a release's Export section", () => {
 
     await waitFor(() => expect(screen.queryByTestId("recipe-dialog")).toBeNull());
     expect(screen.getByTestId("section-export")).not.toBeNull();
-    expect(radio(exported, "yolo-640").checked).toBe(true);
+    expect(chosen(exported)).toBe("yolo-640");
     expect(sent.some((r) => r.method === "PUT")).toBe(false);
   });
 
@@ -717,7 +734,7 @@ describe("the recipe in a release's Export section", () => {
     baseline();
     const exported = await openExport();
 
-    const said = (await within(exported).findByTestId("export-recipes-error")).textContent ?? "";
+    const said = warningSaid(await within(exported).findByTestId("export-recipes-error"));
     expect(said).toContain("busy");
     expect(said).toContain("The export runs without a recipe");
     expect(within(exported).queryByTestId("recipe-row-~none")).toBeNull();
@@ -1075,7 +1092,7 @@ describe("deleting a recipe", () => {
     const exported = await openExport();
     await chooseRecipe(exported, "yolo-640");
 
-    await userEvent.click(within(exported).getByTestId("recipe-delete"));
+    await recipeAction(exported, "delete");
     const dialog = await screen.findByTestId("delete-recipe-dialog");
     expect(dialog.textContent).toContain("Delete yolo-640?");
     expect(sent.some((r) => r.method === "DELETE")).toBe(false);
@@ -1085,11 +1102,14 @@ describe("deleting a recipe", () => {
     await waitFor(() => expect(remove()).not.toBeUndefined());
     expect(pathOf(remove() as Request)).toMatch(/\/preprocessing-recipes\/yolo-640$/);
     await waitFor(() => expect(screen.queryByTestId("delete-recipe-dialog")).toBeNull());
-    await waitFor(() => expect(within(exported).queryByTestId("recipe-row-yolo-640")).toBeNull());
-    expect(within(exported).getByTestId("recipe-row-wide-720")).not.toBeNull();
-    // The recipe the export was set to is gone, so it runs without one.
-    expect(radio(exported, "~none").checked).toBe(true);
-    expect(within(exported).queryByTestId("recipe-edit")).toBeNull();
+    // The recipe the export was set to is gone, so it runs without one, and the select no longer offers it.
+    await waitFor(() => expect(chosen(exported)).toBe("No recipe"));
+    expect(within(exported).queryByTestId("recipe-actions")).toBeNull();
+    await waitFor(async () => {
+      await userEvent.keyboard("{Escape}");
+      expect(await recipeOptions(exported)).toEqual(["recipe-row-~none", "recipe-row-wide-720"]);
+    });
+    await userEvent.keyboard("{Escape}");
   });
 
   it("renders a refused delete as prose in the dialog, never as its code", async () => {
@@ -1101,7 +1121,7 @@ describe("deleting a recipe", () => {
     const exported = await openExport();
     await chooseRecipe(exported, "yolo-640");
 
-    await userEvent.click(within(exported).getByTestId("recipe-delete"));
+    await recipeAction(exported, "delete");
     await userEvent.click(await screen.findByTestId("delete-recipe-submit"));
 
     const said = (await screen.findByTestId("delete-recipe-error")).textContent ?? "";
@@ -1110,7 +1130,7 @@ describe("deleting a recipe", () => {
     expect(said).not.toContain("1111");
     expect(screen.getByTestId("delete-recipe-dialog")).toBeTruthy();
     // Refused, so the export keeps the choice it had.
-    expect(radio(exported, "yolo-640", true).checked).toBe(true);
+    expect(chosen(exported)).toBe("yolo-640");
   });
 
   it("can be cancelled without a request", async () => {
@@ -1118,11 +1138,11 @@ describe("deleting a recipe", () => {
     const exported = await openExport();
     await chooseRecipe(exported, "yolo-640");
 
-    await userEvent.click(within(exported).getByTestId("recipe-delete"));
+    await recipeAction(exported, "delete");
     await userEvent.click(await screen.findByTestId("delete-recipe-cancel"));
 
     await waitFor(() => expect(screen.queryByTestId("delete-recipe-dialog")).toBeNull());
     expect(sent.some((r) => r.method === "DELETE")).toBe(false);
-    expect(radio(exported, "yolo-640").checked).toBe(true);
+    expect(chosen(exported)).toBe("yolo-640");
   });
 });

@@ -217,6 +217,8 @@ export async function serveApi(
   calibrations: Readonly<Record<string, Wire["CalibrationOut"]>> = {},
 ): Promise<void> {
   const stored: Wire["AnnotationOut"][] = [...seeded];
+  /** How many ids the "kernel" has minted, so each is new. */
+  let minted = 0;
   const batchBody = (): Wire["BatchOut"] => ({
     id: BATCH,
     project_id: PROJECT,
@@ -326,30 +328,69 @@ export async function serveApi(
       return route.fulfill({ status: 409, json: lifecycle.refuseSave });
     }
     if (path.endsWith("/annotations") && request.method() === "POST") {
-      // Kept, and stamped with a server id — the kernel mints its own and the page
-      // refetches to learn them (`jobQueries.ts`). A stub that answered an empty
-      // list would leave the page permanently dirty and "Saved" unreachable, which
-      // says nothing about the product.
+      // Kept, and stamped with a server id — the kernel mints its own — and
+      // answered with **exactly the rows this call stored, in the order sent**,
+      // which is `add_annotations`' contract. The page maps each shape it created
+      // to the id at the same position (`settledSave`), so a stub answering every
+      // row on the asset would hand the second save somebody else's id.
+      //
+      // What was sent is kept as sent: the kernel stamps `schema_version` and
+      // `job_id` and nothing else, so a stub that overwrote provenance or the
+      // attributes would describe a server that rewrites labels.
       const body = JSON.parse(request.postData() ?? "[]") as Wire["AnnotationCreate"][];
-      body.forEach((one, at) =>
-        stored.push({
+      const written = body.map(
+        (one): Wire["AnnotationOut"] => ({
           ...one,
-          id: `server-${stored.length + at}`,
+          id: `server-${(minted += 1)}`,
           // `asset_id` is the client's own, not a literal: `AnnotationCreate`
           // carries it and the kernel writes the label against it.
           schema_version: 3,
-          attributes: {},
-          provenance: "human",
-          model_ref: null,
-          confidence: null,
+          attributes: one.attributes ?? {},
+          provenance: one.provenance ?? "human",
+          model_ref: one.model_ref ?? null,
+          confidence: one.confidence ?? null,
           job_id: null,
         }),
       );
-      const written = stored.filter((one) => one.asset_id === body[0]?.asset_id);
+      stored.push(...written);
       return route.fulfill({
         status: 201,
         json: { items: written, total: written.length } satisfies Wire["AnnotationPage"],
       });
+    }
+    if (path.endsWith("/annotations") && request.method() === "PATCH") {
+      // A whole replacement, addressed by id; `model_ref` and `confidence` are
+      // the stored ones, as the kernel keeps them.
+      const body = JSON.parse(request.postData() ?? "[]") as Wire["AnnotationUpdate"][];
+      const written: Wire["AnnotationOut"][] = [];
+      for (const one of body) {
+        const at = stored.findIndex((row) => row.id === one.id);
+        if (at < 0) {
+          return route.fulfill({
+            status: 404,
+            json: { code: "ANNOTATION_NOT_FOUND", message: `no annotation ${one.id}` },
+          });
+        }
+        const before = stored[at]!;
+        const after: Wire["AnnotationOut"] = {
+          ...before,
+          label_class: one.label_class,
+          geometry: one.geometry,
+          attributes: one.attributes ?? before.attributes,
+        };
+        stored[at] = after;
+        written.push(after);
+      }
+      return route.fulfill({
+        json: { items: written, total: written.length } satisfies Wire["AnnotationPage"],
+      });
+    }
+    if (path.endsWith("/annotations") && request.method() === "DELETE") {
+      const gone = new Set(new URL(request.url()).searchParams.getAll("id"));
+      for (let at = stored.length - 1; at >= 0; at -= 1) {
+        if (gone.has(stored[at]!.id)) stored.splice(at, 1);
+      }
+      return route.fulfill({ status: 204, body: "" });
     }
     if (path.endsWith("/progress") && request.method() === "GET") {
       // **Derived from the same map the PUTs move**, not a frozen literal. It

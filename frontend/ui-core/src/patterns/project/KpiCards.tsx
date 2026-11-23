@@ -25,6 +25,9 @@
  * delay, on click, and on Enter. The steps are the screen's, labelled from what
  * the wire declares; this file draws, it never decides.
  *
+ * A warning — true of the number, holding nothing back — is a warning glyph in
+ * the same row, its card on hover and on focus (`patterns/WarnTip.tsx`).
+ *
  * ## Still while loading
  *
  * Every cell has the same rows — label, value, context — in one fixed height
@@ -36,6 +39,7 @@ import { ArrowUpRight, type LucideIcon } from "lucide-react";
 import { useEffect, useRef, useState, type JSX, type PointerEvent, type ReactNode } from "react";
 
 import { Button, Popover, PopoverContent, PopoverTrigger, cn } from "@robomous/ui-core";
+import { WarnTip } from "../WarnTip";
 import { Meter } from "./ConsolePanel";
 
 /** One cell's height, shared with the skeleton that stands in for it. */
@@ -75,6 +79,14 @@ export interface KpiCard {
   readonly icon: LucideIcon;
   /** Pre-formatted, without its unit. `null` while its source has not answered. */
   readonly value: string | null;
+  /** Beside the label, quieter: the count a cell drawing a chart instead of a number still owes. */
+  readonly count?: string;
+  /**
+   * A drawing in place of the value and its context — the Classes cell's bar
+   * of shares — in the same rows, so the cell keeps the row's one height. It
+   * sits above the door's layer, so pointing into it never opens the section.
+   */
+  readonly body?: ReactNode;
   /** Drawn quieter than the value it follows — `62` and `%`, not four equal characters. */
   readonly unit?: string;
   /** A share of a whole, drawn as a short meter ahead of the context. */
@@ -86,6 +98,16 @@ export interface KpiCard {
   /** Where `onGo` leads, for the accessible name: "Images", "the Dataset". */
   readonly goTo?: string;
   readonly attention?: KpiAttention;
+  /** Something true of the number worth knowing, that holds nothing back: a warning glyph and its card. */
+  readonly warning?: KpiWarning;
+  readonly "data-testid"?: string;
+}
+
+export interface KpiWarning {
+  /** The warning in a few words — "8 images without labels". */
+  readonly title: string;
+  /** A line or two that says why it matters. */
+  readonly body?: ReactNode;
   readonly "data-testid"?: string;
 }
 
@@ -129,18 +151,43 @@ function Cell({ card }: { readonly card: KpiCard }): JSX.Element {
         ) : (
           <span className="min-w-0 truncate">{card.label}</span>
         )}
-        <span className="ml-auto flex shrink-0 items-center gap-1.5">
-          {card.attention !== undefined && <Attention attention={card.attention} />}
-          {door && (
-            <ArrowUpRight
-              aria-hidden="true"
-              strokeWidth={1.75}
-              className="size-3.5 opacity-0 group-has-[[data-door]:focus-visible]/kpi:opacity-100 group-has-[[data-door]:hover]/kpi:opacity-100"
-            />
-          )}
-        </span>
+        {card.count !== undefined && <span className="shrink-0 tabular-nums">{card.count}</span>}
+        <LabelEnd card={card} door={door} />
       </h3>
 
+      {card.body !== undefined ? <div className="relative z-10 mt-2 min-w-0">{card.body}</div> : <Figures card={card} />}
+    </section>
+  );
+}
+
+/** The label row's end: a warning, what needs somebody, and the door's arrow. */
+function LabelEnd({ card, door }: { readonly card: KpiCard; readonly door: boolean }): JSX.Element {
+  return (
+    <span className="ml-auto flex shrink-0 items-center gap-1.5">
+      {card.warning !== undefined && (
+        // Above the door's layer: the warning is its own target.
+        <span className="relative z-10 -my-1 flex">
+          <WarnTip title={card.warning.title} size="sm" testId={card.warning["data-testid"]}>
+            {card.warning.body}
+          </WarnTip>
+        </span>
+      )}
+      {card.attention !== undefined && <Attention attention={card.attention} />}
+      {door && (
+        <ArrowUpRight
+          aria-hidden="true"
+          strokeWidth={1.75}
+          className="size-3.5 opacity-0 group-has-[[data-door]:focus-visible]/kpi:opacity-100 group-has-[[data-door]:hover]/kpi:opacity-100"
+        />
+      )}
+    </span>
+  );
+}
+
+/** A cell's number and the line under it, each in its own fixed row. */
+function Figures({ card }: { readonly card: KpiCard }): JSX.Element {
+  return (
+    <>
       <p className="mt-1 flex h-8 items-baseline overflow-hidden">
         {card.value === null ? (
           <span className="text-2xl font-semibold text-muted-foreground">—</span>
@@ -153,12 +200,10 @@ function Cell({ card }: { readonly card: KpiCard }): JSX.Element {
       </p>
 
       <p className="mt-1 flex h-4 min-w-0 items-center gap-2 text-xs text-muted-foreground tabular-nums">
-        {card.meter !== undefined && (
-          <Meter value={card.meter.value} total={card.meter.total} tone={card.meter.tone ?? "bg-foreground/70"} className="w-12 shrink-0" />
-        )}
+        {card.meter !== undefined && <Meter value={card.meter.value} total={card.meter.total} tone={card.meter.tone ?? "bg-foreground/70"} className="w-12 shrink-0" />}
         <span className="min-w-0 truncate">{card.context}</span>
       </p>
-    </section>
+    </>
   );
 }
 

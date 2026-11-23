@@ -1,8 +1,8 @@
 /**
  * A project's frame: its navigation beside whatever the route put inside it.
  *
- * Every route under `/projects/:id/` — the four sections, the ingest flow, the
- * batch gallery — renders inside the same navigation column (the tab strip
+ * Every route under `/projects/:id/` — the four sections and the ingest flow —
+ * renders inside the same navigation column (the tab strip
  * below `lg`), with its sections, its actions and its overflow; only
  * the annotator, which needs the whole screen, stands outside it. This is the
  * one place that reads the project for the navigation's sake, so the column
@@ -11,7 +11,7 @@
  *
  * The one filled control is the frame's only when a caller hands it the slot's
  * inputs (`cta`): the sections do, so Annotate — or Add images in its place — is
- * the project shell's dominant action there, with Add images beside Annotate; a sub-view such as the gallery or the
+ * the project shell's dominant action there, with Add images beside Annotate; a sub-view such as the
  * ingest flow does not, because that page owns its own dominant action and a
  * second filled control beside it would be two answers to "what now?".
  */
@@ -22,7 +22,7 @@ import { refusalProse } from "../data/refusals";
 import { asApiError } from "../data/errors";
 import { formatCount } from "../lib/format";
 import { ErrorState } from "../patterns/AsyncStates";
-import type { AnnotateTarget, ProjectSection } from "../patterns/ProjectNav";
+import type { ProjectSection } from "../patterns/projectSections";
 import { ProjectShell, type ProjectNavData } from "../patterns/ProjectShell";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldError } from "@robomous/ui-core";
 import {
@@ -35,9 +35,8 @@ import {
   useProject,
   useProjectStats,
   useRenameProject,
-  type Batch,
-  type Job,
 } from "./queries";
+import { openForAnnotation } from "./projectFrameRules";
 import type { FormEvent } from "react";
 
 export interface ProjectFrameProps {
@@ -73,34 +72,6 @@ export interface ProjectFrameProps {
   /** The section lays itself out across the whole pane (`ProjectShell`'s `bleed`). */
   readonly bleed?: boolean;
   readonly children: ReactNode;
-}
-
-/**
- * The batches work can actually happen in, newest first. `in_annotation` is the
- * only state an annotation may be written into, so this is not a preference —
- * anything else would send somebody to a gallery that refuses every save.
- *
- * Newest first is the wire's own order **reversed** rather than a timestamp
- * read: `BatchOut` carries no timestamp of any kind, and the metadata store
- * lists by `rowid`, so what arrives is creation order, oldest first. Inventing a
- * field to sort on would be the "No description." mistake in the other
- * direction. The copy is not decoration — the array belongs to the query cache,
- * and `reverse` mutates in place.
- */
-export function openForAnnotation(
-  batches: readonly Batch[] | undefined,
-  jobs?: ReadonlyMap<string, readonly Job[]>,
-): readonly AnnotateTarget[] {
-  return [...(batches ?? [])]
-    .filter((batch) => batch.state === "in_annotation")
-    .reverse()
-    .map((batch) => ({
-      id: batch.id,
-      name: batch.name,
-      remaining: batch.progress.unannotated,
-      schemaVersion: batch.schema_version ?? null,
-      jobIds: jobs?.get(batch.id)?.map((job) => job.id),
-    }));
 }
 
 export function ProjectFrame({
@@ -197,7 +168,7 @@ export function ProjectFrame({
  * What each section holds, for the tabs: the project's images, its active
  * classes, and the images in its dataset.
  *
- * Every route inside the frame reads it — the gallery and the ingest flow too —
+ * Every route inside the frame reads it — the ingest flow too —
  * so the tabs are the same width on every page of the project. It is handed
  * over whole once each count has answered (or failed, which leaves that one
  * out), so the tabs widen once instead of once per query. All three queries

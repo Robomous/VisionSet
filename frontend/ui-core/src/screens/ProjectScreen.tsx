@@ -71,13 +71,15 @@ import { useApiClient } from "../data/VisionSetDataProvider";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
 import { ErrorState, LoadingState } from "../patterns/AsyncStates";
-import { DEFAULT_PROJECT_SECTION, PROJECT_SECTIONS, type ProjectSection } from "../patterns/ProjectNav";
+import { DEFAULT_PROJECT_SECTION, PROJECT_SECTIONS, type ProjectSection } from "../patterns/projectSections";
 import { formatCount, formatPercent, formatWhen } from "../lib/format";
 import { DatasetScreen, type DatasetTab } from "./DatasetScreen";
 import { ImagesScreen } from "./ImagesScreen";
-import { firstRunInvitation, invitationOwnsTheAction, OverviewPanel } from "./OverviewPanel";
+import { firstRunInvitation, invitationOwnsTheAction } from "./firstRunInvitation";
+import { OverviewPanel } from "./OverviewPanel";
 import { ProjectFrame } from "./ProjectFrame";
-import { same, SchemaEditor, type SchemaDraft } from "./SchemaEditor";
+import { SchemaEditor, type SchemaDraft } from "./SchemaEditor";
+import { same } from "./schemaSame";
 import {
   useActiveSchema,
   useProject,
@@ -117,27 +119,19 @@ const SCHEMA_NOT_FOUND = "SCHEMA_NOT_FOUND";
  */
 export type ProjectTab = ProjectSection;
 
-/**
- * What a raw `?tab=` value resolves to, including the ones that have moved.
- *
- * Pure and exported because the *host* has to know: `ui-core` never imports a
- * router, so rewriting a stale URL is the app's job, and it can only do that if
- * it can ask what the value became without rendering anything.
- *
- * Returns `null` for a value that is already canonical, so a caller can tell "no
- * rewrite needed" from "rewrite to overview" without comparing strings itself.
- */
-export function resolveProjectTab(raw: string | undefined): ProjectTab | null {
-  if (raw === undefined) return null;
-  if (raw === "versions") return "schema";
-  return PROJECT_SECTIONS.includes(raw as ProjectTab) ? null : DEFAULT_PROJECT_SECTION;
-}
-
 export interface ProjectScreenProps {
   readonly projectId: string;
   /** Route changes, supplied by the app. See `ProjectsScreen`'s note. */
   readonly onIngest?: () => void;
+  /** A batch, opened in the Overview's panel — the one place a batch is shown and moved. */
   readonly onOpenBatch?: (batchId: string) => void;
+  /**
+   * The batch open in the Overview's panel, as the URL holds it (`?batch=`),
+   * and the write when the panel opens another or closes. Absent, the Overview
+   * holds it itself.
+   */
+  readonly openBatchId?: string | null;
+  readonly onOpenBatchChange?: (batchId: string | null) => void;
   readonly onOpenJob?: (jobId: string) => void;
   /**
    * Where to go once the project is gone. Absent means the overflow menu still
@@ -160,6 +154,8 @@ export function ProjectScreen({
   projectId,
   onIngest,
   onOpenBatch,
+  openBatchId,
+  onOpenBatchChange,
   onOpenJob,
   onDeleted,
   tab,
@@ -406,7 +402,7 @@ export function ProjectScreen({
   }
 
   // Batches have no section of their own: they are listed, inspected and
-  // pre-labeled on the Overview, and each opens its gallery. So `batches` — a
+  // pre-labeled on the Overview, and each opens in its panel. So `batches` — a
   // bookmarked section from before — resolves to the Overview, like any value
   // this screen does not offer. `find`, not a cast, for the same reason.
   const available: readonly ProjectTab[] = PROJECT_SECTIONS;
@@ -465,6 +461,7 @@ export function ProjectScreen({
         go={go}
         onIngest={onIngest}
         onOpenBatch={onOpenBatch}
+        openBatch={onOpenBatchChange === undefined ? undefined : { id: openBatchId ?? null, onChange: onOpenBatchChange }}
         onOpenJob={onOpenJob}
         datasetTab={datasetTab}
         onDatasetTabChange={setDatasetTab}
@@ -525,6 +522,7 @@ function Section({
   go,
   onIngest,
   onOpenBatch,
+  openBatch,
   onOpenJob,
   datasetTab,
   onDatasetTabChange,
@@ -536,6 +534,7 @@ function Section({
   readonly go: (tab: ProjectTab) => void;
   readonly onIngest: (() => void) | undefined;
   readonly onOpenBatch: ((batchId: string) => void) | undefined;
+  readonly openBatch: { readonly id: string | null; readonly onChange: (batchId: string | null) => void } | undefined;
   readonly onOpenJob: ((jobId: string) => void) | undefined;
   readonly datasetTab: DatasetTab;
   readonly onDatasetTabChange: (tab: DatasetTab) => void;
@@ -570,7 +569,7 @@ function Section({
             }}
             onOpenSchema={() => go("schema")}
             onOpenImages={() => go("images")}
-            {...(onOpenBatch === undefined ? {} : { onOpenBatch })}
+            {...(openBatch === undefined ? {} : { openBatchId: openBatch.id, onOpenBatchChange: openBatch.onChange })}
             {...(onOpenJob === undefined ? {} : { onOpenJob })}
           />
         </>

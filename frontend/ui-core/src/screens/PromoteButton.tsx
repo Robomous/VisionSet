@@ -37,10 +37,11 @@
  *
  * ## Shared, not copied
  *
- * The batch table and the gallery header both render this. Two spellings of "did
- * my work reach the dataset" would eventually disagree in front of a user, and
- * the gallery is the screen somebody is actually on when they finish a batch —
- * F18 is that it had no promote control at all.
+ * The batch panel's footer renders this, beside `Complete and promote`
+ * (`ComposedTransitions.tsx`). Two spellings of "did my work reach the dataset"
+ * would eventually disagree in front of a user, and the panel is where somebody
+ * is actually standing when they finish a batch — F18 is that the screen they
+ * were on had no promote control at all.
  */
 
 import { ArrowRight, ArrowUpToLine } from "lucide-react";
@@ -49,6 +50,7 @@ import type { JSX } from "react";
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
 import { Button, FieldError } from "@robomous/ui-core";
+import { promotionSummary } from "./batchWords";
 import { usePromoteBatch, type Batch } from "./queries";
 
 export interface PromoteButtonProps {
@@ -57,46 +59,19 @@ export interface PromoteButtonProps {
   /** The dataset screen, so a promotion can be followed to where it landed. */
   readonly onOpenDataset?: () => void;
   readonly className?: string;
+  /** The batch panel's footer draws its actions at its own size, and fills its forward one. */
+  readonly size?: "sm" | "lg";
+  readonly variant?: "default" | "outline";
 }
 
-/**
- * What a press promoted, said in one sentence.
- *
- * Exported and pure because it is the part with a decision in it, and the
- * decision is not obvious: **zero promoted is not a failure**, and the sentence
- * for it has to say why without sounding like one.
- *
- * `moved` is what the response carried; `settled` is how many of the batch's
- * assets are in the trunk now. A press that moved nothing over a batch that is
- * entirely in the trunk means "already there"; a press that moved nothing over a
- * batch with nothing in the trunk means every frame was skipped.
- */
-export function promotionSummary(
-  moved: number,
-  settled: number,
-  total: number,
-): string {
-  if (moved > 0) {
-    const excluded = total - settled;
-    const tail =
-      excluded > 0
-        ? ` ${excluded} skipped frame${excluded === 1 ? "" : "s"} stayed out.`
-        : "";
-    return `Promoted ${moved} asset${moved === 1 ? "" : "s"} to the dataset.${tail}`;
-  }
-  if (settled > 0) {
-    // The idempotent no-op, which is the case that looked most like a bug: a
-    // second press, or a first press in a fresh session after an earlier one.
-    return `Already in the dataset — nothing new to promote.`;
-  }
-  return "Nothing here can be promoted: every frame was skipped, and a skipped frame never enters the dataset.";
-}
 
 export function PromoteButton({
   batch,
   projectId,
   onOpenDataset,
   className,
+  size = "sm",
+  variant = "outline",
 }: PromoteButtonProps): JSX.Element | null {
   const promote = usePromoteBatch(projectId);
 
@@ -109,8 +84,8 @@ export function PromoteButton({
   return (
     <div className={className ?? "flex flex-col items-end gap-1"}>
       <Button
-        variant="outline"
-        size="sm"
+        variant={variant}
+        size={size}
         data-testid={`promote-${batch.name}`}
         disabled={promote.isPending}
         onClick={() => promote.mutate(batch.id)}

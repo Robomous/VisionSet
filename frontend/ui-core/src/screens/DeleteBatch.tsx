@@ -1,11 +1,11 @@
 /**
- * Deleting a batch: one overflow menu and one dialog, mounted at two sites.
+ * Deleting a batch: one overflow menu and one dialog.
  *
  * ## Why it is a component and not two
  *
- * The Batches row and the gallery header both offer this, and a second spelling
- * of "which states may be deleted", of the blast radius, or of the confirmation
- * would be the hand-mirror one layer up from the one `capabilities.ts` exists to
+ * The batch panel's footer offers this (it once had a second mount, on the
+ * Batches row), and a second spelling of "which states may be deleted", of the
+ * blast radius, or of the confirmation would be the hand-mirror one layer up from the one `capabilities.ts` exists to
  * remove. The annotator's reassignment picker has the same shape: the
  * shared piece holds everything the control *decides*, and each mount supplies
  * only its anchor and what to do afterwards.
@@ -48,9 +48,9 @@ export interface BatchOverflowMenuProps {
   /**
    * Where to go once the batch is gone.
    *
-   * The gallery passes its way back to the Batches tab, because the screen's
-   * subject no longer exists. The Batches row passes nothing: the row leaves the
-   * table and the rest of the table is still the answer.
+   * The batch panel closes itself here, because its subject no longer exists. A
+   * host that mounts this where the rest of the list is still the answer passes
+   * nothing: the row leaves the table and the table remains.
    */
   readonly onDeleted?: () => void;
   readonly align?: "start" | "center" | "end";

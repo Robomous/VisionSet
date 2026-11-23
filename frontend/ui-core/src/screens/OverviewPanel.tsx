@@ -21,17 +21,19 @@
  * number opens the section that owns it. What needs somebody is a badge in its
  * cell — *2 to review*, *1 to promote* — whose popover holds one pointer per
  * batch, labelled from what the wire declares (*Review and approve* into the
- * draft's gallery, *Review and promote* into the finished batch's). A batch
- * opens its jobs in a sheet; its row and its sheet carry pointers labelled from
- * the batch's `allowed_actions`, never from its state, each opening the batch
- * gallery where Approve and Promote live with their gating and refusals.
+ * draft's panel, *Review and promote* into the finished batch's). A batch
+ * opens in a panel beside the sheet; its row carries a pointer labelled from
+ * the batch's `allowed_actions`, never from its state, into that panel.
  *
- * **One exception, and why.** Batches have no section of their own — this page
- * is where they are listed — so pre-labeling them is offered here: the
- * project-wide dialog in the batch table's band, and the same dialog over
- * one batch from that batch's menu and sheet. It is the page's only mutation,
- * it carries its own gating and refusals, and it is offered only where a batch
- * declares `pre_label`.
+ * **Batches are the exception, and why.** Batches have no section and no page
+ * of their own — this page is where they are listed — so what a batch may be
+ * asked to do is done here: the panel carries Approve, Start, Complete,
+ * Complete and promote, Promote, Create correction batch, Delete and Auto-label
+ * (`BatchActions`), each with its own gating, refusals and outcome, each
+ * offered only where the batch declares it. Over the table, auto-label is
+ * offered for the project as a whole (`AutoLabel.tsx`): a line while images
+ * are waiting for labels, an icon in the band once it is put away. The open batch is the URL's
+ * (`?batch=`), so every screen that names a batch opens it here.
  *
  * ## Counts come from the project, not from the trunk
  *
@@ -50,8 +52,8 @@
  * so nothing moves when the numbers arrive.
  */
 
-import { ArrowUpRight, Check, CircleCheckBig, Ellipsis, ImageIcon, ImagePlay, Images, PackageCheck, PanelRight, Pencil, Play, Sparkles, Tag, Tags, Upload, type LucideIcon } from "lucide-react";
-import { useCallback, useMemo, useState, type JSX } from "react";
+import { ArrowUpRight, Check, CircleCheckBig, Ellipsis, ImageIcon, Images, PackageCheck, PanelRight, Pencil, Play, Tag, Tags, Upload, WandSparkles, type LucideIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { asApiError } from "../data/errors";
@@ -62,6 +64,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  Sheet,
+  SheetContent,
+  SheetTitle,
   Skeleton,
   Tooltip,
   TooltipContent,
@@ -72,15 +77,19 @@ import { formatCount, formatPercent } from "../lib/format";
 import { EmptyState, ErrorState } from "../patterns/AsyncStates";
 import { BatchSheet, type SheetJob } from "../patterns/project/BatchSheet";
 import { BatchTable, useBatchTableView, type BatchRowView } from "../patterns/project/BatchTable";
-import { ClassRail, type ClassRow } from "../patterns/project/ClassRail";
+import { ClassShares } from "../patterns/project/ClassShareBar";
 import { KPI_CARD_HEIGHT, KPI_GRID, KpiCards, type KpiCard, type KpiStep } from "../patterns/project/KpiCards";
 import { AssetThumbnail } from "./AssetThumbnail";
+import { BatchActions, type BatchActionsProps } from "./BatchActions";
 import { annotatedShare, hasJobs } from "./batchState";
-import { ProjectPreLabelButton, ProjectPreLabelDialog } from "./ProjectPreLabelDialog";
-import { IMBALANCE_MIN_CLASSES, IMBALANCE_SHARE, imbalanceNote } from "./imbalance";
-import { batchPhase, swatchFor } from "./overviewView";
+import { AutoLabelDialog, AutoLabelLine, AutoLabelTool } from "./AutoLabel";
+import { ProjectPreLabelDialog } from "./ProjectPreLabelDialog";
+import { useAutoLabel } from "./useAutoLabel";
+import { firstRunInvitation, type FirstRunInvitation } from "./firstRunInvitation";
+import { imbalanceNote } from "./imbalance";
+import { batchRows, classRows } from "./overviewRows";
+import { batchPhase } from "./overviewView";
 import {
-  useActiveSchema,
   useBatches,
   useDatasetStats,
   useJobsByBatch,
@@ -93,9 +102,9 @@ import {
   useSources,
   type Asset,
   type Batch,
-  type BatchJobsRead,
   type Job,
   type LabelClassBody,
+  type ProgressCounts,
   type ProjectReadiness,
   type ProjectStats,
 } from "./queries";
@@ -113,8 +122,12 @@ export interface OverviewPanelProps {
   readonly onOpenSchema?: () => void;
   /** The Images section. */
   readonly onOpenImages?: () => void;
-  /** One batch's gallery. */
-  readonly onOpenBatch?: (batchId: string) => void;
+  /**
+   * The batch open in the panel, when the host holds it (the URL's `?batch=`);
+   * absent, the screen holds it itself.
+   */
+  readonly openBatchId?: string | null;
+  readonly onOpenBatchChange?: (batchId: string | null) => void;
   /** One job, straight into the editor. */
   readonly onOpenJob?: (jobId: string) => void;
 }
@@ -127,11 +140,14 @@ export function OverviewPanel({
   onOpenReleases,
   onOpenSchema,
   onOpenImages,
-  onOpenBatch,
+  openBatchId,
+  onOpenBatchChange,
   onOpenJob,
 }: OverviewPanelProps): JSX.Element {
   const stats = useProjectStats(projectId);
   const readiness = useProjectReadiness(projectId);
+  // Held here, above the sheet, because the open batch's panel is the sheet's neighbour in the row.
+  const model = useBatchesModel(projectId, openBatchId, onOpenBatchChange);
 
   if (stats.isPending) return <OverviewSkeleton />;
   if (stats.isError) {
@@ -146,20 +162,7 @@ export function OverviewPanel({
 
   const counted = stats.data;
 
-  /*
-   * Readiness is `null` while the schema query has not answered, and stays null
-   * when it failed for a reason that is not the schema-less 404. The one
-   * invitation that is true without knowing anything about the schema — a
-   * project with nothing in it has nothing in it — is the fallback for an empty
-   * project. A project that *has* images gets no invitation rather than a
-   * guessed one.
-   */
-  const invitation: FirstRunInvitation | null =
-    readiness === null
-      ? counted.asset_count === 0
-        ? "ingest"
-        : null
-      : firstRunInvitation(readiness);
+  const invitation = invitationOf(readiness, counted.asset_count);
 
   const firstRun =
     invitation === null ? null : (
@@ -181,34 +184,47 @@ export function OverviewPanel({
   }
 
   return (
-    <div className={cn("flex min-w-0 flex-col gap-px bg-border/70", FIT, FRAMED_BELOW_LG)} data-testid="overview-panel">
-      {/* Only state 3 reaches here with one: images are in, classes are not. */}
-      {firstRun !== null && <div className={cn("bg-background py-6", INSET)}>{firstRun}</div>}
+    <div className={cn("flex min-h-0 min-w-0", FIT, FRAMED_BELOW_LG)} data-testid="overview-row">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-px bg-border/70" data-testid="overview-panel">
+        {/* Only state 3 reaches here with one: images are in, classes are not. */}
+        {firstRun !== null && <div className={cn("bg-background py-6", INSET)}>{firstRun}</div>}
 
-      <Kpis
-        projectId={projectId}
-        counted={counted}
-        {...(onOpenImages === undefined ? {} : { onOpenImages })}
-        {...(onOpenSchema === undefined ? {} : { onOpenSchema })}
-        {...(onBrowseDataset === undefined ? {} : { onBrowseDataset })}
-        {...(onOpenReleases === undefined ? {} : { onOpenReleases })}
-        {...(onOpenBatch === undefined ? {} : { onOpenBatch })}
-      />
-
-      <div className={WORK_ROW}>
-        <Batches
+        <Kpis
           projectId={projectId}
-          {...(onOpenBatch === undefined ? {} : { onOpenBatch })}
-          {...(onOpenJob === undefined ? {} : { onOpenJob })}
+          counted={counted}
+          declared={classes}
+          onOpenImages={onOpenImages}
+          onOpenSchema={onOpenSchema}
+          onBrowseDataset={onBrowseDataset}
+          onOpenReleases={onOpenReleases}
+          onOpenBatch={model.setOpenId}
         />
-        {/* The rail is the fourth KPI column, so its hairline continues the one above. */}
-        <div className={RAIL}>
-          <Classes counted={counted} declared={classes} {...(onOpenSchema === undefined ? {} : { onOpenSchema })} />
-          <RecentImages projectId={projectId} total={counted.asset_count} {...(onOpenImages === undefined ? {} : { onOpenImages })} />
+
+        <div className={WORK_ROW}>
+          <Batches projectId={projectId} model={model} onOpenJob={onOpenJob} />
+          {/* The rail is the fourth KPI column, so its hairline continues the one above. */}
+          <div className={RAIL}>
+            <RecentImages projectId={projectId} total={counted.asset_count} {...(onOpenImages === undefined ? {} : { onOpenImages })} />
+          </div>
         </div>
       </div>
+
+      <Detail projectId={projectId} model={model} onOpenJob={onOpenJob} onOpenDataset={onBrowseDataset} onOpenSchema={onOpenSchema} />
     </div>
   );
+}
+
+/**
+ * Readiness is `null` while the schema query has not answered, and stays null
+ * when it failed for a reason that is not the schema-less 404. The one
+ * invitation that is true without knowing anything about the schema — a
+ * project with nothing in it has nothing in it — is the fallback for an empty
+ * project. A project that *has* images gets no invitation rather than a
+ * guessed one.
+ */
+function invitationOf(readiness: ProjectReadiness | null, assetCount: number): FirstRunInvitation | null {
+  if (readiness !== null) return firstRunInvitation(readiness);
+  return assetCount === 0 ? "ingest" : null;
 }
 
 /** The pane's inset — the one left edge everything on the page starts on. */
@@ -221,7 +237,8 @@ const INSET = "px-4 md:px-6";
  * for nothing. The batch table and the images scroll inside their own cells;
  * filtering, a run's meter and the counts arriving change content inside the
  * cells, never the cells. A short window keeps a floor, and the page scrolls
- * rather than crushing the table.
+ * rather than crushing the table. The height belongs to the row the sheet and
+ * the open batch's panel share, so the two are always as tall as each other.
  */
 const FIT = "xl:h-[calc(100dvh-var(--page-inset-top,0px)-var(--page-inset-bottom,0px)-3rem)] xl:min-h-[36rem]";
 
@@ -233,8 +250,8 @@ const FRAMED_BELOW_LG = "max-lg:overflow-hidden max-lg:rounded-lg max-lg:border 
 
 /**
  * The work row on the KPI row's four columns, a 1px gap over the border colour
- * between its cells: the batches take three, the rail one. Below `xl` they
- * stack and each takes its own height.
+ * between its cells: the batches take three, the images' rail one. Below `xl`
+ * they stack and each takes its own height.
  */
 const WORK_ROW = "grid min-h-0 flex-1 gap-px bg-border/70 xl:grid-cols-4";
 const RAIL = "flex min-h-0 min-w-0 flex-col gap-px bg-border/70";
@@ -251,6 +268,7 @@ const BATCH_CELL = "min-h-0 min-w-0 xl:col-span-3";
 function Kpis({
   projectId,
   counted,
+  declared,
   onOpenImages,
   onOpenSchema,
   onBrowseDataset,
@@ -259,14 +277,16 @@ function Kpis({
 }: {
   readonly projectId: string;
   readonly counted: ProjectStats;
-  readonly onOpenImages?: () => void;
-  readonly onOpenSchema?: () => void;
-  readonly onBrowseDataset?: () => void;
-  readonly onOpenReleases?: () => void;
-  readonly onOpenBatch?: (batchId: string) => void;
+  /** The declared classes, for their authored colours. */
+  readonly declared: readonly LabelClassBody[] | undefined;
+  readonly onOpenImages: (() => void) | undefined;
+  readonly onOpenSchema: (() => void) | undefined;
+  readonly onBrowseDataset: (() => void) | undefined;
+  readonly onOpenReleases: (() => void) | undefined;
+  /** Opens a batch in the panel beside the sheet. */
+  readonly onOpenBatch: (batchId: string) => void;
 }): JSX.Element {
   const sources = useSources(projectId);
-  const schema = useActiveSchema(projectId);
   const batches = useBatches(projectId);
   const dataset = useProjectDataset(projectId);
   const trunk = useDatasetStats(dataset.data?.id);
@@ -299,16 +319,14 @@ function Kpis({
   const releasable = inTrunk !== undefined && inTrunk > 0 && releases.data !== undefined && (latest === undefined || unreleased > 0);
 
   const steps = (batches: readonly Batch[], key: string, label: string, Icon: LucideIcon): KpiStep[] =>
-    onOpenBatch === undefined
-      ? []
-      : batches.map((batch) => ({
-          key: batch.id,
-          subject: batch.name,
-          label,
-          Icon,
-          onGo: () => onOpenBatch(batch.id),
-          "data-testid": `kpi-step-${key}-${batch.name}`,
-        }));
+    batches.map((batch) => ({
+      key: batch.id,
+      subject: batch.name,
+      label,
+      Icon,
+      onGo: () => onOpenBatch(batch.id),
+      "data-testid": `kpi-step-${key}-${batch.name}`,
+    }));
   const reviewSteps = steps(reviewable, "approve", "Review and approve", Check);
   const startSteps = steps(startable, "start", "Review and start", Play);
   const promoteSteps = steps(promotable, "promote", "Review and promote", Upload);
@@ -370,19 +388,6 @@ function Kpis({
           }),
     },
     {
-      key: "classes",
-      label: "Classes",
-      icon: Tags,
-      value: formatCount(counted.class_count),
-      // `SCHEMA_NOT_FOUND` is an *answer*, not a failure, so a project without
-      // a schema says so.
-      context: `${formatCount(counted.annotation_count)} ${counted.annotation_count === 1 ? "annotation" : "annotations"} · ${
-        schema.data === undefined ? "no schema yet" : `schema v${schema.data.version}`
-      }`,
-      "data-testid": "kpi-annotations",
-      ...door(onOpenSchema, "Classes"),
-    },
-    {
       key: "dataset",
       label: "In dataset",
       icon: PackageCheck,
@@ -417,9 +422,32 @@ function Kpis({
             },
           }),
     },
+    classesCard(counted, declared, onOpenSchema),
   ];
 
   return <KpiCards cards={cards} data-testid="overview-stats" />;
+}
+
+/**
+ * The Classes card, last, over the rail's column: the classes as their bar of
+ * shares rather than a sentence about them, and the imbalance note as its
+ * warning when the distribution earns one.
+ */
+function classesCard(counted: ProjectStats, declared: readonly LabelClassBody[] | undefined, onOpenSchema: (() => void) | undefined): KpiCard {
+  const classes = classRows(counted, declared);
+  const thin = classes.filter((row) => row.thin).length;
+  const note = imbalanceNote(counted.classes);
+  return {
+    key: "classes",
+    label: "Classes",
+    icon: Tags,
+    value: formatCount(counted.class_count),
+    count: formatCount(counted.class_count),
+    body: <ClassShares rows={classes} totalAnnotations={counted.annotation_count} />,
+    "data-testid": "kpi-annotations",
+    ...door(onOpenSchema, "Classes"),
+    ...(thin === 0 || note === null ? {} : { warning: { title: `${formatCount(thin)} thin ${thin === 1 ? "class" : "classes"}`, body: note, "data-testid": "classes-thin" } }),
+  };
 }
 
 function door(onGo: (() => void) | undefined, goTo: string): Pick<KpiCard, "onGo" | "goTo"> {
@@ -430,42 +458,6 @@ function door(onGo: (() => void) | undefined, goTo: string): Pick<KpiCard, "onGo
 const ICON = "size-3.5";
 const STROKE = 1.75;
 
-/** Live work first, then what is waiting, then what is done. */
-const PHASE_ORDER: readonly BatchRowView["phase"][] = ["annotating", "approved", "draft", "completed", "in_dataset"];
-
-/** A pre-label run is shown while it is working, never after. */
-function runningPrelabel(batch: Batch): BatchRowView["prelabel"] {
-  const run = batch.pre_label_run;
-  if (run == null || (run.state !== "queued" && run.state !== "running")) return null;
-  return { processed: run.assets_processed, total: run.assets_total ?? null };
-}
-
-/**
- * The table's rows. Each batch's jobs read stands on its own: a row whose read
- * has not landed holds its cell blank, and a row whose read failed says so in
- * that row only.
- */
-export function batchRows(batches: readonly Batch[], jobsOf: ReadonlyMap<string, BatchJobsRead> | undefined): BatchRowView[] {
-  return batches
-    .map((batch): BatchRowView => {
-      const read = hasJobs(batch.state) ? jobsOf?.get(batch.id) : undefined;
-      return {
-        id: batch.id,
-        // A correction says so — unless its name already does, which the
-        // suggested name for one does.
-        name: batch.parent_batch_id === null || batch.name.endsWith("— correction") ? batch.name : `${batch.name} — correction`,
-        phase: batchPhase(batch),
-        schemaVersion: batch.schema_version ?? null,
-        done: hasJobs(batch.state) ? annotatedShare(batch.progress).done : null,
-        total: batch.asset_count,
-        prelabel: runningPrelabel(batch),
-        assignees: !hasJobs(batch.state) ? null : read?.status === "ready" ? read.jobs.map((job) => job.assignee ?? null) : undefined,
-        ...(read?.status === "error" ? { jobsError: refusalProse(read.error) } : {}),
-      };
-    })
-    .sort((a, b) => PHASE_ORDER.indexOf(a.phase) - PHASE_ORDER.indexOf(b.phase));
-}
-
 interface Pointer {
   readonly key: "approve" | "start" | "promote" | "annotate";
   readonly label: string;
@@ -475,9 +467,9 @@ interface Pointer {
 
 /**
  * The batch's forward step as a pointer, and every one of them a way into the
- * gallery that does it (or, for a batch of one open job, into that job).
- * Approve, start and promote are labelled from what the wire declares the batch
- * may do — never from its state. *Annotate* is the one read from the phase, as
+ * batch's panel, where the step is done (or, for a batch of one open job, into
+ * that job). Approve, start and promote are labelled from what the wire
+ * declares the batch may do — never from its state. *Annotate* is the one read from the phase, as
  * the old inspector and the project bar's Annotate read it: it moves nothing,
  * it only opens work, and whether a frame may be written is the editor's
  * three-way gate to answer, not this link's.
@@ -486,10 +478,9 @@ function pointerFor(
   batch: Batch,
   phase: BatchRowView["phase"],
   jobs: readonly Job[] | undefined,
-  onOpenBatch: ((batchId: string) => void) | undefined,
+  onOpenBatch: (batchId: string) => void,
   onOpenJob: ((jobId: string) => void) | undefined,
 ): Pointer | null {
-  if (onOpenBatch === undefined) return null;
   const open = (): void => onOpenBatch(batch.id);
   if (declares(batch, BATCH_ACTION.approve)) return { key: "approve", label: "Review and approve", Icon: Check, onGo: open };
   if (declares(batch, BATCH_ACTION.start)) return { key: "start", label: "Review and start", Icon: Play, onGo: open };
@@ -503,21 +494,21 @@ function pointerFor(
   return null;
 }
 
+const NO_JOBS: readonly Job[] = [];
+
 const JOB_STATE_LABEL: Record<string, string> = {
   pending: "Not started",
   in_progress: "In progress",
   completed: "Done",
 };
 
-function Batches({
-  projectId,
-  onOpenBatch,
-  onOpenJob,
-}: {
-  readonly projectId: string;
-  readonly onOpenBatch?: (batchId: string) => void;
-  readonly onOpenJob?: (jobId: string) => void;
-}): JSX.Element {
+/**
+ * The batches the Overview lists, who holds their jobs, and which one is open.
+ *
+ * Held by the screen, not by the table's cell: the open batch's panel sits
+ * beside the whole sheet, so the table and the panel read the same model.
+ */
+function useBatchesModel(projectId: string, heldId: string | null | undefined, onHeldChange: ((batchId: string | null) => void) | undefined) {
   const batches = useBatches(projectId);
   const items = batches.data?.items;
   // Who holds the jobs of every batch that has been cut into them — one read
@@ -530,8 +521,12 @@ function Batches({
     return read?.status === "ready" ? read.jobs : undefined;
   };
   const rows = useMemo(() => batchRows(items ?? [], jobsOf), [items, jobsOf]);
-  const [openId, setOpenId] = useState<string | null>(null);
-  const view = useBatchTableView(rows);
+  const [ownId, setOwnId] = useState<string | null>(null);
+  // The host's (the URL's) when it holds one, so a batch named anywhere opens here.
+  const held = onHeldChange !== undefined;
+  const openId = held ? (heldId ?? null) : ownId;
+  const setOpenId = held ? onHeldChange : setOwnId;
+  const view = useBatchTableView(rows, openId);
   const shown = useMemo(() => view.shown.map((row) => row.id), [view.shown]);
   const [prelabelFor, setPrelabelFor] = useState<string | null>(null);
 
@@ -542,8 +537,26 @@ function Batches({
       const next = order[at + by];
       if (next !== undefined) setOpenId(next);
     },
-    [order, at],
+    [order, at, setOpenId],
   );
+
+  return { batches, items, jobsOf, jobsFor, rows, openId, setOpenId, view, prelabelFor, setPrelabelFor, order, at, step };
+}
+
+type BatchesModel = ReturnType<typeof useBatchesModel>;
+
+function Batches({
+  projectId,
+  model,
+  onOpenJob,
+}: {
+  readonly projectId: string;
+  readonly model: BatchesModel;
+  readonly onOpenJob: ((jobId: string) => void) | undefined;
+}): JSX.Element {
+  const { batches, jobsFor, rows, openId, setOpenId, view, prelabelFor, setPrelabelFor } = model;
+  // Above the early returns: the offer remembers what it last said across a refetch.
+  const autoLabel = useAutoLabel(projectId, batches.data?.items);
 
   if (batches.isPending) return <BatchesSkeleton />;
   if (batches.isError) {
@@ -559,9 +572,6 @@ function Batches({
   }
 
   const byId = new Map(batches.data.items.map((batch) => [batch.id, batch]));
-  const openRow = rows.find((row) => row.id === openId);
-  const openBatch = openId === null ? undefined : byId.get(openId);
-  const openRead = openId === null ? undefined : jobsOf.get(openId);
   const preLabeling = prelabelFor === null ? undefined : byId.get(prelabelFor);
 
   return (
@@ -572,16 +582,13 @@ function Batches({
         openId={openId}
         onOpen={setOpenId}
         view={view}
-        {...(onOpenBatch === undefined
-          ? {}
-          : {
-              // Renders nothing when no batch declares `pre_label`.
-              tools: <ProjectPreLabelButton projectId={projectId} batches={batches.data.items} onOpenBatch={onOpenBatch} />,
-            })}
+        // Both render nothing when no batch declares `pre_label`.
+        tools={<AutoLabelTool offer={autoLabel} />}
+        note={<AutoLabelLine offer={autoLabel} />}
         actions={(row) => {
           const batch = byId.get(row.id);
           if (batch === undefined) return {};
-          const forward = pointerFor(batch, row.phase, jobsFor(row.id), onOpenBatch, onOpenJob);
+          const forward = pointerFor(batch, row.phase, jobsFor(row.id), setOpenId, onOpenJob);
           return {
             ...(forward === null
               ? {}
@@ -599,7 +606,6 @@ function Batches({
                 name={row.name}
                 forward={forward}
                 onDetails={() => setOpenId(row.id)}
-                {...(onOpenBatch === undefined ? {} : { onOpenBatch: () => onOpenBatch(row.id) })}
                 onPrelabel={() => setPrelabelFor(row.id)}
               />
             ),
@@ -607,21 +613,9 @@ function Batches({
         }}
       />
 
-      <Detail
-        row={openRow}
-        batch={openBatch}
-        jobs={openBatch === undefined || !hasJobs(openBatch.state) ? [] : jobsFor(openBatch.id)}
-        {...(openRead?.status === "error" ? { jobsError: { message: refusalProse(openRead.error), onRetry: openRead.retry } } : {})}
-        position={{ at: Math.max(0, at), count: order.length }}
-        onStep={step}
-        onClose={() => setOpenId(null)}
-        onPrelabel={() => openId !== null && setPrelabelFor(openId)}
-        {...(onOpenBatch === undefined ? {} : { onOpenBatch })}
-        {...(onOpenJob === undefined ? {} : { onOpenJob })}
-      />
-
-      {preLabeling !== undefined && onOpenBatch !== undefined && (
-        <ProjectPreLabelDialog projectId={projectId} batches={[preLabeling]} onClose={() => setPrelabelFor(null)} onOpenBatch={onOpenBatch} />
+      <AutoLabelDialog projectId={projectId} offer={autoLabel} onOpenBatch={setOpenId} />
+      {preLabeling !== undefined && (
+        <ProjectPreLabelDialog projectId={projectId} batches={[preLabeling]} onClose={() => setPrelabelFor(null)} onOpenBatch={setOpenId} />
       )}
     </>
   );
@@ -633,14 +627,12 @@ function RowMenu({
   name,
   forward,
   onDetails,
-  onOpenBatch,
   onPrelabel,
 }: {
   readonly batch: Batch;
   readonly name: string;
   readonly forward: Pointer | null;
   readonly onDetails: () => void;
-  readonly onOpenBatch?: () => void;
   readonly onPrelabel: () => void;
 }): JSX.Element {
   return (
@@ -661,16 +653,10 @@ function RowMenu({
             {forward.label}
           </DropdownMenuItem>
         )}
-        {onOpenBatch !== undefined && (
-          <DropdownMenuItem onSelect={onOpenBatch} data-testid="menu-open">
-            <ImagePlay strokeWidth={STROKE} />
-            Open batch
-          </DropdownMenuItem>
-        )}
-        {onOpenBatch !== undefined && declares(batch, BATCH_ACTION.preLabel) && (
+        {declares(batch, BATCH_ACTION.preLabel) && (
           <DropdownMenuItem onSelect={onPrelabel} data-testid="menu-prelabel">
-            <Sparkles strokeWidth={STROKE} />
-            Pre-label
+            <WandSparkles strokeWidth={STROKE} />
+            Auto-label
           </DropdownMenuItem>
         )}
       </DropdownMenuContent>
@@ -678,34 +664,116 @@ function RowMenu({
   );
 }
 
-/** The open batch's sheet: its jobs, each job's own progress, and its pointers. */
+/** The open batch, in a panel at the right of the sheet: its jobs, each job's own progress, and what it may be asked to do. */
 function Detail({
-  row,
-  batch,
-  jobs,
-  jobsError,
-  position,
-  onStep,
-  onClose,
-  onPrelabel,
-  onOpenBatch,
+  projectId,
+  model,
   onOpenJob,
+  onOpenDataset,
+  onOpenSchema,
 }: {
-  readonly row: BatchRowView | undefined;
-  readonly batch: Batch | undefined;
-  readonly jobs: readonly Job[] | undefined;
-  readonly jobsError?: { readonly message: string; readonly onRetry: () => void };
-  readonly position: { readonly at: number; readonly count: number };
-  readonly onStep: (step: 1 | -1) => void;
-  readonly onClose: () => void;
-  readonly onPrelabel: () => void;
-  readonly onOpenBatch?: (batchId: string) => void;
-  readonly onOpenJob?: (jobId: string) => void;
+  readonly projectId: string;
+  readonly model: BatchesModel;
+  readonly onOpenJob: ((jobId: string) => void) | undefined;
+  readonly onOpenDataset: (() => void) | undefined;
+  readonly onOpenSchema: (() => void) | undefined;
 }): JSX.Element {
+  const { items, rows, jobsOf, openId, setOpenId, setPrelabelFor, order, at, step } = model;
+  const row = rows.find((one) => one.id === openId);
+  const batch = openId === null ? undefined : items?.find((one) => one.id === openId);
+  const read = openId === null ? undefined : jobsOf.get(openId);
+  const jobs = useMemo(
+    () => (batch === undefined || !hasJobs(batch.state) ? NO_JOBS : read?.status === "ready" ? read.jobs : undefined),
+    [batch, read],
+  );
+  const jobsError = read?.status === "error" ? { message: refusalProse(read.error), onRetry: read.retry } : undefined;
+
   const ids = useMemo(() => (jobs ?? []).map((job) => job.id), [jobs]);
   const { counts } = useJobsProgress(ids);
-  const forward = batch === undefined || row === undefined ? null : pointerFor(batch, row.phase, jobs, onOpenBatch, onOpenJob);
-  const sheetJobs: SheetJob[] | undefined = jobs?.map((job, i) => {
+  const sheetJobs = jobs === undefined ? undefined : sheetJobsOf(jobs, counts, onOpenJob);
+
+  const close = useCallback(() => setOpenId(null), [setOpenId]);
+  // The batch to hand the focus back to: the one open now, or the last one
+  // the sheet showed while it slides out.
+  const lastOpen = useRef<string | null>(null);
+  useEffect(() => {
+    if (openId !== null) lastOpen.current = openId;
+  }, [openId]);
+
+  return (
+    // Not modal: people open several batches in a row, so the table stays live
+    // under the sheet — another row, the pager, the filter, J/K — and a press
+    // there changes what the sheet shows instead of closing it. A press
+    // anywhere else, or Escape, puts it away.
+    <Sheet modal={false} open={row !== undefined} onOpenChange={(next) => !next && close()}>
+      <SheetContent
+        side="right"
+        showCloseButton={false}
+        aria-describedby={undefined}
+        aria-label="Batch"
+        data-testid="batch-sheet"
+        onInteractOutside={(event) => {
+          const target = event.target instanceof Element ? event.target : null;
+          if (target?.closest('[data-testid="overview-batches"], [role=menu], [role=listbox], [role=dialog]') != null) event.preventDefault();
+        }}
+        // Focus leaving is not a dismissal: a popover that opened a batch hands
+        // the focus back to its trigger as it closes, and the sheet must stay.
+        onFocusOutside={(event) => event.preventDefault()}
+        onEscapeKeyDown={(event) => {
+          // A filter being typed in owns its Escape: it clears or leaves the field.
+          const target = event.target instanceof HTMLElement ? event.target : null;
+          if (target !== null && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) event.preventDefault();
+        }}
+        // In on the strong ease-out, out faster than it came: the sheet is
+        // opened to read, and closed to get back to the table. Only opacity
+        // and the slide move, never every property.
+        className="w-full gap-0 p-0 transition-[opacity,translate] ease-[cubic-bezier(0.23,1,0.32,1)] data-closed:duration-150 data-open:duration-250 sm:max-w-[30rem]"
+        // Back to the batch's own row — the one stepped to, if J/K moved it —
+        // rather than to whatever was focused when it opened.
+        onCloseAutoFocus={(event) => {
+          const id = lastOpen.current;
+          const rowButton = id === null ? null : document.querySelector<HTMLElement>(`[data-row-open="${id}"]`);
+          if (rowButton === null) return;
+          event.preventDefault();
+          rowButton.focus({ preventScroll: true });
+        }}
+      >
+        <SheetTitle className="sr-only">Batch</SheetTitle>
+      {row !== undefined && (
+        <BatchSheet
+          row={row}
+          position={{ at: Math.max(0, at), count: order.length }}
+          onStep={step}
+          onClose={close}
+          jobs={sheetJobs}
+          {...(jobsError === undefined ? {} : { jobsError })}
+          noJobs="No jobs yet. Approving the batch cuts it into jobs."
+          actions={
+            batch === undefined ? undefined : (
+              // Keyed on the batch: each control keeps the outcome of its own press, and stepping to the next batch must not carry it over.
+              <BatchActions
+                key={batch.id}
+                batch={batch}
+                projectId={projectId}
+                phase={row.phase}
+                existingCorrections={(items ?? []).filter((one) => one.parent_batch_id === batch.id).length}
+                onPrelabel={() => setPrelabelFor(batch.id)}
+                onOpenBatch={setOpenId}
+                onDeleted={() => setOpenId(null)}
+                {...links(jobs, onOpenJob, onOpenDataset, onOpenSchema)}
+              />
+            )
+          }
+        />
+      )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+/** Each job as the panel lists it: who holds it, how far it has come, and the way into it. */
+function sheetJobsOf(jobs: readonly Job[], counts: ReadonlyMap<string, ProgressCounts> | undefined, onOpenJob: ((jobId: string) => void) | undefined): SheetJob[] {
+  return jobs.map((job, i) => {
     const progress = counts?.get(job.id);
     return {
       id: job.id,
@@ -718,101 +786,29 @@ function Detail({
       ...(onOpenJob === undefined ? {} : { onOpen: () => onOpenJob(job.id) }),
     };
   });
-
-  return (
-    <BatchSheet
-      row={row}
-      position={position}
-      onStep={onStep}
-      onClose={onClose}
-      jobs={sheetJobs}
-      {...(jobsError === undefined ? {} : { jobsError })}
-      noJobs="No jobs yet. Approving the batch in its gallery cuts it into jobs."
-      actions={
-        batch === undefined || onOpenBatch === undefined ? undefined : (
-          <>
-            {declares(batch, BATCH_ACTION.preLabel) && (
-              <Button variant="ghost" size="lg" className="mr-auto" onClick={onPrelabel} data-testid="sheet-prelabel">
-                <Sparkles data-icon="inline-start" className={ICON} strokeWidth={STROKE} aria-hidden="true" />
-                Pre-label
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              size="lg"
-              onClick={() => onOpenBatch(batch.id)}
-              data-testid="sheet-open"
-              {...(forward === null ? { "data-autofocus": "" } : {})}
-            >
-              <ImagePlay data-icon="inline-start" className={ICON} strokeWidth={STROKE} aria-hidden="true" />
-              Open batch
-            </Button>
-            {forward !== null && (
-              <Button size="lg" onClick={forward.onGo} data-autofocus="" data-testid={`sheet-${forward.key}`}>
-                <forward.Icon data-icon="inline-start" className={ICON} strokeWidth={STROKE} aria-hidden="true" />
-                {forward.label}
-              </Button>
-            )}
-          </>
-        )
-      }
-    />
-  );
 }
 
-/**
- * Every declared class, then any counted class the active schema no longer
- * declares — the trunk may legitimately hold one, and hiding it would hide
- * annotations that exist.
- */
-export function classRows(
-  counted: Pick<ProjectStats, "classes">,
-  declared: readonly LabelClassBody[] | undefined,
-): ClassRow[] {
-  const counts = new Map(counted.classes.map((one) => [one.label_class, one]));
-  const names = [...(declared ?? []).map((one) => one.name), ...counted.classes.map((one) => one.label_class)];
-  const total = counted.classes.reduce((sum, one) => sum + one.annotations, 0);
-  const judged = counted.classes.length >= IMBALANCE_MIN_CLASSES && total > 0;
-  return [...new Set(names)]
-    .map((name): ClassRow => {
-      const one = counts.get(name);
-      const annotations = one?.annotations ?? 0;
-      return {
-        name,
-        color: swatchFor(declared, name),
-        annotations,
-        images: one?.assets ?? 0,
-        thin: judged && annotations > 0 && annotations / total < IMBALANCE_SHARE,
-      };
-    })
-    .sort((a, b) => b.annotations - a.annotations);
-}
-
-function Classes({
-  counted,
-  declared,
-  onOpenSchema,
-}: {
-  readonly counted: ProjectStats;
-  readonly declared: readonly LabelClassBody[] | undefined;
-  readonly onOpenSchema?: () => void;
-}): JSX.Element {
-  return (
-    <ClassRail
-      rows={classRows(counted, declared)}
-      totalAnnotations={counted.annotation_count}
-      note={imbalanceNote(counted.classes)}
-      {...(onOpenSchema === undefined ? {} : { onOpen: onOpenSchema })}
-    />
-  );
+/** Where the panel's actions lead: the batch's one job (when it has exactly one), the dataset, the classes. */
+function links(
+  jobs: readonly Job[] | undefined,
+  onOpenJob: ((jobId: string) => void) | undefined,
+  onOpenDataset: (() => void) | undefined,
+  onOpenSchema: (() => void) | undefined,
+): Pick<BatchActionsProps, "onAnnotate" | "onOpenDataset" | "onOpenSchema"> {
+  const only = jobs?.length === 1 ? jobs[0] : undefined;
+  return {
+    ...(only === undefined || onOpenJob === undefined ? {} : { onAnnotate: () => onOpenJob(only.id) }),
+    ...(onOpenDataset === undefined ? {} : { onOpenDataset }),
+    ...(onOpenSchema === undefined ? {} : { onOpenSchema }),
+  };
 }
 
 /** How many of the project's images the rail previews. */
 export const PREVIEW_IMAGES = 24;
 
 /**
- * A look at the images themselves, under the classes: the project's first
- * `PREVIEW_IMAGES`, in a grid that fills what the classes leave and scrolls
+ * A look at the images themselves, in the rail beside the batches: the
+ * project's first `PREVIEW_IMAGES`, in a grid that fills the rail and scrolls
  * past it — the edge with more to see fades, so the cut never reads as the end.
  * Each is a way into the Images section; its size and frame are on hover.
  */
@@ -863,7 +859,7 @@ function RecentImages({
             className={cn(
               "grid auto-rows-min grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-1.5 py-3",
               INSET,
-              // In the rail it fills what the classes leave and scrolls past it; the edge with more fades.
+              // In the rail it fills the cell and scrolls past it; the edge with more fades.
               "xl:absolute xl:inset-0 xl:overflow-y-auto xl:[mask-image:linear-gradient(to_bottom,black_calc(100%-1.5rem),transparent)]",
             )}
           >
@@ -907,58 +903,6 @@ function Tile({ asset, projectId, onOpen }: { readonly asset: Asset; readonly pr
       </Tooltip>
     </li>
   );
-}
-
-/**
- * Which invitation this project's state asks for, or `null` once it asks for
- * none.
- *
- * Three names for three states rather than a pair of booleans read at every
- * call site. `ingest-first` and `ingest` lead to the same place and say
- * different things, because "you have nothing yet" and "your classes are in,
- * bring the images" are sentences for different readers — and only the first
- * can honestly offer the other order.
- */
-export type FirstRunInvitation = "ingest-first" | "ingest" | "classes-after-ingest";
-
-/**
- * The state-driven Overview's one rule.
- *
- * Exactly one invitation renders, and none at all once the project has both
- * halves — `DESIGN.md` principle 8 applied at minute zero rather than only once
- * a project has data. A four-station onboarding checklist alongside it would say
- * *labels* while the header and the empty state both said *ingest*: two
- * hierarchies are none.
- *
- * **It guides and never gates.** Ingest and Schema stay independently reachable
- * throughout — both orders are legitimate — which is why the alternative path in
- * state 1 is one line of prose and not a second filled button. Ingest leads
- * because it is the step with something to look at afterwards: images give the
- * dashboard its counts and samples, while a schema over an empty project only
- * changes one chip.
- *
- * A pure function on `imbalanceNote`'s precedent: the state table is the thing
- * worth pinning, and pinning it should not need a DOM.
- */
-export function firstRunInvitation({
-  hasSchema,
-  hasAssets,
-}: ProjectReadiness): FirstRunInvitation | null {
-  if (hasSchema) return hasAssets ? null : "ingest";
-  return hasAssets ? "classes-after-ingest" : "ingest-first";
-}
-
-/**
- * Whether the invitation carries the page's one filled button.
- *
- * One spelling, read twice: here to pick the variant, and by `ProjectScreen` to
- * step the header's Ingest back to `secondary` for as long as it holds. Both
- * ingest invitations are the deliberate exception — the header's Ingest is the
- * same label and the same handler, so the filled one stays up there and
- * this one stays outlined. Either way the page shows exactly one filled button.
- */
-export function invitationOwnsTheAction(invitation: FirstRunInvitation | null): boolean {
-  return invitation === "classes-after-ingest";
 }
 
 /**
