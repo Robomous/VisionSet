@@ -142,6 +142,8 @@ export const REFUSAL_PROSE: Record<string, string> = {
   // Ingest.
   INGEST_JOB_NOT_FOUND: "That run is no longer on record.",
   SOURCE_NOT_FOUND: "That source is no longer on record.",
+  CALIBRATION_IN_USE:
+    "Some of these scans already carry 3D labels drawn in their declared frame, so they cannot be registered again with another one. Register them with the frame they were declared in, or remove their 3D labels first.",
 
   // Browser video import. **No sentence here offers to decode on the server**:
   // there is no server-side decoder, and a remedy pointing at one would send

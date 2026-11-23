@@ -316,7 +316,7 @@ describe("uploading point-cloud scans", () => {
   });
 
   it.each([
-    [409, "CALIBRATION_IN_USE", "Labels were drawn against this calibration."],
+    [409, "CALIBRATION_IN_USE", "already carry 3D labels drawn in their declared frame"],
     [422, "INVALID_NAME", "That name is not allowed."],
   ])("renders a %i %s, keeps the files and frame, and a retry with another frame works", async (status, code, message) => {
     let refuse = true;

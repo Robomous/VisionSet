@@ -2176,7 +2176,7 @@ function Workspace({
           </span>
           <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
           <span className="shrink-0 font-medium tabular-nums" aria-current="page">
-            {assetCount === 1 ? "Job · 1 frame" : `Job · ${assetCount} frames`}
+            {`Job · ${assetCount} ${isScan ? "scan" : "frame"}${assetCount === 1 ? "" : "s"}`}
           </span>
           {/* The batch's pin, not the project's active version. Named here because
               the pin is movable: "why can I not use the class I just made"

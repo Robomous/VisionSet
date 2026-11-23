@@ -372,7 +372,10 @@ export function AnnotatorPanel({
                 schema={schema}
                 selected={snapshot.selection.has(annotation.id)}
                 hidden={hiddenIds.has(annotation.id)}
-                onSelect={() => store.select(selectOnly(annotation.id))}
+                onSelect={() => {
+                  store.select(selectOnly(annotation.id));
+                  focusView('[data-testid="annotator-root"]', '[data-testid="annotator-root"]');
+                }}
                 onToggleVisible={() => toggleHidden(annotation.id)}
                 {...(readOnly
                   ? {}
@@ -391,7 +394,10 @@ export function AnnotatorPanel({
                 index={index}
                 color={classColor(classNamed(snapshot.document, annotation.label_class), annotation.label_class)}
                 selected={scanSnapshot?.selection.has(annotation.id) === true}
-                onSelect={() => scan?.store.select(selectOnly(annotation.id))}
+                onSelect={() => {
+                  scan?.store.select(selectOnly(annotation.id));
+                  focusView('[data-scan-view="perspective"]', '[data-scan-view="perspective"] canvas');
+                }}
                 onRemove={readOnly || scan?.onRemove == null ? null : () => scan.onRemove?.(annotation.id)}
               />
             ))}
@@ -679,6 +685,7 @@ function ObjectRow({
           data-testid={`object-select-${index}`}
           aria-label={`Select object ${number}, ${annotation.label_class}`}
           aria-expanded={hasAttributes ? selected : undefined}
+          onMouseDown={keepFocus}
           onClick={onSelect}
           className="absolute inset-0 rounded-[5px] outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
         />
@@ -793,6 +800,18 @@ function RowActions({
   );
 }
 
+/** A row click selects without taking focus off the view, whose keys act on the selection. */
+function keepFocus(event: { preventDefault: () => void }): void {
+  event.preventDefault();
+}
+
+/** After a row selects, hand focus back to the view, unless it is already inside it. */
+function focusView(selector: string, target: string): void {
+  const view = document.querySelector<HTMLElement>(selector);
+  if (view === null || view.contains(document.activeElement)) return;
+  document.querySelector<HTMLElement>(target)?.focus();
+}
+
 /** One cuboid or polyline on a scan: select it, or delete it. No visibility toggle: the scan view has none per label. */
 function CuboidRow({
   annotation,
@@ -826,6 +845,7 @@ function CuboidRow({
       <button
         type="button"
         data-testid={`object-select-${index}`}
+        onMouseDown={keepFocus}
         onClick={onSelect}
         className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs"
       >

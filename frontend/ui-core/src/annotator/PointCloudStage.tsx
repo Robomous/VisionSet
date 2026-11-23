@@ -42,7 +42,7 @@ import {
   type ScanView as ScanCamera,
 } from "@visionset/annotator/react";
 import { Box, Cuboid, MousePointer2, Pencil, Redo2, RotateCcw, Undo2, Waypoints } from "lucide-react";
-import { useEffect, useMemo, useState, type JSX, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 
 import {
   Button,
@@ -97,13 +97,13 @@ const VIEW_LABEL =
 const EDIT_LABEL =
   "Point cloud, editing 3D labels. Drag to draw or adjust a cuboid, click to place a polyline's vertices, " +
   "right-drag to orbit, middle-drag or shift and right-drag to pan, scroll to zoom. Delete removes the selected label, " +
-  "Escape cancels, and Enter finishes a cuboid's height or a polyline.";
+  "Escape cancels, and Enter finishes a polyline, or a cuboid's height, which a click in either view also finishes.";
 
 const TOP_DOWN_LABEL =
   "Top-down view of the point cloud, following the perspective view's centre. Drag to draw a footprint, " +
   "move a cuboid, pull a side face or turn the yaw handle, or click to place a polyline's vertices; " +
   "right-drag or middle-drag to pan, scroll to zoom. " +
-  "A cuboid's height is set in the perspective view.";
+  "A cuboid's height is set in the perspective view, and Enter or a click in either view finishes it.";
 
 type Fetched =
   | { readonly kind: "loading" }
@@ -257,6 +257,13 @@ function ScanView({
 
   const total = asset.point_cloud?.point_count ?? sample.count;
 
+  const stageRef = useRef<HTMLDivElement>(null);
+  const heightStep = scan?.editor.state.type === "drawing-height";
+  useEffect(() => {
+    if (!heightStep || inScanView(document.activeElement)) return;
+    stageRef.current?.querySelector<HTMLElement>('[data-scan-view="perspective"] canvas')?.focus();
+  }, [heightStep]);
+
   if (status === "unsupported") {
     return <NoWebGl projectId={projectId} asset={asset} frame={frame} />;
   }
@@ -311,6 +318,7 @@ function ScanView({
 
   return (
     <div
+      ref={stageRef}
       className="@container relative size-full"
       data-testid="point-cloud-stage"
       onKeyDown={onKeyDown}
@@ -498,7 +506,7 @@ function ScanView({
 
 const NO_POINTS: readonly Point3D[] = [];
 
-function inScanView(target: EventTarget): boolean {
+function inScanView(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest("[data-scan-view]") !== null;
 }
 
@@ -527,6 +535,7 @@ function WithReason({ reason, children }: { readonly reason: string; readonly ch
  * stay on screen when they cannot be used, disabled with the reason.
  */
 const POLYLINE_HINT = "Click along the line. Enter or double-click finishes it.";
+const HEIGHT_HINT = "Move the pointer in the perspective view to set the height. Enter or a click in either view finishes it.";
 
 export function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Element {
   const { editing, editBlocked, toolBlocked, snapshot } = scan;
@@ -613,15 +622,8 @@ export function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Eleme
               </SelectContent>
             </Select>
           )}
-          {scan.toolKind === "polyline" && (
-            <span
-              data-testid="scan-polyline-hint"
-              title={POLYLINE_HINT}
-              className="order-last basis-full truncate px-1 text-xs text-muted-foreground"
-            >
-              {POLYLINE_HINT}
-            </span>
-          )}
+          {scan.toolKind === "polyline" && <StripHint testId="scan-polyline-hint" text={POLYLINE_HINT} />}
+          {scan.editor.state.type === "drawing-height" && <StripHint testId="scan-height-hint" text={HEIGHT_HINT} />}
           <span className="mx-0.5 h-5 w-px bg-border" />
           <Button
             variant="ghost"
@@ -654,6 +656,14 @@ export function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Eleme
         </>
       )}
     </div>
+  );
+}
+
+function StripHint({ testId, text }: { readonly testId: string; readonly text: string }): JSX.Element {
+  return (
+    <span data-testid={testId} title={text} className="order-last basis-full truncate px-1 text-xs text-muted-foreground">
+      {text}
+    </span>
   );
 }
 
