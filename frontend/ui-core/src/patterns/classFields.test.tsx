@@ -25,7 +25,7 @@ import { ClassFields } from "./ClassFields";
 import { CLASS_PALETTE, hexOf } from "./classFieldsRules";
 
 // A Radix Checkbox or Switch measures itself through `ResizeObserver` once it
-// sits inside a `<form>`, which the sheet's body does and jsdom has no such thing.
+// sits inside a form element, which the sheet's body does and jsdom has no such thing.
 beforeEach(() => {
   stubResizeObserver();
 });

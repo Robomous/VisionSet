@@ -471,11 +471,15 @@ test("the forms this gate is about are all still there, and none nests", () => {
     withForms.map(([file]) => file).sort(),
     [
       "frontend/app/src/shell/TokenGate.tsx",
-      "frontend/ui-core/src/screens/DatasetScreen.tsx",
+      "frontend/ui-core/src/patterns/classFields.test.tsx",
       "frontend/ui-core/src/screens/ImageIngestFlow.tsx",
       "frontend/ui-core/src/screens/ModelsScreen.tsx",
       "frontend/ui-core/src/screens/ProjectFrame.tsx",
       "frontend/ui-core/src/screens/ProjectsScreen.tsx",
+      "frontend/ui-core/src/screens/SchemaCommitBar.tsx",
+      "frontend/ui-core/src/screens/SchemaEditor.tsx",
+      "frontend/ui-core/src/screens/dataset/dialogs.tsx",
+      "frontend/ui-core/src/screens/dataset/recipe/RecipeDialog.tsx",
     ],
     "a form appeared or moved. That is fine — add it here, having checked its buttons say " +
       "their type.",

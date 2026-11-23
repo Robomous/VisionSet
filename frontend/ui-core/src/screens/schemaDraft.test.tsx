@@ -93,7 +93,7 @@ function draftProjectId(path: string): string | null {
 }
 
 beforeEach(() => {
-  // The class dialog's fields sit in a `<form>`, where a Radix Checkbox measures
+  // The class dialog's fields sit in a form element, where a Radix Checkbox measures
   // itself through `ResizeObserver`; jsdom has none. `afterEach` unstubs it.
   stubResizeObserver();
   handlers = [];
