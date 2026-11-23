@@ -58,6 +58,8 @@ export {
   type ErrorStateProps,
   type LoadingStateProps,
 } from "./patterns/AsyncStates.js";
+// The drawing an empty state carries, for a surface that composes its own.
+export { EmptyArt, type EmptyArtName, type EmptyArtProps } from "./patterns/EmptyArt.js";
 
 // The data-surface parts. Four rather than six: `EmptyState` is already
 // above and Chip is `Badge`, so neither is respelled here.
@@ -78,7 +80,42 @@ export {
 } from "./patterns/DataDisplay.js";
 
 // How a number and a moment are written, so eight screens do not each decide.
-export { formatCount, formatPercent, formatWhen } from "./lib/format.js";
+export { formatCount, formatPercent, formatShare, formatWhen } from "./lib/format.js";
+
+// The project components the Overview is composed from. Data-only, like the
+// data-surface parts above: view models in, callbacks out, nothing fetched.
+export { ProjectCard, type ProjectCardProps } from "./patterns/project/ProjectCard.js";
+export { ProjectKpi, type ProjectKpiProps } from "./patterns/project/ProjectKpi.js";
+export { ViewSwitch, type ViewSwitchOption, type ViewSwitchProps } from "./patterns/project/ViewSwitch.js";
+export {
+  BatchSummary,
+  type BatchPhase,
+  type BatchSummaryItem,
+  type BatchSummaryProps,
+} from "./patterns/project/BatchSummary.js";
+export {
+  ClassDistribution,
+  type ClassDistributionProps,
+  type ClassShareRow,
+  type DistributionLens,
+} from "./patterns/project/ClassDistribution.js";
+export {
+  AssetMosaic,
+  MOSAIC_TILES,
+  type AssetLens,
+  type AssetMosaicProps,
+  type ClassFilter,
+  type ClassFilterOption,
+  type MosaicCaption,
+  type MosaicTile,
+} from "./patterns/project/AssetMosaic.js";
+// The Overview's console: the same contract — view models in, callbacks out.
+export { CONSOLE_COLUMNS, CONSOLE_SURFACE, ConsoleEmpty, ConsolePanel, Meter, type ConsolePanelProps } from "./patterns/project/ConsolePanel.js";
+export { KPI_CARD_HEIGHT, KPI_GRID, KpiCards, type KpiAttention, type KpiCard, type KpiStep } from "./patterns/project/KpiCards.js";
+export { BatchTable, PhaseBadge, useBatchTableView, type BatchRowView, type BatchTableProps, type BatchTableView } from "./patterns/project/BatchTable.js";
+export { PHASE_DOT, PHASE_LABEL } from "./patterns/project/batchRowModel.js";
+export { BatchSheet, type BatchSheetProps, type SheetJob } from "./patterns/project/BatchSheet.js";
+export { CLASS_RAIL_ROWS, ClassRail, type ClassRailProps, type ClassRow } from "./patterns/project/ClassRail.js";
 
 // The generated contract under the names every openapi-typescript consumer expects.
 export type { components, operations, paths } from "./generated/api.js";
@@ -159,25 +196,23 @@ export { DEFAULT_POLL_MS, usePollingQuery, type PollingQueryOptions } from "./da
 export { ProjectsScreen, type ProjectsScreenProps } from "./screens/ProjectsScreen.js";
 export {
   ProjectScreen,
-  resolveProjectTab,
   type ProjectScreenProps,
   type ProjectTab,
 } from "./screens/ProjectScreen.js";
+export { resolveProjectTab } from "./screens/projectTab.js";
 export {
   SchemaEditor,
   type SchemaDraft,
   type SchemaEditorProps,
 } from "./screens/SchemaEditor.js";
 export { IngestScreen, type IngestScreenProps } from "./screens/IngestScreen.js";
-export { BatchesScreen, type BatchesScreenProps } from "./screens/BatchesScreen.js";
 export { HomeScreen, type HomeScreenProps } from "./screens/HomeScreen";
-export { GalleryScreen, type GalleryScreenProps } from "./screens/GalleryScreen.js";
 export { ApproveDialog, BatchProgressBar } from "./screens/BatchLifecycle.js";
-export { PromoteButton, promotionSummary, type PromoteButtonProps } from "./screens/PromoteButton.js";
+export { PromoteButton, type PromoteButtonProps } from "./screens/PromoteButton.js";
+export { defaultCorrectionName, promotionSummary } from "./screens/batchWords.js";
 export {
   CorrectionButton,
   CorrectionOf,
-  defaultCorrectionName,
   type CorrectionButtonProps,
   type CorrectionScope,
 } from "./screens/CorrectionBatch.js";
@@ -229,11 +264,8 @@ export {
 // The net under everything, and the one class component in the product. React
 // routes only render-time throws to a boundary, so the rejection handler beside
 // it is not optional — see the module.
-export {
-  ErrorBoundary,
-  installRejectionHandler,
-  type ErrorBoundaryProps,
-} from "./patterns/ErrorBoundary.js";
+export { ErrorBoundary, type ErrorBoundaryProps } from "./patterns/ErrorBoundary.js";
+export { installRejectionHandler } from "./patterns/rejections.js";
 export { DatasetScreen, type DatasetScreenProps } from "./screens/DatasetScreen.js";
 export { ModelsScreen } from "./screens/ModelsScreen.js";
 export { saveBlob } from "./screens/download.js";
@@ -242,6 +274,7 @@ export { AssetThumbnail, type AssetThumbnailProps } from "./screens/AssetThumbna
 // The Overview panel and the heuristic it shows, exported separately so
 // the rule can be replaced without touching the screen that renders it.
 export { OverviewPanel, type OverviewPanelProps } from "./screens/OverviewPanel.js";
+export { IMAGES_PAGE_SIZE, ImagesScreen, type ImagesScreenProps } from "./screens/ImagesScreen.js";
 export {
   imbalanceNote,
   IMBALANCE_MIN_CLASSES,
@@ -252,30 +285,24 @@ export {
 // The annotation page's side panel. Driven entirely by the `AnnotatorStore`
 // the page already holds — no second door to the document.
 export { AnnotatorPanel, type AnnotatorPanelProps } from "./annotator/AnnotatorPanel.js";
-export {
-  ClassRegion,
-  classListHeight,
-  MAX_CLASS_ROWS,
-  MIN_CLASS_ROWS,
-  type ClassRegionProps,
-} from "./annotator/ClassRegion.js";
+export { ClassRegion, type ClassRegionProps } from "./annotator/ClassRegion.js";
+export { classListHeight, MAX_CLASS_ROWS, MIN_CLASS_ROWS } from "./annotator/classRegionLayout.js";
 export { ShortcutSheet, type ShortcutSheetProps } from "./annotator/ShortcutSheet.js";
 
 // The one way out of a sub-view inside a project. Structural, never `navigate(-1)`.
 export { BackLink, type BackLinkProps } from "./patterns/BackLink.js";
 export { parentLabel } from "./patterns/parentLabel.js";
 
-// Inside a project: the navigation column, its strip form below `lg`, and the
+// Inside a project: the section toolbar, its strip form below `lg`, and the
 // section header every section opens with. Data-only; the host spells the URLs.
+export { ProjectNav, type ProjectNavProps } from "./patterns/ProjectNav.js";
 export {
   DEFAULT_PROJECT_SECTION,
   isProjectSection,
   PROJECT_SECTIONS,
-  ProjectNav,
   type AnnotateTarget,
-  type ProjectNavProps,
   type ProjectSection,
-} from "./patterns/ProjectNav.js";
+} from "./patterns/projectSections.js";
 export {
   PROJECT_NAV_MIN_VIEWPORT_PX,
   ProjectShell,
@@ -288,14 +315,16 @@ export { ProjectFrame, type ProjectFrameProps } from "./screens/ProjectFrame.js"
 export { PaddedContent } from "./patterns/PaddedContent.js";
 
 // The floating tool palette. Reports the derived tool; never stores one.
-export { ToolPalette, toolChoices, type ToolPaletteProps } from "./annotator/ToolPalette.js";
+export { ToolPalette, type ToolPaletteProps } from "./annotator/ToolPalette.js";
+export { toolChoices } from "./annotator/toolChoices.js";
 export { ZoomWidget, type ZoomWidgetProps } from "./annotator/ZoomWidget.js";
-export {
-  AddClassDialog,
-  runAddClass,
-  type AddClassDialogProps,
-} from "./annotator/AddClassDialog.js";
+export { AddClassDialog, type AddClassDialogProps } from "./annotator/AddClassDialog.js";
+export { runAddClass } from "./annotator/addClassRules.js";
 export { ClassFields, type ClassFieldsProps } from "./patterns/ClassFields.js";
+export { BODY_ROW, ColumnHeader, ListGrid, ListPage, PAGE_INSET, type ListColumn } from "./patterns/ListPage.js";
+export { columnLines } from "./patterns/listColumns.js";
+export { PageStatus, PageStatusOutlet, PageStatusProvider } from "./patterns/PageStatus.js";
+export { SectionActions, SectionActionsOutlet, SectionActionsProvider } from "./patterns/SectionActions.js";
 
 // The annotator's minimum viewport. Followed live, never sniffed.
 export {
@@ -324,9 +353,10 @@ export {
   type AssetProgress,
   type SavePlan,
 } from "./annotator/jobQueries.js";
-export { SuggestPanel, type SuggestPanelProps } from "./annotator/SuggestPanel.js";
+export { SuggestBar, type SuggestBarProps, type SuggestShapeChoice } from "./annotator/SuggestBar.js";
 export {
   inferenceKeys,
+  isLive,
   usableConnection,
   useConnections,
   useCreateConnection,
@@ -409,20 +439,27 @@ export {
   type SplitRecipe,
 } from "./screens/queries.js";
 export { useExportTargets, type ExportTarget } from "./screens/queries.js";
+export { ExportTargetSelect, type ExportTargetSelectProps } from "./patterns/ExportTargetSelect.js";
 export {
-  ExportTargetSelect,
   exportTargetMeta,
   EXPORT_TARGET_FAMILIES,
   exportTargetFamily,
   groupExportTargets,
   type ExportTargetFamily,
   type ExportTargetGroup,
-  type ExportTargetSelectProps,
-} from "./patterns/ExportTargetSelect.js";
+} from "./patterns/exportTargets.js";
 export { describeTargetDrops } from "./data/refusals.js";
-export { StaticAnnotationOverlay, type StaticAnnotationOverlayProps } from "./patterns/StaticAnnotationOverlay.js";
-export { DATASET_TABS, resolveDatasetTab, type DatasetTab } from "./screens/DatasetScreen.js";
-export { PreprocessingTab, type PreprocessingTabProps } from "./screens/PreprocessingTab.js";
+export { AnnotationLayer, StaticAnnotationOverlay, type AnnotationLayerProps, type StaticAnnotationOverlayProps } from "./patterns/StaticAnnotationOverlay.js";
+export { StateChip, StateGlyph, type State, type Tone } from "./patterns/StateChip.js";
+export { DATASET_TABS, resolveDatasetTab, type DatasetTab } from "./screens/dataset/tabs.js";
+export {
+  DeleteRecipeDialog,
+  DiscardRecipeDialog,
+  RecipeDialog,
+  type OpenRecipe,
+  type RecipeDialogProps,
+  type RecipeEditorHandle,
+} from "./screens/dataset/recipe/RecipeDialog.js";
 export {
   AUGMENT_OPS,
   applyTargetHints,
@@ -454,12 +491,5 @@ export {
   type PreviewAnnotation,
   type SplitAssignment,
 } from "./screens/queries.js";
-export { RecipeList, type RecipeListItem, type RecipeListProps } from "./patterns/RecipeList.js";
-export {
-  RecipeEditor,
-  targetCarries,
-  targetSubtitle,
-  trainerResizesLine,
-  type RecipeEditorProps,
-} from "./patterns/RecipeEditor.js";
+export { targetCarries, targetSubtitle, trainerResizesLine } from "./patterns/recipeTarget.js";
 export { StepMarker, type StepMarkerProps, type StepState } from "./patterns/StepMarker.js";

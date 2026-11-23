@@ -7,12 +7,12 @@
  * the floor is inclusive, which is one pixel of behaviour no stub can see.
  *
  * The other half is criterion 4: **nothing else gains a floor.** Lists, forms and
- * the gallery are usable on a phone and stay that way, so a scenario drives them
+ * the batch's panel are usable on a phone and stay that way, so a scenario drives them
  * at 390px and asserts they render as normal.
  */
 
 import { expect, test, type Page } from "@playwright/test";
-import { assetActions, batchActions, jobActions, type Wire } from "./_wire";
+import { assetActions, batchActions, jobActions, projectDigest, type Wire } from "./_wire";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
@@ -74,7 +74,7 @@ async function serveApi(page: Page): Promise<void> {
     if (path === "/projects") {
       return route.fulfill({
         json: {
-          items: [{ id: PROJECT, name: "road-signs", description: null, thumbnail_asset_id: null, thumbnail_hash: null, created_at: null }],
+          items: [{ id: PROJECT, name: "road-signs", description: null, thumbnail_asset_id: null, thumbnail_hash: null, created_at: null, digest: projectDigest() }],
           total: 1,
         } satisfies Wire["ProjectPage"],
       });
@@ -98,24 +98,47 @@ async function serveApi(page: Page): Promise<void> {
       });
     }
     if (path === `/jobs/${JOB}/progress`) return route.fulfill({ json: NO_PROGRESS });
-    if (path === `/batches/${BATCH}`) {
+    if (path === `/batches/${BATCH}` || path === `/projects/${PROJECT}/batches`) {
+      const batch = {
+        id: BATCH,
+        project_id: PROJECT,
+        name: "drive-01",
+        state: "in_annotation",
+        schema_version: 1,
+        allowed_actions: batchActions("in_annotation"),
+        promoted_asset_count: 0,
+        parent_batch_id: null,
+        pre_label_run: null,
+        asset_count: 1,
+        progress: NO_PROGRESS,
+      } satisfies Wire["BatchOut"];
+      // The batch's panel opens from the project's listing, which is what finds the
+      // batch the address names — so the listing is as much this stub's as the read.
       return route.fulfill({
-        json: {
-          id: BATCH,
-          project_id: PROJECT,
-          name: "drive-01",
-          state: "in_annotation",
-          schema_version: 1,
-          allowed_actions: batchActions("in_annotation"),
-          promoted_asset_count: 0,
-          parent_batch_id: null,
-          pre_label_run: null,
-          asset_count: 1,
-          progress: NO_PROGRESS,
-        } satisfies Wire["BatchOut"],
+        json:
+          path === `/batches/${BATCH}`
+            ? batch
+            : ({ items: [batch], total: 1 } satisfies Wire["BatchPage"]),
       });
     }
-    if (path.endsWith("/schema/versions/1")) return route.fulfill({ json: SCHEMA });
+    if (path.endsWith("/schema/versions/1") || path === `/projects/${PROJECT}/schema`) {
+      return route.fulfill({ json: SCHEMA });
+    }
+    // What the Overview reads before it draws the batches beside which the panel opens.
+    if (path === `/projects/${PROJECT}/stats`) {
+      return route.fulfill({
+        json: {
+          project_id: PROJECT,
+          asset_count: 1,
+          annotated_asset_count: 0,
+          annotation_count: 0,
+          class_count: 1,
+          annotated_pct: 0,
+          classes: [],
+          last_ingest_at: null,
+        } satisfies Wire["ProjectStatsOut"],
+      });
+    }
     if (path === `/batches/${BATCH}/assets`) {
       return route.fulfill({ json: { items: [ASSET], total: 1 } satisfies Wire["BatchAssetPage"] });
     }
@@ -154,7 +177,11 @@ test("the explanation offers the way back that a phone has no rail for", async (
   await openAt(page, `/jobs/${JOB}`, PHONE);
 
   await page.getByTestId("too-narrow-gallery").click();
-  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/batches/${BATCH}$`));
+  // The batch is a panel on the Overview, so the way back is the Overview with that
+  // batch open — and on a phone the panel is a sheet, which has to be what is showing.
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview\\?batch=${BATCH}$`));
+  await expect(page.getByTestId("batch-sheet")).toBeVisible();
+  await expect(page.getByTestId("batch-sheet").getByRole("heading", { level: 2, name: "drive-01" })).toBeVisible();
 });
 
 test("the floor is inclusive: exactly at it, the editor opens", async ({ page }) => {
@@ -192,13 +219,13 @@ test("it follows the viewport live, so widening the window opens the editor", as
 });
 
 test("nothing else gains a floor", async ({ page }) => {
-  // Criterion 4. Lists, forms and the gallery are usable on a phone and stay
+  // Criterion 4. Lists, forms and the batch's panel are usable on a phone and stay
   // that way — a floor that spread would be a regression dressed as consistency.
   await openAt(page, "/projects", PHONE);
   await expect(page.getByTestId("projects-screen")).toBeVisible();
   await expect(page.getByTestId("viewport-too-narrow")).toHaveCount(0);
 
-  await page.goto(`/projects/${PROJECT}/batches/${BATCH}`);
-  await expect(page.getByTestId("gallery")).toBeVisible();
+  await page.goto(`/projects/${PROJECT}/overview?batch=${BATCH}`);
+  await expect(page.getByTestId("batch-sheet")).toBeVisible();
   await expect(page.getByTestId("viewport-too-narrow")).toHaveCount(0);
 });

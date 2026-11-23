@@ -27,13 +27,13 @@
  *
  * **A required attribute with no default is drawn anyway, and that is deliberate.**
  * `document.ts` says required-attribute rules stay the kernel's while *"the tools
- * refuse at draw time, where a user can be told"* — but there is nobody to tell
- * yet. Refusing here would make a class with one unsatisfiable required attribute
- * simply undrawable, with no panel in existence to satisfy it and no channel to
- * explain why the pointer did nothing. So the annotation exists locally, the
- * kernel's `MissingRequiredAttribute` is the backstop on write, and M5's
- * attributes panel is what turns "refuse at draw time" into something a user can
- * act on.
+ * refuse at draw time, where a user can be told"* — but a refusal here has no
+ * channel to explain why the pointer did nothing, and would make a class with one
+ * unsatisfiable required attribute simply undrawable. So the annotation exists
+ * locally, the kernel's `MissingRequiredAttribute` is the backstop on write, and
+ * the host's attribute controls are where the value is supplied: ui-core's object
+ * panel opens them under the selected row and marks an empty required value —
+ * as information, never as a refusal.
  *
  * `provenance` is `"human"`: every caller is a gesture or a keystroke, never a
  * model and never an import.
@@ -48,7 +48,7 @@
 import type { IdFactory } from "../ids";
 import { classNamed } from "../state/document";
 import type { AnnotationDocument } from "../state/document";
-import type { Annotation, AttributeValue, Geometry } from "../types";
+import type { Annotation, Attribute, AttributeValue, Geometry, LabelClass } from "../types";
 
 /**
  * What the class says a new annotation of it carries.
@@ -62,11 +62,77 @@ function defaultAttributes(
   document: AnnotationDocument,
   labelClass: string,
 ): Record<string, AttributeValue> {
+  return attributesFor(classNamed(document, labelClass), {});
+}
+
+/**
+ * The one seeding rule: for each attribute the class declares, in order, a carried
+ * value that still fits, else the default (no key for a `null` one). Drawing carries
+ * nothing; a reassignment carries the old map.
+ */
+function attributesFor(
+  declared: LabelClass | undefined,
+  carried: Readonly<Record<string, AttributeValue>>,
+): Record<string, AttributeValue> {
   const attributes: Record<string, AttributeValue> = {};
-  for (const attribute of classNamed(document, labelClass)?.attributes ?? []) {
-    if (attribute.default !== null) attributes[attribute.name] = attribute.default;
+  for (const attribute of declared?.attributes ?? []) {
+    const value = carried[attribute.name];
+    if (value !== undefined && fits(attribute, value)) attributes[attribute.name] = value;
+    else if (attribute.default !== null) attributes[attribute.name] = attribute.default;
   }
   return attributes;
+}
+
+/** Whether a value is one this attribute could hold: its kind, and for a select its options. */
+function fits(attribute: Attribute, value: AttributeValue): boolean {
+  switch (attribute.kind) {
+    case "boolean":
+      return typeof value === "boolean";
+    case "number":
+      return typeof value === "number";
+    case "string":
+      return typeof value === "string";
+    case "select":
+      return typeof value === "string" && (attribute.options ?? []).includes(value);
+  }
+}
+
+/**
+ * The attributes an annotation carries once it is reassigned to `labelClass`.
+ *
+ * The kernel refuses an attribute the class does not declare (`UnknownAttribute`), so
+ * a reassignment that kept the old map would make the next save fail. The rule, in
+ * declaration order of the **new** class: a value the annotation already carries for
+ * an attribute the new class declares is kept if it still fits — its kind, and for a
+ * `select` one of the new options — and every other declared attribute is seeded
+ * from its `default` exactly as {@link draftAnnotation} seeds a drawn one (a `null`
+ * default contributes no key). Undeclared keys are dropped. A class the schema does
+ * not declare yields an empty map, for the reason `draftAnnotation` gives.
+ */
+export function reassignedAttributes(
+  document: AnnotationDocument,
+  annotation: Annotation,
+  labelClass: string,
+): Record<string, AttributeValue> {
+  return attributesFor(classNamed(document, labelClass), annotation.attributes);
+}
+
+/**
+ * The annotation moved onto `labelClass`, its attributes reconciled by
+ * {@link reassignedAttributes}. A pure value for `replaceAnnotationCommand`, so a
+ * reassignment stays one history entry. Every reassignment path calls this and none
+ * spreads `label_class` itself.
+ */
+export function reassignedAnnotation(
+  document: AnnotationDocument,
+  annotation: Annotation,
+  labelClass: string,
+): Annotation {
+  return {
+    ...annotation,
+    label_class: labelClass,
+    attributes: reassignedAttributes(document, annotation, labelClass),
+  };
 }
 
 /**

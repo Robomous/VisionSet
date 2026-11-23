@@ -144,8 +144,8 @@ export function createOssDataClient(options: OssClientOptions): VisionSetDataCli
   });
 
   // One `Attempt` per call, and the seam is passed **per request** rather than set
-  // once on the client: concurrent requests are the normal case here — a gallery
-  // opens dozens at once — and one shared record would have every one of them
+  // once on the client: concurrent requests are the normal case here — a grid of
+  // thumbnails opens dozens at once — and one shared record would have every one of them
   // classified by whichever finished last. `fetch` is a per-request option of
   // `FetchOptions`, which is exactly why the port narrows it out of the reusable
   // surface: it is the host's to set, and here the host sets it on every call.

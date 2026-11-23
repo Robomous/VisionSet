@@ -52,6 +52,7 @@ import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Inpu
 import { asApiError, checks, NETWORK_ERROR, refusalProse, unwrap } from "@visionset/ui-core";
 import { useOssSession } from "../data/OssSession";
 import { createOssDataClient } from "../data/ossClient";
+import { BrandLogo } from "./Brand";
 
 export interface TokenGateProps {
   /** Rendered once a credential is held. */
@@ -115,7 +116,10 @@ export function TokenForm(): JSX.Element {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-6">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
+      {/* The one screen where the product introduces itself, so the full logo
+          rather than the rail's icon. The letters take the text colour. */}
+      <BrandLogo testId="gate-logo" className="h-6 w-auto text-foreground" />
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle role="heading" aria-level={2} className="flex items-center gap-2">

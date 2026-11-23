@@ -36,6 +36,23 @@ fact travels on `ProjectOut` as `thumbnail_asset_id` and `thumbnail_hash`, and t
 with no images; an id beside a null hash names an asset whose preview was never cached, so a
 client shows a placeholder without fetching anything.
 
+## What each listed project carries
+
+`digests` computes, in one unit of work for the whole workspace, the numbers a dense project
+table needs per row, and `GET /projects` returns each project as `ProjectListItemOut`: every
+`ProjectOut` field plus a `digest` (the single-project routes stay on `ProjectOut`). The digest
+holds the counts `stats` defines (`asset_count`, `annotated_asset_count`, `annotated_fraction`,
+`class_count`), `batch_count`, the work waiting in `in_annotation` batches (`frames_left` for
+labeling, `frames_in_review` for review), `dataset_asset_count`, `latest_release` (`tag`,
+`asset_count`, `published_at`), `last_activity_at` (the newest of the four moments the home
+page's activity feed dates, null when none is recorded) and a `stage`. The stage describes where
+the project is - first match wins: `empty` (no assets), `in_review`, `annotating`, `to_promote`
+(a completed batch has labeled assets the dataset lacks - what `promote` would still add),
+`unreleased` (the dataset is non-empty and has no release, or its change log has an entry after
+the newest release), `not_started` (assets, nothing in the dataset), `up_to_date`. It is a
+description, not a capability: it never decides what may be done, and a client must not gate an
+action on it.
+
 ## When a project was made
 
 `Project.created_at` is stamped in UTC when `create` runs. It is `None` for a project written

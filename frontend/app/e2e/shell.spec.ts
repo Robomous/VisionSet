@@ -37,22 +37,6 @@ async function serveApi(page: Page, { session = false } = {}): Promise<void> {
   // because the gate and the sign-out button are what it is about and both are
   // only reachable when the server declines to sign the browser in by itself.
   await page.route("**/api/session", (route) => route.fulfill({ json: { issued: session } }));
-  // Home reads the workspace summary on every page load now, because the rail's
-  // Home entry lands on a real page rather than redirecting. Empty totals: this
-  // suite is about the rail and the router, and what the dashboard does with
-  // rows belongs to `ui-core`'s `home.test.tsx`.
-  await page.route("**/api/home", (route) =>
-    route.fulfill({
-      status: 200,
-      json: {
-        totals: { projects: 0, assets: 0, annotations: 0, releases: 0 },
-        resume: null,
-        attention: [],
-        projects: [],
-        activity: [],
-      } satisfies Wire["HomeOut"],
-    }),
-  );
   // The Models page's one read. Empty, because this suite is about the
   // rail and the router: what the screen does with rows is `ui-core`'s
   // `models.test.tsx`, and an unrouted request here would leave the page
@@ -177,18 +161,18 @@ test("the token survives a reload, because losing it mid-job is the worst moment
   await expect(page.getByTestId("app-rail")).toBeVisible();
 });
 
-/** `DESIGN.md`: logo, collapse toggle, Home, Projects, the account control. No more. */
+/** The rail: the mark (the collapse toggle's row), Projects, Models, the account control. No more. */
 test("the rail carries exactly what the design gives it", async ({ page }) => {
   await signIn(page);
 
   const rail = page.getByTestId("app-rail");
-  // Three, not two: `Models` is a top-level destination, because model
-  // connections are workspace infrastructure. The count is the assertion — a
-  // fourth destination arriving without that decision fails here first.
-  await expect(rail.getByRole("link")).toHaveCount(3);
-  await expect(page.getByTestId("rail-home")).toBeVisible();
+  // Two: Projects and Models. `Models` is a top-level destination, because
+  // model connections are workspace infrastructure; Home was removed. The count
+  // is the assertion — a destination arriving without that decision fails here.
+  await expect(rail.getByRole("link")).toHaveCount(2);
   await expect(page.getByTestId("rail-projects")).toBeVisible();
   await expect(page.getByTestId("rail-models")).toBeVisible();
+  await expect(page.getByTestId("rail-mark")).toHaveAccessibleName("Robomous VisionSet");
   await expect(page.getByTestId("rail-collapse")).toBeVisible();
   await expect(page.getByTestId("rail-sign-out")).toBeVisible();
 });
@@ -224,27 +208,36 @@ test("the page's old address still lands on it", async ({ page }) => {
 test("navigation is real links, and the active one is the one you are on", async ({ page }) => {
   await signIn(page);
 
-  // Signing in at `/` stays at `/`, because Home is a page now rather than a
-  // redirect to the project list — so **Home** is the current page and Projects
-  // is not. This assertion used to read the other way round, and had a comment
-  // warning that asserting Home first raced the redirect. There is no redirect
-  // to race any more, which is the whole of what changed.
-  await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByTestId("rail-home")).toHaveAttribute("aria-current", "page");
-  await expect(page.getByTestId("rail-projects")).not.toHaveAttribute("aria-current", "page");
-
-  // `end` on the Home link is what keeps *the other direction* true: without it
-  // `NavLink` treats `/` as a prefix of every route and Home stays active
-  // everywhere. So the claim is checked from a page that is not Home.
-  await page.getByTestId("rail-projects").click();
+  // `/` is the project list's front door: there is no Home page, so signing in
+  // at `/` lands on Projects, and Projects is what the rail lights.
   await expect(page).toHaveURL(/\/projects$/);
   await expect(page.getByTestId("rail-projects")).toHaveAttribute("aria-current", "page");
-  await expect(page.getByTestId("rail-home")).not.toHaveAttribute("aria-current", "page");
+  await expect(page.getByTestId("rail-models")).not.toHaveAttribute("aria-current", "page");
+  await expect(page.getByTestId("rail-home")).toHaveCount(0);
+
+  await page.getByTestId("rail-models").click();
+  await expect(page).toHaveURL(/\/models$/);
+  await expect(page.getByTestId("rail-models")).toHaveAttribute("aria-current", "page");
+  await expect(page.getByTestId("rail-projects")).not.toHaveAttribute("aria-current", "page");
 
   // A real `<a href>`, so middle-click and "open in new tab" work — which on a
   // tool people keep two workspaces open in is not a detail.
   await expect(page.getByTestId("rail-projects")).toHaveAttribute("href", "/projects");
-  await expect(page.getByTestId("rail-home")).toHaveAttribute("href", "/");
+  await expect(page.getByTestId("rail-models")).toHaveAttribute("href", "/models");
+});
+
+test("collapsed by default the rail is one icon wide, and every control keeps its name", async ({ page }) => {
+  await signIn(page);
+  const rail = page.getByTestId("app-rail");
+  await expect(rail).toHaveAttribute("data-collapsed", "true");
+  // `w-rail`: the width every pane is laid out beside by default.
+  expect((await rail.boundingBox())?.width).toBe(48);
+  // Icons only, so the name is the accessible name — what a screen reader and
+  // the tooltip both say.
+  await expect(page.getByTestId("rail-projects")).toHaveAccessibleName("Projects");
+  await expect(page.getByTestId("rail-models")).toHaveAccessibleName("Models");
+  await expect(page.getByTestId("rail-collapse")).toHaveAccessibleName("Expand sidebar");
+  await expect(page.getByTestId("rail-collapse")).toHaveAttribute("aria-expanded", "false");
 });
 
 test("collapsing the rail narrows it and keeps every control reachable", async ({ page }) => {
@@ -269,6 +262,59 @@ test("collapsing the rail narrows it and keeps every control reachable", async (
   await expect(page.getByTestId("rail-sign-out")).toBeVisible();
 });
 
+test("expanding shows the labels without moving a single icon, and ⌘B / Ctrl+B toggles it", async ({ page }) => {
+  await signIn(page);
+  const rail = page.getByTestId("app-rail");
+  const iconX = async (): Promise<number> => {
+    const box = (await page.getByTestId("rail-projects").locator("svg").boundingBox())!;
+    return box.x + box.width / 2;
+  };
+  const collapsedX = await iconX();
+  // Collapsed, the mark is the toggle: one column has room for one control.
+  await expect(page.getByTestId("rail-collapse").getByTestId("rail-mark")).toBeVisible();
+
+  await page.getByTestId("rail-collapse").click();
+  // Expanded, the toggle leaves the mark and sits at the right end of its row.
+  const mark = (await page.getByTestId("rail-mark").boundingBox())!;
+  const toggle = (await page.getByTestId("rail-collapse").boundingBox())!;
+  expect(toggle.x).toBeGreaterThan(mark.x + mark.width);
+  expect(toggle.y + toggle.height / 2).toBeCloseTo(mark.y + mark.height / 2, 0);
+  await expect(rail).toHaveAttribute("data-collapsed", "false");
+  expect((await rail.boundingBox())?.width).toBe(208);
+  await expect(page.getByTestId("rail-projects")).toContainText("Projects");
+  await expect(page.getByTestId("rail-collapse")).toHaveAttribute("aria-expanded", "true");
+  // The claim the layout is built on: expanding adds labels beside icons that stay put.
+  expect(await iconX()).toBe(collapsedX);
+
+  // The keyboard chord, both ways. `ControlOrMeta` is Playwright's spelling of
+  // whichever modifier this platform uses.
+  await page.keyboard.press("ControlOrMeta+b");
+  await expect(rail).toHaveAttribute("data-collapsed", "true");
+  await page.keyboard.press("ControlOrMeta+b");
+  await expect(rail).toHaveAttribute("data-collapsed", "false");
+});
+
+test("the status bar is on every workbench page and leads to Models", async ({ page }) => {
+  await signIn(page);
+  const bar = page.getByTestId("status-bar");
+  await expect(bar).toBeVisible();
+  await expect(page.getByTestId("status-access")).toHaveText("Local workspace · token");
+  // The stub has no connections, and the bar says so rather than "0 of 0".
+  await expect(page.getByTestId("status-models")).toHaveText("No models connected");
+  await page.getByTestId("status-models").click();
+  await expect(page).toHaveURL(/\/models$/);
+  await expect(page.getByTestId("status-bar")).toBeVisible();
+  // On Models the bar's model facts step aside: the page shows every state and
+  // every run itself, so the link that led here is gone — what stays is the
+  // credential, which no page says. The page's own facts take the left half.
+  await expect(page.getByTestId("status-models")).toHaveCount(0);
+  await expect(page.getByTestId("status-access")).toHaveText("Local workspace · token");
+  // The page's facts have a place there before there is anything to say: with no
+  // model connected the region is empty, and present, so a later count is heard.
+  await expect(page.getByTestId("page-status")).toBeAttached();
+  await expect(page.getByTestId("page-status")).toBeEmpty();
+});
+
 test("a deep link inside the product resolves to its screen", async ({ page }) => {
   await serveApi(page);
   await page.goto(`/projects/${PROJECT}`);
@@ -281,6 +327,36 @@ test("a deep link inside the product resolves to its screen", async ({ page }) =
   // on the list or on a 404.
   await expect(page.getByTestId("project-screen")).toBeVisible();
   await expect(page).toHaveURL(/\/projects\/11111111/);
+});
+
+/**
+ * Visiting a project opens its tab, and the tab is how you get back.
+ *
+ * The workbench holds projects the way an editor holds files: the tab appears on
+ * the visit, stays when you leave for another page, returns you to where you
+ * were, and closing the open one lands on the project list rather than on a page
+ * whose project you just put away.
+ */
+test("visiting a project opens its tab; closing the open tab lands on the list", async ({ page }) => {
+  await serveApi(page);
+  await page.goto(`/projects/${PROJECT}/schema`);
+  await page.getByTestId("token-input").fill("a-token");
+  await page.getByTestId("token-submit").click();
+  await expect(page.getByTestId("project-screen")).toBeVisible();
+
+  const tab = page.getByTestId(`open-tab-${PROJECT}`);
+  await expect(tab.getByRole("link")).toHaveAttribute("aria-current", "page");
+
+  // Leave the project; the tab stays, no longer current, and still knows the section.
+  await page.getByTestId("rail-models").click();
+  await expect(page).toHaveURL(/\/models$/);
+  await expect(tab.getByRole("link")).not.toHaveAttribute("aria-current", "page");
+  await tab.getByRole("link").click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/schema$`));
+
+  await page.getByTestId(`close-tab-${PROJECT}`).click();
+  await expect(page).toHaveURL(/\/projects$/);
+  await expect(tab).toHaveCount(0);
 });
 
 /**
@@ -302,17 +378,18 @@ test("the project view's section is in the URL, and survives a reload", async ({
   // The old link opened on the section it named, not on the default — Overview
   // is the default — and the address is the section's own now.
   await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/schema$`));
-  await expect(page.getByTestId("version-history")).toBeVisible();
+  await expect(page.getByTestId("schema-editor")).toBeVisible();
   await expect(page.getByTestId("overview-panel")).toHaveCount(0);
   await expect(page.getByTestId("overview-empty")).toHaveCount(0);
 
-  await page.getByTestId("nav-batches").click();
-  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/batches$`));
-  await expect(page.getByTestId("batches-screen")).toBeVisible();
+  // This project holds no images, so its Overview is the first-run invitation.
+  await page.getByTestId("nav-overview").click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview$`));
+  await expect(page.getByTestId("overview-empty")).toBeVisible();
 
   await page.reload();
-  await expect(page.getByTestId("batches-screen")).toBeVisible();
-  await expect(page.getByTestId("version-history")).toHaveCount(0);
+  await expect(page.getByTestId("overview-empty")).toBeVisible();
+  await expect(page.getByTestId("schema-editor")).toHaveCount(0);
 });
 
 test("a client route nobody defined answers inside the shell, not with a blank page", async ({
@@ -325,12 +402,11 @@ test("a client route nobody defined answers inside the shell, not with a blank p
   // Inside the shell: the rail is still there, so it is a wrong page rather than
   // a broken application.
   await expect(page.getByTestId("app-rail")).toBeVisible();
-  await page.getByRole("link", { name: "Back to Home" }).click();
-  // The link keeps its own promise now. It used to land on the project list,
-  // because Home was a redirect there; Home is a page, so "Back to Home" goes to
-  // Home and the dashboard is what answers.
-  await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByTestId("home-first-run")).toBeVisible();
+  // There is no Home page, so the way out is the project list — the front door
+  // `/` itself redirects to.
+  await page.getByRole("link", { name: "Back to projects" }).click();
+  await expect(page).toHaveURL(/\/projects$/);
+  await expect(page.getByTestId("projects-screen")).toBeVisible();
 });
 
 /**
@@ -356,9 +432,9 @@ test("a fresh session opens with the rail collapsed", async ({ page }) => {
 
   const rail = page.getByTestId("app-rail");
   await expect(rail).toHaveAttribute("data-collapsed", "true");
-  // Narrow, not merely labelled narrow: 48px is the collapsed token and 240 the
-  // expanded one, so anything under half of 240 can only be the former.
-  expect((await rail.boundingBox())?.width ?? 0).toBeLessThan(120);
+  // Narrow, not merely labelled narrow: 48px is the collapsed token and 208 the
+  // expanded one, so anything under half of 208 can only be the former.
+  expect((await rail.boundingBox())?.width ?? 0).toBeLessThan(104);
 });
 
 test("a stored preference beats the default, and survives a reload", async ({ page }) => {
@@ -379,4 +455,25 @@ test("a stored preference beats the default, and survives a reload", async ({ pa
   await page.getByTestId("rail-collapse").click();
   await page.reload();
   await expect(page.getByTestId("app-rail")).toHaveAttribute("data-collapsed", "true");
+});
+
+/**
+ * The open tabs survive a reload.
+ *
+ * The unit tests hold the storage logic — absent key, unparseable value, refused
+ * storage all resolve to an empty strip — and cannot see whether anything calls
+ * it. This is the browser half: a project opened before a reload is still a tab
+ * after it, which is a browser fact and nothing else.
+ */
+test("the open tabs survive a reload", async ({ page }) => {
+  await serveApi(page);
+  await page.goto(`/projects/${PROJECT}/overview`);
+  await page.getByTestId("token-input").fill("a-token");
+  await page.getByTestId("token-submit").click();
+  await expect(page.getByTestId("project-screen")).toBeVisible();
+
+  await page.getByTestId("rail-models").click();
+  await expect(page).toHaveURL(/\/models$/);
+  await page.reload();
+  await expect(page.getByTestId(`open-tab-${PROJECT}`)).toBeVisible();
 });

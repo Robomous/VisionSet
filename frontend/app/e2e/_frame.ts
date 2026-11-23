@@ -275,7 +275,8 @@ export async function expectNothingToSave(page: Page): Promise<void> {
 }
 
 /**
- * Assert the frame's progress, which is a dot **and its word** on the bar.
+ * Assert the frame's progress, which is a dot **and its word** on the picture's
+ * status tag.
  *
  * A badge carrying the word competes with the workflow actions for the bar's
  * right-hand side, and a dot with the word in a tooltip puts it somewhere it will
@@ -289,7 +290,7 @@ export async function expectProgress(page: Page, progress: string): Promise<void
 
 /**
  * Open the bar's overflow menu, where the actions that are not about *this* frame
- * live — return-to-annotator, an explicit Save, the shortcut sheet.
+ * live — return-to-annotator and the shortcut sheet.
  *
  * Radix closes the menu on select, so a scenario pressing two of these opens it
  * twice. That is the product's behaviour and not a harness quirk.

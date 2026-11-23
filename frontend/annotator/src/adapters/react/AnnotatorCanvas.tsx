@@ -496,6 +496,23 @@ export interface AnnotatorCanvasProps {
    * ever, which is the difference between a quirk and a defect.
    */
   readonly preciseDeviceSeen?: boolean;
+  /**
+   * Whether a gesture is in flight: a press that has not been released, a box
+   * being dragged out, a polygon or a polyline whose points are still being
+   * placed, a shape or a vertex being moved.
+   *
+   * A **report**, for a host that must not act on the document while somebody is
+   * in the middle of changing it — `ui-core` holds its autosave on it. The
+   * interaction state is this component's own and stays so: a polygon's open
+   * points live in the machine, not in the store, so nothing a host can read off
+   * `store` says that one is half placed.
+   *
+   * Called on each change of *whether* one is in flight, never on mount — idle is
+   * the state a host starts from — and with `false` on unmount if one was, so a
+   * canvas torn down mid-gesture cannot leave its host waiting for an end that
+   * will never be reported.
+   */
+  readonly onGestureChange?: (active: boolean) => void;
 }
 
 /** What a host can do to the stage. Read the position through `onViewChange`. */
@@ -534,6 +551,7 @@ export function AnnotatorCanvas({
   panTool = false,
   preciseDeviceSeen = false,
   onPreciseDevice,
+  onGestureChange,
 }: AnnotatorCanvasProps): JSX.Element {
   const snapshot = useAnnotatorSnapshot(store);
   const { asset, schema } = snapshot.document;
@@ -560,6 +578,18 @@ export function AnnotatorCanvas({
     };
   }, []);
 
+  // A canvas torn down mid-gesture says the gesture is over — see
+  // `onGestureChange`. The ref objects are taken here and read at teardown on
+  // purpose: what matters is the state the component dies in, not the one it
+  // mounted with.
+  useEffect(() => {
+    const interactionAtTeardown = interactionNow;
+    const reportAtTeardown = gestureReportNow;
+    return () => {
+      if (interactionAtTeardown.current.type !== "idle") reportAtTeardown.current?.(false);
+    };
+  }, []);
+
   // The fallback, built once — see the prop's docstring for why `useState`.
   const [ownClipboard] = useState(createClipboard);
   const clipboard = hostClipboard ?? ownClipboard;
@@ -574,6 +604,13 @@ export function AnnotatorCanvas({
   // purpose, and taking a prop into them would rebuild it on every render.
   const hiddenNow = useRef(hiddenIds);
   hiddenNow.current = hiddenIds;
+  // The same event-time read, so `dispatch` reports a gesture without taking a
+  // host callback into its dependencies.
+  // Synced after commit rather than assigned during render.
+  const gestureReportNow = useRef(onGestureChange);
+  useLayoutEffect(() => {
+    gestureReportNow.current = onGestureChange;
+  });
   const panNow = useRef<{ readonly x: number; readonly y: number } | null>(null);
 
   /**
@@ -658,9 +695,12 @@ export function AnnotatorCanvas({
         labelClass: activeClass,
         mint,
       });
+      const wasActive = interactionNow.current.type !== "idle";
       interactionNow.current = turn.state;
       setInteraction(turn.state);
       runEffects(store, turn.effects);
+      const active = turn.state.type !== "idle";
+      if (active !== wasActive) gestureReportNow.current?.(active);
     },
     [store, activeClass, activeTool, mint],
   );

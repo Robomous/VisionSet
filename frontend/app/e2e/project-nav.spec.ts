@@ -1,6 +1,6 @@
 /**
- * The project's navigation column: where it is, where it is not, and what it
- * collapses to.
+ * The project's section toolbar: where it is, where it is not, and what it
+ * becomes below `lg`.
  *
  * Everything here is a browser fact. Which layout renders is a `matchMedia`
  * answer, so a jsdom test sees the wide one whatever the CSS says; and "one
@@ -10,7 +10,7 @@
  */
 
 import { expect, test, type Page } from "@playwright/test";
-import { assetActions, batchActions, jobActions, type Wire } from "./_wire";
+import { assetActions, batchActions, jobActions, projectDigest, type Wire } from "./_wire";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
@@ -67,6 +67,23 @@ function pendingJob(id: string): Wire["JobOut"] {
   };
 }
 
+/** The project's one image, as the Images section's paged read answers it. */
+const PROJECT_ASSET = {
+  id: "asset-1",
+  project_id: PROJECT,
+  modality: "image",
+  point_cloud: null,
+  content_hash: "abcdef01abcdef01",
+  width: 640,
+  height: 480,
+  format: "png",
+  source_id: null,
+  frame_index: 0,
+  frame_timestamp: null,
+  thumbnail_hash: null,
+  ingested_at: null,
+} satisfies Wire["AssetOut"];
+
 /**
  * One project, one open batch, and the jobs cut from it — enough for every route
  * this suite visits. The job ids decide where the `Annotate` control lands.
@@ -79,7 +96,7 @@ async function serveApi(page: Page, jobs: readonly string[] = [JOB]): Promise<vo
     if (path === "/projects") {
       return route.fulfill({
         json: {
-          items: [{ id: PROJECT, name: "road-signs", description: null, thumbnail_asset_id: null, thumbnail_hash: null, created_at: null }],
+          items: [{ id: PROJECT, name: "road-signs", description: null, thumbnail_asset_id: null, thumbnail_hash: null, created_at: null, digest: projectDigest() }],
           total: 1,
         } satisfies Wire["ProjectPage"],
       });
@@ -179,6 +196,12 @@ async function serveApi(page: Page, jobs: readonly string[] = [JOB]): Promise<vo
         } satisfies Wire["BatchAssetPage"],
       });
     }
+    // The Images section's one read: every asset of the project, paged.
+    if (path === `/projects/${PROJECT}/assets`) {
+      return route.fulfill({
+        json: { items: [PROJECT_ASSET], total: 1 } satisfies Wire["AssetPage"],
+      });
+    }
     if (path.endsWith("/annotations")) {
       return route.fulfill({ json: { items: [], total: 0 } satisfies Wire["AnnotationPage"] });
     }
@@ -198,8 +221,8 @@ async function openCold(page: Page, url: string): Promise<void> {
  * The same cold open, held until the open batch's jobs have been answered.
  *
  * Where the `Annotate` control lands is decided by that answer, and its absence
- * is not a failure but the fallback — the gallery. So a test that clicks before
- * it arrives proves nothing either way. Nothing is fetched until the token is
+ * is not a failure but the fallback — the batch's panel. So a test that clicks
+ * before it arrives proves nothing either way. Nothing is fetched until the token is
  * accepted, which is why the wait can be armed before the submit.
  */
 async function openWithJobs(page: Page, url: string, jobs: readonly string[]): Promise<void> {
@@ -214,7 +237,10 @@ async function openWithJobs(page: Page, url: string, jobs: readonly string[]): P
   await expect(page.getByTestId("go-annotate")).toBeVisible();
 }
 
-const SECTIONS = ["overview", "batches", "schema", "dataset"] as const;
+const SECTIONS = ["overview", "images", "schema", "dataset"] as const;
+
+/** The one heading each section carries for the outline, in the words its tab uses. */
+const HEADINGS = { overview: "Overview", images: "Images", schema: "Classes", dataset: "Dataset" } as const;
 
 /**
  * How many visible controls are filled with the `primary` token, by computed
@@ -237,7 +263,7 @@ async function filledControls(page: Page): Promise<number> {
 }
 
 for (const section of SECTIONS) {
-  test(`at lg and above the column renders on ${section}, with one filled control`, async ({
+  test(`at lg and above the toolbar renders on ${section}, with one filled control`, async ({
     page,
   }) => {
     await openCold(page, `/projects/${PROJECT}/${section}`);
@@ -249,27 +275,321 @@ for (const section of SECTIONS) {
     // The tab strip is not merely hidden at this width; it is not rendered.
     await expect(page.getByTestId("project-tabs")).toHaveCount(0);
 
-    // The navigation is only as wide as its controls: Annotate as the one filled
-    // control — the project has a batch open — and the overflow. The identity is
-    // the eyebrow above the content: the name and the chip — and no way out,
-    // because the column and the rail are it.
-    await expect(nav.getByTestId("go-annotate")).toBeVisible();
+    // The toolbar holds controls only: the sections, what the open section
+    // offers, and the overflow. Add images is a button where images are the
+    // subject (Overview, Images) and the overflow's first entry elsewhere; the
+    // project has a batch open, so Annotate — the Overview's alone — is the one
+    // filled control there. The identity is the open-project tab above the
+    // toolbar: no eyebrow line is drawn over the content, and no way out,
+    // because the toolbar, the tabs and the rail are it.
+    const imagesSubject = section === "overview" || section === "images";
+    await expect(nav.getByTestId("go-annotate")).toHaveCount(section === "overview" ? 1 : 0);
+    await expect(nav.getByTestId("go-ingest")).toHaveCount(imagesSubject ? 1 : 0);
     await expect(nav.getByTestId("project-menu")).toBeVisible();
-    const eyebrow = page.getByTestId("project-identity");
+    await expect(nav.getByTestId("project-menu")).toHaveAccessibleName("Project actions");
+    await expect(page.getByTestId("project-identity")).toHaveCount(0);
+    await expect(page.getByTestId("project-title")).toHaveCount(0);
+    await expect(page.getByTestId("chip-version")).toHaveCount(0);
     await expect(page.getByTestId("back-link")).toHaveCount(0);
-    await expect(eyebrow.getByTestId("project-title")).toHaveText("road-signs");
-    await expect(eyebrow.getByTestId("chip-version")).toHaveText("v4 active");
-    // 180px, the declared width.
-    expect((await nav.boundingBox())?.width).toBe(180);
+    await expect(page.getByTestId(`open-tab-${PROJECT}`)).toContainText("road-signs");
+    // It spans the pane — everything right of the rail — so it lines up with the
+    // open-project tabs above it rather than with the capped content column.
+    const rail = (await page.getByTestId("app-rail").boundingBox())!;
+    const bar = (await nav.boundingBox())!;
+    expect(bar.x).toBeCloseTo(rail.x + rail.width, 0);
+    expect(bar.width).toBeCloseTo((page.viewportSize()?.width ?? 0) - rail.width, 0);
 
-    // The section's own header, with its secondary actions. Measured rather than
-    // class-asserted: the claim is about what is painted.
+    // No section header: the tab is the title to the eye, and one heading
+    // names the section to the outline. Counted as painted, not class-asserted.
+    await expect(page.getByTestId("section-header")).toHaveCount(0);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(HEADINGS[section]);
     await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
-    // Overview and Batches carry a secondary Ingest beside Annotate; it must not
-    // count as a second filled control.
+    // Never in a section's content, and never both a button and a menu entry.
+    await expect(page.getByTestId("go-ingest")).toHaveCount(imagesSubject ? 1 : 0);
     expect(await filledControls(page)).toBe(1);
   });
 }
+
+/** What the toolbar says about the open section, after the tabs; Images says nothing. */
+const META = {
+  overview: "0% labeled · 0 annotations",
+  images: null,
+  schema: "Version 4 in force",
+  dataset: "No releases yet",
+} as const;
+
+for (const section of SECTIONS) {
+  test(`the toolbar's one line about ${section} is ${META[section] === null ? "absent" : `"${META[section]}"`}`, async ({
+    page,
+  }) => {
+    await openCold(page, `/projects/${PROJECT}/${section}`);
+    const nav = page.getByTestId("project-nav");
+    await expect(nav).toBeVisible();
+    const meta = META[section];
+    if (meta === null) {
+      // The counts are the last thing the toolbar settles on: after them the
+      // absence is an answer rather than a pending query.
+      await expect(page.getByTestId("nav-images")).toContainText("1");
+      await expect(page.getByTestId("section-meta")).toHaveCount(0);
+    } else {
+      await expect(nav.getByTestId("section-meta")).toHaveText(meta);
+      await expect(page.getByTestId("section-meta")).toHaveCount(1);
+    }
+  });
+}
+
+test("the toolbar offers the four sections in the order work happens in, under their labels", async ({
+  page,
+}) => {
+  await openCold(page, `/projects/${PROJECT}/overview`);
+  const nav = page.getByTestId("project-nav");
+  await expect(nav).toBeVisible();
+  // `schema` is what URLs, the CLI and the API call Classes; the label is the
+  // product's word for it. Batches have no section: they are listed on the Overview.
+  // Each tab may carry its count beside the name ("Images1"), so the name leads.
+  await expect(nav.locator('[data-testid^="nav-"]')).toHaveText([
+    /^Overview$/,
+    /^Images\d*$/,
+    /^Classes\d*$/,
+    /^Dataset\d*$/,
+  ]);
+  await expect(page.getByTestId("nav-images")).toHaveAttribute("href", `/projects/${PROJECT}/images`);
+  await expect(page.getByTestId("nav-batches")).toHaveCount(0);
+});
+
+test("the old Batches section address redirects to the Overview, which lists the batches", async ({
+  page,
+}) => {
+  await openCold(page, `/projects/${PROJECT}/batches`);
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview$`));
+  await expect(page.getByTestId("nav-overview")).toHaveAttribute("aria-current", "page");
+  await expect(page.getByTestId("overview-batches")).toBeVisible();
+  await expect(page.getByTestId("batches-screen")).toHaveCount(0);
+});
+
+test("with a batch open, Add images is secondary and sits in the toolbar before Annotate, once, on the overview", async ({
+  page,
+}) => {
+  await openCold(page, `/projects/${PROJECT}/overview`);
+  const nav = page.getByTestId("project-nav");
+  await expect(nav.getByTestId("go-annotate")).toBeVisible();
+  // The toolbar is the only place Add images lives: outline, and before the
+  // filled Annotate. The Batches panel does not repeat it.
+  const add = nav.getByTestId("go-ingest");
+  await expect(add).toBeVisible();
+  await expect(page.getByTestId("go-ingest")).toHaveCount(1);
+  await expect(add).not.toHaveClass(/bg-primary/);
+  await expect(nav.getByTestId("go-annotate")).toHaveClass(/bg-primary/);
+  const addBox = (await add.boundingBox())!;
+  const annotateBox = (await nav.getByTestId("go-annotate").boundingBox())!;
+  expect(addBox.x + addBox.width).toBeLessThanOrEqual(annotateBox.x + 1);
+  await expect(page.getByTestId("overview-batches").getByTestId("go-ingest")).toHaveCount(0);
+});
+
+test("on the Images section Add images is the toolbar's one filled control, and Annotate is not offered", async ({
+  page,
+}) => {
+  await openCold(page, `/projects/${PROJECT}/images`);
+  const nav = page.getByTestId("project-nav");
+  await expect(page.getByTestId("images-screen")).toBeVisible();
+  // Annotate is the Overview's, where the batches are listed.
+  await expect(nav.getByTestId("go-annotate")).toHaveCount(0);
+  await expect(nav.getByTestId("go-ingest")).toHaveClass(/bg-primary/);
+  await expect(page.getByTestId("go-ingest")).toHaveCount(1);
+  await expect(page.getByTestId("images-screen").getByTestId("go-ingest")).toHaveCount(0);
+  await expect(page.getByTestId("images-ingest")).toHaveCount(0);
+  expect(await filledControls(page)).toBe(1);
+});
+
+for (const section of ["schema", "dataset"] as const) {
+  test(`on ${section} Add images is the overflow's first entry, not a button, and it goes to the ingest flow`, async ({
+    page,
+  }) => {
+    await openCold(page, `/projects/${PROJECT}/${section}`);
+    const nav = page.getByTestId("project-nav");
+    await expect(page.getByTestId(`nav-${section}`)).toHaveAttribute("aria-current", "page");
+    await expect(nav.getByTestId("go-ingest")).toHaveCount(0);
+    await expect(page.getByTestId("go-ingest")).toHaveCount(0);
+
+    await nav.getByTestId("project-menu").click();
+    const item = page.getByTestId("menu-ingest");
+    await expect(item).toHaveText("Add images");
+    // First of the menu, ahead of Rename and Delete project.
+    await expect(page.getByRole("menuitem").first()).toHaveAttribute("data-testid", "menu-ingest");
+    await expect(page.getByTestId("delete-project")).toHaveText("Delete project");
+
+    await item.click();
+    await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/ingest$`));
+  });
+}
+
+test("with no batch open, Add images is the toolbar's filled control, and still the only one", async ({
+  page,
+}) => {
+  await serveApi(page);
+  // Registered after `serveApi`, so it answers first: nothing is open for annotation.
+  await page.route(`**/api/projects/${PROJECT}/batches`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } satisfies Wire["BatchPage"] }),
+  );
+  await page.goto(`/projects/${PROJECT}/images`);
+  await page.getByTestId("token-input").fill("a-token");
+  await page.getByTestId("token-submit").click();
+
+  const nav = page.getByTestId("project-nav");
+  await expect(nav.getByTestId("go-ingest")).toBeVisible();
+  await expect(nav.getByTestId("go-annotate")).toHaveCount(0);
+  await expect(page.getByTestId("go-ingest")).toHaveCount(1);
+  await expect(nav.getByTestId("go-ingest")).toHaveClass(/bg-primary/);
+});
+
+test("Add images in the toolbar goes to the ingest flow", async ({ page }) => {
+  await openCold(page, `/projects/${PROJECT}/overview`);
+  await page.getByTestId("project-nav").getByTestId("go-ingest").click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/ingest$`));
+  await expect(page.getByRole("heading", { level: 1, name: "Add images" })).toBeVisible();
+});
+
+test("the Images section lists every image of the project, with the total stated, in a pane that fits the window", async ({ page }) => {
+  await openCold(page, `/projects/${PROJECT}/images`);
+  await expect(page.getByTestId("images-screen")).toBeVisible();
+  // The section bar names the page; the heading is for whoever navigates by headings.
+  await expect(page.getByRole("heading", { level: 1, name: "Images" })).toBeAttached();
+  await expect(page.getByTestId("images-sheet").getByTestId("image-asset-1")).toBeVisible();
+  await expect(page.getByTestId("images-count")).toHaveText("1 image");
+  // An app pane, not a document: only the grid scrolls.
+  expect(await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight)).toBeLessThanOrEqual(0);
+});
+
+/** Two sources of the project, the second a clip, and the images each produced. */
+const FOLDER = "66666666-6666-4666-8666-666666666666";
+const CLIP = "77777777-7777-4777-8777-777777777777";
+
+/**
+ * Serves the project's sources and an asset listing that honours `source_id`,
+ * recording every `source_id` it was asked for. Registered after `serveApi`, so
+ * it answers first.
+ */
+async function serveSources(page: Page): Promise<string[]> {
+  const asked: string[] = [];
+  const source = (id: string, name: string, kind: "image_directory" | "video"): Wire["SourceOut"] => ({
+    id,
+    project_id: PROJECT,
+    kind,
+    name,
+    registered_at: "2026-08-01T08:00:00Z",
+    video: null,
+    frame: null,
+  });
+  const frame = (id: string, from: string): Wire["AssetOut"] => ({
+    ...PROJECT_ASSET,
+    id,
+    source_id: from,
+    frame_index: from === CLIP ? 30 : null,
+    frame_timestamp: from === CLIP ? 65 : null,
+  });
+  const held = [frame("asset-1", FOLDER), frame("asset-2", FOLDER), frame("asset-3", CLIP)];
+  await page.route(`**/api/projects/${PROJECT}/sources`, (route) =>
+    route.fulfill({
+      json: {
+        items: [source(FOLDER, "Camera drop", "image_directory"), source(CLIP, "Walkthrough.mp4", "video")],
+        total: 2,
+      } satisfies Wire["SourcePage"],
+    }),
+  );
+  await page.route(`**/api/projects/${PROJECT}/assets?**`, (route) => {
+    const only = new URL(route.request().url()).searchParams.get("source_id");
+    if (only !== null) asked.push(only);
+    const items = only === null ? held : held.filter((one) => one.source_id === only);
+    return route.fulfill({ json: { items, total: items.length } satisfies Wire["AssetPage"] });
+  });
+  return asked;
+}
+
+test("the Images section groups by source, and a source's name narrows the page to it", async ({ page }) => {
+  await serveApi(page);
+  const asked = await serveSources(page);
+  await page.goto(`/projects/${PROJECT}/images`);
+  await page.getByTestId("token-input").fill("a-token");
+  await page.getByTestId("token-submit").click();
+
+  // Each source is asked for by its own id, and heads its own section.
+  await expect(page.getByRole("button", { name: "Show only Camera drop" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Show only Walkthrough.mp4" })).toBeVisible();
+  await expect(page.getByTestId("images-source-menu")).toHaveAttribute("aria-label", "Source: All sources");
+  await expect(page.getByTestId("images-source-line")).toHaveText("3 images from 2 sources");
+  await expect(page.getByTestId("images-sheet").getByRole("option")).toHaveCount(3);
+  expect(asked).toEqual(expect.arrayContaining([FOLDER, CLIP]));
+
+  await page.getByRole("button", { name: "Show only Walkthrough.mp4" }).click();
+  await expect(page.getByTestId("images-source-menu")).toHaveAttribute("aria-label", "Source: Walkthrough.mp4");
+  await expect(page.getByTestId("images-sheet").getByRole("option")).toHaveCount(1);
+  await expect(page.getByTestId("image-asset-3")).toBeVisible();
+
+  // And back, from the menu.
+  await page.getByTestId("images-source-menu").click();
+  await page.getByRole("menuitemradio", { name: /All sources/ }).click();
+  await expect(page.getByTestId("images-sheet").getByRole("option")).toHaveCount(3);
+});
+
+test("the selected image sits beside the grid, the arrows walk it, and one toggle focuses it and brings it back", async ({ page }) => {
+  await serveApi(page);
+  await serveSources(page);
+  await page.goto(`/projects/${PROJECT}/images`);
+  await page.getByTestId("token-input").fill("a-token");
+  await page.getByTestId("token-submit").click();
+
+  await page.getByTestId("image-asset-3").click();
+  const detail = page.getByTestId("image-detail");
+  await expect(detail.getByTestId("image-detail-position")).toHaveText("3 of 3");
+  await expect(detail.getByTestId("image-facts")).toContainText("Walkthrough.mp4");
+  await expect(detail.getByTestId("image-facts")).toContainText("1:05");
+  await expect(page.getByTestId("image-asset-3")).toBeFocused();
+
+  // Selection and focus move together, across the boundary between sources.
+  await page.keyboard.press("ArrowLeft");
+  await expect(detail.getByTestId("image-detail-position")).toHaveText("2 of 3");
+  await expect(detail.getByTestId("image-facts")).toContainText("Camera drop");
+  await expect(page.getByTestId("image-asset-2")).toBeFocused();
+
+  // The control that expands is the control that collapses, in the same place.
+  const toggle = page.getByTestId("image-focus-toggle");
+  // The panel slides in from the right when it opens; a position read mid-slide
+  // is the motion's, not the layout's, so the slide is let finish first.
+  // (Transitions only: a loading shimmer inside it runs forever.)
+  await detail.evaluate((el) =>
+    Promise.all(
+      (el.closest("aside") ?? el)
+        .getAnimations({ subtree: true })
+        .filter((a) => a instanceof CSSTransition)
+        .map((a) => a.finished),
+    ),
+  );
+  const before = await toggle.boundingBox();
+  await page.keyboard.press("Enter");
+  await expect(toggle).toHaveAttribute("aria-label", "Back to grid");
+  expect(await toggle.boundingBox()).toEqual(before);
+  await expect(page.getByTestId("image-detail-picture")).toBeVisible();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-label", "Focus on image");
+});
+
+test("an Images section with nothing in it offers Add images, and it goes to the ingest flow", async ({
+  page,
+}) => {
+  await serveApi(page);
+  // Registered after `serveApi`, so it answers first: the project has no images.
+  await page.route(`**/api/projects/${PROJECT}/assets**`, (route) =>
+    route.fulfill({ json: { items: [], total: 0 } satisfies Wire["AssetPage"] }),
+  );
+  await page.goto(`/projects/${PROJECT}/images`);
+  await page.getByTestId("token-input").fill("a-token");
+  await page.getByTestId("token-submit").click();
+
+  await expect(page.getByText("No images yet")).toBeVisible();
+  await page.getByTestId("images-ingest").click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/ingest$`));
+  await expect(page.getByRole("heading", { level: 1, name: "Add images" })).toBeVisible();
+});
 
 test("the filled control opens the open batch's one job", async ({ page }) => {
   await openWithJobs(page, `/projects/${PROJECT}/overview`, [JOB]);
@@ -280,36 +600,40 @@ test("the filled control opens the open batch's one job", async ({ page }) => {
   await expect(page).toHaveURL(new RegExp(`/jobs/${JOB}(\\?asset=[^&]+)?$`));
 });
 
-test("with more than one job the filled control lands on the gallery, where a job is chosen", async ({
+test("with more than one job the filled control opens the batch's panel, where a job is chosen", async ({
   page,
 }) => {
   await openWithJobs(page, `/projects/${PROJECT}/overview`, [JOB, OTHER_JOB]);
   await page.getByTestId("go-annotate").click();
-  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/batches/${BATCH}$`));
-  await expect(page.getByTestId("gallery")).toBeVisible();
-  // Both jobs are offered, one panel each; only the open one carries a door,
-  // which is why the count is of headers rather than of `start-job-*`.
-  await expect(page.getByTestId("job-panels").getByTestId(/^job-header-/)).toHaveCount(2);
+  // No one job to open, so it opens the batch — on the Overview, in its panel.
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview\\?batch=${BATCH}$`));
+  const panel = page.getByTestId("batch-sheet");
+  await expect(panel).toBeVisible();
+  // Both jobs are offered, one card each, each with its own way into the editor.
+  await expect(panel.getByTestId("batch-sheet-jobs").getByTestId(/^batch-sheet-job-/)).toHaveCount(2);
+  await panel.getByRole("button", { name: "Open Job 2 in the editor" }).click();
+  await expect(page).toHaveURL(new RegExp(`/jobs/${OTHER_JOB}$`));
 });
 
-test("the column frames the ingest flow and the batch gallery too, without a filled control of its own", async ({
+test("the toolbar frames the ingest flow and a batch's panel too, without a filled control of its own", async ({
   page,
 }) => {
   // Everything that belongs to one project lives inside the same navigation;
   // only the annotator, which needs the whole screen, stands outside it.
-  await openCold(page, `/projects/${PROJECT}/batches/${BATCH}`);
-  await expect(page.getByTestId("gallery")).toBeVisible();
+  await openCold(page, `/projects/${PROJECT}/overview?batch=${BATCH}`);
+  await expect(page.getByTestId("batch-sheet")).toBeVisible();
   const nav = page.getByTestId("project-nav");
   await expect(nav).toBeVisible();
-  // A batch belongs to Batches, so Batches is lit.
-  await expect(page.getByTestId("nav-batches")).toHaveAttribute("aria-current", "page");
-  // The gallery heads itself, with its one way out — up to Batches — so the frame
-  // draws no eyebrow above it.
+  // A batch is opened from the Overview, where batches are listed, and it opens
+  // on it — so the Overview is lit.
+  await expect(page.getByTestId("nav-overview")).toHaveAttribute("aria-current", "page");
+  // The batch has no page and so no way out of its own: the panel closes in place,
+  // and the frame draws no eyebrow above it.
   await expect(page.getByTestId("project-identity")).toHaveCount(0);
-  await expect(page.getByTestId("back-link")).toHaveText("Batches");
-  // The gallery owns its dominant action; the column offers none beside it.
-  await expect(nav.getByTestId("go-annotate")).toHaveCount(0);
-  await expect(nav.getByTestId("go-ingest")).toHaveCount(0);
+  await expect(page.getByTestId("back-link")).toHaveCount(0);
+  // The Overview's toolbar still offers its own actions beside the open panel.
+  await expect(nav.getByTestId("go-annotate")).toHaveCount(1);
+  await expect(nav.getByTestId("go-ingest")).toHaveCount(1);
 
   await page.goto(`/projects/${PROJECT}/ingest`);
   await expect(page.getByTestId("ingest-screen")).toBeVisible();
@@ -318,7 +642,7 @@ test("the column frames the ingest flow and the batch gallery too, without a fil
   await expect(page.locator('[data-testid^="nav-"][aria-current="page"]')).toHaveCount(0);
 });
 
-test("the column is absent from every route that is not the project's", async ({ page }) => {
+test("the toolbar is absent from every route that is not the project's", async ({ page }) => {
   await openCold(page, "/");
   await expect(page.getByTestId("app-rail")).toBeVisible();
   await expect(page.getByTestId("project-nav")).toHaveCount(0);
@@ -336,16 +660,16 @@ test("the column is absent from every route that is not the project's", async ({
   await expect(page.getByTestId("project-nav")).toHaveCount(0);
 });
 
-test("below lg the tab strip renders and the column does not, with nothing lost", async ({
+test("below lg the tab strip renders and the toolbar does not, with nothing lost", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 900, height: 800 });
-  await openCold(page, `/projects/${PROJECT}/batches`);
-  await expect(page.getByTestId("batches-screen")).toBeVisible();
+  await openCold(page, `/projects/${PROJECT}/overview`);
+  await expect(page.getByTestId("overview-batches")).toBeVisible();
 
   await expect(page.getByTestId("project-nav")).toHaveCount(0);
   await expect(page.getByTestId("project-tabs")).toBeVisible();
-  await expect(page.getByTestId("nav-batches")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("nav-overview")).toHaveAttribute("aria-selected", "true");
 
   // Narrower still, the strip's own tabs can no longer all fit: it scrolls
   // within its own row instead of widening the page (#754).
@@ -355,11 +679,11 @@ test("below lg the tab strip renders and the column does not, with nothing lost"
   ).toBe(true);
   await page.setViewportSize({ width: 900, height: 800 });
 
-  // The eyebrow above the strip, and the filled control and overflow beside the
-  // tabs: everything the column layout offers, in a row.
-  const eyebrow = page.getByTestId("project-identity");
-  await expect(eyebrow.getByTestId("project-title")).toHaveText("road-signs");
-  await expect(eyebrow.getByTestId("chip-version")).toHaveText("v4 active");
+  // No eyebrow above the strip (the open-project tab names the project), and
+  // Add images, the filled control and the overflow beside the tabs: everything
+  // the toolbar offers, in a row.
+  await expect(page.getByTestId("project-identity")).toHaveCount(0);
+  await expect(page.getByTestId("go-ingest")).toHaveCount(1);
   await expect(page.getByTestId("go-annotate")).toBeVisible();
   await expect(page.getByTestId("project-menu")).toBeVisible();
   expect(await filledControls(page)).toBe(1);
@@ -370,7 +694,7 @@ test("below lg the tab strip renders and the column does not, with nothing lost"
   await expect(page.getByTestId("dataset-screen")).toBeVisible();
 });
 
-test("the column's items are real links, so the section has an address before it is pressed", async ({
+test("the toolbar's items are real links, so the section has an address before it is pressed", async ({
   page,
 }) => {
   await openCold(page, `/projects/${PROJECT}/overview`);
@@ -392,8 +716,8 @@ test("the column's items are real links, so the section has an address before it
  *
  * Every width here caught something real: the schema's action row came to 460px
  * and overflowed to about 500px, the dataset tabs could not shrink past their
- * labels and counts, and the gallery's batch actions and its state filter each
- * widened the page on their own. A regression in any of them is a sideways
+ * labels and counts, and the batch panel's actions and the Overview's state filter
+ * each widened the page on their own. A regression in any of them is a sideways
  * scrollbar on a screen somebody works in all day.
  *
  * One test per route rather than one sweep: fifteen navigations in a single test
@@ -402,10 +726,13 @@ test("the column's items are real links, so the section has an address before it
  */
 const FLOOR_WIDTHS = [320, 375, 480] as const;
 
-for (const route of [...SECTIONS, "batches-detail"] as const) {
+for (const route of [...SECTIONS, "batch-panel"] as const) {
+  // The batch's panel is a sheet over the Overview below `lg`, so it is the one
+  // surface here that is not a section, and the address that opens it is the
+  // Overview's own.
   const path =
-    route === "batches-detail"
-      ? `/projects/${PROJECT}/batches/${BATCH}`
+    route === "batch-panel"
+      ? `/projects/${PROJECT}/overview?batch=${BATCH}`
       : `/projects/${PROJECT}/${route}`;
 
   test(`${route} does not scroll the document sideways at the responsive floor`, async ({
@@ -414,6 +741,9 @@ for (const route of [...SECTIONS, "batches-detail"] as const) {
     await page.setViewportSize({ width: FLOOR_WIDTHS[0], height: 800 });
     await openCold(page, path);
     await expect(page.getByTestId("project-tabs")).toBeVisible();
+    // The panel is the subject of its own case, so it has to be on screen when the
+    // width is measured rather than assumed to have opened.
+    if (route === "batch-panel") await expect(page.getByTestId("batch-sheet")).toBeVisible();
 
     for (const width of FLOOR_WIDTHS) {
       await page.setViewportSize({ width, height: 800 });

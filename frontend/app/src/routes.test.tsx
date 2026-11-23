@@ -53,13 +53,15 @@ describe("projectRedirectTarget", () => {
   });
 
   it("turns ?tab= into the section segment, keeping every other parameter", () => {
-    expect(projectRedirectTarget(PROJECT, "?tab=batches&foo=1&bar=2")).toBe(
-      `/projects/${PROJECT}/batches?foo=1&bar=2`,
+    expect(projectRedirectTarget(PROJECT, "?tab=schema&foo=1&bar=2")).toBe(
+      `/projects/${PROJECT}/schema?foo=1&bar=2`,
     );
   });
 
   it("carries a ?tab= that has moved to where it went, and an unknown one to the default", () => {
     expect(projectRedirectTarget(PROJECT, "?tab=versions")).toBe(`/projects/${PROJECT}/schema`);
+    // `batches` was a section until its list moved onto the Overview.
+    expect(projectRedirectTarget(PROJECT, "?tab=batches")).toBe(`/projects/${PROJECT}/overview`);
     expect(projectRedirectTarget(PROJECT, "?tab=nonsense")).toBe(`/projects/${PROJECT}/overview`);
   });
 });
@@ -88,8 +90,29 @@ describe("the project's addresses", () => {
   });
 
   it("keeps the other query parameters when it drops ?tab=", async () => {
-    open(`/projects/${PROJECT}?tab=batches&foo=1`);
-    expect(await landed()).toBe(`/projects/${PROJECT}/batches?foo=1`);
+    open(`/projects/${PROJECT}?tab=schema&foo=1`);
+    expect(await landed()).toBe(`/projects/${PROJECT}/schema?foo=1`);
+  });
+
+  it("redirects the old Batches section address to Overview, replacing the entry", async () => {
+    // `batches` was a bookmarkable section; its list now lives on the Overview.
+    open(`/projects/${PROJECT}/batches`);
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(`/projects/${PROJECT}/overview`),
+    );
+  });
+
+  it("lands a batch's old gallery address on its panel in the Overview, replacing the entry", async () => {
+    // A batch had a page of its own; it now opens beside the Overview's list,
+    // where every action on it lives, and the old link still means that batch.
+    open(`/projects/${PROJECT}/batches/b-1`);
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(`/projects/${PROJECT}/overview?batch=b-1`),
+    );
+  });
+
+  it("spells a batch as the Overview holding it open", () => {
+    expect(PARENT.batch(PROJECT, "b-1")).toBe(`/projects/${PROJECT}/overview?batch=b-1`);
   });
 
   it("lands a bookmarked ?tab=versions on Schema, where the history lives", async () => {
@@ -119,7 +142,7 @@ describe("the project's addresses", () => {
 
   it("spells every parent as a section, never as a bare project URL", () => {
     expect(PARENT.project(PROJECT)).toBe(`/projects/${PROJECT}/overview`);
-    expect(PARENT.batches(PROJECT)).toBe(`/projects/${PROJECT}/batches`);
+    expect("batches" in PARENT).toBe(false);
     expect(PARENT.dataset(PROJECT)).toBe(`/projects/${PROJECT}/dataset`);
     expect(PARENT.schema(PROJECT)).toBe(`/projects/${PROJECT}/schema`);
   });

@@ -1874,7 +1874,7 @@ export interface paths {
         };
         /**
          * List Projects
-         * @description Every project in this workspace, in the order they were created.
+         * @description Every project in this workspace, in the order they were created, each with its digest.
          */
         get: operations["list_projects"];
         put?: never;
@@ -1929,22 +1929,24 @@ export interface paths {
         };
         /**
          * List Project Assets
-         * @description Every asset ingested into the project, in a stable order.
+         * @description Every asset ingested into the project, most recently ingested first.
          *
-         *     The third asset listing, and the one that had been missing: the other two
-         *     window a *batch* and the curated *trunk*, and neither answers "show me this
-         *     project". A project page asking for six sample tiles passes `limit=6` and
-         *     reads `total` for the rest.
+         *     The third asset listing: the other two window a *batch* and the curated
+         *     *trunk*, and neither answers "show me this project". A page asking for six
+         *     sample tiles passes `limit=6` and reads `total` for the rest.
          *
-         *     **The order is deterministic and it is not chronological.** Nothing records
-         *     when an asset arrived, so assets are grouped by source, then by frame index
-         *     for a clip, then by path for a directory, then by id. The practical effect is
-         *     that a clip's frames come back in order and a directory's stills in filename
-         *     order; the practical limit is that "the six most recent" cannot be asked for
-         *     yet.
+         *     **Newest run first, and stable inside a run** — within one ingest the order
+         *     is source, then file, then frame index, then id, so a clip's frames come back
+         *     in order and a directory's stills in filename order. Two calls never
+         *     disagree.
          *
-         *     `total` is every asset in the project, never the size of this page, so a
-         *     client showing six tiles computes its own overflow from `total - 6`.
+         *     `source_id` narrows the listing to one source, in the same order, and
+         *     `total` then counts that source — so a client filtering by source pages and
+         *     counts exactly as it would the whole project. An unknown project is 404
+         *     `PROJECT_NOT_FOUND`, and a source that is not this project's is 404
+         *     `SOURCE_NOT_FOUND`, never an empty page.
+         *
+         *     `total` is every asset matched, never the size of this page.
          */
         get: operations["list_project_assets"];
         put?: never;
@@ -5917,6 +5919,79 @@ export interface components {
             name: string;
         };
         /**
+         * ProjectDigestOut
+         * @description A project's numbers for a listing row, computed by the kernel.
+         *
+         *     `asset_count` is every asset in the project, in the dataset or not;
+         *     `annotated_asset_count` those carrying at least one annotation, and
+         *     `annotated_fraction` their share in 0..1 (0 for a project with no assets).
+         *     `class_count` is the classes of the active schema version, 0 with none.
+         *
+         *     `frames_left` and `frames_in_review` count frames across the project's
+         *     `in_annotation` batches: still to be labeled, and waiting on a reviewer.
+         *     `dataset_asset_count` is the dataset's size now, and `latest_release` its
+         *     newest release, null if there is none. `last_activity_at` is the newest of
+         *     an asset's arrival, a schema version, a release and a promotion, null when
+         *     none is recorded.
+         *
+         *     `stage` says where the project is, first match wins: `empty` (no assets),
+         *     `in_review` (frames await review), `annotating` (frames await labeling),
+         *     `to_promote` (a completed batch has labeled assets not yet in the dataset),
+         *     `unreleased` (the dataset is non-empty and has no release, or has changed
+         *     since the newest one), `not_started` (assets, but nothing in the dataset),
+         *     `up_to_date`. It describes the project and is not a capability: it says
+         *     nothing about what may be done, and a client must not use it to enable or
+         *     disable an action.
+         */
+        ProjectDigestOut: {
+            /** Annotated Asset Count */
+            annotated_asset_count: number;
+            /** Annotated Fraction */
+            annotated_fraction: number;
+            /** Asset Count */
+            asset_count: number;
+            /** Batch Count */
+            batch_count: number;
+            /** Class Count */
+            class_count: number;
+            /** Dataset Asset Count */
+            dataset_asset_count: number;
+            /** Frames In Review */
+            frames_in_review: number;
+            /** Frames Left */
+            frames_left: number;
+            /** Last Activity At */
+            last_activity_at: string | null;
+            latest_release: components["schemas"]["ReleaseDigestOut"] | null;
+            stage: components["schemas"]["ProjectStage"];
+        };
+        /**
+         * ProjectListItemOut
+         * @description A project as the list carries it: every `ProjectOut` field, plus its digest.
+         *
+         *     Only `GET /projects` returns this. The single-project routes stay on
+         *     `ProjectOut`, because the digest costs a walk of the project's batches and
+         *     jobs that a read, a create or a rename has no use for.
+         */
+        ProjectListItemOut: {
+            /** Created At */
+            created_at: string | null;
+            /** Description */
+            description: string | null;
+            digest: components["schemas"]["ProjectDigestOut"];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Thumbnail Asset Id */
+            thumbnail_asset_id: string | null;
+            /** Thumbnail Hash */
+            thumbnail_hash: string | null;
+        };
+        /**
          * ProjectOut
          * @description A project.
          *
@@ -5948,11 +6023,11 @@ export interface components {
         };
         /**
          * ProjectPage
-         * @description A page of projects.
+         * @description A page of projects, each with its digest.
          */
         ProjectPage: {
             /** Items */
-            items: components["schemas"]["ProjectOut"][];
+            items: components["schemas"]["ProjectListItemOut"][];
             /** Total */
             total: number;
         };
@@ -5989,6 +6064,40 @@ export interface components {
             /** Name */
             name: string;
         };
+        /**
+         * ProjectStage
+         * @description Where a project is in the road from images to a released dataset.
+         *
+         *     A **description**, derived per call by ``ProjectService.digests`` from facts
+         *     the kernel already holds, and nothing more. It is not a state the project
+         *     is *in*: there is no ``project.stage`` column, no transition table and no
+         *     transition to refuse, and it must never be consulted to gate an action —
+         *     what may be done is decided by ``capabilities.py`` and the transition tables
+         *     in the domain, never by a label that summarises them. A client that
+         *     disabled a button because a project reads ``annotating`` would be a second
+         *     legality table that the first one never heard of.
+         *
+         *     Evaluated **first match wins**, in this order, which is the whole of the
+         *     rule and why the members are listed in it:
+         *
+         *     1. ``empty`` - the project holds no assets.
+         *     2. ``in_review`` - some frame in an ``in_annotation`` batch is waiting on a
+         *        reviewer (``AssetProgress.REVIEW_PENDING``).
+         *     3. ``annotating`` - some frame in an ``in_annotation`` batch is neither
+         *        settled nor waiting on review: labeling an annotator still has to do.
+         *     4. ``to_promote`` - a ``completed`` batch holds an asset ``promote`` would
+         *        still add: one in ``PROMOTABLE_PROGRESS`` that is not in the trunk.
+         *     5. ``unreleased`` - the trunk is non-empty and either no release exists or
+         *        the trunk was changed after the newest release was cut.
+         *     6. ``not_started`` - assets exist but none of the above holds: only draft or
+         *        approved batches, or nothing promoted.
+         *     7. ``up_to_date`` - otherwise: the newest release is the trunk as it stands.
+         *
+         *     Review outranks labeling because a reviewer's frame is finished work waiting
+         *     on somebody else, and naming it first tells that somebody there is a queue.
+         * @enum {string}
+         */
+        ProjectStage: "empty" | "in_review" | "annotating" | "to_promote" | "unreleased" | "not_started" | "up_to_date";
         /**
          * ProjectStatsOut
          * @description What the project holds, counted — everything ingested, not only the trunk.
@@ -6113,6 +6222,24 @@ export interface components {
          */
         ReleaseCreate: {
             split?: components["schemas"]["SplitRecipeBody"] | null;
+            /** Tag */
+            tag: string;
+        };
+        /**
+         * ReleaseDigestOut
+         * @description The newest release of a project's dataset, as a list row shows it.
+         *
+         *     `published_at` is when the release was made, in UTC. `asset_count` is the
+         *     size of what was frozen, not of the dataset as it stands now.
+         */
+        ReleaseDigestOut: {
+            /** Asset Count */
+            asset_count: number;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
             /** Tag */
             tag: string;
         };
@@ -11271,6 +11398,8 @@ export interface operations {
                 limit?: number | null;
                 /** @description How many items to skip. Counts from the start of the collection. */
                 offset?: number;
+                /** @description Only the assets this source produced. A source of another project is 404. */
+                source_id?: string | null;
             };
             header?: never;
             path: {

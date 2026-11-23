@@ -310,6 +310,60 @@ def test_limit_bounds_the_page_and_total_still_counts_the_project(
     assert body["total"] == 5
 
 
+def test_a_source_narrows_the_listing_and_its_total(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
+) -> None:
+    """What the Images page's source filter pages and counts with."""
+    project_id = project_with_schema(client)
+    batch_from_ingest(client, runner, tmp_path, project_id, images=3)
+    # Distinct bytes for the second drop: identical images would be the same
+    # assets, content-addressed, and the second source would own none of them.
+    second = [
+        (
+            "files",
+            (
+                f"late-{seed}.png",
+                write_image(tmp_path / f"late-{seed}.png", seed=seed).read_bytes(),
+                "image/png",
+            ),
+        )
+        for seed in (101, 102)
+    ]
+    source_id = client.post(f"/projects/{project_id}/sources/images", files=second).json()["id"]
+    client.post(f"/sources/{source_id}/ingest-jobs")
+    runner.wait()
+    sources = client.get(f"/projects/{project_id}/sources").json()["items"]
+    assert len(sources) == 2
+
+    totals = sorted(
+        client.get(
+            f"/projects/{project_id}/assets", params={"source_id": source["id"], "limit": 1}
+        ).json()["total"]
+        for source in sources
+    )
+    one = client.get(
+        f"/projects/{project_id}/assets", params={"source_id": sources[0]["id"]}
+    ).json()
+
+    assert totals == [2, 3]
+    assert {asset["source_id"] for asset in one["items"]} == {sources[0]["id"]}
+    assert client.get(f"/projects/{project_id}/assets").json()["total"] == 5
+
+
+def test_a_source_of_another_project_is_a_404_not_an_empty_page(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path
+) -> None:
+    project_id = project_with_schema(client)
+    batch_from_ingest(client, runner, tmp_path, project_id, images=1)
+    source_id = client.get(f"/projects/{project_id}/sources").json()["items"][0]["id"]
+    other = client.post("/projects", json={"name": "other"}).json()["id"]
+
+    response = client.get(f"/projects/{other}/assets", params={"source_id": source_id})
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "SOURCE_NOT_FOUND"
+
+
 def test_the_order_is_the_same_on_every_call(
     client: TestClient, runner: InlineDispatcher, tmp_path: Path
 ) -> None:

@@ -12,8 +12,8 @@
  * rows.
  *
  * WS1's `provenance` is what makes the two tellable apart, and this is the rule
- * that uses it: **a run of consecutive `annotation` versions collapses into one
- * expandable row; everything else renders individually.**
+ * that uses it: **a run of consecutive `annotation` versions is drawn as one
+ * branch off the main lane (`schemaLanes.ts`); everything else stays on it.**
  *
  * ## Three decisions inside that sentence
  *
@@ -23,9 +23,9 @@
  * `provenance` therefore groups nothing at all and reads exactly as it does
  * today, which is the only safe answer for a fact nobody recorded.
  *
- * **A run of one is not a run.** Collapsing a single version would hide it behind
- * a disclosure for no saving whatever — one row either way — and would make the
- * commonest case (one class added mid-job) the *least* readable. `RUN_MINIMUM` is
+ * **A run of one is not a run.** Branching a single version off the main lane
+ * would draw a detour for no grouping whatever — one line either way — and would
+ * make the commonest case (one class added mid-job) read as a sitting. `RUN_MINIMUM` is
  * named rather than spelled `2` inline, because it is the threshold the boundary
  * tests are about.
  *

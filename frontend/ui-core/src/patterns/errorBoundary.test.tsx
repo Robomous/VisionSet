@@ -18,7 +18,8 @@ import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
-import { ErrorBoundary, installRejectionHandler } from "./ErrorBoundary";
+import { ErrorBoundary } from "./ErrorBoundary";
+import { installRejectionHandler } from "./rejections";
 import { ApiError } from "../data/errors";
 
 /**

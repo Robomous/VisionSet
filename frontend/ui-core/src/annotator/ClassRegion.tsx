@@ -64,24 +64,8 @@ import { useState, type JSX, type RefObject } from "react";
 import { formatGeometries, geometryLabel } from "../data/geometryCategory";
 import { classColor } from "../palette";
 import { Button, Input } from "@robomous/ui-core";
-import { CLASS_ROW_PX, ClassListRow } from "../patterns/DataDisplay";
-
-/** The fewest rows' worth of height the region ever takes. */
-export const MIN_CLASS_ROWS = 3;
-/** The most rows shown before the list scrolls inside a fixed region. */
-export const MAX_CLASS_ROWS = 8;
-
-/**
- * How tall the list viewport is, in pixels, for a schema of `classes` classes.
- *
- * Exported and pure so the rule is testable as arithmetic rather than only
- * through a rendered box — jsdom has no layout, so a component test can assert
- * the style this returns but never the pixels a browser would draw.
- */
-export function classListHeight(classes: number): number {
-  const rows = Math.min(Math.max(classes, MIN_CLASS_ROWS), MAX_CLASS_ROWS);
-  return rows * CLASS_ROW_PX;
-}
+import { ClassListRow } from "../patterns/DataDisplay";
+import { MAX_CLASS_ROWS, MIN_CLASS_ROWS, classListHeight } from "./classRegionLayout";
 
 export interface ClassRegionProps {
   readonly schema: AnnotationSchema;
@@ -182,7 +166,7 @@ export function ClassRegion({
 
   return (
     <div className="flex shrink-0 flex-col gap-2" data-testid="class-region">
-      <div className="flex items-center justify-between px-1">
+      <div className="flex items-center justify-between px-2">
         <span className="text-sm font-medium">Classes</span>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground" data-testid="class-count">
@@ -342,6 +326,8 @@ function ClassRow({
         hotkey={hotkeyForClass(schema, declared.name)}
         selected={selected}
         onSelect={onSelect}
+        // On the panel's one inset: the swatch starts where the headings do.
+        className="pl-1.5 pr-2"
       />
   );
 }

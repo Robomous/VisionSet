@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { formatBytes } from "./format";
+import { formatBytes, formatShare } from "./format";
 
 describe("formatBytes", () => {
   it("keeps small counts in bytes", () => {
@@ -30,5 +30,21 @@ describe("formatBytes", () => {
   it("answers nothing for a count that is not one", () => {
     expect(formatBytes(-1)).toBe("");
     expect(formatBytes(Number.NaN)).toBe("");
+  });
+});
+
+describe("formatShare", () => {
+  it("keeps one decimal so neighbouring rows can be told apart", () => {
+    expect(formatShare(0.353)).toBe((35.3).toLocaleString(undefined, { minimumFractionDigits: 1 }) + "%");
+    expect(formatShare(1)).toBe((100).toLocaleString(undefined, { minimumFractionDigits: 1 }) + "%");
+  });
+
+  it("never rounds a share up into looking larger", () => {
+    expect(formatShare(0.0899)).toBe((8.9).toLocaleString(undefined, { minimumFractionDigits: 1 }) + "%");
+  });
+
+  it("says a tiny share is there without inventing its size", () => {
+    expect(formatShare(0.0004)).toBe("<0.1%");
+    expect(formatShare(0)).toBe((0).toLocaleString(undefined, { minimumFractionDigits: 1 }) + "%");
   });
 });

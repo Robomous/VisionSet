@@ -1,24 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="VisionSet">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-4.5 -2 25 25" role="img" aria-label="VisionSet">
   <!--
-    The product's own subject, drawn small: an annotation box with corner grips,
-    around the thing being labelled.
+    (No double hyphen anywhere in this comment: XML forbids it, and the browser
+    then refuses the whole icon.)
 
-    Ink `#252949` and Robomous orange `#eb5a47`, both taken from DESIGN.md rather
-    than invented. Four shapes and no gradient, because at 16px a favicon is a
-    silhouette — anything finer than a 2px stroke disappears into one grey square.
+    The VisionSet icon — the same block mark the rail draws (`src/shell/Brand.tsx`),
+    centred in a square so a browser tab does not stretch it.
+
+    `#f5580b` is the brand token, oklch(0.663 0.205 39.9), in sRGB: a
+    favicon is a static file a browser loads outside the page, so it cannot read
+    the CSS variable, and hex is what every tab strip renders reliably.
 
     An SVG rather than an `.ico`: `tests/architecture/test_tracked_file_sizes.py`
     exists to keep binaries out of the repository, and a text asset does not need
     an exemption to be argued.
   -->
-  <rect width="32" height="32" rx="7" fill="#252949"/>
-  <!-- The box: corner grips only, which is what makes it read as a selection
-       rather than as a plain frame at this size. -->
-  <g fill="none" stroke="#eb5a47" stroke-width="2.5" stroke-linecap="round">
-    <path d="M9 12.5V9.5A.5.5 0 0 1 9.5 9h3"/>
-    <path d="M19.5 9h3a.5.5 0 0 1 .5.5v3"/>
-    <path d="M23 19.5v3a.5.5 0 0 1-.5.5h-3"/>
-    <path d="M12.5 23h-3a.5.5 0 0 1-.5-.5v-3"/>
-  </g>
-  <circle cx="16" cy="16" r="3" fill="#eb5a47"/>
+  <path d="M16 0V5.25H10.666V10.5H0L0 5.25H5.334V0L16 0ZM16 10.5V15.75H10.666V10.5H16ZM10.666 15.75V21H0L0 15.75H10.666Z" fill="#f5580b"/>
 </svg>

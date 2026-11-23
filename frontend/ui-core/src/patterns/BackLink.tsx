@@ -3,8 +3,8 @@
  *
  * With the project's sections in a navigation column and the workspace's
  * destinations on the rail, an ancestor chain inside a project says nothing they
- * do not — so a page that sits *below* a section (the batch gallery, the ingest
- * flow) carries one control back to the level above it, and a section carries
+ * do not — so a page that sits *below* a section (the ingest flow)
+ * carries one control back to the level above it, and a section carries
  * none. The annotator keeps its own arrow for the same reason.
  *
  * Structural, never `navigate(-1)`: the destination has to be the same whether
@@ -23,7 +23,7 @@ import type { JSX } from "react";
 import { Button } from "@robomous/ui-core";
 
 export interface BackLinkProps {
-  /** The parent, named: "Batches", a project's name. */
+  /** The parent, named: "Overview", a project's name. */
   readonly label: string;
   /** Where it goes. The host turns this into a route change. */
   readonly onNavigate: () => void;

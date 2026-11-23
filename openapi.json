@@ -5232,6 +5232,157 @@
         "title": "ProjectCreate",
         "type": "object"
       },
+      "ProjectDigestOut": {
+        "description": "A project's numbers for a listing row, computed by the kernel.\n\n`asset_count` is every asset in the project, in the dataset or not;\n`annotated_asset_count` those carrying at least one annotation, and\n`annotated_fraction` their share in 0..1 (0 for a project with no assets).\n`class_count` is the classes of the active schema version, 0 with none.\n\n`frames_left` and `frames_in_review` count frames across the project's\n`in_annotation` batches: still to be labeled, and waiting on a reviewer.\n`dataset_asset_count` is the dataset's size now, and `latest_release` its\nnewest release, null if there is none. `last_activity_at` is the newest of\nan asset's arrival, a schema version, a release and a promotion, null when\nnone is recorded.\n\n`stage` says where the project is, first match wins: `empty` (no assets),\n`in_review` (frames await review), `annotating` (frames await labeling),\n`to_promote` (a completed batch has labeled assets not yet in the dataset),\n`unreleased` (the dataset is non-empty and has no release, or has changed\nsince the newest one), `not_started` (assets, but nothing in the dataset),\n`up_to_date`. It describes the project and is not a capability: it says\nnothing about what may be done, and a client must not use it to enable or\ndisable an action.",
+        "properties": {
+          "annotated_asset_count": {
+            "title": "Annotated Asset Count",
+            "type": "integer"
+          },
+          "annotated_fraction": {
+            "title": "Annotated Fraction",
+            "type": "number"
+          },
+          "asset_count": {
+            "title": "Asset Count",
+            "type": "integer"
+          },
+          "batch_count": {
+            "title": "Batch Count",
+            "type": "integer"
+          },
+          "class_count": {
+            "title": "Class Count",
+            "type": "integer"
+          },
+          "dataset_asset_count": {
+            "title": "Dataset Asset Count",
+            "type": "integer"
+          },
+          "frames_in_review": {
+            "title": "Frames In Review",
+            "type": "integer"
+          },
+          "frames_left": {
+            "title": "Frames Left",
+            "type": "integer"
+          },
+          "last_activity_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Activity At"
+          },
+          "latest_release": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReleaseDigestOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stage": {
+            "$ref": "#/components/schemas/ProjectStage"
+          }
+        },
+        "required": [
+          "asset_count",
+          "annotated_asset_count",
+          "annotated_fraction",
+          "class_count",
+          "batch_count",
+          "frames_left",
+          "frames_in_review",
+          "dataset_asset_count",
+          "latest_release",
+          "last_activity_at",
+          "stage"
+        ],
+        "title": "ProjectDigestOut",
+        "type": "object"
+      },
+      "ProjectListItemOut": {
+        "description": "A project as the list carries it: every `ProjectOut` field, plus its digest.\n\nOnly `GET /projects` returns this. The single-project routes stay on\n`ProjectOut`, because the digest costs a walk of the project's batches and\njobs that a read, a create or a rename has no use for.",
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "digest": {
+            "$ref": "#/components/schemas/ProjectDigestOut"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "thumbnail_asset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Asset Id"
+          },
+          "thumbnail_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Hash"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "thumbnail_asset_id",
+          "thumbnail_hash",
+          "created_at",
+          "digest"
+        ],
+        "title": "ProjectListItemOut",
+        "type": "object"
+      },
       "ProjectOut": {
         "description": "A project.\n\n`thumbnail_asset_id` names the image that stands for the project in a\nlisting \u2014 the first asset of its earliest batch that has one \u2014 and\n`thumbnail_hash` is that asset's cached preview. Both are null for a\nproject with no images; the id set with a null hash means the asset has no\ncached preview, so there is nothing to fetch.\n\n`created_at` is when the project was made, in UTC; null for a project\nwritten before the workspace recorded it.",
         "properties": {
@@ -5303,11 +5454,11 @@
         "type": "object"
       },
       "ProjectPage": {
-        "description": "A page of projects.",
+        "description": "A page of projects, each with its digest.",
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/ProjectOut"
+              "$ref": "#/components/schemas/ProjectListItemOut"
             },
             "title": "Items",
             "type": "array"
@@ -5391,6 +5542,20 @@
         ],
         "title": "ProjectRename",
         "type": "object"
+      },
+      "ProjectStage": {
+        "description": "Where a project is in the road from images to a released dataset.\n\nA **description**, derived per call by ``ProjectService.digests`` from facts\nthe kernel already holds, and nothing more. It is not a state the project\nis *in*: there is no ``project.stage`` column, no transition table and no\ntransition to refuse, and it must never be consulted to gate an action \u2014\nwhat may be done is decided by ``capabilities.py`` and the transition tables\nin the domain, never by a label that summarises them. A client that\ndisabled a button because a project reads ``annotating`` would be a second\nlegality table that the first one never heard of.\n\nEvaluated **first match wins**, in this order, which is the whole of the\nrule and why the members are listed in it:\n\n1. ``empty`` - the project holds no assets.\n2. ``in_review`` - some frame in an ``in_annotation`` batch is waiting on a\n   reviewer (``AssetProgress.REVIEW_PENDING``).\n3. ``annotating`` - some frame in an ``in_annotation`` batch is neither\n   settled nor waiting on review: labeling an annotator still has to do.\n4. ``to_promote`` - a ``completed`` batch holds an asset ``promote`` would\n   still add: one in ``PROMOTABLE_PROGRESS`` that is not in the trunk.\n5. ``unreleased`` - the trunk is non-empty and either no release exists or\n   the trunk was changed after the newest release was cut.\n6. ``not_started`` - assets exist but none of the above holds: only draft or\n   approved batches, or nothing promoted.\n7. ``up_to_date`` - otherwise: the newest release is the trunk as it stands.\n\nReview outranks labeling because a reviewer's frame is finished work waiting\non somebody else, and naming it first tells that somebody there is a queue.",
+        "enum": [
+          "empty",
+          "in_review",
+          "annotating",
+          "to_promote",
+          "unreleased",
+          "not_started",
+          "up_to_date"
+        ],
+        "title": "ProjectStage",
+        "type": "string"
       },
       "ProjectStatsOut": {
         "description": "What the project holds, counted \u2014 everything ingested, not only the trunk.",
@@ -5646,6 +5811,31 @@
           "tag"
         ],
         "title": "ReleaseCreate",
+        "type": "object"
+      },
+      "ReleaseDigestOut": {
+        "description": "The newest release of a project's dataset, as a list row shows it.\n\n`published_at` is when the release was made, in UTC. `asset_count` is the\nsize of what was frozen, not of the dataset as it stands now.",
+        "properties": {
+          "asset_count": {
+            "title": "Asset Count",
+            "type": "integer"
+          },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          },
+          "tag": {
+            "title": "Tag",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tag",
+          "asset_count",
+          "published_at"
+        ],
+        "title": "ReleaseDigestOut",
         "type": "object"
       },
       "ReleaseOut": {
@@ -12697,7 +12887,7 @@
     },
     "/projects": {
       "get": {
-        "description": "Every project in this workspace, in the order they were created.",
+        "description": "Every project in this workspace, in the order they were created, each with its digest.",
         "operationId": "list_projects",
         "responses": {
           "200": {
@@ -13147,7 +13337,7 @@
     },
     "/projects/{project_id}/assets": {
       "get": {
-        "description": "Every asset ingested into the project, in a stable order.\n\nThe third asset listing, and the one that had been missing: the other two\nwindow a *batch* and the curated *trunk*, and neither answers \"show me this\nproject\". A project page asking for six sample tiles passes `limit=6` and\nreads `total` for the rest.\n\n**The order is deterministic and it is not chronological.** Nothing records\nwhen an asset arrived, so assets are grouped by source, then by frame index\nfor a clip, then by path for a directory, then by id. The practical effect is\nthat a clip's frames come back in order and a directory's stills in filename\norder; the practical limit is that \"the six most recent\" cannot be asked for\nyet.\n\n`total` is every asset in the project, never the size of this page, so a\nclient showing six tiles computes its own overflow from `total - 6`.",
+        "description": "Every asset ingested into the project, most recently ingested first.\n\nThe third asset listing: the other two window a *batch* and the curated\n*trunk*, and neither answers \"show me this project\". A page asking for six\nsample tiles passes `limit=6` and reads `total` for the rest.\n\n**Newest run first, and stable inside a run** \u2014 within one ingest the order\nis source, then file, then frame index, then id, so a clip's frames come back\nin order and a directory's stills in filename order. Two calls never\ndisagree.\n\n`source_id` narrows the listing to one source, in the same order, and\n`total` then counts that source \u2014 so a client filtering by source pages and\ncounts exactly as it would the whole project. An unknown project is 404\n`PROJECT_NOT_FOUND`, and a source that is not this project's is 404\n`SOURCE_NOT_FOUND`, never an empty page.\n\n`total` is every asset matched, never the size of this page.",
         "operationId": "list_project_assets",
         "parameters": [
           {
@@ -13190,6 +13380,25 @@
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Only the assets this source produced. A source of another project is 404.",
+            "in": "query",
+            "name": "source_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only the assets this source produced. A source of another project is 404.",
+              "title": "Source Id"
             }
           }
         ],

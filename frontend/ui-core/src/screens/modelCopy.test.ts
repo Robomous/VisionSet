@@ -16,11 +16,19 @@ import {
   originMark,
 } from "./modelCopy";
 
-it("names every origin, and marks each with its own edge", () => {
+it("names every origin, and marks each with its own fill", () => {
   expect(originLabel("huggingface")).toBe("Hugging Face");
   expect(originLabel("custom")).toBe("Customized");
   expect(originLabel("robomous")).toBe("Robomous");
   expect(new Set((["huggingface", "custom", "robomous"] as const).map(originMark)).size).toBe(3);
+  // A fill for the small square beside the name — not the left border it used
+  // to be, now that a connection is a row and has no edge of its own.
+  expect(originMark("huggingface")).toMatch(/\bbg-origin-hub\b/);
+  expect(originMark("custom")).toMatch(/\bbg-origin-custom\b/);
+  expect(originMark("robomous")).toMatch(/\bbg-origin-robomous\b/);
+  for (const origin of ["huggingface", "custom", "robomous"] as const) {
+    expect(originMark(origin)).not.toMatch(/border-l-/);
+  }
 });
 
 it("says what a model does in product prose, and passes an unknown value through", () => {

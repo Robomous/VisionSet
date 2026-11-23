@@ -21,7 +21,8 @@ import type { AnnotationSchema } from "@visionset/annotator";
 import type { JSX } from "react";
 
 import { CLASS_ROW_PX } from "../patterns/DataDisplay";
-import { ClassRegion, MAX_CLASS_ROWS, MIN_CLASS_ROWS, classListHeight } from "./ClassRegion";
+import { ClassRegion } from "./ClassRegion";
+import { MAX_CLASS_ROWS, MIN_CLASS_ROWS, classListHeight } from "./classRegionLayout";
 
 /** A schema of `n` classes, named so the row order is readable in a failure. */
 function schemaOf(n: number): AnnotationSchema {

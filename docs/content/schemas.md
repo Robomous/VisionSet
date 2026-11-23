@@ -163,7 +163,7 @@ kernel stores it verbatim:
 
 | Writer | Records |
 | --- | --- |
-| The browser's Schema tab | `curated` |
+| The browser's Classes section | `curated` |
 | `visionset schema apply` | `curated` |
 | MCP `create_schema_version` | `curated`, unless the caller passes `provenance` |
 | The annotator's add-class dialog | `annotation` |
@@ -519,16 +519,38 @@ refusals are **both 409** with only one override between them, so it branches on
 `code` and shows "Save anyway" for `DESTRUCTIVE_SCHEMA_CHANGE` and nothing but
 "Close" for `SCHEMA_CHANGE_WOULD_ORPHAN`.
 
-`POST /projects/{id}/schema/preview` now routes `SchemaService.preview`, so a client can ask
-both questions about a *draft* before it publishes; `compare` remains the question about two
-*published* versions, which is what the version navigator asks.
+The Classes section is a table, one row per class in hotkey order - its colour, name, the shapes
+it may be drawn with, its attributes, how much has been drawn with it, on how many images, and its
+hotkey - and a row opens that one class in a sheet at the page's edge, laid out as an inspector: a
+row per property, and each attribute a group that opens onto its own rows. The sheet edits a copy
+and writes it to the draft once, on Save; Cancel leaves the draft as it was. The arrow keys (and
+J/K) move between rows. A class's position is its hotkey, picked in the sheet as its shortcut, so a
+move is an unsaved change like any other. Once the draft differs from the version in force, a
+commit bar rises as an island over the foot of the table with what saving would publish, Discard
+and Save. **History** in the section's band opens every published version, newest first,
+one line each on a graph of lanes - the curated contract on the main lane, a run of versions
+published while annotating on a branch of its own. Pressing one opens it read-only in the same
+table, marked against the version before it: each new, changed or removed class says so beside
+its name (a removed one keeps its place, struck through), the cells that moved show what was
+added and removed, and a class the comparison says narrows the contract carries a warning. Its
+rows open to the class in full - its shapes and its attributes - with nothing to edit. The
+version's head has the way back to the draft, a navigator to the older and newer versions (and
+every version, searchable), and a way to restore it. A restore makes the draft that version's classes and
+publishes nothing until Save, as the next version: history is never rewritten. None of that is part of the contract: the draft, the preview and the publish below see
+the same class list whatever presents it. See [ui.md](ui.md#the-schema-editor-and-the-three-409s).
+
+`POST /projects/{id}/schema/preview` routes `SchemaService.preview`, so a client can ask
+both questions about a *draft* before it publishes; the commit bar's Review lists the preview's
+changes in the kernel's own words, and `compare` remains the question about two *published*
+versions, which is what a version opened from History asks of the version before it - the
+table's cells show what moved, and `compare` alone says whether any of it narrows.
 `POST /projects/{id}/schema/blocking-assets` routes `SchemaService.blocking_assets`, which is the
-listing behind the counts. It surfaces as **"Frames in the way"**, a section under the editor in
-the Schema tab rather than anything inside the refusal dialog: the dialog states a number and
-closes, and the frames it counted are still there to be dealt with afterwards. Each row links to
-every batch holding its frame — an annotation names no batch, so there is no single one to send
-anybody to. Both readings walk the project once, the same way, so the count and the rows never
-disagree. See
+listing behind the counts. It surfaces as **"frames in the way"**, in the one dialog a refusal
+opens - reached from the badge the commit bar shows once the preview refuses the draft, from a Save the
+preview refuses, and from a class removal it refuses - rather than as a section of the page.
+Each row links to every batch holding its frame - an annotation names no batch, so there is no
+single one to send anybody to - and the dialog shows the first twelve and states the total. Both
+readings walk the project once, the same way, so the count and the rows never disagree. See
 [ui.md](ui.md#frames-in-the-way),
 [api.md](api.md#asking-before-you-are-refused) and
 [api.md](api.md#reaching-what-is-in-the-way).
@@ -542,7 +564,7 @@ not a method added to `SchemaService`: that service states as doctrine that it h
 and no `delete`, and a draft needs both.
 
 **One draft per project per `kind`, and nothing more specific.** `kind` is a `SchemaProvenance`
-- `curated` for the Schema tab, `annotation` for the annotator's add-a-class dialog - and a
+- `curated` for the Classes section, `annotation` for the annotator's add-a-class dialog - and a
 project holds at most one draft of each, a singleton the store enforces with a unique index on
 `(project_id, kind)`. There is no name, no history and no notion of who wrote one.
 

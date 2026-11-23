@@ -12,12 +12,14 @@
     "version:check": "node scripts/sync_versions.mjs --check",
     "generate:client": "node scripts/generate_client.mjs",
     "generate:client:check": "node scripts/generate_client.mjs --check",
-    "bundle:static": "node scripts/bundle_static.mjs"
+    "bundle:static": "node scripts/bundle_static.mjs",
+    "doctor": "react-doctor"
   },
   "packageManager": "pnpm@12.4.1",
   "devDependencies": {
-    "@robomous/ui-core": "^0.5.0",
+    "@robomous/ui-core": "^0.6.0",
     "openapi-typescript": "7.13.0",
+    "react-doctor": "^0.9.23",
     "typescript": "^6.0.3"
   }
 }

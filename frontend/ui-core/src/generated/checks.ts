@@ -345,8 +345,20 @@ export const checkPreprocessingRecipePage: Check<Schemas["PreprocessingRecipePag
 export const checkProjectOut: Check<Schemas["ProjectOut"]> =
   /*#__PURE__*/ object({ "created_at": [true, either([isString, isNull] as const)], "description": [true, either([isString, isNull] as const)], "id": [true, isString], "name": [true, isString], "thumbnail_asset_id": [true, either([isString, isNull] as const)], "thumbnail_hash": [true, either([isString, isNull] as const)] } as const);
 
+export const checkProjectStage: Check<Schemas["ProjectStage"]> =
+  /*#__PURE__*/ oneOf(["empty", "in_review", "annotating", "to_promote", "unreleased", "not_started", "up_to_date"] as const);
+
+export const checkReleaseDigestOut: Check<Schemas["ReleaseDigestOut"]> =
+  /*#__PURE__*/ object({ "asset_count": [true, isInteger], "published_at": [true, isString], "tag": [true, isString] } as const);
+
+export const checkProjectDigestOut: Check<Schemas["ProjectDigestOut"]> =
+  /*#__PURE__*/ object({ "annotated_asset_count": [true, isInteger], "annotated_fraction": [true, isNumber], "asset_count": [true, isInteger], "batch_count": [true, isInteger], "class_count": [true, isInteger], "dataset_asset_count": [true, isInteger], "frames_in_review": [true, isInteger], "frames_left": [true, isInteger], "last_activity_at": [true, either([isString, isNull] as const)], "latest_release": [true, either([checkReleaseDigestOut, isNull] as const)], "stage": [true, checkProjectStage] } as const);
+
+export const checkProjectListItemOut: Check<Schemas["ProjectListItemOut"]> =
+  /*#__PURE__*/ object({ "created_at": [true, either([isString, isNull] as const)], "description": [true, either([isString, isNull] as const)], "digest": [true, checkProjectDigestOut], "id": [true, isString], "name": [true, isString], "thumbnail_asset_id": [true, either([isString, isNull] as const)], "thumbnail_hash": [true, either([isString, isNull] as const)] } as const);
+
 export const checkProjectPage: Check<Schemas["ProjectPage"]> =
-  /*#__PURE__*/ object({ "items": [true, arrayOf(checkProjectOut)], "total": [true, isInteger] } as const);
+  /*#__PURE__*/ object({ "items": [true, arrayOf(checkProjectListItemOut)], "total": [true, isInteger] } as const);
 
 export const checkProjectStatsOut: Check<Schemas["ProjectStatsOut"]> =
   /*#__PURE__*/ object({ "annotated_asset_count": [true, isInteger], "annotated_pct": [true, isNumber], "annotation_count": [true, isInteger], "asset_count": [true, isInteger], "class_count": [true, isInteger], "classes": [true, arrayOf(checkClassCountOut)], "last_ingest_at": [false, either([isString, isNull] as const)], "project_id": [true, isString] } as const);

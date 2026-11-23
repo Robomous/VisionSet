@@ -114,6 +114,7 @@ from visionset.kernel.errors import (
     IngestJobNotFound,
     MediaError,
     ProjectNotFound,
+    SourceNotFound,
     ThumbnailNotCached,
     UnsupportedMedia,
     WorkspaceCorrupt,
@@ -175,7 +176,7 @@ class IngestService:
                 raise AssetNotFound(f"no asset {asset_id} in project {project.name!r}")
             return asset
 
-    def assets(self, project_id: UUID) -> list[Asset]:
+    def assets(self, project_id: UUID, *, source_id: UUID | None = None) -> list[Asset]:
         """Every asset of that project, most recently ingested first.
 
         The collection side of "one door to an ``Asset``". The other asset
@@ -215,12 +216,26 @@ class IngestService:
         it sortable is a date nobody chose. Both passes are stable, so the
         tiebreak survives.
 
+        **``source_id`` narrows it to what one source produced** — one clip's
+        frames, one directory's stills — in the same order, so a page that lets
+        somebody pick a source pages through that source exactly as it would the
+        whole project. The source must belong to the project: one from another
+        project reads as missing, not as an empty list, the cross-scope rule every
+        reference here follows.
+
         Raises:
             ProjectNotFound: no such project in this workspace.
+            SourceNotFound: ``source_id`` names no source of this project.
         """
         with self._workspace.unit_of_work() as uow:
             project = self._require_project(uow, project_id)
-            stored = sorted(uow.assets.list(project.id), key=_in_stable_order)
+            listed = uow.assets.list(project.id)
+            if source_id is not None:
+                source = uow.sources.get(source_id)
+                if source is None or source.project_id != project.id:
+                    raise SourceNotFound(f"no source {source_id} in project {project.name!r}")
+                listed = [asset for asset in listed if asset.source_id == source_id]
+            stored = sorted(listed, key=_in_stable_order)
         # Pair each asset with its arrival so the sort key is a plain datetime
         # and mypy never has to be told the ``None`` was filtered out.
         arrived = [(asset.ingested_at, asset) for asset in stored if asset.ingested_at is not None]

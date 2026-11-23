@@ -1,8 +1,7 @@
 /**
  * The two pieces of the batch lifecycle that more than one screen renders.
  *
- * Both are here rather than in `BatchesScreen`, because `GalleryScreen` needs
- * them too — **promoted rather than copied**, the rule the kernel follows for a gate two
+ * Both live here rather than inside one screen — **promoted rather than copied**, the rule the kernel follows for a gate two
  * services need, for the same reason: a second spelling of "what does approving
  * do" is free to drift, and the two would eventually disagree in front of a user
  * about something irreversible.
@@ -55,7 +54,7 @@ export function BatchProgressBar({
   ...rest
 }: {
   readonly counts: ProgressCounts;
-  /** The gallery header states one sentence; the batch table lists every state. */
+  /** The batch panel states one sentence; the batch table lists every state. */
   readonly detailed?: boolean;
   /** A draft has no jobs, so a count of work "to do" would name work that does not exist yet. */
   readonly draft?: boolean;
@@ -111,12 +110,11 @@ export function BatchProgressBar({
 /**
  * Close the batch — and its jobs, which is the half that is easy to miss.
  *
- * Shared by the batch table and the gallery header, **promoted rather than
- * copied**, for the reason the module docstring gives about `ApproveDialog`: two
- * spellings of an irreversible move eventually disagree in front of a user. It is
- * also why the gallery has this at all — that is the screen a person is on when
- * they finish the work, and a closing move that lived only on a table one tab away
- * would be unreachable from it.
+ * Its own component, **promoted rather than copied**, for the reason the module
+ * docstring gives about `ApproveDialog`: two spellings of an irreversible move
+ * eventually disagree in front of a user. It lives in the batch panel's footer
+ * because that is where a person is standing when they finish the work, and a
+ * closing move that lived only on a table row would be unreachable from it.
  *
  * **The press is withheld while work is outstanding rather than offered and
  * refused.** `JobService.complete` will refuse an unsettled asset, and this screen
@@ -128,9 +126,11 @@ export function BatchProgressBar({
 export function CompleteBatchButton({
   batch,
   className,
+  size = "sm",
 }: {
   readonly batch: Batch;
   readonly className?: string;
+  readonly size?: "sm" | "lg";
 }): JSX.Element {
   const finish = useFinishBatch(batch.id);
   const outstanding = outstandingWork(batch.progress);
@@ -140,7 +140,7 @@ export function CompleteBatchButton({
     <div className={className ?? "flex flex-col items-end gap-1"}>
       <Button
         variant="outline"
-        size="sm"
+        size={size}
         data-testid={`complete-${batch.name}`}
         disabled={outstanding > 0 || finish.isPending}
         onClick={() => finish.mutate()}
@@ -186,7 +186,7 @@ export function ApproveDialog({
 }: {
   readonly batch: Batch | null;
   readonly onClose: () => void;
-  /** The gallery moves its own header when this lands; the table just re-reads. */
+  /** The panel re-reads the batch when this lands; a host with nothing to move just re-reads. */
   readonly onApproved?: () => void;
   /** Where "define your labels" goes when the refusal is `SCHEMA_NOT_FOUND`. */
   readonly onOpenSchema?: () => void;
@@ -317,25 +317,24 @@ export function ApproveDialog({
 // --- starting the batch --------------------------------------------------------
 
 /**
- * The batch's own next step, on the page the batch owns.
+ * The batch's own next step, in the panel the batch is opened in.
  *
- * An `approved` batch declares `start` and nothing in the gallery header asked
- * for it: the only control there was the per-frame door, which reads `View
- * frames` before any job exists to write to — a passive label on a batch whose
- * actual next move is sitting one tab away, on the Batches row. This is that
- * same move, `useBatchTransition(batchId, "start")`, so the table and the
- * gallery send the identical mutation rather than two spellings of it.
+ * An `approved` batch declares `start`, and the move belongs beside the batch's
+ * other actions rather than behind a row. It is `useBatchTransition(batchId,
+ * "start")`, so every surface that offers it sends the identical mutation
+ * rather than two spellings of it.
  *
- * Deliberately does not navigate. Landing back on the gallery re-reads the
- * batch as `in_annotation`, and the job panels then offer Start annotating and
- * Pre-label per job.
+ * Deliberately does not navigate. The panel re-reads the batch as
+ * `in_annotation`, and its jobs then offer *Open* into the editor.
  */
 export function StartAnnotatingButton({
   batch,
   className,
+  size = "sm",
 }: {
   readonly batch: Batch;
   readonly className?: string;
+  readonly size?: "sm" | "lg";
 }): JSX.Element {
   const start = useBatchTransition(batch.id, "start");
   const refusal = start.isError ? asApiError(start.error) : null;
@@ -344,7 +343,7 @@ export function StartAnnotatingButton({
     <div className={className ?? "flex flex-col items-end gap-1"}>
       <Button
         variant="default"
-        size="sm"
+        size={size}
         data-testid="start-batch"
         disabled={start.isPending}
         onClick={() => start.mutate()}

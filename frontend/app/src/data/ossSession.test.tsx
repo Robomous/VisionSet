@@ -31,6 +31,29 @@ import type { JSX } from "react";
 import { useApiClient, useBrowserInferenceRuntime, Async, unwrap, checks } from "@visionset/ui-core";
 import { readToken, writeToken } from "./token";
 import { OssSessionProvider, useOssSession } from "./OssSession";
+
+/** One listed project, digest and all — the shape `GET /projects` answers with. */
+const HIGHWAY = {
+  id: "p1",
+  name: "highway",
+  description: null,
+  thumbnail_asset_id: null,
+  thumbnail_hash: null,
+  created_at: null,
+  digest: {
+    asset_count: 0,
+    annotated_asset_count: 0,
+    annotated_fraction: 0,
+    class_count: 0,
+    batch_count: 0,
+    frames_left: 0,
+    frames_in_review: 0,
+    dataset_asset_count: 0,
+    latest_release: null,
+    last_activity_at: null,
+    stage: "empty",
+  },
+};
 import { TokenGate } from "../shell/TokenGate";
 
 afterEach(() => {
@@ -100,7 +123,7 @@ function Projects(): JSX.Element {
 describe("the client carries the credential", () => {
   it("sends the token as a bearer header, and nothing when there is none", async () => {
     writeToken("secret-token");
-    const stub = stubFetch([[200, { items: [{ id: "p1", name: "highway", description: null, thumbnail_asset_id: null, thumbnail_hash: null, created_at: null }], total: 1 }]]);
+    const stub = stubFetch([[200, { items: [HIGHWAY], total: 1 }]]);
     vi.stubGlobal("fetch", stub.fetch);
 
     render(
@@ -145,7 +168,7 @@ describe("the browser inference runtime", () => {
 
 describe("the browser session", () => {
   it("signs in with no token at all when the server issues one", async () => {
-    const stub = stubFetch([[200, { items: [{ id: "p1", name: "highway", description: null, thumbnail_asset_id: null, thumbnail_hash: null, created_at: null }], total: 1 }]], {
+    const stub = stubFetch([[200, { items: [HIGHWAY], total: 1 }]], {
       session: true,
     });
     vi.stubGlobal("fetch", stub.fetch);
@@ -221,7 +244,7 @@ describe("the browser session", () => {
     // one. If the client were keyed on the token, nothing would change here and the
     // signed-out application would read the signed-in application's answers.
     const signedIn = stubFetch(
-      [[200, { items: [{ id: "p1", name: "highway", description: null, thumbnail_asset_id: null, thumbnail_hash: null, created_at: null }], total: 1 }]],
+      [[200, { items: [HIGHWAY], total: 1 }]],
       { session: true },
     );
     vi.stubGlobal("fetch", signedIn.fetch);
@@ -379,7 +402,7 @@ describe("the token form", () => {
   it("adopts a token the server accepts and shows the app", async () => {
     const stub = stubFetch([
       [200, { items: [], total: 0 }],
-      [200, { items: [{ id: "p1", name: "highway", description: null, thumbnail_asset_id: null, thumbnail_hash: null, created_at: null }], total: 1 }],
+      [200, { items: [HIGHWAY], total: 1 }],
     ]);
     vi.stubGlobal("fetch", stub.fetch);
 

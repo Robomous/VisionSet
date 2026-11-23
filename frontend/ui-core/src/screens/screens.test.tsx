@@ -1,5 +1,6 @@
 /**
- * The project screens, driven against a stubbed `fetch`.
+ * The project screens, driven against a stubbed `fetch`: the project list, the
+ * project view's sections and its identity.
  *
  * The acceptance criteria are "component tests for the editor's edit/validate/save
  * flow" and "version history renders and past versions are read-only". Both are
@@ -13,297 +14,441 @@
  * offered a button that will never work.
  */
 
-import { QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useState, type JSX, type ReactNode } from "react";
-
-// `VisionSetDataProvider` and `QueryClient` stay direct imports: three tests
-// below build their own local `wrap` that a `rerender` reuses across a prop
-// change, which needs the same `client` identity (and the same `QueryClient`,
-// since they assert on its cache) present on both sides of the rerender —
-// something `renderWithData`'s result cannot give a caller-driven `rerender`.
-// See each local `wrap` below.
-import { VisionSetDataProvider } from "../data/VisionSetDataProvider";
-import { classColor, hexColor } from "../palette";
+import { describe, expect, it, vi } from "vitest";
+import { formatCount, formatPercent, formatWhen } from "../lib/format";
 import { ProjectScreen } from "./ProjectScreen";
+import { PageStatusOutlet, PageStatusProvider } from "../patterns/PageStatus";
 import { ProjectsScreen } from "./ProjectsScreen";
-import {
-  usePreviewSchemaChange,
-  useSchemaBlockingAssets,
-  type LabelClassBody,
-  type SchemaChangePreview,
-} from "./queries";
-import { harnessClient, renderWithData } from "../testing/dataHarness";
+import type { ProjectListItem } from "./queries";
+import { renderWithData } from "../testing/dataHarness";
 import { batchActions } from "../testing/wire.fixtures.js";
-import type { components as capComponents } from "../generated/api.js";
+import {
+  CLASSES,
+  OTHER_PROJECT,
+  PROJECT,
+  addNamedClass,
+  handlers,
+  on,
+  sent,
+  installScreensHarness,
+  type BatchState,
+} from "../testing/screensHarness";
 
-type BatchState = capComponents["schemas"]["BatchState"];
-
-const PROJECT = "11111111-1111-4111-8111-111111111111";
-/** A second project, for the draft that must not follow somebody into it. */
-const OTHER_PROJECT = "77777777-7777-4777-8777-777777777777";
-
-/** One route table, matched in order. A miss is a loud 500 rather than a hang. */
-type HandlerAnswer = { status: number; body: unknown } | undefined;
-type Handler = (request: Request) => HandlerAnswer | Promise<HandlerAnswer>;
-
-let handlers: Handler[] = [];
-const sent: Request[] = [];
-/**
- * What each request carried, captured before the client consumes it.
- *
- * Cloned rather than read later: a `Request` body is a one-shot stream, so a test
- * asking for it after the fact gets nothing. The colour-input claim needs it —
- * is about the payload a save actually sends, not about what the control shows.
- */
-const bodies = new Map<Request, string>();
-
-/**
- * A minimal stand-in for `SchemaDraftService`, keyed by project id — the schema
- * editor now writes the shared draft before every publish, so `save-schema`
- * needs a `PUT .../schema/drafts/{kind}` that actually answers rather than the
- * loud 500 an unmatched route gets everywhere else in this file. No test here
- * exercises `STALE_WRITE` — that belongs to `schemaDraft.test.tsx`, which owns
- * the fuller simulation — so this one only ever creates and re-saves.
- */
-let curatedDrafts: Map<
-  string,
-  { project_id: string; kind: string; classes: unknown[]; note: string; based_on: number | null; revision: number; updated_at: string }
->;
-
-/** `/projects/{id}/schema/drafts/{kind}`'s `id`, or `null` off that path. */
-function draftProjectId(path: string): string | null {
-  const match = /^\/projects\/([^/]+)\/schema\/drafts\/[^/]+$/.exec(path);
-  return match ? match[1] : null;
-}
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-beforeEach(() => {
-  handlers = [];
-  sent.length = 0;
-  bodies.clear();
-  curatedDrafts = new Map();
-  vi.stubGlobal("fetch", async (request: Request) => {
-    sent.push(request);
-    if (request.method !== "GET") bodies.set(request, await request.clone().text());
-    for (const handler of handlers) {
-      const answer = await handler(request);
-      if (answer !== undefined) {
-        return Promise.resolve(
-          new Response(answer.status === 204 ? null : JSON.stringify(answer.body), {
-            status: answer.status,
-            headers: { "content-type": "application/json" },
-          }),
-        );
-      }
-    }
-    const path = new URL(request.url).pathname;
-    const draftProject = draftProjectId(path);
-    if (draftProject !== null && request.method === "GET") {
-      const stored = curatedDrafts.get(draftProject);
-      return Promise.resolve(
-        stored === undefined
-          ? jsonResponse(404, { code: "SCHEMA_DRAFT_NOT_FOUND", message: "no draft yet" })
-          : jsonResponse(200, stored),
-      );
-    }
-    if (draftProject !== null && request.method === "PUT") {
-      const written = JSON.parse(bodies.get(request) ?? "{}") as {
-        classes: unknown[];
-        note: string;
-        based_on: number | null;
-      };
-      const saved = {
-        project_id: draftProject,
-        kind: "curated",
-        classes: written.classes,
-        note: written.note,
-        based_on: written.based_on,
-        revision: (curatedDrafts.get(draftProject)?.revision ?? 0) + 1,
-        updated_at: "2024-01-01T00:00:00Z",
-      };
-      curatedDrafts.set(draftProject, saved);
-      return Promise.resolve(jsonResponse(200, saved));
-    }
-    if (path.endsWith("/schema/preview") && request.method === "POST") {
-      return Promise.resolve(
-        jsonResponse(200, {
-          diff: { changes: [], destructive_classes: [], is_destructive: false },
-          blockers: [],
-          is_refused: false,
-        }),
-      );
-    }
-    return Promise.resolve(
-      new Response(JSON.stringify({ code: "NO_STUB", message: `${request.method} ${request.url}` }), {
-        status: 500,
-        headers: { "content-type": "application/json" },
-      }),
-    );
-  });
-});
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-  globalThis.sessionStorage.clear();
-});
-
-function on(method: string, pattern: RegExp, answer: { status: number; body?: unknown }): void {
-  handlers.push((request) =>
-    request.method === method && pattern.test(new URL(request.url).pathname + new URL(request.url).search)
-      ? { status: answer.status, body: answer.body ?? null }
-      : undefined,
-  );
-}
-
-/** The text of every element a dialog's `aria-describedby` reaches. */
-function describedBy(dialog: HTMLElement): readonly (string | null)[] {
-  return (dialog.getAttribute("aria-describedby") ?? "")
-    .split(" ")
-    .filter(Boolean)
-    .map((id) => document.getElementById(id)?.textContent ?? null);
-}
-
-const CLASSES = [
-  { name: "vehicle", geometries: ["bbox"], color: "#38bdf8", attributes: [] },
-  { name: "lane", geometries: ["polygon"], color: null, attributes: [] },
-];
-
-function PreviewSchemaChangeProbe({
-  projectId,
-  classes,
-}: {
-  readonly projectId: string;
-  readonly classes: readonly LabelClassBody[];
-}): JSX.Element {
-  const preview = usePreviewSchemaChange(projectId);
-  const [result, setResult] = useState<SchemaChangePreview | null>(null);
-
-  return (
-    <div>
-      <button
-        data-testid="preview-schema-change"
-        onClick={() => {
-          void preview.mutateAsync({ classes }).then(setResult);
-        }}
-      >
-        preview
-      </button>
-      {result === null ? null : (
-        <p data-testid="preview-result">
-          {`${result.diff.destructive_classes.join(",")}:${result.blockers[0]?.annotations}:${result.blockers[0]?.assets}:${result.is_refused}`}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function SchemaBlockingAssetsProbe({
-  projectId,
-  classes,
-}: {
-  readonly projectId: string;
-  readonly classes: readonly LabelClassBody[] | null;
-}): JSX.Element {
-  const query = useSchemaBlockingAssets(projectId, classes);
-  return (
-    <div data-testid="blocking-assets-result">
-      {query.data === undefined
-        ? "pending"
-        : `${query.data.total}:${query.data.items[0]?.annotations}:${query.data.items[0]?.batch_ids.length}`}
-    </div>
-  );
-}
+installScreensHarness();
 
 describe("the project list", () => {
   const THIRD_PROJECT = "99999999-9999-4999-8999-999999999999";
-  function project(id: string, name: string, created_at: string | null) {
-    return { id, name, description: null, thumbnail_asset_id: null, thumbnail_hash: null, created_at };
+  /** A digest with nothing in it: the kernel's answer for a project made a moment ago. */
+  const EMPTY_DIGEST: ProjectListItem["digest"] = {
+    asset_count: 0,
+    annotated_asset_count: 0,
+    annotated_fraction: 0,
+    class_count: 0,
+    batch_count: 0,
+    frames_left: 0,
+    frames_in_review: 0,
+    dataset_asset_count: 0,
+    latest_release: null,
+    last_activity_at: null,
+    stage: "empty",
+  };
+  function project(
+    id: string,
+    name: string,
+    created_at: string | null,
+    digest: Partial<ProjectListItem["digest"]> = {},
+  ): ProjectListItem {
+    return {
+      id,
+      name,
+      description: null,
+      thumbnail_asset_id: null,
+      thumbnail_hash: null,
+      created_at,
+      digest: { ...EMPTY_DIGEST, ...digest },
+    };
+  }
+  function list(...items: ProjectListItem[]): void {
+    on("GET", /^\/projects$/, { status: 200, body: { items, total: items.length } });
   }
   function rowNames(): string[] {
     return screen
-      .getAllByTestId(/^project-/)
+      .getAllByTestId(/^project-(?!stage)/)
       .map((row) => row.getAttribute("data-testid")?.replace("project-", "") ?? "");
   }
-
-  it("orders projects newest first, and the Created header flips the order", async () => {
-    // The wire's order is creation order, oldest first; the screen inverts it.
-    on("GET", /^\/projects$/, {
-      status: 200,
-      body: {
-        items: [
-          project(PROJECT, "oldest", "2026-01-01T08:00:00Z"),
-          project(OTHER_PROJECT, "middle", "2026-03-01T08:00:00Z"),
-          project(THIRD_PROJECT, "newest", "2026-08-01T08:00:00Z"),
-        ],
-        total: 3,
-      },
-    });
-
-    renderWithData(<ProjectsScreen onOpenProject={vi.fn()} />);
-
+  /**
+   * The screen as the app mounts it: inside a status provider, with the outlet the
+   * shell's status bar carries. What the list adds up to is said there and not on
+   * the page, so a test that reads a count needs the pair.
+   */
+  async function rendered(): Promise<void> {
+    renderWithData(
+      <PageStatusProvider>
+        <ProjectsScreen onOpenProject={vi.fn()} />
+        <PageStatusOutlet />
+      </PageStatusProvider>,
+    );
     await waitFor(() => expect(screen.queryByTestId("projects-table")).not.toBeNull());
-    expect(rowNames()).toEqual(["newest", "middle", "oldest"]);
-    expect(screen.getByRole("columnheader", { name: /created/i }).getAttribute("aria-sort")).toBe(
-      "descending",
-    );
+  }
 
-    await userEvent.click(screen.getByTestId("sort-created"));
-    expect(rowNames()).toEqual(["oldest", "middle", "newest"]);
-    expect(screen.getByRole("columnheader", { name: /created/i }).getAttribute("aria-sort")).toBe(
-      "ascending",
+  it("orders projects by last activity, newest first, and the Activity header flips it", async () => {
+    list(
+      project(PROJECT, "quiet", "2026-01-01T08:00:00Z", { last_activity_at: "2026-02-01T08:00:00Z" }),
+      project(OTHER_PROJECT, "busy", "2026-01-02T08:00:00Z", { last_activity_at: "2026-09-01T08:00:00Z" }),
+      // Nothing has happened in it yet, so it moved when it was made.
+      project(THIRD_PROJECT, "new", "2026-05-01T08:00:00Z"),
     );
+    await rendered();
+    expect(rowNames()).toEqual(["busy", "new", "quiet"]);
+    expect(screen.getByRole("columnheader", { name: /activity/i }).getAttribute("aria-sort")).toBe("descending");
+
+    await userEvent.click(screen.getByTestId("sort-activity"));
+    expect(rowNames()).toEqual(["quiet", "new", "busy"]);
+    expect(screen.getByRole("columnheader", { name: /activity/i }).getAttribute("aria-sort")).toBe("ascending");
   });
 
-  it("keeps undated projects last in both directions, in the order the wire gave them", async () => {
-    on("GET", /^\/projects$/, {
-      status: 200,
-      body: {
-        items: [
-          project(PROJECT, "legacy-a", null),
-          project(OTHER_PROJECT, "legacy-b", null),
-          project(THIRD_PROJECT, "dated", "2026-08-01T08:00:00Z"),
-        ],
-        total: 3,
-      },
-    });
-
-    renderWithData(<ProjectsScreen onOpenProject={vi.fn()} />);
-
-    await waitFor(() => expect(screen.queryByTestId("projects-table")).not.toBeNull());
+  it("keeps never-dated projects last in both directions, in the order the wire gave them", async () => {
+    list(project(PROJECT, "legacy-a", null), project(OTHER_PROJECT, "legacy-b", null), project(THIRD_PROJECT, "dated", "2026-08-01T08:00:00Z"));
+    await rendered();
     expect(rowNames()).toEqual(["dated", "legacy-a", "legacy-b"]);
     // A project the workspace never dated shows a dash, never a guessed date.
     expect(screen.getByTestId("project-legacy-a").textContent).toContain("—");
 
-    await userEvent.click(screen.getByTestId("sort-created"));
+    await userEvent.click(screen.getByTestId("sort-activity"));
     expect(rowNames()).toEqual(["dated", "legacy-a", "legacy-b"]);
   });
 
+  it("sorts a numeric column largest first on its first click, and marks only that header", async () => {
+    list(
+      project(PROJECT, "small", null, { asset_count: 40, stage: "not_started" }),
+      project(OTHER_PROJECT, "large", null, { asset_count: 12480, stage: "not_started" }),
+      project(THIRD_PROJECT, "middle", null, { asset_count: 900, stage: "not_started" }),
+    );
+    await rendered();
+    await userEvent.click(screen.getByTestId("sort-images"));
+    expect(rowNames()).toEqual(["large", "middle", "small"]);
+    expect(screen.getByRole("columnheader", { name: /images/i }).getAttribute("aria-sort")).toBe("descending");
+    expect(screen.getByRole("columnheader", { name: /activity/i }).getAttribute("aria-sort")).toBe("none");
+    // Numbers are grouped the product's way.
+    expect(screen.getByTestId("project-large").textContent).toContain("12,480");
+  });
+
+  it("says each stage in words, with the size of what is waiting", async () => {
+    list(
+      project(PROJECT, "reviewing", null, { asset_count: 900, frames_in_review: 37, stage: "in_review" }),
+      project(OTHER_PROJECT, "labelling", null, { asset_count: 1840, frames_left: 1112, stage: "annotating" }),
+      project(THIRD_PROJECT, "fresh", null),
+    );
+    await rendered();
+    const stage = (name: string): string => within(screen.getByTestId(`project-${name}`)).getByTestId("project-stage").textContent ?? "";
+    expect(stage("reviewing")).toBe("In review");
+    expect(screen.getByTestId("project-reviewing").textContent).toContain("37 to review");
+    expect(stage("labelling")).toBe("Annotating");
+    // What is left to annotate is the Annotated column's, said once: the stage
+    // carries no "left" of its own beside it.
+    expect(screen.getByTestId("project-labelling").textContent).toContain("1,840 to annotate");
+    expect(screen.getByTestId("project-labelling").textContent).not.toContain("left");
+    expect(stage("fresh")).toBe("No images");
+  });
+
+  it("names the latest release's tag alone, with what it holds on hover, or a dash without one", async () => {
+    list(
+      project(PROJECT, "released", null, {
+        asset_count: 9000,
+        dataset_asset_count: 8460,
+        latest_release: { tag: "v0.6", asset_count: 8460, published_at: "2026-10-28T08:00:00Z" },
+        stage: "up_to_date",
+      }),
+      project(OTHER_PROJECT, "promoted", null, { asset_count: 500, dataset_asset_count: 480, stage: "unreleased" }),
+    );
+    await rendered();
+    // The tag and nothing else: its image count is the title's, and "no release"
+    // is the Status column's word (Not released), not the cell's.
+    const released = screen.getByTestId("project-released");
+    const tag = within(released).getByText("v0.6");
+    expect(tag.className).toContain("font-mono");
+    expect(tag.getAttribute("title")).toMatch(/^8,460 images · published /);
+    expect(released.textContent).not.toContain("8,460");
+    const promoted = screen.getByTestId("project-promoted");
+    expect(promoted.textContent).not.toContain("480");
+    expect(promoted.textContent).not.toContain("no release");
+    expect(promoted.textContent).not.toMatch(/v\d/);
+    expect(within(promoted).queryByTitle(/published/)).toBeNull();
+  });
+
+  it("filters by name or description as you type, and says so when nothing matches", async () => {
+    list(
+      { ...project(PROJECT, "highway", null), description: "M4 survey" },
+      project(OTHER_PROJECT, "warehouse", null),
+    );
+    await rendered();
+    await userEvent.type(screen.getByTestId("projects-search"), "m4");
+    expect(rowNames()).toEqual(["highway"]);
+    await userEvent.clear(screen.getByTestId("projects-search"));
+    await userEvent.type(screen.getByTestId("projects-search"), "zebra");
+    const none = screen.getByTestId("projects-no-match");
+    expect(none.textContent).toContain("zebra");
+    // A row of the table, spanning it — the grid and its headers stay.
+    expect(none.tagName).toBe("TD");
+    expect(screen.getByTestId("projects-table").contains(none)).toBe(true);
+    expect(none.getAttribute("colspan")).toBe("8");
+    expect(screen.queryAllByTestId(/^project-(?!stage)/)).toHaveLength(0);
+    // The footer says what the search left, of everything — and with nothing
+    // left there is nothing to total.
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("No projects match");
+    expect(screen.queryByTestId("projects-images")).toBeNull();
+    expect(screen.queryByTestId("projects-review")).toBeNull();
+  });
+
+  it("clears a search that matched nothing from the empty result, and gives focus back to the field", async () => {
+    list(project(PROJECT, "highway", null), project(OTHER_PROJECT, "warehouse", null));
+    await rendered();
+    const search = screen.getByTestId("projects-search");
+    await userEvent.type(search, "zebra");
+    expect(screen.getByTestId("projects-no-match")).not.toBeNull();
+
+    const clear = within(screen.getByTestId("projects-no-match")).getByTestId("projects-clear-search");
+    expect(clear.textContent).toBe("Clear search");
+    await userEvent.click(clear);
+
+    expect(search).toHaveProperty("value", "");
+    expect(screen.queryByTestId("projects-no-match")).toBeNull();
+    expect(rowNames().sort()).toEqual(["highway", "warehouse"]);
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("1–2 of 2 projects");
+    expect(document.activeElement).toBe(search);
+  });
+
+  it("is one table of projects, headed by its columns, under a heading that carries no count", async () => {
+    list(project(PROJECT, "highway", null, { asset_count: 10, stage: "not_started" }), project(OTHER_PROJECT, "warehouse", null));
+    await rendered();
+
+    expect(screen.getByRole("heading", { level: 1, name: "Projects" })).not.toBeNull();
+    // What the list adds up to is the status bar's, and which rows are on
+    // screen the footer's: not the heading's.
+    const heading = screen.getByRole("heading", { level: 1, name: "Projects" });
+    expect(heading.textContent).toBe("Projects");
+    // The header band is the name alone; New sits at the end of the search and sort bar.
+    expect(heading.closest("header")?.textContent).toBe("Projects");
+    const add = screen.getByRole("button", { name: "New project" });
+    expect(add).toBe(screen.getByTestId("new-project"));
+    expect(screen.getByTestId("projects-search").closest("div")?.parentElement?.contains(add)).toBe(true);
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("1–2 of 2 projects");
+    expect(screen.getByTestId("projects-images").textContent).toBe("10 images · 10 to annotate");
+    expect(screen.getByTestId("projects-screen").contains(screen.getByTestId("projects-images"))).toBe(false);
+    // The count is the footer's alone: the status bar does not say it again.
+    expect(screen.queryByTestId("projects-totals")).toBeNull();
+    const table = screen.getByRole("table", { name: "Projects" });
+    expect(table).toBe(screen.getByTestId("projects-table"));
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .map((header) => header.textContent),
+    ).toEqual(["Project", "Images", "Annotated", "Classes", "Status", "Release", "Activity", "Actions"]);
+    expect(within(table).getAllByTestId(/^project-(?!stage)/).every((row) => row.tagName === "TR")).toBe(true);
+    // One count, in the footer: no totals table under the rows.
+    expect(screen.queryByTestId("projects-table-totals")).toBeNull();
+    expect(screen.queryByTestId("projects-shown")).toBeNull();
+    expect(screen.queryByRole("table", { name: "Projects, totals" })).toBeNull();
+    expect(screen.getAllByRole("table")).toHaveLength(1);
+    // No cards, and no list of anything but the table's own rows.
+    expect(document.querySelector('[data-slot="card"]')).toBeNull();
+  });
+
+  it("shows a project's description beside its name, and what is left to annotate beside a ring", async () => {
+    list(
+      { ...project(PROJECT, "highway", null, { asset_count: 200, annotated_asset_count: 50, annotated_fraction: 0.25, stage: "annotating", frames_left: 150 }), description: "M4 survey" },
+      project(OTHER_PROJECT, "fresh", null),
+      project(THIRD_PROJECT, "done", null, { asset_count: 48, annotated_asset_count: 48, annotated_fraction: 1, stage: "up_to_date" }),
+    );
+    await rendered();
+
+    const row = screen.getByTestId("project-highway");
+    expect(row.textContent).toContain("M4 survey");
+    expect(within(row).getByTestId("open-highway").closest("td")?.textContent).toContain("M4 survey");
+    // The work left, in words — the ring beside it is decoration for the glance.
+    const cell = within(row).getByTestId("remaining-cell");
+    expect(cell.textContent).toBe("150 to annotate");
+    expect(cell.getAttribute("title")).toBe("25% of images annotated");
+    expect(within(cell).getByTestId("remaining-ring").getAttribute("aria-hidden")).toBe("true");
+    // Tabular figures, so a count that changes never moves the words after it.
+    expect(cell.querySelector(".tabular-nums")).not.toBeNull();
+    // A finished project says so in words, with no ring and no count.
+    const done = within(screen.getByTestId("project-done")).getByTestId("remaining-cell");
+    expect(done.textContent).toBe("All annotated");
+    expect(within(done).queryByTestId("remaining-ring")).toBeNull();
+    // Nothing to annotate yet: the dash every column uses, not "0 to annotate".
+    expect(within(screen.getByTestId("project-fresh")).queryByTestId("remaining-cell")).toBeNull();
+    expect(screen.getByTestId("project-fresh").textContent).not.toContain("to annotate");
+  });
+
+  it("counts frames a person still has to do, so pre-labels nobody read are never all annotated", async () => {
+    // Every image carries an annotation — a model's pre-label — and 11 frames
+    // still wait on an annotator: the row says the 11, never "All annotated".
+    list(project(PROJECT, "prelabelled", null, { asset_count: 13, annotated_asset_count: 13, annotated_fraction: 1, frames_left: 11, stage: "annotating" }));
+    await rendered();
+    const cell = within(screen.getByTestId("project-prelabelled")).getByTestId("remaining-cell");
+    expect(cell.textContent).toBe("11 to annotate");
+    expect(screen.getByTestId("projects-images").textContent).toBe("13 images · 11 to annotate");
+    // The ring stays open while anything is left, whatever the images' share.
+    const arc = within(cell).getByTestId("remaining-ring").querySelectorAll("circle")[1];
+    const [drawn, length] = (arc?.getAttribute("stroke-dasharray") ?? "").split(" ").map(Number);
+    expect(drawn! / length!).toBeLessThan(1);
+  });
+
+  it("says in the status bar how many images there are, and in the footer how many projects the search left of them", async () => {
+    list(
+      { ...project(PROJECT, "highway", null, { asset_count: 100, annotated_asset_count: 50, annotated_fraction: 0.5, latest_release: { tag: "v1", asset_count: 90, published_at: "2026-10-28T08:00:00Z" }, stage: "up_to_date" }), description: "M4 survey" },
+      project(OTHER_PROJECT, "warehouse", null, { asset_count: 300, annotated_asset_count: 300, annotated_fraction: 1, stage: "unreleased" }),
+    );
+    await rendered();
+
+    // The images are announced as a status: the outlet is a polite status
+    // region that exists before anything is put in it.
+    const images = screen.getByTestId("projects-images");
+    expect(images.closest('[role="status"]')).toBe(screen.getByTestId("page-status"));
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("1–2 of 2 projects");
+    // Over the rows shown, the same count the rows say: 50 left, all in highway.
+    expect(images.textContent).toBe("400 images · 50 to annotate");
+    expect(screen.queryByTestId("projects-review")).toBeNull();
+    expect(screen.queryByTestId("projects-table-totals")).toBeNull();
+
+    await userEvent.type(screen.getByTestId("projects-search"), "m4");
+
+    // What the search hid is said, never dropped — and the rest follows the rows left.
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("1 project · filtered from 2");
+    expect(screen.getByTestId("projects-images").textContent).toBe("100 images · 50 to annotate");
+    expect(rowNames()).toEqual(["highway"]);
+  });
+
+  it("says how many shown projects wait on a review, only while some do", async () => {
+    list(
+      project(PROJECT, "reviewing", null, { asset_count: 900, frames_in_review: 37, stage: "in_review" }),
+      project(OTHER_PROJECT, "also-reviewing", null, { asset_count: 10, frames_in_review: 2, stage: "in_review" }),
+      project(THIRD_PROJECT, "labelling", null, { asset_count: 40, frames_left: 4, stage: "annotating" }),
+    );
+    await rendered();
+    expect(screen.getByTestId("projects-review").textContent).toBe("2 in review");
+
+    // Over the rows shown: the search leaves one that is, then one that is not.
+    await userEvent.type(screen.getByTestId("projects-search"), "also");
+    expect(screen.getByTestId("projects-review").textContent).toBe("1 in review");
+    await userEvent.clear(screen.getByTestId("projects-search"));
+    await userEvent.type(screen.getByTestId("projects-search"), "labelling");
+    expect(screen.queryByTestId("projects-review")).toBeNull();
+  });
+
+  it("says nothing about images while the projects shown hold none", async () => {
+    list(project(PROJECT, "fresh", null), project(OTHER_PROJECT, "newer", null));
+    await rendered();
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("1–2 of 2 projects");
+    expect(screen.queryByTestId("projects-images")).toBeNull();
+    expect(screen.queryByTestId("projects-review")).toBeNull();
+  });
+
+  it("says none of its counts when no status bar is there to say them in", async () => {
+    // The facts are a summary of the page, never the only place something is
+    // said: a host without an outlet loses the summary and nothing else.
+    list(project(PROJECT, "highway", null, { asset_count: 10, stage: "in_review", frames_in_review: 1 }));
+    renderWithData(<ProjectsScreen onOpenProject={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByTestId("projects-table")).not.toBeNull());
+    for (const id of ["projects-images", "projects-review"]) {
+      expect(screen.queryByTestId(id)).toBeNull();
+    }
+    expect(rowNames()).toEqual(["highway"]);
+  });
+
+  it("speaks of one project and one image in the singular", async () => {
+    list(project(PROJECT, "fresh", null, { asset_count: 1, stage: "not_started" }));
+    await rendered();
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("1 project");
+    expect(screen.getByTestId("projects-images").textContent).toBe("1 image · 1 to annotate");
+  });
+
+  it("sorts from the toolbar's menu, and the header that carries the sort follows", async () => {
+    list(
+      project(PROJECT, "small", null, { asset_count: 40, class_count: 9, stage: "not_started" }),
+      project(OTHER_PROJECT, "large", null, { asset_count: 12480, class_count: 1, stage: "not_started" }),
+      project(THIRD_PROJECT, "middle", null, { asset_count: 900, class_count: 4, stage: "not_started" }),
+    );
+    await rendered();
+    const menu = screen.getByTestId("projects-sort");
+    // The toolbar says the order it is in, and the header agrees.
+    expect(menu.textContent).toBe("Sorted byActivity");
+    expect(screen.getByRole("columnheader", { name: /activity/i }).getAttribute("aria-sort")).toBe("descending");
+
+    await userEvent.click(menu);
+    await userEvent.click(await screen.findByTestId("projects-sort-images"));
+
+    expect(rowNames()).toEqual(["large", "middle", "small"]);
+    expect(screen.getByTestId("projects-sort").textContent).toBe("Sorted byImages");
+    expect(screen.getByRole("columnheader", { name: /images/i }).getAttribute("aria-sort")).toBe("descending");
+    expect(screen.getByRole("columnheader", { name: /activity/i }).getAttribute("aria-sort")).toBe("none");
+
+    // Which way, in the same menu.
+    await userEvent.click(screen.getByTestId("projects-sort"));
+    await userEvent.click(await screen.findByRole("menuitemradio", { name: "Ascending" }));
+    expect(rowNames()).toEqual(["small", "middle", "large"]);
+    expect(screen.getByRole("columnheader", { name: /images/i }).getAttribute("aria-sort")).toBe("ascending");
+    expect(screen.getByTestId("projects-sort").textContent).toBe("Sorted byImages");
+
+    await userEvent.click(screen.getByTestId("projects-sort"));
+    await userEvent.click(await screen.findByRole("menuitemradio", { name: "Descending" }));
+    expect(rowNames()).toEqual(["large", "middle", "small"]);
+  });
+
+  it("keeps the menu and the headers in step the other way round too", async () => {
+    list(
+      project(PROJECT, "few", null, { class_count: 2, stage: "not_started" }),
+      project(OTHER_PROJECT, "many", null, { class_count: 12, stage: "not_started" }),
+    );
+    await rendered();
+
+    // The Classes header sorts now, and the menu reads what it did.
+    await userEvent.click(screen.getByTestId("sort-classes"));
+    expect(rowNames()).toEqual(["many", "few"]);
+    expect(screen.getByRole("columnheader", { name: /classes/i }).getAttribute("aria-sort")).toBe("descending");
+    expect(screen.getByTestId("projects-sort").textContent).toBe("Sorted byClasses");
+
+    await userEvent.click(screen.getByTestId("sort-classes"));
+    expect(rowNames()).toEqual(["few", "many"]);
+    await userEvent.click(screen.getByTestId("projects-sort"));
+    expect(await screen.findByRole("menuitemradio", { name: "Classes" })).not.toBeNull();
+    expect(screen.getByRole("menuitemradio", { name: "Classes" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("menuitemradio", { name: "Ascending" }).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("has one way to make a project, the header's, and no row of the table that offers another", async () => {
+    list(project(PROJECT, "highway", null));
+    await rendered();
+
+    expect(screen.queryByTestId("projects-add-row")).toBeNull();
+    // The table holds the projects and nothing else.
+    const rows = [...screen.getByTestId("projects-table").querySelectorAll("tbody > tr")];
+    expect(rows).toHaveLength(1);
+    expect(rowNames()).toEqual(["highway"]);
+    expect(screen.getAllByRole("button", { name: /new project/i })).toHaveLength(1);
+
+    await userEvent.click(screen.getByTestId("new-project"));
+
+    expect(await screen.findByTestId("create-project-dialog")).not.toBeNull();
+    expect(screen.getByTestId("project-name")).toHaveProperty("value", "");
+  });
+
+  it("keeps the header's New project under a search that matches nothing", async () => {
+    list(project(PROJECT, "highway", null));
+    await rendered();
+    await userEvent.type(screen.getByTestId("projects-search"), "zebra");
+
+    expect(screen.getByTestId("projects-no-match")).not.toBeNull();
+    expect(screen.queryByTestId("projects-add-row")).toBeNull();
+    await userEvent.click(screen.getByTestId("new-project"));
+    expect(await screen.findByTestId("create-project-dialog")).not.toBeNull();
+  });
+
   it("lists projects and opens one through the callback, never a router", async () => {
-    on("GET", /^\/projects$/, {
-      status: 200,
-      body: {
-        items: [
-          {
-            id: PROJECT,
-            name: "highway",
-            description: "M4 survey",
-            thumbnail_asset_id: null,
-            thumbnail_hash: null,
-            created_at: null,
-          },
-        ],
-        total: 1,
-      },
-    });
+    list({ ...project(PROJECT, "highway", null), description: "M4 survey" });
     const opened = vi.fn();
 
     renderWithData(<ProjectsScreen onOpenProject={opened} />);
@@ -313,39 +458,18 @@ describe("the project list", () => {
     // The screen navigates by asking, which is what keeps `ui-core` free of a
     // router it would then only work inside.
     expect(opened).toHaveBeenCalledWith(PROJECT);
+    expect(opened).toHaveBeenCalledTimes(1);
   });
 
   it("fetches a pictured project's thumbnail and gives an imageless one a placeholder", async () => {
     const ASSET = "22222222-2222-4222-8222-222222222222";
-    on("GET", /^\/projects$/, {
-      status: 200,
-      body: {
-        items: [
-          {
-            id: PROJECT,
-            name: "highway",
-            description: null,
-            thumbnail_asset_id: ASSET,
-            thumbnail_hash: "ab".repeat(32),
-            created_at: null,
-          },
-          {
-            id: OTHER_PROJECT,
-            name: "unstocked",
-            description: null,
-            thumbnail_asset_id: null,
-            thumbnail_hash: null,
-            created_at: null,
-          },
-        ],
-        total: 2,
-      },
-    });
+    list(
+      { ...project(PROJECT, "highway", null, { asset_count: 3, stage: "not_started" }), thumbnail_asset_id: ASSET, thumbnail_hash: "ab".repeat(32) },
+      project(OTHER_PROJECT, "unstocked", null),
+    );
     on("GET", /^\/projects\/[^/]+\/assets\/[^/]+\/thumbnail$/, { status: 200, body: "bytes" });
 
-    renderWithData(<ProjectsScreen onOpenProject={vi.fn()} />);
-
-    await waitFor(() => expect(screen.queryByTestId("projects-table")).not.toBeNull());
+    await rendered();
     // The pictured row asks for the asset the wire named — and only that row
     // asks: a null preview is "known absent", not a fetch that comes back empty.
     await waitFor(() =>
@@ -364,6 +488,68 @@ describe("the project list", () => {
     renderWithData(<ProjectsScreen onOpenProject={vi.fn()} />);
     await waitFor(() => expect(screen.queryByText("No projects yet")).not.toBeNull());
     expect(screen.queryByTestId("projects-table")).toBeNull();
+    // The empty state has no button of its own: the header's is the one way in.
+    expect(screen.getByText(/Start one with New\./)).not.toBeNull();
+    expect(screen.getAllByRole("button", { name: /new project/i })).toHaveLength(1);
+    expect(screen.queryByTestId("table-footer")).toBeNull();
+  });
+
+  it("pages the list 25 to a page, from a footer, over the rows the search and the order leave", async () => {
+    // Sixty projects, named so the order is plain: name ascending is p01…p60.
+    const sixty = Array.from({ length: 60 }, (_, index) => {
+      const name = `p${String(index + 1).padStart(2, "0")}`;
+      return project(`00000000-0000-4000-8000-${String(index).padStart(12, "0")}`, name, null, { asset_count: index + 1 });
+    });
+    list(...sixty);
+    await rendered();
+    await userEvent.click(screen.getByTestId("sort-name"));
+
+    expect(rowNames()).toHaveLength(25);
+    expect(rowNames()[0]).toBe("p01");
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("1–25 of 60 projects");
+    expect(screen.getByTestId("table-pager-page").textContent).toBe("Page 1 of 3");
+    // The status bar sums every project the search leaves, not the page.
+    expect(screen.getByTestId("projects-images").textContent).toMatch(/^1,830 images/);
+
+    await userEvent.click(screen.getByTestId("table-pager-next"));
+    expect(rowNames()[0]).toBe("p26");
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("26–50 of 60 projects");
+
+    await userEvent.click(screen.getByTestId("table-pager-last"));
+    expect(rowNames()).toHaveLength(10);
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("51–60 of 60 projects");
+    expect(screen.getByTestId("table-pager-next").getAttribute("aria-disabled")).toBe("true");
+
+    // A new order starts over at the first page.
+    await userEvent.click(screen.getByTestId("sort-name"));
+    expect(screen.getByTestId("table-pager-page").textContent).toBe("Page 1 of 3");
+    expect(rowNames()[0]).toBe("p60");
+
+    // So does a search, which also says what it was filtered from.
+    await userEvent.click(screen.getByTestId("table-pager-next"));
+    expect(screen.getByTestId("table-pager-page").textContent).toBe("Page 2 of 3");
+    await userEvent.type(screen.getByTestId("projects-search"), "p");
+    expect(screen.getByTestId("table-pager-page").textContent).toBe("Page 1 of 3");
+    await userEvent.type(screen.getByTestId("projects-search"), "1");
+    expect(screen.getByTestId("table-pager-page").textContent).toBe("Page 1 of 1");
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("1–10 of 10 projects · filtered from 60");
+  });
+
+  it("walks the rows of a page with the arrow keys, and stops at its last row", async () => {
+    const thirty = Array.from({ length: 30 }, (_, index) => {
+      const name = `p${String(index + 1).padStart(2, "0")}`;
+      return project(`00000000-0000-4000-8000-${String(index).padStart(12, "0")}`, name, null, { asset_count: index + 1 });
+    });
+    list(...thirty);
+    await rendered();
+    await userEvent.click(screen.getByTestId("sort-name"));
+
+    screen.getByTestId("open-p24").focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(document.activeElement).toBe(screen.getByTestId("open-p25"));
+    await userEvent.keyboard("{ArrowDown}");
+    // The twenty-sixth is the next page's: the footer goes there, the keys do not.
+    expect(document.activeElement).toBe(screen.getByTestId("open-p25"));
   });
 
   it("lands inside the project it just created, not back on the list", async () => {
@@ -387,9 +573,7 @@ describe("the project list", () => {
     await userEvent.click(screen.getByTestId("create-submit"));
 
     // Every project is created in order to do something with it, so the list is
-    // never the destination. The id comes back on the 201 — nothing is fetched
-    // to find it — and it travels out through the callback the row already uses,
-    // which is what keeps the routing in the app.
+    // never the destination.
     await waitFor(() => expect(opened).toHaveBeenCalledWith(PROJECT));
     expect(screen.queryByTestId("create-project-dialog")).toBeNull();
   });
@@ -408,37 +592,41 @@ describe("the project list", () => {
     await userEvent.click(screen.getByTestId("create-submit"));
 
     const error = await screen.findByTestId("create-error");
-    // The stored casing is the fact: the typed `highway` is not the name in
-    // the list, `Highway` is, and no static sentence could say so.
     expect(error.textContent).toContain("a project named 'Highway' already exists");
     expect(error.textContent).not.toContain("PROJECT_NAME_TAKEN");
-    // The failure path is untouched: the dialog stays open with what was
-    // typed still in it, and nothing navigates anywhere.
     expect(screen.queryByTestId("create-project-dialog")).not.toBeNull();
     expect(screen.getByTestId("project-name")).toHaveProperty("value", "highway");
     expect(opened).not.toHaveBeenCalled();
   });
 
-  it("sends confirm=true on a delete, because the API will not act without it", async () => {
-    on("GET", /^\/projects$/, {
+  it("renames from the row menu, without opening the project", async () => {
+    list(project(PROJECT, "highway", null));
+    on("PATCH", /^\/projects\/[^/]+$/, {
       status: 200,
-      body: {
-        items: [
-          {
-            id: PROJECT,
-            name: "highway",
-            description: null,
-            thumbnail_asset_id: null,
-            thumbnail_hash: null,
-            created_at: null,
-          },
-        ],
-        total: 1,
-      },
+      body: { id: PROJECT, name: "motorway", description: null, thumbnail_asset_id: null, thumbnail_hash: null, created_at: null },
     });
-    on("DELETE", /^\/projects\//, { status: 204 });
+    const opened = vi.fn();
 
-    renderWithData(<ProjectsScreen onOpenProject={vi.fn()} />);
+    renderWithData(<ProjectsScreen onOpenProject={opened} />);
+    await userEvent.click(await screen.findByTestId("menu-highway"));
+    await userEvent.click(await screen.findByTestId("rename-highway"));
+    await userEvent.clear(screen.getByTestId("rename-input"));
+    await userEvent.type(screen.getByTestId("rename-input"), "motorway");
+    await userEvent.click(screen.getByTestId("rename-submit"));
+
+    await waitFor(() => expect(sent.some((r) => r.method === "PATCH")).toBe(true));
+    // The menu lives inside the row, and the row opens the project on click: a
+    // menu action must never also be an open.
+    expect(opened).not.toHaveBeenCalled();
+  });
+
+  it("sends confirm=true on a delete, because the API will not act without it", async () => {
+    list(project(PROJECT, "highway", null));
+    on("DELETE", /^\/projects\//, { status: 204 });
+    const opened = vi.fn();
+
+    renderWithData(<ProjectsScreen onOpenProject={opened} />);
+    await userEvent.click(await screen.findByTestId("menu-highway"));
     await userEvent.click(await screen.findByTestId("delete-highway"));
     await userEvent.click(screen.getByTestId("delete-submit"));
 
@@ -447,1833 +635,15 @@ describe("the project list", () => {
     // The dialog is the *user's* confirmation; this parameter is the API's. Both
     // are doing something, which is why neither replaced the other.
     expect(new URL(request?.url ?? "").searchParams.get("confirm")).toBe("true");
-  });
-});
-
-describe("the schema editor", () => {
-  function projectWithSchema(): void {
-    on("GET", /^\/projects\/[^/]+$/, {
-      status: 200,
-      body: {
-        id: PROJECT,
-        name: "highway",
-        description: null,
-        thumbnail_asset_id: null,
-        thumbnail_hash: null,
-        created_at: null,
-      },
-    });
-    on("GET", /^\/projects\/[^/]+\/schema$/, {
-      status: 200,
-      body: { project_id: PROJECT, version: 3, classes: CLASSES },
-    });
-    on("GET", /schema\/versions$/, {
-      status: 200,
-      body: {
-        items: [
-          { project_id: PROJECT, version: 1, classes: [CLASSES[0]] },
-          { project_id: PROJECT, version: 2, classes: CLASSES },
-          { project_id: PROJECT, version: 3, classes: CLASSES },
-        ],
-        total: 3,
-      },
-    });
-  }
-
-  /** Open one class's detail panel. Only the selected class has one. */
-  async function selectClass(index: number): Promise<void> {
-    await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[index]);
-  }
-
-  async function removeClass(index: number): Promise<void> {
-    await selectClass(index);
-    await userEvent.click(screen.getByTestId(`remove-class-${index}`));
-    await waitFor(() =>
-      expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(
-        CLASSES.length - 1,
-      ),
-    );
-  }
-
-  it("previews a candidate without lane and reads its orphan blockers", async () => {
-    const candidate: readonly LabelClassBody[] = [
-      { name: "vehicle", geometries: ["bbox"], color: "#38bdf8", attributes: [] },
-    ];
-    on("POST", /\/schema\/preview$/, {
-      status: 200,
-      body: {
-        diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
-        blockers: [{ label_class: "lane", annotations: 12, assets: 3 }],
-        is_refused: true,
-      },
-    });
-
-    renderWithData(<PreviewSchemaChangeProbe projectId={PROJECT} classes={candidate} />);
-    await userEvent.click(screen.getByTestId("preview-schema-change"));
-
-    await waitFor(() =>
-      expect(screen.getByTestId("preview-result").textContent).toBe("lane:12:3:true"),
-    );
-    const request = sent.find(
-      (sentRequest) =>
-        sentRequest.method === "POST" && new URL(sentRequest.url).pathname.endsWith("/schema/preview"),
-    );
-    if (request === undefined) throw new Error("Expected a schema preview request");
-    expect(JSON.parse(bodies.get(request) ?? "")).toEqual({ classes: candidate });
-    expect(
-      sent.some(
-        (sentRequest) =>
-          sentRequest.method === "POST" &&
-          new URL(sentRequest.url).pathname.endsWith("/schema/drafts/curated/publish"),
-      ),
-    ).toBe(false);
-  });
-
-  it("reads the blocking frames off the typed listing", async () => {
-    const ASSET = "22222222-2222-4222-8222-222222222222";
-    const BATCH = "33333333-3333-4333-8333-333333333333";
-    on("POST", /\/schema\/blocking-assets$/, {
-      status: 200,
-      body: {
-        items: [
-          {
-            asset: {
-              id: ASSET,
-              project_id: PROJECT,
-              modality: "image",
-              point_cloud: null,
-              content_hash: "deadbeef",
-              format: "jpeg",
-              width: 1920,
-              height: 1080,
-              frame_index: null,
-              frame_timestamp: null,
-              source_id: null,
-              thumbnail_hash: "abc",
-              ingested_at: "2024-01-01T00:00:00Z",
-            },
-            label_classes: ["lane"],
-            annotations: 12,
-            batch_ids: [BATCH],
-          },
-        ],
-        total: 1,
-      },
-    });
-
-    renderWithData(<SchemaBlockingAssetsProbe projectId={PROJECT} classes={[]} />);
-
-    await waitFor(() =>
-      expect(screen.getByTestId("blocking-assets-result").textContent).toBe("1:12:1"),
-    );
-  });
-
-  it("stays disabled while nothing is proposed", () => {
-    renderWithData(<SchemaBlockingAssetsProbe projectId={PROJECT} classes={null} />);
-    expect(screen.getByTestId("blocking-assets-result").textContent).toBe("pending");
-    expect(
-      sent.some((sentRequest) => new URL(sentRequest.url).pathname.endsWith("/schema/blocking-assets")),
-    ).toBe(false);
-  });
-
-  it("hashes a proposal's property order out of the key, not just its members", async () => {
-    on("POST", /\/schema\/blocking-assets$/, { status: 200, body: { items: [], total: 0 } });
-
-    // Same class, two builds: `color` before `attributes` versus after. Two
-    // logically-identical proposals reaching this hook by different code paths
-    // must share a cache entry — TanStack's own key hash sorts object keys for
-    // exactly this reason, and pre-stringifying here would have thrown that away.
-    const classesA: readonly LabelClassBody[] = [
-      { name: "vehicle", geometries: ["bbox"], color: "#38bdf8", attributes: [] },
-    ];
-    const classesB: readonly LabelClassBody[] = [
-      { color: "#38bdf8", attributes: [], name: "vehicle", geometries: ["bbox"] },
-    ];
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const client = harnessClient();
-    const scope = Symbol("schema-blocking-assets-test");
-    const wrap = (node: ReactNode): JSX.Element => (
-      <VisionSetDataProvider client={client} scope={scope} makeQueryClient={() => queryClient}>
-        {node}
-      </VisionSetDataProvider>
-    );
-
-    const { rerender } = render(
-      wrap(<SchemaBlockingAssetsProbe projectId={PROJECT} classes={classesA} />),
-    );
-    await waitFor(() =>
-      expect(screen.getByTestId("blocking-assets-result").textContent).toBe("0:undefined:undefined"),
-    );
-
-    rerender(wrap(<SchemaBlockingAssetsProbe projectId={PROJECT} classes={classesB} />));
-    await waitFor(() =>
-      expect(screen.getByTestId("blocking-assets-result").textContent).toBe("0:undefined:undefined"),
-    );
-
-    expect(
-      sent.filter((sentRequest) =>
-        new URL(sentRequest.url).pathname.endsWith("/schema/blocking-assets"),
-      ),
-    ).toHaveLength(1);
-  });
-
-  it("lists the frames in the way and links each to every batch holding it", async () => {
-    const ASSET = "22222222-2222-4222-8222-222222222222";
-    const BATCH = "33333333-3333-4333-8333-333333333333";
-    const CORRECTION = "44444444-4444-4444-8444-444444444444";
-    projectWithSchema();
-    // The full wire shape: `useBatches` validates the response, and a listing
-    // that fails validation is a query with no data — which reads here as every
-    // link falling back to "Open batch".
-    const batch = (id: string, name: string): Record<string, unknown> => ({
-      id,
-      project_id: PROJECT,
-      name,
-      state: "in_annotation",
-      asset_count: 4,
-      schema_version: 3,
-      progress: {
-        unannotated: 4,
-        pre_labeled: 0,
-        annotated: 0,
-        skipped: 0,
-        review_pending: 0,
-        accepted: 0,
-        total: 4,
-      },
-      allowed_actions: batchActions("in_annotation"),
-      promoted_asset_count: 0,
-      parent_batch_id: null,
-      pre_label_run: null,
-    });
-    on("GET", /\/batches$/, {
-      status: 200,
-      body: { items: [batch(BATCH, "survey"), batch(CORRECTION, "fixes")], total: 2 },
-    });
-    on("POST", /\/schema\/blocking-assets/, {
-      status: 200,
-      body: {
-        items: [
-          {
-            asset: {
-              id: ASSET,
-              project_id: PROJECT,
-              modality: "image",
-              point_cloud: null,
-              content_hash: "deadbeef",
-              format: "jpeg",
-              width: 1920,
-              height: 1080,
-              frame_index: 42,
-              frame_timestamp: null,
-              source_id: null,
-              thumbnail_hash: null,
-              ingested_at: "2024-01-01T00:00:00Z",
-            },
-            label_classes: ["lane"],
-            annotations: 12,
-            batch_ids: [BATCH, CORRECTION],
-          },
-        ],
-        // Every blocking frame, not this page's size: the panel says how many
-        // there are and how many of them it is showing.
-        total: 30,
-      },
-    });
-    const opened = vi.fn();
-
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" onOpenBatch={opened} />);
-
-    const panel = await screen.findByTestId("blocking-assets");
-    await within(panel).findByTestId("blocking-asset-list");
-    expect(panel.textContent).toContain("12");
-    expect(panel.textContent).toContain("lane");
-    // Two rows reading "12 labels under lane" would be one row to a screen
-    // reader, so the frame names itself.
-    expect(panel.textContent).toContain("Frame 42");
-    // `total` counts every blocking frame and the request is windowed, so the
-    // panel states the whole number and how much of it is on screen.
-    expect(screen.getByTestId("blocking-asset-count").textContent).toContain("30");
-    // The clause too, not only the number: a count with no window stated is a
-    // panel silently showing 12 of 30.
-    expect(screen.getByTestId("blocking-asset-count").textContent).toContain(
-      "showing the first",
-    );
-    const asked = sent.find((request) =>
-      new URL(request.url).pathname.endsWith("/schema/blocking-assets"),
-    );
-    expect(new URL(asked?.url ?? "").searchParams.get("limit")).toBe("12");
-    // An asset is held by many batches — `batches_holding` returns a list, and an
-    // annotation names no batch at all — so the row offers all of them rather
-    // than picking one there is no stored fact to prefer.
-    const links = within(panel).getAllByTestId("blocking-asset-batch");
-    expect(links).toHaveLength(2);
-    // Named from the batch listing the header already read: three links all
-    // reading "Open batch" would name no destination between them.
-    expect(links[0].textContent).toContain("survey");
-    expect(links[1].textContent).toContain("fixes");
-    await userEvent.click(links[0]);
-    expect(opened).toHaveBeenCalledWith(BATCH);
-  });
-
-  /**
-   * The settle's own cross-project hole, which the guard above cannot close.
-   *
-   * `useSettled` holds a value across a props change, and this screen is
-   * re-rendered rather than remounted when `:projectId` does — so a panel that
-   * survives the switch asks the arriving project about the classes it settled
-   * on under the departing one, guard or no guard. `key={projectId}` is what
-   * remounts it, and this is the probe that says so.
-   *
-   * Both halves of the setup are load-bearing. The arriving project is rendered
-   * **first** so its schema and draft are cached: without that `SchemaSection`
-   * renders `LoadingState`, the panel unmounts on its own, and the bug hides.
-   * And the typing is followed by a real pause, so the settle actually fires
-   * under the departing project — a switch inside the debounce window clears the
-   * pending timer and the probe passes whether or not the key is there.
-   */
-  it("does not carry a settled proposal across a project switch", async () => {
-    projectWithSchema();
-    on("POST", /\/schema\/blocking-assets/, { status: 200, body: { items: [], total: 0 } });
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const client = harnessClient();
-    const scope = Symbol("project-switch-test");
-    const wrap = (projectId: string): JSX.Element => (
-      <VisionSetDataProvider client={client} scope={scope} makeQueryClient={() => queryClient}>
-        <ProjectScreen projectId={projectId} tab="schema" onOpenBatch={vi.fn()} />
-      </VisionSetDataProvider>
-    );
-
-    // The project switched *to*, first, so its own queries are warm when it
-    // comes back — otherwise the panel is unmounted by its own loading state.
-    const view = render(wrap(OTHER_PROJECT));
-    await screen.findByTestId("blocking-assets");
-
-    view.rerender(wrap(PROJECT));
-    await screen.findByTestId("schema-editor");
-    await userEvent.click(screen.getByTestId("add-class"));
-    await userEvent.type(screen.getByTestId("class-name-2"), "PEDESTRIAN");
-    // Long enough for the settle to fire here, which is the whole point: the
-    // value the panel is holding when the switch lands must be this project's.
-    await new Promise((resolve) => setTimeout(resolve, 600));
-
-    view.rerender(wrap(OTHER_PROJECT));
-    await new Promise((resolve) => setTimeout(resolve, 600));
-
-    const askedElsewhere = sent
-      .filter((request) => {
-        const path = new URL(request.url).pathname;
-        return (
-          path.startsWith(`/projects/${OTHER_PROJECT}/`) &&
-          path.endsWith("/schema/blocking-assets")
-        );
-      })
-      .map((request) => bodies.get(request) ?? "");
-    expect(askedElsewhere.length).toBeGreaterThan(0);
-    for (const body of askedElsewhere) expect(body).not.toContain("PEDESTRIAN");
-  });
-
-  it("asks once the class name stops changing, not once per keystroke", async () => {
-    projectWithSchema();
-    on("POST", /\/schema\/blocking-assets/, { status: 200, body: { items: [], total: 0 } });
-
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" onOpenBatch={vi.fn()} />);
-    await screen.findByTestId("schema-editor");
-    const asks = (): number =>
-      sent.filter((request) =>
-        new URL(request.url).pathname.endsWith("/schema/blocking-assets"),
-      ).length;
-    await waitFor(() => expect(asks()).toBe(1));
-
-    await userEvent.click(screen.getByTestId("add-class"));
-    await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
-    // Ten characters, and the server walks every annotation in the project for
-    // each answer — so the panel asks about the name somebody meant and not
-    // about the nine prefixes of it.
-    await new Promise((resolve) => setTimeout(resolve, 600));
-
-    // A bound rather than an exact count, and the settle is why: ten
-    // `userEvent.type` keystrokes under a loaded machine can outlast one 400ms
-    // window, which makes a third ask correct behaviour rather than a defect.
-    // What is not a race is the ratio — an undebounced panel asks once per
-    // keystroke, so anything near the keystroke count fails this — and that the
-    // last question asked is about the whole name.
-    expect(asks()).toBeLessThan(5);
-    const asked = sent.filter((request) =>
-      new URL(request.url).pathname.endsWith("/schema/blocking-assets"),
-    );
-    expect(bodies.get(asked[asked.length - 1] as Request)).toContain("pedestrian");
-  });
-
-  /**
-   * `ProjectScreen` is *re-rendered* rather than remounted when the route's
-   * `:projectId` changes, and nothing clears the draft it holds — so a draft
-   * typed in one project is still in hand while another one is on screen. Every
-   * read of it goes through `shownDraft`'s project guard, and this panel is the
-   * one that would otherwise POST project A's classes to project B's API and
-   * invite somebody to go clear real annotations over a narrowing nobody
-   * proposed there.
-   */
-  it("never asks one project's API about another project's draft", async () => {
-    projectWithSchema();
-    on("POST", /\/schema\/blocking-assets/, { status: 200, body: { items: [], total: 0 } });
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const client = harnessClient();
-    const scope = Symbol("schema-draft-cross-project-test");
-    const wrap = (node: ReactNode): JSX.Element => (
-      <VisionSetDataProvider client={client} scope={scope} makeQueryClient={() => queryClient}>
-        {node}
-      </VisionSetDataProvider>
-    );
-
-    const view = render(
-      wrap(<ProjectScreen projectId={PROJECT} tab="schema" onOpenBatch={vi.fn()} />),
-    );
-    await screen.findByTestId("schema-editor");
-    await userEvent.click(screen.getByTestId("add-class"));
-    await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
-
-    view.rerender(wrap(<ProjectScreen projectId={OTHER_PROJECT} tab="schema" onOpenBatch={vi.fn()} />));
-
-    const under = (projectId: string): Request[] =>
-      sent.filter((request) => {
-        const path = new URL(request.url).pathname;
-        return path.startsWith(`/projects/${projectId}/`) && path.endsWith("/schema/blocking-assets");
-      });
-    // The panel does ask on the project now showing…
-    await waitFor(() => expect(under(OTHER_PROJECT).length).toBeGreaterThan(0), { timeout: 2000 });
-    // …and long enough for the settle to have fired the departing project's
-    // proposal too, had anything been holding it.
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    // …and never about the class somebody typed in the project they left.
-    for (const request of under(OTHER_PROJECT)) {
-      expect(bodies.get(request) ?? "").not.toContain("pedestrian");
-    }
-  });
-
-  it("offers no frames-in-the-way section to a host that cannot open a batch", async () => {
-    projectWithSchema();
-    on("POST", /\/schema\/blocking-assets/, { status: 200, body: { items: [], total: 0 } });
-
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-
-    await screen.findByTestId("schema-editor");
-    // Every row's way onward is a batch. A host with nowhere to send anybody is
-    // not offered the section at all, rather than a panel of dead links — the
-    // same rule this screen already applies to the Batches tab.
-    expect(screen.queryByTestId("blocking-assets")).toBeNull();
-    expect(
-      sent.some((request) =>
-        new URL(request.url).pathname.endsWith("/schema/blocking-assets"),
-      ),
-    ).toBe(false);
-  });
-
-  it("treats a schema-less project as an empty draft, not as an error", async () => {
-    on("GET", /^\/projects\/[^/]+$/, {
-      status: 200,
-      body: {
-        id: PROJECT,
-        name: "fresh",
-        description: null,
-        thumbnail_asset_id: null,
-        thumbnail_hash: null,
-        created_at: null,
-      },
-    });
-    // A project starts schema-less on purpose. This 404 is the normal state
-    // of a project three seconds old, and an error surface here would tell a new
-    // user their project is broken.
-    on("GET", /^\/projects\/[^/]+\/schema$/, {
-      status: 404,
-      body: { code: "SCHEMA_NOT_FOUND", message: "This project has no schema version yet." },
-    });
-    on("GET", /schema\/versions$/, { status: 200, body: { items: [], total: 0 } });
-
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-
-    await waitFor(() => expect(screen.queryByTestId("schema-editor")).not.toBeNull());
-    expect(screen.queryByTestId("schema-error")).toBeNull();
-    expect(screen.getByTestId("schema-status").textContent).toContain("Saving creates version 1");
-  });
-
-  it("edits a draft and publishes it as the next version", async () => {
-    projectWithSchema();
-    on("POST", /schema\/drafts\/curated\/publish$/, {
-      status: 201,
-      body: { published: { project_id: PROJECT, version: 4, classes: CLASSES }, advanced_batches: [] },
-    });
-
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("schema-editor");
-    // Versioning is ambient: one persistent line saying what saving would
-    // do, rather than a disabled button somebody has to press to find out.
-    expect(screen.getByTestId("schema-status").textContent).toContain("Version 3 active");
-    expect(screen.getByTestId("schema-status").textContent).toContain("v4");
-
-    // Nothing has changed, and the button is **enabled anyway** — it answers
-    // rather than sitting grey. Nothing is sent.
-    expect(screen.getByTestId("save-schema")).toHaveProperty("disabled", false);
-    await userEvent.click(screen.getByTestId("save-schema"));
-    expect(sent.some((r) => r.method === "POST")).toBe(false);
-
-    await userEvent.click(screen.getByTestId("add-class"));
-    // …and a nameless class is refused the same way, not by a grey button.
-    // `normalize_name` refuses a blank, so this mirrors the API's rule.
-    await userEvent.click(screen.getByTestId("save-schema"));
-    expect(sent.some((r) => r.method === "POST")).toBe(false);
-
-    await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
-    expect(screen.getByTestId("schema-status").textContent).toContain("unsaved changes");
-    await userEvent.click(screen.getByTestId("save-schema"));
-
-    await waitFor(() =>
-      expect(
-        sent.some(
-          (request) =>
-            request.method === "POST" &&
-            new URL(request.url).pathname.endsWith("/schema/drafts/curated/publish"),
-        ),
-      ).toBe(true),
-    );
-    const request = sent.find(
-      (request) =>
-        request.method === "POST" &&
-        new URL(request.url).pathname.endsWith("/schema/drafts/curated/publish"),
-    );
-    expect(request).toBeDefined();
-    // The plain save carries no gate — `allow_destructive` is only ever sent
-    // after the API has said it is needed.
-    expect(new URL(request?.url ?? "").searchParams.get("allow_destructive")).toBeNull();
-  });
-
-  it("locks draft mutations until a deferred publish settles", async () => {
-    projectWithSchema();
-    let resolvePublish: ((answer: Exclude<HandlerAnswer, undefined>) => void) | undefined;
-    handlers.push((request) => {
-      if (
-        request.method !== "POST" ||
-        !new URL(request.url).pathname.endsWith("/schema/drafts/curated/publish")
-      ) {
-        return undefined;
-      }
-      return new Promise((resolve) => {
-        resolvePublish = resolve;
-      });
-    });
-
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("schema-editor");
-    await userEvent.click(screen.getByTestId("add-class"));
-    await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
-    await userEvent.click(screen.getByTestId("save-schema"));
-    await waitFor(() => expect(resolvePublish).toBeDefined());
-
-    const className = screen.getByTestId("class-name-2");
-    expect(className).toHaveProperty("disabled", true);
-    expect(screen.getByTestId("version-note")).toHaveProperty("disabled", true);
-    expect(screen.getByTestId("add-class")).toHaveProperty("disabled", true);
-    expect(screen.getByTestId("remove-class-2")).toHaveProperty("disabled", true);
-    await userEvent.type(className, "-newer");
-    expect(className).toHaveProperty("value", "pedestrian");
-
-    if (resolvePublish === undefined) throw new Error("Expected the deferred publish request");
-    resolvePublish({
-      status: 201,
-      body: {
-        published: {
-          project_id: PROJECT,
-          version: 4,
-          classes: [...CLASSES, { name: "pedestrian", geometries: ["bbox"], color: null, attributes: [] }],
-        },
-        advanced_batches: [],
-      },
-    });
-    await waitFor(() => expect(screen.getByTestId("save-schema")).toHaveProperty("disabled", false));
-    expect(screen.getByTestId("class-name-2")).toHaveProperty("value", "pedestrian");
-  });
-
-  it("previews a publishable narrowing before one flagged publish", async () => {
-    projectWithSchema();
-    on("POST", /schema\/preview$/, {
-      status: 200,
-      body: {
-        diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
-        blockers: [],
-        is_refused: false,
-      },
-    });
-    handlers.push((request) => {
-      if (
-        request.method !== "POST" ||
-        !new URL(request.url).pathname.endsWith("/schema/drafts/curated/publish")
-      ) {
-        return undefined;
-      }
-      const allowed = new URL(request.url).searchParams.get("allow_destructive") === "true";
-      return allowed
-        ? {
-            status: 201,
-            body: {
-              published: { project_id: PROJECT, version: 4, classes: [] },
-              advanced_batches: [],
-            },
-          }
-        : {
-            status: 409,
-            body: {
-              code: "DESTRUCTIVE_SCHEMA_CHANGE",
-              message: "internal wording must not appear",
-            },
-          };
-    });
-
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("schema-editor");
-    await removeClass(1);
-    await userEvent.click(screen.getByTestId("save-schema"));
-
-    const dialog = await screen.findByTestId("destructive-dialog");
-    expect(dialog.textContent).toContain("lane");
-    expect(dialog.textContent).not.toContain("internal wording must not appear");
-    // Three descriptions, and a screen reader reaches all three — not only the first.
-    expect(describedBy(dialog)).toHaveLength(3);
-    expect(describedBy(dialog).join(" ")).toContain("A batch still open on the current version");
-    // The blast radius, counted: DESIGN.md requires a confirmation to name what
-    // it costs. `blockers` is empty on every preview that reaches this dialog,
-    // so the zero is measured rather than assumed.
-    expect(dialog.textContent).toContain("1 class narrows");
-    expect(dialog.textContent).toContain("No existing annotation becomes invalid");
-    // The removed promise. It said annotations are untouched, which answers the
-    // invariant by implication; the dialog states the rule itself instead.
-    expect(dialog.textContent).not.toContain("Existing annotations are not touched");
-    expect(
-      sent.some(
-        (request) =>
-          request.method === "POST" &&
-          new URL(request.url).pathname.endsWith("/schema/drafts/curated/publish"),
-      ),
-    ).toBe(false);
-
-    const allow = screen.getByTestId("allow-destructive");
-    await waitFor(() => expect(allow).toHaveProperty("disabled", false));
-    await userEvent.click(allow);
-    await waitFor(() =>
-      expect(
-        sent.filter(
-          (request) =>
-            request.method === "POST" &&
-            new URL(request.url).pathname.endsWith("/schema/drafts/curated/publish"),
-        ),
-      ).toHaveLength(1),
-    );
-    const publishRequest = sent.find(
-      (request) =>
-        request.method === "POST" &&
-        new URL(request.url).pathname.endsWith("/schema/drafts/curated/publish"),
-    );
-    expect(new URL(publishRequest?.url ?? "").searchParams.get("allow_destructive")).toBe("true");
-  });
-
-  it("counts every narrowing class in the confirmation", async () => {
-    projectWithSchema();
-    handlers.push((request) => {
-      if (request.method !== "POST" || !new URL(request.url).pathname.endsWith("/schema/preview")) {
-        return undefined;
-      }
-      return {
-        status: 200,
-        body: {
-          is_refused: false,
-          blockers: [],
-          diff: {
-            is_destructive: true,
-            destructive_classes: ["lane", "sign"],
-            changes: [
-              { kind: "destructive", label_class: "lane", attribute: null, detail: "class 'lane' removed" },
-              { kind: "destructive", label_class: "sign", attribute: null, detail: "class 'sign' removed" },
-            ],
-          },
-        },
-      };
-    });
-
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("schema-editor");
-    await removeClass(1);
-    await userEvent.click(screen.getByTestId("save-schema"));
-
-    const dialog = await screen.findByTestId("destructive-dialog");
-    expect(dialog.textContent).toContain("2 classes narrow");
-    expect(dialog.textContent).toContain("lane");
-    expect(dialog.textContent).toContain("sign");
-    expect(dialog.textContent).toContain("No existing annotation becomes invalid");
-    // The kernel's words, not a count: a re-casing and a removal both "narrow one
-    // class", and only the detail tells them apart.
-    const listed = within(dialog).getAllByTestId("narrowing-change").map((item) => item.textContent);
-    expect(listed).toEqual(["class 'lane' removed", "class 'sign' removed"]);
-  });
-
-  it("says what a batch still open on the outgoing version will keep writing", async () => {
-    projectWithSchema();
-    handlers.push((request) => {
-      if (request.method !== "POST" || !new URL(request.url).pathname.endsWith("/schema/preview")) {
-        return undefined;
-      }
-      return {
-        status: 200,
-        body: {
-          is_refused: false,
-          blockers: [],
-          diff: {
-            is_destructive: true,
-            destructive_classes: ["lane", "sign"],
-            changes: [
-              { kind: "destructive", label_class: "lane", attribute: null, detail: "class 'lane' removed" },
-              { kind: "destructive", label_class: "sign", attribute: null, detail: "class 'sign' removed" },
-            ],
-          },
-        },
-      };
-    });
-
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("schema-editor");
-    await removeClass(1);
-    await userEvent.click(screen.getByTestId("save-schema"));
-
-    const dialog = await screen.findByTestId("destructive-dialog");
-    // A batch still pinned to the outgoing version keeps writing the dropped
-    // class, and the bill arrives at the release rather than at this save.
-    expect(dialog.textContent).toContain("still open on the current version");
-    expect(dialog.textContent).toContain("a release cannot be published");
-    // Still no machine code, no UUID, no SDK keyword.
-    expect(dialog.textContent).not.toContain("SCHEMA_CHANGE_WOULD_ORPHAN");
-    expect(dialog.textContent).not.toContain("allow_destructive");
-  });
-
-  it("prevents repeated confirmation while its second preview is pending", async () => {
-    projectWithSchema();
-    let previews = 0;
-    let resolveSecondPreview: ((answer: Exclude<HandlerAnswer, undefined>) => void) | undefined;
-    handlers.push((request) => {
-      if (request.method !== "POST" || !new URL(request.url).pathname.endsWith("/schema/preview")) {
-        return undefined;
-      }
-      previews += 1;
-      if (previews === 3) {
-        return new Promise((resolve) => {
-          resolveSecondPreview = resolve;
-        });
-      }
-      return {
-        status: 200,
-        body: {
-          diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
-          blockers: [],
-          is_refused: false,
-        },
-      };
-    });
-    on("POST", /schema\/drafts\/curated\/publish(?:\?.*)?$/, {
-      status: 201,
-      body: {
-        published: { project_id: PROJECT, version: 4, classes: [] },
-        advanced_batches: [],
-      },
-    });
-
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("schema-editor");
-    await removeClass(1);
-    await userEvent.click(screen.getByTestId("save-schema"));
-    const allow = await screen.findByTestId("allow-destructive");
-    await waitFor(() => expect(allow).toHaveProperty("disabled", false));
-    await userEvent.click(allow);
-    await waitFor(() => expect(resolveSecondPreview).toBeDefined());
-
-    expect(allow).toHaveProperty("disabled", true);
-    await userEvent.click(allow);
-
-    if (resolveSecondPreview === undefined) throw new Error("Expected the deferred second preview");
-    resolveSecondPreview({
-      status: 200,
-      body: {
-        diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
-        blockers: [],
-        is_refused: false,
-      },
-    });
-    await waitFor(() =>
-      expect(
-        sent.filter(
-          (request) =>
-            request.method === "POST" &&
-            new URL(request.url).pathname.endsWith("/schema/drafts/curated/publish"),
-        ),
-      ).toHaveLength(1),
-    );
-  });
-
-  it("opens the terminal blocker dialog when the save-time preview refuses", async () => {
-    projectWithSchema();
-    let previews = 0;
-    handlers.push((request) => {
-      if (request.method !== "POST" || !new URL(request.url).pathname.endsWith("/schema/preview")) {
-        return undefined;
-      }
-      previews += 1;
-      return previews === 1
-        ? {
-            status: 200,
-            body: {
-              diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
-              blockers: [],
-              is_refused: false,
-            },
-          }
-        : {
-            status: 200,
-            body: {
-              diff: {
-                changes: [
-                  { kind: "additive", label_class: "Lane", attribute: null, detail: "class 'Lane' added" },
-                  {
-                    kind: "destructive",
-                    label_class: "lane",
-                    attribute: null,
-                    detail: "class 'lane' removed; 'Lane' differs only in its casing",
-                  },
-                ],
-                destructive_classes: ["lane"],
-                is_destructive: true,
-              },
-              blockers: [{ label_class: "lane", annotations: 12, assets: 3 }],
-              is_refused: true,
-            },
-          };
-    });
-
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("schema-editor");
-    await removeClass(1);
-    await userEvent.click(screen.getByTestId("save-schema"));
-
-    const dialog = await screen.findByTestId("orphan-dialog");
-    expect(dialog.textContent).toContain("12 annotations");
-    expect(dialog.textContent).toContain("3 assets");
-    expect(describedBy(dialog)).toHaveLength(2);
-    expect(describedBy(dialog).join(" ")).toContain("There is no override for this one");
-    // What was asked, in the kernel's words — the only place a re-casing is told
-    // apart from a removal. Additive changes stay out of a refusal.
-    expect(
-      within(dialog).getAllByTestId("narrowing-change").map((item) => item.textContent),
-    ).toEqual(["class 'lane' removed; 'Lane' differs only in its casing"]);
-    // The missing button *is* the assertion. `SchemaChangeWouldOrphan` has no
-    // override and is deliberately not a subclass of `DestructiveSchemaChange`, so
-    // a "Save anyway" here would be an infinite loop with a person in it.
-    expect(screen.queryByTestId("allow-destructive")).toBeNull();
-    expect(screen.queryByTestId("destructive-dialog")).toBeNull();
-    expect(within(dialog).getByTestId("orphan-close")).not.toBeNull();
-    expect(
-      sent.some(
-        (request) =>
-          request.method === "POST" &&
-          new URL(request.url).pathname.endsWith("/schema/drafts/curated/publish"),
-      ),
-    ).toBe(false);
-  });
-
-  it("uses typed publish-time orphan blockers when the preview becomes stale", async () => {
-    projectWithSchema();
-    on("POST", /schema\/preview$/, {
-      status: 200,
-      body: {
-        diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
-        blockers: [],
-        is_refused: false,
-      },
-    });
-    on("POST", /schema\/drafts\/curated\/publish(?:\?.*)?$/, {
-      status: 409,
-      body: {
-        code: "SCHEMA_CHANGE_WOULD_ORPHAN",
-        message: "internal wording must not appear",
-        detail: { blockers: [{ label_class: "lane", annotations: 12, assets: 3 }] },
-      },
-    });
-
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("schema-editor");
-    await removeClass(1);
-    await userEvent.click(screen.getByTestId("save-schema"));
-    const allow = await screen.findByTestId("allow-destructive");
-    await waitFor(() => expect(allow).toHaveProperty("disabled", false));
-    await userEvent.click(allow);
-    await waitFor(() =>
-      expect(
-        sent.filter(
-          (request) =>
-            request.method === "POST" &&
-            new URL(request.url).pathname.endsWith("/schema/drafts/curated/publish"),
-        ),
-      ).toHaveLength(1),
-    );
-
-    const dialog = await screen.findByTestId("orphan-dialog");
-    expect(dialog.textContent).toContain("lane: 12 annotations across 3 assets");
-    expect(dialog.textContent).not.toContain("internal wording must not appear");
-    expect(screen.queryByTestId("allow-destructive")).toBeNull();
-    expect(screen.queryByTestId("destructive-dialog")).toBeNull();
-  });
-
-  it.each([
-    { shape: "absent", detail: undefined },
-    { shape: "malformed", detail: { blockers: [{ label_class: "lane" }] } },
-  ])(
-    "clears destructive confirmation and renders prose for an orphan refusal with $shape detail",
-    async ({ detail }) => {
-      projectWithSchema();
-      on("POST", /schema\/preview$/, {
-        status: 200,
-        body: {
-          diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
-          blockers: [],
-          is_refused: false,
-        },
-      });
-      on("POST", /schema\/drafts\/curated\/publish(?:\?.*)?$/, {
-        status: 409,
-        body: {
-          code: "SCHEMA_CHANGE_WOULD_ORPHAN",
-          message: "internal wording must not appear",
-          detail,
-        },
-      });
-
-      renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-      await screen.findByTestId("schema-editor");
-      await removeClass(1);
-      await userEvent.click(screen.getByTestId("save-schema"));
-      await userEvent.click(await screen.findByTestId("allow-destructive"));
-
-      const error = await screen.findByTestId("schema-error");
-      expect(error.textContent).toContain(
-        "Annotations already exist that this change would orphan.",
-      );
-      expect(error.textContent).not.toContain("internal wording must not appear");
-      expect(error.textContent).not.toContain("SCHEMA_CHANGE_WOULD_ORPHAN");
-      expect(screen.queryByTestId("allow-destructive")).toBeNull();
-      expect(screen.queryByTestId("destructive-dialog")).toBeNull();
-    },
-  );
-
-  it("says an autosave failure in prose, not as a kernel identifier", async () => {
-    projectWithSchema();
-    on("PUT", /\/schema\/drafts\/curated$/, {
-      status: 409,
-      body: {
-        code: "DESTRUCTIVE_SCHEMA_CHANGE",
-        message: "internal wording must not appear",
-      },
-    });
-
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("schema-editor");
-    await userEvent.click(screen.getByTestId("add-class"));
-    await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
-
-    const alert = await screen.findByTestId("schema-draft-error", {}, { timeout: 2000 });
-    expect(alert.textContent).toContain(
-      "This change removes part of the contract already in use.",
-    );
-    expect(alert.textContent).not.toContain("DESTRUCTIVE_SCHEMA_CHANGE");
-    expect(alert.textContent).not.toContain("internal wording must not appear");
-  });
-
-  it("offers only the geometries an annotation can carry", async () => {
-    projectWithSchema();
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("schema-editor");
-
-    // `polyline` is offered even where no tool draws one: the API
-    // accepts it, the exporters need it, and the tool strip is where a person
-    // learns there is nothing to draw with. Offering it is not offering a refusal.
-    //
-    // Addressed by `data-testid`, which keeps the **wire** value, while the label
-    // beside it is the display word — so this asserts which geometries are on
-    // offer without also asserting what they are called, which is
-    // `geometryCategory.test.ts`'s job.
-    for (const geometry of ["bbox", "polygon", "polyline", "classification_tag"]) {
-      expect(screen.getByTestId(`class-geometry-0-${geometry}`)).toBeTruthy();
-    }
-    // `GeometryType` has eight members; four are refused at write time with
-    // `UnsupportedGeometry`, so offering them would be offering a refusal.
-    for (const geometry of ["mask", "keypoints", "cuboid_3d", "polyline_3d"]) {
-      expect(screen.queryByTestId(`class-geometry-0-${geometry}`)).toBeNull();
-    }
-  });
-
-  /**
-   * A flat list of every name the product can address says nothing about
-   * which ones belong to the work somebody is doing, and it only grows.
-   *
-   * The grouping is presentation and this is the surface it exists for. What is
-   * asserted is the pairing — a heading, and the right members under it — because
-   * a test that only counted the headings would pass with both of them empty and
-   * every geometry in the wrong one.
-   */
-  it("groups the geometries it offers under their category", async () => {
-    projectWithSchema();
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("schema-editor");
-
-    // No press: the boxes are on the page, which is the point of the control
-    // being a checkbox group rather than a dropdown — what a class accepts is
-    // readable without opening anything.
-    const basic = screen.getByTestId("geometry-category-Basic Computer Vision");
-    const robotics = screen.getByTestId("geometry-category-Robotics and AD");
-    // Read from the DOM rather than from the map, which is what makes this a
-    // check on the rendering and not on the table.
-    const membersOf = (label: HTMLElement): string[] =>
-      [...(label.parentElement?.querySelectorAll("label") ?? [])].map(
-        (option) => option.textContent ?? "",
-      );
-
-    // The display words, not the wire values: `classification_tag` is an
-    // identifier and `tag` is what it is called.
-    expect(membersOf(basic)).toEqual(["box", "polygon", "tag"]);
-    expect(membersOf(robotics)).toEqual(["polyline"]);
-    // Order of the sections is the map's declaration order, and it is the order
-    // somebody reads down the list in.
-    expect(basic.compareDocumentPosition(robotics) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  });
-
-  /**
-   * The regression pin. Grouping is a change to how options are *arranged*; if it
-   * changed what selecting one does, it would have silently rewritten the schema
-   * editor's only real interaction.
-   */
-  it("adds a geometry to a class rather than replacing the one it had", async () => {
-    projectWithSchema();
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("schema-editor");
-
-    const before = screen.getByTestId("class-geometry-0-bbox") as HTMLInputElement;
-    expect(before.checked).toBe(true);
-
-    // Across a group boundary deliberately: `polyline` is the only member of the
-    // second category, so ticking it proves a grouped box is still a box.
-    await userEvent.click(screen.getByTestId("class-geometry-0-polyline"));
-
-    // Both, which is the whole feature — a control that replaced would leave the
-    // first box clear and this would still find the second one ticked.
-    expect((screen.getByTestId("class-geometry-0-bbox") as HTMLInputElement).checked).toBe(true);
-    expect((screen.getByTestId("class-geometry-0-polyline") as HTMLInputElement).checked).toBe(
-      true,
-    );
-  });
-
-  it("refuses to untick the last geometry, and says why rather than greying out", async () => {
-    projectWithSchema();
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("schema-editor");
-
-    const only = screen.getByTestId("class-geometry-0-bbox") as HTMLInputElement;
-    expect(only.checked).toBe(true);
-
-    await userEvent.click(only);
-
-    expect((screen.getByTestId("class-geometry-0-bbox") as HTMLInputElement).checked).toBe(true);
-    // Principle 9: the control that will not move carries the reason. `title`
-    // rather than the `disabled` attribute, so a keyboard still reaches it.
-    expect(only.closest("label")?.getAttribute("title")).toMatch(/at least one geometry/i);
-    expect(only.getAttribute("aria-disabled")).toBe("true");
-  });
-
-  /**
-   * The colour control has to show the colour the class is actually drawn in.
-   *
-   * The swatch was bound to the **stored** colour, which is `null` for a derived
-   * class, so `<input type="color">` fell back to its own default and rendered
-   * grey — beside a dot showing the real teal, and against an annotator drawing
-   * that same teal. One row, two colours, in the one control whose entire job is to
-   * say what colour something is.
-   */
-  it("previews a derived class in the colour it is actually drawn in", async () => {
-    projectWithSchema();
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("schema-editor");
-
-    // `lane` declares no colour, so `classColor` derives one. Computed here from
-    // the shipped rule rather than hardcoded, which is what makes this a check on
-    // *agreement* — a change to the palette moves both sides together, and only a
-    // swatch that stopped reading `classColor` fails.
-    const derived = hexColor(
-      classColor({ name: "lane", geometries: ["polygon"], color: null, attributes: [] }, "lane"),
-    );
-    expect(derived).not.toBeNull();
-    // One panel at a time, so each class is asserted from its own.
-    await selectClass(1);
-    expect(screen.getByTestId("class-color-1")).toHaveProperty("value", derived);
-    // Never the neutral, which is what it used to be for every derived class.
-    expect(screen.getByTestId("class-color-1")).not.toHaveProperty("value", "#888888");
-
-    // And a declared colour is still itself.
-    await selectClass(0);
-    expect(screen.getByTestId("class-color-0")).toHaveProperty("value", "#38bdf8");
-  });
-
-  it("does not turn a derived colour into a declared one just by showing it", async () => {
-    // The half worth being careful about: making the
-    // input *display* a colour must not make the class *declare* it. A schema
-    // version that pinned today's hash output would make every derived class look
-    // authored, and would change meaning if the palette rule ever moved.
-    projectWithSchema();
-    on("POST", /schema\/drafts\/curated\/publish$/, {
-      status: 201,
-      body: { published: { project_id: PROJECT, version: 4, classes: CLASSES }, advanced_batches: [] },
-    });
-
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("schema-editor");
-    // Dirty by something that is not the colour. An untouched draft sends
-    // nothing — the button answers instead of being grey, and that
-    // refusal is itself the first half of the guarantee.
-    await userEvent.click(screen.getByTestId("save-schema"));
-    expect(sent.some((r) => r.method === "PUT")).toBe(false);
-    await userEvent.click(screen.getByTestId("add-class"));
-    await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
-    await userEvent.click(screen.getByTestId("save-schema"));
-
-    // The classes now travel in the draft's own write, not in the publish —
-    // Save flushes it before publishing, so this is the request that carries
-    // what the version will actually record.
-    await waitFor(() => expect(sent.some((r) => r.method === "PUT")).toBe(true));
-    const request = sent.find((r) => r.method === "PUT")!;
-    const body = JSON.parse(bodies.get(request) ?? "{}") as {
-      classes: { name: string; color: string | null }[];
-    };
-    // Assert the payload, never the control: what matters is what the version
-    // records.
-    expect(body.classes.find((one) => one.name === "lane")?.color).toBeNull();
-    expect(body.classes.find((one) => one.name === "pedestrian")?.color).toBeNull();
-    expect(body.classes.find((one) => one.name === "vehicle")?.color).toBe("#38bdf8");
-  });
-
-  it("Derive clears a declared colour back to the derived one, in the swatch too", async () => {
-    projectWithSchema();
-    on("POST", /schema\/drafts\/curated\/publish$/, {
-      status: 201,
-      body: { published: { project_id: PROJECT, version: 4, classes: CLASSES }, advanced_batches: [] },
-    });
-
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("schema-editor");
-    await userEvent.click(screen.getByTestId("clear-color-0"));
-
-    const derived = hexColor(
-      classColor({ name: "vehicle", geometries: ["bbox"], color: null, attributes: [] }, "vehicle"),
-    );
-    expect(screen.getByTestId("class-color-0")).toHaveProperty("value", derived);
-    // The button still means something: the stored value went back to null, which
-    // is what "Derive" is for.
-    await userEvent.click(screen.getByTestId("save-schema"));
-    // The draft's own write carries the classes now; the publish that follows
-    // carries only a revision.
-    await waitFor(() => expect(sent.some((r) => r.method === "PUT")).toBe(true));
-    const request = sent.find((r) => r.method === "PUT")!;
-    const body = JSON.parse(bodies.get(request) ?? "{}") as {
-      classes: { name: string; color: string | null }[];
-    };
-    expect(body.classes.find((one) => one.name === "vehicle")?.color).toBeNull();
+    expect(opened).not.toHaveBeenCalled();
   });
 });
 
 /**
- * The sections are tabs, so what is *not* on the page is an assertion.
- *
- * The interesting one is the last: a query that lives in the section that renders
- * it is a query that follows the tab. That is what makes the split more than
- * cosmetic, and it is invisible in the rendering — only the request log shows it.
+ * The class rows, in order — the buttons that open them, not their dialog. None
+ * when the ledger is not on the page: an empty ledger and a filter that matches
+ * nothing each show a message in its place.
  */
-describe("the schema version history", () => {
-  /**
-   * Three versions with descriptions and moments, the wire's own shape.
-   *
-   * Descriptions differ per version on purpose: a history whose entries all said
-   * the same thing would pass an assertion that the *selected* one is shown while
-   * actually showing any of them.
-   */
-  const VERSIONS = [
-    {
-      project_id: PROJECT,
-      version: 1,
-      classes: [CLASSES[0]],
-      description: "the first contract",
-      created_at: "2026-07-01T09:00:00Z",
-    },
-    {
-      project_id: PROJECT,
-      version: 2,
-      classes: CLASSES,
-      description: "lanes too",
-      created_at: "2026-07-15T09:00:00Z",
-    },
-    {
-      project_id: PROJECT,
-      version: 3,
-      classes: CLASSES,
-      description: null,
-      created_at: "2026-08-01T09:00:00Z",
-    },
-  ];
-
-  /**
-   * The project, its active version, and its history.
-   *
-   * ``active`` is passed rather than derived from ``items`` because the two are
-   * separate routes and the screen reads them separately — a fixture that derived
-   * one from the other would hide the case where they disagree, which is exactly
-   * what a stale refetch looks like.
-   */
-  function withHistory(items: unknown[] = VERSIONS, active: unknown = VERSIONS[2]): void {
-    on("GET", /^\/projects\/[^/]+$/, {
-      status: 200,
-      body: {
-        id: PROJECT,
-        name: "highway",
-        description: null,
-        thumbnail_asset_id: null,
-        thumbnail_hash: null,
-        created_at: null,
-      },
-    });
-    on("GET", /^\/projects\/[^/]+\/schema$/, { status: 200, body: active });
-    on("GET", /schema\/versions$/, { status: 200, body: { items, total: items.length } });
-  }
-
-  function withDiff(answer: unknown): void {
-    on("GET", /schema\/compare/, { status: 200, body: answer });
-  }
-
-  const NOTHING = { is_destructive: false, destructive_classes: [], changes: [] };
-
-  async function open(): Promise<void> {
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("schema-editor");
-    await screen.findByTestId("version-navigator");
-  }
-
-  async function view(version: number): Promise<void> {
-    // Radix's Select is a listbox, not a native one — open it, then pick.
-    await userEvent.click(screen.getByTestId("version-picker"));
-    await userEvent.click(await screen.findByRole("option", { name: new RegExp(`^v${version}`) }));
-  }
-
-  it("lists every version, newest first, and says which one is active", async () => {
-    withHistory();
-    withDiff(NOTHING);
-    await open();
-
-    await userEvent.click(screen.getByTestId("version-picker"));
-    const options = await screen.findAllByRole("option");
-
-    expect(options.map((option) => option.textContent)).toEqual([
-      "v3 · active",
-      "v2",
-      "v1",
-    ]);
-  });
-
-  it("does not render a navigator for a project with one version", async () => {
-    // A selector with one entry is furniture. There is no history to navigate.
-    withHistory([VERSIONS[2]], VERSIONS[2]);
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-
-    await screen.findByTestId("schema-editor");
-    expect(screen.queryByTestId("version-navigator")).toBeNull();
-  });
-
-  it("renders a past version with no edit affordance at all", async () => {
-    withHistory();
-    withDiff(NOTHING);
-    await open();
-    expect(screen.queryByTestId("save-schema")).not.toBeNull();
-
-    await view(1);
-
-    // Absent, not disabled: a disabled control says "not now", and there is no
-    // now — a published version is immutable.
-    await waitFor(() => expect(screen.queryByTestId("past-version")).not.toBeNull());
-    expect(screen.queryByTestId("save-schema")).toBeNull();
-    expect(screen.queryByTestId("add-class")).toBeNull();
-    expect(screen.queryByTestId("version-note")).toBeNull();
-    expect(screen.queryByTestId("class-list")).toBeNull();
-    expect(screen.getByTestId("schema-status").textContent).toContain("read-only");
-  });
-
-  it("returns to the editor, unchanged, when the navigator is left alone again", async () => {
-    withHistory();
-    withDiff(NOTHING);
-    await open();
-    await view(1);
-    await screen.findByTestId("past-version");
-
-    await userEvent.click(screen.getByTestId("back-to-active"));
-
-    await waitFor(() => expect(screen.queryByTestId("save-schema")).not.toBeNull());
-    expect(screen.getByTestId("schema-status").textContent).toContain("Version 3 active");
-  });
-
-  it("shows the selected version's own description, and says so when there is none", async () => {
-    withHistory();
-    withDiff(NOTHING);
-    await open();
-
-    // v3 is active and was published without one.
-    expect(screen.getByTestId("version-description").textContent).toContain("No description");
-
-    await view(2);
-
-    await waitFor(() =>
-      expect(screen.getByTestId("version-description").textContent).toContain("lanes too"),
-    );
-  });
-
-  it("renders the diff the API returned, never one computed here", async () => {
-    withHistory();
-    withDiff({
-      is_destructive: true,
-      destructive_classes: ["lane"],
-      changes: [
-        { kind: "additive", label_class: "crossing", attribute: null, detail: "class 'crossing' added" },
-        { kind: "destructive", label_class: "lane", attribute: null, detail: "class 'lane' removed" },
-      ],
-    });
-    await open();
-
-    const diff = await screen.findByTestId("version-diff");
-
-    // `detail` verbatim: it is the string the kernel's own 409 is built from, so
-    // a sentence here and a sentence in a refusal are the same sentence.
-    expect(diff.textContent).toContain("class 'crossing' added");
-    expect(diff.textContent).toContain("class 'lane' removed");
-    expect(within(diff).getAllByText("Destructive")).toHaveLength(1);
-    expect(within(diff).getAllByText("Additive")).toHaveLength(1);
-  });
-
-  it("asks about the selected version against its predecessor", async () => {
-    withHistory();
-    withDiff(NOTHING);
-    await open();
-    await waitFor(() =>
-      expect(sent.some((r) => r.url.includes("from=2&to=3"))).toBe(true),
-    );
-
-    await view(2);
-
-    await waitFor(() => expect(sent.some((r) => r.url.includes("from=1&to=2"))).toBe(true));
-  });
-
-  it("asks nothing about version 1, because there is nothing before it", async () => {
-    withHistory();
-    withDiff(NOTHING);
-    await open();
-    await view(1);
-
-    await screen.findByTestId("version-diff-none");
-    // `from=0` is a 422, so the query is disabled rather than sent with a guess.
-    expect(sent.some((r) => r.url.includes("from=0"))).toBe(false);
-  });
-
-  it("publishes the description written beside Save", async () => {
-    withHistory();
-    withDiff(NOTHING);
-    on("POST", /schema\/drafts\/curated\/publish$/, {
-      status: 201,
-      body: { published: { ...VERSIONS[2], version: 4 }, advanced_batches: [] },
-    });
-    await open();
-
-    await userEvent.click(screen.getByTestId("add-class"));
-    await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
-    await userEvent.type(screen.getByTestId("version-note"), "added pedestrians");
-    await userEvent.click(screen.getByTestId("save-schema"));
-
-    // The description is typed into the draft's own `note`, which Save flushes
-    // before it publishes — the kernel reads the version's description off the
-    // stored draft, so this is the request that carries what was typed.
-    await waitFor(() => expect(sent.some((r) => r.method === "PUT")).toBe(true));
-    const request = sent.find((r) => r.method === "PUT");
-    expect(JSON.parse(bodies.get(request!) ?? "{}").note).toBe("added pedestrians");
-  });
-
-  /**
-   * The old client-side omission this test's name described no longer exists
-   * to prove: `SchemaDraftBody.note` (`generated/api.ts`) is a required
-   * `string`, so there is no key left to leave out, and "blank is legal"
-   * became the kernel's decision (`draft.note or None`, read off the stored
-   * draft at publish time) rather than a choice this screen makes about the
-   * request. What is still this screen's to get right is that it does not
-   * invent a *second* version of that decision — an empty box is sent exactly
-   * as typed, not coerced to `null` or held back.
-   */
-  it("sends an empty note rather than inventing an omission for it", async () => {
-    withHistory();
-    withDiff(NOTHING);
-    on("POST", /schema\/drafts\/curated\/publish$/, {
-      status: 201,
-      body: { published: { ...VERSIONS[2], version: 4 }, advanced_batches: [] },
-    });
-    await open();
-
-    await userEvent.click(screen.getByTestId("add-class"));
-    await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
-    await userEvent.click(screen.getByTestId("save-schema"));
-
-    await waitFor(() => expect(sent.some((r) => r.method === "PUT")).toBe(true));
-    const request = sent.find((r) => r.method === "PUT");
-    expect(JSON.parse(bodies.get(request!) ?? "{}").note).toBe("");
-  });
-
-  it("declares every version it publishes as curated", async () => {
-    // The editor is where somebody sits down and decides what the project labels,
-    // so what makes a version a milestone is the *surface* rather than the size of
-    // the change — a one-class save from here is still curated. The sibling claim,
-    // that the annotator's dialog says `annotation`, lives in `addClass.test.ts`.
-    //
-    // `curated` used to be a field on the publish body; it is now the draft's own
-    // `kind`, named in the path rather than the payload — so the path this
-    // editor publishes through *is* the claim.
-    withHistory();
-    withDiff(NOTHING);
-    on("POST", /schema\/drafts\/curated\/publish$/, {
-      status: 201,
-      body: { published: { ...VERSIONS[2], version: 4 }, advanced_batches: [] },
-    });
-    await open();
-
-    await userEvent.click(screen.getByTestId("add-class"));
-    await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
-    await userEvent.click(screen.getByTestId("save-schema"));
-
-    await waitFor(() =>
-      expect(
-        sent.some(
-          (r) =>
-            r.method === "POST" &&
-            /\/schema\/drafts\/curated\/publish$/.test(new URL(r.url).pathname),
-        ),
-      ).toBe(true),
-    );
-  });
-
-  it("shows a published description as soon as the refetch lands", async () => {
-    withHistory();
-    withDiff(NOTHING);
-    const published = {
-      project_id: PROJECT,
-      version: 4,
-      classes: CLASSES,
-      description: "added pedestrians",
-      created_at: "2026-08-02T09:00:00Z",
-    };
-    on("POST", /schema\/drafts\/curated\/publish$/, {
-      status: 201,
-      body: { published, advanced_batches: [] },
-    });
-    await open();
-    await userEvent.click(screen.getByTestId("add-class"));
-    await userEvent.type(screen.getByTestId("class-name-2"), "pedestrian");
-
-    // The refetch after the save finds a fourth version, which is what the
-    // history renders — this is the round trip, not the mutation's own answer.
-    handlers.length = 0;
-    withHistory([...VERSIONS, published], published);
-    withDiff(NOTHING);
-    on("POST", /schema\/drafts\/curated\/publish$/, {
-      status: 201,
-      body: { published, advanced_batches: [] },
-    });
-    await userEvent.click(screen.getByTestId("save-schema"));
-
-    await waitFor(() =>
-      expect(screen.getByTestId("version-description").textContent).toContain(
-        "added pedestrians",
-      ),
-    );
-  });
-
-  it("says so rather than going blank when the comparison cannot be loaded", async () => {
-    withHistory();
-    on("GET", /schema\/compare/, { status: 500, body: { code: "INTERNAL_ERROR", message: "no" } });
-    await open();
-
-    await screen.findByTestId("version-diff-error");
-    // The editor itself is unaffected: a diff is context, not the contract.
-    expect(screen.queryByTestId("save-schema")).not.toBeNull();
-  });
-});
-
-describe("the schema editor's two panels", () => {
-  /** Fifty classes: an ordinary Physical AI ontology, and what the stack broke at. */
-  const MANY = Array.from({ length: 50 }, (_, index) => ({
-    name: `class-${String(index).padStart(2, "0")}`,
-    geometries: ["bbox"],
-    color: null,
-    attributes: [],
-  }));
-
-  function withClasses(classes: unknown[]): void {
-    on("GET", /^\/projects\/[^/]+$/, {
-      status: 200,
-      body: {
-        id: PROJECT,
-        name: "highway",
-        description: null,
-        thumbnail_asset_id: null,
-        thumbnail_hash: null,
-        created_at: null,
-      },
-    });
-    on("GET", /^\/projects\/[^/]+\/schema$/, {
-      status: 200,
-      body: { project_id: PROJECT, version: 1, classes },
-    });
-    on("GET", /schema\/versions$/, { status: 200, body: { items: [], total: 0 } });
-    on("GET", /\/stats$/, {
-      status: 200,
-      body: {
-        project_id: PROJECT,
-        asset_count: 10,
-        annotated_asset_count: 5,
-        annotation_count: 4372,
-        class_count: classes.length,
-        annotated_pct: 50,
-        classes: [{ label_class: "class-00", annotations: 4372, assets: 5 }],
-      },
-    });
-    on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
-    on("GET", /\/batches/, { status: 200, body: { items: [], total: 0 } });
-  }
-
-  it("shows every class in the list and only the selected one in full", async () => {
-    // The whole point of the layout. Fifty stacked full-width cards is what this
-    // replaces, and it is unusable well before fifty.
-    withClasses(MANY);
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-
-    await screen.findByTestId("class-list");
-    expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(50);
-    expect(screen.queryByTestId("class-name-0")).not.toBeNull();
-    expect(screen.queryByTestId("class-name-1")).toBeNull();
-    expect(screen.queryByTestId("class-name-49")).toBeNull();
-  });
-
-  it("opens the class a row names, not the row's position in a filtered list", async () => {
-    // The trap the filter creates: a row's index in the *view* is not its index
-    // in the schema, and writing through the wrong one edits a different class.
-    withClasses(MANY);
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("class-filter");
-
-    await userEvent.type(screen.getByTestId("class-filter"), "class-42");
-    expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(1);
-
-    await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[0]);
-    expect(screen.getByTestId("class-name-42")).toHaveProperty("value", "class-42");
-  });
-
-  it("filters case-insensitively on a substring", async () => {
-    withClasses([
-      { name: "Vehicle", geometries: ["bbox"], color: null, attributes: [] },
-      { name: "lane", geometries: ["polygon"], color: null, attributes: [] },
-    ]);
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("class-filter");
-
-    await userEvent.type(screen.getByTestId("class-filter"), "EHIC");
-    expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(1);
-  });
-
-  it("says so when a filter matches nothing, rather than showing an empty box", async () => {
-    withClasses(MANY);
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("class-filter");
-
-    await userEvent.type(screen.getByTestId("class-filter"), "zzz");
-    expect(screen.queryByTestId("filter-empty")).not.toBeNull();
-  });
-
-  it("walks the list with the arrow keys", async () => {
-    withClasses(MANY);
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("class-list");
-
-    const rows = screen.getByTestId("class-list").querySelectorAll("button");
-    rows[0].focus();
-    await userEvent.keyboard("{ArrowDown}");
-    expect(screen.queryByTestId("class-name-1")).not.toBeNull();
-
-    await userEvent.keyboard("{ArrowDown}");
-    expect(screen.queryByTestId("class-name-2")).not.toBeNull();
-
-    await userEvent.keyboard("{ArrowUp}");
-    expect(screen.queryByTestId("class-name-1")).not.toBeNull();
-  });
-
-  it("does not walk off either end of the list", async () => {
-    withClasses(MANY.slice(0, 2));
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("class-list");
-
-    screen.getByTestId("class-list").querySelectorAll("button")[0].focus();
-    await userEvent.keyboard("{ArrowUp}");
-    expect(screen.queryByTestId("class-name-0")).not.toBeNull();
-
-    await userEvent.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}");
-    expect(screen.queryByTestId("class-name-1")).not.toBeNull();
-  });
-
-  it("adds a class and selects it, so the panel is showing what was just made", async () => {
-    withClasses(MANY);
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("class-list");
-
-    await userEvent.click(screen.getByTestId("add-class"));
-
-    expect(screen.getByTestId("class-name-50")).toHaveProperty("value", "");
-  });
-
-  it("clears the filter when adding, or the new class would be hidden by it", async () => {
-    // A new class has an empty name, so *any* filter hides the row that was just
-    // created — and the panel would be editing something the list does not show.
-    withClasses(MANY);
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("class-filter");
-
-    await userEvent.type(screen.getByTestId("class-filter"), "class-42");
-    await userEvent.click(screen.getByTestId("add-class"));
-
-    expect(screen.getByTestId("class-filter")).toHaveProperty("value", "");
-    expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(51);
-  });
-
-  it("keeps an orphaning removal terminal and leaves the draft unchanged", async () => {
-    withClasses(CLASSES);
-    on("POST", /\/schema\/preview$/, {
-      status: 200,
-      body: {
-        diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
-        blockers: [{ label_class: "lane", annotations: 12, assets: 3 }],
-        is_refused: true,
-      },
-    });
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("class-list");
-
-    await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[1]);
-    await userEvent.click(screen.getByTestId("remove-class-1"));
-
-    expect((await screen.findByTestId("orphan-dialog")).textContent).toContain("12 annotations");
-    expect(screen.getByTestId("orphan-dialog").textContent).toContain("3 assets");
-    expect(screen.queryByTestId("remove-class-confirm")).toBeNull();
-    expect(screen.queryByTestId("allow-destructive")).toBeNull();
-    expect(screen.getByTestId("class-name-1")).toHaveProperty("value", "lane");
-  });
-
-  it("sends the refusal to the section that lists the frames behind it", async () => {
-    withClasses(CLASSES);
-    on("POST", /\/schema\/preview$/, {
-      status: 200,
-      body: {
-        diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
-        blockers: [{ label_class: "lane", annotations: 12, assets: 3 }],
-        is_refused: true,
-      },
-    });
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" onOpenBatch={vi.fn()} />);
-    await screen.findByTestId("class-list");
-
-    await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[1]);
-    await userEvent.click(screen.getByTestId("remove-class-1"));
-
-    // The count without a destination is what this flow was refused for. The
-    // sentence names the section by the heading it actually renders under.
-    const dialog = await screen.findByTestId("orphan-dialog");
-    expect(dialog.textContent).toContain("Frames in the way");
-  });
-
-  it("names no section to a host that cannot open a batch, because none is shown", async () => {
-    withClasses(CLASSES);
-    on("POST", /\/schema\/preview$/, {
-      status: 200,
-      body: {
-        diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
-        blockers: [{ label_class: "lane", annotations: 12, assets: 3 }],
-        is_refused: true,
-      },
-    });
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("class-list");
-
-    await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[1]);
-    await userEvent.click(screen.getByTestId("remove-class-1"));
-
-    // The section is offered only where a batch can be opened, so pointing at it
-    // here would name a place that is not on the page.
-    const dialog = await screen.findByTestId("orphan-dialog");
-    expect(dialog.textContent).toContain("Keep the class");
-    expect(dialog.textContent).not.toContain("Frames in the way");
-  });
-
-  it("removes a clear candidate from the local draft without publishing", async () => {
-    withClasses(CLASSES);
-    on("POST", /\/schema\/preview$/, {
-      status: 200,
-      body: {
-        diff: { changes: [], destructive_classes: ["lane"], is_destructive: true },
-        blockers: [],
-        is_refused: false,
-      },
-    });
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("class-list");
-
-    await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[1]);
-    await userEvent.click(screen.getByTestId("remove-class-1"));
-
-    await waitFor(() =>
-      expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(1),
-    );
-    expect(screen.queryByTestId("orphan-dialog")).toBeNull();
-    expect(sent.some((request) => new URL(request.url).pathname.endsWith("/publish"))).toBe(false);
-  });
-
-  it("shows shared preview failure prose and leaves the draft unchanged", async () => {
-    withClasses(CLASSES);
-    on("POST", /\/schema\/preview$/, {
-      status: 503,
-      body: { code: "NETWORK_ERROR", message: "unreachable" },
-    });
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("class-list");
-
-    await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[1]);
-    await userEvent.click(screen.getByTestId("remove-class-1"));
-
-    const error = await screen.findByTestId("schema-preview-error");
-    expect(error.textContent).toContain("The server could not be reached");
-    expect(error.textContent).not.toContain("unreachable");
-    expect(screen.getByTestId("class-name-1")).toHaveProperty("value", "lane");
-    expect(screen.queryByTestId("orphan-dialog")).toBeNull();
-  });
-
-  it("does not apply field edits while a removal preview is pending", async () => {
-    withClasses(CLASSES);
-    let resolvePreview: ((answer: Exclude<HandlerAnswer, undefined>) => void) | undefined;
-    handlers.push((request) => {
-      if (
-        request.method !== "POST" ||
-        !new URL(request.url).pathname.endsWith("/schema/preview")
-      ) {
-        return undefined;
-      }
-      return new Promise((resolve) => {
-        resolvePreview = resolve;
-      });
-    });
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("class-list");
-
-    await userEvent.click(screen.getByTestId("remove-class-0"));
-    await waitFor(() => expect(screen.getByTestId("remove-class-0")).toHaveProperty("disabled", true));
-    expect(screen.getByTestId("remove-class-0").textContent).toContain("Checking…");
-
-    await userEvent.type(screen.getByTestId("class-name-0"), "-edited");
-    expect(screen.getByTestId("class-name-0")).toHaveProperty("value", "vehicle");
-
-    if (resolvePreview === undefined) throw new Error("Expected the deferred preview request");
-    resolvePreview({
-      status: 200,
-      body: {
-        diff: { changes: [], destructive_classes: ["vehicle"], is_destructive: true },
-        blockers: [],
-        is_refused: false,
-      },
-    });
-
-    await waitFor(() =>
-      expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(1),
-    );
-    expect(screen.getByTestId("class-name-0")).toHaveProperty("value", "lane");
-  });
-
-  it("shows each class's annotation count in its panel header", async () => {
-    withClasses(MANY);
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-
-    // The panel renders before the counts arrive — it has a class to show and
-    // does not wait on a number to show it — so this waits for the count rather
-    // than for the header.
-    await screen.findByTestId("class-count-0");
-    await waitFor(() =>
-      expect(screen.getByTestId("class-count-0").textContent).toContain(
-        (4372).toLocaleString(undefined),
-      ),
-    );
-  });
-
-  it("lands on the neighbour after a removal rather than on an empty panel", async () => {
-    withClasses(MANY.slice(0, 3));
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("class-list");
-
-    await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[2]);
-    await userEvent.click(screen.getByTestId("remove-class-2"));
-    await waitFor(() =>
-      expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(2),
-    );
-
-    expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(2);
-    expect(screen.queryByTestId("class-name-1")).not.toBeNull();
-  });
-
-  it("removes a class that was never named without asking the server", async () => {
-    withClasses(CLASSES);
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("class-list");
-    await userEvent.click(screen.getByTestId("add-class"));
-    const before = sent.filter((request) => request.url.endsWith("/schema/preview")).length;
-
-    await userEvent.click(screen.getByTestId("remove-class-2"));
-
-    await waitFor(() =>
-      expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(2),
-    );
-    expect(sent.filter((request) => request.url.endsWith("/schema/preview"))).toHaveLength(before);
-    expect(screen.queryByTestId("schema-preview-error")).toBeNull();
-  });
-
-  it("leaves an unnamed class out of the removal preview it cannot be part of", async () => {
-    withClasses(CLASSES);
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-    await screen.findByTestId("class-list");
-    await userEvent.click(screen.getByTestId("add-class"));
-
-    await userEvent.click(screen.getByTestId("class-list").querySelectorAll("button")[1]);
-    await userEvent.click(screen.getByTestId("remove-class-1"));
-
-    await waitFor(() =>
-      expect(screen.getByTestId("class-list").querySelectorAll("button")).toHaveLength(2),
-    );
-    const request = sent.find((sentRequest) => sentRequest.url.endsWith("/schema/preview"));
-    if (request === undefined) throw new Error("Expected a schema preview request");
-    expect(JSON.parse(bodies.get(request) ?? "")).toEqual({ classes: [CLASSES[0]] });
-    expect(screen.queryByTestId("schema-preview-error")).toBeNull();
-  });
-});
 
 describe("the project view's sections", () => {
   /** The items of the project's navigation, in display order. */
@@ -2325,13 +695,13 @@ describe("the project view's sections", () => {
     // a hundred-thousand-image one.
     await screen.findByTestId("overview-panel");
     expect(screen.queryByTestId("schema-editor")).toBeNull();
-    expect(screen.queryByTestId("batches-screen")).toBeNull();
+    expect(screen.queryByTestId("images-screen")).toBeNull();
     // The history is inside Schema now, so it is absent for the same reason the
     // editor is rather than for one of its own.
     expect(screen.queryByTestId("version-history")).toBeNull();
 
-    await userEvent.click(screen.getByTestId("nav-batches"));
-    await screen.findByTestId("batches-screen");
+    await userEvent.click(screen.getByTestId("nav-images"));
+    await screen.findByTestId("images-screen");
     expect(screen.queryByTestId("overview-panel")).toBeNull();
     expect(screen.queryByTestId("schema-editor")).toBeNull();
     expect(screen.queryByTestId("version-history")).toBeNull();
@@ -2347,14 +717,146 @@ describe("the project view's sections", () => {
     // a screen reader read, and it is what a restyle must not lose.
     expect(sectionItems()).toHaveLength(4);
     expect(screen.getByTestId("nav-overview").getAttribute("aria-current")).toBe("page");
-    for (const other of ["nav-schema", "nav-batches", "nav-dataset"]) {
+    for (const other of ["nav-images", "nav-schema", "nav-dataset"]) {
       expect(screen.getByTestId(other).hasAttribute("aria-current")).toBe(false);
     }
 
-    await userEvent.click(screen.getByTestId("nav-batches"));
-    await screen.findByTestId("batches-screen");
-    expect(screen.getByTestId("nav-batches").getAttribute("aria-current")).toBe("page");
+    await userEvent.click(screen.getByTestId("nav-images"));
+    await screen.findByTestId("images-screen");
+    expect(screen.getByTestId("nav-images").getAttribute("aria-current")).toBe("page");
     expect(screen.getByTestId("nav-overview").hasAttribute("aria-current")).toBe(false);
+  });
+
+  const DATASET = "99999999-9999-4999-8999-999999999999";
+
+  /** The latest release the dataset stubs answer, as the wire spells it. */
+  const RELEASE = {
+    id: "88888888-8888-4888-8888-888888888888",
+    dataset_id: DATASET,
+    tag: "v1",
+    manifest_hash: "abcdef0123456789",
+    schema_version: 2,
+    asset_count: 12,
+    annotation_count: 40,
+    split: null,
+    created_at: "2026-07-31T10:00:00.000000Z",
+    visionset_version: "0.0.1.dev0",
+  };
+
+  /**
+   * The dataset's three reads, for the sections that count or name it.
+   *
+   * Registered *before* `project()`: its `/stats$/` stub matches the dataset's
+   * stats path too, and the first matching handler wins.
+   */
+  function dataset(releases: readonly unknown[] = []): void {
+    on("GET", /^\/projects\/[^/]+\/dataset$/, {
+      status: 200,
+      body: { id: DATASET, project_id: PROJECT, name: "highway", description: null },
+    });
+    on("GET", /^\/datasets\/[^/]+\/stats$/, {
+      status: 200,
+      body: {
+        dataset_id: DATASET,
+        asset_count: 9,
+        annotated_asset_count: 9,
+        annotation_count: 40,
+        classes: [{ label_class: "vehicle", annotations: 40, assets: 9 }],
+      },
+    });
+    on("GET", /^\/datasets\/[^/]+\/releases$/, { status: 200, body: { items: releases, total: releases.length } });
+  }
+
+  it("gives every section one heading for the outline, and no section header", async () => {
+    // The bar's active tab names the page to the eye; the heading names it to
+    // whoever navigates by headings. Exactly one, so nothing is said twice.
+    const sections = [
+      { tab: "overview", title: "Overview", sentinel: "overview-panel" },
+      { tab: "images", title: "Images", sentinel: "images-screen" },
+      { tab: "schema", title: "Classes", sentinel: "schema-editor" },
+      { tab: "dataset", title: "Dataset", sentinel: "dataset-screen" },
+    ] as const;
+    for (const one of sections) {
+      handlers.length = 0;
+      dataset();
+      project();
+      const { unmount } = renderWithData(
+        <ProjectScreen projectId={PROJECT} tab={one.tab} onOpenBatch={vi.fn()} />,
+      );
+      await screen.findByTestId(one.sentinel);
+      const headings = screen.getAllByRole("heading", { level: 1 });
+      expect(
+        headings.map((heading) => heading.textContent),
+        one.tab,
+      ).toEqual([one.title]);
+      expect(screen.queryByTestId("section-header"), one.tab).toBeNull();
+      unmount();
+    }
+  });
+
+  it("says what the open section holds in the bar, after the tabs: the version in force, the latest release", async () => {
+    const sections = [
+      { tab: "schema", releases: [], meta: "Version 2 in force" },
+      { tab: "dataset", releases: [RELEASE], meta: `Latest release v1 · ${formatWhen(RELEASE.created_at)}` },
+      { tab: "dataset", releases: [], meta: "No releases yet" },
+    ] as const;
+    for (const one of sections) {
+      handlers.length = 0;
+      dataset(one.releases);
+      project();
+      const { unmount } = renderWithData(
+        <ProjectScreen projectId={PROJECT} tab={one.tab} onOpenBatch={vi.fn()} />,
+      );
+      const meta = await within(screen.getByTestId("project-nav")).findByTestId("section-meta");
+      expect(meta.textContent, `${one.tab}: ${one.meta}`).toBe(one.meta);
+      // One line, and it lives in the bar: no section draws a second.
+      expect(screen.getAllByTestId("section-meta"), one.tab).toEqual([meta]);
+      unmount();
+    }
+  });
+
+  it("says a project with no schema has no version published yet, and the Images section says nothing", async () => {
+    // Registered before `project()`, whose own schema stub would answer first.
+    on("GET", /^\/projects\/[^/]+\/schema$/, { status: 404, body: { code: "SCHEMA_NOT_FOUND", message: "none yet" } });
+    project();
+    const { unmount } = renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
+    expect((await screen.findByTestId("section-meta")).textContent).toBe("No version published yet");
+    unmount();
+
+    handlers.length = 0;
+    dataset();
+    project();
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="images" />);
+    await screen.findByTestId("images-screen");
+    // Wait for the tabs' counts, the last thing the bar settles on.
+    await waitFor(() => expect(within(screen.getByTestId("nav-images")).queryByText("12")).not.toBeNull());
+    expect(screen.queryByTestId("section-meta")).toBeNull();
+  });
+
+  it("shows what each section holds beside its name, once every count has answered", async () => {
+    dataset();
+    project();
+    renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
+    await screen.findByTestId("overview-panel");
+
+    // The images in the project, the classes in force, the images in the dataset.
+    await waitFor(() => expect(within(screen.getByTestId("nav-images")).queryByText("12")).not.toBeNull());
+    expect(within(screen.getByTestId("nav-schema")).getByText(String(CLASSES.length))).not.toBeNull();
+    expect(within(screen.getByTestId("nav-dataset")).getByText("9")).not.toBeNull();
+    // The Overview is the page, not a collection: it has no count.
+    expect(within(screen.getByTestId("nav-overview")).queryByText(/\d/)).toBeNull();
+  });
+
+  it("names the Images section by heading alone: the section bar is its title, and its band says what it holds", async () => {
+    // The one section laid out as a pane rather than a page: a big title over
+    // the grid would cost the rows the section exists for, so the heading is
+    // for whoever navigates by headings, and nothing is said twice.
+    project();
+    on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="images" onOpenBatch={vi.fn()} />);
+    await screen.findByTestId("images-screen");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Images");
+    expect(screen.queryByTestId("section-header")).toBeNull();
   });
 
   it("opens on the section the URL named, and on the default when it names nothing valid", async () => {
@@ -2364,11 +866,32 @@ describe("the project view's sections", () => {
     expect(screen.queryByTestId("overview-panel")).toBeNull();
     unmount();
 
-    // A stale link, a typo, or `batches` on a host with no batch route: none of
-    // them is an empty page. The default they land on is Overview.
+    // A stale link or a typo: neither is an empty page. The default they land on
+    // is Overview.
     renderWithData(<ProjectScreen projectId={PROJECT} tab="nonsense" />);
     await screen.findByTestId("overview-panel");
   });
+
+  it("lands a bookmarked ?tab=batches on Overview, where batches are listed now", async () => {
+    // The Labeling section is gone: `batches` is an unknown value like any other,
+    // and Overview is where a batch is opened from.
+    project();
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="batches" onOpenBatch={vi.fn()} />);
+
+    await screen.findByTestId("overview-panel");
+    expect(screen.queryByTestId("nav-batches")).toBeNull();
+    expect(screen.getByTestId("nav-overview").getAttribute("aria-current")).toBe("page");
+  });
+
+  /**
+   * The sections' names in display order. By the name's own text rather than the
+   * item's `textContent`: once the counts have answered an item reads
+   * `Images12`, and the name is what a person and a screen reader take from it.
+   */
+  function sectionNames(): string[] {
+    const names = ["Overview", "Images", "Classes", "Dataset"];
+    return sectionItems().map((item) => names.find((name) => within(item).queryByText(name) !== null) ?? item.textContent ?? "");
+  }
 
   it("opens on Overview, and offers the four sections in order", async () => {
     // Not Schema. A schema editor is configuration,
@@ -2378,10 +901,13 @@ describe("the project view's sections", () => {
     renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
 
     await screen.findByTestId("overview-panel");
-    expect(sectionItems().map((item) => item.textContent)).toEqual([
+    expect(sectionNames()).toEqual([
       "Overview",
-      "Batches",
-      "Schema",
+      // Every image, then what the labels mean, then what came out. The id stays
+      // `schema` — a bookmarked URL is a promise — while the word is the
+      // person's. Batches have no section: they are opened from Overview.
+      "Images",
+      "Classes",
       // **Dataset, where "Schema history" used to be.** The trunk is the
       // product's central object and was reachable only through an overflow
       // menu, an Overview link and the last step of a checklist; the history is
@@ -2389,18 +915,20 @@ describe("the project view's sections", () => {
       // and lands on Schema — a bookmarked URL is a promise.
       "Dataset",
     ]);
+    expect(sectionItems().map((item) => item.getAttribute("data-testid"))).toEqual([
+      "nav-overview",
+      "nav-images",
+      "nav-schema",
+      "nav-dataset",
+    ]);
   });
 
-  it("still opens on Overview for a host with no batch route", async () => {
+  it("offers the same four sections to a host with no batch route", async () => {
     project();
     renderWithData(<ProjectScreen projectId={PROJECT} />);
 
     await screen.findByTestId("overview-panel");
-    expect(sectionItems().map((item) => item.textContent)).toEqual([
-      "Overview",
-      "Schema",
-      "Dataset",
-    ]);
+    expect(sectionNames()).toEqual(["Overview", "Images", "Classes", "Dataset"]);
   });
 
   it("round-trips ?tab=overview, so the default is addressable too", async () => {
@@ -2452,262 +980,12 @@ describe("the project view's sections", () => {
     renderWithData(<ProjectScreen projectId={PROJECT} tab="versions" />);
 
     await screen.findByTestId("schema-editor");
-    expect(screen.queryByTestId("version-history")).not.toBeNull();
+    // The history is one press away, in the band.
+    expect(await screen.findByTestId("open-history")).not.toBeNull();
     expect(screen.queryByTestId("overview-panel")).toBeNull();
   });
 });
 
-describe("version history", () => {
-  it("renders every version, marks the active one, and offers no way to edit a past one", async () => {
-    on("GET", /^\/projects\/[^/]+$/, {
-      status: 200,
-      body: {
-        id: PROJECT,
-        name: "highway",
-        description: null,
-        thumbnail_asset_id: null,
-        thumbnail_hash: null,
-        created_at: null,
-      },
-    });
-    on("GET", /^\/projects\/[^/]+\/schema$/, {
-      status: 200,
-      body: { project_id: PROJECT, version: 2, classes: CLASSES },
-    });
-    on("GET", /schema\/versions$/, {
-      status: 200,
-      body: {
-        items: [
-          { project_id: PROJECT, version: 1, classes: [CLASSES[0]] },
-          { project_id: PROJECT, version: 2, classes: CLASSES },
-        ],
-        total: 2,
-      },
-    });
-
-    // Reached through the Schema tab, which is where the history lives now: it
-    // is a view *of* the schema rather than a peer of it.
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-
-    const history = await screen.findByTestId("version-history");
-    // `findBy` on the row, not on the card: the card renders immediately and holds
-    // the skeletons, so a `getBy` here asserts against a loading state.
-    await within(history).findByTestId("version-1");
-    expect(within(history).getByTestId("version-1").textContent).toContain("vehicle (box)");
-    expect(within(history).getByTestId("version-2").textContent).toContain("lane (polygon)");
-
-    // Active is *derived* — the highest version, never a stored flag.
-    expect(within(history).getByTestId("version-2").textContent).toContain("active");
-    expect(within(history).getByTestId("version-1").textContent).not.toContain("active");
-
-    // Read-only is structural rather than disabled: there are no controls at all.
-    expect(within(history).queryAllByRole("button")).toHaveLength(0);
-    expect(within(history).queryAllByRole("textbox")).toHaveLength(0);
-  });
-
-  it("shows why and when, and an em dash for a version that recorded neither", async () => {
-    // The two optional fields on the ledger. Both are null for a version published
-    // before the migration, and nothing backfills either — so the row has to say
-    // "not recorded" rather than go blank, which reads as a rendering bug.
-    on("GET", /^\/projects\/[^/]+$/, {
-      status: 200,
-      body: {
-        id: PROJECT,
-        name: "highway",
-        description: null,
-        thumbnail_asset_id: null,
-        thumbnail_hash: null,
-        created_at: null,
-      },
-    });
-    on("GET", /schema\/versions$/, {
-      status: 200,
-      body: {
-        items: [
-          { project_id: PROJECT, version: 1, classes: CLASSES, description: null, created_at: null },
-          {
-            project_id: PROJECT,
-            version: 2,
-            classes: CLASSES,
-            description: "split vehicle into car and truck",
-            created_at: "2026-07-15T09:00:00Z",
-          },
-        ],
-        total: 2,
-      },
-    });
-
-    // The editor is above the history in the same tab now, so its own query has
-    // to be answered or the section never gets past loading.
-    on("GET", /^\/projects\/[^/]+\/schema$/, {
-      status: 200,
-      body: { project_id: PROJECT, version: 2, classes: CLASSES },
-    });
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-
-    const history = await screen.findByTestId("version-history");
-    await within(history).findByTestId("version-1");
-    expect(within(history).getByTestId("version-2").textContent).toContain(
-      "split vehicle into car and truck",
-    );
-    expect(within(history).getByTestId("version-1").textContent).toContain("—");
-  });
-
-  /**
-   * Grouping the ledger by provenance.
-   *
-   * The rule itself is `schemaHistory.test.ts` — pure, and where the boundaries
-   * are. This is the half that only exists on screen: that a run renders as one
-   * collapsed row, that the milestones around it do not, and that expanding
-   * gives back exactly the rows a flat table would have had.
-   */
-  describe("versions published while annotating", () => {
-    /** Four versions: two curated milestones with a two-version run between them. */
-    function withRun(): void {
-      on("GET", /^\/projects\/[^/]+$/, {
-        status: 200,
-        body: {
-          id: PROJECT,
-          name: "highway",
-          description: null,
-          thumbnail_asset_id: null,
-          thumbnail_hash: null,
-          created_at: null,
-        },
-      });
-      on("GET", /^\/projects\/[^/]+\/schema$/, {
-        status: 200,
-        body: { project_id: PROJECT, version: 4, classes: CLASSES },
-      });
-      on("GET", /schema\/versions$/, {
-        status: 200,
-        body: {
-          items: [
-            { project_id: PROJECT, version: 1, classes: CLASSES, provenance: "curated" },
-            {
-              project_id: PROJECT,
-              // Deliberately **fewer classes than v3**: with every version
-              // declaring the same contract, a run summarising its oldest member
-              // instead of its newest reads identically and the assertion below
-              // cannot fail. The run's summary is what it *left behind*.
-              version: 2,
-              classes: [CLASSES[0]],
-              provenance: "annotation",
-              description: 'Added class "cone" from the annotation view',
-            },
-            {
-              project_id: PROJECT,
-              version: 3,
-              classes: CLASSES,
-              provenance: "annotation",
-              description: 'Added class "barrier" from the annotation view',
-            },
-            {
-              project_id: PROJECT,
-              version: 4,
-              classes: CLASSES,
-              provenance: "curated",
-              description: "split vehicle into car and truck",
-            },
-          ],
-          total: 4,
-        },
-      });
-    }
-
-    it("collapses the run and leaves the milestones alone", async () => {
-      withRun();
-      renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-
-      const history = await screen.findByTestId("version-history");
-      await within(history).findByTestId("version-4");
-
-      // The two curated versions are rows of their own; the run between them is
-      // one. Without that, the milestone somebody opened this table to read sits
-      // under however many classes were added mid-job that week.
-      expect(within(history).getByTestId("version-run-2-3")).toBeTruthy();
-      expect(within(history).getByTestId("version-1")).toBeTruthy();
-      // Collapsed means *absent*, not hidden: a row still in the DOM is a row a
-      // test can read and a screen reader announces.
-      expect(within(history).queryByTestId("version-2")).toBeNull();
-      expect(within(history).queryByTestId("version-3")).toBeNull();
-    });
-
-    it("says how many it stands for, and what the schema looked like after them", async () => {
-      withRun();
-      renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-
-      const history = await screen.findByTestId("version-history");
-      const run = await within(history).findByTestId("version-run-2-3");
-
-      expect(run.textContent).toContain("2 versions published while annotating");
-      // The *newest* of the run: that is the contract it left behind, and what
-      // the next version was composed on.
-      expect(run.textContent).toContain("lane (polygon)");
-      // And not v2's, which declares one class — the assertion above is only a
-      // claim about *which* version is summarised because the two differ.
-      expect(run.textContent).toContain("vehicle (box)");
-    });
-
-    it("gives back every row when it is expanded", async () => {
-      withRun();
-      renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-
-      const history = await screen.findByTestId("version-history");
-      await within(history).findByTestId("version-run-2-3");
-
-      await userEvent.click(within(history).getByTestId("version-run-toggle-2"));
-
-      // Same testids and the same cells as an ungrouped version, so what a person
-      // finds by expanding reads exactly like what they would have found flat.
-      expect(within(history).getByTestId("version-3").textContent).toContain(
-        'Added class "barrier" from the annotation view',
-      );
-      expect(within(history).getByTestId("version-2").textContent).toContain(
-        'Added class "cone" from the annotation view',
-      );
-    });
-
-    it("groups nothing in a history that recorded no provenance", async () => {
-      // Every version published before WS1's migration answers null, and nothing
-      // backfills them. "Nobody said" must not be read as "incidental" — so a
-      // project untouched since then reads exactly as it did before this rule.
-      on("GET", /^\/projects\/[^/]+$/, {
-        status: 200,
-        body: {
-          id: PROJECT,
-          name: "highway",
-          description: null,
-          thumbnail_asset_id: null,
-          thumbnail_hash: null,
-          created_at: null,
-        },
-      });
-      on("GET", /^\/projects\/[^/]+\/schema$/, {
-        status: 200,
-        body: { project_id: PROJECT, version: 2, classes: CLASSES },
-      });
-      on("GET", /schema\/versions$/, {
-        status: 200,
-        body: {
-          items: [
-            { project_id: PROJECT, version: 1, classes: CLASSES },
-            { project_id: PROJECT, version: 2, classes: CLASSES },
-          ],
-          total: 2,
-        },
-      });
-      renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
-
-      const history = await screen.findByTestId("version-history");
-      await within(history).findByTestId("version-1");
-      expect(within(history).getByTestId("version-2")).toBeTruthy();
-      // And therefore no disclosure at all — the ledger stays read-only, which
-      // the sibling test above asserts by counting buttons.
-      expect(within(history).queryAllByRole("button")).toHaveLength(0);
-    });
-  });
-});
 
 describe("the project's identity and its one filled control", () => {
   const STATS = {
@@ -2817,120 +1095,119 @@ describe("the project's identity and its one filled control", () => {
     on("GET", /schema\/versions$/, { status: 200, body: { items: [], total: 0 } });
   }
 
-  it("renders nothing at all where a description is absent", async () => {
+  it("says how far the labelling has come where a description is absent, never that there is none", async () => {
     // Not "No description." — a line about a field rather than about a project.
     headerFor({});
     renderWithData(<ProjectScreen projectId={PROJECT} />);
 
-    await screen.findByTestId("project-title");
+    const meta = await within(screen.getByTestId("project-nav")).findByTestId("section-meta");
+    expect(meta.textContent).toBe(`${formatPercent(62)} labeled · ${formatCount(6431)} annotations`);
     expect(screen.queryByTestId("project-description")).toBeNull();
     expect(document.body.textContent).not.toContain("No description");
   });
 
-  it("shows a description when there is one", async () => {
+  it("draws no line at all for a description-less project with no images to have labeled", async () => {
+    headerFor({ assets: 0 });
+    renderWithData(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} />);
+
+    await screen.findByTestId("overview-ingest");
+    // The tabs' counts are the last thing the bar settles on: after them, the
+    // absence is an answer rather than a pending query.
+    await waitFor(() => expect(within(screen.getByTestId("nav-images")).queryByText("0")).not.toBeNull());
+    expect(screen.queryByTestId("section-meta")).toBeNull();
+  });
+
+  it("shows the description as the Overview's line in the bar when there is one", async () => {
     headerFor({ description: "M4 survey" });
     renderWithData(<ProjectScreen projectId={PROJECT} />);
 
-    expect((await screen.findByTestId("project-description")).textContent).toBe("M4 survey");
+    const meta = await within(screen.getByTestId("project-nav")).findByTestId("section-meta");
+    expect(meta.textContent).toBe("M4 survey");
+    // The description is the line itself: it has no testid of its own any more.
+    expect(screen.queryByTestId("project-description")).toBeNull();
+    expect(screen.getAllByTestId("section-meta")).toEqual([meta]);
   });
 
-  it("chips the active schema version", async () => {
+  it("draws the classes as their bar of shares in the Classes card, and puts the version in no chip", async () => {
     headerFor({});
     renderWithData(<ProjectScreen projectId={PROJECT} />);
 
-    expect((await screen.findByTestId("chip-version")).textContent).toContain("v3 active");
-  });
-
-  it("omits the version chip for a schema-less project rather than placeholding it", async () => {
-    // `DESIGN.md`: a chip with no data is omitted, never rendered as a
-    // placeholder. A project three seconds old is the ordinary case.
-    headerFor({ schema: false });
-    renderWithData(<ProjectScreen projectId={PROJECT} />);
-
-    // Wait on the Overview's *counted* line, whose request also settles the
-    // schema one, so the assertion below is about an answer rather than about a
-    // pending query.
-    await screen.findByTestId("section-meta");
+    // The card draws the composition instead of a sentence about it; the version is the Classes section's to say.
+    const card = await screen.findByTestId("kpi-annotations");
+    expect(within(card).queryByText(/schema v3/)).toBeNull();
+    // The bar of shares, or its empty face when nothing is labelled yet — never a sentence of totals.
+    expect(within(card).queryByRole("img") ?? within(card).queryByText("No annotations yet.")).not.toBeNull();
     expect(screen.queryByTestId("chip-version")).toBeNull();
   });
 
+  it("says a schema-less project has no schema yet, rather than placeholding a version", async () => {
+    // A project three seconds old is the ordinary case.
+    headerFor({ schema: false });
+    renderWithData(<ProjectScreen projectId={PROJECT} />);
+
+    // Wait on the invitation to define classes, which only renders once the
+    // schema request has answered "none yet", so the assertion below is about an
+    // answer rather than about a pending query.
+    const invitation = await screen.findByTestId("first-run");
+    expect(invitation.getAttribute("data-invitation")).toBe("classes-after-ingest");
+    expect(screen.queryByTestId("chip-version")).toBeNull();
+  });
+
+  it("draws no project eyebrow on any section: the name, the chip and the way out are not repeated", async () => {
+    const SENTINEL = { overview: "overview-panel", images: "images-screen", schema: "schema-editor" } as const;
+    for (const tab of ["overview", "images", "schema"] as const) {
+      handlers.length = 0;
+      headerFor({ assets: 3 });
+      on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
+      const { unmount } = renderWithData(<ProjectScreen projectId={PROJECT} tab={tab} onIngest={vi.fn()} />);
+
+      await screen.findByTestId(SENTINEL[tab]);
+      for (const id of ["project-identity", "project-title", "chip-version"]) {
+        expect(screen.queryByTestId(id), `${id} on ${tab}`).toBeNull();
+      }
+      unmount();
+    }
+  });
+
   /**
-   * The Overview's one line under its title: how much data the project holds,
-   * and when it last grew. What the header's chips used to say, in one sentence.
+   * The Overview's one line, in the bar after the tabs: the description when
+   * there is one, otherwise how far the labelling has come. The counts it used
+   * to carry are the tabs' now, and the ingest moment is the stat strip's.
    */
-  it("says nothing under the Overview title while the count cannot be read", async () => {
+  it("reads the labelling's progress in the bar when there is no description, with no ingest moment", async () => {
+    headerFor({ lastIngest: "2026-07-31T10:00:00.000000Z" });
+    renderWithData(<ProjectScreen projectId={PROJECT} />);
+
+    const meta = (await within(screen.getByTestId("project-nav")).findByTestId("section-meta")).textContent;
+    expect(meta).toBe("62% labeled · 6,431 annotations".replace("6,431", formatCount(6431)));
+    expect(meta).not.toContain("ingested");
+    // The old fixed sentence is gone.
+    expect(document.body.textContent).not.toContain("Where this project stands");
+  });
+
+  it("draws no line when the counts cannot be read, and the page still stands", async () => {
     headerFor({ stats: false });
     renderWithData(<ProjectScreen projectId={PROJECT} />);
 
-    await waitFor(() => expect(screen.queryByTestId("chip-version")).not.toBeNull());
+    await screen.findByRole("alert");
     expect(screen.queryByTestId("section-meta")).toBeNull();
+    expect(screen.getByTestId("project-nav")).not.toBeNull();
   });
 
-  it("formats the image count rather than printing a bare integer", async () => {
-    headerFor({});
-    renderWithData(<ProjectScreen projectId={PROJECT} />);
-
-    expect((await screen.findByTestId("section-meta")).textContent).toContain(
-      `${(1248).toLocaleString(undefined)} images`,
-    );
-  });
-
-  it("says when data last arrived, relative inside a week", async () => {
-    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
-    headerFor({ lastIngest: twoDaysAgo });
-    renderWithData(<ProjectScreen projectId={PROJECT} />);
-
-    expect((await screen.findByTestId("section-meta")).textContent).toMatch(/ · ingested 2d ago$/);
-  });
-
-  it("writes an absolute date once the ingest is older than a week", async () => {
-    const longAgo = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
-    headerFor({ lastIngest: longAgo.toISOString() });
-    renderWithData(<ProjectScreen projectId={PROJECT} />);
-
-    // The date the browser would write, not a hardcoded format: `formatWhen`
-    // deliberately follows the viewer's locale.
-    const date = longAgo.toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-    expect((await screen.findByTestId("section-meta")).textContent).toMatch(
-      new RegExp(` · ingested ${date.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`),
-    );
-  });
-
-  it("omits the ingest moment when nothing records an arrival", async () => {
-    // Null is not "never ingested" — it is *unknown*, because every asset in
-    // this project predates the column and cannot be backfilled. Same
-    // rule as a missing description: omitted, never placeheld.
-    headerFor({});
-    renderWithData(<ProjectScreen projectId={PROJECT} />);
-
-    const meta = await screen.findByTestId("section-meta");
-    expect(meta.textContent).not.toContain("ingested");
-    expect(document.body.textContent).not.toContain("Ingested");
-  });
-
-  it("refuses a stats document whose timestamp is not a string", async () => {
-    // This assertion moved rather than being removed. It used to read "the chip
-    // is simply absent", which was the *symptom* of a document nobody had checked:
-    // the same wrong body white-screened three surfaces once, and the
-    // fix was a hand-written guard at each render site. Now the check runs at
-    // `unwrap`, so the query fails, the line stays away, and the page still stands.
+  it("refuses a stats document whose timestamp is not a string, and the page still stands", async () => {
+    // This assertion moved rather than being removed. It used to read "the line
+    // is simply absent", which was the *symptom* of a document nobody had
+    // checked: the same wrong body white-screened three surfaces once. The
+    // check runs at `unwrap`, so the query fails for every reader of it — the
+    // Overview's panel says so as an error, and the bar draws no line from
+    // counts it could not read — while the bar itself is untouched.
     headerFor({ lastIngest: 1_754_000_000 });
     renderWithData(<ProjectScreen projectId={PROJECT} />);
 
-    await waitFor(() => expect(screen.getByTestId("project-title").textContent).toBe("highway"));
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.queryByTestId("overview-stats")).toBeNull();
     expect(screen.queryByTestId("section-meta")).toBeNull();
-  });
-
-  it("omits the ingest moment when the timestamp will not parse", async () => {
-    headerFor({ lastIngest: "not-a-date" });
-    renderWithData(<ProjectScreen projectId={PROJECT} />);
-
-    const meta = await screen.findByTestId("section-meta");
-    expect(meta.textContent).not.toContain("ingested");
+    expect(screen.getByTestId("nav-overview").getAttribute("aria-current")).toBe("page");
   });
 
   it("offers Annotate when a batch is open for annotation, and opens that batch", async () => {
@@ -3039,6 +1316,120 @@ describe("the project's identity and its one filled control", () => {
     expect(screen.queryByTestId("go-annotate")).toBeNull();
   });
 
+  describe("where Add images lives: a button on Overview and Images, the overflow elsewhere", () => {
+    function inToolbar(): HTMLElement | null {
+      return within(screen.getByTestId("project-nav")).queryByTestId("go-ingest");
+    }
+
+    it("draws it outlined before the filled Annotate while a batch is open", async () => {
+      headerFor({ batchState: "in_annotation" });
+      renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} onIngest={vi.fn()} />);
+
+      const annotate = await screen.findByTestId("go-annotate");
+      const ingest = screen.getByTestId("go-ingest");
+      expect(ingest.dataset.variant).toBe("outline");
+      expect(annotate.dataset.variant).toBe("default");
+      // Add images leads: the DOM order is the visual order.
+      expect(ingest.compareDocumentPosition(annotate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(ingest.parentElement).toBe(annotate.parentElement);
+      expect(inToolbar()).toBe(ingest);
+      expect(filled()).toEqual([annotate]);
+    });
+
+    it("draws it as the filled control when no batch is open", async () => {
+      headerFor({ batchState: "draft" });
+      renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} onIngest={vi.fn()} />);
+
+      await screen.findByTestId("overview-batches");
+      expect(screen.queryByTestId("go-annotate")).toBeNull();
+      expect(screen.getAllByTestId("go-ingest")).toHaveLength(1);
+      expect(inToolbar()).toBe(screen.getByTestId("go-ingest"));
+      expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
+    });
+
+    it("gives the Overview's content and its Batches panel no Add images: the bar has the only one", async () => {
+      headerFor({ batchState: "in_annotation" });
+      renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} onIngest={vi.fn()} />);
+
+      const panel = await screen.findByTestId("overview-batches");
+      // No section header exists to carry one, and nothing in the content does.
+      expect(screen.queryByTestId("section-header")).toBeNull();
+      expect(within(panel).queryByTestId("go-ingest")).toBeNull();
+      expect(await screen.findAllByTestId("go-ingest")).toEqual([inToolbar()]);
+    });
+
+    it("keeps Add images in the toolbar for a host that cannot open a batch, even over an open one", async () => {
+      // Annotate has nowhere to send anybody without `onOpenBatch`, so it never
+      // takes the slot: Add images is the filled control.
+      headerFor({ batchState: "in_annotation" });
+      renderWithData(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} />);
+
+      await screen.findByTestId("overview-batches");
+      expect(screen.queryByTestId("go-annotate")).toBeNull();
+      expect(screen.getAllByTestId("go-ingest")).toHaveLength(1);
+      expect(inToolbar()).toBe(screen.getByTestId("go-ingest"));
+    });
+
+    it("draws no Add images at all for a host with nowhere to send anybody", async () => {
+      headerFor({ batchState: "in_annotation" });
+      renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
+
+      await screen.findByTestId("go-annotate");
+      expect(screen.queryByTestId("go-ingest")).toBeNull();
+    });
+
+    it.each(["overview", "images"] as const)(
+      "draws exactly one button, in the toolbar, on the %s section: the subject is images",
+      async (tab) => {
+        headerFor({ batchState: "in_annotation", assets: 3 });
+        on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
+        renderWithData(<ProjectScreen projectId={PROJECT} tab={tab} onOpenBatch={vi.fn()} onIngest={vi.fn()} />);
+
+        await screen.findByTestId(tab === "images" ? "images-screen" : "go-annotate");
+        const ingest = await screen.findByTestId("go-ingest");
+        expect(screen.getAllByTestId("go-ingest")).toEqual([inToolbar()]);
+        // Not also a menu entry: one way to it per section.
+        await userEvent.click(screen.getByTestId("project-menu"));
+        await screen.findByTestId("rename-project");
+        expect(screen.queryByTestId("menu-ingest")).toBeNull();
+        // Annotate is the Overview's alone, so it is the one that sets the variant.
+        expect(ingest.dataset.variant).toBe(tab === "overview" ? "outline" : "default");
+        expect(screen.queryByTestId("go-annotate") !== null).toBe(tab === "overview");
+      },
+    );
+
+    it.each([
+      { tab: "schema", sentinel: "schema-editor" },
+      { tab: "dataset", sentinel: "dataset-screen" },
+    ] as const)(
+      "draws no button on the $tab section, and offers Add images first in the overflow",
+      async ({ tab, sentinel }) => {
+        const added = vi.fn();
+        headerFor({ batchState: "in_annotation", assets: 3 });
+        renderWithData(<ProjectScreen projectId={PROJECT} tab={tab} onOpenBatch={vi.fn()} onIngest={added} />);
+
+        await screen.findByTestId(sentinel);
+        expect(screen.queryByTestId("go-ingest")).toBeNull();
+        // Annotate belongs to the Overview, where the batches are listed.
+        expect(screen.queryByTestId("go-annotate")).toBeNull();
+
+        const trigger = screen.getByTestId("project-menu");
+        expect(trigger.getAttribute("aria-label")).toBe("Project actions");
+        await userEvent.click(trigger);
+        const item = await screen.findByTestId("menu-ingest");
+        expect(item.textContent).toBe("Add images");
+        // The first entry, ahead of Rename and Delete project.
+        expect(item.parentElement?.querySelector('[role="menuitem"]')).toBe(item);
+        expect(screen.getByTestId("delete-project").textContent).toBe("Delete project");
+        // Still only the bar's menu: never in the section's own content.
+        expect(within(screen.getByTestId("project-nav")).queryByTestId("go-ingest")).toBeNull();
+
+        await userEvent.click(item);
+        expect(added).toHaveBeenCalledOnce();
+      },
+    );
+  });
+
   /*
    * The header's half of the one-filled-button rule.
    *
@@ -3109,46 +1500,130 @@ describe("the project's identity and its one filled control", () => {
     await screen.findByTestId("overview-stats");
     expect(screen.queryByTestId("first-run")).toBeNull();
     expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
+    expect(screen.getByTestId("go-ingest").textContent).toBe("Add images");
   });
 
-  it("hands the filled button back the moment another section is showing", async () => {
-    // The invitation is the *Overview's*. Only the open section is mounted, so a
-    // navigation still standing back on the Dataset section would be a page with
-    // no forward action at all.
-    headerFor({ schema: false, assets: 0 });
-    renderWithData(
-      <ProjectScreen projectId={PROJECT} onIngest={vi.fn()} tab="dataset" />,
-    );
-
-    await screen.findByTestId("go-ingest");
-    expect(screen.queryByTestId("first-run")).toBeNull();
-    expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
-  });
-
-  it("steps Ingest back while the Pre-processing view holds the filled button, and forward again", async () => {
-    // The recipe editor owns the page's forward action — Save recipe, or the
-    // invitation to write one — so the column's control steps back for exactly
-    // as long as that view is showing, in both directions.
-    headerFor({});
+  /** The dataset's reads, which put Publish release into the bar. */
+  function datasetStubs(): void {
     on("GET", /\/dataset$/, {
       status: 200,
       body: { id: "99999999-9999-4999-8999-999999999999", project_id: PROJECT, name: "highway", description: null },
     });
     on("GET", /\/preprocessing-recipes$/, { status: 200, body: { items: [], total: 0 } });
     on("GET", /\/releases$/, { status: 200, body: { items: [], total: 0 } });
+  }
+
+  it("hands the filled button back the moment another section is showing", async () => {
+    // The invitation is the *Overview's*. Only the open section is mounted, so a
+    // navigation still standing back on the Dataset section would be a page with
+    // no forward action at all: here the section's own, Publish release, in the bar.
+    headerFor({ schema: false, assets: 0 });
+    datasetStubs();
+    renderWithData(
+      <ProjectScreen projectId={PROJECT} onIngest={vi.fn()} tab="dataset" />,
+    );
+
+    const publish = await screen.findByTestId("publish-release");
+    expect(screen.queryByTestId("first-run")).toBeNull();
+    expect(filled()).toEqual([publish]);
+    expect(within(screen.getByTestId("project-nav")).getByTestId("publish-release")).toBe(publish);
+    expect(publish.dataset.variant).toBe("default");
+  });
+
+  it("keeps one filled control on the Dataset: Publish release on the working copy, none in the bar on a release, whose export is in the column", async () => {
+    // A release is exported from its own Export section in the left column, so
+    // the bar has no forward action to draw for it, and the recipes chosen there
+    // are shelved nowhere else. A pressed toggle is filled to show a selection
+    // and is not a forward action: only commands count.
+    const commands = (): readonly HTMLElement[] => filled().filter((one) => !one.hasAttribute("aria-pressed"));
+    headerFor({});
+    on("GET", /\/releases$/, {
+      status: 200,
+      body: {
+        items: [
+          {
+            id: "88888888-8888-4888-8888-888888888888",
+            dataset_id: "99999999-9999-4999-8999-999999999999",
+            tag: "v1",
+            manifest_hash: "abcdef0123456789",
+            schema_version: 1,
+            asset_count: 3,
+            annotation_count: 0,
+            split: null,
+            created_at: "2026-07-31T10:00:00.000000Z",
+            visionset_version: "0.0.1.dev0",
+          },
+        ],
+        total: 1,
+      },
+    });
+    datasetStubs();
     renderWithData(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} tab="dataset" />);
 
-    await screen.findByTestId("dataset-tabs");
-    expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
-    expect(screen.getByTestId("publish-release").className).not.toContain("bg-primary");
+    await screen.findByTestId("version-nav");
+    const publish = await screen.findByTestId("publish-release");
+    expect(within(screen.getByTestId("project-nav")).getByTestId("publish-release")).toBe(publish);
+    expect(commands()).toEqual([publish]);
+    expect(publish.dataset.variant).toBe("default");
+    // The working copy shelves no recipes, and Add images is in the overflow, not a second candidate for the slot.
+    expect(screen.queryByTestId("recipe-shelf")).toBeNull();
+    expect(screen.queryByTestId("recipe-new")).toBeNull();
+    expect(screen.queryByTestId("go-ingest")).toBeNull();
 
-    await userEvent.click(screen.getByTestId("dataset-tab-preprocessing"));
-    const invitation = await screen.findByTestId("recipe-new");
-    expect(filled()).toEqual([invitation]);
-    expect(screen.getByTestId("publish-release").className).not.toContain("bg-primary");
+    // A release draws nothing in the bar: its export is a section of the column, with the one filled command that runs it.
+    await userEvent.click(await screen.findByTestId("version-v1"));
+    const section = await screen.findByTestId("section-export");
+    const submit = await within(section).findByTestId("export-submit");
+    expect(screen.queryByTestId("publish-release")).toBeNull();
+    expect(screen.queryByTestId("export-open")).toBeNull();
+    expect(screen.queryByTestId("export-dialog")).toBeNull();
+    const bar = screen.getByTestId("project-nav");
+    expect(commands().filter((one) => bar.contains(one))).toEqual([]);
+    expect(commands()).toEqual([submit]);
+    // The row that writes a recipe is in the same section, never a second filled button.
+    expect(within(section).getByTestId("recipe-new")).not.toBeNull();
+    expect(screen.queryByTestId("recipe-shelf")).toBeNull();
+  });
 
-    await userEvent.click(screen.getByTestId("dataset-tab-releases"));
-    await waitFor(() => expect(filled()).toEqual([screen.getByTestId("go-ingest")]));
+  it("draws New beside the history in the section's band, as its one filled control, not in the project bar", async () => {
+    headerFor({});
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" onIngest={vi.fn()} />);
+
+    const add = await screen.findByTestId("add-class");
+    expect(within(screen.getByTestId("project-nav")).queryByTestId("add-class")).toBeNull();
+    // In the band, right after the history's icon button; it says "New" and is named in full.
+    const band = screen.getByTestId("schema-editor").querySelector("header");
+    expect(band?.contains(add)).toBe(true);
+    expect(add.textContent?.trim()).toBe("New");
+    expect(add.getAttribute("aria-label")).toBe("New class");
+    const history = screen.getByTestId("open-history");
+    expect(history.nextElementSibling).toBe(add);
+    expect(within(screen.getByTestId("class-list")).queryByTestId("add-class")).toBeNull();
+    expect(screen.getAllByTestId("add-class")).toEqual([add]);
+    expect(add.dataset.variant).toBe("default");
+    expect(filled()).toEqual([add]);
+  });
+
+  it("steps Add class back while the draft's Save is the page's filled control", async () => {
+    headerFor({});
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" onIngest={vi.fn()} />);
+    const add = await screen.findByTestId("add-class");
+    expect(filled()).toEqual([add]);
+
+    await addNamedClass("pedestrian");
+
+    // One filled control at a time: the commit bar's Save, while it is up.
+    await waitFor(() => expect(filled()).toEqual([screen.getByTestId("save-schema")]));
+    expect(screen.getByTestId("add-class").dataset.variant).toBe("outline");
+  });
+
+  it("keeps Add class in the section for an empty draft, and draws none in the bar", async () => {
+    headerFor({ schema: false });
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" onIngest={vi.fn()} />);
+
+    const add = await screen.findByTestId("add-class");
+    expect(within(screen.getByTestId("project-nav")).queryByTestId("add-class")).toBeNull();
+    expect(screen.getAllByTestId("add-class")).toEqual([add]);
   });
 
   it("moves Rename into the overflow, so only two buttons show", async () => {

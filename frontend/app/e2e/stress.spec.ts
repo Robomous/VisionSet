@@ -54,26 +54,38 @@ test("a very long class name does not widen the schema", async ({ page }) => {
   await openVisual(page, `/projects/${VISUAL.project}/schema`, { longClassName: true });
   await expect(page.getByTestId("project-screen")).toBeVisible();
 
-  // The card, not the text. Matching on the name reaches two nodes - the rendered
+  // The row, not the text. Matching on the name reaches two nodes - the rendered
   // one and a zero-sized span beside it - and asking the first of those to be
   // visible asserts something about a measurement node rather than about the
   // screen.
-  const card = page.getByTestId("class-0");
-  await expect(card).toBeVisible();
-  await expect(card).toContainText(LONG_CLASS_NAME.slice(0, 24));
+  const row = page.getByTestId("class-card-0");
+  await expect(row).toBeVisible();
+  await expect(row).toContainText(LONG_CLASS_NAME.slice(0, 24));
 
   for (const width of FLOOR) {
     await page.setViewportSize({ width, height: 800 });
     await expectNoPageOverflow(page, `Schema at ${width}px with a long class name`);
-    // The name may wrap or truncate, but the card that holds it may not grow past
-    // the column it sits in.
-    const escapes = await card.evaluate((el) => {
-      const parent = el.parentElement;
-      if (parent === null) return 0;
-      return Math.round(el.getBoundingClientRect().right - parent.getBoundingClientRect().right);
+    // The name may wrap or truncate, but the row that holds it may not grow past
+    // the ledger it sits in.
+    const escapes = await row.evaluate((el) => {
+      const ledger = el.closest('[data-testid="class-list"]');
+      if (ledger === null) return Number.POSITIVE_INFINITY;
+      return Math.round(el.getBoundingClientRect().right - ledger.getBoundingClientRect().right);
     });
-    expect(escapes, `the class card escapes its column at ${width}px`).toBeLessThanOrEqual(1);
+    expect(escapes, `the class row escapes its ledger at ${width}px`).toBeLessThanOrEqual(1);
   }
+
+  // And the sheet the row opens: the same name, in the field, in a form that
+  // never grows past the window.
+  await page.setViewportSize({ width: 320, height: 800 });
+  await row.click();
+  const detail = page.getByTestId("class-sheet");
+  await expect(detail).toBeVisible();
+  await expect(page.getByTestId("class-name-0")).toBeVisible();
+  await expect(page.getByTestId("class-name-0")).toHaveValue(LONG_CLASS_NAME);
+  const detailBox = await detail.boundingBox();
+  expect(detailBox?.width ?? Infinity, "the class sheet is wider than the window").toBeLessThanOrEqual(320);
+  await expectNoPageOverflow(page, "Schema at 320px with a class sheet open");
 });
 
 test("a very long model reference does not widen the models grid", async ({ page }) => {
@@ -86,21 +98,17 @@ test("a very long model reference does not widen the models grid", async ({ page
     await expectNoPageOverflow(page, `Models at ${width}px with a long model reference`);
   }
 
-  // The reference is technical text: it may wrap or truncate, but it may not push
-  // the card wider than the column it sits in.
+  // The reference is technical text: it may truncate, but it may not push the
+  // cell wider than the column it sits in.
   await page.setViewportSize({ width: 1280, height: 900 });
-  const escapes = await page.evaluate((reference) => {
-    const holder = [...document.querySelectorAll("*")].find(
-      (el) => el.childElementCount === 0 && (el.textContent ?? "").includes(reference),
-    );
-    if (!holder) return null;
-    const card = holder.closest("[data-testid^='model-card'], article, li, section");
-    if (!card) return null;
-    return holder.getBoundingClientRect().right - card.getBoundingClientRect().right;
-  }, LONG_MODEL_REFERENCE);
-  if (escapes !== null) {
-    expect(escapes, "the model reference must stay inside its card").toBeLessThanOrEqual(1);
-  }
+  const reference = page.getByTestId("model-reference").filter({ hasText: LONG_MODEL_REFERENCE }).first();
+  await expect(reference).toBeVisible();
+  const escapes = await reference.evaluate((el) => {
+    const cell = el.closest("td");
+    if (cell === null) return Number.POSITIVE_INFINITY;
+    return Math.round(el.getBoundingClientRect().right - cell.getBoundingClientRect().right);
+  });
+  expect(escapes, "the model reference must stay inside its column").toBeLessThanOrEqual(1);
 });
 
 test("a large annotation count keeps the panel usable", async ({ page }) => {

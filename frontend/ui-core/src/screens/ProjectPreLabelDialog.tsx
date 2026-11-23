@@ -1,6 +1,10 @@
 /**
- * The Batches tab's project-wide launch. The batch stays the unit on the wire
- * — the route fans out one `annotation.pre_label` row per checked batch — so
+ * Auto-label: the Overview's project-wide launch (its line over the Batches
+ * table, or its icon in the band — `AutoLabel.tsx`), and its one-batch form
+ * from a batch's row menu and panel. The person's word is *auto-label*; the
+ * wire's is `pre_label`, and labels a run writes land `pre_labeled`.
+ *
+ * The batch stays the unit on the wire — the route fans out one `annotation.pre_label` row per checked batch — so
  * this dialog's whole job is choosing the batches and the settings, then
  * saying which rows were queued and which joined a run already in flight.
  * Gated on `pre_label` in some batch's own `allowed_actions`, never on state
@@ -10,25 +14,23 @@
  * shape selection would ask for against *that* batch's pin, and what it would
  * leave out — read per row because two open batches can pin two versions. A
  * checked row whose plan is refused keeps the launch off the table, on the
- * gallery dialog's reasoning: the launch refuses whole on the same gate, so
+ * per-job dialog's reasoning: the launch refuses whole on the same gate, so
  * pressing Start could only reproduce the refusal the row already shows.
  */
 
-import { Sparkles } from "lucide-react";
-import { useMemo, useState, type JSX } from "react";
+import { useState, type JSX } from "react";
 
-import { BATCH_ACTION, declares } from "../data/capabilities";
 import { useConnections, type Connection } from "../data/inferenceQueries";
 import { refusalProse } from "../data/refusals";
+import { formatCount } from "../lib/format";
 import { Alert, AlertDescription, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Label, FieldError } from "@robomous/ui-core";
 import {
   DEFAULT_CONFIDENCE,
-  NO_SHAPES,
   PreLabelSettings,
   PromptClasses,
   TEXT_DETECT,
-  selectedShapes,
 } from "./PreLabelDialog";
+import { NO_SHAPES, selectedShapes } from "./preLabelShapes";
 import {
   usePreLabelPlans,
   usePreLabelProject,
@@ -57,48 +59,13 @@ function resultRows(
   });
 }
 
-export interface ProjectPreLabelButtonProps {
-  readonly projectId: string;
-  readonly batches: readonly Batch[];
-  readonly onOpenBatch: (batchId: string) => void;
-}
-
-export function ProjectPreLabelButton({
-  projectId,
-  batches,
-  onOpenBatch,
-}: ProjectPreLabelButtonProps): JSX.Element | null {
-  const [open, setOpen] = useState(false);
-  const eligible = useMemo(
-    () => batches.filter((one) => declares(one, BATCH_ACTION.preLabel)),
-    [batches],
-  );
-  if (eligible.length === 0) return null;
-
-  return (
-    <>
-      <Button
-        variant="outline"
-        size="sm"
-        data-testid="project-prelabel"
-        onClick={() => setOpen(true)}
-      >
-        <Sparkles className="size-4" aria-hidden="true" />
-        Pre-label
-      </Button>
-      {open && (
-        <ProjectPreLabelDialog
-          projectId={projectId}
-          batches={eligible}
-          onClose={() => setOpen(false)}
-          onOpenBatch={onOpenBatch}
-        />
-      )}
-    </>
-  );
-}
-
-function ProjectPreLabelDialog({
+/**
+ * The dialog, for a host that opens it from its own control — the Overview's
+ * offer over every batch that declares the run, a batch's row menu and panel
+ * over that one. Handed one batch, it is titled for that batch; the checklist,
+ * gating and refusals are the same.
+ */
+export function ProjectPreLabelDialog({
   projectId,
   batches,
   onClose,
@@ -117,7 +84,7 @@ function ProjectPreLabelDialog({
   const [confidence, setConfidence] = useState(DEFAULT_CONFIDENCE);
   const [unticked, setUnticked] = useState<ReadonlySet<GeometryType>>(NO_SHAPES);
   // Checked where there is something to reach: a batch nothing is untouched in
-  // would contribute a guaranteed no-op run, which is the gallery dialog's
+  // would contribute a guaranteed no-op run, which is the per-job dialog's
   // `blocked` reasoning applied one row at a time.
   const [checked, setChecked] = useState<ReadonlySet<string>>(
     () => new Set(batches.filter((one) => one.progress.unannotated > 0).map((one) => one.id)),
@@ -129,6 +96,8 @@ function ProjectPreLabelDialog({
   const selection = selectedShapes(shapes, unticked);
   const noShape = selection !== null && selection.length === 0;
   const plans = usePreLabelPlans(batches, active?.id, result === null && !noShape, selection);
+  // What Start will reach: the untouched images of the checked batches.
+  const checkedImages = batches.reduce((sum, one) => sum + (checked.has(one.id) ? one.progress.unannotated : 0), 0);
   const refused = batches.filter((one, index) => checked.has(one.id) && plans[index]?.isError);
   const confidenceValue = Number(confidence);
   // `confidence.trim() !== ""` first, on `PreLabelDialog`'s reasoning: `Number("")`
@@ -186,11 +155,11 @@ function ProjectPreLabelDialog({
   return (
     <Dialog open onOpenChange={(next) => !next && onClose()}>
       <DialogContent data-testid="project-prelabel-dialog">
-        <DialogTitle>Pre-label open batches</DialogTitle>
+        <DialogTitle>{batches.length === 1 && batches[0] !== undefined ? `Auto-label ${batches[0].name}` : "Auto-label batches"}</DialogTitle>
         <DialogDescription>
-          One run per batch, over every asset nothing has touched yet. What a run finds lands{" "}
-          <strong>pre-labeled and editable</strong> in that batch, never as somebody&rsquo;s own
-          annotation.
+          A model draws boxes on every image nothing has touched yet, one run per batch. What it finds
+          lands <strong>pre-labeled and editable</strong> for someone to check, never as somebody&rsquo;s
+          own annotation.
         </DialogDescription>
 
         {result === null ? (
@@ -248,8 +217,8 @@ function ProjectPreLabelDialog({
               <Alert data-testid="project-prelabel-blocked">
                 <AlertDescription>
                 {refused.length === 1
-                  ? `${refused[0]!.name} cannot be pre-labeled as planned — uncheck it, or change the model or the shapes, to start.`
-                  : `${refused.map((one) => one.name).join(", ")} cannot be pre-labeled as planned — uncheck them, or change the model or the shapes, to start.`}
+                  ? `${refused[0]!.name} cannot be auto-labeled as planned — uncheck it, or change the model or the shapes, to start.`
+                  : `${refused.map((one) => one.name).join(", ")} cannot be auto-labeled as planned — uncheck them, or change the model or the shapes, to start.`}
                 </AlertDescription>
               </Alert>
             )}
@@ -291,7 +260,7 @@ function ProjectPreLabelDialog({
                 disabled={!canStart}
                 onClick={start}
               >
-                {launch.isPending ? "Labeling…" : "Start"}
+                {launch.isPending ? "Starting…" : checkedImages > 0 ? `Auto-label · ${formatCount(checkedImages)} ${checkedImages === 1 ? "image" : "images"}` : "Auto-label"}
               </Button>
             </>
           ) : (

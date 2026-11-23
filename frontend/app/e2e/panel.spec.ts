@@ -43,7 +43,8 @@ test("the panel lists what is drawn, and the selection round-trips", async ({ pa
   await drawBbox(page, frame, { x: 300, y: 200 }, { x: 520, y: 340 });
 
   await expect(page.getByTestId("object-count")).toHaveText("1 object");
-  await expect(page.getByTestId("object-row-0")).toContainText("1. vehicle");
+  await expect(page.getByTestId("object-row-0")).toContainText("vehicle");
+  await expect(page.getByTestId("object-row-0")).toContainText("#1");
   // Drawn shapes arrive selected, so the row is already highlighted.
   await expect(page.getByTestId("object-row-0")).toHaveAttribute("data-selected", "true");
 

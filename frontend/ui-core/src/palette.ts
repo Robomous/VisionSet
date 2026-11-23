@@ -23,7 +23,7 @@
  * without parsing. v1's four-value palette is not ported for the same reason: the
  * three extra values were an alpha and two hue shifts a renderer can apply itself.
  *
- * The panel swatches and the gallery badges import from here. The
+ * The panel swatches and the class badges elsewhere in the app import from here. The
  * canvas imports from `@visionset/annotator` directly. Both reach the same
  * function.
  */

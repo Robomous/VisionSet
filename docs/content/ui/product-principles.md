@@ -33,7 +33,7 @@ Navigation behaviour is [navigation.md](navigation.md); the annotation workspace
    confirmation. Where the count cannot be obtained accurately, the action does not ship
    with a dialog that guesses.
 6. **Empty states invite.** An empty state names the space, explains it in one line, and
-   offers the next useful action with a verb-first label — "Ingest your first batch to see
+   offers the next useful action with a verb-first label — "Add your first images to see
    stats here", never a bare "No items". A section with nothing in it is otherwise not
    rendered at all: not a placeholder, not an apology.
 
@@ -143,18 +143,20 @@ row's metrics for nothing.
 to nothing else** — one declaration, and a consumer must not add a gap of its own. The
 primitive owns it because that is the direction nobody can forget. It knows two values: the
 segmented switch keeps Nova's 8px, and a `line` bar — navigation over a page's content, as on
-the dataset's four views or the project's strip below `lg` — takes the layout unit, 16px.
+the project's strip below `lg` — takes the layout unit, 16px.
 Asserted by measurement rather than by a class string.
 
 No panel repeats its own tab's name as a heading: the tab already labels the panel, so a
 heading saying the same word is a stutter for a reader and for a screen reader both. The
-one exception is a tab bar that is the narrow-viewport form of a navigation column — a
+one exception is a tab bar that is the narrow-viewport form of the section toolbar — a
 project's sections below `lg` — where each section is a page with its own `h1`, and the
-strip is how the column collapses rather than a set of panels.
+strip is how the toolbar narrows rather than a set of panels.
 
 ## Screen rules
 
 ### Home
+
+**Not mounted by the standalone app.** The Home route was removed: `/` redirects to the project list, and the rail carries no Home entry. `HomeScreen` and `GET /home` still exist (a reusable `ui-core` screen and its API read), and what follows describes them for a host that mounts it.
 
 Home is the workspace's front page and answers a different question from a list: a list
 answers *what exists*; Home answers **what is waiting on me, and where do I carry on** —
@@ -176,7 +178,7 @@ pointer, and pressing it goes to the screen that owns the thing.
 - **The label is load-bearing, and the wire picks it.** The card renders one of three
   promises: **Continue Annotating** (a frame nobody has judged), **Review Annotations**
   (labeling done, frames waiting on a reviewer), **Open Batch** (nothing to open in the
-  editor). The first two go to the editor, the third to the gallery — a button claiming a
+  editor). The first two go to the editor, the third to the batch's panel on the project's Overview — a button claiming a
   frame that does not exist would land somewhere empty. Which applies is decided by the
   kernel and carried on the response, because a judgment spelled once in the kernel and
   again in the browser is one that drifts.
@@ -184,8 +186,8 @@ pointer, and pressing it goes to the screen that owns the thing.
   holding frames a model labeled and nobody has read, a failed background job, a running
   background job. The two batch rows must not read the same — the first waits on a
   *reviewer*, the second on an *annotator* — and a batch holding both gets both rows, since
-  one line cannot ask two people. Either batch row links to its gallery, where the
-  model-labeled segment and its bulk verbs are. A job row links nowhere and says so by not
+  one line cannot ask two people. Either batch row opens the batch's panel on the project's
+  Overview, where its jobs are and each opens in the editor. A job row links nowhere and says so by not
   being a link — no screen shows a background job, and inventing a destination would be
   principle 4's dead button with a friendlier label.
 - **Activity** is a projection over timestamps that already exist, never an event log,
@@ -205,28 +207,35 @@ pointer, and pressing it goes to the screen that owns the thing.
 
 The project view is the face of a project, and principle 1 is the rule it exists to keep.
 
-**The project's identity is one eyebrow line above each section's title**
-([navigation.md](navigation.md), *Inside a project*): the way out (`Projects`), the project
-name, the active-version chip. **A chip with no data is omitted, never rendered as a
+**The project's identity is the open-project tab** ([navigation.md](navigation.md),
+*Inside a project*): the tab names the project, so a section opens straight on its own title
+with no eyebrow line above it. **A chip with no data is omitted, never rendered as a
 placeholder** — inventing a field to fill a chip, or rendering `Unknown`, is the "No
-description." mistake with a border around it. The description shows on Overview only,
-under its meta line, **if there is one** — if not, render *nothing*, because "No
+description." mistake with a border around it; the schema version, for one, reads in the
+Overview's *Annotations* card as `schema v4` and as `no schema yet` when there is none. The
+description shows on Overview only, under its meta line, **if there is one** — if not, render *nothing*, because "No
 description." spends a line telling somebody about a field rather than about their
-project. How much data the project holds, and when it last arrived, is the Overview
-header's one line (`11 images · ingested Aug 7, 2026`) rather than a chip.
+project. Every section's header carries one plain sentence under its title; how much data
+the project holds is the Overview's *Images* number and the Images section's own total, not
+a chip.
 
-The navigation carries the one dominant action and the overflow menu (`⋯`) for the rest;
-each section's own header carries that section's actions as `secondary`, right-aligned.
+The navigation carries the one dominant action, **Add images** beside it, and the overflow
+menu (`⋯`) for the rest; each section's own header carries that section's actions as
+`secondary`, right-aligned. The Overview is the one place an action sits in a panel instead:
+batches have no section of their own, so the action on batches as a set — the project-wide
+Auto-label — is offered over the Batches table, as a line while images are waiting and as an
+icon in its tool row once that line is put away ([navigation.md](navigation.md), *Two
+dashboards*).
 On the project page the dominant action is **Annotate**, because principle 3 asks what the
 user came to do and the answer is never "rename this".
 
 **Annotate has three shapes, and the cost of the choice tracks the ambiguity.** With no
 batch open for annotation there is nowhere to send anybody, so the button is absent and
-Ingest takes the dominant slot — principle 4, rather than a disabled control that never
-says what would enable it. While Annotate holds the slot, Ingest stays reachable as a
-`secondary` action on the sections ingest feeds (Overview, Batches); it is never in both
-places at once. With exactly one, it jumps straight there — into that batch's one job where it
-has exactly one, and onto its gallery to pick a job otherwise, since a batch cut into several is
+Add images takes the dominant slot — principle 4, rather than a disabled control that never
+says what would enable it. While Annotate holds the slot, Add images stays reachable as an
+`outline` control beside it, before it, in the same toolbar — one place on every section, and
+never repeated in a panel or a header. With exactly one, it jumps straight there — into that batch's one job where it
+has exactly one, and onto its panel to pick a job otherwise, since a batch cut into several is
 a second choice nobody has made yet. With two or more it
 reads `Annotate ▾` and opens a menu of those batches, each row carrying the batch name, its
 remaining count, and the schema version it is pinned to. The chevron is not decoration: a
@@ -236,22 +245,29 @@ silent default, and never one remembered from last time: a control's destination
 a function of session history.
 
 **The first run renders exactly one invitation, driven by the project's state.** No classes
-and no images invites the ingest (naming the other order beneath it as prose, because both
-are legitimate — ingest leads because images are what the dashboard has something to show
-for); classes and no images invites the ingest again; images and no classes invites the
-classes. A project with both gets no invitation and is the dashboard. **It guides
-and never gates** — Ingest and Schema stay independently reachable throughout, and where
-the invitation holds the page's dominant action the navigation steps its own Ingest back
+and no images invites adding images (naming the other order beneath it as prose, because both
+are legitimate — images lead because they are what the Overview has something to show
+for); classes and no images invites adding images again; images and no classes invites the
+classes. A project with both gets no invitation and is the console. **It guides
+and never gates** — Add images and Classes stay independently reachable throughout, and where
+the invitation holds the page's dominant action the navigation steps its own Add images back
 to a secondary treatment.
 
-### Versioning is ambient, not modal
+### Versioning is on demand, not modal
 
-Schema version state is a persistent status line — `Version 1 active · unsaved changes
-create v2` — never a tooltip, a dialog, or a disabled save button. The user should never
-have to press something to discover what pressing it would do. Its corollary, from
-principle 4: **Save Version is always enabled.** Pressing it with no changes shows a toast
-and issues no request. It is a `secondary` control: the project's navigation holds the
-page's filled one.
+Editing classes comes first; versioning appears when there is something to version. While
+the draft matches the version in force there is nothing to save, so nothing on the page
+offers to: the Classes section is its table, and the version in force is named in the
+project bar (*Version 1 in force*) and on the band's **History** button (*History · v1*). The first edit raises
+a **commit bar** at the foot of the section — how many changes, a **Review** of them,
+**Discard** and **Save version N+1** — never a dialog, a tooltip
+or a disabled save button: what saving would do is on the bar before it is pressed. Its
+height is reserved whether or not it is up, so nothing moves when it rises, and while it is
+down it is inert. A status line that is always there (*Version 1 active · unsaved changes
+create v2*) tells a screen reader what the bar tells the eye. While the bar is up, its
+Save is the page's filled control and the band's **New** steps back to
+`outline`, so one filled control holds; Save is never disabled for "nothing to save" — a
+save of nothing answers with a toast and issues no request.
 
 ## Component contracts
 
@@ -262,7 +278,8 @@ Presentational contracts, all in `ui-core`, all data-only — no fetching, no ro
 | `StatCard` | Muted meta-size label above a large value, tinted surface, no border. Used in grids of 3–4. Optional context line under the value. |
 | `DistributionBar` | One row of a bar chart: swatch · fixed-width label · proportional bar in the class colour · right-aligned count. All bars in one chart share a single max-value scale. |
 | `ClassListRow` | Swatch + name + a `geometry · count` secondary line. Selected = tinted background + 2px left accent rule covering the row's full height. The whole row is the click target and a real `<button>` — except when it carries shape chips, which are press targets and cannot nest inside a button: that row is a `role="group"` with an inner name button, addressed by the same `-name` handle in both markups. A row carrying a refusal never takes the group form, because only the button can be disabled. |
-| `EmptyState` | Icon + a headline naming the space + one line of body + a verb-first CTA. Never a bare "No items". |
+| `ClassShapeSample` | A small drawing of one geometry in one class's colour: the stroke is the colour and the fill is that colour at the annotator's fill opacity, so a schema reads as what somebody will see while labeling. One drawing per geometry the schema editor offers (box, polygon, polyline, tag); a geometry it has no drawing for falls back to a dashed box rather than drawing nothing. Decorative: hidden from assistive technology, sized by its caller. |
+| `EmptyState` | A drawing + a headline naming the space + one line of body + a verb-first CTA. Never a bare "No items". Not a card: no border and no fill around the state. The drawing is a small stack of the product's own surfaces — cards with a layered shadow, fanned — one per space (projects, images, classes, models, dataset, recipes); a space without its own gets the plain stack, whose front card holds an icon. `compact` draws it at about three quarters, for a pane, a sheet or a form. The cards settle in once, staggered, when the state appears, and spread slightly while the pointer is over the invitation; both are off under reduced motion. The drawing is decoration and hidden from assistive technology. |
 | `ThumbnailGrid` | Square tiles, 6px gap, small radius. The last tile becomes a `+N` overflow linking onward. Missing thumbnails show a photo icon on a subtle fill — never a broken-image glyph. |
 | Chip | `primitives/badge.tsx`, which already is one. It gains variants; it is not reimplemented. |
 
@@ -294,9 +311,8 @@ here.
   extension in `@theme inline`, consumed by `ui-core`'s
   `PaddedContent`, the one declaration the padded pane and the project shell share; forms/settings
   `max-w-3xl`; centered, `px-4 md:px-6 py-6`. Inside a project the content keeps that
-  column beside a `180px` navigation column (`--spacing-project-nav`) at `lg` and above —
-  navigation only, since the identity is not in it; the width is the widest control
-  (`Annotate ▾`, ~122px) plus room to breathe.
+  column under a 40px section toolbar that spans the pane at `lg` and above — navigation
+  and the one filled control only, since the identity is not in it.
 - **Dialog widths**: the primitive's default `max-w-lg` for a confirmation or a form of
   stacked single fields; `max-w-2xl` for a form whose fields sit side by side (its grid
   splits on a *viewport* breakpoint, so the box must be wide enough for a split it cannot

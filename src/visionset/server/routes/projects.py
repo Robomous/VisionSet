@@ -25,6 +25,7 @@ from visionset.server.models import (
     ConfirmQuery,
     ProgressCounts,
     ProjectCreate,
+    ProjectListItemOut,
     ProjectOut,
     ProjectPage,
     ProjectRename,
@@ -43,14 +44,20 @@ def create_project(workspace: WorkspaceDep, body: ProjectCreate) -> ProjectOut:
 
 @router.get("")
 def list_projects(workspace: WorkspaceDep) -> ProjectPage:
-    """Every project in this workspace, in the order they were created."""
+    """Every project in this workspace, in the order they were created, each with its digest."""
     service = ProjectService(workspace)
     found = service.list()
     previews = service.previews()
-    return ProjectPage(
-        items=[ProjectOut.of(project, previews.get(project.id)) for project in found],
-        total=len(found),
-    )
+    digests = service.digests()
+    # The three reads are three units of work, so a project deleted between them
+    # has no digest. It is left out of this answer rather than refusing the whole
+    # listing, and `total` counts what the page holds.
+    items = [
+        ProjectListItemOut.listed(project, previews.get(project.id), digests[project.id])
+        for project in found
+        if project.id in digests
+    ]
+    return ProjectPage(items=items, total=len(items))
 
 
 @router.get("/{project_id}", responses=documented(404))

@@ -191,7 +191,7 @@ describe("what it submits", () => {
     const basic = screen.getByTestId("geometry-category-Basic Computer Vision");
     const robotics = screen.getByTestId("geometry-category-Robotics and AD");
     const membersOf = (label: HTMLElement): string[] =>
-      [...(label.parentElement?.querySelectorAll("label") ?? [])].map(
+      [...(label.parentElement?.querySelectorAll('[data-slot="toggle-group-item"]') ?? [])].map(
         (option) => option.textContent ?? "",
       );
 
@@ -280,7 +280,7 @@ describe("the refusal it has to make legible", () => {
 
     const alert = screen.getByTestId("add-class-error");
     expect(alert.textContent).toContain("still on v2");
-    expect(alert.textContent).toContain("Schema tab");
+    expect(alert.textContent).toContain("Classes section");
   });
 });
 

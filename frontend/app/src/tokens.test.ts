@@ -48,8 +48,8 @@ const STYLESHEET = readFileSync(fileURLToPath(new URL("./styles.css", import.met
 describe("the shell's layout widths", () => {
   it("declares the rail's two widths, and nothing else", () => {
     const inline = rawDeclarations(blockBody(STYLESHEET, "@theme inline {"));
-    expect(inline.get("--spacing-sidebar")).toBe("240px");
-    expect(inline.get("--spacing-sidebar-collapsed")).toBe("48px");
+    expect(inline.get("--spacing-rail")).toBe("48px");
+    expect(inline.get("--spacing-rail-expanded")).toBe("208px");
     expect(inline.size).toBe(2);
   });
 

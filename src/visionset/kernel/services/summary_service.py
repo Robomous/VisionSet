@@ -289,6 +289,24 @@ def _project_activity(
     return entries
 
 
+def latest_activity(uow: UnitOfWork, project: Project, assets: list[Asset]) -> datetime | None:
+    """When this project last had anything to say for itself, or ``None``.
+
+    Public and at module level, beside ``jobs_of`` and for its reason:
+    ``ProjectService.digests`` dates a project by the same four sources the
+    activity feed does, and a second list of them written there would be free to
+    drift from the one that feed documents. This *is* that list - the feed's own
+    walk, read for its newest row - so adding a fifth source to the feed moves
+    both.
+
+    Takes the ``assets`` the caller has already read, as ``summary`` does, and
+    inside the caller's own transaction. The release count the walk keeps is
+    thrown away: it is the front page's number, not this one's.
+    """
+    entries = _project_activity(uow, project, assets, _Accumulator())
+    return max((entry.occurred_at for entry in entries), default=None)
+
+
 def _entry(
     project: Project,
     kind: ActivityKind,

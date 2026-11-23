@@ -41,7 +41,7 @@
  * anywhere in the storage format, so *the batch I touched last* has no source.
  * The card offers the batch furthest through that still has an unlabeled frame.
  * Its one visible consequence is here: with nothing left to label the control
- * reads **Open batch** and goes to the gallery, because there is no frame to
+ * reads **Open batch** and goes to the batch's panel, because there is no frame to
  * open and a button claiming otherwise would land somewhere empty.
  */
 
@@ -73,7 +73,7 @@ export interface HomeScreenProps {
    * honour the distinction renders neither.
    */
   readonly onContinue?: (jobId: string, assetId: string | null) => void;
-  /** The batch gallery, for the fallback and for a review or pre-labeled row. */
+  /** The batch's panel, for the fallback and for a review or pre-labeled row. */
   readonly onOpenBatch?: (projectId: string, batchId: string) => void;
   readonly onOpenProject?: (projectId: string) => void;
   /** The project list, behind the recent-projects header link. */
@@ -254,7 +254,7 @@ const RESUME_LABEL: Record<ResumeTarget["kind"], string> = {
  * and `review` there is a frame, so the control opens the editor at it — the same
  * screen either way, because a frame awaiting review opens read-only with the
  * review actions on it and there is no second screen to send anybody to. Under
- * `open` there is no frame at all, so it goes to the gallery rather than offering
+ * `open` there is no frame at all, so it goes to the batch's panel rather than offering
  * a link that would land somewhere empty.
  *
  * Which of the three applies is `resume.kind`, decided by the kernel. This
