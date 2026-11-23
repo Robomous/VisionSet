@@ -526,6 +526,8 @@ function WithReason({ reason, children }: { readonly reason: string; readonly ch
  * picked drawing tool draws as, and undo and redo. Edit and each drawing tool
  * stay on screen when they cannot be used, disabled with the reason.
  */
+const POLYLINE_HINT = "Click along the line. Enter or double-click finishes it.";
+
 export function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Element {
   const { editing, editBlocked, toolBlocked, snapshot } = scan;
   const editToggle = (
@@ -568,7 +570,7 @@ export function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Eleme
   return (
     <div
       data-testid="scan-edit-strip"
-      className="pointer-events-auto ml-auto flex items-center gap-1 rounded-xl border border-border bg-muted p-1 shadow-lg"
+      className="pointer-events-auto ml-auto flex flex-wrap items-center gap-1 rounded-xl border border-border bg-muted p-1 shadow-lg"
     >
       {editBlocked === null ? editToggle : <WithReason reason={editBlocked}>{editToggle}</WithReason>}
 
@@ -612,8 +614,12 @@ export function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Eleme
             </Select>
           )}
           {scan.toolKind === "polyline" && (
-            <span data-testid="scan-polyline-hint" className="px-1 text-xs text-muted-foreground">
-              Click along the line. Enter or double-click finishes it.
+            <span
+              data-testid="scan-polyline-hint"
+              title={POLYLINE_HINT}
+              className="order-last basis-full truncate px-1 text-xs text-muted-foreground"
+            >
+              {POLYLINE_HINT}
             </span>
           )}
           <span className="mx-0.5 h-5 w-px bg-border" />
