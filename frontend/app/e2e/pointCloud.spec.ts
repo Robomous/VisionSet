@@ -480,13 +480,44 @@ test("in Edit, the keys delete, undo, and let go of the selection", async ({ pag
 
   await page.keyboard.press("ControlOrMeta+z");
   await expect(page.getByTestId("object-count")).toHaveText("2 objects");
+  // A row click leaves focus on the view, so its keys act on the row's label.
   await page.getByTestId("object-select-1").click();
   await expect(page.getByTestId("scan-handles")).toBeVisible();
-  await page.getByTestId("point-cloud-gl").focus();
+  await expect(page.getByTestId("point-cloud-gl")).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("scan-handles")).toHaveCount(0);
   // The undone delete is work again, and the bar says so.
   await expect(page.getByTestId("save-state")).toBeVisible();
+
+  await page.getByTestId("object-select-1").click();
+  await page.keyboard.press("Delete");
+  await expect(page.getByTestId("object-count")).toHaveText("1 object");
+});
+
+test("in Edit, a footprint drawn after picking the class finishes its height with Enter", async ({ page }) => {
+  const sent = await openScan(page, { schema: CUBOID_SCHEMA });
+  const view = page.getByTestId("point-cloud-canvas");
+  await expect.poll(() => drawCount(view)).toBeGreaterThan(0);
+  await page.getByTestId("scan-edit-toggle").click();
+  await page.getByTestId("scan-tool-cuboid").click();
+  await page.getByTestId("scan-cuboid-class").focus();
+
+  const box = await view.boundingBox();
+  if (box === null) throw new Error("the view has no box");
+  const [cx, cy] = [box.width / 2, box.height / 2];
+  await dragIn(page, view, [cx - 220, cy + 60], [cx - 100, cy + 150]);
+  await expect(page.getByTestId("scan-height-hint")).toBeVisible();
+  await page.mouse.move(box.x + cx - 100, box.y + cy + 90, { steps: 6 });
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("object-count")).toHaveText("2 objects");
+  await expect(page.getByTestId("scan-height-hint")).toHaveCount(0);
+
+  await expect(page.getByTestId("point-cloud-gl")).toBeFocused();
+  await page.keyboard.press("ControlOrMeta+s");
+  await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
+  const geometry = lastCuboidSent(sent);
+  expect(geometry.type).toBe("cuboid_3d");
+  expect(geometry.size[2]).toBeGreaterThan(0.05);
 });
 
 test("a selected cuboid is drawn in the highlight colour instead of its class colour", async ({ page }) => {

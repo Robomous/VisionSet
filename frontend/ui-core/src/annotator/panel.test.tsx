@@ -170,6 +170,20 @@ describe("a scan's 3D labels (#1061)", () => {
     expect(onRemove).toHaveBeenCalledWith("c1");
   });
 
+  it("selects a cuboid from its row without taking focus off the view", async () => {
+    const scan = scanStoreOf();
+    render(
+      <>
+        <canvas tabIndex={0} data-testid="view" />
+        {mount(storeWith([]), { scan: { store: scan, onRemove: vi.fn() } })}
+      </>,
+    );
+    screen.getByTestId("view").focus();
+    await userEvent.click(screen.getByTestId("object-select-0"));
+    expect([...scan.selection]).toEqual(["c1"]);
+    expect(document.activeElement).toBe(screen.getByTestId("view"));
+  });
+
   it("offers no delete on a scan that cannot be edited, or in the read-only mode", () => {
     const { unmount } = render(mount(storeWith([]), { scan: { store: scanStoreOf(), onRemove: null } }));
     expect(screen.getByTestId("object-delete-0").hasAttribute("disabled")).toBe(true);
@@ -355,6 +369,20 @@ describe("the object list", () => {
 
     await userEvent.click(screen.getByTestId("object-select-1"));
     expect([...store.selection]).toEqual(["b"]);
+  });
+
+  it("selects from a row without taking focus off the annotator root, whose keys then act on it", async () => {
+    const store = storeWith([annotation("a", "vehicle", "bbox")]);
+    render(
+      <>
+        <div tabIndex={0} data-testid="annotator-root" />
+        {mount(store)}
+      </>,
+    );
+    screen.getByTestId("annotator-root").focus();
+    await userEvent.click(screen.getByTestId("object-select-0"));
+    expect([...store.selection]).toEqual(["a"]);
+    expect(document.activeElement).toBe(screen.getByTestId("annotator-root"));
   });
 
   it("round-trips the selection, because there is only one", async () => {

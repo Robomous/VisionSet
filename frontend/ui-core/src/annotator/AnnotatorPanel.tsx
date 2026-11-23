@@ -679,6 +679,7 @@ function ObjectRow({
           data-testid={`object-select-${index}`}
           aria-label={`Select object ${number}, ${annotation.label_class}`}
           aria-expanded={hasAttributes ? selected : undefined}
+          onMouseDown={keepFocus}
           onClick={onSelect}
           className="absolute inset-0 rounded-[5px] outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
         />
@@ -793,6 +794,11 @@ function RowActions({
   );
 }
 
+/** A row click selects without taking focus off the view, whose keys act on the selection. */
+function keepFocus(event: { preventDefault: () => void }): void {
+  event.preventDefault();
+}
+
 /** One cuboid or polyline on a scan: select it, or delete it. No visibility toggle: the scan view has none per label. */
 function CuboidRow({
   annotation,
@@ -826,6 +832,7 @@ function CuboidRow({
       <button
         type="button"
         data-testid={`object-select-${index}`}
+        onMouseDown={keepFocus}
         onClick={onSelect}
         className="flex min-w-0 flex-1 items-center gap-2 text-left text-xs"
       >
