@@ -30,7 +30,7 @@
  * A table, like every workspace list: the facts are the same shape on every
  * connection, so they read best down a column.
  *
- * ## A row is read; its sheet is where it is managed
+ * ## A row is read; its panel is where it is managed
  *
  * The row is the connection's facts, one per column, and its state: the word,
  * or — while a download or a check runs — the run itself, its name, amounts
@@ -38,17 +38,19 @@
  * nothing else in the grid. A run that failed adds a short note beside the
  * word (*Download failed*), and nothing more: the row never grows a line.
  *
- * Pressing a row opens its **sheet**: everything the row truncates, said in
- * full — the weights and revision, where it runs, every ability — and every
+ * Pressing a row opens its **panel**, at the right of the list (`DetailPane`:
+ * resizable, in from the right edge; a sheet only below `lg`): everything the
+ * row truncates, said in full — the weights and revision, where it runs, every ability — and every
  * action the connection declares, each with what it does: Download weights
  * with what it would cost, its progress and its failure with the retry,
  * the two checks over a set-up model's files, Test endpoint and its answer,
  * Edit and Delete. One place to manage a model, rather than a button in the
  * row, a menu beside it and a detail line under it.
  *
- * What the list adds up to — how many models are shown, of how many, and how
- * many are ready — is said in the workbench's status bar (`PageStatus`), not
- * on the page.
+ * What the list adds up to — how many of the models shown are ready — is said
+ * in the workbench's status bar (`PageStatus`). Which models are on screen, of
+ * how many, is said by the footer the list is paged from (`TableFooter`, 25 to
+ * a page). Neither is said on the page.
  *
  * ## Nothing here decides what is legal
  *
@@ -154,12 +156,11 @@
  * instead of disabling itself.
  */
 
-import { Box, ChevronRight, CircleDashed, Cpu, Download, FileSearch, Globe, Package, Pencil, Plug, RadioTower, ShieldCheck, Sparkles, Trash2, X } from "lucide-react";
+import { Box, ChevronRight, CircleDashed, Cpu, Download, FileSearch, Globe, Package, Pencil, Plus, RadioTower, ShieldCheck, Sparkles, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type JSX, type ReactNode } from "react";
 
 import { Async } from "../data/Async";
 import { asApiError } from "../data/errors";
-import { producesProse } from "../data/geometryCategory";
 import {
   isLive,
   useCheckIntegrity,
@@ -178,11 +179,14 @@ import {
   type WeightDownload,
 } from "../data/inferenceQueries";
 import { jobFailureProse, refusalProse } from "../data/refusals";
-import { cn, Badge, Button, Progress, SearchInput, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@robomous/ui-core";
+import { cn, Badge, Button, Progress, SearchInput, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@robomous/ui-core";
 import { ErrorState, LoadingState } from "../patterns/AsyncStates";
+import { DetailPane } from "../patterns/DetailPane";
 import { BODY_ROW, ColumnHeader, ListGrid, ListPage, type ListColumn } from "../patterns/ListPage";
 import { PageStatus } from "../patterns/PageStatus";
-import { PropertyRow } from "../patterns/PropertyRow";
+import { usePagination } from "../patterns/pagination";
+import { clickedRowId, walkRowButtons } from "../patterns/rowDelegation";
+import { TableFooter } from "../patterns/TablePager";
 import { formatCount } from "../lib/format";
 import {
   CUSTOM_MODEL,
@@ -208,14 +212,16 @@ import {
   type FilterOption,
   type ModelFilters,
 } from "./modelFilters";
-import { STATE_LABELS, capabilityProse, kindLabel, originLabel, originMark } from "./modelCopy";
+import { STATE_LABELS, abilityLabels, bytes, kindLabel, originLabel, originMark, sourceLine } from "./modelCopy";
 /** Above this many rows a list carries a filter input (`docs/content/ui/product-principles.md`). */
 const FILTER_ABOVE = 20;
 
 /**
  * The grid's columns. The model's name takes what the others leave. State is
  * wide enough for a run's amounts — `1.2 GB of 1.6 GB · 75%` — beside the
- * run's name; the last column is the row's "opens a sheet" chevron.
+ * run's name; the last column is the row's "opens the panel" chevron. The grid's floor
+ * keeps 12rem for the name: beside an open panel the grid scrolls sideways
+ * rather than crushing it to a letter.
  */
 const COLUMNS: readonly ListColumn[] = [
   { key: "model" },
@@ -232,9 +238,9 @@ export function ModelsScreen(): JSX.Element {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Connection | null>(null);
   const [doomed, setDoomed] = useState<Connection | null>(null);
-  // The connection whose sheet is open, by id — so the sheet reads the live
-  // row on every poll — and whether it is open, so it can animate shut.
-  const [inspected, setInspected] = useState<{ readonly id: string; readonly open: boolean } | null>(null);
+  // The connection whose detail is open, by id — so the panel reads the live
+  // row on every poll. The panel keeps what it showed while it slides out.
+  const [inspected, setInspected] = useState<string | null>(null);
   const [needle, setNeedle] = useState("");
   // One value per dimension, or `null` for All — values rather than indices, so
   // a choice the workspace stops declaring (an endpoint re-asked, a model moved)
@@ -247,127 +253,180 @@ export function ModelsScreen(): JSX.Element {
   const dimensions = offeredDimensions(options);
   const active = activeFilters(options, chosen);
   const narrowed = anyFilter(active);
-  const typing = needle.trim() !== "";
   const shown = matching(applyFilters(items, active), needle);
+  // The same pager as every full-page table; a filter starts it over.
+  const paging = usePagination(shown, { pageSize: 25, resetKey: `${needle.trim()}|${JSON.stringify(active)}` });
+  const frame = useRef<HTMLDivElement>(null);
   const pick = (dimension: Dimension) => (value: string) =>
     setChosen((current) => ({ ...current, [dimension]: value === ALL ? null : value }));
-  const current = inspected === null ? undefined : items.find((connection) => connection.id === inspected.id);
-  // Kept for the sheet's way out: a deleted connection leaves the list at once,
-  // and the sheet still has to draw it while it closes.
-  // Updated while rendering, React's pattern for keeping a value from an earlier render.
-  const [lastInspected, setLastInspected] = useState<Connection | null>(null);
-  if (current !== undefined && current !== lastInspected) setLastInspected(current);
+  const current = inspected === null ? undefined : items.find((connection) => connection.id === inspected);
+  const filtersShown = connections.isSuccess && (dimensions.length > 0 || items.length > FILTER_ABOVE);
+
+  /** Shuts the panel and gives focus back to the row that opened it. */
+  function closeDetail(): void {
+    if (inspected !== null) document.getElementById(`model-open-${inspected}`)?.focus();
+    setInspected(null);
+  }
+
+  // Escape closes the panel from anywhere on the page — a press on a row
+  // leaves focus on the page, not in the panel. A dialog or a dropdown opened
+  // over it has already taken its own Escape and said so (`defaultPrevented`),
+  // so it closes first and the panel stays.
+  useEffect(() => {
+    if (inspected === null) return;
+    function onKey(event: globalThis.KeyboardEvent): void {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      event.preventDefault();
+      closeDetail();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  });
 
   return (
     <ListPage
       testId="models-screen"
       icon={Cpu}
       title="Models"
-      action={
-        <Button size="sm" data-testid="new-connection" onClick={() => setCreating(true)}>
-          <Plug aria-hidden="true" />
-          Add model
-        </Button>
-      }
       toolbar={
-        connections.isSuccess && (dimensions.length > 0 || items.length > FILTER_ABOVE) ? (
-          <div role="group" aria-label="Show models by" className="flex min-w-0 flex-1 flex-wrap items-center gap-2" data-testid="model-filters">
-            {items.length > FILTER_ABOVE && (
-              <SearchInput
-                value={needle}
-                onValueChange={setNeedle}
-                placeholder="Filter by name"
-                aria-label="Filter connections"
-                data-testid="connection-filter"
-                className="w-56 max-w-full"
-              />
-            )}
-            {dimensions.map((dimension) => (
-              <FilterSelect
-                key={dimension}
-                id={`filter-${dimension}`}
-                label={DIMENSION[dimension].label}
-                options={options[dimension]}
-                value={active[dimension]}
-                onChange={pick(dimension)}
-              />
-            ))}
-            {narrowed && (
-              <Button variant="ghost" size="sm" data-testid="clear-filters" onClick={() => setChosen(NO_FILTERS)}>
-                <X aria-hidden="true" />
-                Clear
-              </Button>
-            )}
-          </div>
-        ) : undefined
+        <>
+          {filtersShown && (
+            <div role="group" aria-label="Show models by" className="flex min-w-0 flex-1 flex-wrap items-center gap-2" data-testid="model-filters">
+              {items.length > FILTER_ABOVE && (
+                <SearchInput
+                  value={needle}
+                  onValueChange={setNeedle}
+                  placeholder="Filter by name"
+                  aria-label="Filter connections"
+                  data-testid="connection-filter"
+                  className="w-56 max-w-full"
+                />
+              )}
+              {dimensions.map((dimension) => (
+                <FilterSelect
+                  key={dimension}
+                  id={`filter-${dimension}`}
+                  label={DIMENSION[dimension].label}
+                  options={options[dimension]}
+                  value={active[dimension]}
+                  onChange={pick(dimension)}
+                />
+              ))}
+              {narrowed && (
+                <Button variant="ghost" size="sm" data-testid="clear-filters" onClick={() => setChosen(NO_FILTERS)}>
+                  <X aria-hidden="true" />
+                  Clear
+                </Button>
+              )}
+            </div>
+          )}
+          {/* The page's one action, at the end of the bar that shapes the list —
+              there even before there are models to filter, since it is how the
+              first one is made. "New" on the page that names the noun; its full
+              name for whoever cannot see the page's title. */}
+          <Button size="sm" aria-label="New model" data-testid="new-connection" onClick={() => setCreating(true)} className="ml-auto">
+            <Plus aria-hidden="true" />
+            New
+          </Button>
+        </>
       }
     >
-      {connections.isSuccess && items.length > 0 && <ModelsStatus shown={shown} total={items.length} narrowed={narrowed || typing} />}
-      <Async
-        query={connections}
-        loadingRows={3}
-        empty={{
-          art: "models",
-          title: "Connect a model to enable auto-labeling",
-          // No button of its own: the header's "Add model" is on screen and
-          // opens the same dialog. One way to add a model.
-          description:
-            "VisionSet never downloads models on its own — you choose what runs and where. Start with Add model.",
-        }}
-      >
-        {() => (
-          <ListGrid
-            columns={COLUMNS}
-            minWidth="min-w-[1240px]"
-            label="Models"
-            testId="models-grid"
-            head={
-              <>
-                <ColumnHeader icon={Box} label="Model" />
-                <ColumnHeader icon={Package} label="Weights" />
-                <ColumnHeader icon={Globe} label="Origin" />
-                <ColumnHeader icon={Sparkles} label="What it does" />
-                <ColumnHeader icon={Cpu} label="Runs on" />
-                <ColumnHeader icon={CircleDashed} label="State" />
-                <ColumnHeader label="Details" hidden />
-              </>
-            }
-          >
-            <tbody>
-            {shown.map((connection) => (
-              <ConnectionRow
-                key={connection.id}
-                connection={connection}
-                onOpen={() => setInspected({ id: connection.id, open: true })}
-              />
-            ))}
-            {shown.length === 0 && (
-                <tr className={BODY_ROW}>
-                  {/* What somebody narrowed to is a fact about the filter and never
-                      an occasion to invite anything: every choice on offer is one
-                      some row answers, so an empty result is the combination. */}
-                  <td colSpan={COLUMNS.length} className="h-24 text-center text-muted-foreground" data-testid="filtered-out">
-                    Nothing here matches the filter.
-                  </td>
-                </tr>
-            )}
-            </tbody>
-          </ListGrid>
+      {/* The list and, at its right, the open model: one row. Below `lg` the
+          row is only the list, and the detail is a sheet (`DetailPane`). */}
+      <div
+        className={cn(
+          "flex min-h-0 min-w-0 flex-1",
+          // Fits the window below the header band and the toolbar's, so the list scrolls inside its frame and the panel keeps its height.
+          "lg:h-[calc(100dvh-var(--page-inset-top,0px)-var(--page-inset-bottom,0px)-3rem-49px)]",
+          "lg:min-h-[24rem]",
         )}
-      </Async>
+      >
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {connections.isSuccess && items.length > 0 && <ModelsStatus shown={shown} />}
+          <Async
+            query={connections}
+            loadingRows={3}
+            empty={{
+              art: "models",
+              title: "Connect a model to enable auto-labeling",
+              // No button of its own: the header's "New" is on screen and
+              // opens the same dialog. One way to add a model.
+              description:
+                "VisionSet never downloads models on its own — you choose what runs and where. Start with New.",
+            }}
+          >
+            {() => (
+              <>
+                {/* A wrapper that only catches the rows' bubbled clicks and arrows:
+                    the interactive things are the rows' own name buttons, so it
+                    carries no semantics of its own. */}
+                <div
+                  className="flex min-h-0 flex-1 flex-col"
+                  role="presentation"
+                  onKeyDown={walkRowButtons}
+                  onClick={(event) => {
+                    const id = clickedRowId(event);
+                    if (id !== null) setInspected(id);
+                  }}
+                >
+                  <ListGrid
+                    columns={COLUMNS}
+                    minWidth="min-w-[1380px]"
+                    label="Models"
+                    testId="models-grid"
+                    frameRef={frame}
+                    head={
+                      <>
+                        <ColumnHeader icon={Box} label="Model" />
+                        <ColumnHeader icon={Package} label="Weights" />
+                        <ColumnHeader icon={Globe} label="Origin" />
+                        <ColumnHeader icon={Sparkles} label="What it does" />
+                        <ColumnHeader icon={Cpu} label="Runs on" />
+                        <ColumnHeader icon={CircleDashed} label="State" />
+                        <ColumnHeader label="Details" hidden />
+                      </>
+                    }
+                  >
+                    <tbody>
+                    {paging.slice.map((connection) => (
+                      <ConnectionRow
+                        key={connection.id}
+                        connection={connection}
+                        onOpen={() => setInspected(connection.id)}
+                      />
+                    ))}
+                    {shown.length === 0 && (
+                        <tr className={BODY_ROW}>
+                          {/* What somebody narrowed to is a fact about the filter and never
+                              an occasion to invite anything: every choice on offer is one
+                              some row answers, so an empty result is the combination. */}
+                          <td colSpan={COLUMNS.length} className="h-24 text-center text-muted-foreground" data-testid="filtered-out">
+                            Nothing here matches the filter.
+                          </td>
+                        </tr>
+                    )}
+                    </tbody>
+                  </ListGrid>
+                </div>
+                {/* Under the table, outside the rows' delegating wrapper. */}
+                <TableFooter pagination={paging} frameRef={frame} noun="model" unfiltered={items.length} />
+              </>
+            )}
+          </Async>
 
-      <ModelSheet
-        connection={lastInspected}
-        open={inspected !== null && inspected.open && current !== undefined}
-        onClose={() => setInspected((was) => (was === null ? null : { ...was, open: false }))}
-        onClosed={() => {
-          // Back to the row that opened it, whichever way the sheet shut.
-          if (inspected !== null) document.getElementById(`model-open-${inspected.id}`)?.focus();
-          setInspected(null);
-        }}
-        onEdit={(connection) => setEditing(connection)}
-        onDelete={(connection) => setDoomed(connection)}
-      />
+        </div>
+        <DetailPane id="models" open={current !== undefined} label="Model" defaultWidth={440} testId="model-sheet" onClose={closeDetail}>
+          {current !== undefined && (
+            <ModelDetail
+              key={current.id}
+              connection={current}
+              onClose={closeDetail}
+              onEdit={() => setEditing(current)}
+              onDelete={() => setDoomed(current)}
+            />
+          )}
+        </DetailPane>
+      </div>
       <ConnectionDialog open={creating} onClose={() => setCreating(false)} />
       <ConnectionDialog
         open={editing !== null}
@@ -448,37 +507,6 @@ function FilterSelect({
 }
 
 /**
- * Where the model runs, in one line: `Local · cuda · fp16`, `HTTP · models.example`.
- *
- * Built from whichever of the four facts the connection carries rather than
- * from a layout per kind, so a kind this build has never seen renders the same
- * way — its raw value, then whatever it declares — with nothing rearranged.
- * The host rather than the whole URL, because a column's width is the point and
- * the path is re-readable in the edit form.
- */
-export function sourceLine(connection: Connection): string {
-  return [
-    kindLabel(connection.connection_type),
-    connection.device,
-    connection.precision,
-    hostOf(connection.endpoint_url),
-  ]
-    .filter((part): part is string => part !== null && part !== undefined && part !== "")
-    .join(" · ");
-}
-
-/**
- * What the model does and what it writes, one label each: `Suggests from clicks`,
- * `writes boxes or polygons`. Empty when the connection has declared neither — a
- * row nobody has downloaded carries no label at all.
- */
-export function abilityLabels(connection: Connection): readonly string[] {
-  const labels = connection.capabilities.map(capabilityProse);
-  if (connection.produces.length > 0) labels.push(`writes ${producesProse(connection.produces)}`);
-  return labels;
-}
-
-/**
  * A failure as a sentence, so the remedy after it starts a new one. A job's
  * error is often the worker's raw message — "Connection reset by peer" — with
  * no full stop of its own.
@@ -487,38 +515,20 @@ function sentence(text: string): string {
   return /[.!?…]$/.test(text.trimEnd()) ? text : `${text.trimEnd()}.`;
 }
 
-function hostOf(url: string | null): string | null {
-  if (url === null || url === "") return null;
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
-}
-
 /**
  * What the list on screen adds up to, in the workbench's status bar — said
- * there and not on the page (`PageStatus`): how many models, of how many while
- * a filter narrows them (never hiding what it left out,
- * `docs/content/ui/product-principles.md`); how many of those are ready; and
- * how many still need setting up. Every figure is over the rows shown.
+ * there and not on the page (`PageStatus`): how many of the models the filter
+ * leaves are ready, and how many still need setting up. Every figure is over
+ * every model the filter leaves, not the page of them on screen. How many
+ * models there are, and of how many while a filter narrows them (never hiding
+ * what it left out, `docs/content/ui/product-principles.md`), is the footer's
+ * to say (`TableFooter`): said once.
  */
-function ModelsStatus({
-  shown,
-  total,
-  narrowed,
-}: {
-  readonly shown: readonly Connection[];
-  readonly total: number;
-  readonly narrowed: boolean;
-}): JSX.Element {
+function ModelsStatus({ shown }: { readonly shown: readonly Connection[] }): JSX.Element {
   const ready = shown.filter((connection) => connection.setup_state === "ready").length;
   const waiting = shown.length - ready;
   return (
     <PageStatus>
-      <span data-testid="models-count">
-        {narrowed ? `${formatCount(shown.length)} of ${formatCount(total)} models` : `${formatCount(total)} ${total === 1 ? "model" : "models"}`}
-      </span>
       {shown.length > 0 && <span data-testid="models-ready">{formatCount(ready)} ready</span>}
       {waiting > 0 && (
         <span data-testid="models-waiting" className="text-foreground">
@@ -551,8 +561,9 @@ function failureNote(connection: Connection): string | null {
  * whole point of the download living on the connection. Same width either
  * way, so nothing beside it moves.
  *
- * The whole row opens the sheet for a pointer; the name is the row's one real
- * control for a keyboard and a screen reader, so each model is heard once.
+ * The whole row opens the sheet for a pointer — the table body takes that click
+ * (`clickedRowId`) — and the name is the row's one real control for a keyboard and a
+ * screen reader, so each model is heard once.
  *
  * Exported for the row tests, which render one inside a `<table>`.
  */
@@ -572,7 +583,7 @@ export function ConnectionRow({
     <tr
       data-testid={`connection-${connection.name}`}
       data-origin={connection.origin}
-      onClick={onOpen}
+      data-row-id={connection.id}
       // No transition on the hover fill: the pointer sweeps this list.
       className={cn(BODY_ROW, "group cursor-pointer hover:bg-muted/40")}
     >
@@ -582,6 +593,7 @@ export function ConnectionRow({
           id={`model-open-${connection.id}`}
           data-testid={`open-${connection.name}`}
           title={connection.name}
+          data-row-open={connection.id}
           onClick={(event) => {
             event.stopPropagation();
             onOpen();
@@ -671,59 +683,26 @@ function StateBadge({ connection }: { readonly connection: Connection }): JSX.El
 }
 
 /**
- * One model, in full, and everything that can be done to it.
+ * One model, in full, and everything that can be done to it — the panel at the
+ * right of the list (`DetailPane`).
  *
  * Read off the live row — the screen passes the connection as the list last
  * fetched it — so a run started here, or anywhere else, is watched here too.
- * The body is keyed by the connection, so a request this sheet made for one
- * model is never shown on another.
+ * Keyed by the connection, so a request this panel made for one model is never
+ * shown on another.
+ *
+ * A 48px header with the name and, quieter beside it, the weights; the body
+ * scrolls — setup first, then the facts the row truncates, in one grid of
+ * labels and values; Edit and Delete are pinned in the footer.
  */
-function ModelSheet({
+function ModelDetail({
   connection,
-  open,
   onClose,
-  onClosed,
-  onEdit,
-  onDelete,
-}: {
-  readonly connection: Connection | null;
-  readonly open: boolean;
-  readonly onClose: () => void;
-  /** After the sheet has shut: focus goes back to the row that opened it. */
-  readonly onClosed: () => void;
-  readonly onEdit: (connection: Connection) => void;
-  readonly onDelete: (connection: Connection) => void;
-}): JSX.Element {
-  return (
-    <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
-      <SheetContent
-        side="right"
-        data-testid="model-sheet"
-        // Strong ease-out in: it is answering a press, and should start moving
-        // at once. The class sheet's chrome, so the two read as one kind of thing;
-        // 28rem rather than the sheet's 24, so a ready model's two checks sit on
-        // one line. Through the sheet's own `data-[side=right]` variant, which a
-        // bare `sm:max-w-*` does not outrank.
-        className="w-full gap-0 p-0 ease-[cubic-bezier(0.23,1,0.32,1)] data-[side=right]:sm:max-w-md"
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
-          onClosed();
-        }}
-      >
-        {connection !== null && (
-          <ModelSheetBody key={connection.id} connection={connection} onEdit={() => onEdit(connection)} onDelete={() => onDelete(connection)} />
-        )}
-      </SheetContent>
-    </Sheet>
-  );
-}
-
-function ModelSheetBody({
-  connection,
   onEdit,
   onDelete,
 }: {
   readonly connection: Connection;
+  readonly onClose: () => void;
   readonly onEdit: () => void;
   readonly onDelete: () => void;
 }): JSX.Element {
@@ -731,67 +710,73 @@ function ModelSheetBody({
   const ready = connection.setup_state === "ready";
   const local = connection.connection_type === "local";
   const abilities = abilityLabels(connection);
+  const runsOn = [kindLabel(connection.connection_type), connection.device, connection.precision].filter((part) => part != null && part !== "").join(" · ");
   return (
-    <>
-      <SheetHeader className="flex-row items-start gap-3 border-b px-4 py-3.5 pr-12">
-        <span aria-hidden="true" className={cn("mt-1.5 size-2.5 shrink-0 rounded-[3px]", originMark(connection.origin))} />
-        <span className="flex min-w-0 flex-col gap-0.5">
-          <SheetTitle className="truncate">{connection.name}</SheetTitle>
-          {/* What the connection *is*: its weights, whole. Where they come from
-              and where they run are rows below, so not said here as well. */}
-          <SheetDescription className="font-mono break-all" data-testid="sheet-weights">
-            {connection.model_id}
-          </SheetDescription>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="model-detail">
+      <header className="flex h-12 shrink-0 items-center gap-2.5 border-b border-border/70 px-4 md:px-6">
+        <span aria-hidden="true" className={cn("size-2.5 shrink-0 rounded-[3px]", originMark(connection.origin))} />
+        <h2 className="min-w-0 shrink truncate text-sm font-semibold tracking-tight">{connection.name}</h2>
+        {/* What the connection *is*: its weights, whole. Where they come from
+            and where they run are rows below, so not said here as well. */}
+        <span className="min-w-0 flex-[2] truncate font-mono text-xs text-muted-foreground" title={connection.model_id} data-testid="sheet-weights">
+          {connection.model_id}
         </span>
-      </SheetHeader>
+        <Button variant="ghost" size="icon" className="-mr-2 ml-auto shrink-0" aria-label="Close the model" data-testid="model-close" onClick={onClose}>
+          <X aria-hidden="true" className="size-4" strokeWidth={1.75} />
+        </Button>
+      </header>
 
-      <div className="vs-scroll-fade-y min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
-        <SetupSection connection={connection} />
+      <div className="vs-scroll-fade-y min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
+        <div className="flex flex-col gap-5">
+          <SetupSection connection={connection} />
 
-        <section aria-labelledby={`model-facts-${connection.id}`} className="flex flex-col py-2">
-          <h3 id={`model-facts-${connection.id}`} className="flex min-h-10 items-center px-4 font-medium">
-            Model
-          </h3>
-          <PropertyRow label="Revision" align="start" testId="sheet-revision">
-            <span className="block pt-1 font-mono text-xs break-all text-muted-foreground">{connection.model_revision}</span>
-          </PropertyRow>
-          <PropertyRow label="Origin">
-            <span className="flex items-center gap-2">
-              <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-[2px]", originMark(connection.origin))} />
-              {originLabel(connection.origin)}
-            </span>
-          </PropertyRow>
-          {/* The kind, then whichever of device and precision it carries —
-              nothing drawn for one it does not. The endpoint gets its own row,
-              whole, where the grid's column could only hold its host. */}
-          <PropertyRow label="Runs on" testId="sheet-runs">
-            {[kindLabel(connection.connection_type), connection.device, connection.precision].filter((part) => part != null && part !== "").join(" · ")}
-          </PropertyRow>
-          {connection.endpoint_url != null && connection.endpoint_url !== "" && (
-            <PropertyRow label="Endpoint" align="start">
-              <span className="block pt-1 font-mono text-xs break-all">{connection.endpoint_url}</span>
-            </PropertyRow>
-          )}
-          <PropertyRow label="What it does" align="start" testId="sheet-abilities">
-            {abilities.length > 0 ? (
-              <ul className="flex flex-wrap gap-1.5 pt-1" aria-label="What it does">
-                {abilities.map((label) => (
-                  <li key={label}>
-                    <Badge variant="quiet">{label}</Badge>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <span className="block pt-1.5 text-muted-foreground text-pretty">
-                {local && !ready ? "Known once the weights are here — a model's abilities are read from its own files." : "Nothing declared."}
-              </span>
-            )}
-          </PropertyRow>
-        </section>
+          <section aria-labelledby={`model-facts-${connection.id}`} className="flex flex-col gap-3">
+            <h3 id={`model-facts-${connection.id}`} className="text-sm font-medium">
+              Model
+            </h3>
+            <dl className="flex flex-col gap-2.5 text-sm">
+              <Fact label="Revision" testId="sheet-revision">
+                <span className="block font-mono text-xs break-all text-muted-foreground">{connection.model_revision}</span>
+              </Fact>
+              <Fact label="Origin">
+                <span className="flex items-center gap-2">
+                  <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-[2px]", originMark(connection.origin))} />
+                  {originLabel(connection.origin)}
+                </span>
+              </Fact>
+              {/* The kind, then whichever of device and precision it carries —
+                  nothing drawn for one it does not. The endpoint gets its own row,
+                  whole, where the grid's column could only hold its host. */}
+              <Fact label="Runs on" testId="sheet-runs">
+                {runsOn}
+              </Fact>
+              {connection.endpoint_url != null && connection.endpoint_url !== "" && (
+                <Fact label="Endpoint">
+                  <span className="block font-mono text-xs break-all">{connection.endpoint_url}</span>
+                </Fact>
+              )}
+              <Fact label="What it does" testId="sheet-abilities">
+                {abilities.length > 0 ? (
+                  <ul className="flex flex-wrap gap-1.5" aria-label="What it does">
+                    {abilities.map((label) => (
+                      <li key={label}>
+                        <Badge variant="quiet">{label}</Badge>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <span className="block text-muted-foreground text-pretty">
+                    {local && !ready ? "Known once the weights are here — a model's abilities are read from its own files." : "Nothing declared."}
+                  </span>
+                )}
+              </Fact>
+            </dl>
+          </section>
+        </div>
       </div>
 
       {(can.has("delete") || can.has("update")) && (
-        <SheetFooter className="mt-0 flex-row items-center border-t bg-muted/50 px-4 py-3">
+        <footer className="flex shrink-0 items-center border-t border-border/70 px-4 py-3 md:px-6">
           {can.has("delete") && (
             <Button variant="ghost" size="sm" className="-ml-2 text-destructive hover:text-destructive" data-testid="action-delete" onClick={onDelete}>
               <Trash2 aria-hidden="true" />
@@ -804,9 +789,23 @@ function ModelSheetBody({
               Edit
             </Button>
           )}
-        </SheetFooter>
+        </footer>
       )}
-    </>
+    </div>
+  );
+}
+
+/**
+ * One fact: its label in a fixed left column, its value in the right, so the
+ * eye runs down one edge of labels and one of values. The label sits on the
+ * value's first line.
+ */
+function Fact({ label, testId, children }: { readonly label: string; readonly testId?: string; readonly children: ReactNode }): JSX.Element {
+  return (
+    <div data-testid={testId} className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-baseline gap-x-3 tabular-nums">
+      <dt className="truncate text-muted-foreground">{label}</dt>
+      <dd className="min-w-0">{children}</dd>
+    </div>
   );
 }
 
@@ -848,9 +847,9 @@ function SetupSection({ connection }: { readonly connection: Connection }): JSX.
   const any = downloadable || recheck || can.has("check_integrity") || can.has("test_endpoint");
 
   return (
-    <section aria-labelledby={`model-setup-${connection.id}`} className="flex flex-col gap-3 border-b px-4 py-4" data-testid="model-setup">
+    <section aria-labelledby={`model-setup-${connection.id}`} className="flex flex-col gap-3 border-b border-border/70 pb-5" data-testid="model-setup">
       <div className="flex items-center justify-between gap-3">
-        <h3 id={`model-setup-${connection.id}`} className="font-medium">
+        <h3 id={`model-setup-${connection.id}`} className="text-sm font-medium">
           Setup
         </h3>
         <StateBadge connection={connection} />
@@ -1272,7 +1271,7 @@ function ConnectionDialog({
         column of fields.
       */}
       <DialogContent className="sm:max-w-2xl" data-testid="connection-dialog">
-        <DialogTitle>{editing === undefined ? "Add model" : `Edit ${editing.name}`}</DialogTitle>
+        <DialogTitle>{editing === undefined ? "New model" : `Edit ${editing.name}`}</DialogTitle>
         <ConnectionForm onClose={onClose} {...(editing === undefined ? {} : { editing })} />
       </DialogContent>
     </Dialog>
@@ -1896,46 +1895,6 @@ function DownloadSizeLine({
       ask for it.
     </p>
   );
-}
-
-/**
- * One decimal place, in the reader's own locale. See {@link bytes}.
- *
- * Built once at module scope rather than per call: constructing an
- * `Intl.NumberFormat` is the expensive half of formatting, and this one is called
- * on every row of a list that re-reads itself twice a second while a download
- * runs.
- */
-const SCALED = new Intl.NumberFormat(undefined, {
-  minimumFractionDigits: 1,
-  maximumFractionDigits: 1,
-});
-
-/**
- * Bytes as somebody reads them.
- *
- * Decimal units, because a download size is what a network moves and what a
- * publisher quotes; binary units would put a different number on screen from the
- * one the model's own page shows.
- *
- * **One helper, and every size on this screen goes through it** — the form's line
- * before a confirm, and both halves of a transfer in flight. `DESIGN.md`'s
- * Numbers rule states the reason: `1.2 GB` and `1,2 GB` on one screen is exactly
- * how a call-site decision goes wrong.
- *
- * Locale-aware for the same rule's sake, and a whole number of bytes stays whole:
- * `512 B` rather than `512.0 B`, because a unit small enough to count exactly is
- * one nobody wants rounded.
- */
-export function bytes(count: number): string {
-  const units = ["B", "kB", "MB", "GB", "TB"];
-  let value = count;
-  let unit = 0;
-  while (value >= 1000 && unit < units.length - 1) {
-    value /= 1000;
-    unit += 1;
-  }
-  return `${unit === 0 ? value.toLocaleString() : SCALED.format(value)} ${units[unit]}`;
 }
 
 function DeleteConnectionDialog({

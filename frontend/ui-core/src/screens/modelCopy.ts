@@ -19,7 +19,9 @@
  * the facts a row states, and a filter offers, are named.
  */
 
+import { producesProse } from "../data/geometryCategory";
 import type {
+  Connection,
   ConnectionSetupState,
   ConnectionType,
   ModelOrigin,
@@ -114,3 +116,85 @@ export const OPTION_LABELS = {
   kind: KIND_LABELS,
   state: STATE_LABELS,
 } as const satisfies Record<string, Readonly<Record<string, string>>>;
+
+// --- the row's lines: where it runs, what it does, how big it is ------------------
+
+/**
+ * Where the model runs, in one line: `Local · cuda · fp16`, `HTTP · models.example`.
+ *
+ * Built from whichever of the four facts the connection carries rather than
+ * from a layout per kind, so a kind this build has never seen renders the same
+ * way — its raw value, then whatever it declares — with nothing rearranged.
+ * The host rather than the whole URL, because a column's width is the point and
+ * the path is re-readable in the edit form.
+ */
+export function sourceLine(connection: Connection): string {
+  return [
+    kindLabel(connection.connection_type),
+    connection.device,
+    connection.precision,
+    hostOf(connection.endpoint_url),
+  ]
+    .filter((part): part is string => part !== null && part !== undefined && part !== "")
+    .join(" · ");
+}
+
+/**
+ * What the model does and what it writes, one label each: `Suggests from clicks`,
+ * `writes boxes or polygons`. Empty when the connection has declared neither — a
+ * row nobody has downloaded carries no label at all.
+ */
+export function abilityLabels(connection: Connection): readonly string[] {
+  const labels = connection.capabilities.map(capabilityProse);
+  if (connection.produces.length > 0) labels.push(`writes ${producesProse(connection.produces)}`);
+  return labels;
+}
+
+function hostOf(url: string | null): string | null {
+  if (url === null || url === "") return null;
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * One decimal place, in the reader's own locale. See {@link bytes}.
+ *
+ * Built once at module scope rather than per call: constructing an
+ * `Intl.NumberFormat` is the expensive half of formatting, and this one is called
+ * on every row of a list that re-reads itself twice a second while a download
+ * runs.
+ */
+const SCALED = new Intl.NumberFormat(undefined, {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
+
+/**
+ * Bytes as somebody reads them.
+ *
+ * Decimal units, because a download size is what a network moves and what a
+ * publisher quotes; binary units would put a different number on screen from the
+ * one the model's own page shows.
+ *
+ * **One helper, and every size on this screen goes through it** — the form's line
+ * before a confirm, and both halves of a transfer in flight. `DESIGN.md`'s
+ * Numbers rule states the reason: `1.2 GB` and `1,2 GB` on one screen is exactly
+ * how a call-site decision goes wrong.
+ *
+ * Locale-aware for the same rule's sake, and a whole number of bytes stays whole:
+ * `512 B` rather than `512.0 B`, because a unit small enough to count exactly is
+ * one nobody wants rounded.
+ */
+export function bytes(count: number): string {
+  const units = ["B", "kB", "MB", "GB", "TB"];
+  let value = count;
+  let unit = 0;
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000;
+    unit += 1;
+  }
+  return `${unit === 0 ? value.toLocaleString() : SCALED.format(value)} ${units[unit]}`;
+}

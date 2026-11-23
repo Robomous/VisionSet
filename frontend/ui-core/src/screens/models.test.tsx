@@ -36,10 +36,12 @@ import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 
-import { ConnectionRow, ModelsScreen, bytes, sourceLine } from "./ModelsScreen";
+import { bytes, sourceLine } from "./modelCopy";
+import { ConnectionRow, ModelsScreen } from "./ModelsScreen";
 import { CONNECTION_POLL_MS, type Connection } from "../data/inferenceQueries";
 import { PageStatusOutlet, PageStatusProvider } from "../patterns/PageStatus";
 import { renderWithData } from "../testing/dataHarness";
+import { stubResizeObserver } from "../testing/resizeObserver.js";
 
 // Spelled here rather than read from a module: the catalog is the server's
 // answer now, and a fixture that imported the ids it then asserts on would be
@@ -74,6 +76,8 @@ function respond(answer: Answer): Response {
 beforeEach(() => {
   handlers = [];
   sent.length = 0;
+  // The footer's steps carry tooltips, which measure their arrow.
+  stubResizeObserver();
   vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : new Request(String(input), init);
     sent.push(request);
@@ -352,13 +356,15 @@ it("invites a first connection rather than apologising for having none", async (
   expect(await screen.findByText("Connect a model to enable auto-labeling")).not.toBeNull();
   expect(
     screen.getByText(
-      "VisionSet never downloads models on its own — you choose what runs and where. Start with Add model.",
+      "VisionSet never downloads models on its own — you choose what runs and where. Start with New.",
     ),
   ).not.toBeNull();
-  // No button of its own: the header's Add model is the one way in.
-  expect(screen.getAllByRole("button", { name: /add model/i })).toHaveLength(1);
+  // No button of its own: the header's New is the one way in.
+  expect(screen.getAllByRole("button", { name: "New model" })).toHaveLength(1);
+  // It says "New" on the page that names the noun; its accessible name carries it.
+  expect(screen.getByTestId("new-connection").textContent?.trim()).toBe("New");
   expect(screen.getByTestId("new-connection")).not.toBeNull();
-  expect(screen.queryByTestId("models-count")).toBeNull();
+  expect(screen.queryByTestId("table-footer")).toBeNull();
 });
 
 it("renders a failed listing as a refusal rather than as an empty list", async () => {
@@ -404,8 +410,32 @@ it("filters by name and keeps saying how many it hid", async () => {
   listing(many);
   renderModels();
   await userEvent.type(await screen.findByTestId("connection-filter"), "need");
-  expect(screen.getByTestId("models-count").textContent).toBe("1 of 24 models");
+  expect(screen.getByTestId("table-pager-range").textContent).toBe("1 model · filtered from 24");
   expect(screen.getByTestId("connection-needle")).not.toBeNull();
+});
+
+it("pages the list 25 to a page from a footer, and starts over when a filter narrows it", async () => {
+  const sixty = Array.from({ length: 60 }, (_, index) => connection({ id: `id-${index}`, name: `m-${String(index + 1).padStart(2, "0")}` }));
+  listing(sixty);
+  renderModels();
+
+  await screen.findByTestId("models-grid");
+  expect(screen.getByTestId("models-grid").querySelectorAll("tbody > tr")).toHaveLength(25);
+  expect(screen.getByTestId("table-pager-range").textContent).toBe("1–25 of 60 models");
+  expect(screen.getByTestId("table-pager-page").textContent).toBe("Page 1 of 3");
+  expect(screen.getByTestId("table-pager-size").textContent).toBe("25");
+
+  await userEvent.click(screen.getByTestId("table-pager-next"));
+  expect(screen.getByTestId("table-pager-range").textContent).toBe("26–50 of 60 models");
+  expect(screen.queryByTestId("connection-m-01")).toBeNull();
+  expect(screen.getByTestId("connection-m-26")).not.toBeNull();
+
+  await userEvent.click(screen.getByTestId("table-pager-last"));
+  expect(screen.getByTestId("models-grid").querySelectorAll("tbody > tr")).toHaveLength(10);
+
+  await userEvent.type(screen.getByTestId("connection-filter"), "m-1");
+  expect(screen.getByTestId("table-pager-page").textContent).toBe("Page 1 of 1");
+  expect(screen.getByTestId("table-pager-range").textContent).toBe("1–10 of 10 models · filtered from 60");
 });
 
 it("names the search box for what it filters", async () => {
@@ -444,7 +474,7 @@ it("is one table, headed by its columns, with each connection a row of its one b
   expect(screen.queryByTestId("connection-detail")).toBeNull();
 });
 
-it("counts what it lists once, in the status bar, as a status", async () => {
+it("says what is ready in the status bar and which models are shown in the footer, each once", async () => {
   listing([
     connection({ id: "a", name: "one" }),
     connection({ id: "b", name: "two", setup_state: "ready", allowed_actions: ["update", "delete"] }),
@@ -452,17 +482,22 @@ it("counts what it lists once, in the status bar, as a status", async () => {
   ]);
   renderModels();
 
-  const count = await screen.findByTestId("models-count");
-  expect(count.textContent).toBe("3 models");
-  // Said in the status bar's outlet, a polite status region — and nowhere on the page.
+  // Which models are on screen, and of how many: the footer under the grid.
+  const footer = await screen.findByTestId("table-footer");
+  expect(screen.getByTestId("table-pager-range").textContent).toBe("1–3 of 3 models");
+  expect(screen.getByTestId("models-screen").contains(footer)).toBe(true);
+  // What they add up to is said in the status bar's outlet, a polite status
+  // region — and nowhere on the page. The count is not said there too.
+  const ready = await screen.findByTestId("models-ready");
   const status = screen.getByTestId("page-status");
   expect(status.getAttribute("role")).toBe("status");
-  expect(status.contains(count)).toBe(true);
-  expect(screen.getByTestId("models-screen").contains(count)).toBe(false);
+  expect(status.contains(ready)).toBe(true);
+  expect(screen.getByTestId("models-screen").contains(ready)).toBe(false);
+  expect(screen.queryByTestId("models-count")).toBeNull();
   // Over the rows shown: two of the three are ready, one still needs setting up.
-  expect(screen.getByTestId("models-ready").textContent).toBe("2 ready");
+  expect(ready.textContent).toBe("2 ready");
   expect(screen.getByTestId("models-waiting").textContent).toBe("1 not set up");
-  // The only count: no totals table under the rows.
+  // No totals table under the rows.
   expect(screen.queryByTestId("models-grid-totals")).toBeNull();
   expect(screen.queryByRole("table", { name: "Models, totals" })).toBeNull();
   expect(screen.getAllByRole("table")).toHaveLength(1);
@@ -476,7 +511,7 @@ it("says none of its counts when no status bar is there to say them in", async (
 
   await screen.findByTestId("models-grid");
   expect(screen.getByTestId("connection-one")).not.toBeNull();
-  for (const id of ["models-count", "models-ready", "models-waiting", "filter-count", "models-grid-totals"]) {
+  for (const id of ["models-ready", "models-waiting", "filter-count", "models-grid-totals"]) {
     expect(screen.queryByTestId(id)).toBeNull();
   }
 });
@@ -496,21 +531,21 @@ it("speaks of a single model in the singular", async () => {
   listing([connection({ setup_state: "ready", allowed_actions: ["update", "delete"] })]);
   renderModels();
 
-  expect((await screen.findByTestId("models-count")).textContent).toBe("1 model");
+  expect((await screen.findByTestId("table-pager-range")).textContent).toBe("1 model");
   expect(screen.getByTestId("models-ready").textContent).toBe("1 ready");
 });
 
-it("counts what the filter left, of everything, in the header", async () => {
+it("counts what the filter left, of everything, in the footer", async () => {
   listing(varied());
   renderModels();
   await screen.findByTestId("models-grid");
-  expect(screen.getByTestId("models-count").textContent).toBe("4 models");
+  expect(screen.getByTestId("table-pager-range").textContent).toBe("1–4 of 4 models");
   expect(screen.getByTestId("models-ready").textContent).toBe("3 ready");
   expect(screen.getByTestId("models-waiting").textContent).toBe("1 not set up");
 
   await choose("filter-capability", "Text prompts");
 
-  expect(screen.getByTestId("models-count").textContent).toBe("2 of 4 models");
+  expect(screen.getByTestId("table-pager-range").textContent).toBe("1–2 of 2 models · filtered from 4");
   // The tallies follow the rows shown, not the whole list: both text-prompt
   // models are ready, so nothing shown is waiting.
   expect(screen.getByTestId("models-ready").textContent).toBe("2 ready");
@@ -533,7 +568,7 @@ it("says nothing matches in a row of the table, not outside it", async () => {
   expect(screen.getByTestId("models-grid").contains(none)).toBe(true);
   // It spans the grid, whatever the number of columns.
   expect(none.getAttribute("colspan")).toBe("7");
-  expect(screen.getByTestId("models-count").textContent).toBe("0 of 24 models");
+  expect(screen.getByTestId("table-pager-range").textContent).toBe("No models match");
   // Nothing shown, so nothing to call ready or waiting.
   expect(screen.queryByTestId("models-ready")).toBeNull();
   expect(screen.queryByTestId("models-waiting")).toBeNull();
@@ -974,7 +1009,8 @@ it("offers no dropdown while there is nothing to choose", async () => {
   renderModels();
   await screen.findByTestId("models-grid");
   expect(screen.queryByTestId("model-filters")).toBeNull();
-  expect(screen.queryByRole("combobox")).toBeNull();
+  // The only dropdown left is the footer's rows per page, which is not a filter.
+  expect(screen.getAllByRole("combobox").map((one) => one.getAttribute("aria-label"))).toEqual(["Rows per page"]);
 });
 
 it("offers a dropdown per dimension with a choice to make, each at All, in the page's order", async () => {
@@ -994,11 +1030,11 @@ it("offers a dropdown per dimension with a choice to make, each at All, in the p
   for (const name of ["Origin", "Ability", "Runs", "State"]) {
     expect(within(filters).getByRole("combobox", { name })).not.toBeNull();
   }
-  // Nothing narrowed, so nothing to clear, and the header says how many there
-  // are rather than how many are shown.
+  // Nothing narrowed, so nothing to clear, and the footer says how many there
+  // are rather than how many were filtered from.
   expect(screen.queryByTestId("clear-filters")).toBeNull();
   expect(screen.queryByTestId("filter-count")).toBeNull();
-  expect(screen.getByTestId("models-count").textContent).toBe("4 models");
+  expect(screen.getByTestId("table-pager-range").textContent).toBe("1–4 of 4 models");
 });
 
 it("offers only the dimensions the workspace varies on", async () => {
@@ -1051,7 +1087,7 @@ it("narrows the grid to the ability chosen, and All brings everything back", asy
   // A connection that has declared nothing answers All and no other choice.
   expect(screen.queryByTestId("connection-fresh")).toBeNull();
   // The count says what the filter left, of everything.
-  expect(screen.getByTestId("models-count").textContent).toBe("1 of 4 models");
+  expect(screen.getByTestId("table-pager-range").textContent).toBe("1 model · filtered from 4");
 
   await choose("filter-capability", "All");
   expect(screen.getAllByTestId(cards)).toHaveLength(4);
@@ -1074,7 +1110,7 @@ it("combines the dropdowns, and Clear puts every one back to All", async () => {
   // is what left nothing — and every choice on offer is one some card answers,
   // so an empty result is only ever the combination.
   expect(screen.getByTestId("filtered-out").textContent).toBe("Nothing here matches the filter.");
-  expect(screen.getByTestId("models-count").textContent).toBe("0 of 4 models");
+  expect(screen.getByTestId("table-pager-range").textContent).toBe("No models match");
 
   await userEvent.click(screen.getByTestId("clear-filters"));
   expect(screen.getAllByTestId(cards)).toHaveLength(4);
@@ -1130,8 +1166,8 @@ it("says nothing matches rather than inviting mid-filter", async () => {
   await choose("filter-capability", "Text prompts");
 
   expect(screen.getByTestId("filtered-out").textContent).toBe("Nothing here matches the filter.");
-  // And the count is what both filters left, of everything.
-  expect(screen.getByTestId("models-count").textContent).toBe("0 of 24 models");
+  // And the footer says both filters left none.
+  expect(screen.getByTestId("table-pager-range").textContent).toBe("No models match");
 });
 
 it("falls back to All when the value chosen stops being declared", async () => {
@@ -1209,7 +1245,7 @@ it("offers neither edit nor delete when neither is declared", async () => {
   expect(within(sheet).queryByTestId("action-delete")).toBeNull();
   // No overflow menu anywhere: the row has none to offer and the sheet none to need.
   expect(screen.queryByTestId("actions-sam2-local")).toBeNull();
-  expect(within(sheet).queryAllByRole("button").map((one) => one.textContent)).toEqual(["Close"]);
+  expect(within(sheet).queryAllByRole("button").map((one) => one.getAttribute("aria-label"))).toEqual(["Close the model"]);
 });
 
 it("offers each of Edit and Delete only where the wire declares it", async () => {
@@ -2774,6 +2810,12 @@ it("opens the sheet from anywhere on the row, and gives focus back to the name w
   const sheet = await screen.findByTestId("model-sheet");
   expect(within(sheet).getByRole("heading", { name: "alpha" })).not.toBeNull();
   expect(screen.queryByRole("heading", { name: "beta" })).toBeNull();
+  // A panel at the right of the row, not a dialog over the page: resizable, and the
+  // page behind it stays reachable.
+  expect(sheet.tagName).toBe("ASIDE");
+  expect(screen.getByRole("complementary", { name: "Model" })).toBe(sheet);
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(within(sheet).getByTestId("detail-resize")).not.toBeNull();
 
   await userEvent.keyboard("{Escape}");
   await waitFor(() => expect(screen.queryByTestId("model-sheet")).toBeNull());
@@ -2798,6 +2840,15 @@ it("opens the sheet from the keyboard on the name", async () => {
   expect(await screen.findByTestId("model-sheet")).not.toBeNull();
   await closeSheet();
   expect(document.activeElement).toBe(name);
+});
+
+it("closes the panel from its own button, and gives focus back to the name", async () => {
+  listing([connection({ id: "a", name: "alpha" })]);
+  renderModels();
+  const sheet = await openSheet("alpha");
+  await userEvent.click(within(sheet).getByRole("button", { name: "Close the model" }));
+  await waitFor(() => expect(screen.queryByTestId("model-sheet")).toBeNull());
+  expect(document.activeElement).toBe(screen.getByTestId("open-alpha"));
 });
 
 it("heads the sheet with the name and the weights, and says everything the row truncates", async () => {
@@ -2923,8 +2974,8 @@ it("removes a deleted connection from the list and closes its sheet", async () =
   await waitFor(() => expect(screen.queryByTestId("delete-connection-dialog")).toBeNull());
   expect(screen.getByTestId("connection-kept")).not.toBeNull();
   expect(sent.some((one) => one.method === "DELETE" && one.url.endsWith("/inference/connections/a"))).toBe(true);
-  // And the status bar's count follows the list.
-  expect(screen.getByTestId("models-count").textContent).toBe("1 model");
+  // And the footer's count follows the list.
+  expect(screen.getByTestId("table-pager-range").textContent).toBe("1 model");
 });
 
 it("keeps the sheet open under a delete that was cancelled", async () => {

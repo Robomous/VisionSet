@@ -388,9 +388,9 @@ describe("the project list", () => {
     expect(screen.getByTestId("projects-table").contains(none)).toBe(true);
     expect(none.getAttribute("colspan")).toBe("8");
     expect(screen.queryAllByTestId(/^project-(?!stage)/)).toHaveLength(0);
-    // The status bar's count says what the search left, of everything — and with
-    // nothing left there is nothing to total.
-    expect(screen.getByTestId("projects-totals").textContent).toBe("0 of 2 projects");
+    // The footer says what the search left, of everything — and with nothing
+    // left there is nothing to total.
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("No projects match");
     expect(screen.queryByTestId("projects-images")).toBeNull();
     expect(screen.queryByTestId("projects-review")).toBeNull();
   });
@@ -409,7 +409,7 @@ describe("the project list", () => {
     expect(search).toHaveProperty("value", "");
     expect(screen.queryByTestId("projects-no-match")).toBeNull();
     expect(rowNames().sort()).toEqual(["highway", "warehouse"]);
-    expect(screen.getByTestId("projects-totals").textContent).toMatch(/^2 projects/);
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("1–2 of 2 projects");
     expect(document.activeElement).toBe(search);
   });
 
@@ -418,13 +418,20 @@ describe("the project list", () => {
     await rendered();
 
     expect(screen.getByRole("heading", { level: 1, name: "Projects" })).not.toBeNull();
-    // What the list adds up to is the status bar's, not the heading's.
+    // What the list adds up to is the status bar's, and which rows are on
+    // screen the footer's: not the heading's.
     const heading = screen.getByRole("heading", { level: 1, name: "Projects" });
     expect(heading.textContent).toBe("Projects");
-    expect(heading.closest("header")?.textContent).toBe("ProjectsNew project");
-    expect(screen.getByTestId("projects-totals").textContent).toBe("2 projects");
+    // The header band is the name alone; New sits at the end of the search and sort bar.
+    expect(heading.closest("header")?.textContent).toBe("Projects");
+    const add = screen.getByRole("button", { name: "New project" });
+    expect(add).toBe(screen.getByTestId("new-project"));
+    expect(screen.getByTestId("projects-search").closest("div")?.parentElement?.contains(add)).toBe(true);
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("1–2 of 2 projects");
     expect(screen.getByTestId("projects-images").textContent).toBe("10 images · 10 to annotate");
-    expect(screen.getByTestId("projects-screen").contains(screen.getByTestId("projects-totals"))).toBe(false);
+    expect(screen.getByTestId("projects-screen").contains(screen.getByTestId("projects-images"))).toBe(false);
+    // The count is the footer's alone: the status bar does not say it again.
+    expect(screen.queryByTestId("projects-totals")).toBeNull();
     const table = screen.getByRole("table", { name: "Projects" });
     expect(table).toBe(screen.getByTestId("projects-table"));
     expect(
@@ -433,7 +440,7 @@ describe("the project list", () => {
         .map((header) => header.textContent),
     ).toEqual(["Project", "Images", "Annotated", "Classes", "Status", "Release", "Activity", "Actions"]);
     expect(within(table).getAllByTestId(/^project-(?!stage)/).every((row) => row.tagName === "TR")).toBe(true);
-    // One count, in the status bar: no totals table under the rows.
+    // One count, in the footer: no totals table under the rows.
     expect(screen.queryByTestId("projects-table-totals")).toBeNull();
     expect(screen.queryByTestId("projects-shown")).toBeNull();
     expect(screen.queryByRole("table", { name: "Projects, totals" })).toBeNull();
@@ -483,27 +490,27 @@ describe("the project list", () => {
     expect(drawn! / length!).toBeLessThan(1);
   });
 
-  it("says in the status bar how many projects and images there are, and how many the search left of them", async () => {
+  it("says in the status bar how many images there are, and in the footer how many projects the search left of them", async () => {
     list(
       { ...project(PROJECT, "highway", null, { asset_count: 100, annotated_asset_count: 50, annotated_fraction: 0.5, latest_release: { tag: "v1", asset_count: 90, published_at: "2026-10-28T08:00:00Z" }, stage: "up_to_date" }), description: "M4 survey" },
       project(OTHER_PROJECT, "warehouse", null, { asset_count: 300, annotated_asset_count: 300, annotated_fraction: 1, stage: "unreleased" }),
     );
     await rendered();
 
-    // The count is the only one, and it is announced as a status: the outlet is a
-    // polite status region that exists before anything is put in it.
-    const totals = screen.getByTestId("projects-totals");
-    expect(totals.textContent).toBe("2 projects");
-    expect(totals.closest('[role="status"]')).toBe(screen.getByTestId("page-status"));
+    // The images are announced as a status: the outlet is a polite status
+    // region that exists before anything is put in it.
+    const images = screen.getByTestId("projects-images");
+    expect(images.closest('[role="status"]')).toBe(screen.getByTestId("page-status"));
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("1–2 of 2 projects");
     // Over the rows shown, the same count the rows say: 50 left, all in highway.
-    expect(screen.getByTestId("projects-images").textContent).toBe("400 images · 50 to annotate");
+    expect(images.textContent).toBe("400 images · 50 to annotate");
     expect(screen.queryByTestId("projects-review")).toBeNull();
     expect(screen.queryByTestId("projects-table-totals")).toBeNull();
 
     await userEvent.type(screen.getByTestId("projects-search"), "m4");
 
     // What the search hid is said, never dropped — and the rest follows the rows left.
-    expect(screen.getByTestId("projects-totals").textContent).toBe("1 of 2 projects");
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("1 project · filtered from 2");
     expect(screen.getByTestId("projects-images").textContent).toBe("100 images · 50 to annotate");
     expect(rowNames()).toEqual(["highway"]);
   });
@@ -528,7 +535,7 @@ describe("the project list", () => {
   it("says nothing about images while the projects shown hold none", async () => {
     list(project(PROJECT, "fresh", null), project(OTHER_PROJECT, "newer", null));
     await rendered();
-    expect(screen.getByTestId("projects-totals").textContent).toBe("2 projects");
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("1–2 of 2 projects");
     expect(screen.queryByTestId("projects-images")).toBeNull();
     expect(screen.queryByTestId("projects-review")).toBeNull();
   });
@@ -539,7 +546,7 @@ describe("the project list", () => {
     list(project(PROJECT, "highway", null, { asset_count: 10, stage: "in_review", frames_in_review: 1 }));
     renderWithData(<ProjectsScreen onOpenProject={vi.fn()} />);
     await waitFor(() => expect(screen.queryByTestId("projects-table")).not.toBeNull());
-    for (const id of ["projects-totals", "projects-images", "projects-review"]) {
+    for (const id of ["projects-images", "projects-review"]) {
       expect(screen.queryByTestId(id)).toBeNull();
     }
     expect(rowNames()).toEqual(["highway"]);
@@ -548,7 +555,7 @@ describe("the project list", () => {
   it("speaks of one project and one image in the singular", async () => {
     list(project(PROJECT, "fresh", null, { asset_count: 1, stage: "not_started" }));
     await rendered();
-    expect(screen.getByTestId("projects-totals").textContent).toBe("1 project");
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("1 project");
     expect(screen.getByTestId("projects-images").textContent).toBe("1 image · 1 to annotate");
   });
 
@@ -675,9 +682,67 @@ describe("the project list", () => {
     await waitFor(() => expect(screen.queryByText("No projects yet")).not.toBeNull());
     expect(screen.queryByTestId("projects-table")).toBeNull();
     // The empty state has no button of its own: the header's is the one way in.
-    expect(screen.getByText(/Start one with New project\./)).not.toBeNull();
+    expect(screen.getByText(/Start one with New\./)).not.toBeNull();
     expect(screen.getAllByRole("button", { name: /new project/i })).toHaveLength(1);
-    expect(screen.queryByTestId("projects-totals")).toBeNull();
+    expect(screen.queryByTestId("table-footer")).toBeNull();
+  });
+
+  it("pages the list 25 to a page, from a footer, over the rows the search and the order leave", async () => {
+    // Sixty projects, named so the order is plain: name ascending is p01…p60.
+    const sixty = Array.from({ length: 60 }, (_, index) => {
+      const name = `p${String(index + 1).padStart(2, "0")}`;
+      return project(`00000000-0000-4000-8000-${String(index).padStart(12, "0")}`, name, null, { asset_count: index + 1 });
+    });
+    list(...sixty);
+    await rendered();
+    await userEvent.click(screen.getByTestId("sort-name"));
+
+    expect(rowNames()).toHaveLength(25);
+    expect(rowNames()[0]).toBe("p01");
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("1–25 of 60 projects");
+    expect(screen.getByTestId("table-pager-page").textContent).toBe("Page 1 of 3");
+    // The status bar sums every project the search leaves, not the page.
+    expect(screen.getByTestId("projects-images").textContent).toMatch(/^1,830 images/);
+
+    await userEvent.click(screen.getByTestId("table-pager-next"));
+    expect(rowNames()[0]).toBe("p26");
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("26–50 of 60 projects");
+
+    await userEvent.click(screen.getByTestId("table-pager-last"));
+    expect(rowNames()).toHaveLength(10);
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("51–60 of 60 projects");
+    expect(screen.getByTestId("table-pager-next").getAttribute("aria-disabled")).toBe("true");
+
+    // A new order starts over at the first page.
+    await userEvent.click(screen.getByTestId("sort-name"));
+    expect(screen.getByTestId("table-pager-page").textContent).toBe("Page 1 of 3");
+    expect(rowNames()[0]).toBe("p60");
+
+    // So does a search, which also says what it was filtered from.
+    await userEvent.click(screen.getByTestId("table-pager-next"));
+    expect(screen.getByTestId("table-pager-page").textContent).toBe("Page 2 of 3");
+    await userEvent.type(screen.getByTestId("projects-search"), "p");
+    expect(screen.getByTestId("table-pager-page").textContent).toBe("Page 1 of 3");
+    await userEvent.type(screen.getByTestId("projects-search"), "1");
+    expect(screen.getByTestId("table-pager-page").textContent).toBe("Page 1 of 1");
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("1–10 of 10 projects · filtered from 60");
+  });
+
+  it("walks the rows of a page with the arrow keys, and stops at its last row", async () => {
+    const thirty = Array.from({ length: 30 }, (_, index) => {
+      const name = `p${String(index + 1).padStart(2, "0")}`;
+      return project(`00000000-0000-4000-8000-${String(index).padStart(12, "0")}`, name, null, { asset_count: index + 1 });
+    });
+    list(...thirty);
+    await rendered();
+    await userEvent.click(screen.getByTestId("sort-name"));
+
+    screen.getByTestId("open-p24").focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(document.activeElement).toBe(screen.getByTestId("open-p25"));
+    await userEvent.keyboard("{ArrowDown}");
+    // The twenty-sixth is the next page's: the footer goes there, the keys do not.
+    expect(document.activeElement).toBe(screen.getByTestId("open-p25"));
   });
 
   it("lands inside the project it just created, not back on the list", async () => {
@@ -1564,6 +1629,7 @@ describe("the schema editor", () => {
               id: ASSET,
               project_id: PROJECT,
               modality: "image",
+              point_cloud: null,
               content_hash: "deadbeef",
               format: "jpeg",
               width: 1920,
@@ -2420,7 +2486,9 @@ describe("the schema version history", () => {
     withDiff(NOTHING);
     await open();
     // The band names the version in force on the button that opens the rest.
-    expect(screen.getByTestId("open-history").textContent).toContain("v3");
+    expect(screen.getByTestId("open-history").getAttribute("aria-label")).toContain("version 3");
+    // An icon button: no words of its own on the band.
+    expect(screen.getByTestId("open-history").textContent?.trim()).toBe("");
 
     const history = await openHistory();
     await within(history).findByTestId("version-3");
@@ -2548,12 +2616,15 @@ describe("the schema version history", () => {
     // Closed to begin with: a row is a summary until it is asked for.
     expect(screen.queryByTestId("past-class-detail-1")).toBeNull();
     expect(screen.queryByTestId("past-class-sheet")).toBeNull();
-    expect(within(past).getByTestId("past-class-1").getAttribute("aria-haspopup")).toBe("dialog");
+    // It opens a panel beside the table, not a dialog over it.
+    expect(within(past).getByTestId("past-class-1").getAttribute("aria-haspopup")).toBeNull();
 
     await userEvent.click(within(past).getByTestId("past-class-1"));
 
     const sheet = await screen.findByTestId("past-class-sheet");
-    expect(sheet.getAttribute("role")).toBe("dialog");
+    // A panel at the right of the table, not a dialog over the page.
+    expect(sheet.closest("aside")?.getAttribute("aria-label")).toBe("Class");
+    expect(sheet.closest("[role=dialog]")).toBeNull();
     expect(within(sheet).getByRole("heading", { name: "lane" })).not.toBeNull();
     expect(sheet.textContent).toContain("As version 1 declares it");
     const detail = within(sheet).getByTestId("past-class-detail-1");
@@ -2622,9 +2693,9 @@ describe("the schema version history", () => {
     const history = await openHistory();
     await userEvent.click(await within(history).findByTestId("view-version-2"));
 
-    // The sheet puts itself away, and the table is the version's.
+    // The panel puts itself away, and the table is the version's.
     await screen.findByTestId("past-version");
-    expect(screen.queryByTestId("history-sheet")).toBeNull();
+    await waitFor(() => expect(screen.queryByTestId("history-sheet")).toBeNull());
     expect(screen.queryByTestId("save-schema")).toBeNull();
 
     // Opened again, the history says which version is on screen, and that
@@ -2639,6 +2710,41 @@ describe("the schema version history", () => {
     await screen.findByTestId("class-list");
     expect(screen.queryByTestId("past-version")).toBeNull();
     expect(screen.getByTestId("schema-status").textContent).toContain("Version 3 active");
+  });
+
+  it("opens as a labelled panel beside the table, takes focus, and Escape puts it away", async () => {
+    withHistory();
+    withDiff(NOTHING);
+    await open();
+
+    const history = await openHistory();
+    const pane = screen.getByTestId("history-sheet").closest("aside")!;
+    expect(pane.getAttribute("aria-label")).toBe("Schema history");
+    expect(pane.closest("[role=dialog]")).toBeNull();
+    expect(pane.contains(document.activeElement)).toBe(true);
+    // The table stays on the page beside it.
+    expect(screen.getByTestId("class-list")).not.toBeNull();
+    expect(history).not.toBeNull();
+
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByTestId("history-sheet")).toBeNull());
+    expect(document.activeElement).toBe(screen.getByTestId("open-history"));
+  });
+
+  it("is replaced by a class's panel, and a class's panel by it — one detail at a time", async () => {
+    withHistory();
+    withDiff(NOTHING);
+    await open();
+
+    await openHistory();
+    await userEvent.click(screen.getByTestId("class-card-0"));
+    await screen.findByTestId("class-sheet");
+    await waitFor(() => expect(screen.queryByTestId("history-sheet")).toBeNull());
+    expect(document.querySelectorAll("aside[aria-label]")).toHaveLength(1);
+
+    await userEvent.click(screen.getByTestId("open-history"));
+    await screen.findByTestId("history-sheet");
+    await waitFor(() => expect(screen.queryByTestId("class-sheet")).toBeNull());
   });
 
   it("renders a past version with no edit affordance at all", async () => {
@@ -3003,7 +3109,7 @@ describe("the schema version history", () => {
 
     // Back on the draft after a publish, and the history — the one place every
     // version's own note is shown without being opened — carries it.
-    await waitFor(() => expect(screen.getByTestId("open-history").textContent).toContain("v4"));
+    await waitFor(() => expect(screen.getByTestId("open-history").getAttribute("aria-label")).toContain("version 4"));
     const history = await openHistory();
     await waitFor(() =>
       expect(within(history).getByTestId("version-4").textContent).toContain("added pedestrians"),
@@ -3098,12 +3204,14 @@ describe("the schema editor's class ledger", () => {
 
   it("shows every class as a row, and none of their forms until one is opened", async () => {
     // The whole point of the layout. Fifty stacked forms is what the first
-    // editor was, and it is unusable well before fifty.
+    // editor was, and it is unusable well before fifty. Rows come twenty-five to
+    // a page, so the table is never as long as the schema.
     withClasses(MANY);
     renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
 
     await screen.findByTestId("class-list");
-    expect(classCards()).toHaveLength(50);
+    expect(classCards()).toHaveLength(25);
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("1–25 of 50 classes");
     expect(screen.queryByTestId("class-sheet")).toBeNull();
     expect(screen.queryByTestId("class-name-0")).toBeNull();
     expect(screen.queryByTestId("class-name-49")).toBeNull();
@@ -3131,7 +3239,7 @@ describe("the schema editor's class ledger", () => {
     // A row's name is a plain button that says what it opens.
     expect(first.tagName).toBe("BUTTON");
     expect(first.getAttribute("aria-label")).toBe("Edit class-00");
-    expect(first.getAttribute("aria-haspopup")).toBe("dialog");
+    expect(first.getAttribute("aria-haspopup")).toBeNull();
     expect(first.textContent).toContain("class-00");
     // How many attributes it declares, inline beside the name.
     expect(first.textContent).toContain("2 attributes");
@@ -3191,11 +3299,15 @@ describe("the schema editor's class ledger", () => {
     await userEvent.click(screen.getByTestId("class-card-1"));
 
     const detail = await screen.findByTestId("class-sheet");
-    expect(detail.getAttribute("role")).toBe("dialog");
+    // A panel at the right of the table, labelled for what it holds.
+    expect(detail.closest("aside")?.getAttribute("aria-label")).toBe("Class");
+    expect(detail.closest("[role=dialog]")).toBeNull();
+    // Focus went into it, onto the name.
+    expect(document.activeElement).toBe(within(detail).getByTestId("class-name-1"));
     expect(within(detail).getByTestId("class-1")).not.toBeNull();
     expect(within(detail).queryByTestId("class-0")).toBeNull();
     expect(within(detail).getByTestId("class-name-1")).toHaveProperty("value", "lane");
-    // It is a dialog, not a panel in the list: the list is not what holds it.
+    // It is the table's neighbour, not a part of the list.
     expect(screen.getByTestId("class-list").contains(detail)).toBe(false);
     expect(within(detail).getByRole("heading", { name: "Edit lane" })).not.toBeNull();
     // Nothing is drawn with `lane` yet, so the dialog says a change is free.
@@ -3232,8 +3344,9 @@ describe("the schema editor's class ledger", () => {
     await userEvent.click(screen.getByTestId("class-card-0"));
     await screen.findByTestId("class-0");
     expect(screen.getAllByTestId("class-sheet")).toHaveLength(1);
-    // The dialog is modal: the rows behind it are not reachable to open a second.
-    expect(screen.getByTestId("class-list").closest("[aria-hidden='true']")).not.toBeNull();
+    // Not modal: the rows beside the panel stay in the page, and it is its own region.
+    expect(screen.getByTestId("class-list").closest("[aria-hidden='true']")).toBeNull();
+    expect(screen.getByTestId("class-sheet").closest("aside")?.getAttribute("aria-label")).toBe("Class");
 
     await userEvent.click(screen.getByTestId("class-dialog-cancel"));
     await waitFor(() => expect(screen.queryByTestId("class-sheet")).toBeNull());
@@ -3804,29 +3917,35 @@ describe("the schema editor's class ledger", () => {
     await openCard(0);
     await userEvent.type(screen.getByTestId("class-name-0"), "x");
     const sheet = screen.getByTestId("class-sheet");
-    await userEvent.click(within(sheet).getAllByRole("button", { name: "Close" })[0]);
+    await userEvent.click(within(sheet).getByRole("button", { name: "Close vehicle" }));
     await waitFor(() => expect(screen.queryByTestId("class-sheet")).toBeNull());
+    expect(document.activeElement).toBe(screen.getByTestId("class-card-0"));
 
     expect(screen.getByTestId("class-card-0").getAttribute("aria-label")).toBe("Edit vehicle");
     expect(screen.getByTestId("schema-status").textContent).not.toContain("unsaved changes");
   });
 
-  it("stays open on a press outside while it holds changes, and closes on one when it holds none", async () => {
+  it("is not replaced by another row while it holds changes, and is when it holds none", async () => {
     withClasses(CLASSES);
     renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("class-list");
-    const overlay = (): HTMLElement => document.querySelector<HTMLElement>('[data-slot="sheet-overlay"]')!;
 
     await openCard(0);
     await userEvent.type(screen.getByTestId("class-name-0"), "x");
-    await userEvent.click(overlay());
+    // The rows are beside the panel, not behind a modal: a press on one is
+    // answered rather than obeyed, so the typed name is not thrown away.
+    await userEvent.click(screen.getByTestId("class-card-1"));
     expect(screen.getByTestId("class-sheet")).not.toBeNull();
     expect(screen.getByTestId("class-name-0")).toHaveProperty("value", "vehiclex");
+    expect(screen.queryByTestId("class-name-1")).toBeNull();
+    expect(document.activeElement).toBe(screen.getByTestId("class-name-0"));
 
     await userEvent.clear(screen.getByTestId("class-name-0"));
     await userEvent.type(screen.getByTestId("class-name-0"), "vehicle");
-    await userEvent.click(overlay());
-    await waitFor(() => expect(screen.queryByTestId("class-sheet")).toBeNull());
+    await userEvent.click(screen.getByTestId("class-card-1"));
+    await screen.findByTestId("class-name-1");
+    expect(screen.getAllByTestId("class-sheet")).toHaveLength(1);
+    expect(screen.queryByTestId("class-name-0")).toBeNull();
   });
 
   it("locks its fields and its buttons while a save is in flight", async () => {
@@ -3992,7 +4111,7 @@ describe("the schema editor's class ledger", () => {
 
     const none = await screen.findByTestId("classes-none");
     expect(within(none).getByText("No classes yet")).not.toBeNull();
-    await userEvent.click(within(none).getByRole("button", { name: "Add class" }));
+    await userEvent.click(within(none).getByRole("button", { name: "New class" }));
 
     await screen.findByTestId("class-0");
     // Nothing exists until the dialog submits, so the empty ledger stays put.
@@ -4033,6 +4152,35 @@ describe("the schema editor's class ledger", () => {
     expect(screen.queryByTestId("classes-none")).toBeNull();
   });
 
+  it("pages the ledger twenty-five to a page, keeps each class's own place, and returns focus to a row on the page it is on", async () => {
+    withClasses(MANY);
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
+    await screen.findByTestId("class-list");
+
+    expect(screen.getByTestId("table-pager-page").textContent).toBe("Page 1 of 2");
+    expect(screen.getByTestId("table-pager-prev").getAttribute("aria-disabled")).toBe("true");
+    await userEvent.click(screen.getByTestId("table-pager-next"));
+
+    // The second page holds the schema's own places 26–50: a row's place is its
+    // position in the schema, never its place on the page.
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("26–50 of 50 classes");
+    expect(classCards()).toHaveLength(25);
+    expect(screen.queryByTestId("class-card-0")).toBeNull();
+    expect(screen.getByTestId("class-row-25")).not.toBeNull();
+    expect(screen.getByTestId("class-card-25").getAttribute("aria-label")).toBe("Edit class-25");
+
+    // Opening a class there and putting the sheet away returns focus to its row.
+    await userEvent.click(screen.getByTestId("class-card-30"));
+    await screen.findByTestId("class-sheet");
+    await closeSheet();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("class-card-30")));
+
+    // The filter's rows are paged too, and narrowing starts over at the first page.
+    await userEvent.type(screen.getByTestId("class-filter"), "class-4");
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("1–10 of 10 classes · filtered from 50");
+    expect(screen.getByTestId("table-pager-page").textContent).toBe("Page 1 of 1");
+  });
+
   it("adds a class from a dialog on a blank one, and nothing is added until it submits", async () => {
     withClasses(MANY);
     renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
@@ -4041,7 +4189,7 @@ describe("the schema editor's class ledger", () => {
     await userEvent.click(screen.getByTestId("add-class"));
 
     const detail = await screen.findByTestId("class-sheet");
-    expect(within(detail).getByRole("heading", { name: "Add class" })).not.toBeNull();
+    expect(within(detail).getByRole("heading", { name: "New class" })).not.toBeNull();
     expect(within(detail).getByTestId("class-50")).not.toBeNull();
     expect(within(detail).getByTestId("class-name-50")).toHaveProperty("value", "");
     // Focus lands in the name, so adding a class is typing its name.
@@ -4050,7 +4198,8 @@ describe("the schema editor's class ledger", () => {
     expect(screen.getByTestId("class-geometry-50-bbox").getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByTestId("class-position-50").getAttribute("title")).toMatch(/Only the first nine classes have a key/);
     // Not a class yet: no row, no draft change, and no Remove for what is not there.
-    expect(classCards()).toHaveLength(50);
+    expect(classCards()).toHaveLength(25);
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("1–25 of 50 classes");
     expect(screen.queryByTestId("class-card-50")).toBeNull();
     expect(screen.getByTestId("schema-status").textContent).not.toContain("unsaved changes");
     expect(screen.queryByTestId("remove-class-50")).toBeNull();
@@ -4058,13 +4207,15 @@ describe("the schema editor's class ledger", () => {
     expect(screen.getByTestId("class-sheet-done").textContent).toBe("Add to draft");
     await userEvent.type(screen.getByTestId("class-name-50"), "  pedestrian ");
     expect(screen.getByTestId("class-sheet-done").textContent).toBe("Add pedestrian to draft");
-    expect(classCards()).toHaveLength(50);
+    expect(classCards()).toHaveLength(25);
 
     await userEvent.click(screen.getByTestId("class-sheet-done"));
     await waitFor(() => expect(screen.queryByTestId("class-sheet")).toBeNull());
 
-    // Once, at the end, with its name trimmed.
-    expect(classCards()).toHaveLength(51);
+    // Once, at the end, with its name trimmed — on the last page, which is the
+    // page shown so focus can return to the row.
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("51 of 51 classes");
+    expect(classCards()).toHaveLength(1);
     expect(screen.getByTestId("class-card-50").getAttribute("aria-label")).toBe("Edit pedestrian");
     expect(screen.getByTestId("schema-status").textContent).toContain("unsaved changes");
     expect(document.activeElement).toBe(screen.getByTestId("class-card-50"));
@@ -4178,7 +4329,9 @@ describe("the schema editor's class ledger", () => {
     await addNamedClass("zebra", 50);
 
     expect(screen.getByTestId("class-filter")).toHaveProperty("value", "");
-    expect(classCards()).toHaveLength(51);
+    // The new class is the 51st, on the last page — and that page is the one shown.
+    expect(screen.getByTestId("table-pager-range").textContent).toBe("51 of 51 classes");
+    expect(screen.getByTestId("class-card-50").getAttribute("aria-label")).toBe("Edit zebra");
   });
 
   it("keeps an orphaning removal terminal and leaves the draft unchanged", async () => {
@@ -5329,11 +5482,15 @@ describe("the project's identity and its one filled control", () => {
     expect(screen.getAllByTestId("section-meta")).toEqual([meta]);
   });
 
-  it("names the active schema version in the Annotations card, not in a chip", async () => {
+  it("draws the classes as their bar of shares in the Classes card, and puts the version in no chip", async () => {
     headerFor({});
     renderWithData(<ProjectScreen projectId={PROJECT} />);
 
-    expect((await screen.findByTestId("kpi-annotations")).textContent).toContain("schema v3");
+    // The card draws the composition instead of a sentence about it; the version is the Classes section's to say.
+    const card = await screen.findByTestId("kpi-annotations");
+    expect(within(card).queryByText(/schema v3/)).toBeNull();
+    // The bar of shares, or its empty face when nothing is labelled yet — never a sentence of totals.
+    expect(within(card).queryByRole("img") ?? within(card).queryByText("No annotations yet.")).not.toBeNull();
     expect(screen.queryByTestId("chip-version")).toBeNull();
   });
 
@@ -5782,12 +5939,19 @@ describe("the project's identity and its one filled control", () => {
     expect(screen.queryByTestId("recipe-shelf")).toBeNull();
   });
 
-  it("draws Add class into the bar as the Classes section's one filled control, and not in the ledger", async () => {
+  it("draws New beside the history in the section's band, as its one filled control, not in the project bar", async () => {
     headerFor({});
     renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" onIngest={vi.fn()} />);
 
     const add = await screen.findByTestId("add-class");
-    expect(within(screen.getByTestId("project-nav")).getByTestId("add-class")).toBe(add);
+    expect(within(screen.getByTestId("project-nav")).queryByTestId("add-class")).toBeNull();
+    // In the band, right after the history's icon button; it says "New" and is named in full.
+    const band = screen.getByTestId("schema-editor").querySelector("header");
+    expect(band?.contains(add)).toBe(true);
+    expect(add.textContent?.trim()).toBe("New");
+    expect(add.getAttribute("aria-label")).toBe("New class");
+    const history = screen.getByTestId("open-history");
+    expect(history.nextElementSibling).toBe(add);
     expect(within(screen.getByTestId("class-list")).queryByTestId("add-class")).toBeNull();
     expect(screen.getAllByTestId("add-class")).toEqual([add]);
     expect(add.dataset.variant).toBe("default");

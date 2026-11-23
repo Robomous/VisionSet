@@ -36,8 +36,8 @@
  * rather than disk.
  */
 
-import { ArrowDown, ArrowUp, ArrowUpRight, CircleCheck, CircleCheckBig, CircleDashed, Clock, FolderOpen, FolderPlus, Folders, Images, MoreHorizontal, PackageCheck, Pencil, Tags, Trash2 } from "lucide-react";
-import { useState, type FormEvent, type JSX, type KeyboardEvent } from "react";
+import { ArrowDown, ArrowUp, ArrowUpRight, CircleCheck, CircleCheckBig, CircleDashed, Clock, FolderOpen, Folders, Images, MoreHorizontal, PackageCheck, Pencil, Plus, Tags, Trash2 } from "lucide-react";
+import { useRef, useState, type FormEvent, type JSX } from "react";
 
 import { Async } from "../data/Async";
 import { refusalProse } from "../data/refusals";
@@ -67,8 +67,12 @@ import {
 import { formatCount, formatWhen } from "../lib/format";
 import { BODY_ROW, ColumnHeader, ListGrid, ListPage, type ListColumn } from "../patterns/ListPage";
 import { PageStatus } from "../patterns/PageStatus";
+import { usePagination } from "../patterns/pagination";
+import { clickedRowId, walkRowButtons } from "../patterns/rowDelegation";
+import { TableFooter } from "../patterns/TablePager";
 import { AssetThumbnail, ThumbnailPlaceholder } from "./AssetThumbnail";
 import { RenameProjectDialog } from "./ProjectFrame";
+import { lastMoved, leftToAnnotate, orderedProjects, type Direction, type ProjectSortKey } from "./projectOrder";
 import { useCreateProject, useDeleteProject, useProjects, type Project, type ProjectListItem, type ProjectStage } from "./queries";
 
 export interface ProjectsScreenProps {
@@ -77,53 +81,6 @@ export interface ProjectsScreenProps {
 }
 
 // ── Ordering ──────────────────────────────────────────────────────────────
-
-export type ProjectSortKey = "name" | "images" | "annotated" | "classes" | "activity";
-type Direction = "ascending" | "descending";
-
-/**
- * When the project last moved: the newest dated thing that happened in it, else
- * when it was made. NULL only for a project the workspace never dated at all.
- */
-export function lastMoved(project: ProjectListItem): string | null {
-  return project.digest.last_activity_at ?? project.created_at;
-}
-
-const VALUE: Record<ProjectSortKey, (p: ProjectListItem) => number | string | null> = {
-  name: (p) => p.name.toLocaleLowerCase(),
-  images: (p) => p.digest.asset_count,
-  annotated: (p) => p.digest.annotated_fraction,
-  classes: (p) => p.digest.class_count,
-  activity: (p) => {
-    const at = lastMoved(p);
-    return at === null ? null : Date.parse(at);
-  },
-};
-
-/**
- * The list in the chosen order. A row with no value for the key — a project
- * the workspace never dated, sorted by activity — goes last in **both**
- * directions, in the order the wire gave it: a missing date is a missing date,
- * never a guessed position among the dated rows.
- */
-export function orderedProjects(
-  items: readonly ProjectListItem[],
-  key: ProjectSortKey,
-  direction: Direction,
-): readonly ProjectListItem[] {
-  const read = VALUE[key];
-  const known = items.filter((p) => read(p) !== null);
-  const unknown = items.filter((p) => read(p) === null);
-  const sign = direction === "descending" ? -1 : 1;
-  known.sort((a, b) => {
-    const x = read(a) as number | string;
-    const y = read(b) as number | string;
-    const order = typeof x === "string" ? x.localeCompare(y as string) : x - (y as number);
-    // Ties keep the wire's order, so equal rows never swap places between sorts.
-    return sign * order;
-  });
-  return [...known, ...unknown];
-}
 
 /** The first click on a column sorts the way that column is usually read. */
 const FIRST_DIRECTION: Record<ProjectSortKey, Direction> = {
@@ -223,18 +180,17 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
   const items = projects.data?.items ?? [];
   const searching = query.trim() !== "";
   const found = searching ? items.filter((p) => matches(p, query)) : items;
+  // In the order the table shows, so a page is a slice of what somebody sees.
+  const ordered = orderedProjects(found, sort.key, sort.direction);
+  // The same pager as every full-page table; a search or a new order starts it over.
+  const paging = usePagination(ordered, { pageSize: 25, resetKey: `${query.trim()}|${sort.key}|${sort.direction}` });
+  const frame = useRef<HTMLDivElement>(null);
 
   return (
     <ListPage
       testId="projects-screen"
       icon={Folders}
       title="Projects"
-      action={
-        <Button size="sm" data-testid="new-project" onClick={() => setCreating(true)}>
-          <FolderPlus aria-hidden="true" />
-          New project
-        </Button>
-      }
       toolbar={
         <>
           <SearchInput
@@ -247,81 +203,101 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
             data-testid="projects-search"
             className="w-64 max-w-full"
           />
-          <SortMenu sort={sort} onSort={setSort} />
+          {/* The order, then the page's one action, at the end of the bar that
+              shapes the list: "New" on the page that names the noun, its full
+              name for whoever cannot see the page's title. */}
+          <div className="ml-auto flex items-center gap-2">
+            <SortMenu sort={sort} onSort={setSort} />
+            <Button size="sm" aria-label="New project" data-testid="new-project" onClick={() => setCreating(true)}>
+              <Plus aria-hidden="true" />
+              New
+            </Button>
+          </div>
         </>
       }
     >
-      {projects.isSuccess && items.length > 0 && <ProjectsStatus shown={found} total={items.length} searching={searching} />}
+      {projects.isSuccess && items.length > 0 && <ProjectsStatus shown={found} />}
       <Async
         query={projects}
         loadingRows={4}
         empty={{
           art: "projects",
           title: "No projects yet",
-          // No button of its own: the header's "New project" is on screen, the
+          // No button of its own: the header's "New" is on screen, the
           // same label calling the same handler. One way to make a project.
-          description: "A project holds a schema, its batches and one dataset. Start one with New project.",
+          description: "A project holds a schema, its batches and one dataset. Start one with New.",
         }}
       >
-        {(page) => {
-          const rows = orderedProjects(
-            page.items.filter((p) => matches(p, query)),
-            sort.key,
-            sort.direction,
-          );
-          return (
-            <ListGrid
-              columns={COLUMNS}
-              minWidth="min-w-[1100px]"
-              label="Projects"
-              testId="projects-table"
-              head={
-                <>
-                  <ColumnHeader icon={FolderOpen} label="Project" sort={sortOf("name")} onSort={() => sortBy("name")} testId="sort-name" />
-                  <ColumnHeader icon={Images} label="Images" align="right" sort={sortOf("images")} onSort={() => sortBy("images")} testId="sort-images" />
-                  <ColumnHeader icon={CircleCheckBig} label="Annotated" sort={sortOf("annotated")} onSort={() => sortBy("annotated")} testId="sort-annotated" />
-                  <ColumnHeader icon={Tags} label="Classes" align="right" sort={sortOf("classes")} onSort={() => sortBy("classes")} testId="sort-classes" />
-                  <ColumnHeader icon={CircleDashed} label="Status" />
-                  <ColumnHeader icon={PackageCheck} label="Release" />
-                  <ColumnHeader icon={Clock} label="Activity" align="right" sort={sortOf("activity")} onSort={() => sortBy("activity")} testId="sort-activity" />
-                  <ColumnHeader label="Actions" hidden />
-                </>
-              }
+        {() => (
+          <>
+            {/* A wrapper that only catches the rows' bubbled clicks and arrows:
+                the interactive things are the rows' own name buttons, so it
+                carries no semantics of its own. */}
+            <div
+              className="flex min-h-0 flex-1 flex-col"
+              role="presentation"
+              onKeyDown={walkRowButtons}
+              onClick={(event) => {
+                const id = clickedRowId(event);
+                if (id !== null) onOpenProject(id);
+              }}
             >
-              <tbody>
-                {rows.map((project) => (
-                  <Row
-                    key={project.id}
-                    project={project}
-                    onOpen={() => onOpenProject(project.id)}
-                    onRename={() => setRenaming(project)}
-                    onDelete={() => setDoomed(project)}
-                  />
-                ))}
-                {rows.length === 0 && (
-                  <tr className={BODY_ROW}>
-                    <td colSpan={COLUMNS.length} data-testid="projects-no-match" className="h-24 text-center text-muted-foreground">
-                      No project matches <span className="font-medium text-foreground">“{query.trim()}”</span>.{" "}
-                      <button
-                        type="button"
-                        data-testid="projects-clear-search"
-                        onClick={() => {
-                          setQuery("");
-                          // The button leaves with the empty result; focus goes
-                          // back to the field it cleared rather than to the page.
-                          document.getElementById("projects-search")?.focus();
-                        }}
-                        className="rounded-sm font-medium text-foreground underline decoration-foreground/30 underline-offset-4 outline-none hover:decoration-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-                      >
-                        Clear search
-                      </button>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </ListGrid>
-          );
-        }}
+              <ListGrid
+                columns={COLUMNS}
+                minWidth="min-w-[1100px]"
+                label="Projects"
+                testId="projects-table"
+                frameRef={frame}
+                head={
+                  <>
+                    <ColumnHeader icon={FolderOpen} label="Project" sort={sortOf("name")} onSort={() => sortBy("name")} testId="sort-name" />
+                    <ColumnHeader icon={Images} label="Images" align="right" sort={sortOf("images")} onSort={() => sortBy("images")} testId="sort-images" />
+                    <ColumnHeader icon={CircleCheckBig} label="Annotated" sort={sortOf("annotated")} onSort={() => sortBy("annotated")} testId="sort-annotated" />
+                    <ColumnHeader icon={Tags} label="Classes" align="right" sort={sortOf("classes")} onSort={() => sortBy("classes")} testId="sort-classes" />
+                    <ColumnHeader icon={CircleDashed} label="Status" />
+                    <ColumnHeader icon={PackageCheck} label="Release" />
+                    <ColumnHeader icon={Clock} label="Activity" align="right" sort={sortOf("activity")} onSort={() => sortBy("activity")} testId="sort-activity" />
+                    <ColumnHeader label="Actions" hidden />
+                  </>
+                }
+              >
+                <tbody>
+                  {paging.slice.map((project) => (
+                    <Row
+                      key={project.id}
+                      project={project}
+                      onOpen={() => onOpenProject(project.id)}
+                      onRename={() => setRenaming(project)}
+                      onDelete={() => setDoomed(project)}
+                    />
+                  ))}
+                  {ordered.length === 0 && (
+                    <tr className={BODY_ROW}>
+                      <td colSpan={COLUMNS.length} data-testid="projects-no-match" className="h-24 text-center text-muted-foreground">
+                        No project matches <span className="font-medium text-foreground">“{query.trim()}”</span>.{" "}
+                        <button
+                          type="button"
+                          data-testid="projects-clear-search"
+                          onClick={() => {
+                            setQuery("");
+                            // The button leaves with the empty result; focus goes
+                            // back to the field it cleared rather than to the page.
+                            document.getElementById("projects-search")?.focus();
+                          }}
+                          className="rounded-sm font-medium text-foreground underline decoration-foreground/30 underline-offset-4 outline-none hover:decoration-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                        >
+                          Clear search
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </ListGrid>
+            </div>
+            {/* Under the table, outside the rows' delegating wrapper. */}
+            <TableFooter pagination={paging} frameRef={frame} noun="project" unfiltered={items.length} />
+          </>
+        )}
       </Async>
 
       <CreateProjectDialog
@@ -344,21 +320,15 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
 
 /**
  * What the list on screen adds up to, in the workbench's status bar — said
- * there and not on the page (`PageStatus`): how many projects, of how many
- * while a search narrows them (never hiding what it left out,
- * `product-principles.md`); their images and how much is left to annotate;
- * and how many are waiting on a person to review, the one stage that asks
- * something of whoever is reading. Every figure is over the rows shown.
+ * there and not on the page (`PageStatus`): the images in it and how much is
+ * left to annotate, and how many projects are waiting on a person to review,
+ * the one stage that asks something of whoever is reading. Every figure is over
+ * every project the search leaves, not the page of them on screen. How many
+ * projects there are, and of how many while a search narrows them (never hiding
+ * what it left out, `product-principles.md`), is the footer's to say
+ * (`TableFooter`): said once.
  */
-function ProjectsStatus({
-  shown,
-  total,
-  searching,
-}: {
-  readonly shown: readonly ProjectListItem[];
-  readonly total: number;
-  readonly searching: boolean;
-}): JSX.Element {
+function ProjectsStatus({ shown }: { readonly shown: readonly ProjectListItem[] }): JSX.Element {
   const images = shown.reduce((sum, p) => sum + p.digest.asset_count, 0);
   // The same count the Annotated column says per row, so the bar and the rows
   // never disagree about whether there is work left.
@@ -366,11 +336,6 @@ function ProjectsStatus({
   const review = shown.filter((p) => p.digest.stage === "in_review").length;
   return (
     <PageStatus>
-      <span data-testid="projects-totals">
-        {searching
-          ? `${formatCount(shown.length)} of ${formatCount(total)} projects`
-          : `${formatCount(total)} ${total === 1 ? "project" : "projects"}`}
-      </span>
       {images > 0 && (
         <span data-testid="projects-images">
           {formatCount(images)} {images === 1 ? "image" : "images"} · {left === 0 ? "all annotated" : `${formatCount(left)} to annotate`}
@@ -401,7 +366,7 @@ function SortMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="ml-auto font-normal" data-testid="projects-sort">
+        <Button variant="outline" size="sm" className="font-normal" data-testid="projects-sort">
           <Arrow aria-hidden="true" />
           <span className="text-muted-foreground">Sorted by</span>
           <span className="font-medium">{SORT_LABEL[sort.key]}</span>
@@ -446,12 +411,6 @@ function SortMenu({
  * left never draws a closed ring (at 97% a true arc would read as done), and
  * one with anything annotated never draws an empty one.
  */
-/** What is left for a person to annotate; see `RemainingCell`. */
-export function leftToAnnotate(digest: ProjectListItem["digest"]): number {
-  const done = Math.min(digest.annotated_asset_count, digest.asset_count);
-  return Math.max(digest.asset_count - done, digest.frames_left);
-}
-
 function RemainingCell({ digest }: { readonly digest: ProjectListItem["digest"] }): JSX.Element {
   const total = digest.asset_count;
   if (total === 0) return <span className="text-muted-foreground">—</span>;
@@ -514,13 +473,14 @@ function Row({
   const detail = stageDetail(project);
   const moved = lastMoved(project);
 
-  // The whole row opens the project for a pointer; the name is the row's one
-  // real control for the keyboard and a screen reader, so each project is heard
-  // once. Clicks that land on the menu stop before they reach the row.
+  // The whole row opens the project for a pointer — the table body takes that
+  // click (`clickedRowId`) — and the name is the row's one real control for the
+  // keyboard and a screen reader, so each project is heard once. The menu's cell
+  // says it is its own (`data-row-action`).
   return (
     <tr
       data-testid={`project-${project.name}`}
-      onClick={onOpen}
+      data-row-id={project.id}
       // No transition on the hover fill: the pointer sweeps this list.
       className={cn(BODY_ROW, "group cursor-pointer hover:bg-muted/40")}
     >
@@ -544,6 +504,7 @@ function Row({
           <button
             type="button"
             data-testid={`open-${project.name}`}
+            data-row-open={project.id}
             onClick={(event) => {
               event.stopPropagation();
               onOpen();
@@ -596,7 +557,7 @@ function Row({
       <td className="text-right text-xs text-muted-foreground tabular-nums">
         {moved === null ? "—" : <time dateTime={moved}>{formatWhen(moved)}</time>}
       </td>
-      <td className="text-right" onClick={(event) => event.stopPropagation()}>
+      <td className="text-right" data-row-action="">
         <RowMenu project={project} onRename={onRename} onDelete={onDelete} />
       </td>
     </tr>
@@ -620,8 +581,6 @@ function RowMenu({
           size="icon-sm"
           aria-label={`More actions for ${project.name}`}
           data-testid={`menu-${project.name}`}
-          // Enter on the trigger opens the menu; it must not also open the row.
-          onKeyDown={(event: KeyboardEvent) => event.stopPropagation()}
         >
           <MoreHorizontal aria-hidden="true" />
         </Button>

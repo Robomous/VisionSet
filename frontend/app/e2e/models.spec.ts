@@ -308,9 +308,11 @@ test("the page is a grid of cards, and a dropdown narrows it to the ability a ca
   // The origin's colour is the small mark beside its name — a real fill, which
   // is the one thing a stylesheet that lost its token would turn transparent.
   await expect(card.getByTestId("connection-origin").locator("span").first()).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-  // What the list adds up to is said in the workbench's status bar, not on the page.
-  await expect(page.getByTestId("status-bar").getByTestId("models-count")).toHaveText("2 models");
-  await expect(page.getByTestId("models-screen").getByTestId("models-count")).toHaveCount(0);
+  // What the list adds up to is said in the workbench's status bar, not on the
+  // page; which models are on screen is the footer's, under the grid.
+  await expect(page.getByTestId("status-bar").getByTestId("models-ready")).toHaveText("2 ready");
+  await expect(page.getByTestId("models-screen").getByTestId("models-ready")).toHaveCount(0);
+  await expect(page.getByTestId("models-screen").getByTestId("table-pager-range")).toHaveText("1–2 of 2 models");
 
   // Two abilities on the page, so Ability is offered — and nothing else is,
   // because the two rows agree on origin, kind and state.
@@ -320,7 +322,7 @@ test("the page is a grid of cards, and a dropdown narrows it to the ability a ca
   await page.getByRole("option", { name: "Text prompts" }).click();
   await expect(grid.getByTestId("connection-grounding-dino")).toBeVisible();
   await expect(grid.getByTestId("connection-sam2-local")).toHaveCount(0);
-  await expect(page.getByTestId("status-bar").getByTestId("models-count")).toHaveText("1 of 2 models");
+  await expect(page.getByTestId("table-pager-range")).toHaveText("1 model · filtered from 2");
   await page.getByTestId("clear-filters").click();
   await expect(grid.getByTestId("connection-sam2-local")).toBeVisible();
 });

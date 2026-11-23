@@ -110,12 +110,14 @@ describe("the status bar", () => {
     open("/models");
     const bar = await screen.findByTestId("status-bar");
 
-    // The page's own half says what the list holds, in the bar's outlet.
-    const count = await within(bar).findByTestId("models-count");
-    expect(count.textContent).toBe("3 models");
-    expect(within(bar).getByTestId("models-ready").textContent).toBe("2 ready");
+    // The page's own half says what the list adds up to, in the bar's outlet —
+    // how many models there are is the page's footer's to say, not the bar's.
+    const ready = await within(bar).findByTestId("models-ready");
+    expect(ready.textContent).toBe("2 ready");
     expect(within(bar).getByTestId("models-waiting").textContent).toBe("1 not set up");
-    expect(within(bar).getByTestId("page-status").contains(count)).toBe(true);
+    expect(within(bar).getByTestId("page-status").contains(ready)).toBe(true);
+    expect(within(bar).queryByTestId("models-count")).toBeNull();
+    expect((await screen.findByTestId("table-pager-range")).textContent).toBe("1–3 of 3 models");
 
     // The workspace's half keeps only what no page says: which credential is in use.
     expect(within(bar).queryByTestId("status-models")).toBeNull();
@@ -130,6 +132,6 @@ describe("the status bar", () => {
     const bar = await screen.findByTestId("status-bar");
     expect(await within(bar).findByTestId("status-models")).not.toBeNull();
     // And the Projects page says nothing of models in the page's half.
-    expect(within(bar).queryByTestId("models-count")).toBeNull();
+    expect(within(bar).queryByTestId("models-ready")).toBeNull();
   });
 });
