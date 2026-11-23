@@ -1,7 +1,7 @@
 /**
- * What the scan editor can point at: the selected polyline's vertices, any
- * polyline's segments, the selected box's face handles and yaw ring, then any
- * box's body. Pure; the adapter hands over the camera and the
+ * What the scan editor can point at: the selected polyline's vertices or the
+ * selected box's face handles and yaw ring, then any polyline's segments, then
+ * any box's body. Pure; the adapter hands over the camera and the
  * viewport it draws with, and the same two place the handles on screen.
  */
 
@@ -111,7 +111,7 @@ export function vertexTarget(scene: Scene3D): { readonly id: string; readonly ge
   return annotation === undefined || !isPolylineScanAnnotation(annotation) ? null : { id, geometry: annotation.geometry };
 }
 
-/** What lies under a screen point: polyline vertices and segments, then a handle of the selected box, then the nearest body. */
+/** What lies under a screen point: the selected label's handles, then any polyline's segment, then the nearest box body. */
 export function hitTest3D(
   scene: Scene3D,
   point: Point,
@@ -132,23 +132,6 @@ export function hitTest3D(
       if (distance <= tolerances.handlePx && (vertex === null || distance < vertex.distance)) vertex = { index, distance };
     }
     if (vertex !== null) return { kind: "vertex", id: line.id, index: vertex.index };
-  }
-
-  let nearestSegment: { id: string; segment: number; point: Point3D; distance: number } | null = null;
-  for (const annotation of scene.document.annotations.values()) {
-    if (!isPolylineScanAnnotation(annotation)) continue;
-    const { points } = annotation.geometry;
-    for (let segment = 0; segment < points.length - 1; segment++) {
-      const on = closestOnSegment(ray, points[segment]!, points[segment + 1]!);
-      if (on === null) continue;
-      const distance = pixelsTo(on);
-      if (distance <= tolerances.handlePx && (nearestSegment === null || distance < nearestSegment.distance)) {
-        nearestSegment = { id: annotation.id, segment, point: on, distance };
-      }
-    }
-  }
-  if (nearestSegment !== null) {
-    return { kind: "segment", id: nearestSegment.id, segment: nearestSegment.segment, point: nearestSegment.point };
   }
 
   const target = handleTarget(scene);
@@ -174,6 +157,23 @@ export function hitTest3D(
         return { kind: "yaw-ring", id: target.id, point: onRing };
       }
     }
+  }
+
+  let nearestSegment: { id: string; segment: number; point: Point3D; distance: number } | null = null;
+  for (const annotation of scene.document.annotations.values()) {
+    if (!isPolylineScanAnnotation(annotation)) continue;
+    const { points } = annotation.geometry;
+    for (let segment = 0; segment < points.length - 1; segment++) {
+      const on = closestOnSegment(ray, points[segment]!, points[segment + 1]!);
+      if (on === null) continue;
+      const distance = pixelsTo(on);
+      if (distance <= tolerances.handlePx && (nearestSegment === null || distance < nearestSegment.distance)) {
+        nearestSegment = { id: annotation.id, segment, point: on, distance };
+      }
+    }
+  }
+  if (nearestSegment !== null) {
+    return { kind: "segment", id: nearestSegment.id, segment: nearestSegment.segment, point: nearestSegment.point };
   }
 
   let body: { id: string; point: Point3D; distance: number } | null = null;

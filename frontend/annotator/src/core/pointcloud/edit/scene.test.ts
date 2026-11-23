@@ -63,4 +63,13 @@ describe("hitTest3D on a polyline", () => {
     hit.point.forEach((value, i) => expect(value).toBeCloseTo([2, 6, 0][i] ?? NaN, 6));
     expect(hitTest3D(scene, pixelOf(scene, [2, 8, 0]))).toBeNull();
   });
+
+  it("the selected box's face handle wins over a lane segment under it, and a segment over a body", () => {
+    const front = faceCenter(scanBox("x").geometry, "lidar_flu", "front");
+    const crossing = scanDocumentOf(scanBox("near"), scanLine("lane-1", [[front[0], -3, front[2]], [front[0], 3, front[2]]]));
+    const selected = contextOf(crossing, { selection: selectOnly("near") });
+    expect(hitTest3D(selected, pixelOf(selected, front))).toEqual({ kind: "face", id: "near", face: "front" });
+    const unselected = contextOf(crossing);
+    expect(hitTest3D(unselected, pixelOf(unselected, front))).toMatchObject({ kind: "segment", id: "lane-1" });
+  });
 });

@@ -205,7 +205,8 @@ export function draftCuboid(state: ScanState, context: Pick<ScanContext, "frame"
 /** The polyline being drawn, its clicked vertices then the cursor, for a renderer to preview; `null` when nothing is. */
 export function draftPolyline(state: ScanState): Polyline3DGeometry | null {
   if (state.type !== "drawing-polyline") return null;
-  const points = state.cursor === null ? state.points : [...state.points, state.cursor];
+  const last = state.points[state.points.length - 1]!;
+  const points = state.cursor === null || samePoint(state.cursor, last) ? state.points : [...state.points, state.cursor];
   return { type: "polyline_3d", points, visibility: undefined };
 }
 
@@ -299,6 +300,7 @@ function pressPolyline(
       return to({ type: "moving-vertex", id, origin, index: hit.index, level });
     }
     case "segment": {
+      if (isToggleModifier(modifiers)) return to(SCAN_IDLE, select(toggleSelection(context.selection, id)));
       const already = context.selection.size === 1 && context.selection.has(id);
       if (!already) return to(SCAN_IDLE, select(selectOnly(id)));
       const inserted = insertPolylineVertex(origin, hit.segment, hit.point);
@@ -328,7 +330,7 @@ function fromPolyline(
       if (event.button !== "primary") return to(state);
       const next = groundUnder(event.point, context);
       const last = state.points[state.points.length - 1]!;
-      if (next === null || next.every((value, i) => value === last[i])) return to(state);
+      if (next === null || samePoint(next, last)) return to(state);
       return to({ ...state, points: [...state.points, next], cursor: next });
     }
     case "commit": {
@@ -537,6 +539,10 @@ function newScanAnnotation<G extends ScanAnnotation["geometry"]>(
     confidence: null,
     job_id: null,
   };
+}
+
+function samePoint(a: Point3D, b: Point3D): boolean {
+  return a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
 }
 
 function select(selection: Selection): ScanEffect {
