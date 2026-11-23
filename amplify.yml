@@ -23,6 +23,7 @@
 #
 # Building it by hand, which is all Amplify does below (commands run from `docs/`):
 #
+#     nvm install "$(cat ../.nvmrc)"
 #     corepack enable
 #     pnpm install --frozen-lockfile
 #     pnpm build                          # → docs/dist/
@@ -33,6 +34,10 @@ applications:
       phases:
         preBuild:
           commands:
+            # Node from the root `.nvmrc`, the same pin CI reads. The build image
+            # defaults to an older Node than Astro accepts, and the corepack it
+            # bundles is what fetches pnpm below.
+            - nvm install "$(cat ../.nvmrc)"
             # pnpm from corepack, pinned by the root package.json's `packageManager`
             # field — the same source `docker/app.Dockerfile` and
             # `docker/docs.Dockerfile` read, so no build of this repository can end up
