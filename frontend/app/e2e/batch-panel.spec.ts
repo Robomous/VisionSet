@@ -396,6 +396,30 @@ test("opening a batch from its row writes it into the address, and closing takes
   await expect(page.getByTestId("batch-sheet")).toHaveCount(0);
 });
 
+test("a rail destination pressed with the panel open goes there, and the panel does not pull it back", async ({
+  page,
+}) => {
+  const sent: Request[] = [];
+  await openAt(page, sent, `/projects/${PROJECT}/overview?batch=${BATCH}`);
+  await expect(page.getByTestId("batch-sheet").getByRole("heading", { level: 2, name: NAME })).toBeVisible();
+
+  // The press outside dismisses the panel, which takes `?batch=` out of the
+  // address; that must not land on top of the navigation the press asked for.
+  await page.getByTestId("rail-projects").click();
+  await expect(page).toHaveURL(/\/projects$/);
+  await expect(page.getByTestId("projects-screen")).toBeVisible();
+});
+
+test("a section pressed with the panel open goes there, and the panel does not pull it back", async ({ page }) => {
+  const sent: Request[] = [];
+  await openAt(page, sent, `/projects/${PROJECT}/overview?batch=${BATCH}`);
+  await expect(page.getByTestId("batch-sheet").getByRole("heading", { level: 2, name: NAME })).toBeVisible();
+
+  await page.getByTestId("nav-images").click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/images$`));
+  await expect(page.getByTestId("batch-sheet")).toHaveCount(0);
+});
+
 test("the panel says which batch it is showing and how far it has come", async ({ page }) => {
   const sent: Request[] = [];
   const panel = await openPanel(page, sent);

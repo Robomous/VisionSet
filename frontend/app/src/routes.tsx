@@ -283,7 +283,14 @@ function Project(): JSX.Element {
       // panel. `replace`: opening batches one after another is looking, not going
       // somewhere, and Back should leave the Overview rather than walk the list.
       openBatchId={query.get("batch")}
-      onOpenBatchChange={(batchId) =>
+      onOpenBatchChange={(batchId) => {
+        // A press outside the panel closes it only once the click is over —
+        // Radix waits for the click, so a link or a button under the pointer
+        // has already navigated by then. `setQuery` spells its address from
+        // this render, the Overview's, so taking `?batch=` out of it would
+        // put the old page back over the one the press asked for. A close
+        // acts only while the address still names a batch.
+        if (batchId === null && !new URLSearchParams(window.location.search).has("batch")) return;
         setQuery(
           (now) => {
             const next = new URLSearchParams(now);
@@ -292,8 +299,8 @@ function Project(): JSX.Element {
             return next;
           },
           { replace: true },
-        )
-      }
+        );
+      }}
       onOpenJob={(jobId) => void navigate(`/jobs/${jobId}`)}
       // A deleted project's own URL is a 404 waiting to happen, so the parent is
       // where to land — and `replace`, because Back should not walk into it.
