@@ -166,9 +166,9 @@ export interface ClassificationGeometry {
 export type Point3D = readonly [number, number, number];
 
 /**
- * An open 3D path in the sensor frame. Carried, never edited: on an image it
- * reaches the canvas only through `projectLabels3D`, as a read-only overlay, and
- * on a scan only through `scanLabels`.
+ * An open 3D path in the sensor frame. On an image it is a read-only overlay
+ * through `projectLabels3D`; on a scan it is drawn through `scanLabels` and
+ * edited by the scan editor.
  */
 export interface Polyline3DGeometry {
   readonly type: "polyline_3d";

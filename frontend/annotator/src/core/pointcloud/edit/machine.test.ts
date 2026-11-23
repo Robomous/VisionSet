@@ -470,4 +470,25 @@ describe("editing a polyline", () => {
     const pair = contextOf(scanDocumentOf(scanLine("lane-2", [[-4, 6, 0], [4, 6, 0]])), { selection: selectOnly("lane-2") });
     expect(scanTransition(SCAN_IDLE, alt(pixelOf(pair, [-4, 6, 0])), pair)).toEqual({ state: SCAN_IDLE, effects: [] });
   });
+
+  it("alt-click on a segment of the selected polyline does nothing", () => {
+    expect(scanTransition(SCAN_IDLE, alt(pixelOf(selected, [2, 6, 0])), selected)).toEqual({ state: SCAN_IDLE, effects: [] });
+  });
+
+  it("alt-click that would leave every vertex in one place does nothing", () => {
+    const folded = contextOf(scanDocumentOf(scanLine("lane-3", [[-4, 6, 0], [0, 6, 0], [-4, 6, 0]])), {
+      selection: selectOnly("lane-3"),
+    });
+    expect(scanTransition(SCAN_IDLE, alt(pixelOf(folded, [0, 6, 0])), folded)).toEqual({ state: SCAN_IDLE, effects: [] });
+  });
+
+  it("dragging a vertex onto the only other one stages nothing, so the line stays drawable", () => {
+    const target = pixelOf(selected, [-4, 7, 0]);
+    const probe: ScanState = { type: "moving-vertex", id: "lane-1", origin: lane.geometry, index: 1, level: 0 };
+    const landed = stagedPolyline(scanTransition(probe, move(target), selected)).points[1]!;
+    const pair = scanLine("lane-1", [landed, [4, 6, 0]]);
+    const context = contextOf(scanDocumentOf(pair), { selection: selectOnly("lane-1") });
+    const state: ScanState = { type: "moving-vertex", id: "lane-1", origin: pair.geometry, index: 1, level: 0 };
+    expect(scanTransition(state, move(target), context)).toEqual({ state, effects: [] });
+  });
 });

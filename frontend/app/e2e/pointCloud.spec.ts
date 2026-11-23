@@ -625,7 +625,7 @@ test("in Edit, a polyline drawn on the ground saves, and a dragged vertex saves 
   expect(created).toMatchObject({ asset_id: "asset-1", label_class: "lane", geometry: { type: "polyline_3d" } });
   const drawn = created?.geometry as Wire["Polyline3DBody"];
   expect(drawn.points).toHaveLength(3);
-  // Every vertex sits on the ground the scan was sampled on, and is saved visible.
+  // Every vertex sits on the ground the scan was sampled on; visibility is left out, so it stays unknown.
   for (const point of drawn.points) expect(point[2]).toBeCloseTo(-0.8, 1);
   expect(drawn.visibility).toBeUndefined();
 
@@ -644,8 +644,11 @@ test("in Edit, a polyline drawn on the ground saves, and a dragged vertex saves 
   expect(Math.hypot(moved[0] - before[0], moved[1] - before[1])).toBeGreaterThan(40);
   expect(await vertexAt(page, 0)).toEqual(first);
 
+  const writesBefore = sent.length;
   await page.getByTestId("save-and-stay").click();
   await expect(page.getByTestId("save-state")).toContainText(/saved/i);
+  const writes = sent.slice(writesBefore).filter((request) => request.url().includes("/annotations"));
+  expect(writes.filter((request) => request.method() === "POST" || request.method() === "DELETE")).toHaveLength(0);
   const patches = sent.filter((request) => request.method() === "PATCH");
   expect(patches).toHaveLength(1);
   const updated = patches[0]?.postDataJSON() as Wire["AnnotationUpdate"][];

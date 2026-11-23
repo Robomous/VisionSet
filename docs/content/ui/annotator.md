@@ -484,9 +484,11 @@ still zooms. Outside Edit the view keeps its own mapping: a left drag orbits.
 - **Adjust a polyline.** A click on a polyline's segment selects it, and the selected polyline
   shows a handle on each vertex. Dragging a handle moves that vertex along the ground at its
   own height. A press on a segment of the selected polyline inserts a vertex there and drags
-  it, as one undo step. Alt-click on a vertex removes it, never below two vertices. Delete
-  removes the whole label. Per-vertex visibility is not editable on a scan: every vertex is
-  saved visible.
+  it, as one undo step. Alt-click on a vertex removes it, never below two vertices; alt-click
+  anywhere else does nothing. A removal or drag that would leave every vertex in one place is
+  refused. Delete removes the whole label. Per-vertex visibility is not editable on a scan: a
+  new polyline leaves it out, so it stays unknown, and an imported polyline keeps its declared
+  visibility, with an inserted vertex recorded as unlabeled (`0`).
 - **Top-down.** In Edit a second view sits beside the perspective one - below it on a narrow
   stage - looking straight down the declared up axis, forward up the screen. It is
   orthographic, so a box's top lies over its footprint at any zoom, and it follows the

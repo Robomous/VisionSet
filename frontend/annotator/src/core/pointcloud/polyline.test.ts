@@ -45,7 +45,7 @@ describe("polyline vertex functions", () => {
 
   it("keeps a declared visibility aligned with the points", () => {
     const seen: Polyline3DGeometry = { ...line(A, B, C), visibility: [2, 1, 2] };
-    expect(insertPolylineVertex(seen, 0, [5, 0, 0]).visibility).toEqual([2, 2, 1, 2]);
+    expect(insertPolylineVertex(seen, 0, [5, 0, 0]).visibility).toEqual([2, 0, 1, 2]);
     expect(removePolylineVertex(seen, 1)?.visibility).toEqual([2, 2]);
     expect(movePolylineVertex(seen, 0, [1, 0, 0]).visibility).toEqual([2, 1, 2]);
   });

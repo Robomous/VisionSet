@@ -2,16 +2,14 @@
  * Vertex edits on a scan's `polyline_3d`, pure and returning new geometry.
  *
  * A declared `visibility` stays aligned with the points; an inserted vertex is
- * visible. Nothing here clamps: a scan point has no bounds the way a pixel does.
+ * `UNLABELED`, since nobody has judged it. Nothing here clamps: a scan point has no bounds the way a pixel does.
  */
 
-import type { Point3D, Polyline3DGeometry, VertexVisibility } from "../types";
+import { VERTEX_VISIBILITY, type Point3D, type Polyline3DGeometry } from "../types";
 import { add, dot, scale, subtract } from "./vector";
 
 /** The kernel refuses a path with fewer vertices, and one whose vertices are all the same point. */
 export const MIN_POLYLINE_VERTICES = 2;
-
-const VISIBLE: VertexVisibility = 2;
 
 export function isDrawablePolyline(points: readonly Point3D[]): boolean {
   if (points.length < MIN_POLYLINE_VERTICES) return false;
@@ -32,7 +30,7 @@ export function insertPolylineVertex(g: Polyline3DGeometry, segment: number, at:
   return {
     ...g,
     points: insertAt(g.points, segment + 1, at),
-    visibility: g.visibility && insertAt(g.visibility, segment + 1, VISIBLE),
+    visibility: g.visibility && insertAt(g.visibility, segment + 1, VERTEX_VISIBILITY.UNLABELED),
   };
 }
 

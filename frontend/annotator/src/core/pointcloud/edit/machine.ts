@@ -293,13 +293,14 @@ function pressPolyline(
     case "vertex": {
       if (modifiers.alt) {
         const removed = removePolylineVertex(origin, hit.index);
-        if (removed === null) return to(SCAN_IDLE);
+        if (removed === null || !isDrawablePolyline(removed.points)) return to(SCAN_IDLE);
         return to(SCAN_IDLE, { kind: "stage", id, geometry: removed }, { kind: "commit", label: `remove vertex of ${labelClass}` });
       }
       const level = heightOf(frame, origin.points[hit.index]!);
       return to({ type: "moving-vertex", id, origin, index: hit.index, level });
     }
     case "segment": {
+      if (modifiers.alt) return to(SCAN_IDLE);
       if (isToggleModifier(modifiers)) return to(SCAN_IDLE, select(toggleSelection(context.selection, id)));
       const already = context.selection.size === 1 && context.selection.has(id);
       if (!already) return to(SCAN_IDLE, select(selectOnly(id)));
@@ -459,7 +460,9 @@ function dragged(state: Drag, point: Point, context: ScanContext): Cuboid3DGeome
   const ray = screenRay(context.camera, frame, context.viewport, point);
   if (state.type === "moving-vertex") {
     const at = rayGroundHit(ray, frame, state.level);
-    return at === null ? null : movePolylineVertex(state.origin, state.index, at);
+    if (at === null) return null;
+    const moved = movePolylineVertex(state.origin, state.index, at);
+    return isDrawablePolyline(moved.points) ? moved : null;
   }
   const { origin } = state;
   switch (state.type) {

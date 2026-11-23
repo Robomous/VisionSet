@@ -149,9 +149,11 @@ adapter maps to it) adds the line only when it has two vertices not all equal, t
 rule, and otherwise keeps drafting. `hitTest3D` tries the selected label's handles first - a
 polyline's vertices or a cuboid's faces and yaw ring - then any polyline's segments, then cuboid
 bodies. A press on a segment of the selected polyline inserts a vertex and drags it as one
-command; alt on a vertex removes it, refused below two; `delete-selected` removes whole labels.
-A polyline is created with `visibility` omitted, so every vertex is saved visible, and
-`scanVertexLayout` places the vertex handles with the same `screenOf` as the hit test.
+command; alt on a vertex removes it, refused below two; alt anywhere else does nothing; a removal
+or drag that `isDrawablePolyline` rejects is refused, so the document never holds a line the kernel
+would refuse; `delete-selected` removes whole labels. A polyline is created with `visibility`
+omitted, which the kernel reads as unknown; a declared visibility stays aligned with the points,
+an inserted vertex taking `UNLABELED`. `scanVertexLayout` places the vertex handles with the same `screenOf` as the hit test.
 
 ## Zero runtime dependencies
 

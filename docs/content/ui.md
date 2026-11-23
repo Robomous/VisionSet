@@ -832,8 +832,9 @@ ground plane (Enter or a double-click finishes, Escape cancels), their vertices 
 by a click on the selected polyline's segment and removed by alt-click (never below two), and the
 whole label deleted with Delete (see
 [the scan editor](ui/annotator.md#editing-cuboids-and-polylines-on-a-scan)). A scan polyline's
-vertex visibility is not editable: every vertex is saved visible. The Annotations panel and the
-object badge count both kinds.
+vertex visibility is not editable: a new polyline leaves it out, so it stays unknown, and an
+imported polyline keeps its declared visibility, with an inserted vertex recorded as unlabeled.
+The Annotations panel and the object badge count both kinds.
 
 Outside Edit, drag orbits, a right or middle drag (or shift-drag) pans, and the wheel zooms; with the view
 focused, the arrow keys orbit, `+`/`-` zoom and `0` resets. The orbit's pitch is held between
