@@ -293,7 +293,11 @@ export {
   type Affordance,
   type Cursor,
 } from "./core/interaction/affordance";
-export { draftAnnotation } from "./core/interaction/draft";
+export {
+  draftAnnotation,
+  reassignedAnnotation,
+  reassignedAttributes,
+} from "./core/interaction/draft";
 export { setVertexOccludedCommand } from "./core/interaction/vertexVisibility";
 // The suggest session — ephemeral by construction: no effects, no store,
 // nothing in the command log until `acceptedAnnotations` are added like any shape

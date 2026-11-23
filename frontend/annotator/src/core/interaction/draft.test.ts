@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
 import { createDocument } from "../state/document";
 import type { AnnotationDocument } from "../state/document";
 import type { AnnotationSchema, AssetDescriptor, Geometry, LabelClass } from "../types";
-import { draftAnnotation } from "./draft";
+import { draftAnnotation, reassignedAnnotation, reassignedAttributes } from "./draft";
 
 const ASSET: AssetDescriptor = { id: "asset-7", width: 640, height: 480 };
 
@@ -145,5 +145,157 @@ describe("the two fields it invents, and the ones it copies", () => {
     expect(drawn.provenance).toBe("human");
     expect(drawn.model_ref).toBeNull();
     expect(drawn.confidence).toBeNull();
+  });
+});
+
+describe("reassigning an annotation to another class", () => {
+  const LIGHT: LabelClass = {
+    name: "light",
+    geometries: ["bbox"],
+    color: null,
+    attributes: [
+      {
+        name: "state",
+        kind: "select",
+        required: false,
+        options: ["red", "green"],
+        default: null,
+      },
+      {
+        name: "occluded",
+        kind: "boolean",
+        required: false,
+        options: null,
+        default: null,
+      },
+      {
+        name: "lanes",
+        kind: "number",
+        required: false,
+        options: null,
+        default: null,
+      },
+    ],
+  };
+  const OTHER: LabelClass = {
+    name: "other",
+    geometries: ["bbox"],
+    color: null,
+    attributes: [
+      // Same name and kind as light's, a different option list.
+      {
+        name: "state",
+        kind: "select",
+        required: false,
+        options: ["on", "off"],
+        default: "off",
+      },
+      {
+        name: "occluded",
+        kind: "boolean",
+        required: false,
+        options: null,
+        default: false,
+      },
+      // Same name, a different kind.
+      {
+        name: "lanes",
+        kind: "string",
+        required: false,
+        options: null,
+        default: "",
+      },
+      {
+        name: "legend",
+        kind: "string",
+        required: true,
+        options: null,
+        default: null,
+      },
+    ],
+  };
+  const SIMILAR: LabelClass = {
+    name: "similar",
+    geometries: ["bbox"],
+    color: null,
+    attributes: [
+      {
+        name: "state",
+        kind: "select",
+        required: false,
+        options: ["red", "amber"],
+        default: "amber",
+      },
+      {
+        name: "occluded",
+        kind: "boolean",
+        required: false,
+        options: null,
+        default: false,
+      },
+    ],
+  };
+  const schema: AnnotationSchema = {
+    ...SCHEMA,
+    classes: [SIGN, BARE, LIGHT, OTHER, SIMILAR],
+  };
+  const doc = createDocument(ASSET, schema);
+
+  function light(attributes: Record<string, boolean | number | string>) {
+    return {
+      ...draftAnnotation(doc, "bare", BOX, counter()),
+      label_class: "light",
+      attributes,
+    };
+  }
+
+  it("keeps a value the new class declares and that still fits", () => {
+    const next = reassignedAttributes(doc, light({ state: "red", occluded: true }), "similar");
+    expect(next).toEqual({ state: "red", occluded: true });
+  });
+
+  it("drops a key the new class does not declare", () => {
+    const next = reassignedAttributes(doc, light({ state: "red", occluded: true }), "sign");
+    expect(next).toEqual({
+      occluded: true,
+      confidence_note: "",
+      lanes: 2,
+      material: "metal",
+    });
+    expect(Object.hasOwn(next, "state")).toBe(false);
+  });
+
+  it("drops a select value that is not among the new options, and seeds the default", () => {
+    const next = reassignedAttributes(doc, light({ state: "red" }), "other");
+    expect(next["state"]).toBe("off");
+  });
+
+  it("drops a value whose type does not match the new kind, and seeds the default", () => {
+    const next = reassignedAttributes(doc, light({ lanes: 3 }), "other");
+    expect(next["lanes"]).toBe("");
+  });
+
+  it("seeds a declared default for what was not carried, and nothing for a null one", () => {
+    const next = reassignedAttributes(doc, light({}), "other");
+    expect(next).toEqual({ state: "off", occluded: false, lanes: "" });
+    expect(Object.hasOwn(next, "legend")).toBe(false);
+  });
+
+  it("gives a class with no attributes an empty map", () => {
+    expect(reassignedAttributes(doc, light({ state: "red", occluded: true }), "bare")).toEqual({});
+  });
+
+  it("answers an empty map for a class the schema does not declare", () => {
+    expect(reassignedAttributes(doc, light({ state: "red" }), "ghost")).toEqual({});
+  });
+
+  it("moves the class, keeps everything else, and does not touch the input", () => {
+    const before = light({ state: "red", occluded: true });
+    const after = reassignedAnnotation(doc, before, "similar");
+    expect(after.label_class).toBe("similar");
+    expect(after.id).toBe(before.id);
+    expect(after.geometry).toBe(before.geometry);
+    expect(before.label_class).toBe("light");
+    expect(before.attributes).toEqual({ state: "red", occluded: true });
   });
 });
