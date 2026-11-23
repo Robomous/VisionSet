@@ -44,8 +44,7 @@
  * arrived for a source asks for its next page and lands there when it does.
  */
 
-import { Button, ToggleGroup, ToggleGroupItem, cn } from "@robomous/ui-core";
-import { Grid2x2, Grid3x3, Rows3 } from "lucide-react";
+import { Button, cn } from "@robomous/ui-core";
 import { useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent } from "react";
 
 import { useViewportAtLeast } from "../annotator/viewportFloor";
@@ -54,12 +53,13 @@ import { formatCount } from "../lib/format";
 import { PageStatus } from "../patterns/PageStatus";
 import { PROJECT_NAV_MIN_VIEWPORT_PX } from "../patterns/ProjectShell";
 import { ImageDetail } from "./images/ImageDetail";
-import { groupLine, groupOf, type ImageGroup } from "./images/imageFacts";
-import { SourceIcon } from "./images/ImageParts";
-import { HEADING_PX, INSET, SourceSection, type Density } from "./images/ImageSheet";
-import { SourceMenu } from "./images/SourceMenu";
+import { DetailPane } from "../patterns/DetailPane";
+import { type Density } from "./images/imageDensity";
+import { ImagesBand } from "./images/ImagesBand";
+import { HEADING_PX, INSET, SourceSection } from "./images/ImageSheet";
+import { useImageGroups } from "./images/useImageGroups";
 import { useScrollSpy } from "./images/useScrollSpy";
-import { useAssetPages, useProjectAssets, useSources, type AssetPage, type Source } from "./queries";
+import { useProjectAssets, type AssetPage } from "./queries";
 
 /** Twelve rows of five on a wide screen; a whole number of rows at most widths. */
 export const IMAGES_PAGE_SIZE = 60;
@@ -101,37 +101,36 @@ export function ImagesScreen({ projectId, onIngest }: ImagesScreenProps): JSX.El
   );
 }
 
-function newestFirst(sources: readonly Source[]): Source[] {
-  return [...sources].sort((a, b) => (b.registered_at ?? "").localeCompare(a.registered_at ?? ""));
+/** The page's headline count, and how many sources it is drawn from. */
+function ImagesCount({ filter, shownTotal, projectTotal, sourceCount }: { readonly filter: string | null; readonly shownTotal: number; readonly projectTotal: number; readonly sourceCount: number }): JSX.Element {
+  return (
+    <span className="tabular-nums" data-testid="images-count">
+      {filter === null ? `${formatCount(projectTotal)} ${projectTotal === 1 ? "image" : "images"}` : `${formatCount(shownTotal)} of ${formatCount(projectTotal)} images`}
+      {sourceCount > 0 && ` · ${sourceCount} ${sourceCount === 1 ? "source" : "sources"}`}
+    </span>
+  );
+}
+
+/** Images the listing holds that no source claims: counted, never hidden. */
+function UnsourcedNote({ count }: { readonly count: number }): JSX.Element | null {
+  if (count === 0) return null;
+  return (
+    <p className={cn("pt-2 text-xs text-muted-foreground", INSET)} data-testid="images-unsourced">
+      {formatCount(count)} {count === 1 ? "image has" : "images have"} no recorded source and {count === 1 ? "is" : "are"} not listed here.
+    </p>
+  );
 }
 
 function Pane({ projectId, projectTotal }: { readonly projectId: string; readonly projectTotal: number }): JSX.Element {
   const wide = useViewportAtLeast(PROJECT_NAV_MIN_VIEWPORT_PX);
-  const sourcesQuery = useSources(projectId);
-  const sources = useMemo(() => newestFirst(sourcesQuery.data?.items ?? []), [sourcesQuery.data]);
-  // With no source registered, the whole listing is the one run.
-  const keys = useMemo(() => (sources.length === 0 ? [null] : sources.map((s) => s.id)), [sources]);
-  const [pages, setPages] = useState<Readonly<Record<string, number>>>({});
-  const runs = useAssetPages(
-    projectId,
-    IMAGES_PAGE_SIZE,
-    keys.map((key) => ({ sourceId: key, pages: pages[key ?? "all"] ?? 1 })),
-  );
-
-  const groups = useMemo<ImageGroup[]>(
-    () =>
-      keys.flatMap((key, i) => {
-        const run = runs[i];
-        if (run === undefined || run.total === undefined || run.total === 0) return [];
-        return [groupOf(key ?? "all", sources.find((s) => s.id === key), run.items, run.total, run.isFetchingMore)];
-      }),
-    [keys, runs, sources],
-  );
+  const { sources, groups, settled, more } = useImageGroups(projectId, IMAGES_PAGE_SIZE);
 
   const [filter, setFilter] = useState<string | null>(null);
   const [density, setDensity] = useState<Density>("m");
   const [focus, setFocus] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // The image whose detail was closed: the panel stays shut for it, and moving to any other opens it again.
+  const [closedFor, setClosedFor] = useState<string | null>(null);
   const shown = useMemo(() => (filter === null ? groups : groups.filter((g) => g.key === filter)), [groups, filter]);
   const flat = useMemo(() => shown.flatMap((g) => g.images.map((item) => ({ item, group: g }))), [shown]);
   const found = flat.findIndex((entry) => entry.item.asset.id === selectedId);
@@ -141,26 +140,25 @@ function Pane({ projectId, projectTotal }: { readonly projectId: string; readonl
   const sheet = useRef<HTMLDivElement>(null);
   const spy = useScrollSpy(sheet, HEADING_PX, `${shown.map((g) => `${g.key}:${g.images.length}`).join()}|${focus}|${density}`);
 
-  function more(key: string): void {
-    const group = groups.find((g) => g.key === key);
-    if (group === undefined || !group.hasMore || group.isFetchingMore) return;
-    setPages((was) => ({ ...was, [key]: (was[key] ?? 1) + 1 }));
-  }
-
-  /** Walking past the last image a source has sent asks for its next page and lands there when it does. */
-  const [awaiting, setAwaiting] = useState<{ key: string; at: number } | null>(null);
-  useEffect(() => {
-    if (awaiting === null) return;
-    const group = groups.find((g) => g.key === awaiting.key);
-    const next = group?.images[awaiting.at];
-    if (next !== undefined) {
-      pendingFocus.current = true;
-      setSelectedId(next.asset.id);
-      setAwaiting(null);
-    }
-  }, [groups, awaiting]);
-
   const pendingFocus = useRef(false);
+  /**
+   * Walking past the last image a source has sent asks for its next page and lands
+   * there when it does. The landing is settled while rendering, as soon as the page
+   * has arrived: `landedId` says which image came by landing, and the effect below
+   * hands it the focus the arrow keys were carrying.
+   */
+  const [awaiting, setAwaiting] = useState<{ key: string; at: number } | null>(null);
+  const [landedId, setLandedId] = useState<string | null>(null);
+  const arrived = awaiting === null ? undefined : groups.find((g) => g.key === awaiting.key)?.images[awaiting.at];
+  if (awaiting !== null && arrived !== undefined) {
+    setSelectedId(arrived.asset.id);
+    setLandedId(arrived.asset.id);
+    setAwaiting(null);
+  }
+  useEffect(() => {
+    if (landedId !== null) pendingFocus.current = true;
+  }, [landedId]);
+
   function go(next: number, withFocus = false): void {
     const current = flat[index];
     // Off the end of what a source has sent, but not of the source: fetch, then land.
@@ -201,6 +199,7 @@ function Pane({ projectId, projectTotal }: { readonly projectId: string; readonl
     else if (key === "End") go(flat.length - 1, true);
     else if (key === "Enter") setFocus((f) => !f);
     else if (key === "Escape" && focus) setFocus(false);
+    else if (key === "Escape" && selected !== undefined && closedFor !== selected.item.asset.id) setClosedFor(selected.item.asset.id);
     else return false;
     return true;
   }
@@ -230,7 +229,6 @@ function Pane({ projectId, projectTotal }: { readonly projectId: string; readonl
   const shownTotal = shown.reduce((n, g) => n + g.total, 0);
   const allTotal = groups.reduce((n, g) => n + g.total, 0);
   // Only once every source has answered: until then the difference is not a fact.
-  const settled = runs.every((run) => run.total !== undefined);
   const unsourced = sources.length > 0 && settled ? Math.max(0, projectTotal - allTotal) : 0;
   const many = shown.length > 1;
   const at = selected === undefined ? 0 : shown.slice(0, shown.indexOf(selected.group)).reduce((n, g) => n + g.total, 0) + selected.group.images.indexOf(selected.item);
@@ -247,46 +245,10 @@ function Pane({ projectId, projectTotal }: { readonly projectId: string; readonl
       data-testid="images-pane"
     >
       <PageStatus>
-        <span className="tabular-nums" data-testid="images-count">
-          {filter === null ? `${formatCount(projectTotal)} ${projectTotal === 1 ? "image" : "images"}` : `${formatCount(shownTotal)} of ${formatCount(projectTotal)} images`}
-          {sources.length > 0 && ` · ${sources.length} ${sources.length === 1 ? "source" : "sources"}`}
-        </span>
+        <ImagesCount filter={filter} shownTotal={shownTotal} projectTotal={projectTotal} sourceCount={sources.length} />
       </PageStatus>
 
-      <div className={cn("flex h-11 shrink-0 items-center gap-3 border-b bg-background", INSET)}>
-        <div className="flex min-w-0 flex-1 items-center">
-          {groups.length > 1 ? (
-            <SourceMenu projectId={projectId} groups={groups} value={filter} onChange={narrow} />
-          ) : groups[0] !== undefined ? (
-            <span className="flex min-w-0 items-center gap-2 text-[13px]" data-testid="images-source-line">
-              {groups[0].source !== undefined && <SourceIcon source={groups[0].source} className="text-muted-foreground" />}
-              <span className="truncate font-medium">{groups[0].source?.name ?? "All images"}</span>
-              <span className="truncate text-muted-foreground tabular-nums">{groupLine(groups[0])}</span>
-            </span>
-          ) : null}
-        </div>
-        {!focus && (
-          <ToggleGroup
-            type="single"
-            size="sm"
-            variant="outline"
-            value={density}
-            onValueChange={(v) => v !== "" && setDensity(v as Density)}
-            aria-label="Tile size"
-            className="shrink-0"
-          >
-            <ToggleGroupItem value="s" aria-label="Small tiles">
-              <Grid3x3 strokeWidth={1.75} />
-            </ToggleGroupItem>
-            <ToggleGroupItem value="m" aria-label="Medium tiles">
-              <Grid2x2 strokeWidth={1.75} />
-            </ToggleGroupItem>
-            <ToggleGroupItem value="l" aria-label="Large tiles">
-              <Rows3 strokeWidth={1.75} />
-            </ToggleGroupItem>
-          </ToggleGroup>
-        )}
-      </div>
+      <ImagesBand projectId={projectId} groups={groups} filter={filter} onFilter={narrow} density={density} onDensity={setDensity} focus={focus} />
 
       <div className="flex min-h-0 min-w-0 flex-1">
         <div className={cn("flex min-w-0", focus ? "w-60 shrink-0 border-r xl:w-72" : "flex-1")}>
@@ -304,33 +266,42 @@ function Pane({ projectId, projectTotal }: { readonly projectId: string; readonl
                 selectedId={selected?.item.asset.id}
                 spy={spy}
                 sheet={sheet}
-                onSelect={setSelectedId}
+                onSelect={(id) => {
+                  setSelectedId(id);
+                  setClosedFor(null);
+                }}
                 onOpenImage={() => setFocus(true)}
                 onOpenSource={() => narrow(g.key)}
                 onNeedMore={() => more(g.key)}
               />
             ))}
-            {filter === null && unsourced > 0 && (
-              <p className={cn("pt-2 text-xs text-muted-foreground", INSET)} data-testid="images-unsourced">
-                {formatCount(unsourced)} {unsourced === 1 ? "image has" : "images have"} no recorded source and {unsourced === 1 ? "is" : "are"} not
-                listed here.
-              </p>
-            )}
+            {filter === null && <UnsourcedNote count={unsourced} />}
           </div>
         </div>
-        {selected !== undefined && (
-          <ImageDetail
-            projectId={projectId}
-            item={selected.item}
-            source={selected.group.source}
-            at={at}
-            count={shownTotal}
-            focus={focus}
-            manySources={many}
-            onPick={(next) => go(index + (next - at))}
-            onToggle={() => setFocus((f) => !f)}
-          />
-        )}
+        <DetailPane
+          id="images"
+          open={selected !== undefined && closedFor !== selected.item.asset.id}
+          label="Selected image"
+          expanded={focus}
+          defaultWidth={416}
+          minWidth={320}
+          onClose={() => setClosedFor(selected?.item.asset.id ?? null)}
+        >
+          {selected !== undefined && (
+            <ImageDetail
+              projectId={projectId}
+              item={selected.item}
+              source={selected.group.source}
+              at={at}
+              count={shownTotal}
+              focus={focus}
+              manySources={many}
+              onPick={(next) => go(index + (next - at))}
+              onToggle={() => setFocus((f) => !f)}
+              onClose={() => setClosedFor(selected.item.asset.id)}
+            />
+          )}
+        </DetailPane>
       </div>
     </div>
   );

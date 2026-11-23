@@ -39,16 +39,9 @@ import { useEffect, useEffectEvent, useRef, type JSX, type RefObject } from "rea
 import { formatCount } from "../../lib/format";
 import type { Source } from "../queries";
 import { groupLine, tileMeta, type ImageGroup, type ImageItem } from "./imageFacts";
+import { COLUMNS, type Density } from "./imageDensity";
 import { SourceIcon, Thumb } from "./ImageParts";
 import type { ScrollSpy } from "./useScrollSpy";
-
-export type Density = "s" | "m" | "l";
-
-export const COLUMNS: Record<Density, string> = {
-  s: "grid-cols-[repeat(auto-fill,minmax(7.5rem,1fr))]",
-  m: "grid-cols-[repeat(auto-fill,minmax(10rem,1fr))]",
-  l: "grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]",
-};
 
 /** The page's inset, matching `ListPage`'s `PAGE_INSET`. */
 export const INSET = "px-4 md:px-6";

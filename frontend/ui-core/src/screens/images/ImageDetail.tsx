@@ -1,5 +1,7 @@
 /**
- * The selected image, beside the sheet or in focus.
+ * The selected image, in the screen's detail panel (`patterns/DetailPane.tsx`)
+ * or in focus. The panel owns the width — the person sets it — and the motion;
+ * this is what it holds.
  *
  * Narrow, it is a well — the image fitted on the stage colour — over its facts.
  * In focus it takes the pane's width: a stage, and the facts across one line
@@ -14,7 +16,7 @@
  */
 
 import { Button, Kbd, Tooltip, TooltipContent, TooltipTrigger, cn } from "@robomous/ui-core";
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2, X } from "lucide-react";
 import type { JSX, ReactNode } from "react";
 
 import { formatCount } from "../../lib/format";
@@ -32,6 +34,7 @@ export function ImageDetail({
   manySources,
   onPick,
   onToggle,
+  onClose,
   overlay,
   children,
 }: {
@@ -46,6 +49,8 @@ export function ImageDetail({
   readonly manySources: boolean;
   readonly onPick: (at: number) => void;
   readonly onToggle: () => void;
+  /** Closes the panel; the same as Escape on the grid. */
+  readonly onClose?: () => void;
   /** Drawn over the picture, in both forms: a dataset member's labels. */
   readonly overlay?: ReactNode;
   /** What the surface knows beyond the image's own facts, under them: a dataset member's labels and its removal. */
@@ -55,9 +60,10 @@ export function ImageDetail({
     <section
       aria-label="Selected image"
       data-testid="image-detail"
-      className={cn("min-h-0 min-w-0 flex-col bg-background", focus ? "flex flex-1" : "hidden w-[22rem] shrink-0 border-l lg:flex xl:w-[26rem]")}
+      className="flex min-h-0 min-w-0 flex-1 flex-col bg-background"
     >
-      <div className="flex h-11 shrink-0 items-center gap-1 border-b pr-2 pl-4 text-[13px]">
+      {/* 48px, the band's height beside it, so the two headers read as one line across the row. */}
+      <div className="flex h-12 shrink-0 items-center gap-1 border-b border-border/70 pr-2 pl-4 text-[13px] md:pl-6">
         <div className="flex min-w-0 shrink items-center gap-2">
           <h2 className="truncate font-medium tabular-nums" data-testid="image-detail-title">
             <Where item={item} />
@@ -80,6 +86,19 @@ export function ImageDetail({
         </Button>
         <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />
         <ExpandToggle focus={focus} onToggle={onToggle} />
+        {/* Kept in focus, hidden, so the toggle beside it does not move: the control that expands is the one that collapses, in the same place. */}
+        {onClose !== undefined && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="Close the image" onClick={onClose} disabled={focus} className={cn(focus && "invisible")} data-testid="image-close">
+                <X strokeWidth={1.75} aria-hidden="true" className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              Close <span className="ml-1 opacity-60">Esc</span>
+            </TooltipContent>
+          </Tooltip>
+        )}
       </div>
 
       {focus ? (
@@ -87,7 +106,7 @@ export function ImageDetail({
           <div className="flex min-h-0 flex-1 bg-stage p-6">
             <FitImage projectId={projectId} item={item} source={source} className="flex-1" frameClassName="rounded-lg shadow-md" overlay={overlay} />
           </div>
-          <Facts item={item} source={source} layout="row" className="shrink-0 border-t px-4 py-3" />
+          <Facts item={item} source={source} layout="row" className="shrink-0 border-t border-border/70 px-4 py-3 md:px-6" />
         </>
       ) : (
         <>
@@ -96,15 +115,15 @@ export function ImageDetail({
             type="button"
             onClick={onToggle}
             aria-label="Focus on this image"
-            className="h-[min(44dvh,20rem)] shrink-0 cursor-zoom-in border-b bg-stage p-4 outline-none focus-visible:outline-[3px] focus-visible:-outline-offset-[3px] focus-visible:outline-solid focus-visible:outline-ring xl:h-[min(48dvh,24rem)]"
+            className="h-[min(48dvh,24rem)] shrink-0 cursor-zoom-in border-b border-border/70 bg-stage p-4 outline-none focus-visible:outline-[3px] focus-visible:-outline-offset-[3px] focus-visible:outline-solid focus-visible:outline-ring"
           >
             <FitImage projectId={projectId} item={item} source={source} className="size-full" frameClassName="rounded-md shadow-sm" overlay={overlay} />
           </button>
-          <div className="vs-scroll-fade-y min-h-0 flex-1 overflow-y-auto px-4 py-3" data-testid="image-detail-facts">
+          <div className="vs-scroll-fade-y min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6" data-testid="image-detail-facts">
             <Facts item={item} source={source} />
             {children}
           </div>
-          <div className="flex h-9 shrink-0 items-center gap-3 border-t px-4 text-xs text-muted-foreground">
+          <div className="flex h-9 shrink-0 items-center gap-3 border-t border-border/70 px-4 text-xs text-muted-foreground md:px-6">
             <span className="inline-flex items-center gap-1">
               <Kbd>←</Kbd>
               <Kbd>→</Kbd>

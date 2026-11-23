@@ -27,6 +27,7 @@ const CLIP = "33333333-3333-4333-8333-333333333333";
 // of them on every asset, and `unwrap` says so when a fixture does not.
 const ASSET_REST = {
   modality: "image",
+  point_cloud: null,
   content_hash: "abcdef0123456789".repeat(4),
   width: 640,
   height: 480,
@@ -47,7 +48,7 @@ function assets(from: number, n: number, over: Record<string, unknown> = {}): Re
 }
 
 function source(id: string, name: string, kind: "image_directory" | "video", registered: string): Record<string, unknown> {
-  return { id, project_id: PROJECT, kind, name, registered_at: registered, video: null };
+  return { id, project_id: PROJECT, kind, name, registered_at: registered, video: null, frame: null };
 }
 
 interface Asked {
