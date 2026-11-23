@@ -86,7 +86,10 @@ export function PointCloudIngestFlow({
           <CardContent className="pt-4">
             <form className="flex flex-col gap-4" onSubmit={upload}>
               <Dropzone
-                onFiles={onFiles}
+                onFiles={(dropped) => {
+                  register.reset();
+                  onFiles(dropped);
+                }}
                 prompt="Drop point clouds here"
                 note="Each file's format is read from its header at ingest, and a file that is not a scan is reported then."
               />

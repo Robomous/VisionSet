@@ -278,6 +278,7 @@ describe("uploading point-cloud scans", () => {
     await userEvent.click(screen.getByLabelText(/Camera RDF/));
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
+    expect(screen.getByTestId("source-frame").textContent).toBe("camera_rdf");
 
     const form = bodies.get(registerRequests()[0]) as FormData;
     expect(form.get("frame")).toBe("camera_rdf");
@@ -351,6 +352,21 @@ describe("uploading point-cloud scans", () => {
 
     await screen.findByTestId("source-card");
     expect(registerRequests()).toHaveLength(1);
+  });
+
+  it("a new drop of scans drops the refusal", async () => {
+    on("POST", /\/sources\/point-clouds$/, {
+      status: 409,
+      body: { code: "CALIBRATION_IN_USE", message: "Labels were drawn against this calibration." },
+    });
+    await chooseScan();
+    await userEvent.click(screen.getByLabelText(/Camera RDF/));
+    await userEvent.click(screen.getByTestId("register-source"));
+    await screen.findByTestId("register-error");
+
+    await choose([pick("b.ply", "")]);
+    expect(screen.getByTestId("chosen").textContent).toBe("b.ply");
+    expect(screen.queryByTestId("register-error")).toBeNull();
   });
 
   it("clearing the selection drops the refusal and the frame", async () => {

@@ -266,6 +266,11 @@ export function IngestRunSteps({
                     {sourceLabel(source.name)}
                   </span>
                   <Badge variant="secondary">{source.kind}</Badge>
+                  {source.frame != null && (
+                    <Badge variant="secondary" data-testid="source-frame">
+                      {source.frame}
+                    </Badge>
+                  )}
                 </div>
 
                 <div className="grid max-w-2xl gap-4 md:grid-cols-2">

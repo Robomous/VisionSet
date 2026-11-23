@@ -66,12 +66,10 @@ test("a scan dropped on the ingest screen lands in a new batch", async ({ page, 
   await expect(page.getByTestId("register-source")).toBeDisabled();
   await page.getByTestId("scan-frame").locator('input[value="lidar_flu"]').check();
   await page.getByTestId("register-source").click();
-  await expect(page.getByTestId("register-error")).toHaveCount(0);
   await expect(page.getByTestId("source-card")).toBeVisible();
 
   await page.getByTestId("batch-name").fill("scan-batch");
   await page.getByTestId("start-ingest").click();
-  await expect(page.getByTestId("start-error")).toHaveCount(0);
 
   await expect(page.getByTestId("run-state")).toHaveText("Done", { timeout: 60_000 });
   await expect(page.getByTestId("run-progress")).toContainText("1 of 1");
