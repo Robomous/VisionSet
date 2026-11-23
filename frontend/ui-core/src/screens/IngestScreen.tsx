@@ -35,7 +35,11 @@ import { useState, type JSX } from "react";
 import { BackLink } from "../patterns/BackLink";
 import { parentLabel } from "../patterns/parentLabel";
 import { useMediaRuntime } from "../media/VisionSetMediaProvider";
+import { Card, CardContent, FieldError } from "@robomous/ui-core";
 import { ImageIngestFlow } from "./ImageIngestFlow";
+import { ClearSelection, Dropzone } from "./ingestSteps";
+import { PointCloudIngestFlow } from "./PointCloudIngestFlow";
+import { classifyDrop } from "./scanFiles";
 import { SchemaForeshadow } from "./SchemaForeshadow";
 import { VideoImportFlow } from "./VideoImportFlow";
 import { useProject } from "./queries";
@@ -86,7 +90,9 @@ export function IngestScreen({
   // no way back out of that flow for a file that turned out to be an image.
   const clip =
     media !== null && files.length === 1 && files[0].type.startsWith("video/") ? files[0] : null;
-  const prompt = media === null ? "Drop images here" : "Drop images or a video here";
+  const prompt =
+    media === null ? "Drop images or point clouds here" : "Drop images, a video or point clouds here";
+  const drop = classifyDrop(files);
 
   return (
     <div className="flex flex-col gap-6" data-testid="ingest-screen">
@@ -110,7 +116,29 @@ export function IngestScreen({
         {...(onOpenSchema === undefined ? {} : { onOpenSchema })}
       />
 
-      {clip !== null && media !== null ? (
+      {drop === "scans" ? (
+        <PointCloudIngestFlow
+          key={attempt}
+          projectId={projectId}
+          files={files}
+          onFiles={setFiles}
+          onClearFiles={clearFiles}
+          {...(onOpenBatch === undefined ? {} : { onOpenBatch })}
+          {...(onOpenSchema === undefined ? {} : { onOpenSchema })}
+        />
+      ) : drop === "mixed" ? (
+        <Card key={attempt}>
+          <CardContent className="flex flex-col gap-4 pt-4">
+            <Dropzone onFiles={setFiles} prompt={prompt} />
+            <div className="flex items-center justify-between gap-3">
+              <FieldError data-testid="mixed-drop">
+                Add point clouds (.pcd, .ply) separately from other files.
+              </FieldError>
+              <ClearSelection onClear={clearFiles} />
+            </div>
+          </CardContent>
+        </Card>
+      ) : clip !== null && media !== null ? (
         <VideoImportFlow
           key={attempt}
           projectId={projectId}

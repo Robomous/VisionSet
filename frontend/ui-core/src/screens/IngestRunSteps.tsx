@@ -58,7 +58,7 @@
  * always does — and is null otherwise, so the outcome falls back to a phrase.
  */
 
-import { ArrowLeft, Image, RefreshCw, RotateCw, TriangleAlert, Upload } from "lucide-react";
+import { ArrowLeft, Box, Image, RefreshCw, RotateCw, TriangleAlert, Upload } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent, type JSX } from "react";
 
@@ -257,7 +257,11 @@ export function IngestRunSteps({
             <CardContent className="pt-4">
               <form className="flex flex-col gap-4" onSubmit={launch}>
                 <div className="flex items-center gap-2">
-                  <Image className="size-4 text-muted-foreground" aria-hidden="true" />
+                  {source.kind === "point_cloud_directory" ? (
+                    <Box className="size-4 text-muted-foreground" aria-hidden="true" />
+                  ) : (
+                    <Image className="size-4 text-muted-foreground" aria-hidden="true" />
+                  )}
                   <span className="text-sm font-medium" title={source.name}>
                     {sourceLabel(source.name)}
                   </span>

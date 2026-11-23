@@ -107,9 +107,11 @@ export function Step({
 export function Dropzone({
   onFiles,
   prompt,
+  note = "Nothing is filtered in the browser — the server reads every file and reports what it could not.",
 }: {
   readonly onFiles: (files: readonly File[]) => void;
   readonly prompt: string;
+  readonly note?: string;
 }): JSX.Element {
   const [over, setOver] = useState(false);
 
@@ -139,10 +141,7 @@ export function Dropzone({
     >
       <Upload className="size-6 text-muted-foreground" aria-hidden="true" />
       <p className="text-sm">{prompt}</p>
-      <p className="text-xs text-muted-foreground">
-        Nothing is filtered in the browser — the server reads every file and reports what it
-        could not.
-      </p>
+      <p className="text-xs text-muted-foreground">{note}</p>
       <Label htmlFor="ingest-files" className="cursor-pointer text-primary underline">
         or choose files
       </Label>

@@ -225,9 +225,13 @@ describe("registering point-cloud scans", () => {
   }
 
   it("sends the scans, the frame and the name as multipart parts", async () => {
-    const form = await register({ files: [pick("a.pcd", "")], frame: "lidar_rfu", name: "lot" });
+    const form = await register({
+      files: [pick("a.pcd", ""), pick("b.pcd", "")],
+      frame: "lidar_rfu",
+      name: "lot",
+    });
 
-    expect(form.getAll("files")).toHaveLength(1);
+    expect(form.getAll("files")).toHaveLength(2);
     expect(form.get("frame")).toBe("lidar_rfu");
     expect(form.get("name")).toBe("lot");
   });
@@ -236,6 +240,165 @@ describe("registering point-cloud scans", () => {
     const form = await register({ files: [pick("a.pcd", "")], frame: "lidar_rfu" });
 
     expect(form.has("name")).toBe(false);
+  });
+});
+
+describe("uploading point-cloud scans", () => {
+  const SCAN_SOURCE = { ...IMAGE_SOURCE, kind: "point_cloud_directory", name: "a", frame: "camera_rdf" };
+
+  beforeEach(() => {
+    on("GET", /\/batches$/, { status: 200, body: { items: [], total: 0 } });
+  });
+
+  function registerRequests(): Request[] {
+    return sent.filter((r) => r.method === "POST" && r.url.endsWith("/sources/point-clouds"));
+  }
+
+  async function chooseScan(): Promise<void> {
+    renderWithData(<IngestScreen projectId={PROJECT} />);
+    await choose([pick("a.pcd", "")]);
+  }
+
+  it("asks for a frame and offers no registration until one is picked", async () => {
+    await chooseScan();
+
+    expect(screen.getByTestId("scan-frame")).not.toBeNull();
+    expect((screen.getByTestId("register-source") as HTMLButtonElement).disabled).toBe(true);
+
+    await userEvent.click(screen.getByLabelText(/Camera RDF/));
+    expect((screen.getByTestId("register-source") as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("registers with the chosen frame, then launches the run from step 2", async () => {
+    on("POST", /\/sources\/point-clouds$/, { status: 201, body: SCAN_SOURCE });
+    on("POST", /\/ingest-jobs$/, { status: 202, body: job({ state: "running", processed: 0 }) });
+    on("GET", /\/ingest-jobs\//, { status: 200, body: job({ state: "running", batch_id: null }) });
+    await chooseScan();
+
+    await userEvent.click(screen.getByLabelText(/Camera RDF/));
+    await userEvent.click(screen.getByTestId("register-source"));
+    await screen.findByTestId("source-card");
+
+    const form = bodies.get(registerRequests()[0]) as FormData;
+    expect(form.get("frame")).toBe("camera_rdf");
+    expect(form.getAll("files")).toHaveLength(1);
+    expect(screen.getByTestId("step-2").dataset.state).toBe("active");
+
+    await userEvent.click(screen.getByTestId("start-ingest"));
+    await screen.findByTestId("run-card");
+    expect(sent.some((r) => r.method === "POST" && r.url.endsWith("/ingest-jobs"))).toBe(true);
+  });
+
+  it("refuses a mix of scans and other files without opening either flow", async () => {
+    renderWithData(<IngestScreen projectId={PROJECT} />);
+    await choose([pick("a.pcd", ""), pick("b.jpg", "image/jpeg")]);
+
+    expect(screen.getByTestId("mixed-drop").textContent).toBe(
+      "Add point clouds (.pcd, .ply) separately from other files.",
+    );
+    expect(screen.queryByTestId("register-source")).toBeNull();
+    expect(screen.queryByTestId("scan-frame")).toBeNull();
+    expect(screen.queryByTestId("selection")).toBeNull();
+
+    await userEvent.click(screen.getByTestId("clear-files"));
+    expect(screen.queryByTestId("mixed-drop")).toBeNull();
+  });
+
+  it.each([
+    [409, "CALIBRATION_IN_USE", "Labels were drawn against this calibration."],
+    [422, "INVALID_NAME", "That name is not allowed."],
+  ])("renders a %i %s, keeps the files and frame, and a retry with another frame works", async (status, code, message) => {
+    let refuse = true;
+    handlers.push((request) =>
+      request.method === "POST" && request.url.endsWith("/sources/point-clouds")
+        ? refuse
+          ? { status, body: { code, message } }
+          : { status: 201, body: { ...SCAN_SOURCE, frame: "lidar_flu" } }
+        : undefined,
+    );
+    await chooseScan();
+    await userEvent.click(screen.getByLabelText(/Camera RDF/));
+    await userEvent.click(screen.getByTestId("register-source"));
+
+    expect((await screen.findByTestId("register-error")).textContent).toContain(message);
+    expect(screen.getByTestId("chosen").textContent).toBe("a.pcd");
+    expect((screen.getByLabelText(/Camera RDF/) as HTMLInputElement).checked).toBe(true);
+
+    refuse = false;
+    await userEvent.click(screen.getByLabelText(/LiDAR FLU/));
+    await userEvent.click(screen.getByTestId("register-source"));
+    await screen.findByTestId("source-card");
+    expect((bodies.get(registerRequests()[1]) as FormData).get("frame")).toBe("lidar_flu");
+  });
+
+  it("sends one request for a second click while the upload is pending", async () => {
+    const answer = globalThis.fetch;
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal("fetch", async (request: Request) => {
+      if (request.method === "POST" && request.url.endsWith("/sources/point-clouds")) await gate;
+      return answer(request);
+    });
+    on("POST", /\/sources\/point-clouds$/, { status: 201, body: SCAN_SOURCE });
+    await chooseScan();
+    await userEvent.click(screen.getByLabelText(/Camera RDF/));
+
+    await userEvent.click(screen.getByTestId("register-source"));
+    await userEvent.click(screen.getByTestId("register-source"));
+    release();
+
+    await screen.findByTestId("source-card");
+    expect(registerRequests()).toHaveLength(1);
+  });
+
+  it("clearing the selection drops the refusal and the frame", async () => {
+    on("POST", /\/sources\/point-clouds$/, {
+      status: 409,
+      body: { code: "CALIBRATION_IN_USE", message: "Labels were drawn against this calibration." },
+    });
+    await chooseScan();
+    await userEvent.click(screen.getByLabelText(/Camera RDF/));
+    await userEvent.click(screen.getByTestId("register-source"));
+    await screen.findByTestId("register-error");
+
+    await userEvent.click(screen.getByTestId("clear-files"));
+    expect(screen.queryByTestId("register-error")).toBeNull();
+
+    await choose([pick("a.pcd", "")]);
+    expect((screen.getByLabelText(/Camera RDF/) as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByTestId("register-source") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("keeps the source card when the launch is refused", async () => {
+    on("POST", /\/sources\/point-clouds$/, { status: 201, body: SCAN_SOURCE });
+    on("POST", /\/ingest-jobs$/, {
+      status: 409,
+      body: { code: "BATCH_NOT_EDITABLE", message: "That batch is already in annotation." },
+    });
+    await chooseScan();
+    await userEvent.click(screen.getByLabelText(/Camera RDF/));
+    await userEvent.click(screen.getByTestId("register-source"));
+    await screen.findByTestId("source-card");
+    await userEvent.click(screen.getByTestId("start-ingest"));
+
+    expect((await screen.findByTestId("start-error")).textContent).toContain(
+      "can no longer be edited",
+    );
+    expect(screen.getByTestId("source-card")).not.toBeNull();
+  });
+
+  it("never calls a scan an image", async () => {
+    on("POST", /\/sources\/point-clouds$/, { status: 201, body: SCAN_SOURCE });
+    await chooseScan();
+    const flow = screen.getByTestId("point-cloud-flow");
+    expect(flow.textContent).not.toMatch(/image/i);
+
+    await userEvent.click(screen.getByLabelText(/Camera RDF/));
+    await userEvent.click(screen.getByTestId("register-source"));
+    await screen.findByTestId("source-card");
+    expect(flow.textContent).not.toMatch(/image/i);
   });
 });
 
