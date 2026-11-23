@@ -91,6 +91,7 @@ import {
   checkPublishRelease,
   checkPublishSchemaDraft,
   checkRegisterImageSource,
+  checkRegisterPointCloudSource,
   checkRemoveDatasetAsset,
   checkRenameProject,
   checkResumeIngest,
@@ -789,6 +790,27 @@ export function useRegisterSource(projectId: string) {
           encode: "multipart",
         }),
         checkRegisterImageSource,
+      ),
+    onSuccess: () => queries.invalidateQueries({ queryKey: ingestKeys.sources(projectId) }),
+  });
+}
+
+export function useRegisterPointCloudSource(projectId: string) {
+  const client = useApiClient();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      files: readonly File[];
+      frame: components["schemas"]["ScanFrame"];
+      name?: string;
+    }) =>
+      unwrap(
+        await client.POST("/projects/{project_id}/sources/point-clouds", {
+          params: { path: { project_id: projectId } },
+          body: { files: input.files as unknown as string[], frame: input.frame, name: input.name },
+          encode: "multipart",
+        }),
+        checkRegisterPointCloudSource,
       ),
     onSuccess: () => queries.invalidateQueries({ queryKey: ingestKeys.sources(projectId) }),
   });

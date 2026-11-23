@@ -96,6 +96,10 @@ no asset. A still in the directory is reported `unsupported`, like a `notes.txt`
 data is truncated, or whose every point is non-finite, is `corrupt`. The preview is drawn from
 above in the frame the source declares.
 
+The browser registers such a source by upload: `.pcd` and `.ply` files dropped on the ingest
+screen go to `POST /projects/{id}/sources/point-clouds` with the frame the person chose, and the
+run that follows is this one - see [In the browser](#in-the-browser).
+
 ## Asking for a run and doing it are two calls
 
 ```python
@@ -519,13 +523,25 @@ committed session is never swept - its source is the provenance of assets somebo
 
 ## In the browser
 
-`@visionset/ui-core`'s ingest screen picks between two flows by source kind rather than running
+`@visionset/ui-core`'s ingest screen picks between flows by source kind rather than running
 one flow with a branch in it, mirroring the split on this page: `ImageIngestFlow` is the
 directory/upload path this section used to describe alone, and `VideoImportFlow` is everything
 around a `VideoImportService` session - inspection, capability refusal, ranges, rate and scale,
 materialization, progress, commit and cancel. `clipProbe.ts`, the module that used to talk to a
 server-side probe, is gone; a clip is inspected by `@visionset/media`, in the browser, before
 anything is ever sent.
+
+A third flow, `PointCloudIngestFlow`, takes point-cloud scans. The screen routes a drop by file
+extension, case-insensitively: when every file is `.pcd` or `.ply` it is a scan upload, and a drop
+that mixes scans with other files is refused on the screen, asking for the scans to be added
+separately, because one source holds one kind. A scan upload needs a **frame** - `lidar_flu`,
+`camera_rdf` or `lidar_rfu` - and none is preselected: it cannot be read from the files, so
+**Register source** stays disabled until one is chosen. Whether each file really is a scan is not
+judged here; its header is read at ingest, and a file that is not one is reported in the run as
+any other unreadable item is. Registering and launching are the same two calls the image flow
+makes, and the run is shown with the same steps. A registration the server refuses still leaves
+the uploaded files staged under `<workspace>/uploads/` - that is the staging posture every upload
+has, not a leak; see [api.md](api.md#conventions) and [sources.md](sources.md#over-http-a-directory-is-an-upload-a-clip-is-never-one).
 
 A clip `@visionset/media` can open gets a preview player and a timeline: dragging on it selects
 one or more **clip ranges**, half-open stretches the import will read. The selection is stored

@@ -240,7 +240,7 @@ describe("a host with no media runtime", () => {
 
   it("offers no video control at all, and never says a clip could be uploaded", async () => {
     mount(undefined);
-    expect(screen.getByTestId("dropzone").textContent).toContain("Drop images here");
+    expect(screen.getByTestId("dropzone").textContent).toContain("Drop images or point clouds here");
     expect(screen.getByTestId("dropzone").textContent).not.toContain("video");
 
     // A clip dropped anyway stays in the image flow: there is no decoder here,

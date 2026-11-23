@@ -1,24 +1,25 @@
 /**
  * Ingest: the entry point of the product, and the fork at the top of it.
  *
- * ## Two flows, because there are two mechanisms
+ * ## Three flows, because there are distinct mechanisms
  *
  * Images are read **by the server**: they upload, a source is registered, a run
- * fills a batch, and the job row is the only view of what happens after. A clip
- * is read **by this browser**: the host's materializer decodes it locally, frames
- * are staged against a session, and a commit turns the lot into assets. Those are
- * not two settings of one workflow — they have different steps, different
- * refusals and different places a failure can appear — so they are two components,
- * and this screen is the part they share: what was chosen, and where the flow
- * sits in the project.
+ * fills a batch, and the job row is the only view of what happens after. Point
+ * clouds take the same server path but need a stated frame before registering. A
+ * clip is read **by this browser**: the host's materializer decodes it locally,
+ * frames are staged against a session, and a commit turns the lot into assets.
+ * They have different steps, different refusals and different places a failure
+ * can appear, so they are separate components, and this screen is the part they
+ * share: what was chosen, and where the flow sits in the project.
  *
  * ## The kind is derived from the files, never from a mode switch
  *
  * A mode switch is a second place the same fact lives, and the two can disagree —
  * a user who flips to "video" and then drops photographs has told the screen two
- * things. So one dropzone takes both, and a single file the browser reports as
- * video is a clip. Everything else is images, including a directory that happens
- * to contain one.
+ * things. So one dropzone takes all three: scans are routed first, by extension
+ * (a drop mixing scans with other files is refused); otherwise a single file the
+ * browser reports as video is a clip; otherwise the drop is images, including a
+ * directory that happens to contain a clip.
  *
  * ## No media runtime, no video control
  *
@@ -35,7 +36,11 @@ import { useState, type JSX } from "react";
 import { BackLink } from "../patterns/BackLink";
 import { parentLabel } from "../patterns/parentLabel";
 import { useMediaRuntime } from "../media/VisionSetMediaProvider";
+import { Card, CardContent, FieldError } from "@robomous/ui-core";
 import { ImageIngestFlow } from "./ImageIngestFlow";
+import { ClearSelection, Dropzone } from "./ingestSteps";
+import { PointCloudIngestFlow } from "./PointCloudIngestFlow";
+import { classifyDrop } from "./scanFiles";
 import { SchemaForeshadow } from "./SchemaForeshadow";
 import { VideoImportFlow } from "./VideoImportFlow";
 import { useProject } from "./queries";
@@ -78,7 +83,8 @@ export function IngestScreen({
     setAttempt((previous) => previous + 1);
   }
 
-  // A clip is one file the browser calls video; images are everything else. `File.type`
+  // Scans are routed by `classifyDrop` before this. A clip is one file the browser calls
+  // video; images are everything else. `File.type`
   // is a guess the browser makes from the extension, not from the bytes — a container it
   // has no mapping for arrives as `""` and is routed here as an image, which the server
   // then refuses by format. That is the honest description of this line, and it stays a
@@ -86,7 +92,9 @@ export function IngestScreen({
   // no way back out of that flow for a file that turned out to be an image.
   const clip =
     media !== null && files.length === 1 && files[0].type.startsWith("video/") ? files[0] : null;
-  const prompt = media === null ? "Drop images here" : "Drop images or a video here";
+  const prompt =
+    media === null ? "Drop images or point clouds here" : "Drop images, a video or point clouds here";
+  const drop = classifyDrop(files);
 
   return (
     <div className="flex flex-col gap-6" data-testid="ingest-screen">
@@ -110,7 +118,33 @@ export function IngestScreen({
         {...(onOpenSchema === undefined ? {} : { onOpenSchema })}
       />
 
-      {clip !== null && media !== null ? (
+      {drop === "scans" ? (
+        <PointCloudIngestFlow
+          key={attempt}
+          projectId={projectId}
+          files={files}
+          onFiles={setFiles}
+          onClearFiles={clearFiles}
+          {...(onOpenBatch === undefined ? {} : { onOpenBatch })}
+          {...(onOpenSchema === undefined ? {} : { onOpenSchema })}
+        />
+      ) : drop === "mixed" ? (
+        <Card key={attempt}>
+          <CardContent className="flex flex-col gap-4 pt-4">
+            <Dropzone
+              onFiles={setFiles}
+              prompt={prompt}
+              note="Point clouds and other files are ingested as separate sources."
+            />
+            <div className="flex items-center justify-between gap-3">
+              <FieldError data-testid="mixed-drop">
+                Add point clouds (.pcd, .ply) separately from other files.
+              </FieldError>
+              <ClearSelection onClear={clearFiles} />
+            </div>
+          </CardContent>
+        </Card>
+      ) : clip !== null && media !== null ? (
         <VideoImportFlow
           key={attempt}
           projectId={projectId}
