@@ -10,10 +10,10 @@
 
 import { Plug } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState, type JSX, type ReactNode } from "react";
+import { useEffect, useRef, useState, type JSX, type ReactNode } from "react";
 
 import { asApiError } from "../../data/errors";
-import { Alert, AlertDescription, AlertTitle, FieldDescription, FieldError } from "@robomous/ui-core";
+import { Alert, AlertDescription, AlertTitle, FieldError } from "@robomous/ui-core";
 import { describeClassCount, describeTargetDrops, jobFailureProse, lostClasses, refusalProse } from "../../data/refusals";
 import { EmptyState, ErrorState } from "../../patterns/AsyncStates";
 import { ExportTargetSelect } from "../../patterns/ExportTargetSelect";
@@ -33,6 +33,13 @@ function isSettled(job: BackgroundJob): boolean {
  */
 export const NO_RECIPE = "~none";
 
+/** A warning about the chosen model: the title, a line under it, and its test hook. */
+export interface ExportWarning {
+  readonly title: string;
+  readonly body: string;
+  readonly testId: string;
+}
+
 /** What the form is made of, for the dialog to place. */
 export interface ExportParts {
   /** The model picker, names only — or why there is nothing to pick. */
@@ -49,8 +56,8 @@ export interface ExportParts {
   readonly state: string | null;
   readonly processed: number | null;
   readonly total: number | null;
-  /** What the chosen model's format says about losing shapes, when it says anything. */
-  readonly hint: ReactNode;
+  /** What the chosen model's format says about losing shapes, when it says anything: a warning beside the field. */
+  readonly warning: ExportWarning | null;
   readonly consent: ReactNode;
   readonly failures: ReactNode;
 }
@@ -68,10 +75,13 @@ export function ExportForm({ projectId, releaseId, tag, render }: { readonly pro
   // again once the archive has been saved — a finished download is not something
   // to keep polling.
   const [jobId, setJobId] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  // Whether this attempt's archive has been asked for. Only the effect below
+  // reads it, to ask once; nothing is drawn from it, so it is a ref.
+  const saved = useRef(false);
   // The last state this form saw, held because a succeeded job clears `jobId`
   // the moment its archive is saved — so the state would announce the outcome
-  // and remove it in the same tick. Cleared by `run`, not by the poll.
+  // and remove it in the same tick. Set when the archive has been saved, and
+  // cleared by `run`, not by the poll.
   const [outcome, setOutcome] = useState<string | null>(null);
   const job = useBackgroundJob(jobId);
 
@@ -84,9 +94,18 @@ export function ExportForm({ projectId, releaseId, tag, render }: { readonly pro
   const needsConsent = failure?.code === LOSSY;
   const running = exportRelease.isPending || (job.data !== undefined && !isSettled(job.data));
 
+  // A consent answers one refusal for one request: it is spent by the request it
+  // rides on, and a changed target or recipe is a different question, so the
+  // refusal it answered goes with it. Another release is another form (`key`).
+  function forgetConsent(): void {
+    setConsented(false);
+    if (exportRelease.isError) exportRelease.reset();
+  }
+
   function run(allowLossy: boolean): void {
-    setSaved(false);
+    saved.current = false;
     setOutcome(null);
+    setConsented(false);
     exportRelease.mutate(
       {
         target,
@@ -102,22 +121,23 @@ export function ExportForm({ projectId, releaseId, tag, render }: { readonly pro
   // An effect rather than a `usePollingQuery` callback because the *transition*
   // is what matters: the poll answers `succeeded` on every subsequent tick too,
   // and a browser asked to save the same archive four times does it four times.
-  // `saved` is the guard, and it is state rather than a ref because a ref-guarded
-  // effect under `<StrictMode>` loses the very error it was guarding.
+  // `saved` is the guard. The effect sets no state: a job is only ever watched
+  // after a launch, so it never runs on mount, where `<StrictMode>`'s second pass
+  // would find a ref already set and lose the error of the first.
   useEffect(() => {
-    if (saved || jobId === null || job.data?.state !== "succeeded") return;
-    setSaved(true);
-    setOutcome("succeeded");
+    if (saved.current || jobId === null || job.data?.state !== "succeeded") return;
+    saved.current = true;
     // The recipe's `used_by` is read off succeeded export jobs, so this one
     // changed it.
     if (recipe !== NO_RECIPE) void queries.invalidateQueries({ queryKey: recipeKeys.recipes(projectId) });
     artifact.mutate(jobId, {
       onSuccess: (blob) => {
         saveBlob(blob, `${tag}-${target}.zip`);
+        setOutcome("succeeded");
         setJobId(null);
       },
     });
-  }, [saved, jobId, job.data?.state, artifact, tag, target, recipe, queries, projectId]);
+  }, [jobId, job.data?.state, artifact, tag, target, recipe, queries, projectId]);
 
   return (
     <>
@@ -127,9 +147,15 @@ export function ExportForm({ projectId, releaseId, tag, render }: { readonly pro
           formats,
           chosen,
           target,
-          setTarget,
+          setTarget: (next: string) => {
+            forgetConsent();
+            setTarget(next);
+          },
           recipe,
-          setRecipe,
+          setRecipe: (next: string) => {
+            forgetConsent();
+            setRecipe(next);
+          },
           running,
           needsConsent,
           consented,
@@ -184,7 +210,7 @@ function exportParts(input: {
     state: shownState,
     processed: job?.processed ?? null,
     total: job?.total ?? null,
-    hint: <LossyHint formats={formats} chosen={chosen} />,
+    warning: lossyWarning(formats, chosen),
     consent: needsConsent ? <Consent chosen={chosen} lost={lost} failure={failure} consented={consented} onConsented={setConsented} /> : null,
     failures: <Failures refusal={needsConsent ? null : failure} stopped={stopped} download={artifact.isError ? artifact.error : null} />,
   };
@@ -222,16 +248,16 @@ function TargetPicker({ targets, target, onTarget }: { readonly targets: ReturnT
 /**
  * Declared by the format, never by the release: a bbox-only format loses a
  * polygon whether or not today's dataset holds one. A formats read that failed
- * is said, not swallowed — the hint is absent for a reason, and the launch
+ * is said, not swallowed — the warning is there for a reason, and the launch
  * still asks before dropping.
  */
-function LossyHint({ formats, chosen }: { readonly formats: ReturnType<typeof useFormats>; readonly chosen: ExportTarget | undefined }): JSX.Element | null {
+function lossyWarning(formats: ReturnType<typeof useFormats>, chosen: ExportTarget | undefined): ExportWarning | null {
   if (chosen === undefined) return null;
   if (formats.isError) {
-    return <FieldDescription data-testid="lossy-unknown">Whether {chosen.label} loses anything could not be read — the export asks before dropping a shape.</FieldDescription>;
+    return { title: `Not known whether ${chosen.label} loses shapes`, body: "The formats could not be read. The export asks before dropping a shape.", testId: "lossy-unknown" };
   }
   const lossy = formats.data?.items.find((one) => one.name === chosen.format)?.lossy === true;
-  return lossy ? <FieldDescription data-testid="lossy-hint">{chosen.label} cannot take everything the schema allows.</FieldDescription> : null;
+  return lossy ? { title: `${chosen.label} cannot take everything the schema allows`, body: "The export asks before it drops a shape.", testId: "lossy-hint" } : null;
 }
 
 /** Whatever went wrong, each in its own sentence: the refusal, the job that stopped, the download that failed. */

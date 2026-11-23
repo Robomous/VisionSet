@@ -24,7 +24,7 @@
  * too, and the failure reads as "the shell disappeared".
  */
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { projectDigest, type Wire } from "./_wire";
 
@@ -424,6 +424,14 @@ test("a member with more than fits scrolls inside the detail rather than stretch
   await expect(preview.getByTestId("preview-remove")).toBeVisible();
 });
 
+/** A release's export form: the last section of the version's facts, open to begin with. */
+async function openReleaseExport(page: Page): Promise<Locator> {
+  await page.getByTestId(`version-${RELEASE.tag}`).click();
+  const form = page.getByTestId("export-form");
+  await expect(form).toBeVisible();
+  return form;
+}
+
 for (const viewport of [
   { width: 1440, height: 900 },
   { width: 1280, height: 720 },
@@ -433,18 +441,16 @@ for (const viewport of [
   test(`the lossy consent is reachable by pointer at ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await openDataset(page);
-    await page.getByTestId("dataset-tab-releases").click();
-    await page.getByTestId(`export-${RELEASE.tag}`).click();
-    await page.getByTestId("export-target").click();
+    const form = await openReleaseExport(page);
+    await form.getByTestId("export-target").click();
     await page.getByRole("option", { name: /openlane-2d/ }).click();
-    await page.getByTestId("export-submit").click();
+    await form.getByTestId("export-submit").click();
 
-    const dialog = page.getByTestId("export-dialog");
-    const consent = dialog.getByTestId("lossy-consent");
+    const consent = form.getByTestId("lossy-consent");
     await expect(consent.getByTestId("lossy-classes").getByRole("listitem")).toHaveCount(DROPPED.length);
 
-    // The box keeps the height its content needs: the body scrolls instead of
-    // squeezing it until the list and checkbox spill past its background.
+    // The box keeps the height its content needs: nothing squeezes it until the
+    // list and checkbox spill past its background.
     const overflow = await consent.evaluate((node) => node.scrollHeight - node.clientHeight);
     expect(overflow).toBeLessThanOrEqual(0);
     const consentBox = await consent.boundingBox();
@@ -455,15 +461,7 @@ for (const viewport of [
       (consentBox?.y ?? 0) + (consentBox?.height ?? 0),
     );
 
-    // The dialog stays inside the viewport however long the list, so neither
-    // its top nor its footer is off-screen where no scroll can reach them.
-    const box = await dialog.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box?.y ?? -1).toBeGreaterThanOrEqual(0);
-    expect((box?.y ?? 0) + (box?.height ?? Infinity)).toBeLessThanOrEqual(viewport.height);
-
-    const submit = dialog.getByTestId("export-submit");
-    await expect(submit).toBeInViewport({ ratio: 1 });
+    const submit = form.getByTestId("export-submit");
     await expect(submit).toBeDisabled();
 
     // A real pointer click: Playwright scrolls the box into view first, and a
@@ -472,6 +470,7 @@ for (const viewport of [
     await checkbox.click();
     await expect(checkbox).toBeInViewport({ ratio: 1 });
     await expect(checkbox).toBeChecked();
+    await submit.scrollIntoViewIfNeeded();
     await expect(submit).toBeInViewport({ ratio: 1 });
     await expect(submit).toBeEnabled();
     await submit.click({ trial: true });
@@ -480,25 +479,23 @@ for (const viewport of [
 
 test("a consent covers the one export it was given for", async ({ page }) => {
   await openDataset(page);
-  await page.getByTestId("dataset-tab-releases").click();
-  await page.getByTestId(`export-${RELEASE.tag}`).click();
-  await page.getByTestId("export-target").click();
+  const form = await openReleaseExport(page);
+  await form.getByTestId("export-target").click();
   await page.getByRole("option", { name: /openlane-2d/ }).click();
 
-  const dialog = page.getByTestId("export-dialog");
-  const submit = dialog.getByTestId("export-submit");
+  const submit = form.getByTestId("export-submit");
   await submit.click();
-  await dialog.getByTestId("lossy-checkbox").click();
+  await form.getByTestId("lossy-checkbox").click();
   await expect(submit).toHaveText(/Export anyway/);
   const download = page.waitForEvent("download");
   await submit.click();
   await download;
-  await expect(dialog.getByTestId("export-job-state")).toHaveText("Done");
+  await expect(page.getByTestId("export-job-state")).toHaveText("Downloaded");
 
   await expect(submit).toHaveText(/^Export$/);
   await submit.click();
-  await expect(dialog.getByTestId("lossy-consent")).toBeVisible();
-  await expect(dialog.getByTestId("lossy-checkbox")).not.toBeChecked();
+  await expect(form.getByTestId("lossy-consent")).toBeVisible();
+  await expect(form.getByTestId("lossy-checkbox")).not.toBeChecked();
   await expect(submit).toBeDisabled();
 });
 
@@ -512,22 +509,22 @@ for (const [from, to] of [
     { width: 1280, height: 720 },
   ],
 ] as const) {
-  test(`an open export dialog survives a resize from ${from.width} to ${to.width} wide`, async ({ page }) => {
+  test(`an export in progress survives a resize from ${from.width} to ${to.width} wide`, async ({ page }) => {
     await page.setViewportSize(from);
     await openDataset(page);
-    await page.getByTestId("dataset-tab-releases").click();
-    await page.getByTestId(`export-${RELEASE.tag}`).click();
-    await page.getByTestId("export-target").click();
+    const form = await openReleaseExport(page);
+    await form.getByTestId("export-target").click();
     await page.getByRole("option", { name: /openlane-2d/ }).click();
-    const dialog = page.getByTestId("export-dialog");
-    await dialog.getByTestId("export-submit").click();
-    await dialog.getByTestId("lossy-checkbox").click();
+    await form.getByTestId("export-submit").click();
+    await form.getByTestId("lossy-checkbox").click();
 
     await page.setViewportSize(to);
 
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByTestId("export-target")).toHaveText(/openlane-2d/);
-    await expect(dialog.getByTestId("lossy-checkbox")).toBeChecked();
-    await expect(dialog.getByTestId("export-submit")).toBeEnabled();
+    // The section is moved across the breakpoint, not remounted, so nothing
+    // chosen or consented to is lost.
+    const after = page.getByTestId("export-form");
+    await expect(after.getByTestId("export-target")).toHaveText(/openlane-2d/);
+    await expect(after.getByTestId("lossy-checkbox")).toBeChecked();
+    await expect(after.getByTestId("export-submit")).toBeEnabled();
   });
 }

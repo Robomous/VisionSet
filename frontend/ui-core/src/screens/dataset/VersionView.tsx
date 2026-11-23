@@ -36,7 +36,11 @@
 
 import { useEffect, useRef, useState, type JSX, type RefObject } from "react";
 
+import { ImageIcon } from "lucide-react";
+
 import { Button, cn } from "@robomous/ui-core";
+import { DetailPane } from "../../patterns/DetailPane";
+import { WarnTip } from "../../patterns/WarnTip";
 import { formatCount } from "../../lib/format";
 import { AssetThumbnail } from "../AssetThumbnail";
 import { trunkAssetLabel } from "../datasetAsset";
@@ -45,10 +49,10 @@ import { RemoveAssetDialog } from "./dialogs";
 import { MemberDetail } from "./Member";
 import { publishedOn, type DatasetVersion } from "./versions";
 
+/** What the wall is, beside its title. Its size against the release before is the KPI row's, so it is not said again here. */
 function said(version: DatasetVersion): string {
   if (version.release !== null) return `Published ${publishedOn(version.release)} · never changes`;
-  if (version.previous === null) return "What the first release would freeze";
-  return version.imagesDelta === 0 && version.annotationsDelta === 0 ? `The same size as ${version.previous.tag}` : "What the next release would freeze";
+  return "Unpublished · what the next release would freeze";
 }
 
 /** A key the wall answers: pressed on the page, the grid or the detail — never in a field, a menu, a dialog or another control. */
@@ -147,19 +151,32 @@ export function VersionView({ projectId, datasetId, version, latestTag }: Versio
         </div>
       </section>
 
-      {asset !== undefined && selected !== null && datasetId !== undefined && (
-        <MemberDetail
-          projectId={projectId}
-          datasetId={datasetId}
-          asset={asset}
-          at={offset + selected}
-          count={total}
-          focus={focus}
-          onPick={pick}
-          onToggle={() => setFocus((on) => !on)}
-          onRemove={release === null ? () => setRemoving(asset) : null}
-        />
-      )}
+      <DetailPane
+        id="dataset"
+        open={asset !== undefined && selected !== null && datasetId !== undefined}
+        label="Selected image"
+        expanded={focus}
+        defaultWidth={416}
+        onClose={() => {
+          setSelected(null);
+          setFocus(false);
+        }}
+      >
+        {asset !== undefined && selected !== null && datasetId !== undefined && (
+          <MemberDetail
+            projectId={projectId}
+            datasetId={datasetId}
+            asset={asset}
+            at={offset + selected}
+            count={total}
+            focus={focus}
+            onPick={pick}
+            onToggle={() => setFocus((on) => !on)}
+            onClose={() => setSelected(null)}
+            onRemove={release === null ? () => setRemoving(asset) : null}
+          />
+        )}
+      </DetailPane>
 
       {removing !== null && datasetId !== undefined && (
         <RemoveAssetDialog
@@ -184,13 +201,18 @@ export function VersionView({ projectId, datasetId, version, latestTag }: Versio
 
 function WallHead({ version, gone, total, offset, onTurn }: { readonly version: DatasetVersion; readonly gone: number; readonly total: number; readonly offset: number; readonly onTurn: (offset: number) => void }): JSX.Element {
   return (
-    <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border/70 px-4 py-2 md:px-6">
+    // The app's band over a panel: the icon, the title, its count, and what it is, quieter.
+    <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-border/70 px-4 py-2 md:px-6">
+      <ImageIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" strokeWidth={1.75} />
       <h2 className="shrink-0 text-sm font-semibold tracking-tight whitespace-nowrap">{version.title}</h2>
-      <span className="min-w-0 truncate text-sm text-muted-foreground">{said(version)}</span>
+      <span className="shrink-0 text-xs text-muted-foreground tabular-nums" data-testid="wall-count">
+        {formatCount(total)}
+      </span>
+      <span className="min-w-0 truncate text-xs text-muted-foreground">{said(version)}</span>
       {gone > 0 && (
-        <span className="text-xs text-muted-foreground tabular-nums" data-testid="release-gone">
-          {formatCount(gone)} of its images {gone === 1 ? "has" : "have"} since left the dataset
-        </span>
+        <WarnTip title={`${formatCount(gone)} of its images ${gone === 1 ? "has" : "have"} since left the dataset`} size="sm" testId="release-gone">
+          The release still holds {gone === 1 ? "it" : "them"}; this wall shows only what is still in the dataset.
+        </WarnTip>
       )}
       {total > TRUNK_PAGE_SIZE && (
         <div className="ml-auto flex shrink-0 items-center gap-2" data-testid="trunk-paging">

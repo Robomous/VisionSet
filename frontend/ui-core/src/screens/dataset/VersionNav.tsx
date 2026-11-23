@@ -1,14 +1,28 @@
 /**
- * The Dataset section's left column: the open version's facts on top
- * (`VersionFacts.tsx`), then the versions.
+ * The Dataset section's left column, in two regions: the open version's facts
+ * (`VersionFacts.tsx`) scroll in the top one, and the releases are docked to
+ * the column's foot in one of their own. Every one is a section that folds
+ * (`Fold.tsx`); the screen holds which are folded (`FoldsProvider`), so
+ * opening another version keeps them as the person left them.
  *
- * The history reads as a changelog. Each version's entry says what changed
- * against the release before it — the images and annotations it gained or lost,
- * a schema or split that moved — and only that, so a quiet release has a short
- * entry and a busy one a long one. A release that has been verified this session
- * says how that went. The working copy is the entry at the top that has not been
- * published; what it has gained is written in the informational colour, because
- * it is not frozen yet.
+ * ## Docked, so opening a release never moves the list
+ *
+ * The facts differ in height from one version to the next — a release has its
+ * proof and its export, the working copy its classes — so a list under them
+ * would move under the pointer every time an entry was opened. Docked, the
+ * list's place is set by its own height and the column's foot, never by the
+ * facts: opening a version changes what scrolls above it, and the entry just
+ * pressed stays where it was. The dock is capped and scrolls inside itself;
+ * folding it hands its height to the facts.
+ *
+ * ## The history reads as a changelog
+ *
+ * Each release's entry says what changed against the release before it — the
+ * images and annotations it gained or lost, a schema or split that moved — and
+ * only that, so a quiet release has a short entry and a busy one a long one. A
+ * release that has been verified this session says how that went. The working
+ * copy is the entry at the top that has not been published; what it has gained
+ * is written in the informational colour, because it is not frozen yet.
  */
 
 import { History, ShieldAlert, ShieldCheck, Split, Tags } from "lucide-react";
@@ -17,6 +31,7 @@ import type { JSX, ReactNode } from "react";
 import { cn } from "@robomous/ui-core";
 import { formatCount } from "../../lib/format";
 import { useVerifyRelease, type Release } from "../queries";
+import { Fold } from "./Fold";
 import { publishedOn, signed, versionNotes, type DatasetVersion, type VersionNote } from "./versions";
 
 export interface VersionNavProps {
@@ -24,33 +39,38 @@ export interface VersionNavProps {
   /** The open version's id. */
   readonly open: string | null;
   readonly onOpen: (id: string) => void;
-  /** What sits under the versions: a list that could not be read, said. */
+  /** What sits under the releases, in the dock: a list that could not be read, said. */
   readonly children?: ReactNode;
-  /** What sits above the versions: the open version's facts. */
+  /** The top region: the open version's facts. */
   readonly head?: ReactNode;
 }
 
 export function VersionNav({ versions, open, onOpen, children, head }: VersionNavProps): JSX.Element {
+  const opened = versions.find((one) => one.id === open);
   return (
-    // One scroll for the whole column, facts and versions alike: a release's
-    // export never hides under a second scrollbar.
-    <nav aria-label="Version history" data-testid="version-nav" className="vs-scroll-fade-y flex shrink-0 flex-col border-border/70 max-lg:border-b lg:w-80 lg:overflow-y-auto lg:border-r">
-      {head}
-      <div className="flex h-12 shrink-0 items-center gap-2.5 border-b border-border/70 px-4">
-        <History aria-hidden="true" className="size-4 text-muted-foreground" strokeWidth={1.75} />
-        <h2 className="text-sm font-semibold tracking-tight">Versions</h2>
-        <span className="text-sm text-muted-foreground tabular-nums">{formatCount(versions.length)}</span>
+    <nav aria-label="Releases" data-testid="version-nav" className="flex min-h-0 min-w-0 flex-col bg-background text-xs">
+      <div className="vs-scroll-fade-y flex min-h-0 flex-1 flex-col lg:overflow-y-auto">{head}</div>
+      {/* The dock: its own height, capped, scrolling inside itself — never pushed by the facts. */}
+      <div className="shrink-0 border-t border-border/70" data-testid="releases-dock">
+        <Fold id="releases" icon={History} title="Releases" answer={opened?.title} flush>
+          <div className="vs-scroll-fade-y max-h-[min(38dvh,18rem)] overflow-y-auto overscroll-contain">
+            <VersionEntries versions={versions} open={open} onOpen={onOpen} />
+          </div>
+        </Fold>
+        {children}
       </div>
-      <div>
-        {/* One grid for the whole list: every entry's marks share a column, as wide as the widest of them. */}
-        <ol className="grid grid-cols-[minmax(2.25rem,max-content)_minmax(0,1fr)] gap-x-1.5">
-          {versions.map((version) => (
-            <Entry key={version.id} version={version} open={version.id === open} onOpen={onOpen} />
-          ))}
-        </ol>
-      </div>
-      {children}
     </nav>
+  );
+}
+
+/** The history's entries: one grid for the whole list, so every entry's marks share a column, as wide as the widest of them. */
+function VersionEntries({ versions, open, onOpen }: { readonly versions: readonly DatasetVersion[]; readonly open: string | null; readonly onOpen: (id: string) => void }): JSX.Element {
+  return (
+    <ol className="grid grid-cols-[minmax(2.25rem,max-content)_minmax(0,1fr)] gap-x-1.5">
+      {versions.map((version) => (
+        <Entry key={version.id} version={version} open={version.id === open} onOpen={onOpen} />
+      ))}
+    </ol>
   );
 }
 
@@ -85,7 +105,7 @@ function Entry({ version, open, onOpen }: { readonly version: DatasetVersion; re
   const release = version.release;
   const working = release === null;
   return (
-    <li className="col-span-2 grid grid-cols-subgrid border-b border-border/70">
+    <li className="col-span-2 grid grid-cols-subgrid border-b border-border/70 last:border-b-0">
       <button
         type="button"
         aria-current={open ? "true" : undefined}
@@ -93,7 +113,7 @@ function Entry({ version, open, onOpen }: { readonly version: DatasetVersion; re
         onClick={() => onOpen(version.id)}
         // Hover answers at once; a press gives a little; the open entry carries a fill and an edge.
         className={cn(
-          "relative col-span-2 grid cursor-pointer grid-cols-subgrid items-baseline gap-y-1 py-3 pr-4 pl-2 text-left text-sm outline-none transition-transform duration-100 ease-out hover:bg-muted/50 focus-visible:bg-muted/50 active:scale-[0.985] motion-reduce:transition-none",
+          "relative col-span-2 grid cursor-pointer grid-cols-subgrid items-baseline gap-y-1 py-3 pr-4 pl-2 text-left md:pr-6 md:pl-4 text-sm outline-none transition-transform duration-100 ease-out hover:bg-muted/50 focus-visible:bg-muted/50 active:scale-[0.985] motion-reduce:transition-none",
           "aria-[current=true]:bg-muted aria-[current=true]:before:absolute aria-[current=true]:before:inset-y-0 aria-[current=true]:before:left-0 aria-[current=true]:before:w-0.5 aria-[current=true]:before:bg-foreground",
         )}
       >

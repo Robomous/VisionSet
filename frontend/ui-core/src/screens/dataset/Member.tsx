@@ -40,11 +40,13 @@ export interface MemberDetailProps {
   readonly focus: boolean;
   readonly onPick: (at: number) => void;
   readonly onToggle: () => void;
+  /** Closes the detail panel. */
+  readonly onClose?: () => void;
   /** `null` inside a release: taking an image out is the working copy's to offer. */
   readonly onRemove: (() => void) | null;
 }
 
-export function MemberDetail({ projectId, datasetId, asset, at, count, focus, onPick, onToggle, onRemove }: MemberDetailProps): JSX.Element {
+export function MemberDetail({ projectId, datasetId, asset, at, count, focus, onPick, onToggle, onClose, onRemove }: MemberDetailProps): JSX.Element {
   const [showLabels, setShowLabels] = useState(true);
   const annotations = useDatasetAssetAnnotations(datasetId, asset.id);
   const schema = useActiveSchema(projectId);
@@ -64,6 +66,7 @@ export function MemberDetail({ projectId, datasetId, asset, at, count, focus, on
       manySources={false}
       onPick={onPick}
       onToggle={onToggle}
+      onClose={onClose}
       overlay={
         framed && showLabels ? <AnnotationLayer width={asset.width ?? 0} height={asset.height ?? 0} annotations={annotations.data ?? []} classes={[...declared.values()]} /> : null
       }

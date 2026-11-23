@@ -138,6 +138,13 @@ afterEach(() => {
   globalThis.sessionStorage.clear();
 });
 
+/** What a warning says: its button's name — the title — and the description under it. */
+function warningSaid(button: HTMLElement): string {
+  const described = button.getAttribute("aria-describedby");
+  const body = described === null ? "" : (document.getElementById(described)?.textContent ?? "");
+  return `${button.getAttribute("aria-label") ?? ""} ${body}`;
+}
+
 function on(method: string, pattern: RegExp, answer: Answer): void {
   handlers.push((request) =>
     request.method === method && pattern.test(new URL(request.url).pathname) ? answer : undefined,
@@ -247,17 +254,35 @@ async function openReleaseExport(): Promise<HTMLElement> {
   return await openExport();
 }
 
-/** Choose a recipe in the export section by its row's radio; `~none` is "No recipe". */
+/** Choose a recipe in the export section from its select; `~none` is "No recipe". */
 async function pickRecipe(value: string): Promise<void> {
-  await userEvent.click(within(await screen.findByTestId(`recipe-row-${value}`)).getByRole("radio"));
+  await userEvent.click(await screen.findByTestId("export-recipe"));
+  await userEvent.click(await screen.findByTestId(`recipe-row-${value}`));
 }
 
-/** Open a section of the facts column by its title, if it is not open. */
-async function openSection(id: string): Promise<HTMLElement> {
+/** The chosen recipe's Edit recipe or Delete, from the "⋯" beside what it does. */
+async function recipeAction(kind: "edit" | "delete"): Promise<void> {
+  await userEvent.click(screen.getByTestId("recipe-actions"));
+  await userEvent.click(await screen.findByTestId(`recipe-${kind}`));
+}
+
+/** A section's toggle: its heading. */
+function sectionToggle(section: HTMLElement): HTMLElement {
+  const toggle = section.querySelector<HTMLElement>("button[aria-controls]");
+  if (toggle === null) throw new Error("a section without a heading toggle");
+  return toggle;
+}
+
+/** Fold a section of the column by its id, if it is open. */
+async function foldSection(id: string): Promise<HTMLElement> {
   const section = await screen.findByTestId(`section-${id}`);
-  const toggle = within(section).getByRole("button", { expanded: false });
-  await userEvent.click(toggle);
+  if (sectionToggle(section).getAttribute("aria-expanded") === "true") await userEvent.click(sectionToggle(section));
   return section;
+}
+
+/** Whether a node is in a folded section's body: still mounted, so it can unfold in place, but inert. */
+function folded(node: HTMLElement): boolean {
+  return node.closest("[inert]") !== null;
 }
 
 /**
@@ -349,11 +374,12 @@ describe("the dataset view", () => {
     renderWithData(<DatasetScreen projectId={PROJECT} />);
 
     await screen.findByTestId("dataset-stats");
-    const row = await screen.findByTestId("class-count-vehicle");
-    // A thousand labels over a thousand images and the same thousand over ten are
-    // the same total and a very different dataset: both numbers, in one row.
-    expect(row.textContent).toContain("31 on 8");
-    expect(screen.getByTestId("class-count-lane").textContent).toContain("9 on 3");
+    // The Overview's own classes panel, read off the trunk: the largest class leads the readout,
+    // and a thousand labels over a thousand images reads apart from the same thousand over ten.
+    expect((await screen.findByTestId("class-readout")).textContent).toContain("31 on 8 images");
+    expect(screen.getByTestId("overview-class-vehicle").textContent).toContain("31");
+    await userEvent.click(within(screen.getByTestId("overview-class-lane")).getByRole("button"));
+    expect(screen.getByTestId("class-readout").textContent).toContain("9 on 3 images");
   });
 });
 
@@ -377,27 +403,64 @@ describe("the dataset view's words", () => {
     expect(screen.queryByTestId("dataset-tabs")).toBeNull();
   });
 
-  it("reads the working copy's contents as one line, and opens it into labeled, per image and schema", async () => {
+  it("reads the working copy in four numbers over the page, each warning said beside its number", async () => {
     baseline();
     on("GET", /\/schema$/, SCHEMA);
     renderWithData(<DatasetScreen projectId={PROJECT} />);
 
-    const stats = await screen.findByTestId("dataset-stats");
-    // The heading already answers: nothing needs opening to know the size.
-    expect(within(stats).getByTestId("section-contents").textContent).toContain("12 images · 40 annotations");
-    expect(screen.queryByTestId("state-labeling")).toBeNull();
-
-    const contents = await openSection("contents");
-    const labeled = within(contents).getByTestId("state-labeling");
-    expect(labeled.textContent).toBe("9 of 12 labeled");
-    expect(labeled.getAttribute("data-tone")).toBe("progress");
-    expect(contents.textContent).toContain("Per image");
-    expect(contents.textContent).toContain("3.3");
-    expect(contents.textContent).toContain("Schema");
-    expect(contents.textContent).toContain("v3");
+    const kpis = await screen.findByTestId("dataset-kpis");
+    // Each cell keeps its height while its source answers, a dash standing in for the number.
+    await waitFor(() => expect(within(kpis).getByTestId("kpi-images").textContent).toContain("12"));
+    const labeled = within(kpis).getByTestId("kpi-labeled");
+    expect(labeled.textContent).toContain("75%");
+    expect(labeled.textContent).toContain("9 of 12 images");
+    // What holds nothing back but is worth knowing is a warning glyph, its words its name and description.
+    expect(warningSaid(within(labeled).getByTestId("warning-labeling"))).toContain("3 images without labels");
+    expect(warningSaid(within(labeled).getByTestId("warning-labeling"))).toContain("still exported, as negatives");
+    await waitFor(() => expect(within(kpis).getByTestId("kpi-classes").textContent).toContain("3.3 per image"));
+    expect(within(kpis).getByTestId("kpi-releases").textContent).toContain("Latest v1");
     // The per-class counts are not a table with a column each.
     expect(within(screen.getByTestId("version-facts")).queryByRole("columnheader")).toBeNull();
-    expect((await screen.findByTestId("class-count-vehicle")).textContent).toMatch(/31\s*on\s*8/);
+  });
+
+  it("docks the releases under the facts, and opening one never re-mounts the column", async () => {
+    baseline();
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    const nav = await screen.findByTestId("version-nav");
+    const dock = within(nav).getByTestId("releases-dock");
+    // The releases are their own region at the column's foot, after the facts, so the facts'
+    // height — which differs from one version to the next — never sets where the list is.
+    expect(within(dock).getByTestId("section-releases").textContent).toContain("Releases");
+    expect(within(dock).getByTestId("version-working")).not.toBeNull();
+    expect(within(dock).queryByTestId("version-facts")).toBeNull();
+    expect(screen.getByTestId("version-facts").compareDocumentPosition(dock) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    // Opening a release swaps the facts and keeps the very same list: nothing re-mounts, so
+    // the column and the dock keep their scroll and the entry pressed stays where it was.
+    const list = (await within(dock).findByTestId("version-v1")).closest("ol");
+    await openRelease();
+    expect(screen.getByTestId("version-v1").closest("ol")).toBe(list);
+    expect(screen.getByTestId("version-nav")).toBe(nav);
+    await userEvent.click(screen.getByTestId("version-working"));
+    expect(screen.getByTestId("version-working").closest("ol")).toBe(list);
+  });
+
+  it("keeps a folded panel folded while other versions are opened and back", async () => {
+    baseline();
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openRelease();
+    const proof = await foldSection("proof");
+    // Folded, the band says the panel's answer; its fields stay mounted, out of reach.
+    expect(sectionToggle(proof).textContent).toContain("Not verified");
+    expect(folded(within(proof).getByTestId("state-integrity"))).toBe(true);
+
+    // A release's panels are drawn inside its export form; the folds are held above both.
+    await userEvent.click(screen.getByTestId("version-working"));
+    await screen.findByTestId("dataset-stats");
+    await openRelease();
+    expect(sectionToggle(screen.getByTestId("section-proof")).getAttribute("aria-expanded")).toBe("false");
+    // The ones nobody touched keep their default.
+    expect(sectionToggle(screen.getByTestId("section-export")).getAttribute("aria-expanded")).toBe("true");
   });
 
   it("says which classes the schema declares and nothing labels, rather than leaving them out", async () => {
@@ -408,16 +471,13 @@ describe("the dataset view's words", () => {
     });
     renderWithData(<DatasetScreen projectId={PROJECT} />);
 
-    const sign = await screen.findByTestId("class-count-sign");
-    // A class nobody labelled is the gap a person training on this needs to see.
+    // A class nobody labelled is the gap a person training on this needs to see: it is in the legend.
+    const sign = await screen.findByTestId("overview-class-sign");
     expect(sign.textContent).toContain("sign");
-    expect(sign.textContent).toContain("none");
-    expect(screen.getByTestId("class-count-vehicle").textContent).toContain("31 on 8");
-    const chip = await screen.findByTestId("state-classes");
-    expect(chip.getAttribute("data-tone")).toBe("review");
-    // Icon-only beside its own heading: the word is its accessible name, and the heading says it too.
-    expect(chip.getAttribute("aria-label")).toBe("2 of 3 classes used");
-    expect(screen.getByTestId("section-classes").textContent).toContain("2 of 3 classes used");
+    expect(within(sign).getByRole("button")).toHaveProperty("disabled", true);
+    // And the Classes number says so, as a warning beside it.
+    const warning = await screen.findByTestId("warning-classes");
+    expect(warningSaid(warning)).toContain("No labels for sign");
   });
 });
 
@@ -732,7 +792,7 @@ describe("export, and the third gate word", () => {
     await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /YOLOv10/ }));
 
-    const said = (await screen.findByTestId("lossy-unknown")).textContent ?? "";
+    const said = warningSaid(await screen.findByTestId("lossy-unknown"));
     expect(said).toContain("YOLOv10");
     expect(screen.queryByTestId("lossy-hint")).toBeNull();
     // The picker still stands: the catalog answered, only the lossiness did not.
@@ -817,7 +877,7 @@ describe("export, and the third gate word", () => {
     await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /YOLOv10/ }));
     // The format declares it, so the warning is there before anything is attempted.
-    expect(screen.getByTestId("lossy-hint").textContent).toContain("YOLOv10");
+    expect(warningSaid(screen.getByTestId("lossy-hint"))).toContain("YOLOv10");
 
     await userEvent.click(screen.getByTestId("export-submit"));
 
@@ -847,7 +907,7 @@ describe("export, and the third gate word", () => {
     );
   });
 
-  it("forgets a consent once the question changes: another recipe, another target, a closed dialog", async () => {
+  it("forgets a consent once the question changes: another recipe, another target", async () => {
     baseline();
     handlers.push((request) =>
       request.method === "POST" && request.url.includes("/export") && !request.url.includes("allow_lossy")
@@ -857,8 +917,8 @@ describe("export, and the third gate word", () => {
           }
         : undefined,
     );
-    renderWithData(<DatasetScreen projectId={PROJECT} tab="releases" />);
-    await userEvent.click(await screen.findByTestId("export-v1"));
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await openReleaseExport();
     await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /YOLOv10/ }));
 
@@ -880,11 +940,6 @@ describe("export, and the third gate word", () => {
     await userEvent.click(await screen.findByRole("option", { name: /YOLO11/ }));
     expect(screen.queryByTestId("lossy-consent")).toBeNull();
 
-    await consentTo();
-    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    await userEvent.click(screen.getByTestId("export-v1"));
-    expect(await screen.findByTestId("export-dialog")).toBeTruthy();
-    expect(screen.queryByTestId("lossy-consent")).toBeNull();
     await consentTo();
   });
 
@@ -1063,19 +1118,19 @@ describe("export, and the third gate word", () => {
 
     cleanup();
     await exportWith("running");
-    const folded = screen.getByTestId("section-export");
-    const toggle = within(folded).getByRole("button", { expanded: true });
+    const toggle = sectionToggle(screen.getByTestId("section-export"));
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
     await userEvent.click(toggle);
 
     // Folded, the form is out of the way and the heading still says how the job is going.
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByTestId("export-form")).toBeNull();
+    expect(folded(screen.getByTestId("export-form"))).toBe(true);
     const chip = screen.getByTestId("export-job-state");
     expect(chip.textContent).toBe("Exporting 3/12");
     expect(chip.getAttribute("data-tone")).toBe("progress");
     // Unfolded again, the same job is still the one being shown.
     await userEvent.click(toggle);
-    expect(await screen.findByTestId("export-form")).not.toBeNull();
+    expect(folded(screen.getByTestId("export-form"))).toBe(false);
     expect(screen.getByTestId("export-job-state").textContent).toBe("Exporting 3/12");
   });
 });
@@ -1531,7 +1586,8 @@ describe("looking at a member", () => {
     expect(screen.getByTestId("image-focus-toggle").getAttribute("aria-pressed")).toBe("false");
     expect(screen.getByTestId(`open-${ASSET}`).getAttribute("aria-selected")).toBe("true");
     await userEvent.keyboard("{Escape}");
-    expect(screen.queryByTestId("image-detail")).toBeNull();
+    // It slides out to the right, then leaves.
+    await waitFor(() => expect(screen.queryByTestId("image-detail")).toBeNull());
     expect(screen.getByTestId(`open-${ASSET}`).getAttribute("aria-selected")).toBe("false");
   });
 
@@ -1644,9 +1700,9 @@ describe("export, and the recipe beside the target", () => {
     );
     renderWithData(<DatasetScreen projectId={PROJECT} />);
     await openReleaseExport();
-    // "No recipe" is the choice until another is made.
-    expect(within(screen.getByTestId("recipe-row-~none")).getByRole("radio")).toHaveProperty("checked", true);
-    expect(within(screen.getByTestId("recipe-row-yolo-640")).getByRole("radio")).toHaveProperty("checked", false);
+    // "No recipe" is the choice until another is made, and there is nothing chosen to edit.
+    expect(screen.getByTestId("export-recipe").textContent).toBe("No recipe");
+    expect(screen.queryByTestId("recipe-chosen")).toBeNull();
     await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
     await userEvent.click(screen.getByTestId("export-submit"));
@@ -1655,7 +1711,7 @@ describe("export, and the recipe beside the target", () => {
     expect(new URL(launch()?.url ?? "").searchParams.get("recipe")).toBeNull();
   });
 
-  it("lists the project's recipes with a one-line summary on hover, and sends the chosen one by name", async () => {
+  it("lists the project's recipes by name with what each does, and sends the chosen one by name", async () => {
     baseline();
     handlers.push((request) =>
       request.method === "POST" && request.url.includes("/export") ? { status: 200, body: {} } : undefined,
@@ -1664,15 +1720,19 @@ describe("export, and the recipe beside the target", () => {
     await openReleaseExport();
     await userEvent.click(screen.getByTestId("export-target"));
     await userEvent.click(await screen.findByRole("option", { name: /dummy/ }));
-    const row = await screen.findByTestId("recipe-row-yolo-640");
-    // The row is the name; what the recipe does is said with it, and shown in a card beside it.
-    expect(row.textContent).toContain("Letterbox 640×640 · flip · 1 variant");
-    expect(row.textContent).toContain("For YOLO11");
-    await pickRecipe("yolo-640");
-    expect(within(row).getByTestId("recipe-edit")).not.toBeNull();
-    expect(within(row).getByTestId("recipe-delete")).not.toBeNull();
-    // Only the chosen recipe offers them.
-    expect(within(screen.getByTestId("recipe-row-~none")).queryByTestId("recipe-edit")).toBeNull();
+    await userEvent.click(screen.getByTestId("export-recipe"));
+    const option = await screen.findByTestId("recipe-row-yolo-640");
+    // The option is the name; what the recipe does is heard with it, and shown in a card beside it.
+    expect(option.textContent).toContain("Letterbox 640×640 · flip · 1 variant");
+    expect(option.textContent).toContain("For YOLO11");
+    await userEvent.click(option);
+    expect(screen.getByTestId("export-recipe").textContent).toBe("yolo-640");
+    // Chosen, what it does is the line under the select, its Edit recipe and Delete behind the "⋯".
+    expect(screen.getByTestId("recipe-chosen").textContent).toContain("Letterbox 640×640 · flip · 1 variant");
+    await userEvent.click(screen.getByTestId("recipe-actions"));
+    expect(await screen.findByTestId("recipe-edit")).not.toBeNull();
+    expect(screen.getByTestId("recipe-delete")).not.toBeNull();
+    await userEvent.keyboard("{Escape}");
     await userEvent.click(screen.getByTestId("export-submit"));
 
     await waitFor(() => expect(launch()).not.toBeUndefined());
@@ -1681,20 +1741,20 @@ describe("export, and the recipe beside the target", () => {
     expect(query.get("target")).toBe("dummy");
   });
 
-  it("offers only 'No recipe' and the row that writes one when the project has none", async () => {
+  it("offers only 'No recipe', and the \"+\" that writes one, when the project has none", async () => {
     on("GET", /\/preprocessing-recipes$/, { status: 200, body: { items: [], total: 0 } });
     baseline();
     renderWithData(<DatasetScreen projectId={PROJECT} />);
     await openReleaseExport();
 
-    const choice = await screen.findByTestId("export-recipe");
-    const rows = within(choice).getAllByRole("radio");
-    expect(rows).toHaveLength(1);
-    expect(within(screen.getByTestId("recipe-row-~none")).getByRole("radio")).toHaveProperty("checked", true);
-    expect(within(choice).getByTestId("recipe-new").textContent).toBe("New recipe");
+    // Writing one is the "+" beside the field's label, named for what it does.
+    expect(screen.getByTestId("recipe-new").getAttribute("aria-label")).toBe("New recipe");
+    await userEvent.click(screen.getByTestId("export-recipe"));
+    expect(await screen.findAllByRole("option")).toHaveLength(1);
+    expect(screen.getByTestId("recipe-row-~none").getAttribute("aria-selected")).toBe("true");
+    await userEvent.keyboard("{Escape}");
     // Nothing chosen but "No recipe", so there is nothing to edit or delete.
-    expect(within(choice).queryByTestId("recipe-edit")).toBeNull();
-    expect(within(choice).queryByTestId("recipe-delete")).toBeNull();
+    expect(screen.queryByTestId("recipe-actions")).toBeNull();
   });
 
   it("says a recipes read that failed, and still exports without one", async () => {
@@ -1706,7 +1766,7 @@ describe("export, and the recipe beside the target", () => {
     renderWithData(<DatasetScreen projectId={PROJECT} />);
     await openReleaseExport();
 
-    const said = (await screen.findByTestId("export-recipes-error")).textContent ?? "";
+    const said = warningSaid(await screen.findByTestId("export-recipes-error"));
     expect(said).toContain("workspace is busy");
     expect(said).toContain("The export runs without a recipe.");
     expect(said).not.toContain("WORKSPACE_BUSY");
@@ -1742,7 +1802,7 @@ describe("export, and the recipe beside the target", () => {
     await openReleaseExport();
     await pickRecipe("yolo-640");
 
-    await userEvent.click(screen.getByTestId("recipe-delete"));
+    await recipeAction("delete");
     await screen.findByTestId("delete-recipe-dialog");
     // Opening the confirmation is not the decision.
     expect(sent.some((r) => r.method === "DELETE")).toBe(false);
@@ -1751,7 +1811,7 @@ describe("export, and the recipe beside the target", () => {
     await waitFor(() => expect(sent.some((r) => r.method === "DELETE")).toBe(true));
     expect(new URL(sent.find((r) => r.method === "DELETE")?.url ?? "").pathname).toBe(`/projects/${PROJECT}/preprocessing-recipes/yolo-640`);
     // The recipe this export was going to run is gone, so it runs none.
-    await waitFor(() => expect(within(screen.getByTestId("recipe-row-~none")).getByRole("radio")).toHaveProperty("checked", true));
+    await waitFor(() => expect(screen.getByTestId("export-recipe").textContent).toBe("No recipe"));
   });
 
   it("says a recipe that could not be deleted, as a sentence, and keeps the confirmation open", async () => {
@@ -1760,7 +1820,7 @@ describe("export, and the recipe beside the target", () => {
     renderWithData(<DatasetScreen projectId={PROJECT} />);
     await openReleaseExport();
     await pickRecipe("yolo-640");
-    await userEvent.click(screen.getByTestId("recipe-delete"));
+    await recipeAction("delete");
     await userEvent.click(await screen.findByTestId("delete-recipe-submit"));
 
     const said = (await screen.findByTestId("delete-recipe-error")).textContent ?? "";
@@ -1895,7 +1955,7 @@ describe("the line of versions", () => {
     await openRelease();
 
     // The release froze 12 and the listing holds 1 of them.
-    expect((await screen.findByTestId("release-gone")).textContent).toContain("11 of its images have since left the dataset");
+    expect(warningSaid(await screen.findByTestId("release-gone"))).toContain("11 of its images have since left the dataset");
   });
 
   it("offers Remove in the viewer for the working copy, and not inside a release", async () => {
@@ -1928,7 +1988,8 @@ describe("the line of versions", () => {
     expect(within(screen.getByTestId("version-facts")).getByTestId("dataset-stats")).not.toBeNull();
 
     await userEvent.keyboard("{Escape}");
-    expect(screen.queryByTestId("image-detail")).toBeNull();
+    // It slides out to the right, then leaves.
+    await waitFor(() => expect(screen.queryByTestId("image-detail")).toBeNull());
     // The version's facts never left the column.
     expect(within(screen.getByTestId("version-facts")).getByTestId("dataset-stats")).not.toBeNull();
   });
@@ -1957,13 +2018,12 @@ describe("the line of versions", () => {
     expect(screen.queryByTestId(`fresh-${SECOND}`)).toBeNull();
   });
 
-  it("shows a release's split as three shares of one bar", async () => {
+  it("says a release's split as its three shares", async () => {
     const split = { train: 0.7, val: 0.2, test: 0.1, seed: 7 };
     on("GET", /\/releases$/, { status: 200, body: { items: [{ ...RELEASE_ROW, split }], total: 1 } });
     baseline();
     renderWithData(<DatasetScreen projectId={PROJECT} />);
     await openRelease();
-    await openSection("contents");
 
     const bar = screen.getByTestId("split-v1");
     expect(bar.textContent).toContain("Train 70%");
@@ -1976,7 +2036,9 @@ describe("the line of versions", () => {
     renderWithData(<DatasetScreen projectId={PROJECT} />);
     // The working copy is not exportable: it is not a release.
     await screen.findByTestId("dataset-stats");
-    expect(screen.getByTestId("publish-release").textContent).toBe("Publish release");
+    // "Publish" with its icon, named in full for whoever cannot see the bar's context.
+    expect(screen.getByTestId("publish-release").textContent).toBe("Publish");
+    expect(screen.getByRole("button", { name: "Publish release" })).toBe(screen.getByTestId("publish-release"));
     expect(screen.queryByTestId("section-export")).toBeNull();
     expect(screen.queryByTestId("export-form")).toBeNull();
 
