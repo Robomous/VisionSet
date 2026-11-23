@@ -1182,9 +1182,10 @@ thresholds and a threshold filter are deliberately not here yet.
 
 ### The ingest flow, and the order the domain forces
 
-The screen runs **two flows, picked by the chosen file's kind rather than by a branch inside one
-flow**: `ImageIngestFlow` for a folder or a set of stills, `VideoImportFlow` for a clip. They do
-not share a lifecycle, because the things behind them do not - a directory is one synchronous
+The screen runs **three flows, picked by the chosen file's kind rather than by a branch inside one
+flow**: `ImageIngestFlow` for a folder or a set of stills, `PointCloudIngestFlow` for `.pcd` and
+`.ply` scans, and `VideoImportFlow` for a clip. The two directory flows share their run steps; the
+clip shares no lifecycle with them, because the things behind them do not - a directory is one synchronous
 `IngestJob`, a clip is a `VideoImportService` session with an arbitrary stretch of time in the
 middle. See [ingest.md](ingest.md#a-video-import-is-a-session-not-a-run).
 

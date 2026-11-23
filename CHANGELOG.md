@@ -28,6 +28,9 @@ nothing was being distributed. This is the first version that is.
 - **A top-down view for editing cuboids.** In Edit, an orthographic top-down view beside the perspective one
   follows its centre and drives the same editor: draw a footprint, move a box, pull a side face, or turn its yaw
   with a handle on the heading, and the other view follows while the drag is under way (#1071).
+- **Point-cloud scans are uploaded from the browser.** `.pcd` and `.ply` files dropped on the ingest screen
+  register a point-cloud source in a frame chosen there (`lidar_flu`, `camera_rdf` or `lidar_rfu`, with no
+  default) and ingest into a batch; a drop that mixes scans with other files is refused on the screen (#1057).
 
 ### Changed
 
