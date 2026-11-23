@@ -19,7 +19,7 @@ flowchart LR
         Services --> Ports
     end
 
-    Adapters["adapters\nSqliteMetadataStore · FilesystemBlobStore\nPillowImageProcessor"]
+    Adapters["adapters\nSqliteMetadataStore · FilesystemBlobStore\nPillowImageProcessor · StdlibPointCloudProcessor"]
     Callers["callers\nserver · cli · mcp · your program"]
 
     Callers --> Services
@@ -27,13 +27,15 @@ flowchart LR
 ```
 
 `ports` declares protocols and nothing else - a `MetadataStore`, a `BlobStore`, an
-`ImageProcessor`, an `EventBus`, a `JobQueue`, an
+`ImageProcessor`, a `PointCloudProcessor`, an `EventBus`, a `JobQueue`, an
 `AuthProvider`, a `ProgressReporter`, an `Exporter`, an `Importer`, a
 `ModelProvider`, a `PreprocessingDriver`. There is no `VideoProcessor` port: video
 decoding happens in the browser
 ([`frontend/media`](../frontend/media.md)) and the kernel never sees a video file,
 only the image assets a browser-side materializer already produced. `adapters` holds
-the implementations this distribution ships for the storage and image ports; an `Exporter` or a
+the implementations this distribution ships for the storage, queue, event, progress, auth, image and
+point-cloud ports - `StdlibPointCloudProcessor` reads PCD and PLY scans with the standard library
+and draws their thumbnail with Pillow; an `Exporter` or a
 `PreprocessingDriver` is implemented outside the kernel, in `visionset.formats` and
 `visionset.preprocessing`, and handed in as an instance.
 A service names a port, never an adapter, which is what lets a test drive a
@@ -45,8 +47,8 @@ service against an object literal.
 | --- | --- | --- |
 | [`domain/`](../../../../src/visionset/kernel/domain/) | pydantic models, the transition tables, the capability tables | Pure values. Imports nothing from the rest of the kernel. |
 | [`ports/`](../../../../src/visionset/kernel/ports/) | `Protocol` declarations | Signatures name domain types and standard-library types. Nothing else. |
-| [`services/`](../../../../src/visionset/kernel/services/) | the sixteen services | The only way to change anything. Take an open `WorkspaceService` and reach ports through it. |
-| [`adapters/`](../../../../src/visionset/kernel/adapters/) | SQLite, the filesystem, Pillow | The only place a third-party library is named. |
+| [`services/`](../../../../src/visionset/kernel/services/) | the eighteen services | The only way to change anything. Take an open `WorkspaceService` and reach ports through it. |
+| [`adapters/`](../../../../src/visionset/kernel/adapters/) | SQLite, the filesystem, Pillow, the standard-library scan reader | The only place a third-party library is named. |
 
 ## The purity contract
 

@@ -331,6 +331,19 @@ detail opens beside it, and the two are read together. The pattern is `DetailPan
 own facts). A second viewer for the same picture is a second set of keys, sizes and words to
 keep true.
 
+### The scan view
+
+**A point-cloud scan sits on the same `stage` ground as a photograph.** Its WebGL canvas clears
+to transparent, so the surround is the token, not a dark viewport of its own.
+
+| Rule | Where |
+| --- | --- |
+| **Points are coloured by their data, not by a token**: by height along the frame's up axis on a five-stop viridis ramp, by intensity on a grey-to-white ramp that never goes darker than a dark stage still shows, or by the colour the scan recorded. Height and intensity stretch over their 2nd-98th percentiles, so one stray return does not flatten the rest. A scan opens in its own colour when it records one, else by height; a mode the scan does not record is disabled with the reason. | `frontend/annotator/src/core/pointcloud/ramp.ts` |
+| **Labels are drawn in their class colour, over the points**, never hidden inside them, so a label can always be checked against the scan. | `classColor`, `frontend/annotator/src/adapters/react/pointCloudGl.ts` |
+| **The selected label and the one being drawn are in `foreground`**, over every class colour. | `highlightColor` in `frontend/ui-core/src/annotator/PointCloudStage.tsx` |
+| **Handles are ink on the page's own colours**: a face handle or a polyline vertex is a `background` fill with a `foreground` stroke, the yaw ring a dashed `foreground` line; in the top-down view the footprint is `foreground` at 10% and the yaw handle a filled `foreground` dot. | `frontend/ui-core/src/annotator/ScanHandles.tsx` |
+| **The Edit strip and the view's controls float as `muted` islands** with a `border` hairline; a hint (how to finish a polyline or a height) is a line of its own in `muted-foreground`. In Edit an orthographic top-down view sits beside the perspective one, below it on a narrow stage. | `frontend/ui-core/src/annotator/PointCloudStage.tsx` |
+
 ## Where the brand is
 
 Robomous coral is identity: the VisionSet logo — drawn once, in `frontend/app/src/shell/Brand.tsx`,

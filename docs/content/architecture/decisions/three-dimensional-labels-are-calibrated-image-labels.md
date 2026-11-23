@@ -6,8 +6,9 @@ settle it by accident; `point_cloud` has since joined `image` as a modality, und
 
 ## The rule
 
-A 3D label belongs to an **image asset** and is expressed in that image's **sensor frame**.
+A 3D label on an **image asset** is expressed in that image's **sensor frame**.
 It is interpretable only together with the calibration of the source the image came from.
+A 3D label on a point-cloud scan follows the last rule below instead.
 
 - **Calibration is per source**, with an optional per-asset override. Frames from one rig
   share intrinsics and extrinsics, so the source is where they are stored.

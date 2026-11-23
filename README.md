@@ -12,25 +12,25 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 **VisionSet** is an open-source, local-first, SDK-first tool by [Robomous](https://robomous.ai)
-for creating, curating, and versioning computer-vision training datasets. Today it targets 2D
-image annotation; the domain model is built for a Physical AI roadmap — 3D point clouds, lane
-labeling, and multimodal data land on the same foundations. Your data stays on your machines,
+for creating, curating, and versioning computer-vision training datasets. Today it annotates 2D
+images, lanes included, and 3D point-cloud scans; the domain model is built for a Physical AI
+roadmap, and multimodal data lands on the same foundations. Your data stays on your machines,
 every surface (UI, CLI, MCP) is a thin client of the same SDK, and the release artifact is a
 plain `pip` package.
 
 ## What it does
 
-Point it at a folder of images or a clip of video, label them, and hand a trainer a dataset —
+Point it at a folder of images or point-cloud scans, or a clip of video, label them, and hand a trainer a dataset —
 without a server, an account, or your pixels leaving the machine.
 
 Not every surface can do every step: video import and drawing labels live in the browser app (labels
-are also written over REST and MCP), while the CLI ingests still images and records progress but
+are also written over REST and MCP), while the CLI ingests still images and point-cloud scans and records progress but
 cannot create annotations. [`surfaces.md`](docs/content/surfaces.md) has the full matrix.
 
 | | |
 | --- | --- |
-| **Ingest** | folders of images, and video (video import is browser-only). Frames are cut, hashed and stored by content, so the same file twice is one asset and a re-run costs nothing. |
-| **Annotate** | boxes, polygons and classification tags in the browser, with undo/redo, keyboard-first tools, and a headless engine underneath that the UI is only one renderer of. |
+| **Ingest** | folders of images, folders of PCD and PLY point-cloud scans in a declared frame, and video (video import is browser-only). Frames are cut, hashed and stored by content, so the same file twice is one asset and a re-run costs nothing. |
+| **Annotate** | boxes, polygons, polylines and classification tags on images, and cuboids and 3D polylines on point-cloud scans, in the browser, with undo/redo, keyboard-first tools, and a headless engine underneath that the UI is only one renderer of. |
 | **Version** | schema versions are immutable and every label records the one it was judged against. A release freezes the whole thing into a manifest; publish twice from unchanged data and the bytes are identical. |
 | **Split** | a stored recipe rather than a materialised assignment, keyed on **content hash** — so two copies of one image cannot straddle a train/test boundary. |
 | **Export** | addressed to [the model you will train](docs/content/releases.md#export-targets) — the Ultralytics YOLO line, YOLOv7, COCO, Pascal VOC, classification and [the lane family](docs/content/releases.md#the-lane-formats) — each format declaring what it can carry. VisionSet works out exactly what a target would drop *before* writing anything, and refuses to drop it silently. |
@@ -119,9 +119,10 @@ src/visionset/          Single Python distribution (one wheel, one import namesp
   wire/                 The JSON shapes the CLI and MCP publish (gated against the REST models)
   server/               FastAPI — exposes the SDK via REST; openapi.json is a committed contract
   cli/                  Typer CLI (`visionset` console script)
-  mcp/                  MCP server (stdio) — 61 agent tools over the same SDK, four more on request
+  mcp/                  MCP server (stdio) — 66 agent tools over the same SDK, four more on request
   formats/              Exporter plugins: ultralytics, yolov5-yaml, darknet, coco, voc, classification and
-                        the five lane formats (entry-point group `visionset.formats`)
+                        the five lane formats; importer plugins for most of them, plus the kitti and
+                        nuscenes scan importers (entry-point group `visionset.formats`)
   preprocessing/        Pre-processing drivers: Pillow resize and augmentation behind the
                         `PreprocessingDriver` port (entry-point group `visionset.preprocessing`)
   jobs/                 Handlers for work that outlives a request: ingest, export, weights

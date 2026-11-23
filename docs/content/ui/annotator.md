@@ -25,7 +25,7 @@ the hand. Nothing in a zone changes position from frame to frame.
 
 | Zone | Contents |
 | --- | --- |
-| Bar | back (heading the rail's column) · the batch's name `›` `Job · n frames` · pinned `v{n}` badge — then, at the far end, the job's progress · a hairline · the save state · the frame's review move · overflow `⋯` |
+| Bar | back (heading the rail's column) · the batch's name `›` `Job · n frames` (`Job · n scans` for a job of scans) · pinned `v{n}` badge — then, at the far end, the job's progress · a hairline · the save state · the frame's review move · overflow `⋯` |
 | Rail | the tools, the hand; at the foot, hide/show all objects, then help |
 | Stage | the tool's own bar (the active tool and the class it draws; while Suggest is armed, its options and its state) over the picture; on the picture, the status tag and under it the object count and hint top-left, notices top-right, the island bottom-centre, zoom bottom-right |
 | Panel | the classes, tags and objects |
@@ -257,7 +257,9 @@ shape's name too, where the class accepts more than one geometry and so the clas
 not tell two rows apart), then a small warning dot when a required attribute has no value,
 then the model mark, and the object's number at the end. Selected = accent border + tint,
 hidden = 50% opacity. The whole row is the select target; the class name, the mark and the
-two icons sit on it as controls of their own. Eye and trash show on hover, on keyboard focus
+two icons sit on it as controls of their own. Selecting from a row does not take keyboard focus:
+the press leaves focus where it was, and if it was outside the canvas it moves to the canvas,
+which reads its chords off its own root, so Delete and the other keys act on the selection. Eye and trash show on hover, on keyboard focus
 inside the row and on the selected row — a column of icons per object was the loudest thing
 in the list — and always where there is no hover; a hidden object's eye never hides, since it
 is the only sign the object is there. Every row, heading and swatch in the panel starts on
@@ -567,8 +569,10 @@ still zooms. Outside Edit the view keeps its own mapping: a left drag orbits.
 
 - **Draw.** With the cuboid tool and a class picked, drag the footprint on the ground (the
   scan's low robust height along the declared up), move the pointer to raise the height, and
-  click or press Enter to finish. The class pick lists only classes that declare `cuboid_3d`;
-  with none, the tool is disabled with that reason.
+  click or press Enter to finish. While the height is being set the strip says so, and how to
+  finish, on a line of its own, and when the footprint drag ends with focus outside both views,
+  focus moves to the perspective view, so Enter finishes from the keyboard. The class pick lists
+  only classes that declare `cuboid_3d`; with none, the tool is disabled with that reason.
 - **Draw a polyline.** With the polyline tool and a class picked, click along the line; each
   click places a vertex on the ground plane, at the same height a cuboid's footprint uses, and
   the last segment follows the pointer. Enter or a double-click finishes the line, and Escape
@@ -602,7 +606,9 @@ still zooms. Outside Edit the view keeps its own mapping: a left drag orbits.
 - **Keys.** With the view focused: Delete removes the selection, Escape cancels a gesture or
   lets go of the selection, Enter finishes a height or a polyline, `mod+z` / `mod+shift+z` undo and redo,
   `mod+s` saves. The strip carries undo and redo too. As in the 2D editor, a click on the
-  strip or the view's controls leaves focus on the view; a click on a panel row takes it.
+  strip, the view's controls or a panel row leaves focus on the view: a row's press does not take
+  focus, and if focus was not in the perspective view it goes there, so Delete acts on
+  the row just selected.
 
 The selected box and the box being drawn are drawn in the foreground token over the class
 colours. Labels stay on while editing. The Annotations panel lists each cuboid and polyline; its row

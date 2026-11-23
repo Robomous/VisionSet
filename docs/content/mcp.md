@@ -106,7 +106,7 @@ page groups them by what they are for.
 
 | | |
 | --- | --- |
-| `ingest` | A local directory of stills in, one batch out - none when nothing new was read and no `batch_name` was given. Synchronous. `~` is expanded. Refuses a video by name - there is no tool that ingests one; see below. |
+| `ingest` | A local directory of stills in, or of point-cloud scans with a `frame`, one batch out - none when nothing new was read and no `batch_name` was given. Synchronous. `~` is expanded. Refuses a video by name - there is no tool that ingests one; see below. |
 | `list_sources` | The folders a project was built from, and the clips a browser import declared for it - read-only, both kinds. |
 | `backfill_thumbnails` | Render previews that are missing. |
 | `inspect_import` | What importing a labeled dataset from a local directory would do and drop. Writes nothing. |
