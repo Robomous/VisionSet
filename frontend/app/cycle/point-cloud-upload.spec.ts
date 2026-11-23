@@ -81,5 +81,6 @@ test("a scan dropped on the ingest screen lands in a new batch", async ({ page, 
   await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}\/overview\?batch=[0-9a-f-]{36}$/);
   const panel = page.getByTestId("batch-sheet");
   await expect(panel.getByRole("heading", { level: 2, name: "scan-batch" })).toBeVisible();
-  await expect(panel.getByTestId("batch-sheet-facts").locator("dd").first()).toHaveText("1");
+  // The count property, read by its label — a scan batch counts Scans — since the panel lists the state first.
+  await expect(panel.getByTestId("batch-sheet-facts").locator("div", { has: page.locator("dt", { hasText: /^Scans$/ }) }).locator("dd")).toHaveText("1");
 });
