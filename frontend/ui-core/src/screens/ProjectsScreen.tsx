@@ -67,6 +67,7 @@ import {
 import { formatCount, formatWhen } from "../lib/format";
 import { BODY_ROW, ColumnHeader, ListGrid, ListPage, type ListColumn } from "../patterns/ListPage";
 import { PageStatus } from "../patterns/PageStatus";
+import { ProgressReadout } from "../patterns/ProgressRing";
 import { usePagination } from "../patterns/pagination";
 import { clickedRowId, walkRowButtons } from "../patterns/rowDelegation";
 import { TableFooter } from "../patterns/TablePager";
@@ -406,10 +407,10 @@ function SortMenu({
  * annotation). The cell says the larger, so a project of pre-labels nobody has
  * read never reads "All annotated" beside a Status of *Annotating*.
  *
- * **Nothing in it moves.** The ring is a fixed 14px whatever it shows, the
- * count is in tabular figures, and the arc is clamped: a project with anything
- * left never draws a closed ring (at 97% a true arc would read as done), and
- * one with anything annotated never draws an empty one.
+ * **Nothing in it moves.** The count is in tabular figures and the ring is the
+ * shared `ProgressReadout`'s, a fixed 14px whose arc is clamped: a project with
+ * anything left never draws a closed ring (at 97% a true arc would read as
+ * done), and one with anything annotated never draws an empty one.
  */
 function RemainingCell({ digest }: { readonly digest: ProjectListItem["digest"] }): JSX.Element {
   const total = digest.asset_count;
@@ -427,33 +428,23 @@ function RemainingCell({ digest }: { readonly digest: ProjectListItem["digest"] 
   // Floored, so a project one image short never says 100%.
   const share = Math.floor((done / total) * 100);
   return (
-    <span className="flex min-w-0 items-center gap-2" data-testid="remaining-cell" title={`${share}% of images annotated`}>
-      {/* The ring is the images' share; the clamp keeps it open while any
-          frame is still waiting, whichever count that is. */}
-      <ProgressRing fraction={done / total} />
-      <span className="truncate tabular-nums">
-        {formatCount(left)}
-        <span className="text-muted-foreground"> to annotate</span>
-      </span>
+    // The count, then the ring — the shared readout; the ring is the images' share, and stays open while any frame waits.
+    <span className="flex min-w-0" data-testid="remaining-cell" title={`${share}% of images annotated`}>
+      {/* `complete={false}`: frames are left, so the ring stays open whatever the images' share says. */}
+      <ProgressReadout
+        value={done}
+        total={total}
+        complete={false}
+        ringTestId="remaining-ring"
+        detail={{
+          title: "Annotated",
+          caption: `${formatCount(done)} of ${formatCount(total)} images · ${share}%`,
+          note: `${formatCount(left)} ${left === 1 ? "frame" : "frames"} still to annotate.`,
+        }}
+      >
+        <span className="text-foreground">{formatCount(left)}</span> to annotate
+      </ProgressReadout>
     </span>
-  );
-}
-
-const RING_RADIUS = 5.25;
-const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
-
-/** The share annotated as an arc, from twelve o'clock, clockwise. */
-function ProgressRing({ fraction }: { readonly fraction: number }): JSX.Element {
-  // Clamped so the glance never lies: open while anything is left, visible once
-  // anything is done.
-  const shown = fraction <= 0 ? 0 : Math.min(Math.max(fraction, 0.06), 0.92);
-  return (
-    <svg aria-hidden="true" viewBox="0 0 14 14" className="size-3.5 shrink-0 -rotate-90" data-testid="remaining-ring">
-      <circle cx="7" cy="7" r={RING_RADIUS} fill="none" strokeWidth="2" className="stroke-muted-foreground/25" />
-      {shown > 0 && (
-        <circle cx="7" cy="7" r={RING_RADIUS} fill="none" strokeWidth="2" className="stroke-foreground/80" strokeDasharray={`${shown * RING_LENGTH} ${RING_LENGTH}`} />
-      )}
-    </svg>
   );
 }
 

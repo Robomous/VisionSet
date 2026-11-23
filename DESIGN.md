@@ -17,6 +17,7 @@ a value in `:root`, a dark counterpart in `.dark`, exposure through `@theme inli
 | --- | --- |
 | `stage` | The annotator's surround — the neutral a photograph is judged against. Its own role: not `muted`'s subtle fill, not `card`'s surface, distinguishable from `background` so a white asset edge still shows where it ends. Usage: [`docs/content/ui/annotator.md`](docs/content/ui/annotator.md#the-stage) |
 | `origin-hub` / `origin-custom` / `origin-robomous` | A model's provenance, as the small square beside its origin on the Models table. A mark: never a surface, never ink, and an origin is a kind rather than a state, so these never stand in for a status. Theme-stable, like the chart palette |
+| `progress` | Work partway done: a progress ring's arc, a meter's or an operation bar's fill, the `progress` state chip's ink. A warm, low-chroma bronze, apart from `warning` because partway is not a problem; its track is the same colour at 15%, a tint of the hue rather than a grey. Done is still `success`. Drawn by `ProgressReadout` / `ProgressRing` (`patterns/ProgressRing.tsx`) and `ProgressBar` (`patterns/ProgressBar.tsx`) |
 | `--container-page` | The 96rem page cap — read by `PaddedContent`, a reusable VisionSet surface |
 | `--page-inset-bottom` | Not a declared token: a variable a host sets to the height of chrome it pins to the viewport's bottom, read by the sections that fit the window (Overview, Images, Classes, Dataset and Models) and by the Classes commit bar, which floats above it. Unset means 0 |
 | `--page-inset-top` | Not a declared token: the same for chrome a host pins to the viewport's top (the standalone app's tab strip), read by the Images section so its pane takes exactly the height between the two. Unset means 0 |
@@ -228,6 +229,31 @@ has labeled sit in batches that declare `pre_label`.
 
 The motion values are named once, in `lib/motion.ts` (`EASE_OUT`, `EASE_SETTLE`, `DURATION`), and
 read from there.
+
+### Progress
+
+**Progress is said one way: the number, then a small ring.** `ProgressReadout` — the number
+quiet (`muted-foreground`, regular weight, tabular figures, a `%` the digits' own size), then a
+ring a ring's width after it: 14px unless sized to a larger figure, a stroke about a sixth of
+its diameter with round ends, from twelve o'clock clockwise, the arc `progress` on a track of
+`progress/15`, closing in `success` once done. The glance never lies: the ring stays open while
+anything is left and shows once anything is done, and a caller who knows better than the count
+says so (`complete`). A model's own work — drafting labels — takes `info` instead. Where a bar's
+length is the point (a long operation: an import, an ingest, a model's download) the bar is
+`ProgressBar`, in the same colours. Nothing in either animates.
+
+**Pointed at or focused, an indicator that has more to say opens its card** (`ProgressHoverCard`):
+*Labeled 10 of 24 · 42%* on one line, the whole split as one segmented bar in its states'
+colours — the wire's own `ProgressCounts`, so the parts add up — the parts named inline, count
+first, and whose it is under a hairline. The card's percent rounds as the readout's does and never
+says 100 while anything is left.
+
+| Rule | Why |
+| --- | --- |
+| **The first card waits 450 ms; the next, within 400 ms of one closing, opens at once and without motion.** | A pointer crossing a table is passing through; one reading down a column has shown it wants the cards. |
+| **Focus opens it at once, and the indicator is a tab stop** only when it has a card. | What the pointer can learn, the keyboard can too; a plain readout adds no stop. |
+| **It enters from its trigger** (Radix's transform origin), scaled from 0.96 and faded over 160 ms on the strong ease-out, and leaves in 100 ms; the bar's parts grow from their left edges 30 ms apart, just behind it. | Out faster than in; the parts arriving in order read as the split. |
+| **Under reduced motion only the card's opacity changes**, and the bar is simply there. | A fade carries the change without the journey. |
 
 ### States
 

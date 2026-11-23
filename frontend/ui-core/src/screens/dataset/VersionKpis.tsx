@@ -71,7 +71,7 @@ function workingCards(version: DatasetVersion, versions: readonly DatasetVersion
       icon: CircleCheckBig,
       value: images === undefined || labeled === undefined ? null : String(images === 0 ? 0 : Math.round((labeled / images) * 100)),
       unit: "%",
-      ...(images === undefined || labeled === undefined ? {} : { meter: { value: labeled, total: images, tone: "bg-success" } }),
+      ...(images === undefined || labeled === undefined ? {} : { meter: { value: labeled, total: images } }),
       context: images === undefined || labeled === undefined ? undefined : `${formatCount(labeled)} of ${count(images, "image", "images")}`,
       "data-testid": "kpi-labeled",
       ...(images === undefined || images === 0 || unlabeled === 0

@@ -68,7 +68,7 @@ import {
   FieldSet,
   Input,
   LoadingState,
-  Progress,
+  ProgressBar,
   PROJECT_SECTIONS,
   ProjectEyebrow,
   ProjectKpi,
@@ -400,13 +400,13 @@ export function Styleguide(): JSX.Element {
             <p className="mb-1 text-xs text-muted-foreground">
               Ingest — 240 of 412. An amount completed, never a polarity.
             </p>
-            <Progress value={58} aria-label="Ingest progress" />
+            <ProgressBar value={58} aria-label="Ingest progress" />
           </div>
           <div className="max-w-md">
             <p className="mb-1 text-xs text-muted-foreground">
               Annotation — 7 of 11 annotated (64%)
             </p>
-            <Progress
+            <ProgressBar
               value={64}
               aria-label="Annotation progress"
               className="h-2 border border-border"

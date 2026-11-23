@@ -367,7 +367,7 @@ function Kpis({
       icon: CircleCheckBig,
       value: done === null ? null : percentOf(done),
       unit: "%",
-      ...(done === null ? {} : { meter: { value: done, total: counted.asset_count, tone: "bg-success" } }),
+      ...(done === null ? {} : { meter: { value: done, total: counted.asset_count } }),
       // No door: the batches that answer it are the table right below.
       context:
         left === null
@@ -393,7 +393,7 @@ function Kpis({
       label: "In dataset",
       icon: PackageCheck,
       value: inTrunk === undefined ? null : formatCount(inTrunk),
-      ...(inTrunk === undefined ? {} : { meter: { value: inTrunk, total: counted.asset_count, tone: "bg-foreground/70" } }),
+      ...(inTrunk === undefined ? {} : { meter: { value: inTrunk, total: counted.asset_count } }),
       context:
         inTrunk === undefined || releases.data === undefined
           ? undefined
@@ -717,7 +717,8 @@ function Detail({
         data-testid="batch-sheet"
         onInteractOutside={(event) => {
           const target = event.target instanceof Element ? event.target : null;
-          if (target?.closest('[data-testid="overview-batches"], [role=menu], [role=listbox], [role=dialog]') != null) event.preventDefault();
+          // A progress card is portalled outside the sheet; pointing at it is reading the sheet, not leaving it.
+          if (target?.closest('[data-testid="overview-batches"], [role=menu], [role=listbox], [role=dialog], [data-testid="progress-card"]') != null) event.preventDefault();
         }}
         // Focus leaving is not a dismissal: a popover that opened a batch hands
         // the focus back to its trigger as it closes, and the sheet must stay.

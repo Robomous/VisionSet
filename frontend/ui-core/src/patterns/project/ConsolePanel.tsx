@@ -64,11 +64,16 @@ export function ConsoleEmpty({ children, "data-testid": testId }: { readonly chi
   );
 }
 
-/** A thin progress meter, for a table cell. Static: these numbers are read, not watched. */
-export function Meter({ value, total, tone = "bg-foreground/70", className }: { readonly value: number; readonly total: number; readonly tone?: string; readonly className?: string }): JSX.Element {
+/**
+ * A thin progress meter, where a bar's length is the point — a row of them
+ * compared down a column. Static: these numbers are read, not watched. The fill
+ * is `progress` and the track its own hue at 15%, as a `ProgressRing`'s are; a
+ * short readout beside a number is a `ProgressReadout` instead.
+ */
+export function Meter({ value, total, tone = "bg-progress", className }: { readonly value: number; readonly total: number; readonly tone?: string; readonly className?: string }): JSX.Element {
   const share = total === 0 ? 0 : Math.min(1, value / total);
   return (
-    <span className={cn("block h-1 w-16 shrink-0 overflow-hidden rounded-full bg-muted-foreground/15", className)} aria-hidden="true">
+    <span className={cn("block h-1 w-16 shrink-0 overflow-hidden rounded-full bg-progress/15", className)} aria-hidden="true">
       <span className={cn("block h-full rounded-full", tone)} style={{ width: `${share * 100}%` }} />
     </span>
   );

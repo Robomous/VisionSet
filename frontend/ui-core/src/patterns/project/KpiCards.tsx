@@ -40,7 +40,7 @@ import { useEffect, useRef, useState, type JSX, type PointerEvent, type ReactNod
 
 import { Button, Popover, PopoverContent, PopoverTrigger, cn } from "@robomous/ui-core";
 import { WarnTip } from "../WarnTip";
-import { Meter } from "./ConsolePanel";
+import { ProgressRing } from "../ProgressRing";
 
 /** One cell's height, shared with the skeleton that stands in for it. */
 export const KPI_CARD_HEIGHT = "h-[6.25rem]";
@@ -89,8 +89,8 @@ export interface KpiCard {
   readonly body?: ReactNode;
   /** Drawn quieter than the value it follows — `62` and `%`, not four equal characters. */
   readonly unit?: string;
-  /** A share of a whole, drawn as a short meter ahead of the context. */
-  readonly meter?: { readonly value: number; readonly total: number; readonly tone?: string };
+  /** A share of a whole, drawn as a ring after the figure: `progress` while partway, `success` once whole. */
+  readonly meter?: { readonly value: number; readonly total: number };
   /** One short line under the value. */
   readonly context?: ReactNode;
   /** The section that owns the number. */
@@ -195,12 +195,18 @@ function Figures({ card }: { readonly card: KpiCard }): JSX.Element {
           <>
             <span className="truncate text-2xl font-semibold tracking-tight tabular-nums">{card.value}</span>
             {card.unit !== undefined && <span className="ml-px text-sm font-medium text-muted-foreground">{card.unit}</span>}
+            {/* The figure, then its ring, centred on its capitals — a touch taller than them (20px to their 18), because a circle reads smaller than a figure of the same height. */}
+            {card.meter !== undefined && <ProgressRing
+                value={card.meter.value}
+                total={card.meter.total}
+                className="ml-2.5 size-5 self-center"
+                detail={{ title: card.label }}
+              />}
           </>
         )}
       </p>
 
       <p className="mt-1 flex h-4 min-w-0 items-center gap-2 text-xs text-muted-foreground tabular-nums">
-        {card.meter !== undefined && <Meter value={card.meter.value} total={card.meter.total} tone={card.meter.tone ?? "bg-foreground/70"} className="w-12 shrink-0" />}
         <span className="min-w-0 truncate">{card.context}</span>
       </p>
     </>

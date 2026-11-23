@@ -30,7 +30,7 @@
  * brings its own frame.
  */
 
-import { formatCount, isLive, PageStatusOutlet, Progress, useConnections, type Connection } from "@visionset/ui-core";
+import { formatCount, isLive, PageStatusOutlet, ProgressReadout, useConnections, type Connection } from "@visionset/ui-core";
 import { Link, useLocation } from "react-router";
 import type { JSX } from "react";
 
@@ -96,10 +96,10 @@ function Download({ connection }: { readonly connection: Connection }): JSX.Elem
       {pct === null ? (
         <span className="tabular-nums">{formatCount(Math.round(done / 1_000_000))} MB</span>
       ) : (
-        <>
-          <Progress value={pct} className="h-1 w-16" aria-label={`${connection.name} download`} />
-          <span className="w-8 text-right tabular-nums">{pct}%</span>
-        </>
+        // The share, then its ring — the app's one way of saying how far along.
+        <ProgressReadout value={pct} total={100}>
+          <span className="inline-block w-8 text-right">{pct}%</span>
+        </ProgressReadout>
       )}
     </span>
   );

@@ -30,6 +30,7 @@ import { useState, type JSX, type ReactNode } from "react";
 
 import { Button, CardContent, CardFooter, cn } from "@robomous/ui-core";
 import { formatCount } from "../../lib/format";
+import { ProgressRing } from "../ProgressRing";
 import { ProjectCard } from "./ProjectCard";
 
 export type BatchPhase = "draft" | "approved" | "annotating" | "completed" | "in_dataset";
@@ -172,29 +173,8 @@ function PhaseMark({ item }: { readonly item: BatchSummaryItem }): JSX.Element {
       </svg>
     );
   }
-  return <ProgressRing percent={item.percent ?? 0} />;
-}
-
-/** A ring that fills with the share decided — the row's percentage, as a shape. */
-function ProgressRing({ percent }: { readonly percent: number }): JSX.Element {
-  const radius = 8;
-  const circumference = 2 * Math.PI * radius;
-  const filled = (Math.max(0, Math.min(100, percent)) / 100) * circumference;
-  return (
-    <svg viewBox="0 0 20 20" className="size-5 shrink-0 -rotate-90" aria-hidden="true">
-      <circle cx="10" cy="10" r={radius} fill="none" strokeWidth="2.5" className="stroke-info/20" />
-      <circle
-        cx="10"
-        cy="10"
-        r={radius}
-        fill="none"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeDasharray={`${filled} ${circumference}`}
-        className="stroke-info"
-      />
-    </svg>
-  );
+  // The shared ring, at the marks' 20px: the share decided as an arc, in `progress`.
+  return <ProgressRing value={item.percent ?? 0} total={100} className="size-5" />;
 }
 
 function PhaseWord({ item }: { readonly item: BatchSummaryItem }): JSX.Element | null {

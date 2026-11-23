@@ -53,6 +53,7 @@ export function batchRows(
         total: batch.asset_count,
         modality: modalities?.get(batch.id) ?? "image",
         prelabel: runningPrelabel(batch),
+        counts: hasJobs(batch.state) ? batch.progress : null,
         assignees: !hasJobs(batch.state) ? null : read?.status === "ready" ? read.jobs.map((job) => job.assignee ?? null) : undefined,
         ...(read?.status === "error" ? { jobsError: refusalProse(read.error) } : {}),
       };

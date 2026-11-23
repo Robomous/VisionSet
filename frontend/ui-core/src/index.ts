@@ -111,6 +111,10 @@ export {
 } from "./patterns/project/AssetMosaic.js";
 // The Overview's console: the same contract — view models in, callbacks out.
 export { CONSOLE_COLUMNS, CONSOLE_SURFACE, ConsoleEmpty, ConsolePanel, Meter, type ConsolePanelProps } from "./patterns/project/ConsolePanel.js";
+export { ProgressReadout, ProgressRing, type ProgressReadoutProps, type ProgressRingProps, type ProgressTone } from "./patterns/ProgressRing.js";
+export { ProgressBar } from "./patterns/ProgressBar.js";
+export { SEGMENT_FILL, SEGMENT_STROKE, labelSegments, type ProgressDetail, type ProgressSegment, type SegmentTone } from "./patterns/progressDetail.js";
+export { ProgressHoverCard, type ProgressHoverCardProps } from "./patterns/ProgressHoverCard.js";
 export { KPI_CARD_HEIGHT, KPI_GRID, KpiCards, type KpiAttention, type KpiCard, type KpiStep } from "./patterns/project/KpiCards.js";
 export { BatchTable, PhaseBadge, useBatchTableView, type BatchRowView, type BatchTableProps, type BatchTableView } from "./patterns/project/BatchTable.js";
 export { PHASE_DOT, PHASE_LABEL } from "./patterns/project/batchRowModel.js";

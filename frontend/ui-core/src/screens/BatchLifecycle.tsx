@@ -26,8 +26,9 @@ import { SquareCheck } from "lucide-react";
 
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError, Progress, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
 import { assetNoun } from "../lib/assetNoun";
+import { ProgressBar } from "../patterns/ProgressBar";
 import { annotatedShare, outstandingWork } from "./batchState";
 import {
   useApproveBatch,
@@ -64,7 +65,7 @@ export function BatchProgressBar({
   const share = annotatedShare(counts);
   return (
     <div className="flex flex-col gap-1" {...rest}>
-      <Progress
+      <ProgressBar
         aria-label="Annotation progress"
         value={share.percent}
         className="h-2 border border-border"

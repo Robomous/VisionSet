@@ -64,7 +64,8 @@ import { useEffect, useState, type FormEvent, type JSX } from "react";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
-import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardContent, Progress, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
+import { Alert, AlertDescription, AlertTitle, Badge, Button, Card, CardContent, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@robomous/ui-core";
+import { ProgressBar } from "../patterns/ProgressBar";
 import type { BadgeTone } from "./batchState";
 import { OutcomeNextStep } from "./ComposedTransitions";
 import { Step } from "./ingestSteps";
@@ -382,7 +383,7 @@ export function IngestRunSteps({
  * `IngestFailure.name` precedent: shorten for display, keep the full string in
  * `title`, and never invent a name the source does not have.
  */
-export function sourceLabel(name: string): string {
+function sourceLabel(name: string): string {
   return /^[0-9a-f]{64}$/.test(name) ? `${name.slice(0, 8)}…` : name;
 }
 
@@ -404,7 +405,7 @@ function IngestProgress({ job }: { readonly job: IngestJob }): JSX.Element {
           ? `${job.processed} extracted`
           : `${job.processed} of ${job.total}`}
       </p>
-      <Progress aria-label="Ingest progress" value={percent} />
+      <ProgressBar aria-label="Ingest progress" value={percent} />
     </div>
   );
 }

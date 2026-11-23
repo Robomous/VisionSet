@@ -40,13 +40,24 @@ import { Badge, Kbd, cn } from "@robomous/ui-core";
 import { assetNoun, type Modality } from "../../lib/assetNoun";
 import { formatCount } from "../../lib/format";
 import type { BatchPhase } from "./BatchSummary";
-import { PHASE_DOT, PHASE_LABEL, initials } from "./batchRowModel";
+import { PHASE_DOT, PHASE_LABEL, initials, labeledDetail } from "./batchRowModel";
 import { BODY_ROW, ColumnHeader, ListGrid, type ListColumn } from "../ListPage";
 import { columnLines } from "../listColumns";
 import { usePagination, type Pagination } from "../pagination";
 import { InlinePager } from "../TablePager";
-import { Meter } from "./ConsolePanel";
+import { ProgressReadout } from "../ProgressRing";
 import { ViewSwitch } from "./ViewSwitch";
+
+/** The wire's split of a batch's or a job's assets by annotation state. */
+export interface LabelCounts {
+  readonly total: number;
+  readonly accepted: number;
+  readonly annotated: number;
+  readonly review_pending: number;
+  readonly skipped: number;
+  readonly pre_labeled: number;
+  readonly unannotated: number;
+}
 
 export interface BatchRowView {
   readonly id: string;
@@ -60,6 +71,8 @@ export interface BatchRowView {
   readonly modality?: Modality;
   /** A model drafting labels, while it runs. */
   readonly prelabel: { readonly processed: number; readonly total: number | null } | null;
+  /** How the batch's assets split by annotation state, once it has jobs — what its progress says when pointed at. */
+  readonly counts?: LabelCounts | null;
   /**
    * Who holds the batch's jobs, in job order: `null` before it has any,
    * `undefined` while they are being read.
@@ -394,27 +407,21 @@ export function PhaseBadge({ phase }: { readonly phase: BatchPhase }): JSX.Eleme
   );
 }
 
-/** One plain bar — how much is decided — and the count beside it. */
+/** How much is decided: the count, quiet, then its ring — a model's drafting in its own colour. */
 function Progress({ row }: { readonly row: BatchRowView }): JSX.Element {
   if (row.prelabel !== null) {
     const total = row.prelabel.total ?? row.total;
     return (
-      <span className="flex items-center gap-2.5 pr-5 text-xs text-info">
-        <Meter value={row.prelabel.processed} total={total} tone="bg-info/70" className="w-auto flex-1" />
-        <span className="shrink-0 tabular-nums">
-          Drafting {formatCount(row.prelabel.processed)}/{formatCount(total)}
-        </span>
-      </span>
+      <ProgressReadout value={row.prelabel.processed} total={total} tone="info" className="text-xs text-info">
+        Drafting {formatCount(row.prelabel.processed)}/{formatCount(total)}
+      </ProgressReadout>
     );
   }
   if (row.done === null) return <span className="text-xs text-muted-foreground">Not started</span>;
   return (
-    <span className="flex items-center gap-2.5 pr-5">
-      <Meter value={row.done} total={row.total} tone={row.done === row.total ? "bg-success" : "bg-foreground/70"} className="w-auto flex-1" />
-      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-        <span className="text-foreground">{formatCount(row.done)}</span>/{formatCount(row.total)}
-      </span>
-    </span>
+    <ProgressReadout value={row.done} total={row.total} className="text-xs" detail={labeledDetail(row)}>
+      {formatCount(row.done)}/{formatCount(row.total)}
+    </ProgressReadout>
   );
 }
 
