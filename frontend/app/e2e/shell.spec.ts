@@ -309,7 +309,10 @@ test("the status bar is on every workbench page and leads to Models", async ({ p
   // credential, which no page says. The page's own facts take the left half.
   await expect(page.getByTestId("status-models")).toHaveCount(0);
   await expect(page.getByTestId("status-access")).toHaveText("Local workspace · token");
-  await expect(page.getByTestId("page-status")).toBeVisible();
+  // The page's facts have a place there before there is anything to say: with no
+  // model connected the region is empty, and present, so a later count is heard.
+  await expect(page.getByTestId("page-status")).toBeAttached();
+  await expect(page.getByTestId("page-status")).toBeEmpty();
 });
 
 test("a deep link inside the product resolves to its screen", async ({ page }) => {

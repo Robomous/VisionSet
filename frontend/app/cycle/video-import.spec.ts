@@ -521,7 +521,7 @@ test("a clip is inspected, cut and imported here, and never uploaded", async ({ 
     const line = page.getByTestId("images-source-line");
     await expect(line).toContainText("vp8.webm");
     await expect(line).toContainText(`${WALK_FRAMES} frames`);
-    await expect(line).toContainText("32×32");
+    await expect(line).toContainText("32 × 32");
     await expect(line).toContainText(
       WALK_RATE === 1
         ? "one every second"

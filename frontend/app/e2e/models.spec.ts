@@ -416,8 +416,10 @@ test("a check nobody on this page started survives a reload", async ({ page }) =
 
   await expect(page.getByTestId("integrity-progress-prose")).toHaveText("4 of 9 files · 44%");
   await expect(page.getByTestId("integrity-progress-bar")).toHaveAttribute("aria-valuenow", "44");
-  // A check in flight is not a setup state: the connection is still ready.
-  await expect(page.getByTestId("connection-status")).toContainText("Ready");
+  // A check in flight is not a setup state: the connection is still ready. The
+  // row shows the run in the state's place, so the word is read off the sheet.
+  await page.getByTestId("open-sam2-local").click();
+  await expect(page.getByTestId("model-setup").getByTestId("connection-status")).toContainText("Ready");
 });
 
 test("a transfer and a re-read are two records on one row", async ({ page }) => {

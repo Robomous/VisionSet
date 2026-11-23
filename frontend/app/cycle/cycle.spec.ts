@@ -41,7 +41,7 @@
  * fold's augmented variant beside its source.
  */
 
-import { expect, test, type Download, type Page, type TestInfo } from "@playwright/test";
+import { expect, test, type Download, type Locator, type Page, type Request, type TestInfo } from "@playwright/test";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { inflateRawSync } from "node:zlib";
@@ -180,6 +180,19 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
   // the batch panel says "Done" and has no door, so the viewer a completed batch reopens as is
   // reached by address alone; the road in is still the one the app itself produced.
   let jobAddress = "";
+  // The app's calls still in flight. A reload or a typed address tears down
+  // whatever the page is reading or writing, and the aborted list below pins
+  // every torn-down call as one the *app* abandoned — so the walk lets the page
+  // fall quiet before it throws the page away, and what the list still catches
+  // is the app's own doing.
+  const inFlight = new Set<Request>();
+  page.on("request", (request) => {
+    const kind = request.resourceType();
+    if (kind === "fetch" || kind === "xhr") inFlight.add(request);
+  });
+  page.on("requestfinished", (request) => inFlight.delete(request));
+  page.on("requestfailed", (request) => inFlight.delete(request));
+  const settled = (): Promise<void> => quiet(inFlight);
   page.on("response", (response) => {
     const kind = response.request().resourceType();
     if (response.status() < 400) return;
@@ -372,6 +385,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * be what answers: the project is still schema-less, and anything on screen
      * after this reload came out of the draft.
      */
+    await settled();
     await page.reload();
     await expect(page.getByTestId("schema-editor")).toContainText("Saving creates version 1");
     for (const name of ["vehicle", "lane", "daytime", "centerline"]) {
@@ -563,6 +577,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // at the server and therefore drives the SPA deep-link fallback for real. A
     // typed `page.goto('./jobs/…')` would assert the same thing while reopening
     // the door this task closed.
+    await settled();
     await page.reload();
     await expect(page.getByTestId("annotation-page")).toBeVisible();
     await expect(page.getByTestId("asset-position")).toContainText("3/3");
@@ -829,6 +844,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // than refetched in place, because the assertion worth making is that the
     // *stored* annotation renders, not that an optimistic update did. The asset
     // is named explicitly so the entry point and the frame agree.
+    await settled();
     await page.goto(`./jobs/${jobId}?asset=${assetId}`);
     await expect(page.getByTestId("annotation-page")).toBeVisible();
     // One: the lane. The tag on this frame is not an object, and the count says so.
@@ -882,6 +898,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await saveNow(page);
     await expect(page.getByTestId("save-state")).toContainText("Saved");
 
+    await settled();
     await page.reload();
     await expect(page.getByTestId("annotation-page")).toBeVisible();
     await expect(page.locator('[data-annotation-id] polyline[data-occluded="true"]')).toHaveCount(1);
@@ -966,6 +983,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // silent side effect.
     expect(publication.advanced_batches).toContain(batchId);
 
+    await settled();
     await page.reload();
     await expect(page.getByTestId("annotation-page")).toBeVisible();
     await expect(page.getByTestId("pinned-schema")).toHaveText(`v${beforePin + 1}`);
@@ -1181,6 +1199,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await openBatch(page, PROJECT, "cycle-batch");
     await expect(page.getByTestId("batch-sheet").getByTestId("batch-phase")).toHaveText("Completed");
     await expect(page.getByTestId("sheet-annotate")).toHaveCount(0);
+    await settled();
     await page.goto(jobAddress);
     await expect(page.getByTestId("annotation-page")).toBeVisible();
 
@@ -1205,6 +1224,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 
     // The address bar is the second entry: a cold load of the same job answers
     // the same mode, with nothing inherited from the session above.
+    await settled();
     await page.reload();
     await expect(page.getByTestId("readonly-banner")).toContainText(/viewing only/i);
 
@@ -1236,6 +1256,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // The other half of making promotion observable: the response says what *this
     // press* did and is gone on the next render, while `promoted_asset_count` is
     // derived per read and is still right in a session that did no promoting.
+    await settled();
     await page.reload();
     // The open batch is the address's, so the reload lands on the same panel — and every
     // image of the batch is in the trunk, which is what the phase says now.
@@ -1342,14 +1363,14 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // and the trunk is the product's central object, so that was the wrong shape
     // rather than a tidy one.
     await page.getByTestId("nav-dataset").click();
-    await expect(page.getByTestId("dataset-stats")).toContainText("3");
+    await expect(page.getByTestId("kpi-images")).toContainText("3");
     await expect(page.getByTestId("dataset-screen")).toBeVisible();
 
     // A lane is counted like any other annotation. `DatasetStats.per_class`
     // is derived per call from what the trunk actually holds, so a geometry the
     // counter did not know about would simply be absent — and absent reads as "no
     // lanes were labelled", which is the failure mode worth an assertion.
-    await expect(page.getByTestId("class-count-centerline")).toContainText("1");
+    await expect(classRow(page, "centerline")).toContainText("1");
 
     await page.getByTestId("publish-release").click();
     await page.getByTestId("release-tag").fill(TAG);
@@ -1462,7 +1483,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 
     await openBatch(page, PROJECT, CORRECTION, { correction: true });
     await page.getByTestId(`complete-${CORRECTION}`).click();
-    await expect(page.getByTestId("batch-sheet").getByTestId("batch-phase")).toHaveText("Completed", {
+    // A correction's frames are trunk members already, so the batch reads as in
+    // the dataset the moment it completes: the phase is about membership.
+    await expect(page.getByTestId("batch-sheet").getByTestId("batch-phase")).toHaveText("In dataset", {
       timeout: 30_000,
     });
 
@@ -1481,14 +1504,15 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // (2) The deleted box is gone from the trunk — and `vehicle` was the only one
     // of its class, so it has none left. The class is still declared, so its row
     // stays and says so: a declared class nobody labelled is the gap to see.
-    await expect(page.getByTestId("class-count-vehicle")).toContainText("no labels");
+    await expect(classRow(page, "vehicle")).toContainText("—");
+    await expect(classRow(page, "vehicle").getByRole("button")).toBeDisabled();
     // The correction's own polygon arrived beside the parent's.
-    await expect(page.getByTestId("class-count-lane")).toContainText("2");
+    await expect(classRow(page, "lane")).toContainText("2");
     // (3) The frame nobody opened still carries what the first round left.
-    await expect(page.getByTestId("class-count-daytime")).toContainText("1");
-    await expect(page.getByTestId("class-count-centerline")).toContainText("1");
+    await expect(classRow(page, "daytime")).toContainText("1");
+    await expect(classRow(page, "centerline")).toContainText("1");
     // Membership never moved: replacement is about labels, not about who is in.
-    await expect(page.getByTestId("dataset-stats")).toContainText("3");
+    await expect(page.getByTestId("kpi-images")).toContainText("3");
 
     // And the release is exactly where it was left. Its manifest is a frozen
     // blob and its hash is the contract, so a correction cannot reach back into
@@ -1522,7 +1546,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByRole("option", { name: /^yolo$/ })).toHaveCount(0);
 
     await page.getByRole("option", { name: /YOLO11/ }).click();
-    await expect(page.getByTestId("lossy-hint")).toContainText("YOLO11");
+    await expect(page.getByTestId("lossy-hint")).toHaveAccessibleName(/YOLO11/);
 
     // The release holds a `centerline` polyline and a tag beside its boxes;
     // YOLO11 writes a tag only when nothing else is exported, so both are
@@ -1664,8 +1688,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // The one lane format with a per-point slot, so the mark set in the editor
     // at 3d is read back out of the bytes the browser saved: OpenLane writes
     // occluded as 0 and everything else as 1.
-    await page.getByTestId("dataset-tab-releases").click();
-    await page.getByTestId(`export-${TAG}`).click();
+    // The export is inline in the release's facts, so the release is what is opened.
+    await page.getByTestId(`version-${TAG}`).click();
+    await expect(page.getByTestId("section-export")).toBeVisible();
     await page.getByTestId("export-target").click();
     await page.getByRole("option", { name: /openlane-2d/ }).click();
 
@@ -1684,8 +1709,6 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
       page.getByTestId("export-submit").click(),
     ]);
     await expectOpenLaneArchive(download);
-    await page.keyboard.press("Escape");
-    await expect(page.getByTestId("export-dialog")).toHaveCount(0);
   });
 
   await test.step("edit the connection, and watch the row answer for it", async () => {
@@ -1788,16 +1811,22 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     /*
      * **The refused API calls, pinned rather than merely tolerated.**
      *
-     * Six 404s, all of them a screen asking for a document that does not exist
-     * yet: `GET /projects/{id}/schema` and its curated draft sibling are the
-     * schema editor's, opening on an empty draft for a project nobody has
-     * given a schema; the annotation draft pair belongs to the annotator's
-     * add-a-class dialog, gated on `addingClass` the same way. The walk asks
-     * each pair twice — a mount, then the remount or `page.reload()` that
-     * follows — because a saved draft is written straight into the cache
-     * rather than invalidated, so writing one never triggers a second read by
-     * itself. The project's id changes per run, so each is matched rather
-     * than compared.
+     * The 404s are all a screen asking for a document that does not exist
+     * yet. The curated draft is the schema editor's, opening on an empty draft
+     * for a project nobody has given a schema; the annotation draft pair
+     * belongs to the annotator's add-a-class dialog, gated on `addingClass` the
+     * same way. The walk asks each pair twice — a mount, then the remount or
+     * `page.reload()` that follows — because a saved draft is written straight
+     * into the cache rather than invalidated, so writing one never triggers a
+     * second read by itself. The project's id changes per run, so each is
+     * matched rather than compared.
+     *
+     * `GET /projects/{id}/schema` is the one counted loosely. Every part of the
+     * project that names its classes reads it — the bar's Classes count, the
+     * Overview's class rail, the editor — and a 404 is not cached as an answer,
+     * so each mount before the first schema exists asks again. How many mounts
+     * that is depends on how fast the walk clicks, so the list holds at least
+     * the editor's two, and nothing but this route is let vary.
      *
      * The seventh entry is conditional on the installation, and is the reason this
      * list is worth pinning at all. `GET /inference/download-size` prices the
@@ -1825,10 +1854,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     const curatedDraft = /^GET \/projects\/[0-9a-f-]+\/schema\/drafts\/curated 404$/;
     const annotationDraft = /^GET \/projects\/[0-9a-f-]+\/schema\/drafts\/annotation 404$/;
     const lossyLaunch = /^POST \/releases\/[0-9a-f-]+\/export 409$/;
-    expect(refusedApiCalls).toEqual([
-      expect.stringMatching(schema),
+    expect(refusedApiCalls.filter((call) => schema.test(call)).length).toBeGreaterThanOrEqual(2);
+    expect(refusedApiCalls.filter((call) => !schema.test(call))).toEqual([
       expect.stringMatching(curatedDraft),
-      expect.stringMatching(schema),
       expect.stringMatching(curatedDraft),
       ...(curatedSizeRefused ? ["GET /inference/download-size 500"] : []),
       expect.stringMatching(annotationDraft),
@@ -1847,6 +1875,30 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
 });
 
 /**
+ * Resolves once no call is in flight and none has started for 300ms — long
+ * enough for a save's answer to start the reads it invalidates.
+ */
+async function quiet(inFlight: ReadonlySet<Request>): Promise<void> {
+  const deadline = Date.now() + 15_000;
+  let since = Date.now();
+  while (Date.now() < deadline) {
+    if (inFlight.size > 0) since = Date.now();
+    else if (Date.now() - since >= 300) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`still in flight after 15s: ${[...inFlight].map((request) => request.url()).join(", ")}`);
+}
+
+/**
+ * A class's row in the Dataset's working copy: its name, its annotation count
+ * and its share, the way the Overview draws them. A class nobody labelled keeps
+ * its row, with a dash for the share and nothing to open.
+ */
+function classRow(page: Page, name: string): Locator {
+  return page.getByTestId("dataset-stats").getByTestId(`overview-class-${name}`);
+}
+
+/**
  * The walk back to a project, and to one of its sections.
  *
  * The schema, the batches and the dataset are sections of the project, so
@@ -1859,6 +1911,12 @@ async function openProject(
   project: string,
   section: "overview" | "images" | "schema" | "dataset",
 ): Promise<void> {
+  // The job annotator owns the whole viewport and has no rail: its own back
+  // arrow is the way out, and it saves on the way.
+  if (await page.getByTestId("annotation-page").isVisible()) {
+    await page.getByTestId("back").click();
+    await expect(page.getByTestId("annotation-page")).toHaveCount(0);
+  }
   await page.getByTestId("rail-projects").click();
   await expect(page.getByTestId(`open-${project}`)).toBeVisible();
   await page.getByTestId(`open-${project}`).click();
