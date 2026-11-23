@@ -311,6 +311,14 @@ def test_replacing_a_source_calibration_with_only_2d_labels_is_allowed(fx: Fixtu
     assert stored.calibration == calibration(fx=40.0)
 
 
+def test_a_first_source_calibration_is_not_refused_by_labels(fx: Fixture) -> None:
+    fx.label(fx.assets[0], PATH_3D)
+
+    stored = fx.calibrations.set_source_calibration(fx.source.id, calibration())
+
+    assert stored.calibration == calibration()
+
+
 def test_a_labelled_asset_with_its_own_calibration_does_not_block_replacing_the_source(
     fx: Fixture,
 ) -> None:
@@ -394,9 +402,36 @@ def test_clearing_the_last_calibration_a_labelled_asset_has_is_refused(fx: Fixtu
     with pytest.raises(CalibrationInUse):
         fx.calibrations.clear_asset_calibration(fx.project.id, asset.id)
 
-    fx.calibrations.set_source_calibration(fx.source.id, calibration(fx=12.0))
+    fx.calibrations.set_source_calibration(fx.source.id, calibration())
     cleared = fx.calibrations.clear_asset_calibration(fx.project.id, asset.id)
-    assert cleared.effective == calibration(fx=12.0)
+    assert (cleared.override, cleared.effective) == (None, calibration())
+
+
+@pytest.mark.parametrize("geometry", [PATH_3D, BOX_3D], ids=["polyline_3d", "cuboid_3d"])
+def test_clearing_an_override_onto_a_different_source_calibration_is_refused_under_3d_labels(
+    fx: Fixture, geometry: Geometry
+) -> None:
+    asset, own = fx.assets[0], calibration(fx=9.0)
+    fx.calibrations.set_source_calibration(fx.source.id, calibration(fx=12.0))
+    fx.calibrations.set_asset_calibration(fx.project.id, asset.id, own)
+    fx.label(asset, geometry)
+
+    with pytest.raises(CalibrationInUse, match=str(asset.id)):
+        fx.calibrations.clear_asset_calibration(fx.project.id, asset.id)
+    assert fx.calibrations.asset_calibration(fx.project.id, asset.id).override == own
+
+
+def test_clearing_an_override_onto_a_different_source_calibration_without_3d_labels_is_allowed(
+    fx: Fixture,
+) -> None:
+    asset = fx.assets[0]
+    fx.calibrations.set_source_calibration(fx.source.id, calibration(fx=12.0))
+    fx.calibrations.set_asset_calibration(fx.project.id, asset.id, calibration(fx=9.0))
+    fx.label(asset)
+
+    cleared = fx.calibrations.clear_asset_calibration(fx.project.id, asset.id)
+
+    assert (cleared.override, cleared.effective) == (None, calibration(fx=12.0))
 
 
 @pytest.mark.parametrize("geometry", [PATH_3D, BOX_3D], ids=["polyline_3d", "cuboid_3d"])
@@ -423,17 +458,40 @@ def test_stating_the_identical_override_again_is_a_no_op(fx: Fixture) -> None:
     assert (again.override, again.effective) == (calibration(), calibration())
 
 
-def test_a_first_override_and_an_unlabelled_replacement_are_allowed(fx: Fixture) -> None:
+def test_an_override_other_than_the_inherited_calibration_is_refused_under_3d_labels(
+    fx: Fixture,
+) -> None:
+    asset, inherited = fx.assets[0], calibration(fx=10.0)
+    fx.calibrations.set_source_calibration(fx.source.id, inherited)
+    fx.label(asset, PATH_3D)
+
+    with pytest.raises(CalibrationInUse, match=str(asset.id)):
+        fx.calibrations.set_asset_calibration(fx.project.id, asset.id, calibration(fx=20.0))
+    resolved = fx.calibrations.asset_calibration(fx.project.id, asset.id)
+    assert (resolved.override, resolved.effective) == (None, inherited)
+
+    pinned = fx.calibrations.set_asset_calibration(fx.project.id, asset.id, inherited)
+    assert (pinned.override, pinned.effective) == (inherited, inherited)
+
+
+def test_an_override_without_3d_labels_is_replaced(fx: Fixture) -> None:
     labelled, other = fx.assets
     fx.calibrations.set_source_calibration(fx.source.id, calibration())
     fx.label(labelled, PATH_3D)
+    fx.label(other)
     fx.calibrations.set_asset_calibration(fx.project.id, other.id, calibration(fx=9.0))
 
-    first = fx.calibrations.set_asset_calibration(fx.project.id, labelled.id, calibration(fx=9.0))
     replaced = fx.calibrations.set_asset_calibration(fx.project.id, other.id, calibration(fx=40.0))
 
-    assert first.override == calibration(fx=9.0)
     assert replaced.override == calibration(fx=40.0)
+
+
+def test_a_first_override_where_none_applied_is_not_refused_by_labels(fx: Fixture) -> None:
+    fx.label(fx.assets[0], PATH_3D)
+
+    stored = fx.calibrations.set_asset_calibration(fx.project.id, fx.assets[0].id, calibration())
+
+    assert stored.effective == calibration()
 
 
 def test_an_asset_is_scoped_by_its_project(fx: Fixture) -> None:
@@ -444,9 +502,9 @@ def test_an_asset_is_scoped_by_its_project(fx: Fixture) -> None:
         fx.calibrations.asset_calibration(uuid4(), fx.assets[0].id)
 
 
-@pytest.mark.parametrize("write", ["clear", "replace"])
+@pytest.mark.parametrize("write", ["clear", "set"])
 @pytest.mark.parametrize("target", ["source", "asset"])
-def test_a_clear_or_replace_holds_the_write_lock_while_it_checks_for_3d_labels(
+def test_a_set_or_clear_holds_the_write_lock_while_it_checks_for_3d_labels(
     fx: Fixture, monkeypatch: pytest.MonkeyPatch, target: str, write: str
 ) -> None:
     """A label write landing between the check and the write is what the lock prevents."""

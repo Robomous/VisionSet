@@ -176,8 +176,13 @@ def test_replacing_a_calibration_3d_labels_were_drawn_against_is_refused_by_code
 
     assert refused["code"] == "CALIBRATION_IN_USE"
     ok(root, "calibration", "set", stated, "-p", name, "--source", source)
+    refused = _refusal(root, "calibration", "set", other, "-p", name, "--asset", asset)
+    assert refused["code"] == "CALIBRATION_IN_USE"
     ok(root, "calibration", "set", stated, "-p", name, "--asset", asset)
     refused = _refusal(root, "calibration", "set", other, "-p", name, "--asset", asset)
+    assert refused["code"] == "CALIBRATION_IN_USE"
+    ok(root, "calibration", "set", other, "-p", name, "--source", source)
+    refused = _refusal(root, "calibration", "clear", "-p", name, "--asset", asset)
     assert refused["code"] == "CALIBRATION_IN_USE"
 
 

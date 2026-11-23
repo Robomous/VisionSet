@@ -452,7 +452,8 @@ again changes nothing. A calibration measured at a size other
 than an asset it would apply to - including the source's, when `clear --asset` would fall back to
 it - is refused with `CALIBRATION_RESOLUTION_MISMATCH`, and clearing
 one that 3D labels still resolve to, or replacing it with a different one, with
-`CALIBRATION_IN_USE`.
+`CALIBRATION_IN_USE` - for an asset, the one in effect, so a first override other than the
+source calibration it inherits is refused too, as is `clear --asset` onto a different one.
 
 ### `visionset batch`
 
