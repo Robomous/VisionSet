@@ -18,13 +18,15 @@
  * reader's problem.
  */
 
-import { screen, waitFor, within } from "@testing-library/react";
+import { renderHook, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { JSX } from "react";
+import type { JSX, ReactNode } from "react";
 
 import { IngestScreen } from "./IngestScreen";
-import { renderWithData } from "../testing/dataHarness";
+import { useRegisterPointCloudSource } from "./queries";
+import { VisionSetDataProvider } from "../data/VisionSetDataProvider";
+import { harnessClient, harnessQueryClient, renderWithData } from "../testing/dataHarness";
 import { batchActions, datasetOf } from "../testing/wire.fixtures.js";
 
 // `ProgressCounts` is seven counters and the server always sends all seven.
@@ -194,6 +196,46 @@ describe("registering a source", () => {
     // of it (F16).
     expect(error.textContent).toContain("notes.txt is not an image.");
     expect(error.textContent).not.toContain("UNSUPPORTED_MEDIA");
+  });
+});
+
+describe("registering point-cloud scans", () => {
+  const queryClient = harnessQueryClient();
+  const scope = Symbol("point-cloud-registration");
+
+  function wrapper({ children }: { readonly children: ReactNode }): JSX.Element {
+    return (
+      <VisionSetDataProvider client={harnessClient()} scope={scope} makeQueryClient={() => queryClient}>
+        {children}
+      </VisionSetDataProvider>
+    );
+  }
+
+  async function register(input: { files: readonly File[]; frame: "lidar_rfu"; name?: string }): Promise<FormData> {
+    on("POST", /\/sources\/point-clouds$/, {
+      status: 201,
+      body: { ...IMAGE_SOURCE, kind: "point_cloud_directory", frame: "lidar_rfu" },
+    });
+    const { result } = renderHook(() => useRegisterPointCloudSource(PROJECT), { wrapper });
+    await result.current.mutateAsync(input);
+    const request = sent.find((r) => r.method === "POST" && r.url.endsWith("/sources/point-clouds"));
+    const form = bodies.get(request as Request);
+    expect(isFormData(form)).toBe(true);
+    return form as FormData;
+  }
+
+  it("sends the scans, the frame and the name as multipart parts", async () => {
+    const form = await register({ files: [pick("a.pcd", "")], frame: "lidar_rfu", name: "lot" });
+
+    expect(form.getAll("files")).toHaveLength(1);
+    expect(form.get("frame")).toBe("lidar_rfu");
+    expect(form.get("name")).toBe("lot");
+  });
+
+  it("sends no name part without a name", async () => {
+    const form = await register({ files: [pick("a.pcd", "")], frame: "lidar_rfu" });
+
+    expect(form.has("name")).toBe(false);
   });
 });
 
