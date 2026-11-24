@@ -2,7 +2,8 @@
  * The points route's buffer, read without a copy where the host allows it.
  *
  * Little-endian throughout: a 16-byte header (`VSPC`, u32 version, u32 count,
- * u32 flags), f32 `x, y, z` per point, then f32 intensity per point when flag
+ * u32 flags), then f64 origin `x, y, z` when flag bit 2 is set, f32 `x, y, z`
+ * per point relative to that origin, then f32 intensity per point when flag
  * bit 0 is set, then u8 `r, g, b` per point when bit 1 is set. Anything else —
  * a short or long buffer, another version, a flag this build does not know — is
  * refused rather than read as something it is not.
@@ -15,11 +16,19 @@ export const POINT_BUFFER_VERSION = 1;
 export const POINT_BUFFER_HEADER_BYTES = 16;
 export const POINT_FLAG_INTENSITY = 1;
 export const POINT_FLAG_RGB = 2;
+export const POINT_FLAG_ORIGIN = 4;
+export const POINT_ORIGIN_BYTES = 24;
 
 export interface PointSample {
   readonly count: number;
-  /** `x, y, z` per point, in the scan's declared frame. */
+  /**
+   * `x, y, z` per point, relative to `origin`: a point in the scan's declared
+   * frame is `origin + position`. Float32 cannot hold a georeferenced
+   * coordinate, so these stay small and the origin carries the magnitude.
+   */
   readonly positions: Float32Array;
+  /** Zero unless the scan lies far from its frame's zero. */
+  readonly origin: Point3D;
   readonly intensity: Float32Array | null;
   /** `r, g, b` per point, one byte a channel. */
   readonly rgb: Uint8Array | null;
@@ -37,7 +46,8 @@ export class PointBufferError extends Error {
   }
 }
 
-const KNOWN_FLAGS = POINT_FLAG_INTENSITY | POINT_FLAG_RGB;
+const KNOWN_FLAGS = POINT_FLAG_INTENSITY | POINT_FLAG_RGB | POINT_FLAG_ORIGIN;
+const NO_ORIGIN: Point3D = [0, 0, 0];
 const LITTLE_ENDIAN_HOST = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
 
 export function decodePoints(buffer: ArrayBuffer): PointSample {
@@ -69,20 +79,31 @@ export function decodePoints(buffer: ArrayBuffer): PointSample {
   }
   const hasIntensity = (flags & POINT_FLAG_INTENSITY) !== 0;
   const hasRgb = (flags & POINT_FLAG_RGB) !== 0;
-  const expected =
-    POINT_BUFFER_HEADER_BYTES + count * 12 + (hasIntensity ? count * 4 : 0) + (hasRgb ? count * 3 : 0);
+  const hasOrigin = (flags & POINT_FLAG_ORIGIN) !== 0;
+  const positionsAt = POINT_BUFFER_HEADER_BYTES + (hasOrigin ? POINT_ORIGIN_BYTES : 0);
+  const expected = positionsAt + count * 12 + (hasIntensity ? count * 4 : 0) + (hasRgb ? count * 3 : 0);
   if (buffer.byteLength !== expected) {
     throw new PointBufferError(
       `a point buffer of ${count} points with flags ${flags} is ${expected} bytes, got ${buffer.byteLength}`,
     );
   }
 
-  const positions = float32s(buffer, POINT_BUFFER_HEADER_BYTES, count * 3);
-  const intensityAt = POINT_BUFFER_HEADER_BYTES + count * 12;
+  const origin = hasOrigin ? originOf(buffer) : NO_ORIGIN;
+  const positions = float32s(buffer, positionsAt, count * 3);
+  const intensityAt = positionsAt + count * 12;
   const intensity = hasIntensity ? float32s(buffer, intensityAt, count) : null;
   const rgbAt = intensityAt + (hasIntensity ? count * 4 : 0);
   const rgb = hasRgb ? new Uint8Array(buffer, rgbAt, count * 3) : null;
-  return { count, positions, intensity, rgb };
+  return { count, positions, origin, intensity, rgb };
+}
+
+function originOf(buffer: ArrayBuffer): Point3D {
+  const view = new DataView(buffer, POINT_BUFFER_HEADER_BYTES, POINT_ORIGIN_BYTES);
+  const origin: Point3D = [view.getFloat64(0, true), view.getFloat64(8, true), view.getFloat64(16, true)];
+  if (!origin.every(Number.isFinite)) {
+    throw new PointBufferError("a point buffer's origin must be three finite coordinates");
+  }
+  return origin;
 }
 
 function float32s(buffer: ArrayBuffer, offset: number, length: number): Float32Array {
@@ -93,7 +114,7 @@ function float32s(buffer: ArrayBuffer, offset: number, length: number): Float32A
   return out;
 }
 
-/** The box around every point, or `null` for an empty sample. */
+/** The box around every position, or `null` for an empty sample. */
 export function boundsOf(positions: Float32Array): PointBounds | null {
   if (positions.length < 3) return null;
   const minimum = [Infinity, Infinity, Infinity];

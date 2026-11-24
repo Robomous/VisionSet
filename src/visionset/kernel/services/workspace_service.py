@@ -87,6 +87,7 @@ from visionset.kernel.ports import (
     PointCloudProcessor,
     UnitOfWork,
 )
+from visionset.kernel.services.point_sample_cache import PointSampleCache
 
 #: The metadata store. Its presence is what makes a directory a workspace.
 DB_FILENAME = "visionset.db"
@@ -253,6 +254,7 @@ class WorkspaceService:
         self._auth_provider = auth_provider
         self._job_queue = job_queue
         self._point_cloud_processor = point_cloud_processor
+        self._point_samples = PointSampleCache()
 
     # --- composition: the only two ways to get one ------------------------
 
@@ -473,6 +475,16 @@ class WorkspaceService:
         return self._point_cloud_processor
 
     @property
+    def point_samples(self) -> PointSampleCache:
+        """Thinned scans already decoded for a viewer, one cache per open workspace.
+
+        Not a port: it holds nothing on disk and has nothing to swap. One per
+        workspace rather than per process, so two open workspaces never answer
+        from each other's memory.
+        """
+        return self._point_samples
+
+    @property
     def auth_provider(self) -> AuthProvider:
         """Whether a presented token may operate this workspace.
 
@@ -582,6 +594,7 @@ class WorkspaceService:
         decoder, but it belongs to whoever asked for it, not to the workspace.
         """
         self._metadata_store.close()
+        self._point_samples.clear()
 
     def __enter__(self) -> WorkspaceService:
         return self

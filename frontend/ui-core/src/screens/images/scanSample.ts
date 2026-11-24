@@ -132,6 +132,7 @@ export function useRampRange(sample: PointSample | null, frame: ScanFrame | null
       return values === null ? null : robustRange(sample.count, (i) => values[i] ?? Number.NaN);
     }
     const [index, sign] = SCAN_FRAME_AXES[frame ?? "lidar_flu"].up;
-    return robustRange(sample.count, (i) => sign * (sample.positions[i * 3 + index] ?? Number.NaN));
+    const offset = sample.origin[index];
+    return robustRange(sample.count, (i) => sign * ((sample.positions[i * 3 + index] ?? Number.NaN) + offset));
   }, [sample, frame, mode]);
 }
