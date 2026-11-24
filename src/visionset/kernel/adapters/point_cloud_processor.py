@@ -68,14 +68,17 @@ _PLY_CODES: Final[dict[str, str]] = {
     "float64": "d",
 }
 
-#: The longest ascii row read, and the most rows an element skipped on the way
-#: to the vertices may declare relative to the point limit: a mesh has a few
-#: faces per vertex, never billions.
+#: The longest ascii row read.
 _LINE_LIMIT: Final = 64 * 1024
+
+#: The most rows an element skipped on the way to the vertices may declare per
+#: vertex the file declares, and the most rows holding a list - walked one at a
+#: time - all of them may declare together: a mesh has a few faces per vertex.
+_SKIPPED_ROWS_PER_POINT: Final = 8
+_SKIPPED_LIST_ROWS_PER_POINT: Final = 2
 
 #: How much binary point data is read at once while its columns are gathered.
 _CHUNK_BYTES: Final = 8 << 20
-_SKIPPED_ROWS_PER_POINT: Final = 8
 
 _FLOAT_CODES: Final = frozenset("fd")
 _PCD_DATA_MODES: Final = ("ascii", "binary", "binary_compressed")
@@ -524,11 +527,19 @@ def _parse_ply_header(lines: list[str], name: str | None) -> tuple[str, list[_Pl
 
 
 def _skip_binary_element(
-    content: BinaryIO, element: _PlyElement, endian: str, name: str | None
-) -> None:
+    content: BinaryIO, element: _PlyElement, endian: str, budget: int, name: str | None
+) -> int:
+    """Move past one element's rows, and answer how many bytes they held.
+
+    Refuses rows holding more than ``budget`` bytes as over the size limit.
+    """
     if not element.has_list:
-        content.seek(element.count * element.row_size, io.SEEK_CUR)
-        return
+        size = element.count * element.row_size
+        if size > budget:
+            raise _over_the_limit(name)
+        content.seek(size, io.SEEK_CUR)
+        return size
+    consumed = 0
     for _ in range(element.count):
         for prop in element.properties:
             if prop.count_code is None:
@@ -538,10 +549,19 @@ def _skip_binary_element(
                 raw = content.read(width)
                 if len(raw) < width:
                     raise _corrupt("the PLY data is truncated", name)
+                consumed += width
                 skip = struct.unpack(endian + prop.count_code, raw)[0] * struct.calcsize(prop.code)
             if skip < 0:
                 raise _corrupt("a PLY list declares a negative length", name)
+            consumed += skip
+            if consumed > budget:
+                raise _over_the_limit(name)
             content.seek(skip, io.SEEK_CUR)
+    return consumed
+
+
+def _over_the_limit(name: str | None) -> UnsupportedMedia:
+    return _unsupported("the PLY data before the vertices is over the size limit", name)
 
 
 def _decode_ply(
@@ -582,15 +602,28 @@ def _decode_ply(
 
     endian = "<" if mode == "ascii" else _PLY_ENDIANS[mode]
     skipped = elements[: elements.index(vertex)]
-    if any(e.count > _SKIPPED_ROWS_PER_POINT * _port.MAX_POINT_CLOUD_POINTS for e in skipped):
+    listed = sum(e.count for e in skipped if e.has_list or mode == "ascii")
+    if (
+        any(e.count > _SKIPPED_ROWS_PER_POINT * vertex.count for e in skipped)
+        or listed > _SKIPPED_LIST_ROWS_PER_POINT * vertex.count
+    ):
         raise _corrupt("a PLY element before the vertices declares an implausible count", name)
+    budget = _port.MAX_POINT_CLOUD_BYTES - (
+        0 if mode == "ascii" else vertex.count * vertex.row_size
+    )
     for element in skipped:
         if mode == "ascii":
             for _ in range(element.count):
-                if not content.readline():
+                raw = content.readline(_LINE_LIMIT + 1)
+                if not raw:
                     raise _corrupt("the PLY data is truncated", name)
+                if len(raw) > _LINE_LIMIT:
+                    raise _corrupt(f"an ascii row is longer than {_LINE_LIMIT} bytes", name)
+                budget -= len(raw)
+                if budget < 0:
+                    raise _over_the_limit(name)
         else:
-            _skip_binary_element(content, element, endian, name)
+            budget -= _skip_binary_element(content, element, endian, budget, name)
 
     if mode == "ascii":
         columns = _ascii_rows(content, vertex.count, len(names), picks, "vertex", name)

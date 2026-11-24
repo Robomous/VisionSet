@@ -280,11 +280,19 @@ behind. It returns `PointCloudMetadata`: the `format`, the `point_count` kept, t
 
 | Refusal | When |
 | --- | --- |
-| `UNSUPPORTED_MEDIA` | not a PCD or PLY header; an encoding not read; no float `x`, `y`, `z`; more than 10 million points declared, or more than 512 MiB of point data |
+| `UNSUPPORTED_MEDIA` | not a PCD or PLY header; an encoding not read; no float `x`, `y`, `z`; more than 10 million points declared, or more than 512 MiB of point data, counting what a PLY holds before its vertices |
 | `CORRUPT_MEDIA` | a recognisable header whose data is truncated or malformed, a header that contradicts itself (a `SIZE` below 1, a negative `COUNT`, `POINTS` other than `WIDTH` x `HEIGHT`, a PLY property named twice, an element before the vertices declaring an implausible count), an ascii row over 64 KiB, a damaged LZF stream, or no finite point at all |
 
+**What a PLY holds before its vertices is bounded by its vertices.** Such an element is skipped,
+not decoded, but a row holding a list has to be walked one at a time. So an element there may
+declare at most eight rows per vertex the file declares, the rows holding a list (and every ascii
+row) at most two per vertex together, and the bytes skipped count toward the 512 MiB; a header
+that declares more is refused before anything is walked. An element of empty lists ahead of one
+vertex is refused at once rather than walked for half a minute.
+
 **The limits are sized for one scan.** Ten million points is several sweeps of a 128-beam lidar,
-and keeps the decoded coordinates - three doubles a point - under a quarter of a gigabyte. The
+and keeps the decoded coordinates - three doubles a point at most, three floats for a scan that
+stores them so - under a quarter of a gigabyte. The
 limits are checked against the header before anything is decoded, and an LZF stream may be no
 larger than LZF can make from the data the header declares. Whatever else a hostile file
 provokes while it is parsed is refused as `CORRUPT_MEDIA` against that one file: an ingest run
