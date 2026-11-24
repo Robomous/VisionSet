@@ -14,7 +14,7 @@ import { versionNotes, type DatasetVersion, type VersionNote } from "./versions"
 function noteText(note: VersionNote): string {
   switch (note.kind) {
     case "images":
-      return `${note.delta > 0 ? "+" : "−"}${formatCount(Math.abs(note.delta))} ${Math.abs(note.delta) === 1 ? "image" : "images"}`;
+      return `${note.delta > 0 ? "+" : "−"}${formatCount(Math.abs(note.delta))} ${Math.abs(note.delta) === 1 ? "asset" : "assets"}`;
     case "annotations":
       return `${note.delta > 0 ? "+" : "−"}${formatCount(Math.abs(note.delta))} ${Math.abs(note.delta) === 1 ? "annotation" : "annotations"}`;
     case "schema":
@@ -22,7 +22,7 @@ function noteText(note: VersionNote): string {
     case "split":
       return `Split ${note.from ?? "none"} → ${note.to ?? "none"}`;
     case "first":
-      return `${formatCount(note.images)} images, the first release`;
+      return `${formatCount(note.images)} ${note.images === 1 ? "asset" : "assets"}, the first release`;
     case "unpublished":
       return "Nothing published yet";
     case "quiet":
@@ -43,10 +43,10 @@ export function changesState(version: DatasetVersion): State {
 export function labelingState(stats: DatasetStats): State {
   const all = stats.asset_count;
   const done = stats.annotated_asset_count;
-  if (all === 0) return { tone: "draft", label: "Empty", title: "No images yet", lines: ["Add a completed batch to fill the dataset."] };
-  if (done === 0) return { tone: "draft", label: "Not labeled", title: `${formatCount(all)} images, no labels`, lines: ["A release would train on nothing."] };
-  if (done === all) return { tone: "done", label: "All labeled", title: `${formatCount(all)} of ${formatCount(all)} images`, lines: ["Every image carries at least one label."] };
-  return { tone: "progress", fraction: done / all, label: `${formatCount(done)} of ${formatCount(all)} labeled`, title: `${formatCount(all - done)} images without labels`, lines: ["They are still exported, as negatives."] };
+  if (all === 0) return { tone: "draft", label: "Empty", title: "No assets yet", lines: ["Add a completed batch to fill the dataset."] };
+  if (done === 0) return { tone: "draft", label: "Not labeled", title: `${formatCount(all)} ${all === 1 ? "asset" : "assets"}, no labels`, lines: ["A release would train on nothing."] };
+  if (done === all) return { tone: "done", label: "All labeled", title: `${formatCount(all)} of ${formatCount(all)} ${all === 1 ? "asset" : "assets"}`, lines: [all === 1 ? "It carries at least one label." : "Every asset carries at least one label."] };
+  return { tone: "progress", fraction: done / all, label: `${formatCount(done)} of ${formatCount(all)} labeled`, title: `${formatCount(all - done)} ${all - done === 1 ? "asset" : "assets"} without labels`, lines: ["They are still exported, as negatives."] };
 }
 
 /** Which of the classes the schema declares the labels actually use; `null` before the schema is read. */
@@ -77,7 +77,7 @@ export function integrityState(
   release: Release,
   verify: { readonly isFetching: boolean; readonly isError: boolean; readonly data: ReleaseVerification | undefined },
 ): State {
-  if (verify.isFetching) return { tone: "progress", label: "Verifying", title: `Reading ${formatCount(release.asset_count)} images`, lines: ["Every file is re-read and re-hashed."] };
+  if (verify.isFetching) return { tone: "progress", label: "Verifying", title: `Reading ${formatCount(release.asset_count)} ${release.asset_count === 1 ? "asset" : "assets"}`, lines: ["Every file is re-read and re-hashed."] };
   if (verify.isError) return { tone: "failed", label: "Couldn't verify", title: "The check did not run", lines: ["Nothing was read."] };
   if (verify.data === undefined) return { tone: "draft", label: "Not verified", title: "Not checked this session", lines: ["Verifying re-reads every file and compares it with the manifest."] };
   if (verify.data.ok) return { tone: "done", label: "Intact", title: `${formatCount(verify.data.checked)} files re-hashed`, lines: ["Byte for byte what was published."] };

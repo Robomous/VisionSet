@@ -416,8 +416,8 @@ project held before.
 It takes a directory and only a directory. Pointed at anything else - a video file included - it
 is a usage error (exit 2) naming where video actually goes:
 
-> ingest takes a directory of still images. A video is imported in the browser: run `visionset
-> server`, open the project's Ingest screen and choose the clip there — it is decoded on your
+> ingest takes a directory of still images, or of point-cloud scans with --point-clouds. A video
+> is imported in the browser: run `visionset server`, open the project's Ingest screen and choose the clip there — it is decoded on your
 > machine and uploaded as frames. Nothing in this process decodes video.
 
 There is no `--fps`, `--range` or `--scale` here any more, and no video path for the CLI to

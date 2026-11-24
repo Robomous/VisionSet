@@ -4,13 +4,28 @@ import { PointBufferError, boundsOf, decodePoints } from "./decode";
 
 function buffer(
   points: readonly (readonly [number, number, number])[],
-  options: { intensity?: readonly number[]; rgb?: readonly number[]; magic?: string; version?: number; flags?: number; extra?: number } = {},
+  options: {
+    intensity?: readonly number[];
+    rgb?: readonly number[];
+    origin?: readonly [number, number, number];
+    magic?: string;
+    version?: number;
+    flags?: number;
+    extra?: number;
+  } = {},
 ): ArrayBuffer {
   const count = points.length;
   const hasIntensity = options.intensity !== undefined;
   const hasRgb = options.rgb !== undefined;
-  const flags = options.flags ?? (hasIntensity ? 1 : 0) | (hasRgb ? 2 : 0);
-  const bytes = 16 + count * 12 + (hasIntensity ? count * 4 : 0) + (hasRgb ? count * 3 : 0) + (options.extra ?? 0);
+  const hasOrigin = options.origin !== undefined;
+  const flags = options.flags ?? (hasIntensity ? 1 : 0) | (hasRgb ? 2 : 0) | (hasOrigin ? 4 : 0);
+  const bytes =
+    16 +
+    (hasOrigin ? 24 : 0) +
+    count * 12 +
+    (hasIntensity ? count * 4 : 0) +
+    (hasRgb ? count * 3 : 0) +
+    (options.extra ?? 0);
   const out = new ArrayBuffer(bytes);
   const view = new DataView(out);
   const magic = options.magic ?? "VSPC";
@@ -19,6 +34,10 @@ function buffer(
   view.setUint32(8, count, true);
   view.setUint32(12, flags, true);
   let at = 16;
+  for (const value of options.origin ?? []) {
+    view.setFloat64(at, value, true);
+    at += 8;
+  }
   for (const point of points) {
     for (const value of point) {
       view.setFloat32(at, value, true);
@@ -43,6 +62,16 @@ describe("decodePoints", () => {
     expect([...sample.positions]).toEqual([1, 2, 3, -4, 5.5, 6]);
     expect(sample.intensity).toBeNull();
     expect(sample.rgb).toBeNull();
+    expect(sample.origin).toEqual([0, 0, 0]);
+  });
+
+  it("reads the origin before the positions, which stay relative to it", () => {
+    const origin = [512_364, 4_123_447, 0] as const;
+    const sample = decodePoints(buffer([[-18.25, 9.5, 12.5], [0.125, -0.5, 13]], { origin, intensity: [1, 2] }));
+    expect(sample.origin).toEqual(origin);
+    expect([...sample.positions]).toEqual([-18.25, 9.5, 12.5, 0.125, -0.5, 13]);
+    expect([...(sample.intensity ?? [])]).toEqual([1, 2]);
+    expect(sample.origin[1] + sample.positions[1]).toBe(4_123_456.5);
   });
 
   it("reads intensity and rgb in that order", () => {
@@ -67,7 +96,9 @@ describe("decodePoints", () => {
     ["a short header", new ArrayBuffer(8), /16-byte header/],
     ["another magic", buffer([[0, 0, 0]], { magic: "PCD1" }), /magic/],
     ["another version", buffer([[0, 0, 0]], { version: 2 }), /version 2/],
-    ["an unknown flag", buffer([[0, 0, 0]], { flags: 4 }), /flags 4/],
+    ["an unknown flag", buffer([[0, 0, 0]], { flags: 8 }), /flags 8/],
+    ["an origin flag with no origin behind it", buffer([[0, 0, 0]], { flags: 4 }), /is 52 bytes, got 28/],
+    ["a non-finite origin", buffer([[0, 0, 0]], { origin: [Number.NaN, 0, 0] }), /origin/],
     ["trailing bytes", buffer([[0, 0, 0]], { extra: 1 }), /got 29/],
     ["a flag with no section behind it", buffer([[0, 0, 0]], { flags: 1 }), /is 32 bytes, got 28/],
   ])("refuses %s", (_, input, message) => {

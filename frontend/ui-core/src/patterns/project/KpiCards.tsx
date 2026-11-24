@@ -104,7 +104,7 @@ export interface KpiCard {
 }
 
 export interface KpiWarning {
-  /** The warning in a few words — "8 images without labels". */
+  /** The warning in a few words — "8 assets without labels". */
   readonly title: string;
   /** A line or two that says why it matters. */
   readonly body?: ReactNode;

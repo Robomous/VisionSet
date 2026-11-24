@@ -388,12 +388,15 @@ jobs:
           pnpm --filter @visionset/ui-core build
 
       # Four workers to match the runner's four cores; the config's own CI
-      # fallback is two, sized for a smaller runner generation.
+      # fallback is two, sized for a smaller runner generation. The runner's
+      # headless chromium offers WebGL2 (SwiftShader), so the point-cloud spec
+      # fails here rather than skipping if that ever stops being true.
       - name: Drive the demo
         if: needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true'
         run: pnpm --filter @visionset/app e2e
         env:
           VISIONSET_PW_WORKERS: "4"
+          VISIONSET_REQUIRE_WEBGL: "1"
 
       - uses: actions/upload-artifact@v7
         if: failure()

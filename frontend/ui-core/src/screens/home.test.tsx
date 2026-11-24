@@ -433,7 +433,7 @@ it("separates thousands and reports a share over a real denominator", async () =
   const stats = await screen.findByTestId("home-stats");
   expect(stats.textContent).toContain("12,400");
   expect(stats.textContent).toContain("98,765");
-  expect(screen.getByTestId("home-project-row").textContent).toContain("50% annotated");
+  expect(screen.getByTestId("home-project-row").textContent).toContain("12,400 assets · 50% annotated");
 });
 
 it("reports a share of zero rather than a division by nothing", async () => {
@@ -446,7 +446,7 @@ it("reports a share of zero rather than a division by nothing", async () => {
   renderWithData(<HomeScreen />);
 
   const row = await screen.findByTestId("home-project-row");
-  expect(row.textContent).toContain("0% annotated");
+  expect(row.textContent).toContain("0 assets · 0% annotated");
   expect(row.textContent).not.toContain("NaN");
 });
 

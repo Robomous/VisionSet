@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { CUBOID_EDGES } from "../geometry/projection";
 import type { Cuboid3DGeometry, Point3D, StoredAnnotation } from "../types";
-import { cuboidSegments, scanCuboidCorners, scanLabels } from "./labels";
+import { cuboidSegments, scanCuboidCorners, scanLabels, segmentsRelativeTo } from "./labels";
 
 const BOX: Cuboid3DGeometry = { type: "cuboid_3d", center: [0, 0, 0], size: [4, 2, 1], yaw: 0 };
 
@@ -111,5 +111,19 @@ describe("scanLabels", () => {
     expect(labels[0].labelClass).toBe("vehicle");
     expect(labels[0].segments.length).toBe(72);
     expect([...labels[1].segments]).toEqual([0, 0, 0, 1, 0, 0, 1, 0, 0, 2, 1, 0]);
+  });
+});
+
+describe("segmentsRelativeTo", () => {
+  it("moves a georeferenced label next to the origin before it is rounded to float32", () => {
+    const at: Point3D = [512_345.678, 4_123_456.789, 12.345];
+    const segments = cuboidSegments({ ...BOX, center: at }, "lidar_flu");
+    const origin: Point3D = [512_346, 4_123_457, 0];
+    const relative = segmentsRelativeTo(segments, origin);
+    expect(relative).toBeInstanceOf(Float32Array);
+    for (let i = 0; i < segments.length; i += 1) {
+      expect(Math.abs(relative[i] + origin[i % 3] - segments[i])).toBeLessThan(1e-5);
+    }
+    expect(Math.abs(Math.fround(at[1]) - at[1])).toBeGreaterThan(0.01);
   });
 });

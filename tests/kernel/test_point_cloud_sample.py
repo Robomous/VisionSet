@@ -16,9 +16,12 @@ from visionset.kernel.domain import (
     POINT_BUFFER_MAGIC,
     POINT_BUFFER_VERSION,
     POINT_FLAG_INTENSITY,
+    POINT_FLAG_ORIGIN,
     POINT_FLAG_RGB,
+    POINT_ORIGIN_THRESHOLD,
     PointSample,
     decimation_stride,
+    sample_origin,
 )
 from visionset.kernel.errors import CorruptMedia
 
@@ -29,6 +32,10 @@ def decode(buffer: bytes) -> dict[str, Any]:
     """An independent reading of the buffer the domain module lays out."""
     magic, version, count, flags = struct.unpack_from("<4sIII", buffer)
     offset = 16
+    origin = (0.0, 0.0, 0.0)
+    if flags & 4:
+        origin = struct.unpack_from("<3d", buffer, offset)
+        offset += 24
     xyz = struct.unpack_from(f"<{3 * count}f", buffer, offset)
     offset += 12 * count
     intensity = None
@@ -44,6 +51,7 @@ def decode(buffer: bytes) -> dict[str, Any]:
         "magic": magic,
         "version": version,
         "flags": flags,
+        "origin": origin,
         "points": [tuple(xyz[i : i + 3]) for i in range(0, 3 * count, 3)],
         "intensity": intensity,
         "rgb": None if rgb is None else [tuple(rgb[i : i + 3]) for i in range(0, 3 * count, 3)],
@@ -231,7 +239,7 @@ def test_a_non_finite_intensity_reads_as_zero() -> None:
 
 def test_a_double_coordinate_beyond_float32_is_held_at_its_edge() -> None:
     fields = [("x", "F", 8), ("y", "F", 8), ("z", "F", 8)]
-    rows = [(1e300, -1e300, 1.0), (0.0, 0.0, 0.0)]
+    rows = [(1e300, -1e300, 1.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)]
     decoded = decode(sample(pcd(fields, rows, "binary")).encode())
     assert decoded["points"][0] == (F32_MAX, -F32_MAX, 1.0)
     assert all(math.isfinite(v) for point in decoded["points"] for v in point)
@@ -256,3 +264,96 @@ def test_an_ascii_colour_outside_its_declared_type_is_clamped_not_raised() -> No
     props += [("red", "ushort"), ("green", "uchar"), ("blue", "ushort")]
     rows = [(*p, -5, 300, 99999999) for p in SCAN]
     assert decode(sample(ply(props, rows, ascii=True)).encode())["rgb"] == [(0, 255, 255)] * 3
+
+
+def ulp32(value: float) -> float:
+    """float32's spacing at ``value``."""
+    bits: int = struct.unpack("<I", struct.pack("<f", value))[0]
+    above: float = struct.unpack("<f", struct.pack("<I", bits + 1))[0]
+    return above - struct.unpack("<f", struct.pack("<f", value))[0]
+
+
+DOUBLE_XYZ = [("x", "double"), ("y", "double"), ("z", "double")]
+GEOREFERENCED = [
+    (512_345.678 + 0.731 * i, 4_123_456.789 - 0.417 * i, 12.345 + 0.0123 * i) for i in range(50)
+]
+
+
+def test_a_georeferenced_scan_keeps_float32_precision_relative_to_its_origin() -> None:
+    decoded = decode(sample(ply(DOUBLE_XYZ, GEOREFERENCED)).encode())
+
+    origin = decoded["origin"]
+    error = max(
+        abs(o + local - true)
+        for point, original in zip(decoded["points"], GEOREFERENCED, strict=True)
+        for o, local, true in zip(origin, point, original, strict=True)
+    )
+    assert ulp32(4_123_456.789) == 0.25
+    assert error < 1e-5
+    assert decoded["flags"] & POINT_FLAG_ORIGIN
+
+
+def test_the_origin_is_the_rounded_median_of_each_far_axis_and_zero_otherwise() -> None:
+    xs = sorted(p[0] for p in GEOREFERENCED)
+    ys = sorted(p[1] for p in GEOREFERENCED)
+    expected = (float(round(xs[25])), float(round(ys[25])), 0.0)
+
+    assert sample(ply(DOUBLE_XYZ, GEOREFERENCED)).origin == expected
+    assert sample(ply(DOUBLE_XYZ, GEOREFERENCED), budget=7).origin == expected
+
+
+def test_a_stray_return_at_zero_does_not_pull_the_origin_off_the_scan() -> None:
+    fields = [("x", "F", 8), ("y", "F", 8), ("z", "F", 8)]
+    scan = pcd(fields, [(500_000.25, 4_000_000.5, 10.0), (0.0, 0.0, 0.0)], "binary")
+    decoded = decode(sample(scan).encode())
+
+    assert decoded["origin"] == (500_000.0, 4_000_000.0, 0.0)
+    assert decoded["points"][0] == (0.25, 0.5, 10.0)
+
+
+@pytest.mark.parametrize(
+    ("column", "origin"),
+    [
+        ([0.0, 50.0, 100.0], 0.0),
+        ([-20_000.0, -10_000.0, 0.0, 10_000.0, 20_000.0], 0.0),
+        ([POINT_ORIGIN_THRESHOLD - 0.5, POINT_ORIGIN_THRESHOLD - 0.25], 0.0),
+        ([POINT_ORIGIN_THRESHOLD], POINT_ORIGIN_THRESHOLD),
+        ([-1e6 - 10.4, -1e6 - 0.4, -1e6 + 10.0], -1e6),
+        ([0.0, 0.0, 512_345.6, 512_346.1, 512_347.0], 512_346.0),
+        ([], 0.0),
+    ],
+)
+def test_sample_origin_offsets_only_an_axis_whose_median_is_far_from_zero(
+    column: list[float], origin: float
+) -> None:
+    zeros = [0.0] * len(column)
+    assert sample_origin(column, zeros, zeros) == (origin, 0.0, 0.0)
+
+
+def test_the_origin_of_a_large_scan_reads_an_even_subsample_of_every_point() -> None:
+    xs = [10_000.0 + i * 1e-3 for i in range(1_000_000)]
+    zeros = [0.0] * len(xs)
+    assert sample_origin(xs, zeros, zeros) == (10_500.0, 0.0, 0.0)
+
+
+def test_a_scan_near_zero_has_no_origin_section() -> None:
+    thinned = sample(ply_binary())
+    assert thinned.origin == (0.0, 0.0, 0.0)
+    assert not thinned.flags & POINT_FLAG_ORIGIN
+    assert len(thinned.encode()) == 16 + 3 * 12 + 3 * 4
+
+
+def test_the_origin_section_sits_between_the_header_and_the_positions() -> None:
+    made = PointSample(
+        total=1, stride=1, positions=struct.pack("<3f", 1, 2, 3), origin=(1e6, 0, -2)
+    )
+    buffer = made.encode()
+    assert struct.unpack_from("<III", buffer, 4) == (POINT_BUFFER_VERSION, 1, POINT_FLAG_ORIGIN)
+    assert struct.unpack_from("<3d", buffer, 16) == (1e6, 0.0, -2.0)
+    assert struct.unpack_from("<3f", buffer, 40) == (1.0, 2.0, 3.0)
+    assert len(buffer) == 52
+
+
+def test_a_non_finite_origin_is_refused() -> None:
+    with pytest.raises(ValueError, match="origin"):
+        PointSample(total=1, stride=1, positions=b"\0" * 12, origin=(math.inf, 0.0, 0.0))

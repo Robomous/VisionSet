@@ -273,7 +273,8 @@ describe("ClassRail", () => {
     expect(small.getAttribute("aria-pressed")).toBe("true");
     expect(readout.textContent).toContain("10%");
     expect(readout.textContent).toContain("small");
-    expect(readout.textContent).toContain("10 on 1 image");
+    expect(readout.textContent).toContain("10 on 1 asset");
+    expect(readout.textContent).not.toContain("assets");
 
     // Pointing elsewhere reads that class for as long as it is pointed at.
     await userEvent.hover(within(screen.getByTestId("overview-class-big")).getByRole("button"));

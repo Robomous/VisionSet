@@ -227,8 +227,8 @@ inset, the status bar's, so the page has one left edge.
 
 `/projects` is that table, one 44px row per project: the project (cover thumbnail, its name
 with a link's hairline under it and an arrow that appears when the row is pointed at, and one
-truncated line of description beside it), **Images**, **Annotated**, **Classes**, **Status**,
-**Release** (the latest release's tag, its image count and date in the tooltip; a dash without one
+truncated line of description beside it), **Assets**, **Annotated**, **Classes**, **Status**,
+**Release** (the latest release's tag, its asset count and date in the tooltip; a dash without one
 - the Status column already says *Not released*) and **Activity**.
 
 **Annotated says the work left, not the work done** - *248 to annotate* beside a 14px ring for the
@@ -260,7 +260,7 @@ Every number is in the **same request** as the list: each item of `GET /projects
 (`ProjectService.digests`). The **Status** column says the digest's `stage` in words with
 the product-wide status families — `In review` (warning, with the frames waiting),
 `Annotating` (info; what is left is the Annotated column's), `Ready to add` and `Up to date` (success),
-`Not released`, `Not started` and `No images` (neutral). The stage is the kernel's
+`Not released`, `Not started` and `No assets` (neutral). The stage is the kernel's
 description of where a project is, never a capability: nothing on the page is gated on it,
 and the screen derives none of it from batch states.
 
@@ -399,10 +399,10 @@ of cells with a hairline between them, and every text starting on the pane's one
 never scrolls; the batch table and the images scroll inside their own cells - with a floor below
 which the page scrolls rather than crushing the table.
 
-**Four cells** across the top - Images, Labeled, In dataset, Classes - each with its icon and
+**Four cells** across the top - Assets, Labeled, In dataset, Classes - each with its icon and
 name, its figure, and one context line, with a short meter ahead of it where the figure is a
 share of something; the Classes cell, last, draws its bar of shares instead (below). Three are a door into the section that owns them: the whole cell is the
-target (Images to Images, Classes to Classes, In dataset to Dataset), with an arrow on hover.
+target (Assets to Images, Classes to Classes, In dataset to Dataset), with an arrow on hover.
 *Labeled* is a plain figure, because the batches that answer it are the table right below.
 **Labeled counts the images a person has decided**, read from batch progress: across every batch
 that has been cut into jobs (a draft has none), the images that are neither unannotated nor
@@ -505,9 +505,10 @@ batch, is not on the page: it is the project bar's, beside Annotate.
 
 **The Classes card is the last of the four, and it draws the classes rather than describing
 them**: the class count beside its label, one bar split by each class's share of all annotations,
-and a readout of one class — its share, its annotation count and how many images show it — the
+and a readout of one class — its share, its annotation count and how many assets show it (*31 on 8
+assets*) — the
 largest until another block is pointed at (`patterns/project/ClassShareBar.tsx`). Shares are of
-annotations only: an image can show several classes, so per-image shares overlap and would not
+annotations only: an asset can show several classes, so per-asset shares overlap and would not
 sum to a whole. When a class falls under the imbalance threshold, the card carries a warning
 glyph whose card is the project's imbalance note ([`DESIGN.md`](../../DESIGN.md#warnings)); the
 card's door opens the Classes section, where the full legend lives. The rail under it holds the
@@ -542,12 +543,12 @@ scrolling inside it; below that they stack.
 Overview's sheet, so the Dataset reads like every other project screen: cells on hairlines, no
 cards, one inset (`screens/dataset/VersionKpis.tsx`, `VersionFacts.tsx`; the pattern is
 [`DESIGN.md`](../../DESIGN.md#fact-sections-and-the-action-a-thing-is-opened-for)). The working
-copy's numbers are what the next release would freeze: its *Images* against the newest release
+copy's numbers are what the next release would freeze: its *Assets* against the newest release
 (*Same as v0.4*, *+12 since v0.4*), how much is *Labeled* with a meter, its *Classes* with the
-annotations and how many per image, and the *Releases* so far. Its rail is its classes — the
+annotations and how many per asset, and the *Releases* so far. Its rail is its classes — the
 Overview's own panel, read off the trunk: one bar of every class's share and a legend in which a
 declared class nobody labelled is drawn too, because that is the gap a person training on this
-needs to see. A release's numbers are what it froze: *Images* against the release before,
+needs to see. A release's numbers are what it froze: *Assets* against the release before,
 *Annotations*, its *Split* (the shares and the seed) and its *Schema* with the VisionSet that
 built it. Its rail holds *Proof* — this session's integrity check, *Not verified*, *Verifying*,
 *Intact*, *Problems found*, with **Verify** beside it, and the manifest hash with two icon
@@ -556,9 +557,9 @@ for, holding the model, the recipe and the button with the job's state as its an
 folded. Every panel folds, and folded, its band says its answer.
 
 **What is worth knowing and holds nothing back is a warning glyph beside what it is about**
-([`DESIGN.md`](../../DESIGN.md#warnings)): images without labels and a class nobody labelled on
+([`DESIGN.md`](../../DESIGN.md#warnings)): assets without labels and a class nobody labelled on
 their numbers, a schema a publish would move to on *Releases*, a format that cannot carry every
-shape beside *Model*, recipes that could not be read beside *Recipe*, images that have left the
+shape beside *Model*, recipes that could not be read beside *Recipe*, assets that have left the
 dataset since a release beside its wall's title. What blocks — a refusal, a consent, a failed
 download — stays a sentence under its row.
 
@@ -567,13 +568,13 @@ tinted ground, a glyph that fills as the thing nears done — lucide's dashed ri
 quarters, a check, a mark — and the word; what it means beyond the word is a card on hover or focus.
 
 The history reads as a changelog: each version's entry says only what changed against the
-release before it — the images and annotations it gained or lost, a schema version or a split
+release before it — the assets and annotations it gained or lost, a schema version or a split
 that moved — so a quiet release says *Nothing changed since v0.3* and a busy one is longer. A
 release verified this session says so in its entry (*Verified intact*, or *Failed
 verification*), read from the same on-demand check its facts run; the history never starts
 one. The differences are **net** — a release carries counts, not a membership a client can
-compare — so *+28 images* is how much larger the version is than the one before, never a
-list of which images or the batches they came from. The working copy's gains are written in
+compare — so *+28 assets* is how much larger the version is than the one before, never a
+list of which assets or the batches they came from. The working copy's gains are written in
 the informational colour, and it notes no schema or split, because it has pinned neither yet.
 
 A release's wall is its images **that are still in the dataset** — the listing is the
@@ -1548,11 +1549,11 @@ Batches table whenever some batch of the project declares `pre_label` in its own
 `allowed_actions` - read off the listing, never derived from state here - and is absent otherwise.
 
 **While images are waiting, it is a line between the band and the table**: a boxed robot, *233
-images have no labels yet. A model can draft them for you to check.*, then **Auto-label them** and
+assets have no labels yet. A model can draft them for you to check.*, then **Auto-label them** and
 a ✕ (*Not now*). The count is the `progress.unannotated` of every batch that declares the run,
 leaving out a batch a model is drafting now (its `pre_label_run` queued or running), so starting a
 run is what makes the line go. **Not now** puts it away into the band as a quiet icon button
-(*Auto-label*, its tooltip *Auto-label 233 images*) and is remembered per project in this
+(*Auto-label*, its tooltip *Auto-label 233 assets*) and is remembered per project in this
 browser, against the count it was said to: the line comes back only when more images are waiting
 than that - new images arrived. With batches that declare the run and nothing waiting, there is no
 line and the band's icon still offers it, since a re-run over pre-labeled work is legal where

@@ -211,7 +211,7 @@ def test_a_file_that_is_not_a_video_gets_the_same_refusal(root: Path, tmp_path: 
     """The branch is ``is_dir()``, not a suffix list — and the sentence stays true.
 
     Pointing ``ingest`` at one photograph has always been a mistake; it is the
-    folder that is the source. The message says "a directory of still images",
+    folder that is the source. The message names the directory kinds ingest reads,
     which answers this case as well as the clip one.
     """
     directory = stills(tmp_path)
@@ -220,7 +220,8 @@ def test_a_file_that_is_not_a_video_gets_the_same_refusal(root: Path, tmp_path: 
     result = run(root, "ingest", str(single), "-p", "road-signs")
 
     assert result.exit_code == 2, result.output
-    assert "directory of still images" in usage_error(result)
+    expected = "directory of still images, or of point-cloud scans with --point-clouds"
+    assert expected in usage_error(result)
 
 
 def test_an_unknown_project_exits_one(root: Path, tmp_path: Path) -> None:

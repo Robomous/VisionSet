@@ -345,7 +345,7 @@ function Kpis({
   const cards: KpiCard[] = [
     {
       key: "images",
-      label: "Images",
+      label: "Assets",
       icon: Images,
       value: formatCount(counted.asset_count),
       context:
@@ -378,7 +378,7 @@ function Kpis({
         left === null
           ? undefined
           : left === 0
-            ? `${formatCount(done ?? 0)} of ${formatCount(counted.asset_count)} images`
+            ? `${formatCount(done ?? 0)} of ${formatCount(counted.asset_count)} assets`
             : `${formatCount(left)} left in ${formatCount(open)} open ${open === 1 ? "batch" : "batches"}`,
       "data-testid": "kpi-annotated",
       ...(startSteps.length === 0
@@ -421,7 +421,7 @@ function Kpis({
                   ? `${batchesWord(promoteSteps.length)} ready to add to the dataset`
                   : latest === undefined
                     ? "Nothing released yet"
-                    : `${formatCount(unreleased)} ${unreleased === 1 ? "image" : "images"} since ${latest.tag}`,
+                    : `${formatCount(unreleased)} ${unreleased === 1 ? "asset" : "assets"} since ${latest.tag}`,
               tone: promoteSteps.length > 0 ? "warning" : "info",
               steps: [...promoteSteps, ...releaseSteps],
               "data-testid": "kpi-attention-dataset",
@@ -989,7 +989,7 @@ function FirstRun({
           // The batch gate is stated, not re-derived: approval is what pins a
           // schema version, and `SchemaNotFound` is the refusal that already
           // speaks for itself on the batches surface.
-          description={`${formatCount(assetCount)} ${assetCount === 1 ? "image is" : "images are"} in. Name the classes you will draw — annotation opens from the first approved batch.`}
+          description={`${formatCount(assetCount)} ${assetCount === 1 ? "asset is" : "assets are"} in. Name the classes you will draw — annotation opens from the first approved batch.`}
           action={
             onOpenSchema === undefined ? undefined : (
               <Button variant="default" data-testid="first-run-cta" onClick={onOpenSchema}>

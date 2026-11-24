@@ -299,7 +299,7 @@ describe("the Overview panel", () => {
     const readout = within(classes).getByTestId("class-readout");
     expect(readout.textContent).toContain("68%");
     expect(readout.textContent).toContain("dog");
-    expect(readout.textContent).toContain(`${(4372).toLocaleString(undefined)} on ${(900).toLocaleString(undefined)} images`);
+    expect(readout.textContent).toContain(`${(4372).toLocaleString(undefined)} on ${(900).toLocaleString(undefined)} assets`);
     expect(classes.textContent).not.toContain("schema");
   });
 
@@ -394,7 +394,7 @@ describe("the Overview panel", () => {
 
     await screen.findByTestId("overview-stats");
     expect(screen.queryByTestId("overview-empty")).toBeNull();
-    await waitFor(() => expect(screen.getByTestId("kpi-annotated").textContent).toContain("0 of 40 images"));
+    await waitFor(() => expect(screen.getByTestId("kpi-annotated").textContent).toContain("0 of 40 assets"));
     expect(screen.getByTestId("kpi-annotated").textContent).toContain("0%");
     // The classes chart says so in words, rather than drawing an empty bar.
     const classes = screen.getByTestId("kpi-annotations");
@@ -486,7 +486,7 @@ describe("the Overview panel", () => {
       renderWithData(<OverviewPanel projectId={PROJECT} />);
 
       // Nothing left, so the context says how much was labeled instead.
-      await waitFor(() => expect(kpi("annotated").textContent).toContain("10 of 10 images"));
+      await waitFor(() => expect(kpi("annotated").textContent).toContain("10 of 10 assets"));
       expect(within(kpi("annotated")).getByText("100")).not.toBeNull();
     });
 
@@ -697,7 +697,7 @@ describe("the first-run invitation", () => {
     // rather than replacing it, because there *is* something to describe.
     expect(screen.getByTestId("overview-stats")).not.toBeNull();
     expect(screen.queryByTestId("overview-empty")).toBeNull();
-    expect(region.textContent).toContain("48 images are in");
+    expect(region.textContent).toContain("48 assets are in");
     // The gate is stated, not re-derived — approval is what pins a version.
     expect(region.textContent).toContain("first approved batch");
     expect(filledButtons()).toEqual([screen.getByTestId("first-run-cta")]);
@@ -707,7 +707,7 @@ describe("the first-run invitation", () => {
     readinessOf({ schema: false, stats: statsOf({ asset_count: 1 }) });
     renderWithData(<OverviewPanel projectId={PROJECT} onOpenSchema={vi.fn()} />);
 
-    expect((await screen.findByTestId("first-run")).textContent).toContain("1 image is in");
+    expect((await screen.findByTestId("first-run")).textContent).toContain("1 asset is in");
   });
 
   it("invites nothing once the project has both classes and images", async () => {
@@ -780,7 +780,7 @@ describe("the cards as doors", () => {
 
     await screen.findByTestId("overview-stats");
     // The accessible name says what the number is and where the door leads.
-    await userEvent.click(screen.getByRole("button", { name: "Images, 48. Open Images" }));
+    await userEvent.click(screen.getByRole("button", { name: "Assets, 48. Open Images" }));
     await userEvent.click(screen.getByRole("button", { name: "Classes, 3. Open Classes" }));
     await userEvent.click(await screen.findByRole("button", { name: /^In dataset, 0\. Open the Dataset$/ }));
 
@@ -822,7 +822,7 @@ describe("the cards as doors", () => {
 
     const strip = await screen.findByTestId("overview-stats");
     // By the cell's own name: the Classes heading also carries its count.
-    expect([...strip.children].map((cell) => cell.getAttribute("aria-label"))).toEqual(["Images", "Labeled", "In dataset", "Classes"]);
+    expect([...strip.children].map((cell) => cell.getAttribute("aria-label"))).toEqual(["Assets", "Labeled", "In dataset", "Classes"]);
     expect([...strip.children].map((cell) => cell.getAttribute("data-testid"))).toEqual([
       "kpi-images",
       "kpi-annotated",
@@ -842,7 +842,7 @@ describe("the cards as doors", () => {
     // `findByText`, not `findByTestId` then read: the card renders immediately
     // with an em dash while its query is in flight.
     await screen.findByText("Nothing added yet");
-    expect(screen.getByTestId("kpi-annotated").textContent).toContain("0 of 48 images");
+    expect(screen.getByTestId("kpi-annotated").textContent).toContain("0 of 48 assets");
     expect((await screen.findByTestId("batches-none")).textContent).toContain("Adding images creates the first one");
   });
 
@@ -871,6 +871,30 @@ describe("the cards as doors", () => {
     renderWithData(<OverviewPanel projectId={PROJECT} />);
 
     await waitFor(() => expect(screen.getByTestId("kpi-images").textContent).toContain("from 2 sources"));
+  });
+
+  it.each([
+    ["image-only", ["image_directory"]],
+    ["scan-only", ["point_cloud_directory"]],
+    ["mixed", ["image_directory", "point_cloud_directory"]],
+  ] as const)("counts a %s project's assets as Assets", async (_kind, kinds) => {
+    readinessOf({ stats: statsOf({ asset_count: 48 }) });
+    const items = kinds.map((kind, i) => ({
+      id: `00000000-0000-4000-8000-00000000000${i}`,
+      project_id: PROJECT,
+      kind,
+      name: `source-${i}`,
+      registered_at: "2026-11-01T00:00:00Z",
+      frame: null,
+      video: null,
+    }));
+    first("GET", /\/sources$/, { status: 200, body: { items, total: items.length } });
+    renderWithData(<OverviewPanel projectId={PROJECT} />);
+
+    const card = await screen.findByTestId("kpi-images");
+    await waitFor(() => expect(card.textContent).toContain(`from ${items.length} source`));
+    expect(card.getAttribute("aria-label")).toBe("Assets");
+    expect(card.textContent).not.toMatch(/image|scan/i);
   });
 
   it("reads the dataset's own count, not the project's", async () => {
@@ -2554,14 +2578,14 @@ describe("auto-label over the batches", () => {
     await screen.findByTestId("overview-batch-drive-01");
   }
 
-  it("says how many images nobody has labeled in the batches that declare the run, and offers to do it", async () => {
+  it("says how many assets nobody has labeled in the batches that declare the run, and offers to do it", async () => {
     readinessOf({ stats: statsOf({ asset_count: 690 }), batches: mixed() });
     renderWithData(<OverviewPanel projectId={PROJECT} />);
     await settled();
 
     // The draft does not declare pre_label, and drive-03's images are being drafted now.
     expect(line().dataset.state).toBe("open");
-    expect(screen.getByTestId("prelabel-offer-text").textContent).toBe("233 images have no labels yet. A model can draft them for you to check.");
+    expect(screen.getByTestId("prelabel-offer-text").textContent).toBe("233 assets have no labels yet. A model can draft them for you to check.");
     expect(screen.getByTestId("prelabel-offer-start").textContent).toBe("Auto-label them");
     expect(screen.getByRole("button", { name: "Not now" })).not.toBeNull();
     // The line is the offer while it is there: the band says nothing beside it.
@@ -2571,12 +2595,12 @@ describe("auto-label over the batches", () => {
     expect(section.querySelector("header")?.nextElementSibling).toBe(line());
   });
 
-  it("speaks of one image as one", async () => {
+  it("speaks of one asset as one", async () => {
     readinessOf({ stats: statsOf({ asset_count: 200 }), batches: [live("a", "drive-01", 1)] });
     renderWithData(<OverviewPanel projectId={PROJECT} />);
     await settled();
 
-    expect(screen.getByTestId("prelabel-offer-text").textContent).toBe("1 image has no labels yet. A model can draft it for you to check.");
+    expect(screen.getByTestId("prelabel-offer-text").textContent).toBe("1 asset has no labels yet. A model can draft it for you to check.");
     expect(screen.getByTestId("prelabel-offer-start").textContent).toBe("Auto-label it");
   });
 
@@ -2664,7 +2688,7 @@ describe("auto-label over the batches", () => {
     });
     await queryClient.invalidateQueries();
     await waitFor(() => expect(line().dataset.state).toBe("open"));
-    expect(screen.getByTestId("prelabel-offer-text").textContent).toMatch(/^293 images/);
+    expect(screen.getByTestId("prelabel-offer-text").textContent).toMatch(/^293 assets/);
     expect(screen.queryByTestId("project-prelabel")).toBeNull();
   });
 
@@ -2679,7 +2703,7 @@ describe("auto-label over the batches", () => {
     await queryClient.invalidateQueries();
     await waitFor(() => expect(line().dataset.state).toBe("closed"));
     // It leaves with what it said rather than with a zero.
-    expect(screen.getByTestId("prelabel-offer-text").textContent).toMatch(/^120 images/);
+    expect(screen.getByTestId("prelabel-offer-text").textContent).toMatch(/^120 assets/);
     expect(screen.getByTestId("project-prelabel")).not.toBeNull();
   });
 

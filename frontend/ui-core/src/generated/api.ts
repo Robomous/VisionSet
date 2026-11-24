@@ -2131,9 +2131,13 @@ export interface paths {
          *     Every `ceil(n / max_points)`-th of the scan's `n` finite points, in file
          *     order, so one asset and one budget always answer the same bytes. Little-endian
          *     throughout: a 16-byte header (the magic `VSPC`, then u32 version `1`, u32
-         *     count and u32 flags, bit 0 intensity and bit 1 rgb), then f32 `x, y, z` per
-         *     point, then f32 intensity per point if flagged, then u8 `r, g, b` per point
-         *     if flagged. The scan's full count and bounds are the asset's `point_cloud`.
+         *     count and u32 flags, bit 0 intensity, bit 1 rgb, bit 2 origin), then f64
+         *     origin `x, y, z` if flagged, then f32 `x, y, z` per point relative to that
+         *     origin, then f32 intensity per point if flagged, then u8 `r, g, b` per point
+         *     if flagged. A point is the origin plus its position; without bit 2 the origin
+         *     is zero. An axis whose median point lies 8192 or more from zero is offset by
+         *     that median rounded to a whole unit, so float32 keeps a georeferenced scan's
+         *     precision. The scan's full count and bounds are the asset's `point_cloud`.
          *
          *     `max_points` defaults to 500000; outside 1000 to 2000000 it is 422
          *     `VALIDATION_ERROR`, never clamped. An image asset is 404 `ASSET_NOT_FOUND`,

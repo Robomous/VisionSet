@@ -79,6 +79,7 @@ def test_each_sample_thins_to_the_minimum_budget(path: Path) -> None:
     assert sample.total == metadata.point_count
     assert 1 <= sample.count <= MIN_POINT_BUDGET
     assert ("intensity" in metadata.fields) == (sample.intensity is not None)
-    assert len(sample.encode()) == 16 + 12 * sample.count + len(sample.intensity or b"") + len(
-        sample.rgb or b""
-    )
+    origin = 24 if any(sample.origin) else 0
+    assert len(sample.encode()) == 16 + origin + 12 * sample.count + len(
+        sample.intensity or b""
+    ) + len(sample.rgb or b"")

@@ -474,7 +474,7 @@ function Recent({
               <span className="min-w-0 flex-1 truncate text-foreground">{project.name}</span>
               <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                 {formatCount(project.asset_count)}{" "}
-                {project.asset_count === 1 ? "image" : "images"} ·{" "}
+                {project.asset_count === 1 ? "asset" : "assets"} ·{" "}
                 {formatPercent(project.annotated_fraction * 100)} annotated
               </span>
             </button>

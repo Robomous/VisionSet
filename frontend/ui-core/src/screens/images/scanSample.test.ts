@@ -4,9 +4,11 @@
  * that would change nothing — past the scan's own count — must not exist.
  */
 
+import { renderHook } from "@testing-library/react";
+import type { PointSample } from "@visionset/annotator";
 import { describe, expect, it } from "vitest";
 
-import { bytesPerPoint, densityLevels, formatBytes, shareOf } from "./scanSample";
+import { bytesPerPoint, densityLevels, formatBytes, shareOf, useRampRange } from "./scanSample";
 
 describe("densityLevels", () => {
   it("offers 1/16, 1/8, 1/4, 1/2 and all of a scan, at two significant figures", () => {
@@ -41,5 +43,18 @@ describe("what a density costs", () => {
   it("names a density by the share of the scan it keeps", () => {
     expect(shareOf(3_400, 27_400)).toBe("1 in 8");
     expect(shareOf(27_400, 27_400)).toBe("all");
+  });
+});
+
+describe("the height legend", () => {
+  it("reads heights in the scan's frame when the points are relative to an origin", () => {
+    const positions = new Float32Array(300);
+    for (let i = 0; i < 100; i += 1) positions.set([0, 0, i / 10], i * 3);
+    const sample: PointSample = { count: 100, positions, origin: [500_000, 4_000_000, 1_000], intensity: null, rgb: null };
+    const { result } = renderHook(() => useRampRange(sample, "lidar_flu", "height"));
+    const [low, high] = result.current ?? [Number.NaN, Number.NaN];
+    expect(low).toBeGreaterThanOrEqual(1_000);
+    expect(high).toBeGreaterThan(1_009);
+    expect(high).toBeLessThanOrEqual(1_010);
   });
 });

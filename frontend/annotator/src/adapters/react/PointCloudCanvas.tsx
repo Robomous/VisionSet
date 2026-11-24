@@ -38,6 +38,7 @@ import { scanPointerRole, type ScanPointerRole } from "../../core/pointcloud/edi
 import type { ScanEvent } from "../../core/pointcloud/edit/machine";
 import type { ScanViewKind } from "../../core/pointcloud/edit/scene";
 import type { ScanFrame } from "../../core/pointcloud/frame";
+import { segmentsRelativeTo } from "../../core/pointcloud/labels";
 import { pointColors, type ColorMode } from "../../core/pointcloud/ramp";
 import type { ScanViewport } from "../../core/pointcloud/ray";
 import type { Point3D } from "../../core/types";
@@ -47,8 +48,8 @@ export interface PointCloudLabel {
   readonly id: string;
   /** A CSS colour as the schema's palette spells it. */
   readonly color: string;
-  /** `x, y, z` per vertex, two vertices a segment. */
-  readonly segments: Float32Array;
+  /** `x, y, z` per vertex, two vertices a segment, in the scan's frame. */
+  readonly segments: Float32Array | Float64Array;
   /** Drawn in `highlightColor`, over every other label. */
   readonly emphasis?: "selected" | "draft";
 }
@@ -138,7 +139,7 @@ export function PointCloudCanvas(props: PointCloudCanvasProps): JSX.Element {
       camera.target[2] - home.target[2],
     );
     const aspect = canvas.width / Math.max(1, canvas.height);
-    const matrix = viewProjection(camera, current.frame, aspect, depthRadius + panned);
+    const matrix = viewProjection(camera, current.frame, aspect, depthRadius + panned, current.sample.origin);
     live.renderer.draw(matrix, canvas.width, canvas.height, POINT_PX * pixelRatio(), current.showLabels);
     draws.current += 1;
     host.dataset["draws"] = String(draws.current);
@@ -164,9 +165,13 @@ export function PointCloudCanvas(props: PointCloudCanvasProps): JSX.Element {
     const emphasised = current.labels.filter((label) => label.emphasis !== undefined);
     const highlight =
       emphasised.length === 0 || host === null ? null : resolveCssColor(host, current.highlightColor ?? "currentColor");
+    const { origin } = current.sample;
     renderer.setLabels([
-      ...plain.map((label) => ({ color: cssColorToRgb(label.color), segments: label.segments })),
-      ...emphasised.map((label) => ({ color: highlight ?? cssColorToRgb(label.color), segments: label.segments })),
+      ...plain.map((label) => ({ color: cssColorToRgb(label.color), segments: segmentsRelativeTo(label.segments, origin) })),
+      ...emphasised.map((label) => ({
+        color: highlight ?? cssColorToRgb(label.color),
+        segments: segmentsRelativeTo(label.segments, origin),
+      })),
     ]);
   }, []);
 
@@ -419,7 +424,7 @@ export function PointCloudCanvas(props: PointCloudCanvasProps): JSX.Element {
     const renderer = liveRef.current?.renderer;
     if (renderer) uploadLabels(renderer);
     requestDraw();
-  }, [labels, highlightColor, uploadLabels, requestDraw]);
+  }, [sample, labels, highlightColor, uploadLabels, requestDraw]);
 
   useEffect(() => {
     requestDraw();
@@ -477,7 +482,7 @@ interface Scene {
 const UNIT_SCENE: Scene = { home: homeCamera(UNIT_BOUNDS), zoomRadius: 1, depthRadius: 1 };
 
 function sceneOf(sample: PointSample): Scene {
-  const framed = framingBounds(sample.positions) ?? UNIT_BOUNDS;
+  const framed = framingBounds(sample.positions, sample.origin) ?? UNIT_BOUNDS;
   return {
     home: homeCamera(framed),
     zoomRadius: sceneRadius(framed),

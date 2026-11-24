@@ -81,10 +81,27 @@ nothing was being distributed. This is the first version that is.
 
 ### Fixed
 
+- **The ingest refusal for a video or a single file names point-cloud scans.** The CLI's `ingest` and the MCP
+  `ingest` tool, handed something that is not a directory, now say they take a directory of still images or of
+  point-cloud scans (`--point-clouds` on the CLI, `frame` on MCP) before pointing a video at the browser import
+  (#1068).
+- **The point-cloud e2e spec fails in CI when WebGL2 is missing.** The `annotator e2e (chromium)` job sets
+  `VISIONSET_REQUIRE_WEBGL=1`, so a runner without a WebGL2 context fails those tests instead of skipping them
+  (#1068).
 - **Scan batches are counted in scans.** On a batch of point-cloud scans, the Overview's batch row ("1 scan",
   "N scans") and its sheet ("Scans"), the batch-delete dialog and the Complete button's line ("N scans still to
   annotate or skip") no longer say images or frames; image batches keep their wording. The delete dialog's count
   is singular for one (#1090).
+- **Project-wide counts say assets, not images.** The Overview's *Assets* card and its context lines, the
+  auto-label line and tooltip ("N assets have no labels yet", "1 asset has no labels yet"), the Projects list's
+  *Assets* column, footer, *No assets* status, tooltips and sort label, the Home project rows and the project
+  delete confirmation count a project's assets in one neutral noun, whatever kinds of media the project holds
+  (#1098).
+- **The Dataset screen counts assets, not images.** Its *Assets* KPI, the *N of M assets* and *N assets without
+  labels* lines, *per asset*, the status line, the version history's gains, the release wall's notes and empty
+  states, and the class readout (*N on M assets*, shared with the Overview's Classes card) use the neutral noun, so
+  a scan dataset no longer reads as images. A single member is named by its kind (*No labels on this scan*, the
+  removal dialog) (#1100).
 - **Scan editing follow-ups.** After a cuboid footprint drag, focus moves to the perspective view and the height
   hint says Enter or a click finishes it; a click on an objects-panel row no longer takes keyboard focus off the
   view, in 2D and on scans; the editor's breadcrumb counts a scan job in scans ("Job · 1 scan", "Job · N scans")
@@ -95,6 +112,14 @@ nothing was being distributed. This is the first version that is.
   (409) while an asset it applies to holds a `cuboid_3d` or `polyline_3d` label, on every surface, instead of
   silently re-reading those labels against the new camera. Setting the identical calibration again changes
   nothing, and a first calibration where none applied, or a change nothing depends on, is still accepted (#1067).
+- **A georeferenced scan keeps its precision on the `points` wire.** Positions are sent relative to an origin:
+  each axis whose median point lies 8,192 or more from zero is offset by that median, rounded to a whole unit,
+  and the `VSPC` buffer carries it as f64 `x, y, z` after the header under flag bit 2. A scan near zero has no
+  origin and its buffer is unchanged. The viewer keeps labels and the camera in the scan's frame and subtracts the origin, in
+  doubles, only from what it draws; cuboid and polyline segments are built in doubles (#1068).
+- **The `points` route decodes a scan once per budget.** The decoded sample is cached per open workspace, keyed
+  by the asset's content hash and the budget, bounded at 128 MiB with the least recently used dropped first;
+  concurrent requests for the same uncached sample decode once (#1068).
 - **Annotator: Finish job on a read-only page, and the header at 768 px.** On a read-only page Finish job is
   natively `disabled`, and its reason stays reachable by hover and keyboard focus on a wrapper around it. Below a
   56rem header the job progress drops its bar (the count stays) and the save state shows its icon alone (`Not
