@@ -1259,14 +1259,17 @@ describe("the project's identity and its one filled control", () => {
     headerFor({ batches: OPEN_PAIR });
     renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={opened} />);
 
+    // A split button: the pen jumps to the first (newest) target and says which in its
+    // tooltip; the chevron beside it is the one that asks.
     const cta = await screen.findByTestId("go-annotate");
-    expect(cta.getAttribute("aria-haspopup")).toBe("menu");
-    // The pen and the chevron: the shape is what says a press opens a choice.
-    expect(cta.querySelectorAll("svg")).toHaveLength(2);
+    expect(cta.getAttribute("aria-haspopup")).toBeNull();
+    const chevron = screen.getByTestId("go-annotate-menu");
+    expect(chevron.getAttribute("aria-haspopup")).toBe("menu");
+    expect(chevron.getAttribute("aria-label")).toBe("Choose a batch to annotate");
 
-    await userEvent.click(cta);
+    await userEvent.click(chevron);
 
-    // Pressing it navigated nowhere. This is the whole defect, stated once.
+    // Opening the choice navigated nowhere: the choice is the point.
     expect(opened).not.toHaveBeenCalled();
     expect(await screen.findByTestId("annotate-batch-drive-03")).not.toBeNull();
     expect(screen.getByTestId("annotate-batch-drive-02")).not.toBeNull();
@@ -1276,7 +1279,7 @@ describe("the project's identity and its one filled control", () => {
     headerFor({ batches: OPEN_PAIR });
     renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
 
-    await userEvent.click(await screen.findByTestId("go-annotate"));
+    await userEvent.click(await screen.findByTestId("go-annotate-menu"));
     await screen.findByTestId("annotate-batch-drive-03");
 
     // A completed batch refuses every save, so it is not somewhere to be sent.
@@ -1300,7 +1303,7 @@ describe("the project's identity and its one filled control", () => {
     headerFor({ batches: OPEN_PAIR });
     renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={opened} />);
 
-    await userEvent.click(await screen.findByTestId("go-annotate"));
+    await userEvent.click(await screen.findByTestId("go-annotate-menu"));
     await userEvent.click(await screen.findByTestId("annotate-batch-drive-02"));
 
     expect(opened).toHaveBeenCalledWith("55555555-5555-4555-8555-555555555555");
@@ -1500,7 +1503,7 @@ describe("the project's identity and its one filled control", () => {
     await screen.findByTestId("overview-stats");
     expect(screen.queryByTestId("first-run")).toBeNull();
     expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
-    expect(screen.getByTestId("go-ingest").textContent).toBe("Add images");
+    expect(screen.getByTestId("go-ingest").getAttribute("aria-label")).toBe("Add images");
   });
 
   /** The dataset's reads, which put Publish release into the bar. */

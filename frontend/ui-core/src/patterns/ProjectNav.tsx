@@ -32,10 +32,12 @@
  *
  * ## The actions are the open section's
  *
- * Annotate opens the batch that is `in_annotation` — straight into its one job
- * when it has exactly one, onto the batch's panel on the Overview otherwise; with two or more open it
- * reads `Annotate ▾` and asks which, because the batch decides the schema
- * version you annotate under. It is offered where batches are, the Overview.
+ * Both are icon buttons named by their tooltips. Annotate opens the batch that
+ * is `in_annotation` — straight into its one job when it has exactly one, onto
+ * the batch's panel on the Overview otherwise; with two or more open it is a
+ * split button, the icon for the newest and the chevron to pick another,
+ * because the batch decides the schema version you annotate under. It is
+ * offered where batches are, the Overview.
  * Add images is a button where images are the subject (`ingest: "action"`,
  * Overview and Images) — outlined before Annotate, filled when nothing is open
  * — and the overflow's first entry everywhere else, one click from every
@@ -54,11 +56,12 @@
  * and a hairline, no `sidebar-*` token anywhere in it.
  */
 
-import { ChevronDown, Database, Grid3x3, ImagePlus, Images, MoreHorizontal, Pencil, Tags, TextCursorInput, Trash2, type LucideIcon } from "lucide-react";
+import { ChevronDown, Database, Grid3x3, ImagePlus, Images, MoreHorizontal, PenLine, Tags, TextCursorInput, Trash2, type LucideIcon } from "lucide-react";
 import type { JSX, MouseEvent, ReactNode } from "react";
 
 import {
   Button,
+  ButtonGroup,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -68,11 +71,14 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
-  cn,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
 } from "@robomous/ui-core";
 
 import { formatCount } from "../lib/format";
 import { isProjectSection, destinationOf, type AnnotateTarget, type ProjectSection } from "./projectSections";
+import { IconAction, IconButton, quietUnlessVisible } from "./IconAction";
 import { SectionActionsOutlet } from "./SectionActions";
 
 interface SectionLabel {
@@ -287,11 +293,10 @@ function Strip(props: ProjectNavProps): JSX.Element {
  * matches that weight. `data-icon` takes 2px off the padding on the icon's side
  * — an icon carries air inside its box, and equal padding reads heavier there.
  */
-const ACTION_ICON = "size-3.5";
-const ACTION_STROKE = 1.75;
 
 /**
- * Add images — beside Annotate once a batch is open for annotation.
+ * Add images — beside Annotate once a batch is open for annotation. Both are
+ * icon buttons named by their tooltips (`IconAction`), as the batch panel's are.
  *
  * On the sections images are the subject of (Overview, Images) it is a
  * button: outlined before Annotate while a batch is open, the filled control
@@ -305,15 +310,7 @@ function Cta({ annotate, onIngest, ingest = "action", contentOwnsTheAction = fal
   const annotating = annotate !== undefined && annotate.targets.length > 0;
   const addImages =
     onIngest === undefined || ingest === "menu" ? null : (
-      <Button
-        size="lg"
-        variant={annotating || contentOwnsTheAction ? "outline" : "default"}
-        data-testid="go-ingest"
-        onClick={onIngest}
-      >
-        <ImagePlus data-icon="inline-start" className={ACTION_ICON} strokeWidth={ACTION_STROKE} aria-hidden="true" />
-        Add images
-      </Button>
+      <IconAction icon={ImagePlus} label="Add images" variant={annotating || contentOwnsTheAction ? "outline" : "default"} data-testid="go-ingest" onClick={onIngest} />
     );
   if (!annotating) return addImages;
   return (
@@ -329,11 +326,16 @@ function Cta({ annotate, onIngest, ingest = "action", contentOwnsTheAction = fal
 }
 
 /**
- * One open batch jumps; two or more ask which, in three data points a row: the
- * name, the remaining count in the batch table's own words, and the pinned
- * schema version — invisible everywhere else on this page, and what the pick
- * actually decides. No split button and no remembered default: a control's
- * destination may not be a function of session history.
+ * Into the work. One open batch: an icon button that goes straight there. Two or
+ * more: a split button — the icon goes to the newest open batch with work left
+ * (`targets` arrive newest first; the newest of all when none has any), and the
+ * chevron welded to it lists every
+ * open batch to pick from, in three data points a row: the name, the remaining
+ * count in the batch table's own words, and the pinned schema version —
+ * invisible everywhere else on this page, and what the pick actually decides.
+ * The default is the list's order, never a remembered choice: a control's
+ * destination may not be a function of session history. The tooltip names the
+ * batch the icon will open, so the destination is said before the press.
  */
 function AnnotateAction({
   targets,
@@ -343,51 +345,50 @@ function AnnotateAction({
   readonly targets: readonly AnnotateTarget[];
   readonly onOpen: (batchId: string) => void;
   readonly onOpenJob?: (jobId: string) => void;
-}): JSX.Element {
+}): JSX.Element | null {
   function go(target: AnnotateTarget): void {
     const to = destinationOf(target);
     if (to.kind === "job" && onOpenJob !== undefined) onOpenJob(to.id);
     else onOpen(target.id);
   }
 
-  const icon = <Pencil data-icon="inline-start" className={ACTION_ICON} strokeWidth={ACTION_STROKE} aria-hidden="true" />;
-  const [only] = targets;
-  if (targets.length === 1 && only !== undefined) {
-    return (
-      <Button size="lg" variant="default" data-testid="go-annotate" onClick={() => go(only)}>
-        {icon}
-        Annotate
-      </Button>
-    );
+  // The first with work left, so the icon never opens a batch with nothing to do; the list's own order otherwise.
+  const first = targets.find((target) => target.remaining > 0) ?? targets[0];
+  if (first === undefined) return null;
+  const hint = `${first.name} · ${formatCount(first.remaining)} to do`;
+  if (targets.length === 1) {
+    return <IconAction icon={PenLine} label="Annotate" hint={hint} variant="default" data-testid="go-annotate" onClick={() => go(first)} />;
   }
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        {/* Same testid and variant as the jumping form: one control with two
-            shapes, and the chevron is what tells them apart. */}
-        <Button size="lg" variant="default" data-testid="go-annotate">
-          {icon}
-          Annotate
-          <ChevronDown data-icon="inline-end" className={cn(ACTION_ICON, "opacity-70")} strokeWidth={ACTION_STROKE} aria-hidden="true" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-56">
-        {targets.map((batch) => (
-          <DropdownMenuItem
-            key={batch.id}
-            data-testid={`annotate-batch-${batch.name}`}
-            onSelect={() => go(batch)}
-          >
-            <div className="flex flex-col items-start">
-              <span>{batch.name}</span>
-              <span className="text-xs text-muted-foreground tabular-nums">
-                {formatCount(batch.remaining)} to do · {batch.schemaVersion === null ? "—" : `v${batch.schemaVersion}`}
-              </span>
-            </div>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <ButtonGroup>
+      <IconAction icon={PenLine} label="Annotate" hint={hint} variant="default" data-testid="go-annotate" onClick={() => go(first)} />
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger asChild onFocus={quietUnlessVisible}>
+            <DropdownMenuTrigger asChild>
+              <IconButton icon={ChevronDown} label="Choose a batch to annotate" variant="default" className="w-6 border-l border-l-primary-foreground/20" data-testid="go-annotate-menu" />
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Choose a batch to annotate</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent align="end" className="min-w-56">
+          {targets.map((batch) => (
+            <DropdownMenuItem
+              key={batch.id}
+              data-testid={`annotate-batch-${batch.name}`}
+              onSelect={() => go(batch)}
+            >
+              <div className="flex flex-col items-start">
+                <span>{batch.name}</span>
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {formatCount(batch.remaining)} to do · {batch.schemaVersion === null ? "—" : `v${batch.schemaVersion}`}
+                </span>
+              </div>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </ButtonGroup>
   );
 }
 
