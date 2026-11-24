@@ -142,7 +142,7 @@ function Note({ note, working }: { readonly note: VersionNote; readonly working:
     case "images":
       return (
         <Line mark={signed(note.delta)} tone={note.delta < 0 ? "down" : working ? "info" : "up"}>
-          {Math.abs(note.delta) === 1 ? "image" : "images"}
+          {Math.abs(note.delta) === 1 ? "asset" : "assets"}
         </Line>
       );
     case "annotations":
@@ -165,7 +165,7 @@ function Note({ note, working }: { readonly note: VersionNote; readonly working:
     case "first":
       return (
         <Line mark={`+${formatCount(note.images)}`} tone="up">
-          {note.images === 1 ? "image" : "images"}, the first release
+          {note.images === 1 ? "asset" : "assets"}, the first release
         </Line>
       );
     case "unpublished":

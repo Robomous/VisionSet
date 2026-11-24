@@ -23,6 +23,7 @@ import { useMemo, useState, type JSX } from "react";
 import { Button } from "@robomous/ui-core";
 import type { WireAnnotation } from "../../annotator/jobQueries";
 import { refusalProse } from "../../data/refusals";
+import { assetNoun, type Modality } from "../../lib/assetNoun";
 import { formatCount } from "../../lib/format";
 import { classColor } from "../../palette";
 import { AnnotationLayer } from "../../patterns/StaticAnnotationOverlay";
@@ -73,7 +74,7 @@ export function MemberDetail({ projectId, datasetId, asset, at, count, focus, on
       scanLabels={scanLabels}
     >
       <div className="mt-4 flex flex-col gap-4 border-t border-border/70 pt-3 text-[13px]" data-testid="preview-panel">
-        <Labels annotations={annotations} colorOf={(name) => classColor(declared.get(name), name)} showLabels={showLabels} onToggle={drawing === "none" ? null : () => setShowLabels((on) => !on)} />
+        <Labels annotations={annotations} colorOf={(name) => classColor(declared.get(name), name)} showLabels={showLabels} onToggle={drawing === "none" ? null : () => setShowLabels((on) => !on)} modality={asset.modality} />
         {drawing === "none" && (
           <p className="text-xs text-muted-foreground" data-testid="preview-no-overlay">
             This image does not record its size, so its labels cannot be drawn over it.
@@ -113,18 +114,20 @@ function useDeclaredClasses(projectId: string): ReadonlyMap<string, LabelClass> 
 
 const NO_ANNOTATIONS: readonly WireAnnotation[] = [];
 
-/** What is on the image, counted by class, and the switch for the drawing. */
+/** What is on the asset, counted by class, and the switch for the drawing. */
 function Labels({
   annotations,
   colorOf,
   showLabels,
   onToggle,
+  modality,
 }: {
   readonly annotations: ReturnType<typeof useDatasetAssetAnnotations>;
   readonly colorOf: (labelClass: string) => string;
   readonly showLabels: boolean;
   /** `null` when there is no drawing to switch. */
   readonly onToggle: (() => void) | null;
+  readonly modality: Modality;
 }): JSX.Element {
   const items = annotations.data ?? [];
   const summary = summarise(items);
@@ -148,7 +151,7 @@ function Labels({
       )}
       {annotations.isSuccess && items.length === 0 && (
         <p className="text-muted-foreground" data-testid="preview-no-labels">
-          No labels on this image. Unlabeled images are training data too.
+          No labels on this {assetNoun(modality, 1, "image")}. Unlabeled {assetNoun(modality, 2, "image")} are training data too.
         </p>
       )}
       {summary.classes.length > 0 && (

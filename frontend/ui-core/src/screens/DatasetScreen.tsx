@@ -150,7 +150,7 @@ export function DatasetScreen({ projectId }: DatasetScreenProps): JSX.Element {
         <PublishDialog datasetId={dataset.data?.id ?? ""} open={publishing} onClose={() => setPublishing(false)} />
         <PageStatus>
           <span className="tabular-nums" data-testid="dataset-status">
-            {version.title} · {formatCount(version.images)} {version.images === 1 ? "image" : "images"} · {formatCount(versions.length - 1)} {versions.length === 2 ? "release" : "releases"}
+            {version.title} · {formatCount(version.images)} {version.images === 1 ? "asset" : "assets"} · {formatCount(versions.length - 1)} {versions.length === 2 ? "release" : "releases"}
           </span>
         </PageStatus>
       </div>

@@ -3,12 +3,12 @@
  * (`patterns/project/KpiCards.tsx`), so the Dataset reads like every other
  * project screen.
  *
- * The working copy is read as what the next release would freeze: its images
+ * The working copy is read as what the next release would freeze: its assets
  * against the newest release, how many carry labels, its classes, and the
- * releases so far. A release is read as what it froze: its images against the
+ * releases so far. A release is read as what it froze: its assets against the
  * one before, its annotations, its split, its schema.
  *
- * What is worth knowing and holds nothing back — images without labels, a
+ * What is worth knowing and holds nothing back — assets without labels, a
  * class nobody labelled, a schema a publish would move to — is a warning glyph
  * in its cell, its card on hover and on focus (`patterns/WarnTip.tsx`). Every
  * cell keeps one height, so opening another version changes text and nothing
@@ -34,8 +34,8 @@ function since(delta: number | null, previous: Release | null, first: string): s
   return delta === 0 ? `Same as ${previous.tag}` : `${signed(delta)} since ${previous.tag}`;
 }
 
-function perImage(annotations: number, images: number): string {
-  return (images === 0 ? 0 : annotations / images).toFixed(1);
+function perAsset(annotations: number, assets: number): string {
+  return (assets === 0 ? 0 : annotations / assets).toFixed(1);
 }
 
 export function VersionKpis({ projectId, version, versions, stats }: { readonly projectId: string; readonly version: DatasetVersion; readonly versions: readonly DatasetVersion[]; readonly stats: DatasetStats | undefined }): JSX.Element {
@@ -59,7 +59,7 @@ function workingCards(version: DatasetVersion, versions: readonly DatasetVersion
   return [
     {
       key: "images",
-      label: "Images",
+      label: "Assets",
       icon: Images,
       value: images === undefined ? null : formatCount(images),
       context: stats === undefined ? undefined : since(version.imagesDelta, version.previous, "Nothing published yet"),
@@ -72,7 +72,7 @@ function workingCards(version: DatasetVersion, versions: readonly DatasetVersion
       value: images === undefined || labeled === undefined ? null : String(images === 0 ? 0 : Math.round((labeled / images) * 100)),
       unit: "%",
       ...(images === undefined || labeled === undefined ? {} : { meter: { value: labeled, total: images } }),
-      context: images === undefined || labeled === undefined ? undefined : `${formatCount(labeled)} of ${count(images, "image", "images")}`,
+      context: images === undefined || labeled === undefined ? undefined : `${formatCount(labeled)} of ${count(images, "asset", "assets")}`,
       "data-testid": "kpi-labeled",
       ...(images === undefined || images === 0 || unlabeled === 0
         ? {}
@@ -80,7 +80,7 @@ function workingCards(version: DatasetVersion, versions: readonly DatasetVersion
             warning:
               labeled === 0
                 ? { title: "No labels yet", body: "A release would train on nothing.", "data-testid": "warning-labeling" }
-                : { title: `${count(unlabeled, "image", "images")} without labels`, body: "They are still exported, as negatives.", "data-testid": "warning-labeling" },
+                : { title: `${count(unlabeled, "asset", "assets")} without labels`, body: "They are still exported, as negatives.", "data-testid": "warning-labeling" },
           }),
     },
     {
@@ -88,7 +88,7 @@ function workingCards(version: DatasetVersion, versions: readonly DatasetVersion
       label: "Classes",
       icon: Tags,
       value: stats === undefined ? null : formatCount(declared?.length ?? stats.classes.length),
-      context: stats === undefined ? undefined : `${count(stats.annotation_count, "annotation", "annotations")} · ${perImage(stats.annotation_count, stats.asset_count)} per image`,
+      context: stats === undefined ? undefined : `${count(stats.annotation_count, "annotation", "annotations")} · ${perAsset(stats.annotation_count, stats.asset_count)} per asset`,
       "data-testid": "kpi-classes",
       ...(classes === null || classes.tone === "done" ? {} : { warning: { title: classes.title ?? classes.label, body: (classes.lines ?? []).join(" "), "data-testid": "warning-classes" } }),
     },
@@ -109,7 +109,7 @@ function releaseCards(version: DatasetVersion, release: Release): KpiCard[] {
   return [
     {
       key: "images",
-      label: "Images",
+      label: "Assets",
       icon: Images,
       value: formatCount(release.asset_count),
       context: since(version.imagesDelta, version.previous, "The first release"),
@@ -120,7 +120,7 @@ function releaseCards(version: DatasetVersion, release: Release): KpiCard[] {
       label: "Annotations",
       icon: SquareDashedMousePointer,
       value: formatCount(release.annotation_count),
-      context: `${perImage(release.annotation_count, release.asset_count)} per image`,
+      context: `${perAsset(release.annotation_count, release.asset_count)} per asset`,
       "data-testid": "kpi-annotations",
     },
     {

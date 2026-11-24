@@ -317,14 +317,14 @@ every other project screen. A panel is the app's band and its fields; folded, th
 panel's answer instead. The work the thing is opened for is one of those panels, last, with its
 controls inside it and its progress as its answer. The pattern is the Dataset (`DatasetScreen`,
 `screens/dataset/VersionKpis.tsx`, `Fold.tsx`, `VersionFacts.tsx`, `VersionNav.tsx`): a release
-reads *Images*, *Annotations*, *Split* and *Schema* over the page, and *Proof* then *Export* — the
+reads *Assets*, *Annotations*, *Split* and *Schema* over the page, and *Proof* then *Export* — the
 model, the recipe and the button — in the rail, above the *Releases* it was picked from, docked at
 the rail's foot.
 
 ```text
-◫ Images     ◎ Annotations   ⑂ Split        {} Schema         the KPI row: one fixed height, ⚠ in a label row
+◫ Assets     ◎ Annotations   ⑂ Split        {} Schema         the KPI row: one fixed height, ⚠ in a label row
 48           427             70/15/15       v3
-Same as v2   8.9 per image   Seed 0         Built with 0.0.1b4
+Same as v2   8.9 per asset   Seed 0         Built with 0.0.1b4
 ────────────────────────────────────────────────────────────
 ⛨ Proof  ◌ Not verified                ›   folded: the answer beside the title
 ⬚ Export  ✓ Downloaded                 ⌄   the work's state is said open or folded

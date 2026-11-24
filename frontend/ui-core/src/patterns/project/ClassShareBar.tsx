@@ -5,8 +5,8 @@
  * (`ClassRail`); the Overview draws it alone, in its Classes KPI, where the
  * legend is one door away.
  *
- * Shares are of annotations only: an image can show several classes, so
- * per-image shares overlap and would not sum to a whole. The bar is one image
+ * Shares are of annotations only: an asset can show several classes, so
+ * per-asset shares overlap and would not sum to a whole. The bar is one image
  * to assistive technology, named with every share, so no class is told by
  * colour alone.
  */
@@ -75,7 +75,7 @@ export function ClassShareBar({
         <p className="flex h-6 min-w-0 items-baseline gap-2 tabular-nums" aria-live="polite" data-testid="class-readout">
           <span className="text-base font-semibold tracking-tight">{share(focus.annotations, totalAnnotations)}</span>
           <span className="min-w-0 truncate text-xs text-muted-foreground">
-            <span className="text-foreground">{focus.name}</span> · {formatCount(focus.annotations)} on {formatCount(focus.images)} {focus.images === 1 ? "image" : "images"}
+            <span className="text-foreground">{focus.name}</span> · {formatCount(focus.annotations)} on {formatCount(focus.images)} {focus.images === 1 ? "asset" : "assets"}
           </span>
         </p>
       )}

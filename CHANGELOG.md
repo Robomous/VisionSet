@@ -97,6 +97,11 @@ nothing was being distributed. This is the first version that is.
   *Assets* column, footer, *No assets* status, tooltips and sort label, the Home project rows and the project
   delete confirmation count a project's assets in one neutral noun, whatever kinds of media the project holds
   (#1098).
+- **The Dataset screen counts assets, not images.** Its *Assets* KPI, the *N of M assets* and *N assets without
+  labels* lines, *per asset*, the status line, the version history's gains, the release wall's notes and empty
+  states, and the class readout (*N on M assets*, shared with the Overview's Classes card) use the neutral noun, so
+  a scan dataset no longer reads as images. A single member is named by its kind (*No labels on this scan*, the
+  removal dialog) (#1100).
 - **Scan editing follow-ups.** After a cuboid footprint drag, focus moves to the perspective view and the height
   hint says Enter or a click finishes it; a click on an objects-panel row no longer takes keyboard focus off the
   view, in 2D and on scans; the editor's breadcrumb counts a scan job in scans ("Job · 1 scan", "Job · N scans")
