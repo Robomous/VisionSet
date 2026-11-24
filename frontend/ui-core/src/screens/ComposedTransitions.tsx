@@ -30,11 +30,10 @@ import { refusalProse } from "../data/refusals";
 import { Button, FieldError, Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger, Switch, Tooltip, TooltipContent, TooltipTrigger } from "@robomous/ui-core";
 import { IconAction, IconButton } from "../patterns/IconAction";
 import { quietUnlessVisible } from "../patterns/iconFocus";
-import { assetNoun } from "../lib/assetNoun";
+import { batchNoun } from "../lib/assetNoun";
 import { outstandingWork } from "./batchState";
 import { completedLine, promotionSummary } from "./batchWords";
 import {
-  useBatchModality,
   useFinishBatch,
   usePromoteBatch,
   type Batch,
@@ -80,13 +79,12 @@ export function CompleteBatchButton({ batch, projectId, onOpenDataset, onPromote
   const [completed, setCompleted] = useState<FinishBatchResult | null>(null);
   const [open, setOpen] = useState(false);
   const [add, setAdd] = useState(lastAddChoice);
-  const modality = useBatchModality(projectId, batch.id);
 
   const offered = declares(batch, BATCH_ACTION.complete);
   if (!offered && completed === null) return null;
 
   const outstanding = outstandingWork(batch.progress);
-  const reason = outstanding > 0 ? `${outstanding} ${assetNoun(modality, outstanding)} still to annotate or skip` : null;
+  const reason = outstanding > 0 ? `${outstanding} ${batchNoun(batch.modalities, outstanding)} still to annotate or skip` : null;
   const busy = finish.isPending || promote.isPending;
   const summary = promote.isSuccess ? promotionSummary(promote.data.total, batch.promoted_asset_count, batch.asset_count) : null;
 
@@ -126,7 +124,7 @@ export function CompleteBatchButton({ batch, projectId, onOpenDataset, onPromote
               {/* The whole row is the switch's label: the row is the hit area and its words are the name. */}
               <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md bg-muted/60 px-3 py-2.5">
                 {/* Not a count: skipped ones stay out, and only the kernel knows which are left. */}
-                <span className="font-medium">Add the labeled {assetNoun(modality, 2, "image")} to the dataset</span>
+                <span className="font-medium">Add the labeled {batchNoun(batch.modalities, 2, "image")} to the dataset</span>
                 <Switch checked={add} onCheckedChange={setAdd} data-testid="complete-add" />
               </label>
               <div className="flex justify-end gap-1.5">

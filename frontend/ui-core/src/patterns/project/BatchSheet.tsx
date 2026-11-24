@@ -36,7 +36,7 @@ import { useEffect, useRef, useState, type JSX, type ReactNode, type RefObject }
 import { Button, cn } from "@robomous/ui-core";
 import { formatCount, formatPercent } from "../../lib/format";
 import type { BatchRowView, LabelCounts } from "./BatchTable";
-import { initials, labeledDetail, phaseState } from "./batchRowModel";
+import { initials, labeledDetail, phaseState, rowNoun } from "./batchRowModel";
 import { focusQuietly } from "../iconFocus";
 import { StateChip } from "../StateChip";
 import { ProgressReadout } from "../ProgressRing";
@@ -194,8 +194,8 @@ export function BatchSheet({ row, position, onStep, onClose, jobs, jobsError, no
               <Property icon={ListChecks} label="Labeled" top={row.done !== null}>
                 <Labeled row={row} />
               </Property>
-              {/* A scan batch counts scans, as the table's name line does (`assetNoun`). */}
-              <Property icon={Images} label={row.modality === "point_cloud" ? "Scans" : "Images"}>
+              {/* Counted in the noun the table's name line uses (`rowNoun`). */}
+              <Property icon={Images} label={capitalized(rowNoun(row, 2))}>
                 {formatCount(row.total)}
               </Property>
               <Property icon={Users} label="Assigned">
@@ -348,8 +348,8 @@ function MoreProperties({ row, details }: { readonly row: BatchRowView; readonly
     ]);
   }
   if (row.schemaVersion !== null) extra.push([Shapes, "Schema", `Version ${row.schemaVersion}`]);
-  if (details !== undefined) extra.push([GitBranch, "Kind", details.correction ? "Correction of an earlier batch" : row.modality === "point_cloud" ? "Scans to label" : "Images to label"]);
-  if (details !== undefined && details.promoted > 0) extra.push([PackageCheck, "In dataset", `${formatCount(details.promoted)} ${details.promoted === 1 ? "image" : "images"}`]);
+  if (details !== undefined) extra.push([GitBranch, "Kind", details.correction ? "Correction of an earlier batch" : `${capitalized(rowNoun(row, 2))} to label`]);
+  if (details !== undefined && details.promoted > 0) extra.push([PackageCheck, "In dataset", `${formatCount(details.promoted)} ${rowNoun(row, details.promoted)}`]);
   if (extra.length === 0) return null;
   return (
     <>
@@ -405,4 +405,8 @@ function JobsSection({ jobs, jobsError, noJobs }: Pick<BatchSheetProps, "jobs" |
       )}
     </section>
   );
+}
+
+function capitalized(word: string): string {
+  return `${word.charAt(0).toUpperCase()}${word.slice(1)}`;
 }

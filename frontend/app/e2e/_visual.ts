@@ -192,6 +192,7 @@ function batch(): Wire["BatchOut"] {
     name: "drive-01",
     state: "in_annotation",
     allowed_actions: batchActions("in_annotation"),
+    modalities: ["image"],
     promoted_asset_count: 0,
     parent_batch_id: null,
     pre_label_run: null,

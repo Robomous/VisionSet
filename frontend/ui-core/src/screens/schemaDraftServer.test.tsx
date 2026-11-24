@@ -78,6 +78,7 @@ function batchFixture(): Batch {
     schema_version: 1,
     asset_count: 48,
     allowed_actions: [],
+    modalities: ["image"],
     promoted_asset_count: 0,
     parent_batch_id: null,
     pre_label_run: null,

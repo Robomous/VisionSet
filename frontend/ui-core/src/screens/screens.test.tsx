@@ -1034,6 +1034,7 @@ describe("the project's identity and its one filled control", () => {
         total: 4,
       },
       allowed_actions: batchActions(fields.state as BatchState),
+      modalities: ["image"],
       promoted_asset_count: 0,
       parent_batch_id: null,
       pre_label_run: null,

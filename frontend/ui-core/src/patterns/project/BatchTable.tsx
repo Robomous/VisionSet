@@ -37,10 +37,10 @@ import { CircleCheckBig, CircleDashed, FolderOpen, Users } from "lucide-react";
 import { useMemo, useRef, useState, type JSX, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 
 import { cn } from "@robomous/ui-core";
-import { assetNoun, type Modality } from "../../lib/assetNoun";
+import type { Modality } from "../../lib/assetNoun";
 import { formatCount } from "../../lib/format";
 import type { BatchPhase } from "./BatchSummary";
-import { initials, labeledDetail, lensAdmits, phaseState, type Lens } from "./batchRowModel";
+import { initials, labeledDetail, lensAdmits, phaseState, rowNoun, type Lens } from "./batchRowModel";
 import { StateChip } from "../StateChip";
 import { BODY_ROW, ColumnHeader, ListGrid, type ListColumn } from "../ListPage";
 import { columnLines } from "../listColumns";
@@ -69,8 +69,8 @@ export interface BatchRowView {
   /** Images decided; `null` before the batch has jobs. */
   readonly done: number | null;
   readonly total: number;
-  /** What the batch holds; absent, images. */
-  readonly modality?: Modality;
+  /** What the batch holds (`BatchOut.modalities`); absent, images. */
+  readonly modalities?: readonly Modality[];
   /** A model drafting labels, while it runs. */
   readonly prelabel: { readonly processed: number; readonly total: number | null } | null;
   /** How the batch's assets split by annotation state, once it has jobs — what its progress says when pointed at. */
@@ -298,7 +298,7 @@ function Row({
           <span className="min-w-0 truncate font-medium">{row.name}</span>
           {/* Gives way before the name does. */}
           <span className="min-w-0 shrink-[100] truncate text-xs text-muted-foreground tabular-nums">
-            {formatCount(row.total)} {assetNoun(row.modality ?? "image", row.total, "image")}
+            {formatCount(row.total)} {rowNoun(row, row.total)}
             {row.schemaVersion !== null && ` · schema v${row.schemaVersion}`}
           </span>
         </button>
