@@ -18,7 +18,7 @@ import { ClipRangeTimeline } from "../ClipRangeTimeline";
 import { selectionSummary } from "../clipRanges";
 import { ScaleField } from "../ingestScale";
 import { RateField } from "./clipImport";
-import { sourceLabel } from "./ingestRun";
+import { sourceLabel } from "./ingestWords";
 import { IntoField } from "./IntoField";
 import type { AddImagesFlow } from "./useAddImagesFlow";
 

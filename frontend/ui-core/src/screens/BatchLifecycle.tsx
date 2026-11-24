@@ -21,25 +21,18 @@
  * server says. Nothing here guesses.
  */
 
-import { useEffect, useId, useState, type JSX } from "react";
+import { useId, type JSX } from "react";
 import { ChevronDown, Minus, Play, Plus, Stamp } from "lucide-react";
 
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
 import { Button, Dialog, DialogContent, DialogDescription, DialogTitle, FieldError, Switch, ToggleGroup, ToggleGroupItem, cn } from "@robomous/ui-core";
 import { assetNoun } from "../lib/assetNoun";
-import { formatCount } from "../lib/format";
 import { IconAction } from "../patterns/IconAction";
 import { ProgressBar } from "../patterns/ProgressBar";
 import { annotatedShare } from "./batchState";
-import {
-  useActiveSchema,
-  useApproveBatch,
-  useBatchModality,
-  useBatchTransition,
-  type Batch,
-  type ProgressCounts,
-} from "./queries";
+import { approveCost, approveLabel, useApproveForm, type ApproveForm } from "./approveForm";
+import { useBatchTransition, type Batch, type ProgressCounts } from "./queries";
 
 /**
  * The counts, as one bar and a readout.
@@ -140,166 +133,11 @@ export function BatchProgressBar({
 /** What `SchemaService.require_active` raises for a project that has none. */
 const SCHEMA_NOT_FOUND = "SCHEMA_NOT_FOUND";
 
-/** Even sizes, as `BySize` cuts them: every job `size` long, the last one the rest. */
-function cutBySize(images: number, size: number): readonly number[] {
-  const out: number[] = [];
-  for (let left = images; left > 0; left -= size) out.push(Math.min(size, left));
-  return out;
-}
-
-/**
- * Split's starting size: 25 a job, or half a batch too small for that — so
- * choosing Split always makes at least two jobs rather than repeating One job.
- */
-function splitDefault(images: number): number {
-  return images > 25 ? 25 : Math.max(1, Math.ceil(images / 2));
-}
-
-/** The stepper's step: by fives on a batch big enough for it to matter, by ones otherwise. */
-function stepFor(images: number): number {
-  return images > 20 ? 5 : 1;
-}
 const EASE = "cubic-bezier(0.23, 1, 0.32, 1)";
 const SEGMENT =
   "h-6 rounded-[5px] px-2.5 text-xs text-muted-foreground transition-[color,box-shadow,scale] duration-150 ease-out hover:text-foreground active:scale-[0.97] " +
   "data-[state=on]:bg-background data-[state=on]:font-medium data-[state=on]:text-foreground data-[state=on]:shadow-[0_0_0_1px_var(--border),0_1px_2px_oklch(0_0_0/0.06)] motion-reduce:transition-none";
 const PRESS = "transition-[background-color,scale] duration-100 ease-out active:scale-[0.97] motion-reduce:transition-none";
-
-/** What the approve form holds, and what it can do — one spelling for the dialog and the Add images step. */
-export interface ApproveForm {
-  readonly batch: Batch | null;
-  readonly images: number;
-  /** The asset noun for `images`, in the batch's modality. */
-  readonly noun: string;
-  /** What approving pins, said in words: `schema v3`, or the project's current schema while unread. */
-  readonly pinned: string;
-  readonly start: boolean;
-  readonly setStart: (start: boolean) => void;
-  readonly folded: boolean;
-  readonly setFolded: (fold: (was: boolean) => boolean) => void;
-  readonly mode: "one" | "split";
-  readonly setMode: (mode: "one" | "split") => void;
-  readonly size: string;
-  readonly setSize: (size: string) => void;
-  /** Images per job, as typed. */
-  readonly per: number;
-  readonly parts: readonly number[];
-  /** The folded heading's answer: *One job*, *3 jobs of up to 25*. */
-  readonly answer: string;
-  readonly valid: boolean;
-  readonly busy: boolean;
-  /** The pinned version once the approval landed — set even when the start after it was refused. */
-  readonly approvedAt: number | null;
-  readonly approve: ReturnType<typeof useApproveBatch>;
-  readonly begin: ReturnType<typeof useBatchTransition>;
-  readonly step: (by: number) => void;
-  readonly stepSize: number;
-  /** Approve, then start when the switch says so. `onSettled` runs once both requests asked for have landed, with the approved batch. */
-  readonly submit: (onSettled: (approved: Batch) => void) => void;
-  readonly modality: ReturnType<typeof useBatchModality>;
-}
-
-/**
- * The approval's state and its two requests, apart from where they are drawn.
- *
- * `ApproveDialog` draws them over a page; the Add images dialog draws them as its
- * last step, in place, because a dialog over a dialog is the one thing a modal
- * flow must not open (`DESIGN.md`: one deep). Both draw `ApproveFields`, so the
- * switch, the cut and the refusals have one spelling.
- *
- * Each batch it is handed starts from the defaults: a host that keeps the form
- * mounted while the batch changes must not carry the last choice over.
- */
-export function useApproveForm(batch: Batch | null): ApproveForm {
-  const images = batch?.asset_count ?? 0;
-  const [start, setStart] = useState(true);
-  const [folded, setFolded] = useState(true);
-  const [mode, setMode] = useState<"one" | "split">("one");
-  const [size, setSize] = useState(() => String(splitDefault(images)));
-  const approve = useApproveBatch(batch?.id ?? "");
-  const begin = useBatchTransition(batch?.id ?? "", "start");
-  const schema = useActiveSchema(batch?.project_id ?? "", batch !== null);
-  const modality = useBatchModality(batch?.project_id ?? "", batch?.id ?? null);
-  const [approvedAt, setApprovedAt] = useState<number | null>(null);
-
-  // Each opening starts from the defaults for the batch it opens on: the dialog
-  // stays mounted closed, so what the last one chose must not carry over.
-  const openedOn = batch?.id ?? null;
-  const reset = approve.reset;
-  const resetStart = begin.reset;
-  useEffect(() => {
-    if (openedOn === null) return;
-    setStart(true);
-    setFolded(true);
-    setMode("one");
-    setSize(String(splitDefault(images)));
-    setApprovedAt(null);
-    reset();
-    resetStart();
-  }, [openedOn, images, reset, resetStart]);
-
-  const per = Math.floor(Number(size));
-  const valid = mode === "one" || (Number.isFinite(per) && per >= 1);
-  const parts = mode === "one" || !valid ? [images] : cutBySize(images, per);
-  const answer = mode === "one" || parts.length <= 1 ? "One job" : `${parts.length} jobs of up to ${per}`;
-  const busy = approve.isPending || begin.isPending;
-  const noun = assetNoun(modality, images, "image");
-  const pinned = schema.data === undefined ? "the project’s current schema" : `schema v${schema.data.version}`;
-
-  function step(by: number): void {
-    const now = Number.isFinite(per) && per >= 1 ? per : 1;
-    setSize(String(Math.max(1, Math.min(images, now + by))));
-  }
-
-  function submit(onSettled: (approved: Batch) => void): void {
-    approve.mutate(
-      // `kind` is always explicit. A discriminated union's tag emitted by default
-      // reads as optional in the schema while pydantic needs it in the input dict
-      // to pick a variant, so omitting it fails with `union_tag_not_found`.
-      mode === "one" || parts.length <= 1 ? { kind: "single" } : { kind: "by_size", size: per },
-      {
-        onSuccess: (approved) => {
-          setApprovedAt(approved.schema_version ?? null);
-          if (!start) return onSettled(approved);
-          // A refused start stays where it was asked, under the approval it followed.
-          begin.mutate(undefined, { onSuccess: () => onSettled(approved) });
-        },
-      },
-    );
-  }
-
-  return {
-    batch,
-    images,
-    noun,
-    pinned,
-    start,
-    setStart,
-    folded,
-    setFolded,
-    mode,
-    setMode,
-    size,
-    setSize,
-    per,
-    parts,
-    answer,
-    valid,
-    busy,
-    approvedAt,
-    approve,
-    begin,
-    step,
-    stepSize: stepFor(images),
-    submit,
-    modality,
-  };
-}
-
-/** The approve form's one-line cost: what freezes, what pins, and that a draft can't come back. */
-export function approveCost(form: ApproveForm): string {
-  return `Freezes its ${formatCount(form.images)} ${form.noun} and pins ${form.pinned}. A draft can’t come back.`;
-}
 
 /**
  * The approval's body: the Start annotating now switch, the folded cut, and the
@@ -430,11 +268,6 @@ export function ApproveFields({
   );
 }
 
-/** The approve button's words while its two requests are in flight. */
-export function approveLabel(form: ApproveForm): string {
-  return form.approve.isPending ? "Approving…" : form.begin.isPending ? "Starting…" : "Approve";
-}
-
 export function ApproveDialog({
   batch,
   onClose,
@@ -448,6 +281,35 @@ export function ApproveDialog({
   /** Where "define your labels" goes when the refusal is `SCHEMA_NOT_FOUND`. */
   readonly onOpenSchema?: () => void;
 }): JSX.Element {
+  return (
+    <Dialog open={batch !== null} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent data-testid="approve-dialog" className="gap-4 sm:max-w-sm" showCloseButton={false}>
+        {/* The form's state lives inside the content, which exists only while the
+            dialog is open and is keyed by its batch: each opening, and each batch,
+            starts from the defaults. */}
+        <ApproveBody
+          key={batch?.id ?? "closed"}
+          batch={batch}
+          onClose={onClose}
+          {...(onApproved === undefined ? {} : { onApproved })}
+          {...(onOpenSchema === undefined ? {} : { onOpenSchema })}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ApproveBody({
+  batch,
+  onClose,
+  onApproved,
+  onOpenSchema,
+}: {
+  readonly batch: Batch | null;
+  readonly onClose: () => void;
+  readonly onApproved?: () => void;
+  readonly onOpenSchema?: () => void;
+}): JSX.Element {
   const form = useApproveForm(batch);
 
   function finish(): void {
@@ -456,44 +318,42 @@ export function ApproveDialog({
   }
 
   return (
-    <Dialog open={batch !== null} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent data-testid="approve-dialog" className="gap-4 sm:max-w-sm" showCloseButton={false}>
-        <div className="flex flex-col gap-1">
-          <DialogTitle>Approve {batch?.name}?</DialogTitle>
-          <DialogDescription>{approveCost(form)}</DialogDescription>
-        </div>
+    <>
+      <div className="flex flex-col gap-1">
+        <DialogTitle>Approve {batch?.name}?</DialogTitle>
+        <DialogDescription>{approveCost(form)}</DialogDescription>
+      </div>
 
-        <ApproveFields
-          form={form}
-          {...(onOpenSchema === undefined
-            ? {}
-            : {
-                onOpenSchema: () => {
-                  onClose();
-                  onOpenSchema();
-                },
-              })}
-        />
+      <ApproveFields
+        form={form}
+        {...(onOpenSchema === undefined
+          ? {}
+          : {
+              onOpenSchema: () => {
+                onClose();
+                onOpenSchema();
+              },
+            })}
+      />
 
-        <div className="flex justify-end gap-2">
-          {form.approvedAt !== null && form.begin.isError ? (
-            <Button data-testid="approve-done" onClick={finish}>
-              Close
+      <div className="flex justify-end gap-2">
+        {form.approvedAt !== null && form.begin.isError ? (
+          <Button data-testid="approve-done" onClick={finish}>
+            Close
+          </Button>
+        ) : (
+          <>
+            <Button variant="ghost" data-testid="approve-cancel" onClick={onClose} disabled={form.busy}>
+              Cancel
             </Button>
-          ) : (
-            <>
-              <Button variant="ghost" data-testid="approve-cancel" onClick={onClose} disabled={form.busy}>
-                Cancel
-              </Button>
-              <Button className={PRESS} data-testid="approve-submit" data-autofocus="" disabled={form.busy || !form.valid} onClick={() => form.submit(finish)}>
-                <Stamp data-icon="inline-start" aria-hidden="true" />
-                {approveLabel(form)}
-              </Button>
-            </>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+            <Button className={PRESS} data-testid="approve-submit" data-autofocus="" disabled={form.busy || !form.valid} onClick={() => form.submit(finish)}>
+              <Stamp data-icon="inline-start" aria-hidden="true" />
+              {approveLabel(form)}
+            </Button>
+          </>
+        )}
+      </div>
+    </>
   );
 }
 

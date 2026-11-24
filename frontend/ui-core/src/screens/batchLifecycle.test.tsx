@@ -405,10 +405,10 @@ describe("Complete's count of what is left, said in its tooltip", () => {
     });
   }
 
-  /** The reason lives in the withheld control's tooltip, reached by keyboard through its wrapper. */
+  /** The reason lives in the withheld control's tooltip, reached by keyboard: the control stays focusable. */
   async function reason(text: string): Promise<void> {
-    const control = screen.getByTestId("complete-drive-01") as HTMLButtonElement;
-    expect(control.disabled).toBe(true);
+    const control = screen.getByTestId("complete-drive-01");
+    expect(control.getAttribute("aria-disabled")).toBe("true");
     await userEvent.tab();
     await waitFor(() => expect(screen.getAllByText(text).length).toBeGreaterThan(0));
   }

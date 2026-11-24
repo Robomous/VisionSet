@@ -1790,11 +1790,11 @@ describe("the batches panel", () => {
       renderWithData(<OverviewPanel projectId={PROJECT} />);
 
       const footer = await footerOf("drive-03");
-      const complete = within(footer).getByTestId("complete-drive-03") as HTMLButtonElement;
-      expect(complete.disabled).toBe(true);
+      const complete = within(footer).getByTestId("complete-drive-03");
+      expect(complete.getAttribute("aria-disabled")).toBe("true");
       expect(complete.getAttribute("aria-label")).toBe("Complete batch");
-      // The count is the tooltip's reason, reached by keyboard through the withheld button's wrapper.
-      complete.parentElement!.focus();
+      // The count is the tooltip's reason, reached by keyboard: the withheld button stays focusable.
+      complete.focus();
       expect((await screen.findAllByText(/^2 .+ still to annotate or skip$/)).length).toBeGreaterThan(0);
       await userEvent.click(complete);
       expect(screen.queryByTestId("complete-confirm")).toBeNull();
@@ -1845,8 +1845,8 @@ describe("the batches panel", () => {
           expect(within(footer).queryByTestId(id), `${name}: ${id}`).toBeNull();
         }
         // Delete stays, withheld with its reason rather than hidden.
-        const remove = within(footer).getByTestId(`delete-batch-${name}`) as HTMLButtonElement;
-        expect(remove.disabled, `${name}: delete`).toBe(true);
+        const remove = within(footer).getByTestId(`delete-batch-${name}`);
+        expect(remove.getAttribute("aria-disabled"), `${name}: delete`).toBe("true");
         unmount();
       }
     });

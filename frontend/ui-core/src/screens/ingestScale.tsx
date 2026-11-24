@@ -3,15 +3,7 @@ import type { JSX } from "react";
 import { Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
 import { scaledDimension } from "@visionset/media";
 
-/**
- * The server's scaled-dimension formula. `@visionset/media`'s `scaledDimension`
- * is the one spelling; re-exported here so existing callers keep importing it
- * from this module.
- */
-export { scaledDimension };
-
-/** Every size the server stores at: 10% to 100% per side, in steps of 5, largest first. */
-export const SCALE_PERCENTS: readonly number[] = Array.from({ length: 19 }, (_, at) => 100 - at * 5);
+import { SCALE_PERCENTS } from "./scalePercents";
 
 /**
  * The stored size, as a select of percentages per side.

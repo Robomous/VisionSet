@@ -27,12 +27,14 @@ import type { JSX, ReactNode } from "react";
 
 import { Alert, AlertDescription, AlertTitle, Button, FieldError, FieldDescription } from "@robomous/ui-core";
 import { refusalProse } from "../../data/refusals";
-import { assetNoun } from "../../lib/assetNoun";
 import { formatCount } from "../../lib/format";
 import { ProgressBar } from "../../patterns/ProgressBar";
-import { ApproveFields, approveCost } from "../BatchLifecycle";
-import { decodeProse } from "./clipImport";
-import { Failures, IngestProgress, sourceLabel } from "./ingestRun";
+import { approveCost } from "../approveForm";
+import type { Batch } from "../queries";
+import { ApproveFields } from "../BatchLifecycle";
+import { decodeProse } from "./clipDerived";
+import { Failures, IngestProgress } from "./ingestRun";
+import { holdsLine, readyLine, sourceLabel } from "./ingestWords";
 import { PRESS } from "./motion";
 import type { AddImagesFlow } from "./useAddImagesFlow";
 
@@ -163,57 +165,74 @@ function ImportProgress({ flow }: { readonly flow: AddImagesFlow }): JSX.Element
 }
 
 /** The batch a settled flow filled, and what can be done with it here. */
-function Outcome({ flow, noSchema, approvable, onOpenBatch, onOpenSchema }: BatchStepProps): JSX.Element | null {
-  if (flow.kind === "video") {
-    // A cancelled or failed import made nothing; its alert above already says so.
-    if (flow.clip.batch === null) return null;
-  } else if (flow.batchId === null) {
-    const job = flow.run.job;
-    if (job === null) return null;
-    return (
-      <p className="text-sm text-pretty" data-testid="run-outcome">
-        {job.state === "completed"
-          ? "Everything this run read was already in a batch, so no new batch was made."
-          : "This run never reached a batch, so there is nothing to open yet."}
-      </p>
-    );
-  }
-
-  const batchId = flow.batchId;
+function Outcome(props: BatchStepProps): JSX.Element | null {
+  const { flow, onOpenSchema } = props;
+  // A cancelled or failed import made nothing — its alert above already says so —
+  // and a run may have ended without a batch.
+  if (flow.batchId === null) return <NoBatchOutcome flow={flow} />;
   const name = flow.batchName ?? "this run's batch";
-  if (batchId === null) return null;
+  if (isApproved(flow)) return <ApprovedOutcome flow={flow} name={name} />;
+  if (flow.approving && flow.batch !== null) return <ApproveStep flow={flow} batch={flow.batch} {...(onOpenSchema === undefined ? {} : { onOpenSchema })} />;
+  return <ReadyOutcome {...props} batchId={flow.batchId} name={name} />;
+}
 
-  if (flow.approved !== null || (flow.approving && flow.approval.approvedAt !== null && flow.approval.begin.isError)) {
-    return (
-      <div className="flex flex-col gap-3">
-        <Landed tone="approved" testId="approved-outcome" title={<>“{sourceLabel(name)}” is approved</>} fullName={name}>
-          {flow.approved ?? `Approved${flow.approval.approvedAt === null ? "" : ` against v${flow.approval.approvedAt}`}, but not started.`}
-        </Landed>
-        {flow.approval.begin.isError && (
-          <div className="flex flex-col gap-1" data-testid="approve-start-error">
-            <span className="text-xs text-muted-foreground">It couldn’t be started:</span>
-            <FieldError>{refusalProse(flow.approval.begin.error)}</FieldError>
-          </div>
-        )}
-      </div>
-    );
-  }
+/** The approval landed, or landed and then could not start the batch. */
+function isApproved(flow: AddImagesFlow): boolean {
+  return flow.approved !== null || (flow.approving && flow.approval.approvedAt !== null && flow.approval.begin.isError);
+}
 
-  if (flow.approving && flow.batch !== null) {
-    return (
-      <div className="flex flex-col gap-3" data-testid="approve-step">
-        <div className="flex flex-col gap-1">
-          <p className="text-sm font-medium text-balance">Approve “{sourceLabel(flow.batch.name)}”?</p>
-          <p className="text-xs text-pretty text-muted-foreground">{approveCost(flow.approval)}</p>
+/** A run that settled without a batch to offer: a clip says so in its own alerts. */
+function NoBatchOutcome({ flow }: { readonly flow: AddImagesFlow }): JSX.Element | null {
+  const job = flow.run.job;
+  if (flow.kind === "video" || job === null) return null;
+  return (
+    <p className="text-sm text-pretty" data-testid="run-outcome">
+      {job.state === "completed"
+        ? "Everything this run read was already in a batch, so no new batch was made."
+        : "This run never reached a batch, so there is nothing to open yet."}
+    </p>
+  );
+}
+
+function ApprovedOutcome({ flow, name }: { readonly flow: AddImagesFlow; readonly name: string }): JSX.Element {
+  return (
+    <div className="flex flex-col gap-3">
+      <Landed tone="approved" testId="approved-outcome" title={<>“{sourceLabel(name)}” is approved</>} fullName={name}>
+        {flow.approved ?? `Approved${flow.approval.approvedAt === null ? "" : ` against v${flow.approval.approvedAt}`}, but not started.`}
+      </Landed>
+      {flow.approval.begin.isError && (
+        <div className="flex flex-col gap-1" data-testid="approve-start-error">
+          <span className="text-xs text-muted-foreground">It couldn’t be started:</span>
+          <FieldError>{refusalProse(flow.approval.begin.error)}</FieldError>
         </div>
-        <ApproveFields form={flow.approval} {...(onOpenSchema === undefined ? {} : { onOpenSchema })} />
-      </div>
-    );
-  }
+      )}
+    </div>
+  );
+}
 
-  const count = flow.batch?.asset_count;
-  const incomplete = flow.kind !== "video" && (flow.run.job?.state === "failed" || (flow.run.job?.failures.length ?? 0) > 0);
+function ApproveStep({ flow, batch, onOpenSchema }: { readonly flow: AddImagesFlow; readonly batch: Batch; readonly onOpenSchema?: () => void }): JSX.Element {
+  return (
+    <div className="flex flex-col gap-3" data-testid="approve-step">
+      <div className="flex flex-col gap-1">
+        <p className="text-sm font-medium text-balance">Approve “{sourceLabel(batch.name)}”?</p>
+        <p className="text-xs text-pretty text-muted-foreground">{approveCost(flow.approval)}</p>
+      </div>
+      <ApproveFields form={flow.approval} {...(onOpenSchema === undefined ? {} : { onOpenSchema })} />
+    </div>
+  );
+}
+
+function ReadyOutcome({
+  flow,
+  noSchema,
+  approvable,
+  onOpenBatch,
+  onOpenSchema,
+  batchId,
+  name,
+}: BatchStepProps & { readonly batchId: string; readonly name: string }): JSX.Element {
   const draft = flow.batch === null || flow.batch.state === "draft";
+  const holds = holdsLine(flow);
   return (
     <div className="flex flex-col gap-3">
       <Landed
@@ -225,42 +244,39 @@ function Outcome({ flow, noSchema, approvable, onOpenBatch, onOpenSchema }: Batc
           </>
         }
         fullName={name}
-        aside={
-          approvable && onOpenBatch !== undefined ? (
-            <Button variant="ghost" size="sm" className={PRESS} data-testid="open-batch" onClick={() => onOpenBatch(batchId)}>
-              <FolderOpen data-icon="inline-start" aria-hidden="true" />
-              Open
-            </Button>
-          ) : undefined
-        }
+        aside={approvable && onOpenBatch !== undefined ? <OpenBatch onOpen={() => onOpenBatch(batchId)} /> : undefined}
       >
-        {flow.kind === "video"
-          ? `Every frame this clip was cut into is in it. Identical frames collapse into one asset, so it can hold fewer than ${formatCount(flow.clip.expected)}.`
-          : incomplete
-            ? "What this run managed to read is in it."
-            : "Everything this run read is in it."}
-        {count !== undefined && (
-          <span className="tabular-nums">
-            {" "}
-            It holds {formatCount(count)} {assetNoun(flow.kind === "scans" ? "point_cloud" : "image", count, flow.kind === "video" ? "frame" : "image")}.
-          </span>
-        )}
+        {readyLine(flow)}
+        {holds !== null && <span className="tabular-nums"> {holds}</span>}
         {approvable && " Approve it to cut it into jobs, or add another source first."}
       </Landed>
-      {noSchema && (
-        <p className="rounded-lg bg-muted px-3 py-2 text-xs text-pretty text-muted-foreground" data-testid="approve-needs-schema">
-          Approving needs a schema.{" "}
-          {onOpenSchema === undefined ? (
-            "Define one"
-          ) : (
-            <button type="button" className="text-foreground underline underline-offset-2" data-testid="approve-needs-schema-go" onClick={onOpenSchema}>
-              Define one
-            </button>
-          )}{" "}
-          and the batch can be approved from its panel.
-        </p>
-      )}
+      {noSchema && <NeedsSchema onOpenSchema={onOpenSchema} />}
     </div>
+  );
+}
+
+function OpenBatch({ onOpen }: { readonly onOpen: () => void }): JSX.Element {
+  return (
+    <Button variant="ghost" size="sm" className={PRESS} data-testid="open-batch" onClick={onOpen}>
+      <FolderOpen data-icon="inline-start" aria-hidden="true" />
+      Open
+    </Button>
+  );
+}
+
+function NeedsSchema({ onOpenSchema }: { readonly onOpenSchema: (() => void) | undefined }): JSX.Element {
+  return (
+    <p className="rounded-lg bg-muted px-3 py-2 text-xs text-pretty text-muted-foreground" data-testid="approve-needs-schema">
+      Approving needs a schema.{" "}
+      {onOpenSchema === undefined ? (
+        "Define one"
+      ) : (
+        <button type="button" className="text-foreground underline underline-offset-2" data-testid="approve-needs-schema-go" onClick={onOpenSchema}>
+          Define one
+        </button>
+      )}{" "}
+      and the batch can be approved from its panel.
+    </p>
   );
 }
 

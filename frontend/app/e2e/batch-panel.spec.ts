@@ -585,8 +585,9 @@ test("a completed batch's Delete is withheld with its reason, not hidden", async
   await expect(remove).toBeVisible();
   await expect(remove).toBeDisabled();
   await expect(remove).toHaveAccessibleName("Delete batch");
-  // The reason is the tooltip's, reached by keyboard through the withheld button's wrapper.
-  await remove.locator("xpath=..").focus();
+  // The reason is the tooltip's, reached by keyboard: the withheld button stays focusable (`aria-disabled`).
+  await expect(remove).toHaveAttribute("aria-disabled", "true");
+  await remove.focus();
   await expect(page.getByRole("tooltip").filter({ hasText: "correction batch" }).first()).toBeVisible();
   expect(writes(sent)).toEqual([]);
 });
@@ -698,8 +699,9 @@ test("completing is withheld while frames are outstanding, and says how many", a
   const complete = panel.getByTestId(`complete-${NAME}`);
   await expect(complete).toBeDisabled();
   await expect(complete).toHaveAccessibleName("Complete batch");
-  // The count is the tooltip's reason, reached by keyboard through the withheld button's wrapper.
-  await complete.locator("xpath=..").focus();
+  // The count is the tooltip's reason, reached by keyboard: the withheld button stays focusable (`aria-disabled`).
+  await expect(complete).toHaveAttribute("aria-disabled", "true");
+  await complete.focus();
   await expect(page.getByRole("tooltip").filter({ hasText: "still to annotate or skip" }).first()).toBeVisible();
   await expect(page.getByTestId("complete-confirm")).toHaveCount(0);
   expect(writes(sent)).toEqual([]);

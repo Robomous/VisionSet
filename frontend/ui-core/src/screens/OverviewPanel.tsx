@@ -81,7 +81,8 @@ import { BatchTable, useBatchTableView, type BatchRowView } from "../patterns/pr
 import { ClassShares } from "../patterns/project/ClassShareBar";
 import { KPI_CARD_HEIGHT, KPI_GRID, KpiCards, type KpiCard, type KpiStep } from "../patterns/project/KpiCards";
 import { readPref, writePref } from "../data/prefs";
-import { clampTo, ResizeHandle } from "../patterns/DetailPane";
+import { clampTo } from "../patterns/clamp";
+import { ResizeHandle } from "../patterns/DetailPane";
 import { IconAction } from "../patterns/IconAction";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { BatchActions, type BatchActionsProps } from "./BatchActions";

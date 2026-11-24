@@ -31,6 +31,7 @@ import { useEffect, useId, useRef, useState, type JSX, type KeyboardEvent, type 
 import { cn, Sheet, SheetContent, SheetTitle } from "@robomous/ui-core";
 import { useViewportAtLeast } from "../annotator/viewportFloor";
 import { readPref, writePref } from "../data/prefs";
+import { clampTo } from "./clamp";
 
 /** How long the panel takes to leave: faster than it came in, as every exit is. */
 const EXIT_MS = 180;
@@ -225,8 +226,4 @@ function NarrowSheet({ open, label, onClose, testId, children }: DetailPaneProps
       </SheetContent>
     </Sheet>
   );
-}
-
-export function clampTo(value: number, min: number, max: number): number {
-  return Math.round(Math.min(Math.max(value, min), Math.max(min, max)));
 }

@@ -78,7 +78,8 @@ import {
 
 import { formatCount } from "../lib/format";
 import { isProjectSection, destinationOf, type AnnotateTarget, type ProjectSection } from "./projectSections";
-import { IconAction, IconButton, quietUnlessVisible } from "./IconAction";
+import { IconAction, IconButton } from "./IconAction";
+import { quietUnlessVisible } from "./iconFocus";
 import { SectionActionsOutlet } from "./SectionActions";
 
 interface SectionLabel {

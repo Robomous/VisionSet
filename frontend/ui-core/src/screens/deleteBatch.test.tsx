@@ -125,8 +125,8 @@ describe("what the delete button offers", () => {
 
     // Shown, because there is an operation behind it and a state that would
     // enable it — the distinction between this and removing the control.
-    expect(deleteButton().disabled).toBe(true);
-    // The reason is the tooltip's, reached by keyboard through the button's wrapper.
+    expect(deleteButton().getAttribute("aria-disabled")).toBe("true");
+    // The reason is the tooltip's, reached by keyboard: the withheld button stays focusable.
     await userEvent.tab();
     expect((await screen.findAllByText(/correction batch/)).length).toBeGreaterThan(0);
   });
@@ -152,7 +152,7 @@ describe("what the delete button offers", () => {
       />,
     );
 
-    expect(deleteButton().disabled).toBe(true);
+    expect(deleteButton().getAttribute("aria-disabled")).toBe("true");
     await userEvent.click(deleteButton());
     expect(screen.queryByTestId("delete-batch-dialog")).toBeNull();
     expect(sent).toEqual([]);

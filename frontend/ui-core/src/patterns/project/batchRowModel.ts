@@ -70,3 +70,18 @@ export function jobDetail(job: SheetJob): ProgressDetail {
     note: job.finished ? "Done." : job.state,
   };
 }
+
+/** The table's lens: which phases of batch it shows. */
+export type Lens = "all" | "open" | "in_dataset";
+
+export const LENSES = [
+  { value: "all", label: "All" },
+  { value: "open", label: "Open" },
+  { value: "in_dataset", label: "In dataset" },
+] as const;
+
+/** Whether a batch in `phase` is in the lens's view. */
+export function lensAdmits(lens: Lens, phase: BatchPhase): boolean {
+  if (lens === "all") return true;
+  return lens === "open" ? phase !== "in_dataset" : phase === "in_dataset";
+}

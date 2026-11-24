@@ -3,6 +3,8 @@
  * can be read and tested without rendering anything.
  */
 
+import type { FinishBatchResult } from "./queries";
+
 /**
  * What a press promoted, said in one sentence — in the UI's words, "added to
  * the dataset", for the kernel's `promote`.
@@ -48,4 +50,10 @@ export function promotionSummary(
  */
 export function defaultCorrectionName(parent: string, existing: number): string {
   return existing === 0 ? `${parent} — correction` : `${parent} — correction ${existing + 1}`;
+}
+
+/** "Completed, closing 2 open jobs." — shared by both ways of completing. */
+export function completedLine(result: FinishBatchResult): string {
+  const jobs = result.jobsFinished;
+  return jobs > 0 ? `Completed, closing ${jobs} open job${jobs === 1 ? "" : "s"}.` : "Completed.";
 }

@@ -37,7 +37,8 @@ import { Badge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } 
 import { ProgressBar } from "../../patterns/ProgressBar";
 import type { BadgeTone } from "../batchState";
 import { useIngestJob, useResumeIngest, useStartIngest, type IngestFailure, type IngestJob, type Source } from "../queries";
-import { NEW_BATCH, type Target } from "./IntoField";
+import { ingestFraction, keyedFailures } from "./ingestWords";
+import { NEW_BATCH, type Target } from "./intoTarget";
 
 /**
  * `IngestState`, in the words a person uses for it — `batchState.ts`'s
@@ -143,12 +144,6 @@ export function RunStateBadge({ state }: { readonly state: string }): JSX.Elemen
   );
 }
 
-/** A directory states its total before the first file, so the bar has a denominator. */
-export function ingestFraction(job: IngestJob): number {
-  if (job.total === null || job.total === undefined) return job.state === "completed" ? 1 : 0;
-  return job.processed / Math.max(job.total, 1);
-}
-
 /** Bound once, so `value` and the `aria-valuenow` the primitive draws never disagree. */
 export function IngestProgress({ job }: { readonly job: IngestJob }): JSX.Element {
   return (
@@ -162,17 +157,6 @@ export function IngestProgress({ job }: { readonly job: IngestJob }): JSX.Elemen
       <ProgressBar aria-label="Ingest progress" value={Math.round(ingestFraction(job) * 100)} />
     </div>
   );
-}
-
-/**
- * A source's name, fit for a sentence.
- *
- * A **staged upload of images** is named by its content digest when nobody
- * named it — 64 hex characters nobody can read. Shortened for display, the full
- * string kept in `title`, and never a name the source does not have.
- */
-export function sourceLabel(name: string): string {
-  return /^[0-9a-f]{64}$/.test(name) ? `${name.slice(0, 8)}…` : name;
 }
 
 /**
@@ -215,8 +199,8 @@ export function Failures({ failures }: { readonly failures: readonly IngestFailu
             </TableRow>
           </TableHeader>
           <TableBody>
-            {[...corrupt, ...unsupported, ...rest].map((failure, index) => (
-              <TableRow key={`${failure.name}-${index}`} data-testid={`failure-${index}`}>
+            {keyedFailures([...corrupt, ...unsupported, ...rest]).map(({ failure, key }, index) => (
+              <TableRow key={key} data-testid={`failure-${index}`}>
                 <TableCell className="font-mono text-xs" title={failure.name}>
                   {basename(failure.name)}
                 </TableCell>

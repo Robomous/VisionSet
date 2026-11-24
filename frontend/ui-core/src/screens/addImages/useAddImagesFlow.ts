@@ -42,40 +42,20 @@
  * starts the next one over.
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import type { components } from "../../generated/api";
 import { useMediaRuntime } from "../../media/VisionSetMediaProvider";
-import { useApproveForm, type ApproveForm } from "../BatchLifecycle";
+import { useApproveForm, type ApproveForm } from "../approveForm";
 import { useBatch, useRegisterPointCloudSource, useRegisterSource, type Batch, type Source } from "../queries";
-import { classifyDrop } from "../scanFiles";
-import { useClipImport, type ClipImport } from "./clipImport";
+import { useClipImport, type ClipImport } from "./useClipImport";
+import { approvedLine, filledBatch, isInFlight, kindOf, reachedStep, shownStep, sourceNamed, suggestionFor, uploadable, type AddKind, type Landed, type StepIndex } from "./flowRules";
+import { useLanded } from "./useLanded";
 import { useIngestRun, type IngestRun } from "./ingestRun";
-import { NEW_TARGET, type Target } from "./IntoField";
+import { NEW_TARGET, type Target } from "./intoTarget";
 
-export type AddKind = "none" | "images" | "scans" | "video" | "mixed";
-export type StepIndex = 0 | 1 | 2;
+export type { AddKind, Landed, StepIndex };
 type ScanFrame = components["schemas"]["ScanFrame"];
-
-export function kindOf(files: readonly File[], canDecode: boolean): AddKind {
-  if (files.length === 0) return "none";
-  const drop = classifyDrop(files);
-  if (drop === "scans") return "scans";
-  if (drop === "mixed") return "mixed";
-  if (canDecode && files.length === 1 && files[0].type.startsWith("video/")) return "video";
-  return "images";
-}
-
-/** The filename without its last extension: `photo-0.png` → `photo-0`. */
-export function stem(fileName: string): string {
-  return fileName.replace(/\.[^.]+$/, "");
-}
-
-/** A batch this dialog made or filled, for the session's list. */
-export interface Landed {
-  readonly id: string;
-  readonly name: string;
-}
 
 export interface AddImagesFlow {
   readonly projectId: string;
@@ -142,7 +122,6 @@ export function useAddImagesFlow(projectId: string): AddImagesFlow {
   const [target, setTarget] = useState<Target>(NEW_TARGET);
   const [approving, setApproving] = useState(false);
   const [approved, setApproved] = useState<string | null>(null);
-  const [landed, setLanded] = useState<readonly Landed[]>([]);
   const [at, setAt] = useState<StepIndex | null>(null);
   const [direction, setDirection] = useState<1 | -1>(1);
 
@@ -153,36 +132,18 @@ export function useAddImagesFlow(projectId: string): AddImagesFlow {
   const clip = useClipImport(projectId, media, kind === "video" ? files[0] : null);
   const register = kind === "scans" ? registerScans : registerImages;
 
-  const suggestedName = files.length > 0 ? stem(files[0].name) : "";
+  const suggestedName = suggestionFor(files);
 
-  // The batch the flow filled. A clip's is the commit's answer; a run's is on
-  // its row only once it completed — `batch_id` is null until then.
-  const batchId = kind === "video" ? (clip.batch?.id ?? null) : run.settled ? (run.job?.batch_id ?? null) : null;
-  const batchName = kind === "video" ? (clip.batch?.name ?? null) : (run.job?.batch_name ?? null);
+  const { batchId, batchName } = filledBatch(kind, clip, run);
   const batch = useBatch(batchId ?? "", batchId !== null);
   const approval = useApproveForm(approving ? (batch.data ?? null) : null);
+  const resetApproval = approval.reset;
+  const { landed, forget } = useLanded(batchId, batchName);
 
-  // Every batch made or filled is kept for the session's list, by id.
-  useEffect(() => {
-    if (batchId === null) return;
-    setLanded((was) => (was.some((one) => one.id === batchId) ? was : [...was, { id: batchId, name: batchName ?? "this run's batch" }]));
-  }, [batchId, batchName]);
+  const reached = reachedStep(kind, clip, cutting, run, source);
+  const shown = shownStep(at, reached);
 
-  const reached: StepIndex =
-    kind === "video"
-      ? clip.started
-        ? 2
-        : cutting
-          ? 1
-          : 0
-      : run.jobId !== null
-        ? 2
-        : source !== null
-          ? 1
-          : 0;
-  const shown: StepIndex = at === null || at > reached ? reached : at;
-
-  const inFlight = kind === "video" ? clip.inFlight : run.jobId !== null && !run.settled;
+  const inFlight = isInFlight(kind, clip, run);
   const busy = inFlight || register.isPending || run.start.isPending || approval.busy;
   const settled = reached === 2 && !inFlight;
 
@@ -210,8 +171,7 @@ export function useAddImagesFlow(projectId: string): AddImagesFlow {
     clip.reset();
   }
 
-  const canUpload =
-    (kind === "images" || (kind === "scans" && frame !== null)) && !register.isPending && source === null;
+  const canUpload = uploadable(kind, frame) && !register.isPending && source === null;
 
   return {
     projectId,
@@ -242,8 +202,7 @@ export function useAddImagesFlow(projectId: string): AddImagesFlow {
       // Blank falls back to the suggestion the placeholder shows. Without a
       // stated name the server names the source by its staged directory, whose
       // basename is a content digest — and the new batch inherits it.
-      const stated = sourceName.trim() === "" ? suggestedName : sourceName.trim();
-      const named = stated === "" ? {} : { name: stated };
+      const named = sourceNamed(sourceName, suggestedName);
       setDirection(1);
       setAt(null);
       if (kind === "scans" && frame !== null) {
@@ -286,6 +245,8 @@ export function useAddImagesFlow(projectId: string): AddImagesFlow {
     approving,
     setApproving: (next) => {
       setDirection(next ? 1 : -1);
+      // The form stays mounted between openings, so each one starts it afresh from here.
+      if (next && !approving) resetApproval();
       setApproving(next);
     },
     approval,
@@ -294,8 +255,7 @@ export function useAddImagesFlow(projectId: string): AddImagesFlow {
       const jobs = approval.parts.length;
       const opened = approval.start;
       approval.submit((done) => {
-        const pinned = done.schema_version === null ? "" : ` against v${done.schema_version}`;
-        setApproved(`Approved${pinned}, cut into ${jobs} job${jobs === 1 ? "" : "s"}${opened ? ", and open for annotation" : ""}.`);
+        setApproved(approvedLine(done.schema_version, jobs, opened));
       });
     },
     landed,
@@ -308,7 +268,7 @@ export function useAddImagesFlow(projectId: string): AddImagesFlow {
     another: resetChoices,
     restart: () => {
       resetChoices();
-      setLanded([]);
+      forget();
     },
   };
 }

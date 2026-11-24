@@ -225,10 +225,10 @@ describe("Complete, and maybe add to the dataset", () => {
     renderWithData(
       <CompleteBatchButton batch={batch({ state: "in_annotation", schema_version: 3 })} projectId={PROJECT} />,
     );
-    const control = screen.getByTestId("complete-drive-01") as HTMLButtonElement;
-    expect(control.disabled).toBe(true);
+    const control = screen.getByTestId("complete-drive-01");
+    expect(control.getAttribute("aria-disabled")).toBe("true");
     expect(control.getAttribute("aria-label")).toBe("Complete batch");
-    // A disabled button fires no focus event, so the reason hangs off its focusable wrapper.
+    // Withheld, it stays focusable (`aria-disabled`, not `disabled`), so the keyboard reaches the reason.
     await userEvent.tab();
     expect((await screen.findAllByText("3 frames still to annotate or skip")).length).toBeGreaterThan(0);
     await userEvent.click(control);

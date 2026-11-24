@@ -38,12 +38,12 @@ import { Button, Dialog, DialogContent, DialogDescription, DialogTitle, cn } fro
 import { BATCH_ACTION, declares } from "../../data/capabilities";
 import { asApiError } from "../../data/errors";
 import { formatCount } from "../../lib/format";
-import { approveLabel } from "../BatchLifecycle";
+import { approveLabel } from "../approveForm";
 import { SchemaForeshadow } from "../SchemaForeshadow";
 import { useActiveSchema, useProject } from "../queries";
 import { BatchStep } from "./BatchStep";
-import { ingestFraction } from "./ingestRun";
-import { NEW_BATCH } from "./IntoField";
+import { ingestFraction } from "./ingestWords";
+import { NEW_BATCH } from "./intoTarget";
 import { EASE, PRESS } from "./motion";
 import { SettingsStep } from "./SettingsStep";
 import { UploadStep } from "./UploadStep";

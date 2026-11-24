@@ -1332,8 +1332,9 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     const withheld = page.getByTestId("delete-batch-cycle-batch");
     await expect(withheld).toBeVisible();
     await expect(withheld).toBeDisabled();
-    // The reason is the tooltip's, reached by keyboard through the withheld button's wrapper.
-    await withheld.locator("xpath=..").focus();
+    // The reason is the tooltip's, reached by keyboard: the withheld button stays focusable (`aria-disabled`).
+    await expect(withheld).toHaveAttribute("aria-disabled", "true");
+    await withheld.focus();
     await expect(page.getByRole("tooltip").filter({ hasText: "correction batch" }).first()).toBeVisible();
 
     await page.getByTestId("correct-cycle-batch").click();

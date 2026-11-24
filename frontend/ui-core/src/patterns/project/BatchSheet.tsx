@@ -37,7 +37,7 @@ import { Button, cn } from "@robomous/ui-core";
 import { formatCount, formatPercent } from "../../lib/format";
 import type { BatchRowView, LabelCounts } from "./BatchTable";
 import { initials, labeledDetail, phaseState } from "./batchRowModel";
-import { focusQuietly } from "../IconAction";
+import { focusQuietly } from "../iconFocus";
 import { StateChip } from "../StateChip";
 import { ProgressReadout } from "../ProgressRing";
 import { JobList } from "./JobList";
@@ -124,10 +124,11 @@ export function BatchSheet({ row, position, onStep, onClose, jobs, jobsError, no
   const condensed = useScrolledPast(scroller, titleFoot);
 
   // Open on the forward action, once — or, with none, on the footer's last live
-  // control: stepping to another batch keeps the focus where it is.
+  // control — neither `disabled` nor `aria-disabled`, which is how a withheld icon
+  // button says so. Stepping to another batch keeps the focus where it is.
   useEffect(() => {
     const at = root.current;
-    const forward = at?.querySelector<HTMLElement>("[data-autofocus]") ?? [...(at?.querySelectorAll<HTMLElement>("footer button:not(:disabled)") ?? [])].at(-1);
+    const forward = at?.querySelector<HTMLElement>("[data-autofocus]") ?? [...(at?.querySelectorAll<HTMLElement>("footer button:not(:disabled):not([aria-disabled=true])") ?? [])].at(-1);
     if (forward != null) focusQuietly(forward);
   }, []);
 

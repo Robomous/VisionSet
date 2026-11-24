@@ -28,10 +28,11 @@ import { useState, type JSX } from "react";
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
 import { Button, FieldError, Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger, Switch, Tooltip, TooltipContent, TooltipTrigger } from "@robomous/ui-core";
-import { IconAction, IconButton, quietUnlessVisible } from "../patterns/IconAction";
+import { IconAction, IconButton } from "../patterns/IconAction";
+import { quietUnlessVisible } from "../patterns/iconFocus";
 import { assetNoun } from "../lib/assetNoun";
 import { outstandingWork } from "./batchState";
-import { promotionSummary } from "./batchWords";
+import { completedLine, promotionSummary } from "./batchWords";
 import {
   useBatchModality,
   useFinishBatch,
@@ -172,10 +173,3 @@ export function CompleteBatchButton({ batch, projectId, onOpenDataset, onPromote
 let lastAddChoice = true;
 
 const PRESS = "transition-[background-color,scale] duration-100 ease-out active:scale-[0.97] motion-reduce:transition-none";
-
-/** "Completed, closing 2 open jobs." — shared by both ways of completing. */
-export function completedLine(result: FinishBatchResult): string {
-  const jobs = result.jobsFinished;
-  return jobs > 0 ? `Completed, closing ${jobs} open job${jobs === 1 ? "" : "s"}.` : "Completed.";
-}
-

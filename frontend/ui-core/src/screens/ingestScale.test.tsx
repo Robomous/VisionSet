@@ -2,7 +2,9 @@ import { render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { ScaleField, scaledDimension } from "./ingestScale";
+import { scaledDimension } from "@visionset/media";
+
+import { ScaleField } from "./ingestScale";
 
 describe("scaledDimension", () => {
   it("mirrors the server's integer half-up formula", () => {

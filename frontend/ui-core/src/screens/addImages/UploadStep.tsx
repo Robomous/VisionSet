@@ -24,16 +24,14 @@ import { refusalProse } from "../../data/refusals";
 import { formatBytes, formatCount } from "../../lib/format";
 import { clock } from "../clipRanges";
 import { SCAN_FRAMES } from "../scanFiles";
-import { ClipFacts, ClipRefusal, decodeProse } from "./clipImport";
+import { decodeProse } from "./clipDerived";
+import { ClipFacts, ClipRefusal } from "./clipImport";
 import { EASE, PRESS } from "./motion";
+import { chosenLabel, plural } from "./uploadWords";
 import type { AddImagesFlow } from "./useAddImagesFlow";
 
 /** How many pictures the selection previews; the rest is a count. */
 const PREVIEWED = 17;
-
-function plural(n: number, one: string, many = `${one}s`): string {
-  return `${formatCount(n)} ${n === 1 ? one : many}`;
-}
 
 export function UploadStep({ flow }: { readonly flow: AddImagesFlow }): JSX.Element {
   const [over, setOver] = useState(false);
@@ -159,40 +157,9 @@ function ClearSelection({ flow }: { readonly flow: AddImagesFlow }): JSX.Element
 
 function Selection({ flow, over }: { readonly flow: AddImagesFlow; readonly over: boolean }): JSX.Element {
   const bytes = flow.files.reduce((sum, file) => sum + file.size, 0);
-  const nameId = useId();
   return (
     <>
-      <div
-        className={cn(
-          "flex flex-col rounded-xl border transition-[border-color,background-color] duration-150 ease-out motion-reduce:transition-none",
-          over ? "border-primary bg-primary/5" : "border-border",
-        )}
-        data-testid="selection"
-      >
-        {flow.kind === "video" ? (
-          <VideoCard flow={flow} bytes={bytes} />
-        ) : (
-          <>
-            <div className="flex items-center gap-3 py-2 pr-2 pl-3">
-              <span className="min-w-0 flex-1 truncate text-sm">
-                <span className="font-medium" data-testid="chosen">
-                  {flow.files.length === 1
-                    ? flow.files[0].name
-                    : flow.kind === "scans"
-                      ? plural(flow.files.length, "scan")
-                      : flow.kind === "mixed"
-                        ? plural(flow.files.length, "file")
-                        : plural(flow.files.length, "image")}
-                </span>
-                <span className="text-muted-foreground tabular-nums"> · {formatBytes(bytes)}</span>
-              </span>
-              <ClearSelection flow={flow} />
-            </div>
-            {flow.kind === "images" && <Thumbnails files={flow.files} />}
-            {flow.kind === "scans" && <ScanList files={flow.files} />}
-          </>
-        )}
-      </div>
+      <SelectionCard flow={flow} over={over} bytes={bytes} />
 
       {flow.kind === "mixed" && (
         <FieldError data-testid="mixed-drop">Add point clouds (.pcd, .ply) separately from other files.</FieldError>
@@ -200,22 +167,7 @@ function Selection({ flow, over }: { readonly flow: AddImagesFlow; readonly over
 
       {flow.kind === "scans" && <ScanFrameField flow={flow} />}
 
-      {(flow.kind === "images" || flow.kind === "scans") && (
-        <div className="flex max-w-sm flex-col gap-1.5">
-          <Label htmlFor={nameId}>Source name</Label>
-          <Input
-            id={nameId}
-            data-testid="source-name"
-            value={flow.sourceName}
-            placeholder={flow.source?.name ?? flow.suggestedName}
-            disabled={flow.register.isPending || flow.source !== null}
-            onChange={(event) => flow.setSourceName(event.target.value)}
-          />
-          <p className="text-xs text-pretty text-muted-foreground">
-            Names the source — and a new batch takes its name. Without one the server calls both by the upload&apos;s content digest.
-          </p>
-        </div>
-      )}
+      {(flow.kind === "images" || flow.kind === "scans") && <SourceNameField flow={flow} />}
 
       {flow.register.isPending && (
         <p className="flex items-center gap-2 text-xs text-muted-foreground tabular-nums" aria-live="polite" data-testid="uploading">
@@ -224,6 +176,57 @@ function Selection({ flow, over }: { readonly flow: AddImagesFlow; readonly over
         </p>
       )}
     </>
+  );
+}
+
+/** The one card per selection: what was chosen, how big, and the ✕ to choose again. */
+function SelectionCard({ flow, over, bytes }: { readonly flow: AddImagesFlow; readonly over: boolean; readonly bytes: number }): JSX.Element {
+  return (
+    <div
+      className={cn(
+        "flex flex-col rounded-xl border transition-[border-color,background-color] duration-150 ease-out motion-reduce:transition-none",
+        over ? "border-primary bg-primary/5" : "border-border",
+      )}
+      data-testid="selection"
+    >
+      {flow.kind === "video" ? (
+        <VideoCard flow={flow} bytes={bytes} />
+      ) : (
+        <>
+          <div className="flex items-center gap-3 py-2 pr-2 pl-3">
+            <span className="min-w-0 flex-1 truncate text-sm">
+              <span className="font-medium" data-testid="chosen">
+                {chosenLabel(flow.files, flow.kind)}
+              </span>
+              <span className="text-muted-foreground tabular-nums"> · {formatBytes(bytes)}</span>
+            </span>
+            <ClearSelection flow={flow} />
+          </div>
+          {flow.kind === "images" && <Thumbnails files={flow.files} />}
+          {flow.kind === "scans" && <ScanList files={flow.files} />}
+        </>
+      )}
+    </div>
+  );
+}
+
+function SourceNameField({ flow }: { readonly flow: AddImagesFlow }): JSX.Element {
+  const nameId = useId();
+  return (
+    <div className="flex max-w-sm flex-col gap-1.5">
+      <Label htmlFor={nameId}>Source name</Label>
+      <Input
+        id={nameId}
+        data-testid="source-name"
+        value={flow.sourceName}
+        placeholder={flow.source?.name ?? flow.suggestedName}
+        disabled={flow.register.isPending || flow.source !== null}
+        onChange={(event) => flow.setSourceName(event.target.value)}
+      />
+      <p className="text-xs text-pretty text-muted-foreground">
+        Names the source — and a new batch takes its name. Without one the server calls both by the upload&apos;s content digest.
+      </p>
+    </div>
   );
 }
 
