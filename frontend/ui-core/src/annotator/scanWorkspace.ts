@@ -20,6 +20,7 @@ import {
   scanEditability,
   type GeometryType,
   type LabelClass,
+  type PointSample,
   type ScanAnnotation,
   type ScanDocument,
   type ScanEditability,
@@ -67,6 +68,8 @@ export interface ScanWorkspace {
   readonly drawBlocked: string | null;
   readonly groundHeight: number;
   readonly setGroundHeight: (height: number) => void;
+  /** The loaded points a polyline vertex snaps its height to. */
+  readonly setPoints: (points: PointSample | null) => void;
   readonly editor: ScanEditor;
   readonly plan: SavePlan<ScanAnnotation>;
   /** Delete through the command log, so the panel's delete undoes like the keyboard's. */
@@ -177,10 +180,12 @@ export function useScanWorkspace({
   );
 
   const [groundHeight, setGroundHeight] = useState(0);
+  const [points, setPoints] = useState<PointSample | null>(null);
   const editor = useScanEditor({
     store,
     frame: editability.editable ? editability.frame : null,
     groundHeight,
+    points,
     tool,
     enabled: editing,
   });
@@ -223,6 +228,7 @@ export function useScanWorkspace({
     drawBlocked,
     groundHeight,
     setGroundHeight,
+    setPoints,
     editor,
     plan,
     remove,

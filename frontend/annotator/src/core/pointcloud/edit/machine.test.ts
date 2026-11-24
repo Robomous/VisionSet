@@ -5,9 +5,10 @@ import { NO_MODIFIERS } from "../../interaction/events";
 import { EMPTY_SELECTION, selectOnly } from "../../state/selection";
 import { AnnotatorStore } from "../../state/store";
 import type { Cuboid3DGeometry, Point, Point3D, Polyline3DGeometry } from "../../types";
-import type { OrbitCamera } from "../camera";
+import { topDownCamera, type OrbitCamera } from "../camera";
 import { CUBOID_FACES, cuboidAxes, faceCenter, headingOfYaw, MIN_CUBOID_SIZE, type CuboidFace } from "../cuboid";
-import { fromForwardLeftUp, type ScanFrame } from "../frame";
+import type { PointSample } from "../decode";
+import { fromForwardLeftUp, heightOf, type ScanFrame } from "../frame";
 import { add, scale } from "../vector";
 import { contextOf, cuboidOf, pixelOf, polylineOf, scanBox, scanDocumentOf, scanLine } from "./_scan";
 import {
@@ -583,5 +584,88 @@ describe("editing a polyline", () => {
     const context = contextOf(scanDocumentOf(pair), { selection: selectOnly("lane-1") });
     const state: ScanState = { type: "moving-vertex", id: "lane-1", origin: pair.geometry, index: 1, level: 0 };
     expect(scanTransition(state, move(target), context)).toEqual({ state, effects: [] });
+  });
+});
+
+describe("snapping polyline vertices to the scan", () => {
+  const rampHeight = (x: number): number => (x > 0 ? 0.3 * x : 0);
+  const RAMP: PointSample = (() => {
+    const points: number[] = [];
+    for (let x = -10; x <= 10; x += 0.5) {
+      for (let y = -10; y <= 20; y += 0.5) points.push(x, y, rampHeight(x));
+    }
+    return { count: points.length / 3, positions: new Float32Array(points), origin: [0, 0, 0], intensity: null, rgb: null };
+  })();
+  const onRamp: Point3D = [4, 2, 1.2];
+  const drawing: ScanContext = {
+    ...contextOf(scanDocumentOf(), { tool: { kind: "polyline", labelClass: "lane" } }),
+    points: RAMP,
+    groundHeight: -0.5,
+  };
+
+  function drafted(state: ScanState): Extract<ScanState, { type: "drawing-polyline" }> {
+    if (state.type !== "drawing-polyline") throw new Error(`not drawing a polyline: ${state.type}`);
+    return state;
+  }
+
+  it("places a vertex, and the cursor before it, at the height of the point under the pointer", () => {
+    const first = drafted(scanTransition(SCAN_IDLE, down(pixelOf(drawing, onRamp)), drawing).state);
+    expectClose(first.points[0] ?? [], onRamp, 4);
+    const moved = drafted(scanTransition(first, move(pixelOf(drawing, [-4, 2, 0])), drawing).state);
+    expectClose(moved.cursor ?? [], [-4, 2, 0], 4);
+    const second = drafted(scanTransition(moved, down(pixelOf(drawing, [-4, 2, 0])), drawing).state);
+    expectClose(second.points[1] ?? [], [-4, 2, 0], 4);
+  });
+
+  it("keeps the pointer's place and takes only the height", () => {
+    const between = pixelOf(drawing, [4.25, 2.25, rampHeight(4.25)]);
+    const vertex = drafted(scanTransition(SCAN_IDLE, down(between), drawing).state).points[0]!;
+    const seen = pixelOf(drawing, vertex);
+    expect(Math.hypot(seen[0] - between[0], seen[1] - between[1])).toBeLessThan(1e-6);
+    expect(Math.abs(vertex[2] - rampHeight(4.25))).toBeLessThan(0.16);
+  });
+
+  it("falls back to the ground plane where no point is near the pointer, or no points are loaded", () => {
+    const off = drafted(scanTransition(SCAN_IDLE, down(pixelOf(drawing, [-30, 0, -0.5])), drawing).state);
+    expectClose(off.points[0] ?? [], [-30, 0, -0.5], 6);
+    const bare = contextOf(scanDocumentOf(), { tool: { kind: "polyline", labelClass: "lane" } });
+    expect(drafted(scanTransition(SCAN_IDLE, down(pixelOf(bare, onRamp)), bare).state).points[0]?.[2]).toBeCloseTo(0, 6);
+  });
+
+  it("snaps in the top-down view to the topmost point under the pointer", () => {
+    const top: ScanContext = { ...drawing, camera: topDownCamera([0, 0, 0], 30), view: "top-down" };
+    const state = drafted(scanTransition(SCAN_IDLE, down(pixelOf(top, [6, -3, 1.8])), top).state);
+    expectClose(state.points[0] ?? [], [6, -3, 1.8], 4);
+  });
+
+  it("drags a vertex onto the surface under the pointer, and off it at its own level", () => {
+    const lane = scanLine("lane-1", [[-4, 6, 0], [0, 6, 0.4], [4, 6, 1.2]]);
+    const context: ScanContext = { ...contextOf(scanDocumentOf(lane), { selection: selectOnly("lane-1") }), points: RAMP };
+    const pressed = scanTransition(SCAN_IDLE, down(pixelOf(context, [0, 6, 0.4])), context);
+    expect(pressed.state).toMatchObject({ type: "moving-vertex", index: 1, level: 0.4 });
+    const onto = stagedPolyline(scanTransition(pressed.state, move(pixelOf(context, onRamp)), context)).points[1];
+    expectClose(onto ?? [], onRamp, 4);
+    const off = stagedPolyline(scanTransition(pressed.state, move(pixelOf(context, [-30, 6, 0.4])), context)).points[1];
+    expectClose(off ?? [], [-30, 6, 0.4], 6);
+  });
+
+  it("inserts a vertex on the surface under the pointer, not on the segment's level", () => {
+    const lane = scanLine("lane-1", [[-4, 2, 0], [8, 2, 0]]);
+    const context: ScanContext = { ...contextOf(scanDocumentOf(lane), { selection: selectOnly("lane-1") }), points: RAMP };
+    const pointer = pixelOf(context, [5, 2, 0]);
+    const pressed = scanTransition(SCAN_IDLE, down(pointer), context);
+    const vertex = stagedPolyline(pressed).points[1]!;
+    expect(vertex[2]).toBeGreaterThan(1);
+    expect(Math.abs(vertex[2] - rampHeight(vertex[0]))).toBeLessThan(0.16);
+    expect(pressed.state).toMatchObject({ type: "moving-vertex", index: 1, level: vertex[2] });
+    const seen = pixelOf(context, vertex);
+    expect(Math.hypot(seen[0] - pointer[0], seen[1] - pointer[1])).toBeLessThan(1e-6);
+  });
+
+  it("leaves a cuboid's footprint on the ground", () => {
+    const boxes: ScanContext = { ...contextOf(scanDocumentOf(), { tool: { kind: "cuboid", labelClass: "car" } }), points: RAMP };
+    const state = scanTransition(SCAN_IDLE, down(pixelOf(boxes, onRamp)), boxes).state;
+    if (state.type !== "drawing-footprint") throw new Error("not drawing a footprint");
+    expect(heightOf("lidar_flu", state.anchor)).toBeCloseTo(0, 6);
   });
 });

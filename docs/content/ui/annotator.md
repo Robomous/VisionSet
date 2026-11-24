@@ -579,8 +579,14 @@ still zooms. Outside Edit the view keeps its own mapping: a left drag orbits.
   Enter goes on from the keyboard. The class pick lists only classes that declare `cuboid_3d`;
   with none, the tool is disabled with that reason.
 - **Draw a polyline.** With the polyline tool and a class picked, click along the line; each
-  click places a vertex on the ground plane, at the same height a cuboid's footprint uses, and
-  the last segment follows the pointer. Enter or a double-click finishes the line, and Escape
+  click places a vertex under the pointer, and the last segment follows the pointer. A vertex
+  takes the height of the scan point under the pointer: the point nearest the pointer on
+  screen within 10 px, and among points about as near (within 3 px of the nearest), the one
+  nearest the eye, so the vertex lands on the surface in view rather than one hidden behind
+  it; in the top-down view that is the topmost point. Only the height is taken: the vertex
+  stays exactly under the pointer and never jumps sideways to the point. Where no point is
+  within 10 px, the vertex falls back to the ground plane, at the same height a cuboid's
+  footprint uses. A cuboid's footprint never snaps. Enter or a double-click finishes the line, and Escape
   cancels it. A line needs at least two vertices that are not all in one place; finishing one
   that has fewer is refused and the drawing carries on. The class pick lists only classes that
   declare `polyline_3d`; with none, the tool is disabled with that reason. While the tool is
@@ -595,9 +601,11 @@ still zooms. Outside Edit the view keeps its own mapping: a left drag orbits.
   other labels. Handles and ring are an overlay placed by the same projection the editor picks
   with, and the overlay and the hit test share one test for which faces are offered.
 - **Adjust a polyline.** A click on a polyline's segment selects it, and the selected polyline
-  shows a handle on each vertex. Dragging a handle moves that vertex along the ground at its
-  own height. A press on a segment of the selected polyline inserts a vertex there and drags
-  it, as one undo step. Alt-click on a vertex removes it, never below two vertices; alt-click
+  shows a handle on each vertex. Dragging a handle moves that vertex under the pointer, at the
+  height of the scan point there by the same rule as drawing, and at the vertex's own height
+  where no point is near. A press on a segment of the selected polyline inserts a vertex there,
+  at the scan's height under the pointer or else on the segment, and drags it, as one undo
+  step. Alt-click on a vertex removes it, never below two vertices; alt-click
   anywhere else does nothing. A removal or drag that would leave every vertex in one place is
   refused. Delete removes the whole label. Per-vertex visibility is not editable on a scan: a
   new polyline leaves it out, so it stays unknown, and an imported polyline keeps its declared

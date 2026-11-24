@@ -143,8 +143,15 @@ Polylines use the same machine, store and save plan. The machine adds a `drawing
 state (the vertices placed so far and the cursor, previewed through `draftPolyline`) and a
 `moving-vertex` state; vertex edits are the pure `pointcloud/polyline` functions
 (`movePolylineVertex`, `insertPolylineVertex`, `removePolylineVertex`, `isDrawablePolyline`).
-Every vertex is placed with `rayGroundHit` at the ground height, and a dragged vertex keeps its
-own level; no vertex is picked from the scan's points. `commit` (Enter, or a double-click the
+A vertex placed, inserted or dragged takes its height from the scan through `snapHeight`
+(`pointcloud/snap`): the point nearest the pointer on screen within `SNAP_TOLERANCE_PX`, the one
+nearest the eye among those within `SNAP_NEAR_EQUAL_PX` of the nearest, and the vertex is then the
+pointer ray's `rayGroundHit` at that height, so it stays under the pointer. With no point that
+close it falls back to `rayGroundHit` at the ground height, or, for a drag, at the vertex's own
+level. The machine reads the points through the optional `ScanContext.points`, which the host
+sets from the loaded `PointSample`. A query projects only the points of a level grid's cells the
+ray passes over, widened by the tolerance at each depth; the grid is built once per sample, in
+its origin-relative coordinates, and kept in a `WeakMap` keyed by the sample. `commit` (Enter, or a double-click the
 adapter maps to it) adds the line only when it has two vertices not all equal, the kernel's
 rule, and otherwise keeps drafting. `hitTest3D` tries the selected label's handles first - a
 polyline's vertices or a cuboid's faces and yaw ring - then any polyline's segments, then cuboid

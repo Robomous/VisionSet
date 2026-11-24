@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { IdFactory } from "../../core/ids";
+import type { PointSample } from "../../core/pointcloud/decode";
 import { SCAN_IDLE, draftCuboid, draftPolyline, scanTransition, type ScanContext, type ScanEvent, type ScanState, type ScanTool } from "../../core/pointcloud/edit/machine";
 import { runScanEffects } from "../../core/pointcloud/edit/runScanEffects";
 import { DEFAULT_HIT_TOLERANCES_3D } from "../../core/pointcloud/edit/scene";
@@ -27,6 +28,8 @@ export interface ScanEditorOptions {
   /** `null` where the scan declares no frame; the editor is then inert. */
   readonly frame: ScanFrame | null;
   readonly groundHeight: number;
+  /** The loaded points, whose height a polyline vertex snaps to. */
+  readonly points?: PointSample | null;
   readonly tool: ScanTool;
   readonly enabled: boolean;
   readonly mint?: IdFactory;
@@ -54,7 +57,7 @@ const NO_VIEW: ScanView = {
 };
 
 export function useScanEditor(options: ScanEditorOptions): ScanEditor {
-  const { store, frame, groundHeight, tool, enabled, mint = randomUuid } = options;
+  const { store, frame, groundHeight, points = null, tool, enabled, mint = randomUuid } = options;
   const [state, setState] = useState<ScanState>(SCAN_IDLE);
   const [view, setView] = useState<ScanView | null>(null);
   const stateRef = useRef<ScanState>(SCAN_IDLE);
@@ -73,6 +76,7 @@ export function useScanEditor(options: ScanEditorOptions): ScanEditor {
         viewport: at.viewport,
         tool,
         groundHeight,
+        points,
         tolerances: DEFAULT_HIT_TOLERANCES_3D,
         mint,
         ...(at.kind === undefined ? {} : { view: at.kind }),
@@ -82,7 +86,7 @@ export function useScanEditor(options: ScanEditorOptions): ScanEditor {
       setState(next.state);
       runScanEffects(store, next.effects);
     },
-    [store, frame, tool, groundHeight, mint],
+    [store, frame, tool, groundHeight, points, mint],
   );
 
   useEffect(() => {
