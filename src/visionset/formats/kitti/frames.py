@@ -14,13 +14,18 @@ as ``atan2``. With KITTI's nominal axes (``x_velo = z_cam``, ``y_velo = -x_cam``
 ``z_velo = -y_cam``) that heading is ``(-sin ry, -cos ry, 0)``, so
 ``yaw = -ry - pi/2``, wrapped into ``[-pi, pi]``. The small tilt a real
 calibration has between camera y and lidar z is a pitch and roll the cuboid
-does not model; it is projected out of the heading.
+does not model; within :data:`~visionset.formats._tilt.TILT_TOLERANCE` it is
+projected out of the heading, and beyond it the reader refuses the frame's
+boxes rather than flattening them, as the nuScenes reader does a leaning box.
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+
+from visionset.formats._tilt import tilt_from
+from visionset.kernel.domain import ScanFrame
 
 Vector = tuple[float, float, float]
 Matrix = tuple[Vector, Vector, Vector]
@@ -59,6 +64,11 @@ class CameraToLidar:
 
     def direction(self, rect: Vector) -> Vector:
         return _apply(self.rotation_inverse, _apply(self.rect_inverse, rect))
+
+    @property
+    def tilt(self) -> float:
+        """How far camera up (``-y``) leans from the lidar's up axis, in radians."""
+        return tilt_from(self.direction((0.0, -1.0, 0.0)), ScanFrame.LIDAR_FLU)
 
 
 @dataclass(frozen=True, slots=True)

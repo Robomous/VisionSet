@@ -152,10 +152,14 @@ z forward) with `location` the centre of the box's bottom face, dimensions `h w 
 converts each box with that frame's `calib/<id>.txt`, an explicit conversion the loss report names
 (an `attribute` loss on `calib`), never a silent one: the centre is lifted by `h / 2` along camera
 up and mapped through the inverse of `R0_rect` and `Tr_velo_to_cam` (`R_rect` and `Tr_velo_cam`
-are read too), the size becomes `(l, w, h)`, and the heading `(cos ry, 0, -sin ry)` is mapped
-through the inverse rotation and read back as `yaw = atan2(y, x)`. On KITTI's nominal axes that is
-`yaw = -rotation_y - pi/2`, wrapped into `[-pi, pi]`; the small pitch a real calibration has
-between camera y and lidar z is not modelled by a cuboid and is projected out of the heading.
+are read too when written as `KEY: values`; every line of a calibration file must be), the size
+becomes `(l, w, h)`, and the heading `(cos ry, 0, -sin ry)` is mapped through the inverse rotation
+and read back as `yaw = atan2(y, x)`. On KITTI's nominal axes that is `yaw = -rotation_y - pi/2`,
+wrapped into `[-pi, pi]`. A cuboid has no pitch or roll: the small lean a real calibration has
+between camera up and lidar z is projected out of the heading, and a calibration whose camera up
+leans more than 5 degrees from the lidar's up axis - the tolerance the nuScenes import refuses a
+leaning box by - places none of its frame's boxes, each a `label` loss, rather than flattening
+them.
 Coordinates are rounded to the micrometre. Classes are the names labels use, KITTI's own
 (`Car`, `Van`, `Truck`, `Pedestrian`, `Person_sitting`, `Cyclist`, `Tram`, `Misc`) first in that
 order. A 16th column, a detection score, becomes the label's confidence when it lies in 0 to 1.

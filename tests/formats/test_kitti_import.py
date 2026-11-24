@@ -89,6 +89,37 @@ def test_a_box_is_centred_sized_and_turned_into_the_lidar_frame(tmp_path: Path) 
     assert label.confidence is None
 
 
+def _pitched_calib(degrees: float) -> str:
+    """``CALIB`` with the lidar pitched by ``degrees`` against the camera."""
+    c, s = math.cos(math.radians(degrees)), math.sin(math.radians(degrees))
+    nominal = ((0.0, -1.0, 0.0), (0.0, 0.0, -1.0), (1.0, 0.0, 0.0))
+    pitch = ((1.0, 0.0, 0.0), (0.0, c, -s), (0.0, s, c))
+    rotation = [
+        [sum(pitch[i][k] * nominal[k][j] for k in range(3)) for j in range(3)] for i in range(3)
+    ]
+    translation = (0.0, -0.08, -0.27)
+    tr = " ".join(f"{value:.9f}" for i in range(3) for value in (*rotation[i], translation[i]))
+    return f"R0_rect: 1 0 0 0 1 0 0 0 1\nTr_velo_to_cam: {tr}\n"
+
+
+def test_a_calibration_tilted_past_the_tolerance_is_a_label_loss(tmp_path: Path) -> None:
+    write_frame(tmp_path / "tilted", "000000", calib=_pitched_calib(20.0))
+    write_frame(tmp_path / "level", "000000", calib=_pitched_calib(2.0))
+
+    (tilted,) = KittiImporter().read(tmp_path / "tilted").scans
+    (level,) = KittiImporter().read(tmp_path / "level").scans
+
+    assert tilted.labels == ()
+    (loss,) = [
+        one
+        for one in KittiImporter().read(tmp_path / "tilted").losses
+        if one.kind is ImportLossKind.LABEL
+    ]
+    assert (loss.subject, loss.count) == ("Car", 1)
+    assert "leans more than 5 degrees" in loss.reason
+    assert len(level.labels) == 1
+
+
 def test_what_the_domain_cannot_hold_is_counted_by_kind(tmp_path: Path) -> None:
     losses = _losses(write_kitti_source(tmp_path / "src"))
 

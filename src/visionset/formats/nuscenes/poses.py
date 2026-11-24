@@ -24,15 +24,12 @@ import math
 from dataclasses import dataclass
 from typing import Final
 
+from visionset.formats._tilt import TILT_TOLERANCE, tilt_from
 from visionset.kernel.domain import ScanFrame
 
 Vector = tuple[float, float, float]
 Matrix = tuple[Vector, Vector, Vector]
 Quaternion = tuple[float, float, float, float]
-
-#: Five degrees: a sensor's mounting tilt and a road's grade lean a box by one
-#: or two, and flattening five moves the ends of a 5 m box by under 0.22 m.
-TILT_TOLERANCE: Final = math.radians(5.0)
 
 #: How far a quaternion's norm may stray from 1, as printed rotations do.
 UNIT_TOLERANCE: Final = 1e-3
@@ -123,8 +120,7 @@ def global_box_to_sensor(
     orientation = rotation_matrix(rotation)
     heading = transform.direction(_column(orientation, 0))
     box_up = transform.direction(_column(orientation, 2))
-    up_index, up_sign = FRAME.up
-    tilt = math.acos(max(-1.0, min(1.0, up_sign * box_up[up_index])))
+    tilt = tilt_from(box_up, FRAME)
     if tilt > TILT_TOLERANCE:
         raise TiltedBox(tilt)
     (forward_index, forward_sign), (left_index, left_sign) = FRAME.forward, FRAME.left
