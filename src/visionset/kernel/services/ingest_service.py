@@ -294,8 +294,10 @@ class IngestService:
 
         Every ``ceil(n / max_points)``-th of the scan's ``n`` finite points, in
         file order, so the same asset and budget always give the same points;
-        :meth:`PointSample.encode` is the buffer the REST route serves. Decoded
-        from the stored scan on every call, nothing cached.
+        :meth:`PointSample.encode` is the buffer the REST route serves. The
+        decoded sample is kept in the workspace's ``point_samples`` cache under
+        the asset's content hash and the budget, so a repeat request skips the
+        decode and a scan with other bytes can never be answered from it.
 
         Raises:
             ValueError: ``max_points`` outside ``MIN_POINT_BUDGET`` to
@@ -315,10 +317,14 @@ class IngestService:
         asset = self.asset(project_id, asset_id)
         if asset.modality != "point_cloud":
             raise AssetNotFound(f"asset {asset_id} is an {asset.modality}, not a point-cloud scan")
-        with self.open_content(asset) as content:
-            return self._workspace.point_cloud_processor.sample(
-                content, budget=max_points, name=str(asset.id)
-            )
+
+        def decode() -> PointSample:
+            with self.open_content(asset) as content:
+                return self._workspace.point_cloud_processor.sample(
+                    content, budget=max_points, name=str(asset.id)
+                )
+
+        return self._workspace.point_samples.get_or_load((asset.content_hash, max_points), decode)
 
     # --- ingesting ---------------------------------------------------------
 
