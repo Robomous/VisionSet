@@ -299,7 +299,7 @@ describe("the Overview panel", () => {
     const readout = within(classes).getByTestId("class-readout");
     expect(readout.textContent).toContain("68%");
     expect(readout.textContent).toContain("dog");
-    expect(readout.textContent).toContain(`${(4372).toLocaleString(undefined)} on ${(900).toLocaleString(undefined)} images`);
+    expect(readout.textContent).toContain(`${(4372).toLocaleString(undefined)} on ${(900).toLocaleString(undefined)} assets`);
     expect(classes.textContent).not.toContain("schema");
   });
 

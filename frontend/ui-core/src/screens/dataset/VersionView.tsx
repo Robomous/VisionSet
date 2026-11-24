@@ -41,6 +41,7 @@ import { ImageIcon } from "lucide-react";
 import { Button, cn } from "@robomous/ui-core";
 import { DetailPane } from "../../patterns/DetailPane";
 import { WarnTip } from "../../patterns/WarnTip";
+import { assetNoun } from "../../lib/assetNoun";
 import { formatCount } from "../../lib/format";
 import { AssetThumbnail } from "../AssetThumbnail";
 import { trunkAssetLabel } from "../datasetAsset";
@@ -53,6 +54,10 @@ import { publishedOn, type DatasetVersion } from "./versions";
 function said(version: DatasetVersion): string {
   if (version.release !== null) return `Published ${publishedOn(version.release)} · never changes`;
   return "Unpublished · what the next release would freeze";
+}
+
+function paneLabel(asset: DatasetAsset | undefined): string {
+  return `Selected ${assetNoun(asset?.modality ?? "image", 1, "image")}`;
 }
 
 /** A key the wall answers: pressed on the page, the grid or the detail — never in a field, a menu, a dialog or another control. */
@@ -156,7 +161,7 @@ export function VersionView({ projectId, datasetId, version, latestTag }: Versio
       <DetailPane
         id="dataset"
         open={asset !== undefined && selected !== null && datasetId !== undefined}
-        label="Selected image"
+        label={paneLabel(asset)}
         expanded={focus}
         defaultWidth={416}
         onClose={() => {
@@ -212,7 +217,7 @@ function WallHead({ version, gone, total, offset, onTurn }: { readonly version: 
       </span>
       <span className="min-w-0 truncate text-xs text-muted-foreground">{said(version)}</span>
       {gone > 0 && (
-        <WarnTip title={`${formatCount(gone)} of its images ${gone === 1 ? "has" : "have"} since left the dataset`} size="sm" testId="release-gone">
+        <WarnTip title={`${formatCount(gone)} of its assets ${gone === 1 ? "has" : "have"} since left the dataset`} size="sm" testId="release-gone">
           The release still holds {gone === 1 ? "it" : "them"}; this wall shows only what is still in the dataset.
         </WarnTip>
       )}
@@ -255,18 +260,18 @@ function WallGrid({
   readonly onOpen: (index: number) => void;
 }): JSX.Element {
   const release = version.release;
-  if (pending) return <p className="text-sm text-muted-foreground">Loading images…</p>;
+  if (pending) return <p className="text-sm text-muted-foreground">Loading assets…</p>;
   if (items.length === 0) {
     return (
       <p className="text-sm text-pretty text-muted-foreground" data-testid="trunk-empty">
         {release === null
-          ? "Nothing promoted yet. Completing a batch and promoting it puts its images here."
-          : "None of its images are in the dataset now. Every image this release froze has since been taken out; the release itself is unchanged."}
+          ? "Nothing promoted yet. Completing a batch and promoting it puts its assets here."
+          : "None of its assets are in the dataset now. Every asset this release froze has since been taken out; the release itself is unchanged."}
       </p>
     );
   }
   return (
-    <div ref={grid} role="listbox" aria-label={`${version.title} images`} data-testid="trunk-grid" className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-2">
+    <div ref={grid} role="listbox" aria-label={`${version.title} assets`} data-testid="trunk-grid" className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-2">
       {items.map((one, index) => (
         <Tile
           key={one.id}

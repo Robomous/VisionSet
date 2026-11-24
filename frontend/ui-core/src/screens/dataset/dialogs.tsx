@@ -1,12 +1,13 @@
 /**
  * The Dataset section's two dialogs, carried over as they were: taking an
- * image out of the trunk, and publishing a release.
+ * asset out of the trunk, and publishing a release.
  */
 
 import { Upload } from "lucide-react";
 import { useState, type FormEvent, type JSX } from "react";
 
 import { asApiError } from "../../data/errors";
+import { assetNoun } from "../../lib/assetNoun";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FieldDescription, FieldError, Input, Label } from "@robomous/ui-core";
 import { classBlockers, describeClassCount, refusalProse } from "../../data/refusals";
 import { trunkAssetLabel } from "../datasetAsset";
@@ -48,13 +49,14 @@ export function RemoveAssetDialog({
   readonly onRemoved: () => void;
 }): JSX.Element {
   const remove = useRemoveDatasetAsset(datasetId);
+  const noun = assetNoun(asset.modality, 1, "image");
 
   return (
     <Dialog open onOpenChange={(next) => !next && onClose()}>
       <DialogContent data-testid="remove-asset-dialog">
         <DialogTitle>Remove {trunkAssetLabel(asset)} from the dataset?</DialogTitle>
         <DialogDescription data-testid="remove-asset-consequence">
-          This removes the image from the dataset, together with its annotations. The image itself
+          This removes the {noun} from the dataset, together with its annotations. The {noun} itself
           is not deleted: the file, its annotations and its stored data remain in the project, and
           any release already published is unaffected. Promoting the batch again will restore it to
           the dataset.
@@ -226,7 +228,7 @@ export function PublishDialog({
                 ))}
               </ul>
               <p className="text-muted-foreground" data-testid="publish-remedy">
-                Correct those labels in a new batch, remove the frames from the dataset, or
+                Correct those labels in a new batch, remove the assets from the dataset, or
                 publish a schema version that describes the classes again — then publish.
               </p>
             </div>

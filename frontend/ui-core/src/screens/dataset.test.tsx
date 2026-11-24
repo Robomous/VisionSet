@@ -19,6 +19,7 @@ import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DatasetScreen } from "./DatasetScreen";
+import { PageStatusOutlet, PageStatusProvider } from "../patterns/PageStatus";
 import { renderWithData } from "../testing/dataHarness";
 
 // The four list fields `FormatOut` declares with a default. A default means the
@@ -376,10 +377,10 @@ describe("the dataset view", () => {
     await screen.findByTestId("dataset-stats");
     // The Overview's own classes panel, read off the trunk: the largest class leads the readout,
     // and a thousand labels over a thousand images reads apart from the same thousand over ten.
-    expect((await screen.findByTestId("class-readout")).textContent).toContain("31 on 8 images");
+    expect((await screen.findByTestId("class-readout")).textContent).toContain("31 on 8 assets");
     expect(screen.getByTestId("overview-class-vehicle").textContent).toContain("31");
     await userEvent.click(within(screen.getByTestId("overview-class-lane")).getByRole("button"));
-    expect(screen.getByTestId("class-readout").textContent).toContain("9 on 3 images");
+    expect(screen.getByTestId("class-readout").textContent).toContain("9 on 3 assets");
   });
 });
 
@@ -413,11 +414,11 @@ describe("the dataset view's words", () => {
     await waitFor(() => expect(within(kpis).getByTestId("kpi-images").textContent).toContain("12"));
     const labeled = within(kpis).getByTestId("kpi-labeled");
     expect(labeled.textContent).toContain("75%");
-    expect(labeled.textContent).toContain("9 of 12 images");
+    expect(labeled.textContent).toContain("9 of 12 assets");
     // What holds nothing back but is worth knowing is a warning glyph, its words its name and description.
-    expect(warningSaid(within(labeled).getByTestId("warning-labeling"))).toContain("3 images without labels");
+    expect(warningSaid(within(labeled).getByTestId("warning-labeling"))).toContain("3 assets without labels");
     expect(warningSaid(within(labeled).getByTestId("warning-labeling"))).toContain("still exported, as negatives");
-    await waitFor(() => expect(within(kpis).getByTestId("kpi-classes").textContent).toContain("3.3 per image"));
+    await waitFor(() => expect(within(kpis).getByTestId("kpi-classes").textContent).toContain("3.3 per asset"));
     expect(within(kpis).getByTestId("kpi-releases").textContent).toContain("Latest v1");
     // The per-class counts are not a table with a column each.
     expect(within(screen.getByTestId("version-facts")).queryByRole("columnheader")).toBeNull();
@@ -1930,7 +1931,7 @@ describe("the line of versions", () => {
       .filter((id) => id?.startsWith("version-"));
     expect(order).toEqual(["version-working", "version-v2", "version-v1"]);
     // Each entry says what changed against the one before it, and only that.
-    expect(within(nav).getByTestId("version-notes-v2").textContent).toContain("+8images");
+    expect(within(nav).getByTestId("version-notes-v2").textContent).toContain("+8assets");
     expect(within(nav).getByTestId("version-notes-v1").textContent).toContain("the first release");
     expect(within(nav).queryByTestId("version-verified-v1")).toBeNull();
     // The working copy is open to begin with.
@@ -1949,13 +1950,13 @@ describe("the line of versions", () => {
     await waitFor(() => expect(listings().some((r) => new URL(r.url).searchParams.get("release_id") === RELEASE)).toBe(true));
   });
 
-  it("says how many of a release's images have since left the dataset", async () => {
+  it("says how many of a release's assets have since left the dataset", async () => {
     baseline();
     renderWithData(<DatasetScreen projectId={PROJECT} />);
     await openRelease();
 
     // The release froze 12 and the listing holds 1 of them.
-    expect(warningSaid(await screen.findByTestId("release-gone"))).toContain("11 of its images have since left the dataset");
+    expect(warningSaid(await screen.findByTestId("release-gone"))).toContain("11 of its assets have since left the dataset");
   });
 
   it("offers Remove in the viewer for the working copy, and not inside a release", async () => {
@@ -2059,5 +2060,91 @@ describe("the line of versions", () => {
     expect(within(form).getByTestId("export-submit").textContent).toBe("Export");
     // Nothing is chosen, so nothing can be sent yet.
     expect(within(form).getByTestId("export-submit")).toHaveProperty("disabled", true);
+  });
+});
+
+describe("the dataset's counts name assets, whatever they are", () => {
+  const SCAN_ROW = {
+    ...ASSET_ROW,
+    modality: "point_cloud",
+    point_cloud: { format: "pcd", point_count: 27400, fields: ["x", "y", "z"], bounds: { minimum: [0, -40, -2], maximum: [40, 40, 4] } },
+    width: null,
+    height: null,
+    format: null,
+    frame_index: null,
+  };
+
+  it.each([
+    ["an image-only dataset", ASSET_ROW],
+    ["a scan-only dataset", SCAN_ROW],
+  ])("says assets in the KPIs, the class readout and the status line of %s", async (_, row) => {
+    on("GET", /\/assets$/, { status: 200, body: { items: [row], total: 1 } });
+    baseline();
+    on("GET", /\/schema$/, SCHEMA);
+    renderWithData(
+      <PageStatusProvider>
+        <DatasetScreen projectId={PROJECT} />
+        <PageStatusOutlet />
+      </PageStatusProvider>,
+    );
+
+    const kpis = await screen.findByTestId("dataset-kpis");
+    await waitFor(() => expect(within(kpis).getByTestId("kpi-images").textContent).toContain("Assets"));
+    await waitFor(() => expect(within(kpis).getByTestId("kpi-classes").textContent).toContain("per asset"));
+    expect(within(kpis).getByTestId("kpi-labeled").textContent).toContain("9 of 12 assets");
+    expect(warningSaid(within(kpis).getByTestId("warning-labeling"))).toContain("3 assets without labels");
+    expect((await screen.findByTestId("class-readout")).textContent).toContain("31 on 8 assets");
+    expect(screen.getByTestId("dataset-status").textContent).toContain("Working copy · 12 assets · 1 release");
+    for (const said of [kpis.textContent, screen.getByTestId("class-readout").textContent, screen.getByTestId("dataset-status").textContent]) {
+      expect(said).not.toMatch(/image|frame|scan/i);
+    }
+
+    await openRelease();
+    await waitFor(() => expect(within(screen.getByTestId("dataset-kpis")).getByTestId("kpi-annotations").textContent).toContain("3.3 per asset"));
+    expect(within(screen.getByTestId("dataset-kpis")).getByTestId("kpi-images").textContent).toContain("Assets");
+    expect(screen.getByTestId("version-nav").textContent).toContain("12assets, the first release");
+  });
+
+  it("says one asset, never one assets", async () => {
+    on("GET", /\/stats$/, {
+      status: 200,
+      body: {
+        dataset_id: DATASET,
+        asset_count: 2,
+        annotated_asset_count: 1,
+        annotation_count: 3,
+        classes: [{ label_class: "vehicle", annotations: 3, assets: 1 }],
+      },
+    });
+    on("GET", /\/releases$/, { status: 200, body: { items: [{ ...RELEASE_ROW, asset_count: 1 }], total: 1 } });
+    baseline();
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+
+    const kpis = await screen.findByTestId("dataset-kpis");
+    await waitFor(() => expect(within(kpis).getByTestId("kpi-labeled").textContent).toContain("1 of 2 assets"));
+    expect(warningSaid(within(kpis).getByTestId("warning-labeling"))).toContain("1 asset without labels");
+    expect((await screen.findByTestId("class-readout")).textContent).toContain("3 on 1 asset");
+    expect(screen.getByTestId("class-readout").textContent).not.toContain("assets");
+    const nav = screen.getByTestId("version-nav");
+    expect(within(nav).getByTestId("version-notes-working").textContent).toContain("+1asset");
+    expect(within(nav).getByTestId("version-notes-working").textContent).not.toContain("assets");
+    expect(within(nav).getByTestId("version-notes-v1").textContent).toContain("+1asset, the first release");
+  });
+
+  it("names a scan a scan when one member is read or removed", async () => {
+    on("GET", /\/assets$/, { status: 200, body: { items: [SCAN_ROW], total: 1 } });
+    on("GET", /\/annotations$/, { status: 200, body: { items: [], total: 0 } });
+    previewable();
+    baseline();
+    renderWithData(<DatasetScreen projectId={PROJECT} />);
+    await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
+
+    expect((await screen.findByTestId("preview-no-labels")).textContent).toBe("No labels on this scan. Unlabeled scans are training data too.");
+    expect(document.querySelector('[aria-label="Selected scan"]')).not.toBeNull();
+    await userEvent.click(await screen.findByTestId("preview-remove"));
+    const consequence = await screen.findByTestId("remove-asset-consequence");
+    expect(consequence.textContent).toContain("This removes the scan from the dataset");
+    expect(consequence.textContent).toContain("The scan itself is not deleted");
+    expect(consequence.textContent).not.toMatch(/image|frame/);
   });
 });

@@ -48,7 +48,7 @@ interface Option {
   readonly lines: readonly string[];
 }
 
-const NONE: Option = { value: NO_RECIPE, label: "No recipe", title: "Images and labels as the release holds them", lines: [] };
+const NONE: Option = { value: NO_RECIPE, label: "No recipe", title: "Assets and labels as the release holds them", lines: [] };
 
 /** How long the first card waits; after it, the card follows the highlight at once. */
 const CARD_DELAY_MS = 400;

@@ -5,8 +5,8 @@
  * glance — over a legend that is the way in: pointing at a key row lifts its
  * block and quiets the rest, and choosing one pins its figures above the list.
  * The bar and the list answer each other, so a class is never told by colour
- * alone. Shares are of annotations only: an image can show several classes, so
- * per-image shares overlap and would not sum to a whole.
+ * alone. Shares are of annotations only: an asset can show several classes, so
+ * per-asset shares overlap and would not sum to a whole.
  *
  * ## Eight, then Others
  *
