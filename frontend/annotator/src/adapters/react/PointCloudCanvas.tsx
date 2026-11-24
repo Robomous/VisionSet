@@ -31,6 +31,7 @@ import {
   topDownCamera,
   viewProjection,
   zoom,
+  zoomAt,
   type OrbitCamera,
 } from "../../core/pointcloud/camera";
 import { boundsOf, type PointBounds, type PointSample } from "../../core/pointcloud/decode";
@@ -40,7 +41,7 @@ import type { ScanViewKind } from "../../core/pointcloud/edit/scene";
 import type { ScanFrame } from "../../core/pointcloud/frame";
 import { segmentsRelativeTo } from "../../core/pointcloud/labels";
 import { pointColors, type ColorMode } from "../../core/pointcloud/ramp";
-import type { ScanViewport } from "../../core/pointcloud/ray";
+import { screenToNdc, type ScanViewport } from "../../core/pointcloud/ray";
 import type { Point3D } from "../../core/types";
 import { PointCloudRenderer, cssColorToRgb, resolveCssColor } from "./pointCloudGl";
 
@@ -271,7 +272,7 @@ export function PointCloudCanvas(props: PointCloudCanvasProps): JSX.Element {
       const view = scanView();
       if (view !== null) propsRef.current.onScanPointer?.(event, view);
     };
-    const pointOf = (event: PointerEvent): readonly [number, number] => {
+    const pointOf = (event: MouseEvent): readonly [number, number] => {
       const rect = canvas.getBoundingClientRect();
       return [event.clientX - rect.left, event.clientY - rect.top];
     };
@@ -328,7 +329,15 @@ export function PointCloudCanvas(props: PointCloudCanvasProps): JSX.Element {
     const onWheel = (event: WheelEvent): void => {
       event.preventDefault();
       const delta = event.deltaMode === 1 ? event.deltaY * LINE_PX : event.deltaY;
-      camera((c) => zoom(c, Math.exp(delta * WHEEL_ZOOM_PER_PX), sceneRef.current.zoomRadius));
+      const factor = Math.exp(delta * WHEEL_ZOOM_PER_PX);
+      const viewport = { width: canvas.clientWidth, height: canvas.clientHeight };
+      if (!(viewport.width > 0 && viewport.height > 0)) {
+        camera((c) => zoom(c, factor, sceneRef.current.zoomRadius));
+        return;
+      }
+      const cursor = screenToNdc(pointOf(event), viewport);
+      const aspect = viewport.width / viewport.height;
+      camera((c) => zoomAt(c, propsRef.current.frame, factor, sceneRef.current.zoomRadius, cursor, aspect));
     };
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.ctrlKey || event.metaKey || event.altKey) return;

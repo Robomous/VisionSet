@@ -12,11 +12,14 @@ import {
   pan,
   projectToNdc,
   sceneRadius,
+  topDownCamera,
   viewProjection,
   zoom,
+  zoomAt,
   type OrbitCamera,
 } from "./camera";
-import { SCAN_FRAME_AXES, fromForwardLeftUp, isScanFrame, type ScanFrame } from "./frame";
+import { SCAN_FRAME_AXES, fromForwardLeftUp, heightOf, isScanFrame, type ScanFrame } from "./frame";
+import { rayGroundHit, screenRay, screenToNdc } from "./ray";
 
 const FRAMES: readonly ScanFrame[] = ["lidar_flu", "camera_rdf", "lidar_rfu"];
 const BOUNDS = { minimum: [-10, -10, -10] as Point3D, maximum: [10, 10, 10] as Point3D };
@@ -174,6 +177,53 @@ describe("zoom", () => {
   it("is held between 1% and 20x the radius", () => {
     expect(zoom(camera, 1e-6, 10).distance).toBeCloseTo(0.1);
     expect(zoom(camera, 1e6, 10).distance).toBe(200);
+  });
+});
+
+describe.each(FRAMES)("zoomAt in %s", (frame) => {
+  const viewport = { width: 800, height: 500 };
+  const aspect = viewport.width / viewport.height;
+  const radius = 10;
+  const ground = heightOf(frame, [3, -2, 1]) - 1.5;
+
+  function groundUnder(camera: OrbitCamera, point: readonly [number, number]): Point3D {
+    const hit = rayGroundHit(screenRay(camera, frame, viewport, point), frame, ground);
+    if (hit === null) throw new Error("the ray misses the ground");
+    return hit;
+  }
+
+  it.each([
+    [[620, 110]],
+    [[90, 430]],
+    [[400, 250]],
+  ] as const)("keeps the ground under the cursor at %j while zooming in and out, at the clamps too", (point) => {
+    const cursor = screenToNdc(point, viewport);
+    let camera = topDownCamera([3, -2, 1], 12);
+    const anchor = groundUnder(camera, point);
+    const factors = [0.5, 0.5, 0.25, 0.1, 0.1, 0.1, 3, 10, 10, 10, 10, 0.8];
+    const distances: number[] = [];
+    for (const factor of factors) {
+      camera = zoomAt(camera, frame, factor, radius, cursor, aspect);
+      distances.push(camera.distance);
+      expectClose(groundUnder(camera, point), anchor);
+      expect(heightOf(frame, camera.target)).toBeCloseTo(heightOf(frame, [3, -2, 1]), 9);
+    }
+    expect(distances).toContain(radius * 0.01);
+    expect(distances).toContain(radius * 20);
+  });
+
+  it("moves nothing once the zoom is held at its limit", () => {
+    const atLimit = topDownCamera([3, -2, 1], radius * 0.01);
+    const held = zoomAt(atLimit, frame, 0.5, radius, [0.7, -0.4], aspect);
+    expect(held.target).toEqual(atLimit.target);
+    expect(held.distance).toBe(atLimit.distance);
+  });
+});
+
+describe("zoomAt in a perspective view", () => {
+  it("zooms about the target, as zoom does", () => {
+    const camera = homeCamera(BOUNDS);
+    expect(zoomAt(camera, "lidar_flu", 0.5, 10, [0.8, 0.6], 1.6)).toEqual(zoom(camera, 0.5, 10));
   });
 });
 

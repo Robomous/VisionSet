@@ -2610,7 +2610,13 @@ function Workspace({
 
           {/* Top-left, what this frame is and what the canvas expects next. The
               column itself takes no pointer; the tag's one button does. */}
-          <div className="pointer-events-none absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-col items-start gap-2">
+          <div
+            className={cn(
+              "pointer-events-none absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-col items-start gap-2",
+              // A scan in Edit keeps it to the perspective view, which leaves the top-down view two fifths at this width.
+              scan?.editing === true && "@2xl:max-w-[calc(60%-1.5rem)]",
+            )}
+          >
             <StatusTag
               hash={asset.content_hash}
               progress={asset.progress ?? "unannotated"}

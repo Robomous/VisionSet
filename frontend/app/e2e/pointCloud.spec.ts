@@ -777,3 +777,63 @@ test("in Edit, a polyline drawn on the ground saves, and a dragged vertex saves 
   await page.getByTestId("object-select-1").click();
   await expect.poll(() => vertexAt(page, 2)).toEqual(moved);
 });
+
+test("in Edit, the wheel zooms the top-down view about the point under the pointer", async ({ page }) => {
+  await openScan(page, { schema: CUBOID_SCHEMA });
+  await page.getByTestId("scan-edit-toggle").click();
+  const top = page.getByTestId("scan-top-down-canvas");
+  await expect.poll(() => drawCount(top)).toBeGreaterThan(0);
+  await page.getByTestId("object-select-0").click();
+  await expect(page.getByTestId("scan-top-handle-front")).toBeVisible();
+  const box = await top.boundingBox();
+  if (box === null) throw new Error("the top-down view has no box");
+
+  // The car sits off the view's centre, so a zoom about the centre would carry it away.
+  const front = await handleCentre(page, "front", "scan-top");
+  expect(Math.hypot(front[0] - box.width / 2, front[1] - box.height / 2)).toBeGreaterThan(30);
+  const cursor = [Math.round(front[0]), Math.round(front[1])] as const;
+  const span = async (): Promise<number> => {
+    const [a, b] = [await handleCentre(page, "front", "scan-top"), await handleCentre(page, "back", "scan-top")];
+    return Math.hypot(a[0] - b[0], a[1] - b[1]);
+  };
+  const before = await span();
+  // About the cursor, the handle's offset from it scales with the zoom and nothing else.
+  const offCourse = async (): Promise<number> => {
+    const scale = (await span()) / before;
+    const [x, y] = await handleCentre(page, "front", "scan-top");
+    return Math.hypot(x - (cursor[0] + (front[0] - cursor[0]) * scale), y - (cursor[1] + (front[1] - cursor[1]) * scale));
+  };
+  await page.mouse.move(box.x + cursor[0], box.y + cursor[1]);
+
+  for (let step = 0; step < 4; step += 1) await page.mouse.wheel(0, -200);
+  await expect.poll(span).toBeGreaterThan(before * 2);
+  expect(await offCourse()).toBeLessThan(1.5);
+
+  for (let step = 0; step < 8; step += 1) await page.mouse.wheel(0, 200);
+  await expect.poll(span).toBeLessThan(before);
+  expect(await offCourse()).toBeLessThan(1.5);
+});
+
+test("at the 768 px floor, the status tag and object count cover none of the scan's own chrome", async ({ page }) => {
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await openScan(page, { schema: CUBOID_SCHEMA });
+  await page.getByTestId("scan-edit-toggle").click();
+  await expect.poll(() => drawCount(page.getByTestId("scan-top-down-canvas"))).toBeGreaterThan(0);
+  // The cuboid tool widens the strip with its class pick, so it wraps onto a row of its own.
+  await page.getByTestId("scan-tool-cuboid").click();
+
+  const status = page.getByTestId("object-total").locator("xpath=../..");
+  for (const id of ["point-cloud-summary", "scan-edit-strip", "scan-top-down"]) {
+    const [a, b] = [await status.boundingBox(), await page.getByTestId(id).boundingBox()];
+    if (a === null || b === null) throw new Error(`no box for ${id}`);
+    const overlaps = a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+    expect(overlaps, `the status column overlaps ${id}`).toBe(false);
+  }
+
+  // Wide enough for the views side by side, the column keeps to the perspective one.
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await expect.poll(async () => {
+    const [a, b] = [await status.boundingBox(), await page.getByTestId("scan-perspective").boundingBox()];
+    return a !== null && b !== null && a.x + a.width <= b.x + b.width;
+  }).toBe(true);
+});
