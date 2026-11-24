@@ -244,6 +244,12 @@ class TestPcdFields:
         data = pcd_header("x y z intensity", "4 4 4 2", "F F F U", "1 1 1 1", 3) + body
         assert probe(data).fields == ("x", "y", "z", "intensity")
 
+    def test_a_colour_field_not_four_bytes_wide_is_not_claimed(self) -> None:
+        body = b"".join(struct.pack("<fffH", *p, 7) for p in POINTS)
+        data = pcd_header("x y z rgb", "4 4 4 2", "F F F U", "1 1 1 1", 3) + body
+        assert probe(data).fields == ("x", "y", "z")
+        assert StdlibPointCloudProcessor().sample(io.BytesIO(data), budget=10).rgb is None
+
     def test_intensity_and_rgb_listed_canonically(self) -> None:
         body = b"".join(struct.pack("<fffIf", *p, 1, 0.5) for p in POINTS)
         data = pcd_header("x y z rgb intensity", "4 4 4 4 4", "F F F U F", "1 1 1 1 1", 3) + body

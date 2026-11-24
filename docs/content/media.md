@@ -269,8 +269,9 @@ the [`kitti` import](import.md#formats) stores each as a binary PCD of the same 
 | PCD | `DATA ascii`, `binary` and `binary_compressed` (LZF) |
 | PLY | `ascii`, `binary_little_endian` and `binary_big_endian`; the `vertex` element is read, and faces, tristrips and other elements are skipped |
 
-`x`, `y` and `z` must be float fields. `intensity`, and colour as PCD `rgb` or `rgba` or PLY
-`red`/`green`/`blue`, are recorded in `fields` when present; anything else is ignored, including
+`x`, `y` and `z` must be float fields. `intensity`, and colour as a four-byte PCD `rgb` or `rgba`
+or PLY `red`/`green`/`blue`, are recorded in `fields` when present - a PCD colour field of another
+width is not, since it is never read as one; anything else is ignored, including
 PCD padding (`_`). A point with a non-finite coordinate - an organized cloud's empty pixel - is
 dropped and not counted.
 

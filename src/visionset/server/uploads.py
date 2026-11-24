@@ -88,15 +88,26 @@ def stage(root: Path, uploads: Sequence[UploadFile]) -> StagedUpload:
     """
     uploads_root = root / UPLOADS_DIRNAME
     uploads_root.mkdir(parents=True, exist_ok=True)
-    staging = Path(uploads_root / f".staging-{uuid4().hex}")
+    private = uuid4().hex
+    staging = Path(uploads_root / f".staging-{private}")
+    parts = Path(uploads_root / f".parts-{private}")
     staging.mkdir()
+    parts.mkdir()
 
     try:
+        written = [
+            (safe_name(upload.filename), _write(parts / str(index), upload), parts / str(index))
+            for index, upload in enumerate(uploads)
+        ]
+        # Named in (name, content) order rather than arrival order, so which of
+        # two parts under one filename gets the ``-2`` cannot fork the set.
         staged: list[tuple[str, str]] = []
         taken: set[str] = set()
-        for upload in uploads:
-            name = _unused(safe_name(upload.filename), taken)
-            staged.append((name, _write(staging / name, upload)))
+        for wanted, content, path in sorted(written, key=lambda part: part[:2]):
+            name = _unused(wanted, taken)
+            path.rename(staging / name)
+            staged.append((name, content))
+        parts.rmdir()
 
         target = uploads_root / _set_digest(staged)
         if target.exists():
@@ -112,6 +123,7 @@ def stage(root: Path, uploads: Sequence[UploadFile]) -> StagedUpload:
                 shutil.rmtree(staging, ignore_errors=True)
     except BaseException:
         shutil.rmtree(staging, ignore_errors=True)
+        shutil.rmtree(parts, ignore_errors=True)
         raise
 
     return StagedUpload(directory=target, names=tuple(name for name, _ in staged))

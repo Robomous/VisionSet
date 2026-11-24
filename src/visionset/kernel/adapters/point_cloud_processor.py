@@ -355,7 +355,13 @@ def _decode_pcd(
     present = {"x", "y", "z"}
     if find("intensity") is not None:
         present.add("intensity")
-    if find("rgb") is not None or find("rgba") is not None:
+    colour = find("rgb")
+    if colour is None:
+        colour = find("rgba")
+    if colour is not None and sizes[colour] != 4:
+        # Colour is a packed 0x00RRGGBB word; any other width is not read as one.
+        colour = None
+    if colour is not None:
         present.add("rgb")
     out_fields = _canonical(present)
 
@@ -365,10 +371,7 @@ def _decode_pcd(
         intensity = find("intensity")
         if intensity is not None:
             wanted["intensity"] = (intensity, codes[intensity], codes[intensity])
-        colour = find("rgb")
-        if colour is None:
-            colour = find("rgba")
-        if colour is not None and sizes[colour] == 4:
+        if colour is not None:
             kind = _PACKED_FLOAT if types[colour] == "F" and mode == "ascii" else _PACKED
             wanted["rgb"] = (colour, "I", kind)
     picks = xyz_index + [index for index, _, _ in wanted.values()]
