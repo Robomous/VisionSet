@@ -95,6 +95,24 @@ nothing was being distributed. This is the first version that is.
   (#1087).
 - **The scan top-down view zooms about the pointer.** The wheel keeps the ground point under the pointer where
   it is, zooming in and out and at the zoom's limits; the perspective view still zooms about its centre (#1088).
+- **Every edit to a scan's labels is autosaved.** The autosave now waits on the frame's image and scan documents
+  together, so a second and later cuboid or polyline edit on a frame saves without `mod+s`, and a box or polyline
+  being drawn, or a drag in the scan editor, holds the save (`data-autosave="held"`) as a 2D gesture does (#1110).
+- **The island no longer covers a scan's view controls.** Colour by, the labels toggle and reset view share one
+  bottom row with the island, beside it where the stage is wide enough and stacked above it where it is not, in
+  View and in Edit; in Edit the top-down view keeps its foot clear of that row, so none of its handles sit under
+  it (#1110).
+- **One undo and redo on a scan.** The island's buttons and `mod+z` / `mod+shift+z` send the same undo: while a
+  label is drawn it steps the draft back (the last polyline vertex, the height to the width, the width to
+  nothing) and leaves the history alone, and redo does nothing; mid-drag both discard the drag first. On a scan the
+  island's undo and redo name the step they take (`Undo move vehicle`), and the Edit strip's duplicate undo and redo
+  buttons are removed (#1110).
+- **Scan gestures end cleanly.** A drag whose label was changed underneath it, by an undo taken outside the editor
+  or a delete from the panel, ends without writing anything instead of rebuilding the label from where the drag
+  began, while a change to another label or to the selection leaves the drag going; a cuboid's width and height
+  are taken from the click that sets them rather than the last hover, so tap and pen drawing work; a lost pointer
+  capture ends the drag as a cancel, and a press with the same pointer ends a stale one; the orthographic view's
+  near plane and its picking rays share one standoff, so what is drawn above the eye can be picked (#1110).
 - **The scan view's chrome no longer sits under the status tag and object count.** The points summary and the
   Edit strip start below them, so at the 768 px floor the object count no longer covers the strip, and with the
   views side by side the object count keeps to the perspective view (#1088).

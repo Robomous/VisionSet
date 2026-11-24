@@ -307,5 +307,18 @@ describe("useScanWorkspace", () => {
       expect(probe.current().editor.state.type).toBe("idle");
       expect(probe.current().plan.created).toEqual([]);
     });
+
+    it("offers an undo while drawing with nothing in the history, which steps the draft back, and no redo", async () => {
+      const probe = await drawing();
+      expect(probe.current().canUndo).toBe(false);
+      click(probe, [0, 0, 0]);
+      click(probe, [4, 1, 0]);
+      expect(probe.current()).toMatchObject({ canUndo: true, canRedo: false, busy: true });
+      act(() => probe.current().undo());
+      expect(probe.current().editor.state).toMatchObject({ type: "drawing-polyline", points: { length: 1 } });
+      act(() => probe.current().undo());
+      expect(probe.current()).toMatchObject({ canUndo: false, busy: false });
+      expect(probe.current().editor.state.type).toBe("idle");
+    });
   });
 });

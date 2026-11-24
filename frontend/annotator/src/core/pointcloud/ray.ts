@@ -7,7 +7,7 @@
  */
 
 import type { Cuboid3DGeometry, Point, Point3D } from "../types";
-import { eyeOf, FIELD_OF_VIEW, viewBasis, viewHalfHeight, type OrbitCamera } from "./camera";
+import { eyeOf, FIELD_OF_VIEW, ORTHOGRAPHIC_STANDOFF, viewBasis, viewHalfHeight, type OrbitCamera } from "./camera";
 import { cuboidAxes, CUBOID_FACES, type CuboidFace } from "./cuboid";
 import { SCAN_FRAME_AXES, type ScanFrame } from "./frame";
 import { add, dot, normalize, scale, subtract } from "./vector";
@@ -24,11 +24,6 @@ export interface ScanViewport {
 }
 
 const PARALLEL = 1e-9;
-/**
- * How far behind the view plane an orthographic ray starts, in metres: beyond
- * any scan, so it meets everything the view draws, above a close eye included.
- */
-const ORTHOGRAPHIC_STANDOFF = 10_000;
 
 /** A screen point as normalized device coordinates, `y` up. */
 export function screenToNdc([x, y]: Point, viewport: ScanViewport): readonly [number, number] {

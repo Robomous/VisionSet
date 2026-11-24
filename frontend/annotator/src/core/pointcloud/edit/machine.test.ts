@@ -10,7 +10,7 @@ import { CUBOID_FACES, cuboidAxes, faceCenter, headingOfYaw, MIN_CUBOID_SIZE, ty
 import type { PointSample } from "../decode";
 import { fromForwardLeftUp, heightOf, type ScanFrame } from "../frame";
 import { add, scale } from "../vector";
-import { contextOf, cuboidOf, pixelOf, polylineOf, scanBox, scanDocumentOf, scanLine } from "./_scan";
+import { contextOf, cuboidOf, LOOKING_DOWN, pixelOf, polylineOf, scanBox, scanDocumentOf, scanLine } from "./_scan";
 import {
   draftCuboid,
   draftPolyline,
@@ -23,7 +23,8 @@ import {
 } from "./machine";
 import { runScanEffects } from "./runScanEffects";
 import { yawRing } from "./scene";
-import type { ScanDocument } from "./scanDocument";
+import { removeScanAnnotations, replaceScanAnnotation, type ScanDocument } from "./scanDocument";
+import { documentCommand } from "../../state/commands";
 
 const down = (point: Point): ScanEvent => ({ type: "pointer-down", point, button: "primary", modifiers: NO_MODIFIERS });
 const move = (point: Point): ScanEvent => ({ type: "pointer-move", point });
@@ -110,7 +111,7 @@ describe("drawing a cuboid", () => {
   });
 
   it("Enter finishes a height as a click does; Escape draws nothing", () => {
-    const height: ScanState = { type: "drawing-height", labelClass: "car", base: [0, 0, 0], length: 2, width: 1, yaw: 0, height: 1 };
+    const height: ScanState = { type: "drawing-height", labelClass: "car", base: [0, 0, 0], length: 2, width: 1, yaw: 0, height: 1, anchor: [-1, -0.5, 0], offset: 1 };
     expect(scanTransition(height, { type: "commit" }, context).effects[0].kind).toBe("add");
     expect(scanTransition(height, { type: "cancel" }, context)).toEqual({ state: SCAN_IDLE, effects: [] });
   });
@@ -252,21 +253,21 @@ describe("editing a cuboid", () => {
     const near = scanBox("car-1", { yaw: 3 });
     const context = contextOf(scanDocumentOf(near), { selection: selectOnly("car-1") });
     const ring = yawRing(near.geometry, "lidar_flu");
-    const rotating: ScanState = { type: "rotating", id: "car-1", origin: near.geometry, start: 0, level: ring.level };
+    const rotating: ScanState = { type: "rotating", id: "car-1", origin: near.geometry, committed: near.geometry, start: 0, level: ring.level };
     const target: Point3D = [ring.radius * Math.cos(0.5), ring.radius * Math.sin(0.5), 0];
     const turned = staged(scanTransition(rotating, move(pixelOf(context, target)), context));
     expect(turned.yaw).toBeCloseTo(3.5 - 2 * Math.PI, 6);
   });
 
   it("Escape and a lost pointer discard the drag", () => {
-    const moving: ScanState = { type: "moving", id: "car-1", origin: box.geometry, grab: [0, 0, 2], level: 2 };
+    const moving: ScanState = { type: "moving", id: "car-1", origin: box.geometry, committed: box.geometry, grab: [0, 0, 2], level: 2 };
     for (const event of [{ type: "cancel" }, { type: "pointer-cancel" }] as const) {
       expect(scanTransition(moving, event, selected)).toEqual({ state: SCAN_IDLE, effects: [{ kind: "discard" }] });
     }
   });
 
   it("a drag whose box was undone away ends rather than staging a ghost", () => {
-    const moving: ScanState = { type: "moving", id: "car-1", origin: box.geometry, grab: [0, 0, 2], level: 2 };
+    const moving: ScanState = { type: "moving", id: "car-1", origin: box.geometry, committed: box.geometry, grab: [0, 0, 2], level: 2 };
     const gone = contextOf(scanDocumentOf());
     expect(scanTransition(moving, move([400, 300]), gone)).toEqual({ state: SCAN_IDLE, effects: [{ kind: "discard" }] });
   });
@@ -494,7 +495,7 @@ describe("editing a polyline", () => {
     const context = () => contextOf(store.document, { selection: store.selection });
     const c = context();
     const pressed = scanTransition(SCAN_IDLE, down(pixelOf(c, [0, 6, 1])), c);
-    expect(pressed).toEqual({ state: { type: "moving-vertex", id: "lane-1", origin: raised.geometry, index: 1, level: 1 }, effects: [] });
+    expect(pressed).toEqual({ state: { type: "moving-vertex", id: "lane-1", origin: raised.geometry, committed: raised.geometry, index: 1, level: 1 }, effects: [] });
     const dragged = scanTransition(pressed.state, move(pixelOf(c, [1, 7, 1])), c);
     const points = stagedPolyline(dragged).points;
     expectClose(points[1] ?? [], [1, 7, 1]);
@@ -511,7 +512,7 @@ describe("editing a polyline", () => {
   });
 
   it("escape while dragging a vertex discards", () => {
-    const state: ScanState = { type: "moving-vertex", id: "lane-1", origin: lane.geometry, index: 1, level: 0 };
+    const state: ScanState = { type: "moving-vertex", id: "lane-1", origin: lane.geometry, committed: lane.geometry, index: 1, level: 0 };
     expect(scanTransition(state, { type: "cancel" }, selected)).toEqual({ state: SCAN_IDLE, effects: [{ kind: "discard" }] });
   });
 
@@ -578,11 +579,11 @@ describe("editing a polyline", () => {
 
   it("dragging a vertex onto the only other one stages nothing, so the line stays drawable", () => {
     const target = pixelOf(selected, [-4, 7, 0]);
-    const probe: ScanState = { type: "moving-vertex", id: "lane-1", origin: lane.geometry, index: 1, level: 0 };
+    const probe: ScanState = { type: "moving-vertex", id: "lane-1", origin: lane.geometry, committed: lane.geometry, index: 1, level: 0 };
     const landed = stagedPolyline(scanTransition(probe, move(target), selected)).points[1]!;
     const pair = scanLine("lane-1", [landed, [4, 6, 0]]);
     const context = contextOf(scanDocumentOf(pair), { selection: selectOnly("lane-1") });
-    const state: ScanState = { type: "moving-vertex", id: "lane-1", origin: pair.geometry, index: 1, level: 0 };
+    const state: ScanState = { type: "moving-vertex", id: "lane-1", origin: pair.geometry, committed: pair.geometry, index: 1, level: 0 };
     expect(scanTransition(state, move(target), context)).toEqual({ state, effects: [] });
   });
 });
@@ -667,5 +668,197 @@ describe("snapping polyline vertices to the scan", () => {
     const state = scanTransition(SCAN_IDLE, down(pixelOf(boxes, onRamp)), boxes).state;
     if (state.type !== "drawing-footprint") throw new Error("not drawing a footprint");
     expect(heightOf("lidar_flu", state.anchor)).toBeCloseTo(0, 6);
+  });
+
+  for (const origin of [[8192, -8192, 0], [512_000.25, 4_100_000.5, 120]] as const satisfies readonly Point3D[]) {
+    it(`snaps a vertex placed or dragged on a scan whose origin is ${origin.join(", ")}`, () => {
+      const far: PointSample = { ...RAMP, origin };
+      const lane = scanLine("lane-1", [add(origin, [-4, 2, 0]), add(origin, [0, 2, 0])]);
+      const cameras: readonly [OrbitCamera, ScanContext["view"]][] = [
+        [{ ...LOOKING_DOWN, target: origin }, "perspective"],
+        [topDownCamera(origin, 30), "top-down"],
+      ];
+      for (const [camera, view] of cameras) {
+        const placing: ScanContext = {
+          ...contextOf(scanDocumentOf(), { tool: { kind: "polyline", labelClass: "lane" }, camera }),
+          ...(view === undefined ? {} : { view }),
+          points: far,
+          groundHeight: origin[2] - 0.5,
+        };
+        const target = add(origin, onRamp);
+        const placed = drafted(scanTransition(SCAN_IDLE, down(pixelOf(placing, target)), placing).state).points[0]!;
+        expectClose(placed, target, 3);
+
+        const editing: ScanContext = {
+          ...contextOf(scanDocumentOf(lane), { selection: selectOnly("lane-1"), camera }),
+          ...(view === undefined ? {} : { view }),
+          points: far,
+        };
+        const pressed = scanTransition(SCAN_IDLE, down(pixelOf(editing, add(origin, [0, 2, 0]))), editing);
+        expect(pressed.state.type).toBe("moving-vertex");
+        const dragged = stagedPolyline(scanTransition(pressed.state, move(pixelOf(editing, target)), editing)).points[1];
+        expectClose(dragged ?? [], target, 3);
+      }
+    });
+  }
+});
+
+describe("a press without a hover", () => {
+  const context = contextOf(scanDocumentOf(), { tool: { kind: "cuboid", labelClass: "car" } });
+  const footprint = (): ScanState => {
+    let state = scanTransition(SCAN_IDLE, down(pixelOf(context, [2, -1, 0])), context).state;
+    for (const event of [move(pixelOf(context, [6, -1, 0])), up(pixelOf(context, [6, -1, 0]))]) {
+      state = scanTransition(state, event, context).state;
+    }
+    return state;
+  };
+
+  it("takes the width from where a tap lands, not from the last hover", () => {
+    const height = scanTransition(footprint(), down(pixelOf(context, [5, 2, 0])), context).state;
+    expect(height).toMatchObject({ type: "drawing-height", width: expect.closeTo(3, 6) });
+  });
+
+  it("takes the height from where a tap lands, and draws the box the taps describe", () => {
+    let state = scanTransition(footprint(), down(pixelOf(context, [5, 2, 0])), context).state;
+    state = scanTransition(state, up(pixelOf(context, [5, 2, 0])), context).state;
+    const finished = scanTransition(state, down(pixelOf(context, [4, 0.5, 1.5])), context);
+    const added = finished.effects.find((effect) => effect.kind === "add");
+    if (added?.kind !== "add") throw new Error("no box drawn");
+    expectClose(cuboidOf(added.annotation).geometry.size, [4, 3, 1.5], 4);
+  });
+
+  it("never reads a height through the top-down view", () => {
+    const top: ScanContext = { ...context, camera: topDownCamera([0, 0, 0], 30), view: "top-down" };
+    const height: ScanState = { type: "drawing-height", labelClass: "car", base: [4, 0, 0], length: 4, width: 2, yaw: 0, height: 1.2, anchor: [2, -1, 0], offset: 2 };
+    const finished = scanTransition(height, down(pixelOf(top, [4, 0, 0])), top);
+    const added = finished.effects.find((effect) => effect.kind === "add");
+    if (added?.kind !== "add") throw new Error("no box drawn");
+    expect(cuboidOf(added.annotation).geometry.size[2]).toBe(1.2);
+  });
+});
+
+describe("a lost pointer between clicks", () => {
+  it("keeps the width, the height and the polyline being drawn: no press is held between clicks", () => {
+    const box = contextOf(scanDocumentOf(), { tool: { kind: "cuboid", labelClass: "car" } });
+    const line = contextOf(scanDocumentOf(), { tool: { kind: "polyline", labelClass: "lane" } });
+    const width: ScanState = { type: "drawing-width", labelClass: "car", anchor: [0, 0, 0], length: 2, yaw: 0, offset: 1 };
+    const height: ScanState = { type: "drawing-height", labelClass: "car", base: [1, 0.5, 0], length: 2, width: 1, yaw: 0, height: 1, anchor: [0, 0, 0], offset: 1 };
+    const polyline: ScanState = { type: "drawing-polyline", labelClass: "lane", points: [[1, 1, 0], [2, 1, 0]], cursor: null };
+    expect(scanTransition(width, { type: "pointer-cancel" }, box)).toEqual({ state: width, effects: [] });
+    expect(scanTransition(height, { type: "pointer-cancel" }, box)).toEqual({ state: height, effects: [] });
+    expect(scanTransition(polyline, { type: "pointer-cancel" }, line)).toEqual({ state: polyline, effects: [] });
+  });
+});
+
+describe("undo and redo", () => {
+  const line = contextOf(scanDocumentOf(), { tool: { kind: "polyline", labelClass: "lane" } });
+  const box = contextOf(scanDocumentOf(), { tool: { kind: "cuboid", labelClass: "car" } });
+
+  it("while drawing a polyline, steps back one vertex at a time and leaves the history alone", () => {
+    const store = new AnnotatorStore<ScanDocument>(scanDocumentOf(scanBox("car-1"), scanBox("car-2", { center: [9, 9, 1] })));
+    store.select(selectOnly("car-2"));
+    drive(store, () => contextOf(store.document, { selection: store.selection }), [{ type: "delete-selected" }]);
+    const before = store.document;
+    const context = () => ({ ...line, document: store.document });
+    const at = (x: number): Point => pixelOf(line, [x, 1, 0]);
+    let state = drive(store, context, [1, 2, 3, 4, 5].map((x) => down(at(x))));
+    expect(state).toMatchObject({ type: "drawing-polyline", points: { length: 5 } });
+
+    state = drive(store, context, [{ type: "undo" }], state);
+    expect(state).toMatchObject({ type: "drawing-polyline", points: { length: 4 } });
+    state = drive(store, context, [{ type: "undo" }, { type: "undo" }, { type: "undo" }], state);
+    expect(state).toMatchObject({ type: "drawing-polyline", points: [expect.anything()] });
+    expect(drive(store, context, [{ type: "undo" }], state)).toBe(SCAN_IDLE);
+    expect(store.document).toBe(before);
+    expect(store.document.annotations.has("car-2")).toBe(false);
+  });
+
+  it("while drawing a cuboid, steps the height back to the width and the width to nothing", () => {
+    const width: ScanState = { type: "drawing-width", labelClass: "car", anchor: [0, 0, 0], length: 2, yaw: 0.3, offset: -1.5 };
+    const height = scanTransition(width, { type: "commit" }, box).state;
+    expect(scanTransition(height, { type: "undo" }, box)).toEqual({ state: width, effects: [] });
+    expect(scanTransition(width, { type: "undo" }, box)).toEqual({ state: SCAN_IDLE, effects: [] });
+    const footprint: ScanState = { type: "drawing-footprint", labelClass: "car", anchor: [0, 0, 0], corner: [1, 0, 0] };
+    expect(scanTransition(footprint, { type: "undo" }, box)).toEqual({ state: SCAN_IDLE, effects: [] });
+  });
+
+  it("while drawing, a redo does nothing", () => {
+    const polyline: ScanState = { type: "drawing-polyline", labelClass: "lane", points: [[1, 1, 0], [2, 1, 0]], cursor: null };
+    const width: ScanState = { type: "drawing-width", labelClass: "car", anchor: [0, 0, 0], length: 2, yaw: 0, offset: 1 };
+    expect(scanTransition(polyline, { type: "redo" }, line)).toEqual({ state: polyline, effects: [] });
+    expect(scanTransition(width, { type: "redo" }, box)).toEqual({ state: width, effects: [] });
+  });
+
+  it("at rest, reaches the history", () => {
+    expect(scanTransition(SCAN_IDLE, { type: "undo" }, box)).toEqual({ state: SCAN_IDLE, effects: [{ kind: "undo" }] });
+    expect(scanTransition(SCAN_IDLE, { type: "redo" }, box)).toEqual({ state: SCAN_IDLE, effects: [{ kind: "redo" }] });
+  });
+
+  it("mid-drag, discards the drag and then undoes the step before it", () => {
+    const store = new AnnotatorStore<ScanDocument>(scanDocumentOf(scanBox("car-1")));
+    const context = () => contextOf(store.document, { selection: store.selection });
+    const c = context();
+    drive(store, context, [down(pixelOf(c, [0, 0, 2])), move(pixelOf(c, [3, 0, 2])), up([0, 0])]);
+    expect(cuboidOf(store.document.annotations.get("car-1")).geometry.center[0]).toBeCloseTo(3, 6);
+
+    const moving = drive(store, context, [down(pixelOf(c, [4, 0.5, 2])), move(pixelOf(c, [6, 0.5, 2]))]);
+    expect(store.preview).not.toBeNull();
+    expect(drive(store, context, [{ type: "undo" }], moving)).toBe(SCAN_IDLE);
+    expect(store.preview).toBeNull();
+    expect(cuboidOf(store.document.annotations.get("car-1")).geometry.center[0]).toBeCloseTo(0, 6);
+    expect(store.canRedo).toBe(true);
+  });
+
+  it("a drag whose box was undone behind its back ends, and neither rewrites the box nor loses the redo", () => {
+    const store = new AnnotatorStore<ScanDocument>(scanDocumentOf(scanBox("car-1")));
+    const context = () => contextOf(store.document, { selection: store.selection });
+    const c = context();
+    drive(store, context, [down(pixelOf(c, [0, 0, 2])), move(pixelOf(c, [3, 0, 2])), up([0, 0])]);
+
+    const pressed = drive(store, context, [down(pixelOf(c, [4, 0.5, 2]))]);
+    expect(pressed.type).toBe("moving");
+    expect(store.undo()).toBe(true);
+    const ended = drive(store, context, [move(pixelOf(c, [5, 0.5, 2])), up([0, 0])], pressed);
+
+    expect(ended).toBe(SCAN_IDLE);
+    expect(cuboidOf(store.document.annotations.get("car-1")).geometry.center[0]).toBeCloseTo(0, 6);
+    expect(store.canRedo).toBe(true);
+  });
+
+  it("a drag survives a change to another label, a selection change, and its own label re-stored by value", () => {
+    const store = new AnnotatorStore<ScanDocument>(scanDocumentOf(scanBox("car-1"), scanBox("car-2", { center: [9, 9, 1] })));
+    const context = () => contextOf(store.document, { selection: store.selection });
+    const c = context();
+    const pressed = drive(store, context, [down(pixelOf(c, [1, 0.5, 2])), move(pixelOf(c, [2, 0.5, 2]))]);
+    expect(pressed.type).toBe("moving");
+
+    store.execute(documentCommand<ScanDocument>("delete", (document) => removeScanAnnotations(document, ["car-2"])));
+    store.select(EMPTY_SELECTION);
+    store.execute(
+      documentCommand<ScanDocument>("re-store", (document) => {
+        const box = cuboidOf(document.annotations.get("car-1"));
+        return replaceScanAnnotation(document, { ...box, geometry: structuredClone(box.geometry) });
+      }),
+    );
+    const moving = drive(store, context, [move(pixelOf(c, [3, 0.5, 2]))], pressed);
+    expect(moving.type).toBe("moving");
+    drive(store, context, [up([0, 0])], moving);
+    expect(cuboidOf(store.document.annotations.get("car-1")).geometry.center[0]).toBeCloseTo(2, 6);
+  });
+
+  it("a vertex drag whose polyline was undone behind its back ends too", () => {
+    const lane = scanLine("lane-1", [[-4, 6, 0], [0, 6, 0], [4, 6, 0]]);
+    const store = new AnnotatorStore<ScanDocument>(scanDocumentOf(lane));
+    store.select(selectOnly("lane-1"));
+    const context = () => contextOf(store.document, { selection: store.selection });
+    const c = context();
+    drive(store, context, [down(pixelOf(c, [0, 6, 0])), move(pixelOf(c, [0, 8, 0])), up([0, 0])]);
+
+    const pressed = drive(store, context, [down(pixelOf(c, [0, 8, 0]))]);
+    expect(pressed.type).toBe("moving-vertex");
+    expect(store.undo()).toBe(true);
+    drive(store, context, [move(pixelOf(c, [1, 9, 0])), up([0, 0])], pressed);
+    expect(polylineOf(store.document.annotations.get("lane-1")).geometry).toEqual(lane.geometry);
+    expect(store.canRedo).toBe(true);
   });
 });

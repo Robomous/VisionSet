@@ -47,6 +47,12 @@ export function runScanEffects(store: AnnotatorStore<ScanDocument>, effects: rea
       case "remove":
         store.execute(documentCommand<ScanDocument>(effect.label, (document) => removeScanAnnotations(document, effect.ids)));
         break;
+      case "undo":
+        store.undo();
+        break;
+      case "redo":
+        store.redo();
+        break;
       default:
         unreachable(effect);
     }

@@ -49,7 +49,27 @@ export interface ScanEditor {
   readonly onDoubleClick: () => void;
   /** A pointer-free event: `cancel`, `commit`, `delete-selected`. */
   readonly send: (event: Extract<ScanEvent, { type: "cancel" | "commit" | "delete-selected" }>) => void;
+  /**
+   * Whether a draft is being drawn: an undo then steps the draft back rather
+   * than reaching the history, and a redo does nothing.
+   */
+  readonly drafting: boolean;
+  /** The one undo every surface sends: through the machine while editing, else straight to the history. */
+  readonly undo: () => void;
+  readonly redo: () => void;
 }
+
+const DRAFTING: Readonly<Record<ScanState["type"], boolean>> = {
+  idle: false,
+  "drawing-footprint": true,
+  "drawing-width": true,
+  "drawing-height": true,
+  "drawing-polyline": true,
+  moving: false,
+  resizing: false,
+  rotating: false,
+  "moving-vertex": false,
+};
 
 const NO_VIEW: ScanView = {
   camera: { yaw: 0, pitch: 0, distance: 1, target: [0, 0, 0] },
@@ -121,11 +141,24 @@ export function useScanEditor(options: ScanEditorOptions): ScanEditor {
     [live, turn],
   );
 
+  const step = useCallback(
+    (type: "undo" | "redo"): void => {
+      if (store === null) return;
+      if (live) turn({ type }, viewRef.current ?? NO_VIEW);
+      else if (type === "undo") store.undo();
+      else store.redo();
+    },
+    [store, live, turn],
+  );
+  const undo = useCallback(() => step("undo"), [step]);
+  const redo = useCallback(() => step("redo"), [step]);
+
   const onDoubleClick = useCallback((): void => {
     if (live && stateRef.current.type === "drawing-polyline") turn({ type: "commit" }, viewRef.current ?? NO_VIEW);
   }, [live, turn]);
 
   const draft = useMemo(() => (frame === null ? null : draftCuboid(state, { frame })), [state, frame]);
   const polylineDraft = useMemo(() => draftPolyline(state), [state]);
-  return { state, draft, polylineDraft, view, onScanPointer, onCameraChange, onDoubleClick, send };
+  const drafting = DRAFTING[state.type];
+  return { state, draft, polylineDraft, view, onScanPointer, onCameraChange, onDoubleClick, send, drafting, undo, redo };
 }

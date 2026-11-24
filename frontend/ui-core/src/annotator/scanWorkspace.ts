@@ -74,6 +74,18 @@ export interface ScanWorkspace {
   readonly plan: SavePlan<ScanAnnotation>;
   /** Delete through the command log, so the panel's delete undoes like the keyboard's. */
   readonly remove: (ids: readonly string[]) => void;
+  /**
+   * The scan's one undo and redo, for the island and the keys alike: a draft
+   * being drawn steps back and keeps the history, a drag is discarded first.
+   */
+  readonly undo: () => void;
+  readonly redo: () => void;
+  readonly canUndo: boolean;
+  readonly canRedo: boolean;
+  readonly undoLabel: string | null;
+  readonly redoLabel: string | null;
+  /** A gesture is under way — a draft, or a drag the store previews — so nothing should be saved or read in yet. */
+  readonly busy: boolean;
 }
 
 const EMPTY_PLAN: SavePlan<ScanAnnotation> = { created: [], updated: [], deleted: [] };
@@ -208,6 +220,7 @@ export function useScanWorkspace({
   );
 
   if (store === null || snapshot === null) return null;
+  const { drafting } = editor;
   return {
     store,
     snapshot,
@@ -232,5 +245,12 @@ export function useScanWorkspace({
     editor,
     plan,
     remove,
+    undo: editor.undo,
+    redo: editor.redo,
+    canUndo: drafting || snapshot.canUndo,
+    canRedo: !drafting && snapshot.canRedo,
+    undoLabel: drafting ? null : snapshot.undoLabel,
+    redoLabel: drafting ? null : snapshot.redoLabel,
+    busy: editor.state.type !== "idle" || snapshot.preview !== null,
   };
 }
