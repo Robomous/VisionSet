@@ -17,6 +17,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { useState, type JSX } from "react";
 import { formatCount, formatPercent, formatWhen } from "../lib/format";
 import { ProjectScreen } from "./ProjectScreen";
 import { PageStatusOutlet, PageStatusProvider } from "../patterns/PageStatus";
@@ -1108,7 +1109,7 @@ describe("the project's identity and its one filled control", () => {
 
   it("draws no line at all for a description-less project with no images to have labeled", async () => {
     headerFor({ assets: 0 });
-    renderWithData(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} />);
+    renderWithData(<ProjectScreen projectId={PROJECT} />);
 
     await screen.findByTestId("overview-ingest");
     // The tabs' counts are the last thing the bar settles on: after them, the
@@ -1159,7 +1160,7 @@ describe("the project's identity and its one filled control", () => {
       handlers.length = 0;
       headerFor({ assets: 3 });
       on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
-      const { unmount } = renderWithData(<ProjectScreen projectId={PROJECT} tab={tab} onIngest={vi.fn()} />);
+      const { unmount } = renderWithData(<ProjectScreen projectId={PROJECT} tab={tab} />);
 
       await screen.findByTestId(SENTINEL[tab]);
       for (const id of ["project-identity", "project-title", "chip-version"]) {
@@ -1313,7 +1314,7 @@ describe("the project's identity and its one filled control", () => {
     // `DESIGN.md`'s never-disable rule: a control
     // that leads nowhere is absent, not grey.
     headerFor({ batchState: "draft" });
-    renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} onIngest={vi.fn()} />);
+    renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
 
     await screen.findByTestId("go-ingest");
     expect(screen.queryByTestId("go-annotate")).toBeNull();
@@ -1326,7 +1327,7 @@ describe("the project's identity and its one filled control", () => {
 
     it("draws it outlined before the filled Annotate while a batch is open", async () => {
       headerFor({ batchState: "in_annotation" });
-      renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} onIngest={vi.fn()} />);
+      renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
 
       const annotate = await screen.findByTestId("go-annotate");
       const ingest = screen.getByTestId("go-ingest");
@@ -1341,7 +1342,7 @@ describe("the project's identity and its one filled control", () => {
 
     it("draws it as the filled control when no batch is open", async () => {
       headerFor({ batchState: "draft" });
-      renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} onIngest={vi.fn()} />);
+      renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
 
       await screen.findByTestId("overview-batches");
       expect(screen.queryByTestId("go-annotate")).toBeNull();
@@ -1352,7 +1353,7 @@ describe("the project's identity and its one filled control", () => {
 
     it("gives the Overview's content and its Batches panel no Add images: the bar has the only one", async () => {
       headerFor({ batchState: "in_annotation" });
-      renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} onIngest={vi.fn()} />);
+      renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
 
       const panel = await screen.findByTestId("overview-batches");
       // No section header exists to carry one, and nothing in the content does.
@@ -1365,7 +1366,7 @@ describe("the project's identity and its one filled control", () => {
       // Annotate has nowhere to send anybody without `onOpenBatch`, so it never
       // takes the slot: Add images is the filled control.
       headerFor({ batchState: "in_annotation" });
-      renderWithData(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} />);
+      renderWithData(<ProjectScreen projectId={PROJECT} />);
 
       await screen.findByTestId("overview-batches");
       expect(screen.queryByTestId("go-annotate")).toBeNull();
@@ -1373,12 +1374,41 @@ describe("the project's identity and its one filled control", () => {
       expect(inToolbar()).toBe(screen.getByTestId("go-ingest"));
     });
 
-    it("draws no Add images at all for a host with nowhere to send anybody", async () => {
+    it("opens its own Add images dialog, so a host with no route for it still offers it", async () => {
       headerFor({ batchState: "in_annotation" });
       renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
 
       await screen.findByTestId("go-annotate");
-      expect(screen.queryByTestId("go-ingest")).toBeNull();
+      expect(screen.queryByRole("dialog")).toBeNull();
+      await userEvent.click(screen.getByTestId("go-ingest"));
+      expect(await screen.findByRole("dialog", { name: "Add images" })).not.toBeNull();
+      await userEvent.click(screen.getByTestId("add-images-close"));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    });
+
+    it("hands the dialog's open state to a host that holds it, and draws what the host says", async () => {
+      headerFor({ batchState: "in_annotation" });
+      const change = vi.fn();
+      function Host(): JSX.Element {
+        const [open, setOpen] = useState(false);
+        return (
+          <ProjectScreen
+            projectId={PROJECT}
+            addImagesOpen={open}
+            onAddImagesOpenChange={(next) => {
+              change(next);
+              setOpen(next);
+            }}
+          />
+        );
+      }
+      renderWithData(<Host />);
+
+      await userEvent.click(await screen.findByTestId("go-ingest"));
+      expect(change).toHaveBeenCalledWith(true);
+      expect(await screen.findByRole("dialog", { name: "Add images" })).not.toBeNull();
+      await userEvent.click(screen.getByTestId("add-images-close"));
+      expect(change).toHaveBeenLastCalledWith(false);
     });
 
     it.each(["overview", "images"] as const)(
@@ -1386,7 +1416,7 @@ describe("the project's identity and its one filled control", () => {
       async (tab) => {
         headerFor({ batchState: "in_annotation", assets: 3 });
         on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
-        renderWithData(<ProjectScreen projectId={PROJECT} tab={tab} onOpenBatch={vi.fn()} onIngest={vi.fn()} />);
+        renderWithData(<ProjectScreen projectId={PROJECT} tab={tab} onOpenBatch={vi.fn()} />);
 
         await screen.findByTestId(tab === "images" ? "images-screen" : "go-annotate");
         const ingest = await screen.findByTestId("go-ingest");
@@ -1409,7 +1439,7 @@ describe("the project's identity and its one filled control", () => {
       async ({ tab, sentinel }) => {
         const added = vi.fn();
         headerFor({ batchState: "in_annotation", assets: 3 });
-        renderWithData(<ProjectScreen projectId={PROJECT} tab={tab} onOpenBatch={vi.fn()} onIngest={added} />);
+        renderWithData(<ProjectScreen projectId={PROJECT} tab={tab} onOpenBatch={vi.fn()} onAddImagesOpenChange={added} />);
 
         await screen.findByTestId(sentinel);
         expect(screen.queryByTestId("go-ingest")).toBeNull();
@@ -1428,7 +1458,7 @@ describe("the project's identity and its one filled control", () => {
         expect(within(screen.getByTestId("project-nav")).queryByTestId("go-ingest")).toBeNull();
 
         await userEvent.click(item);
-        expect(added).toHaveBeenCalledOnce();
+        expect(added).toHaveBeenCalledWith(true);
       },
     );
   });
@@ -1454,7 +1484,7 @@ describe("the project's identity and its one filled control", () => {
     // the loud one stays in the header; the classes order is a link beneath.
     headerFor({ schema: false, assets: 0 });
     renderWithData(
-      <ProjectScreen projectId={PROJECT} onIngest={vi.fn()} onTabChange={vi.fn()} />,
+      <ProjectScreen projectId={PROJECT} onTabChange={vi.fn()} />,
     );
 
     await screen.findByTestId("first-run-alt");
@@ -1464,7 +1494,7 @@ describe("the project's identity and its one filled control", () => {
   it("steps Ingest back while the Overview's invitation owns the filled button", async () => {
     headerFor({ schema: false, assets: 48 });
     renderWithData(
-      <ProjectScreen projectId={PROJECT} onIngest={vi.fn()} onTabChange={vi.fn()} />,
+      <ProjectScreen projectId={PROJECT} onTabChange={vi.fn()} />,
     );
 
     const cta = await screen.findByTestId("first-run-cta");
@@ -1478,7 +1508,7 @@ describe("the project's identity and its one filled control", () => {
     // page that rendered the other order as bare prose would be the right count
     // reached by leaving the person nothing to press.
     headerFor({ schema: false, assets: 0 });
-    renderWithData(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} />);
+    renderWithData(<ProjectScreen projectId={PROJECT} />);
 
     const alt = await screen.findByTestId("first-run-alt");
     expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
@@ -1490,7 +1520,7 @@ describe("the project's identity and its one filled control", () => {
     // The invitation and the header say the same thing with the same handler, so
     // the loud one stays in the header and the panel's stays outlined.
     headerFor({ assets: 0 });
-    renderWithData(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} />);
+    renderWithData(<ProjectScreen projectId={PROJECT} />);
 
     await screen.findByTestId("overview-ingest");
     expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
@@ -1498,7 +1528,7 @@ describe("the project's identity and its one filled control", () => {
 
   it("keeps the filled Ingest once the project has both classes and images", async () => {
     headerFor({});
-    renderWithData(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} />);
+    renderWithData(<ProjectScreen projectId={PROJECT} />);
 
     await screen.findByTestId("overview-stats");
     expect(screen.queryByTestId("first-run")).toBeNull();
@@ -1523,7 +1553,7 @@ describe("the project's identity and its one filled control", () => {
     headerFor({ schema: false, assets: 0 });
     datasetStubs();
     renderWithData(
-      <ProjectScreen projectId={PROJECT} onIngest={vi.fn()} tab="dataset" />,
+      <ProjectScreen projectId={PROJECT} tab="dataset" />,
     );
 
     const publish = await screen.findByTestId("publish-release");
@@ -1561,7 +1591,7 @@ describe("the project's identity and its one filled control", () => {
       },
     });
     datasetStubs();
-    renderWithData(<ProjectScreen projectId={PROJECT} onIngest={vi.fn()} tab="dataset" />);
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="dataset" />);
 
     await screen.findByTestId("version-nav");
     const publish = await screen.findByTestId("publish-release");
@@ -1590,7 +1620,7 @@ describe("the project's identity and its one filled control", () => {
 
   it("draws New beside the history in the section's band, as its one filled control, not in the project bar", async () => {
     headerFor({});
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" onIngest={vi.fn()} />);
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
 
     const add = await screen.findByTestId("add-class");
     expect(within(screen.getByTestId("project-nav")).queryByTestId("add-class")).toBeNull();
@@ -1609,7 +1639,7 @@ describe("the project's identity and its one filled control", () => {
 
   it("steps Add class back while the draft's Save is the page's filled control", async () => {
     headerFor({});
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" onIngest={vi.fn()} />);
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     const add = await screen.findByTestId("add-class");
     expect(filled()).toEqual([add]);
 
@@ -1622,7 +1652,7 @@ describe("the project's identity and its one filled control", () => {
 
   it("keeps Add class in the section for an empty draft, and draws none in the bar", async () => {
     headerFor({ schema: false });
-    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" onIngest={vi.fn()} />);
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
 
     const add = await screen.findByTestId("add-class");
     expect(within(screen.getByTestId("project-nav")).queryByTestId("add-class")).toBeNull();
@@ -1631,7 +1661,7 @@ describe("the project's identity and its one filled control", () => {
 
   it("moves Rename into the overflow, so only two buttons show", async () => {
     headerFor({ batchState: "in_annotation" });
-    renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} onIngest={vi.fn()} />);
+    renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
 
     await screen.findByTestId("go-annotate");
     // Rename is behind the menu, so it is not in the document yet.

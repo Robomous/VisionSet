@@ -50,6 +50,7 @@ export function ClipRangeTimeline({
   ranges,
   onRangesChange,
   aside,
+  playerClassName,
 }: {
   /** An object URL the caller owns — the caller revokes it. Null renders no player. */
   readonly src: string | null;
@@ -58,6 +59,8 @@ export function ClipRangeTimeline({
   readonly onRangesChange: (ranges: readonly ClipRange[]) => void;
   /** The cut's facts, laid beside the player; the caller owns their content. */
   readonly aside?: ReactNode;
+  /** The player's size where the host has less room than a page — a dialog's column. */
+  readonly playerClassName?: string;
 }): JSX.Element {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -364,7 +367,7 @@ export function ClipRangeTimeline({
               // styles.css hides the control itself where the engine allows.
               muted
               preload="metadata"
-              className="vs-muted-player max-h-84 w-full max-w-2xl shrink-0 rounded-lg bg-muted"
+              className={cn("vs-muted-player max-h-84 w-full max-w-2xl shrink-0 rounded-lg bg-muted", playerClassName)}
               data-testid="clip-player"
               onTimeUpdate={timeUpdated}
               onPlay={playStarted}

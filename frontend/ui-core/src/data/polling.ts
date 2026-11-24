@@ -3,7 +3,7 @@
  *
  * `docs/content/api.md`'s launch-and-poll contract: `POST /sources/{id}/ingest-jobs`
  * answers **202 with a `Location`**, and the job row is the client's only view of
- * what happens after. The ingest screen is the caller; the batch table wants the
+ * what happens after. The Add images dialog is the caller; the batch table wants the
  * same shape while a promotion settles.
  *
  * ## Why this is a hook and not a `while` loop with a sleep

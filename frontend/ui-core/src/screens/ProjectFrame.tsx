@@ -1,8 +1,7 @@
 /**
  * A project's frame: its navigation beside whatever the route put inside it.
  *
- * Every route under `/projects/:id/` — the four sections and the ingest flow —
- * renders inside the same navigation column (the tab strip
+ * Every route under `/projects/:id/` — the four sections — renders inside the same navigation column (the tab strip
  * below `lg`), with its sections, its actions and its overflow; only
  * the annotator, which needs the whole screen, stands outside it. This is the
  * one place that reads the project for the navigation's sake, so the column
@@ -11,9 +10,11 @@
  *
  * The one filled control is the frame's only when a caller hands it the slot's
  * inputs (`cta`): the sections do, so Annotate — or Add images in its place — is
- * the project shell's dominant action there, with Add images beside Annotate; a sub-view such as the
- * ingest flow does not, because that page owns its own dominant action and a
- * second filled control beside it would be two answers to "what now?".
+ * the project shell's dominant action there, with Add images beside Annotate; a
+ * page below the sections would not, because a page that owns its own dominant
+ * action beside a second filled control would be two answers to "what now?".
+ * Add images is no longer such a page: it is a dialog `ProjectScreen` opens
+ * over the section it was asked from.
  */
 
 import { useMemo, useState, type JSX, type ReactNode } from "react";
@@ -41,7 +42,7 @@ import type { FormEvent } from "react";
 
 export interface ProjectFrameProps {
   readonly projectId: string;
-  /** The section the page belongs to, or none — the ingest flow lights nothing. */
+  /** The section the page belongs to, or none — a page below the sections lights nothing. */
   readonly active: ProjectSection | null;
   /** The sections on offer, in display order. */
   readonly sections: readonly ProjectSection[];
@@ -168,8 +169,7 @@ export function ProjectFrame({
  * What each section holds, for the tabs: the project's images, its active
  * classes, and the images in its dataset.
  *
- * Every route inside the frame reads it — the ingest flow too —
- * so the tabs are the same width on every page of the project. It is handed
+ * Every route inside the frame reads it, so the tabs are the same width on every page of the project. It is handed
  * over whole once each count has answered (or failed, which leaves that one
  * out), so the tabs widen once instead of once per query. All three queries
  * are ones the Overview already runs, under the same keys.

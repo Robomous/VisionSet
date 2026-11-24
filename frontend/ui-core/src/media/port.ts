@@ -22,7 +22,7 @@ export interface VisionSetMediaRuntime {
    * the UI reads a clip once per adapter rather than once per render, so a host
    * that builds its runtime inline — `runtime={{ materializer: new X(), … }}` —
    * must not hand over an adapter whose `name` changes between renders. Object
-   * identity is free to change (`VideoImportFlow` keys on the name, so an inline
+   * identity is free to change (`useClipImport` keys on the name, so an inline
    * runtime costs nothing); the *decoder behind a given name* is what must not.
    * Hosts that can memoize should: `useMemo` on the whole runtime is the
    * cheapest spelling, and `app/src/data/OssSession.tsx` is the worked example.

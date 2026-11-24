@@ -209,7 +209,7 @@ export {
   type SchemaDraft,
   type SchemaEditorProps,
 } from "./screens/SchemaEditor.js";
-export { IngestScreen, type IngestScreenProps } from "./screens/IngestScreen.js";
+export { AddImagesDialog, type AddImagesDialogProps } from "./screens/addImages/AddImagesDialog.js";
 export { HomeScreen, type HomeScreenProps } from "./screens/HomeScreen";
 export { ApproveDialog, BatchProgressBar } from "./screens/BatchLifecycle.js";
 export { PromoteButton, type PromoteButtonProps } from "./screens/PromoteButton.js";
