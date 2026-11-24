@@ -63,7 +63,7 @@ _SIGNATURE_BYTES: Final = max(len(signature) for signature, _ in _SIGNATURES)
 
 
 def folds_of(manifest: Manifest, assignment: SplitAssignment | None) -> dict[UUID, str]:
-    """Which fold each asset belongs to, keyed by asset id.
+    """Which fold each asset of ``manifest`` belongs to, keyed by asset id.
 
     ``assignment`` is the one ``ReleaseService.export`` hands the plugin: the
     release's split recipe cut over its **whole** frozen manifest, the answer
@@ -76,16 +76,21 @@ def folds_of(manifest: Manifest, assignment: SplitAssignment | None) -> dict[UUI
     lands in :data:`DEFAULT_FOLD`. An augmented variant, keyed ``<hash>-aug<k>``,
     shares its source's ``asset_id`` and so lands in its source's fold, which is
     ``train`` because variants are only generated there.
+
+    Keyed by the assets handed over and no others, so the folds it names are the
+    folds the output holds: a fold the assignment fills with scans alone is not
+    one an image format writes.
     """
     if assignment is None:
         return {asset.asset_id: DEFAULT_FOLD for asset in manifest.assets}
-    return {
+    fold_of = {
         asset_id: fold
         for fold, members in zip(
             FOLDS, (assignment.train, assignment.val, assignment.test), strict=True
         )
         for asset_id in members
     }
+    return {asset.asset_id: fold_of[asset.asset_id] for asset in manifest.assets}
 
 
 def image_name(asset: ManifestAsset, suffix: str) -> str:

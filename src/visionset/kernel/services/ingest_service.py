@@ -569,7 +569,7 @@ class IngestService:
                 or not self._workspace.blob_store.exists(asset.thumbnail_hash)
             ]
 
-        rendered: dict[UUID, str] = {}
+        rendered: dict[UUID, tuple[str, ScanFrame | None]] = {}
         missing: list[UUID] = []
         unreadable: list[IngestFailure] = []
         for asset_id, content_hash, uri, frame in pending:
@@ -587,13 +587,20 @@ class IngestService:
                 # the only part of that string a reader can act on.
                 unreadable.append(_failure(report_name(uri), exc))
             else:
-                rendered[asset_id] = thumbnail_hash
+                rendered[asset_id] = (thumbnail_hash, frame)
 
         filled: list[UUID] = []
         with self._workspace.unit_of_work() as uow:
-            for asset_id, thumbnail_hash in rendered.items():
+            # Under the lock a frame change takes, so a scan's source cannot be
+            # declared in another frame between the check below and the write.
+            uow.hold_writes()
+            for asset_id, (thumbnail_hash, frame) in rendered.items():
                 asset = uow.assets.get(asset_id)
                 if asset is None:
+                    continue
+                if self._scan_frame_of(uow, asset) != frame:
+                    # Drawn in a frame its source no longer declares; the frame
+                    # change dropped the preview, and the next pass draws it anew.
                     continue
                 if asset.thumbnail_hash != thumbnail_hash:
                     uow.assets.update(asset.model_copy(update={"thumbnail_hash": thumbnail_hash}))

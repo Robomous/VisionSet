@@ -45,6 +45,7 @@ from visionset.kernel.domain import (
 from visionset.kernel.ports import Exporter, supported_modalities_of
 from visionset.kernel.services import (
     CalibrationService,
+    IngestService,
     PreprocessingRecipeService,
     annotation_service,
     source_service,
@@ -542,6 +543,81 @@ def test_an_image_export_of_a_mixed_release_writes_the_reported_folds(tmp_path: 
     variants = {stem: fold for stem, fold in written.items() if "-aug" in stem}
     assert variants
     assert set(variants.values()) == {"train"}
+
+
+def test_an_image_export_writes_only_the_folds_its_images_are_in(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path, images=2, classes=CLASSES)
+    directory = tmp_path / "many-scans"
+    directory.mkdir()
+    for index in range(8):
+        (directory / f"scan-{index}.pcd").write_bytes(
+            pcd_ascii(tuple((x + index, y, z) for x, y, z in SCAN))
+        )
+    image_batch = fixture.batch_id
+    source = fixture.sources.register_point_clouds(
+        fixture.project.id, directory, frame=ScanFrame.LIDAR_FLU
+    )
+    scan_batch = fixture.ingest.ingest(source.id, batch_name="scans").batch_id
+    fixture.label({})
+    fixture.batch_id = scan_batch
+    fixture.label({})
+    fixture.batch_id = image_batch
+    unsplit = fixture.releases.manifest(fixture.publish("unsplit"))
+    images = {one.asset_id for one in unsplit.assets if one.modality == "image"}
+    seed = next(
+        seed
+        for seed in range(200)
+        if not images
+        & set(
+            assign_split(SplitRecipe(train=0.6, val=0.2, test=0.2, seed=seed), unsplit.assets).val
+        )
+    )
+    release_id = fixture.publish(
+        "split", split=SplitRecipe(train=0.6, val=0.2, test=0.2, seed=seed)
+    )
+
+    darknet = fixture.releases.export(
+        release_id, exporters()["darknet"], tmp_path / "darknet", allow_lossy=True
+    )
+    fixture.releases.export(
+        release_id, exporters()["ultralytics"], tmp_path / "ultra", allow_lossy=True
+    )
+    fixture.close()
+
+    assert darknet.source_file_count == 2
+    assert not (tmp_path / "darknet" / "images" / "val").exists()
+    assert not (tmp_path / "ultra" / "images" / "val").exists()
+    assert "val: images/val" not in (tmp_path / "ultra" / "data.yaml").read_text()
+
+
+def test_a_backfill_does_not_keep_a_preview_drawn_in_a_replaced_frame(
+    scans: Scans, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = scans.read(ScanFrame.LIDAR_FLU)
+    with scans.workspace.unit_of_work() as uow:
+        for asset in run.assets:
+            uow.assets.update(asset.model_copy(update={"thumbnail_hash": None}))
+    render = IngestService._render_thumbnail
+    moved: list[bool] = []
+
+    def render_then_move(self: Any, content: Any, frame: Any, *, name: str) -> bytes:
+        drawn = render(self, content, frame, name=name)
+        if not moved:
+            moved.append(True)
+            scans.sources.register_point_clouds(
+                scans.project.id, scans.directory, frame=ScanFrame.CAMERA_RDF
+            )
+        return drawn
+
+    monkeypatch.setattr(IngestService, "_render_thumbnail", render_then_move)
+    backfill = scans.ingest.backfill_thumbnails(scans.project.id)
+    monkeypatch.undo()
+
+    assert not set(backfill.filled) & {asset.id for asset in run.assets}
+    for asset in run.assets:
+        assert scans.ingest.asset(scans.project.id, asset.id).thumbnail_hash is None
+    again = scans.ingest.backfill_thumbnails(scans.project.id)
+    assert {asset.id for asset in run.assets} <= set(again.filled)
 
 
 def test_an_image_export_does_not_read_a_scan_blob(scans: Scans, tmp_path: Path) -> None:
