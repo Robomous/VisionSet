@@ -1,12 +1,12 @@
 /**
  * What the scan editor can point at: the selected polyline's vertices or the
- * selected box's face handles and yaw ring, then any polyline's segments, then
+ * selected box's camera-facing face handles and yaw ring, then any polyline's segments, then
  * any box's body. Pure; the adapter hands over the camera and the
  * viewport it draws with, and the same two place the handles on screen.
  */
 
-import type { OrbitCamera } from "../camera";
-import { faceCenter, CUBOID_FACES, type CuboidFace } from "../cuboid";
+import { eyeOf, viewBasis, type OrbitCamera } from "../camera";
+import { cuboidAxes, faceCenter, faceSpec, CUBOID_FACES, type CuboidFace } from "../cuboid";
 import { heightOf, type ScanFrame } from "../frame";
 import {
   closestOnAxis,
@@ -51,9 +51,33 @@ export interface Scene3D {
 const ALL_FACES: readonly CuboidFace[] = CUBOID_FACES.map(({ face }) => face);
 export const LEVEL_FACES: readonly CuboidFace[] = ["front", "back", "left", "right"];
 
-/** The faces a view offers handles for. */
-export function handleFaces(view: ScanViewKind = "perspective"): readonly CuboidFace[] {
-  return view === "top-down" ? LEVEL_FACES : ALL_FACES;
+/**
+ * Whether a face's outward normal points towards the eye: towards the eye's
+ * position for a perspective camera, against the view direction for an
+ * orthographic one. Only the box's own body is considered, never other boxes
+ * or the points.
+ */
+export function facesCamera(geometry: Cuboid3DGeometry, frame: ScanFrame, camera: OrbitCamera, face: CuboidFace): boolean {
+  const { axis, sign } = faceSpec(face);
+  const normal = scale(cuboidAxes(geometry, frame)[axis], sign);
+  const towardEye =
+    camera.projection === "orthographic"
+      ? scale(viewBasis(camera, frame).forward, -1)
+      : subtract(eyeOf(camera, frame), faceCenter(geometry, frame, face));
+  return dot(normal, towardEye) > 0;
+}
+
+/**
+ * The faces a view offers handles for, drawn and hit alike. The perspective view
+ * offers those facing the camera; the top-down view looks along the four side
+ * faces edge-on and offers all four.
+ */
+export function handleFaces(
+  scene: Pick<Scene3D, "camera" | "frame" | "view">,
+  geometry: Cuboid3DGeometry,
+): readonly CuboidFace[] {
+  if (scene.view === "top-down") return LEVEL_FACES;
+  return ALL_FACES.filter((face) => facesCamera(geometry, scene.frame, scene.camera, face));
 }
 
 /** How near, in screen pixels, a pointer must come to a handle or the ring. */
@@ -138,7 +162,7 @@ export function hitTest3D(
 
   if (target !== null) {
     let nearest: { face: CuboidFace; distance: number } | null = null;
-    for (const handle of faceHandles(target.geometry, frame, handleFaces(scene.view))) {
+    for (const handle of faceHandles(target.geometry, frame, handleFaces(scene, target.geometry))) {
       const onScreen = screenOf(camera, frame, viewport, handle.point);
       if (onScreen === null) continue;
       const distance = Math.hypot(onScreen[0] - point[0], onScreen[1] - point[1]);

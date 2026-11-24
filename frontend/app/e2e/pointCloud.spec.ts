@@ -173,13 +173,19 @@ async function dragIn(page: Page, view: Locator, from: readonly [number, number]
   await page.mouse.up();
 }
 
-/** A cuboid on the ground left of the car: the footprint dragged, the height raised, a click to finish. */
+/**
+ * A cuboid on the ground left of the car: its length dragged up the screen, roughly forward, the
+ * width set to the right of that edge with a click, the height raised, a click to finish.
+ */
 async function drawCuboid(page: Page, view: Locator): Promise<void> {
   const box = await view.boundingBox();
   if (box === null) throw new Error("the view has no box");
   const [cx, cy] = [box.width / 2, box.height / 2];
-  await dragIn(page, view, [cx - 220, cy + 60], [cx - 100, cy + 150]);
-  await page.mouse.move(box.x + cx - 100, box.y + cy + 90, { steps: 6 });
+  await dragIn(page, view, [cx - 220, cy + 150], [cx - 220, cy + 60]);
+  await page.mouse.move(box.x + cx - 100, box.y + cy + 105, { steps: 6 });
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.mouse.move(box.x + cx - 160, box.y + cy + 40, { steps: 6 });
   await page.mouse.down();
   await page.mouse.up();
 }
@@ -192,11 +198,11 @@ async function handleAt(page: Page, face: string, prefix = "scan"): Promise<read
   return [x, y];
 }
 
-/** A point on the selected box's body, halfway between its top and left handles and clear of both. */
+/** A point on the selected box's body, halfway between its top and back handles, which the opening view always sees. */
 async function bodyPoint(page: Page): Promise<readonly [number, number]> {
   const top = await handleAt(page, "top");
-  const left = await handleAt(page, "left");
-  return [(top[0] + left[0]) / 2 + 5, (top[1] + left[1]) / 2 + 5];
+  const back = await handleAt(page, "back");
+  return [(top[0] + back[0]) / 2 + 5, (top[1] + back[1]) / 2 + 5];
 }
 
 async function drawCount(view: Locator): Promise<number> {
@@ -386,8 +392,10 @@ test("in Edit, a drawn cuboid moves, the move undoes, and the save sends the box
   const body = posts[0]?.postDataJSON() as Wire["AnnotationCreate"][];
   expect(body).toHaveLength(1);
   const [created] = body;
-  expect(created).toMatchObject({ asset_id: "asset-1", label_class: "vehicle", geometry: { type: "cuboid_3d", yaw: 0 } });
+  expect(created).toMatchObject({ asset_id: "asset-1", label_class: "vehicle", geometry: { type: "cuboid_3d" } });
   const geometry = lastCuboidSent(sent);
+  // It starts along its length drag, which ran up the screen, close to forward.
+  expect(Math.abs(geometry.yaw)).toBeLessThan(0.5);
   for (const side of geometry.size) expect(side).toBeGreaterThan(0.05);
   // It stands on the ground the scan was sampled on, left of the car and short of it.
   expect(geometry.center[2] - geometry.size[2] / 2).toBeCloseTo(-0.8, 1);
@@ -404,7 +412,7 @@ test("in Edit, a drawn cuboid moves, the move undoes, and the save sends the box
   await expect(page.getByTestId("point-cloud-canvas")).toHaveAttribute("data-label-count", "2");
 });
 
-test("in Edit, pulling the right face out widens the box, and the toolbar leaves the keys on the view", async ({ page }) => {
+test("in Edit, pulling the back face out lengthens the box, the far faces offer no handle, and the toolbar leaves the keys on the view", async ({ page }) => {
   await openScan(page, { schema: CUBOID_SCHEMA });
   const view = page.getByTestId("point-cloud-canvas");
   await expect.poll(() => drawCount(view)).toBeGreaterThan(0);
@@ -413,23 +421,28 @@ test("in Edit, pulling the right face out widens the box, and the toolbar leaves
   await drawCuboid(page, view);
   await expect(page.getByTestId("scan-handles")).toBeVisible();
   await page.getByTestId("scan-tool-select").click();
+  // Seen from behind and above, the box's front and bottom faces are turned away and offer no handle.
+  await expect(page.getByTestId("scan-handle-back")).toBeVisible();
+  await expect(page.getByTestId("scan-handle-top")).toBeVisible();
+  for (const face of ["front", "bottom"]) await expect(page.getByTestId(`scan-handle-${face}`)).toHaveCount(0);
 
-  const left = await handleAt(page, "left");
-  const right = await handleAt(page, "right");
-  const across = Math.hypot(right[0] - left[0], right[1] - left[1]);
-  const out = [(right[0] - left[0]) / across, (right[1] - left[1]) / across] as const;
-  await dragIn(page, view, right, [right[0] + out[0] * 60, right[1] + out[1] * 60]);
+  // Down the screen is the back face's outward side from the opening view.
+  const back = await handleAt(page, "back");
+  const topBefore = await handleAt(page, "top");
+  await dragIn(page, view, [back[0] + 5, back[1] + 5], [back[0] + 5, back[1] + 65]);
 
-  const widened = await handleAt(page, "right");
-  const leftAfter = await handleAt(page, "left");
-  expect(Math.hypot(leftAfter[0] - left[0], leftAfter[1] - left[1])).toBeLessThan(1);
-  expect(Math.hypot(widened[0] - left[0], widened[1] - left[1])).toBeGreaterThan(across + 30);
+  const pulled = await handleAt(page, "back");
+  expect(pulled[1] - back[1]).toBeGreaterThan(30);
+  // The front face held still, so the top face's centre moved less far.
+  const topAfter = await handleAt(page, "top");
+  expect(topAfter[1] - topBefore[1]).toBeGreaterThan(5);
+  expect(topAfter[1] - topBefore[1]).toBeLessThan(pulled[1] - back[1]);
 
   await page.getByTestId("scan-undo").click();
-  await expect.poll(() => handleAt(page, "right")).toEqual(right);
+  await expect.poll(() => handleAt(page, "back")).toEqual(back);
   await expect(page.getByTestId("point-cloud-gl")).toBeFocused();
   await page.keyboard.press("ControlOrMeta+Shift+z");
-  await expect.poll(() => handleAt(page, "right")).toEqual(widened);
+  await expect.poll(() => handleAt(page, "back")).toEqual(pulled);
 });
 
 test("in Edit, a right drag orbits and a left drag on open ground draws nothing with the select tool", async ({ page }) => {
@@ -496,7 +509,7 @@ test("in Edit, the keys delete, undo, and let go of the selection", async ({ pag
   await expect(page.getByTestId("object-count")).toHaveText("1 object");
 });
 
-test("in Edit, a footprint drawn after picking the class finishes its height with Enter", async ({ page }) => {
+test("in Edit, a footprint drawn after picking the class sets its width and finishes its height with Enter", async ({ page }) => {
   const sent = await openScan(page, { schema: CUBOID_SCHEMA });
   const view = page.getByTestId("point-cloud-canvas");
   await expect.poll(() => drawCount(view)).toBeGreaterThan(0);
@@ -507,9 +520,13 @@ test("in Edit, a footprint drawn after picking the class finishes its height wit
   const box = await view.boundingBox();
   if (box === null) throw new Error("the view has no box");
   const [cx, cy] = [box.width / 2, box.height / 2];
-  await dragIn(page, view, [cx - 220, cy + 60], [cx - 100, cy + 150]);
+  await dragIn(page, view, [cx - 220, cy + 150], [cx - 220, cy + 60]);
+  await expect(page.getByTestId("scan-width-hint")).toBeVisible();
+  await page.mouse.move(box.x + cx - 100, box.y + cy + 105, { steps: 6 });
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("scan-width-hint")).toHaveCount(0);
   await expect(page.getByTestId("scan-height-hint")).toBeVisible();
-  await page.mouse.move(box.x + cx - 100, box.y + cy + 90, { steps: 6 });
+  await page.mouse.move(box.x + cx - 160, box.y + cy + 40, { steps: 6 });
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("object-count")).toHaveText("2 objects");
   await expect(page.getByTestId("scan-height-hint")).toHaveCount(0);
@@ -559,9 +576,12 @@ test("in Edit, the top-down view pulls a face and turns the yaw, the perspective
   if (box === null) throw new Error("the top-down view has no box");
   const [cx, cy] = [box.width / 2, box.height / 2];
 
-  // A footprint on open ground left of the scan's centre, wider than it is long, finished with Enter.
+  // A footprint on open ground left of the scan's centre, wider than it is long: its length
+  // dragged forward up the screen, its width set to the right, then Enter for the width and the height.
   await page.getByTestId("scan-tool-cuboid").click();
-  await dragIn(page, top, [cx - 140, cy + 20], [cx - 60, cy + 60]);
+  await dragIn(page, top, [cx - 140, cy + 60], [cx - 140, cy + 20]);
+  await page.mouse.move(box.x + cx - 60, box.y + cy + 40, { steps: 4 });
+  await page.keyboard.press("Enter");
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("object-count")).toHaveText("2 objects");
   await expect(view).toHaveAttribute("data-label-count", "2");
@@ -575,14 +595,15 @@ test("in Edit, the top-down view pulls a face and turns the yaw, the perspective
   const front = await handleCentre(page, "front", "scan-top");
   const back = await handleCentre(page, "back", "scan-top");
   expect(front[1]).toBeLessThan(back[1]);
-  const perspectiveFront = await handleAt(page, "front", "scan");
+  // The perspective view sees the box from behind: its top handle shows the pull.
+  const perspectiveTop = await handleAt(page, "top", "scan");
   await page.mouse.move(box.x + front[0], box.y + front[1]);
   await page.mouse.down();
   await page.mouse.move(box.x + front[0], box.y + front[1] - 80, { steps: 8 });
   // Mid-drag, before anything is committed, the perspective view's handle has moved with it.
   await expect.poll(async () => {
-    const [x, y] = await handleAt(page, "front", "scan");
-    return Math.hypot(x - perspectiveFront[0], y - perspectiveFront[1]);
+    const [x, y] = await handleAt(page, "top", "scan");
+    return Math.hypot(x - perspectiveTop[0], y - perspectiveTop[1]);
   }).toBeGreaterThan(5);
   await page.mouse.up();
   const pulled = await handleCentre(page, "front", "scan-top");
@@ -632,6 +653,36 @@ test("in Edit, the top-down view pulls a face and turns the yaw, the perspective
     await page.getByTestId("token-submit").click();
   }
   await expect(page.getByTestId("object-count")).toHaveText("2 objects");
+});
+
+test("in Edit, a cuboid drawn by a drag at an angle starts at the drag's yaw", async ({ page }) => {
+  const sent = await openScan(page, { schema: CUBOID_SCHEMA });
+  const view = page.getByTestId("point-cloud-canvas");
+  await expect.poll(() => drawCount(view)).toBeGreaterThan(0);
+  await page.getByTestId("scan-edit-toggle").click();
+  const top = page.getByTestId("scan-top-down-canvas");
+  await expect.poll(() => drawCount(top)).toBeGreaterThan(0);
+  const box = await top.boundingBox();
+  if (box === null) throw new Error("the top-down view has no box");
+  const [cx, cy] = [box.width / 2, box.height / 2];
+
+  // Forward runs up the top-down screen and left to the left: 30 degrees from forward towards left.
+  const angle = Math.PI / 6;
+  const from = [cx - 100, cy + 60] as const;
+  const to = [from[0] - 70 * Math.sin(angle), from[1] - 70 * Math.cos(angle)] as const;
+  await page.getByTestId("scan-tool-cuboid").click();
+  await dragIn(page, top, from, to);
+  await page.mouse.move(box.x + to[0] + 40 * Math.cos(angle), box.y + to[1] - 40 * Math.sin(angle), { steps: 4 });
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("object-count")).toHaveText("2 objects");
+
+  await page.getByTestId("point-cloud-gl").focus();
+  await page.keyboard.press("ControlOrMeta+s");
+  await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
+  const geometry = lastCuboidSent(sent);
+  expect(geometry.yaw).toBeCloseTo(angle, 1);
+  expect(geometry.size[0]).toBeGreaterThan(geometry.size[1]);
 });
 
 async function vertexAt(page: Page, index: number, prefix = "scan-top"): Promise<readonly [number, number]> {

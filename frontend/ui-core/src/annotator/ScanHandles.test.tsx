@@ -43,12 +43,12 @@ function scene(selection = selectOnly("box")): Scene3D {
 }
 
 describe("ScanHandles", () => {
-  it("draws six face handles and the yaw ring over the selected box, in tokens", () => {
+  it("draws the face handles turned towards the camera and the yaw ring over the selected box, in tokens", () => {
     render(<ScanHandles scene={scene()} />);
     const svg = screen.getByTestId("scan-handles");
     expect(svg.getAttribute("data-target")).toBe("box");
     expect(svg.getAttribute("width")).toBe("800");
-    for (const face of ["front", "back", "left", "right", "top", "bottom"]) {
+    for (const face of ["back", "top"]) {
       expect(screen.getByTestId(`scan-handle-${face}`).getAttribute("class")).toContain("stroke-foreground");
     }
     expect(screen.getByTestId("scan-yaw-ring").getAttribute("points")?.split(" ").length).toBeGreaterThan(32);
@@ -72,6 +72,17 @@ describe("ScanHandles", () => {
     // Yaw 0 heads forward, which the top-down view draws up the screen.
     expect(Number(knob.getAttribute("cy"))).toBeLessThan(Number(front.getAttribute("y")));
     expect(Number(knob.getAttribute("cx"))).toBeCloseTo(400, 0);
+  });
+
+  it("draws no handle on a face turned away from the camera, and follows the camera round", () => {
+    const { unmount } = render(<ScanHandles scene={scene()} />);
+    for (const face of ["front", "left", "right", "bottom"]) expect(screen.queryByTestId(`scan-handle-${face}`)).toBeNull();
+    unmount();
+
+    render(<ScanHandles scene={{ ...scene(), camera: { yaw: 0, pitch: 0.5, distance: 30, target: [0, 0, 0] } }} />);
+    expect(screen.getByTestId("scan-handle-front")).toBeTruthy();
+    expect(screen.getByTestId("scan-handle-top")).toBeTruthy();
+    expect(screen.queryByTestId("scan-handle-back")).toBeNull();
   });
 
   it("over the perspective view, draws neither footprint nor yaw handle", () => {

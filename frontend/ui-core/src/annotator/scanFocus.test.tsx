@@ -132,19 +132,22 @@ function footprint(): void {
   const tell = pointers.perspective;
   if (tell === undefined) throw new Error("the perspective view takes no pointer");
   act(() => tell({ type: "pointer-down", point: pixel([-2, -1, 0]), button: "primary", modifiers: NONE }, VIEW));
+  act(() => tell({ type: "pointer-move", point: pixel([2, -1, 0]) }, VIEW));
+  act(() => tell({ type: "pointer-up", point: pixel([2, -1, 0]), button: "primary", modifiers: NONE }, VIEW));
   act(() => tell({ type: "pointer-move", point: pixel([2, 1, 0]) }, VIEW));
-  act(() => tell({ type: "pointer-up", point: pixel([2, 1, 0]), button: "primary", modifiers: NONE }, VIEW));
 }
 
 describe("keyboard focus in the scan editor", () => {
-  it("moves to the perspective view once a footprint is drawn from the class dropdown, and Enter finishes the height", async () => {
+  it("moves to the perspective view once a footprint is drawn from the class dropdown, and Enter sets the width then finishes the height", async () => {
     const scan = await editingCuboids();
     screen.getByTestId("scan-cuboid-class").focus();
 
     footprint();
-    expect(scan().editor.state.type).toBe("drawing-height");
+    expect(scan().editor.state.type).toBe("drawing-width");
     expect(document.activeElement).toBe(screen.getByTestId("perspective-gl"));
 
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Enter" });
+    expect(scan().editor.state.type).toBe("drawing-height");
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Enter" });
     expect(scan().snapshot.document.annotations.size).toBe(1);
     expect(scan().editor.state.type).toBe("idle");
@@ -156,7 +159,7 @@ describe("keyboard focus in the scan editor", () => {
     top.focus();
 
     footprint();
-    expect(scan().editor.state.type).toBe("drawing-height");
+    expect(scan().editor.state.type).toBe("drawing-width");
     expect(document.activeElement).toBe(top);
   });
 
@@ -170,10 +173,15 @@ describe("keyboard focus in the scan editor", () => {
     expect(scan().editor.state.type).toBe("idle");
   });
 
-  it("says how the height step finishes while it is open", async () => {
+  it("says how the width and height steps finish while each is open", async () => {
     await editingCuboids();
+    expect(screen.queryByTestId("scan-width-hint")).toBeNull();
     expect(screen.queryByTestId("scan-height-hint")).toBeNull();
     footprint();
+    expect(screen.getByTestId("scan-width-hint").textContent).toBe("Move the pointer to set the width. Enter or a click sets it.");
+    expect(screen.queryByTestId("scan-height-hint")).toBeNull();
+    fireEvent.keyDown(screen.getByTestId("perspective-gl"), { key: "Enter" });
+    expect(screen.queryByTestId("scan-width-hint")).toBeNull();
     expect(screen.getByTestId("scan-height-hint").textContent).toBe(
       "Move the pointer in the perspective view to set the height. Enter or a click in either view finishes it.",
     );
