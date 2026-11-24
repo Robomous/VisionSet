@@ -1332,9 +1332,11 @@ hands the result over as an object URL - which it then **revokes**, because a
 grid scrolling a thousand assets would otherwise hold a thousand JPEGs alive
 with nothing referencing them.
 
-The cost is smaller than it looks: the route carries
-`Cache-Control: public, max-age=31536000, immutable` with the content hash as its
-`ETag`, and a `fetch` gets the browser's HTTP cache as much as an `<img>` does.
+The cost is smaller than it looks: for an image the route carries
+`Cache-Control: public, max-age=31536000, immutable` with the thumbnail hash as its
+`ETag`, and a `fetch` gets the browser's HTTP cache as much as an `<img>` does. A scan's
+preview is `private, no-cache` and revalidated against its `ETag` (a 304 when unchanged),
+because declaring another frame for its source redraws it.
 
 A **NULL `thumbnail_hash` is a state, not a failure** - a preview that would not
 render is deliberately not an `IngestFailure`, because the asset exists and nothing

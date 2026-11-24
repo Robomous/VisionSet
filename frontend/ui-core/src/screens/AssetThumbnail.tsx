@@ -15,10 +15,12 @@
  * client and hand the result to the `<img>` as an object URL. That is what this
  * component is; everything else about it is bookkeeping for that one fact.
  *
- * The cost is smaller than it looks. `docs/content/api.md` gives the route
- * `Cache-Control: public, max-age=31536000, immutable` with the content hash as its
- * `ETag`, so the second request for a preview is served from the browser's own HTTP
- * cache — a `fetch` gets that as much as an `<img>` does.
+ * The cost is smaller than it looks. `docs/content/api.md` gives an image's preview
+ * `Cache-Control: public, max-age=31536000, immutable` with the thumbnail hash as its
+ * `ETag`, so the second request for it is served from the browser's own HTTP cache —
+ * a `fetch` gets that as much as an `<img>` does. A scan's preview is `no-cache` and
+ * revalidated against its `ETag`, because declaring another frame redraws it; the
+ * effect re-runs when `thumbnailHash` moves.
  *
  * ## A NULL `thumbnail_hash` is a state, not a failure
  *

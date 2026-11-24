@@ -285,9 +285,11 @@ is a different source from an image directory at the same path. Registering it a
 another frame replaces the declaration, unless one of its scans holds a 3D label: then it is
 refused with `CALIBRATION_IN_USE` (409), because the label would be re-read in other axes. The
 check runs under the store's write lock, the one every label write takes before it checks the
-frame, so a cuboid cannot land between the check and the change. Previews already rendered are
-not redrawn: they keep the orientation of the frame they were drawn in, and only a scan with no
-preview yet is drawn in the new one.
+frame, so a cuboid cannot land between the check and the change. The same transaction drops the
+previews of the source's scans, which were drawn in the old frame, and the next thumbnail backfill
+draws them in the new one; until then a scan's thumbnail is `THUMBNAIL_NOT_CACHED`. A scan's
+thumbnail is served for revalidation rather than as immutable, so a browser picks up the redrawn
+one at the same URL.
 An [import](import.md) of scans, such as `kitti` or `nuscenes`, writes or reuses the point-cloud source at its
 directory in the dataset's frame, and never re-declares one: a source there in another frame
 refuses the import with `CALIBRATION_IN_USE`.

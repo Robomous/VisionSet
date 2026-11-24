@@ -139,6 +139,9 @@ class SourceService:
         the same path. ``frame`` is a declaration the scans' labels are read
         against, so registering again with another frame is refused while any
         stored 3D label of the source depends on it, and replaces it otherwise.
+        A replaced frame drops the source's cached scan previews in the same
+        transaction, because a preview is drawn from above in the frame's axes;
+        ``IngestService.backfill_thumbnails`` draws them again in the new one.
 
         Raises:
             ProjectNotFound: no such project in this workspace.
@@ -235,6 +238,7 @@ class SourceService:
                     changes["display_name"] = name
                 if stored.frame != frame:
                     _require_no_scan_labels(uow, stored)
+                    _forget_previews(uow, stored)
                     changes["frame"] = frame
                 if not changes:
                     return stored
@@ -308,6 +312,13 @@ def _require_no_scan_labels(uow: UnitOfWork, source: Source) -> None:
                 f"source {source.id} declares the {source.frame} frame and asset {asset.id} "
                 "holds 3D labels read in it; delete those labels before declaring another frame"
             )
+
+
+def _forget_previews(uow: UnitOfWork, source: Source) -> None:
+    """Drop the cached previews of a source's scans, drawn in the frame being replaced."""
+    for asset in uow.assets.list(source.project_id):
+        if asset.source_id == source.id and asset.thumbnail_hash is not None:
+            uow.assets.update(asset.model_copy(update={"thumbnail_hash": None}))
 
 
 def _held(uow: UnitOfWork, source: Source) -> Source:

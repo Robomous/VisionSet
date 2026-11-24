@@ -430,6 +430,14 @@ All four are named by something content-addressed, so all four carry
 optimism: identity *is* content in VisionSet, so the bytes behind one of these URLs cannot
 change. A client that cached one never needs to revalidate it.
 
+One preview is the exception. A scan's thumbnail is drawn from above in the frame its source
+declares, and registering the source again with another frame (allowed while none of its scans
+holds a 3D label) drops it so that a backfill draws it in the new frame - at the same URL. So a
+scan's thumbnail is sent `Cache-Control: private, no-cache` with the thumbnail hash as its `ETag`,
+and a request whose `If-None-Match` names that `ETag` is answered `304` with no body. A scan's
+`points` are sent the same way, with an `ETag` naming the content hash, the budget and the build,
+and the `304` is answered before the scan is read.
+
 The two asset routes take an **asset id**, not a content hash, and the issue that asked for them
 said hash. A hash names bytes and says nothing about what they are, so a route keyed on one
 could only answer `application/octet-stream` - which a gallery cannot put in an `<img>`.

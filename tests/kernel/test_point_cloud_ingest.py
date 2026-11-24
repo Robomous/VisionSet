@@ -121,6 +121,32 @@ def test_another_frame_replaces_the_declaration_while_nothing_is_labelled(scans:
     assert scans.sources.get(moved.id).frame is ScanFrame.CAMERA_RDF
 
 
+def test_another_frame_drops_the_previews_drawn_in_the_old_one(scans: Scans) -> None:
+    run = scans.read(ScanFrame.LIDAR_FLU)
+    images_before = {
+        asset.id: asset.thumbnail_hash for asset in scans.batches.assets(scans.image_batch_id)
+    }
+
+    scans.sources.register_point_clouds(
+        scans.project.id, scans.directory, frame=ScanFrame.CAMERA_RDF
+    )
+
+    for asset in run.assets:
+        assert scans.ingest.asset(scans.project.id, asset.id).thumbnail_hash is None
+    assert {
+        asset.id: asset.thumbnail_hash for asset in scans.batches.assets(scans.image_batch_id)
+    } == images_before
+    backfill = scans.ingest.backfill_thumbnails(scans.project.id)
+    assert set(backfill.filled) == {asset.id for asset in run.assets}
+    for asset in run.assets:
+        with scans.workspace.blob_store.get(asset.content_hash) as content:
+            redrawn = scans.workspace.point_cloud_processor.thumbnail(
+                content, frame=ScanFrame.CAMERA_RDF
+            )
+        stored = scans.ingest.asset(scans.project.id, asset.id).thumbnail_hash
+        assert stored == sha256_hex(redrawn) != asset.thumbnail_hash
+
+
 def test_another_frame_is_refused_under_a_stored_3d_label(scans: Scans) -> None:
     scans.read()
     scans.label_both({0: [_car()]})
