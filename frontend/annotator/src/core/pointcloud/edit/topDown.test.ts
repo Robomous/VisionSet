@@ -64,9 +64,9 @@ describe("the top-down handles", () => {
     expect(hitTest3D(scene, centre)).toMatchObject({ kind: "body", id: "car-1" });
   });
 
-  it("the perspective view keeps all six", () => {
+  it("the perspective view keeps the faces turned towards its camera, top included", () => {
     const scene = contextOf(scanDocumentOf(boxIn("lidar_flu", 0)), { selection: selectOnly("car-1") });
-    expect(scanHandleLayout(scene)?.handles).toHaveLength(6);
+    expect(scanHandleLayout(scene)?.handles.map((one) => one.face)).toEqual(["back", "top"]);
   });
 
   for (const frame of FRAMES) {
@@ -157,8 +157,13 @@ describe("drawing across the two views", () => {
       };
 
       let state = turn(SCAN_IDLE, down(pixelOf(top(), fromForwardLeftUp(frame, [2, 1, 0]))), top());
-      state = turn(state, move(pixelOf(top(), fromForwardLeftUp(frame, [6, -1, 0]))), top());
-      state = turn(state, up(pixelOf(top(), fromForwardLeftUp(frame, [6, -1, 0]))), top());
+      state = turn(state, move(pixelOf(top(), fromForwardLeftUp(frame, [6, 1, 0]))), top());
+      state = turn(state, up(pixelOf(top(), fromForwardLeftUp(frame, [6, 1, 0]))), top());
+      expect(state).toMatchObject({ type: "drawing-width", yaw: 0 });
+      const widthAt = pixelOf(top(), fromForwardLeftUp(frame, [5, -1, 0]));
+      state = turn(state, move(widthAt), top());
+      state = turn(state, down(widthAt), top());
+      state = turn(state, up(widthAt), top());
       expect(state).toMatchObject({ type: "drawing-height", height: MIN_CUBOID_SIZE });
       state = turn(state, move([10, 10]), top());
       expect(state).toMatchObject({ type: "drawing-height", height: MIN_CUBOID_SIZE });

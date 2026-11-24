@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { selectOnly } from "../../state/selection";
+import { topDownCamera } from "../camera";
 import { faceCenter } from "../cuboid";
 import { contextOf, pixelOf, scanBox, scanDocumentOf, scanLine } from "./_scan";
-import { faceHandles, hitTest3D, yawRing } from "./scene";
+import { faceHandles, handleFaces, hitTest3D, LEVEL_FACES, yawRing } from "./scene";
 
 const document = scanDocumentOf(scanBox("near", { center: [0, 0, 1] }), scanBox("far", { center: [12, 6, 1] }));
 
@@ -22,10 +23,37 @@ describe("hitTest3D", () => {
     });
   });
 
-  it("finds each face handle of the selected box", () => {
+  it("finds each face handle of the selected box that faces the camera", () => {
     const scene = contextOf(document, { selection: selectOnly("near") });
-    for (const handle of faceHandles(scanBox("near").geometry, "lidar_flu")) {
+    const geometry = scanBox("near").geometry;
+    expect(handleFaces(scene, geometry)).toEqual(["back", "top"]);
+    for (const handle of faceHandles(geometry, "lidar_flu", handleFaces(scene, geometry))) {
       expect(hitTest3D(scene, pixelOf(scene, handle.point))).toEqual({ kind: "face", id: "near", face: handle.face });
+    }
+  });
+
+  it("grabs the back face from behind the box, and never through it from the front", () => {
+    const back = faceCenter(scanBox("near").geometry, "lidar_flu", "back");
+    const behind = contextOf(document, { selection: selectOnly("near"), camera: { yaw: Math.PI, pitch: 0.4, distance: 30, target: [0, 0, 0] } });
+    expect(hitTest3D(behind, pixelOf(behind, back))).toEqual({ kind: "face", id: "near", face: "back" });
+
+    const ahead = contextOf(document, { selection: selectOnly("near"), camera: { yaw: 0, pitch: 0.15, distance: 30, target: [0, 0, 0] } });
+    expect(handleFaces(ahead, scanBox("near").geometry)).not.toContain("back");
+    expect(hitTest3D(ahead, pixelOf(ahead, back))).toMatchObject({ kind: "body", id: "near" });
+  });
+
+  it("the top-down view offers all four side faces whichever way they face", () => {
+    for (const yaw of [0, Math.PI / 2, Math.PI, -0.7]) {
+      const box = scanBox("near", { yaw });
+      const scene = contextOf(scanDocumentOf(box), {
+        selection: selectOnly("near"),
+        camera: topDownCamera([0, 0, 0], 30),
+        view: "top-down",
+      });
+      expect(handleFaces(scene, box.geometry)).toEqual(LEVEL_FACES);
+      for (const handle of faceHandles(box.geometry, "lidar_flu", LEVEL_FACES)) {
+        expect(hitTest3D(scene, pixelOf(scene, handle.point))).toEqual({ kind: "face", id: "near", face: handle.face });
+      }
     }
   });
 
@@ -65,11 +93,11 @@ describe("hitTest3D on a polyline", () => {
   });
 
   it("the selected box's face handle wins over a lane segment under it, and a segment over a body", () => {
-    const front = faceCenter(scanBox("x").geometry, "lidar_flu", "front");
-    const crossing = scanDocumentOf(scanBox("near"), scanLine("lane-1", [[front[0], -3, front[2]], [front[0], 3, front[2]]]));
+    const back = faceCenter(scanBox("x").geometry, "lidar_flu", "back");
+    const crossing = scanDocumentOf(scanBox("near"), scanLine("lane-1", [[back[0], -3, back[2]], [back[0], 3, back[2]]]));
     const selected = contextOf(crossing, { selection: selectOnly("near") });
-    expect(hitTest3D(selected, pixelOf(selected, front))).toEqual({ kind: "face", id: "near", face: "front" });
+    expect(hitTest3D(selected, pixelOf(selected, back))).toEqual({ kind: "face", id: "near", face: "back" });
     const unselected = contextOf(crossing);
-    expect(hitTest3D(unselected, pixelOf(unselected, front))).toMatchObject({ kind: "segment", id: "lane-1" });
+    expect(hitTest3D(unselected, pixelOf(unselected, back))).toMatchObject({ kind: "segment", id: "lane-1" });
   });
 });

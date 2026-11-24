@@ -1,6 +1,6 @@
 /**
  * Where the selected label's handles land on screen, for an overlay to draw:
- * a box's faces and yaw ring, or a polyline's vertices.
+ * a box's camera-facing faces and yaw ring, or a polyline's vertices.
  *
  * The same `screenOf` the hit test measures against, so a handle is drawn where
  * a press finds it. Anything behind the eye is left out; the ring is split into
@@ -56,7 +56,7 @@ export function scanHandleLayout(scene: Scene3D): ScanHandleLayout | null {
   const target = handleTarget(scene);
   if (target === null) return null;
   const { camera, frame, viewport } = scene;
-  const handles = faceHandles(target.geometry, frame, handleFaces(scene.view)).flatMap(({ face, point }) => {
+  const handles = faceHandles(target.geometry, frame, handleFaces(scene, target.geometry)).flatMap(({ face, point }) => {
     const onScreen = screenOf(camera, frame, viewport, point);
     return onScreen === null ? [] : [{ face, point: onScreen }];
   });

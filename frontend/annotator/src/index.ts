@@ -166,6 +166,7 @@ export {
   DEFAULT_HIT_TOLERANCES_3D,
   LEVEL_FACES,
   faceHandles,
+  facesCamera,
   handleFaces,
   handleTarget,
   hitTest3D,

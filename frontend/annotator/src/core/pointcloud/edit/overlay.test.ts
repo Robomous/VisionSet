@@ -17,11 +17,11 @@ describe("scanHandleLayout", () => {
     const scene = contextOf(document, { selection: selectOnly("near") });
     const layout = scanHandleLayout(scene);
     expect(layout?.id).toBe("near");
-    expect(layout?.handles).toHaveLength(6);
+    expect(layout?.handles.map((one) => one.face)).toEqual(["back", "top"]);
     for (const handle of layout?.handles ?? []) {
       expect(hitTest3D(scene, handle.point)).toEqual({ kind: "face", id: "near", face: handle.face });
     }
-    const expected = faceHandles(scanBox("near").geometry, "lidar_flu").map((one) => pixelOf(scene, one.point));
+    const expected = faceHandles(scanBox("near").geometry, "lidar_flu", ["back", "top"]).map((one) => pixelOf(scene, one.point));
     expect(layout?.handles.map((one) => one.point)).toEqual(expected);
   });
 
