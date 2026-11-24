@@ -361,7 +361,7 @@ function bearer(): Record<string, string> {
   return { Authorization: `Bearer ${token()}` };
 }
 
-/** A project made through the API, opened on Add images through its real route. */
+/** A project made through the API, opened on Add images through the old ingest address, which opens the dialog. */
 async function projectAtIngest(
   page: Page,
   request: APIRequestContext,
@@ -371,7 +371,7 @@ async function projectAtIngest(
   expect(created.ok(), `POST /projects answered ${created.status()}`).toBe(true);
   const { id } = (await created.json()) as { id: string };
   await page.goto(`./projects/${id}/ingest`);
-  await expect(page.getByTestId("ingest-screen")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Add images" })).toBeVisible();
   return id;
 }
 
@@ -431,7 +431,8 @@ test("a clip is inspected, cut and imported here, and never uploaded", async ({ 
     // A project with no assets carries Add images in the toolbar's action slot,
     // which is the road a person actually takes here.
     await page.getByTestId("go-ingest").click();
-    await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}\/ingest$/);
+    await expect(page.getByRole("dialog", { name: "Add images" })).toBeVisible();
+    await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}\/overview\?add=images$/);
   });
 
   await test.step("the decoder reads the clip, and the report says what it found", async () => {
@@ -445,19 +446,24 @@ test("a clip is inspected, cut and imported here, and never uploaded", async ({ 
     const report = page.getByTestId("clip-report");
     await expect(report).toContainText("WebM");
     await expect(report).toContainText("vp8");
-    await expect(report).toContainText(`${MANIFEST.width}×${MANIFEST.height}`);
-    await expect(report).toContainText(`${DURATION.toFixed(1)} s`);
     await expect(report).toContainText(`${MANIFEST.fps.toFixed(2)} fps`);
+    // The card's own line: duration, the size on screen, and the bytes.
+    const summary = page.getByTestId("clip-summary");
+    await expect(summary).toContainText(`${MANIFEST.width}×${MANIFEST.height}`);
+    await expect(summary).toContainText(/\d+:\d{2}/);
     // And the one fact that is a property of this browser rather than of the file.
     await expect(page.getByTestId("clip-decodable")).toHaveText("can decode it");
     await expect(page.getByTestId("clip-refusal")).toHaveCount(0);
   });
 
   await test.step("choose a rate and a stored size", async () => {
+    await page.getByTestId("cut-clip").click();
+    await expect(page.getByTestId("clip-timeline")).toBeVisible();
     await page.getByTestId("extraction-fps").fill(String(WALK_RATE));
-    // Ten steps of five, on the real `input[type=range]`, because a value set
-    // without the keyboard is not the control being used.
-    for (let step = 0; step < 10; step++) await page.getByTestId("scale-percent").press("ArrowLeft");
+    // The size is a select of percentages, each saying what it stores: opened
+    // and chosen as a person does, not set from outside.
+    await page.getByTestId("scale-percent").click();
+    await page.getByRole("option", { name: /^50% · / }).click();
     await expect(page.getByTestId("stored-size")).toHaveText(
       `${MANIFEST.width}×${MANIFEST.height} → 32×32 · 50%`,
     );
@@ -518,6 +524,9 @@ test("a clip is inspected, cut and imported here, and never uploaded", async ({ 
     // the size it is stored at — assembled from the assets and their source, which the
     // Images section says on its source line (the batch's panel does not: it is about
     // the batch's work, not about where its frames came from).
+    // The panel is modal, so it is put away before the page behind it is used.
+    await page.getByTestId("batch-close").click();
+    await expect(page.getByTestId("batch-sheet")).toHaveCount(0);
     await page.getByTestId("nav-images").click();
     const line = page.getByTestId("images-source-line");
     await expect(line).toContainText("vp8.webm");
@@ -718,6 +727,7 @@ test("an extraction larger than the server's ceiling arrives in bounded chunks",
 
   await page.getByTestId("file-input").setInputFiles(CLIP);
   await expect(page.getByTestId("clip-decodable")).toHaveText("can decode it");
+  await page.getByTestId("cut-clip").click();
   await page.getByTestId("extraction-fps").fill(String(CHUNKED_RATE));
   await expect(page.getByTestId("frames-estimate")).toHaveText(String(CHUNKED_FRAMES));
 
@@ -763,6 +773,7 @@ test("cancelling mid-import leaves no batch, and no staged session either", asyn
 
   await page.getByTestId("file-input").setInputFiles(CLIP);
   await expect(page.getByTestId("clip-decodable")).toHaveText("can decode it");
+  await page.getByTestId("cut-clip").click();
   // A rate high enough that the import is still running when the click lands.
   await page.getByTestId("extraction-fps").fill(String(CANCEL_RATE));
   await page.getByTestId("start-video-import").click();
@@ -829,7 +840,8 @@ test("a file that is not a container is refused here, with no server to fall bac
 
   // No remedy that does not exist is offered, and none is reachable: there is no
   // server-side decoder to hand it to, so the refusal is the end of the road.
-  await expect(page.getByTestId("start-video-import")).toBeDisabled();
+  await expect(page.getByTestId("cut-clip")).toBeDisabled();
+  await expect(page.getByTestId("start-video-import")).toHaveCount(0);
   await expect(page.getByTestId("register-source")).toHaveCount(0);
   // Nothing was opened and nothing was sent: a refusal this screen reached on its
   // own, with no round trip to ask a second opinion.

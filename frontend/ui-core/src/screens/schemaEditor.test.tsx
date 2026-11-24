@@ -1329,18 +1329,18 @@ describe("the schema editor", () => {
     // beside it is the display word — so this asserts which geometries are on
     // offer without also asserting what they are called, which is
     // `geometryCategory.test.ts`'s job.
-    for (const geometry of ["bbox", "polygon", "polyline", "classification_tag"]) {
+    for (const geometry of ["bbox", "polygon", "polyline", "classification_tag", "cuboid_3d", "polyline_3d"]) {
       expect(screen.getByTestId(`class-geometry-0-${geometry}`)).toBeTruthy();
     }
-    // `GeometryType` has eight members; four are refused at write time with
+    // `GeometryType` has eight members; two are refused at write time with
     // `UnsupportedGeometry`, so offering them would be offering a refusal.
-    for (const geometry of ["mask", "keypoints", "cuboid_3d", "polyline_3d"]) {
+    for (const geometry of ["mask", "keypoints"]) {
       expect(screen.queryByTestId(`class-geometry-0-${geometry}`)).toBeNull();
     }
   });
 
   /**
-   * The class dialog's shapes are one flat group of four checkboxes: a class
+   * The class dialog's shapes are one flat group of icon buttons: a class
    * takes a handful of shapes, and a caption per category over one or two of
    * them is more page than the choice is worth. (The annotator's narrow
    * add-a-class dialog still groups them — `classFields.test.tsx` holds that.)
@@ -1362,15 +1362,17 @@ describe("the schema editor", () => {
       "class-geometry-0-polygon",
       "class-geometry-0-polyline",
       "class-geometry-0-classification_tag",
+      "class-geometry-0-cuboid_3d",
+      "class-geometry-0-polyline_3d",
     ]);
     // The display words, not the wire values: `classification_tag` is an
     // identifier and `tag` is what it is called. Icon only, so the word is
     // each button's name, and it is said again beside the group.
-    expect(chips.map((chip) => chip.getAttribute("aria-label"))).toEqual(["Box", "Polygon", "Polyline", "Tag"]);
-    expect(chips.map((chip) => chip.textContent)).toEqual(["", "", "", ""]);
+    expect(chips.map((chip) => chip.getAttribute("aria-label"))).toEqual(["Box", "Polygon", "Polyline", "Tag", "3D box", "3D polyline"]);
+    expect(chips.map((chip) => chip.textContent)).toEqual(["", "", "", "", "", ""]);
     expect(within(group.parentElement!).getByText("Box").getAttribute("aria-hidden")).toBe("true");
     // What the class accepts is readable at a glance, with nothing opened.
-    expect(chips.map((chip) => chip.getAttribute("aria-pressed"))).toEqual(["true", "false", "false", "false"]);
+    expect(chips.map((chip) => chip.getAttribute("aria-pressed"))).toEqual(["true", "false", "false", "false", "false", "false"]);
     expect(screen.queryByTestId(/^geometry-category-/)).toBeNull();
   });
 

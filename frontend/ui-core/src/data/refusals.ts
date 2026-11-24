@@ -178,7 +178,7 @@ export const REFUSAL_PROSE: Record<string, string> = {
   INVALID_EXPORT_TARGET:
     "An installed export plugin declares a model it cannot write for — check the installed export plugins.",
   UNSERIALIZABLE_MANIFEST: "This release's manifest cannot be read back — the workspace may be damaged.",
-  EMPTY_RELEASE: "This dataset has no frames yet — promote a completed batch first.",
+  EMPTY_RELEASE: "This dataset has no frames yet — add a completed batch to it first.",
   // The dialog lists the classes beside this, from the refusal's own `blockers`.
   RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA:
     "The active schema no longer describes some annotations in this dataset.",

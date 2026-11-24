@@ -265,7 +265,7 @@ function WallGrid({
     return (
       <p className="text-sm text-pretty text-muted-foreground" data-testid="trunk-empty">
         {release === null
-          ? "Nothing promoted yet. Completing a batch and promoting it puts its assets here."
+          ? "Nothing added yet. Completing a batch and adding it to the dataset puts its assets here."
           : "None of its assets are in the dataset now. Every asset this release froze has since been taken out; the release itself is unchanged."}
       </p>
     );

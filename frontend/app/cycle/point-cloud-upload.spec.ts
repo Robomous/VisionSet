@@ -53,8 +53,9 @@ test("a scan dropped on the ingest screen lands in a new batch", async ({ page, 
   });
   expect(created.ok(), `POST /projects answered ${created.status()}`).toBe(true);
   const { id } = (await created.json()) as { id: string };
+  // The old ingest address opens Add images over the project.
   await page.goto(`./projects/${id}/ingest`);
-  await expect(page.getByTestId("ingest-screen")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Add images" })).toBeVisible();
 
   await page
     .getByTestId("file-input")
@@ -64,7 +65,7 @@ test("a scan dropped on the ingest screen lands in a new batch", async ({ page, 
 
   // No frame is preselected, so registering is not offered until one is chosen.
   await expect(page.getByTestId("register-source")).toBeDisabled();
-  await page.getByTestId("scan-frame").locator('input[value="lidar_flu"]').check();
+  await page.getByTestId("scan-frame").getByRole("radio", { name: /LiDAR FLU/ }).click();
   await page.getByTestId("register-source").click();
   await expect(page.getByTestId("source-card")).toBeVisible();
 

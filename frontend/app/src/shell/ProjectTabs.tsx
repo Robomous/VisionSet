@@ -4,7 +4,7 @@
  * Visiting a project opens its tab; the tab stays until it is closed, so moving
  * between two projects is one click rather than a trip through the list. Each
  * tab remembers the last address you were at inside its project, so coming back
- * lands where you left — a section, the ingest flow.
+ * lands where you left — a section, an open batch, the Add images dialog.
  *
  * ## The tabs are links
  *

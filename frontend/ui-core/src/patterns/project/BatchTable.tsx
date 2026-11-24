@@ -8,24 +8,24 @@
  * Each row's name is a real button, so `Tab` reaches the table and a screen
  * reader announces a row as an action. `J`/`K` or `↓`/`↑` move between rows,
  * `Enter` opens the focused one, and `/` focuses the filter from anywhere on
- * the page. Nothing here animates but the row actions' fade: moving through
- * rows is the most frequent thing on the page, and it answers instantly.
+ * the page. Nothing here animates: moving through rows is the most frequent
+ * thing on the page, and it answers instantly.
  *
- * ## Ten to a page
+ * ## Paged, with the footer always there
  *
  * The table pages client-side over the rows the lens and filter leave, ten at a
- * time, from the band's own pager (`InlinePager`, after the filter; absent
- * while everything fits on one page). Walking rows with the keys stays on the
- * page; a batch opened from outside the table — the URL's `?batch=`, the
- * panel's own J/K — brings its page in, and a new lens or filter starts over at
- * the first.
+ * time to start, from the footer every full table carries (`TableFooter`): the
+ * count, rows per page and the four steps. It stays with a single page, because
+ * it is also the table's count. Walking rows with the keys stays on the page; a
+ * batch opened from outside the table — the URL's `?batch=`, the panel's own
+ * J/K — brings its page in, and a new lens or filter starts over at the first.
  *
  * ## Actions are the screen's
  *
  * The actions cell is a render prop: the screen labels the actions from the
- * batch's `allowed_actions` (`ui-capabilities`) and this file only places
- * them — the forward one shown while the row is pointed at or focused, its
- * space held so the row never reflows, and everything in the row's menu.
+ * batch's `allowed_actions` (`ui-capabilities`) and this file only places them,
+ * in the row's menu. Nothing appears on hover: a row's step is in its panel, or
+ * — for a draft — the row itself opens the approval.
  *
  * ## Data-only
  *
@@ -33,21 +33,22 @@
  * only draws and moves.
  */
 
-import { CircleCheckBig, CircleDashed, FolderOpen, Search, Users } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { CircleCheckBig, CircleDashed, FolderOpen, Users } from "lucide-react";
+import { useMemo, useRef, useState, type JSX, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 
-import { Kbd, cn } from "@robomous/ui-core";
+import { cn } from "@robomous/ui-core";
 import { assetNoun, type Modality } from "../../lib/assetNoun";
 import { formatCount } from "../../lib/format";
 import type { BatchPhase } from "./BatchSummary";
-import { initials, labeledDetail, phaseState } from "./batchRowModel";
+import { initials, labeledDetail, lensAdmits, phaseState, type Lens } from "./batchRowModel";
 import { StateChip } from "../StateChip";
 import { BODY_ROW, ColumnHeader, ListGrid, type ListColumn } from "../ListPage";
 import { columnLines } from "../listColumns";
 import { usePagination, type Pagination } from "../pagination";
-import { InlinePager } from "../TablePager";
+import { TableFooter } from "../TablePager";
 import { ProgressReadout } from "../ProgressRing";
-import { ViewSwitch } from "./ViewSwitch";
+import { BatchesBand } from "./BatchesBand";
+import { nextRowId, useSlashFocus } from "./rowKeys";
 
 /** The wire's split of a batch's or a job's assets by annotation state. */
 export interface LabelCounts {
@@ -83,14 +84,6 @@ export interface BatchRowView {
   readonly jobsError?: string;
 }
 
-type Lens = "all" | "open" | "in_dataset";
-
-const LENSES = [
-  { value: "all", label: "All" },
-  { value: "open", label: "Open" },
-  { value: "in_dataset", label: "In dataset" },
-] as const;
-
 export interface BatchTableView {
   readonly lens: Lens;
   readonly setLens: (lens: Lens) => void;
@@ -113,7 +106,7 @@ export function useBatchTableView(rows: readonly BatchRowView[], openId: string 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows
-      .filter((row) => (lens === "all" ? true : lens === "open" ? row.phase !== "in_dataset" : row.phase === "in_dataset"))
+      .filter((row) => lensAdmits(lens, row.phase))
       .filter((row) => q === "" || row.name.toLowerCase().includes(q));
   }, [rows, lens, query]);
   // Ten to a page. The open batch's page is the one shown when it was named
@@ -135,8 +128,8 @@ export interface BatchTableProps {
   /** The row whose detail is open — marked, so the table says which one is shown. */
   readonly openId: string | null;
   readonly onOpen: (batchId: string) => void;
-  /** The row's actions: the forward step (`hover`) and the menu (`menu`). */
-  readonly actions?: (row: BatchRowView) => { readonly hover?: ReactNode; readonly menu?: ReactNode };
+  /** The row's actions, in its menu. */
+  readonly actions?: (row: BatchRowView) => { readonly menu?: ReactNode };
   /** Actions on the batches as a set, first in the panel's tool row. */
   readonly tools?: ReactNode;
   /**
@@ -150,11 +143,6 @@ export interface BatchTableProps {
   readonly className?: string;
 }
 
-function isTyping(target: EventTarget | null): boolean {
-  const el = target as HTMLElement | null;
-  return el !== null && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable);
-}
-
 export function BatchTable({ rows, view, openId, onOpen, actions, tools, note, emptyAction, className }: BatchTableProps): JSX.Element {
   const { lens, setLens, query, setQuery, shown, pagination } = view;
   const filter = useRef<HTMLInputElement>(null);
@@ -162,33 +150,11 @@ export function BatchTable({ rows, view, openId, onOpen, actions, tools, note, e
   const rowButtons = useRef(new Map<string, HTMLButtonElement>());
 
 
-  // `/` from anywhere on the page, the way search works in most tools — but
-  // never while somebody is typing, holding a modifier, or inside a dialog.
-  useEffect(() => {
-    function onKey(event: globalThis.KeyboardEvent): void {
-      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target)) return;
-      if (document.querySelector("[role=dialog],[role=menu]") !== null) return;
-      event.preventDefault();
-      filter.current?.focus();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
+  useSlashFocus(filter);
 
   function onTableKey(event: KeyboardEvent<HTMLDivElement>): void {
-    if (event.metaKey || event.ctrlKey || event.altKey) return;
-    const down = event.key === "j" || event.key === "ArrowDown";
-    const up = event.key === "k" || event.key === "ArrowUp";
-    if (!down && !up) return;
-    // Only from a row's own button: inside a menu or the actions the arrows are theirs.
-    const target = event.target;
-    if (!(target instanceof HTMLElement) || target.dataset.rowOpen === undefined) return;
-    event.preventDefault();
-    // Within the page: the next page is the pager's to go to.
-    const onPage = pagination.slice;
-    const at = onPage.findIndex((row) => row.id === target.dataset.rowOpen);
-    const next = onPage[Math.min(onPage.length - 1, Math.max(0, at + (down ? 1 : -1)))];
-    if (next !== undefined) rowButtons.current.get(next.id)?.focus();
+    const next = nextRowId(event, pagination.slice);
+    if (next !== null) rowButtons.current.get(next)?.focus();
   }
 
   // A click anywhere else on a row opens it too — a pointer convenience. The
@@ -202,40 +168,12 @@ export function BatchTable({ rows, view, openId, onOpen, actions, tools, note, e
 
   return (
     <section aria-label="Batches" data-testid="overview-batches" className={cn("flex min-h-0 min-w-0 flex-col bg-background", className)}>
-      {/* The section's band: the page header's voice, its tools at the right. */}
-      <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-x-2.5 gap-y-2 border-b border-border/70 px-4 py-2 md:px-6">
-        <FolderOpen aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" strokeWidth={1.75} />
-        <h2 className="text-sm font-semibold tracking-tight">Batches</h2>
-        <span className="text-xs text-muted-foreground tabular-nums" data-testid="batches-count">
-          {shown.length === rows.length ? formatCount(rows.length) : `${formatCount(shown.length)} of ${formatCount(rows.length)}`}
-        </span>
-        {rows.length > 0 && (
-          <div className="ml-auto flex min-w-0 items-center gap-2">
-            {tools}
-            <ViewSwitch label="Show" value={lens} options={LENSES} onChange={setLens} data-testid="batches-lens" />
-            <label className="relative flex items-center">
-              <span className="sr-only">Filter batches by name</span>
-              <Search className="pointer-events-none absolute left-2 size-3.5 text-muted-foreground" aria-hidden="true" />
-              <input
-                ref={filter}
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") event.currentTarget.blur();
-                }}
-                placeholder="Filter"
-                aria-keyshortcuts="/"
-                data-testid="batches-filter"
-                className="h-7 w-40 rounded-md border bg-background pr-7 pl-7 text-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
-              />
-              <Kbd className="pointer-events-none absolute right-1.5" aria-hidden="true">
-                /
-              </Kbd>
-            </label>
-            <InlinePager pagination={pagination} frameRef={frame} />
-          </div>
-        )}
-      </header>
+      <BatchesBand
+        rows={rows.length}
+        shown={shown.length}
+        {...{ lens, setLens, query, setQuery, tools }}
+        filterRef={filter}
+      />
 
       {note}
 
@@ -294,14 +232,14 @@ export function BatchTable({ rows, view, openId, onOpen, actions, tools, note, e
           </ListGrid>
         </div>
       )}
+      {rows.length > 0 && <TableFooter pagination={pagination} frameRef={frame} noun="batch" plural="batches" unfiltered={rows.length} />}
     </section>
   );
 }
 
 /**
- * The columns, declared once. No column is kept for what shows only on hover:
- * a row's next step rides at the end of its name cell, and the menu is the
- * only column that holds controls — so at rest nothing is white for nothing.
+ * The columns, declared once. The menu is the only column that holds
+ * controls, so at rest nothing is white for nothing.
  */
 const COLUMNS: readonly ListColumn[] = [
   { key: "batch" },
@@ -329,14 +267,14 @@ function Row({
   readonly row: BatchRowView;
   readonly open: boolean;
   readonly onOpen: () => void;
-  readonly actions: { readonly hover?: ReactNode; readonly menu?: ReactNode } | undefined;
+  readonly actions: { readonly menu?: ReactNode } | undefined;
   readonly buttonRef: (el: HTMLButtonElement | null) => void;
 }): JSX.Element {
   return (
     <tr
       className={cn(
         BODY_ROW,
-        // The fill a hover reveals; the next step's fade is painted in the same colour.
+        // The fill a hover reveals.
         "group/row cursor-pointer [--row-fill:color-mix(in_oklab,var(--color-muted)_40%,var(--color-background))] hover:bg-(--row-fill) focus-within:bg-(--row-fill)",
         open && "bg-muted/60 [--row-fill:color-mix(in_oklab,var(--color-muted)_60%,var(--color-background))]",
       )}
@@ -364,15 +302,6 @@ function Row({
             {row.schemaVersion !== null && ` · schema v${row.schemaVersion}`}
           </span>
         </button>
-        {actions?.hover !== undefined && (
-          // Over the end of the name cell, on a fade of the row's own fill.
-          // Only the step takes the pointer: the fade is the row's, and opens it.
-          <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center bg-linear-to-l from-(--row-fill) from-65% to-transparent pr-2 pl-10 opacity-0 transition-opacity duration-150 ease-out group-focus-within/row:opacity-100 group-hover/row:opacity-100">
-            <span className="pointer-events-auto" onClick={(event) => event.stopPropagation()}>
-              {actions.hover}
-            </span>
-          </span>
-        )}
       </td>
       <td>
         <PhaseBadge phase={row.phase} {...(row.done === null || row.total === 0 ? {} : { fraction: row.done / row.total })} />

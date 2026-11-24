@@ -358,7 +358,7 @@ describe("the inspector's name, shortcut and shapes", () => {
     expect(screen.queryByText("Shortcut")).toBeNull();
   });
 
-  it("offers the four shapes an annotation can carry, as icon buttons named for them", () => {
+  it("offers the six shapes an annotation can carry, as icon buttons named for them", () => {
     mountSheet(declaredWith());
 
     const group = screen.getByTestId("class-geometry-0");
@@ -368,11 +368,13 @@ describe("the inspector's name, shortcut and shapes", () => {
       "class-geometry-0-polygon",
       "class-geometry-0-polyline",
       "class-geometry-0-classification_tag",
+      "class-geometry-0-cuboid_3d",
+      "class-geometry-0-polyline_3d",
     ]);
     // Icon only: the word is the accessible name, never visible text.
-    expect(items.map((item) => item.getAttribute("aria-label"))).toEqual(["Box", "Polygon", "Polyline", "Tag"]);
-    expect(items.map((item) => item.textContent)).toEqual(["", "", "", ""]);
-    expect(items.map((item) => item.getAttribute("aria-pressed"))).toEqual(["true", "false", "false", "false"]);
+    expect(items.map((item) => item.getAttribute("aria-label"))).toEqual(["Box", "Polygon", "Polyline", "Tag", "3D box", "3D polyline"]);
+    expect(items.map((item) => item.textContent)).toEqual(["", "", "", "", "", ""]);
+    expect(items.map((item) => item.getAttribute("aria-pressed"))).toEqual(["true", "false", "false", "false", "false", "false"]);
     expect(screen.queryByTestId(/^geometry-category-/)).toBeNull();
   });
 
@@ -1002,9 +1004,9 @@ describe("the stacked layout", () => {
     expect(screen.getByTestId("class-color-new")).toBeTruthy();
     expect(screen.getByTestId("clear-color-new")).toBeTruthy();
     expect(screen.queryByTestId("class-color-trigger-new")).toBeNull();
-    // Four shapes, each a toggle the group reports as pressed or not.
+    // Six shapes, each a toggle the group reports as pressed or not.
     const shapes = within(screen.getByTestId("class-geometry-new")).getAllByRole("button");
-    expect(shapes).toHaveLength(4);
+    expect(shapes).toHaveLength(6);
     expect(shapes.every((shape) => shape.hasAttribute("aria-pressed"))).toBe(true);
   });
 
@@ -1014,7 +1016,7 @@ describe("the stacked layout", () => {
     const captions = screen.getAllByTestId(/^geometry-category-/);
     expect(captions.length).toBeGreaterThan(1);
     const grouped = captions.flatMap((caption) => [...(caption.parentElement?.querySelectorAll("[data-testid^='class-geometry-new-']") ?? [])]);
-    expect(grouped).toHaveLength(4);
+    expect(grouped).toHaveLength(6);
   });
 
   it("names the attribute kinds in words and keeps the wire values", async () => {

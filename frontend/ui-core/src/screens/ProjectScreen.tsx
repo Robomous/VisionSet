@@ -77,6 +77,7 @@ import { DatasetScreen, type DatasetTab } from "./DatasetScreen";
 import { ImagesScreen } from "./ImagesScreen";
 import { firstRunInvitation, invitationOwnsTheAction } from "./firstRunInvitation";
 import { OverviewPanel } from "./OverviewPanel";
+import { AddImagesDialog } from "./addImages/AddImagesDialog";
 import { ProjectFrame } from "./ProjectFrame";
 import { SchemaEditor, type SchemaDraft } from "./SchemaEditor";
 import { same } from "./schemaSame";
@@ -121,8 +122,13 @@ export type ProjectTab = ProjectSection;
 
 export interface ProjectScreenProps {
   readonly projectId: string;
-  /** Route changes, supplied by the app. See `ProjectsScreen`'s note. */
-  readonly onIngest?: () => void;
+  /**
+   * Whether the Add images dialog is open, as the URL holds it (`?add=images`),
+   * and the write when it opens or closes. Absent, the screen holds it itself —
+   * the bar's Add images still opens it, it just does not reach the URL.
+   */
+  readonly addImagesOpen?: boolean;
+  readonly onAddImagesOpenChange?: (open: boolean) => void;
   /** A batch, opened in the Overview's panel — the one place a batch is shown and moved. */
   readonly onOpenBatch?: (batchId: string) => void;
   /**
@@ -152,7 +158,8 @@ export interface ProjectScreenProps {
 
 export function ProjectScreen({
   projectId,
-  onIngest,
+  addImagesOpen,
+  onAddImagesOpenChange,
   onOpenBatch,
   openBatchId,
   onOpenBatchChange,
@@ -428,8 +435,32 @@ export function ProjectScreen({
 
   // Add images lives in the toolbar alone — filled while nothing is open for
   // annotation, outlined beside Annotate otherwise — so no section draws one.
+  // It opens a dialog this screen owns, so every section's door to it (the
+  // bar, the overflow, an empty section's invitation) is the same one.
+  const [heldAddImages, setHeldAddImages] = useState(false);
+  const addingImages = onAddImagesOpenChange === undefined ? heldAddImages : (addImagesOpen ?? false);
+  const setAddingImages = onAddImagesOpenChange ?? setHeldAddImages;
+  const onIngest = (): void => setAddingImages(true);
+  /**
+   * Leave the dialog for somewhere else. A host that holds the open state in
+   * its URL closes it by navigating — the destination's address does not carry
+   * it — so only a held state is closed here, and the host's own write never
+   * races the navigation it is part of.
+   */
+  const leaveAddImages = (then: () => void) => (): void => {
+    if (onAddImagesOpenChange === undefined) setHeldAddImages(false);
+    then();
+  };
 
   return (
+    <>
+    <AddImagesDialog
+      projectId={projectId}
+      open={addingImages}
+      onOpenChange={setAddingImages}
+      {...(onOpenBatch === undefined ? {} : { onOpenBatch: (batchId: string) => leaveAddImages(() => onOpenBatch(batchId))() })}
+      onOpenSchema={leaveAddImages(() => go("schema"))}
+    />
     <ProjectFrame
       projectId={projectId}
       active={current}
@@ -443,7 +474,7 @@ export function ProjectScreen({
       cta={{
         ...(onOpenBatch === undefined || current !== "overview" ? {} : { onOpenBatch }),
         ...(onOpenJob === undefined ? {} : { onOpenJob }),
-        ...(onIngest === undefined ? {} : { onIngest }),
+        onIngest,
         ingest: current === "overview" || current === "images" ? "action" : "menu",
         contentOwnsTheAction: overviewOwnsTheAction,
       }}
@@ -473,6 +504,7 @@ export function ProjectScreen({
         }}
       />
     </ProjectFrame>
+    </>
   );
 }
 

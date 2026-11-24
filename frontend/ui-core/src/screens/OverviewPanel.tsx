@@ -21,14 +21,15 @@
  * number opens the section that owns it. What needs somebody is a badge in its
  * cell — *2 to review*, *1 to promote* — whose popover holds one pointer per
  * batch, labelled from what the wire declares (*Review and approve* into the
- * draft's panel, *Review and promote* into the finished batch's). A batch
+ * draft's panel, *Review and add to dataset* into the finished batch's). A batch
  * opens in a panel beside the sheet; its row carries a pointer labelled from
  * the batch's `allowed_actions`, never from its state, into that panel.
  *
  * **Batches are the exception, and why.** Batches have no section and no page
  * of their own — this page is where they are listed — so what a batch may be
- * asked to do is done here: the panel carries Approve, Start, Complete,
- * Complete and promote, Promote, Create correction batch, Delete and Auto-label
+ * asked to do is done here: the panel carries Approve, Start, Annotate,
+ * Complete and add to dataset, Add to dataset and Auto-label in its footer, and
+ * Complete without adding, Create correction batch and Delete behind its `⋯`
  * (`BatchActions`), each with its own gating, refusals and outcome, each
  * offered only where the batch declares it. Over the table, auto-label is
  * offered for the project as a whole (`AutoLabel.tsx`): a line while images
@@ -79,8 +80,13 @@ import { BatchSheet, type BatchDetails, type SheetJob } from "../patterns/projec
 import { BatchTable, useBatchTableView, type BatchRowView } from "../patterns/project/BatchTable";
 import { ClassShares } from "../patterns/project/ClassShareBar";
 import { KPI_CARD_HEIGHT, KPI_GRID, KpiCards, type KpiCard, type KpiStep } from "../patterns/project/KpiCards";
+import { readPref, writePref } from "../data/prefs";
+import { clampTo } from "../patterns/clamp";
+import { ResizeHandle } from "../patterns/DetailPane";
+import { IconAction } from "../patterns/IconAction";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { BatchActions, type BatchActionsProps } from "./BatchActions";
+import { ApproveDialog } from "./BatchLifecycle";
 import { annotatedShare, hasJobs } from "./batchState";
 import { AutoLabelDialog, AutoLabelLine, AutoLabelTool } from "./AutoLabel";
 import { ProjectPreLabelDialog } from "./ProjectPreLabelDialog";
@@ -202,7 +208,7 @@ export function OverviewPanel({
         />
 
         <div className={WORK_ROW}>
-          <Batches projectId={projectId} model={model} onOpenJob={onOpenJob} />
+          <Batches projectId={projectId} model={model} onOpenJob={onOpenJob} onOpenSchema={onOpenSchema} />
           {/* The rail is the fourth KPI column, so its hairline continues the one above. */}
           <div className={RAIL}>
             <RecentImages projectId={projectId} total={counted.asset_count} {...(onOpenImages === undefined ? {} : { onOpenImages })} />
@@ -330,7 +336,7 @@ function Kpis({
     }));
   const reviewSteps = steps(reviewable, "approve", "Review and approve", Check);
   const startSteps = steps(startable, "start", "Review and start", Play);
-  const promoteSteps = steps(promotable, "promote", "Review and promote", Upload);
+  const promoteSteps = steps(promotable, "promote", "Review and add to dataset", Upload);
   const releaseSteps: KpiStep[] =
     releasable && onOpenReleases !== undefined
       ? [{ key: "release", subject: "The dataset", label: "Publish a release", Icon: Tag, onGo: onOpenReleases, "data-testid": "kpi-publish" }]
@@ -398,7 +404,7 @@ function Kpis({
         inTrunk === undefined || releases.data === undefined
           ? undefined
           : inTrunk === 0
-            ? "Nothing promoted yet"
+            ? "Nothing added yet"
             : latest === undefined
               ? "No releases yet"
               : unreleased > 0
@@ -410,10 +416,10 @@ function Kpis({
         ? {}
         : {
             attention: {
-              badge: promoteSteps.length > 0 ? `${formatCount(promoteSteps.length)} to promote` : "Unreleased",
+              badge: promoteSteps.length > 0 ? `${formatCount(promoteSteps.length)} to add` : "Unreleased",
               title:
                 promoteSteps.length > 0
-                  ? `${batchesWord(promoteSteps.length)} ready to promote`
+                  ? `${batchesWord(promoteSteps.length)} ready to add to the dataset`
                   : latest === undefined
                     ? "Nothing released yet"
                     : `${formatCount(unreleased)} ${unreleased === 1 ? "asset" : "assets"} since ${latest.tag}`,
@@ -487,7 +493,7 @@ function pointerFor(
   if (declares(batch, BATCH_ACTION.start)) return { key: "start", label: "Review and start", Icon: Play, onGo: open };
   // `promote` stays declared once everything is promoted — it is an idempotent
   // union — so a batch with nothing left to add is not offered it.
-  if (declares(batch, BATCH_ACTION.promote) && phase !== "in_dataset") return { key: "promote", label: "Review and promote", Icon: Upload, onGo: open };
+  if (declares(batch, BATCH_ACTION.promote) && phase !== "in_dataset") return { key: "promote", label: "Review and add to dataset", Icon: Upload, onGo: open };
   if (phase === "annotating") {
     const only = jobs?.length === 1 ? jobs[0] : undefined;
     return { key: "annotate", label: "Annotate", Icon: Pencil, onGo: only !== undefined && onOpenJob !== undefined ? () => onOpenJob(only.id) : open };
@@ -552,14 +558,19 @@ function Batches({
   projectId,
   model,
   onOpenJob,
+  onOpenSchema,
 }: {
   readonly projectId: string;
   readonly model: BatchesModel;
   readonly onOpenJob: ((jobId: string) => void) | undefined;
+  readonly onOpenSchema: (() => void) | undefined;
 }): JSX.Element {
   const { batches, jobsFor, rows, openId, setOpenId, view, prelabelFor, setPrelabelFor } = model;
   // Above the early returns: the offer remembers what it last said across a refetch.
   const autoLabel = useAutoLabel(projectId, batches.data?.items);
+  // A draft's row opens its approval rather than its panel: approving is the
+  // one thing a draft is opened for. Held by id, so a refetch keeps it current.
+  const [approvingId, setApprovingId] = useState<string | null>(null);
 
   if (batches.isPending) return <BatchesSkeleton />;
   if (batches.isError) {
@@ -576,6 +587,12 @@ function Batches({
 
   const byId = new Map(batches.data.items.map((batch) => [batch.id, batch]));
   const preLabeling = prelabelFor === null ? undefined : byId.get(prelabelFor);
+  const approving = approvingId === null ? null : (byId.get(approvingId) ?? null);
+  const openRow = (batchId: string): void => {
+    const batch = byId.get(batchId);
+    if (batch !== undefined && declares(batch, BATCH_ACTION.approve)) setApprovingId(batchId);
+    else setOpenId(batchId);
+  };
 
   return (
     <>
@@ -583,7 +600,7 @@ function Batches({
         className={BATCH_CELL}
         rows={rows}
         openId={openId}
-        onOpen={setOpenId}
+        onOpen={openRow}
         view={view}
         // Both render nothing when no batch declares `pre_label`.
         tools={<AutoLabelTool offer={autoLabel} />}
@@ -591,18 +608,8 @@ function Batches({
         actions={(row) => {
           const batch = byId.get(row.id);
           if (batch === undefined) return {};
-          const forward = pointerFor(batch, row.phase, jobsFor(row.id), setOpenId, onOpenJob);
+          const forward = pointerFor(batch, row.phase, jobsFor(row.id), openRow, onOpenJob);
           return {
-            ...(forward === null
-              ? {}
-              : {
-                  hover: (
-                    <Button variant="ghost" size="sm" onClick={forward.onGo} data-testid={`row-${forward.key}-${row.name}`}>
-                      <forward.Icon data-icon="inline-start" className={ICON} strokeWidth={STROKE} aria-hidden="true" />
-                      {forward.label}
-                    </Button>
-                  ),
-                }),
             menu: (
               <RowMenu
                 batch={batch}
@@ -617,6 +624,13 @@ function Batches({
       />
 
       <AutoLabelDialog projectId={projectId} offer={autoLabel} onOpenBatch={setOpenId} />
+      {/* Approved, the batch's panel opens on its next step. */}
+      <ApproveDialog
+        batch={approving}
+        onClose={() => setApprovingId(null)}
+        onApproved={() => approving !== null && setOpenId(approving.id)}
+        {...(onOpenSchema === undefined ? {} : { onOpenSchema })}
+      />
       {preLabeling !== undefined && (
         <ProjectPreLabelDialog projectId={projectId} batches={[preLabeling]} onClose={() => setPrelabelFor(null)} onOpenBatch={setOpenId} />
       )}
@@ -696,6 +710,12 @@ function Detail({
   const sheetJobs = jobs === undefined ? undefined : sheetJobsOf(jobs, counts, onOpenJob);
 
   const close = useCallback(() => setOpenId(null), [setOpenId]);
+  const [width, setWidth] = useState(() => clampTo(Number(readPref(SHEET_WIDTH_PREF) ?? SHEET_DEFAULT) || SHEET_DEFAULT, SHEET_MIN, SHEET_MAX));
+  const settleWidth = useCallback((next: number) => {
+    const clamped = clampTo(next, SHEET_MIN, sheetCeiling());
+    setWidth(clamped);
+    writePref(SHEET_WIDTH_PREF, String(clamped));
+  }, []);
   // The batch to hand the focus back to: the one open now, or the last one
   // the sheet showed while it slides out.
   const lastOpen = useRef<string | null>(null);
@@ -704,25 +724,31 @@ function Detail({
   }, [openId]);
 
   return (
-    // Not modal: people open several batches in a row, so the table stays live
-    // under the sheet — another row, the pager, the filter, J/K — and a press
-    // there changes what the sheet shows instead of closing it. A press
-    // anywhere else, or Escape, puts it away.
-    <Sheet modal={false} open={row !== undefined} onOpenChange={(next) => !next && close()}>
+    // Modal, over the page's scrim as a dialog is: the batch is what is being
+    // read, and a press anywhere outside it — or Escape — puts it away. J/K and
+    // the panel's own arrows still walk the batches without closing it. Its
+    // left edge resizes it, and the width is remembered.
+    <Sheet open={row !== undefined} onOpenChange={(next) => !next && close()}>
       <SheetContent
         side="right"
         showCloseButton={false}
         aria-describedby={undefined}
         aria-label="Batch"
+        id="batch-sheet-panel"
         data-testid="batch-sheet"
         onInteractOutside={(event) => {
           const target = event.target instanceof Element ? event.target : null;
-          // A progress card is portalled outside the sheet; pointing at it is reading the sheet, not leaving it.
-          if (target?.closest('[data-testid="overview-batches"], [role=menu], [role=listbox], [role=dialog], [data-testid="progress-card"]') != null) event.preventDefault();
+          // What the sheet opened is portalled outside it — a menu, a popover, a dialog, a progress card;
+          // pressing in one is still using the sheet, not leaving it.
+          if (target?.closest('[role=menu], [role=listbox], [role=dialog], [data-radix-popper-content-wrapper], [data-testid="progress-card"]') != null) event.preventDefault();
         }}
         // Focus leaving is not a dismissal: a popover that opened a batch hands
         // the focus back to its trigger as it closes, and the sheet must stay.
         onFocusOutside={(event) => event.preventDefault()}
+        // The panel places the focus itself, on the batch's forward step, and
+        // quietly (`focusQuietly`): Radix's own first-tabbable would land on the
+        // top bar and open that button's tooltip on the way.
+        onOpenAutoFocus={(event) => event.preventDefault()}
         onEscapeKeyDown={(event) => {
           // A filter being typed in owns its Escape: it clears or leaves the field.
           const target = event.target instanceof HTMLElement ? event.target : null;
@@ -731,7 +757,8 @@ function Detail({
         // In on the strong ease-out, out faster than it came: the sheet is
         // opened to read, and closed to get back to the table. Only opacity
         // and the slide move, never every property.
-        className="w-full gap-0 p-0 transition-[opacity,translate] ease-[cubic-bezier(0.23,1,0.32,1)] data-closed:duration-150 data-open:duration-250 sm:max-w-[30rem]"
+        className="w-full max-w-full gap-0 p-0 transition-[opacity,translate] ease-[cubic-bezier(0.23,1,0.32,1)] data-closed:duration-150 data-open:duration-250 data-[side=right]:sm:max-w-none"
+        style={{ width }}
         // Back to the batch's own row — the one stepped to, if J/K moved it —
         // rather than to whatever was focused when it opened.
         onCloseAutoFocus={(event) => {
@@ -743,6 +770,7 @@ function Detail({
         }}
       >
         <SheetTitle className="sr-only">Batch</SheetTitle>
+        <ResizeHandle controls="batch-sheet-panel" width={width} min={SHEET_MIN} ceiling={sheetCeiling} onResize={setWidth} onSettle={settleWidth} onReset={() => settleWidth(SHEET_DEFAULT)} />
       {row !== undefined && (
         <BatchSheet
           row={row}
@@ -752,6 +780,9 @@ function Detail({
           jobs={sheetJobs}
           {...(jobsError === undefined ? {} : { jobsError })}
           noJobs="No jobs yet. Approving the batch cuts it into jobs."
+          {...(batch !== undefined && declares(batch, BATCH_ACTION.preLabel)
+            ? { tools: <IconAction icon={WandSparkles} label="Auto-label this batch" hint="A model drafts labels for you to check" data-testid="sheet-prelabel" onClick={() => setPrelabelFor(batch.id)} /> }
+            : {})}
           {...(batch === undefined ? {} : { details: detailsOf(batch) })}
           actions={
             batch === undefined ? undefined : (
@@ -762,7 +793,6 @@ function Detail({
                 projectId={projectId}
                 phase={row.phase}
                 existingCorrections={(items ?? []).filter((one) => one.parent_batch_id === batch.id).length}
-                onPrelabel={() => setPrelabelFor(batch.id)}
                 onOpenBatch={setOpenId}
                 onDeleted={() => setOpenId(null)}
                 {...links(jobs, onOpenJob, onOpenDataset, onOpenSchema)}
@@ -774,6 +804,15 @@ function Detail({
       </SheetContent>
     </Sheet>
   );
+}
+
+/** The batch panel's width: the person's, remembered, between a usable floor and most of the window. */
+const SHEET_WIDTH_PREF = "detail-width:batch-sheet";
+const SHEET_DEFAULT = 480;
+const SHEET_MIN = 380;
+const SHEET_MAX = 960;
+function sheetCeiling(): number {
+  return Math.max(SHEET_MIN, Math.min(SHEET_MAX, Math.floor(window.innerWidth * 0.85)));
 }
 
 /** What the panel's folded properties say about a batch, read off the wire. */

@@ -113,7 +113,7 @@ function matches(project: ProjectListItem, query: string): boolean {
 const STAGE: Record<ProjectStage, Pick<State, "label" | "tone" | "glyph">> = {
   in_review: { label: "In review", tone: "waiting", glyph: "review" },
   annotating: { label: "Annotating", tone: "active", glyph: "partway" },
-  to_promote: { label: "Ready to promote", tone: "done", glyph: "ready" },
+  to_promote: { label: "Ready to add", tone: "done", glyph: "ready" },
   unreleased: { label: "Not released", tone: "draft", glyph: "drafted" },
   up_to_date: { label: "Up to date", tone: "done", glyph: "done" },
   not_started: { label: "Not started", tone: "draft", glyph: "todo" },
@@ -536,7 +536,7 @@ function Row({
       </td>
       {/* The tag and nothing else. Its asset count was the Assets column's
           number again on most rows, and "no release" was the Status column's
-          word again — the status already says Not released or Ready to promote. */}
+          word again — the status already says Not released or Ready to add. */}
       <td className="text-xs tabular-nums">
         {d.latest_release !== null ? (
           <span

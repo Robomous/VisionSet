@@ -3,8 +3,11 @@
  * can be read and tested without rendering anything.
  */
 
+import type { FinishBatchResult } from "./queries";
+
 /**
- * What a press promoted, said in one sentence.
+ * What a press promoted, said in one sentence — in the UI's words, "added to
+ * the dataset", for the kernel's `promote`.
  *
  * Exported and pure because it is the part with a decision in it, and the
  * decision is not obvious: **zero promoted is not a failure**, and the sentence
@@ -26,14 +29,14 @@ export function promotionSummary(
       excluded > 0
         ? ` ${excluded} skipped frame${excluded === 1 ? "" : "s"} stayed out.`
         : "";
-    return `Promoted ${moved} asset${moved === 1 ? "" : "s"} to the dataset.${tail}`;
+    return `Added ${moved} asset${moved === 1 ? "" : "s"} to the dataset.${tail}`;
   }
   if (settled > 0) {
     // The idempotent no-op, which is the case that looked most like a bug: a
     // second press, or a first press in a fresh session after an earlier one.
-    return `Already in the dataset — nothing new to promote.`;
+    return `Already in the dataset — nothing new to add.`;
   }
-  return "Nothing here can be promoted: every frame was skipped, and a skipped frame never enters the dataset.";
+  return "Nothing here can be added: every frame was skipped, and a skipped frame never enters the dataset.";
 }
 
 /**
@@ -47,4 +50,10 @@ export function promotionSummary(
  */
 export function defaultCorrectionName(parent: string, existing: number): string {
   return existing === 0 ? `${parent} — correction` : `${parent} — correction ${existing + 1}`;
+}
+
+/** "Completed, closing 2 open jobs." — shared by both ways of completing. */
+export function completedLine(result: FinishBatchResult): string {
+  const jobs = result.jobsFinished;
+  return jobs > 0 ? `Completed, closing ${jobs} open job${jobs === 1 ? "" : "s"}.` : "Completed.";
 }

@@ -37,7 +37,7 @@ handler is not an operation.
 | route | what | behind the token gate |
 | --- | --- | --- |
 | `/` | redirects to `/projects`; there is no Home page | yes |
-| `/projects`, `/projects/:id/overview\|images\|batches\|schema\|dataset`, `/projects/:id/ingest`, `/projects/:id/batches/:id` | the product | yes |
+| `/projects`, `/projects/:id/overview\|images\|batches\|schema\|dataset` (`?batch=<id>`, `?add=images`), `/projects/:id/ingest` (redirects to `…/overview?add=images`), `/projects/:id/batches/:id` | the product | yes |
 | `/models` | model connections, workspace-scoped; `/inference` redirects here | yes |
 | `/jobs/:jobId` (`?asset=<id>`) | the annotation page, outside the shell: the whole viewport, no main rail | yes |
 | `/demo` | the annotator showcase (`?scene=bench` for #49's benchmark) | **no** |
@@ -93,7 +93,7 @@ outside the shell, so it has no rail either. It is left by its own back control.
 | --- | --- | --- |
 | `ListPane` | `/projects`, `/models` | tabs and status bar; the whole width beside the rail, unpadded and uncapped: the page is a full-bleed table (`ui-core`'s `ListPage`) that sets its own inset |
 | `PaddedPane` | everything else | tabs and status bar; `ui-core`'s `PaddedContent`: `px-4 py-6 md:px-6`, content capped at `max-w-page` (`--container-page: 96rem`) |
-| `ProjectPane` | `/projects/:id/<section>`, `/projects/:id/ingest`, `/projects/:id/batches/:id` | tabs and status bar; the whole width beside the rail, no padding of its own: `ProjectFrame` lays out the project's section toolbar across the pane and the same padded, capped content column under it |
+| `ProjectPane` | `/projects/:id/<section>`, and the two old addresses that redirect into one: `/projects/:id/ingest`, `/projects/:id/batches/:id` | tabs and status bar; the whole width beside the rail, no padding of its own: `ProjectFrame` lays out the project's section toolbar across the pane and the same padded, capped content column under it |
 | `FullBleedPane` (outside `AppShell`) | `/jobs/:jobId` | the whole viewport, `h-screen`, `overflow-hidden` — no main rail, no tabs, no status bar |
 
 A padded, capped column is right for a form and wrong for the one screen
@@ -259,7 +259,7 @@ Every number is in the **same request** as the list: each item of `GET /projects
 `digest` the kernel computes for the whole workspace in one pass
 (`ProjectService.digests`). The **Status** column says the digest's `stage` in words with
 the product-wide status families — `In review` (warning, with the frames waiting),
-`Annotating` (info; what is left is the Annotated column's), `Ready to promote` and `Up to date` (success),
+`Annotating` (info; what is left is the Annotated column's), `Ready to add` and `Up to date` (success),
 `Not released`, `Not started` and `No assets` (neutral). The stage is the kernel's
 description of where a project is, never a capability: nothing on the page is gated on it,
 and the screen derives none of it from batch states.
@@ -298,9 +298,13 @@ are listed on the Overview, and `/projects/:id/batches`, which was a section, re
 replacing the history entry, to `/projects/:id/overview?batch=:batchId`: a batch opens in the
 Overview's panel, and the open batch is that query parameter, written with `replace` and removed
 when the panel closes, so a reload or a pasted link opens the same one. `PARENT.batch` in
-`routes.tsx` spells it, which is why ingest's *Open batch*, the annotator's back arrow and
-*Correct this batch*, the pre-label dialog's links and a correction's lineage all land there. The ingest flow
-keeps `/projects/:id/ingest` and is titled *Add images*.
+`routes.tsx` spells it, which is why Add images' *Open the batch*, the annotator's back arrow and
+*Correct this batch*, the pre-label dialog's links and a correction's lineage all land there.
+**Add images is a dialog, not a page**, and whether it is open is the URL's too: `?add=images` on
+whichever section it was opened over, written and removed with `replace` like `?batch=`, so a reload
+or a pasted link opens it and Back leaves the page rather than reopening it. `/projects/:id/ingest`,
+its old page, redirects to `/projects/:id/overview?add=images`, replacing the history entry
+(see [The Add images dialog](#the-add-images-dialog-and-the-order-the-domain-forces)).
 
 **Each section owns its query.** Only the open section is mounted, so a query living in
 the section that renders it follows the section: the version list is read when Schema
@@ -323,7 +327,7 @@ edge to edge (`ProjectShell`'s `bleed`) and exactly the height between the host'
 `h1` is for whoever navigates by headings, and nothing above the grid says the same thing twice.
 Removing an image or changing its labels belongs to the batch that holds it. A project with none
 is an invitation to *Add images*, which replaces the pane rather than repeating the bar's
-control.
+control, and opens the same dialog.
 
 *Sources, a page at a time.* Every source with images is a section, newest source first, read
 from `GET /projects/{id}/assets?source_id=…` sixty at a time (`useAssetPages`); the rest of a
@@ -412,7 +416,7 @@ own, so the cells stay compact and level: *N to review* on Images when batches d
 batches declare `promote` (or *Unreleased* when the trunk holds images no release has). The badge
 opens its steps in a popover - on hover after a short delay, on click, and on Enter - one per
 batch, each a pointer labelled from what the batch declares (*Review and approve*, *Review and
-start*, *Review and promote*) into that batch's panel, plus *Publish a release* into the
+start*, *Review and add to dataset*) into that batch's panel, plus *Publish a release* into the
 Dataset's releases where it applies.
 
 Under the cells, on the same four columns so each vertical hairline continues one above, the
@@ -427,11 +431,14 @@ n/m* while a model pre-labels it, or *Not started* for a draft), and the initial
 its jobs (a dashed circle for an unassigned one). Below the last row the column hairlines run on
 to the cell's foot, so a short list leaves table rather than blank page. The table is driven from
 the keyboard: J/K or the arrow keys move between rows, Enter opens one, and `/` focuses the
-filter. **Opening a row opens the batch's detail panel** at the right of the page, so the table
-stays in view and the two are read together ([`DESIGN.md`](../../DESIGN.md#detail-panels): it
-comes from the right, its width is the person's to set, and it is not a dialog; below `lg` it is
-a sheet). The panel is the batch's only home: a batch has no page, and the old
-`/projects/:id/batches/:batchId` address redirects here. A slim toolbar reads *Batch n of N*
+filter. **Opening a row opens the batch's detail panel** - except a draft's row, which opens its
+approval directly, and the panel once it is approved (a draft's panel is still reached from the
+row's menu, *Jobs and details*, or its `?batch=` address) - as a **sheet over the page**, the
+batch panel's own exception to [`DESIGN.md`](../../DESIGN.md#detail-panels): it comes from the
+right over the page's scrim, as a dialog does, a press anywhere outside it puts it away, and its
+left edge resizes it (the width is the person's, remembered). The panel is the batch's only home:
+a batch has no page, and the old `/projects/:id/batches/:batchId` address redirects here. A slim
+toolbar holds *Auto-label* at its start when the batch declares `pre_label`, then *Batch n of N*
 with previous and next (J/K walk the batches without closing it) and close; under it the
 batch's name is the page's title, and its **properties** follow one per row, an icon and a
 label beside the value. The state is one of them - a state chip whose glyph says the phase
@@ -440,31 +447,51 @@ card says what it means, not a badge beside the name - with Labeled (*18 of 48 �
 the jobs, and how many nobody does). The rest - Review (accepted, waiting, skipped), the schema
 version, Kind (a correction or not) and how many of its images are In dataset - wait behind
 *N more properties*, which opens in place, cannot be tabbed into while folded, and stays open
-as J/K walks the batches. Then its **jobs**: who holds each, how far it has come
-(`done/images`, read per job), and *Open* into the editor on that job, or *Done*. When the
+as J/K walks the batches. Then its **jobs**, one row each in a single bordered list: the job's
+number, its state as a glyph (a ring not started, a pie filling by the quarter, the check once
+done), who holds it, how far it has come (`done/images`, read per job; pointed at, it opens the
+job's split by annotation state), and where the row leads - *Open* into the editor on that job,
+or *View* once it is done, read-only. The whole row is the way in, and ↑/↓ walk the rows; a host
+with no editor to send a job to says its state in words instead. When the
 title scrolls out of view on the way down the jobs, the name, the state and how far it has come
 gather into one line pinned under the toolbar; it echoes the page, so assistive tech is not told
 twice, and pressing it scrolls back up. The panel opens with focus on the batch's forward step,
 and Escape closes it.
 
-**The panel's footer carries every action on the batch**, each offered from the batch's
-`allowed_actions` - never from its state read here - and each with its own gating, refusals and
-outcome line (a label flip is not feedback). An overflow menu on the left holds *Delete batch*
-(the panel closes with the batch) beside *Auto-label*, which opens the dialog over this batch
-alone. On the right, as the batch declares them: *Create correction batch* (the new correction
-then opens in the panel), *Approve* (it opens the approve and partition dialog, because approval
-pins the schema, cuts the jobs and has no route back), *Start annotating*, *Annotate* (only when
-the batch has exactly one job, straight into it), *Complete*, *Complete and promote* and
-*Promote*. One control is filled, the batch's forward step: *Annotate* while there is work left,
-*Complete and promote* once nothing is outstanding. What the panel does not do is draw frames:
+**The panel's footer carries every other action on the batch, each an icon button named by its
+tooltip** (`patterns/IconAction.tsx`), each offered from the batch's `allowed_actions` - never
+from its state read here - and each with its own gating, refusals and outcome. A withheld control
+stays, disabled, and its tooltip says why. What a control says - an outcome, a refusal, a count -
+is a line above the row of buttons, so words never squeeze under a 32px square (a label flip is
+not feedback). The interface says *add to dataset* for the kernel's `promote`.
+
+**At the start, what ends or branches the batch:** *Delete batch*, in the destructive colour and
+withheld with its reason once the batch is completed, and *Create correction batch* on a completed
+one (the new correction then opens in the panel). **At the end, one forward step per state**, as
+the batch declares them: *Approve* (it opens the approve dialog, because approval pins the
+schema, cuts the jobs and has no route back - and, switch on, starts the batch too), *Start annotating*, *Annotate* (only when
+the batch has exactly one job, straight into it), *Complete* and, on a completed batch with
+images still outside the dataset, *Add to dataset*. *Annotate* is filled while there is work left,
+*Complete* once nothing is outstanding; while frames are still to do, *Complete* is withheld and
+its tooltip counts them.
+
+**Complete asks first, and the answer holds the choice.** A press opens a small confirmation -
+*Complete this batch?*, that any open job closes with it and that a completed batch cannot be
+reopened - with one switch, *Add the labeled images to the dataset*, on by default and keeping
+the person's last answer; its button says *Complete* whatever the switch says. On, it completes
+and adds in one go; off, it completes and says *Nothing is in the dataset yet*, and *Add to
+dataset* appears beside it. A completed batch wholly in the dataset has no forward step: it says
+*All N images in the dataset*, with the way to the dataset, instead of offering a press that
+could only report that nothing moved - a curator taking one of its images out puts *Add to
+dataset* back, and that press is how it is restored. What the panel does not do is draw frames:
 there is no frame grid, no bulk moving of frames between states, no removing frames from a draft
 and no thumbnail density here or anywhere in the app - per-frame work happens in the annotator.
 
-A row keeps no column for what shows only on hover: its forward step
-appears at the end of its name cell while it is pointed at or focused, and a menu - the only
-column of controls - carries everything the row can do: *Jobs and details*, the forward step, and
-*Auto-label*. The forward step is a pointer labelled from the batch's `allowed_actions` -
-*Review and approve*, *Review and start*, *Review and promote*, *Annotate* - and opens the batch's
+Nothing on a row appears on hover. A menu - the only column of controls - carries everything
+the row can do: *Jobs and details*, the forward step, and *Auto-label*. The table is paged from
+the footer every full table carries (`DESIGN.md`, *Paging a table*): *1–8 of 8 batches*, rows per
+page from 10, and the four steps, always there because it is also the table's count. The forward step is a pointer labelled from the batch's `allowed_actions` -
+*Review and approve*, *Review and start*, *Review and add to dataset*, *Annotate* - and opens the batch's
 panel (or, for *Annotate* on a batch of one job, that job), because Approve, Start and Promote
 stay in the panel with their gating and refusals.
 
@@ -473,9 +500,8 @@ The page's exception to changing nothing is batches, which have no section to ac
 project as a whole over the table, as the line or the band's icon described
 [below](#auto-labeling-from-the-overview), and only where some batch declares `pre_label`. A batch
 that declares it also offers **Auto-label** in its row menu and its panel, which opens the same
-dialog over that one batch, titled for it. **Add images**, a pointer
-to the ingest flow whose result is a new batch, is not on the page: it is the project bar's,
-beside Annotate.
+dialog over that one batch, titled for it. **Add images**, the dialog whose result is a new
+batch, is not on the page: it is the project bar's, beside Annotate.
 
 **The Classes card is the last of the four, and it draws the classes rather than describing
 them**: the class count beside its label, one bar split by each class's share of all annotations,
@@ -1361,11 +1387,14 @@ in its footer, which opens that job, filled while there is work left and outline
 outstanding. Neither takes the job: opening one only navigates, and the editor itself takes a
 `pending` job to `in_progress` when it opens it.
 
-**The project's `Annotate` control follows the same rule one level up.** It opens the batch that
-is open for annotation - straight into that batch's one job where it has exactly one, and onto
-the batch's panel to pick a job otherwise. With two or more batches open it reads `Annotate ▾` and the
-menu still lists batches, because the batch decides which schema version the work is judged
-against; picking one then applies the same rule, its single job or its panel.
+**The project's `Annotate` control follows the same rule one level up.** Like *Add images* beside
+it in the project bar, it is an icon button named by its tooltip. It opens the batch that is open
+for annotation - straight into that batch's one job where it has exactly one, and onto the
+batch's panel to pick a job otherwise. With two or more batches open it is a **split button**: the
+icon opens the newest open batch that still has work (its tooltip names it and what is left), and
+the chevron welded to it lists every open batch, because the batch decides which schema version
+the work is judged against; picking one then applies the same rule, its single job or its panel.
+The icon's batch is read off the list's order, never a remembered choice.
 
 ### Batches, and a machine that only goes forwards
 
@@ -1379,7 +1408,16 @@ moving**, which is why a batch's row and panel on the Overview show no schema pi
 *derived* rather than automatic - the service reads the jobs and refuses while any
 is outstanding - so that button is offered and its refusal is real.
 
-The partition dialog offers **single job** and **by size N**. `BySegments` is
+**The approve dialog** asks *Approve {name}?* and says what it costs in one sentence: its images
+freeze, the project's schema version pins (named when known - never read to pre-empt the
+server's refusal, whose *Define your labels* remedy stays), and a draft cannot come back. Its one
+switch, **Start annotating now**, is on by default: approving then sends `start`, the same two
+requests *Approve and start* sends, and a refused start leaves the batch approved and says so in
+the dialog. Off, the batch stops at `approved`, the window for assigning its jobs, and starting
+stays the explicit act it is. The button always reads *Approve*. **Jobs** are folded behind their
+answer (*One job*, *3 jobs of up to 25*), because the common batch is one job; open, it is *One job*
+or *Split*, and a split is images per job on a stepper (by fives on a batch over 20 images, by ones below, or typed; it starts at 25, or at half a smaller batch) with the jobs it makes beside
+it - **single job** and **by size N** on the wire. Each opening starts from those defaults. `BySegments` is
 deliberately absent, the same call the CLI made: the only caller holding an exact
 partition is a program, it is the one strategy that can be *wrong*, and expressing
 it means typing tuples of UUIDs. Its `kind` is always sent explicitly - a
@@ -1389,18 +1427,17 @@ pydantic needs it in the dict to pick a variant.
 #### Two steps as one
 
 Two pairs of lifecycle steps are offered as one control, on the screens where a person
-takes them together. **Approve and start** takes a draft through `approved` to
-`in_annotation`, cut into one job - the common batch; a batch that needs splitting still
-goes through *Approve*, whose dialog is where a partition is chosen. It sits on the ingest
-run card once a run settles, where it is the card's one filled control and *Open batch* steps
-down beside it. **Complete and promote** closes the batch and moves its work into the trunk;
-it sits in the panel's footer beside *Complete*, withheld the same way while any frame is
-still to do, and says what the press moved in the same sentence *Promote* uses.
+takes them together. **Approve** with its *Start annotating now* switch on, its default, takes a
+draft through `approved` to `in_annotation` - in the batch's approve dialog, and in place as the
+Add images dialog's last step, which draws the same form. **Complete**, with its *Add the labeled images to the dataset* switch on, closes
+the batch and moves its work into the trunk; it is the panel footer's one way to finish a batch,
+withheld while any frame is still to do, and says what the press moved in the same sentence *Add
+to dataset* uses.
 
 Neither is a new transition. Each control sends the two requests a person could send one
 at a time, in order, and stops where the kernel stops it: a refusal on the second step
 leaves the batch where the first step put it, and the control says so - the first step's
-outcome as a line (*Approved against v3*, *Completed, finishing 1 job*), the second
+outcome as a line (*Approved against v3*, *Completed, closing 1 open job*), the second
 step's refusal beneath it in the shared vocabulary, never in its place. The line stays
 once the batch's own declaration has moved on, because it is the only thing on the
 screen that explains the state the batch is now in.
@@ -1413,17 +1450,17 @@ what approving needs, with the way to the schema section beside it, and keeps *O
 batch* filled. Only a schema that does not exist counts as none - any other failure of
 that read says nothing about the project, and the card offers what it always did.
 
-#### Deleting a batch, behind `⋯`
+#### Deleting a batch
 
 The one control in the panel's footer that ends a batch rather than moving it
-along, and the only irreversible one - so it lives in an overflow menu, where the
-things you go looking for live, rather than beside the thing you press next. It is
+along, and the only irreversible one - so it sits at the footer's start, away from
+the forward step at its end, in the destructive colour, and asks before it acts. It is
 a single component (`screens/DeleteBatch.tsx`) so that there is one spelling of which
 states may be deleted, of the blast radius, and of the confirmation, rather than a
 hand-mirror of the rule one layer up from the one `capabilities.ts` removes.
 
 Availability is `delete` in the batch's own `allowed_actions`, so a `completed`
-batch renders the item **disabled with the reason** - there is an operation behind
+batch renders the button **disabled with the reason** in its tooltip - there is an operation behind
 it and a state that would enable it, which is the distinction #354 drew when it
 removed a control instead. The sentence is `withheldBecause`'s, shared with every
 other withheld control on these screens.
@@ -1555,139 +1592,155 @@ In the editor a frame holding only a model's labels is `pre_labeled`, and an une
 re-run from the Pre-label dialog is the way to redo the machine's pass over frames still
 `pre_labeled`. Per-class thresholds and a threshold filter are deliberately not here yet.
 
-### The ingest flow, and the order the domain forces
+### The Add images dialog, and the order the domain forces
 
-The screen runs **three flows, picked by the chosen file's kind rather than by a branch inside one
-flow**: `ImageIngestFlow` for a folder or a set of stills, `PointCloudIngestFlow` for `.pcd` and
-`.ply` scans, and `VideoImportFlow` for a clip. The two directory flows share their run steps; the
-clip shares no lifecycle with them, because the things behind them do not - a directory is one synchronous
-`IngestJob`, a clip is a `VideoImportService` session with an arbitrary stretch of time in the
-middle. See [ingest.md](ingest.md#a-video-import-is-a-session-not-a-run).
+Add images is **a dialog over the project, not a page**: centred, three steps on a track -
+**1. Upload**, **2. Frames & settings**, **3. Batch** - opened from the project bar's *Add
+images* (a button on Overview and Images, the overflow's first entry elsewhere) and from an empty
+section's invitation. `ProjectScreen` owns it (`AddImagesDialog`, `screens/addImages/`), so every
+door opens the same one, and the host holds whether it is open in the URL as `?add=images` on the
+section it was opened over. `/projects/:id/ingest`, the page it used to be, redirects to
+`/projects/:id/overview?add=images` with `replace`.
+
+**The flow outlives the dialog.** Its state lives in the component above the `Dialog`, which
+`ProjectScreen` keeps mounted while it is closed, so closing hides the flow rather than discarding
+it: a run keeps polling and still refreshes the batch table when it lands, a clip keeps decoding,
+and *Add images* reopens on it. Once the flow has settled - a batch made, an import cancelled or
+failed - closing starts the next one over. Leaving the project unmounts it, which is a clip
+import's cancel by the same path the Cancel button takes.
+
+**The track.** Three segments fill as the flow moves - a `scaleX` transform, 300ms on the strong
+ease-out (`cubic-bezier(0.23, 1, 0.32, 1)`) - and a reached segment before the one shown can be
+pressed to walk back to it, until a run exists: a run is a row on the server and cannot be
+un-launched, so from step 3 there is no walking back. Each step's page enters from the side the
+walk is heading (24px and opacity, 220ms); under reduced motion nothing moves. The footer carries
+a way back, a secondary, and the step's one filled action. Which step the flow has *reached* is
+derived from the data - a run or an import is step 3, a registered source or a read clip somebody
+chose to cut is step 2 - never stored beside it.
+
+The dialog runs **three mechanisms, picked by what the files turn out to be rather than by a mode
+switch**: images, `.pcd`/`.ply` scans, and a clip. Scans are routed by extension first and a drop
+mixing them with anything else is refused in words; a single file the browser calls video is a
+clip, *where the host has a media runtime*; everything else is images, including a directory that
+happens to hold a clip. With no media runtime (`useMediaRuntime()` is `null`) the dialog never
+mentions video, and there is no server-side decoder to offer instead. The two directory kinds
+share their run (`useIngestRun`); the clip shares no lifecycle with them, because the things
+behind them do not - a directory is one `IngestJob`, a clip is a `VideoImportService` session
+with an arbitrary stretch of time in the middle (`useClipImport`). See
+[ingest.md](ingest.md#a-video-import-is-a-session-not-a-run).
+
+#### Step 1, Upload: the selection read back, then sent
+
+A dropzone takes files or a folder (*Choose files*, *Choose a folder*, or a drop anywhere on the
+step, which replaces the selection). What was chosen is read back before anything is sent, as
+**one card per selection**: its line heads it with the count and the size and the ✕ that clears
+it, over the pictures themselves (the first seventeen, then a count), the scans by name, or - for
+a clip - the decoder's own reading of it: name, duration · size on screen · bytes, the container,
+codec and source rate, and whether *this browser* can decode it. Images and scans are named here
+(*Source name*, suggesting the first file's stem, because without one the server names the source
+- and the batch after it - by the upload's content digest), and scans state their **coordinate
+frame** here too, with no default: it rides on the registration itself, and the server cannot read
+it from the bytes. The primary is *Upload N images* / *Upload N scans*, which registers the source
+- one multipart request, so there is a pending state and no percentage - or, for a clip, *Choose
+frames*, offered once the decoder has read it. Nothing about a clip is uploaded at all.
+
+A refused registration renders in the shared prose under the selection; walking back to step 1
+after a registration reads the choice back with the way on forward, and its ✕ is a full restart
+(the registered source stays on the server; registration is idempotent).
 
 #### A clip is inspected before anything is registered
 
-The original issue asked for an fps parameter "with original-fps display from the probe", and
-said the two could not happen in that order because the probe only existed once the clip was
-registered. **That order is now the other way round.** Nothing about a clip reaches the server
-until a person has already seen what it is: `@visionset/media` opens the file in this browser and
-answers container, codec, display size, duration and source rate, and only then is a rate chosen,
-a session opened and the first frame sent. The clip itself is never uploaded at all - only the
-frames it is cut into - and the screen says so under the controls, because it is the fact that
-explains everything else about the flow.
+Nothing about a clip reaches the server until a person has already seen what it is:
+`@visionset/media` opens the file in this browser and answers container, codec, display size,
+duration and source rate, and only then is a rate chosen, a session opened and the first frame
+sent. The facts come off the container, never off the extension, and each can be missing without
+the card falling apart: an unparsed container reads `unreadable`, and the rate reads `variable`
+where the inspection's `sourceFps` is null. That field is **optional on purpose** - it is the rate
+the clip was *shot* at, and a variable-frame-rate clip has no single one. It rides to the server as
+`VideoMetadata.fps`, still null, and the rate the import is being *cut* at is never written there
+to fill the gap: that one is `extraction_fps`.
 
-The facts come off the container, never off the extension, and each can be missing without the
-card falling apart: an unparsed container reads `unreadable`, and **Source rate** reads
-`variable` where the inspection's `sourceFps` is null. That field is **optional on purpose** -
-it is the rate the clip was *shot* at, and a variable-frame-rate clip (a screen recording, a
-phone throttling its sensor) has no single one. It rides to the server as `VideoMetadata.fps`,
-still null, and the rate the import is being *cut* at is never written there to fill the gap:
-that one is `extraction_fps`, and confusing the two is what the split exists to prevent.
-
-A clip the browser's decoder will not take does not get a rate control at all. It gets one of
-`VideoRefusal`'s closed set of reasons, each written as its own title and remedy: no video track,
-a container that would not parse, a codec this browser's `VideoDecoder` does not handle (another
-browser may; re-encoding to H.264 will), or a browser with no WebCodecs, `OffscreenCanvas` or
-module worker to offer - which is also what a page served outside a secure context looks like.
-No session is opened in any of those cases, so a refusal costs the project nothing.
+A clip the browser's decoder will not take never reaches step 2. It gets one of `VideoRefusal`'s
+closed set of reasons, each written as its own title and remedy: no video track, a container that
+would not parse, a codec this browser's `VideoDecoder` does not handle (another browser may;
+re-encoding to H.264 will), or a browser with no WebCodecs, `OffscreenCanvas` or module worker to
+offer - which is also what a page served outside a secure context looks like. No session is opened
+in any of those cases, so a refusal costs the project nothing.
 
 **Every import is a new source, and none of them collide.** A `VIDEO` source's locator is the
-opaque `video-import:<uuid4>` the session mints, so importing the same clip twice - at the same
-rate, over the same ranges - produces two sources and re-does the work. Only content addressing
-saves the storage: identical frames collapse to one asset, which is why the outcome says the
-batch can hold fewer frames than the estimate. There is nothing here for a person to deduplicate
-against, and the screen does not pretend otherwise.
+opaque `video-import:<uuid4>` the session mints, so importing the same clip twice produces two
+sources and re-does the work. Only content addressing saves the storage: identical frames collapse
+to one asset, which is why the outcome says the batch can hold fewer frames than the estimate.
 
-A decodable clip gets an editor-shaped block in step 1: a compact preview
-player, the cut's facts beside it — rate, frame count, selection — and a
-hand-rolled multi-range timeline spanning the panel under both, its empty track
-inviting the drag from inside itself. Selection is whole seconds: a drag
-paints second cells, a range starts on an exact second and ends just before
-its last one closes (the clip's partial final second is the one shorter
-cell), and only the marker seconds are labelled under the track, as plain
-numbers. The handles drag and nudge by one second (shift for ten), Delete
-removes a range, and a click scrubs the player — inside a selected
-range it previews, playing from that moment and stopping where the range ends. Beside the
-timeline sit the rate, the scale, and the **Target batch** - `New batch` or one of the project's
-draft batches, because only a draft can take frames and offering an approved one would be
-offering a refusal. The frame estimate is exact — the mirrored `ceil` arithmetic over the merged
-selection, ported from the kernel so the number shown here is the number the server will expect.
-**Import frames** stays disabled until the clip is decodable, the rate is a positive number and
-the estimate is not zero; nothing else is spelled out, because the reason is in the panel
-directly above the button.
+#### Step 2, Frames & settings, and Into
 
-#### An import in flight has a denominator, and a cancel that costs nothing
+A clip is cut here: a compact preview player and the hand-rolled multi-range **timeline editor**
+under it, its empty track inviting the drag from inside itself. Selection is whole seconds: a drag
+paints second cells, a range starts on an exact second and ends just before its last one closes
+(the clip's partial final second is the one shorter cell), and only the marker seconds are
+labelled under the track. The handles drag and nudge by one second (shift for ten), Delete removes
+a range, and a click scrubs the player - inside a selected range it previews, playing from that
+moment and stopping where the range ends. Beside it, **Frames per second** is a typed number (any
+positive one; a blank or a zero withholds the import, with the reason under the field), and
+**Size** is a select of percentages per side, 10% to 100% in fives, each option saying the
+resolution it stores. The estimate under them is exact - the mirrored `ceil` arithmetic over the
+merged selection, ported from the kernel - so the number on *Import N frames* is the number the
+server will expect.
 
-Step 2 shows `materialized of expected` frames against a bar, which the video flow can do and the
-directory flow cannot: `expected_frame_count` was computed server-side at `start`, from the
-canonical ranges and the rate, so there is a denominator before the first frame exists. The
-count beside it is the main thread's own tally of what the sink actually took — see
-[`media`](architecture/frontend/media.md) for why the decoder is not asked for it.
+**Into** is the same for all three kinds: a select of **New batch** (then its name, defaulting to
+the source's or the clip's) or one of the project's **draft** batches. Which drafts may take more is
+read off the wire, never off `state`: a draft not declaring `edit_membership` is listed and
+withheld with its reason, and a batch that declares it is offered whatever its state reads. A bad
+target is 404 or 409 *before a job row exists*, so that refusal renders on this step, beside the
+choice that caused it. For images and scans the primary is *Create batch* (or *Add to batch* for a
+draft); the source card above it names what was uploaded.
 
-**Cancel** is offered for as long as the import is in flight, and its description is the whole
-point of the session: it stops decoding and throws the staged frames away, and no assets and no
-batch have been created yet, so there is nothing to undo afterwards. A cancelled import says so,
-naming what was not added rather than claiming the project is untouched, and leaves the form ready
-for another clip. There is no Resume: a stalled session is aborted and
-restarted, because half a clip's frames are not a batch anybody asked for.
+#### Step 3, Batch: the run, then two ways on
 
-A commit that is refused renders as prose - a batch approved or deleted while the clip decoded,
-a session still missing a frame - separately from a failure of the decode itself, because the
-two have different remedies. When commit succeeds the outcome names the batch, links into it,
-and offers **Import another clip**.
+The directory run shows `processed of total` against a bar and its state - a directory states how
+many files it holds before the first is read - and says the run keeps going if the dialog is
+closed. Everything after the launch is on the job: `error` is the one fatal cause, and `failures`
+the per-file report, **grouped by kind** (`unsupported` is operator noise, `corrupt` is data loss),
+names as basenames with the full string in `title` because for a directory ingest
+`IngestFailure.name` is the full server path. A `failed` run offers **Resume**, which is a redo,
+not a skip, and a refused resume is titled apart from the run's own error.
 
-#### What the directory flow still carries
+A clip shows `materialized of expected` frames: `expected_frame_count` was computed server-side at
+`start`, so there is a denominator before the first frame exists, and the count is the main
+thread's own tally of what the sink took (see [`media`](architecture/frontend/media.md)). **Cancel
+import** is the footer's while the import is in flight: it stops decoding and throws the staged
+frames away, and no assets and no batch exist yet, so there is nothing to undo. It goes disabled,
+with the reason beside it, once the commit is in flight - one transaction that cannot be taken
+back. A refused commit renders as prose apart from a decode failure, because the two have
+different remedies. There is no Resume for a clip: a stalled session is aborted and restarted.
 
-- **Refusals split by when they can be known** (#28). A bad batch target is 404 or
-  409 *before a job row exists*, so it renders on the launch form. Everything after
-  the launch is on the job: `error` is the one fatal cause, `failures` is the
-  per-item report.
-- **`processed` has a total, because a directory can be counted first.** A directory
-  states how many files it holds before the first one is read. That is the readout
-  this flow shows, and it is the one thing the video flow gets from somewhere else
-  entirely.
-- **The per-file report is grouped by kind**, which is the whole reason
-  `IngestFailureKind` exists: `unsupported` is operator noise, `corrupt` is data
-  loss, and reading fifty rows to notice the second is the mistake a table can
-  prevent. Names are rendered as basenames with the full string in `title`, because
-  for a *directory* ingest `IngestFailure.name` is the full server path - a known
-  kernel inconsistency, deliberately left alone.
-- **There is no `partial` card any more.** This section used to describe one, for the
-  one failure kind that was not a total loss - a damaged clip read as far as its bytes
-  went, whose frames were in the batch. It went with the server-side decoder that
-  produced it (#452): `IngestFailureKind` has two members, both a total loss for the
-  file they name, and the half-decoded clip is now a session holding frames and zero
-  assets rather than a batch with a footnote.
+A settled flow names the batch it filled - **“name” is ready, as a draft**, with the batch's own
+count, because `processed` is not the size of the batch once content addressing collapses
+identical items - and offers two ways on:
 
-Nothing is filtered in the browser and there is no `react-dropzone`. Every filter
-the library would apply - MIME type, size, per-file rejection - is a rule the server
-already owns and refuses better, with the kernel's own reason; duplicating it here
-would be a second spelling of the accepted-format list.
+- **Approve batch** swaps the step's content for the approval, in place: the same form the
+  batch's own approve dialog draws (`ApproveFields`, `useApproveForm` in `BatchLifecycle.tsx`) -
+  *Start annotating now*, the folded Jobs with *One job* / *Split* and its stepper - with its
+  buttons in the footer, because a dialog over a dialog is the one thing a modal flow must not
+  open. Approved, the step says what landed (*Approved against v3, cut into 2 jobs, and open for
+  annotation.*) and offers **Open the batch** - its panel on the Overview, through `onOpenBatch`,
+  which also closes the dialog because the destination's address does not hold it. Approval is
+  offered on the batch's `approve` declaration and an active schema; without a schema the step says
+  what approving needs and where to define it, and offers the batch instead.
+- **Add another source** starts the walk over. The batches this session made are kept and listed.
 
-#### A settled run names the batch it filled, and offers two ways on
+For images and scans the footer's way back is **Into another batch** - the same source, back to
+step 2: re-ingesting a registered source is free. **It is offered, never taken**: no redirect on
+completion, because the same step carries the per-file report, and a `failed` run gets the
+outcome too - a partial run has a batch. `batch_id` is not on the job row until it completes, so a
+run in flight has nothing to open, and one that never reached a batch says so in words rather than
+offering a button that cannot work.
 
-A run that reaches `completed` or `failed` renders an outcome: the batch's name, a
-button that opens it (`onOpenBatch`, wired to `/projects/{id}/batches/{id}` in
-`routes.tsx` - `ui-core` may not import a router), and a second that clears the form
-so another source can be ingested without reloading. Before #181 there was neither,
-and `Start ingest` stayed `disabled` for the rest of the page's life.
-
-Three things decide the shape:
-
-- **It is offered, never taken.** No redirect on completion, because the same card
-  carries the per-file report and a run with `corrupt` rows is exactly the one whose
-  report must be read. A `failed` run gets the outcome too - a partial run has a
-  batch, and "some of it did land" is the thing nobody would otherwise be told.
-- **`batch_id` is not on the row from the first poll.** `enqueue` stores only the id
-  it was *handed*, which is null whenever the run creates its own batch; the row
-  learns the real one in the transaction that completes the job. So a run in flight
-  has nothing to open, and one that failed before materializing a batch never gets
-  one - which is why the button is conditional rather than decorative. `batch_name`
-  *is* resolved at enqueue, so a partial run can still say where its assets are.
-- **The outcome quotes no number.** `processed` counts refused items too, and content
-  addressing collapses identical items into one asset, so it is not the size of the
-  batch. The count that is honest is the batch's own, one click away. The video flow
-  reaches the same conclusion from the other direction: its `expected_frame_count` is
-  exact and still not the batch's size, for the deduplication reason alone.
+Nothing is filtered in the browser and there is no `react-dropzone`. Every filter the library
+would apply - MIME type, size, per-file rejection - is a rule the server already owns and refuses
+better, with the kernel's own reason; duplicating it here would be a second spelling of the
+accepted-format list. There is no `partial` failure kind any more: it went with the server-side
+decoder (#452), and a half-decoded clip is now a session holding frames and zero assets.
 
 ### The schema editor, and the three 409s
 
@@ -1773,8 +1826,9 @@ once it is a whole six-digit colour - and **Use the name's colour** goes back to
 **Shortcut**, the class's place in the list, picked as a number, each naming the class whose place it
 takes; the first nine places are the annotator's hotkeys 1 to 9, and the row says which key picks
 the class or whose place it would take. A class's position is part of the published version, so
-moving it is an unsaved change like any other. **Drawn as**, a segmented row of the four shapes as
-the annotator draws them, their names said beside it; a class may accept several, and the last one
+moving it is an unsaved change like any other. **Drawn as**, a segmented row of the six shapes as
+the annotator draws them - box, polygon, polyline and tag for images, 3D box and 3D polyline for
+point-cloud scans - their names said beside it; a class may accept several, and the last one
 that is on cannot be switched off, and says why. When editing, **In use** says what an edit costs. A
 class that is not used yet changes freely (*Not used yet, so any change here is free.*). A class in
 use, counted as its labels on its frames, cannot be removed, and cannot lose a shape its labels are
@@ -2277,5 +2331,5 @@ three.
 It is also the only place a route's callback wiring is exercised at all. The cycle
 used to reach the batch by walking back through the project after an ingest -
 `jobIdOf`'s shape, the helper #160 deleted for the same reason - so since #181 it
-clicks the run card's own **Open batch** instead. Deleting the `onOpenBatch` prop in
+clicks the settled run's own **Open** instead, in the Add images dialog. Deleting the `onOpenBatch` prop in
 `routes.tsx` leaves every unit test green and fails this step.

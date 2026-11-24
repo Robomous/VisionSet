@@ -501,7 +501,7 @@ describe("the Overview panel", () => {
 
     it("reads the dataset's count and says how much of it a release holds", async () => {
       const cases = [
-        { name: "nothing promoted", trunk: 0, releases: [], says: "Nothing promoted yet" },
+        { name: "nothing promoted", trunk: 0, releases: [], says: "Nothing added yet" },
         { name: "no release yet", trunk: 50, releases: [], says: "No releases yet" },
         { name: "images since the newest release", trunk: 42, releases: [["v1", 20], ["v2", 30]], says: "12 since v2" },
         { name: "all in the newest release", trunk: 30, releases: [["v1", 20], ["v2", 30]], says: "all in v2" },
@@ -841,7 +841,7 @@ describe("the cards as doors", () => {
 
     // `findByText`, not `findByTestId` then read: the card renders immediately
     // with an em dash while its query is in flight.
-    await screen.findByText("Nothing promoted yet");
+    await screen.findByText("Nothing added yet");
     expect(screen.getByTestId("kpi-annotated").textContent).toContain("0 of 48 assets");
     expect((await screen.findByTestId("batches-none")).textContent).toContain("Adding images creates the first one");
   });
@@ -930,7 +930,7 @@ describe("the cards' pointers", () => {
   /** Waits until the batches and the dataset's two reads have all answered, so an absence is an answer. */
   async function settled(): Promise<void> {
     await screen.findByTestId("overview-batches");
-    await waitFor(() => expect(screen.getByTestId("kpi-dataset").textContent).toMatch(/Nothing promoted yet|No releases yet|since|all in/));
+    await waitFor(() => expect(screen.getByTestId("kpi-dataset").textContent).toMatch(/Nothing added yet|No releases yet|since|all in/));
   }
 
   describe("Review draft", () => {
@@ -1022,19 +1022,19 @@ describe("the cards' pointers", () => {
     });
   });
 
-  describe("Review and promote", () => {
+  describe("Review and add to dataset", () => {
     it("lists every finished batch that declares promote behind the dataset card's badge, each opening its own batch", async () => {
       readinessOf({ stats: statsOf({ asset_count: 48 }), batches: [finishedOf("first"), finishedOf("second")] });
       const open = vi.fn();
       renderWithData(<OverviewPanel projectId={PROJECT} onOpenBatchChange={open} />);
 
       const badge = await screen.findByTestId("kpi-attention-dataset");
-      expect(badge.textContent).toBe("2 to promote");
+      expect(badge.textContent).toBe("2 to add");
       expect(within(screen.getByTestId("kpi-dataset")).getByTestId("kpi-attention-dataset")).toBe(badge);
       await userEvent.click(badge);
 
       const first = await screen.findByTestId("kpi-step-promote-first");
-      expect(first.textContent).toContain("Review and promote");
+      expect(first.textContent).toContain("Review and add to dataset");
       expect(screen.getByTestId("kpi-step-promote-second")).not.toBeNull();
       await userEvent.click(first);
       expect(open).toHaveBeenCalledExactlyOnceWith("first");
@@ -1133,7 +1133,7 @@ describe("the cards' pointers", () => {
       renderWithData(<OverviewPanel projectId={PROJECT} onOpenReleases={vi.fn()} />);
 
       await settled();
-      expect(screen.getByTestId("kpi-dataset").textContent).toContain("Nothing promoted yet");
+      expect(screen.getByTestId("kpi-dataset").textContent).toContain("Nothing added yet");
       expect(screen.queryByTestId("kpi-attention-dataset")).toBeNull();
       expect(screen.queryByTestId("kpi-publish")).toBeNull();
     });
@@ -1157,7 +1157,7 @@ describe("the cards' pointers", () => {
 
       const badge = await screen.findByTestId("kpi-attention-dataset");
       // The batch to promote speaks first; the release is a step inside, not a second badge.
-      expect(badge.textContent).toBe("1 to promote");
+      expect(badge.textContent).toBe("1 to add");
       await userEvent.click(badge);
 
       const promote = await screen.findByTestId("kpi-step-promote-waiting");
@@ -1218,6 +1218,22 @@ describe("the batches panel", () => {
   async function openMenu(name: string): Promise<void> {
     await userEvent.click(await screen.findByTestId(`batch-menu-${name}`));
     await screen.findByTestId("menu-details");
+  }
+
+  /**
+   * Open a batch's panel the way a draft's is reached: its row opens the
+   * approval instead, so the panel is the row menu's Jobs and details.
+   */
+  async function openPanelOf(name: string): Promise<HTMLElement> {
+    await openMenu(name);
+    await userEvent.click(screen.getByTestId("menu-details"));
+    return screen.findByTestId("batch-sheet");
+  }
+
+  /** Open a row's menu and hand back one of its items. */
+  async function openMenuItem(name: string, item: string): Promise<HTMLElement> {
+    await openMenu(name);
+    return screen.getByTestId(item);
   }
 
   /** Every item the open menu offers, in order. */
@@ -1357,7 +1373,7 @@ describe("the batches panel", () => {
       renderWithData(<OverviewPanel projectId={PROJECT} />);
 
       await screen.findByTestId("overview-batches");
-      // The row opens a non-modal sheet; it claims no popup of its own.
+      // The row opens a modal sheet; it claims no popup of its own.
       expect(rowButton(HARBOR).getAttribute("aria-haspopup")).toBeNull();
       expect(rowButton(HARBOR).getAttribute("aria-expanded")).toBe("false");
       await userEvent.click(rowButton(HARBOR));
@@ -1368,11 +1384,11 @@ describe("the batches panel", () => {
       expect(sheet.textContent).toContain("Batch 2 of 3");
       expect(screen.getByTestId("overview-batch-Harbor").getAttribute("data-open")).toBe("");
 
-      // A sheet over the page from the right, named for what it holds — and not
-      // modal: the table under it stays live, so the page is not inert.
+      // A sheet over the page from the right, named for what it holds — and
+      // modal, as a dialog is: the table under it is put out of reach.
       expect(screen.getByRole("dialog", { name: "Batch" })).toBe(sheet);
       expect(screen.getByTestId("overview-row").contains(sheet)).toBe(false);
-      expect(rowButton(DOWNTOWN).closest("[inert], [aria-hidden=true]")).toBeNull();
+      expect(rowButton(DOWNTOWN).closest("[inert], [aria-hidden=true]")).not.toBeNull();
     });
 
     it("opens it from anywhere on the row, too", async () => {
@@ -1393,8 +1409,9 @@ describe("the batches panel", () => {
       expect(sheet.textContent).toContain("Harbor");
       expect(change).not.toHaveBeenCalled();
 
-      // Another row asks the host to open it; the panel stays on what the host says until it answers.
-      await userEvent.click(rowButton(DOWNTOWN));
+      // The table is out of reach under the scrim, so the next batch is asked for with J; the
+      // panel stays on what the host says until it answers.
+      await userEvent.keyboard("j");
       expect(change).toHaveBeenLastCalledWith(DOWNTOWN);
       expect(sheet.textContent).toContain("Harbor");
 
@@ -1408,9 +1425,38 @@ describe("the batches panel", () => {
       renderWithData(<OverviewPanel projectId={PROJECT} />);
 
       await userEvent.click(await screen.findByTestId("overview-batch-Downtown"));
-      await screen.findByTestId("batch-sheet");
+      const sheet = await screen.findByTestId("batch-sheet");
+      // Focus opens on the forward control, whose tooltip is a layer of its own that takes the
+      // first Escape; the sheet answers the one that reaches it.
+      within(sheet).getByTestId("batch-close").focus();
       await userEvent.keyboard("{Escape}");
       await waitFor(() => expect(screen.queryByTestId("batch-sheet")).toBeNull());
+    });
+
+    it("closes when a press lands outside it, on the scrim", async () => {
+      trio();
+      renderWithData(<OverviewPanel projectId={PROJECT} />);
+
+      await userEvent.click(await screen.findByTestId("overview-batch-Downtown"));
+      await screen.findByTestId("batch-sheet");
+      const scrim = document.querySelector<HTMLElement>('[data-slot="sheet-overlay"]');
+      expect(scrim).not.toBeNull();
+      await userEvent.click(scrim!);
+      await waitFor(() => expect(screen.queryByTestId("batch-sheet")).toBeNull());
+    });
+
+    it("has a left-edge handle that resizes it and remembers the width", async () => {
+      trio();
+      renderWithData(<OverviewPanel projectId={PROJECT} />);
+
+      await userEvent.click(await screen.findByTestId("overview-batch-Downtown"));
+      const sheet = await screen.findByTestId("batch-sheet");
+      expect(sheet.style.width).toBe("480px");
+      const handle = within(sheet).getByTestId("detail-resize");
+      handle.focus();
+      await userEvent.keyboard("{ArrowLeft}");
+      await waitFor(() => expect(Number.parseInt(sheet.style.width, 10)).toBeGreaterThan(480));
+      expect(Number(readPref("detail-width:batch-sheet"))).toBeGreaterThan(480);
     });
 
     it("closes with its own button, and hands the focus back to the batch's row", async () => {
@@ -1426,15 +1472,22 @@ describe("the batches panel", () => {
       expect(document.activeElement).toBe(rowButton(HARBOR));
     });
 
-    it("leaves Escape to a filter being typed in", async () => {
+    it("leaves Escape to a field being typed in", async () => {
       trio();
       renderWithData(<OverviewPanel projectId={PROJECT} />);
 
       await userEvent.click(await screen.findByTestId("overview-batch-Harbor"));
-      await screen.findByTestId("batch-sheet");
-      await userEvent.click(screen.getByTestId("batches-filter"));
-      await userEvent.keyboard("{Escape}");
-      expect(screen.getByTestId("batch-sheet")).not.toBeNull();
+      const sheet = await screen.findByTestId("batch-sheet");
+      // The table's filter is out of reach under the scrim, so the field is one the sheet holds.
+      const field = document.createElement("input");
+      sheet.append(field);
+      try {
+        field.focus();
+        await userEvent.keyboard("{Escape}");
+        expect(screen.getByTestId("batch-sheet")).not.toBeNull();
+      } finally {
+        field.remove();
+      }
     });
 
     it("lists that batch's jobs, each with who holds it and how far it has come", async () => {
@@ -1483,11 +1536,34 @@ describe("the batches panel", () => {
       expect(within(card).queryByRole("button")).toBeNull();
     });
 
-    it("says what a draft's missing jobs are waiting on", async () => {
+    it("opens a draft's approval from its row, by click or Enter, and leaves every other row opening the panel", async () => {
       trio();
       renderWithData(<OverviewPanel projectId={PROJECT} />);
 
       await userEvent.click(await screen.findByTestId("overview-batch-Suburbs"));
+      expect(await screen.findByTestId("approve-dialog")).not.toBeNull();
+      expect(screen.queryByTestId("batch-sheet")).toBeNull();
+      await userEvent.keyboard("{Escape}");
+      await waitFor(() => expect(screen.queryByTestId("approve-dialog")).toBeNull());
+
+      rowButton(SUBURBS).focus();
+      await userEvent.keyboard("{Enter}");
+      expect(await screen.findByTestId("approve-dialog")).not.toBeNull();
+      expect(screen.queryByTestId("batch-sheet")).toBeNull();
+      expect(sent.filter((request) => request.method !== "GET")).toEqual([]);
+      await userEvent.keyboard("{Escape}");
+      await waitFor(() => expect(screen.queryByTestId("approve-dialog")).toBeNull());
+
+      await userEvent.click(screen.getByTestId("overview-batch-Harbor"));
+      expect((await screen.findByTestId("batch-sheet")).textContent).toContain("Harbor");
+      expect(screen.queryByTestId("approve-dialog")).toBeNull();
+    });
+
+    it("says what a draft's missing jobs are waiting on", async () => {
+      trio();
+      renderWithData(<OverviewPanel projectId={PROJECT} />);
+
+      await openPanelOf("Suburbs");
       expect((await screen.findByTestId("batch-sheet-jobs")).textContent).toContain(
         "No jobs yet. Approving the batch cuts it into jobs.",
       );
@@ -1499,8 +1575,7 @@ describe("the batches panel", () => {
       trio();
       renderWithData(<OverviewPanel projectId={PROJECT} />);
 
-      await userEvent.click(await screen.findByTestId("overview-batch-Suburbs"));
-      const sheet = await screen.findByTestId("batch-sheet");
+      const sheet = await openPanelOf("Suburbs");
       expect(sheet.textContent).toContain("Batch 1 of 3");
       expect(within(sheet).getByRole("button", { name: "Previous batch (K)" }).hasAttribute("disabled")).toBe(true);
 
@@ -1528,8 +1603,7 @@ describe("the batches panel", () => {
       renderWithData(<OverviewPanel projectId={PROJECT} />);
 
       await userEvent.click(within(await screen.findByTestId("batches-lens")).getByRole("radio", { name: "Open" }));
-      await userEvent.click(rowButton(SUBURBS));
-      const sheet = await screen.findByTestId("batch-sheet");
+      const sheet = await openPanelOf("Suburbs");
       // Downtown is wholly in the dataset, so the Open view leaves it out.
       expect(sheet.textContent).toContain("Batch 1 of 2");
       await userEvent.keyboard("j");
@@ -1567,8 +1641,12 @@ describe("the batches panel", () => {
   describe("the sheet's footer", () => {
     /** Open one batch's panel and hand back its footer. */
     async function footerOf(name: string): Promise<HTMLElement> {
-      await userEvent.click(await screen.findByTestId(`overview-batch-${name}`));
-      await screen.findByTestId("batch-sheet");
+      // A draft's row opens its approval, so only its panel goes through the menu.
+      if (name === "Suburbs") await openPanelOf(name);
+      else {
+        await userEvent.click(await screen.findByTestId(`overview-batch-${name}`));
+        await screen.findByTestId("batch-sheet");
+      }
       return screen.getByTestId("batch-sheet-actions");
     }
 
@@ -1585,11 +1663,15 @@ describe("the batches panel", () => {
 
     it("leads with Approve for a draft, puts focus on it, and opens the partition dialog without sending anything", async () => {
       trio();
-      renderWithData(<OverviewPanel projectId={PROJECT} />);
+      // Held open, the way `?batch=` arrives: the menu that would open it takes the focus back to its trigger.
+      renderWithData(<Held initial={SUBURBS} />);
 
-      const footer = await footerOf("Suburbs");
+      await screen.findByTestId("batch-sheet");
+      const footer = screen.getByTestId("batch-sheet-actions");
       const approve = within(footer).getByTestId("approve-batch");
-      expect(approve.textContent).toBe("Approve");
+      // Every footer control is an icon button, named by its tooltip.
+      expect(approve.getAttribute("aria-label")).toBe("Approve");
+      expect(approve.textContent).toBe("");
       expect(approve.hasAttribute("data-autofocus")).toBe(true);
       await waitFor(() => expect(document.activeElement).toBe(approve));
 
@@ -1619,13 +1701,106 @@ describe("the batches panel", () => {
       const footer = await footerOf("Harbor");
       await userEvent.click(within(footer).getByTestId("promote-Harbor"));
 
-      expect((await within(footer).findByTestId("promoted-Harbor")).textContent).toContain("Promoted 6 assets");
+      expect((await within(footer).findByTestId("promoted-Harbor")).textContent).toContain("Added 6 assets");
       expect(sent.filter((request) => request.method === "POST").map((request) => new URL(request.url).pathname)).toEqual([
         "/batches/b-harbor/promote",
       ]);
     });
 
-    it("offers Complete to a batch being labeled, and no promotion", async () => {
+    it("says a batch wholly in the dataset is there, rather than offering to add it again", async () => {
+      trio();
+      renderWithData(<OverviewPanel projectId={PROJECT} />);
+
+      // Downtown declares promote, but every one of its images is already in the trunk.
+      const footer = await footerOf("Downtown");
+      expect(within(footer).queryByTestId("promote-Downtown")).toBeNull();
+      expect(within(footer).getByTestId("in-dataset-Downtown").textContent).toContain("All 10");
+    });
+
+    it("puts Create correction batch in a completed batch's footer, beside Delete and away from the forward step, and opens its dialog", async () => {
+      trio();
+      renderWithData(<OverviewPanel projectId={PROJECT} />);
+
+      const footer = await footerOf("Harbor");
+      expect(within(footer).getByTestId("promote-Harbor").getAttribute("aria-label")).toBe("Add to dataset");
+      const correct = within(footer).getByTestId("correct-Harbor");
+      expect(correct.getAttribute("aria-label")).toBe("Create correction batch");
+      // Delete, then Create correction batch at the start; the forward step after them.
+      const order = [...footer.querySelectorAll<HTMLElement>("button")].map((one) => one.getAttribute("data-testid"));
+      expect(order.indexOf("delete-batch-Harbor")).toBeLessThan(order.indexOf("correct-Harbor"));
+      expect(order.indexOf("correct-Harbor")).toBeLessThan(order.indexOf("promote-Harbor"));
+      // No overflow menu any more.
+      expect(within(footer).queryByTestId("batch-overflow-Harbor")).toBeNull();
+
+      await userEvent.click(correct);
+      expect(await screen.findByTestId("correction-dialog")).not.toBeNull();
+      expect(sent.filter((request) => request.method !== "GET")).toEqual([]);
+    });
+
+    it("completes without adding only after a confirmation with its switch off, and sends no promotion", async () => {
+      readinessOf({
+        stats: statsOf({ asset_count: 10 }),
+        batches: [
+          batchOf({
+            id: "done",
+            name: "drive-02",
+            state: "in_annotation",
+            progress: progressOf({ total: 10, annotated: 10 }),
+            allowed_actions: batchActions("in_annotation"),
+          }),
+        ],
+        jobs: [{ id: "job-1", batch_id: "done", state: "completed", asset_count: 10, assignee: null, pre_label_run: null, allowed_actions: [] }],
+      });
+      on("POST", /\/batches\/done\/complete$/, {
+        status: 200,
+        body: batchOf({ id: "done", name: "drive-02", state: "completed", allowed_actions: batchActions("completed") }),
+      });
+      renderWithData(<OverviewPanel projectId={PROJECT} />);
+
+      const footer = await footerOf("drive-02");
+      await userEvent.click(within(footer).getByTestId("complete-drive-02"));
+      const confirm = await screen.findByTestId("complete-confirm");
+      expect(confirm.textContent).toContain("can’t be reopened");
+      expect(sent.filter((request) => request.method !== "GET")).toEqual([]);
+
+      // The switch remembers its last answer for the session, so the test says its own.
+      const add = within(confirm).getByTestId("complete-add");
+      if (add.getAttribute("aria-checked") === "true") await userEvent.click(add);
+      await userEvent.click(within(confirm).getByTestId("complete-submit"));
+      await waitFor(() => expect(screen.queryByTestId("complete-confirm")).toBeNull());
+      expect((await within(footer).findByTestId("completed-drive-02")).textContent).toContain("Nothing is in the dataset yet");
+      expect(sent.filter((request) => request.method === "POST").map((request) => new URL(request.url).pathname)).toEqual([
+        "/batches/done/complete",
+      ]);
+    });
+
+    it("withholds Complete, with its count in the tooltip, while work is outstanding", async () => {
+      readinessOf({
+        stats: statsOf({ asset_count: 10 }),
+        batches: [
+          batchOf({
+            id: "open",
+            name: "drive-03",
+            state: "in_annotation",
+            progress: progressOf({ total: 10, annotated: 8, unannotated: 2 }),
+            allowed_actions: batchActions("in_annotation"),
+          }),
+        ],
+      });
+      renderWithData(<OverviewPanel projectId={PROJECT} />);
+
+      const footer = await footerOf("drive-03");
+      const complete = within(footer).getByTestId("complete-drive-03");
+      expect(complete.getAttribute("aria-disabled")).toBe("true");
+      expect(complete.getAttribute("aria-label")).toBe("Complete batch");
+      // The count is the tooltip's reason, reached by keyboard: the withheld button stays focusable.
+      complete.focus();
+      expect((await screen.findAllByText(/^2 .+ still to annotate or skip$/)).length).toBeGreaterThan(0);
+      await userEvent.click(complete);
+      expect(screen.queryByTestId("complete-confirm")).toBeNull();
+    });
+
+    it("offers Complete to a batch being labeled, and no separate Add to dataset beside it", async () => {
       readinessOf({
         stats: statsOf({ asset_count: 48 }),
         batches: [batchOf({ id: "live", name: "drive-01", state: "in_annotation", allowed_actions: batchActions("in_annotation") })],
@@ -1633,9 +1808,12 @@ describe("the batches panel", () => {
       renderWithData(<OverviewPanel projectId={PROJECT} />);
 
       const footer = await footerOf("drive-01");
-      expect(within(footer).getByTestId("complete-drive-01")).not.toBeNull();
+      // One control: whether the images go into the dataset is the confirmation's switch.
+      expect(within(footer).getByTestId("complete-drive-01").getAttribute("aria-label")).toBe("Complete batch");
+      expect(within(footer).queryByTestId("complete-promote-drive-01")).toBeNull();
       expect(within(footer).queryByTestId("promote-drive-01")).toBeNull();
       expect(within(footer).queryByTestId("approve-batch")).toBeNull();
+      expect(within(footer).queryByTestId("correct-drive-01")).toBeNull();
     });
 
     it("offers Start annotating to an approved batch, and nothing that moves it elsewhere", async () => {
@@ -1659,15 +1837,17 @@ describe("the batches panel", () => {
           batchOf({ id: "bare-done", name: "bare-done", state: "completed", promoted_asset_count: 4, allowed_actions: [] }),
         ],
       });
-      renderWithData(<OverviewPanel projectId={PROJECT} />);
-
       for (const name of ["bare-draft", "bare-done"]) {
+        // A fresh panel each time: the open sheet's scrim covers the table's other rows.
+        const { unmount } = renderWithData(<OverviewPanel projectId={PROJECT} />);
         const footer = await footerOf(name);
         for (const id of ["approve-batch", "start-batch", "sheet-annotate", "sheet-prelabel", `complete-${name}`, `complete-promote-${name}`, `promote-${name}`, `correct-${name}`]) {
           expect(within(footer).queryByTestId(id), `${name}: ${id}`).toBeNull();
         }
-        // The overflow stays: Delete is withheld with its reason rather than hidden.
-        expect(within(footer).getByTestId(`batch-overflow-${name}`)).not.toBeNull();
+        // Delete stays, withheld with its reason rather than hidden.
+        const remove = within(footer).getByTestId(`delete-batch-${name}`);
+        expect(remove.getAttribute("aria-disabled"), `${name}: delete`).toBe("true");
+        unmount();
       }
     });
 
@@ -1677,12 +1857,10 @@ describe("the batches panel", () => {
       const change = vi.fn();
       renderWithData(<Held onChange={change} />);
 
-      await userEvent.click(await screen.findByTestId("overview-batch-Suburbs"));
-      await screen.findByTestId("batch-sheet");
+      await openPanelOf("Suburbs");
       expect(change).toHaveBeenLastCalledWith(SUBURBS);
 
-      await userEvent.click(screen.getByTestId("batch-overflow-Suburbs"));
-      await userEvent.click(await screen.findByTestId("delete-batch-Suburbs"));
+      await userEvent.click(within(screen.getByTestId("batch-sheet-actions")).getByTestId("delete-batch-Suburbs"));
       await userEvent.click(await screen.findByTestId("delete-batch-submit"));
 
       await waitFor(() => expect(screen.queryByTestId("batch-sheet")).toBeNull());
@@ -1700,7 +1878,7 @@ describe("the batches panel", () => {
 
       await userEvent.click(await screen.findByTestId("overview-batch-drive-01"));
       const annotate = await screen.findByTestId("sheet-annotate");
-      expect(annotate.textContent).toBe("Annotate");
+      expect(annotate.getAttribute("aria-label")).toBe("Annotate");
       await screen.findByTestId("batch-sheet-job-Job 1");
       await userEvent.click(annotate);
       expect(job).toHaveBeenCalledExactlyOnceWith("j1");
@@ -1752,7 +1930,10 @@ describe("the batches panel", () => {
 
         await userEvent.click(await screen.findByTestId("overview-batch-drive-01"));
         const control = await screen.findByTestId("sheet-prelabel");
-        expect(control.textContent).toBe("Auto-label");
+        // An icon in the sheet's top bar, named by its tooltip — not in the footer.
+        expect(control.getAttribute("aria-label")).toBe("Auto-label this batch");
+        expect(screen.getByTestId("batch-sheet-tools").contains(control)).toBe(true);
+        expect(screen.getByTestId("batch-sheet-actions").contains(control)).toBe(false);
         await userEvent.click(control);
 
         expect(await screen.findByText("Auto-label drive-01")).not.toBeNull();
@@ -1764,14 +1945,14 @@ describe("the batches panel", () => {
         renderWithData(<OverviewPanel projectId={PROJECT} />);
 
         // A draft declares approve, not pre_label.
-        await userEvent.click(await screen.findByTestId("overview-batch-Suburbs"));
+        await openPanelOf("Suburbs");
         await screen.findByTestId("approve-batch");
         expect(screen.queryByTestId("sheet-prelabel")).toBeNull();
       });
     });
   });
 
-  describe("the row's pointer", () => {
+  describe("the row's pointer, in its menu", () => {
     it("labels the way in from what the batch may do, never from its state", async () => {
       const cases = [
         {
@@ -1790,7 +1971,7 @@ describe("the batches panel", () => {
           name: "to promote",
           over: { state: "completed", promoted_asset_count: 4, allowed_actions: batchActions("completed") },
           key: "promote",
-          label: "Review and promote",
+          label: "Review and add to dataset",
         },
         {
           name: "to annotate",
@@ -1824,31 +2005,62 @@ describe("the batches panel", () => {
         const { unmount } = renderWithData(<OverviewPanel projectId={PROJECT} onOpenBatchChange={open} />);
 
         await screen.findByTestId("overview-batch-Only");
-        const pointers = [...document.querySelectorAll("[data-testid^=row-]")];
+        // Nothing sits on the row at rest or on hover: the pointer is a menu item.
+        expect(document.querySelectorAll("[data-testid^=row-]"), one.name).toHaveLength(0);
+        await openMenu("Only");
+        const pointers = menuItems().filter((id) => id !== "menu-details" && id !== "menu-prelabel");
         if (one.key === null) {
           expect(pointers, one.name).toHaveLength(0);
         } else {
-          expect(pointers.map((node) => node.getAttribute("data-testid")), one.name).toEqual([`row-${one.key}-Only`]);
-          const pointer = screen.getByTestId(`row-${one.key}-Only`);
+          expect(pointers, one.name).toEqual([`menu-${one.key}`]);
+          const pointer = screen.getByTestId(`menu-${one.key}`);
           expect(pointer.textContent, one.name).toBe(one.label);
           await userEvent.click(pointer);
-          expect(open, one.name).toHaveBeenCalledExactlyOnceWith("only");
+          if (one.key === "approve") {
+            // A draft's way in is its approval, not its panel.
+            expect(await screen.findByTestId("approve-dialog"), one.name).not.toBeNull();
+            expect(open, one.name).not.toHaveBeenCalled();
+          } else {
+            expect(open, one.name).toHaveBeenCalledExactlyOnceWith("only");
+          }
           // The host holds the open batch here and answered nothing, so the panel stays shut:
           // pointing asks the host to open the batch, it does not open a panel behind its back.
           expect(screen.queryByTestId("batch-sheet"), one.name).toBeNull();
+          expect(sent.filter((request) => request.method !== "GET"), one.name).toEqual([]);
         }
         unmount();
       }
     });
 
-    it("needs no host: pressing it opens that batch's panel itself", async () => {
+    it("needs no host: pressing a finished batch's opens that batch's panel itself", async () => {
       trio();
       renderWithData(<OverviewPanel projectId={PROJECT} />);
 
-      await userEvent.click(await screen.findByTestId("row-approve-Suburbs"));
+      await openMenu("Harbor");
+      await userEvent.click(screen.getByTestId("menu-promote"));
       const sheet = await screen.findByTestId("batch-sheet");
-      expect(sheet.textContent).toContain("Suburbs");
-      expect(within(sheet).getByTestId("approve-batch")).not.toBeNull();
+      expect(sheet.textContent).toContain("Harbor");
+    });
+
+    it("needs no host: a draft's opens its approval, and approving opens its panel", async () => {
+      trio();
+      on("POST", /\/batches\/b-suburbs\/approve$/, {
+        status: 200,
+        body: batchOf({ id: "b-suburbs", name: "Suburbs", state: "approved", allowed_actions: batchActions("approved") }),
+      });
+      renderWithData(<OverviewPanel projectId={PROJECT} />);
+
+      await openMenu("Suburbs");
+      await userEvent.click(screen.getByTestId("menu-approve"));
+      await screen.findByTestId("approve-dialog");
+      expect(screen.queryByTestId("batch-sheet")).toBeNull();
+      expect(sent.filter((request) => request.method !== "GET")).toEqual([]);
+
+      // Approval only: starting is its own request, and this test is about where approving lands.
+      await userEvent.click(screen.getByTestId("approve-start"));
+      await userEvent.click(screen.getByTestId("approve-submit"));
+      expect((await screen.findByTestId("batch-sheet")).textContent).toContain("Suburbs");
+      expect(screen.queryByTestId("approve-dialog")).toBeNull();
     });
 
     it("only points: pressing it sends nothing that changes anything", async () => {
@@ -1856,9 +2068,15 @@ describe("the batches panel", () => {
       const open = vi.fn();
       renderWithData(<OverviewPanel projectId={PROJECT} onOpenBatchChange={open} />);
 
-      await userEvent.click(await screen.findByTestId("row-approve-Suburbs"));
-      await userEvent.click(screen.getByTestId("row-promote-Harbor"));
-      expect(open.mock.calls).toEqual([[SUBURBS], [HARBOR]]);
+      await openMenu("Suburbs");
+      await userEvent.click(screen.getByTestId("menu-approve"));
+      await screen.findByTestId("approve-dialog");
+      await userEvent.keyboard("{Escape}");
+      await waitFor(() => expect(screen.queryByTestId("approve-dialog")).toBeNull());
+      await openMenu("Harbor");
+      await userEvent.click(screen.getByTestId("menu-promote"));
+      // The draft's pointer opened its approval, not a panel: only the finished batch asked the host.
+      expect(open.mock.calls).toEqual([[HARBOR]]);
       expect(sent.filter((request) => request.method !== "GET")).toEqual([]);
     });
 
@@ -1881,7 +2099,7 @@ describe("the batches panel", () => {
         // Who holds the jobs, once they have been read: the pointer waits on them.
         await waitFor(() => expect(row.textContent).toContain("1 job: Dana"));
         expect(within(row).getByText("DA")).not.toBeNull();
-        await userEvent.click(screen.getByTestId("row-annotate-drive-01"));
+        await userEvent.click(await openMenuItem("drive-01", "menu-annotate"));
         expect(job).toHaveBeenCalledExactlyOnceWith("j1");
         expect(open).not.toHaveBeenCalled();
       });
@@ -1897,7 +2115,7 @@ describe("the batches panel", () => {
         // An unassigned job is a dashed mark, not a name.
         expect(within(row).getByText("?")).not.toBeNull();
         expect(within(row).getByText("KL")).not.toBeNull();
-        await userEvent.click(screen.getByTestId("row-annotate-drive-01"));
+        await userEvent.click(await openMenuItem("drive-01", "menu-annotate"));
         expect(open).toHaveBeenCalledExactlyOnceWith("live");
         expect(job).not.toHaveBeenCalled();
       });
@@ -1909,7 +2127,7 @@ describe("the batches panel", () => {
 
         const row = await screen.findByTestId("overview-batch-drive-01");
         await waitFor(() => expect(row.textContent).toContain("1 job"));
-        await userEvent.click(screen.getByTestId("row-annotate-drive-01"));
+        await userEvent.click(await openMenuItem("drive-01", "menu-annotate"));
         expect(open).toHaveBeenCalledExactlyOnceWith("live");
       });
     });
@@ -2010,15 +2228,24 @@ describe("the batches panel", () => {
       expect((await screen.findByTestId("batch-sheet")).textContent).toContain("Harbor");
     });
 
-    it("opens the batch's panel from the pointer", async () => {
+    it("opens the batch's panel from the pointer, and a draft's pointer opens its approval instead", async () => {
       trio();
       const open = vi.fn();
       renderWithData(<Held onChange={open} />);
 
+      await openMenu("Harbor");
+      await userEvent.click(screen.getByTestId("menu-promote"));
+      expect(open).toHaveBeenCalledExactlyOnceWith(HARBOR);
+      expect((await screen.findByTestId("batch-sheet")).textContent).toContain("Harbor");
+      await userEvent.click(within(screen.getByTestId("batch-sheet")).getByRole("button", { name: "Close the batch" }));
+      await waitFor(() => expect(screen.queryByTestId("batch-sheet")).toBeNull());
+      open.mockClear();
+
       await openMenu("Suburbs");
       await userEvent.click(screen.getByTestId("menu-approve"));
-      expect(open).toHaveBeenCalledExactlyOnceWith(SUBURBS);
-      expect((await screen.findByTestId("batch-sheet")).textContent).toContain("Suburbs");
+      expect(await screen.findByTestId("approve-dialog")).not.toBeNull();
+      expect(open).not.toHaveBeenCalled();
+      expect(screen.queryByTestId("batch-sheet")).toBeNull();
     });
 
     it("opens the auto-label dialog over that one batch, from Auto-label", async () => {
@@ -2166,19 +2393,20 @@ describe("the batches panel", () => {
     }
     const names = (panel: HTMLElement): (string | undefined)[] => rowOrder(panel).map((id) => id?.replace("overview-batch-", ""));
 
-    it("shows the first ten, pages from the band, and starts over when the filter narrows", async () => {
+    it("shows the first ten, pages from the always-visible footer, and starts over when the filter narrows", async () => {
       many();
       renderWithData(<OverviewPanel projectId={PROJECT} />);
 
       const panel = await screen.findByTestId("overview-batches");
       expect(names(panel)).toHaveLength(10);
       expect(names(panel)[0]).toBe("b-01");
-      // In the table's own band, after its filter, and quiet: no rows-per-page choice.
-      const pager = screen.getByTestId("inline-pager");
-      expect(within(screen.getByTestId("overview-batches").querySelector("header")!).getByTestId("inline-pager")).toBe(pager);
+      // The footer closes the table: the count, rows per page and the steps. No pager in the band.
+      const footer = screen.getByTestId("table-footer");
+      expect(within(panel).getByTestId("table-footer")).toBe(footer);
+      expect(screen.queryByTestId("inline-pager")).toBeNull();
+      expect(within(footer).getByTestId("table-pager-range").textContent).toBe("1–10 of 25 batches");
       expect(screen.getByTestId("table-pager-page").textContent).toBe("Page 1 of 3");
-      expect(screen.queryByTestId("table-footer")).toBeNull();
-      expect(screen.queryByTestId("table-pager-size")).toBeNull();
+      expect(within(footer).getByTestId("table-pager-size").textContent).toBe("10");
       expect(screen.getByTestId("table-pager-prev").getAttribute("aria-disabled")).toBe("true");
 
       await userEvent.click(screen.getByTestId("table-pager-next"));
@@ -2188,10 +2416,12 @@ describe("the batches panel", () => {
       expect(screen.getByTestId("table-pager-page").textContent).toBe("Page 3 of 3");
       expect(screen.getByTestId("table-pager-next").getAttribute("aria-disabled")).toBe("true");
 
-      // A filter starts over at the first page; six matches fit on it, so the pager goes.
+      // A filter starts over at the first page; six matches fit on it, and the footer stays to count them.
       await userEvent.type(screen.getByTestId("batches-filter"), "b-2");
       expect(names(panel)).toEqual(["b-20", "b-21", "b-22", "b-23", "b-24", "b-25"]);
-      expect(screen.queryByTestId("inline-pager")).toBeNull();
+      expect(screen.getByTestId("table-footer")).not.toBeNull();
+      expect(screen.getByTestId("table-pager-page").textContent).toBe("Page 1 of 1");
+      expect(screen.getByTestId("table-pager-range").textContent).toContain("filtered from 25");
       expect(screen.getByTestId("batches-count").textContent).toBe("6 of 25");
     });
 
@@ -2230,10 +2460,12 @@ describe("the batches panel", () => {
       expect(screen.getByTestId("table-pager-page").textContent).toBe("Page 2 of 3");
       expect(screen.getByTestId("overview-batch-b-12").getAttribute("data-open")).toBe("");
 
-      // Paging away does not close it or bring the page back.
+      // The pager is under the scrim while the sheet is open. Once it is put away, paging is the
+      // table's again, and closing does not bring the opened batch's page back.
+      await userEvent.click(within(screen.getByTestId("batch-sheet")).getByTestId("batch-close"));
+      await waitFor(() => expect(screen.queryByTestId("batch-sheet")).toBeNull());
       await userEvent.click(screen.getByTestId("table-pager-next"));
       expect(screen.getByTestId("table-pager-page").textContent).toBe("Page 3 of 3");
-      expect(screen.getByTestId("batch-sheet").textContent).toContain("b-12");
     });
 
     it("brings in the page of the batch the panel steps to across a page's edge", async () => {

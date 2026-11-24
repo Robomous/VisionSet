@@ -96,15 +96,15 @@ test.describe("an inverted floating surface", () => {
   for (const theme of ["light", "dark"] as const) {
     test(`an open menu, ${theme}`, async ({ page }) => {
       await page.setViewportSize(DESKTOP);
-      // The batch's overflow lives in its panel's footer: batches are listed on the
-      // Overview, open in a panel beside it, and every batch action is made there.
-      await openVisual(page, `/projects/${VISUAL.project}/overview?batch=${VISUAL.batch}`);
-      const panel = page.getByTestId("batch-sheet");
-      await expect(panel).toBeVisible();
+      // The batch's row menu on the Overview: the panel's footer has no overflow any
+      // more (every control there is an icon button), and the panel is modal, so the
+      // menu is opened from the table with the panel closed.
+      await openVisual(page, `/projects/${VISUAL.project}/overview`);
+      await expect(page.getByTestId("overview-batches")).toBeVisible();
       if (theme === "dark") await useDark(page);
       await readyForCapture(page);
 
-      await panel.getByTestId("batch-overflow-drive-01").click();
+      await page.getByTestId("batch-menu-drive-01").click();
       const menu = page.getByRole("menu");
       await expect(menu).toBeVisible();
       // The menu carries the `dark` subtree in both themes; that inversion is the

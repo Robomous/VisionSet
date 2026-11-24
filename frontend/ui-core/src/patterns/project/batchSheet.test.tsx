@@ -5,7 +5,8 @@
  * beside the name; what is read less often waits behind "N more properties",
  * and folded it cannot be tabbed into; the line that condenses the batch on
  * scroll echoes the page, so it is hidden from assistive tech and adds no
- * second state; and J/K still walk the batches from anywhere in the panel.
+ * second state; J/K still walk the batches from anywhere in the panel; and
+ * each job is a row that is its own way into the editor, walked with ↑/↓.
  */
 
 import { TooltipProvider } from "@robomous/ui-core";
@@ -100,5 +101,44 @@ describe("the batch's panel", () => {
     await userEvent.keyboard("j");
     await userEvent.keyboard("k");
     expect(onStep.mock.calls).toEqual([[1], [-1]]);
+  });
+
+  it("lists each job as one row that opens it, saying its state, who holds it and how far it has come", async () => {
+    const open = vi.fn();
+    const done = vi.fn();
+    renderSheet({
+      jobs: [
+        { ...JOBS[0]!, onOpen: open },
+        { id: "j3", label: "Job 3", assignee: null, images: 24, done: 24, state: "Done", finished: true, onOpen: done },
+      ],
+    });
+
+    const first = screen.getByTestId("batch-sheet-job-Job 1");
+    expect(first.textContent).toContain("In progress");
+    expect(first.textContent).toContain("ana");
+    expect(first.textContent).toContain("12/24");
+    // A finished job is read, not continued: the row says View and its name says done.
+    expect(screen.getByTestId("batch-sheet-job-Job 3").textContent).toContain("Unassigned");
+    await userEvent.click(screen.getByRole("button", { name: "View Job 3 in the editor, done" }));
+    expect(done).toHaveBeenCalledOnce();
+
+    // ↑/↓ walk the rows' buttons, and stop at the ends.
+    const row = screen.getByRole("button", { name: "Open Job 1 in the editor" });
+    row.focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("View Job 3 in the editor, done");
+    await userEvent.keyboard("{ArrowDown}");
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("View Job 3 in the editor, done");
+    await userEvent.keyboard("{ArrowUp}{Enter}");
+    expect(open).toHaveBeenCalledOnce();
+  });
+
+  it("says a job's state in words where there is no editor to open it in", () => {
+    renderSheet();
+
+    const row = screen.getByTestId("batch-sheet-job-Job 2");
+    expect(within(row).queryByRole("button")).toBeNull();
+    expect(row.textContent).toContain("Unassigned");
+    expect(row.textContent).toContain("In progress");
   });
 });

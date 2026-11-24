@@ -174,7 +174,7 @@ describe("what it submits", () => {
     render(mount());
 
     // The shared `ClassFields` is what makes this the same picker the Schema tab
-    // offers — four geometries, and the four an annotation cannot carry absent.
+    // offers — six geometries, and the two an annotation cannot carry absent.
     expect(screen.getByTestId("class-geometry-new")).toBeTruthy();
   });
 
@@ -196,7 +196,7 @@ describe("what it submits", () => {
       );
 
     expect(membersOf(basic)).toEqual(["box", "polygon", "tag"]);
-    expect(membersOf(robotics)).toEqual(["polyline"]);
+    expect(membersOf(robotics)).toEqual(["polyline", "3D box", "3D polyline"]);
   });
 
   /**
