@@ -202,7 +202,7 @@ function ScanView({
 
   const setGround = scan?.setGroundHeight;
   useEffect(() => {
-    if (setGround !== undefined && frame !== null) setGround(groundHeight(sample.positions, frame));
+    if (setGround !== undefined && frame !== null) setGround(groundHeight(sample.positions, frame, sample.origin));
   }, [setGround, sample, frame]);
 
   const editing = scan?.editing === true;

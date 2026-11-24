@@ -77,6 +77,7 @@ export {
 // Point-cloud scans — the buffer, the orbit camera, colours and labels in the declared frame
 export {
   POINT_BUFFER_MAGIC,
+  POINT_FLAG_ORIGIN,
   POINT_BUFFER_VERSION,
   PointBufferError,
   boundsOf,
@@ -218,6 +219,7 @@ export {
   polylineSegments,
   scanCuboidCorners,
   scanLabels,
+  segmentsRelativeTo,
   type ScanLabel,
 } from "./core/pointcloud/labels";
 export {

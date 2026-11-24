@@ -15,6 +15,7 @@ function sample(positions: number[], extra: Partial<PointSample> = {}): PointSam
   return {
     count: positions.length / 3,
     positions: new Float32Array(positions),
+    origin: [0, 0, 0],
     intensity: null,
     rgb: null,
     ...extra,

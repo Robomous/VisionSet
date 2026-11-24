@@ -423,6 +423,51 @@ def test_the_points_route_is_scoped_and_guarded_like_content(
     assert anonymous.status_code == 401
 
 
+GEOREFERENCED: Final = tuple(
+    (512_345.678 + 0.731 * i, 4_123_456.789 - 0.417 * i, 12.345 + 0.0123 * i) for i in range(20)
+)
+
+
+def _double_ply(points: tuple[tuple[float, float, float], ...]) -> bytes:
+    header = (
+        "ply\nformat binary_little_endian 1.0\n"
+        f"element vertex {len(points)}\n"
+        "property double x\nproperty double y\nproperty double z\nend_header\n"
+    ).encode()
+    return header + b"".join(struct.pack("<3d", *point) for point in points)
+
+
+def test_a_georeferenced_scan_is_served_relative_to_an_origin_without_losing_precision(
+    client: TestClient, runner: InlineDispatcher
+) -> None:
+    project = project_with_schema(client, classes=[CAR_3D])
+    registered = client.post(
+        f"/projects/{project}/sources/point-clouds",
+        files=[("files", ("survey.ply", _double_ply(GEOREFERENCED), "application/octet-stream"))],
+        data={"frame": "lidar_flu"},
+    )
+    assert registered.status_code == 201, registered.text
+    job = client.post(f"/sources/{registered.json()['id']}/ingest-jobs")
+    runner.wait()
+    batch = client.get(f"/ingest-jobs/{job.json()['id']}").json()["batch_id"]
+    (asset,) = [item["id"] for item in client.get(f"/batches/{batch}/assets").json()["items"]]
+
+    buffer = _points(client, project, asset).content
+    magic, version, count, flags = struct.unpack_from("<4sIII", buffer)
+    assert (magic, version, count, flags) == (b"VSPC", 1, len(GEOREFERENCED), 4)
+    origin = struct.unpack_from("<3d", buffer, 16)
+    xyz = struct.unpack_from(f"<{3 * count}f", buffer, 40)
+    assert len(buffer) == 40 + 12 * count
+    assert origin[2] == 0.0
+    error = max(
+        abs(origin[axis] + xyz[3 * i + axis] - point[axis])
+        for i, point in enumerate(GEOREFERENCED)
+        for axis in range(3)
+    )
+    assert error < 1e-5
+    assert _points(client, project, asset).content == buffer
+
+
 def test_the_published_contract_describes_labels_on_a_scan() -> None:
     from visionset.server.main import app
 

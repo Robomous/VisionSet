@@ -26,6 +26,8 @@ export interface OrbitCamera {
   readonly projection?: "perspective" | "orthographic";
 }
 
+const NO_ORIGIN: Point3D = [0, 0, 0];
+
 export const FIELD_OF_VIEW = Math.PI / 4;
 export const MAX_PITCH = (89 * Math.PI) / 180;
 /** The eye never drops below the target along the declared up, so the scan is not seen from underneath. */
@@ -45,13 +47,13 @@ export function sceneRadius(bounds: PointBounds): number {
  * The box the opening view frames: each axis cut to its 2nd–98th percentile, so
  * a few far returns do not shrink the scan to a speck. `null` for no points.
  */
-export function framingBounds(positions: Float32Array): PointBounds | null {
+export function framingBounds(positions: Float32Array, origin: Point3D = NO_ORIGIN): PointBounds | null {
   const count = Math.floor(positions.length / 3);
   if (count === 0) return null;
   const ranges = [0, 1, 2].map((axis) => robustRange(count, (i) => positions[i * 3 + axis]));
   return {
-    minimum: [ranges[0][0], ranges[1][0], ranges[2][0]],
-    maximum: [ranges[0][1], ranges[1][1], ranges[2][1]],
+    minimum: [ranges[0][0] + origin[0], ranges[1][0] + origin[1], ranges[2][0] + origin[2]],
+    maximum: [ranges[0][1] + origin[0], ranges[1][1] + origin[1], ranges[2][1] + origin[2]],
   };
 }
 
@@ -59,12 +61,13 @@ export function framingBounds(positions: Float32Array): PointBounds | null {
  * The level a new box stands on: the scan's low robust height along the
  * declared up, so a few returns under the road do not sink it. `0` for no points.
  */
-export function groundHeight(positions: Float32Array, frame: ScanFrame): number {
+export function groundHeight(positions: Float32Array, frame: ScanFrame, origin: Point3D = NO_ORIGIN): number {
   const count = Math.floor(positions.length / 3);
   if (count === 0) return 0;
-  return robustRange(count, (i) =>
+  const low = robustRange(count, (i) =>
     heightOf(frame, [positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]]),
   )[0];
+  return low + heightOf(frame, origin);
 }
 
 /** From behind the forward axis and above, far enough to hold `bounds`. */
@@ -210,21 +213,29 @@ export function multiply(a: Float32Array, b: Float32Array): Float32Array {
   return out;
 }
 
-/** Projection × view, with depth planes wide enough for the scene from anywhere the camera can be. */
+/**
+ * Projection × view, with depth planes wide enough for the scene from anywhere the camera can be.
+ *
+ * With an `origin`, the matrix takes coordinates relative to it: the camera is
+ * moved by `-origin` in doubles before anything is rounded to float32, so a
+ * scan far from its frame's zero still draws without jitter.
+ */
 export function viewProjection(
   camera: OrbitCamera,
   frame: ScanFrame,
   aspect: number,
   radius: number,
+  origin: Point3D = NO_ORIGIN,
 ): Float32Array {
-  const far = (camera.distance + 2 * radius) * 2;
+  const local = { ...camera, target: subtract(camera.target, origin) };
+  const far = (local.distance + 2 * radius) * 2;
   const ratio = aspect > 0 ? aspect : 1;
-  if (camera.projection === "orthographic") {
+  if (local.projection === "orthographic") {
     // The near plane sits as far behind the eye as the far one ahead, so nothing above a close eye is cut.
-    const half = viewHalfHeight(camera);
-    return multiply(orthographic(half * ratio, half, -far, far), lookAt(camera, frame));
+    const half = viewHalfHeight(local);
+    return multiply(orthographic(half * ratio, half, -far, far), lookAt(local, frame));
   }
-  return multiply(perspective(FIELD_OF_VIEW, ratio, far / 10_000, far), lookAt(camera, frame));
+  return multiply(perspective(FIELD_OF_VIEW, ratio, far / 10_000, far), lookAt(local, frame));
 }
 
 /** Where a frame point lands, in normalized device coordinates; `null` behind the eye. */

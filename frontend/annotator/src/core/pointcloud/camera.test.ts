@@ -200,3 +200,32 @@ describe("groundHeight", () => {
     expect(groundHeight(new Float32Array(0), "lidar_flu")).toBe(0);
   });
 });
+
+describe("a sample far from its frame's zero", () => {
+  const ORIGIN: Point3D = [512_364, 4_123_447, 0];
+
+  it("frames and grounds the scan in the frame, not relative to the origin", () => {
+    const positions = new Float32Array(300 * 3);
+    for (let i = 0; i < 300; i += 1) positions.set([i * 0.1 - 15, 0, (i % 10) * 0.2 - 1.5], i * 3);
+    const bounds = framingBounds(positions, ORIGIN);
+    expect(bounds?.minimum[0]).toBeGreaterThan(ORIGIN[0] - 16);
+    expect(bounds?.maximum[0]).toBeLessThan(ORIGIN[0] + 16);
+    expect(bounds?.minimum[1]).toBe(ORIGIN[1]);
+    expect(groundHeight(positions, "lidar_flu", ORIGIN)).toBeCloseTo(-1.5, 5);
+    expect(groundHeight(positions, "camera_rdf", [0, 100, 0])).toBeCloseTo(-100, 5);
+  });
+
+  it("projects a relative position where the frame point it stands for lands", () => {
+    const frame: ScanFrame = "lidar_flu";
+    const camera = { ...homeCamera(BOUNDS), target: [ORIGIN[0] + 1, ORIGIN[1] - 2, 0.5] as Point3D };
+    const relative = viewProjection(camera, frame, 1.5, 20, ORIGIN);
+    const near = { ...camera, target: [1, -2, 0.5] as Point3D };
+    const reference = viewProjection(near, frame, 1.5, 20);
+    for (const point of [[0.25, 0.5, 0.75], [-3, 4, 1]] as const) {
+      const a = projectToNdc(relative, point);
+      const b = projectToNdc(reference, point);
+      expect(a).not.toBeNull();
+      for (let axis = 0; axis < 3; axis += 1) expect(a?.[axis]).toBeCloseTo(b?.[axis] ?? Number.NaN, 6);
+    }
+  });
+});

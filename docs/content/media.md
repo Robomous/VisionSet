@@ -311,9 +311,9 @@ passes it over. A pixel-space label (`bbox`, `polygon`, `polyline`) on a scan is
 colour as well as `x`, `y` and `z`. It keeps every `ceil(total / budget)`-th of the scan's finite
 points in file order, so one scan and one budget always give the same points, and returns a
 `PointSample` (in `visionset.kernel.domain`): the `total` before thinning, the `stride`, and
-little-endian buffers of float32 positions, float32 intensity and 8-bit colour, the last two
-`None` when the scan has no such field. A non-finite intensity reads as 0, and a coordinate beyond
-float32's range is held at its edge. Colour is a four-byte PCD `rgb` or `rgba` unpacked
+the `origin`, and little-endian buffers of float32 positions relative to that origin, float32
+intensity and 8-bit colour, the last two `None` when the scan has no such field. A non-finite
+intensity reads as 0, and a position still beyond float32's range is held at its edge. Colour is a four-byte PCD `rgb` or `rgba` unpacked
 from its `0x00RRGGBB`, or PLY `red`, `green` and `blue` together - `uchar` as stored, `ushort` scaled down,
 float read as 0 to 1; a scan with only some of the three channels has no colour. It refuses
 exactly what `probe` refuses.
@@ -324,8 +324,9 @@ and `GET /projects/{project_id}/assets/{asset_id}/points?max_points=N` serves
 
 | Bytes | Content |
 | --- | --- |
-| 0-15 | header, little-endian: the magic `VSPC`, then u32 version (`1`), u32 count, u32 flags (bit 0 intensity, bit 1 rgb) |
-| next `12 x count` | f32 `x, y, z` per point |
+| 0-15 | header, little-endian: the magic `VSPC`, then u32 version (`1`), u32 count, u32 flags (bit 0 intensity, bit 1 rgb, bit 2 origin) |
+| next 24, if bit 2 | f64 origin `x, y, z` |
+| next `12 x count` | f32 `x, y, z` per point, relative to the origin |
 | next `4 x count`, if bit 0 | f32 intensity per point |
 | next `3 x count`, if bit 1 | u8 `r, g, b` per point |
 
@@ -334,9 +335,28 @@ and `GET /projects/{project_id}/assets/{asset_id}/points?max_points=N` serves
 `ASSET_NOT_FOUND`: it has no points. The scan's full count and bounds are not in the buffer -
 they are the asset's `point_cloud` metadata.
 
-**The cost is a decode per request.** Nothing is cached: the scan is parsed again on every call,
-so a ten-million-point scan costs what its ingest did, and the response is held in memory, at 16
-bytes a point with both fields - 8 MB at the default budget, 32 MB at the maximum.
+**Positions are relative to an origin, so float32 keeps a georeferenced scan's precision.** At a
+million metres float32's spacing is six centimetres. A point is `origin + position`. Each axis whose
+median finite point lies 8,192 or more from zero (`POINT_ORIGIN_THRESHOLD`) is offset by that
+median, rounded to a whole unit; every other axis by zero. The median is read from an even stride
+of at most 4,096 of every finite point (`POINT_ORIGIN_SUBSAMPLE`), not from the bounds, so a stray
+return at zero cannot pull the origin off the scan, and it depends on the scan alone, never on the
+budget. A scan near its frame's zero has a zero origin and no bit 2, so its buffer is laid out
+as it was before the origin existed; a reader that does not know bit 2 refuses a buffer that has
+it, rather than drawing it in the wrong place. Labels are not moved: a cuboid or polyline stays in
+the scan's frame, and the viewer subtracts the origin, in doubles, only from what it hands the GPU.
+
+**A decoded sample is cached per workspace.** The first request for a scan and budget decodes the
+whole scan, at what its ingest cost; the sample is then kept in the open workspace's
+`point_samples` cache, keyed by the asset's `content_hash` and the budget. Content addressing is
+what keeps it from going stale: other bytes have another hash, so an entry is only ever served for
+the bytes it was decoded from. The cache holds at most 128 MiB of samples and drops the least
+recently used first; a sample bigger than that is served and not kept. Concurrent requests for one
+uncached scan and budget decode once and share the answer; a refusal is raised to each of them and
+not kept. At 19 bytes a point with both fields, one sample is about 9.5 MB at the default budget
+and 38 MB at the maximum. The response is held in memory as well: `PointSample.encode()` joins
+the sections into one new buffer on every request, cached or not, so each request in flight holds
+one more copy of its sample.
 
 ## Video moved to the browser
 

@@ -32,7 +32,7 @@ from visionset.kernel.domain.media import (
     PointCloudFormat,
     PointCloudMetadata,
 )
-from visionset.kernel.domain.point_sample import PointSample, decimation_stride
+from visionset.kernel.domain.point_sample import PointSample, decimation_stride, sample_origin
 from visionset.kernel.errors import CorruptMedia, MediaError, UnsupportedMedia
 from visionset.kernel.ports import point_cloud_processor as _port
 from visionset.kernel.ports.image_processor import DEFAULT_THUMBNAIL_MAX_EDGE
@@ -694,11 +694,14 @@ def _le_bytes(values: array[Any]) -> bytes:
     return values.tobytes()
 
 
-def _positions(cloud: _Cloud, stride: int) -> bytes:
+def _positions(cloud: _Cloud, stride: int, origin: tuple[float, float, float]) -> bytes:
     count = len(range(0, len(cloud.xs), stride))
     positions = array("f", bytes(12 * count))
     for axis in range(3):
-        positions[axis::3] = _clamped_f32(cloud.axis(axis)[::stride])
+        values = cloud.axis(axis)[::stride]
+        if offset := origin[axis]:
+            values = array("d", (v - offset for v in values))
+        positions[axis::3] = _clamped_f32(values)
     return _le_bytes(positions)
 
 
@@ -808,18 +811,21 @@ class StdlibPointCloudProcessor:
         Intensity comes back as float32, a non-finite value as 0. Colour comes
         back as 8 bits a channel: PCD ``rgb``/``rgba`` unpacked from its
         ``0x00RRGGBB``, PLY ``uchar`` channels as stored, ``ushort`` ones scaled
-        down and float ones read as 0 to 1. A coordinate beyond float32's range
-        is held at its edge.
+        down and float ones read as 0 to 1. Positions are relative to the
+        origin ``sample_origin`` picks from every finite point, and one still
+        beyond float32's range is held at its edge.
         """
         if budget < 1:
             raise ValueError(f"budget must be at least 1 point, got {budget}")
         named = _stream_name(content, name)
         cloud = _decode(content, named, want_extras=True)
         stride = decimation_stride(len(cloud.xs), budget)
+        origin = sample_origin(cloud.xs, cloud.ys, cloud.zs)
         return PointSample(
             total=len(cloud.xs),
             stride=stride,
-            positions=_positions(cloud, stride),
+            origin=origin,
+            positions=_positions(cloud, stride, origin),
             intensity=_intensity(cloud, stride),
             rgb=_rgb(cloud, stride),
         )

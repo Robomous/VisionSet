@@ -100,6 +100,14 @@ nothing was being distributed. This is the first version that is.
   (409) while an asset it applies to holds a `cuboid_3d` or `polyline_3d` label, on every surface, instead of
   silently re-reading those labels against the new camera. Setting the identical calibration again changes
   nothing, and a first calibration where none applied, or a change nothing depends on, is still accepted (#1067).
+- **A georeferenced scan keeps its precision on the `points` wire.** Positions are sent relative to an origin:
+  each axis whose median point lies 8,192 or more from zero is offset by that median, rounded to a whole unit,
+  and the `VSPC` buffer carries it as f64 `x, y, z` after the header under flag bit 2. A scan near zero has no
+  origin and its buffer is unchanged. The viewer keeps labels and the camera in the scan's frame and subtracts the origin, in
+  doubles, only from what it draws; cuboid and polyline segments are built in doubles (#1068).
+- **The `points` route decodes a scan once per budget.** The decoded sample is cached per open workspace, keyed
+  by the asset's content hash and the budget, bounded at 128 MiB with the least recently used dropped first;
+  concurrent requests for the same uncached sample decode once (#1068).
 - **Annotator: Finish job on a read-only page, and the header at 768 px.** On a read-only page Finish job is
   natively `disabled`, and its reason stays reachable by hover and keyboard focus on a wrapper around it. Below a
   56rem header the job progress drops its bar (the count stays) and the save state shows its icon alone (`Not
