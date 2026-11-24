@@ -194,6 +194,11 @@ variable of its own rather than more meaning loaded onto `CI`, which the browser
 for `reuseExistingServer` and which used to decide the worker count as a side effect.
 Actions sets nothing, so CI keeps the count its runners were measured at.
 
+**`VISIONSET_REQUIRE_WEBGL=1` makes a browser without WebGL2 fail the point-cloud e2e
+spec** (`frontend/app/e2e/pointCloud.spec.ts`) instead of skipping it. Unset, a missing
+WebGL2 context skips those tests with the reason attached. CI's `annotator e2e (chromium)`
+job sets it, because its headless chromium provides WebGL2 through SwiftShader.
+
 **`ui-core`'s vitest suite caps its own workers at a quarter of the logical cores**
 (`frontend/ui-core/vitest.config.ts`), because each worker carries a whole jsdom and an
 uncapped run on a loaded machine fails whichever tests lose the CPU rather than any that

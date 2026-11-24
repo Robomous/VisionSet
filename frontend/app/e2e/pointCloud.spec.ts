@@ -6,7 +6,8 @@
  * The browser has to offer WebGL2, so the first thing each test does is ask it.
  * Without one the test is skipped with the reason attached, and
  * VISIONSET_REQUIRE_WEBGL=1 turns that skip into a failure — for a runner that is
- * meant to have a GPU, or SwiftShader, and must not pass by drawing nothing.
+ * meant to have a GPU, or SwiftShader, and must not pass by drawing nothing. CI's
+ * `annotator e2e (chromium)` job sets it.
  */
 
 import { expect, test, type Locator, type Page, type Request } from "@playwright/test";

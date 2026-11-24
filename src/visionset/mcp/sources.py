@@ -58,7 +58,8 @@ from visionset.wire import shapes
 #: lives and that no tool here reaches it. True of a lone JPEG too, which is the
 #: other way to arrive at this branch.
 VIDEO_IS_A_BROWSER_IMPORT: Final = (
-    "ingest takes a directory of still images. A video is imported in the browser, "
+    "ingest takes a directory of still images, or of point-cloud scans when `frame` "
+    "is given. A video is imported in the browser, "
     "which decodes it on the user's own machine and uploads the frames: ask the user "
     "to open the project's Ingest screen in the VisionSet UI. No tool here decodes "
     "video, and re-encoding the clip yourself is not a substitute."

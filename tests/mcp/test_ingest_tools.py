@@ -201,7 +201,7 @@ def test_a_lone_image_gets_the_same_refusal(
 
     message = error(call("ingest", project=named, path=str(photo)))["message"]
 
-    assert "directory of still images" in message
+    assert "directory of still images, or of point-cloud scans when `frame` is given" in message
 
 
 def test_the_batch_can_be_named(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
