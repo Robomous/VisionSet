@@ -81,6 +81,13 @@ nothing was being distributed. This is the first version that is.
 
 ### Fixed
 
+- **The ingest refusal for a video or a single file names point-cloud scans.** The CLI's `ingest` and the MCP
+  `ingest` tool, handed something that is not a directory, now say they take a directory of still images or of
+  point-cloud scans (`--point-clouds` on the CLI, `frame` on MCP) before pointing a video at the browser import
+  (#1068).
+- **The point-cloud e2e spec fails in CI when WebGL2 is missing.** The `annotator e2e (chromium)` job sets
+  `VISIONSET_REQUIRE_WEBGL=1`, so a runner without a WebGL2 context fails those tests instead of skipping them
+  (#1068).
 - **Scan batches are counted in scans.** On a batch of point-cloud scans, the Overview's batch row ("1 scan",
   "N scans") and its sheet ("Scans"), the batch-delete dialog and the Complete button's line ("N scans still to
   annotate or skip") no longer say images or frames; image batches keep their wording. The delete dialog's count

@@ -78,7 +78,8 @@ _FAILURE_COLUMNS: Final = ("FILE", "KIND", "REASON")
 #: own remedy, because "open the Ingest screen" and "there is no tool for this"
 #: are answers to different readers.
 VIDEO_IS_A_BROWSER_IMPORT: Final = (
-    "ingest takes a directory of still images. A video is imported in the browser: "
+    "ingest takes a directory of still images, or of point-cloud scans with "
+    "--point-clouds. A video is imported in the browser: "
     "run `visionset server`, open the project's Ingest screen and choose the clip "
     "there — it is decoded on your machine and uploaded as frames. Nothing in this "
     "process decodes video."

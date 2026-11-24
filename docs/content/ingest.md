@@ -353,8 +353,8 @@ file very much included - it refuses rather than guessing:
 
 ```
 $ visionset ingest drive.mp4 --project road-signs
-Error: drive.mp4 is not a directory. ingest takes a directory of still images. A video is
-imported in the browser: run `visionset server`, open the project's Ingest screen and choose
+Error: drive.mp4 is not a directory. ingest takes a directory of still images, or of
+point-cloud scans with --point-clouds. A video is imported in the browser: run `visionset server`, open the project's Ingest screen and choose
 the clip there — it is decoded on your machine and uploaded as frames. Nothing in this process
 decodes video.
 ```
