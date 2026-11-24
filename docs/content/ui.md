@@ -440,8 +440,12 @@ card says what it means, not a badge beside the name - with Labeled (*18 of 48 �
 the jobs, and how many nobody does). The rest - Review (accepted, waiting, skipped), the schema
 version, Kind (a correction or not) and how many of its images are In dataset - wait behind
 *N more properties*, which opens in place, cannot be tabbed into while folded, and stays open
-as J/K walks the batches. Then its **jobs**: who holds each, how far it has come
-(`done/images`, read per job), and *Open* into the editor on that job, or *Done*. When the
+as J/K walks the batches. Then its **jobs**, one row each in a single bordered list: the job's
+number, its state as a glyph (a ring not started, a pie filling by the quarter, the check once
+done), who holds it, how far it has come (`done/images`, read per job; pointed at, it opens the
+job's split by annotation state), and where the row leads - *Open* into the editor on that job,
+or *View* once it is done, read-only. The whole row is the way in, and ↑/↓ walk the rows; a host
+with no editor to send a job to says its state in words instead. When the
 title scrolls out of view on the way down the jobs, the name, the state and how far it has come
 gather into one line pinned under the toolbar; it echoes the page, so assistive tech is not told
 twice, and pressing it scrolls back up. The panel opens with focus on the batch's forward step,
