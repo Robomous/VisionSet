@@ -46,9 +46,11 @@ import {
   yawOfHeading,
   type CuboidFace,
 } from "../cuboid";
+import type { PointSample } from "../decode";
 import { fromForwardLeftUp, heightOf } from "../frame";
 import { insertPolylineVertex, isDrawablePolyline, movePolylineVertex, removePolylineVertex } from "../polyline";
 import { closestOnAxis, rayGroundHit, screenRay } from "../ray";
+import { snapHeight } from "../snap";
 import { add, dot, subtract } from "../vector";
 import { hitTest3D, yawRing, type Hit3D, type HitTolerances3D, type Scene3D } from "./scene";
 import type { ScanDocument } from "./scanDocument";
@@ -62,6 +64,8 @@ export interface ScanContext extends Scene3D {
   readonly tool: ScanTool;
   /** The level a new box's footprint is drawn on, along the frame's up axis. */
   readonly groundHeight: number;
+  /** The loaded points, whose height a polyline vertex takes where one is near the pointer. */
+  readonly points?: PointSample | null;
   readonly tolerances: HitTolerances3D;
   /** Called once per drawn box, never inside a projection. */
   readonly mint: IdFactory;
@@ -244,7 +248,7 @@ function fromIdle(event: ScanEvent, context: ScanContext): ScanTransition {
     return to({ type: "drawing-footprint", labelClass: tool.labelClass, anchor, corner: anchor });
   }
   if (tool.kind === "polyline") {
-    const first = rayGroundHit(ray, frame, context.groundHeight);
+    const first = vertexUnder(event.point, context, context.groundHeight);
     if (first === null) return to(SCAN_IDLE);
     return to({ type: "drawing-polyline", labelClass: tool.labelClass, points: [first], cursor: first });
   }
@@ -255,7 +259,7 @@ function fromIdle(event: ScanEvent, context: ScanContext): ScanTransition {
   }
   const annotation = context.document.annotations.get(hit.id);
   if (annotation !== undefined && isPolylineScanAnnotation(annotation)) {
-    return pressPolyline(annotation.id, annotation.label_class, annotation.geometry, hit, event.modifiers, context);
+    return pressPolyline(annotation.id, annotation.label_class, annotation.geometry, hit, event, context);
   }
   if (annotation === undefined || !isCuboidScanAnnotation(annotation)) return to(SCAN_IDLE);
   const origin = annotation.geometry;
@@ -304,7 +308,7 @@ function pressPolyline(
   labelClass: string,
   origin: Polyline3DGeometry,
   hit: Hit3D,
-  modifiers: Modifiers,
+  { point, modifiers }: { readonly point: Point; readonly modifiers: Modifiers },
   context: ScanContext,
 ): ScanTransition {
   const { frame } = context;
@@ -323,13 +327,14 @@ function pressPolyline(
       if (isToggleModifier(modifiers)) return to(SCAN_IDLE, select(toggleSelection(context.selection, id)));
       const already = context.selection.size === 1 && context.selection.has(id);
       if (!already) return to(SCAN_IDLE, select(selectOnly(id)));
-      const inserted = insertPolylineVertex(origin, hit.segment, hit.point);
+      const at = surfaceUnder(point, context) ?? hit.point;
+      const inserted = insertPolylineVertex(origin, hit.segment, at);
       const moving: ScanState = {
         type: "moving-vertex",
         id,
         origin: inserted,
         index: hit.segment + 1,
-        level: heightOf(frame, hit.point),
+        level: heightOf(frame, at),
       };
       return to(moving, { kind: "stage", id, geometry: inserted });
     }
@@ -345,10 +350,10 @@ function fromPolyline(
 ): ScanTransition {
   switch (event.type) {
     case "pointer-move":
-      return to({ ...state, cursor: groundUnder(event.point, context) });
+      return to({ ...state, cursor: vertexUnder(event.point, context, context.groundHeight) });
     case "pointer-down": {
       if (event.button !== "primary") return to(state);
-      const next = groundUnder(event.point, context);
+      const next = vertexUnder(event.point, context, context.groundHeight);
       const last = state.points[state.points.length - 1]!;
       if (next === null || samePoint(next, last)) return to(state);
       return to({ ...state, points: [...state.points, next], cursor: next });
@@ -504,7 +509,7 @@ function dragged(state: Drag, point: Point, context: ScanContext): Cuboid3DGeome
   const { frame } = context;
   const ray = screenRay(context.camera, frame, context.viewport, point);
   if (state.type === "moving-vertex") {
-    const at = rayGroundHit(ray, frame, state.level);
+    const at = vertexUnder(point, context, state.level);
     if (at === null) return null;
     const moved = movePolylineVertex(state.origin, state.index, at);
     return isDrawablePolyline(moved.points) ? moved : null;
@@ -529,6 +534,22 @@ function dragged(state: Drag, point: Point, context: ScanContext): Cuboid3DGeome
     default:
       return unreachable(state);
   }
+}
+
+/** Under the pointer at the height of the scan point it is on; `null` when no point is near enough. */
+function surfaceUnder(point: Point, context: ScanContext): Point3D | null {
+  const { points, frame, camera, viewport } = context;
+  if (points === undefined || points === null) return null;
+  const height = snapHeight(points, frame, camera, viewport, point);
+  return height === null ? null : rayGroundHit(screenRay(camera, frame, viewport, point), frame, height);
+}
+
+/** Where a polyline vertex goes under the pointer: on the scan's surface there, else on the level `fallback`. */
+function vertexUnder(point: Point, context: ScanContext, fallback: number): Point3D | null {
+  return (
+    surfaceUnder(point, context) ??
+    rayGroundHit(screenRay(context.camera, context.frame, context.viewport, point), context.frame, fallback)
+  );
 }
 
 function groundUnder(point: Point, context: ScanContext): Point3D | null {

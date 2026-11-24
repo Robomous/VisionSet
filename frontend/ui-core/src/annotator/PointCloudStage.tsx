@@ -201,9 +201,15 @@ function ScanView({
   const [topView, setTopView] = useState<ScanCamera | null>(null);
 
   const setGround = scan?.setGroundHeight;
+  const setPoints = scan?.setPoints;
   useEffect(() => {
     if (setGround !== undefined && frame !== null) setGround(groundHeight(sample.positions, frame, sample.origin));
   }, [setGround, sample, frame]);
+  useEffect(() => {
+    if (setPoints === undefined) return;
+    setPoints(sample);
+    return () => setPoints(null);
+  }, [setPoints, sample]);
 
   const editing = scan?.editing === true;
   useEffect(() => {

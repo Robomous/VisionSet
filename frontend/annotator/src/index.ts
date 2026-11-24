@@ -131,6 +131,7 @@ export {
   type Ray,
   type ScanViewport,
 } from "./core/pointcloud/ray";
+export { SNAP_NEAR_EQUAL_PX, SNAP_TOLERANCE_PX, snapHeight } from "./core/pointcloud/snap";
 export {
   CUBOID_FACES,
   MIN_CUBOID_SIZE,

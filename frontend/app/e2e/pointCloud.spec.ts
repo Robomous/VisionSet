@@ -32,8 +32,13 @@ const CAR: Wire["AnnotationOut"] = {
   job_id: null,
 };
 
+interface ScanBuffer {
+  readonly body: Buffer;
+  readonly count: number;
+}
+
 /** A 60 m x 40 m ground grid with a car-sized lump on it, intensity rising with x. */
-function scanBuffer(): { readonly body: Buffer; readonly count: number } {
+function scanBuffer(): ScanBuffer {
   const points: [number, number, number][] = [];
   for (let x = -30; x <= 30; x += 0.5) {
     for (let y = -20; y <= 20; y += 0.5) points.push([x, y, -0.8]);
@@ -41,6 +46,24 @@ function scanBuffer(): { readonly body: Buffer; readonly count: number } {
   for (let x = 6; x <= 10; x += 0.2) {
     for (let y = -1; y <= 1; y += 0.2) points.push([x, y, 0.8]);
   }
+  return bufferOf(points);
+}
+
+/** The ground rising at 1 in 10 from x = 0 onwards. */
+function rampHeight(x: number): number {
+  return x > 0 ? -0.8 + 0.1 * x : -0.8;
+}
+
+/** The same 60 m x 40 m grid, flat for x <= 0 and a ramp beyond. */
+function rampBuffer(): ScanBuffer {
+  const points: [number, number, number][] = [];
+  for (let x = -30; x <= 30; x += 0.5) {
+    for (let y = -20; y <= 20; y += 0.5) points.push([x, y, rampHeight(x)]);
+  }
+  return bufferOf(points);
+}
+
+function bufferOf(points: readonly (readonly [number, number, number])[]): ScanBuffer {
   const count = points.length;
   const body = Buffer.alloc(16 + count * 16);
   body.write("VSPC", 0, "latin1");
@@ -118,6 +141,8 @@ interface ScanWorld {
   /** The frame the source declares; `null` declares none. */
   readonly frame?: Wire["SourceOut"]["frame"];
   readonly schema?: Wire["SchemaVersionOut"];
+  /** The points served; absent, the ground grid with a car on it. */
+  readonly scan?: ScanBuffer;
 }
 
 async function openScan(page: Page, world: ScanWorld = {}): Promise<Request[]> {
@@ -139,7 +164,7 @@ async function serveScan(page: Page, lifecycle: Lifecycle, world: ScanWorld = {}
       return route.fulfill({ json: world.schema });
     }
     if (path === `/projects/${PROJECT}/assets/asset-1/points`) {
-      return route.fulfill({ contentType: "application/octet-stream", body: SCAN.body });
+      return route.fulfill({ contentType: "application/octet-stream", body: (world.scan ?? SCAN).body });
     }
     if (path === `/sources/${SOURCE}`) {
       return route.fulfill({
@@ -836,4 +861,37 @@ test("at the 768 px floor, the status tag and object count cover none of the sca
     const [a, b] = [await status.boundingBox(), await page.getByTestId("scan-perspective").boundingBox()];
     return a !== null && b !== null && a.x + a.width <= b.x + b.width;
   }).toBe(true);
+});
+
+test("in Edit, polyline vertices drawn across a ramp take the ramp's height, and the flat part's", async ({ page }) => {
+  const sent = await openScan(page, { schema: POLYLINE_SCHEMA, scan: rampBuffer() });
+  const view = page.getByTestId("point-cloud-canvas");
+  await expect.poll(() => drawCount(view)).toBeGreaterThan(0);
+  await page.getByTestId("scan-edit-toggle").click();
+  const top = page.getByTestId("scan-top-down-canvas");
+  await expect.poll(() => drawCount(top)).toBeGreaterThan(0);
+  await page.getByTestId("scan-tool-polyline").click();
+
+  const box = await top.boundingBox();
+  if (box === null) throw new Error("the top-down view has no box");
+  const [cx, cy] = [box.width / 2, box.height / 2];
+  // Forward reads up the screen: one vertex on the flat part, two up the ramp.
+  for (const [x, y] of [[cx, cy + 80], [cx + 10, cy - 40], [cx + 20, cy - 120]] as const) {
+    await page.mouse.click(box.x + x, box.y + y);
+  }
+  await expect(page.getByTestId("scan-top-draft-vertex-2")).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("object-count")).toHaveText("2 objects");
+
+  await page.getByTestId("point-cloud-gl").focus();
+  await page.keyboard.press("ControlOrMeta+s");
+  await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
+  const post = sent.find((request) => request.method() === "POST" && request.url().endsWith(`/jobs/${JOB}/annotations`));
+  const [created] = post?.postDataJSON() as Wire["AnnotationCreate"][];
+  const { points } = created?.geometry as Wire["Polyline3DBody"];
+  expect(points).toHaveLength(3);
+  for (const [x, , z] of points) expect(Math.abs(z - rampHeight(x))).toBeLessThan(0.1);
+  expect(points[0]?.[0]).toBeLessThan(0);
+  expect(points[2]?.[2]).toBeGreaterThan(points[1]?.[2] ?? Infinity);
+  expect(points[2]?.[2]).toBeGreaterThan(-0.3);
 });

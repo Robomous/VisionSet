@@ -66,6 +66,10 @@ nothing was being distributed. This is the first version that is.
   below two), and Delete removes the label; an edit that would leave every vertex in one place is refused.
   Vertex visibility is not editable on a scan: a new polyline leaves it out, so it stays unknown, and an imported
   polyline keeps its declared visibility, with an inserted vertex recorded as unlabeled (#1065).
+- **Scan polyline vertices snap to the scan's height.** Placing, inserting or dragging a `polyline_3d` vertex
+  takes the height of the scan point nearest the pointer on screen within 10 px, preferring the point nearest
+  the eye, in the perspective and the top-down view; the vertex keeps the pointer's place, and falls back to the
+  ground plane (or, when dragged, its own height) where no point is that close (#1082).
 
 ### Changed
 
