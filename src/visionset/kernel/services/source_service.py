@@ -200,7 +200,8 @@ class SourceService:
         if stored.frame != frame:
             raise CalibrationInUse(
                 f"source {stored.id} declares the {stored.frame} frame and the scans to "
-                f"import are labelled in {frame}; an import never re-declares a frame"
+                f"import are labelled in {frame}; an import never re-declares a frame, even "
+                f"while no scan there holds a label"
             )
         return stored
 

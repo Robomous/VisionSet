@@ -292,7 +292,8 @@ thumbnail is served for revalidation rather than as immutable, so a browser pick
 one at the same URL.
 An [import](import.md) of scans, such as `kitti` or `nuscenes`, writes or reuses the point-cloud source at its
 directory in the dataset's frame, and never re-declares one: a source there in another frame
-refuses the import with `CALIBRATION_IN_USE`.
+refuses the import with `CALIBRATION_IN_USE`, even while none of its scans holds a label - unlike
+registering the directory again, which replaces the frame in that case.
 Stating a camera calibration for a point-cloud directory, or for a scan, is refused with
 `CALIBRATION_NOT_APPLICABLE` (409).
 

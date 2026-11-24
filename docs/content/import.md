@@ -32,7 +32,13 @@ bytes, so it is a `point_cloud` asset like an ingested one, with its preview. Th
 writes a point-cloud source at the import directory declaring the dataset's frame, or reuses the
 one already there; one there declaring another frame refuses the import with
 `CALIBRATION_IN_USE`, as does a scan already in the project under a source of another frame,
-because its labels would be read in other axes. A scan label has no image to fall outside of, so
+because its labels would be read in other axes. The first is refused even while none of the
+source's scans holds a label, where registering the directory directly with another frame would
+replace the declaration: an import never re-declares a frame, so register the directory with the
+import's frame first when nothing depends on the old one. The frame of every labelled scan is
+checked again inside the commit's transaction, under the write lock a frame change takes, so a
+frame declared again while the scans were being stored refuses the import rather than leaving a
+label in axes its source no longer declares. A scan label has no image to fall outside of, so
 none is dropped for its position. The plan counts `scans` and names the `frame`.
 
 An existing schema is never changed by an import. A label the active schema cannot accept refuses

@@ -259,6 +259,8 @@ class ImportService:
                 present = _present(uow.annotations.list(asset.id))
                 new, repeated = _new_labels(present, item.labels)
                 already += repeated
+                if frame is not None:
+                    _require_frame_still_declared(uow, asset, new, frame, item)
                 for label in new:
                     proposed.append(
                         Annotation(
@@ -514,7 +516,9 @@ class ImportService:
                 CalibrationInUse(
                     f"source {registered.id} at the import root declares the "
                     f"{registered.frame} frame and the scans are labelled in {frame}; an "
-                    f"import never re-declares a frame"
+                    f"import never re-declares a frame, even while no scan there holds a "
+                    f"label, so register the directory with {frame} first if nothing "
+                    f"depends on {registered.frame}"
                 )
             )
         if active is not None:
@@ -800,3 +804,29 @@ def _new_labels(
         else:
             new.append(label)
     return new, len(labels) - len(new)
+
+
+def _require_frame_still_declared(
+    uow: UnitOfWork,
+    asset: Asset,
+    labels: Sequence[ImportedLabel],
+    frame: ScanFrame,
+    scan: ImportedImage | ImportedScan,
+) -> None:
+    """Refuse a commit whose 3D labels land on a scan whose source declares another frame now.
+
+    The plan checked this, but a deduplicated scan can belong to another source,
+    whose frame may be declared again while the blobs are written. The caller
+    holds the write lock, the one a frame change takes, so this answer stands
+    until the labels commit.
+    """
+    if not any(geometry_needs_scan_frame(one.geometry, modality=asset.modality) for one in labels):
+        return
+    source = None if asset.source_id is None else uow.sources.get(asset.source_id)
+    declared = None if source is None else source.frame
+    if declared != frame:
+        raise CalibrationInUse(
+            f"scan {str(scan.path)!r} is asset {asset.id}, whose source now declares "
+            f"{declared or 'no frame'}, and the source labels it in {frame}; an import never "
+            f"re-reads a label in other axes"
+        )

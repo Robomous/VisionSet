@@ -371,3 +371,32 @@ def test_a_scan_already_ingested_in_another_frame_refuses_its_labels(
 
     assert plan.new_assets == 1
     assert any("velodyne/000000.bin" in conflict for conflict in plan.conflicts)
+
+
+def test_a_frame_declared_again_during_the_blob_writes_refuses_the_commit(
+    workspace: WorkspaceService, tmp_path: Path
+) -> None:
+    project = ProjectService(workspace).create("drive")
+    src = write_kitti_source(tmp_path / "src")
+    ingested = tmp_path / "ingested"
+    ingested.mkdir()
+    layout = ScanLayout(fields=("x", "y", "z", "intensity"))
+    (ingested / "front.pcd").write_bytes(layout.pcd_header(len(SCAN)) + scan_bytes())
+    sources = SourceService(workspace)
+    other = sources.register_point_clouds(project.id, ingested, frame=ScanFrame.LIDAR_FLU)
+    run = IngestService(workspace).ingest(other.id)
+    (scan,) = run.assets
+    assert run.batch_id is not None
+    BatchService(workspace).delete(run.batch_id, confirm=True)
+    imports = ImportService(workspace)
+    assert not imports.inspect(project.id, KittiImporter(), src).conflicts
+
+    def redeclare(done: int, total: int) -> None:
+        if done == 1:
+            sources.register_point_clouds(project.id, ingested, frame=ScanFrame.CAMERA_RDF)
+
+    with pytest.raises(CalibrationInUse, match="now declares camera_rdf"):
+        imports.commit(project.id, KittiImporter(), src, consent=EVERYTHING, on_progress=redeclare)
+
+    with workspace.unit_of_work() as uow:
+        assert uow.annotations.list(scan.id) == []
