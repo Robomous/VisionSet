@@ -27,7 +27,7 @@ import type { AutoLabel } from "./useAutoLabel";
 /** A press answers with a small scale and nothing else; hover moves nothing. */
 const PRESS = "transition-[scale] duration-100 ease-out active:scale-[0.97] motion-reduce:transition-none";
 
-const images = (count: number): string => `${formatCount(count)} ${count === 1 ? "image" : "images"}`;
+const assets = (count: number): string => `${formatCount(count)} ${count === 1 ? "asset" : "assets"}`;
 
 function rowStyle(shown: boolean, reduced: boolean): CSSProperties {
   return {
@@ -69,7 +69,7 @@ export function AutoLabelLine({ offer }: { readonly offer: AutoLabel }): JSX.Ele
             <Bot className="size-3.5" strokeWidth={1.75} />
           </span>
           <p className="min-w-0 truncate" data-testid="prelabel-offer-text">
-            <span className="font-medium tabular-nums">{images(said)}</span>
+            <span className="font-medium tabular-nums">{assets(said)}</span>
             <span className="text-muted-foreground">
               {" "}
               {said === 1 ? "has" : "have"} no labels yet. A model can draft {them} for you to check.
@@ -126,7 +126,7 @@ export function AutoLabelTool({ offer }: { readonly offer: AutoLabel }): JSX.Ele
           <WandSparkles data-morph-anchor="" aria-hidden="true" />
         </Button>
       </TooltipTrigger>
-      <TooltipContent>{offer.waiting > 0 ? `Auto-label ${images(offer.waiting)}` : "Auto-label batches"}</TooltipContent>
+      <TooltipContent>{offer.waiting > 0 ? `Auto-label ${assets(offer.waiting)}` : "Auto-label batches"}</TooltipContent>
     </Tooltip>
   );
 }

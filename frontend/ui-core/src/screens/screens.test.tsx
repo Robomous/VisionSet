@@ -129,7 +129,7 @@ describe("the project list", () => {
     await rendered();
     await userEvent.click(screen.getByTestId("sort-images"));
     expect(rowNames()).toEqual(["large", "middle", "small"]);
-    expect(screen.getByRole("columnheader", { name: /images/i }).getAttribute("aria-sort")).toBe("descending");
+    expect(screen.getByRole("columnheader", { name: /assets/i }).getAttribute("aria-sort")).toBe("descending");
     expect(screen.getByRole("columnheader", { name: /activity/i }).getAttribute("aria-sort")).toBe("none");
     // Numbers are grouped the product's way.
     expect(screen.getByTestId("project-large").textContent).toContain("12,480");
@@ -150,7 +150,7 @@ describe("the project list", () => {
     // carries no "left" of its own beside it.
     expect(screen.getByTestId("project-labelling").textContent).toContain("1,840 to annotate");
     expect(screen.getByTestId("project-labelling").textContent).not.toContain("left");
-    expect(stage("fresh")).toBe("No images");
+    expect(stage("fresh")).toBe("No assets");
   });
 
   it("names the latest release's tag alone, with what it holds on hover, or a dash without one", async () => {
@@ -169,7 +169,7 @@ describe("the project list", () => {
     const released = screen.getByTestId("project-released");
     const tag = within(released).getByText("v0.6");
     expect(tag.className).toContain("font-mono");
-    expect(tag.getAttribute("title")).toMatch(/^8,460 images · published /);
+    expect(tag.getAttribute("title")).toMatch(/^8,460 assets · published /);
     expect(released.textContent).not.toContain("8,460");
     const promoted = screen.getByTestId("project-promoted");
     expect(promoted.textContent).not.toContain("480");
@@ -235,7 +235,7 @@ describe("the project list", () => {
     expect(add).toBe(screen.getByTestId("new-project"));
     expect(screen.getByTestId("projects-search").closest("div")?.parentElement?.contains(add)).toBe(true);
     expect(screen.getByTestId("table-pager-range").textContent).toBe("1–2 of 2 projects");
-    expect(screen.getByTestId("projects-images").textContent).toBe("10 images · 10 to annotate");
+    expect(screen.getByTestId("projects-images").textContent).toBe("10 assets · 10 to annotate");
     expect(screen.getByTestId("projects-screen").contains(screen.getByTestId("projects-images"))).toBe(false);
     // The count is the footer's alone: the status bar does not say it again.
     expect(screen.queryByTestId("projects-totals")).toBeNull();
@@ -245,7 +245,7 @@ describe("the project list", () => {
       within(table)
         .getAllByRole("columnheader")
         .map((header) => header.textContent),
-    ).toEqual(["Project", "Images", "Annotated", "Classes", "Status", "Release", "Activity", "Actions"]);
+    ).toEqual(["Project", "Assets", "Annotated", "Classes", "Status", "Release", "Activity", "Actions"]);
     expect(within(table).getAllByTestId(/^project-(?!stage)/).every((row) => row.tagName === "TR")).toBe(true);
     // One count, in the footer: no totals table under the rows.
     expect(screen.queryByTestId("projects-table-totals")).toBeNull();
@@ -270,7 +270,7 @@ describe("the project list", () => {
     // The work left, in words — the ring beside it is decoration for the glance.
     const cell = within(row).getByTestId("remaining-cell");
     expect(cell.textContent).toBe("150 to annotate");
-    expect(cell.getAttribute("title")).toBe("25% of images annotated");
+    expect(cell.getAttribute("title")).toBe("25% of assets annotated");
     expect(within(cell).getByTestId("remaining-ring").getAttribute("aria-hidden")).toBe("true");
     // Tabular figures, so a count that changes never moves the words after it.
     expect(cell.querySelector(".tabular-nums")).not.toBeNull();
@@ -290,7 +290,7 @@ describe("the project list", () => {
     await rendered();
     const cell = within(screen.getByTestId("project-prelabelled")).getByTestId("remaining-cell");
     expect(cell.textContent).toBe("11 to annotate");
-    expect(screen.getByTestId("projects-images").textContent).toBe("13 images · 11 to annotate");
+    expect(screen.getByTestId("projects-images").textContent).toBe("13 assets · 11 to annotate");
     // The ring stays open while anything is left, whatever the images' share.
     const arc = within(cell).getByTestId("remaining-ring").querySelectorAll("circle")[1];
     const [drawn, length] = (arc?.getAttribute("stroke-dasharray") ?? "").split(" ").map(Number);
@@ -310,7 +310,7 @@ describe("the project list", () => {
     expect(images.closest('[role="status"]')).toBe(screen.getByTestId("page-status"));
     expect(screen.getByTestId("table-pager-range").textContent).toBe("1–2 of 2 projects");
     // Over the rows shown, the same count the rows say: 50 left, all in highway.
-    expect(images.textContent).toBe("400 images · 50 to annotate");
+    expect(images.textContent).toBe("400 assets · 50 to annotate");
     expect(screen.queryByTestId("projects-review")).toBeNull();
     expect(screen.queryByTestId("projects-table-totals")).toBeNull();
 
@@ -318,7 +318,7 @@ describe("the project list", () => {
 
     // What the search hid is said, never dropped — and the rest follows the rows left.
     expect(screen.getByTestId("table-pager-range").textContent).toBe("1 project · filtered from 2");
-    expect(screen.getByTestId("projects-images").textContent).toBe("100 images · 50 to annotate");
+    expect(screen.getByTestId("projects-images").textContent).toBe("100 assets · 50 to annotate");
     expect(rowNames()).toEqual(["highway"]);
   });
 
@@ -363,7 +363,7 @@ describe("the project list", () => {
     list(project(PROJECT, "fresh", null, { asset_count: 1, stage: "not_started" }));
     await rendered();
     expect(screen.getByTestId("table-pager-range").textContent).toBe("1 project");
-    expect(screen.getByTestId("projects-images").textContent).toBe("1 image · 1 to annotate");
+    expect(screen.getByTestId("projects-images").textContent).toBe("1 asset · 1 to annotate");
   });
 
   it("sorts from the toolbar's menu, and the header that carries the sort follows", async () => {
@@ -382,16 +382,16 @@ describe("the project list", () => {
     await userEvent.click(await screen.findByTestId("projects-sort-images"));
 
     expect(rowNames()).toEqual(["large", "middle", "small"]);
-    expect(screen.getByTestId("projects-sort").textContent).toBe("Sorted byImages");
-    expect(screen.getByRole("columnheader", { name: /images/i }).getAttribute("aria-sort")).toBe("descending");
+    expect(screen.getByTestId("projects-sort").textContent).toBe("Sorted byAssets");
+    expect(screen.getByRole("columnheader", { name: /assets/i }).getAttribute("aria-sort")).toBe("descending");
     expect(screen.getByRole("columnheader", { name: /activity/i }).getAttribute("aria-sort")).toBe("none");
 
     // Which way, in the same menu.
     await userEvent.click(screen.getByTestId("projects-sort"));
     await userEvent.click(await screen.findByRole("menuitemradio", { name: "Ascending" }));
     expect(rowNames()).toEqual(["small", "middle", "large"]);
-    expect(screen.getByRole("columnheader", { name: /images/i }).getAttribute("aria-sort")).toBe("ascending");
-    expect(screen.getByTestId("projects-sort").textContent).toBe("Sorted byImages");
+    expect(screen.getByRole("columnheader", { name: /assets/i }).getAttribute("aria-sort")).toBe("ascending");
+    expect(screen.getByTestId("projects-sort").textContent).toBe("Sorted byAssets");
 
     await userEvent.click(screen.getByTestId("projects-sort"));
     await userEvent.click(await screen.findByRole("menuitemradio", { name: "Descending" }));
@@ -480,7 +480,7 @@ describe("the project list", () => {
     expect(sent.filter((r) => r.url.includes("/thumbnail")).length).toBe(1);
     // The imageless project states its own situation, not the backfill remedy
     // `AssetThumbnail` offers for an asset whose preview was never cached.
-    expect(screen.getByTitle("No images in this project yet.")).not.toBeNull();
+    expect(screen.getByTitle("No assets in this project yet.")).not.toBeNull();
   });
 
   it("shows the empty state rather than an empty table", async () => {
@@ -509,7 +509,7 @@ describe("the project list", () => {
     expect(screen.getByTestId("table-pager-range").textContent).toBe("1–25 of 60 projects");
     expect(screen.getByTestId("table-pager-page").textContent).toBe("Page 1 of 3");
     // The status bar sums every project the search leaves, not the page.
-    expect(screen.getByTestId("projects-images").textContent).toMatch(/^1,830 images/);
+    expect(screen.getByTestId("projects-images").textContent).toMatch(/^1,830 assets/);
 
     await userEvent.click(screen.getByTestId("table-pager-next"));
     expect(rowNames()[0]).toBe("p26");

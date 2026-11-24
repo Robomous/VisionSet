@@ -239,7 +239,7 @@ function DeleteDialog({
           {stats.data === undefined
             ? "Counting what this would destroy…"
             : `Deletes the project, ${formatCount(stats.data.asset_count)} ${
-                stats.data.asset_count === 1 ? "image" : "images"
+                stats.data.asset_count === 1 ? "asset" : "assets"
               } and ${formatCount(stats.data.annotation_count)} ${
                 stats.data.annotation_count === 1 ? "annotation" : "annotations"
               }, with every batch, job and release under it. The stored image files are shared by
