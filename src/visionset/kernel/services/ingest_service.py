@@ -107,6 +107,7 @@ from visionset.kernel.domain import (
     normalize_name,
     report_name,
     require_move,
+    thinned,
 )
 from visionset.kernel.errors import (
     AssetNotFound,
@@ -119,7 +120,7 @@ from visionset.kernel.errors import (
     UnsupportedMedia,
     WorkspaceCorrupt,
 )
-from visionset.kernel.ports import BlobStore, UnitOfWork
+from visionset.kernel.ports import MAX_POINT_CLOUD_POINTS, BlobStore, UnitOfWork
 from visionset.kernel.services.batch_service import BatchService
 from visionset.kernel.services.source_service import SourceService
 from visionset.kernel.services.workspace_service import WorkspaceService
@@ -299,6 +300,12 @@ class IngestService:
         the asset's content hash and the budget, so a repeat request skips the
         decode and a scan with other bytes can never be answered from it.
 
+        A scan is decoded once whatever the budget: every budget is thinned from
+        the scan's stride-1 sample, cached under the content hash and
+        ``MAX_POINT_CLOUD_POINTS``, which is byte for byte what sampling the scan
+        at that budget answers. Requests for one scan share one decode in flight,
+        and the cache bounds how many scans decode at once.
+
         Raises:
             ValueError: ``max_points`` outside ``MIN_POINT_BUDGET`` to
                 ``MAX_POINT_BUDGET``.
@@ -318,13 +325,19 @@ class IngestService:
         if asset.modality != "point_cloud":
             raise AssetNotFound(f"asset {asset_id} is an {asset.modality}, not a point-cloud scan")
 
+        cache = self._workspace.point_samples
+
         def decode() -> PointSample:
-            with self.open_content(asset) as content:
+            with cache.decoding(), self.open_content(asset) as content:
                 return self._workspace.point_cloud_processor.sample(
-                    content, budget=max_points, name=str(asset.id)
+                    content, budget=MAX_POINT_CLOUD_POINTS, name=str(asset.id)
                 )
 
-        return self._workspace.point_samples.get_or_load((asset.content_hash, max_points), decode)
+        def thin() -> PointSample:
+            whole = cache.get_or_load((asset.content_hash, MAX_POINT_CLOUD_POINTS), decode)
+            return thinned(whole, max_points)
+
+        return cache.get_or_load((asset.content_hash, max_points), thin)
 
     # --- ingesting ---------------------------------------------------------
 

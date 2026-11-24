@@ -346,17 +346,27 @@ as it was before the origin existed; a reader that does not know bit 2 refuses a
 it, rather than drawing it in the wrong place. Labels are not moved: a cuboid or polyline stays in
 the scan's frame, and the viewer subtracts the origin, in doubles, only from what it hands the GPU.
 
-**A decoded sample is cached per workspace.** The first request for a scan and budget decodes the
-whole scan, at what its ingest cost; the sample is then kept in the open workspace's
-`point_samples` cache, keyed by the asset's `content_hash` and the budget. Content addressing is
-what keeps it from going stale: other bytes have another hash, so an entry is only ever served for
-the bytes it was decoded from. The cache holds at most 128 MiB of samples and drops the least
-recently used first; a sample bigger than that is served and not kept. Concurrent requests for one
-uncached scan and budget decode once and share the answer; a refusal is raised to each of them and
-not kept. At 19 bytes a point with both fields, one sample is about 9.5 MB at the default budget
-and 38 MB at the maximum. The response is held in memory as well: `PointSample.encode()` joins
-the sections into one new buffer on every request, cached or not, so each request in flight holds
-one more copy of its sample.
+**A decoded sample is cached per workspace, and a scan is decoded once whatever the budget.** The
+first request for a scan decodes the whole scan into its stride-1 sample, which is kept in the open
+workspace's `point_samples` cache under the asset's `content_hash` and `MAX_POINT_CLOUD_POINTS`;
+every budget is thinned from it (`thinned` in `visionset.kernel.domain`) and kept under the hash
+and that budget. Every point is encoded on its own and the origin depends on the scan alone, so a
+thinned sample is byte for byte what sampling the scan at that budget answers. Content addressing
+is what keeps an entry from going stale: other bytes have another hash, so an entry is only ever
+served for the bytes it was decoded from. The cache holds at most 128 MiB of samples and drops the
+least recently used first; a sample bigger than that is served and not kept, so a scan whose whole
+sample passes the bound (about seven million points with both fields) is decoded again for a
+budget not yet asked for. Concurrent requests for one uncached scan share one decode, whatever
+their budgets, and at most two scans are decoded at once across the workspace; a refusal is raised
+to each waiting request and not kept. At 19 bytes a point with both fields, one sample is about
+9.5 MB at the default budget and 38 MB at the maximum. The response is held in memory as well:
+`PointSample.encode()` joins the sections into one new buffer on every request, cached or not, so
+each request in flight holds one more copy of its sample.
+
+**A decode holds one copy of the columns it reads.** Binary point data is read in bounded chunks
+and each wanted field gathered into its own column, never the raw rows whole beside them; a
+coordinate keeps the width the file stored it in. A scan with no non-finite coordinate is not
+copied again, and one with some is filtered a column at a time.
 
 ## Video moved to the browser
 

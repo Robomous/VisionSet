@@ -8,7 +8,8 @@ Bounded by the bytes the samples hold, least recently used first out. A sample
 larger than the whole bound is served and never kept. Concurrent misses on one
 key decode once: the others wait for that decode and share its answer or its
 refusal; a refusal is not kept. A decode still running when the cache is cleared
-answers its callers and is not kept.
+answers its callers and is not kept. :meth:`PointSampleCache.decoding` bounds how
+many scans are decoded at once across every key.
 """
 
 from __future__ import annotations
@@ -24,16 +25,28 @@ from visionset.kernel.domain import PointSample
 #: About a dozen samples at the default budget, with intensity and colour.
 DEFAULT_POINT_SAMPLE_CACHE_BYTES: Final = 128 << 20
 
+#: How many scans may be decoded at once, whatever their budgets: a decode holds
+#: the scan's columns, which the byte bound above does not count.
+DEFAULT_CONCURRENT_DECODES: Final = 2
+
 PointSampleKey = tuple[str, int]
 
 
 class PointSampleCache:
     """A least-recently-used map from ``(content_hash, budget)`` to a ``PointSample``."""
 
-    def __init__(self, max_bytes: int = DEFAULT_POINT_SAMPLE_CACHE_BYTES) -> None:
+    def __init__(
+        self,
+        max_bytes: int = DEFAULT_POINT_SAMPLE_CACHE_BYTES,
+        *,
+        concurrent_decodes: int = DEFAULT_CONCURRENT_DECODES,
+    ) -> None:
         if max_bytes < 0:
             raise ValueError(f"max_bytes must not be negative, got {max_bytes}")
+        if concurrent_decodes < 1:
+            raise ValueError(f"concurrent_decodes must be at least 1, got {concurrent_decodes}")
         self._max_bytes = max_bytes
+        self._decodes = threading.BoundedSemaphore(concurrent_decodes)
         self._entries: OrderedDict[PointSampleKey, PointSample] = OrderedDict()
         self._loading: dict[PointSampleKey, Future[PointSample]] = {}
         self._bytes = 0
@@ -81,6 +94,14 @@ class PointSampleCache:
                 self._keep(key, sample)
         owner.set_result(sample)
         return sample
+
+    def decoding(self) -> threading.BoundedSemaphore:
+        """Held around a scan's decode, so at most ``concurrent_decodes`` run at once.
+
+        Taken inside a ``load`` and never around a nested ``get_or_load``: a load
+        that waits on another key's load while holding a slot could starve it.
+        """
+        return self._decodes
 
     def clear(self) -> None:
         with self._lock:

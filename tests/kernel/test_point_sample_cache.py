@@ -237,7 +237,7 @@ class CountingProcessor(StdlibPointCloudProcessor):
         return super().sample(content, budget=budget, name=name)
 
 
-def test_the_service_decodes_each_scan_and_budget_once(tmp_path: Path) -> None:
+def test_the_service_decodes_each_scan_once_whatever_the_budget(tmp_path: Path) -> None:
     CountingProcessor.samples = 0
     with WorkspaceService.init(
         tmp_path / "ws", point_cloud_processor_factory=CountingProcessor
@@ -262,7 +262,133 @@ def test_the_service_decodes_each_scan_and_budget_once(tmp_path: Path) -> None:
         assert len({answer.encode() for answer in answers.values()}) == 2
 
         ingest.points(project.id, assets[0].id, max_points=2_000)
-        assert CountingProcessor.samples == 3
+        assert CountingProcessor.samples == 2
+
+
+class GatedProcessor(StdlibPointCloudProcessor):
+    """Counts decodes and the most running at once, each held until ``release`` is set."""
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.started = threading.Condition(self.lock)
+        self.release = threading.Event()
+        self.decodes = 0
+        self.running = 0
+        self.most = 0
+
+    def sample(self, content: BinaryIO, *, budget: int, name: str | None = None) -> PointSample:
+        with self.started:
+            self.decodes += 1
+            self.running += 1
+            self.most = max(self.most, self.running)
+            self.started.notify_all()
+        try:
+            assert self.release.wait(TIMEOUT_SECONDS)
+            return super().sample(content, budget=budget, name=name)
+        finally:
+            with self.lock:
+                self.running -= 1
+
+    def until_started(self, count: int) -> None:
+        with self.started:
+            assert self.started.wait_for(lambda: self.decodes >= count, TIMEOUT_SECONDS)
+
+
+def _scans_in(tmp_path: Path, processor: GatedProcessor, **cache: int) -> Any:
+    workspace = WorkspaceService.init(
+        tmp_path / "ws", point_cloud_processor_factory=lambda: processor
+    )
+    if cache:
+        workspace._point_samples = PointSampleCache(**cache)  # type: ignore[attr-defined]
+    project = ProjectService(workspace).create("scans")
+    source = SourceService(workspace).register_point_clouds(
+        project.id, write_scans(tmp_path / "scans"), frame=ScanFrame.LIDAR_FLU
+    )
+    processor.release.set()
+    assets = IngestService(workspace).ingest(source.id).assets
+    processor.release.clear()
+    with processor.lock:
+        processor.decodes = processor.most = 0
+    return workspace, project, assets
+
+
+def test_concurrent_budgets_of_one_scan_share_one_decode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    processor = GatedProcessor()
+    workspace, project, assets = _scans_in(tmp_path, processor)
+    waiting = Waiting(monkeypatch)
+    budgets = (1_000, 2_000, 5_000, 500_000)
+    answers: dict[int, bytes] = {}
+
+    def ask(budget: int) -> None:
+        sample = IngestService(workspace).points(project.id, assets[0].id, max_points=budget)
+        answers[budget] = sample.encode()
+
+    threads = [threading.Thread(target=ask, args=(budget,)) for budget in budgets]
+    for thread in threads:
+        thread.start()
+    processor.until_started(1)
+    waiting.until(len(budgets) - 1)
+    processor.release.set()
+    _run(threads)
+    workspace.close()
+
+    assert processor.decodes == 1
+    with (tmp_path / "scans" / "front.bin").open("rb") as handle:
+        content = handle.read()
+    for budget in budgets:
+        expected = StdlibPointCloudProcessor().sample(io.BytesIO(content), budget=budget)
+        assert answers[budget] == expected.encode(), budget
+
+
+class CountedSlots:
+    """The decode bound, counting the callers that reached it."""
+
+    def __init__(self, slots: threading.BoundedSemaphore) -> None:
+        self.slots = slots
+        self.arrived = 0
+        self.changed = threading.Condition()
+
+    def __enter__(self) -> None:
+        with self.changed:
+            self.arrived += 1
+            self.changed.notify_all()
+        self.slots.acquire()
+
+    def __exit__(self, *_: object) -> None:
+        self.slots.release()
+
+    def until(self, count: int) -> None:
+        with self.changed:
+            assert self.changed.wait_for(lambda: self.arrived >= count, TIMEOUT_SECONDS)
+
+
+def test_scans_decode_no_more_than_the_bound_at_once(tmp_path: Path) -> None:
+    processor = GatedProcessor()
+    workspace, project, assets = _scans_in(tmp_path, processor, concurrent_decodes=1)
+    slots = CountedSlots(workspace.point_samples.decoding())
+    workspace.point_samples.decoding = lambda: slots
+
+    def ask(asset_id: Any) -> None:
+        IngestService(workspace).points(project.id, asset_id, max_points=1_000)
+
+    threads = [threading.Thread(target=ask, args=(asset.id,)) for asset in assets]
+    for thread in threads:
+        thread.start()
+    slots.until(2)
+    processor.until_started(1)
+    assert processor.decodes == 1
+    processor.release.set()
+    _run(threads)
+    workspace.close()
+
+    assert (processor.decodes, processor.most) == (2, 1)
+
+
+def test_a_bound_below_one_decode_is_refused() -> None:
+    with pytest.raises(ValueError, match="concurrent_decodes"):
+        PointSampleCache(concurrent_decodes=0)
 
 
 def test_the_cache_is_keyed_by_content_so_new_bytes_are_decoded(tmp_path: Path) -> None:
