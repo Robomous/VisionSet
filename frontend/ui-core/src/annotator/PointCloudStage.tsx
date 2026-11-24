@@ -349,7 +349,8 @@ function ScanView({
             />
           )}
 
-          <div className="pointer-events-none absolute inset-x-2 top-2 flex flex-wrap items-start gap-2">
+          {/* Below the page's status tag and object count (two h-8 rows from top-3, gap-2), which overlay the stage's top-left. */}
+          <div className="pointer-events-none absolute inset-x-2 top-[5.75rem] flex flex-wrap items-start gap-2">
             <p
               data-testid="point-cloud-summary"
               className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground"

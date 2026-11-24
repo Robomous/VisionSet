@@ -89,6 +89,11 @@ nothing was being distributed. This is the first version that is.
   the box's length and its direction the box's yaw, in the declared frame's axes. The width is then set across
   it with the pointer and a click or Enter, before the height as before. A drag shorter than 5 cm draws nothing
   (#1087).
+- **The scan top-down view zooms about the pointer.** The wheel keeps the ground point under the pointer where
+  it is, zooming in and out and at the zoom's limits; the perspective view still zooms about its centre (#1088).
+- **The scan view's chrome no longer sits under the status tag and object count.** The points summary and the
+  Edit strip start below them, so at the 768 px floor the object count no longer covers the strip, and with the
+  views side by side the object count keeps to the perspective view (#1088).
 - **The ingest refusal for a video or a single file names point-cloud scans.** The CLI's `ingest` and the MCP
   `ingest` tool, handed something that is not a directory, now say they take a directory of still images or of
   point-cloud scans (`--point-clouds` on the CLI, `frame` on MCP) before pointing a video at the browser import

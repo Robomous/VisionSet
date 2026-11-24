@@ -563,7 +563,7 @@ What a viewer is:
 ## Editing cuboids and polylines on a scan
 
 A scan's cuboids and polylines are edited in an explicit **Edit** mode, switched on from the strip at the top
-right of the scan view, so orbiting never competes with drawing. In Edit a left drag edits, a
+right of the scan view, below the status tag and object count, so orbiting never competes with drawing. In Edit a left drag edits, a
 right drag orbits, and a middle drag - or shift + right drag, for a trackpad - pans; the wheel
 still zooms. Outside Edit the view keeps its own mapping: a left drag orbits.
 
@@ -606,7 +606,9 @@ still zooms. Outside Edit the view keeps its own mapping: a left drag orbits.
   stage - looking straight down the declared up axis, forward up the screen. It is
   orthographic, so a box's top lies over its footprint at any zoom, and it follows the
   perspective view's centre: a pan there moves it too. It never orbits; a right or middle drag
-  pans it and the wheel zooms it. It drives the same editor, store and selection, so a drag in
+  pans it and the wheel zooms it about the pointer, keeping the ground under it in place.
+  While it sits beside the perspective view, the object count and hint keep to the perspective
+  one. It drives the same editor, store and selection, so a drag in
   either view moves the box in both while it is under way. Over the selected box it draws the
   footprint, a handle on each of the four side faces, and the yaw ring with a handle where the
   heading crosses it; the top and bottom faces sit on the box's centre there, so a press on the

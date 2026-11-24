@@ -11,7 +11,7 @@ import type { Point3D } from "../types";
 import type { PointBounds } from "./decode";
 import { fromForwardLeftUp, heightOf, type ScanFrame } from "./frame";
 import { robustRange } from "./ramp";
-import { cross, dot, normalize, subtract } from "./vector";
+import { add, cross, dot, normalize, scale, subtract } from "./vector";
 
 export interface OrbitCamera {
   readonly yaw: number;
@@ -121,6 +121,34 @@ export function zoom(camera: OrbitCamera, factor: number, radius: number): Orbit
     Math.max(radius * MIN_DISTANCE_RATIO, camera.distance * factor),
   );
   return { ...camera, distance };
+}
+
+/**
+ * `zoom`, keeping what is under the NDC point `cursor` where it is in an
+ * orthographic view, whose rays are parallel: the target slides by the cursor's
+ * offset times the share of the span given up, then back along the view to its
+ * own level. The clamped distance sets that share, so a zoom held at its limit
+ * moves nothing. A perspective view zooms about its target, as `zoom` does.
+ */
+export function zoomAt(
+  camera: OrbitCamera,
+  frame: ScanFrame,
+  factor: number,
+  radius: number,
+  cursor: readonly [number, number],
+  aspect: number,
+): OrbitCamera {
+  const zoomed = zoom(camera, factor, radius);
+  if (camera.projection !== "orthographic" || !(camera.distance > 0)) return zoomed;
+  const given = 1 - zoomed.distance / camera.distance;
+  if (given === 0) return zoomed;
+  const { forward, right, up } = viewBasis(camera, frame);
+  const half = viewHalfHeight(camera);
+  const across = cursor[0] * half * (aspect > 0 ? aspect : 1) * given;
+  const shift = add(scale(right, across), scale(up, cursor[1] * half * given));
+  const upAxis = fromForwardLeftUp(frame, [0, 0, 1]);
+  const level = dot(shift, upAxis) / dot(forward, upAxis);
+  return { ...zoomed, target: subtract(add(camera.target, shift), scale(forward, level)) };
 }
 
 /** Slide the target so the scene follows a drag of `dx, dy` pixels on a `heightPx`-tall view. */
