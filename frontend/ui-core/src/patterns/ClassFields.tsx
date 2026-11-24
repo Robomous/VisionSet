@@ -30,10 +30,10 @@ import { PropertyRow } from "./PropertyRow";
 import { ShapeGlyph } from "./ShapeGlyph";
 
 /**
- * The four an `Annotation` can carry that this editor draws. Of the other four,
- * `polyline_3d` and `cuboid_3d` are carried but have no drawing tool, so a class
- * offering one here would be one nobody could annotate; the rest are refused at
- * write time.
+ * The six an `Annotation` can carry, each with a drawing tool behind it:
+ * `cuboid_3d` and `polyline_3d` are drawn on point-cloud scans (and on
+ * calibrated images), the rest on images. `mask` and `keypoints` are refused at
+ * write time, so a class offering one would be one nobody could annotate.
  *
  * `satisfies` rather than an annotation, so the elements keep their
  * literal types and a member deleted from the generated union fails here. What
@@ -47,6 +47,8 @@ const GEOMETRIES = [
   "polygon",
   "polyline",
   "classification_tag",
+  "cuboid_3d",
+  "polyline_3d",
 ] as const satisfies readonly GeometryType[];
 
 /** `Attribute.kind`, from the wire enum. */
@@ -436,6 +438,8 @@ const GEOMETRY_HINT: Record<(typeof GEOMETRIES)[number], string> = {
   polygon: "Closed outline",
   polyline: "Open path",
   classification_tag: "The whole image",
+  cuboid_3d: "A box in 3D, on scans",
+  polyline_3d: "A path in 3D, on scans",
 };
 
 function capitalised(text: string): string {
@@ -495,7 +499,7 @@ function InspectorFields({
           <span className="flex min-w-0 flex-col items-start gap-1">
             {/* A segmented row of the shapes as the canvas draws them; their
                 names are said under it, so the icons never have to be read —
-                under, not beside, so four names fit a narrow sheet. */}
+                under, not beside, so six names fit a narrow sheet. */}
             <ToggleGroup
               type="multiple"
               aria-labelledby={`draw-as-${slot}`}
