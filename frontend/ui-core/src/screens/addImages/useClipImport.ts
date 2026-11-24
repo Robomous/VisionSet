@@ -43,7 +43,7 @@
  * from the file (`useClipSource.ts`), and the run itself (`useClipRun.ts`).
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { VideoInspection } from "@visionset/media";
 
 import type { VisionSetMediaRuntime } from "../../media/port";
@@ -84,11 +84,16 @@ export function useClipImport(
   const [ranges, setRanges] = useState<readonly ClipRange[]>([]);
   const [scalePercent, setScalePercent] = useState(100);
 
-  // A new clip, or a new decoder reading it, starts from a clean selection.
-  useEffect(() => {
+  // A new clip, or a new decoder reading it, starts from a clean selection —
+  // adjusted during render against the pair last seen, not in an effect, so the
+  // stale ranges never reach a render (react.dev: adjusting state when a prop
+  // changes). The branch converges: it records the pair it reset for.
+  const [seen, setSeen] = useState({ file, decoder });
+  if (seen.file !== file || seen.decoder !== decoder) {
+    setSeen({ file, decoder });
     setRanges([]);
     setScalePercent(100);
-  }, [file, decoder]);
+  }
 
   const derived = deriveClip(inspection, fps, ranges);
   const run = useClipRun({ projectId, runtime, decoder, file, inspection, derived, scalePercent });
