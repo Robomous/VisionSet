@@ -29,7 +29,12 @@ import type {
   VideoSelection,
 } from "@visionset/media";
 
-import { IngestScreen } from "./IngestScreen";
+import { AddImagesDialog, type AddImagesDialogProps } from "./addImages/AddImagesDialog";
+
+/** The dialog, open, as the project bar opens it. */
+function AddImages(props: Omit<AddImagesDialogProps, "open" | "onOpenChange">): JSX.Element {
+  return <AddImagesDialog open onOpenChange={() => undefined} {...props} />;
+}
 import { VisionSetMediaProvider } from "../media/VisionSetMediaProvider";
 import type { VisionSetMediaRuntime } from "../media/port";
 import { renderWithData } from "../testing/dataHarness";
@@ -220,7 +225,7 @@ function fakeRuntime(
 function mount(runtime: VisionSetMediaRuntime | undefined, ui?: ReactNode): RenderResult {
   return renderWithData(
     <VisionSetMediaProvider {...(runtime === undefined ? {} : { runtime })}>
-      {ui ?? <IngestScreen projectId={PROJECT} onOpenBatch={vi.fn()} />}
+      {ui ?? <AddImages projectId={PROJECT} onOpenBatch={vi.fn()} />}
     </VisionSetMediaProvider>,
   );
 }
@@ -233,6 +238,19 @@ async function choose(file: File): Promise<void> {
   await userEvent.upload(screen.getByTestId("file-input"), file);
 }
 
+/** The clip read, on to Frames & settings: the cut, the rate, the size, the target. */
+async function cut(): Promise<void> {
+  await screen.findByTestId("clip-report");
+  await userEvent.click(screen.getByTestId("cut-clip"));
+  await screen.findByTestId("clip-timeline");
+}
+
+/** The size select, as a person uses it: open, and choose a percentage. */
+async function pickScale(percent: number): Promise<void> {
+  await userEvent.click(screen.getByTestId("scale-percent"));
+  await userEvent.click(await screen.findByTestId(`scale-percent-${percent}`));
+}
+
 describe("a host with no media runtime", () => {
   beforeEach(() => {
     on("GET", /\/batches$/, { status: 200, body: { items: [], total: 0 } });
@@ -240,14 +258,15 @@ describe("a host with no media runtime", () => {
 
   it("offers no video control at all, and never says a clip could be uploaded", async () => {
     mount(undefined);
-    expect(screen.getByTestId("dropzone").textContent).toContain("Drop images or point clouds here");
+    expect(screen.getByTestId("dropzone").textContent).toContain("Drop images, a folder or point clouds");
     expect(screen.getByTestId("dropzone").textContent).not.toContain("video");
 
     // A clip dropped anyway stays in the image flow: there is no decoder here,
     // and there is no server-side one to fall back to either.
     await choose(clip());
     expect(screen.queryByTestId("clip-report")).toBeNull();
-    expect(screen.getByTestId("register-source")).not.toBeNull();
+    expect(screen.queryByTestId("cut-clip")).toBeNull();
+    expect(screen.getByTestId("register-source").textContent).toBe("Upload 1 image");
   });
 });
 
@@ -267,6 +286,21 @@ describe("reading the clip", () => {
     expect(report.textContent).toContain("matroska");
     expect(report.textContent).toContain("vp09.00.10.08");
     expect(screen.getByTestId("clip-decodable").textContent).toContain("can decode it");
+  });
+
+  it("heads the clip's card with its name, duration, size on screen and bytes, and the ✕ that clears it", async () => {
+    mount(fakeRuntime(READABLE).runtime);
+    await choose(clip());
+
+    await screen.findByTestId("clip-report");
+    const card = screen.getByTestId("selection");
+    expect(screen.getByTestId("chosen").textContent).toBe("drive.mp4");
+    expect(screen.getByTestId("clip-summary").textContent).toBe("0:10 · 1920×1080 · 5 B");
+    // One card: no summary above it repeating the count and the size.
+    expect(card.querySelectorAll('[data-testid="clear-files"]')).toHaveLength(1);
+    await userEvent.click(screen.getByTestId("clear-files"));
+    expect(screen.queryByTestId("selection")).toBeNull();
+    expect(screen.getByTestId("dropzone")).not.toBeNull();
   });
 
   it("names a variable-rate clip as variable rather than inventing a number", async () => {
@@ -294,8 +328,9 @@ describe("reading the clip", () => {
       // send somebody to look for a path that was deleted.
       expect(notice.textContent).not.toContain("server");
       expect(notice.textContent).not.toContain("ingested whole");
-      // And nothing may be started from a refusal.
-      expect((screen.getByTestId("start-video-import") as HTMLButtonElement).disabled).toBe(true);
+      // And nothing may be started from a refusal: the way on to the cut is shut.
+      expect((screen.getByTestId("cut-clip") as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.queryByTestId("start-video-import")).toBeNull();
       expect(screen.queryByTestId("extraction-fps")).toBeNull();
     });
   }
@@ -351,7 +386,7 @@ describe("choosing where the frames land", () => {
     const fake = fakeRuntime(READABLE);
     mount(fake.runtime);
     await choose(clip());
-    await screen.findByTestId("clip-report");
+    await cut();
     return fake;
   }
 
@@ -372,7 +407,8 @@ describe("choosing where the frames land", () => {
     // `state === "draft"` is the mirror `FrameGrid` was rewritten to remove: it
     // reproduces one dimension of the kernel's rule and drops whatever else the
     // kernel weighed, and the dropped part is invisible until somebody meets it.
-    expect(screen.queryByRole("option", { name: /sealed/ })).toBeNull();
+    // It is a draft, so it is listed — and withheld, with its reason.
+    expect(screen.getByRole("option", { name: /sealed/ }).getAttribute("aria-disabled")).toBe("true");
     expect(screen.queryByRole("option", { name: /night drive/ })).not.toBeNull();
   });
 
@@ -409,7 +445,7 @@ describe("importing a clip", () => {
     const fake = fakeRuntime(READABLE);
     mount(fake.runtime);
     await choose(clip());
-    await screen.findByTestId("clip-report");
+    await cut();
     await userEvent.click(screen.getByTestId("start-video-import"));
 
     await waitFor(() => expect(fake.release).not.toBeNull());
@@ -441,7 +477,7 @@ describe("importing a clip", () => {
     const fake = fakeRuntime({ ...READABLE, sourceFps: null });
     mount(fake.runtime);
     await choose(clip());
-    await screen.findByTestId("clip-report");
+    await cut();
     await userEvent.click(screen.getByTestId("start-video-import"));
 
     await waitFor(() => expect(fake.release).not.toBeNull());
@@ -452,7 +488,7 @@ describe("importing a clip", () => {
     const fake = fakeRuntime(READABLE);
     mount(fake.runtime);
     await choose(clip());
-    await screen.findByTestId("clip-report");
+    await cut();
     await userEvent.click(screen.getByTestId("start-video-import"));
 
     await waitFor(() => expect(fake.release).not.toBeNull());
@@ -468,7 +504,7 @@ describe("importing a clip", () => {
     const fake = fakeRuntime(READABLE);
     mount(fake.runtime);
     await choose(clip());
-    await screen.findByTestId("clip-report");
+    await cut();
     await userEvent.click(screen.getByTestId("start-video-import"));
     await waitFor(() => expect(fake.release).not.toBeNull());
 
@@ -491,7 +527,7 @@ describe("importing a clip", () => {
     const fake = fakeRuntime(READABLE, { fail: new Error("the sink refused a chunk") });
     mount(fake.runtime);
     await choose(clip());
-    await screen.findByTestId("clip-report");
+    await cut();
     await userEvent.click(screen.getByTestId("start-video-import"));
     await waitFor(() => expect(fake.release).not.toBeNull());
     fake.release?.();
@@ -525,7 +561,7 @@ describe("importing a clip", () => {
     const fake = fakeRuntime(READABLE);
     mount(fake.runtime);
     await choose(clip());
-    await screen.findByTestId("clip-report");
+    await cut();
     await userEvent.click(screen.getByTestId("start-video-import"));
     await waitFor(() => expect(fake.release).not.toBeNull());
     fake.release?.();
@@ -555,11 +591,11 @@ describe("importing a clip", () => {
     const fake = fakeRuntime(READABLE);
     mount(fake.runtime);
     await choose(clip());
-    await screen.findByTestId("clip-report");
+    await cut();
 
     await userEvent.clear(screen.getByTestId("extraction-fps"));
     await userEvent.type(screen.getByTestId("extraction-fps"), "2");
-    fireEvent.change(screen.getByTestId("scale-percent"), { target: { value: "50" } });
+    await pickScale(50);
     // The readout states what will be stored before anything is decoded.
     expect(screen.getByTestId("stored-size").textContent).toContain("960×540");
 
@@ -578,7 +614,7 @@ describe("importing a clip", () => {
     const fake = fakeRuntime(READABLE);
     mount(fake.runtime);
     await choose(clip());
-    await screen.findByTestId("clip-report");
+    await cut();
 
     const track = measureTrack();
     fireEvent.pointerDown(track, { clientX: 20 });
@@ -605,24 +641,24 @@ describe("importing a clip", () => {
     // `duration_seconds: null`, since JSON has no NaN, for a raw 422.
     mount(fakeRuntime({ ...READABLE, durationSeconds: Number.NaN }).runtime);
     await choose(clip());
-    await screen.findByTestId("clip-report");
+    await cut();
 
     expect((screen.getByTestId("start-video-import") as HTMLButtonElement).disabled).toBe(true);
     // And nothing on the screen says `NaN` at somebody.
     expect(screen.getByTestId("selection-readout").textContent).not.toContain("NaN");
     expect(screen.getByTestId("frames-estimate").textContent).not.toContain("NaN");
-    expect(screen.getByTestId("step-1").textContent).not.toContain("NaN");
+    expect(screen.getByTestId("add-images").textContent).not.toContain("NaN");
   });
 
   it("aborts the run the screen was navigated away from, session and all", async () => {
     const fake = fakeRuntime(READABLE);
     const view = mount(fake.runtime);
     await choose(clip());
-    await screen.findByTestId("clip-report");
+    await cut();
     await userEvent.click(screen.getByTestId("start-video-import"));
     await waitFor(() => expect(fake.release).not.toBeNull());
 
-    // Any route change out of the ingest screen. Nothing else stops the run:
+    // Leaving the project unmounts the dialog's host. Nothing else stops the run:
     // the sink would go on POSTing chunks into a screen nobody can see, and the
     // commit would then put a batch in the project that no progress, no cancel
     // and no outcome ever described.
@@ -646,7 +682,7 @@ describe("importing a clip", () => {
     const fake = fakeRuntime(READABLE);
     mount(fake.runtime);
     await choose(clip());
-    await screen.findByTestId("clip-report");
+    await cut();
     await userEvent.click(screen.getByTestId("start-video-import"));
     await waitFor(() => expect(fake.release).not.toBeNull());
     fake.release?.();
@@ -674,7 +710,7 @@ describe("importing a clip", () => {
   it("cannot start an import at a rate the request could not carry", async () => {
     mount(fakeRuntime(READABLE).runtime);
     await choose(clip());
-    await screen.findByTestId("clip-report");
+    await cut();
 
     const button = (): HTMLButtonElement =>
       screen.getByTestId("start-video-import") as HTMLButtonElement;
@@ -721,19 +757,21 @@ describe("a host that does not memoize its runtime", () => {
           <button type="button" data-testid="host-render" onClick={() => setTick(tick + 1)}>
             {tick}
           </button>
-          <IngestScreen projectId={PROJECT} />
+          <AddImages projectId={PROJECT} />
         </VisionSetMediaProvider>
       );
     }
 
     renderWithData(<Host />);
     await choose(clip());
-    await screen.findByTestId("clip-report");
+    await cut();
     expect(inspected).toBe(1);
 
-    fireEvent.change(screen.getByTestId("scale-percent"), { target: { value: "50" } });
-    await userEvent.click(screen.getByTestId("host-render"));
-    await userEvent.click(screen.getByTestId("host-render"));
+    await pickScale(50);
+    // Outside the modal, so pressed the way a host re-render arrives: not
+    // through the dialog's scrim.
+    fireEvent.click(screen.getByTestId("host-render"));
+    fireEvent.click(screen.getByTestId("host-render"));
 
     // No second worker, and — the part a person would actually feel — the cut
     // they chose is still theirs. Re-running the inspection resets it.

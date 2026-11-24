@@ -18,12 +18,17 @@
  * reader's problem.
  */
 
-import { renderHook, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { JSX, ReactNode } from "react";
+import { useState, type JSX, type ReactNode } from "react";
 
-import { IngestScreen } from "./IngestScreen";
+import { AddImagesDialog, type AddImagesDialogProps } from "./addImages/AddImagesDialog";
+
+/** The dialog, open, as the project bar opens it. */
+function AddImages(props: Omit<AddImagesDialogProps, "open" | "onOpenChange">): JSX.Element {
+  return <AddImagesDialog open onOpenChange={() => undefined} {...props} />;
+}
 import { useRegisterPointCloudSource } from "./queries";
 import { VisionSetDataProvider } from "../data/VisionSetDataProvider";
 import { harnessClient, harnessQueryClient, renderWithData } from "../testing/dataHarness";
@@ -151,13 +156,12 @@ async function choose(files: readonly File[]): Promise<void> {
   await userEvent.upload(screen.getByTestId("file-input"), [...files]);
 }
 
-describe("the ingest page", () => {
+describe("the Add images dialog", () => {
   it("is titled Add images, in the words the toolbar uses", async () => {
     on("GET", /\/batches$/, { status: 200, body: { items: [], total: 0 } });
-    renderWithData(<IngestScreen projectId={PROJECT} />);
+    renderWithData(<AddImages projectId={PROJECT} />);
 
-    const screenRoot = await screen.findByTestId("ingest-screen");
-    expect(screenRoot.querySelector("h1")?.textContent).toBe("Add images");
+    expect(await screen.findByRole("dialog", { name: "Add images" })).not.toBeNull();
   });
 });
 
@@ -169,7 +173,7 @@ describe("registering a source", () => {
   it("sends images as one multipart part each, not as a JSON body", async () => {
     on("POST", /\/sources\/images$/, { status: 201, body: IMAGE_SOURCE });
 
-    renderWithData(<IngestScreen projectId={PROJECT} />);
+    renderWithData(<AddImages projectId={PROJECT} />);
     await choose([pick("a.png", "image/png"), pick("b.png", "image/png")]);
     await userEvent.click(screen.getByTestId("register-source"));
 
@@ -195,7 +199,7 @@ describe("registering a source", () => {
       body: { code: "UNSUPPORTED_MEDIA", message: "notes.txt is not an image." },
     });
 
-    renderWithData(<IngestScreen projectId={PROJECT} />);
+    renderWithData(<AddImages projectId={PROJECT} />);
     await choose([pick("notes.txt", "text/plain")]);
     await userEvent.click(screen.getByTestId("register-source"));
 
@@ -265,7 +269,7 @@ describe("uploading point-cloud scans", () => {
   }
 
   async function chooseScan(): Promise<void> {
-    renderWithData(<IngestScreen projectId={PROJECT} />);
+    renderWithData(<AddImages projectId={PROJECT} />);
     await choose([pick("a.pcd", "")]);
   }
 
@@ -275,7 +279,7 @@ describe("uploading point-cloud scans", () => {
     expect(screen.getByTestId("scan-frame")).not.toBeNull();
     expect((screen.getByTestId("register-source") as HTMLButtonElement).disabled).toBe(true);
 
-    await userEvent.click(screen.getByLabelText(/Camera RDF/));
+    await userEvent.click(screen.getByRole("radio", { name: /Camera RDF/ }));
     expect((screen.getByTestId("register-source") as HTMLButtonElement).disabled).toBe(false);
   });
 
@@ -285,7 +289,7 @@ describe("uploading point-cloud scans", () => {
     on("GET", /\/ingest-jobs\//, { status: 200, body: job({ state: "running", batch_id: null }) });
     await chooseScan();
 
-    await userEvent.click(screen.getByLabelText(/Camera RDF/));
+    await userEvent.click(screen.getByRole("radio", { name: /Camera RDF/ }));
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
     expect(screen.getByTestId("source-frame").textContent).toBe("camera_rdf");
@@ -301,15 +305,16 @@ describe("uploading point-cloud scans", () => {
   });
 
   it("refuses a mix of scans and other files without opening either flow", async () => {
-    renderWithData(<IngestScreen projectId={PROJECT} />);
+    renderWithData(<AddImages projectId={PROJECT} />);
     await choose([pick("a.pcd", ""), pick("b.jpg", "image/jpeg")]);
 
     expect(screen.getByTestId("mixed-drop").textContent).toBe(
       "Add point clouds (.pcd, .ply) separately from other files.",
     );
-    expect(screen.queryByTestId("register-source")).toBeNull();
+    // Neither flow opens: nothing to upload, no frame to ask, no source to name.
+    expect((screen.getByTestId("register-source") as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByTestId("scan-frame")).toBeNull();
-    expect(screen.queryByTestId("selection")).toBeNull();
+    expect(screen.queryByTestId("source-name")).toBeNull();
 
     await userEvent.click(screen.getByTestId("clear-files"));
     expect(screen.queryByTestId("mixed-drop")).toBeNull();
@@ -328,15 +333,15 @@ describe("uploading point-cloud scans", () => {
         : undefined,
     );
     await chooseScan();
-    await userEvent.click(screen.getByLabelText(/Camera RDF/));
+    await userEvent.click(screen.getByRole("radio", { name: /Camera RDF/ }));
     await userEvent.click(screen.getByTestId("register-source"));
 
     expect((await screen.findByTestId("register-error")).textContent).toContain(message);
     expect(screen.getByTestId("chosen").textContent).toBe("a.pcd");
-    expect((screen.getByLabelText(/Camera RDF/) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByRole("radio", { name: /Camera RDF/ }).getAttribute("aria-checked")).toBe("true");
 
     refuse = false;
-    await userEvent.click(screen.getByLabelText(/LiDAR FLU/));
+    await userEvent.click(screen.getByRole("radio", { name: /LiDAR FLU/ }));
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
     expect((bodies.get(registerRequests()[1]) as FormData).get("frame")).toBe("lidar_flu");
@@ -354,7 +359,7 @@ describe("uploading point-cloud scans", () => {
     });
     on("POST", /\/sources\/point-clouds$/, { status: 201, body: SCAN_SOURCE });
     await chooseScan();
-    await userEvent.click(screen.getByLabelText(/Camera RDF/));
+    await userEvent.click(screen.getByRole("radio", { name: /Camera RDF/ }));
 
     await userEvent.click(screen.getByTestId("register-source"));
     await userEvent.click(screen.getByTestId("register-source"));
@@ -370,11 +375,12 @@ describe("uploading point-cloud scans", () => {
       body: { code: "CALIBRATION_IN_USE", message: "Labels were drawn against this calibration." },
     });
     await chooseScan();
-    await userEvent.click(screen.getByLabelText(/Camera RDF/));
+    await userEvent.click(screen.getByRole("radio", { name: /Camera RDF/ }));
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("register-error");
 
-    await choose([pick("b.ply", "")]);
+    // Dropping again onto the selection replaces it.
+    fireEvent.drop(screen.getByTestId("selection"), { dataTransfer: { files: [pick("b.ply", "")] } });
     expect(screen.getByTestId("chosen").textContent).toBe("b.ply");
     expect(screen.queryByTestId("register-error")).toBeNull();
   });
@@ -385,7 +391,7 @@ describe("uploading point-cloud scans", () => {
       body: { code: "CALIBRATION_IN_USE", message: "Labels were drawn against this calibration." },
     });
     await chooseScan();
-    await userEvent.click(screen.getByLabelText(/Camera RDF/));
+    await userEvent.click(screen.getByRole("radio", { name: /Camera RDF/ }));
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("register-error");
 
@@ -393,7 +399,7 @@ describe("uploading point-cloud scans", () => {
     expect(screen.queryByTestId("register-error")).toBeNull();
 
     await choose([pick("a.pcd", "")]);
-    expect((screen.getByLabelText(/Camera RDF/) as HTMLInputElement).checked).toBe(false);
+    expect(screen.getByRole("radio", { name: /Camera RDF/ }).getAttribute("aria-checked")).toBe("false");
     expect((screen.getByTestId("register-source") as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -404,7 +410,7 @@ describe("uploading point-cloud scans", () => {
       body: { code: "BATCH_NOT_EDITABLE", message: "That batch is already in annotation." },
     });
     await chooseScan();
-    await userEvent.click(screen.getByLabelText(/Camera RDF/));
+    await userEvent.click(screen.getByRole("radio", { name: /Camera RDF/ }));
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
     await userEvent.click(screen.getByTestId("start-ingest"));
@@ -418,13 +424,14 @@ describe("uploading point-cloud scans", () => {
   it("never calls a scan an image", async () => {
     on("POST", /\/sources\/point-clouds$/, { status: 201, body: SCAN_SOURCE });
     await chooseScan();
-    const flow = screen.getByTestId("point-cloud-flow");
-    expect(flow.textContent).not.toMatch(/image/i);
+    expect(screen.getByTestId("point-cloud-flow").textContent).not.toMatch(/image/i);
+    expect(screen.getByTestId("register-source").textContent).toBe("Upload 1 scan");
 
-    await userEvent.click(screen.getByLabelText(/Camera RDF/));
+    await userEvent.click(screen.getByRole("radio", { name: /Camera RDF/ }));
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
-    expect(flow.textContent).not.toMatch(/image/i);
+    expect(screen.getByTestId("add-images-step").textContent).not.toMatch(/image/i);
+    expect(screen.getByTestId("start-ingest").textContent).not.toMatch(/image/i);
   });
 });
 
@@ -441,15 +448,15 @@ describe("the selection panel", () => {
   });
 
   it("reads the choice back with a way out that costs nothing", async () => {
-    renderWithData(<IngestScreen projectId={PROJECT} />);
+    renderWithData(<AddImages projectId={PROJECT} />);
     await choose([pick("a.png", "image/png"), pick("b.png", "image/png")]);
 
     const selection = screen.getByTestId("selection");
-    expect(within(selection).getByTestId("chosen").textContent).toBe("2 files");
-    expect(selection.textContent).toContain("images");
-    // A bunch reads back its contents, not only its count.
-    expect(within(selection).getByTestId("selection-names").textContent).toContain("a.png");
-    expect(within(selection).getByTestId("selection-names").textContent).toContain("b.png");
+    // Count and size head the pictures, with the ✕ on the same line.
+    expect(within(selection).getByTestId("chosen").textContent).toBe("2 images");
+    expect(within(selection).getByTestId("clear-files")).not.toBeNull();
+    // A bunch reads back its contents, not only its count: the pictures, named.
+    expect(within(selection).getAllByTestId("selection-thumb").map((one) => one.title)).toEqual(["a.png", "b.png"]);
     // Images have no rate, anywhere — not a hidden field, not a dialog.
     expect(screen.queryByTestId("extraction-fps")).toBeNull();
 
@@ -460,25 +467,20 @@ describe("the selection panel", () => {
     expect(screen.getByTestId("file-input")).not.toBeNull();
   });
 
-  it("previews three names of a large bunch and counts the rest", async () => {
-    renderWithData(<IngestScreen projectId={PROJECT} />);
-    await choose(
-      ["p0", "p1", "p2", "p3", "p4"].map((name) => pick(`${name}.png`, "image/png")),
-    );
+  it("previews the first pictures of a large bunch and counts the rest", async () => {
+    renderWithData(<AddImages projectId={PROJECT} />);
+    await choose(Array.from({ length: 20 }, (_, at) => pick(`p${at}.png`, "image/png")));
 
-    const names = screen.getByTestId("selection-names");
-    expect(names.textContent).toContain("p0.png");
-    expect(names.textContent).toContain("p2.png");
-    // Recognition, not inventory: the fourth name is a count, not a row.
-    expect(names.textContent).not.toContain("p3.png");
-    expect(names.textContent).toContain("+2 more");
-    expect(screen.getByTestId("chosen").textContent).toBe("5 files");
+    // Recognition, not inventory: seventeen pictures, and the rest as a count.
+    expect(screen.getAllByTestId("selection-thumb")).toHaveLength(17);
+    expect(screen.getByTestId("selection-more").textContent).toBe("+3");
+    expect(screen.getByTestId("chosen").textContent).toBe("20 images");
   });
 
   it("names the source from the field, and suggests the first file's stem", async () => {
     on("POST", /\/sources\/images$/, { status: 201, body: IMAGE_SOURCE });
 
-    renderWithData(<IngestScreen projectId={PROJECT} />);
+    renderWithData(<AddImages projectId={PROJECT} />);
     await choose([pick("a.png", "image/png"), pick("b.png", "image/png")]);
 
     const field = screen.getByTestId("source-name") as HTMLInputElement;
@@ -518,44 +520,55 @@ describe("one step at a time", () => {
   }
 
   it("opens with the road ahead visible and only the first step live", async () => {
-    renderWithData(<IngestScreen projectId={PROJECT} />);
+    renderWithData(<AddImages projectId={PROJECT} />);
 
     expect(state("step-1")).toBe("active");
     expect(state("step-2")).toBe("upcoming");
     expect(state("step-3")).toBe("upcoming");
-    // Upcoming steps say what they will ask; they do not render controls.
-    expect(screen.getByTestId("step-2").textContent).toContain("target batch");
+    // The track names the road ahead; an upcoming step cannot be jumped to.
+    expect(screen.getByTestId("step-2").textContent).toContain("Frames & settings");
+    expect((within(screen.getByTestId("step-2")).getByRole("button") as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByTestId("source-card")).toBeNull();
     expect(screen.queryByTestId("run-card")).toBeNull();
   });
 
-  it("registering collapses step 1 to a summary with no live controls", async () => {
-    renderWithData(<IngestScreen projectId={PROJECT} />);
+  it("registering walks on to step 2, and the first step's controls leave with it", async () => {
+    renderWithData(<AddImages projectId={PROJECT} />);
     await choose([pick("a.png", "image/png")]);
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
 
     expect(state("step-1")).toBe("complete");
     expect(state("step-2")).toBe("active");
-    expect(screen.getByTestId("step-1-summary").textContent).toContain("a.png");
-    // The hole the collapse closes: no dropzone and no register button remain,
-    // so the selection cannot drift out from under the source card.
+    // The hole one step at a time closes: no dropzone and no register button
+    // remain, so the selection cannot drift out from under the source card.
     expect(screen.queryByTestId("file-input")).toBeNull();
     expect(screen.queryByTestId("register-source")).toBeNull();
   });
 
-  it("change files walks back to a clean first step", async () => {
-    renderWithData(<IngestScreen projectId={PROJECT} />);
+  it("walks back to the first step with the choice read back, and its ✕ starts clean", async () => {
+    renderWithData(<AddImages projectId={PROJECT} />);
     await choose([pick("a.png", "image/png")]);
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
 
-    // The back lives in step 2's own footer and names the step it returns to.
+    // Back, in the footer — or the track's first segment, which is the same walk.
     await userEvent.click(screen.getByTestId("back-to-files"));
 
     expect(state("step-1")).toBe("active");
-    expect(state("step-2")).toBe("upcoming");
     expect(screen.queryByTestId("source-card")).toBeNull();
+    // What was uploaded stands: read back, named, and the way on is forward.
+    expect(screen.getByTestId("chosen").textContent).toBe("a.png");
+    expect((screen.getByTestId("source-name") as HTMLInputElement).disabled).toBe(true);
+    await userEvent.click(screen.getByTestId("continue"));
+    expect(state("step-2")).toBe("active");
+
+    // The ✕ is a full restart: the source stays on the server (registration is
+    // idempotent), and every choice here resets with the files.
+    await userEvent.click(within(screen.getByTestId("step-1")).getByRole("button"));
+    await userEvent.click(screen.getByTestId("clear-files"));
+    expect(state("step-1")).toBe("active");
+    expect(state("step-2")).toBe("upcoming");
     expect(screen.queryByTestId("selection")).toBeNull();
     expect(screen.getByTestId("file-input")).not.toBeNull();
   });
@@ -579,7 +592,7 @@ describe("one step at a time", () => {
     });
     on("GET", /\/ingest-jobs\//, { status: 200, body: job({ batch_name: digest }) });
 
-    renderWithData(<IngestScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
+    renderWithData(<AddImages projectId={PROJECT} onOpenBatch={vi.fn()} />);
     await choose([pick("a.png", "image/png")]);
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
@@ -591,11 +604,11 @@ describe("one step at a time", () => {
     const outcome = await screen.findByTestId("run-outcome");
     expect(outcome.textContent).toContain("4a319281…");
     expect(outcome.textContent).not.toContain(digest);
-    expect(screen.getByTestId("step-2-summary").textContent).not.toContain(digest);
+    expect(screen.getByTestId("add-images-step").textContent).not.toContain(digest);
   });
 
   it("launching collapses step 2 and hands the flow to the run", async () => {
-    renderWithData(<IngestScreen projectId={PROJECT} />);
+    renderWithData(<AddImages projectId={PROJECT} />);
     await choose([pick("a.png", "image/png")]);
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
@@ -604,14 +617,15 @@ describe("one step at a time", () => {
     await screen.findByTestId("run-card");
     expect(state("step-2")).toBe("complete");
     expect(state("step-3")).toBe("active");
-    // The summary names what was decided: this source, into this batch.
-    expect(screen.getByTestId("step-2-summary").textContent).toContain("photos");
     expect(screen.queryByTestId("start-ingest")).toBeNull();
     expect(screen.queryByTestId("target-batch")).toBeNull();
     // A run in flight cannot be un-launched, so no back control of any kind
     // survives the launch — a back that cancels nothing would be a lie.
     expect(screen.queryByTestId("back-to-files")).toBeNull();
     expect(screen.queryByTestId("rerun-source")).toBeNull();
+    for (const step of ["step-1", "step-2"]) {
+      expect((within(screen.getByTestId(step)).getByRole("button") as HTMLButtonElement).disabled).toBe(true);
+    }
   });
 });
 
@@ -629,7 +643,7 @@ describe("launching a run", () => {
     });
     on("POST", /\/sources\/images$/, { status: 201, body: IMAGE_SOURCE });
 
-    renderWithData(<IngestScreen projectId={PROJECT} />);
+    renderWithData(<AddImages projectId={PROJECT} />);
     await choose([pick("a.png", "image/png")]);
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
@@ -641,7 +655,7 @@ describe("launching a run", () => {
     expect(screen.queryByRole("option", { name: /frozen/ })).toBeNull();
   });
 
-  it("reads the offer off `edit_membership`, not off the batch's state", async () => {
+  it("reads what may take images off `edit_membership`, not off the batch's state", async () => {
     on("GET", /\/batches$/, {
       status: 200,
       body: {
@@ -654,14 +668,18 @@ describe("launching a run", () => {
     });
     on("POST", /\/sources\/images$/, { status: 201, body: IMAGE_SOURCE });
 
-    renderWithData(<IngestScreen projectId={PROJECT} />);
+    renderWithData(<AddImages projectId={PROJECT} />);
     await choose([pick("a.png", "image/png")]);
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
 
     await userEvent.click(screen.getByTestId("target-batch"));
     expect(screen.queryByRole("option", { name: /declared/ })).not.toBeNull();
-    expect(screen.queryByRole("option", { name: /withheld/ })).toBeNull();
+    // A draft that does not declare it is listed — it is a draft — and withheld,
+    // with its reason, rather than offered as a refusal.
+    const withheld = screen.getByRole("option", { name: /withheld/ });
+    expect(withheld.getAttribute("aria-disabled")).toBe("true");
+    expect(withheld.textContent).toContain("not taking images now");
   });
 
   it("names a new batch after the source when nobody typed one", async () => {
@@ -670,7 +688,7 @@ describe("launching a run", () => {
     on("POST", /\/ingest-jobs$/, { status: 202, body: job({ state: "running" }) });
     on("GET", /\/ingest-jobs\//, { status: 200, body: job() });
 
-    renderWithData(<IngestScreen projectId={PROJECT} />);
+    renderWithData(<AddImages projectId={PROJECT} />);
     await choose([pick("a.png", "image/png")]);
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
@@ -693,7 +711,7 @@ describe("launching a run", () => {
       body: { code: "BATCH_NOT_EDITABLE", message: "That batch is already in annotation." },
     });
 
-    renderWithData(<IngestScreen projectId={PROJECT} />);
+    renderWithData(<AddImages projectId={PROJECT} />);
     await choose([pick("a.png", "image/png")]);
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
@@ -714,7 +732,7 @@ describe("watching a run", () => {
   });
 
   async function launch(): Promise<void> {
-    renderWithData(<IngestScreen projectId={PROJECT} />);
+    renderWithData(<AddImages projectId={PROJECT} />);
     await choose([pick("a.png", "image/png")]);
     await userEvent.click(screen.getByTestId("register-source"));
     await screen.findByTestId("source-card");
@@ -921,7 +939,7 @@ describe("what a settled run offers next", () => {
   it("names the batch a completed run filled and offers to open it", async () => {
     on("GET", /\/ingest-jobs\//, { status: 200, body: job() });
     const open = vi.fn();
-    await launch(<IngestScreen projectId={PROJECT} onOpenBatch={open} />);
+    await launch(<AddImages projectId={PROJECT} onOpenBatch={open} />);
 
     const outcome = await screen.findByTestId("run-outcome");
     expect(outcome.textContent).toContain("drive.mp4");
@@ -935,7 +953,7 @@ describe("what a settled run offers next", () => {
     // There is nothing to open yet: a run creating its own batch has no id on
     // the row until the transaction that completes it.
     on("GET", /\/ingest-jobs\//, { status: 200, body: job({ state: "running", batch_id: null }) });
-    await launch(<IngestScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
+    await launch(<AddImages projectId={PROJECT} onOpenBatch={vi.fn()} />);
 
     await screen.findByTestId("run-progress");
     expect(screen.queryByTestId("run-outcome")).toBeNull();
@@ -947,7 +965,7 @@ describe("what a settled run offers next", () => {
       status: 200,
       body: job({ state: "completed", batch_id: null, batch_name: null }),
     });
-    await launch(<IngestScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
+    await launch(<AddImages projectId={PROJECT} onOpenBatch={vi.fn()} />);
 
     const outcome = await screen.findByTestId("run-outcome");
     expect(outcome.textContent).toContain("already in a batch");
@@ -959,7 +977,7 @@ describe("what a settled run offers next", () => {
       status: 200,
       body: job({ batch_name: null }),
     });
-    await launch(<IngestScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
+    await launch(<AddImages projectId={PROJECT} onOpenBatch={vi.fn()} />);
 
     expect((await screen.findByTestId("run-outcome")).textContent).toContain("this run's batch");
   });
@@ -969,7 +987,7 @@ describe("what a settled run offers next", () => {
       status: 200,
       body: job({ state: "failed", batch_id: null, error: "the staging directory is not readable" }),
     });
-    await launch(<IngestScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
+    await launch(<AddImages projectId={PROJECT} onOpenBatch={vi.fn()} />);
 
     const outcome = await screen.findByTestId("run-outcome");
     expect(outcome.textContent).toContain("never reached a batch");
@@ -980,7 +998,7 @@ describe("what a settled run offers next", () => {
 
   it("degrades to no button when the host passed nowhere to go", async () => {
     on("GET", /\/ingest-jobs\//, { status: 200, body: job() });
-    await launch(<IngestScreen projectId={PROJECT} />);
+    await launch(<AddImages projectId={PROJECT} />);
 
     // `ui-core` may not import a router, so navigation is the shell's to supply
     // — and a host with no route for a batch still gets the outcome.
@@ -1012,7 +1030,7 @@ describe("what a settled run offers next", () => {
         ],
       }),
     });
-    await launch(<IngestScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
+    await launch(<AddImages projectId={PROJECT} onOpenBatch={vi.fn()} />);
 
     const outcome = await screen.findByTestId("run-outcome");
     expect(outcome.textContent).toContain("What this run managed to read");
@@ -1025,7 +1043,7 @@ describe("what a settled run offers next", () => {
 
   it("walks back to step 2 with the same source, for a run into another batch", async () => {
     on("GET", /\/ingest-jobs\//, { status: 200, body: job() });
-    await launch(<IngestScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
+    await launch(<AddImages projectId={PROJECT} onOpenBatch={vi.fn()} />);
     await screen.findByTestId("run-outcome");
 
     await userEvent.click(screen.getByTestId("rerun-source"));
@@ -1052,7 +1070,7 @@ describe("what a settled run offers next", () => {
 
   it("goes back to a clean form, so a second source is ingestable without a reload", async () => {
     on("GET", /\/ingest-jobs\//, { status: 200, body: job() });
-    await launch(<IngestScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
+    await launch(<AddImages projectId={PROJECT} onOpenBatch={vi.fn()} />);
     await screen.findByTestId("run-outcome");
 
     await userEvent.click(screen.getByTestId("ingest-another"));
@@ -1115,7 +1133,7 @@ describe("the labels foreshadowing banner (#290)", () => {
   it("warns while the project has no labels, and the link goes to the schema", async () => {
     withSchema(false);
     const opened = vi.fn();
-    renderWithData(<IngestScreen projectId={PROJECT} onOpenSchema={opened} />);
+    renderWithData(<AddImages projectId={PROJECT} onOpenSchema={opened} />);
 
     const banner = await screen.findByTestId("schema-foreshadow");
     // Foreshadowing, not a gate: ingest itself stays fully usable.
@@ -1127,7 +1145,7 @@ describe("the labels foreshadowing banner (#290)", () => {
 
   it("says nothing once a schema exists", async () => {
     withSchema(true);
-    renderWithData(<IngestScreen projectId={PROJECT} onOpenSchema={vi.fn()} />);
+    renderWithData(<AddImages projectId={PROJECT} onOpenSchema={vi.fn()} />);
 
     await waitFor(() =>
       expect(sent.some((request) => request.url.endsWith("/schema"))).toBe(true),
@@ -1136,5 +1154,226 @@ describe("the labels foreshadowing banner (#290)", () => {
       expect(sent.some((request) => request.url.endsWith("/stats"))).toBe(true),
     );
     expect(screen.queryByTestId("schema-foreshadow")).toBeNull();
+  });
+});
+
+/**
+ * The batch a settled run filled, and the two ways on from it.
+ *
+ * Approving is the step's own content — the same form `ApproveDialog` draws —
+ * never a dialog over the dialog; *Add another source* starts the walk over and
+ * keeps the batches this session made. Approval is offered only on the wire's
+ * word (`approve` declared) and an active schema, the same rule the panel
+ * follows; without a schema the step says what approving needs and where.
+ */
+describe("approving the batch, or adding another source", () => {
+  const BATCH_ID = "44444444-4444-4444-8444-444444444444";
+
+  function draftBatch(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id: BATCH_ID,
+      project_id: PROJECT,
+      name: "drive.mp4",
+      state: "draft",
+      schema_version: null,
+      asset_count: 30,
+      progress: NO_PROGRESS,
+      allowed_actions: batchActions("draft"),
+      promoted_asset_count: 0,
+      parent_batch_id: null,
+      pre_label_run: null,
+      ...overrides,
+    };
+  }
+
+  function schemaExists(exists: boolean): void {
+    on(
+      "GET",
+      /^\/projects\/[^/]+\/schema$/,
+      exists
+        ? { status: 200, body: { project_id: PROJECT, version: 3, classes: [] } }
+        : { status: 404, body: { code: "SCHEMA_NOT_FOUND", message: "none yet" } },
+    );
+  }
+
+  beforeEach(() => {
+    on("GET", /\/batches$/, { status: 200, body: { items: [], total: 0 } });
+    on("POST", /\/sources\/images$/, { status: 201, body: IMAGE_SOURCE });
+    on("POST", /\/ingest-jobs$/, { status: 202, body: job({ state: "running", processed: 0 }) });
+    on("GET", /\/ingest-jobs\//, { status: 200, body: job() });
+  });
+
+  async function landBatch(node: JSX.Element): Promise<void> {
+    renderWithData(node);
+    await choose([pick("a.png", "image/png")]);
+    await userEvent.click(screen.getByTestId("register-source"));
+    await screen.findByTestId("source-card");
+    await userEvent.click(screen.getByTestId("start-ingest"));
+    await screen.findByTestId("run-outcome");
+  }
+
+  it("says the batch is ready as a draft, with the batch's own count", async () => {
+    schemaExists(true);
+    on("GET", new RegExp(`/batches/${BATCH_ID}$`), { status: 200, body: draftBatch() });
+    await landBatch(<AddImages projectId={PROJECT} onOpenBatch={vi.fn()} />);
+
+    const outcome = screen.getByTestId("run-outcome");
+    expect(outcome.textContent).toContain("“drive.mp4” is ready, as a draft");
+    await waitFor(() => expect(outcome.textContent).toContain("It holds 30 images."));
+    expect(screen.getByTestId("approve-open").textContent).toContain("Approve batch");
+    expect(screen.getByTestId("ingest-another")).not.toBeNull();
+  });
+
+  it("approves in place: the switch, the cut and the button are the approve form's, and the line says what landed", async () => {
+    schemaExists(true);
+    let state: "draft" | "in_annotation" = "draft";
+    handlers.unshift((request) =>
+      request.method === "GET" && new URL(request.url).pathname === `/batches/${BATCH_ID}`
+        ? { status: 200, body: draftBatch({ state, schema_version: state === "draft" ? null : 3 }) }
+        : undefined,
+    );
+    on("POST", /\/approve$/, { status: 200, body: draftBatch({ state: "approved", schema_version: 3 }) });
+    handlers.push((request) => {
+      if (request.method === "POST" && new URL(request.url).pathname.endsWith("/start")) {
+        state = "in_annotation";
+        return { status: 200, body: draftBatch({ state, schema_version: 3 }) };
+      }
+      return undefined;
+    });
+    const open = vi.fn();
+    await landBatch(<AddImages projectId={PROJECT} onOpenBatch={open} />);
+
+    await userEvent.click(await screen.findByTestId("approve-open"));
+    // No dialog over the dialog: the step's body is the approval now.
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    const step = await screen.findByTestId("approve-step");
+    expect(step.textContent).toContain("Approve “drive.mp4”?");
+    expect(within(step).getByTestId("approve-start")).not.toBeNull();
+    // The cut is folded behind its answer, and split by the stepper.
+    expect(screen.getByTestId("partition-answer").textContent).toContain("One job");
+    await userEvent.click(screen.getByTestId("partition-toggle"));
+    await userEvent.click(screen.getByTestId("partition-split"));
+    expect(screen.getByTestId("partition-answer").textContent).toContain("2 jobs of up to 25");
+    // Add another source is still offered beside the approval.
+    expect(screen.getByTestId("ingest-another")).not.toBeNull();
+
+    await userEvent.click(screen.getByTestId("approve-submit"));
+
+    const approved = await screen.findByTestId("approved-outcome");
+    expect(approved.textContent).toContain("Approved against v3, cut into 2 jobs, and open for annotation.");
+    const approve = sent.find((r) => r.method === "POST" && r.url.endsWith("/approve"))!;
+    expect(JSON.parse(bodies.get(approve) as string)).toEqual({ partition: { kind: "by_size", size: 25 } });
+
+    await userEvent.click(screen.getByTestId("open-batch"));
+    expect(open).toHaveBeenCalledWith(BATCH_ID);
+  });
+
+  it("walks back out of the approval without approving anything", async () => {
+    schemaExists(true);
+    on("GET", new RegExp(`/batches/${BATCH_ID}$`), { status: 200, body: draftBatch() });
+    await landBatch(<AddImages projectId={PROJECT} onOpenBatch={vi.fn()} />);
+
+    await userEvent.click(await screen.findByTestId("approve-open"));
+    await screen.findByTestId("approve-step");
+    await userEvent.click(screen.getByTestId("approve-back"));
+    expect(screen.queryByTestId("approve-step")).toBeNull();
+    expect(screen.getByTestId("run-outcome")).not.toBeNull();
+    expect(sent.some((r) => r.url.endsWith("/approve"))).toBe(false);
+  });
+
+  it("says what approving needs when there is no schema, and offers the batch instead", async () => {
+    schemaExists(false);
+    on("GET", new RegExp(`/batches/${BATCH_ID}$`), { status: 200, body: draftBatch() });
+    const schema = vi.fn();
+    await landBatch(<AddImages projectId={PROJECT} onOpenBatch={vi.fn()} onOpenSchema={schema} />);
+
+    const remedy = await screen.findByTestId("approve-needs-schema");
+    expect(remedy.textContent).toContain("Approving needs a schema");
+    expect(screen.queryByTestId("approve-open")).toBeNull();
+    expect(screen.getByTestId("open-batch").textContent).toBe("Open the batch");
+    await userEvent.click(screen.getByTestId("approve-needs-schema-go"));
+    expect(schema).toHaveBeenCalledOnce();
+  });
+
+  it("offers no approval on a batch that does not declare it", async () => {
+    schemaExists(true);
+    on("GET", new RegExp(`/batches/${BATCH_ID}$`), { status: 200, body: draftBatch({ allowed_actions: ["edit_membership"] }) });
+    await landBatch(<AddImages projectId={PROJECT} onOpenBatch={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByTestId("run-outcome").textContent).toContain("It holds 30 images."));
+    expect(screen.queryByTestId("approve-open")).toBeNull();
+    expect(screen.getByTestId("open-batch")).not.toBeNull();
+  });
+
+  it("starts the walk over for another source, and lists the batches this session made", async () => {
+    schemaExists(true);
+    on("GET", new RegExp(`/batches/${BATCH_ID}$`), { status: 200, body: draftBatch() });
+    await landBatch(<AddImages projectId={PROJECT} onOpenBatch={vi.fn()} />);
+
+    await userEvent.click(screen.getByTestId("ingest-another"));
+    expect(screen.getByTestId("step-1").dataset.state).toBe("active");
+    expect(screen.getByTestId("landed").textContent).toContain("“drive.mp4”");
+    expect(screen.getByTestId("dropzone")).not.toBeNull();
+  });
+});
+
+/**
+ * Closing hides the flow; it does not discard it.
+ *
+ * The host keeps the dialog mounted while it is closed, so a run somebody
+ * closed the dialog on still polls — and still refreshes the batch table when
+ * it lands — and Add images reopens on it. A flow that has settled starts over.
+ */
+describe("closing and opening again", () => {
+  function Host(): JSX.Element {
+    const [open, setOpen] = useState(true);
+    return (
+      <>
+        <button type="button" data-testid="reopen" onClick={() => setOpen(true)}>
+          Add images
+        </button>
+        <AddImagesDialog projectId={PROJECT} open={open} onOpenChange={setOpen} />
+      </>
+    );
+  }
+
+  beforeEach(() => {
+    on("GET", /\/batches$/, { status: 200, body: { items: [], total: 0 } });
+    on("POST", /\/sources\/images$/, { status: 201, body: IMAGE_SOURCE });
+    on("POST", /\/ingest-jobs$/, { status: 202, body: job({ state: "running", processed: 0 }) });
+  });
+
+  it("keeps a run in flight, and reopens on it", async () => {
+    on("GET", /\/ingest-jobs\//, { status: 200, body: job({ state: "running", processed: 3, batch_id: null }) });
+    renderWithData(<Host />);
+    await choose([pick("a.png", "image/png")]);
+    await userEvent.click(screen.getByTestId("register-source"));
+    await screen.findByTestId("source-card");
+    await userEvent.click(screen.getByTestId("start-ingest"));
+    await screen.findByTestId("run-progress");
+
+    await userEvent.click(screen.getByTestId("add-images-close"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    await userEvent.click(screen.getByTestId("reopen"));
+    expect((await screen.findByTestId("run-progress")).textContent).toBe("3 of 25");
+    expect(screen.getByTestId("step-3").dataset.state).toBe("active");
+  });
+
+  it("starts over once the flow has settled", async () => {
+    on("GET", /\/ingest-jobs\//, { status: 200, body: job({ batch_id: null }) });
+    renderWithData(<Host />);
+    await choose([pick("a.png", "image/png")]);
+    await userEvent.click(screen.getByTestId("register-source"));
+    await screen.findByTestId("source-card");
+    await userEvent.click(screen.getByTestId("start-ingest"));
+    await screen.findByTestId("run-outcome");
+
+    await userEvent.click(screen.getByTestId("add-images-close"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await userEvent.click(screen.getByTestId("reopen"));
+
+    expect(await screen.findByTestId("dropzone")).not.toBeNull();
+    expect(screen.getByTestId("step-1").dataset.state).toBe("active");
   });
 });

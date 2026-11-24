@@ -3,8 +3,7 @@
  *
  * With the project's sections in a navigation column and the workspace's
  * destinations on the rail, an ancestor chain inside a project says nothing they
- * do not — so a page that sits *below* a section (the ingest flow)
- * carries one control back to the level above it, and a section carries
+ * do not — so a page that sits *below* a section carries one control back to the level above it, and a section carries
  * none. The annotator keeps its own arrow for the same reason.
  *
  * Structural, never `navigate(-1)`: the destination has to be the same whether

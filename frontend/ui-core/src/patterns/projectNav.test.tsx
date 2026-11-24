@@ -9,14 +9,24 @@
  * is a browser fact and lives in `e2e/project-nav.spec.ts`.
  */
 
-import { render, screen, within } from "@testing-library/react";
+import { render as plainRender, screen, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { TooltipProvider } from "@robomous/ui-core";
+
+import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { ProjectNav, type ProjectNavProps } from "./ProjectNav";
 import { PROJECT_SECTIONS } from "./projectSections";
+
+/** The header's actions are icon buttons named by tooltips, which need their provider. */
+function render(ui: Parameters<typeof plainRender>[0]): ReturnType<typeof plainRender> {
+  return plainRender(ui, { wrapper: TooltipProvider });
+}
+
+beforeEach(() => stubResizeObserver());
 
 function props(overrides: Partial<ProjectNavProps> = {}): ProjectNavProps {
   return {
@@ -36,9 +46,12 @@ function props(overrides: Partial<ProjectNavProps> = {}): ProjectNavProps {
   };
 }
 
-/** The filled controls on screen: Nova's default `Button` carries `data-variant="default"`. */
+/**
+ * The filled controls on screen: Nova's default `Button` carries `data-variant="default"`.
+ * Not keyed on `data-slot`: a button that is a tooltip's trigger takes that slot's name.
+ */
 function filled(): HTMLElement[] {
-  return Array.from(document.querySelectorAll<HTMLElement>('[data-slot="button"][data-variant="default"]'));
+  return Array.from(document.querySelectorAll<HTMLElement>('button[data-variant="default"]'));
 }
 
 describe("ProjectNav", () => {
@@ -46,7 +59,8 @@ describe("ProjectNav", () => {
     render(<ProjectNav {...props()} />);
 
     expect(filled()).toHaveLength(1);
-    expect(filled()[0]?.textContent).toContain("Annotate");
+    // An icon button, named by its tooltip.
+    expect(filled()[0]?.getAttribute("aria-label")).toBe("Annotate");
 
     const nav = screen.getByTestId("project-nav");
     const items = within(nav).getAllByRole("link").filter((link) => link.dataset.testid?.startsWith("nav-"));
@@ -141,7 +155,7 @@ describe("ProjectNav", () => {
     render(<ProjectNav {...props({ annotate: undefined })} />);
     expect(screen.queryByTestId("go-annotate")).toBeNull();
     expect(filled()).toHaveLength(1);
-    expect(filled()[0]?.textContent).toContain("Add images");
+    expect(filled()[0]?.getAttribute("aria-label")).toBe("Add images");
   });
 
   it("steps Ingest back when the content owns the page's filled control", () => {
@@ -156,7 +170,7 @@ describe("ProjectNav", () => {
     expect(screen.queryByTestId("go-ingest")).toBeNull();
   });
 
-  it("asks which batch when more than one is open, and says it is asking", async () => {
+  it("splits Annotate when more than one batch is open: it jumps to the newest, and a chevron asks which", async () => {
     const onOpen = vi.fn();
     render(
       <ProjectNav
@@ -171,11 +185,17 @@ describe("ProjectNav", () => {
         })}
       />,
     );
-    const trigger = screen.getByTestId("go-annotate");
+    const trigger = screen.getByTestId("go-annotate-menu");
     expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+    expect(trigger.getAttribute("aria-label")).toBe("Choose a batch to annotate");
     await userEvent.click(trigger);
     await userEvent.click(await screen.findByTestId("annotate-batch-drive-01"));
     expect(onOpen).toHaveBeenCalledWith("b1");
+
+    // The main half does not ask: it goes straight to the first target, the newest.
+    onOpen.mockClear();
+    await userEvent.click(screen.getByTestId("go-annotate"));
+    expect(onOpen).toHaveBeenCalledExactlyOnceWith("b2");
   });
 
   it("jumps into the annotator when the one open batch has one job", async () => {
@@ -236,10 +256,10 @@ describe("ProjectNav", () => {
         })}
       />,
     );
-    await userEvent.click(screen.getByTestId("go-annotate"));
+    await userEvent.click(screen.getByTestId("go-annotate-menu"));
     await userEvent.click(await screen.findByTestId("annotate-batch-drive-02"));
     expect(onOpenJob).toHaveBeenCalledWith("j2");
-    await userEvent.click(screen.getByTestId("go-annotate"));
+    await userEvent.click(screen.getByTestId("go-annotate-menu"));
     await userEvent.click(await screen.findByTestId("annotate-batch-drive-01"));
     expect(onOpen).toHaveBeenCalledWith("b1");
   });

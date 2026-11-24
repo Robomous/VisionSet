@@ -14,13 +14,12 @@
  * exactly what a way out must not rely on.
  */
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BackLink } from "../patterns/BackLink";
 import { parentLabel } from "../patterns/parentLabel";
-import { IngestScreen } from "./IngestScreen";
 import { ProjectScreen } from "./ProjectScreen";
 import { renderWithData } from "../testing/dataHarness";
 import { batchActions } from "../testing/wire.fixtures.js";
@@ -138,51 +137,12 @@ describe("the control itself", () => {
   });
 });
 
-/**
- * Every sub-view inside a project and the one parent it names.
- *
- * A section has no way out of its own — the project's navigation is beside it and
- * the list is on the rail — so the project screen is not here. The dataset is
- * absent for the same reason: it is a section.
+/*
+ * The project's one sub-view was the ingest page, and it is a dialog now —
+ * opened over the section it was asked from and closed back onto it, so it has
+ * no parent to name. `addImages.test.tsx` holds its way out: Close, and the
+ * flow that survives it.
  */
-const SUBVIEWS = [
-  {
-    name: "ingest",
-    parent: "road-signs",
-    sentinel: "ingest-screen",
-    render: (nav?: () => void) =>
-      <IngestScreen projectId={PROJECT} {...(nav === undefined ? {} : { onBack: nav })} />,
-  },
-] as const;
-
-describe.each(SUBVIEWS)("$name", ({ parent, sentinel, render: renderScreen }) => {
-  it("names its parent, and calls back from it", async () => {
-    const onBack = vi.fn();
-    renderWithData(renderScreen(onBack));
-
-    // Waited for rather than read once: ingest names a project whose query is
-    // still in flight on the first paint, and `parentLabel` deliberately renders
-    // the noun until it lands.
-    await waitFor(() => expect(screen.getByTestId("back-link").textContent).toBe(parent));
-
-    // Re-queried rather than held: a screen whose queries settle after the first
-    // paint re-renders around this control, and clicking the node captured before
-    // that does nothing at all — silently, which is the worst way for a test to
-    // pass.
-    await userEvent.click(screen.getByTestId("back-link"));
-    expect(onBack).toHaveBeenCalledTimes(1);
-  });
-
-  it("draws none at all when the host has nowhere to send anybody", async () => {
-    renderWithData(renderScreen());
-
-    // Waited for, not read immediately: every one of these screens paints a
-    // loading state first, and asserting absence against a skeleton would pass
-    // however the screen behaved afterwards.
-    await screen.findByTestId(sentinel);
-    expect(screen.queryByTestId("back-link")).toBeNull();
-  });
-});
 
 describe("a section has no way out of its own", () => {
   it("draws no back control on the project, whose navigation is beside it", async () => {

@@ -32,12 +32,13 @@
  * A version that arrives underneath a dirty draft is neither merged nor
  * discarded — it is announced, and reloading it is a button.
  *
- * ## The four geometries, and the four the picker does not offer
+ * ## The six geometries, and the two the picker does not offer
  *
- * `GeometryType` has eight members and an `Annotation` can carry four. The
+ * `GeometryType` has eight members and an `Annotation` can carry six — the four
+ * image shapes, and `cuboid_3d` and `polyline_3d` for point-cloud scans. The
  * kernel refuses the rest at `create_version` with `UnsupportedGeometry`, and
  * `IMPLEMENTED_GEOMETRIES` is read off the `Geometry` union so a new variant
- * widens it with no second edit. The picker offers the four, because offering a
+ * widens it with no second edit. The picker offers the six, because offering a
  * choice the API will refuse is a worse experience than not offering it — and the
  * two are kept in step by the API's refusal, not by this list being right.
  *

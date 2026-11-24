@@ -1,6 +1,8 @@
 /**
- * Two lifecycle steps behind one control: *Approve and start*, and *Complete
- * and promote*.
+ * Two lifecycle steps behind one control: *Complete* with its *Add to the
+ * dataset* switch on (`complete`, then `promote`). Its sibling on the way in —
+ * *Approve* with *Start annotating now* on (`approve`, then `start`) — is the
+ * approve form's switch in `BatchLifecycle.tsx`, and follows the same rules.
  *
  * Nothing here is a new transition. Each control sends the same two requests a
  * person could send one at a time, in order, and stops where the kernel stops
@@ -20,204 +22,146 @@
  * the line and the refusal along.
  */
 
-import { ArrowRight, ArrowUpToLine, FolderOpen, Play } from "lucide-react";
+import { ArrowRight, CircleCheckBig } from "lucide-react";
 import { useState, type JSX } from "react";
 
-import { asApiError } from "../data/errors";
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
-import { Button, FieldError } from "@robomous/ui-core";
+import { Button, FieldError, Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger, Switch, Tooltip, TooltipContent, TooltipTrigger } from "@robomous/ui-core";
+import { IconAction, IconButton } from "../patterns/IconAction";
+import { quietUnlessVisible } from "../patterns/iconFocus";
+import { assetNoun } from "../lib/assetNoun";
 import { outstandingWork } from "./batchState";
-import { promotionSummary } from "./batchWords";
+import { completedLine, promotionSummary } from "./batchWords";
 import {
-  useActiveSchema,
-  useApproveBatch,
-  useBatch,
-  useBatchTransition,
+  useBatchModality,
   useFinishBatch,
   usePromoteBatch,
   type Batch,
   type FinishBatchResult,
 } from "./queries";
 
-/** What `SchemaService.require_active` raises for a project that has none. */
-const SCHEMA_NOT_FOUND = "SCHEMA_NOT_FOUND";
+// --- complete, and maybe add -------------------------------------------------
 
-// --- approve and start --------------------------------------------------------
-
-export interface ApproveAndStartButtonProps {
-  readonly batch: Batch;
-  readonly projectId: string;
-  /** The ingest outcome card's own filled control; a table row's is outline. */
-  readonly variant?: "default" | "outline";
-  readonly size?: "sm" | "default";
-  readonly className?: string;
-}
-
-/**
- * `draft → approved → in_annotation`, cut into one job — the common batch.
- *
- * Offered only while the project has an active schema: approval pins one, and
- * `allowed_actions` cannot say whether there is one to pin, because that is a
- * fact about the project rather than a state of the batch. Without a schema the
- * hosts keep their existing controls, whose refusal names the remedy.
- */
-export function ApproveAndStartButton({
-  batch,
-  projectId,
-  variant = "outline",
-  size = "sm",
-  className,
-}: ApproveAndStartButtonProps): JSX.Element | null {
-  const schema = useActiveSchema(projectId);
-  const approve = useApproveBatch(batch.id);
-  const start = useBatchTransition(batch.id, "start");
-  const [approved, setApproved] = useState<Batch | null>(null);
-
-  const offered = declares(batch, BATCH_ACTION.approve) && schema.isSuccess;
-  if (!offered && approved === null) return null;
-
-  const pending = approve.isPending || start.isPending;
-  const label = approve.isPending
-    ? "Approving…"
-    : start.isPending
-      ? "Starting…"
-      : "Approve and start";
-
-  return (
-    <div className={className ?? "flex flex-col items-end gap-1"}>
-      {offered && (
-        <Button
-          variant={variant}
-          size={size}
-          data-testid={`approve-start-${batch.name}`}
-          disabled={pending}
-          onClick={() =>
-            approve.mutate(
-              { kind: "single" },
-              {
-                onSuccess: (result) => {
-                  setApproved(result);
-                  start.mutate();
-                },
-              },
-            )
-          }
-        >
-          <Play aria-hidden="true" />
-          {label}
-        </Button>
-      )}
-      {approved !== null && (
-        <span className="text-xs text-muted-foreground" data-testid={`approved-${batch.name}`}>
-          Approved against v{approved.schema_version}
-          {start.isSuccess ? ", and open for annotation." : "."}
-        </span>
-      )}
-      {approve.isError && (
-        <FieldError data-testid={`approve-start-error-${batch.name}`}>
-          {refusalProse(approve.error)}
-        </FieldError>
-      )}
-      {start.isError && (
-        <FieldError data-testid={`approve-start-error-${batch.name}`}>
-          {refusalProse(start.error)}
-        </FieldError>
-      )}
-    </div>
-  );
-}
-
-// --- complete and promote -----------------------------------------------------
-
-export interface CompleteAndPromoteButtonProps {
+export interface CompleteBatchButtonProps {
   readonly batch: Batch;
   readonly projectId: string;
   /** The dataset screen, so a promotion can be followed to where it landed. */
   readonly onOpenDataset?: () => void;
-  readonly className?: string;
+  /** Both steps landed, so a host showing a separate *Add to dataset* can stand it down. */
+  readonly onPromoted?: () => void;
+  /** Filled while it is the batch's forward step. */
   readonly variant?: "default" | "outline";
-  readonly size?: "sm" | "lg";
 }
 
 /**
- * `in_annotation → completed`, then the union into the trunk. Withheld while
- * work is outstanding, exactly as *Complete* is beside it — the count is that
- * control's to say, once.
+ * `in_annotation → completed`, and — if the person keeps the switch on — the
+ * union into the trunk: one icon button, and a small confirmation that holds the
+ * choice (the "Confirm" direction of the Complete prototype).
+ *
+ * **The choice is made where the consequence is said.** Completing cannot be
+ * undone, so a press opens a popover that says so; its one switch, *Add N images
+ * to the dataset*, is on by default and keeps the person's last answer for the
+ * next batch. The button inside always says *Complete*: the switch is the
+ * choice, and a label that changed with it would also change width under the
+ * pointer.
+ *
+ * **Withheld while work is outstanding rather than offered and refused.**
+ * `JobService.complete` would refuse an unsettled asset, and this screen can
+ * already see the count, so the button is disabled and its tooltip says how
+ * many are left. The remaining refusals are real answers to a race, and are
+ * said in words, under the footer's controls (`data-line`).
+ *
+ * The UI says "add to dataset" where the kernel, API and CLI say `promote`.
  */
-export function CompleteAndPromoteButton({
-  batch,
-  projectId,
-  onOpenDataset,
-  className,
-  variant = "outline",
-  size = "sm",
-}: CompleteAndPromoteButtonProps): JSX.Element | null {
+export function CompleteBatchButton({ batch, projectId, onOpenDataset, onPromoted, variant = "default" }: CompleteBatchButtonProps): JSX.Element | null {
   const finish = useFinishBatch(batch.id);
   const promote = usePromoteBatch(projectId);
   const [completed, setCompleted] = useState<FinishBatchResult | null>(null);
+  const [open, setOpen] = useState(false);
+  const [add, setAdd] = useState(lastAddChoice);
+  const modality = useBatchModality(projectId, batch.id);
 
   const offered = declares(batch, BATCH_ACTION.complete);
   if (!offered && completed === null) return null;
 
   const outstanding = outstandingWork(batch.progress);
-  const pending = finish.isPending || promote.isPending;
-  const label = finish.isPending
-    ? "Completing…"
-    : promote.isPending
-      ? "Promoting…"
-      : "Complete and promote";
-  const summary = promote.isSuccess
-    ? promotionSummary(promote.data.total, batch.promoted_asset_count, batch.asset_count)
-    : null;
+  const reason = outstanding > 0 ? `${outstanding} ${assetNoun(modality, outstanding)} still to annotate or skip` : null;
+  const busy = finish.isPending || promote.isPending;
+  const summary = promote.isSuccess ? promotionSummary(promote.data.total, batch.promoted_asset_count, batch.asset_count) : null;
+
+  function submit(): void {
+    setOpen(false);
+    lastAddChoice = add;
+    finish.mutate(undefined, {
+      onSuccess: (result) => {
+        setCompleted(result);
+        if (add) promote.mutate(batch.id, { onSuccess: () => onPromoted?.() });
+      },
+    });
+  }
 
   return (
-    <div className={className ?? "flex flex-col items-end gap-1"}>
-      {offered && (
-        <Button
-          variant={variant}
-          size={size}
-          data-testid={`complete-promote-${batch.name}`}
-          disabled={outstanding > 0 || pending}
-          onClick={() =>
-            finish.mutate(undefined, {
-              onSuccess: (result) => {
-                setCompleted(result);
-                promote.mutate(batch.id);
-              },
-            })
-          }
-        >
-          <ArrowUpToLine aria-hidden="true" />
-          {label}
-        </Button>
-      )}
+    <div className="contents">
+      {offered &&
+        (reason !== null || busy ? (
+          <IconAction icon={CircleCheckBig} label="Complete batch" reason={reason} busy={busy} variant="outline" data-testid={`complete-${batch.name}`} />
+        ) : (
+          <Popover open={open} onOpenChange={setOpen}>
+            <Tooltip>
+              <TooltipTrigger asChild onFocus={quietUnlessVisible}>
+                <PopoverTrigger asChild>
+                  <IconButton icon={CircleCheckBig} label="Complete batch" variant={variant} data-testid={`complete-${batch.name}`} data-autofocus={variant === "default" ? "" : undefined} />
+                </PopoverTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="top">Complete batch</TooltipContent>
+            </Tooltip>
+            <PopoverContent side="top" align="end" className="w-80 p-3" data-testid="complete-confirm">
+              <PopoverHeader>
+                <PopoverTitle>Complete this batch?</PopoverTitle>
+                <PopoverDescription>
+                  Any job still open closes with it. A completed batch can’t be reopened.
+                </PopoverDescription>
+              </PopoverHeader>
+              {/* The whole row is the switch's label: the row is the hit area and its words are the name. */}
+              <label className="flex cursor-pointer items-center justify-between gap-3 rounded-md bg-muted/60 px-3 py-2.5">
+                {/* Not a count: skipped ones stay out, and only the kernel knows which are left. */}
+                <span className="font-medium">Add the labeled {assetNoun(modality, 2, "image")} to the dataset</span>
+                <Switch checked={add} onCheckedChange={setAdd} data-testid="complete-add" />
+              </label>
+              <div className="flex justify-end gap-1.5">
+                <Button variant="ghost" onClick={() => setOpen(false)}>
+                  Cancel
+                </Button>
+                <Button className={PRESS} onClick={submit} data-testid="complete-submit">
+                  <CircleCheckBig data-icon="inline-start" aria-hidden="true" />
+                  Complete
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+        ))}
       {completed !== null && (
-        <span className="text-xs text-muted-foreground" data-testid={`completed-${batch.name}`}>
-          Completed
-          {completed.jobsFinished > 0
-            ? `, finishing ${completed.jobsFinished} job${completed.jobsFinished === 1 ? "" : "s"}.`
-            : "."}
-          {summary === null ? "" : ` ${summary}`}
+        <span data-line="" className="text-xs text-muted-foreground" data-testid={`completed-${batch.name}`}>
+          {completedLine(completed)}
+          {summary === null ? (promote.isIdle ? " Nothing is in the dataset yet." : "") : ` ${summary}`}
         </span>
       )}
       {promote.isSuccess && onOpenDataset !== undefined && (
-        <Button
-          variant="link"
-          data-testid={`complete-promote-open-dataset-${batch.name}`}
-          onClick={onOpenDataset}
-        >
-          Open the dataset
-          <ArrowRight className="size-3.5" aria-hidden="true" />
-        </Button>
+        <span data-line="" className="flex justify-end">
+          <Button variant="link" className="h-auto p-0" data-testid={`complete-promote-open-dataset-${batch.name}`} onClick={onOpenDataset}>
+            Open the dataset
+            <ArrowRight className="size-3.5" aria-hidden="true" />
+          </Button>
+        </span>
       )}
       {finish.isError && (
-        <FieldError data-testid={`complete-promote-error-${batch.name}`}>
+        <FieldError data-line="" data-testid={`complete-error-${batch.name}`}>
           {refusalProse(finish.error)}
         </FieldError>
       )}
       {promote.isError && (
-        <FieldError data-testid={`complete-promote-error-${batch.name}`}>
+        <FieldError data-line="" data-testid={`complete-promote-error-${batch.name}`}>
           {refusalProse(promote.error)}
         </FieldError>
       )}
@@ -225,85 +169,7 @@ export function CompleteAndPromoteButton({
   );
 }
 
-// --- the ingest outcome card's next step ------------------------------------
+/** The switch's last answer, for the next batch completed in this session. */
+let lastAddChoice = true;
 
-export interface OutcomeNextStepProps {
-  readonly projectId: string;
-  readonly batchId: string;
-  readonly onOpenBatch?: (batchId: string) => void;
-  /** The project's schema section, for the remedy when there is no schema to pin. */
-  readonly onOpenSchema?: () => void;
-}
-
-/**
- * What a settled ingest offers over the batch it filled.
- *
- * The card is the only thing the stepper shows once a run settles, so it is a
- * view of its own and may carry one filled control. With an active schema that
- * is *Approve and start*, and *Open batch* steps down to secondary; without one
- * the card keeps *Open batch* filled and says, in words, what approving needs
- * and where to get it. Only a 404 for the schema is "none": any other failure
- * of that read says nothing about the project, and the card offers what it
- * always did.
- */
-export function OutcomeNextStep({
-  projectId,
-  batchId,
-  onOpenBatch,
-  onOpenSchema,
-}: OutcomeNextStepProps): JSX.Element {
-  const batch = useBatch(batchId);
-  const schema = useActiveSchema(projectId);
-  const noSchema = schema.isError && asApiError(schema.error).code === SCHEMA_NOT_FOUND;
-  const composable =
-    schema.isSuccess && batch.data !== undefined && declares(batch.data, BATCH_ACTION.approve);
-  const [pressed, setPressed] = useState(false);
-  const composed = composable || pressed;
-
-  return (
-    <>
-      {noSchema && (
-        <p
-          className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground"
-          data-testid="approve-needs-schema"
-        >
-          Approving needs a schema.{" "}
-          {onOpenSchema === undefined ? (
-            "Define one"
-          ) : (
-            <button
-              type="button"
-              className="text-foreground underline underline-offset-2"
-              data-testid="approve-needs-schema-go"
-              onClick={onOpenSchema}
-            >
-              Define one
-            </button>
-          )}{" "}
-          and the batch can start from its own page.
-        </p>
-      )}
-      {composed && batch.data !== undefined && (
-        <div onClickCapture={() => setPressed(true)}>
-          <ApproveAndStartButton
-            batch={batch.data}
-            projectId={projectId}
-            variant="default"
-            size="default"
-            className="flex flex-col items-start gap-1"
-          />
-        </div>
-      )}
-      {onOpenBatch !== undefined && (
-        <Button
-          variant={composed ? "outline" : "default"}
-          data-testid="open-batch"
-          onClick={() => onOpenBatch(batchId)}
-        >
-          <FolderOpen aria-hidden="true" />
-          Open batch
-        </Button>
-      )}
-    </>
-  );
-}
+const PRESS = "transition-[background-color,scale] duration-100 ease-out active:scale-[0.97] motion-reduce:transition-none";

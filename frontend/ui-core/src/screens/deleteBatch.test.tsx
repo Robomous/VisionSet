@@ -1,20 +1,20 @@
 /**
- * The batch delete control: one component, two anchors, one gate.
+ * The batch delete control: one component, one gate.
  *
  * Three claims here that nothing else in the suite makes:
  *
  * 1. **Availability is the wire's**, not a rule this client keeps. Every case
  *    below builds its batch from `batchActions(state)` — the transcription of
  *    `capabilities.py` — so a state's answer changes here only when the kernel's
- *    does. `completed` renders the item disabled *with the reason*, which is the
+ *    does. `completed` renders the button disabled *with the reason* (its tooltip), which is the
  *    `ui-capabilities` requirement that a meaningful-but-unavailable action
  *    explains itself.
  * 2. **The dialog's blast radius is sourced, not written.** Its numbers come off
  *    the batch it was handed, and the sentence about annotations is the one the
  *    schema supports: labels hang off assets, so deleting a batch cannot reach
  *    one.
- * 3. **Both mounts are the same component.** The `renders at both anchors` case
- *    is what turns a fork into a failure rather than a duplication.
+ * 3. **Every mount is the same component.** The last case is what turns a fork
+ *    into a failure rather than a duplication.
  *
  * The request is stubbed, never the question: the DELETE goes out on every path
  * that reaches it, and the refusal comes back from the stub.
@@ -24,9 +24,10 @@ import { screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { BatchOverflowMenu } from "./DeleteBatch";
+import { DeleteBatchButton } from "./DeleteBatch";
 import type { Batch } from "./queries";
 import { renderWithData } from "../testing/dataHarness";
+import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { batchActions } from "../testing/wire.fixtures.js";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
@@ -37,6 +38,7 @@ let handlers: ((request: Request) => Answer | undefined)[] = [];
 const sent: Request[] = [];
 
 beforeEach(() => {
+  stubResizeObserver();
   handlers = [];
   sent.length = 0;
   vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
@@ -95,36 +97,38 @@ function batch(state: Batch["state"], overrides: Partial<Batch> = {}): Batch {
   };
 }
 
-/** Open the `⋯` menu and hand back the delete item. */
+/** Press the delete button, and hand it back. */
 async function openMenu(): Promise<HTMLElement> {
-  await userEvent.click(screen.getByTestId("batch-overflow-drive-01"));
-  return await screen.findByTestId("delete-batch-drive-01");
+  const button = screen.getByTestId("delete-batch-drive-01");
+  await userEvent.click(button);
+  return button;
 }
 
-describe("what the overflow offers", () => {
+/** The delete button without pressing it. */
+function deleteButton(): HTMLButtonElement {
+  return screen.getByTestId("delete-batch-drive-01") as HTMLButtonElement;
+}
+
+describe("what the delete button offers", () => {
   it.each(["draft", "approved", "in_annotation"] as const)(
     "offers delete on a %s batch, because the wire declares it",
     async (state) => {
-      renderWithData(<BatchOverflowMenu batch={batch(state)} projectId={PROJECT} />);
+      renderWithData(<DeleteBatchButton batch={batch(state)} projectId={PROJECT} />);
 
-      const item = await openMenu();
-
-      expect(item.hasAttribute("data-disabled")).toBe(false);
-      expect(screen.queryByTestId("delete-withheld-drive-01")).toBeNull();
+      expect(deleteButton().disabled).toBe(false);
+      expect(deleteButton().getAttribute("aria-label")).toBe("Delete batch");
     },
   );
 
   it("disables it on a completed batch and says why, rather than hiding it", async () => {
-    renderWithData(<BatchOverflowMenu batch={batch("completed")} projectId={PROJECT} />);
-
-    const item = await openMenu();
+    renderWithData(<DeleteBatchButton batch={batch("completed")} projectId={PROJECT} />);
 
     // Shown, because there is an operation behind it and a state that would
     // enable it — the distinction between this and removing the control.
-    expect(item.hasAttribute("data-disabled")).toBe(true);
-    expect(screen.getByTestId("delete-withheld-drive-01").textContent).toContain(
-      "correction batch",
-    );
+    expect(deleteButton().getAttribute("aria-disabled")).toBe("true");
+    // The reason is the tooltip's, reached by keyboard: the withheld button stays focusable.
+    await userEvent.tab();
+    expect((await screen.findAllByText(/correction batch/)).length).toBeGreaterThan(0);
   });
 
   it("follows the declaration and not the state word, when the two disagree", async () => {
@@ -142,24 +146,22 @@ describe("what the overflow offers", () => {
      * older client, which is the case the contract exists for.
      */
     renderWithData(
-      <BatchOverflowMenu
+      <DeleteBatchButton
         batch={batch("in_annotation", { allowed_actions: ["complete", "repin"] })}
         projectId={PROJECT}
       />,
     );
 
-    const item = await openMenu();
-
-    expect(item.hasAttribute("data-disabled")).toBe(true);
-    await userEvent.click(item);
+    expect(deleteButton().getAttribute("aria-disabled")).toBe("true");
+    await userEvent.click(deleteButton());
     expect(screen.queryByTestId("delete-batch-dialog")).toBeNull();
     expect(sent).toEqual([]);
   });
 
-  it("does not open the dialog from a disabled item", async () => {
-    renderWithData(<BatchOverflowMenu batch={batch("completed")} projectId={PROJECT} />);
+  it("does not open the dialog from a disabled button", async () => {
+    renderWithData(<DeleteBatchButton batch={batch("completed")} projectId={PROJECT} />);
 
-    await userEvent.click(await openMenu());
+    await openMenu();
 
     expect(screen.queryByTestId("delete-batch-dialog")).toBeNull();
     expect(sent).toEqual([]);
@@ -169,7 +171,7 @@ describe("what the overflow offers", () => {
 describe("what the dialog says", () => {
   it("names the frames that survive and the progress that does not", async () => {
     renderWithData(
-      <BatchOverflowMenu
+      <DeleteBatchButton
         batch={batch("in_annotation", {
           progress: {
             unannotated: 20,
@@ -185,7 +187,7 @@ describe("what the dialog says", () => {
       />,
     );
 
-    await userEvent.click(await openMenu());
+    await openMenu();
 
     const said = (await screen.findByTestId("delete-batch-dialog")).textContent ?? "";
     // 48 frames minus the 20 still sitting where the cut left them.
@@ -196,9 +198,9 @@ describe("what the dialog says", () => {
   });
 
   it("says nothing about progress for a draft, which has none to lose", async () => {
-    renderWithData(<BatchOverflowMenu batch={batch("draft")} projectId={PROJECT} />);
+    renderWithData(<DeleteBatchButton batch={batch("draft")} projectId={PROJECT} />);
 
-    await userEvent.click(await openMenu());
+    await openMenu();
 
     const said = (await screen.findByTestId("delete-batch-dialog")).textContent ?? "";
     expect(said).not.toContain("progress on");
@@ -207,13 +209,13 @@ describe("what the dialog says", () => {
 
   it("mentions the trunk only when something of this batch is already in it", async () => {
     renderWithData(
-      <BatchOverflowMenu
+      <DeleteBatchButton
         batch={batch("in_annotation", { promoted_asset_count: 12 })}
         projectId={PROJECT}
       />,
     );
 
-    await userEvent.click(await openMenu());
+    await openMenu();
 
     expect((await screen.findByTestId("delete-batch-dialog")).textContent).toContain(
       "the 12 already promoted stay in the dataset",
@@ -261,9 +263,9 @@ describe("what the dialog calls a batch's assets", () => {
 
   it("says scans for a project of point-cloud sources, without reading the batch", async () => {
     sources("point_cloud_directory");
-    renderWithData(<BatchOverflowMenu batch={batch("draft")} projectId={PROJECT} />);
+    renderWithData(<DeleteBatchButton batch={batch("draft")} projectId={PROJECT} />);
 
-    await userEvent.click(await openMenu());
+    await openMenu();
 
     const dialog = await screen.findByTestId("delete-batch-dialog");
     await waitFor(() => expect(dialog.textContent).toContain("48 scans remain in the project"));
@@ -274,9 +276,9 @@ describe("what the dialog calls a batch's assets", () => {
 
   it("says one scan in the singular", async () => {
     sources("point_cloud_directory");
-    renderWithData(<BatchOverflowMenu batch={batch("draft", { asset_count: 1, promoted_asset_count: 1 })} projectId={PROJECT} />);
+    renderWithData(<DeleteBatchButton batch={batch("draft", { asset_count: 1, promoted_asset_count: 1 })} projectId={PROJECT} />);
 
-    await userEvent.click(await openMenu());
+    await openMenu();
 
     const dialog = await screen.findByTestId("delete-batch-dialog");
     await waitFor(() => expect(dialog.textContent).toContain("1 scan remains in the project with its work on it"));
@@ -286,9 +288,9 @@ describe("what the dialog calls a batch's assets", () => {
   it("reads the batch's first asset when the project holds scans and images", async () => {
     sources("image_directory", "point_cloud_directory");
     firstAsset("point_cloud");
-    renderWithData(<BatchOverflowMenu batch={batch("draft")} projectId={PROJECT} />);
+    renderWithData(<DeleteBatchButton batch={batch("draft")} projectId={PROJECT} />);
 
-    await userEvent.click(await openMenu());
+    await openMenu();
 
     const dialog = await screen.findByTestId("delete-batch-dialog");
     await waitFor(() => expect(dialog.textContent).toContain("48 scans remain in the project"));
@@ -297,9 +299,9 @@ describe("what the dialog calls a batch's assets", () => {
   it("keeps frames for a batch of images in a project that also holds scans", async () => {
     sources("image_directory", "point_cloud_directory");
     firstAsset("image");
-    renderWithData(<BatchOverflowMenu batch={batch("draft")} projectId={PROJECT} />);
+    renderWithData(<DeleteBatchButton batch={batch("draft")} projectId={PROJECT} />);
 
-    await userEvent.click(await openMenu());
+    await openMenu();
 
     const dialog = await screen.findByTestId("delete-batch-dialog");
     await waitFor(() => expect(sent.some((one) => new URL(one.url).pathname.endsWith("/assets"))).toBe(true));
@@ -308,9 +310,9 @@ describe("what the dialog calls a batch's assets", () => {
 
   it("keeps frames for a project of images", async () => {
     sources("image_directory", "video");
-    renderWithData(<BatchOverflowMenu batch={batch("draft")} projectId={PROJECT} />);
+    renderWithData(<DeleteBatchButton batch={batch("draft")} projectId={PROJECT} />);
 
-    await userEvent.click(await openMenu());
+    await openMenu();
 
     await waitFor(() => expect(sent.some((one) => new URL(one.url).pathname.endsWith("/sources"))).toBe(true));
     expect((await screen.findByTestId("delete-batch-dialog")).textContent).toContain("48 frames remain in the project");
@@ -322,10 +324,10 @@ describe("what pressing Delete does", () => {
     on("DELETE", /\/batches\/[^/]+$/, { status: 204 });
     const gone = vi.fn();
     renderWithData(
-      <BatchOverflowMenu batch={batch("draft")} projectId={PROJECT} onDeleted={gone} />,
+      <DeleteBatchButton batch={batch("draft")} projectId={PROJECT} onDeleted={gone} />,
     );
 
-    await userEvent.click(await openMenu());
+    await openMenu();
     await userEvent.click(screen.getByTestId("delete-batch-submit"));
 
     await waitFor(() => expect(gone).toHaveBeenCalledTimes(1));
@@ -348,10 +350,10 @@ describe("what pressing Delete does", () => {
     });
     const gone = vi.fn();
     renderWithData(
-      <BatchOverflowMenu batch={batch("draft")} projectId={PROJECT} onDeleted={gone} />,
+      <DeleteBatchButton batch={batch("draft")} projectId={PROJECT} onDeleted={gone} />,
     );
 
-    await userEvent.click(await openMenu());
+    await openMenu();
     await userEvent.click(screen.getByTestId("delete-batch-submit"));
 
     const said = (await screen.findByTestId("delete-batch-error")).textContent ?? "";
@@ -363,9 +365,9 @@ describe("what pressing Delete does", () => {
   });
 
   it("closes with no write when Cancel is pressed", async () => {
-    renderWithData(<BatchOverflowMenu batch={batch("draft")} projectId={PROJECT} />);
+    renderWithData(<DeleteBatchButton batch={batch("draft")} projectId={PROJECT} />);
 
-    await userEvent.click(await openMenu());
+    await openMenu();
     await userEvent.click(screen.getByText("Cancel"));
 
     await waitFor(() => expect(screen.queryByTestId("delete-batch-dialog")).toBeNull());
@@ -374,18 +376,17 @@ describe("what pressing Delete does", () => {
   });
 });
 
-describe("the two anchors are one component", () => {
-  it("renders at both anchors with the same testids, item and dialog", async () => {
-    // The mount points differ only in their `align` and their `onDeleted`; a
-    // fork that let one of them diverge — a different gate, a different
-    // sentence, a different apply — turns this and the cases above red at the
-    // anchor that drifted.
-    for (const align of ["end", "start"] as const) {
+describe("the one component, wherever a host mounts it", () => {
+  it("renders the same testids, button and dialog with and without a host callback", async () => {
+    // The mount points differ only in their `onDeleted`; a fork that let one of
+    // them diverge — a different gate, a different sentence, a different apply —
+    // turns this and the cases above red at the anchor that drifted.
+    for (const onDeleted of [undefined, vi.fn()]) {
       const { unmount } = renderWithData(
-        <BatchOverflowMenu batch={batch("approved")} projectId={PROJECT} align={align} />,
+        <DeleteBatchButton batch={batch("approved")} projectId={PROJECT} {...(onDeleted === undefined ? {} : { onDeleted })} />,
       );
 
-      await userEvent.click(await openMenu());
+      await openMenu();
 
       const said = (await screen.findByTestId("delete-batch-dialog")).textContent ?? "";
       expect(said).toContain("The annotations stay.");

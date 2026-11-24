@@ -30,15 +30,17 @@
  * A batch has no page of its own; this panel is where it moves forward.
  */
 
-import { Check, ChevronDown, ChevronRight, ChevronUp, CircleDashed, GitBranch, Images, ListChecks, PackageCheck, ScanEye, Shapes, UserPlus, Users, X, type LucideIcon } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp, CircleDashed, GitBranch, Images, ListChecks, PackageCheck, ScanEye, Shapes, Users, X, type LucideIcon } from "lucide-react";
 import { useEffect, useRef, useState, type JSX, type ReactNode, type RefObject } from "react";
 
 import { Button, cn } from "@robomous/ui-core";
 import { formatCount, formatPercent } from "../../lib/format";
 import type { BatchRowView, LabelCounts } from "./BatchTable";
-import { initials, jobDetail, labeledDetail, phaseState } from "./batchRowModel";
+import { initials, labeledDetail, phaseState } from "./batchRowModel";
+import { focusQuietly } from "../iconFocus";
 import { StateChip } from "../StateChip";
 import { ProgressReadout } from "../ProgressRing";
+import { JobList } from "./JobList";
 
 export interface SheetJob {
   readonly id: string;
@@ -82,8 +84,10 @@ export interface BatchSheetProps {
   readonly noJobs: string;
   /** `undefined` while the batch itself is read; the folded properties wait on it. */
   readonly details?: BatchDetails;
-  /** The footer's actions, the forward one marked `data-autofocus`. */
+  /** The footer's actions, the forward one marked `data-autofocus`; their words marked `data-line`. */
   readonly actions?: ReactNode;
+  /** The top bar's own controls, at its start: what works on the whole batch without moving it (Auto-label). */
+  readonly tools?: ReactNode;
 }
 
 /** The house curve: a strong ease-out, for things arriving in answer to a press or a scroll. */
@@ -113,18 +117,19 @@ function useScrolledPast(root: RefObject<HTMLElement | null>, target: RefObject<
   return past;
 }
 
-export function BatchSheet({ row, position, onStep, onClose, jobs, jobsError, noJobs, details, actions }: BatchSheetProps): JSX.Element {
+export function BatchSheet({ row, position, onStep, onClose, jobs, jobsError, noJobs, details, actions, tools }: BatchSheetProps): JSX.Element {
   const root = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const titleFoot = useRef<HTMLDivElement>(null);
   const condensed = useScrolledPast(scroller, titleFoot);
 
   // Open on the forward action, once — or, with none, on the footer's last live
-  // control: stepping to another batch keeps the focus where it is.
+  // control — neither `disabled` nor `aria-disabled`, which is how a withheld icon
+  // button says so. Stepping to another batch keeps the focus where it is.
   useEffect(() => {
     const at = root.current;
-    const forward = at?.querySelector<HTMLElement>("[data-autofocus]") ?? [...(at?.querySelectorAll<HTMLElement>("footer button:not(:disabled)") ?? [])].at(-1);
-    forward?.focus({ preventScroll: true });
+    const forward = at?.querySelector<HTMLElement>("[data-autofocus]") ?? [...(at?.querySelectorAll<HTMLElement>("footer button:not(:disabled):not([aria-disabled=true])") ?? [])].at(-1);
+    if (forward != null) focusQuietly(forward);
   }, []);
 
   useEffect(() => {
@@ -153,7 +158,8 @@ export function BatchSheet({ row, position, onStep, onClose, jobs, jobsError, no
   return (
     <div ref={root} className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
       {/* 48px, the band's height beside it, so the two headers read as one line across the row. */}
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border/70 pr-2 pl-4 md:pl-6">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border/70 pr-2 pl-3 md:pl-5">
+        {tools !== undefined && <div className="flex shrink-0 items-center gap-1" data-testid="batch-sheet-tools">{tools}</div>}
         <span className="ml-auto shrink-0 px-1 text-xs text-muted-foreground tabular-nums">
           <span className="sr-only">Batch </span>
           {position.at + 1} of {position.count}
@@ -214,7 +220,15 @@ export function BatchSheet({ row, position, onStep, onClose, jobs, jobsError, no
       </div>
 
       {actions !== undefined && (
-        <footer className="flex shrink-0 flex-wrap items-start justify-end gap-2 border-t border-border/70 px-4 py-3 md:px-6" data-testid="batch-sheet-actions">{actions}</footer>
+        // One row of icon buttons; every line a control says (`data-line`: an
+        // outcome, a refusal, a count) takes a full row above them, right-aligned
+        // over the forward step it came from.
+        <footer
+          className="flex shrink-0 flex-wrap items-center gap-x-1 gap-y-2 border-t border-border/70 px-3 py-2.5 md:px-5 [&_[data-line]]:order-first [&_[data-line]]:basis-full [&_[data-line]]:text-right [&_[data-line]]:text-pretty"
+          data-testid="batch-sheet-actions"
+        >
+          {actions}
+        </footer>
       )}
     </div>
   );
@@ -296,9 +310,10 @@ function Holders({ jobs }: { readonly jobs: readonly SheetJob[] | undefined }): 
   return (
     <span className="flex min-w-0 items-center gap-2">
       {names.length > 0 && (
-        <span className="flex shrink-0 -space-x-1.5">
+        // 24px discs overlapping by 4px: the next one's 2px ring stops short of the two letters, which 20px discs at 6px could not.
+        <span className="flex shrink-0 -space-x-1">
           {names.slice(0, 3).map((name) => (
-            <span key={name} aria-hidden="true" className="grid size-5 place-items-center rounded-full bg-muted text-[9px] font-medium ring-2 ring-background">
+            <span key={name} aria-hidden="true" className="grid size-6 place-items-center rounded-full bg-muted text-[9px] font-medium ring-2 ring-background">
               {initials(name)}
             </span>
           ))}
@@ -377,80 +392,17 @@ function JobsSection({ jobs, jobsError, noJobs }: Pick<BatchSheetProps, "jobs" |
           </Button>
         </div>
       ) : jobs === undefined ? (
-        // Two job-height rows, so the list arriving fills them instead of pushing.
-        <div className="flex flex-col gap-2" aria-busy="true">
+        // Two rows of the list's own height, so the jobs arriving fill them instead of pushing.
+        <div className="overflow-hidden rounded-lg border" aria-busy="true">
           <span className="sr-only">Loading jobs</span>
-          <span className="h-[3.75rem] animate-pulse rounded-lg bg-muted" />
-          <span className="h-[3.75rem] animate-pulse rounded-lg bg-muted" />
+          <span className="block h-11 animate-pulse border-b bg-muted/60 motion-reduce:animate-none" />
+          <span className="block h-11 animate-pulse bg-muted/60 motion-reduce:animate-none" />
         </div>
       ) : jobs.length === 0 ? (
         <p className="rounded-lg border border-dashed px-4 py-6 text-center text-[13px] text-pretty text-muted-foreground">{noJobs}</p>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {jobs.map((job) => (
-            <JobCard key={job.id} job={job} />
-          ))}
-        </ul>
+        <JobList jobs={jobs} />
       )}
     </section>
-  );
-}
-
-/** A job: who holds it, how far it has come, and the way into it. */
-function JobCard({ job }: { readonly job: SheetJob }): JSX.Element {
-  return (
-    <li className="flex h-[3.75rem] items-center gap-3 rounded-lg border px-3" data-testid={`batch-sheet-job-${job.label}`}>
-      {job.assignee === null ? (
-        <span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-full border border-dashed text-muted-foreground">
-          <UserPlus className="size-3.5" strokeWidth={1.75} />
-        </span>
-      ) : (
-        <span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-full bg-muted text-[10px] font-medium">
-          {initials(job.assignee)}
-        </span>
-      )}
-      <span className="flex min-w-0 flex-1 items-center justify-between gap-3 text-[13px]">
-        <span className="truncate">
-          <span className={cn("font-medium", job.assignee === null && "text-muted-foreground")}>{job.assignee ?? "Unassigned"}</span>
-          <span className="text-muted-foreground"> · {job.label}</span>
-        </span>
-        {/* A finished job's ring closes in `success` whatever its count says: the job is the authority on done. */}
-        <ProgressReadout
-          value={job.finished ? job.images : (job.done ?? 0)}
-          total={job.images}
-          className="shrink-0 text-xs"
-          detail={jobDetail(job)}
-        >
-          {job.done === undefined ? "—" : formatCount(job.done)}/{formatCount(job.images)}
-        </ProgressReadout>
-      </span>
-      <JobAction job={job} />
-    </li>
-  );
-}
-
-/** The way into a job: Open, or View once it is done — or its state, where there is no way in. */
-function JobAction({ job }: { readonly job: SheetJob }): JSX.Element {
-  return (
-    <span className="flex min-w-16 shrink-0 justify-end">
-      {/* A finished job still opens — read-only in the editor, which says so — because this panel is the only way into a batch's frames. */}
-      {job.finished && job.onOpen !== undefined ? (
-        <Button variant="ghost" size="sm" onClick={job.onOpen} aria-label={`View ${job.label} in the editor, done`}>
-          <Check data-icon="inline-start" className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
-          View
-        </Button>
-      ) : job.finished ? (
-        <span className="flex h-7 items-center gap-1 text-xs text-muted-foreground">
-          <Check className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
-          Done
-        </span>
-      ) : job.onOpen !== undefined ? (
-        <Button variant="ghost" size="sm" onClick={job.onOpen} aria-label={`Open ${job.label} in the editor`}>
-          Open
-        </Button>
-      ) : (
-        <span className="text-xs text-muted-foreground">{job.state}</span>
-      )}
-    </span>
   );
 }

@@ -402,7 +402,7 @@ test("on the Images section Add images is the toolbar's one filled control, and 
 });
 
 for (const section of ["schema", "dataset"] as const) {
-  test(`on ${section} Add images is the overflow's first entry, not a button, and it goes to the ingest flow`, async ({
+  test(`on ${section} Add images is the overflow's first entry, not a button, and it opens the dialog over the section`, async ({
     page,
   }) => {
     await openCold(page, `/projects/${PROJECT}/${section}`);
@@ -419,7 +419,11 @@ for (const section of ["schema", "dataset"] as const) {
     await expect(page.getByTestId("delete-project")).toHaveText("Delete project");
 
     await item.click();
-    await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/ingest$`));
+    // A dialog over the section it was asked from, not a page of its own: the
+    // section stays lit underneath, and the address says the dialog is open.
+    await expect(page.getByRole("dialog", { name: "Add images" })).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/${section}\\?add=images$`));
+    await expect(page.getByTestId(`nav-${section}`)).toHaveAttribute("aria-current", "page");
   });
 }
 
@@ -442,11 +446,20 @@ test("with no batch open, Add images is the toolbar's filled control, and still 
   await expect(nav.getByTestId("go-ingest")).toHaveClass(/bg-primary/);
 });
 
-test("Add images in the toolbar goes to the ingest flow", async ({ page }) => {
+test("Add images in the toolbar opens its dialog over the section, and closing it leaves the section as it was", async ({ page }) => {
   await openCold(page, `/projects/${PROJECT}/overview`);
   await page.getByTestId("project-nav").getByTestId("go-ingest").click();
-  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/ingest$`));
-  await expect(page.getByRole("heading", { level: 1, name: "Add images" })).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: "Add images" });
+  await expect(dialog).toBeVisible();
+  // The address holds it open, so a reload or a pasted link opens it too.
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview\\?add=images$`));
+  await page.reload();
+  await expect(dialog).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview$`));
+  await expect(page.getByTestId("nav-overview")).toHaveAttribute("aria-current", "page");
 });
 
 test("the Images section lists every image of the project, with the total stated, in a pane that fits the window", async ({ page }) => {
@@ -573,7 +586,7 @@ test("the selected image sits beside the grid, the arrows walk it, and one toggl
   await expect(toggle).toHaveAttribute("aria-label", "Focus on image");
 });
 
-test("an Images section with nothing in it offers Add images, and it goes to the ingest flow", async ({
+test("an Images section with nothing in it offers Add images, and it opens the dialog", async ({
   page,
 }) => {
   await serveApi(page);
@@ -587,8 +600,8 @@ test("an Images section with nothing in it offers Add images, and it goes to the
 
   await expect(page.getByText("No images yet")).toBeVisible();
   await page.getByTestId("images-ingest").click();
-  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/ingest$`));
-  await expect(page.getByRole("heading", { level: 1, name: "Add images" })).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/images\\?add=images$`));
+  await expect(page.getByRole("dialog", { name: "Add images" })).toBeVisible();
 });
 
 test("the filled control opens the open batch's one job", async ({ page }) => {
@@ -615,7 +628,7 @@ test("with more than one job the filled control opens the batch's panel, where a
   await expect(page).toHaveURL(new RegExp(`/jobs/${OTHER_JOB}$`));
 });
 
-test("the toolbar frames the ingest flow and a batch's panel too, without a filled control of its own", async ({
+test("the toolbar frames a batch's panel and the Add images dialog too", async ({
   page,
 }) => {
   // Everything that belongs to one project lives inside the same navigation;
@@ -635,11 +648,12 @@ test("the toolbar frames the ingest flow and a batch's panel too, without a fill
   await expect(nav.getByTestId("go-annotate")).toHaveCount(1);
   await expect(nav.getByTestId("go-ingest")).toHaveCount(1);
 
-  await page.goto(`/projects/${PROJECT}/ingest`);
-  await expect(page.getByTestId("ingest-screen")).toBeVisible();
-  await expect(page.getByTestId("project-nav")).toBeVisible();
-  // An ingest is the project's, not any one section's: nothing is lit.
-  await expect(page.locator('[data-testid^="nav-"][aria-current="page"]')).toHaveCount(0);
+  // Add images is a dialog over a section, so the section under it stays lit and
+  // its toolbar stays drawn behind the scrim.
+  await page.goto(`/projects/${PROJECT}/images?add=images`);
+  await expect(page.getByRole("dialog", { name: "Add images" })).toBeVisible();
+  await expect(page.getByTestId("project-nav")).toBeAttached();
+  await expect(page.getByTestId("nav-images")).toHaveAttribute("aria-current", "page");
 });
 
 test("the toolbar is absent from every route that is not the project's", async ({ page }) => {

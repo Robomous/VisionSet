@@ -47,12 +47,8 @@ import {
   ModelsScreen,
   isProjectSection,
   resolveProjectTab,
-  IngestScreen,
-  PROJECT_SECTIONS,
-  ProjectFrame,
   ProjectScreen,
   ProjectsScreen,
-  type ProjectFrameProps,
   type ProjectSection,
 } from "@visionset/ui-core";
 import { Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from "react-router";
@@ -103,15 +99,14 @@ export function AppRoutes(): JSX.Element {
           {/*
             Everything that belongs to one project: its navigation column beside
             the content, so the pane is the shell's own rather than the padded
-            one. The sections and the ingest flow all
-            render inside the same column — only the annotator, which needs the
-            whole screen, stands outside it. The bare project URL and the old
-            `?tab=` addresses both land on a section, because a URL somebody
-            bookmarked is a promise.
+            one. The sections all render inside the same column — only the
+            annotator, which needs the whole screen, stands outside it. The bare
+            project URL, the old `?tab=` addresses and the old ingest page all
+            land on a section, because a URL somebody bookmarked is a promise.
           */}
           <Route element={<ProjectPane />}>
             <Route path="projects/:projectId" element={<ProjectRedirect />} />
-            <Route path="projects/:projectId/ingest" element={<Ingest />} />
+            <Route path="projects/:projectId/ingest" element={<IngestRedirect />} />
             <Route path="projects/:projectId/batches/:batchId" element={<BatchRedirect />} />
             <Route path="projects/:projectId/:section" element={<Project />} />
           </Route>
@@ -169,6 +164,9 @@ function Projects(): JSX.Element {
   return <ProjectsScreen onOpenProject={(projectId) => void navigate(PARENT.project(projectId))} />;
 }
 
+/** The query parameter that holds the Add images dialog open. */
+const ADD_IMAGES = "add";
+
 /**
  * Every parent of every sub-view, in one place.
  *
@@ -206,6 +204,8 @@ export const PARENT = {
   dataset: (projectId: string) => PARENT.section(projectId, "dataset"),
   schema: (projectId: string) => PARENT.section(projectId, "schema"),
   batch: (projectId: string, batchId: string) => `${PARENT.project(projectId)}?batch=${encodeURIComponent(batchId)}`,
+  //: Add images is a dialog over the Overview, not a page: `?add=images` is its address.
+  addImages: (projectId: string) => `${PARENT.project(projectId)}?${ADD_IMAGES}=images`,
 } as const;
 
 /**
@@ -277,7 +277,27 @@ function Project(): JSX.Element {
       tab={section}
       onTabChange={(next) => void navigate(PARENT.section(projectId, next), { replace: true })}
       hrefFor={(next) => PARENT.section(projectId, next)}
-      onIngest={() => void navigate(`/projects/${projectId}/ingest`)}
+      // Add images is a dialog over the section, and whether it is open is the
+      // URL's (`?add=images`), so a reload or a pasted link — and the old ingest
+      // page's address — opens it. `replace` both ways, as for the batch panel:
+      // opening a dialog is not going somewhere, and Back should leave the page
+      // rather than reopen one. Leaving it for a batch or for Classes is a
+      // navigation, and the destination's address does not carry the flag.
+      addImagesOpen={query.get(ADD_IMAGES) === "images"}
+      onAddImagesOpenChange={(open) => {
+        // The batch panel's guard, for the same reason: a close that lands after
+        // a navigation must not put the old address back.
+        if (!open && !new URLSearchParams(window.location.search).has(ADD_IMAGES)) return;
+        setQuery(
+          (now) => {
+            const next = new URLSearchParams(now);
+            if (open) next.set(ADD_IMAGES, "images");
+            else next.delete(ADD_IMAGES);
+            return next;
+          },
+          { replace: true },
+        );
+      }}
       onOpenBatch={(batchId) => void navigate(PARENT.batch(projectId, batchId))}
       // The open batch is the URL's, so a reload or a pasted link opens the same
       // panel. `replace`: opening batches one after another is looking, not going
@@ -319,26 +339,6 @@ function BatchRedirect(): JSX.Element {
   const { projectId, batchId } = useParams();
   if (projectId === undefined || batchId === undefined) return <NotFound />;
   return <Navigate to={PARENT.batch(projectId, batchId)} replace />;
-}
-
-/**
- * What every page inside a project hands the frame: the sections, their URLs,
- * and where to land once the project is gone. The sections' own
- * route adds the filled control's inputs; a sub-view does not.
- */
-function frameProps(
-  projectId: string,
-  navigate: ReturnType<typeof useNavigate>,
-): Omit<ProjectFrameProps, "active" | "children"> {
-  return {
-    projectId,
-    sections: PROJECT_SECTIONS,
-    onNavigate: (next) => void navigate(PARENT.section(projectId, next)),
-    hrefFor: (next) => PARENT.section(projectId, next),
-    // A deleted project's own URL is a 404 waiting to happen, so the parent is
-    // where to land — and `replace`, because Back should not walk into it.
-    onDeleted: () => void navigate(PARENT.projects, { replace: true }),
-  };
 }
 
 /**
@@ -391,34 +391,13 @@ function Annotate(): JSX.Element {
 }
 
 /**
- * Ingest, and the way out of it.
- *
- * A route that passes no navigation leaves a run that reached `completed` ending
- * the page — the batch it had just filled was reachable only by walking back to
- * the project and finding it in the list. `IngestScreen` names the batch itself;
- * turning that into a URL is this file's job, and it is the same one line as
- * `Project`'s own `onOpenBatch`.
- *
- * The screen refuses a null `batch_id` on its own rather than trusting this
- * callback to be careful — a run creating its own batch has no id until it
- * completes, and one that failed first never gets one.
+ * The old ingest page's address. Add images was a page here; it is a dialog
+ * over the project now, opened from the project bar. A link to the page is a
+ * promise somebody bookmarked, so it lands on the Overview with the dialog
+ * open — `replace`, so Back does not walk into a URL that only ever bounces.
  */
-function Ingest(): JSX.Element {
+function IngestRedirect(): JSX.Element {
   const { projectId } = useParams();
-  const navigate = useNavigate();
   if (projectId === undefined) return <NotFound />;
-  return (
-    // Inside the project's frame with no section lit: an ingest is the project's,
-    // not any one section's. No `cta` — the flow owns its own dominant action.
-    <ProjectFrame {...frameProps(projectId, navigate)} active={null}>
-      <IngestScreen
-        projectId={projectId}
-        onBack={() => void navigate(PARENT.project(projectId))}
-        onOpenBatch={(batchId) => void navigate(PARENT.batch(projectId, batchId))}
-        // The foreshadowing banner's link: the schema section of the project, and
-        // spelling that URL is this file's job.
-        onOpenSchema={() => void navigate(PARENT.schema(projectId))}
-      />
-    </ProjectFrame>
-  );
+  return <Navigate to={PARENT.addImages(projectId)} replace />;
 }

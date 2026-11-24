@@ -69,11 +69,23 @@ const LINE: readonly Point[] = [
   [23.75, 5.25],
 ];
 
+/**
+ * A path through space: the line recedes as it goes, and each vertex drops a
+ * dashed stalk to the ground it stands over — the height a flat line cannot show.
+ */
+const LINE_3D: readonly Point[] = [
+  [4.25, 12.75],
+  [11.25, 8.25],
+  [17.25, 9.75],
+  [23.75, 4.25],
+];
+
 /** What a geometry is drawn from: its outline's corners, and how each is held. */
 const NODES: Partial<Record<GeometryType, { readonly at: readonly Point[]; readonly kind: "grip" | "vertex" }>> = {
   bbox: { at: BOX, kind: "grip" },
   polygon: { at: POLYGON, kind: "vertex" },
   polyline: { at: LINE, kind: "vertex" },
+  polyline_3d: { at: LINE_3D, kind: "vertex" },
 };
 
 export interface ShapeGlyphProps {
@@ -101,6 +113,26 @@ export function ShapeGlyph({ geometry, color, className }: ShapeGlyphProps): JSX
     outline = <polygon data-part="outline" points={points(POLYGON)} fill={color} fillOpacity={CLASS_FILL_OPACITY} {...stroke} />;
   } else if (geometry === "polyline") {
     outline = <polyline data-part="outline" points={points(LINE)} fill="none" {...stroke} />;
+  } else if (geometry === "cuboid_3d") {
+    // A box with depth, in oblique view: the near face filled as a 2D box is,
+    // the top and the side it recedes by drawn as edges, so it reads as a solid
+    // and weighs what the flat box beside it weighs.
+    outline = (
+      <>
+        <path data-part="outline" d="M10.25 3.75 H23.25 V13.25 L18.75 16.25 M18.75 7.25 L23.25 3.75" fill="none" {...stroke} />
+        <rect x={5.75} y={7.25} width={13} height={9} fill={color} fillOpacity={CLASS_FILL_OPACITY} {...stroke} strokeLinejoin="miter" />
+        <path d="M5.75 7.25 L10.25 3.75" fill="none" {...stroke} />
+      </>
+    );
+  } else if (geometry === "polyline_3d") {
+    outline = (
+      <>
+        {LINE_3D.map(([x, y]) => (
+          <line key={`stalk-${x}`} x1={x} y1={y + 2.5} x2={x} y2={18.25} {...stroke} strokeWidth={1} strokeDasharray="1.25 1.5" strokeOpacity={0.6} />
+        ))}
+        <polyline data-part="outline" points={points(LINE_3D)} fill="none" {...stroke} />
+      </>
+    );
   } else if (geometry === "classification_tag") {
     // Shorter than the box: a fully rounded shape fills its bounds solidly.
     outline = (

@@ -144,11 +144,11 @@ const TOP_LEVEL = String.raw`(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:functi
  * The `[start, end)` offsets of the component declared as `name`.
  *
  * Needed because "rendered inside a form" is a property of a *component*, not of
- * a file: `SelectionPanel` is declared in `IngestScreen.tsx` — the same file as
- * the form that renders it — several hundred lines below the `</form>`. Scanning
- * the whole file instead would drag in that screen's seven other buttons, none
- * of which is in a form, and the gate would demand `type` on controls that have
- * no submit to trigger.
+ * a file: a panel can be declared in the same file as the form that renders it,
+ * several hundred lines below the `</form>` (the ingest page's `SelectionPanel`
+ * was, until Add images became a dialog with no form). Scanning the whole file
+ * instead would drag in that screen's other buttons, none of which is in a form,
+ * and the gate would demand `type` on controls that have no submit to trigger.
  *
  * The span runs from the declaration to the next declaration at column 0, rather
  * than by matching the body's braces. Brace matching is the obvious approach and
@@ -235,7 +235,7 @@ test("the scan finds a typeless button in a form, and nothing that merely looks 
     ['i.tsx:2: <Button data-testid="a>b">'],
   );
 
-  // Two forms in one file, which `IngestScreen.tsx` really has: a button in the
+  // Two forms in one file, which the ingest page really had: a button in the
   // second is inside a form as much as one in the first, and the space between
   // them is not.
   const two =
@@ -326,12 +326,6 @@ test("formRanges spans the form and stops at its close", () => {
  * than quietly widening it, which is the failure mode an allow-list normally has.
  */
 const RENDERED_INSIDE_FORMS = {
-  // The "Clear" control the chosen-files summary renders. It lives in `ingestSteps.tsx`
-  // rather than beside the form because the ingest screen split into an image flow and
-  // a video flow and both offer it, so it became one spelling instead of two that could
-  // drift apart on a test id or an aria-label. It reaches the image flow's upload form
-  // through `SelectionPanel`, below.
-  ClearSelection: "frontend/ui-core/src/screens/ingestSteps.tsx",
   // `AsyncStates`' error card carries a Retry, and `ModelsScreen`'s connection
   // form renders one when the connection list fails to load.
   ErrorState: "frontend/ui-core/src/patterns/AsyncStates.tsx",
@@ -341,14 +335,15 @@ const RENDERED_INSIDE_FORMS = {
  * Components that sit between a form and a listed component and hold no `<Button>`
  * themselves. They carry no allowance: nothing in them is scanned, and they are not
  * required to contain a button. They exist so reachability can pass *through* them —
- * `ClearSelection` is rendered by `SelectionPanel`, which the upload form renders.
+ * a listed component rendered by a panel that the form renders.
  *
  * Kept apart from `RENDERED_INSIDE_FORMS` so that list's non-vacuity guard can stay
  * strict: every name there holds a `<Button>` of its own, and a chain of components
  * cannot vouch for one another without any of them holding the thing the gate is about.
  */
 const FORM_PASS_THROUGH = {
-  SelectionPanel: "frontend/ui-core/src/screens/ImageIngestFlow.tsx",
+  // Empty since Add images became a dialog with no `<form>`: the ingest page's
+  // `SelectionPanel` was the one component between a form and a listed one.
 };
 
 /**
@@ -472,10 +467,7 @@ test("the forms this gate is about are all still there, and none nests", () => {
     [
       "frontend/app/src/shell/TokenGate.tsx",
       "frontend/ui-core/src/patterns/classFields.test.tsx",
-      "frontend/ui-core/src/screens/ImageIngestFlow.tsx",
-      "frontend/ui-core/src/screens/IngestRunSteps.tsx",
       "frontend/ui-core/src/screens/ModelsScreen.tsx",
-      "frontend/ui-core/src/screens/PointCloudIngestFlow.tsx",
       "frontend/ui-core/src/screens/ProjectFrame.tsx",
       "frontend/ui-core/src/screens/ProjectsScreen.tsx",
       "frontend/ui-core/src/screens/SchemaCommitBar.tsx",

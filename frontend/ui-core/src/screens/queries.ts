@@ -1167,10 +1167,11 @@ export const batchKeys = {
 /** One request's worth. `docs/content/api.md`: paging bounds the response, not the read. */
 export const GALLERY_PAGE_SIZE = 100;
 
-export function useBatch(batchId: string): UseQueryResult<Batch, Error> {
+export function useBatch(batchId: string, enabled = true): UseQueryResult<Batch, Error> {
   const client = useApiClient();
   return useQuery({
     queryKey: batchKeys.batch(batchId),
+    enabled: enabled && batchId !== "",
     queryFn: async () =>
       unwrap(
         await client.GET("/batches/{batch_id}", { params: { path: { batch_id: batchId } } }),

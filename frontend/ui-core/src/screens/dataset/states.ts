@@ -43,7 +43,7 @@ export function changesState(version: DatasetVersion): State {
 export function labelingState(stats: DatasetStats): State {
   const all = stats.asset_count;
   const done = stats.annotated_asset_count;
-  if (all === 0) return { tone: "draft", label: "Empty", title: "No assets yet", lines: ["Promote a completed batch to fill the dataset."] };
+  if (all === 0) return { tone: "draft", label: "Empty", title: "No assets yet", lines: ["Add a completed batch to fill the dataset."] };
   if (done === 0) return { tone: "draft", label: "Not labeled", title: `${formatCount(all)} ${all === 1 ? "asset" : "assets"}, no labels`, lines: ["A release would train on nothing."] };
   if (done === all) return { tone: "done", label: "All labeled", title: `${formatCount(all)} of ${formatCount(all)} ${all === 1 ? "asset" : "assets"}`, lines: [all === 1 ? "It carries at least one label." : "Every asset carries at least one label."] };
   return { tone: "progress", fraction: done / all, label: `${formatCount(done)} of ${formatCount(all)} labeled`, title: `${formatCount(all - done)} ${all - done === 1 ? "asset" : "assets"} without labels`, lines: ["They are still exported, as negatives."] };

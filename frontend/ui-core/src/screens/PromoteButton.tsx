@@ -37,19 +37,22 @@
  *
  * ## Shared, not copied
  *
- * The batch panel's footer renders this, beside `Complete and promote`
- * (`ComposedTransitions.tsx`). Two spellings of "did my work reach the dataset"
+ * The batch panel's footer renders this, as a completed batch's forward step,
+ * and the UI calls it **Add to dataset** — the kernel's `promote`, named for
+ * what a person sees it do. It shares its sentences with *Complete and add to
+ * dataset* (`ComposedTransitions.tsx`). Two spellings of "did my work reach the dataset"
  * would eventually disagree in front of a user, and the panel is where somebody
  * is actually standing when they finish a batch — F18 is that the screen they
  * were on had no promote control at all.
  */
 
-import { ArrowRight, ArrowUpToLine } from "lucide-react";
+import { ArrowRight, ArrowUpToLine, DatabasePlus } from "lucide-react";
 import type { JSX } from "react";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
 import { Button, FieldError } from "@robomous/ui-core";
+import { IconAction } from "../patterns/IconAction";
 import { promotionSummary } from "./batchWords";
 import { usePromoteBatch, type Batch } from "./queries";
 
@@ -62,6 +65,11 @@ export interface PromoteButtonProps {
   /** The batch panel's footer draws its actions at its own size, and fills its forward one. */
   readonly size?: "sm" | "lg";
   readonly variant?: "default" | "outline";
+  /**
+   * An icon button named by its tooltip, as the batch panel draws every control;
+   * its lines (`data-line`) are laid out by the host, above its controls.
+   */
+  readonly iconOnly?: boolean;
 }
 
 
@@ -72,6 +80,7 @@ export function PromoteButton({
   className,
   size = "sm",
   variant = "outline",
+  iconOnly = false,
 }: PromoteButtonProps): JSX.Element | null {
   const promote = usePromoteBatch(projectId);
 
@@ -82,23 +91,35 @@ export function PromoteButton({
     : null;
 
   return (
-    <div className={className ?? "flex flex-col items-end gap-1"}>
-      <Button
-        variant={variant}
-        size={size}
-        data-testid={`promote-${batch.name}`}
-        disabled={promote.isPending}
-        onClick={() => promote.mutate(batch.id)}
-      >
-        <ArrowUpToLine className="size-4" aria-hidden="true" />
-        {/*
-          The label no longer carries the outcome. It said "Promoted" after a
-          press and that was the entire feedback — a label flip is not a report,
-          and it also made a second press look forbidden when it is merely a
-          no-op. The sentence below is the report; the button stays a button.
-        */}
-        {promote.isPending ? "Promoting…" : "Promote"}
-      </Button>
+    <div className={iconOnly ? "contents" : (className ?? "flex flex-col items-end gap-1")}>
+      {iconOnly ? (
+        <IconAction
+          icon={DatabasePlus}
+          label="Add to dataset"
+          variant={variant}
+          busy={promote.isPending}
+          data-testid={`promote-${batch.name}`}
+          {...(variant === "default" ? { "data-autofocus": "" } : {})}
+          onClick={() => promote.mutate(batch.id)}
+        />
+      ) : (
+        <Button
+          variant={variant}
+          size={size}
+          data-testid={`promote-${batch.name}`}
+          disabled={promote.isPending}
+          onClick={() => promote.mutate(batch.id)}
+        >
+          <ArrowUpToLine className="size-4" aria-hidden="true" />
+          {/*
+            The label no longer carries the outcome. It said "Promoted" after a
+            press and that was the entire feedback — a label flip is not a report,
+            and it also made a second press look forbidden when it is merely a
+            no-op. The sentence below is the report; the button stays a button.
+          */}
+          {promote.isPending ? "Adding…" : "Add to dataset"}
+        </Button>
+      )}
 
       {/*
         What is in the trunk already, before anybody presses anything. This is
@@ -107,6 +128,7 @@ export function PromoteButton({
       */}
       {summary === null && batch.promoted_asset_count > 0 && (
         <span
+          data-line=""
           className="text-xs text-muted-foreground"
           data-testid={`promoted-count-${batch.name}`}
         >
@@ -115,7 +137,7 @@ export function PromoteButton({
       )}
 
       {summary !== null && (
-        <span className="text-xs text-muted-foreground" data-testid={`promoted-${batch.name}`}>
+        <span data-line="" className="text-xs text-muted-foreground" data-testid={`promoted-${batch.name}`}>
           {summary}
         </span>
       )}
@@ -127,8 +149,9 @@ export function PromoteButton({
       */}
       {promote.isSuccess && onOpenDataset !== undefined && (
         <Button
+          data-line=""
           variant="link"
-          className="h-auto p-0"
+          className="h-auto justify-end p-0"
           data-testid={`promoted-open-dataset-${batch.name}`}
           onClick={onOpenDataset}
         >
@@ -138,7 +161,7 @@ export function PromoteButton({
       )}
 
       {promote.isError && (
-        <FieldError data-testid={`promote-error-${batch.name}`}>
+        <FieldError data-line="" data-testid={`promote-error-${batch.name}`}>
           {refusalProse(promote.error)}
         </FieldError>
       )}

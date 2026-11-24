@@ -41,7 +41,8 @@ section or nav entry, or changes an entry point updates this block in the same p
                                        a release's export is a section of its facts, and the
                                        project's recipes are chosen there, each written in a
                                        dialog over the page
-/projects/:id/ingest               Add images (the ingest flow)
+    (any section)?add=images         Add images — a three-step dialog over the section it was
+                                     opened from (written with replace; closing removes it)
 /jobs/:jobId                       Annotator (outside the shell: full viewport, no rail)
 
 Redirects kept as promises (a bookmarked URL is one):
@@ -53,6 +54,8 @@ Redirects kept as promises (a bookmarked URL is one):
 /projects/:id/batches/:batchId  → /projects/:id/overview?batch=:batchId, replacing the history
                                   entry: it was a page of the batch's own (a gallery) until the
                                   batch moved into the Overview's panel
+/projects/:id/ingest            → /projects/:id/overview?add=images, replacing the history
+                                  entry: Add images was a page until it became a dialog
 /inference                      → /models, the page's address before it was named for
                                   the noun it catalogues
 ```
@@ -66,8 +69,8 @@ Batches table and opened from there, in a panel beside the table (a sheet below 
 batch is the Overview's `?batch=` query parameter, so a reload or a pasted link opens the same
 panel; it is written with `replace`, because walking through batches one after another is
 looking, not going, and closing the panel removes it. The table is paged ten to a page from its
-band, so a batch named by the URL, or stepped to from its panel, brings its own page into view. Everything that names a batch — ingest's
-*Open batch*, the annotator's way back, a correction's lineage, a pre-label dialog's link —
+band, so a batch named by the URL, or stepped to from its panel, brings its own page into view. Everything that names a batch — Add images'
+*Open the batch*, the annotator's way back, a correction's lineage, a pre-label dialog's link —
 opens it there (`PARENT.batch`). The old addresses redirect to the Overview, replacing the
 history entry: `/projects/:id/batches`, which was a section, and
 `/projects/:id/batches/:batchId`, which was a page.
@@ -156,7 +159,7 @@ answer it is a *door* into that section: the whole card is a real button, keyboa
 announced as an action (Images, Classes and In dataset); *Labeled* is a plain figure, because
 the batches that answer it are the panel directly below. The four figures are four equal cards,
 each with a meter where the number is a share of something and at most one action - a pointer,
-labelled from what the batches declare (*Review draft*, *Review and promote*, *Publish a
+labelled from what the batches declare (*Review draft*, *Review and add to dataset*, *Publish a
 release*), that opens the place where the action lives. *Labeled* counts the images a person has
 decided, read from the batches' progress - the images of every batch that has been cut into
 jobs, less those still unannotated and those holding only an unjudged model draft - and its
@@ -167,10 +170,12 @@ yet says so in words rather than showing a zero. There is no releases panel: the
 card says what no release holds yet and points at the Dataset's releases. The *Classes* card,
 last of the four, draws the classes as one bar of shares and opens the Classes section, where the
 full legend lives. A batch's row opens its panel - its jobs, who holds them and how far each
-has come - and its pointers ("Review and approve", "Review and start", "Review and promote",
-"Annotate"), on the row and in its menu, are labelled from the batch's `allowed_actions` and
-open the batch's panel - or, for *Annotate* on a batch of one job, that job - where the action
-itself lives with its gating and refusals. Browsing images is the Images section's job, not the Overview's.
+has come - except a draft's, which opens its approval: approving is the one thing a draft is
+opened for, and once approved the panel opens on the batch's next step. Its pointers ("Review and
+approve", "Review and start", "Review and add to dataset", "Annotate") live in the row's menu -
+nothing appears on hover - and are labelled from the batch's `allowed_actions`; they open the
+batch's panel (a draft's, its approval; *Annotate* on a batch of one job, that job), where the
+action itself lives with its gating and refusals. Browsing images is the Images section's job, not the Overview's.
 
 **The Overview acts on nothing except batches, and why.** A batch has no section and no page
 of its own - the Overview is where batches are listed - so what a batch may be asked to do is
@@ -178,23 +183,27 @@ done here, in its panel's footer, and nowhere else. The project-wide **Auto-labe
 model over the batches that declare `pre_label`: it opens from a line between the Batches band
 and the table while images are waiting for labels, or from the band's quiet icon once that line
 is put away. A batch that declares it offers the same dialog over itself alone from its row menu
-and its panel. The
-panel's footer holds every other action - approve, start annotating, annotate, complete,
-complete and promote, promote, create a correction batch, and delete in its overflow - each
-offered only where the batch's `allowed_actions` declare it, each with its own gating, refusals
-and outcome line. Nothing else on the Overview mutates: the numbers, the class rail and the
-images are pointers. **Add images** is not on the Overview at all as a panel control: it is the project bar's, and a
-pointer to the ingest flow whose result is a new batch (see *Inside a project*).
+and its panel's top bar. The panel - a sheet over the page's scrim, put away by a press outside it
+and resized from its left edge - holds every other action in its footer, every one an icon button
+named by its tooltip: *delete* and *create correction batch* at its start, and **one forward
+control per state** at its end - approve, start annotating, annotate, *complete* (whose
+confirmation holds the *add to the dataset* switch) and *add to dataset*. Each is offered only
+where the batch's `allowed_actions` declare it, each with its own gating, refusals and outcome
+line. The interface says *add to dataset* for what the kernel, API, CLI and MCP call
+`promote`: the same operation, named for what a person sees it do. Nothing else on the Overview mutates: the numbers, the class rail and the
+images are pointers. **Add images** is not on the Overview at all as a panel control: it is the project bar's, and it
+opens the dialog whose result is a new batch (see *Inside a project*).
 
 ## Ways out
 
 - **A sub-view inside a project carries one way out, and a section carries none.** With the
   project's sections in a toolbar, the open projects in tabs and the workspace's
   destinations on the rail, an ancestor chain inside a project says nothing they do not. So a page that sits *below*
-  a section — the ingest flow — carries one control back to the level
-  above it (`patterns/BackLink.tsx`: `← <project name>`), and a section — the
-  four sections of a project — carries nothing: the toolbar is its way around and the rail's
-  *Projects* its way up. The annotation editor keeps its own arrow for the same reason —
+  a section would carry one control back to the level above it (`patterns/BackLink.tsx`:
+  `← <project name>`), and a section — the four sections of a project — carries nothing: the
+  toolbar is its way around and the rail's *Projects* its way up. There is no such page today:
+  Add images, the last one, is a dialog over the section it was opened from, and closing it is
+  its way out. The annotation editor keeps its own arrow for the same reason —
   it is a tool that takes the whole screen, and its arrow means *up* to the batch.
 - **Structural, never `navigate(-1)`.** History is not a parent: it means the previous
   frame when you walked through a job, nothing at all on a fresh tab, and one asset at a time after walking
@@ -224,15 +233,15 @@ pointer to the ingest flow whose result is a new batch (see *Inside a project*).
 ## Inside a project
 
 - **The sections are a toolbar across the pane.** At `lg` and above, every route under
-  `/projects/:id/` — the four sections (Overview, Images, Classes, Dataset) and the Add images
-  flow — renders under a 48px project bar that spans the pane from the
+  `/projects/:id/` — the four sections (Overview, Images, Classes, Dataset), and the Add images
+  dialog over whichever is open — renders under a 48px project bar that spans the pane from the
   rail's edge, directly under the open-project tabs (`patterns/ProjectNav.tsx`'s `bar`
   layout, laid out by `ProjectShell`, composed by `screens/ProjectFrame.tsx`). It replaced a
   180px column: the toolbar costs height the pages have to spare instead of width the panel
   and the tables need. It renders nowhere else: not on the project list, Models, or
   the annotator — the one page of a project that stands outside its frame, because an
-  editor needs the whole screen. A sub-view lights the section it belongs to (an ingest, which is the
-  project's rather than any one section's, lights nothing) and carries its own one way out — see *Ways out*. Under the toolbar a section reads
+  editor needs the whole screen. A dialog over a section — Add images among them — leaves that
+  section lit underneath. Under the toolbar a section reads
   in the padded, capped column every page does — except **Images**, which lays its grid and the
   selected image across the whole pane (`ProjectShell`'s `bleed`) and fits the window, so only
   its grid scrolls.
@@ -257,8 +266,8 @@ pointer to the ingest flow whose result is a new batch (see *Inside a project*).
   A section's own actions belong to state the section holds (the class dialog, the publish
   dialog), so the section renders them and they portal into the bar
   (`patterns/SectionActions.tsx`). Labels are the fewest words that still say what happens,
-  each after an icon. One filled control per view still holds: on a sub-view (the
-  ingest flow) the bar draws none, because that page owns its dominant action. The Dataset
+  each after an icon. One filled control per view still holds: the Add images dialog's footer
+  has its own, over a scrim, so the bar's is out of reach while it is open. The Dataset
   draws *Publish release* for the working copy and nothing for a release, whose export is a
   section of its facts in the column.
 - **The Dataset's views are component state.** Which version is open is chosen in the

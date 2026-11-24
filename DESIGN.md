@@ -173,8 +173,8 @@ at a time (the Images section) does not. It comes in two forms, by what the tabl
 
 | Form | When | Where | Says |
 | --- | --- | --- | --- |
-| **Footer** (`TableFooter`) | the table is the whole page or section — Projects, Models, the Classes section; 25 to a page | a bar under the table: `h-12 shrink-0 border-t` (below `sm` it wraps to two lines and drops the page-size choice), `muted` at 40% mixed into the background, `text-xs text-muted-foreground`, the page's inset | at the start, *26–50 of 312 projects* (the range in `font-medium text-foreground`, tabular figures), plus *· filtered from 400* when a filter narrows it and *No projects match* when it leaves none; at the end *Rows per page* with a compact select (10 / 25 / 50 / 100), *Page 2 of 13* and four steps « ‹ › » |
-| **Inline** (`InlinePager`) | the table sits inside a page — the Overview's Batches; 10 to a page, no rows-per-page choice | the table's own header band, after its filter | *Page 2 of 9* and ‹ › — small steps |
+| **Footer** (`TableFooter`) | the table is the whole page or section — Projects, Models, the Classes section, and the Overview's Batches (from 10 to a page); 25 to a page otherwise | a bar under the table: `h-12 shrink-0 border-t` (below `sm` it wraps to two lines and drops the page-size choice), `muted` at 40% mixed into the background, `text-xs text-muted-foreground`, the page's inset | at the start, *26–50 of 312 projects* (the range in `font-medium text-foreground`, tabular figures), plus *· filtered from 400* when a filter narrows it and *No projects match* when it leaves none; at the end *Rows per page* with a compact select (10 / 25 / 50 / 100), *Page 2 of 13* and four steps « ‹ › » |
+| **Inline** (`InlinePager`) | a table that sits inside a page and must stay compact; 10 to a page, no rows-per-page choice | the table's own header band, after its filter | *Page 2 of 9* and ‹ › — small steps |
 
 - **The step is one recipe.** A bordered square — `size-7` in the footer, `size-6` inline —
   `rounded-md border bg-background shadow-xs`, icon `size-3.5`, hover `bg-muted`, pressed
@@ -199,6 +199,31 @@ at a time (the Images section) does not. It comes in two forms, by what the tabl
 - **A count is said once.** The footer says how many rows and of how many; the status bar keeps what
   the rows add up to (*13 images · 11 to annotate*, *3 ready*), over every row the filter leaves and
   not only the page on screen.
+
+### A walk in a dialog
+
+**Work that takes several decisions in a fixed order, and ends in something the person then acts
+on, is a centred dialog with a track — not a page.** *Add images* is the one: Upload, Frames &
+settings, Batch (`screens/addImages/AddImagesDialog.tsx`). It is opened from where the work is
+asked for and closes back onto it, so it needs no way out of its own.
+
+- **The frame.** `sm:max-w-2xl`, `max-h-[90dvh]`; a header with the title, one line naming what it
+  acts on (*to road-signs*) and a close; the body scrolls between the header and a footer band
+  (the `DialogFooter` tint, `bg-muted/50` over a hairline). The footer holds a way back (ghost),
+  one secondary (outline) and **one filled action**, the step's.
+- **The track.** Three equal segments under the header, each a 4px bar over its numbered label.
+  A segment fills by `scaleX` from the left, 300ms on the strong ease-out
+  (`cubic-bezier(0.23, 1, 0.32, 1)`), as the step it names gets done; a reached segment before
+  the one shown is a button back to it (≥40px tall), until the walk passes a point it cannot be
+  undone from. Which step is reached is derived from the data, never stored apart from it.
+- **A step enters from the side the walk is heading.** 24px and opacity, 220ms on the same
+  ease-out; transform and opacity only, and nothing under `prefers-reduced-motion`.
+- **A selection is one card.** Its count, size and ✕ head it on one line, over what was chosen —
+  pictures with the image outline (`vs-image-outline`), inside radii concentric with the card's.
+- **What the walk ends in is acted on in place.** A next step that would be its own dialog —
+  approving the batch — swaps the step's content instead, and takes the footer: one modal deep.
+- **Closing hides; it does not discard.** The host keeps the walk mounted, so work in flight goes
+  on and the dialog reopens on it; a walk that has settled starts over.
 
 ### A line that offers work
 
@@ -378,6 +403,15 @@ detail opens beside it, and the two are read together. The pattern is `DetailPan
 | **Not a dialog.** It is an `aside` labelled for what it holds; the page beside it stays live and nothing traps focus. | The list and the detail are one surface, read and used together. |
 | **Below `lg`, a sheet** — the same content from the right, with its own close and Escape. | A phone has no row to share. |
 
+**One exception: the Overview's batch panel is a sheet over the page.** A batch is opened to be
+acted on — approved, completed, added to the dataset — rather than read beside its list, so its
+panel comes from the right over the page's scrim, as a dialog does, and a press outside it puts
+it away. It keeps the rest of this pattern: its 48px top bar (with what works on the whole batch,
+*Auto-label*, at its start), J/K walking the batches, and a left edge that resizes it, remembered,
+with the same `ResizeHandle`. Its controls are **icon buttons named by their tooltips**
+(`patterns/IconAction.tsx`) — a withheld one stays, disabled, its tooltip saying why — and what
+they say is a line above them, never under a 32px square.
+
 ### One image detail
 
 **An image opens in the same detail wherever it is opened.** The Images section's
@@ -418,6 +452,7 @@ and this section move together or not at all.
 | `tests/scripts/design_tokens.test.mjs` | `brand` confined to its two identity sites; one icon library; no `tailwind.config.js` |
 | `frontend/ui-core/src/screens/preprocessing.test.tsx` | The resize's stage draws the chosen fit and the one pointed at, and is hidden from assistive technology; each augmentation's illustrated card opens beside its label, says it in words, and one Escape closes only it; the amount's branch is decorative. The recipe's info buttons open on hover and say the current choice; the model list shows names alone, opens a card on the highlighted option, and one Escape closes both. Where an info button sits on other screens is held by review, not a gate |
 | `frontend/ui-core/src/screens/dataset.test.tsx`, `preprocessing.test.tsx` | The working copy reads as four KPIs with their warnings named and described; a release's export is a panel of its facts — open, last, holding the model, the recipe and the button — and Publish is the project bar's on the working copy only; a folded section's heading says its answer and its fields stay mounted but inert; the export's answer is the job's state, open or folded, and the job keeps going while the section is folded; verify and download failures are sentences, and a stale report leaves; the recipe is a select with the "+" that writes one, the chosen one's Edit recipe and Delete are behind its "⋯", its writer opens as a single modal, and a delete asks first and falls back to no recipe. How a heading, a field's icon and its action are laid out is held by review |
+| `frontend/ui-core/src/screens/ingest.test.tsx`, `videoImport.test.tsx` | Add images walks one step at a time on its track — a reached step behind the one shown walks back, nothing walks back past a launched run; a selection is one card headed by its count, size and ✕; approving the batch is the last step's own content, never a dialog over it; closing keeps a run in flight and reopens on it, and a settled walk starts over |
 | `frontend/ui-core/src/screens/screens.test.tsx` | The Dataset keeps one filled control: Publish release in the bar on the working copy, and on a release none in the bar — its export's button in the column |
 | `frontend/ui-core/src/screens/overview.test.tsx` (*auto-label over the batches*) | The offer's line says the waiting count only where batches declare `pre_label` and leaves out a batch being drafted; *Not now* puts it into the band, is remembered per project and returns when the count grows; a run starting closes it; both places open the dialog; on load nothing animates; *Not now* flies the wand onto the band's icon and shrinks the button's copy into it, cleans up on landing or unmount, and under reduced motion only fades |
 

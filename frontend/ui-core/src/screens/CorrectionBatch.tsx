@@ -31,12 +31,13 @@
  * selection is a thing somebody chose.
  */
 
-import { GitBranch } from "lucide-react";
+import { GitBranch, GitBranchPlus } from "lucide-react";
 import { useState, type JSX } from "react";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError } from "@robomous/ui-core";
+import { IconAction } from "../patterns/IconAction";
 import { defaultCorrectionName } from "./batchWords";
 import { useCreateCorrection, type Batch } from "./queries";
 
@@ -71,6 +72,8 @@ export interface CorrectionButtonProps {
   readonly open?: boolean;
   readonly onOpenChange?: (open: boolean) => void;
   readonly size?: "sm" | "lg";
+  /** An icon button named by its tooltip, as the batch panel draws every control. */
+  readonly iconOnly?: boolean;
 }
 
 export function CorrectionButton({
@@ -83,6 +86,7 @@ export function CorrectionButton({
   open,
   onOpenChange,
   size = "sm",
+  iconOnly = false,
 }: CorrectionButtonProps): JSX.Element | null {
   const [own, setOwn] = useState(false);
   const showing = open ?? own;
@@ -95,16 +99,27 @@ export function CorrectionButton({
 
   return (
     <>
-      <Button
-        variant="outline"
-        size={size}
-        className={className}
-        data-testid={`correct-${batch.name}`}
-        onClick={() => setShowing(true)}
-      >
-        <GitBranch className="size-4" aria-hidden="true" />
-        Create correction batch
-      </Button>
+      {iconOnly ? (
+        <IconAction
+          icon={GitBranchPlus}
+          label="Create correction batch"
+          hint="A new batch over the same frames"
+          className={className}
+          data-testid={`correct-${batch.name}`}
+          onClick={() => setShowing(true)}
+        />
+      ) : (
+        <Button
+          variant="outline"
+          size={size}
+          className={className}
+          data-testid={`correct-${batch.name}`}
+          onClick={() => setShowing(true)}
+        >
+          <GitBranch className="size-4" aria-hidden="true" />
+          Create correction batch
+        </Button>
+      )}
       <CorrectionDialog
         batch={batch}
         projectId={projectId}
@@ -118,7 +133,11 @@ export function CorrectionButton({
   );
 }
 
-function CorrectionDialog({
+/**
+ * The dialog alone, for a host that opens it from somewhere other than
+ * `CorrectionButton` — the batch panel opens it from its `⋯` menu.
+ */
+export function CorrectionDialog({
   batch,
   projectId,
   existingCorrections,

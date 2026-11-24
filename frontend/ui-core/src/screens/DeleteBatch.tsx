@@ -1,5 +1,5 @@
 /**
- * Deleting a batch: one overflow menu and one dialog.
+ * Deleting a batch: one icon button and one dialog.
  *
  * ## Why it is a component and not two
  *
@@ -10,12 +10,13 @@
  * shared piece holds everything the control *decides*, and each mount supplies
  * only its anchor and what to do afterwards.
  *
- * ## An overflow menu, never a button
+ * ## An icon button at the footer's start
  *
- * Deleting a batch is not a step of the workflow — every other control in both
- * places moves the batch along, and this one ends it. It is also the only action
- * either surface offers that cannot be undone. So it lives behind `⋯`, where the
- * things you go looking for live, rather than beside the thing you press next.
+ * Deleting a batch is not a step of the workflow — every other control in the
+ * panel moves the batch along, and this one ends it. It is also the only action
+ * the panel offers that cannot be undone. So it sits at the footer's start, away
+ * from the forward step at its end, drawn in the destructive colour, and opens a
+ * confirmation rather than acting on a press.
  *
  * ## What the dialog is allowed to say
  *
@@ -33,85 +34,54 @@
  * says so, and `test_batch_service.py` holds it.
  */
 
-import { MoreHorizontal, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useState, type JSX } from "react";
 
 import { BATCH_ACTION, declares, withheldBecause } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FieldError, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@robomous/ui-core";
+import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, FieldError } from "@robomous/ui-core";
+import { IconAction } from "../patterns/IconAction";
 import { assetNoun } from "../lib/assetNoun";
 import { useBatchModality, useDeleteBatch, type Batch } from "./queries";
 
-export interface BatchOverflowMenuProps {
+export interface DeleteBatchButtonProps {
   readonly batch: Batch;
   /** Whose listing to refetch. The batch is what stops existing, so it cannot say. */
   readonly projectId: string;
   /**
-   * Where to go once the batch is gone.
-   *
-   * The batch panel closes itself here, because its subject no longer exists. A
-   * host that mounts this where the rest of the list is still the answer passes
-   * nothing: the row leaves the table and the table remains.
+   * Where to go once the batch is gone. The batch panel closes itself here,
+   * because its subject no longer exists.
    */
   readonly onDeleted?: () => void;
-  readonly align?: "start" | "center" | "end";
 }
 
-export function BatchOverflowMenu({
-  batch,
-  projectId,
-  onDeleted,
-  align = "end",
-}: BatchOverflowMenuProps): JSX.Element {
+/**
+ * An icon button, and its confirmation. Disabled with its reason rather than
+ * hidden: there *is* an operation behind it and a state that would enable it,
+ * which is the whole distinction between this and removing the control. The
+ * reason is the tooltip's second line, reachable by focus as well as pointer.
+ */
+export function DeleteBatchButton({ batch, projectId, onDeleted }: DeleteBatchButtonProps): JSX.Element {
   const [confirming, setConfirming] = useState(false);
   const deletable = declares(batch, BATCH_ACTION.delete);
   // Only reached when the action is withheld, which for `delete` is `completed`
   // alone — every other state is in `DELETABLE_STATES`. The sentence is the
-  // shared one, so this control and every disabled control on these screens
-  // explain a completed batch the same way.
-  const reason = deletable ? null : withheldBecause(batch.state);
+  // shared one, so every withheld control explains a completed batch the same way.
+  // The declaration decides, never the state word: a batch that does not declare
+  // `delete` is withheld whatever its state, with the shared sentence when there
+  // is one for that state and a plain one when there is not.
+  const reason = deletable ? null : (withheldBecause(batch.state) ?? "This batch can’t be deleted right now.");
 
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={`More actions for ${batch.name}`}
-            data-testid={`batch-overflow-${batch.name}`}
-          >
-            <MoreHorizontal aria-hidden="true" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align={align} className="w-64">
-          {/*
-            Disabled-with-reason rather than hidden: there *is* an operation
-            behind this and a state that would enable it, which is the whole
-            distinction between this and removing the control. The reason
-            renders inline under the label — the shape the annotator's class
-            picker uses for a class a shape cannot become — because a tooltip on
-            a menu item that cannot be hovered into is a reason nobody reads.
-          */}
-          <DropdownMenuItem
-            variant={deletable ? "destructive" : "default"}
-            disabled={!deletable}
-            data-testid={`delete-batch-${batch.name}`}
-            onSelect={() => setConfirming(true)}
-          >
-            <Trash2 className="size-4 shrink-0" aria-hidden="true" />
-            <span className="flex flex-col items-start gap-0.5">
-              <span>Delete batch</span>
-              {reason !== null && (
-                <span className="text-xs text-muted-foreground" data-testid={`delete-withheld-${batch.name}`}>
-                  {reason}
-                </span>
-              )}
-            </span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
+      <IconAction
+        icon={Trash2}
+        label="Delete batch"
+        reason={reason}
+        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+        data-testid={`delete-batch-${batch.name}`}
+        onClick={() => setConfirming(true)}
+      />
       <DeleteBatchDialog
         batch={confirming ? batch : null}
         projectId={projectId}

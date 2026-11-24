@@ -208,32 +208,26 @@ async function openCold(page: Page, url: string): Promise<void> {
 }
 
 /**
- * Every sub-view inside a project and the one parent it names — the control every
- * scenario below presses. A section has none: the project's navigation is beside
- * it and the list is on the rail, so the project itself is not here. Nor is a
- * batch: it has no page of its own any more, it opens in the Overview's panel,
- * and the scenarios for that address are further down.
+ * The old ingest page's address, kept as a promise.
+ *
+ * Add images was a page under the project, with a way out of its own. It is a
+ * dialog over the project now, so there is no page to leave: the address lands on
+ * the Overview with the dialog open, and closing it is the way out — onto the
+ * section it was opened over, not into an empty history.
  */
-const SUBVIEWS = [
-  {
-    name: "ingest",
-    url: `/projects/${PROJECT}/ingest`,
-    ready: "ingest-screen",
-    // The project's default section outright, not the bare project URL: the
-    // way out lands in one hop rather than bouncing through the redirect.
-    parent: new RegExp(`/projects/${PROJECT}/overview$`),
-  },
-] as const;
+test("the old ingest URL opens Add images over the Overview, and closing it stays there", async ({ page }) => {
+  await openCold(page, `/projects/${PROJECT}/ingest`);
 
-for (const view of SUBVIEWS) {
-  test(`${view.name} returns to its parent from a cold open`, async ({ page }) => {
-    await openCold(page, view.url);
-    await expect(page.getByTestId(view.ready)).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview\\?add=images$`));
+  const dialog = page.getByRole("dialog", { name: "Add images" });
+  await expect(dialog).toBeVisible();
+  await expect(page.getByTestId("nav-overview")).toHaveAttribute("aria-current", "page");
 
-    await page.getByTestId("back-link").click();
-    await expect(page).toHaveURL(view.parent);
-  });
-}
+  await page.getByTestId("add-images-close").click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview$`));
+  await expect(page.getByTestId("project-screen")).toBeVisible();
+});
 
 /**
  * The annotator, which is the one that fails today under this method.
@@ -304,11 +298,11 @@ test("a batch's old URL redirects to its panel on the Overview, and says which b
   await expect(page.getByTestId("gallery")).toHaveCount(0);
 });
 
-test("the way out names the project it goes to", async ({ page }) => {
-  // "Back" alone is a promise about history. Naming the destination is a promise
-  // about structure, which is the one the control can keep.
+test("Add images names the project it adds to", async ({ page }) => {
+  // The dialog stands over the project, so it says which one — the name, not
+  // "this project", once the project has answered.
   await openCold(page, `/projects/${PROJECT}/ingest`);
-  await expect(page.getByTestId("back-link")).toHaveText("road-signs");
+  await expect(page.getByRole("dialog", { name: "Add images" })).toContainText("to road-signs");
 });
 
 test("a section has no way out of its own: the toolbar, the tabs and the rail are it", async ({ page }) => {

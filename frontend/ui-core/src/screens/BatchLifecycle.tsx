@@ -21,23 +21,18 @@
  * server says. Nothing here guesses.
  */
 
-import { useState, type JSX } from "react";
-import { SquareCheck } from "lucide-react";
+import { useId, type JSX } from "react";
+import { ChevronDown, Minus, Play, Plus, Stamp } from "lucide-react";
 
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@robomous/ui-core";
+import { Button, Dialog, DialogContent, DialogDescription, DialogTitle, FieldError, Switch, ToggleGroup, ToggleGroupItem, cn } from "@robomous/ui-core";
 import { assetNoun } from "../lib/assetNoun";
+import { IconAction } from "../patterns/IconAction";
 import { ProgressBar } from "../patterns/ProgressBar";
-import { annotatedShare, outstandingWork } from "./batchState";
-import {
-  useApproveBatch,
-  useBatchModality,
-  useBatchTransition,
-  useFinishBatch,
-  type Batch,
-  type ProgressCounts,
-} from "./queries";
+import { annotatedShare } from "./batchState";
+import { approveCost, approveLabel, useApproveForm, type ApproveForm } from "./approveForm";
+import { useBatchTransition, type Batch, type ProgressCounts } from "./queries";
 
 /**
  * The counts, as one bar and a readout.
@@ -111,76 +106,167 @@ export function BatchProgressBar({
  */
 
 /**
- * Close the batch — and its jobs, which is the half that is easy to miss.
+ * Approving a draft — and, by default, starting it: one sentence, one switch,
+ * and the cut folded away behind its answer (the "Express" direction of the
+ * approve prototype, with the "Ledger" direction's job stepper).
  *
- * Its own component, **promoted rather than copied**, for the reason the module
- * docstring gives about `ApproveDialog`: two spellings of an irreversible move
- * eventually disagree in front of a user. It lives in the batch panel's footer
- * because that is where a person is standing when they finish the work, and a
- * closing move that lived only on a table row would be unreachable from it.
+ * **What approving costs is said once, in the description**: the images freeze,
+ * the schema version pins, and a draft cannot come back. The version is read to
+ * be *said*, never to pre-empt the refusal — a project with no schema still gets
+ * the server's answer, in words, with the way to define one beside it.
  *
- * **The press is withheld while work is outstanding rather than offered and
- * refused.** `JobService.complete` will refuse an unsettled asset, and this screen
- * can already see the count: `docs/content/api.md`'s own rule is that a control whose
- * every action is unavailable is worse than an absent one, and the number is more
- * use than the 409 would have been. The remaining refusals are real answers to a
- * race, and are said in words.
- */
-export function CompleteBatchButton({
-  batch,
-  className,
-  size = "sm",
-}: {
-  readonly batch: Batch;
-  readonly className?: string;
-  readonly size?: "sm" | "lg";
-}): JSX.Element {
-  const finish = useFinishBatch(batch.id);
-  const outstanding = outstandingWork(batch.progress);
-  const modality = useBatchModality(batch.project_id, batch.id);
-  const refusal = finish.isError ? asApiError(finish.error) : null;
-
-  return (
-    <div className={className ?? "flex flex-col items-end gap-1"}>
-      <Button
-        variant="outline"
-        size={size}
-        data-testid={`complete-${batch.name}`}
-        disabled={outstanding > 0 || finish.isPending}
-        onClick={() => finish.mutate()}
-      >
-        <SquareCheck className="size-4" aria-hidden="true" />
-        {finish.isPending ? "Completing…" : "Complete"}
-      </Button>
-
-      {outstanding > 0 && (
-        <span
-          className="text-xs text-muted-foreground"
-          data-testid={`complete-blocked-${batch.name}`}
-        >
-          {outstanding} {assetNoun(modality, outstanding)} still to annotate or skip
-        </span>
-      )}
-
-      {refusal !== null && (
-        <FieldError data-testid={`complete-error-${batch.name}`}>
-          {refusalProse(refusal)}
-        </FieldError>
-      )}
-    </div>
-  );
-}
-
-/**
- * The partition, and the sentence that says what approving costs.
+ * **Start annotating now is a switch, on by default.** Approving and starting are
+ * two requests sent in order, exactly as *Approve and start* sends them: no new
+ * transition, and a refused start leaves the batch approved and says so here
+ * rather than closing over it. Off, the batch stops at `approved` — the window
+ * for assigning its jobs before anybody opens them — and `start` stays the
+ * explicit act it is. The button always says *Approve*: the switch is the choice.
  *
- * `BySegments` is deliberately absent, which is the same call the CLI made: the
- * only caller that holds an exact partition is a program, it is the one strategy
- * that can be *wrong* — four distinct `InvalidPartition` refusals — and expressing
- * it means typing tuples of UUIDs. A program has the SDK and the API.
+ * **The cut is folded, because the common batch is one job.** Its heading
+ * answers (*One job*, *3 jobs of up to 25*); open, it is *One job* or *Split*,
+ * and a split is images per job on a stepper with its result beside it. The cut
+ * is exact — disjoint, every image in one job (`BySize`). `BySegments` is
+ * deliberately absent, the same call the CLI made: the only caller that holds an
+ * exact partition is a program, it is the one strategy that can be *wrong*, and
+ * expressing it means typing tuples of UUIDs.
  */
 /** What `SchemaService.require_active` raises for a project that has none. */
 const SCHEMA_NOT_FOUND = "SCHEMA_NOT_FOUND";
+
+const EASE = "cubic-bezier(0.23, 1, 0.32, 1)";
+const SEGMENT =
+  "h-6 rounded-[5px] px-2.5 text-xs text-muted-foreground transition-[color,box-shadow,scale] duration-150 ease-out hover:text-foreground active:scale-[0.97] " +
+  "data-[state=on]:bg-background data-[state=on]:font-medium data-[state=on]:text-foreground data-[state=on]:shadow-[0_0_0_1px_var(--border),0_1px_2px_oklch(0_0_0/0.06)] motion-reduce:transition-none";
+const PRESS = "transition-[background-color,scale] duration-100 ease-out active:scale-[0.97] motion-reduce:transition-none";
+
+/**
+ * The approval's body: the Start annotating now switch, the folded cut, and the
+ * refusals — everything but the title and the buttons, which each host draws in
+ * its own frame.
+ */
+export function ApproveFields({
+  form,
+  onOpenSchema,
+}: {
+  readonly form: ApproveForm;
+  /**
+   * Where "define your labels" goes when the refusal is `SCHEMA_NOT_FOUND` —
+   * the host's close-then-go, since the form cannot know what it is drawn in.
+   */
+  readonly onOpenSchema?: () => void;
+}): JSX.Element {
+  const { approve, begin, approvedAt, busy, mode, parts, folded, modality, images } = form;
+  const bodyId = useId();
+  return (
+    <>
+      <div className="flex flex-col overflow-hidden rounded-md bg-muted/60">
+        {/* The whole row is the switch's label: the row is the hit area and its words are the name. */}
+        <label className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5">
+          <span className="font-medium">Start annotating now</span>
+          <Switch checked={form.start} onCheckedChange={form.setStart} disabled={busy || approvedAt !== null} data-testid="approve-start" />
+        </label>
+        <div className="h-px bg-border/70" aria-hidden="true" />
+        <button
+          type="button"
+          aria-expanded={!folded}
+          aria-controls={bodyId}
+          data-testid="partition-toggle"
+          onClick={() => form.setFolded((was) => !was)}
+          className="flex items-center justify-between gap-3 px-3 py-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset"
+        >
+          <span className="font-medium">Jobs</span>
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground tabular-nums" data-testid="partition-answer">
+            {form.answer}
+            <ChevronDown className={cn("size-3.5 transition-transform duration-200 motion-reduce:transition-none", !folded && "rotate-180")} style={{ transitionTimingFunction: EASE }} aria-hidden="true" />
+          </span>
+        </button>
+        {/* Folds by its grid row, 200ms on the strong ease-out; folded, the body stays mounted and inert. */}
+        <div
+          id={bodyId}
+          inert={folded}
+          className={cn("grid transition-[grid-template-rows,opacity] duration-200 motion-reduce:transition-none", folded ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100")}
+          style={{ transitionTimingFunction: EASE }}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <div className="flex flex-col gap-2 px-3 pb-3">
+              {/* A segmented control as the class editor's *Drawn as* draws one:
+                  the chosen segment lifts onto the surface, the other stays muted. */}
+              <ToggleGroup
+                type="single"
+                size="sm"
+                value={mode}
+                onValueChange={(next) => next !== "" && form.setMode(next as typeof mode)}
+                aria-label="How to cut it into jobs"
+                data-testid="partition-kind"
+                className="gap-0.5 self-start rounded-lg border border-input bg-input/20 p-[3px] dark:bg-input/30"
+              >
+                <ToggleGroupItem value="one" className={SEGMENT} data-testid="partition-one">One job</ToggleGroupItem>
+                <ToggleGroupItem value="split" className={SEGMENT} data-testid="partition-split">Split</ToggleGroupItem>
+              </ToggleGroup>
+              {mode === "one" ? (
+                <span className="text-xs text-muted-foreground">Every {assetNoun(modality, 1, "image")} in a single job.</span>
+              ) : (
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                  <span className="inline-flex h-7 items-center rounded-md border bg-background">
+                    <button type="button" aria-label="Fewer images per job" className={cn("grid h-full w-7 place-items-center rounded-l-md hover:bg-muted", PRESS)} onClick={() => form.step(-form.stepSize)}>
+                      <Minus className="size-3" aria-hidden="true" />
+                    </button>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={images}
+                      aria-label="Images per job"
+                      data-testid="partition-size"
+                      value={form.size}
+                      onChange={(event) => form.setSize(event.target.value)}
+                      className="h-full w-10 border-x bg-transparent text-center text-xs font-medium text-foreground tabular-nums outline-none [appearance:textfield] focus-visible:bg-muted/60 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                    <button type="button" aria-label="More images per job" className={cn("grid h-full w-7 place-items-center rounded-r-md hover:bg-muted", PRESS)} onClick={() => form.step(form.stepSize)}>
+                      <Plus className="size-3" aria-hidden="true" />
+                    </button>
+                  </span>
+                  <span>per job →</span>
+                  <span data-testid="partition-preview" className="flex flex-wrap gap-x-1.5">
+                    <span className="font-medium text-foreground tabular-nums">
+                      {parts.length} job{parts.length === 1 ? "" : "s"}
+                    </span>
+                    {parts.length > 1 && parts.length <= 8 && <span className="tabular-nums">({parts.join(" · ")})</span>}
+                  </span>
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* The refusal still comes from the server — nothing pre-checks it. What
+          changes is only the rendering: `SCHEMA_NOT_FOUND` has a remedy a person
+          can act on, so it is said in their words with the way there beside it. */}
+      {approve.isError &&
+        (asApiError(approve.error).code === SCHEMA_NOT_FOUND ? (
+          <div className="flex flex-col items-start gap-1" data-testid="approve-schema-missing">
+            <FieldError>{refusalProse(approve.error)}</FieldError>
+            {onOpenSchema !== undefined && (
+              <Button variant="link" className="h-auto p-0" data-testid="approve-go-schema" onClick={onOpenSchema}>
+                Define your labels
+              </Button>
+            )}
+          </div>
+        ) : (
+          <FieldError data-testid="approve-error">{refusalProse(approve.error)}</FieldError>
+        ))}
+      {begin.isError && (
+        <div className="flex flex-col gap-1" data-testid="approve-start-error">
+          <span className="text-xs text-muted-foreground">
+            Approved{approvedAt === null ? "" : ` against v${approvedAt}`}, but it couldn’t be started:
+          </span>
+          <FieldError>{refusalProse(begin.error)}</FieldError>
+        </div>
+      )}
+    </>
+  );
+}
 
 export function ApproveDialog({
   batch,
@@ -195,126 +281,79 @@ export function ApproveDialog({
   /** Where "define your labels" goes when the refusal is `SCHEMA_NOT_FOUND`. */
   readonly onOpenSchema?: () => void;
 }): JSX.Element {
-  // `"single"`, not `"single_job"` — the tag is `SingleJob.kind`'s value and the
-  // generated client refused the guess, which is the whole reason the contract is
-  // generated rather than hand-written.
-  const [kind, setKind] = useState<"single" | "by_size">("single");
-  const [size, setSize] = useState("50");
-  const approve = useApproveBatch(batch?.id ?? "");
+  return (
+    <Dialog open={batch !== null} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent data-testid="approve-dialog" className="gap-4 sm:max-w-sm" showCloseButton={false}>
+        {/* The form's state lives inside the content, which exists only while the
+            dialog is open and is keyed by its batch: each opening, and each batch,
+            starts from the defaults. */}
+        <ApproveBody
+          key={batch?.id ?? "closed"}
+          batch={batch}
+          onClose={onClose}
+          {...(onApproved === undefined ? {} : { onApproved })}
+          {...(onOpenSchema === undefined ? {} : { onOpenSchema })}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
 
-  const count = Number(size);
-  const jobs = batch === null ? 0 : Math.ceil(batch.asset_count / Math.max(count, 1));
+function ApproveBody({
+  batch,
+  onClose,
+  onApproved,
+  onOpenSchema,
+}: {
+  readonly batch: Batch | null;
+  readonly onClose: () => void;
+  readonly onApproved?: () => void;
+  readonly onOpenSchema?: () => void;
+}): JSX.Element {
+  const form = useApproveForm(batch);
 
-  function submit(): void {
-    approve.mutate(
-      // `kind` is always explicit. A discriminated union's tag emitted by default
-      // reads as optional in the schema while pydantic needs it in the input dict
-      // to pick a variant, so omitting it fails with `union_tag_not_found`.
-      kind === "single" ? { kind: "single" } : { kind: "by_size", size: count },
-      {
-        onSuccess: () => {
-          onApproved?.();
-          onClose();
-        },
-      },
-    );
+  function finish(): void {
+    onApproved?.();
+    onClose();
   }
 
   return (
-    <Dialog open={batch !== null} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent data-testid="approve-dialog">
-        <DialogTitle>Approve {batch?.name}</DialogTitle>
-        <DialogDescription>
-          Membership freezes, the project&rsquo;s active schema version pins to this batch, and
-          the assets are cut into jobs. None of it is reversible — there is no route back to
-          draft.
-        </DialogDescription>
+    <>
+      <div className="flex flex-col gap-1">
+        <DialogTitle>Approve {batch?.name}?</DialogTitle>
+        <DialogDescription>{approveCost(form)}</DialogDescription>
+      </div>
 
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="partition-kind">Jobs</Label>
-            <Select value={kind} onValueChange={(next) => setKind(next as typeof kind)}>
-              <SelectTrigger id="partition-kind" data-testid="partition-kind">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="single">One job for the whole batch</SelectItem>
-                <SelectItem value="by_size">Jobs of N assets</SelectItem>
-              </SelectContent>
-            </Select>
-            <FieldDescription>
-              The cut is exact — disjoint, and every asset in one job. An explicit list of
-              segments is the SDK&rsquo;s and the API&rsquo;s, not a form&rsquo;s.
-            </FieldDescription>
-          </div>
+      <ApproveFields
+        form={form}
+        {...(onOpenSchema === undefined
+          ? {}
+          : {
+              onOpenSchema: () => {
+                onClose();
+                onOpenSchema();
+              },
+            })}
+      />
 
-          {kind === "by_size" && (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="partition-size">Assets per job</Label>
-              <Input
-                id="partition-size"
-                data-testid="partition-size"
-                type="number"
-                min="1"
-                value={size}
-                onChange={(event) => setSize(event.target.value)}
-              />
-              <FieldDescription data-testid="partition-preview">
-                {batch?.asset_count ?? 0} assets → {jobs} job{jobs === 1 ? "" : "s"}
-              </FieldDescription>
-            </div>
-          )}
-
-          {/* The refusal still comes from the server — nothing pre-checks it,
-              and `useActiveSchema` is deliberately not consulted before submit
-              (see the module docstring). What changes is only the rendering:
-              `SCHEMA_NOT_FOUND` has a remedy a person can act on, so it is said
-              in their words with the way there beside it. Every other code
-              keeps the raw `{code}: {message}`, which is what a bug report
-              should quote. */}
-          {approve.isError &&
-            (asApiError(approve.error).code === SCHEMA_NOT_FOUND ? (
-              <div className="flex flex-col items-start gap-1" data-testid="approve-schema-missing">
-                {/* The sentence is the shared one; what stays here is the
-                    *remedy*, which is a link only this screen can build. That
-                    is the division `refusals.ts` documents: one vocabulary, and
-                    a screen adds the way onward beside it rather than instead
-                    of it. */}
-                <FieldError>{refusalProse(approve.error)}</FieldError>
-                {onOpenSchema !== undefined && (
-                  <Button
-                    variant="link"
-                    className="h-auto p-0"
-                    data-testid="approve-go-schema"
-                    onClick={() => {
-                      onClose();
-                      onOpenSchema();
-                    }}
-                  >
-                    Define your labels
-                  </Button>
-                )}
-              </div>
-            ) : (
-              <FieldError data-testid="approve-error">{refusalProse(approve.error)}</FieldError>
-            ))}
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" data-testid="approve-cancel" onClick={onClose}>
-            Cancel
+      <div className="flex justify-end gap-2">
+        {form.approvedAt !== null && form.begin.isError ? (
+          <Button data-testid="approve-done" onClick={finish}>
+            Close
           </Button>
-          <Button
-            variant="default"
-            data-testid="approve-submit"
-            disabled={approve.isPending || (kind === "by_size" && !(count >= 1))}
-            onClick={submit}
-          >
-            {approve.isPending ? "Approving…" : "Approve"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        ) : (
+          <>
+            <Button variant="ghost" data-testid="approve-cancel" onClick={onClose} disabled={form.busy}>
+              Cancel
+            </Button>
+            <Button className={PRESS} data-testid="approve-submit" data-autofocus="" disabled={form.busy || !form.valid} onClick={() => form.submit(finish)}>
+              <Stamp data-icon="inline-start" aria-hidden="true" />
+              {approveLabel(form)}
+            </Button>
+          </>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -331,31 +370,24 @@ export function ApproveDialog({
  * Deliberately does not navigate. The panel re-reads the batch as
  * `in_annotation`, and its jobs then offer *Open* into the editor.
  */
-export function StartAnnotatingButton({
-  batch,
-  className,
-  size = "sm",
-}: {
-  readonly batch: Batch;
-  readonly className?: string;
-  readonly size?: "sm" | "lg";
-}): JSX.Element {
+export function StartAnnotatingButton({ batch }: { readonly batch: Batch }): JSX.Element {
   const start = useBatchTransition(batch.id, "start");
   const refusal = start.isError ? asApiError(start.error) : null;
 
   return (
-    <div className={className ?? "flex flex-col items-end gap-1"}>
-      <Button
+    <div className="contents">
+      <IconAction
+        icon={Play}
+        label="Start annotating"
+        hint="Opens its jobs for labeling"
         variant="default"
-        size={size}
+        busy={start.isPending}
         data-testid="start-batch"
-        disabled={start.isPending}
+        data-autofocus=""
         onClick={() => start.mutate()}
-      >
-        {start.isPending ? "Starting…" : "Start annotating"}
-      </Button>
+      />
       {refusal !== null && (
-        <FieldError data-testid="start-batch-error">{refusalProse(refusal)}</FieldError>
+        <FieldError data-line="" data-testid="start-batch-error">{refusalProse(refusal)}</FieldError>
       )}
     </div>
   );

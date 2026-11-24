@@ -161,7 +161,7 @@ stuck row as the only evidence the crash left.
 
 `processed` and `total` are written to the row **as the run goes**, so
 `IngestService.get(job_id)` answers "where is it now" rather than "where did it end". That is
-what `GET /ingest-jobs/{id}` returns and what the [ingest screen](#in-the-browser) polls; nothing
+what `GET /ingest-jobs/{id}` returns and what the [Add images dialog](#in-the-browser) polls; nothing
 about it is specific to being in the same process.
 
 | | what it means |
@@ -523,23 +523,24 @@ committed session is never swept - its source is the provenance of assets somebo
 
 ## In the browser
 
-`@visionset/ui-core`'s ingest screen picks between flows by source kind rather than running
-one flow with a branch in it, mirroring the split on this page: `ImageIngestFlow` is the
-directory/upload path this section used to describe alone, and `VideoImportFlow` is everything
-around a `VideoImportService` session - inspection, capability refusal, ranges, rate and scale,
-materialization, progress, commit and cancel. `clipProbe.ts`, the module that used to talk to a
+`@visionset/ui-core`'s **Add images** dialog - three steps over the project, opened from its
+bar - picks between mechanisms by what the files are rather than running one flow with a branch
+in it, mirroring the split on this page: `useIngestRun` is the directory/upload path this section
+used to describe alone, and `useClipImport` is everything around a `VideoImportService` session -
+inspection, capability refusal, ranges, rate and scale, materialization, progress, commit and
+cancel. `clipProbe.ts`, the module that used to talk to a
 server-side probe, is gone; a clip is inspected by `@visionset/media`, in the browser, before
 anything is ever sent.
 
-A third flow, `PointCloudIngestFlow`, takes point-cloud scans. The screen routes a drop by file
-extension, case-insensitively: when every file is `.pcd` or `.ply` it is a scan upload, and a drop
-that mixes scans with other files is refused on the screen, asking for the scans to be added
-separately, because one source holds one kind. A scan upload needs a **frame** - `lidar_flu`,
-`camera_rdf` or `lidar_rfu` - and none is preselected: it cannot be read from the files, so
-**Register source** stays disabled until one is chosen. Whether each file really is a scan is not
+Point-cloud scans take the directory path too. The dialog routes a drop by file extension,
+case-insensitively: when every file is `.pcd` or `.ply` it is a scan upload, and a drop that mixes
+scans with other files is refused in the dialog, asking for the scans to be added separately,
+because one source holds one kind. A scan upload needs a **frame** - `lidar_flu`, `camera_rdf` or
+`lidar_rfu` - and none is preselected: it cannot be read from the files, so **Upload N scans**
+stays disabled until one is chosen. Whether each file really is a scan is not
 judged here; its header is read at ingest, and a file that is not one is reported in the run as
-any other unreadable item is. Registering and launching are the same two calls the image flow
-makes, and the run is shown with the same steps. A registration the server refuses still leaves
+any other unreadable item is. Registering and launching are the same two calls images make, and
+the run is shown the same way. A registration the server refuses still leaves
 the uploaded files staged under `<workspace>/uploads/` - that is the staging posture every upload
 has, not a leak; see [api.md](api.md#conventions) and [sources.md](sources.md#over-http-a-directory-is-an-upload-a-clip-is-never-one).
 
@@ -555,7 +556,7 @@ closed set of reasons rather than a generic failure, and starts no import at all
 The image-directory flow still shows `processed` against `total` and groups its per-file report
 by `IngestFailureKind`, offering **Resume** only for a `failed` run - a stuck `running` job has no
 button, because `running → running` is deliberately not a transition. See
-[ui.md](ui.md#the-ingest-flow-and-the-order-the-domain-forces). The video flow shows a different
+[ui.md](ui.md#the-add-images-dialog-and-the-order-the-domain-forces). The video flow shows a different
 pair - a session's `received_frame_count` against `expected_frame_count` - and its actions are
 **Commit**, available once the two are equal, and **Cancel**, available until then; there is no
 resume, because a session that stalls is aborted and restarted rather than continued; the
