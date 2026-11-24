@@ -269,6 +269,7 @@ def list_asset_batches(workspace: WorkspaceDep, project_id: UUID, asset_id: UUID
     promoted = DatasetService(workspace).promoted_asset_ids(project_id)
     found = batches.holding(asset.id)
     pre_label_runs = batches.pre_label_runs()
+    modalities = batches.modalities(project_id)
     return BatchPage(
         items=[
             BatchOut.of(
@@ -276,6 +277,7 @@ def list_asset_batches(workspace: WorkspaceDep, project_id: UUID, asset_id: UUID
                 jobs.batch_progress(batch.id),
                 promoted=promoted,
                 pre_label_run=pre_label_runs.get(batch.id),
+                modalities=modalities.get(batch.id, ()),
             )
             for batch in found
         ],

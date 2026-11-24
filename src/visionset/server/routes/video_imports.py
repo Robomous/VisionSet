@@ -370,11 +370,13 @@ def commit_video_import(workspace: WorkspaceDep, import_id: UUID) -> BatchOut:
     the frame count, which is the honest report.
     """
     batch = VideoImportService(workspace).commit(import_id)
+    batches = BatchService(workspace)
     return BatchOut.of(
         batch,
         JobService(workspace).batch_progress(batch.id),
         promoted=DatasetService(workspace).promoted_asset_ids(batch.project_id),
-        pre_label_run=BatchService(workspace).latest_pre_label_job(batch.id),
+        pre_label_run=batches.latest_pre_label_job(batch.id),
+        modalities=batches.modalities(batch.project_id).get(batch.id, ()),
     )
 
 

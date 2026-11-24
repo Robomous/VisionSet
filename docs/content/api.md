@@ -312,6 +312,17 @@ because its weights never arrived, because its config declared a model type no i
 serves, or because it is an `http` connection nobody has asked yet - see [Asking an endpoint
 what it answers](inference.md#asking-an-endpoint-what-it-answers).
 
+**A batch says what it holds.** `BatchOut.modalities` lists the modalities of the assets in the
+batch, sorted: `["image"]`, `["point_cloud"]`, or both when a batch mixes images and scans, and
+empty only for an empty batch. It is one aggregate for a whole listing, so a client names a
+batch's assets ("12 scans") from the batch itself rather than reading its assets or guessing
+from the project's sources. The MCP batch tools and `visionset batch … --json` carry the same
+field.
+
+```
+GET /batches/{id}   →  { "asset_count": 12, "modalities": ["point_cloud"], … }
+```
+
 **A client renders these; it never computes them.** Re-deriving the rules from `state` and
 `progress` is what the browser used to do, and its copy drifted by dropping the batch-state
 dimension - which is why skipping a frame was offered on a batch the kernel refused every write

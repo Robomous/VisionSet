@@ -4080,6 +4080,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Modalities */
+            modalities: ("image" | "point_cloud")[];
             /** Name */
             name: string;
             /** Parent Batch Id */

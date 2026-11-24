@@ -1489,6 +1489,17 @@
             "title": "Id",
             "type": "string"
           },
+          "modalities": {
+            "items": {
+              "enum": [
+                "image",
+                "point_cloud"
+              ],
+              "type": "string"
+            },
+            "title": "Modalities",
+            "type": "array"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -1553,7 +1564,8 @@
           "allowed_actions",
           "promoted_asset_count",
           "parent_batch_id",
-          "pre_label_run"
+          "pre_label_run",
+          "modalities"
         ],
         "title": "BatchOut",
         "type": "object"

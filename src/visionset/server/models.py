@@ -38,7 +38,7 @@ columns one at a time — applied to the wire.
 from __future__ import annotations
 
 import base64
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from collections.abc import Set as AbstractSet
 from datetime import datetime
 from typing import Annotated, Final, Generic, Literal, Self, TypeVar, assert_never
@@ -118,6 +118,7 @@ from visionset.kernel.domain import (
     JobAction,
     LabelClass,
     MembershipChange,
+    Modality,
     ModalityCompatibility,
     ModelCapability,
     ModelOrigin,
@@ -1719,6 +1720,9 @@ class BatchOut(BaseModel):
     #: dialog reopened after a cancelled or failed run can only tell that apart
     #: from a batch nobody has touched because the batch itself says so.
     pre_label_run: PreLabelRunOut | None
+    #: The modalities of the assets the batch holds, sorted; empty only for an
+    #: empty batch. More than one when it holds images and scans together.
+    modalities: list[Literal["image", "point_cloud"]]
 
     @classmethod
     def of(
@@ -1728,6 +1732,7 @@ class BatchOut(BaseModel):
         *,
         promoted: AbstractSet[UUID],
         pre_label_run: PreLabelRun | None,
+        modalities: Sequence[Modality],
     ) -> Self:
         return cls(
             id=batch.id,
@@ -1741,6 +1746,7 @@ class BatchOut(BaseModel):
             promoted_asset_count=sum(1 for one in batch.asset_ids if one in promoted),
             parent_batch_id=batch.parent_batch_id,
             pre_label_run=None if pre_label_run is None else PreLabelRunOut.of(pre_label_run),
+            modalities=list(modalities),
         )
 
 
@@ -1844,9 +1850,16 @@ class BatchMembershipOut(BaseModel):
         *,
         promoted: AbstractSet[UUID],
         pre_label_run: PreLabelRun | None,
+        modalities: Sequence[Modality],
     ) -> Self:
         return cls(
-            batch=BatchOut.of(change.batch, counts, promoted=promoted, pre_label_run=pre_label_run),
+            batch=BatchOut.of(
+                change.batch,
+                counts,
+                promoted=promoted,
+                pre_label_run=pre_label_run,
+                modalities=modalities,
+            ),
             changed=list(change.changed),
         )
 

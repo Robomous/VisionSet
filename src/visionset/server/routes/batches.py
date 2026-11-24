@@ -104,6 +104,7 @@ def create_batch(workspace: WorkspaceDep, project_id: UUID, body: BatchCreate) -
         JobService(workspace).batch_progress(created.id),
         promoted=DatasetService(workspace).promoted_asset_ids(project_id),
         pre_label_run=batches.latest_pre_label_job(created.id),
+        modalities=batches.modalities(created.project_id).get(created.id, ()),
     )
 
 
@@ -117,6 +118,7 @@ def list_batches(workspace: WorkspaceDep, project_id: UUID) -> BatchPage:
     # One queue read for the whole page: without it a
     # page of twenty batches would ask the queue once per row.
     pre_label_runs = batches.pre_label_runs()
+    modalities = batches.modalities(project_id)
     return BatchPage(
         items=[
             BatchOut.of(
@@ -124,6 +126,7 @@ def list_batches(workspace: WorkspaceDep, project_id: UUID) -> BatchPage:
                 jobs.batch_progress(batch.id),
                 promoted=promoted,
                 pre_label_run=pre_label_runs.get(batch.id),
+                modalities=modalities.get(batch.id, ()),
             )
             for batch in found
         ],
@@ -147,6 +150,7 @@ def get_batch(workspace: WorkspaceDep, batch_id: UUID) -> BatchOut:
         JobService(workspace).batch_progress(batch.id),
         promoted=DatasetService(workspace).promoted_asset_ids(batch.project_id),
         pre_label_run=batches.latest_pre_label_job(batch_id),
+        modalities=batches.modalities(batch.project_id).get(batch.id, ()),
     )
 
 
@@ -181,6 +185,7 @@ def approve_batch(
         JobService(workspace).batch_progress(batch.id),
         promoted=DatasetService(workspace).promoted_asset_ids(batch.project_id),
         pre_label_run=batches.latest_pre_label_job(batch_id),
+        modalities=batches.modalities(batch.project_id).get(batch.id, ()),
     )
 
 
@@ -194,6 +199,7 @@ def start_batch(workspace: WorkspaceDep, batch_id: UUID) -> BatchOut:
         JobService(workspace).batch_progress(batch.id),
         promoted=DatasetService(workspace).promoted_asset_ids(batch.project_id),
         pre_label_run=batches.latest_pre_label_job(batch_id),
+        modalities=batches.modalities(batch.project_id).get(batch.id, ()),
     )
 
 
@@ -229,6 +235,7 @@ def repin_batch(
         JobService(workspace).batch_progress(batch.id),
         promoted=DatasetService(workspace).promoted_asset_ids(batch.project_id),
         pre_label_run=batches.latest_pre_label_job(batch_id),
+        modalities=batches.modalities(batch.project_id).get(batch.id, ()),
     )
 
 
@@ -251,6 +258,7 @@ def complete_batch(workspace: WorkspaceDep, batch_id: UUID) -> BatchOut:
         JobService(workspace).batch_progress(batch.id),
         promoted=DatasetService(workspace).promoted_asset_ids(batch.project_id),
         pre_label_run=batches.latest_pre_label_job(batch_id),
+        modalities=batches.modalities(batch.project_id).get(batch.id, ()),
     )
 
 
@@ -286,6 +294,7 @@ def create_correction_batch(
         JobService(workspace).batch_progress(created.id),
         promoted=DatasetService(workspace).promoted_asset_ids(created.project_id),
         pre_label_run=batches.latest_pre_label_job(created.id),
+        modalities=batches.modalities(created.project_id).get(created.id, ()),
     )
 
 
@@ -631,11 +640,13 @@ BatchAssetIdsQuery = Annotated[
 
 def _membership(workspace: WorkspaceDep, change: MembershipChange) -> BatchMembershipOut:
     """One projection for both halves, so add and remove cannot answer differently."""
+    batches = BatchService(workspace)
     return BatchMembershipOut.of(
         change,
         JobService(workspace).batch_progress(change.batch.id),
         promoted=DatasetService(workspace).promoted_asset_ids(change.batch.project_id),
-        pre_label_run=BatchService(workspace).latest_pre_label_job(change.batch.id),
+        pre_label_run=batches.latest_pre_label_job(change.batch.id),
+        modalities=batches.modalities(change.batch.project_id).get(change.batch.id, ()),
     )
 
 

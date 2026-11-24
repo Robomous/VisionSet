@@ -486,3 +486,34 @@ def test_the_published_contract_describes_labels_on_a_scan() -> None:
         description = " ".join(operation["description"].split())
         assert "declaring no frame" in description
         assert refusal in description
+
+
+def test_a_batch_publishes_the_modalities_it_holds(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path, scans: dict[str, Any]
+) -> None:
+    project = scans["project"]
+    images = batch_from_ingest(client, runner, tmp_path / "images", project, images=1)
+    image = asset_ids(client, images)[0]
+    mixed = client.post(
+        f"/projects/{project}/batches",
+        json={"name": "mixed", "asset_ids": [scans["assets"][0], image]},
+    ).json()["id"]
+    empty = client.post(f"/projects/{project}/batches", json={"name": "empty"}).json()["id"]
+
+    listed = {
+        one["id"]: one["modalities"]
+        for one in client.get(f"/projects/{project}/batches").json()["items"]
+    }
+
+    assert listed == {
+        scans["batch"]: ["point_cloud"],
+        images: ["image"],
+        mixed: ["image", "point_cloud"],
+        empty: [],
+    }
+    assert client.get(f"/batches/{mixed}").json()["modalities"] == ["image", "point_cloud"]
+    held = client.get(f"/projects/{project}/assets/{image}/batches").json()["items"]
+    assert {one["id"]: one["modalities"] for one in held} == {
+        images: ["image"],
+        mixed: ["image", "point_cloud"],
+    }
