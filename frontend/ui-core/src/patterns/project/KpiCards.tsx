@@ -20,7 +20,7 @@
  * ## What needs attention, without a row for it
  *
  * A cell never reserves a row for a button it may not have. What needs somebody
- * — drafts waiting for review, a batch ready to promote — is a small badge in
+ * — drafts waiting for review, a batch ready to add to the dataset — is a small badge in
  * the label row, and its steps open from it: on hover after a short intent
  * delay, on click, and on Enter. The steps are the screen's, labelled from what
  * the wire declares; this file draws, it never decides.
@@ -56,7 +56,7 @@ export interface KpiStep {
   readonly key: string;
   /** What it is about: a batch's name, "The dataset". */
   readonly subject: string;
-  /** The step, already labelled from what the wire declares: "Review and promote". */
+  /** The step, already labelled from what the wire declares: "Review and add to dataset". */
   readonly label: string;
   readonly Icon: LucideIcon;
   readonly onGo: () => void;

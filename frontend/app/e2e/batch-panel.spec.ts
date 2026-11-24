@@ -12,10 +12,12 @@
  * frame grid, per-frame progress moves, draft membership editing, the density
  * slider, the job accordions — went with it, and so did the scenarios that
  * covered them. The lifecycle scenarios did not: *Approve*, *Start annotating*,
- * *Complete*, *Complete and promote*, *Promote*, *Create correction batch* and
- * *Delete batch* are the same controls, now in the panel's footer
- * (`batch-sheet-actions`), and each is asserted here against the same stubbed
- * kernel gates the gallery's were.
+ * *Complete* (whose confirmation decides whether the images are added to the
+ * dataset) and *Add to dataset*, with *Create correction batch* and *Delete
+ * batch* at its start, are icon buttons in the panel's footer
+ * (`batch-sheet-actions`), each named by its tooltip; *Auto-label* is in the
+ * panel's top bar. Each is asserted here against the same stubbed kernel gates the
+ * gallery's were.
  *
  * ## Why a browser
  *
@@ -362,10 +364,10 @@ test("the redirect replaces the old address, so Back does not bounce into it", a
   const sent: Request[] = [];
   await serveApi(page, sent);
   // One page of history before the old address, which is what Back would land on.
-  await page.goto(`/projects/${PROJECT}/ingest`);
+  await page.goto(`/projects/${PROJECT}/images`);
   await page.getByTestId("token-input").fill("a-token");
   await page.getByTestId("token-submit").click();
-  await expect(page.getByTestId("ingest-screen")).toBeVisible();
+  await expect(page.getByTestId("nav-images")).toHaveAttribute("aria-current", "page");
 
   await page.goto(`/projects/${PROJECT}/batches/${BATCH}`);
   await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview\\?batch=${BATCH}$`));
@@ -374,7 +376,7 @@ test("the redirect replaces the old address, so Back does not bounce into it", a
   // `replace`: were the old address left in history, Back would redirect straight
   // back to the panel and the person could never leave.
   await page.goBack();
-  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/ingest$`));
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/images$`));
 });
 
 test("opening a batch from its row writes it into the address, and closing takes it out", async ({
@@ -396,25 +398,52 @@ test("opening a batch from its row writes it into the address, and closing takes
   await expect(page.getByTestId("batch-sheet")).toHaveCount(0);
 });
 
-test("a rail destination pressed with the panel open goes there, and the panel does not pull it back", async ({
+test("a draft's row opens its approval rather than its panel, and approving opens the panel", async ({ page }) => {
+  const sent: Request[] = [];
+  await openAt(page, sent, `/projects/${PROJECT}/overview`, { state: "draft" });
+
+  await expect(page.getByTestId("overview-batches")).toBeVisible();
+  await page.locator(`[data-row-open="${BATCH}"]`).click();
+  // Nothing hovers or opens beside the table: the one thing a draft is opened for is asked first.
+  await expect(page.getByTestId("approve-dialog")).toBeVisible();
+  await expect(page.getByTestId("batch-sheet")).toHaveCount(0);
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview$`));
+  expect(writes(sent)).toEqual([]);
+
+  // Approval only: where approving lands is the claim here, and starting is its own write.
+  await page.getByTestId("approve-start").click();
+  await page.getByTestId("approve-submit").click();
+  await expect(page.getByTestId("batch-sheet").getByRole("heading", { level: 2, name: NAME })).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview\\?batch=${BATCH}$`));
+  expect(writes(sent)).toEqual([`POST /batches/${BATCH}/approve`]);
+});
+
+test("a press outside the panel puts it away and takes it out of the address, and the next press goes where it points", async ({
   page,
 }) => {
   const sent: Request[] = [];
   await openAt(page, sent, `/projects/${PROJECT}/overview?batch=${BATCH}`);
   await expect(page.getByTestId("batch-sheet").getByRole("heading", { level: 2, name: NAME })).toBeVisible();
 
-  // The press outside dismisses the panel, which takes `?batch=` out of the
-  // address; that must not land on top of the navigation the press asked for.
+  // The panel is modal, as a dialog is: the page under it is behind a scrim, so a press
+  // on the rail lands on the scrim and only dismisses the panel.
+  await page.locator('[data-slot="sheet-overlay"]').click({ position: { x: 8, y: 8 } });
+  await expect(page.getByTestId("batch-sheet")).toHaveCount(0);
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/overview$`));
+
+  // And the dismissal does not land on top of the navigation the next press asks for.
   await page.getByTestId("rail-projects").click();
   await expect(page).toHaveURL(/\/projects$/);
   await expect(page.getByTestId("projects-screen")).toBeVisible();
 });
 
-test("a section pressed with the panel open goes there, and the panel does not pull it back", async ({ page }) => {
+test("a section pressed once the panel is put away goes there, and the panel does not pull it back", async ({ page }) => {
   const sent: Request[] = [];
   await openAt(page, sent, `/projects/${PROJECT}/overview?batch=${BATCH}`);
   await expect(page.getByTestId("batch-sheet").getByRole("heading", { level: 2, name: NAME })).toBeVisible();
 
+  await page.getByTestId("batch-close").click();
+  await expect(page.getByTestId("batch-sheet")).toHaveCount(0);
   await page.getByTestId("nav-images").click();
   await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/images$`));
   await expect(page.getByTestId("batch-sheet")).toHaveCount(0);
@@ -495,33 +524,40 @@ test("a draft batch has no jobs, and says approving is what cuts them", async ({
 const OFFERED: ReadonlyArray<{
   readonly state: Wire["BatchState"];
   readonly options?: Options;
+  /** In the footer. */
   readonly present: readonly string[];
   readonly absent: readonly string[];
+  /** Auto-label is the panel's top bar's, and only for a batch that declares `pre_label`. */
+  readonly prelabel: boolean;
 }> = [
   {
     state: "draft",
     present: ["approve-batch"],
-    absent: ["start-batch", `complete-${NAME}`, `complete-promote-${NAME}`, `promote-${NAME}`, `correct-${NAME}`, "sheet-annotate", "sheet-prelabel"],
+    absent: ["start-batch", `complete-${NAME}`, `promote-${NAME}`, `correct-${NAME}`, "sheet-annotate"],
+    prelabel: false,
   },
   {
     state: "approved",
     present: ["start-batch"],
-    absent: ["approve-batch", `complete-${NAME}`, `complete-promote-${NAME}`, `promote-${NAME}`, `correct-${NAME}`, "sheet-annotate", "sheet-prelabel"],
+    absent: ["approve-batch", `complete-${NAME}`, `promote-${NAME}`, `correct-${NAME}`, "sheet-annotate"],
+    prelabel: false,
   },
   {
     state: "in_annotation",
-    present: [`complete-${NAME}`, `complete-promote-${NAME}`, "sheet-annotate", "sheet-prelabel"],
+    present: [`complete-${NAME}`, "sheet-annotate"],
     absent: ["approve-batch", "start-batch", `promote-${NAME}`, `correct-${NAME}`],
+    prelabel: true,
   },
   {
     state: "completed",
     options: { settled: true },
     present: [`promote-${NAME}`, `correct-${NAME}`],
-    absent: ["approve-batch", "start-batch", `complete-${NAME}`, `complete-promote-${NAME}`, "sheet-annotate", "sheet-prelabel"],
+    absent: ["approve-batch", "start-batch", `complete-${NAME}`, "sheet-annotate"],
+    prelabel: false,
   },
 ];
 
-for (const { state, options, present, absent } of OFFERED) {
+for (const { state, options, present, absent, prelabel } of OFFERED) {
   test(`a ${state} batch offers exactly the controls it declares`, async ({ page }) => {
     const sent: Request[] = [];
     const panel = await openPanel(page, sent, { ...options, state });
@@ -529,9 +565,13 @@ for (const { state, options, present, absent } of OFFERED) {
 
     for (const id of present) await expect(footer.getByTestId(id), `${id} on a ${state} batch`).toBeVisible();
     for (const id of absent) await expect(footer.getByTestId(id), `${id} on a ${state} batch`).toHaveCount(0);
-    // The overflow is always there: it holds Delete, which is disabled with its reason
-    // rather than removed.
-    await expect(footer.getByTestId(`batch-overflow-${NAME}`)).toBeVisible();
+    // Delete is always there: disabled with its reason (its tooltip) rather than removed.
+    await expect(footer.getByTestId(`delete-batch-${NAME}`)).toBeVisible();
+    // There is no overflow menu: every control is a button of its own.
+    await expect(footer.getByTestId(`batch-overflow-${NAME}`)).toHaveCount(0);
+    // Auto-label is in the top bar, not the footer.
+    await expect(footer.getByTestId("sheet-prelabel")).toHaveCount(0);
+    await expect(panel.getByTestId("batch-sheet-tools").getByTestId("sheet-prelabel")).toHaveCount(prelabel ? 1 : 0);
     // Nothing was sent by looking.
     expect(writes(sent)).toEqual([]);
   });
@@ -541,9 +581,13 @@ test("a completed batch's Delete is withheld with its reason, not hidden", async
   const sent: Request[] = [];
   const panel = await openPanel(page, sent, { state: "completed", settled: true });
 
-  await panel.getByTestId(`batch-overflow-${NAME}`).click();
-  await expect(page.getByTestId(`delete-batch-${NAME}`)).toHaveAttribute("aria-disabled", "true");
-  await expect(page.getByTestId(`delete-withheld-${NAME}`)).toBeVisible();
+  const remove = panel.getByTestId(`delete-batch-${NAME}`);
+  await expect(remove).toBeVisible();
+  await expect(remove).toBeDisabled();
+  await expect(remove).toHaveAccessibleName("Delete batch");
+  // The reason is the tooltip's, reached by keyboard through the withheld button's wrapper.
+  await remove.locator("xpath=..").focus();
+  await expect(page.getByRole("tooltip").filter({ hasText: "correction batch" }).first()).toBeVisible();
   expect(writes(sent)).toEqual([]);
 });
 
@@ -561,6 +605,9 @@ test("a draft batch is approved from its panel, and the panel follows the server
   // Nothing is sent by opening the dialog: approval carries a partition, pins the
   // schema and cuts the jobs, and cannot be rolled back.
   expect(writes(sent)).toEqual([]);
+  // The switch is off so the batch stops at Approved; the default is the next scenario.
+  await expect(page.getByTestId("approve-start")).toBeChecked();
+  await page.getByTestId("approve-start").click();
   await page.getByTestId("approve-submit").click();
 
   // The badge moves because the server said so, and the control goes because the
@@ -574,6 +621,42 @@ test("a draft batch is approved from its panel, and the panel follows the server
   expect(approve.postDataJSON()).toEqual({ partition: { kind: "single" } });
   // The panel stays on this batch, and the address with it.
   await expect(page).toHaveURL(new RegExp(`\\?batch=${BATCH}$`));
+});
+
+test("approving starts the batch by default: approve, then start, and the panel reads Labeling", async ({ page }) => {
+  const sent: Request[] = [];
+  const panel = await openPanel(page, sent, { state: "draft" });
+
+  await panel.getByTestId("approve-batch").click();
+  await expect(page.getByTestId("partition-answer")).toHaveText("One job");
+  await page.getByTestId("approve-submit").click();
+
+  await expect(page.getByTestId("approve-dialog")).toHaveCount(0);
+  await expect(panel.getByTestId("batch-phase")).toHaveText("Labeling");
+  await expect(panel.getByTestId("start-batch")).toHaveCount(0);
+  expect(writes(sent)).toEqual([`POST /batches/${BATCH}/approve`, `POST /batches/${BATCH}/start`]);
+});
+
+test("a split from the dialog's stepper is sent as jobs of that size", async ({ page }) => {
+  const sent: Request[] = [];
+  const panel = await openPanel(page, sent, { state: "draft" });
+
+  await panel.getByTestId("approve-batch").click();
+  await page.getByTestId("partition-toggle").click();
+  await page.getByTestId("partition-split").click();
+  // 48 images: jobs of 25 and 23.
+  await expect(page.getByTestId("partition-size")).toHaveValue("25");
+  await expect(page.getByTestId("partition-preview")).toContainText("2 jobs");
+  await page.getByRole("button", { name: "Fewer images per job" }).click();
+  await expect(page.getByTestId("partition-size")).toHaveValue("20");
+  await expect(page.getByTestId("partition-answer")).toHaveText("3 jobs of up to 20");
+  await page.getByTestId("approve-start").click();
+  await page.getByTestId("approve-submit").click();
+
+  await expect(panel.getByTestId("batch-phase")).toHaveText("Approved");
+  expect(writes(sent)).toEqual([`POST /batches/${BATCH}/approve`]);
+  const approve = sent.find((one) => one.method() === "POST")!;
+  expect(approve.postDataJSON()).toEqual({ partition: { kind: "by_size", size: 20 } });
 });
 
 test("cancelling the approve dialog changes nothing", async ({ page }) => {
@@ -607,18 +690,24 @@ test("an approved batch is started from its panel", async ({ page }) => {
 
 // --- finishing -----------------------------------------------------------------
 
-test("Complete is withheld while frames are outstanding, and says how many", async ({ page }) => {
+test("completing is withheld while frames are outstanding, and says how many", async ({ page }) => {
   const sent: Request[] = [];
   const panel = await openPanel(page, sent);
 
   // 30 unannotated and 5 in review: 35 frames are neither annotated nor skipped.
-  await expect(panel.getByTestId(`complete-${NAME}`)).toBeDisabled();
-  await expect(panel.getByTestId(`complete-blocked-${NAME}`)).toContainText("still to annotate or skip");
-  await expect(panel.getByTestId(`complete-promote-${NAME}`)).toBeDisabled();
+  const complete = panel.getByTestId(`complete-${NAME}`);
+  await expect(complete).toBeDisabled();
+  await expect(complete).toHaveAccessibleName("Complete batch");
+  // The count is the tooltip's reason, reached by keyboard through the withheld button's wrapper.
+  await complete.locator("xpath=..").focus();
+  await expect(page.getByRole("tooltip").filter({ hasText: "still to annotate or skip" }).first()).toBeVisible();
+  await expect(page.getByTestId("complete-confirm")).toHaveCount(0);
   expect(writes(sent)).toEqual([]);
 });
 
-test("completing a settled batch finishes its job first", async ({ page }) => {
+test("completing a settled batch asks first, and with the switch off finishes its job and the batch and adds nothing", async ({
+  page,
+}) => {
   const sent: Request[] = [];
   const panel = await openPanel(page, sent, { settled: true });
 
@@ -626,36 +715,68 @@ test("completing a settled batch finishes its job first", async ({ page }) => {
   // settled, one job still `in_progress`, and the only request the control used to
   // send was the one the server answers 409 to. The stub keeps both kernel gates,
   // so a control that skipped either link would fail here rather than pass on a
-  // permissive fixture.
+  // permissive fixture. Completing cannot be undone, so a press asks first.
   await panel.getByTestId(`complete-${NAME}`).click();
+  const confirm = page.getByTestId("complete-confirm");
+  await expect(confirm).toBeVisible();
+  await expect(confirm).toContainText("Complete this batch?");
+  expect(writes(sent)).toEqual([]);
+
+  // The switch is on by default; turned off, the images stay out of the dataset.
+  const add = confirm.getByTestId("complete-add");
+  await expect(add).toBeChecked();
+  await add.click();
+  await expect(add).not.toBeChecked();
+  await confirm.getByTestId("complete-submit").click();
 
   await expect
     .poll(() => writes(sent))
     .toEqual([`POST /jobs/${JOB}/complete`, `POST /batches/${BATCH}/complete`]);
 
   // And the batch really moved — the badge is the server's answer, not the button's
-  // optimism, and the batch now declares promotion instead.
+  // optimism, and the batch now declares promotion instead: *Add to dataset* is the
+  // forward step, and the line above says what completing did and did not do.
+  await expect(confirm).toHaveCount(0);
   await expect(panel.getByTestId("batch-phase")).toHaveText("Completed");
   await expect(panel.getByTestId(`complete-${NAME}`)).toHaveCount(0);
   await expect(panel.getByTestId(`promote-${NAME}`)).toBeVisible();
+  await expect(panel.getByTestId(`completed-${NAME}`)).toHaveText(
+    "Completed, closing 1 open job. Nothing is in the dataset yet.",
+  );
 });
 
-test("Complete and promote finishes the job, closes the batch, promotes, and says all three", async ({
+test("Cancel in the completion's confirmation sends nothing", async ({ page }) => {
+  const sent: Request[] = [];
+  const panel = await openPanel(page, sent, { settled: true });
+
+  await panel.getByTestId(`complete-${NAME}`).click();
+  const confirm = page.getByTestId("complete-confirm");
+  await confirm.getByRole("button", { name: "Cancel" }).click();
+
+  await expect(confirm).toHaveCount(0);
+  await expect(panel.getByTestId("batch-phase")).toHaveText("Labeling");
+  expect(writes(sent)).toEqual([]);
+});
+
+test("Complete with the switch on finishes the job, closes the batch, adds it to the dataset, and says all three", async ({
   page,
 }) => {
   const sent: Request[] = [];
   const panel = await openPanel(page, sent, { settled: true });
 
-  // With nothing outstanding the composed step is the panel's one filled control and
+  // With nothing outstanding, Complete is the panel's one filled control and
   // *Annotate* steps down beside it.
-  const composed = panel.getByTestId(`complete-promote-${NAME}`);
-  await expect(composed).toHaveAttribute("data-variant", "default");
+  const complete = panel.getByTestId(`complete-${NAME}`);
+  await expect(complete).toHaveAttribute("data-variant", "default");
   await expect(panel.getByTestId("sheet-annotate")).toHaveAttribute("data-variant", "outline");
-  await composed.click();
+  await complete.click();
+  const confirm = page.getByTestId("complete-confirm");
+  await expect(confirm.getByTestId("complete-add")).toBeChecked();
+  await confirm.getByTestId("complete-submit").click();
 
   // In order, and the job first: the batch refuses while its job is open.
   await expect(panel.getByTestId(`completed-${NAME}`)).toHaveText(
-    "Completed, finishing 1 job. Promoted 3 assets to the dataset. 45 skipped frames stayed out.",
+    "Completed, closing 1 open job. Added 3 assets to the dataset. 45 skipped frames stayed out.",
   );
   expect(writes(sent)).toEqual([
     `POST /jobs/${JOB}/complete`,
@@ -664,9 +785,11 @@ test("Complete and promote finishes the job, closes the batch, promotes, and say
   ]);
   // The batch is `completed` now and declares no `complete`, so the button is gone —
   // the line that says what it did is not.
-  await expect(composed).toHaveCount(0);
+  await expect(complete).toHaveCount(0);
   await expect(panel.getByTestId("batch-phase")).toHaveText("Completed");
   await expect(panel.getByTestId(`complete-promote-open-dataset-${NAME}`)).toBeVisible();
+  // The step it took is not offered again beside its report.
+  await expect(panel.getByTestId(`promote-${NAME}`)).toHaveCount(0);
 });
 
 // --- promoting -----------------------------------------------------------------
@@ -678,7 +801,7 @@ test("a completed batch is promoted from its panel, and the outcome is said", as
   await panel.getByTestId(`promote-${NAME}`).click();
 
   await expect(panel.getByTestId(`promoted-${NAME}`)).toHaveText(
-    "Promoted 3 assets to the dataset. 45 skipped frames stayed out.",
+    "Added 3 assets to the dataset. 45 skipped frames stayed out.",
   );
   expect(writes(sent)).toEqual([`POST /batches/${BATCH}/promote`]);
   // Promotion is not a transition: the batch stays completed, and the way onward is
@@ -695,6 +818,7 @@ test("a completed batch is corrected from its panel, and the panel moves to the 
   const sent: Request[] = [];
   const panel = await openPanel(page, sent, { state: "completed", settled: true });
 
+  await expect(panel.getByTestId(`correct-${NAME}`)).toHaveAccessibleName("Create correction batch");
   await panel.getByTestId(`correct-${NAME}`).click();
   const dialog = page.getByTestId("correction-dialog");
   await expect(dialog).toBeVisible();
@@ -721,12 +845,11 @@ test("a completed batch is corrected from its panel, and the panel moves to the 
 
 // --- deleting ------------------------------------------------------------------
 
-test("a batch is deleted from its panel's overflow, and the panel closes with it", async ({ page }) => {
+test("a batch is deleted from its panel's footer, and the panel closes with it", async ({ page }) => {
   const sent: Request[] = [];
   const panel = await openPanel(page, sent, { state: "draft" });
 
-  await panel.getByTestId(`batch-overflow-${NAME}`).click();
-  await page.getByTestId(`delete-batch-${NAME}`).click();
+  await panel.getByTestId(`delete-batch-${NAME}`).click();
 
   // The gate is a gate: nothing is sent until the question is answered, and the
   // question states the consequence rather than asking for a nod.

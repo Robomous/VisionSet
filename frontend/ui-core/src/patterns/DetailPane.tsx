@@ -109,7 +109,7 @@ function Aside({ id, open, label, expanded = false, defaultWidth = 384, minWidth
       className={cn("relative flex min-h-0 min-w-0 shrink-0 overflow-hidden bg-background text-sm", expanded ? "flex-1" : "border-l border-border/70")}
       style={expanded ? undefined : { width }}
     >
-      {!expanded && <Handle controls={domId} width={width} min={minWidth} ceiling={ceiling} onResize={setWidth} onSettle={settle} onReset={() => settle(defaultWidth)} />}
+      {!expanded && <ResizeHandle controls={domId} width={width} min={minWidth} ceiling={ceiling} onResize={setWidth} onSettle={settle} onReset={() => settle(defaultWidth)} />}
       <div
         className={cn(
           "flex min-h-0 min-w-0 flex-1 flex-col",
@@ -127,10 +127,11 @@ function Aside({ id, open, label, expanded = false, defaultWidth = 384, minWidth
 /**
  * The panel's left edge, as a window splitter: a separator the pointer drags
  * and the keyboard moves (←/→, Shift for a bigger step), Enter or a double
- * press back to the screen's width. Drawn as a hairline that brightens under
+ * press back to the screen's width. Exported for a panel that is a sheet over
+ * the page rather than a column of the row (the Overview's batch panel). Drawn as a hairline that brightens under
  * the pointer, on focus and while dragged; its hit area is wider than the line.
  */
-function Handle({
+export function ResizeHandle({
   controls,
   width,
   min,
@@ -226,6 +227,6 @@ function NarrowSheet({ open, label, onClose, testId, children }: DetailPaneProps
   );
 }
 
-function clampTo(value: number, min: number, max: number): number {
+export function clampTo(value: number, min: number, max: number): number {
   return Math.round(Math.min(Math.max(value, min), Math.max(min, max)));
 }

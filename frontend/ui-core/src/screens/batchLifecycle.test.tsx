@@ -14,13 +14,16 @@
  * never the question — the approve request goes out on every path.
  */
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { useState, type JSX } from "react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApproveDialog, BatchProgressBar, CompleteBatchButton } from "./BatchLifecycle";
+import { ApproveDialog, BatchProgressBar } from "./BatchLifecycle";
+import { CompleteBatchButton } from "./ComposedTransitions";
 import type { Batch } from "./queries";
 import { renderWithData } from "../testing/dataHarness";
+import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { batchActions } from "../testing/wire.fixtures.js";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
@@ -31,6 +34,7 @@ let handlers: ((request: Request) => Answer | undefined)[] = [];
 const sent: Request[] = [];
 
 beforeEach(() => {
+  stubResizeObserver();
   handlers = [];
   sent.length = 0;
   vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
@@ -163,9 +167,187 @@ describe("the approve dialog's refusals", () => {
     const closed = vi.fn();
     renderWithData(<ApproveDialog batch={DRAFT} onClose={closed} onOpenSchema={vi.fn()} />);
 
+    await userEvent.click(screen.getByTestId("approve-start"));
     await userEvent.click(screen.getByTestId("approve-submit"));
     await waitFor(() => expect(closed).toHaveBeenCalledOnce());
     expect(screen.queryByTestId("approve-schema-missing")).toBeNull();
+  });
+});
+
+describe("the approve dialog's one decision and its folded cut", () => {
+  const APPROVED = {
+    ...DRAFT,
+    state: "approved",
+    schema_version: 3,
+    allowed_actions: batchActions("approved"),
+  };
+  const STARTED = { ...APPROVED, state: "in_annotation", allowed_actions: batchActions("in_annotation") };
+
+  const writes = (): string[] =>
+    sent.filter((request) => request.method !== "GET").map((request) => `${request.method} ${new URL(request.url).pathname}`);
+  const approveBody = async (): Promise<unknown> =>
+    sent.find((request) => request.method === "POST" && /\/approve$/.test(new URL(request.url).pathname))?.clone().json();
+
+  it("says what approving costs, and starts by default", () => {
+    renderWithData(<ApproveDialog batch={DRAFT} onClose={vi.fn()} />);
+    expect(screen.getByRole("dialog").textContent).toContain("Approve drive-01?");
+    expect(screen.getByRole("dialog").textContent).toContain("Freezes its 48 images");
+    expect(screen.getByRole("dialog").textContent).toContain("A draft can’t come back.");
+    expect(screen.getByTestId("approve-start").getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByTestId("approve-submit").textContent).toBe("Approve");
+    expect(screen.getByTestId("partition-answer").textContent).toBe("One job");
+  });
+
+  it("names the schema version it reads, and the current schema when it has not read one", async () => {
+    on("GET", /\/projects\/[^/]+\/schema$/, {
+      status: 200,
+      body: { project_id: PROJECT, version: 7, classes: [] },
+    });
+    renderWithData(<ApproveDialog batch={DRAFT} onClose={vi.fn()} />);
+    expect(screen.getByRole("dialog").textContent).toContain("the project’s current schema");
+    await waitFor(() => expect(screen.getByRole("dialog").textContent).toContain("pins schema v7."));
+    expect(screen.getByTestId("approve-submit").hasAttribute("disabled")).toBe(false);
+  });
+
+  it("sends approve and then start when the switch is on", async () => {
+    on("POST", /\/approve$/, { status: 200, body: APPROVED });
+    on("POST", /\/start$/, { status: 200, body: STARTED });
+    const closed = vi.fn();
+    const approved = vi.fn();
+    renderWithData(<ApproveDialog batch={DRAFT} onClose={closed} onApproved={approved} />);
+
+    await userEvent.click(screen.getByTestId("approve-submit"));
+    await waitFor(() => expect(closed).toHaveBeenCalledOnce());
+    expect(approved).toHaveBeenCalledOnce();
+    expect(writes()).toEqual([`POST /batches/${BATCH}/approve`, `POST /batches/${BATCH}/start`]);
+    expect(await approveBody()).toEqual({ partition: { kind: "single" } });
+  });
+
+  it("sends approve alone when the switch is off", async () => {
+    on("POST", /\/approve$/, { status: 200, body: APPROVED });
+    const closed = vi.fn();
+    renderWithData(<ApproveDialog batch={DRAFT} onClose={closed} />);
+
+    await userEvent.click(screen.getByTestId("approve-start"));
+    expect(screen.getByTestId("approve-start").getAttribute("aria-checked")).toBe("false");
+    await userEvent.click(screen.getByTestId("approve-submit"));
+    await waitFor(() => expect(closed).toHaveBeenCalledOnce());
+    expect(writes()).toEqual([`POST /batches/${BATCH}/approve`]);
+  });
+
+  it("cuts by size from the stepper, and says the cut in the answer and the preview", async () => {
+    on("POST", /\/approve$/, { status: 200, body: APPROVED });
+    const closed = vi.fn();
+    renderWithData(<ApproveDialog batch={DRAFT} onClose={closed} />);
+
+    await userEvent.click(screen.getByTestId("approve-start"));
+    await userEvent.click(screen.getByTestId("partition-toggle"));
+    expect(screen.getByTestId("partition-toggle").getAttribute("aria-expanded")).toBe("true");
+    await userEvent.click(screen.getByTestId("partition-split"));
+
+    // 48 images default to jobs of 25: 25 + 23.
+    const size = screen.getByTestId("partition-size") as HTMLInputElement;
+    expect(size.value).toBe("25");
+    expect(screen.getByTestId("partition-preview").textContent).toBe("2 jobs(25 · 23)");
+    expect(screen.getByTestId("partition-answer").textContent).toBe("2 jobs of up to 25");
+
+    await userEvent.click(screen.getByRole("button", { name: "Fewer images per job" }));
+    await userEvent.click(screen.getByRole("button", { name: "Fewer images per job" }));
+    expect(size.value).toBe("15");
+    expect(screen.getByTestId("partition-preview").textContent).toBe("4 jobs(15 · 15 · 15 · 3)");
+    expect(screen.getByTestId("partition-answer").textContent).toBe("4 jobs of up to 15");
+
+    await userEvent.click(screen.getByRole("button", { name: "More images per job" }));
+    expect(size.value).toBe("20");
+
+    await userEvent.click(screen.getByTestId("approve-submit"));
+    await waitFor(() => expect(closed).toHaveBeenCalledOnce());
+    expect(await approveBody()).toEqual({ partition: { kind: "by_size", size: 20 } });
+  });
+
+  it("makes Split at least two jobs on a small batch, stepping by ones", async () => {
+    on("POST", /\/approve$/, { status: 200, body: APPROVED });
+    const closed = vi.fn();
+    renderWithData(<ApproveDialog batch={{ ...DRAFT, asset_count: 6 }} onClose={closed} />);
+
+    await userEvent.click(screen.getByTestId("approve-start"));
+    await userEvent.click(screen.getByTestId("partition-toggle"));
+    await userEvent.click(screen.getByTestId("partition-split"));
+    expect((screen.getByTestId("partition-size") as HTMLInputElement).value).toBe("3");
+    expect(screen.getByTestId("partition-preview").textContent).toBe("2 jobs(3 · 3)");
+
+    await userEvent.click(screen.getByRole("button", { name: "Fewer images per job" }));
+    expect((screen.getByTestId("partition-size") as HTMLInputElement).value).toBe("2");
+    expect(screen.getByTestId("partition-answer").textContent).toBe("3 jobs of up to 2");
+
+    await userEvent.click(screen.getByTestId("approve-submit"));
+    await waitFor(() => expect(closed).toHaveBeenCalledOnce());
+    expect(await approveBody()).toEqual({ partition: { kind: "by_size", size: 2 } });
+  });
+
+  it("sends a single cut when a split makes only one job", async () => {
+    on("POST", /\/approve$/, { status: 200, body: APPROVED });
+    const closed = vi.fn();
+    renderWithData(<ApproveDialog batch={DRAFT} onClose={closed} />);
+
+    await userEvent.click(screen.getByTestId("approve-start"));
+    await userEvent.click(screen.getByTestId("partition-toggle"));
+    await userEvent.click(screen.getByTestId("partition-split"));
+    await userEvent.clear(screen.getByTestId("partition-size"));
+    await userEvent.type(screen.getByTestId("partition-size"), "48");
+    expect(screen.getByTestId("partition-answer").textContent).toBe("One job");
+
+    await userEvent.click(screen.getByTestId("approve-submit"));
+    await waitFor(() => expect(closed).toHaveBeenCalledOnce());
+    expect(await approveBody()).toEqual({ partition: { kind: "single" } });
+  });
+
+  it("keeps the dialog open when the start is refused, saying the approval stood", async () => {
+    on("POST", /\/approve$/, { status: 200, body: APPROVED });
+    on("POST", /\/start$/, {
+      status: 409,
+      body: { code: "BATCH_NOT_STARTABLE", message: "No job to start." },
+    });
+    const closed = vi.fn();
+    const approved = vi.fn();
+    renderWithData(<ApproveDialog batch={DRAFT} onClose={closed} onApproved={approved} />);
+
+    await userEvent.click(screen.getByTestId("approve-submit"));
+    const said = await screen.findByTestId("approve-start-error");
+    expect(said.textContent).toContain("Approved against v3, but it couldn’t be started:");
+    expect(closed).not.toHaveBeenCalled();
+    expect(screen.getByTestId("approve-dialog")).toBeTruthy();
+    expect(screen.queryByTestId("approve-submit")).toBeNull();
+
+    await userEvent.click(screen.getByTestId("approve-done"));
+    expect(approved).toHaveBeenCalledOnce();
+    expect(closed).toHaveBeenCalledOnce();
+  });
+
+  it("starts from the defaults on every opening", async () => {
+    // The dialog stays mounted while closed: opening again is the batch going to null and back.
+    function Host(): JSX.Element {
+      const [batch, setBatch] = useState<Batch | null>(DRAFT);
+      return (
+        <>
+          <button type="button" data-testid="host-close" onClick={() => setBatch(null)} />
+          <button type="button" data-testid="host-open" onClick={() => setBatch(DRAFT)} />
+          <ApproveDialog batch={batch} onClose={vi.fn()} />
+        </>
+      );
+    }
+    renderWithData(<Host />);
+    await userEvent.click(screen.getByTestId("approve-start"));
+    await userEvent.click(screen.getByTestId("partition-toggle"));
+    await userEvent.click(screen.getByTestId("partition-split"));
+    await userEvent.click(screen.getByRole("button", { name: "Fewer images per job" }));
+    expect(screen.getByTestId("partition-answer").textContent).toBe("3 jobs of up to 20");
+
+    act(() => screen.getByTestId("host-close").click());
+    act(() => screen.getByTestId("host-open").click());
+    await waitFor(() => expect(screen.getByTestId("approve-start").getAttribute("aria-checked")).toBe("true"));
+    expect(screen.getByTestId("partition-answer").textContent).toBe("One job");
+    expect(screen.getByTestId("partition-toggle").getAttribute("aria-expanded")).toBe("false");
   });
 });
 
@@ -205,7 +387,7 @@ describe("BatchProgressBar", () => {
   });
 });
 
-describe("the Complete button's count of what is left", () => {
+describe("Complete's count of what is left, said in its tooltip", () => {
   const ANNOTATING: Batch = {
     ...DRAFT,
     state: "in_annotation",
@@ -223,25 +405,33 @@ describe("the Complete button's count of what is left", () => {
     });
   }
 
+  /** The reason lives in the withheld control's tooltip, reached by keyboard through its wrapper. */
+  async function reason(text: string): Promise<void> {
+    const control = screen.getByTestId("complete-drive-01") as HTMLButtonElement;
+    expect(control.disabled).toBe(true);
+    await userEvent.tab();
+    await waitFor(() => expect(screen.getAllByText(text).length).toBeGreaterThan(0));
+  }
+
   it("counts scans on a batch of point-cloud scans", async () => {
     sources("point_cloud_directory");
-    renderWithData(<CompleteBatchButton batch={ANNOTATING} />);
+    renderWithData(<CompleteBatchButton projectId={PROJECT} batch={ANNOTATING} />);
 
-    await waitFor(() => expect(screen.getByTestId("complete-blocked-drive-01").textContent).toBe("3 scans still to annotate or skip"));
+    await reason("3 scans still to annotate or skip");
   });
 
   it("says one scan in the singular", async () => {
     sources("point_cloud_directory");
-    renderWithData(<CompleteBatchButton batch={{ ...ANNOTATING, progress: { ...ANNOTATING.progress, unannotated: 1, annotated: 47 } }} />);
+    renderWithData(<CompleteBatchButton projectId={PROJECT} batch={{ ...ANNOTATING, progress: { ...ANNOTATING.progress, unannotated: 1, annotated: 47 } }} />);
 
-    await waitFor(() => expect(screen.getByTestId("complete-blocked-drive-01").textContent).toBe("1 scan still to annotate or skip"));
+    await reason("1 scan still to annotate or skip");
   });
 
   it("counts frames on a batch of images", async () => {
     sources("image_directory");
-    renderWithData(<CompleteBatchButton batch={ANNOTATING} />);
+    renderWithData(<CompleteBatchButton projectId={PROJECT} batch={ANNOTATING} />);
 
     await waitFor(() => expect(sent.some((one) => new URL(one.url).pathname.endsWith("/sources"))).toBe(true));
-    expect(screen.getByTestId("complete-blocked-drive-01").textContent).toBe("3 frames still to annotate or skip");
+    await reason("3 frames still to annotate or skip");
   });
 });

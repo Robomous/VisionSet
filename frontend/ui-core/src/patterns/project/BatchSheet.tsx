@@ -37,6 +37,7 @@ import { Button, cn } from "@robomous/ui-core";
 import { formatCount, formatPercent } from "../../lib/format";
 import type { BatchRowView, LabelCounts } from "./BatchTable";
 import { initials, labeledDetail, phaseState } from "./batchRowModel";
+import { focusQuietly } from "../IconAction";
 import { StateChip } from "../StateChip";
 import { ProgressReadout } from "../ProgressRing";
 import { JobList } from "./JobList";
@@ -83,8 +84,10 @@ export interface BatchSheetProps {
   readonly noJobs: string;
   /** `undefined` while the batch itself is read; the folded properties wait on it. */
   readonly details?: BatchDetails;
-  /** The footer's actions, the forward one marked `data-autofocus`. */
+  /** The footer's actions, the forward one marked `data-autofocus`; their words marked `data-line`. */
   readonly actions?: ReactNode;
+  /** The top bar's own controls, at its start: what works on the whole batch without moving it (Auto-label). */
+  readonly tools?: ReactNode;
 }
 
 /** The house curve: a strong ease-out, for things arriving in answer to a press or a scroll. */
@@ -114,7 +117,7 @@ function useScrolledPast(root: RefObject<HTMLElement | null>, target: RefObject<
   return past;
 }
 
-export function BatchSheet({ row, position, onStep, onClose, jobs, jobsError, noJobs, details, actions }: BatchSheetProps): JSX.Element {
+export function BatchSheet({ row, position, onStep, onClose, jobs, jobsError, noJobs, details, actions, tools }: BatchSheetProps): JSX.Element {
   const root = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const titleFoot = useRef<HTMLDivElement>(null);
@@ -125,7 +128,7 @@ export function BatchSheet({ row, position, onStep, onClose, jobs, jobsError, no
   useEffect(() => {
     const at = root.current;
     const forward = at?.querySelector<HTMLElement>("[data-autofocus]") ?? [...(at?.querySelectorAll<HTMLElement>("footer button:not(:disabled)") ?? [])].at(-1);
-    forward?.focus({ preventScroll: true });
+    if (forward != null) focusQuietly(forward);
   }, []);
 
   useEffect(() => {
@@ -154,7 +157,8 @@ export function BatchSheet({ row, position, onStep, onClose, jobs, jobsError, no
   return (
     <div ref={root} className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
       {/* 48px, the band's height beside it, so the two headers read as one line across the row. */}
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border/70 pr-2 pl-4 md:pl-6">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border/70 pr-2 pl-3 md:pl-5">
+        {tools !== undefined && <div className="flex shrink-0 items-center gap-1" data-testid="batch-sheet-tools">{tools}</div>}
         <span className="ml-auto shrink-0 px-1 text-xs text-muted-foreground tabular-nums">
           <span className="sr-only">Batch </span>
           {position.at + 1} of {position.count}
@@ -215,7 +219,15 @@ export function BatchSheet({ row, position, onStep, onClose, jobs, jobsError, no
       </div>
 
       {actions !== undefined && (
-        <footer className="flex shrink-0 flex-wrap items-start justify-end gap-2 border-t border-border/70 px-4 py-3 md:px-6" data-testid="batch-sheet-actions">{actions}</footer>
+        // One row of icon buttons; every line a control says (`data-line`: an
+        // outcome, a refusal, a count) takes a full row above them, right-aligned
+        // over the forward step it came from.
+        <footer
+          className="flex shrink-0 flex-wrap items-center gap-x-1 gap-y-2 border-t border-border/70 px-3 py-2.5 md:px-5 [&_[data-line]]:order-first [&_[data-line]]:basis-full [&_[data-line]]:text-right [&_[data-line]]:text-pretty"
+          data-testid="batch-sheet-actions"
+        >
+          {actions}
+        </footer>
       )}
     </div>
   );

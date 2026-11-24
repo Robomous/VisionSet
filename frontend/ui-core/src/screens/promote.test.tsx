@@ -32,16 +32,16 @@ describe("what a press promoted, in one sentence", () => {
     // The founder's real shape, scaled down: 3 promoted out of 48, the other 45
     // skipped. "Promoted 3" over a batch of 48 reads as a failure unless
     // somebody says where the other 45 went.
-    expect(promotionSummary(3, 3, 48)).toContain("Promoted 3 assets");
+    expect(promotionSummary(3, 3, 48)).toContain("Added 3 assets");
     expect(promotionSummary(3, 3, 48)).toContain("45 skipped frames stayed out");
   });
 
   it("says nothing about exclusions when there were none", () => {
-    expect(promotionSummary(3, 3, 3)).toBe("Promoted 3 assets to the dataset.");
+    expect(promotionSummary(3, 3, 3)).toBe("Added 3 assets to the dataset.");
   });
 
   it("gets the singular right, because one frame is the common case at the end", () => {
-    expect(promotionSummary(1, 1, 2)).toContain("Promoted 1 asset ");
+    expect(promotionSummary(1, 1, 2)).toContain("Added 1 asset ");
     expect(promotionSummary(1, 1, 2)).toContain("1 skipped frame stayed out");
   });
 
@@ -152,9 +152,9 @@ describe("the control", () => {
     await userEvent.click(screen.getByTestId("promote-drive-01"));
 
     expect((await screen.findByTestId("promoted-drive-01")).textContent).toContain(
-      "Promoted 3 assets",
+      "Added 3 assets",
     );
-    expect(screen.getByTestId("promote-drive-01").textContent).toContain("Promote");
+    expect(screen.getByTestId("promote-drive-01").textContent).toContain("Add to dataset");
   });
 
   it("links onward to where the work landed", async () => {

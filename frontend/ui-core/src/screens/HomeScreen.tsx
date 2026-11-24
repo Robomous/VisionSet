@@ -531,7 +531,7 @@ function activityLine(entry: ActivityEntry): string {
   if (entry.kind === "release_published") return `Released ${entry.label ?? "a version"} in ${where}`;
   if (entry.kind === "batch_promoted") {
     const promoted = entry.count ?? 0;
-    return `Promoted ${formatCount(promoted)} ${promoted === 1 ? "image" : "images"} from ${entry.label ?? "a batch"} in ${where}`;
+    return `Added ${formatCount(promoted)} ${promoted === 1 ? "image" : "images"} from ${entry.label ?? "a batch"} to the dataset in ${where}`;
   }
   if (entry.kind === "schema_version") return `Schema ${entry.label ?? "version"} in ${where}`;
   const arrived = entry.count ?? 0;
