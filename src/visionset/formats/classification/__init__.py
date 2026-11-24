@@ -66,6 +66,7 @@ from visionset.kernel.domain import (
     GeometryType,
     Manifest,
     Release,
+    SplitAssignment,
 )
 from visionset.kernel.errors import ExportSourceUnreadable
 from visionset.kernel.ports import ContentReader
@@ -119,6 +120,7 @@ class ClassificationExporter:
         dest: Path,
         *,
         content: ContentReader,
+        assignment: SplitAssignment | None,
     ) -> None:
         declared = {one.name for one in manifest.classes}
         vocabulary = [
@@ -138,7 +140,7 @@ class ClassificationExporter:
                     f"class {name!r} holds a control character, so it cannot be "
                     f"written as a plain line in {CLASSES_FILENAME}"
                 )
-        folds = folds_of(release, manifest)
+        folds = folds_of(manifest, assignment)
 
         rows: list[tuple[str, str, str]] = []
         for asset in manifest.assets:

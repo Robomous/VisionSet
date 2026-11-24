@@ -361,6 +361,7 @@ def test_an_undeclared_manifest_class_aborts_before_a_voc_object_is_emitted(tmp_
             malformed,
             dest,
             content=fixture.workspace.blob_store.get,
+            assignment=None,
         )
     fixture.close()
 

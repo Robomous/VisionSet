@@ -510,7 +510,11 @@ def test_bytes_that_are_not_an_image_this_format_can_write_are_refused_by_name(
 
     with pytest.raises(ExportSourceUnreadable, match=str(manifest.assets[0].asset_id)):
         UltralyticsExporter().export(
-            _release_of(fixture, release_id), manifest, tmp_path / "out", content=pretend
+            _release_of(fixture, release_id),
+            manifest,
+            tmp_path / "out",
+            content=pretend,
+            assignment=None,
         )
 
 
@@ -569,6 +573,7 @@ def test_an_undeclared_manifest_class_aborts_before_a_label_index_is_written(
             malformed,
             dest,
             content=fixture.workspace.blob_store.get,
+            assignment=None,
         )
     fixture.close()
 
@@ -594,7 +599,7 @@ def test_a_release_with_no_recipe_is_one_undivided_training_set(tmp_path: Path) 
 
 
 def test_the_folds_are_the_release_s_own_and_agree_with_the_service(tmp_path: Path) -> None:
-    """`assign_split` is pure, so the plugin computes the same folds the API reports.
+    """The plugin places assets by the assignment the kernel hands it, the one the API reports.
 
     Worth asserting rather than assuming: an export whose split disagreed with
     `GET /releases/{id}/assignment` would make two answers to one question, and

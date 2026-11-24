@@ -182,7 +182,7 @@ from visionset.kernel.domain import (
     job_actions,
     optional_visibility_field,
 )
-from visionset.kernel.ports import Exporter, Provider
+from visionset.kernel.ports import Exporter, Provider, supported_modalities_of
 
 T = TypeVar("T")
 
@@ -2884,7 +2884,7 @@ class FormatOut(BaseModel):
             lossy=exporter.lossy,
             geometries=sorted(one.value for one in exporter.supported_geometries),
             degraded_geometries=sorted(one.value for one in exporter.degraded_geometries),
-            modalities=sorted(exporter.supported_modalities),
+            modalities=sorted(supported_modalities_of(exporter)),
             targets=sorted(one.name for one in exporter.targets),
         )
 

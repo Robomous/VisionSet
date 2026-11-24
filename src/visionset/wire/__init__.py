@@ -139,7 +139,7 @@ from visionset.kernel.domain import (
     job_actions,
     loss_kinds,
 )
-from visionset.kernel.ports import Exporter, Provider
+from visionset.kernel.ports import Exporter, Provider, supported_modalities_of
 from visionset.wire import shapes
 
 T = TypeVar("T")
@@ -848,7 +848,7 @@ def export_format(value: Exporter) -> shapes.ExportFormat:
         # ["bbox"]` off yolov5-yaml would conclude a polygon is not written, and a
         # polygon is written.
         "degraded_geometries": sorted(one.value for one in value.degraded_geometries),
-        "modalities": sorted(value.supported_modalities),
+        "modalities": sorted(supported_modalities_of(value)),
         "targets": sorted(one.name for one in value.targets),
     }
 

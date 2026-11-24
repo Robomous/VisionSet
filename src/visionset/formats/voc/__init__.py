@@ -59,6 +59,7 @@ from visionset.kernel.domain import (
     Polyline3DGeometry,
     PolylineGeometry,
     Release,
+    SplitAssignment,
 )
 from visionset.kernel.errors import ExportSourceUnreadable
 from visionset.kernel.ports import ContentReader
@@ -116,9 +117,10 @@ class VocExporter:
         dest: Path,
         *,
         content: ContentReader,
+        assignment: SplitAssignment | None,
     ) -> None:
         declared = {one.name for one in manifest.classes}
-        folds = folds_of(release, manifest)
+        folds = folds_of(manifest, assignment)
         members: dict[str, list[str]] = {fold: [] for fold in FOLDS}
 
         images = dest / IMAGES_DIRNAME

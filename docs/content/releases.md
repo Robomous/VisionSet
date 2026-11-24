@@ -87,9 +87,12 @@ An older document keeps the version it was written with, so its bytes and its ha
 **omits** the key rather than writing `null`, so it serializes exactly as it did under version 2.
 What the bump announces is that a version-3 document *may* carry the key.
 
-**The number is a label, not a gate.** Loading a manifest does not compare `manifest_version`
-against anything; what a build refuses is a key it does not know, because a manifest is read with
-unknown keys forbidden - half-understanding hash-pinned evidence is worse than refusing it. So a
+**The number is a label, not a gate on the build.** Loading a manifest never compares
+`manifest_version` against the build's own; what a build refuses is a key it does not know, because
+a manifest is read with unknown keys forbidden - half-understanding hash-pinned evidence is worse
+than refusing it. The one thing the number is checked against is the manifest's own content: a
+document below version 4 that carries a calibration, or below version 5 that holds a point-cloud
+asset, is refused, because its version claims a shape that cannot express what it holds. So a
 version-2 build refuses a version-3 manifest only when that manifest carries a `visibility`; one
 with no visibility recorded anywhere loads there unchanged.
 
@@ -195,6 +198,14 @@ re-ingest into a fresh project reproduces the split, every id being new.
 Counts come from largest-remainder apportionment, with the last fold taking the tail of the
 ordering outright. One asset under a `0.8/0.1/0.1` recipe is one training asset, not a rounding
 error that loses it, and no asset can go missing to an argument about arithmetic.
+
+An export writes these folds and no others. The assignment is cut once, over the whole frozen
+manifest, and handed to the format plugin as `assignment=` beside the manifest; the plugin
+places each asset by it and never cuts its own. That matters when a release holds images and
+scans: an image format is handed only the images, and a cut by count over fewer assets would draw
+other boundaries, so its folds would stop matching `assignment` and an augmented variant, generated
+for a train asset, could land in `val`. A plugin whose `export` does not take the keyword is
+called without it, as before.
 
 ## What is deliberately not here
 
@@ -347,8 +358,11 @@ output whole. It gets one row per modality in `dropped_modalities` - `modality`,
 `annotations` and a `reason` - is counted in `excluded_assets` and `excluded_annotations`, and
 makes the report incompatible, so the export needs `allow_lossy`. Its labels appear in no row of
 `classes`, which judge only what reaches the format, and the export never hands such an asset to
-the plugin. No installed format writes a point cloud, so every one of them reports a release's
-scans dropped, by count.
+the plugin, nor is its blob read: an image export does not refuse because a scan's blob is
+missing. A plugin that declares no `supported_modalities`, as every one did before scans existed,
+writes images: it is still discovered, and a release's scans are reported dropped for it rather
+than breaking the export. No installed format writes a point cloud, so every one of them reports
+a release's scans dropped, by count.
 
 ### Consent is required if *either* says so
 
