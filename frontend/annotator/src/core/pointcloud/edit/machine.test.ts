@@ -5,7 +5,8 @@ import { NO_MODIFIERS } from "../../interaction/events";
 import { EMPTY_SELECTION, selectOnly } from "../../state/selection";
 import { AnnotatorStore } from "../../state/store";
 import type { Cuboid3DGeometry, Point, Point3D, Polyline3DGeometry } from "../../types";
-import { CUBOID_FACES, cuboidAxes, faceCenter, headingOfYaw, MIN_CUBOID_SIZE } from "../cuboid";
+import type { OrbitCamera } from "../camera";
+import { CUBOID_FACES, cuboidAxes, faceCenter, headingOfYaw, MIN_CUBOID_SIZE, type CuboidFace } from "../cuboid";
 import { fromForwardLeftUp, type ScanFrame } from "../frame";
 import { add, scale } from "../vector";
 import { contextOf, cuboidOf, pixelOf, polylineOf, scanBox, scanDocumentOf, scanLine } from "./_scan";
@@ -64,15 +65,22 @@ function drive(store: AnnotatorStore<ScanDocument>, context: () => ScanContext, 
 describe("drawing a cuboid", () => {
   const context = contextOf(scanDocumentOf(), { tool: { kind: "cuboid", labelClass: "car" } });
 
-  it("drags a footprint on the ground, lifts a height, and adds one human box", () => {
+  it("drags a length on the ground, sets a width, lifts a height, and adds one human box", () => {
     const anchor = pixelOf(context, [2, -1, 0]);
-    const corner = pixelOf(context, [6, 1, 0]);
+    const end = pixelOf(context, [6, -1, 0]);
     let state = scanTransition(SCAN_IDLE, down(anchor), context).state;
     expect(state.type).toBe("drawing-footprint");
-    state = scanTransition(state, move(corner), context).state;
+    state = scanTransition(state, move(end), context).state;
+    expectClose(draftCuboid(state, context)?.size ?? [], [4, MIN_CUBOID_SIZE, MIN_CUBOID_SIZE]);
+    state = scanTransition(state, up(end), context).state;
+    expect(state).toMatchObject({ type: "drawing-width", length: expect.closeTo(4, 6), yaw: 0 });
+
+    state = scanTransition(state, move(pixelOf(context, [5, 1, 0])), context).state;
     expectClose(draftCuboid(state, context)?.size ?? [], [4, 2, MIN_CUBOID_SIZE]);
-    state = scanTransition(state, up(corner), context).state;
-    expect(state).toMatchObject({ type: "drawing-height", length: expect.closeTo(4, 6), width: expect.closeTo(2, 6) });
+    expectClose(draftCuboid(state, context)?.center ?? [], [4, 0, MIN_CUBOID_SIZE / 2]);
+    state = scanTransition(state, down(pixelOf(context, [5, 1, 0])), context).state;
+    state = scanTransition(state, up(pixelOf(context, [5, 1, 0])), context).state;
+    expect(state).toMatchObject({ type: "drawing-height", length: expect.closeTo(4, 6), width: expect.closeTo(2, 6), yaw: 0 });
 
     state = scanTransition(state, move(pixelOf(context, [4, 0, 1.5])), context).state;
     const draft = draftCuboid(state, context);
@@ -101,15 +109,85 @@ describe("drawing a cuboid", () => {
   });
 
   it("Enter finishes a height as a click does; Escape draws nothing", () => {
-    const height: ScanState = { type: "drawing-height", labelClass: "car", base: [0, 0, 0], length: 2, width: 1, height: 1 };
+    const height: ScanState = { type: "drawing-height", labelClass: "car", base: [0, 0, 0], length: 2, width: 1, yaw: 0, height: 1 };
     expect(scanTransition(height, { type: "commit" }, context).effects[0].kind).toBe("add");
     expect(scanTransition(height, { type: "cancel" }, context)).toEqual({ state: SCAN_IDLE, effects: [] });
+  });
+
+  it("Enter sets a width as a click does; Escape draws nothing", () => {
+    const width: ScanState = { type: "drawing-width", labelClass: "car", anchor: [0, 0, 0], length: 2, yaw: 0, offset: 1 };
+    expect(scanTransition(width, { type: "commit" }, context).state).toMatchObject({ type: "drawing-height", width: 1 });
+    expect(scanTransition(width, { type: "cancel" }, context)).toEqual({ state: SCAN_IDLE, effects: [] });
   });
 
   it("a click without a drag is no footprint", () => {
     const at = pixelOf(context, [1, 1, 0]);
     const pressed = scanTransition(SCAN_IDLE, down(at), context).state;
     expect(scanTransition(pressed, up(at), context)).toEqual({ state: SCAN_IDLE, effects: [] });
+  });
+
+  it("a drag shorter than the smallest extent draws nothing, and previews at yaw 0", () => {
+    const anchor: Point3D = [1, 1, 0];
+    const end: Point3D = [1 + MIN_CUBOID_SIZE * 0.4, 1 + MIN_CUBOID_SIZE * 0.4, 0];
+    let state = scanTransition(SCAN_IDLE, down(pixelOf(context, anchor)), context).state;
+    state = scanTransition(state, move(pixelOf(context, end)), context).state;
+    expect(draftCuboid(state, context)?.yaw).toBe(0);
+    expect(scanTransition(state, up(pixelOf(context, end)), context)).toEqual({ state: SCAN_IDLE, effects: [] });
+  });
+
+  describe("a new cuboid's yaw follows the length drag", () => {
+    const FRAMES: readonly ScanFrame[] = ["lidar_flu", "camera_rdf", "lidar_rfu"];
+    const THIRTY = Math.PI / 6;
+
+    /** Drag the length from `anchor` along `[forward, left]`, set the width at `side` metres to its left, raise 1.5 m, finish. */
+    function draw(frame: ScanFrame, anchor: readonly [number, number], drag: readonly [number, number], side: number): Cuboid3DGeometry {
+      const context = contextOf(scanDocumentOf(), { tool: { kind: "cuboid", labelClass: "car" }, frame });
+      const at = (f: number, l: number, u = 0) => pixelOf(context, fromForwardLeftUp(frame, [f, l, u]));
+      const length = Math.hypot(drag[0], drag[1]);
+      const [cos, sin] = [drag[0] / length, drag[1] / length];
+      const end = [anchor[0] + drag[0], anchor[1] + drag[1]] as const;
+      const widthAt = at(end[0] - sin * side, end[1] + cos * side);
+      const middle = [anchor[0] + drag[0] / 2 - (sin * side) / 2, anchor[1] + drag[1] / 2 + (cos * side) / 2] as const;
+      let state = scanTransition(SCAN_IDLE, down(at(...anchor)), context).state;
+      for (const event of [move(at(...end)), up(at(...end)), move(widthAt), down(widthAt), up(widthAt), move(at(...middle, 1.5))]) {
+        state = scanTransition(state, event, context).state;
+      }
+      const finished = scanTransition(state, down(at(...middle, 1.5)), context);
+      const added = finished.effects.find((effect) => effect.kind === "add");
+      if (added?.kind !== "add") throw new Error("no box drawn");
+      return cuboidOf(added.annotation).geometry;
+    }
+
+    it("a drag at 30 degrees yields yaw 30 degrees, its length along the drag and the width across it", () => {
+      const box = draw("lidar_flu", [1, -2], [4 * Math.cos(THIRTY), 4 * Math.sin(THIRTY)], 1.5);
+      expect(box.yaw).toBeCloseTo(THIRTY, 6);
+      expectClose(box.size, [4, 1.5, 1.5], 4);
+      const middle: Point3D = [1 + 2 * Math.cos(THIRTY) - 0.75 * Math.sin(THIRTY), -2 + 2 * Math.sin(THIRTY) + 0.75 * Math.cos(THIRTY), 0.75];
+      expectClose(box.center, middle, 4);
+    });
+
+    it("a drag along forward still yields yaw 0", () => {
+      const box = draw("lidar_flu", [0, 0], [3, 0], 2);
+      expect(box.yaw).toBe(0);
+      expectClose(box.size, [3, 2, 1.5], 4);
+    });
+
+    it("a width set on the right of the length keeps every extent positive", () => {
+      const box = draw("lidar_flu", [0, 0], [3, 0], -2);
+      expectClose(box.size, [3, 2, 1.5], 4);
+      expectClose(box.center, [1.5, -1, 0.75], 4);
+    });
+
+    for (const frame of FRAMES) {
+      it(`in ${frame}, the box's length axis runs along the drag`, () => {
+        const drag = [4 * Math.cos(THIRTY), 4 * Math.sin(THIRTY)] as const;
+        const box = draw(frame, [1, -2], drag, 1.5);
+        expect(box.yaw).toBeCloseTo(THIRTY, 6);
+        expectClose(cuboidAxes(box, frame)[0], fromForwardLeftUp(frame, [Math.cos(THIRTY), Math.sin(THIRTY), 0]), 6);
+        expectClose(headingOfYaw(box.yaw, frame), cuboidAxes(box, frame)[0], 6);
+        expectClose(box.size, [4, 1.5, 1.5], 4);
+      });
+    }
   });
 
   it("a press on the sky starts nothing", () => {
@@ -142,12 +220,12 @@ describe("editing a cuboid", () => {
   });
 
   it("a face handle resizes along its normal with the opposite face held", () => {
-    const front = faceCenter(box.geometry, "lidar_flu", "front");
-    const pressed = scanTransition(SCAN_IDLE, down(pixelOf(selected, front)), selected);
-    expect(pressed.state).toMatchObject({ type: "resizing", face: "front" });
-    const pulled = staged(scanTransition(pressed.state, move(pixelOf(selected, [front[0] + 1, front[1], front[2]])), selected));
+    const back = faceCenter(box.geometry, "lidar_flu", "back");
+    const pressed = scanTransition(SCAN_IDLE, down(pixelOf(selected, back)), selected);
+    expect(pressed.state).toMatchObject({ type: "resizing", face: "back" });
+    const pulled = staged(scanTransition(pressed.state, move(pixelOf(selected, [back[0] - 1, back[1], back[2]])), selected));
     expectClose(pulled.size, [5, 2, 2]);
-    expectClose(pulled.center, [0.5, 0, 1]);
+    expectClose(pulled.center, [-0.5, 0, 1]);
   });
 
   it("the top handle sets the height and never inverts the box", () => {
@@ -216,6 +294,18 @@ describe("editing a cuboid", () => {
 
 describe("every face handle, in every frame", () => {
   const frames: readonly ScanFrame[] = ["lidar_flu", "camera_rdf", "lidar_rfu"];
+  const turns = { front: 0, back: Math.PI, left: Math.PI / 2, right: -Math.PI / 2, top: 0.3, bottom: 0.3 } as const;
+
+  /** A camera the face points towards: level-ish beside a side face, above the top, below the bottom. */
+  function facing(geometry: Cuboid3DGeometry, frame: ScanFrame, face: CuboidFace): OrbitCamera {
+    const below = face === "bottom" ? fromForwardLeftUp(frame, [0, 0, -20]) : [0, 0, 0] as const;
+    return {
+      yaw: geometry.yaw + turns[face],
+      pitch: face === "top" ? 1.2 : face === "bottom" ? 0.3 : 0.5,
+      distance: 30,
+      target: add(geometry.center, below),
+    };
+  }
   const opposite = { front: "back", back: "front", left: "right", right: "left", top: "bottom", bottom: "top" } as const;
 
   for (const frame of frames) {
@@ -225,7 +315,7 @@ describe("every face handle, in every frame", () => {
           const verb = distance > 0 ? "out" : "in";
           it(`dragging ${face} ${verb} by ${Math.abs(distance)} m moves only that face (${frame}, yaw ${yaw})`, () => {
             const box = scanBox("car-1", { center: fromForwardLeftUp(frame, [1, -0.5, 1.5]), size: [5, 3, 3], yaw });
-            const context = contextOf(scanDocumentOf(box), { selection: selectOnly("car-1"), frame });
+            const context = contextOf(scanDocumentOf(box), { selection: selectOnly("car-1"), frame, camera: facing(box.geometry, frame, face) });
             const origin = box.geometry;
             const grabbed = faceCenter(origin, frame, face);
             const outward = scale(cuboidAxes(origin, frame)[axis], sign);
@@ -255,7 +345,10 @@ describe("through the store", () => {
     const c = context();
     drive(store, context, [
       down(pixelOf(c, [0, 0, 0])),
+      move(pixelOf(c, [4, 0, 0])),
+      up(pixelOf(c, [4, 0, 0])),
       move(pixelOf(c, [4, 2, 0])),
+      down(pixelOf(c, [4, 2, 0])),
       up(pixelOf(c, [4, 2, 0])),
       move(pixelOf(c, [2, 1, 1.5])),
       down(pixelOf(c, [2, 1, 1.5])),

@@ -258,11 +258,11 @@ function ScanView({
   const total = asset.point_cloud?.point_count ?? sample.count;
 
   const stageRef = useRef<HTMLDivElement>(null);
-  const heightStep = scan?.editor.state.type === "drawing-height";
+  const pastFootprint = scan?.editor.state.type === "drawing-width" || scan?.editor.state.type === "drawing-height";
   useEffect(() => {
-    if (!heightStep || inScanView(document.activeElement)) return;
+    if (!pastFootprint || inScanView(document.activeElement)) return;
     stageRef.current?.querySelector<HTMLElement>('[data-scan-view="perspective"] canvas')?.focus();
-  }, [heightStep]);
+  }, [pastFootprint]);
 
   if (status === "unsupported") {
     return <NoWebGl projectId={projectId} asset={asset} frame={frame} />;
@@ -535,6 +535,7 @@ function WithReason({ reason, children }: { readonly reason: string; readonly ch
  * stay on screen when they cannot be used, disabled with the reason.
  */
 const POLYLINE_HINT = "Click along the line. Enter or double-click finishes it.";
+const WIDTH_HINT = "Move the pointer to set the width. Enter or a click sets it.";
 const HEIGHT_HINT = "Move the pointer in the perspective view to set the height. Enter or a click in either view finishes it.";
 
 export function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Element {
@@ -623,6 +624,7 @@ export function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Eleme
             </Select>
           )}
           {scan.toolKind === "polyline" && <StripHint testId="scan-polyline-hint" text={POLYLINE_HINT} />}
+          {scan.editor.state.type === "drawing-width" && <StripHint testId="scan-width-hint" text={WIDTH_HINT} />}
           {scan.editor.state.type === "drawing-height" && <StripHint testId="scan-height-hint" text={HEIGHT_HINT} />}
           <span className="mx-0.5 h-5 w-px bg-border" />
           <Button

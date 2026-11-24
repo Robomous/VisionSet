@@ -188,9 +188,12 @@ describe("useScanWorkspace", () => {
       return current.editor;
     };
     act(() => editor().onScanPointer({ type: "pointer-down", point: pixel([-2, -1, 0]), button: "primary", modifiers: NONE }, VIEW));
-    act(() => editor().onScanPointer({ type: "pointer-move", point: pixel([2, 1, 0]) }, VIEW));
+    act(() => editor().onScanPointer({ type: "pointer-move", point: pixel([2, -1, 0]) }, VIEW));
     expect(probe.current()?.editor.draft?.size[0]).toBeCloseTo(4, 3);
-    act(() => editor().onScanPointer({ type: "pointer-up", point: pixel([2, 1, 0]), button: "primary", modifiers: NONE }, VIEW));
+    act(() => editor().onScanPointer({ type: "pointer-up", point: pixel([2, -1, 0]), button: "primary", modifiers: NONE }, VIEW));
+    act(() => editor().onScanPointer({ type: "pointer-move", point: pixel([2, 1, 0]) }, VIEW));
+    expect(probe.current()?.editor.draft?.size[1]).toBeCloseTo(2, 3);
+    act(() => editor().send({ type: "commit" }));
     act(() => editor().send({ type: "commit" }));
 
     const plan = probe.current()?.plan;

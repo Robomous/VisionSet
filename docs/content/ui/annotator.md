@@ -567,12 +567,17 @@ right of the scan view, so orbiting never competes with drawing. In Edit a left 
 right drag orbits, and a middle drag - or shift + right drag, for a trackpad - pans; the wheel
 still zooms. Outside Edit the view keeps its own mapping: a left drag orbits.
 
-- **Draw.** With the cuboid tool and a class picked, drag the footprint on the ground (the
-  scan's low robust height along the declared up), move the pointer to raise the height, and
-  click or press Enter to finish. While the height is being set the strip says so, and how to
-  finish, on a line of its own, and when the footprint drag ends with focus outside both views,
-  focus moves to the perspective view, so Enter finishes from the keyboard. The class pick lists
-  only classes that declare `cuboid_3d`; with none, the tool is disabled with that reason.
+- **Draw.** With the cuboid tool and a class picked, drag one edge of the footprint on the
+  ground (the scan's low robust height along the declared up): the drag is the box's length,
+  and its direction is the box's heading, so a new box starts at the yaw of the drag, read in
+  the declared frame's forward and left axes like every other yaw. A drag shorter than the
+  smallest extent (5 cm) has no direction and draws nothing. Then move the pointer to either
+  side of that edge to set the width, across the heading, and click or press Enter; then move
+  the pointer to raise the height, and click or press Enter to finish. While the width or the
+  height is being set the strip says so, and how to go on, on a line of its own, and when the
+  footprint drag ends with focus outside both views, focus moves to the perspective view, so
+  Enter goes on from the keyboard. The class pick lists only classes that declare `cuboid_3d`;
+  with none, the tool is disabled with that reason.
 - **Draw a polyline.** With the polyline tool and a class picked, click along the line; each
   click places a vertex on the ground plane, at the same height a cuboid's footprint uses, and
   the last segment follows the pointer. Enter or a double-click finishes the line, and Escape
@@ -581,9 +586,14 @@ still zooms. Outside Edit the view keeps its own mapping: a left drag orbits.
   declare `polyline_3d`; with none, the tool is disabled with that reason. While the tool is
   active the strip says how to finish, on a line of its own.
 - **Adjust.** With the select tool, a press on a box selects it and drags it along the ground;
-  the selected box shows a handle on each face, which pushes that face, and a dashed ring at
-  its base, which turns its yaw about the declared up. Handles and ring are an overlay placed
-  by the same projection the editor picks with.
+  the selected box shows a handle on each face turned towards the camera, which pushes that
+  face, and a dashed ring at its base, which turns its yaw about the declared up. A face on the
+  far side of the box shows no handle and cannot be grabbed through the box; orbit round to
+  reach it. The bottom face is turned towards the camera only from below the box. The
+  test is the box's own faces against the eye: a handle in front of the box but behind other
+  points or another box is still drawn and grabbed, as nothing tests depth against the cloud or
+  other labels. Handles and ring are an overlay placed by the same projection the editor picks
+  with, and the overlay and the hit test share one test for which faces are offered.
 - **Adjust a polyline.** A click on a polyline's segment selects it, and the selected polyline
   shows a handle on each vertex. Dragging a handle moves that vertex along the ground at its
   own height. A press on a segment of the selected polyline inserts a vertex there and drags

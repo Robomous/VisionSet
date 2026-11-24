@@ -81,6 +81,14 @@ nothing was being distributed. This is the first version that is.
 
 ### Fixed
 
+- **A scan cuboid's far-side face handles are neither drawn nor grabbable.** In the perspective view a selected
+  box offers a handle only on each face turned towards the camera, so a press can no longer push a face through
+  the box; the overlay and the hit test share that one test. The top-down view still offers all four side faces.
+  Occlusion by the points or by other boxes is not tested (#1086).
+- **A new scan cuboid starts along its drag, not at yaw 0.** The footprint drag now sets one edge: its length is
+  the box's length and its direction the box's yaw, in the declared frame's axes. The width is then set across
+  it with the pointer and a click or Enter, before the height as before. A drag shorter than 5 cm draws nothing
+  (#1087).
 - **The ingest refusal for a video or a single file names point-cloud scans.** The CLI's `ingest` and the MCP
   `ingest` tool, handed something that is not a directory, now say they take a directory of still images or of
   point-cloud scans (`--point-clouds` on the CLI, `frame` on MCP) before pointing a video at the browser import

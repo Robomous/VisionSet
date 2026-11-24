@@ -1,7 +1,8 @@
 /**
- * The scan editor's interaction machine: draw a cuboid (footprint on the ground,
- * then height), move it, push a face, turn its yaw; draw a polyline on the
- * ground click by click, drag, insert or remove its vertices.
+ * The scan editor's interaction machine: draw a cuboid (its length dragged on
+ * the ground, which also sets its yaw, then its width, then its height), move
+ * it, push a face, turn its yaw; draw a polyline on the ground click by click,
+ * drag, insert or remove its vertices.
  *
  * The 2D machine's discipline, not its code: a turn is pure, the state is data,
  * and what it asks of the store is a closed list of plain-data effects, so a
@@ -48,7 +49,7 @@ import {
 import { fromForwardLeftUp, heightOf } from "../frame";
 import { insertPolylineVertex, isDrawablePolyline, movePolylineVertex, removePolylineVertex } from "../polyline";
 import { closestOnAxis, rayGroundHit, screenRay } from "../ray";
-import { add, dot, scale, subtract } from "../vector";
+import { add, dot, subtract } from "../vector";
 import { hitTest3D, yawRing, type Hit3D, type HitTolerances3D, type Scene3D } from "./scene";
 import type { ScanDocument } from "./scanDocument";
 
@@ -94,12 +95,23 @@ export type ScanState =
       readonly corner: Point3D;
     }
   | {
+      readonly type: "drawing-width";
+      readonly labelClass: string;
+      /** Where the length edge starts, on the ground. */
+      readonly anchor: Point3D;
+      readonly length: number;
+      readonly yaw: number;
+      /** The pointer's signed distance from the length edge, along the box's left axis. */
+      readonly offset: number;
+    }
+  | {
       readonly type: "drawing-height";
       readonly labelClass: string;
       /** The footprint's centre, on the ground. */
       readonly base: Point3D;
       readonly length: number;
       readonly width: number;
+      readonly yaw: number;
       readonly height: number;
     }
   | {
@@ -167,6 +179,8 @@ export function scanTransition(state: ScanState, event: ScanEvent, context: Scan
       return fromIdle(event, context);
     case "drawing-footprint":
       return fromFootprint(state, event, context);
+    case "drawing-width":
+      return fromWidth(state, event, context);
     case "drawing-height":
       return fromHeight(state, event, context);
     case "drawing-polyline":
@@ -185,11 +199,16 @@ export function scanTransition(state: ScanState, event: ScanEvent, context: Scan
 export function draftCuboid(state: ScanState, context: Pick<ScanContext, "frame">): Cuboid3DGeometry | null {
   switch (state.type) {
     case "drawing-footprint": {
-      const footprint = footprintOf(state.anchor, state.corner, context.frame);
-      return standing(footprint.base, footprint.length, footprint.width, MIN_CUBOID_SIZE, context.frame);
+      const edge = lengthEdgeOf(state.anchor, state.corner, context.frame);
+      const base = widthBase(state.anchor, edge, 0, context.frame);
+      return standing(base, Math.max(MIN_CUBOID_SIZE, edge.length), MIN_CUBOID_SIZE, edge.yaw, MIN_CUBOID_SIZE, context.frame);
+    }
+    case "drawing-width": {
+      const base = widthBase(state.anchor, state, state.offset, context.frame);
+      return standing(base, state.length, widthOf(state.offset), state.yaw, MIN_CUBOID_SIZE, context.frame);
     }
     case "drawing-height":
-      return standing(state.base, state.length, state.width, state.height, context.frame);
+      return standing(state.base, state.length, state.width, state.yaw, state.height, context.frame);
     case "idle":
     case "moving":
     case "resizing":
@@ -363,16 +382,9 @@ function fromFootprint(
     }
     case "pointer-up": {
       const corner = groundUnder(event.point, context) ?? state.corner;
-      const { base, length, width } = footprintOf(state.anchor, corner, context.frame);
-      if (length < MIN_CUBOID_SIZE || width < MIN_CUBOID_SIZE) return to(SCAN_IDLE);
-      return to({
-        type: "drawing-height",
-        labelClass: state.labelClass,
-        base,
-        length,
-        width,
-        height: MIN_CUBOID_SIZE,
-      });
+      const { length, yaw } = lengthEdgeOf(state.anchor, corner, context.frame);
+      if (length < MIN_CUBOID_SIZE) return to(SCAN_IDLE);
+      return to({ type: "drawing-width", labelClass: state.labelClass, anchor: state.anchor, length, yaw, offset: 0 });
     }
     case "pointer-cancel":
     case "cancel":
@@ -380,6 +392,39 @@ function fromFootprint(
     default:
       return to(state);
   }
+}
+
+function fromWidth(
+  state: Extract<ScanState, { type: "drawing-width" }>,
+  event: ScanEvent,
+  context: ScanContext,
+): ScanTransition {
+  switch (event.type) {
+    case "pointer-move": {
+      const at = groundUnder(event.point, context);
+      return at === null ? to(state) : to({ ...state, offset: dot(subtract(at, state.anchor), leftOfYaw(state.yaw, context.frame)) });
+    }
+    case "pointer-down":
+      return event.button === "primary" ? toHeight(state, context) : to(state);
+    case "commit":
+      return toHeight(state, context);
+    case "cancel":
+      return to(SCAN_IDLE);
+    default:
+      return to(state);
+  }
+}
+
+function toHeight(state: Extract<ScanState, { type: "drawing-width" }>, context: ScanContext): ScanTransition {
+  return to({
+    type: "drawing-height",
+    labelClass: state.labelClass,
+    base: widthBase(state.anchor, state, state.offset, context.frame),
+    length: state.length,
+    width: widthOf(state.offset),
+    yaw: state.yaw,
+    height: MIN_CUBOID_SIZE,
+  });
 }
 
 function fromHeight(
@@ -410,7 +455,7 @@ function finishDraw(
   state: Extract<ScanState, { type: "drawing-height" }>,
   context: ScanContext,
 ): ScanTransition {
-  const geometry = standing(state.base, state.length, state.width, state.height, context.frame);
+  const geometry = standing(state.base, state.length, state.width, state.yaw, state.height, context.frame);
   const annotation = newScanAnnotation(context.document, state.labelClass, geometry, context.mint);
   return to(
     SCAN_IDLE,
@@ -490,24 +535,56 @@ function groundUnder(point: Point, context: ScanContext): Point3D | null {
   return rayGroundHit(screenRay(context.camera, context.frame, context.viewport, point), context.frame, context.groundHeight);
 }
 
-function footprintOf(
+/**
+ * The footprint drag's level length and heading: the box's length runs from
+ * `anchor` to `end`. A drag shorter than `MIN_CUBOID_SIZE` has no reliable
+ * direction and reads as yaw 0, and a drag along forward within the pixel
+ * round trip's rounding stays exactly 0.
+ */
+function lengthEdgeOf(
   anchor: Point3D,
-  corner: Point3D,
+  end: Point3D,
   frame: ScanContext["frame"],
-): { readonly base: Point3D; readonly length: number; readonly width: number } {
-  const diagonal = subtract(corner, anchor);
-  return {
-    base: add(anchor, scale(diagonal, 0.5)),
-    length: Math.abs(dot(diagonal, fromForwardLeftUp(frame, [1, 0, 0]))),
-    width: Math.abs(dot(diagonal, fromForwardLeftUp(frame, [0, 1, 0]))),
-  };
+): { readonly length: number; readonly yaw: number } {
+  const edge = subtract(end, anchor);
+  const forward = dot(edge, fromForwardLeftUp(frame, [1, 0, 0]));
+  const left = dot(edge, fromForwardLeftUp(frame, [0, 1, 0]));
+  const length = Math.hypot(forward, left);
+  const yaw = length < MIN_CUBOID_SIZE ? 0 : Math.atan2(left, forward);
+  return { length, yaw: Math.abs(yaw) < YAW_ROUNDING ? 0 : yaw };
 }
 
-/** A yaw-0 box whose bottom face is centred on `base`. */
+const YAW_ROUNDING = 1e-9;
+
+function leftOfYaw(yaw: number, frame: ScanContext["frame"]): Point3D {
+  return fromForwardLeftUp(frame, [-Math.sin(yaw), Math.cos(yaw), 0]);
+}
+
+function widthOf(offset: number): number {
+  return Math.max(MIN_CUBOID_SIZE, Math.abs(offset));
+}
+
+/** The footprint's centre: halfway along the length edge, and halfway out to the pointer's side of it. */
+function widthBase(
+  anchor: Point3D,
+  edge: { readonly length: number; readonly yaw: number },
+  offset: number,
+  frame: ScanContext["frame"],
+): Point3D {
+  const side = (offset < 0 ? -1 : 1) * widthOf(offset);
+  return add(anchor, fromForwardLeftUp(frame, [
+    (Math.cos(edge.yaw) * edge.length - Math.sin(edge.yaw) * side) / 2,
+    (Math.sin(edge.yaw) * edge.length + Math.cos(edge.yaw) * side) / 2,
+    0,
+  ]));
+}
+
+/** A box turned to `yaw` whose bottom face is centred on `base`. */
 function standing(
   base: Point3D,
   length: number,
   width: number,
+  yaw: number,
   height: number,
   frame: ScanContext["frame"],
 ): Cuboid3DGeometry {
@@ -515,7 +592,7 @@ function standing(
     type: "cuboid_3d",
     center: add(base, fromForwardLeftUp(frame, [0, 0, height / 2])),
     size: [length, width, height],
-    yaw: 0,
+    yaw,
   };
 }
 
