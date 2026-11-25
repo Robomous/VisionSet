@@ -18,7 +18,7 @@ import { ClipRangeTimeline } from "../ClipRangeTimeline";
 import { selectionSummary } from "../clipRanges";
 import { ScaleField } from "../ingestScale";
 import { RateField } from "./clipImport";
-import { sourceLabel } from "./ingestWords";
+import { flowNoun, sourceLabel } from "./ingestWords";
 import { IntoField } from "./IntoField";
 import type { AddImagesFlow } from "./useAddImagesFlow";
 
@@ -42,7 +42,7 @@ export function SettingsStep({ flow }: { readonly flow: AddImagesFlow }): JSX.El
               {sourceLabel(source.name)}
             </span>
             <span className="text-xs text-muted-foreground tabular-nums">
-              {formatCount(flow.files.length)} {scans ? (flow.files.length === 1 ? "scan" : "scans") : flow.files.length === 1 ? "file" : "files"} uploaded
+              {formatCount(flow.files.length)} {scans ? flowNoun(flow, flow.files.length) : flow.files.length === 1 ? "file" : "files"} uploaded
             </span>
           </span>
           {source.frame != null && (
@@ -57,7 +57,7 @@ export function SettingsStep({ flow }: { readonly flow: AddImagesFlow }): JSX.El
         target={flow.target}
         onTarget={flow.setTarget}
         suggestion={source === null ? "" : sourceLabel(source.name)}
-        noun={scans ? "scans" : "images"}
+        noun={flowNoun(flow, 2)}
       />
       {flow.run.start.isError && <FieldError data-testid="start-error">{refusalProse(flow.run.start.error)}</FieldError>}
     </div>

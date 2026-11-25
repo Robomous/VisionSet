@@ -23,7 +23,7 @@ function freeRole(button: number, shift: boolean, editing: boolean): ScanPointer
   return shift ? "pan" : "orbit";
 }
 
-export type ScanKeyIntent = "undo" | "redo" | "delete" | "cancel" | "commit" | "save";
+export type ScanKeyIntent = "undo" | "redo" | "delete" | "cancel" | "commit" | "save" | "help";
 
 export interface ScanKeyPress {
   readonly key: string;
@@ -33,26 +33,33 @@ export interface ScanKeyPress {
   readonly alt: boolean;
 }
 
+export interface ScanKeyBinding {
+  /** `mod` folds Control and Command; Shift counts only beside `mod`. */
+  readonly chord: string;
+  readonly intent: ScanKeyIntent;
+}
+
+/** The editor's chords: what `scanKeyIntent` answers and what a shortcut list shows. */
+export const SCAN_KEY_BINDINGS: readonly ScanKeyBinding[] = [
+  { chord: "mod+z", intent: "undo" },
+  { chord: "mod+shift+z", intent: "redo" },
+  { chord: "mod+y", intent: "redo" },
+  { chord: "mod+s", intent: "save" },
+  { chord: "Delete", intent: "delete" },
+  { chord: "Backspace", intent: "delete" },
+  { chord: "Escape", intent: "cancel" },
+  { chord: "Enter", intent: "commit" },
+  { chord: "?", intent: "help" },
+];
+
+const BY_CHORD: ReadonlyMap<string, ScanKeyIntent> = new Map(
+  SCAN_KEY_BINDINGS.map((binding) => [binding.chord, binding.intent]),
+);
+
 /** The editor's chords; `null` for a key it leaves to the view or the page. */
 export function scanKeyIntent(press: ScanKeyPress): ScanKeyIntent | null {
-  const mod = press.ctrl || press.meta;
   if (press.alt) return null;
   const key = press.key.length === 1 ? press.key.toLowerCase() : press.key;
-  if (mod) {
-    if (key === "z") return press.shift ? "redo" : "undo";
-    if (key === "y" && !press.shift) return "redo";
-    if (key === "s" && !press.shift) return "save";
-    return null;
-  }
-  switch (key) {
-    case "Delete":
-    case "Backspace":
-      return "delete";
-    case "Escape":
-      return "cancel";
-    case "Enter":
-      return "commit";
-    default:
-      return null;
-  }
+  const chord = press.ctrl || press.meta ? `mod+${press.shift ? "shift+" : ""}${key}` : key;
+  return BY_CHORD.get(chord) ?? null;
 }

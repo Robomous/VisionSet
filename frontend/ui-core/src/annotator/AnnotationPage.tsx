@@ -185,7 +185,8 @@ import { Withheld } from "./Withheld";
 import { classColor } from "../palette";
 import { CanvasReassign } from "./CanvasReassign";
 import { EditorNotice, EditorNotices } from "./EditorNotice";
-import { ShortcutSheet, modKey } from "./ShortcutSheet";
+import { modKey } from "./modKey";
+import { ScanShortcutSheet, ShortcutSheet } from "./ShortcutSheet";
 import { ToolPalette } from "./ToolPalette";
 import { ZoomWidget } from "./ZoomWidget";
 import { ANNOTATOR_MIN_VIEWPORT_PX, useViewportAtLeast } from "./viewportFloor";
@@ -231,7 +232,7 @@ import { computeSuggestBlocker } from "../inference/targetBlocker.js";
 import { REVIEW_ACTIONS } from "./reviewActions";
 import { readyBrowserTargets, staleStoredBrowserTarget, type StoredSuggestTarget } from "./suggestTargets";
 import { readPref, writePref } from "../data/prefs";
-import { assetNoun } from "../lib/assetNoun";
+import { assetNoun, type Modality } from "../lib/assetNoun";
 
 /**
  * Where a project's suggest-through choice is remembered.
@@ -1903,6 +1904,11 @@ function Workspace({
     frameSession.repin(schema);
   }, [frameSession, schema]);
 
+  const noun = assetNoun(asset.modality, 1);
+  const nouns = assetNoun(asset.modality, 2);
+  const Noun = noun.charAt(0).toUpperCase() + noun.slice(1);
+  const thisAsset = `This ${noun}`;
+
   /**
    * Why it is read-only, in the words a person can act on.
    *
@@ -1928,7 +1934,7 @@ function Workspace({
    */
   const finishedBecause =
     jobState === "completed"
-      ? "This job is finished, so its frames can no longer be edited."
+      ? `This job is finished, so its ${nouns} can no longer be edited.`
       : null;
   /**
    * The two causes that are about the *workflow* rather than about this picture,
@@ -2039,10 +2045,10 @@ function Workspace({
       ? null
       : (withheld ??
         (unresolved === 0
-          ? "Every frame has to be annotated, skipped or accepted before this job can finish."
+          ? `Every ${noun} has to be annotated, skipped or accepted before this job can finish.`
           : unresolved === 1
-            ? "1 frame unresolved — annotate or skip it to finish the job."
-            : `${unresolved} frames unresolved — annotate or skip them to finish the job.`));
+            ? `1 ${noun} unresolved — annotate or skip it to finish the job.`
+            : `${unresolved} ${nouns} unresolved — annotate or skip them to finish the job.`));
 
   const finishInert = jobState === "completed" || withheld !== null;
   /**
@@ -2088,7 +2094,6 @@ function Workspace({
    * - `accepted` has no exit at all, which is why correcting accepted work needs
    *   a new batch rather than a progress move.
    */
-  const thisAsset = isScan ? "This scan" : "This frame";
   const settledBecause =
     asset.progress === "skipped"
       ? null
@@ -2111,18 +2116,18 @@ function Workspace({
       ? null
       : (workflowBecause ??
         (asset.progress === "pre_labeled"
-          ? "These labels came from a model — confirm them first, with the check on the frame's tag."
+          ? `These labels came from a model — confirm them first, with the check on the ${noun}'s tag.`
           : asset.progress === "skipped"
-            ? "This frame is skipped — un-skip it to put it back in play."
+            ? `${thisAsset} is skipped — un-skip it to put it back in play.`
             : asset.progress === "accepted"
-              ? "This frame has been accepted — there is nothing left to review."
+              ? `${thisAsset} has been accepted — there is nothing left to review.`
               : asset.progress === "review_pending"
-                ? "This frame cannot be accepted from here right now."
-                : "Label this frame first — there is nothing to review yet."));
+                ? `${thisAsset} cannot be accepted from here right now.`
+                : `Label this ${noun} first — there is nothing to review yet.`));
   /** Why Skip cannot be pressed, in the same terms. */
   const skipWithheld = declares(asset, ASSET_ACTION.skip)
     ? null
-    : ((readOnly ? settledBecause : null) ?? "This frame cannot be skipped from where it stands.");
+    : ((readOnly ? settledBecause : null) ?? `${thisAsset} cannot be skipped from where it stands.`);
 
   // The tool the canvas will act with, resolved — never stored (`tool.ts`).
   const tool = toolFor(store.document, activeClass, activeTool);
@@ -2130,7 +2135,7 @@ function Workspace({
     activeClass === null ? undefined : store.document.schema.classes.find((one) => one.name === activeClass);
   const heldClass =
     readOnly || activeClass === null ? null : { name: activeClass, color: classColor(heldDeclared, activeClass) };
-  const hint = canvasHint({ readOnly, hand: handTool, suggesting: suggesting !== null, tool, selected: snapshot.selection.size > 0 });
+  const hint = isScan ? null : canvasHint({ readOnly, hand: handTool, suggesting: suggesting !== null, tool, selected: snapshot.selection.size > 0 });
   /*
     Box or polygon, for a class the schema declares both for — the same
     preference the strip's tools and the class row's shape chips write, and the
@@ -2178,7 +2183,7 @@ function Workspace({
         // opening the page and nobody asked for it.
         finishJob.mutate(undefined, {
           onSuccess: () =>
-            toast.success("Job finished — its frames are read-only now"),
+            toast.success(`Job finished — its ${nouns} are read-only now`),
         });
       }}
     >
@@ -2201,11 +2206,14 @@ function Workspace({
     // and the moves made on every frame float over it in one island under the
     // hand; the right column is the panel — what can be drawn and what is drawn.
     <div
-      className="grid h-screen grid-cols-[3rem_minmax(0,1fr)_auto] grid-rows-[3rem_minmax(0,1fr)] bg-background"
+      className={cn(
+        "grid h-screen grid-rows-[3rem_minmax(0,1fr)] bg-background",
+        isScan ? "grid-cols-[minmax(0,1fr)_auto]" : "grid-cols-[3rem_minmax(0,1fr)_auto]",
+      )}
       data-testid="annotation-page"
       data-asset={asset.id}
     >
-      <header className="@container col-span-3 flex min-w-0 items-center border-b border-border bg-card">
+      <header className="@container col-span-full flex min-w-0 items-center border-b border-border bg-card">
         {/* The back arrow heads the tool rail's column, so the rail reads as one strip. */}
         <div className="flex w-12 shrink-0 items-center justify-center self-stretch border-r border-border">
           {/*
@@ -2260,7 +2268,7 @@ function Workspace({
         {/* --- where the work stands ----------------------------------- */}
         <div className="flex shrink-0 items-center gap-3 pr-2">
           {/* The one place the job's progress is shown. */}
-          <JobProgress counts={counts} />
+          <JobProgress counts={counts} modality={asset.modality} />
           {/* Absent until this visit has something to say: `Saved` claims a save,
               and a frame only looked at has had none. `Workspace` is keyed by the
               asset, so a save's success never carries to another frame. */}
@@ -2336,9 +2344,9 @@ function Workspace({
         (`core/interaction/tool.ts`). Adding a class is the panel's — its class
         region's `+` — and not the rail's: the rail picks how to draw.
       */}
+      {/* A scan's tools are the stage's own (`PointCloudStage`'s edit strip). */}
+      {!isScan && (
       <nav aria-label="Tools" className="row-start-2 min-h-0 overflow-y-auto border-r border-border bg-card">
-        {/* A scan's tools are the stage's own (`PointCloudStage`'s edit strip). */}
-        {!isScan && (
         <ToolPalette
           layout="rail"
           readOnly={readOnly}
@@ -2373,10 +2381,11 @@ function Workspace({
                 : null,
           }}
         />
-        )}
       </nav>
+      )}
 
       <main className="row-start-2 flex min-h-0 min-w-0 flex-col">
+        {!isScan && (
         <ToolOptions
           tool={tool}
           hand={handTool}
@@ -2432,6 +2441,7 @@ function Workspace({
             )
           }
         />
+        )}
 
         {/*
           Read-only, said out loud (F2). The `ui-capabilities` rule is that
@@ -2508,7 +2518,7 @@ function Workspace({
             data-testid="skipped-notice"
           >
             <SkipForward className="size-3.5 shrink-0" aria-hidden="true" />
-            This asset is skipped, so it will not reach the dataset and its annotations will not
+            {thisAsset} is skipped, so it will not reach the dataset and its annotations will not
             count towards the job. Un-skip it to put it back in play.
           </p>
         )}
@@ -2531,6 +2541,7 @@ function Workspace({
               onSave={() => {
                 if (!readOnly) attempt();
               }}
+              onToggleHelp={() => setHelpOpen((open) => !open)}
             />
           ) : (
             <AssetImage projectId={projectId} assetId={asset.id}>
@@ -2796,7 +2807,7 @@ function Workspace({
           <div
             data-stage-ui
             role="toolbar"
-            aria-label="Frame"
+            aria-label={Noun}
             data-testid="frame-island"
             className="pointer-events-auto col-start-2 flex items-center gap-0.5 rounded-xl bg-background/95 p-1 backdrop-blur-md vs-stage-island @max-[50rem]:col-start-1 @max-[50rem]:row-start-2 @max-[50rem]:justify-self-center"
           >
@@ -2857,10 +2868,10 @@ function Workspace({
                     withheld={
                       declares(asset, ASSET_ACTION.restore)
                         ? null
-                        : "This frame cannot be put back in play from here."
+                        : `${thisAsset} cannot be put back in play from here.`
                     }
                     pending={setProgress.isPending}
-                    tip="Puts this frame back in play"
+                    tip={`Puts this ${noun} back in play`}
                     onPress={unskip}
                   >
                     <Undo2 className="size-4" />
@@ -2888,7 +2899,7 @@ function Workspace({
                   variant="ghost"
                   size="icon"
                   className="size-9 rounded-lg"
-                  aria-label="Previous frame"
+                  aria-label={`Previous ${noun}`}
                   data-testid="prev-asset"
                   disabled={assetIndex === 0}
                   onMouseDown={keepCanvasFocus}
@@ -2897,7 +2908,7 @@ function Workspace({
                   <ChevronLeft className="size-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="top">Previous frame</TooltipContent>
+              <TooltipContent side="top">{`Previous ${noun}`}</TooltipContent>
             </Tooltip>
             {/* Which frame, and the way into all of them: the gallery opens as an
                 overlay inside the editor — no route change, nothing torn down. */}
@@ -2906,7 +2917,7 @@ function Workspace({
                 <Button
                   variant="ghost"
                   className="h-9 gap-2 rounded-lg px-2.5 tabular-nums"
-                  aria-label={`Frame ${assetIndex + 1} of ${assetCount} — show the job's frames`}
+                  aria-label={`${Noun} ${assetIndex + 1} of ${assetCount} — show the job's ${nouns}`}
                   data-testid="open-gallery"
                   onMouseDown={keepCanvasFocus}
                   onClick={() => setGalleryOpen(true)}
@@ -2922,7 +2933,7 @@ function Workspace({
                   </span>
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="top">All frames</TooltipContent>
+              <TooltipContent side="top">{`All ${nouns}`}</TooltipContent>
             </Tooltip>
             <IslandSeparator />
 
@@ -3016,7 +3027,7 @@ function Workspace({
         screen the editor opens on. Moving between frames and settling this one
         are the island's and the bar's, not this column's.
       */}
-      <aside className="row-start-2 flex min-h-0 w-72 flex-col border-l border-border bg-card 2xl:w-80" aria-label="Frame">
+      <aside className="row-start-2 flex min-h-0 w-72 flex-col border-l border-border bg-card 2xl:w-80" aria-label={Noun}>
         {/*
           The panel arms the drawing class; `activeClass` is still the page's, so
           the canvas, the tool rail, a digit and this list all land on the one
@@ -3105,7 +3116,11 @@ function Workspace({
         }}
       />
 
-      <ShortcutSheet open={helpOpen} onOpenChange={setHelpOpen} registry={registry} />
+      {isScan ? (
+        <ScanShortcutSheet open={helpOpen} onOpenChange={setHelpOpen} />
+      ) : (
+        <ShortcutSheet open={helpOpen} onOpenChange={setHelpOpen} registry={registry} />
+      )}
       <FrameGallery
         open={galleryOpen}
         onOpenChange={setGalleryOpen}
@@ -3579,7 +3594,7 @@ function StackedBar({ counts, className }: { readonly counts: JobCounts; readonl
  * frame that needs a person, and a hint naming a key that does nothing is worse
  * than none.
  */
-function JobProgress({ counts }: { readonly counts: JobCounts | null }): JSX.Element {
+function JobProgress({ counts, modality }: { readonly counts: JobCounts | null; readonly modality: Modality }): JSX.Element {
   if (counts === null) {
     return (
       <span className="px-2 text-sm text-muted-foreground" data-testid="job-progress">
@@ -3595,7 +3610,7 @@ function JobProgress({ counts }: { readonly counts: JobCounts | null }): JSX.Ele
         <button
           type="button"
           className="flex h-8 items-center gap-2.5 rounded-md px-2 transition-colors duration-100 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={`${settled} of ${counts.total} frames settled`}
+          aria-label={`${settled} of ${counts.total} ${assetNoun(modality, counts.total)} settled`}
           data-testid="job-progress"
           data-settled={settled}
         >
@@ -3614,7 +3629,7 @@ function JobProgress({ counts }: { readonly counts: JobCounts | null }): JSX.Ele
         <div className="flex w-64 flex-col gap-3">
           <p className="text-sm">
             <span className="font-medium tabular-nums">{settled}</span>
-            <span className="text-muted-foreground"> of {counts.total} frames settled</span>
+            <span className="text-muted-foreground"> of {counts.total} {assetNoun(modality, counts.total)} settled</span>
           </p>
           <StackedBar counts={counts} className="h-1.5" />
           <dl className="grid grid-cols-[auto_1fr_auto_2.75rem] items-center gap-x-2.5 gap-y-1.5 text-xs">

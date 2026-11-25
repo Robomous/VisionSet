@@ -61,7 +61,10 @@ import {
   cn,
 } from "@robomous/ui-core";
 import type { components } from "../generated/api.js";
+import { asApiError } from "../data/errors";
+import { refusalProse } from "../data/refusals";
 import { useApiClient } from "../data/VisionSetDataProvider";
+import { ErrorState } from "../patterns/AsyncStates";
 import { AssetThumbnail } from "../screens/AssetThumbnail";
 import { useSource } from "../screens/queries";
 import type { WireAnnotation } from "./jobQueries";
@@ -86,6 +89,8 @@ export interface PointCloudStageProps {
   readonly scan?: ScanWorkspace | null;
   /** `mod+s` from the view. */
   readonly onSave?: () => void;
+  /** `?` from the view: the scan's shortcut list. */
+  readonly onToggleHelp?: () => void;
   /**
    * Where the host wants the view's controls (colour by, labels, reset view): a
    * cell of the stage's bottom row it shares with its own bottom chrome. Absent,
@@ -114,6 +119,11 @@ const TOP_DOWN_LABEL =
   "move a cuboid, pull a side face or turn the yaw handle, or click to place a polyline's vertices; " +
   "right-drag or middle-drag to pan, scroll to zoom. " +
   "A cuboid's height is set in the perspective view, and Enter or a click in either view finishes it.";
+
+interface SourceFailure {
+  readonly error: unknown;
+  readonly retry: () => void;
+}
 
 type Fetched =
   | { readonly kind: "loading" }
@@ -153,12 +163,25 @@ function usePointSample(projectId: string, assetId: string): Fetched {
   return fetched;
 }
 
-export function PointCloudStage({ projectId, asset, loaded, schema, scan, onSave, controlsSlot }: PointCloudStageProps): JSX.Element {
-  const fetched = usePointSample(projectId, asset.id);
-  const source = useSource(asset.source_id ?? undefined);
+/** The frame the scan's source declares; `settled` once the source answered or refused. */
+function useScanSource(sourceId: string | null): {
+  readonly frame: ScanFrame | null;
+  readonly settled: boolean;
+  readonly failure: SourceFailure | null;
+} {
+  const source = useSource(sourceId ?? undefined);
   const declared = source.data?.frame;
-  const frame: ScanFrame | null = isScanFrame(declared) ? declared : null;
-  const frameKnown = asset.source_id === null || source.data !== undefined || source.isError;
+  const failed = sourceId !== null && source.data === undefined && source.isError;
+  return {
+    frame: isScanFrame(declared) ? declared : null,
+    settled: sourceId === null || source.data !== undefined || source.isError,
+    failure: failed ? { error: source.error, retry: () => void source.refetch() } : null,
+  };
+}
+
+export function PointCloudStage({ projectId, asset, loaded, schema, scan, onSave, onToggleHelp, controlsSlot }: PointCloudStageProps): JSX.Element {
+  const fetched = usePointSample(projectId, asset.id);
+  const { frame, settled: frameKnown, failure: sourceFailure } = useScanSource(asset.source_id);
 
   if (fetched.kind === "failed") {
     return (
@@ -184,8 +207,10 @@ export function PointCloudStage({ projectId, asset, loaded, schema, scan, onSave
       loaded={loaded}
       schema={schema}
       scan={scan ?? null}
+      sourceFailure={sourceFailure}
       controlsSlot={controlsSlot ?? null}
       {...(onSave === undefined ? {} : { onSave })}
+      {...(onToggleHelp === undefined ? {} : { onToggleHelp })}
     />
   );
 }
@@ -199,8 +224,11 @@ function ScanView({
   schema,
   scan,
   onSave,
+  onToggleHelp,
   controlsSlot,
+  sourceFailure,
 }: Omit<PointCloudStageProps, "asset" | "scan" | "controlsSlot"> & {
+  readonly sourceFailure: SourceFailure | null;
   readonly asset: PointCloudStageProps["asset"];
   readonly sample: PointSample;
   readonly frame: ScanFrame | null;
@@ -285,7 +313,7 @@ function ScanView({
   }, [pastFootprint]);
 
   if (status === "unsupported") {
-    return <NoWebGl projectId={projectId} asset={asset} frame={frame} />;
+    return <NoWebGl projectId={projectId} asset={asset} frame={frame} sourceFailed={sourceFailure !== null} />;
   }
 
   function onDoubleClick(event: MouseEvent<HTMLDivElement>): void {
@@ -313,6 +341,9 @@ function ScanView({
         break;
       case "save":
         onSave?.();
+        break;
+      case "help":
+        onToggleHelp?.();
         break;
       case "delete":
         if (!editing) return;
@@ -450,10 +481,21 @@ function ScanView({
                 ? `${total.toLocaleString()} points`
                 : `${sample.count.toLocaleString()} of ${total.toLocaleString()} points`}
               {" · "}
-              {frame ?? "no declared frame, shown with z up"}
+              {frame ?? (sourceFailure === null ? "no declared frame, shown with z up" : "frame unknown, shown with z up")}
             </p>
 
             {scan !== null && <ScanStrip scan={scan} />}
+
+            {sourceFailure !== null && (
+              <div className="pointer-events-auto basis-full" data-testid="scan-source-error">
+                <ErrorState
+                  className="max-w-md"
+                  code={asApiError(sourceFailure.error).code}
+                  message={`This scan's source could not be read, so its frame is unknown. ${refusalProse(sourceFailure.error)}`}
+                  onRetry={sourceFailure.retry}
+                />
+              </div>
+            )}
           </div>
 
           {status === "lost" && (
@@ -544,7 +586,6 @@ export function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Eleme
     <Toggle
       size="sm"
       pressed={editing}
-      disabled={editBlocked === null && !scan.frameKnown}
       onPressedChange={(pressed) => {
         if (editBlocked === null) scan.setEditing(pressed);
       }}
@@ -649,10 +690,12 @@ function NoWebGl({
   projectId,
   asset,
   frame,
+  sourceFailed,
 }: {
   readonly projectId: string;
   readonly asset: PointCloudStageProps["asset"];
   readonly frame: ScanFrame | null;
+  readonly sourceFailed: boolean;
 }): JSX.Element {
   const metadata = asset.point_cloud;
   return (
@@ -680,7 +723,7 @@ function NoWebGl({
           <dt>Format</dt>
           <dd className="font-mono">{metadata.format}</dd>
           <dt>Frame</dt>
-          <dd className="font-mono">{frame ?? "not declared"}</dd>
+          <dd className="font-mono">{frame ?? (sourceFailed ? "unknown" : "not declared")}</dd>
           <dt>Minimum</dt>
           <dd className="font-mono">{formatPoint(metadata.bounds.minimum)}</dd>
           <dt>Maximum</dt>

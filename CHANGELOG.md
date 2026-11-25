@@ -101,6 +101,12 @@ nothing was being distributed. This is the first version that is.
   labels toggle carry `aria-disabled` and their reason on the control itself, as Finish job on an editable page
   already did, so a withheld tool adds no tab stop inside its tool group and stays reachable by arrow key and
   hover. The keep-focus-on-canvas handler is one shared helper (#1112).
+- **Refusals about assets say "asset", not "frame".** `ASSET_NOT_WRITABLE`, `JOB_NOT_COMPLETE`, `ASSET_NOT_IN_JOB`,
+  `ASSET_NOT_IN_DATASET`, `ASSET_NOT_IN_BATCH`, `ASSET_NOT_FOUND`, `ANNOTATION_GEOMETRY_OUT_OF_BOUNDS`, `EMPTY_BATCH`
+  and `EMPTY_RELEASE` read the same for a frame and a scan, and no longer collide with a scan's coordinate frame
+  (#1113).
+- **`@visionset/annotator`: the scan editor's chords are one table.** `SCAN_KEY_BINDINGS` lists every chord
+  `scanKeyIntent` answers, and `?` is one of them (intent `help`) (#1113).
 
 ### Removed
 
@@ -110,6 +116,16 @@ nothing was being distributed. This is the first version that is.
   styleguide; `BatchPhase` is still exported (#1112).
 
 ### Fixed
+
+- **A scan's annotation page carries no 2D chrome and says "scan" throughout.** The 2D tool bar, the empty tool
+  rail and the 2D canvas hint are gone on a scan, and Keyboard shortcuts (and `?` from the scan view) open a list
+  read from the scan editor's own key table instead of the 2D sheet. The island, the job's progress, the review
+  move, Skip and Un-skip, Finish job, the finished-job banner and toast, and the skipped notice name scans, not
+  frames or assets (#1113).
+- **A failed request for a scan's source is reported as a failure.** The stage shows the refusal with a retry,
+  Edit says the source could not be read, and the summary says the frame is unknown, instead of claiming the
+  source declares no frame; while the source is read, Edit carries that reason rather than a bare disabled
+  control (#1113).
 
 - **Polyline vertex snapping on a scan with stray or non-finite points.** A point with a non-finite coordinate no
   longer displaces a real point from the snap grid or stops every snap, and one far stray return no longer
