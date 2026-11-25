@@ -3153,9 +3153,10 @@ export interface paths {
          *     published without a split, 409 `PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY`
          *     for a step that cannot move a geometry the export would carry, 409
          *     `EXPORT_SOURCE_UNREADABLE` for a step needing a source size the manifest
-         *     never recorded, and 404 `PREPROCESSING_RECIPE_NOT_FOUND` for a name the
-         *     project does not have. The report written into the output records the
-         *     recipe, its hash, and which written file came from which asset.
+         *     never recorded or for any recipe on an export that writes scans, and 404
+         *     `PREPROCESSING_RECIPE_NOT_FOUND` for a name the project does not have. The
+         *     report written into the output records the recipe, its hash, and which
+         *     written file came from which asset.
          *
          *     A POST because it does work and writes files, though it changes nothing a
          *     later read can see: the release is immutable, and re-exporting overwrites the
@@ -3189,8 +3190,9 @@ export interface paths {
          *     recipe that augments against a release published without a split is 409
          *     `AUGMENTATION_REQUIRES_SPLIT`, a step that cannot move a geometry the
          *     export would carry is 409 `PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY`, and a
-         *     step needing a source size the manifest never recorded is 409
-         *     `EXPORT_SOURCE_UNREADABLE`. An unknown recipe is 404
+         *     step needing a source size the manifest never recorded, or any recipe on
+         *     an export that writes scans, is 409 `EXPORT_SOURCE_UNREADABLE`. An unknown
+         *     recipe is 404
          *     `PREPROCESSING_RECIPE_NOT_FOUND`. The report itself does not change: what
          *     a format drops is decided before any transform.
          *

@@ -81,6 +81,13 @@ nothing was being distributed. This is the first version that is.
   manifest; `folds_of(manifest, assignment)` places assets by it. `supported_modalities` is optional on the
   port (read through `supported_modalities_of`), so a plugin declaring none is discovered and writes images
   (#1111).
+- **A `kitti` exporter, the first format that writes 3D.** Writes a release's scans as KITTI splits, one per
+  fold (`velodyne/*.bin` decoded from the stored PCD, `label_2`, `calib`), and each `cuboid_3d` in the camera
+  frame of one fixed calibration written beside every frame: KITTI's nominal lidar-to-camera axes with no
+  offset and an identity `R0_rect`. Importing the export returns the same boxes and points; the boxes are not
+  in the original sensor's camera frame. Images, `polyline_3d` and tags are reported dropped, a PLY,
+  compressed or georeferenced scan is refused by asset, and a pre-processing recipe is refused for an export
+  that writes scans (#1122).
 
 ### Changed
 

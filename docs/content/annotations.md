@@ -220,8 +220,8 @@ out of what a save compares, so a job holding a 3D label loads and every other l
 around it untouched. The annotation page draws it read-only, projected through the asset's
 effective calibration; see [ui](ui.md#3d-labels-are-drawn-not-edited). On a scan it is drawn
 and edited; see [below](#on-a-point-cloud-scan-3d-labels-are-read-in-the-sources-frame) and
-[the scan editor](ui/annotator.md#editing-cuboids-and-polylines-on-a-scan). No installed export format writes one either; see
-[releases](releases.md#a-3d-label-travels-with-its-calibration).
+[the scan editor](ui/annotator.md#editing-cuboids-and-polylines-on-a-scan). Only `kitti` exports a 3D label, a
+`cuboid_3d` on a scan; see [releases](releases.md#a-3d-label-travels-with-its-calibration).
 
 ## A 3D cuboid is a center, a size and a yaw
 

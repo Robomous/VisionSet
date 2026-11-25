@@ -96,7 +96,7 @@ naming the kinds to accept. See [mcp-tools.md](mcp-tools.md).
 | `darknet` | `obj.names` (and `obj.data`) with the same `images/` and `labels/` layout | As `ultralytics`, bar keypoints |
 | `voc` | `Annotations/**/*.xml` with pictures under `JPEGImages/`; boxes | Pose, truncated, difficult and occluded values other than unspecified or `0`, other `<object>` children, parts, segmentation, an object with no name or box, a zero-area or outside box |
 | `classification` | `labels.csv` (`image`, `class`) and `classes.txt` beside `images/`; one tag per row | A row naming a class `classes.txt` does not declare, a second row of one class on one picture, a malformed row, a row with no picture or class |
-| `kitti` | A 3D object detection split: `velodyne/*.bin` scans, `label_2/*.txt` and `calib/*.txt`, at the top or in `training/` and `testing/`; boxes as `cuboid_3d` in the `lidar_flu` frame | `DontCare` regions, each box's 2D image `bbox`, truncation, occlusion and alpha, the calibration itself, a score outside 0 to 1, a label with no scan, no usable calibration, a malformed line or a dimension that is not positive |
+| `kitti` | A 3D object detection split: `velodyne/*.bin` scans, `label_2/*.txt` and `calib/*.txt`, at the top or in `training/` and `testing/` (or the `train/`, `val/`, `test/` the exporter writes); boxes as `cuboid_3d` in the `lidar_flu` frame | `DontCare` regions, each box's 2D image `bbox`, truncation, occlusion and alpha, the calibration itself, a score outside 0 to 1, a label with no scan, no usable calibration, a malformed line or a dimension that is not positive |
 | `nuscenes` | A data root: a version folder (`v1.0-mini`, `v1.0-trainval`, ...) of JSON tables beside `samples/LIDAR_TOP/*.pcd.bin`; the LIDAR_TOP keyframes, boxes as `cuboid_3d` in the `lidar_rfu` frame | Attributes, visibility, instance tokens (tracking identity), `num_lidar_pts` and `num_radar_pts`, the ego pose and calibration themselves, a box leaning more than 5 degrees, a malformed box or a dimension that is not positive, an annotation whose sample has no LIDAR_TOP keyframe, the sweeps, and every other sensor's data |
 
 **YOLO family** (`ultralytics`, `yolov5-yaml`, `darknet`). A picture is any file under an `images/`
@@ -169,7 +169,11 @@ them.
 Coordinates are rounded to the micrometre. Classes are the names labels use, KITTI's own
 (`Car`, `Van`, `Truck`, `Pedestrian`, `Person_sitting`, `Cyclist`, `Tram`, `Misc`) first in that
 order. A 16th column, a detection score, becomes the label's confidence when it lies in 0 to 1.
-Camera images are not read.
+Camera images are not read. The `kitti` exporter writes this layout with a canonical calibration
+(see [releases](releases.md#the-kitti-format)), so importing its output returns the same boxes,
+within 2 micrometres, and the same points, with intensity as the scan stored it (0 to 255 for a
+nuScenes scan, not KITTI's 0 to 1); the boxes are then consistent with that calibration, not with the original
+sensor's camera frame, which no export holds.
 
 **nuScenes.** The source is a data root, the directory that holds `samples/` beside one or more
 version folders of JSON tables (`v1.0-mini`, `v1.0-trainval`, `v1.0-test`); several version
