@@ -265,6 +265,15 @@ describe("the batch's panel", () => {
     await waitFor(() => expect(spokenLines.get("done-line@b1")).toBeUndefined());
   });
 
+  it("lets an earlier toast's end leave a newer one of the same id speaking", () => {
+    const endFirst = spokenLines.raise("race-line@b1", { words: "First.", way: undefined });
+    const endSecond = spokenLines.raise("race-line@b1", { words: "Second.", way: undefined });
+    endFirst();
+    expect(spokenLines.get("race-line@b1")?.words).toBe("Second.");
+    endSecond();
+    expect(spokenLines.get("race-line@b1")).toBeUndefined();
+  });
+
   it("keeps a line in place, as a row, outside a panel", () => {
     render(<SheetLine tone="error" data-testid="refused-line">This batch can’t be completed yet.</SheetLine>);
     expect(screen.getByTestId("refused-line").closest("[data-line]")?.getAttribute("role")).toBe("alert");

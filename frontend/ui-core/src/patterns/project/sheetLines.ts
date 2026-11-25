@@ -13,7 +13,8 @@ export const InSheet = createContext(false);
  * it: an outcome is raised once, then corrected in place when its control's
  * report settles — never raised again, so a toast a person closed stays closed.
  * An entry lives from the raise to the toast's end: `follow` never brings back
- * one that has ended.
+ * one that has ended, and the end a raise returns ends only that raise's entry,
+ * never a newer one raised under the same id.
  */
 export interface SpokenLine {
   readonly words: unknown;
@@ -21,6 +22,7 @@ export interface SpokenLine {
 }
 
 const spoken = new Map<string, SpokenLine>();
+const owners = new Map<string, symbol>();
 const listeners = new Set<() => void>();
 
 function changed(): void {
@@ -28,17 +30,22 @@ function changed(): void {
 }
 
 export const spokenLines = {
-  raise(id: string, line: SpokenLine): void {
+  raise(id: string, line: SpokenLine): () => void {
+    const owner = Symbol(id);
+    owners.set(id, owner);
     spoken.set(id, line);
     changed();
+    return () => {
+      if (owners.get(id) !== owner) return;
+      owners.delete(id);
+      spoken.delete(id);
+      changed();
+    };
   },
   follow(id: string, line: SpokenLine): void {
     if (!spoken.has(id)) return;
     spoken.set(id, line);
     changed();
-  },
-  end(id: string): void {
-    if (spoken.delete(id)) changed();
   },
   get(id: string): SpokenLine | undefined {
     return spoken.get(id);

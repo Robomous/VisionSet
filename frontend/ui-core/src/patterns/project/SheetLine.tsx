@@ -63,8 +63,7 @@ function AsToast({ tone, children, action, "data-testid": testId, about }: Sheet
     spokenLines.follow(id, { words: children, way: action });
   });
   const raise = useEffectEvent((): void => {
-    spokenLines.raise(id, { words: children, way: action });
-    const end = (): void => spokenLines.end(id);
+    const end = spokenLines.raise(id, { words: children, way: action });
     (tone === "error" ? toast.error : toast.success)(<Spoken id={id} testId={testId} name={about?.name} />, {
       id,
       duration: DURATION[tone],
