@@ -670,16 +670,20 @@ declares none; a scan that turns read-only mid-edit leaves Edit on the same rend
 
 ## The stage
 
-The area around the asset is the **`stage`** token, never `muted` and never a dark surface.
-It is a role of its own for two reasons: a dark surround shifts the perceived contrast and
-colour of the photograph inside it, which is a real cost on a tool whose whole job is
-looking closely at pixels — and a lone dark surface would make the one screen somebody sits
-in front of for an hour read as a different application.
+The area around the asset is the **`stage`** token, never `muted`, and **the stage follows
+the page theme**: a light grey on the light page, a dark grey on the dark one. It never
+switches on its own. It is a role of its own for two reasons: the surround shifts the
+perceived contrast and colour of the photograph inside it, which is a real cost on a tool
+whose whole job is looking closely at pixels, so it is a quiet neutral rather than any
+surface that happens to be near — and a stage darker or lighter than the page around it
+would make the one screen somebody sits in front of for an hour read as a different
+application. A scan sits on the same stage, and its points and legend follow the same
+theme (*The scan view* in [`DESIGN.md`](../../../DESIGN.md)).
 
 It must stay distinguishable from the page background as well as from the image: an asset
-with white borders has to show where it ends. The e2e suite asserts the contrast gap rather
-than the hex. `stage` is a VisionSet-specific semantic token and is recorded as such in
-[`DESIGN.md`](../../../DESIGN.md).
+with white borders has to show where it ends. The e2e suite asserts the contrast gap on the
+light page rather than the hex; the dark page is held by the visual baselines. `stage` is a
+VisionSet-specific semantic token and is recorded as such in [`DESIGN.md`](../../../DESIGN.md).
 
 ## Shape rendering
 
