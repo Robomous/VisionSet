@@ -163,7 +163,7 @@ export function Styleguide(): JSX.Element {
 
         <Section
           title="Colour"
-          description="Intent, never a value. The shadcn preset's own vocabulary, plus the foundation's brand and VisionSet's four justified extensions. Every caption is the value the browser resolves for that swatch."
+          description="Intent, never a value. The shadcn preset's own vocabulary, plus the foundation's brand and VisionSet's three justified extensions. Every caption is the value the browser resolves for that swatch."
         >
           <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-2">
@@ -207,11 +207,9 @@ export function Styleguide(): JSX.Element {
                 <Swatch name="stage" className="bg-stage" />
                 {/* The brand, shown here because a styleguide is where a value is
                     inspected rather than used. Its one product site is the VisionSet
-                    logo (`shell/Brand.tsx`). */}
+                    logo (`shell/Brand.tsx`); Robomous's mark on the Models page (`OriginLogo`) is its other. */}
                 <Swatch name="brand" style={{ backgroundColor: "var(--brand)" }} />
-                <Swatch name="origin-hub" className="bg-origin-hub" />
                 <Swatch name="origin-custom" className="bg-origin-custom" />
-                <Swatch name="origin-robomous" className="bg-origin-robomous" />
               </div>
             </div>
           </div>
