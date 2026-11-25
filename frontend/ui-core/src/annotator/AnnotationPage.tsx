@@ -963,6 +963,8 @@ function Workspace({
   const [stage, setStage] = useState<HTMLDivElement | null>(null);
   /** The bottom row's right cell, where a scan's view controls sit beside the island. */
   const [scanControls, setScanControls] = useState<HTMLDivElement | null>(null);
+  /** The status column's last row, where a scan's summary and edit strip follow the tag and count. */
+  const [scanStatus, setScanStatus] = useState<HTMLDivElement | null>(null);
 
   /**
    * The suggest session — **here, and outside the store on purpose.**
@@ -2538,6 +2540,7 @@ function Workspace({
               schema={store.document.schema}
               scan={scan}
               controlsSlot={scanControls}
+              statusSlot={scanStatus}
               onSave={() => {
                 if (!readOnly) attempt();
               }}
@@ -2639,41 +2642,45 @@ function Workspace({
           )}
 
 
-          {/* Top-left, what this frame is and what the canvas expects next. The
-              column itself takes no pointer; the tag's one button does. */}
+          {/* Top-left, what this frame is and what the canvas expects next, then a
+              scan's own status row. The column itself takes no pointer; the tag's
+              one button does. */}
           <div
             className={cn(
-              "pointer-events-none absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-col items-start gap-2",
+              "pointer-events-none absolute inset-x-3 top-3 z-10 flex flex-col gap-2",
               // A scan in Edit keeps it to the perspective view, which leaves the top-down view two fifths at this width.
               scan?.editing === true && "@2xl:max-w-[calc(60%-1.5rem)]",
             )}
           >
-            <StatusTag
-              hash={asset.content_hash}
-              progress={asset.progress ?? "unannotated"}
-              fromModel={fromModel}
-              confirm={
-                confirmMove === undefined
-                  ? null
-                  : {
-                      label: confirmMove.label,
-                      testId: confirmMove.testId,
-                      pending: setProgress.isPending,
-                      onConfirm: () => settle(confirmMove.progress),
-                    }
-              }
-            />
-            <p className="flex h-8 max-w-full items-center gap-2 truncate rounded-lg bg-background/95 px-3 text-xs text-muted-foreground backdrop-blur-md vs-stage-chip">
-              <span className="shrink-0 tabular-nums" data-testid="object-total">
-                {objectCount === 1 ? "1 object" : `${objectCount} objects`}
-              </span>
-              {hint !== null && (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <span className="flex min-w-0 items-center gap-1 truncate" data-testid="canvas-hint">{hint}</span>
-                </>
-              )}
-            </p>
+            <div className="flex max-w-full flex-col items-start gap-2 self-start">
+              <StatusTag
+                hash={asset.content_hash}
+                progress={asset.progress ?? "unannotated"}
+                fromModel={fromModel}
+                confirm={
+                  confirmMove === undefined
+                    ? null
+                    : {
+                        label: confirmMove.label,
+                        testId: confirmMove.testId,
+                        pending: setProgress.isPending,
+                        onConfirm: () => settle(confirmMove.progress),
+                      }
+                }
+              />
+              <p className="flex h-8 max-w-full items-center gap-2 truncate rounded-lg bg-background/95 px-3 text-xs text-muted-foreground backdrop-blur-md vs-stage-chip">
+                <span className="shrink-0 tabular-nums" data-testid="object-total">
+                  {objectCount === 1 ? "1 object" : `${objectCount} objects`}
+                </span>
+                {hint !== null && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span className="flex min-w-0 items-center gap-1 truncate" data-testid="canvas-hint">{hint}</span>
+                  </>
+                )}
+              </p>
+            </div>
+            {isScan && <div ref={setScanStatus} data-testid="stage-status-slot" />}
           </div>
 
           <EditorNotices>
