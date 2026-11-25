@@ -453,11 +453,24 @@ export async function readyForCapture(page: Page): Promise<void> {
   });
 }
 
-/** The page must not scroll sideways — Phase 7's floor, asserted here too. */
+/**
+ * The page must not scroll sideways — Phase 7's floor, asserted here too.
+ *
+ * Polled rather than read once: a caller has usually just resized the viewport,
+ * and the layout that follows (a ResizeObserver, a sticky bar re-measuring) lands
+ * a frame or two later. Reading in between measured the old width against the
+ * new viewport and failed now and then on a page that settles flush. A real
+ * overflow never settles, and still fails.
+ */
 export async function expectNoPageOverflow(page: Page, where: string): Promise<void> {
-  const overflow = await page.evaluate(() => {
-    const de = document.documentElement;
-    return de.scrollWidth - de.clientWidth;
-  });
-  expect(overflow, `${where} scrolls the document sideways`).toBeLessThanOrEqual(0);
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const de = document.documentElement;
+          return de.scrollWidth - de.clientWidth;
+        }),
+      { message: `${where} scrolls the document sideways` },
+    )
+    .toBeLessThanOrEqual(0);
 }
