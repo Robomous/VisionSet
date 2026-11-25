@@ -14,7 +14,7 @@ from visionset.kernel.domain.annotation import (
     AnnotationTotals,
     Provenance,
 )
-from visionset.kernel.domain.asset import Asset, require_image
+from visionset.kernel.domain.asset import Asset, GroupLabel, require_image
 from visionset.kernel.domain.batch import (
     BATCH_TRANSITIONS,
     CORRECTABLE_STATES,
@@ -297,6 +297,7 @@ from visionset.kernel.domain.project import (
 )
 from visionset.kernel.domain.release import (
     CALIBRATED_MANIFEST_VERSION,
+    GROUPED_MANIFEST_VERSION,
     MANIFEST_VERSION,
     MODALITY_MANIFEST_VERSION,
     ClassCompatibility,
@@ -309,6 +310,7 @@ from visionset.kernel.domain.release import (
     Release,
     ReleaseVerification,
     SplitAssignment,
+    SplitGrouping,
     SplitRecipe,
     assign_split,
     canonical_bytes,
@@ -467,6 +469,7 @@ __all__ = [
     "MANIFEST_VERSION",
     "CALIBRATED_MANIFEST_VERSION",
     "MODALITY_MANIFEST_VERSION",
+    "GROUPED_MANIFEST_VERSION",
     "ModalityCompatibility",
     "manifest_version_for",
     "MARK_TRANSITIONS",
@@ -490,6 +493,7 @@ __all__ = [
     "AnnotationTotals",
     "AnnotationsWritten",
     "Asset",
+    "GroupLabel",
     "AssetCalibration",
     "Calibration",
     "CameraIntrinsics",
@@ -711,6 +715,7 @@ __all__ = [
     "WorkspaceSummary",
     "WorkspaceTotals",
     "SplitAssignment",
+    "SplitGrouping",
     "SplitRecipe",
     "TaskGroup",
     "TextPrompt",

@@ -120,6 +120,7 @@ def _seed(uow: UnitOfWork) -> list[tuple[str, UUID]]:
             width=8,
             height=6,
             thumbnail_hash="c" * 64,
+            group_label="scene-0061",
         )
     )
     second = uow.assets.add(
@@ -513,6 +514,40 @@ def test_a_release_published_without_a_split_recipe_round_trips_as_none(tmp_path
         assert uow.releases.get(stored.id) is not None
         assert uow.releases.get(stored.id).split is None  # type: ignore[union-attr]
     store.close()
+
+
+def test_an_asset_keeps_its_group_label_and_one_without_reads_back_none(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    with store.unit_of_work() as uow:
+        seeded = _seed(uow)
+        first, second = uow.assets.get(seeded[4][1]), uow.assets.get(seeded[5][1])
+    assert first is not None and first.group_label == "scene-0061"
+    assert second is not None and second.group_label is None
+    store.close()
+
+
+def test_a_stored_recipe_names_group_by_only_when_it_groups(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    with store.unit_of_work() as uow:
+        dataset_id = _seed(uow)[11][1]
+        grouped = uow.releases.add(
+            Release(
+                dataset_id=dataset_id,
+                tag="v2",
+                manifest_hash="b" * 64,
+                schema_version=1,
+                asset_count=0,
+                annotation_count=0,
+                split=SplitRecipe(train=0.8, val=0.1, test=0.1, group_by="group_label"),
+            )
+        )
+    with store.engine.connect() as connection:
+        stored = dict(connection.execute(text("select tag, split from release")).all())
+    with store.unit_of_work() as uow:
+        assert uow.releases.get(grouped.id).split.group_by == "group_label"  # type: ignore[union-attr]
+    store.close()
+    assert stored["v1"] == '{"train": 0.8, "val": 0.1, "test": 0.1, "seed": 7}'
+    assert '"group_by": "group_label"' in stored["v2"]
 
 
 def test_two_releases_of_one_dataset_cannot_share_a_tag(tmp_path: Path) -> None:

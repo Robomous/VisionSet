@@ -508,8 +508,8 @@ def plugin_manifest(manifest: Manifest, view: TransformedView) -> Manifest:
     the source's — which is what keeps a variant in its source's fold when the
     plugin recomputes folds — and its ``content_hash`` is
     :func:`variant_content_hash`, distinct per variant so the plugin names and
-    reads each file on its own. ``uri`` is copied from the source; ``width``
-    and ``height`` are the transformed size. Classes stay the manifest's. A file
+    reads each file on its own. ``uri`` and ``group_label`` are copied from the
+    source; ``width`` and ``height`` are the transformed size. Classes stay the manifest's. A file
     still carrying a 3D label carries its source's calibration, which only a
     step that leaves the pixels where they are lets through.
     """
@@ -537,6 +537,7 @@ def plugin_manifest(manifest: Manifest, view: TransformedView) -> Manifest:
                         )
                         else None
                     ),
+                    group_label=sources[file.asset_id].group_label,
                 )
                 for file in view.files
             )

@@ -495,6 +495,7 @@ def _asset_to_row(entity: Asset) -> t.Base:
         point_cloud=(
             None if entity.point_cloud is None else entity.point_cloud.model_dump(mode="json")
         ),
+        group_label=entity.group_label,
     )
 
 
@@ -517,6 +518,7 @@ def _asset_to_domain(_: Session, row: Any) -> Asset:
         point_cloud=(
             None if row.point_cloud is None else PointCloudMetadata.model_validate(row.point_cloud)
         ),
+        group_label=row.group_label,
     )
 
 
