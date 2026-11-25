@@ -31,6 +31,7 @@ import {
   Toaster,
   installRejectionHandler,
   refusalProse,
+  startTheme,
 } from "@visionset/ui-core";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -39,6 +40,11 @@ import { BrowserRouter } from "react-router";
 import { OssSessionProvider } from "./data/OssSession";
 import { AppRoutes } from "./routes";
 import "./styles.css";
+
+// Before the first render, and never torn down, like the rejection handler below.
+// `index.html`'s pre-paint script has already set the class; this keeps it
+// following the system and the rail's control.
+startTheme();
 
 const container = document.getElementById("root");
 if (container === null) throw new Error("missing #root element");

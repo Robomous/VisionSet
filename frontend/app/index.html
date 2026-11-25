@@ -18,6 +18,26 @@
     -->
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>Robomous VisionSet</title>
+    <!--
+      The theme before the first paint: the module entry is deferred, so without
+      this a dark page would paint light first. `startTheme` in ui-core's
+      `lib/theme.ts` takes over from it; `src/prePaint.test.ts` holds the two to
+      the same answers.
+    -->
+    <script data-theme-pre-paint>
+      (function () {
+        var preference = null;
+        try {
+          preference = localStorage.getItem("visionset.prefs.theme");
+        } catch (e) {}
+        var dark =
+          preference === "dark" ||
+          (preference !== "light" &&
+            typeof matchMedia === "function" &&
+            matchMedia("(prefers-color-scheme: dark)").matches);
+        if (dark) document.documentElement.classList.add("dark");
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
