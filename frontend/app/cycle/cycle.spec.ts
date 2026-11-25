@@ -615,29 +615,30 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(page.getByTestId("models-screen")).toBeVisible();
 
     await page.getByTestId("new-connection").click();
-    await page.getByTestId("choose-local").click();
     await page.getByTestId("connection-name").fill(STAND_IN);
 
     // Through **Custom model**, which is the point of it not being in the
     // curated list: nobody choosing a model is offered a segmenter that cannot
     // segment, and anybody who needs it can still name it.
     //
-    // The trigger only exists once the real `/inference/providers` read has
+    // The list only exists once the real `/inference/providers` read has
     // answered — wait for it rather than racing the click against that request.
     await expect(page.getByTestId("connection-model")).toBeVisible();
 
-    // Whether the select lands on a curated model, or falls back to Custom
+    // Whether the list lands on a curated model, or falls back to Custom
     // model with an empty id, is a catalog fact `connection-model` being
     // visible does not settle: `defaultEntry` seeds the first entry that
     // answers a point prompt, but returns `undefined` when none does, and
-    // `DownloadSizeLine` renders nothing for an empty id — so the wait below
+    // the size line renders nothing for an empty id — so the wait below
     // would die on a bare, undiagnosable timeout on such an installation.
     // Assert the seed landed on a curated model before waiting on the price
     // probe only a curated model triggers.
-    await expect(page.getByTestId("connection-model")).not.toHaveText(/Custom model/);
+    await expect(
+      page.getByTestId("connection-model").getByRole("radio", { checked: true }),
+    ).not.toHaveText(/Custom model/);
 
     // Let the seeded model's size probe settle before moving off it: clicking
-    // through the select faster than that request resolves leaves the
+    // through the list faster than that request resolves leaves the
     // refusal landing at whatever point the dialog happens to unmount, which
     // is the difference between a pinned list and a flaky one. Waiting is
     // also what makes the answer readable — `size-known` and
@@ -648,8 +649,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await expect(sizeLine).toBeVisible();
     curatedSizeRefused = (await sizeLine.getAttribute("data-testid")) === "size-unavailable";
 
-    await page.getByTestId("connection-model").click();
-    await page.getByRole("option", { name: /Custom model/ }).click();
+    await page.getByTestId("model-option-custom").click();
     await page.getByTestId("connection-custom-model").fill(STUB_MODEL_ID);
     await page.getByTestId("connection-revision").fill("stub");
     await page.getByTestId("connection-submit").click();

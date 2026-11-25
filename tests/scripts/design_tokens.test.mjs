@@ -30,7 +30,10 @@ const GENERATED = /^frontend\/ui-core\/src\/generated\//;
  * The whole allowance: identity, and nowhere else. The VisionSet logo (its icon
  * on the rail, the full logo on the sign-in screen, both drawn by `Brand.tsx`) and the
  * styleguide swatch that puts the token on display for inspection — a
- * component that renders the *value* rather than reaching for it as a colour.
+ * component that renders the *value* rather than reaching for it as a colour —
+ * and Robomous's own mark, where a model's weights come from the Robomous
+ * registry (`OriginLogo`): the company's identity, drawn as a provenance logo
+ * the way the hub's is drawn in its own colours.
  * Paths, not a count, so a failure names what moved rather than reporting a
  * number drifting. Sorted so the assertion is stable against `git ls-files`
  * ordering.
@@ -39,9 +42,10 @@ const BRAND_VARIABLE = /var\(--brand\)/;
 const BRAND_SITES = [
   "frontend/app/src/shell/Brand.tsx",
   "frontend/app/src/styleguide/Styleguide.tsx",
+  "frontend/ui-core/src/screens/OriginLogo.tsx",
 ];
 
-test("the brand colour paints identity only — the VisionSet logo and its styleguide swatch", () => {
+test("the brand colour paints identity only — the VisionSet logo, its styleguide swatch and the Robomous mark", () => {
   const tracked = trackedFiles(["frontend"]).filter(
     (name) => SOURCE.test(name) && !GENERATED.test(name),
   );

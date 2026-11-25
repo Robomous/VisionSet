@@ -12,20 +12,50 @@ export type ColorMode = "height" | "intensity" | "rgb";
 
 type Rgb = readonly [number, number, number];
 
-/** Viridis, five stops. */
-export const HEIGHT_RAMP: readonly Rgb[] = [
-  [68, 1, 84],
-  [59, 82, 139],
-  [33, 145, 140],
-  [94, 201, 98],
-  [253, 231, 37],
-];
+export type RampTheme = "light" | "dark";
 
-/** Grey to white: never darker than a dark stage can still show. */
-export const INTENSITY_RAMP: readonly Rgb[] = [
-  [72, 72, 88],
-  [255, 255, 255],
-];
+interface Ramps {
+  readonly height: readonly Rgb[];
+  readonly intensity: readonly Rgb[];
+}
+
+/**
+ * Viridis in five stops, trimmed where the stage would swallow an end: the pale
+ * yellow top on the light stage, the near-black purple bottom on the dark one.
+ * Intensity runs light to dark on the light stage and grey to white on the dark.
+ */
+export const RAMPS: Readonly<Record<RampTheme, Ramps>> = {
+  light: {
+    height: [
+      [68, 1, 84],
+      [65, 68, 135],
+      [42, 120, 142],
+      [34, 168, 132],
+      [122, 209, 81],
+    ],
+    intensity: [
+      [176, 176, 188],
+      [24, 24, 36],
+    ],
+  },
+  dark: {
+    height: [
+      [69, 55, 129],
+      [46, 111, 142],
+      [32, 163, 134],
+      [115, 208, 86],
+      [253, 231, 37],
+    ],
+    intensity: [
+      [72, 72, 88],
+      [255, 255, 255],
+    ],
+  },
+};
+
+export const HEIGHT_RAMP: readonly Rgb[] = RAMPS.light.height;
+
+export const INTENSITY_RAMP: readonly Rgb[] = RAMPS.light.intensity;
 
 const PERCENTILE_LOW = 0.02;
 const PERCENTILE_HIGH = 0.98;
@@ -42,8 +72,14 @@ export function defaultColorMode(sample: PointSample): ColorMode {
   return sample.rgb !== null ? "rgb" : "height";
 }
 
-/** `r, g, b` per point. A mode the sample cannot answer falls back to height. */
-export function pointColors(sample: PointSample, mode: ColorMode, frame: ScanFrame): Uint8Array {
+/** `r, g, b` per point, on the ramps made for `theme`'s stage. A mode the sample cannot answer falls back to height. */
+export function pointColors(
+  sample: PointSample,
+  mode: ColorMode,
+  frame: ScanFrame,
+  theme: RampTheme = "light",
+): Uint8Array {
+  const ramps = RAMPS[theme];
   const out = new Uint8Array(sample.count * 3);
   if (mode === "rgb" && sample.rgb !== null) {
     out.set(sample.rgb);
@@ -51,12 +87,12 @@ export function pointColors(sample: PointSample, mode: ColorMode, frame: ScanFra
   }
   if (mode === "intensity" && sample.intensity !== null) {
     const values = sample.intensity;
-    fillRamp(out, sample.count, (i) => values[i], localRange(sample, "intensity", frame), INTENSITY_RAMP);
+    fillRamp(out, sample.count, (i) => values[i], localRange(sample, "intensity", frame), ramps.intensity);
     return out;
   }
   const [index, sign] = SCAN_FRAME_AXES[frame].up;
   const positions = sample.positions;
-  fillRamp(out, sample.count, (i) => sign * positions[i * 3 + index], localRange(sample, "height", frame), HEIGHT_RAMP);
+  fillRamp(out, sample.count, (i) => sign * positions[i * 3 + index], localRange(sample, "height", frame), ramps.height);
   return out;
 }
 

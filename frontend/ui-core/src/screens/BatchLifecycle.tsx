@@ -29,6 +29,7 @@ import { refusalProse } from "../data/refusals";
 import { Button, Dialog, DialogContent, DialogDescription, DialogTitle, FieldError, Switch, ToggleGroup, ToggleGroupItem, cn } from "@robomous/ui-core";
 import { SheetLine } from "../patterns/project/SheetLine";
 import { batchNoun } from "../lib/assetNoun";
+import { SEGMENT_GROUP, SEGMENT_ITEM } from "../patterns/Segmented";
 import { IconAction } from "../patterns/IconAction";
 import { ProgressBar } from "../patterns/ProgressBar";
 import { annotatedShare } from "./batchState";
@@ -135,9 +136,6 @@ export function BatchProgressBar({
 const SCHEMA_NOT_FOUND = "SCHEMA_NOT_FOUND";
 
 const EASE = "cubic-bezier(0.23, 1, 0.32, 1)";
-const SEGMENT =
-  "h-6 rounded-[5px] px-2.5 text-xs text-muted-foreground transition-[color,box-shadow,scale] duration-150 ease-out hover:text-foreground active:scale-[0.97] " +
-  "data-[state=on]:bg-background data-[state=on]:font-medium data-[state=on]:text-foreground data-[state=on]:shadow-[0_0_0_1px_var(--border),0_1px_2px_oklch(0_0_0/0.06)] motion-reduce:transition-none";
 const PRESS = "transition-[background-color,scale] duration-100 ease-out active:scale-[0.97] motion-reduce:transition-none";
 
 /**
@@ -199,10 +197,10 @@ export function ApproveFields({
                 onValueChange={(next) => next !== "" && form.setMode(next as typeof mode)}
                 aria-label="How to cut it into jobs"
                 data-testid="partition-kind"
-                className="gap-0.5 self-start rounded-lg border border-input bg-input/20 p-[3px] dark:bg-input/30"
+                className={SEGMENT_GROUP}
               >
-                <ToggleGroupItem value="one" className={SEGMENT} data-testid="partition-one">One job</ToggleGroupItem>
-                <ToggleGroupItem value="split" className={SEGMENT} data-testid="partition-split">Split</ToggleGroupItem>
+                <ToggleGroupItem value="one" className={SEGMENT_ITEM} data-testid="partition-one">One job</ToggleGroupItem>
+                <ToggleGroupItem value="split" className={SEGMENT_ITEM} data-testid="partition-split">Split</ToggleGroupItem>
               </ToggleGroup>
               {mode === "one" ? (
                 <span className="text-xs text-muted-foreground">Every {batchNoun(modalities, 1, "image")} in a single job.</span>

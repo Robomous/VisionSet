@@ -31,34 +31,23 @@ import type { KnownMembers } from "../generated/api.js";
 // --- origin: where the weights come from -------------------------------------------
 
 interface OriginCopy {
-  /** The name on the row, in the publisher's own spelling. */
-  readonly label: string;
   /**
-   * The mark beside the origin's name, as the utility class over its own token.
-   * A small square beside the origin's name rather than a badge or a fill on
-   * purpose: the Origin column sorts itself at a glance with nothing added to
-   * the row's reading, where one more chip would be one more thing to read and
-   * a tinted row would say it again, louder, across the whole grid. The three
-   * tokens are VisionSet's own (`DESIGN.md`, *VisionSet Extensions*).
+   * The origin's name, in the publisher's own spelling: the logo's accessible
+   * name on the row (`OriginLogo`), the panel's Origin fact and the filter's value.
    */
-  readonly mark: string;
+  readonly label: string;
 }
 
 /** Every origin, in the order a filter lists them. */
 const ORIGIN_COPY: Record<ModelOrigin, OriginCopy> = {
-  huggingface: { label: "Hugging Face", mark: "bg-origin-hub" },
-  custom: { label: "Customized", mark: "bg-origin-custom" },
-  robomous: { label: "Robomous", mark: "bg-origin-robomous" },
+  huggingface: { label: "Hugging Face" },
+  custom: { label: "Customized" },
+  robomous: { label: "Robomous" },
 };
 
 /** The origin as the row names it. */
 export function originLabel(origin: ModelOrigin): string {
   return ORIGIN_COPY[origin].label;
-}
-
-/** The mark beside an origin's name, as a fill class. */
-export function originMark(origin: ModelOrigin): string {
-  return ORIGIN_COPY[origin].mark;
 }
 
 // --- ability: what the model can be asked for -------------------------------------
@@ -197,4 +186,20 @@ export function bytes(count: number): string {
     unit += 1;
   }
   return `${unit === 0 ? value.toLocaleString() : SCALED.format(value)} ${units[unit]}`;
+}
+
+// --- runs: how a failure and a kind read ---------------------------------------
+
+/**
+ * A failure as a sentence, so the remedy after it starts a new one. A job's
+ * error is often the worker's raw message — "Connection reset by peer" — with
+ * no full stop of its own.
+ */
+export function sentence(text: string): string {
+  return /[.!?…]$/.test(text.trimEnd()) ? text : `${text.trimEnd()}.`;
+}
+
+/** Whether the weights live on this machine, rather than behind an endpoint. */
+export function isLocal(connection: Connection): boolean {
+  return connection.connection_type === "local";
 }
