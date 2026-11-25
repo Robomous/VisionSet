@@ -1763,10 +1763,12 @@ describe("the batches panel", () => {
         batches: [done],
         jobs: [{ id: "job-1", batch_id: "done", state: "completed", asset_count: 10, assignee: null, pre_label_run: null, allowed_actions: [] }],
       });
-      on("GET", /\/batches\/done$/, { status: 200, body: done });
-      on("POST", /\/batches\/done\/complete$/, {
+      on("POST", /\/batches\/done\/finish$/, {
         status: 200,
-        body: batchOf({ id: "done", name: "drive-02", state: "completed", allowed_actions: batchActions("completed") }),
+        body: {
+          batch: batchOf({ id: "done", name: "drive-02", state: "completed", allowed_actions: batchActions("completed") }),
+          jobs_completed: 0,
+        },
       });
       renderWithData(<OverviewPanel projectId={PROJECT} />);
 
@@ -1783,7 +1785,7 @@ describe("the batches panel", () => {
       await waitFor(() => expect(screen.queryByTestId("complete-confirm")).toBeNull());
       expect((await within(footer).findByTestId("completed-drive-02")).textContent).toContain("Nothing is in the dataset yet");
       expect(sent.filter((request) => request.method === "POST").map((request) => new URL(request.url).pathname)).toEqual([
-        "/batches/done/complete",
+        "/batches/done/finish",
       ]);
     });
 
