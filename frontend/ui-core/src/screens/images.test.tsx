@@ -18,7 +18,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { IMAGES_PAGE_SIZE, ImagesScreen } from "./ImagesScreen";
 import { PageStatusOutlet, PageStatusProvider } from "../patterns/PageStatus";
-import { renderWithData } from "../testing/dataHarness";
+import { harnessQueryClient, renderWithData } from "../testing/dataHarness";
+import { ingestKeys, useBatches } from "./queries";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const FOLDER = "22222222-2222-4222-8222-222222222222";
@@ -74,6 +75,8 @@ let batchHeld: Record<string, Record<string, unknown>[]> = {};
 let batchAsked: { readonly id: string; readonly offset: string | null; readonly limit: string | null }[] = [];
 /** While set, every `/batches/{id}/assets` read waits on it. */
 let batchGate: Promise<void> | undefined;
+/** While set, the project's batch list answers 500. */
+let batchesDown = false;
 
 function json(body: unknown, status = 200): Promise<Response> {
   return Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }));
@@ -89,6 +92,7 @@ beforeEach(() => {
   batchHeld = {};
   batchAsked = [];
   batchGate = undefined;
+  batchesDown = false;
   vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : new Request(String(input), init);
     const url = new URL(request.url);
@@ -115,7 +119,9 @@ beforeEach(() => {
       const answer = (): Promise<Response> => json({ items: scope.slice(start, start + Number(limit ?? scope.length)).map(batchAsset), total: scope.length });
       return batchGate === undefined ? answer() : batchGate.then(answer);
     }
-    if (/\/projects\/[^/]+\/batches$/.test(url.pathname)) return json({ items: batches, total: batches.length });
+    if (/\/projects\/[^/]+\/batches$/.test(url.pathname)) {
+      return batchesDown ? json({ code: "INTERNAL", message: "down" }, 500) : json({ items: batches, total: batches.length });
+    }
     if (/\/projects\/[^/]+\/sources$/.test(url.pathname)) return json({ items: sources, total: sources.length });
     if (/\/thumbnail$/.test(url.pathname)) return Promise.resolve(new Response(new Uint8Array([255, 216, 255]), { status: 200 }));
     if (/\/content$/.test(url.pathname)) return Promise.resolve(new Response(new Uint8Array([137, 80, 78, 71]), { status: 200 }));
@@ -531,6 +537,41 @@ describe("the Images section narrowed to a batch", () => {
     expect(batchAsked).toEqual([]);
   });
 
+  it("keeps a named batch's images when a later read of the batch list fails", async () => {
+    withBatch();
+    const queryClient = harnessQueryClient();
+    renderWithData(
+      <TooltipProvider>
+        <ImagesScreen projectId={PROJECT} batchId={BATCH} onBatchChange={vi.fn()} />
+        <BatchesProbe />
+      </TooltipProvider>,
+      { queryClient },
+    );
+
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(4));
+    batchesDown = true;
+    await act(() => queryClient.refetchQueries({ queryKey: ingestKeys.batches(PROJECT) }));
+    // The probe re-renders in the same notification as the screen, so the screen has seen the failure.
+    await waitFor(() => expect(screen.getByTestId("batches-probe").textContent).toBe("error"));
+    expect(screen.queryByTestId("images-failure")).toBeNull();
+    expect(screen.getAllByRole("option")).toHaveLength(4);
+    expect(screen.getByTestId("images-batch-name").textContent).toBe("drive-01");
+  });
+
+  it("asks the batch list again before calling a batch missing from a list cached earlier", async () => {
+    withBatch();
+    // Fresh enough not to be re-read on mount, but cached before the batch was made.
+    const queryClient = harnessQueryClient();
+    queryClient.setDefaultOptions({ queries: { retry: false, refetchOnWindowFocus: false, staleTime: Infinity } });
+    queryClient.setQueryData(ingestKeys.batches(PROJECT), { items: [], total: 0 }, { updatedAt: Date.now() - 10_000 });
+    renderWithData(<TooltipProvider><ImagesScreen projectId={PROJECT} batchId={BATCH} onBatchChange={vi.fn()} /></TooltipProvider>, { queryClient });
+
+    expect(screen.queryByTestId("images-failure")).toBeNull();
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(4));
+    expect(screen.queryByTestId("images-failure")).toBeNull();
+    expect(screen.getByTestId("images-batch-name").textContent).toBe("drive-01");
+  });
+
   it("states no count while the batch's read is on its way, rather than none of the project's", async () => {
     withBatch();
     let open = (): void => {};
@@ -571,4 +612,9 @@ describe("the Images section narrowed to a batch", () => {
 function Switch(): ReactNode {
   const [batch, setBatch] = useState<string | null>(BATCH);
   return <ImagesScreen projectId={PROJECT} batchId={batch} onBatchChange={setBatch} />;
+}
+
+/** The batch list's status as the screen's own observer sees it. */
+function BatchesProbe(): ReactNode {
+  return <span data-testid="batches-probe">{useBatches(PROJECT).status}</span>;
 }

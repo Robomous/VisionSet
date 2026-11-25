@@ -220,15 +220,25 @@ function ProjectPane(props: PaneProps): JSX.Element {
 /** One batch: the batch's own listing as a single run, under a chip that names it. */
 function BatchPane({ batchId, onClear, ...props }: PaneProps & { readonly batchId: string; readonly onClear: (() => void) | undefined }): JSX.Element {
   const batches = useBatches(props.projectId);
+  const { refetch, dataUpdatedAt } = batches;
+  const [openedAt] = useState(() => Date.now());
   const known = batches.data?.items.find((one) => one.id === batchId);
   // Only a batch of this project is read: an id from another one is not this page's to show.
   const data = useBatchGroups(props.projectId, batchId, known !== undefined);
+  // A list cached before this pane opened may predate the batch: a miss there is asked again, once, before it is believed.
+  const settledMiss = known === undefined && batches.isSuccess && !batches.isFetching;
+  const staleMiss = settledMiss && dataUpdatedAt < openedAt;
+  useEffect(() => {
+    if (staleMiss) void refetch();
+  }, [staleMiss, refetch]);
+  const unknown = settledMiss && !staleMiss;
   // Until the batches answer the name is not a fact; once they have, a batch they do not hold says so.
-  const name = known?.name ?? (batches.data === undefined ? null : "Unknown batch");
-  const retry = (): void => void batches.refetch();
-  const scoped: ImageGroups = batches.isError
+  const name = known?.name ?? (unknown ? "Unknown batch" : null);
+  const retry = (): void => void refetch();
+  // A failed re-read of the list does not blank a batch it already named.
+  const scoped: ImageGroups = batches.isError && known === undefined
     ? { ...data, failure: { error: batches.error, retry } }
-    : batches.isSuccess && known === undefined
+    : unknown
       ? { ...data, failure: { error: new ApiError({ code: "BATCH_NOT_FOUND", message: `batch '${batchId}' is not in this project` }, { status: 404 }), retry } }
       : data;
   return <Pane {...props} data={scoped} batch={{ name, onClear }} />;
