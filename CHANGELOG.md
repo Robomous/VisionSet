@@ -74,6 +74,9 @@ nothing was being distributed. This is the first version that is.
   empty batch, read in one aggregate per project; the MCP batch tools and `visionset batch … --json` carry it
   too. The UI names a batch's assets from it (*12 scans*, or *12 assets* for a batch holding images and scans)
   instead of guessing from the project's sources with one `/assets?limit=1` request per batch (#1111).
+- **The schema editor offers `cuboid_3d` and `polyline_3d`.** *Drawn as* lists **3D box** and **3D polyline**
+  beside the four image shapes, so a class the scan editor can draw is created in the browser; one class may
+  declare image and scan shapes together (#1092).
 - **The exporter port hands a plugin the release's split `assignment`.** Cut once over the whole frozen
   manifest; `folds_of(manifest, assignment)` places assets by it. `supported_modalities` is optional on the
   port (read through `supported_modalities_of`), so a plugin declaring none is discovered and writes images

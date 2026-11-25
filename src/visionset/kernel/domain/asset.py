@@ -18,8 +18,8 @@ class Asset(BaseModel):
     """A single ingested media item.
 
     Identity is the SHA-256 hash of the content (``content_hash``): the same
-    bytes ingested twice are the same asset. Spatial metadata (width/height)
-    is expressed in the asset's native reference frame — pixels for images.
+    bytes ingested twice are the same asset. An image's ``width``/``height``
+    are in pixels; a scan's bounds live on its ``point_cloud`` metadata.
 
     **Two modalities, each with its own metadata.** An ``image`` carries
     ``width``, ``height`` and ``format``; a ``point_cloud`` is a single scan

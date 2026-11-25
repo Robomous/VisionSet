@@ -31,8 +31,8 @@ import { ShapeGlyph } from "./ShapeGlyph";
 
 /**
  * The six an `Annotation` can carry, each with a drawing tool behind it:
- * `cuboid_3d` and `polyline_3d` are drawn on point-cloud scans (and on
- * calibrated images), the rest on images. `mask` and `keypoints` are refused at
+ * `cuboid_3d` and `polyline_3d` are drawn on point-cloud scans (an image only
+ * shows them, read-only), the rest on images. `mask` and `keypoints` are refused at
  * write time, so a class offering one would be one nobody could annotate.
  *
  * `satisfies` rather than an annotation, so the elements keep their

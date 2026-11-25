@@ -32,8 +32,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 class GeometryType(StrEnum):
-    # 3D values exist today even though unimplemented: the domain never assumes
-    # "image" anywhere — that is the Physical AI roadmap encoded as a type.
+    # Wider than ``IMPLEMENTED_GEOMETRIES``: ``mask`` and ``keypoints`` have no
+    # ``Geometry`` model yet, and ``SchemaService`` refuses a class naming either.
     BBOX = "bbox"
     POLYGON = "polygon"
     MASK = "mask"
