@@ -83,6 +83,7 @@ def test_the_page_envelope_is_named_for_its_item_type() -> None:
         "BatchPage",
         "DatasetChangePage",
         "FormatPage",
+        "GeometryPage",
         "IngestJobPage",
         "JobPage",
         "ProjectPage",

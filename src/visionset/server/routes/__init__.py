@@ -29,6 +29,7 @@ from visionset.server.routes import (
     batches,
     datasets,
     formats,
+    geometries,
     home,
     inference,
     ingest,
@@ -53,6 +54,8 @@ from visionset.server.routes import (
 ROUTERS: Final[tuple[APIRouter, ...]] = (
     projects.router,
     schemas.router,
+    # What a schema may declare, beside it: a property of the build, not of any project.
+    geometries.router,
     sources.project_router,
     sources.router,
     ingest.router,
@@ -101,6 +104,7 @@ __all__ = [
     "batches",
     "datasets",
     "formats",
+    "geometries",
     "home",
     "inference",
     "ingest",

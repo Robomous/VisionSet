@@ -19,7 +19,9 @@ import { userEvent } from "@testing-library/user-event";
 import { useState, type JSX } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { AttributeBody, LabelClassBody } from "../screens/queries";
+import type { AttributeBody, LabelClassBody, OfferedGeometries } from "../screens/queries";
+import { ApiError } from "../data/errors";
+import { IMPLEMENTED_GEOMETRIES, offeredGeometries } from "../testing/geometries";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { ClassFields } from "./ClassFields";
 import { CLASS_PALETTE, hexOf } from "./classFieldsRules";
@@ -46,6 +48,7 @@ interface SheetProps {
   readonly disabled?: boolean;
   readonly previous?: LabelClassBody | null;
   readonly nameInvalid?: boolean;
+  readonly offered?: OfferedGeometries;
 }
 
 /** The colour a class with no declared one is drawn in, standing in for the derived hue. */
@@ -62,6 +65,7 @@ function mountSheet(
     return (
       <form>
         <ClassFields
+          offered={host.offered ?? offeredGeometries()}
           layout="inspector"
           declared={declared}
           slot="0"
@@ -330,14 +334,14 @@ describe("the inspector's name, shortcut and shapes", () => {
 
   it("marks the name invalid only when the caller says so, and points at what says why", () => {
     const { unmount } = render(
-      <ClassFields layout="inspector" declared={declaredWith()} slot="0" swatch="#888888" hotkey={null} onChange={vi.fn()} />,
+      <ClassFields offered={offeredGeometries()} layout="inspector" declared={declaredWith()} slot="0" swatch="#888888" hotkey={null} onChange={vi.fn()} />,
     );
     expect(screen.getByTestId("class-name-0").hasAttribute("aria-invalid")).toBe(false);
     expect(screen.getByTestId("class-name-0").hasAttribute("aria-describedby")).toBe(false);
     unmount();
 
     render(
-      <ClassFields layout="inspector" declared={declaredWith()} slot="0" swatch="#888888" hotkey={null} onChange={vi.fn()} nameInvalid nameDescribedBy="status" />,
+      <ClassFields offered={offeredGeometries()} layout="inspector" declared={declaredWith()} slot="0" swatch="#888888" hotkey={null} onChange={vi.fn()} nameInvalid nameDescribedBy="status" />,
     );
     expect(screen.getByTestId("class-name-0").getAttribute("aria-invalid")).toBe("true");
     expect(screen.getByTestId("class-name-0").getAttribute("aria-describedby")).toBe("status");
@@ -353,7 +357,7 @@ describe("the inspector's name, shortcut and shapes", () => {
   });
 
   it("has no Shortcut row without a shortcut", () => {
-    render(<ClassFields layout="inspector" declared={declaredWith()} slot="0" swatch="#888888" hotkey={null} onChange={vi.fn()} />);
+    render(<ClassFields offered={offeredGeometries()} layout="inspector" declared={declaredWith()} slot="0" swatch="#888888" hotkey={null} onChange={vi.fn()} />);
 
     expect(screen.queryByText("Shortcut")).toBeNull();
   });
@@ -438,7 +442,7 @@ describe("the inspector's name, shortcut and shapes", () => {
   });
 
   it("has no In use row without a note", () => {
-    render(<ClassFields layout="inspector" declared={declaredWith()} slot="0" swatch="#888888" hotkey={null} onChange={vi.fn()} />);
+    render(<ClassFields offered={offeredGeometries()} layout="inspector" declared={declaredWith()} slot="0" swatch="#888888" hotkey={null} onChange={vi.fn()} />);
 
     expect(screen.queryByText("In use")).toBeNull();
   });
@@ -766,7 +770,7 @@ describe("the inspector's choices", () => {
       const [declared, setDeclared] = useState(declaredWith({ attributes: [attribute({ options: [] })] }));
       return (
         <form onSubmit={onSubmit}>
-          <ClassFields layout="inspector" declared={declared} slot="0" swatch="#888888" hotkey={null} onChange={setDeclared} />
+          <ClassFields offered={offeredGeometries()} layout="inspector" declared={declared} slot="0" swatch="#888888" hotkey={null} onChange={setDeclared} />
         </form>
       );
     }
@@ -967,7 +971,7 @@ describe("the inspector while disabled", () => {
 
   it("does not write when a shape is pressed", async () => {
     const onChange = vi.fn();
-    render(<ClassFields layout="inspector" declared={declaredWith({ geometries: ["bbox"] })} slot="0" swatch="#888888" hotkey={null} disabled onChange={onChange} />);
+    render(<ClassFields offered={offeredGeometries()} layout="inspector" declared={declaredWith({ geometries: ["bbox"] })} slot="0" swatch="#888888" hotkey={null} disabled onChange={onChange} />);
 
     await userEvent.click(screen.getByTestId("class-geometry-0-polygon"));
 
@@ -982,6 +986,7 @@ describe("the stacked layout", () => {
       const [declared, setDeclared] = useState(initial);
       return (
         <ClassFields
+          offered={offeredGeometries()}
           declared={declared}
           slot="new"
           swatch="#888888"
@@ -1067,7 +1072,7 @@ describe("the stacked layout", () => {
 
   it("disables its toggles together while the form is locked", async () => {
     const onChange = vi.fn();
-    render(<ClassFields declared={declaredWith({ geometries: ["bbox"] })} slot="0" swatch="#888888" hotkey={1} disabled onChange={onChange} />);
+    render(<ClassFields offered={offeredGeometries()} declared={declaredWith({ geometries: ["bbox"] })} slot="0" swatch="#888888" hotkey={1} disabled onChange={onChange} />);
 
     const toggles = within(screen.getByTestId("class-geometry-0")).getAllByRole("button");
     expect(toggles.length).toBeGreaterThan(1);
@@ -1078,11 +1083,80 @@ describe("the stacked layout", () => {
   });
 
   it("shows the hotkey, and none past the ninth class", () => {
-    const { unmount } = render(<ClassFields declared={declaredWith()} slot="0" swatch="#888888" hotkey={3} onChange={vi.fn()} />);
+    const { unmount } = render(<ClassFields offered={offeredGeometries()} declared={declaredWith()} slot="0" swatch="#888888" hotkey={3} onChange={vi.fn()} />);
     expect(screen.getByText("Hotkey").textContent).toContain("3");
     unmount();
 
-    render(<ClassFields declared={declaredWith()} slot="0" swatch="#888888" hotkey={null} onChange={vi.fn()} />);
+    render(<ClassFields offered={offeredGeometries()} declared={declaredWith()} slot="0" swatch="#888888" hotkey={null} onChange={vi.fn()} />);
     expect(screen.queryByText("Hotkey")).toBeNull();
+  });
+});
+
+describe("the shapes on offer come from the server", () => {
+  const failure = new ApiError({ code: "INTERNAL_ERROR", message: "The geometry catalog could not be read." }, { status: 500 });
+
+  function offeredIds(slot: string): (string | null)[] {
+    return within(screen.getByTestId(`class-geometry-${slot}`))
+      .getAllByRole("button")
+      .map((item) => item.getAttribute("data-testid"));
+  }
+
+  it("offers a geometry the server adds, in picker order, with no list edited here", () => {
+    mountSheet(declaredWith(), { offered: offeredGeometries([...IMPLEMENTED_GEOMETRIES, "mask"]) });
+
+    expect(offeredIds("0")).toEqual([
+      "class-geometry-0-bbox",
+      "class-geometry-0-polygon",
+      "class-geometry-0-mask",
+      "class-geometry-0-polyline",
+      "class-geometry-0-classification_tag",
+      "class-geometry-0-cuboid_3d",
+      "class-geometry-0-polyline_3d",
+    ]);
+    expect(screen.getByTestId("class-geometry-0-mask").getAttribute("title")).toBe("Mask · Painted pixels");
+  });
+
+  it("offers only what the server offers", () => {
+    mountSheet(declaredWith(), { offered: offeredGeometries(["polygon", "bbox"]) });
+
+    expect(offeredIds("0")).toEqual(["class-geometry-0-bbox", "class-geometry-0-polygon"]);
+  });
+
+  it("offers the server's set in the stacked layout too, grouped", () => {
+    render(<ClassFields offered={offeredGeometries(["polyline", "keypoints", "bbox"])} declared={declaredWith()} slot="new" swatch="#888888" hotkey={null} onChange={vi.fn()} />);
+
+    expect(offeredIds("new")).toEqual(["class-geometry-new-bbox", "class-geometry-new-keypoints", "class-geometry-new-polyline"]);
+  });
+
+  it("shows only the class's own shapes, disabled, while the set loads", () => {
+    mountSheet(declaredWith({ geometries: ["polygon"] }), { offered: { state: "loading" } });
+
+    expect(offeredIds("0")).toEqual(["class-geometry-0-polygon"]);
+    expect(screen.getByTestId("class-geometry-0-polygon")).toHaveProperty("disabled", true);
+    expect(screen.getByTestId("class-geometry-0").getAttribute("aria-busy")).toBe("true");
+    expect(screen.queryByTestId("class-geometry-0-error")).toBeNull();
+  });
+
+  it("says a failed read, keeps the picker disabled, and retries on request", async () => {
+    const retry = vi.fn();
+    const form = mountSheet(declaredWith(), { offered: { state: "failed", error: failure, retry } });
+
+    expect(screen.getByTestId("class-geometry-0-bbox")).toHaveProperty("disabled", true);
+    const error = screen.getByTestId("class-geometry-0-error");
+    expect(error.textContent).toContain("The geometry catalog could not be read. Try again to choose its shapes.");
+
+    await userEvent.click(within(error).getByRole("button", { name: "Try again" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(form.latest().geometries).toEqual(["bbox"]);
+  });
+
+  it("says a failed read in the stacked layout, with the toggles disabled", async () => {
+    const retry = vi.fn();
+    render(<ClassFields offered={{ state: "failed", error: failure, retry }} declared={declaredWith({ geometries: ["bbox", "polygon"] })} slot="new" swatch="#888888" hotkey={null} onChange={vi.fn()} />);
+
+    expect(offeredIds("new")).toEqual(["class-geometry-new-bbox", "class-geometry-new-polygon"]);
+    expect(screen.getByTestId("class-geometry-new-polygon")).toHaveProperty("disabled", true);
+    await userEvent.click(within(screen.getByTestId("class-geometry-new-error")).getByRole("button", { name: "Try again" }));
+    expect(retry).toHaveBeenCalledTimes(1);
   });
 });

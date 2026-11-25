@@ -97,6 +97,27 @@ export const GEOMETRY_CATEGORY = {
   polyline_3d: "Robotics and AD",
 } as const satisfies Record<GeometryType, GeometryCategory>;
 
+/**
+ * Where each geometry sits in a picker. The server says which are offered
+ * (`GET /geometries`); this says in what order, total over the union by the
+ * same `satisfies` as the map above.
+ */
+export const GEOMETRY_ORDER = {
+  bbox: 0,
+  polygon: 1,
+  mask: 2,
+  keypoints: 3,
+  polyline: 4,
+  classification_tag: 5,
+  cuboid_3d: 6,
+  polyline_3d: 7,
+} as const satisfies Record<GeometryType, number>;
+
+/** `geometries` in picker order, as a new array. */
+export function orderGeometries(geometries: readonly GeometryType[]): GeometryType[] {
+  return [...geometries].sort((a, b) => GEOMETRY_ORDER[a] - GEOMETRY_ORDER[b]);
+}
+
 /** One rendered section: a heading and the geometries under it. */
 export interface GeometryGroup {
   readonly category: GeometryCategory;

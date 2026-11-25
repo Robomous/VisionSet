@@ -8,7 +8,7 @@
  */
 
 import { expect, type Page, type Request } from "@playwright/test";
-import { assetActions, batchActions, jobActions, type Wire } from "./_wire";
+import { assetActions, batchActions, geometryPage, jobActions, type Wire } from "./_wire";
 
 export const PROJECT = "11111111-1111-4111-8111-111111111111";
 export const BATCH = "22222222-2222-4222-8222-222222222222";
@@ -261,6 +261,7 @@ export async function serveApi(
     // server will sign the browser in by itself, and here it will not —
     // this suite is about the annotation page, and it reaches it with a token.
     if (path === "/session") return route.fulfill({ json: { issued: false } });
+    if (path === "/geometries") return route.fulfill({ json: geometryPage() });
 
     sent.push(request);
 

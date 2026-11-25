@@ -30,6 +30,7 @@ import {
   formatGeometries,
   geometryLabel,
   groupGeometries,
+  orderGeometries,
   producesProse,
   type GeometryCategory,
 } from "./geometryCategory";
@@ -105,6 +106,20 @@ describe("grouping what a surface offers", () => {
   });
 });
 
+
+describe("the order a picker shows what the server offers in", () => {
+  it("orders the server's name-sorted set without reading it as a list of its own", () => {
+    const served: GeometryType[] = ["bbox", "classification_tag", "cuboid_3d", "polygon", "polyline", "polyline_3d"];
+
+    expect(orderGeometries(served)).toEqual(["bbox", "polygon", "polyline", "classification_tag", "cuboid_3d", "polyline_3d"]);
+    expect(served[1]).toBe("classification_tag");
+  });
+
+  it("places a member the server adds, and drops nothing it was not given", () => {
+    expect(orderGeometries(["polyline", "mask", "bbox"])).toEqual(["bbox", "mask", "polyline"]);
+    expect(orderGeometries([])).toEqual([]);
+  });
+});
 
 describe("what a geometry is called on screen", () => {
   it("is total over the wire's geometry union", () => {

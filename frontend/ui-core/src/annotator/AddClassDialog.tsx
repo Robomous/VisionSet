@@ -97,6 +97,7 @@ import { ClassFields } from "../patterns/ClassFields";
 import type {
   DraftLabelClassBody,
   LabelClassBody,
+  OfferedGeometries,
   SchemaVersion,
   ServerSchemaDraft,
 } from "../screens/queries";
@@ -163,6 +164,8 @@ export interface AddClassDialogProps {
    * about the half-applied chain this replaces.
    */
   readonly canRepin: boolean;
+  /** The geometries the class picker offers, from `useOfferedGeometries`. */
+  readonly offered: OfferedGeometries;
   readonly pending: boolean;
   /** The refusal to render, or `null`. Owned by the caller: it runs the chain. */
   readonly error: unknown;
@@ -218,6 +221,7 @@ export function AddClassDialog({
   active,
   pinnedVersion,
   canRepin,
+  offered,
   pending,
   error,
   initialName,
@@ -532,6 +536,7 @@ export function AddClassDialog({
 
           <ClassFields
             declared={declared}
+            offered={offered}
             slot="new"
             // The one sanctioned spelling, so a class looks the same here, in the
             // palette and on the canvas: declared colour first, else the name hash.

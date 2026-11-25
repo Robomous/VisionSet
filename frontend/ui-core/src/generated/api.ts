@@ -956,6 +956,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/geometries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Geometries
+         * @description Every geometry an annotation can carry on this server, by name.
+         *
+         *     `name` is a value `LabelClassBody.geometries` accepts. A schema whose class
+         *     names a geometry outside this list is refused when it is saved, so this is
+         *     the set a schema editor offers.
+         */
+        get: operations["list_geometries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -5104,6 +5128,23 @@ export interface components {
             total: number;
         };
         /**
+         * GeometryOut
+         * @description One geometry an annotation can carry on this server.
+         */
+        GeometryOut: {
+            name: components["schemas"]["GeometryType"];
+        };
+        /**
+         * GeometryPage
+         * @description A page of the geometries an annotation can carry.
+         */
+        GeometryPage: {
+            /** Items */
+            items: components["schemas"]["GeometryOut"][];
+            /** Total */
+            total: number;
+        };
+        /**
          * GeometryType
          * @enum {string}
          */
@@ -9235,6 +9276,62 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FormatPage"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_geometries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeometryPage"];
                 };
             };
             /** @description Missing or invalid bearer token */

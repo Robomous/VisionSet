@@ -22,34 +22,14 @@
 import { ChevronRight, Plus, Trash2, X } from "lucide-react";
 import { useState, type JSX, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
-import { geometryLabel, groupGeometries } from "../data/geometryCategory";
+import { geometryLabel, groupGeometries, orderGeometries } from "../data/geometryCategory";
+import { refusalProse } from "../data/refusals";
 import { Badge, Button, Collapsible, CollapsibleContent, CollapsibleTrigger, FieldDescription, Input, InputGroup, InputGroupAddon, InputGroupInput, Kbd, Label, Popover, PopoverContent, PopoverTrigger, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch, ToggleGroup, ToggleGroupItem, cn } from "@robomous/ui-core";
-import type { AttributeBody, GeometryType, LabelClassBody } from "../screens/queries";
+import type { AttributeBody, GeometryType, LabelClassBody, OfferedGeometries } from "../screens/queries";
+import { ErrorState } from "./AsyncStates";
 import { CLASS_PALETTE, describeGeometries, hexOf, swatchOf } from "./classFieldsRules";
 import { PropertyRow } from "./PropertyRow";
 import { ShapeGlyph } from "./ShapeGlyph";
-
-/**
- * The six an `Annotation` can carry, each with a drawing tool behind it:
- * `cuboid_3d` and `polyline_3d` are drawn on point-cloud scans (an image only
- * shows them, read-only), the rest on images. `mask` and `keypoints` are refused at
- * write time, so a class offering one would be one nobody could annotate.
- *
- * `satisfies` rather than an annotation, so the elements keep their
- * literal types and a member deleted from the generated union fails here. What
- * that does **not** close is the cross-language mirror: the offerable set is the
- * kernel's `IMPLEMENTED_GEOMETRIES`, derived off the `Geometry` union, and the
- * wire does not publish it — so implementing `mask` still means editing this
- * line by hand. Deriving it would need the API to declare the set.
- */
-const GEOMETRIES = [
-  "bbox",
-  "polygon",
-  "polyline",
-  "classification_tag",
-  "cuboid_3d",
-  "polyline_3d",
-] as const satisfies readonly GeometryType[];
 
 /** `Attribute.kind`, from the wire enum. */
 const KINDS = ["string", "number", "boolean", "select"] as const;
@@ -57,6 +37,13 @@ type Kind = (typeof KINDS)[number];
 
 export interface ClassFieldsProps {
   readonly declared: LabelClassBody;
+  /**
+   * The geometries a class may offer, as the server publishes them
+   * (`useOfferedGeometries`). There is no list here to fall back on: until the
+   * set is `ready` the picker shows what the class declares, disabled, and a
+   * failed read is said with a retry.
+   */
+  readonly offered: OfferedGeometries;
   /** What this instance's `data-testid`s are built from. See the module docstring. */
   readonly slot: string;
   /** The colour the class is actually drawn in — declared, or derived from its name. */
@@ -99,6 +86,7 @@ export function ClassFields(props: ClassFieldsProps): JSX.Element {
 
 function StackedFields({
   declared,
+  offered,
   slot,
   swatch,
   hotkey,
@@ -131,6 +119,7 @@ function StackedFields({
             data-testid={`class-geometry-${slot}`}
             role="group"
             aria-label="Geometry"
+            aria-busy={offered.state === "loading" || undefined}
           >
             {/* Grouped, not flat, for the reason the dropdown was: a flat list of
                 every name the product can address says nothing about which ones
@@ -138,18 +127,19 @@ function StackedFields({
                 grows. A toggle per shape, every answer on screen — a
                 multi-select dropdown would hide the answer behind a click on a
                 control whose whole job is to show it. */}
-            {groupGeometries(GEOMETRIES).map((group) => (
+            {groupGeometries(pickable(offered, declared)).map((group) => (
               <div key={group.category} className="flex flex-col gap-1">
                 <span className="text-xs" data-testid={`geometry-category-${group.category}`}>
                   {group.category}
                 </span>
-                <GeometryGroup category={group.category} geometries={group.geometries} declared={declared} slot={slot} swatch={swatch} disabled={disabled} onChange={onChange} />
+                <GeometryGroup category={group.category} geometries={group.geometries} declared={declared} slot={slot} swatch={swatch} disabled={disabled || offered.state !== "ready"} onChange={onChange} />
               </div>
             ))}
           </div>
           <FieldDescription>
             {describeGeometries(declared.geometries)}
           </FieldDescription>
+          <OfferFailure offered={offered} slot={slot} />
         </fieldset>
       </div>
 
@@ -433,9 +423,11 @@ function GeometryGroup({
 }
 
 /** What each shape asks of the person drawing it, said under its name. */
-const GEOMETRY_HINT: Record<(typeof GEOMETRIES)[number], string> = {
+const GEOMETRY_HINT: Record<GeometryType, string> = {
   bbox: "Two corners",
   polygon: "Closed outline",
+  mask: "Painted pixels",
+  keypoints: "Named points",
   polyline: "Open path",
   classification_tag: "The whole image",
   cuboid_3d: "A box in 3D, on scans",
@@ -444,6 +436,20 @@ const GEOMETRY_HINT: Record<(typeof GEOMETRIES)[number], string> = {
 
 function capitalised(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** The server's set once it is read; until then, only what the class already declares. */
+function pickable(offered: OfferedGeometries, declared: LabelClassBody): GeometryType[] {
+  return orderGeometries(offered.state === "ready" ? offered.geometries : declared.geometries);
+}
+
+function OfferFailure({ offered, slot }: { readonly offered: OfferedGeometries; readonly slot: string }): JSX.Element | null {
+  if (offered.state !== "failed") return null;
+  return (
+    <div data-testid={`class-geometry-${slot}-error`}>
+      <ErrorState message={`${refusalProse(offered.error)} Try again to choose its shapes.`} onRetry={offered.retry} />
+    </div>
+  );
 }
 
 
@@ -460,6 +466,7 @@ function capitalised(text: string): string {
  */
 function InspectorFields({
   declared,
+  offered,
   slot,
   swatch,
   disabled = false,
@@ -470,8 +477,8 @@ function InspectorFields({
   nameInvalid = false,
   nameDescribedBy,
 }: ClassFieldsProps): JSX.Element {
-  const accepted = new Set(declared.geometries);
-  const shapes = GEOMETRIES.filter((geometry) => accepted.has(geometry)).map((geometry) => capitalised(geometryLabel(geometry)));
+  const shapes = orderGeometries(declared.geometries).map((geometry) => capitalised(geometryLabel(geometry)));
+  const drawnAs = new Set(declared.geometries);
   return (
     <div className="flex flex-col">
       <div className="flex flex-col py-2">
@@ -503,7 +510,8 @@ function InspectorFields({
             <ToggleGroup
               type="multiple"
               aria-labelledby={`draw-as-${slot}`}
-              disabled={disabled}
+              aria-busy={offered.state === "loading" || undefined}
+              disabled={disabled || offered.state !== "ready"}
               value={[...declared.geometries]}
               onValueChange={(picked) => {
                 // The last shape standing does not come off — see `GeometryGroup`.
@@ -518,8 +526,8 @@ function InspectorFields({
               // 8px outside, 5px inside a 3px gutter: the corners share a centre.
               className="shrink-0 gap-0.5 rounded-lg border border-input bg-input/20 p-[3px] dark:bg-input/30"
             >
-              {GEOMETRIES.map((geometry) => {
-                const on = declared.geometries.includes(geometry);
+              {pickable(offered, declared).map((geometry) => {
+                const on = drawnAs.has(geometry);
                 const last = on && declared.geometries.length === 1;
                 const label = capitalised(geometryLabel(geometry));
                 return (
@@ -543,6 +551,7 @@ function InspectorFields({
             <span className="max-w-full truncate text-xs text-muted-foreground" aria-hidden="true">
               {shapes.join(", ")}
             </span>
+            <OfferFailure offered={offered} slot={slot} />
           </span>
         </PropertyRow>
         {note !== undefined && (

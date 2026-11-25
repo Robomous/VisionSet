@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createElement, useState, type ReactNode } from "react";
 
 import { renderWithData } from "../testing/dataHarness";
+import { offeredGeometries } from "../testing/geometries";
 import { AddClassDialog } from "./AddClassDialog";
 import { composeVersion, defaultNote, runAddClass } from "./addClassRules";
 import {
@@ -362,6 +363,7 @@ describe("the session, backed by the project's annotation draft", () => {
           active: ACTIVE,
           pinnedVersion: ACTIVE.version,
           canRepin: true,
+          offered: offeredGeometries(),
           // The same composite `AnnotationPage` builds, `discardDraft`
           // included — Finding 2's own fix: while a discard is in flight,
           // banking and the discard buttons must both be unusable, or a bank

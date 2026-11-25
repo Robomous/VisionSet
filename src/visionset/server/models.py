@@ -529,11 +529,12 @@ class LabelClassBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str
-    # All eight members, including the five with no implementation yet. They are
-    # the domain's vocabulary, and naming one produces a precise 422
-    # UNSUPPORTED_GEOMETRY from ``SchemaService``. Narrowing the enum here would
-    # be a second list to keep in step with ``IMPLEMENTED_GEOMETRIES`` — which is
-    # derived off the ``Geometry`` union precisely so no second list exists.
+    # Every ``GeometryType`` member, including ``mask`` and ``keypoints``, which
+    # have no implementation yet. They are the domain's vocabulary, and naming one
+    # produces a precise 422 UNSUPPORTED_GEOMETRY from ``SchemaService``. Narrowing
+    # the enum here would be a second list to keep in step with
+    # ``IMPLEMENTED_GEOMETRIES`` — which is derived off the ``Geometry`` union
+    # precisely so no second list exists, and which ``GET /geometries`` publishes.
     #
     # A response always carries this sorted and deduplicated, because the domain
     # does; a request need not, and gets it back canonicalised. The old singular
@@ -2899,6 +2900,16 @@ class FormatOut(BaseModel):
 
 class FormatPage(Page[FormatOut]):
     """A page of export formats."""
+
+
+class GeometryOut(BaseModel):
+    """One geometry an annotation can carry on this server."""
+
+    name: GeometryType
+
+
+class GeometryPage(Page[GeometryOut]):
+    """A page of the geometries an annotation can carry."""
 
 
 class PreprocessingHintsOut(BaseModel):

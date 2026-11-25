@@ -13,6 +13,10 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **`GET /geometries`, the geometries a class may declare.** A read-only catalog generated from the kernel's
+  `IMPLEMENTED_GEOMETRIES`. The schema editor's class sheet and the annotator's add-a-class dialog read their
+  shape picker from it instead of a hard-coded list; while it loads, or if the read fails, the picker is
+  disabled and a failure is shown with a retry (#1128).
 - **A `darknet` export dialect.** Writes `obj.data`, `obj.names`, `train.txt` and `valid.txt` over the shared
   images-and-labels layout, with `yolov4` as its target (#787).
 - **Camera calibration per source, with a per-asset override.** Intrinsics, extrinsics and optional `plumb_bob`

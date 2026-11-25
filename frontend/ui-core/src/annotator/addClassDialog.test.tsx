@@ -19,6 +19,7 @@ import type { JSX } from "react";
 import { ApiError } from "../data/errors";
 import { AddClassDialog } from "./AddClassDialog";
 import type { SchemaVersion } from "../screens/queries";
+import { offeredGeometries } from "../testing/geometries";
 
 const ACTIVE = {
   project_id: "11111111-1111-4111-8111-111111111111",
@@ -39,6 +40,7 @@ function mount(overrides: Partial<Parameters<typeof AddClassDialog>[0]> = {}): J
       active={ACTIVE}
       pinnedVersion={2}
       canRepin
+      offered={offeredGeometries()}
       pending={false}
       error={null}
       onSubmit={vi.fn()}

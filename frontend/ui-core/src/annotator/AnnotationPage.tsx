@@ -310,6 +310,7 @@ import {
   useDiscardSchemaDraft,
   usePublishSchemaDraft,
   useSaveSchemaDraft,
+  useOfferedGeometries,
   useSchemaComparison,
   useSchemaDraft,
 } from "../screens/queries";
@@ -1451,6 +1452,7 @@ function Workspace({
    * has read it.
    */
   const schemaDraft = useSchemaDraft(projectId, "annotation", addingClass);
+  const offeredGeometries = useOfferedGeometries(addingClass);
   const saveDraft = useSaveSchemaDraft(projectId, "annotation");
   const discardDraft = useDiscardSchemaDraft(projectId, "annotation");
   const publishDraft = usePublishSchemaDraft(projectId, "annotation");
@@ -3079,6 +3081,7 @@ function Workspace({
         active={activeSchema.data ?? null}
         pinnedVersion={schemaVersion}
         canRepin={canRepin}
+        offered={offeredGeometries}
         // `discardDraft` is in here too, for the reason it is in `error` below:
         // while a discard is out, both discard buttons and every bank must be
         // unusable, or a bank fired in that window races the DELETE.

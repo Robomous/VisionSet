@@ -32,15 +32,15 @@
  * A version that arrives underneath a dirty draft is neither merged nor
  * discarded — it is announced, and reloading it is a button.
  *
- * ## The six geometries, and the two the picker does not offer
+ * ## The geometries the picker offers
  *
- * `GeometryType` has eight members and an `Annotation` can carry six — the four
- * image shapes, and `cuboid_3d` and `polyline_3d` for point-cloud scans. The
- * kernel refuses the rest at `create_version` with `UnsupportedGeometry`, and
+ * `GeometryType` names more geometries than an `Annotation` can carry. The kernel
+ * refuses the rest at `create_version` with `UnsupportedGeometry`, and
  * `IMPLEMENTED_GEOMETRIES` is read off the `Geometry` union so a new variant
- * widens it with no second edit. The picker offers the six, because offering a
- * choice the API will refuse is a worse experience than not offering it — and the
- * two are kept in step by the API's refusal, not by this list being right.
+ * widens it with no second edit. `GET /geometries` publishes that set and the
+ * picker offers exactly it, because offering a choice the API will refuse is a
+ * worse experience than not offering it. The client keeps no copy: until the set
+ * is read the picker is disabled, and a failed read is said with a retry.
  *
  * A geometry a class can declare with no drawing tool behind it is a statement
  * about the annotator rather than about the schema, so it does not belong in this
@@ -133,6 +133,7 @@ import type {
   SchemaVersion,
 } from "./queries";
 import {
+  useOfferedGeometries,
   usePublishSchemaDraft,
   usePreviewSchemaChange,
   useProjectStats,
@@ -1642,6 +1643,7 @@ function ClassPanel({
   const from = adding ? classes.length : target.index;
   const initial: LabelClassBody = (adding ? undefined : classes[target.index]) ?? { name: "", geometries: ["bbox"], color: null, attributes: [] };
   const [working, setWorking] = useState<LabelClassBody>(initial);
+  const offered = useOfferedGeometries();
   const [position, setPosition] = useState(from);
   const [tried, setTried] = useState(false);
   const slot = String(from);
@@ -1733,6 +1735,7 @@ function ClassPanel({
         <ClassFields
           layout="inspector"
           declared={working}
+          offered={offered}
           slot={slot}
           swatch={swatch}
           hotkey={null}

@@ -11,6 +11,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, vi } from "vitest";
+import { geometryPage } from "./geometries.js";
 import { stubResizeObserver } from "./resizeObserver.js";
 import type { components as capComponents } from "../generated/api.js";
 
@@ -115,6 +116,9 @@ beforeEach(() => {
       };
       curatedDrafts.set(draftProject, saved);
       return Promise.resolve(jsonResponse(200, saved));
+    }
+    if (path.endsWith("/geometries") && request.method === "GET") {
+      return Promise.resolve(jsonResponse(200, geometryPage()));
     }
     if (path.endsWith("/schema/preview") && request.method === "POST") {
       return Promise.resolve(

@@ -3598,6 +3598,41 @@
         "title": "FormatPage",
         "type": "object"
       },
+      "GeometryOut": {
+        "description": "One geometry an annotation can carry on this server.",
+        "properties": {
+          "name": {
+            "$ref": "#/components/schemas/GeometryType"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "GeometryOut",
+        "type": "object"
+      },
+      "GeometryPage": {
+        "description": "A page of the geometries an annotation can carry.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GeometryOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "GeometryPage",
+        "type": "object"
+      },
       "GeometryType": {
         "enum": [
           "bbox",
@@ -10474,6 +10509,73 @@
         "summary": "List Formats",
         "tags": [
           "formats"
+        ]
+      }
+    },
+    "/geometries": {
+      "get": {
+        "description": "Every geometry an annotation can carry on this server, by name.\n\n`name` is a value `LabelClassBody.geometries` accepts. A schema whose class\nnames a geometry outside this list is refused when it is saved, so this is\nthe set a schema editor offers.",
+        "operationId": "list_geometries",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeometryPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Geometries",
+        "tags": [
+          "schemas"
         ]
       }
     },
