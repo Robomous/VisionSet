@@ -1,4 +1,4 @@
-"""KITTI's rectified camera frame to its lidar frame, for one box.
+"""KITTI's rectified camera frame and its lidar frame, for one box, both ways.
 
 A ``label_2`` box is in the rectified reference camera's frame (x right, y
 down, z forward): ``location`` is the centre of its bottom face, its
@@ -17,6 +17,13 @@ calibration has between camera y and lidar z is a pitch and roll the cuboid
 does not model; within :data:`~visionset.formats._tilt.TILT_TOLERANCE` it is
 projected out of the heading, and beyond it the reader refuses the frame's
 boxes rather than flattening them, as the nuScenes reader does a leaning box.
+
+The writer goes the other way with :data:`CANONICAL`: the nominal axes with no
+offset and an identity ``R0_rect``, so ``rotation_y = -yaw - pi/2`` and the
+centre drops by ``h / 2`` to the bottom face. A scan in another declared frame
+is first turned into ``lidar_flu`` by :func:`to_lidar_flu`, an axis permutation
+that keeps a cuboid's yaw, because every frame measures yaw from its own forward
+axis toward its own left.
 """
 
 from __future__ import annotations
@@ -72,10 +79,77 @@ class CameraToLidar:
 
 
 @dataclass(frozen=True, slots=True)
+class LidarToCamera:
+    """One frame's ``R0_rect`` and ``Tr_velo_to_cam``, applied forwards."""
+
+    rect: Matrix
+    rotation: Matrix
+    translation: Vector
+
+    def point(self, lidar: Vector) -> Vector:
+        rotated = _apply(self.rotation, lidar)
+        return _apply(
+            self.rect,
+            (
+                rotated[0] + self.translation[0],
+                rotated[1] + self.translation[1],
+                rotated[2] + self.translation[2],
+            ),
+        )
+
+    def direction(self, lidar: Vector) -> Vector:
+        return _apply(self.rect, _apply(self.rotation, lidar))
+
+    def inverse(self) -> CameraToLidar:
+        return CameraToLidar.of(self.rect, self.rotation, self.translation)
+
+
+IDENTITY: Matrix = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
+
+#: ``x_cam = -y_velo``, ``y_cam = -z_velo``, ``z_cam = x_velo``, no offset, no rectification.
+CANONICAL = LidarToCamera(
+    rect=IDENTITY,
+    rotation=((0.0, -1.0, 0.0), (0.0, 0.0, -1.0), (1.0, 0.0, 0.0)),
+    translation=(0.0, 0.0, 0.0),
+)
+
+
+@dataclass(frozen=True, slots=True)
 class LidarBox:
     center: Vector
     size: Vector
     yaw: float
+
+
+@dataclass(frozen=True, slots=True)
+class CameraBox:
+    """A ``label_2`` box: bottom-face centre, ``(h, w, l)`` and ``rotation_y``."""
+
+    location: Vector
+    dimensions_hwl: Vector
+    rotation_y: float
+
+
+def to_lidar_flu(vector: Vector, frame: ScanFrame) -> Vector:
+    """A point or direction in ``frame``'s axes, written in ``lidar_flu``'s."""
+    forward, left, up = frame.forward, frame.left, frame.up
+    return (
+        forward[1] * vector[forward[0]] + 0.0,
+        left[1] * vector[left[0]] + 0.0,
+        up[1] * vector[up[0]] + 0.0,
+    )
+
+
+def lidar_box_to_camera(box: LidarBox, transform: LidarToCamera) -> CameraBox:
+    """The inverse of :func:`camera_box_to_lidar` for the same calibration, unrounded."""
+    length, width, height = box.size
+    x, y, z = transform.point(box.center)
+    heading = transform.direction((math.cos(box.yaw), math.sin(box.yaw), 0.0))
+    return CameraBox(
+        location=(x, y + height / 2, z),
+        dimensions_hwl=(height, width, length),
+        rotation_y=math.atan2(-heading[2], heading[0]) + 0.0,
+    )
 
 
 def camera_box_to_lidar(
