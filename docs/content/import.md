@@ -170,8 +170,9 @@ Coordinates are rounded to the micrometre. Classes are the names labels use, KIT
 (`Car`, `Van`, `Truck`, `Pedestrian`, `Person_sitting`, `Cyclist`, `Tram`, `Misc`) first in that
 order. A 16th column, a detection score, becomes the label's confidence when it lies in 0 to 1.
 Camera images are not read. The `kitti` exporter writes this layout with a canonical calibration
-(see [releases](releases.md#the-kitti-format)), so importing its output returns the same boxes and
-the same points; the boxes are then consistent with that calibration, not with the original
+(see [releases](releases.md#the-kitti-format)), so importing its output returns the same boxes,
+within 2 micrometres, and the same points, with intensity as the scan stored it (0 to 255 for a
+nuScenes scan, not KITTI's 0 to 1); the boxes are then consistent with that calibration, not with the original
 sensor's camera frame, which no export holds.
 
 **nuScenes.** The source is a data root, the directory that holds `samples/` beside one or more

@@ -790,8 +790,10 @@ frame: `Tr_velo_to_cam` is KITTI's nominal axis swap with no offset (`x_cam = -y
 `h / 2` to the bottom face, the size `(l, w, h)` becomes `h w l`, and
 `rotation_y = -yaw - pi/2`, wrapped into `[-pi, pi]`; `alpha` is `rotation_y` less the angle of
 the ray to the box, `atan2(x, z)`. The boxes agree with the calibration that ships beside them,
-and importing the export returns the same boxes to the micrometre, but they are not in the
+and importing the export returns the same boxes within 2 micrometres (`y` and `h` are each written
+to the micrometre and the importer recomputes the centre from both), but they are not in the
 original rig's camera frame, and projecting them into the original images would place them wrongly.
+A written angle stays within `[-pi, pi]` after rounding: `pi` itself is written `3.141592`.
 There is no image, so `P0` to `P3` are `[I | 0]`, `Tr_imu_to_velo` is the identity, the 2D box is
 zeros, truncation is `0` and occlusion is `3`, KITTI's unknown.
 
@@ -800,14 +802,16 @@ one in `lidar_rfu` or `camera_rdf` is turned into `lidar_flu`, points and boxes 
 permutation its frame declares, which keeps each cuboid's yaw. Coordinates are written in the
 scan's own units, which KITTI reads as metres. Each point is float32 `x, y, z, intensity`, decoded
 from the stored PCD, whose fields are read by name and any numeric type: a scan imported from KITTI
-is written back byte for byte. A point with a non-finite coordinate is left out, and a missing or
-non-finite intensity is written as `0`. Three kinds of scan are refused by asset with
+is written back byte for byte. Intensity is written as stored, not normalised: KITTI's own
+reflectance is 0 to 1, while a scan imported from nuScenes carries 0 to 255. A point with a
+non-finite coordinate is left out, and a missing or non-finite intensity is written as `0`. Three kinds of scan are refused by asset with
 `ExportSourceUnreadable` rather than written wrongly: a PLY scan, an LZF-compressed
 (`binary_compressed`) PCD, and a scan whose coordinates are stored wider than float32 and lie 8192
 or more from the origin, as a georeferenced scan's do, which a float32 `.bin` would round.
 
 A class name is KITTI's first token, so whitespace inside one is written as `_`; two class names
-that would become one token refuse the export. A pre-processing recipe is refused for this format,
+that would become one token refuse the export, and so does a class written `DontCare`, which KITTI
+readers treat as a region to ignore and the importer drops. A pre-processing recipe is refused for this format,
 because it transforms images.
 
 ### The destination is the caller's
@@ -1031,7 +1035,7 @@ carries the identical body under `detail.compatibility`.
 | `CalibrationMissing` | An asset carrying a 3D label has no calibration, neither its own nor its source's. 409. |
 | `CalibrationResolutionMismatch` | An asset carrying a 3D label has a calibration measured at another size than the asset. 422. |
 | `WorkspaceCorrupt` | The manifest blob is gone, or is not a readable manifest, or the trunk holds an asset that is not stored. All are guarantees failing rather than entities missing. |
-| `ExportSourceUnreadable` | The release names bytes an export cannot use - the blob is gone, no longer matches its content hash, is not an image the format can write, or is a scan `kitti` cannot decode; also a recipe given for an export that writes scans. **409, not 500**: the request is fine and the stored state is not, so the message names the asset and reaches the caller. The remedy is `verify` and then restoring the blob. A previous generation of this tool swallowed this and shipped a training set one image short. |
+| `ExportSourceUnreadable` | The release names bytes an export cannot use - the blob is gone, no longer matches its content hash, is not an image the format can write, or is a scan `kitti` cannot decode; also a recipe given for an export that writes scans. **409, not 500**: the request is fine and the stored state is not, so the message names the asset and reaches the caller. For a missing or altered blob the remedy is `verify` and then restoring it; for the recipe, exporting without it. A previous generation of this tool swallowed this and shipped a training set one image short. |
 | `ExportDestinationRefused` | The export directory is relative, inside or containing the workspace, a file, or cannot be created or read. Not overridable; the remedy is another path. |
 | `ExportDestinationNotEmpty` | The export directory already holds files and the caller has not passed `allow_non_empty`. Overridable; the files are then kept and counted. |
 | `ExportFormatNotFound` | Nothing is installed under that format name. Raised by the registry in `visionset.formats`, not by this service - the kernel never sees a name. |

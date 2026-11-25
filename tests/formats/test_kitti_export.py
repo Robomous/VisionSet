@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import math
+import random
 import struct
 from collections.abc import Iterator, Sequence
 from pathlib import Path
@@ -18,7 +19,7 @@ from tests.kernel.test_point_cloud_ingest import CLASSES as SCAN_CLASSES
 from tests.kernel.test_point_cloud_ingest import Scans, _car
 
 from visionset.formats.kitti import KittiExporter, KittiImporter
-from visionset.formats.kitti.frames import CANONICAL, to_lidar_flu
+from visionset.formats.kitti.frames import CANONICAL, CameraBox, to_lidar_flu
 from visionset.formats.kitti.writer import calibration_text, camera_box, class_tokens, label_line
 from visionset.formats.registry import exporter, exporters
 from visionset.kernel import ExportSourceUnreadable, LossyExportNotConsented
@@ -435,3 +436,51 @@ def test_a_scans_polyline_3d_and_the_images_are_reported_dropped_for_kitti(
     (images,) = report.dropped_modalities
     assert (images.modality, images.assets, images.annotations) == ("image", 2, 1)
     assert not report.compatible
+
+
+def test_a_class_written_as_dont_care_refuses_the_export() -> None:
+    with pytest.raises(ExportSourceUnreadable, match="'DontCare'"):
+        class_tokens(["Car", "DontCare"])
+
+
+@pytest.mark.parametrize("rotation_y", (-math.pi, math.pi))
+def test_an_angle_at_pi_is_written_within_pi(rotation_y: float) -> None:
+    box = CameraBox(
+        location=(0.0, 1.0, 10.0), dimensions_hwl=(1.5, 1.6, 4.0), rotation_y=rotation_y
+    )
+
+    columns = label_line("Car", box, None).split()
+
+    for written in (float(columns[3]), float(columns[14])):
+        assert abs(written) <= math.pi
+        assert abs(written) == pytest.approx(math.pi, abs=1e-6)
+
+
+#: What a re-import can move a box by: ``y`` and ``h`` are each written to the
+#: micrometre and the importer recomputes the centre from both, then rounds again.
+ROUND_TRIP_METRES = 2e-6
+
+
+def test_non_round_boxes_come_back_within_the_stated_bound(tmp_path: Path) -> None:
+    draw = random.Random(1122)
+    boxes = [
+        Cuboid3DGeometry(
+            center=(draw.uniform(-60, 60), draw.uniform(-60, 60), draw.uniform(-3, 3)),
+            size=(draw.uniform(0.3, 12), draw.uniform(0.3, 4), draw.uniform(0.3, 4)),
+            yaw=draw.uniform(-math.pi, math.pi),
+        )
+        for _ in range(300)
+    ]
+    asset = _scan_asset(_binary(), ScanFrame.LIDAR_FLU, [_cuboid("Car", box) for box in boxes])
+
+    dest = _export([asset], tmp_path / "out", {asset.content_hash: _binary()})
+    (scan,) = KittiImporter().read(dest).scans
+
+    back = sorted(
+        (label.geometry for label in scan.labels if isinstance(label.geometry, Cuboid3DGeometry)),
+        key=lambda one: one.center,
+    )
+    for before, after in zip(sorted(boxes, key=lambda one: one.center), back, strict=True):
+        assert _close(after.center, before.center, ROUND_TRIP_METRES)
+        assert _close(after.size, before.size, ROUND_TRIP_METRES)
+        assert _angle_between(after.yaw, before.yaw) <= RADIANS

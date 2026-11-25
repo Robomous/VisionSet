@@ -46,7 +46,12 @@ from visionset.formats.kitti.frames import (
     to_lidar_flu,
 )
 from visionset.formats.kitti.pcd import ScanUnreadable, kitti_points
-from visionset.formats.kitti.reader import CALIB_DIRNAME, LABELS_DIRNAME, VELODYNE_DIRNAME
+from visionset.formats.kitti.reader import (
+    CALIB_DIRNAME,
+    DONT_CARE,
+    LABELS_DIRNAME,
+    VELODYNE_DIRNAME,
+)
 from visionset.kernel.domain import (
     Cuboid3DGeometry,
     GeometryType,
@@ -67,6 +72,8 @@ OCCLUSION_UNKNOWN: Final = 3
 
 _WHITESPACE: Final = re.compile(r"\s+")
 _ANGLE_DECIMALS: Final = 6
+#: The largest written angle within ``[-pi, pi]``; ``pi`` itself rounds up past it.
+_ANGLE_LIMIT: Final = math.floor(math.pi * 10**_ANGLE_DECIMALS) / 10**_ANGLE_DECIMALS
 _METRE_DECIMALS: Final = 6
 
 
@@ -126,12 +133,18 @@ def class_tokens(names: Iterable[str]) -> dict[str, str]:
     """Each class name as KITTI's single-token ``type``, refusing two that would merge.
 
     Raises:
-        ExportSourceUnreadable: two class names differ only in their whitespace.
+        ExportSourceUnreadable: two class names differ only in their whitespace,
+            or one is written ``DontCare``, which KITTI reads as an ignored region.
     """
     tokens: dict[str, str] = {}
     taken: dict[str, str] = {}
     for name in names:
         token = _WHITESPACE.sub("_", name)
+        if token == DONT_CARE:
+            raise ExportSourceUnreadable(
+                f"class {name!r} would be written as KITTI type {DONT_CARE!r}, which "
+                "marks a region to ignore rather than an object"
+            )
         other = taken.setdefault(token, name)
         if other != name:
             raise ExportSourceUnreadable(
@@ -216,7 +229,8 @@ def _wrapped(angle: float) -> float:
 
 
 def _angle(value: float) -> str:
-    return f"{round(value, _ANGLE_DECIMALS) + 0.0:.{_ANGLE_DECIMALS}f}"
+    rounded = max(-_ANGLE_LIMIT, min(_ANGLE_LIMIT, round(value, _ANGLE_DECIMALS)))
+    return f"{rounded + 0.0:.{_ANGLE_DECIMALS}f}"
 
 
 def _metres(value: float) -> str:
