@@ -39,6 +39,7 @@ export const VISUAL = {
   job: "dddddddd-4444-4444-8444-dddddddddddd",
   connection: "eeeeeeee-5555-4555-8555-eeeeeeeeeeee",
   asset: "ffffffff-6666-4666-8666-ffffffffffff",
+  source: "99999999-7777-4777-8777-999999999999",
 } as const;
 
 /**
@@ -52,6 +53,36 @@ export const PIXEL = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
   "base64",
 );
+
+/**
+ * The scan as the server's point buffer: a 60 m x 40 m ground grid rising 2.4 m
+ * along x, so height spans the whole ramp, with a car-sized lump on it. Every
+ * point is a product of integer steps, never a random draw.
+ */
+function scanPoints(): { readonly body: Buffer; readonly count: number } {
+  const points: [number, number, number][] = [];
+  for (let i = 0; i <= 120; i += 1) {
+    for (let j = 0; j <= 80; j += 1) points.push([-30 + i / 2, -20 + j / 2, -2 + i / 50]);
+  }
+  for (let i = 0; i <= 20; i += 1) {
+    for (let j = 0; j <= 10; j += 1) points.push([6 + i / 5, -1 + j / 5, 1.2]);
+  }
+  const count = points.length;
+  const body = Buffer.alloc(16 + count * 16);
+  body.write("VSPC", 0, "latin1");
+  body.writeUInt32LE(1, 4);
+  body.writeUInt32LE(count, 8);
+  body.writeUInt32LE(1, 12);
+  points.forEach(([x, y, z], index) => {
+    body.writeFloatLE(x, 16 + index * 12);
+    body.writeFloatLE(y, 16 + index * 12 + 4);
+    body.writeFloatLE(z, 16 + index * 12 + 8);
+    body.writeFloatLE(x + 30, 16 + count * 12 + index * 4);
+  });
+  return { body, count };
+}
+
+const SCAN = scanPoints();
 
 /* ------------------------------------------------------------------ hostile content */
 
@@ -111,6 +142,8 @@ export interface VisualOptions {
   readonly annotationCount?: number;
   /** Fails the project list with this refusal instead of answering it. */
   readonly refusal?: string;
+  /** Makes the job's one asset a point-cloud scan with a cuboid on it. */
+  readonly scan?: boolean;
 }
 
 function project(options: VisualOptions): Wire["ProjectOut"] {
@@ -172,7 +205,12 @@ function projectList(options: VisualOptions): Wire["ProjectPage"] {
 
 function schema(options: VisualOptions): Wire["SchemaVersionOut"] {
   const classes: Wire["SchemaVersionOut"]["classes"] =
-    options.longClassName === true
+    options.scan === true
+      ? [
+          { name: "vehicle", geometries: ["bbox", "cuboid_3d"], color: "#38bdf8", attributes: [] },
+          { name: "lane", geometries: ["polygon"], color: "#f56200", attributes: [] },
+        ]
+      : options.longClassName === true
       ? [
           { name: LONG_CLASS_NAME, geometries: ["bbox"], color: "#38bdf8", attributes: [] },
           { name: "vehicle", geometries: ["bbox"], color: "#f56200", attributes: [] },
@@ -185,14 +223,14 @@ function schema(options: VisualOptions): Wire["SchemaVersionOut"] {
   return { project_id: VISUAL.project, version: 4, classes };
 }
 
-function batch(): Wire["BatchOut"] {
+function batch(options: VisualOptions): Wire["BatchOut"] {
   return {
     id: VISUAL.batch,
     project_id: VISUAL.project,
     name: "drive-01",
     state: "in_annotation",
     allowed_actions: batchActions("in_annotation", { settled: false }),
-    modalities: ["image"],
+    modalities: [options.scan === true ? "point_cloud" : "image"],
     promoted_asset_count: 0,
     parent_batch_id: null,
     pre_label_run: null,
@@ -237,6 +275,21 @@ function connection(options: VisualOptions): Wire["ConnectionOut"] {
  * workspace simply never leaves "Loading the job".
  */
 function annotations(options: VisualOptions): Wire["AnnotationPage"] {
+  if (options.scan === true) {
+    const cuboid: Wire["AnnotationOut"] = {
+      id: "a0000000-0000-4000-8000-000000000000",
+      asset_id: VISUAL.asset,
+      job_id: VISUAL.job,
+      label_class: "vehicle",
+      geometry: { type: "cuboid_3d", center: [8, 0, 0.4], size: [4, 2, 1.6], yaw: 0.3 },
+      attributes: {},
+      confidence: null,
+      model_ref: null,
+      provenance: "human",
+      schema_version: 4,
+    };
+    return { items: [cuboid], total: 1 };
+  }
   const count = options.annotationCount ?? 3;
   const names = ["vehicle", "lane", "pedestrian"] as const;
   const items: Wire["AnnotationOut"][] = Array.from({ length: count }, (_, index) => {
@@ -305,7 +358,7 @@ export async function serveVisualApi(page: Page, options: VisualOptions = {}): P
     // the tail rather than on a route the caller happened to use when it was written.
     if (path.includes("/schema/versions/")) return route.fulfill({ json: schema(options) });
     if (path === `/projects/${P}/batches`) {
-      return route.fulfill({ json: { items: [batch()], total: 1 } satisfies Wire["BatchPage"] });
+      return route.fulfill({ json: { items: [batch(options)], total: 1 } satisfies Wire["BatchPage"] });
     }
     if (path === `/projects/${P}/dataset`) {
       return route.fulfill({
@@ -370,7 +423,7 @@ export async function serveVisualApi(page: Page, options: VisualOptions = {}): P
         json: { ...NO_PROGRESS, unannotated: 1, total: 1 } satisfies Wire["ProgressCounts"],
       });
     }
-    if (path === `/batches/${VISUAL.batch}`) return route.fulfill({ json: batch() });
+    if (path === `/batches/${VISUAL.batch}`) return route.fulfill({ json: batch(options) });
     if (path === `/batches/${VISUAL.batch}/assets`) {
       return route.fulfill({
         json: {
@@ -378,26 +431,60 @@ export async function serveVisualApi(page: Page, options: VisualOptions = {}): P
             {
               id: VISUAL.asset,
               project_id: P,
-              modality: "image",
-              point_cloud: null,
+              ...(options.scan === true
+                ? {
+                    modality: "point_cloud",
+                    point_cloud: {
+                      format: "pcd",
+                      point_count: SCAN.count,
+                      fields: ["x", "y", "z", "intensity"],
+                      bounds: { minimum: [-30, -20, -2], maximum: [30, 20, 1.2] },
+                    },
+                    width: null,
+                    height: null,
+                    format: null,
+                    source_id: VISUAL.source,
+                    frame_index: null,
+                  }
+                : {
+                    modality: "image",
+                    point_cloud: null,
+                    width: 640,
+                    height: 480,
+                    format: "png",
+                    source_id: null,
+                    frame_index: 0,
+                  }),
               content_hash: LONG_CONTENT_HASH,
-              width: 640,
-              height: 480,
-              format: "png",
-              source_id: null,
-              frame_index: 0,
               frame_timestamp: null,
               thumbnail_hash: LONG_CONTENT_HASH,
               ingested_at: FIXED_ISO,
               job_id: VISUAL.job,
               progress: "annotated",
               allowed_actions: assetActions("annotated"),
-              annotation_count: options.annotationCount ?? 3,
+              annotation_count: options.scan === true ? 1 : (options.annotationCount ?? 3),
               min_confidence: null,
             },
           ],
           total: 1,
         } satisfies Wire["BatchAssetPage"],
+      });
+    }
+
+    if (path === `/projects/${P}/assets/${VISUAL.asset}/points`) {
+      return route.fulfill({ contentType: "application/octet-stream", body: SCAN.body });
+    }
+    if (path === `/sources/${VISUAL.source}`) {
+      return route.fulfill({
+        json: {
+          id: VISUAL.source,
+          project_id: P,
+          kind: "point_cloud_directory",
+          name: "sweeps",
+          registered_at: FIXED_ISO,
+          frame: "lidar_flu",
+          video: null,
+        } satisfies Wire["SourceOut"],
       });
     }
 
