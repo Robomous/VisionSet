@@ -111,7 +111,7 @@ export const REFUSAL_PROSE: Record<string, string> = {
   BATCH_NOT_COMPLETE: "Some of this batch's jobs are still unfinished.",
   BATCH_IMMUTABLE: "This batch is completed, and completed batches are kept.",
   BATCH_NOT_FOUND: "That batch is no longer on record.",
-  EMPTY_BATCH: "This batch has no frames — add some before approving it.",
+  EMPTY_BATCH: "This batch has no assets — add some before approving it.",
   INVALID_TRANSITION: "This has already moved on — reload to see where it is now.",
   // Not the same sentence as INVALID_TRANSITION, though they are neighbours.
   // That one means the move was never allowed from here; this one means it was
@@ -119,15 +119,15 @@ export const REFUSAL_PROSE: Record<string, string> = {
   // the other person rather than the rule.
   STALE_WRITE: "Someone else changed this while you were working on it — reload to see it.",
 
-  // The annotation-work family — a job, and the frames inside one.
-  ASSET_NOT_WRITABLE: "This frame's labeling is settled — its labels cannot be changed here.",
-  JOB_NOT_COMPLETE: "Some frames still need annotating or skipping.",
-  ASSET_NOT_IN_JOB: "This frame is not part of this job.",
-  ASSET_NOT_IN_DATASET: "That frame is no longer in the dataset.",
-  ASSET_NOT_IN_BATCH: "That frame is not in the batch this one corrects.",
-  ASSET_NOT_FOUND: "Some of those frames are not in this project.",
+  // The annotation-work family — a job, and the assets inside one.
+  ASSET_NOT_WRITABLE: "This asset's labeling is settled — its labels cannot be changed here.",
+  JOB_NOT_COMPLETE: "Some assets still need annotating or skipping.",
+  ASSET_NOT_IN_JOB: "This asset is not part of this job.",
+  ASSET_NOT_IN_DATASET: "That asset is no longer in the dataset.",
+  ASSET_NOT_IN_BATCH: "That asset is not in the batch this one corrects.",
+  ASSET_NOT_FOUND: "Some of those assets are not in this project.",
   ANNOTATION_NOT_FOUND: "That annotation is no longer on record.",
-  ANNOTATION_GEOMETRY_OUT_OF_BOUNDS: "That shape falls outside the frame it is drawn on.",
+  ANNOTATION_GEOMETRY_OUT_OF_BOUNDS: "That shape falls outside the asset it is drawn on.",
   JOB_NOT_FOUND: "That job is no longer on record.",
   JOB_FINISHED: "This job is finished — correct its labels in a new batch instead.",
 
@@ -178,7 +178,7 @@ export const REFUSAL_PROSE: Record<string, string> = {
   INVALID_EXPORT_TARGET:
     "An installed export plugin declares a model it cannot write for — check the installed export plugins.",
   UNSERIALIZABLE_MANIFEST: "This release's manifest cannot be read back — the workspace may be damaged.",
-  EMPTY_RELEASE: "This dataset has no frames yet — add a completed batch to it first.",
+  EMPTY_RELEASE: "This dataset has no assets yet — add a completed batch to it first.",
   // The dialog lists the classes beside this, from the refusal's own `blockers`.
   RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA:
     "The active schema no longer describes some annotations in this dataset.",

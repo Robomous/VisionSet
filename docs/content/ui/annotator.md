@@ -26,8 +26,8 @@ the hand. Nothing in a zone changes position from frame to frame.
 | Zone | Contents |
 | --- | --- |
 | Bar | back (heading the rail's column) · the batch's name `›` `Job · n frames` (`Job · n scans` for a job of scans) · pinned `v{n}` badge — then, at the far end, the job's progress · a hairline · the save state · the frame's review move · overflow `⋯` |
-| Rail | the tools, the hand; at the foot, hide/show all objects, then help |
-| Stage | the tool's own bar (the active tool and the class it draws; while Suggest is armed, its options and its state) over the picture; on the picture, the status tag and under it the object count and hint top-left, notices top-right, the island bottom-centre, zoom bottom-right |
+| Rail | the tools, the hand; at the foot, hide/show all objects, then help. Absent on a scan, whose column the stage takes |
+| Stage | the tool's own bar (the active tool and the class it draws; while Suggest is armed, its options and its state) over the picture, on an image only; on the picture, the status tag and under it the object count and hint top-left, notices top-right, the island bottom-centre, zoom bottom-right |
 | Panel | the classes, tags and objects |
 
 **The bar says where you are and where the work stands, and nothing on it moves between
@@ -633,7 +633,12 @@ still zooms. Outside Edit the view keeps its own mapping: a left drag orbits.
   face up later.
 - **Keys.** With the view focused: Delete removes the selection, Escape cancels a gesture or
   lets go of the selection, Enter finishes a height or a polyline, `mod+z` / `mod+shift+z` undo and redo,
-  `mod+s` saves. Undo and redo are the island's: one pair, which the keys send too.
+  `mod+s` saves, and `?` opens or closes the scan's shortcut list. The keys are one table,
+  `SCAN_KEY_BINDINGS`: the handler resolves a press against it and the list (Keyboard shortcuts in the
+  `⋯` menu, or `?`) renders its rows, so the two cannot drift; the 2D sheet is never shown on a scan.
+  Enter and `X` do not advance or skip on a scan: Enter is the editor's commit, and a key that
+  moved to the next scan mid-edit would be a lost gesture, so Next and Skip are the island's alone.
+  Undo and redo are the island's: one pair, which the keys send too.
   While a label is being drawn, undo steps the draft back — the last vertex of a polyline,
   a box's height back to its width, its width to nothing — and leaves the history alone, and
   redo does nothing; during a drag both drop the drag first and then undo or redo. A box's
@@ -653,10 +658,15 @@ A scan's edits share the page's one save plan and dirty state with the image doc
 autosave, `Next`, `mod+s` and the unsaved-changes guard all cover them, a cuboid created on the
 page and already stored is saved again under the server's id, and an edited import keeps
 its provenance. On a scan the island's undo and redo walk the scan labels' history, by the
-rule under *Keys*, and the tool rail and the zoom widget are absent: the strip and the view
-carry those. Edit is disabled, with the reason on the control, when the scan's source
-declares no frame (the server refuses every 3D write there) or the frame is open for viewing
-only; a frame that turns read-only mid-edit leaves Edit on the same render.
+rule under *Keys*, and the tool rail, the tool's own bar, the 2D hint and the zoom widget are
+absent: the strip and the view carry those. Every sentence on a scan's page names a scan — the
+island, the job's progress, the review move, Skip and Un-skip, Finish job, the banners and the
+skipped notice — and the only "frame" left is the coordinate frame. Edit is disabled, with the
+reason on the control, while the scan's source is being read, when its source declares no
+frame (the server refuses every 3D write there), when the request for the source fails, or
+when the scan is open for viewing only. A failed source request is said as one: the stage
+shows the refusal with a retry and the summary reads `frame unknown`, never that the source
+declares none; a scan that turns read-only mid-edit leaves Edit on the same render.
 
 ## The stage
 

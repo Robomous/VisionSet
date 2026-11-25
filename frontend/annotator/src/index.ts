@@ -211,8 +211,10 @@ export {
 } from "./core/pointcloud/edit/machine";
 export { runScanEffects } from "./core/pointcloud/edit/runScanEffects";
 export {
+  SCAN_KEY_BINDINGS,
   scanKeyIntent,
   scanPointerRole,
+  type ScanKeyBinding,
   type ScanKeyIntent,
   type ScanKeyPress,
   type ScanPointerRole,

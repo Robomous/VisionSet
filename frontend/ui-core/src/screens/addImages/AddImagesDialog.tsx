@@ -42,7 +42,7 @@ import { approveLabel } from "../approveForm";
 import { SchemaForeshadow } from "../SchemaForeshadow";
 import { useActiveSchema, useProject } from "../queries";
 import { BatchStep } from "./BatchStep";
-import { ingestFraction } from "./ingestWords";
+import { flowNoun, ingestFraction } from "./ingestWords";
 import { NEW_BATCH } from "./intoTarget";
 import { EASE, PRESS } from "./motion";
 import { SettingsStep } from "./SettingsStep";
@@ -219,8 +219,7 @@ interface Actions {
 }
 
 function noun(flow: AddImagesFlow, n: number): string {
-  const one = flow.kind === "scans" ? "scan" : flow.kind === "video" ? "frame" : "image";
-  return `${formatCount(n)} ${n === 1 ? one : `${one}s`}`;
+  return `${formatCount(n)} ${flowNoun(flow, n)}`;
 }
 
 /** What the footer offers on the step shown: a way back, a secondary, and the one filled action. */

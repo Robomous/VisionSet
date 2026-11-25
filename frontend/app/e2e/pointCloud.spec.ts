@@ -143,6 +143,8 @@ interface ScanWorld {
   readonly schema?: Wire["SchemaVersionOut"];
   /** The points served; absent, the ground grid with a car on it. */
   readonly scan?: ScanBuffer;
+  /** While `failing` holds, the source request is refused. */
+  readonly source?: { failing: boolean };
 }
 
 async function openScan(page: Page, world: ScanWorld = {}): Promise<Request[]> {
@@ -167,6 +169,9 @@ async function serveScan(page: Page, lifecycle: Lifecycle, world: ScanWorld = {}
       return route.fulfill({ contentType: "application/octet-stream", body: (world.scan ?? SCAN).body });
     }
     if (path === `/sources/${SOURCE}`) {
+      if (world.source?.failing === true) {
+        return route.fulfill({ status: 503, json: { code: "WORKSPACE_BUSY", message: "busy" } });
+      }
       return route.fulfill({
         json: {
           id: SOURCE,
@@ -1030,4 +1035,41 @@ test("at every width from 768 to 1360 px, the island and the scan's controls cov
     await expect.poll(() => covered(page, [...SCAN_CONTROLS, ...ISLAND_CONTROLS]), { message: `Edit at ${width}` }).toEqual([]);
     await expect.poll(() => overTopDown(page), { message: `Edit at ${width}` }).toEqual([]);
   }
+});
+
+test("a scan's page carries no 2D tool chrome, and ? on the view opens the scan's own shortcuts", async ({ page }) => {
+  await openScan(page);
+  const view = page.getByTestId("point-cloud-canvas");
+  await expect.poll(() => drawCount(view)).toBeGreaterThan(0);
+  await expect(page.getByTestId("tool-options")).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Tools" })).toHaveCount(0);
+  await expect(page.getByTestId("annotation-page")).not.toContainText("picks a class");
+  await expect(page.getByTestId("prev-asset")).toHaveAttribute("aria-label", "Previous scan");
+
+  await page.getByTestId("point-cloud-gl").focus();
+  await page.keyboard.press("?");
+  const sheet = page.getByTestId("shortcut-sheet");
+  await expect(sheet).toHaveAttribute("data-sheet", "scan");
+  await expect(sheet.locator("[data-chord]")).toHaveCount(9);
+  await expect(sheet).not.toContainText(/frame/i);
+  await page.keyboard.press("?");
+  await expect(sheet).toHaveCount(0);
+});
+
+test("a scan whose source request fails says so with a retry, and never that it declares no frame", async ({ page }) => {
+  const source = { failing: true };
+  await openScan(page, { schema: CUBOID_SCHEMA, source });
+  const failure = page.getByTestId("scan-source-error");
+  await expect(failure).toContainText("could not be read", { timeout: 20_000 });
+  await expect(failure).toContainText("The workspace is busy");
+  await expect(page.getByTestId("point-cloud-summary")).toContainText("frame unknown");
+  await expect(page.getByTestId("point-cloud-summary")).not.toContainText("no declared frame");
+  await expect(page.getByTestId("scan-edit-strip").locator("[data-reason]")).toHaveAttribute("data-reason", /could not be read/);
+
+  source.failing = false;
+  await failure.getByRole("button", { name: "Try again" }).click();
+  await expect(failure).toHaveCount(0);
+  await expect(page.getByTestId("point-cloud-summary")).toContainText("lidar_flu");
+  await page.getByTestId("scan-edit-toggle").click();
+  await expect(page.getByTestId("point-cloud-canvas")).toHaveAttribute("data-editing", "on");
 });
