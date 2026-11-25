@@ -165,6 +165,22 @@ def _finished(job_id: str) -> None:
     payload(call("complete_job", job_id=job_id))
 
 
+def test_complete_batch_is_declared_once_every_asset_has_settled(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    name, batch_id, job_id = open_batch(monkeypatch, tmp_path, count=2)
+
+    def offered() -> tuple[bool, bool]:
+        one = payload(call("get_batch", batch_id=batch_id))["allowed_actions"]
+        many = payload(call("list_batches", project=name))["items"][0]["allowed_actions"]
+        return "complete" in one, "complete" in many
+
+    assert offered() == (False, False)
+    for asset in payload(call("next_pending_assets", job_id=job_id, count=100))["items"]:
+        call("set_asset_progress", job_id=job_id, asset_id=asset["id"], progress="annotated")
+    assert offered() == (True, True)
+
+
 def test_completing_with_promote_fills_the_trunk_and_counts_what_moved(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -65,11 +65,11 @@ export interface CompleteBatchButtonProps {
  * choice, and a label that changed with it would also change width under the
  * pointer.
  *
- * **Withheld while work is outstanding rather than offered and refused.**
- * `JobService.complete` would refuse an unsettled asset, and this screen can
- * already see the count, so the button is disabled and its tooltip says how
- * many are left. The remaining refusals are real answers to a race, and are
- * said in words, under the footer's controls (`data-line`).
+ * **The declaration alone decides.** The kernel declares `complete` only once
+ * every asset has settled, so a batch being labeled that does not declare it is
+ * shown withheld, its tooltip counting what is left — the count is the reason's
+ * wording, never the gate. A refusal that still arrives is a race, said in words
+ * under the footer's controls (`data-line`).
  *
  * The UI says "add to dataset" where the kernel, API and CLI say `promote`.
  */
@@ -81,10 +81,11 @@ export function CompleteBatchButton({ batch, projectId, onOpenDataset, onPromote
   const [add, setAdd] = useState(lastAddChoice);
 
   const offered = declares(batch, BATCH_ACTION.complete);
-  if (!offered && completed === null) return null;
+  const withheld = !offered && batch.state === "in_annotation";
+  if (!offered && !withheld && completed === null) return null;
 
   const outstanding = outstandingWork(batch.progress);
-  const reason = outstanding > 0 ? `${outstanding} ${batchNoun(batch.modalities, outstanding)} still to annotate or skip` : null;
+  const reason = outstanding > 0 ? `${outstanding} ${batchNoun(batch.modalities, outstanding)} still to annotate or skip` : "This batch can’t be completed right now.";
   const busy = finish.isPending || promote.isPending;
   const summary = promote.isSuccess ? promotionSummary(promote.data.total, batch.promoted_asset_count, batch.asset_count) : null;
 
@@ -101,9 +102,10 @@ export function CompleteBatchButton({ batch, projectId, onOpenDataset, onPromote
 
   return (
     <div className="contents">
+      {withheld && completed === null && <IconAction icon={CircleCheckBig} label="Complete batch" reason={reason} variant="outline" data-testid={`complete-${batch.name}`} />}
       {offered &&
-        (reason !== null || busy ? (
-          <IconAction icon={CircleCheckBig} label="Complete batch" reason={reason} busy={busy} variant="outline" data-testid={`complete-${batch.name}`} />
+        (busy ? (
+          <IconAction icon={CircleCheckBig} label="Complete batch" busy variant="outline" data-testid={`complete-${batch.name}`} />
         ) : (
           <Popover open={open} onOpenChange={setOpen}>
             <Tooltip>

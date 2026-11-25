@@ -329,6 +329,32 @@ def test_the_walk_from_draft_to_completed(client: TestClient, ingested: str) -> 
     assert completed.json()["progress"]["skipped"] == 3
 
 
+def test_complete_is_declared_only_once_every_asset_has_settled(
+    client: TestClient, ingested: str
+) -> None:
+    client.post(f"/batches/{ingested}/approve")
+    client.post(f"/batches/{ingested}/start")
+
+    def declared() -> tuple[bool, bool]:
+        """The batch read alone, and the same batch in its project's listing."""
+        one = client.get(f"/batches/{ingested}").json()
+        page = client.get(f"/projects/{one['project_id']}/batches").json()["items"]
+        listed = next(b for b in page if b["id"] == ingested)
+        return "complete" in one["allowed_actions"], "complete" in listed["allowed_actions"]
+
+    assert declared() == (False, False)
+    job = client.get(f"/batches/{ingested}/jobs").json()["items"][0]["id"]
+    client.post(f"/jobs/{job}/start")
+    assets = client.get(f"/jobs/{job}/next", params={"n": 99}).json()["items"]
+    assert len(assets) >= 2
+    for asset in assets[:-1]:
+        client.put(f"/jobs/{job}/assets/{asset['id']}/progress", json={"progress": "skipped"})
+    assert declared() == (False, False)
+
+    client.put(f"/jobs/{job}/assets/{assets[-1]['id']}/progress", json={"progress": "skipped"})
+    assert declared() == (True, True)
+
+
 def test_approving_twice_is_refused_rather_than_re_partitioned(
     client: TestClient, ingested: str
 ) -> None:

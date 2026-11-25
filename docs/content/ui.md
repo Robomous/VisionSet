@@ -474,8 +474,8 @@ the batch declares them: *Approve* (it opens the approve dialog, because approva
 schema, cuts the jobs and has no route back - and, switch on, starts the batch too), *Start annotating*, *Annotate* (only when
 the batch has exactly one job, straight into it), *Complete* and, on a completed batch with
 images still outside the dataset, *Add to dataset*. *Annotate* is filled while there is work left,
-*Complete* once nothing is outstanding; while frames are still to do, *Complete* is withheld and
-its tooltip counts them.
+*Complete* once nothing is outstanding. The batch declares `complete` only once every frame is
+settled, so while frames are still to do *Complete* is withheld and its tooltip counts them.
 
 **Complete asks first, and the answer holds the choice.** A press opens a small confirmation -
 *Complete this batch?*, that any open job closes with it and that a completed batch cannot be
@@ -1435,8 +1435,11 @@ takes them together. **Approve** with its *Start annotating now* switch on, its 
 draft through `approved` to `in_annotation` - in the batch's approve dialog, and in place as the
 Add images dialog's last step, which draws the same form. **Complete**, with its *Add the labeled images to the dataset* switch on, closes
 the batch and moves its work into the trunk; it is the panel footer's one way to finish a batch,
-withheld while any frame is still to do, and says what the press moved in the same sentence *Add
-to dataset* uses.
+withheld until the batch declares it, and says what the press moved in the same sentence *Add to
+dataset* uses. Its press reads the batch afresh and closes the open jobs only if that read still
+declares `complete`; otherwise it sends the batch's own request alone and says the refusal, so a
+refused press closes no job - unless an asset is reopened between that read and the job writes,
+a race the client cannot close.
 
 Neither is a new transition. Each control sends the two requests a person could send one
 at a time, in order, and stops where the kernel stops it: a refusal on the second step

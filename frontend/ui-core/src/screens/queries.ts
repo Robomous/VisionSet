@@ -32,6 +32,7 @@ import {
 
 import { useApiClient } from "../data/VisionSetDataProvider";
 import { usePollingQuery } from "../data/polling";
+import { BATCH_ACTION, declares } from "../data/capabilities";
 import { asApiError, unwrap } from "../data/errors";
 import type { Refusal } from "../data/refusals";
 import type { VisionSetDataClient } from "../data/port";
@@ -1463,7 +1464,14 @@ export interface FinishBatchResult {
  * forever and `Complete` refused forever, naming no remedy. So this sends the two
  * links nobody was sending, in the only order the machines allow.
  *
- * ## Three rules, each of them load-bearing
+ * ## Four rules, each of them load-bearing
+ *
+ * **No job moves unless the batch, read fresh, declares `complete`.** The kernel
+ * declares it only once every asset has settled, so every job can then close.
+ * Without it, only the batch's own request is sent, and its refusal is the answer:
+ * closing one job and then meeting an unsettled one would lock work forward for a
+ * press that changed nothing else. An asset unsettled between that read and the
+ * job writes is a race this cannot close.
  *
  * **`pending` is started first.** `JOB_TRANSITIONS` has no `pending → completed`
  * edge, so a job the annotator was never opened on cannot be closed without
@@ -1491,12 +1499,18 @@ export function useFinishBatch(batchId: string) {
   const queries = useQueryClient();
   return useMutation({
     mutationFn: async (): Promise<FinishBatchResult> => {
-      const jobs = unwrap(
-        await client.GET("/batches/{batch_id}/jobs", {
-          params: { path: { batch_id: batchId } },
-        }),
-        checkListBatchJobs,
+      const fresh = unwrap(
+        await client.GET("/batches/{batch_id}", { params: { path: { batch_id: batchId } } }),
+        checkGetBatch,
       );
+      const jobs = declares(fresh, BATCH_ACTION.complete)
+        ? unwrap(
+            await client.GET("/batches/{batch_id}/jobs", {
+              params: { path: { batch_id: batchId } },
+            }),
+            checkListBatchJobs,
+          )
+        : { items: [] };
 
       let jobsFinished = 0;
       for (const job of jobs.items) {

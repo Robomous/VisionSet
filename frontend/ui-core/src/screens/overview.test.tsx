@@ -1751,19 +1751,19 @@ describe("the batches panel", () => {
     });
 
     it("completes without adding only after a confirmation with its switch off, and sends no promotion", async () => {
+      const done = batchOf({
+        id: "done",
+        name: "drive-02",
+        state: "in_annotation",
+        progress: progressOf({ total: 10, annotated: 10 }),
+        allowed_actions: batchActions("in_annotation"),
+      });
       readinessOf({
         stats: statsOf({ asset_count: 10 }),
-        batches: [
-          batchOf({
-            id: "done",
-            name: "drive-02",
-            state: "in_annotation",
-            progress: progressOf({ total: 10, annotated: 10 }),
-            allowed_actions: batchActions("in_annotation"),
-          }),
-        ],
+        batches: [done],
         jobs: [{ id: "job-1", batch_id: "done", state: "completed", asset_count: 10, assignee: null, pre_label_run: null, allowed_actions: [] }],
       });
+      on("GET", /\/batches\/done$/, { status: 200, body: done });
       on("POST", /\/batches\/done\/complete$/, {
         status: 200,
         body: batchOf({ id: "done", name: "drive-02", state: "completed", allowed_actions: batchActions("completed") }),
@@ -1787,7 +1787,7 @@ describe("the batches panel", () => {
       ]);
     });
 
-    it("withholds Complete, with its count in the tooltip, while work is outstanding", async () => {
+    it("withholds Complete, with its count in the tooltip, while the batch does not declare it", async () => {
       readinessOf({
         stats: statsOf({ asset_count: 10 }),
         batches: [
@@ -1796,7 +1796,7 @@ describe("the batches panel", () => {
             name: "drive-03",
             state: "in_annotation",
             progress: progressOf({ total: 10, annotated: 8, unannotated: 2 }),
-            allowed_actions: batchActions("in_annotation"),
+            allowed_actions: batchActions("in_annotation", { settled: false }),
           }),
         ],
       });

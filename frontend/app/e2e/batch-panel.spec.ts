@@ -59,9 +59,9 @@ const BATCH_COUNTS = {
  * Nothing outstanding, which is the whole precondition for finishing.
  *
  * The default fixture is mid-flight (30 of 48 unannotated), which is the wrong
- * shape for every claim about *finishing*: Complete is withheld while work is
- * outstanding, so a test written against the default would assert against a
- * control that is correctly disabled.
+ * shape for every claim about *finishing*: the batch does not declare `complete`
+ * while work is outstanding, so a test written against the default would assert
+ * against a control that is correctly withheld.
  */
 const SETTLED_COUNTS = {
   total: 48,
@@ -134,7 +134,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
       schema_version: current === "draft" ? null : 3,
       asset_count: 48,
       progress: counts,
-      allowed_actions: batchActions(current),
+      allowed_actions: batchActions(current, { settled: counts.unannotated + counts.pre_labeled + counts.review_pending === 0 }),
       modalities: ["image"],
       promoted_asset_count: promoted,
       parent_batch_id: null,
@@ -320,6 +320,13 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
         return route.fulfill({
           status: 409,
           json: { code: "INVALID_TRANSITION", message: `job cannot become completed from ${job}` },
+        });
+      }
+      // And only once every asset is settled, as `JobService.complete` requires.
+      if (options.settled !== true) {
+        return route.fulfill({
+          status: 409,
+          json: { code: "JOB_NOT_COMPLETE", message: `job ${JOB} has 35 of 48 assets still unsettled` },
         });
       }
       job = "completed";
@@ -693,18 +700,19 @@ test("an approved batch is started from its panel", async ({ page }) => {
 
 // --- finishing -----------------------------------------------------------------
 
-test("completing is withheld while frames are outstanding, and says how many", async ({ page }) => {
+test("completing is withheld while the batch does not declare it, and says how many are left", async ({ page }) => {
   const sent: Request[] = [];
   const panel = await openPanel(page, sent);
 
-  // 30 unannotated and 5 in review: 35 frames are neither annotated nor skipped.
+  // 30 unannotated and 5 in review: 35 frames are neither annotated nor skipped,
+  // so the kernel does not declare `complete`.
   const complete = panel.getByTestId(`complete-${NAME}`);
   await expect(complete).toBeDisabled();
   await expect(complete).toHaveAccessibleName("Complete batch");
   // The count is the tooltip's reason, reached by keyboard: the withheld button stays focusable (`aria-disabled`).
   await expect(complete).toHaveAttribute("aria-disabled", "true");
   await complete.focus();
-  await expect(page.getByRole("tooltip").filter({ hasText: "still to annotate or skip" }).first()).toBeVisible();
+  await expect(page.getByRole("tooltip").filter({ hasText: "35 frames still to annotate or skip" }).first()).toBeVisible();
   await expect(page.getByTestId("complete-confirm")).toHaveCount(0);
   expect(writes(sent)).toEqual([]);
 });

@@ -110,6 +110,12 @@ nothing was being distributed. This is the first version that is.
   (#1113).
 - **`@visionset/annotator`: the scan editor's chords are one table.** `SCAN_KEY_BINDINGS` lists every chord
   `scanKeyIntent` answers, and `?` is one of them (intent `help`) (#1113).
+- **A batch declares `complete` only once every asset is settled.** `allowed_actions` on a batch now applies the
+  `SETTLED_PROGRESS` condition a job's `complete` already applied, read from the batch's own progress tally, and
+  REST, the CLI and MCP all publish the same answer. The batch panel's *Complete* follows the declaration alone
+  (withheld, with its count, until it is declared), and a press closes no job unless the batch, read again at the
+  press, still declares `complete`; an asset reopened between that read and the job writes can still leave an
+  earlier job closed (#1112).
 
 ### Removed
 

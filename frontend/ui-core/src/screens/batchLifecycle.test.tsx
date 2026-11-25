@@ -394,7 +394,7 @@ describe("Complete's count of what is left, said in its tooltip", () => {
     ...DRAFT,
     state: "in_annotation",
     schema_version: 1,
-    allowed_actions: batchActions("in_annotation"),
+    allowed_actions: batchActions("in_annotation", { settled: false }),
     progress: { ...DRAFT.progress, unannotated: 3, annotated: 45 },
   };
   /** The reason lives in the withheld control's tooltip, reached by keyboard: the control stays focusable. */

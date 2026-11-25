@@ -244,8 +244,9 @@ def build_fixture() -> dict[str, Any]:
 def build_capabilities() -> dict[str, dict[str, list[str]]]:
     """`allowed_actions` per state, as the two test doubles transcribe it.
 
-    The doubles table the open-batch projection — a job inside an `in_annotation`
-    batch with every asset settled, an asset inside an open job — and apply the
+    The doubles table the settled projection — a batch with every asset settled,
+    a job inside an `in_annotation` batch with every asset settled, an asset
+    inside an open job — and apply the
     other dimensions as code, so that is the projection exported. Keyed by the
     names the rosters carry, so the gate matches roster to answer by name and a
     roster it cannot match is reported rather than skipped.
@@ -255,7 +256,9 @@ def build_capabilities() -> dict[str, dict[str, list[str]]]:
         return [action.value for action in actions]
 
     return {
-        "BATCH_ACTIONS": {state.value: names(batch_actions(state)) for state in BatchState},
+        "BATCH_ACTIONS": {
+            state.value: names(batch_actions(state, progress={})) for state in BatchState
+        },
         "JOB_ACTIONS": {
             state.value: names(
                 job_actions(state, batch_state=BatchState.IN_ANNOTATION, progress=[])
