@@ -49,7 +49,7 @@ visionset server                         # API at http://127.0.0.1:8000, app at 
 ```
 
 Then follow [the tutorial](docs/content/tutorial.md): a clip of video to a YOLO dataset in about half an
-hour. Full prerequisites — Python 3.12, and a browser, which is where a video is decoded — are in
+hour. Full prerequisites — Python 3.11 or newer, and a browser, which is where a video is decoded — are in
 [docs/content/install.md](docs/content/install.md).
 
 `init` is the only command that creates a workspace, and it refuses a directory that already holds
