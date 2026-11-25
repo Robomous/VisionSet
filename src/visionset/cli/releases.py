@@ -33,7 +33,7 @@ from visionset.cli._errors import EXIT_ANSWER_IS_NO, validation_summary
 from visionset.cli._output import JsonOption, document, moment, note, table
 from visionset.cli._resolve import ProjectOption
 from visionset.cli._workspace import WorkspaceOption, opened_workspace
-from visionset.kernel.domain import SplitRecipe
+from visionset.kernel.domain import SplitGrouping, SplitRecipe
 from visionset.kernel.services import (
     ProjectService,
     ReleaseService,
@@ -47,7 +47,9 @@ _SPLIT_PARTS: Final = 3
 """``--split`` is train, val and test — exactly three numbers, in that order."""
 
 
-def _split_of(value: str | None, seed: int | None) -> SplitRecipe | None:
+def _split_of(
+    value: str | None, seed: int | None, group_by: SplitGrouping | None = None
+) -> SplitRecipe | None:
     """``"0.7,0.15,0.15"`` as a recipe, or a usage error saying what is wrong.
 
     ``SplitRecipe`` refuses fractions that do not add up, with a pydantic
@@ -58,6 +60,8 @@ def _split_of(value: str | None, seed: int | None) -> SplitRecipe | None:
     if value is None:
         if seed is not None:
             raise typer.BadParameter("--seed has no effect without --split")
+        if group_by is not None:
+            raise typer.BadParameter("--group-by has no effect without --split")
         return None
     parts = value.split(",")
     if len(parts) != _SPLIT_PARTS:
@@ -67,7 +71,13 @@ def _split_of(value: str | None, seed: int | None) -> SplitRecipe | None:
     except ValueError as exc:
         raise typer.BadParameter(f"--split takes three numbers, not {value!r}") from exc
     try:
-        return SplitRecipe(train=train, val=val, test=test, seed=0 if seed is None else seed)
+        return SplitRecipe(
+            train=train,
+            val=val,
+            test=test,
+            seed=0 if seed is None else seed,
+            group_by=group_by,
+        )
     except ValidationError as exc:
         raise typer.BadParameter(f"--split {value!r}: {validation_summary(exc)}") from exc
     except ValueError as exc:
@@ -90,6 +100,16 @@ def release_publish(
         int | None,
         typer.Option("--seed", help="Fixes the fold assignment (default 0). Needs --split."),
     ] = None,
+    group_by: Annotated[
+        SplitGrouping | None,
+        typer.Option(
+            "--group-by",
+            help=(
+                "Keep every asset sharing an import's group label (a nuScenes scene) in "
+                "one fold; the fractions then count groups. Needs --split."
+            ),
+        ),
+    ] = None,
     json_out: JsonOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
@@ -101,7 +121,7 @@ def release_publish(
     so publishing twice from an unchanged dataset produces byte-identical
     manifests that share one blob.
     """
-    recipe = _split_of(split, seed)
+    recipe = _split_of(split, seed, group_by)
     with opened_workspace(workspace) as service:
         resolved = ProjectService(service).resolve(project)
         dataset = ProjectService(service).get_dataset(resolved.id)

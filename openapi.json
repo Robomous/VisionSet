@@ -6902,10 +6902,28 @@
         "title": "SplitAssignmentOut",
         "type": "object"
       },
+      "SplitGrouping": {
+        "description": "What a split recipe may keep together in one fold.\n\n``group_label`` is the label an importer wrote on each asset \u2014 a nuScenes\nscene's name \u2014 so every keyframe of one scene lands in one fold.",
+        "enum": [
+          "group_label"
+        ],
+        "title": "SplitGrouping",
+        "type": "string"
+      },
       "SplitRecipeBody": {
         "additionalProperties": false,
-        "description": "Train/val/test fractions and the seed that makes the cut reproducible.",
+        "description": "Train/val/test fractions and the seed that makes the cut reproducible.\n\n`group_by: \"group_label\"` keeps every asset sharing an import's group label \u2014\na nuScenes scene \u2014 in one fold. The fractions then count groups, not assets,\nso fold sizes are approximate; an asset with no label is cut on its own.\nOmitted or `null`, the split is per asset.",
         "properties": {
+          "group_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SplitGrouping"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "seed": {
             "default": 0,
             "title": "Seed",

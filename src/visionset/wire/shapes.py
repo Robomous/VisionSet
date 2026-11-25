@@ -443,6 +443,7 @@ class SplitRecipe(TypedDict):
     val: float
     test: float
     seed: int
+    group_by: str | None
 
 
 @closed

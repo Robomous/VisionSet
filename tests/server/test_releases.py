@@ -97,7 +97,32 @@ def test_publishing_freezes_the_trunk_and_answers_201(client: TestClient, datase
 def test_a_split_recipe_comes_back_on_the_release(client: TestClient, dataset: str) -> None:
     body = client.post(f"/datasets/{dataset}/releases", json={"tag": "v1", "split": RECIPE}).json()
 
-    assert body["split"] == RECIPE
+    assert body["split"] == {**RECIPE, "group_by": None}
+
+
+def test_a_grouped_recipe_comes_back_and_cuts_unlabelled_assets_per_asset(
+    client: TestClient, dataset: str
+) -> None:
+    grouped = {**RECIPE, "group_by": "group_label"}
+    plain = client.post(f"/datasets/{dataset}/releases", json={"tag": "v1", "split": RECIPE})
+    body = client.post(f"/datasets/{dataset}/releases", json={"tag": "v2", "split": grouped})
+
+    assert body.json()["split"] == grouped
+    assert body.json()["manifest_hash"] == plain.json()["manifest_hash"]
+    folds = [
+        client.get(f"/releases/{release.json()['id']}/assignment").json()
+        for release in (plain, body)
+    ]
+    assert folds[0] == folds[1]
+
+
+def test_an_unknown_grouping_is_422(client: TestClient, dataset: str) -> None:
+    response = client.post(
+        f"/datasets/{dataset}/releases",
+        json={"tag": "v1", "split": {**RECIPE, "group_by": "scene"}},
+    )
+
+    assert response.status_code == 422
 
 
 def test_fractions_that_do_not_add_up_are_422_and_not_500(client: TestClient, dataset: str) -> None:

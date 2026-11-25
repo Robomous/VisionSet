@@ -161,6 +161,7 @@ from visionset.kernel.domain import (
     Source,
     SourceKind,
     SplitAssignment,
+    SplitGrouping,
     SplitRecipe,
     Step,
     SuggestParameter,
@@ -2649,7 +2650,13 @@ class DatasetChangePage(Page[DatasetChangeOut]):
 # plainly wrong payload. Converting during parsing makes it a 422 carrying the
 # domain's own message. The bounds are not restated here; the domain keeps them.
 class SplitRecipeBody(BaseModel):
-    """Train/val/test fractions and the seed that makes the cut reproducible."""
+    """Train/val/test fractions and the seed that makes the cut reproducible.
+
+    `group_by: "group_label"` keeps every asset sharing an import's group label —
+    a nuScenes scene — in one fold. The fractions then count groups, not assets,
+    so fold sizes are approximate; an asset with no label is cut on its own.
+    Omitted or `null`, the split is per asset.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -2657,6 +2664,7 @@ class SplitRecipeBody(BaseModel):
     val: float
     test: float
     seed: int = 0
+    group_by: SplitGrouping | None = None
 
     @model_validator(mode="after")
     def _the_domain_accepts_it(self) -> Self:
@@ -2664,7 +2672,13 @@ class SplitRecipeBody(BaseModel):
         return self
 
     def to_domain(self) -> SplitRecipe:
-        return SplitRecipe(train=self.train, val=self.val, test=self.test, seed=self.seed)
+        return SplitRecipe(
+            train=self.train,
+            val=self.val,
+            test=self.test,
+            seed=self.seed,
+            group_by=self.group_by,
+        )
 
 
 class ReleaseCreate(BaseModel):
@@ -2711,6 +2725,7 @@ class ReleaseOut(BaseModel):
                 val=release.split.val,
                 test=release.split.test,
                 seed=release.split.seed,
+                group_by=release.split.group_by,
             ),
             created_at=release.created_at,
             visionset_version=release.visionset_version,
