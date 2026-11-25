@@ -88,6 +88,11 @@ nothing was being distributed. This is the first version that is.
   in the original sensor's camera frame. Images, `polyline_3d` and tags are reported dropped, a PLY,
   compressed or georeferenced scan is refused by asset, and a pre-processing recipe is refused for an export
   that writes scans (#1122).
+- **A dark theme, and a System / Light / Dark control on the rail.** The standalone app follows
+  `prefers-color-scheme` (light when the system says nothing) unless the viewer picked Light or Dark, and keeps
+  following live system changes while the choice is System. The choice is kept per browser, never on the server,
+  and the theme is set before the first paint. Screens only follow `.dark` on `<html>`; a host sets it with
+  `ui-core`'s `startTheme` and `setThemePreference` (#1125).
 
 ### Changed
 

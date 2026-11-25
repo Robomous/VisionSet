@@ -25,6 +25,11 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+
+  /* Native scrollbars and form controls follow the page's theme. */
+  html.dark {
+    color-scheme: dark;
+  }
 }
 
 /*

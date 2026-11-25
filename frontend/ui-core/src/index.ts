@@ -82,6 +82,21 @@ export {
 // How a number and a moment are written, so eight screens do not each decide.
 export { formatCount, formatPercent, formatShare, formatWhen } from "./lib/format.js";
 
+// The page's theme: screens follow `.dark` on `<html>` (`useTheme`); a host sets
+// it from the viewer's preference.
+export {
+  THEME_PREFERENCES,
+  THEME_PREF_STORAGE_KEY,
+  readThemePreference,
+  resolveTheme,
+  setThemePreference,
+  startTheme,
+  useTheme,
+  useThemePreference,
+  type Theme,
+  type ThemePreference,
+} from "./lib/theme.js";
+
 // The project components the Overview is composed from. Data-only, like the
 // data-surface parts above: view models in, callbacks out, nothing fetched.
 export { ProjectCard, type ProjectCardProps } from "./patterns/project/ProjectCard.js";

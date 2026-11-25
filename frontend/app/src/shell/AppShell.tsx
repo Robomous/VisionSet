@@ -14,8 +14,8 @@
  * rather than by inverting. The tabs and the status bar sit on the same tokens,
  * so the chrome reads as one frame around the page.
  *
- * What is on the rail: the mark, Projects, Models, and the account control
- * at the bottom — and nothing else. `Models` is one of them by a settled
+ * What is on the rail: the mark, Projects, Models, and the theme and account
+ * controls at the bottom — and nothing else. `Models` is one of them by a settled
  * decision: model connections are workspace infrastructure that every project
  * uses, so they cannot live inside any one project, and the rail is the only
  * workspace-level surface there is. Anything richer growing here is exactly what
@@ -86,18 +86,31 @@ import {
   Cpu,
   Folders,
   LogOut,
+  Monitor,
+  Moon,
   PanelLeftClose,
   PanelLeftOpen,
+  Sun,
   type LucideIcon,
 } from "lucide-react";
 import {
   cn,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
   PaddedContent,
   PageStatusProvider,
+  setThemePreference,
+  THEME_PREFERENCES,
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  useThemePreference,
+  type ThemePreference,
 } from "@visionset/ui-core";
 import {
   useCallback,
@@ -189,6 +202,7 @@ export function AppShell(): JSX.Element {
           />
 
           <div className={cn("mt-auto flex flex-col", !collapsed && "w-full")}>
+            <ThemeMenu collapsed={collapsed} />
             <SignOut collapsed={collapsed} />
           </div>
         </nav>
@@ -565,5 +579,59 @@ function SignOut({ collapsed }: { readonly collapsed: boolean }): JSX.Element {
         <RailItem icon={LogOut} label={label} collapsed={collapsed} />
       </button>
     </RailTip>
+  );
+}
+
+const THEME_LABEL: Record<ThemePreference, string> = {
+  system: "System",
+  light: "Light",
+  dark: "Dark",
+};
+
+const THEME_ICON: Record<ThemePreference, LucideIcon> = {
+  system: Monitor,
+  light: Sun,
+  dark: Moon,
+};
+
+/**
+ * The viewer's theme: System, Light or Dark, kept per browser. The host's
+ * control and nothing more — the screens only follow `.dark` on `<html>`.
+ */
+export function ThemeMenu({ collapsed }: { readonly collapsed: boolean }): JSX.Element {
+  const preference = useThemePreference();
+  const label = `Theme: ${THEME_LABEL[preference]}`;
+  return (
+    <DropdownMenu>
+      <RailTip label={label} collapsed={collapsed}>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            data-testid="rail-theme"
+            aria-label={label}
+            className={railControl(collapsed)}
+          >
+            <RailItem icon={THEME_ICON[preference]} label="Theme" collapsed={collapsed} />
+          </button>
+        </DropdownMenuTrigger>
+      </RailTip>
+      <DropdownMenuContent side="right" align="end" className="w-40">
+        <DropdownMenuLabel>Theme</DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={preference}
+          onValueChange={(next) => setThemePreference(next as ThemePreference)}
+        >
+          {THEME_PREFERENCES.map((option) => {
+            const Icon = THEME_ICON[option];
+            return (
+              <DropdownMenuRadioItem key={option} value={option} data-testid={`theme-${option}`}>
+                <Icon aria-hidden="true" strokeWidth={1.5} />
+                {THEME_LABEL[option]}
+              </DropdownMenuRadioItem>
+            );
+          })}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

@@ -28,6 +28,10 @@ instead of here: `AppShell` is their only reader. Collapsed, the rail holds exac
 36px-tall control per row inside a 4px inset. A host mounting VisionSet's screens brings its own global
 navigation, so nothing reusable reads the standalone shell's rail widths.
 
+The theme is the host's too: a screen follows `.dark` on `<html>` and never sets it. The standalone
+app sets it from the viewer's System / Light / Dark choice on the rail
+([`docs/content/ui/navigation.md`](docs/content/ui/navigation.md#the-rail)).
+
 An extension that turns out to be universal is a candidate to move into the package — that is
 a design decision and a PR against Robomous/ui-core, with the justification written into its
 `DESIGN.md`.
