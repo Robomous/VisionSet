@@ -7,7 +7,8 @@
  * `DESIGN.md`'s motion rules, as numbers. What enters eases out — fast at
  * first, so it answers at once — and what leaves is quicker than what came.
  * Only transform and opacity move (and a grid row's track, for a height that
- * opens or closes); nothing grows from nothing. Under `prefers-reduced-motion`
+ * opens or closes, and a dialog body's height when a press swaps what it holds
+ * — `morphHeight`); nothing grows from nothing. Under `prefers-reduced-motion`
  * a change is a fade, never a journey.
  *
  * ## No library
@@ -112,6 +113,52 @@ export function fadeIn(element: HTMLElement, duration: number = DURATION.enter):
   if (!animatable(element)) return LANDED;
   const fade = element.animate([{ opacity: 0 }, { opacity: 1 }], { duration, easing: EASE_OUT, fill: "backwards" });
   return flightOf([fade], () => {});
+}
+
+/**
+ * A box whose content a press just swapped, travelling from the height it had
+ * to the one it has now while the new content fades in where it stands.
+ *
+ * `from` is read before the swap — off the box as it is on screen, so a second
+ * press mid-flight starts from wherever the first had got to rather than
+ * jumping back. Call it after the swap has rendered; cancel the previous flight
+ * first, so the height measured here is the content's own.
+ *
+ * Height is the one property here that is not transform or opacity, on
+ * purpose: the box is a dialog's body, and only its height can carry the
+ * dialog's frame — a scale would squash every word in it. It runs on a press
+ * only, never on data arriving, so layout pays for it once in a while. The new
+ * content arrives through a 2px blur, which reads the swap as one surface
+ * changing rather than two overlapping. Under `prefers-reduced-motion` the
+ * height snaps and the content only fades.
+ *
+ * React Doctor's `no-layout-property-animation` is suppressed for this file
+ * alone, in `doctor.config.ts`, for the reason above; every other file keeps it.
+ */
+export function morphHeight(box: HTMLElement, from: number): Flight {
+  if (!animatable(box)) return LANDED;
+  const reduce = prefersReducedMotion();
+  const to = box.getBoundingClientRect().height;
+  const animations: Animation[] = [];
+  if (!reduce && Math.abs(to - from) > 1) {
+    // Clipped only while it travels: at rest a field's focus ring may reach past the box.
+    box.style.overflow = "hidden";
+    animations.push(box.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: DURATION.morph, easing: EASE_SETTLE }));
+  }
+  animations.push(
+    box.animate(
+      reduce
+        ? [{ opacity: 0 }, { opacity: 1 }]
+        : [
+            { opacity: 0, filter: "blur(2px)" },
+            { opacity: 1, filter: "blur(0px)" },
+          ],
+      { duration: DURATION.enter, easing: EASE_OUT },
+    ),
+  );
+  return flightOf(animations, () => {
+    box.style.overflow = "";
+  });
 }
 
 /**

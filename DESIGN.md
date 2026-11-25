@@ -16,7 +16,7 @@ a value in `:root`, a dark counterpart in `.dark`, exposure through `@theme inli
 | Extension | Rule |
 | --- | --- |
 | `stage` | The annotator's surround — the neutral a photograph is judged against. Its own role: not `muted`'s subtle fill, not `card`'s surface, distinguishable from `background` so a white asset edge still shows where it ends. Usage: [`docs/content/ui/annotator.md`](docs/content/ui/annotator.md#the-stage) |
-| `origin-hub` / `origin-custom` / `origin-robomous` | A model's provenance, as the small square beside its origin on the Models table. A mark: never a surface, never ink, and an origin is a kind rather than a state, so these never stand in for a status. Theme-stable, like the chart palette |
+| `origin-custom` | A model's provenance, as the logo at the start of its weights on the Models page (`screens/OriginLogo.tsx`): the Customized glyph's stroke. Hugging Face draws its own published colours and Robomous its mark in `brand` (*Where the brand is*), so neither has a token. A mark: never a surface, never text, and an origin is a kind rather than a state, so it never stands in for a status. Theme-stable, like the chart palette |
 | `progress` | Work partway done: a progress ring's arc, a meter's or an operation bar's fill, the `progress` state chip's ink. A warm, low-chroma bronze, apart from `warning` because partway is not a problem; its track is the same colour at 15%, a tint of the hue rather than a grey. Done is still `success`. Drawn by `ProgressReadout` / `ProgressRing` (`patterns/ProgressRing.tsx`) and `ProgressBar` (`patterns/ProgressBar.tsx`) |
 | `--container-page` | The 96rem page cap — read by `PaddedContent`, a reusable VisionSet surface |
 | `--page-inset-bottom` | Not a declared token: a variable a host sets to the height of chrome it pins to the viewport's bottom, read by the sections that fit the window (Overview, Images, Classes, Dataset and Models) and by the Classes commit bar, which floats above it. Unset means 0 |
@@ -443,7 +443,9 @@ to transparent, so the surround is the token, not a dark viewport of its own.
 ## Where the brand is
 
 Robomous coral is identity: the VisionSet logo — drawn once, in `frontend/app/src/shell/Brand.tsx`,
-as the icon on the rail and as the full logo on the sign-in screen — and its styleguide swatch. Two sites,
+as the icon on the rail and as the full logo on the sign-in screen — its styleguide swatch, and
+Robomous's own mark where a model's weights come from the Robomous registry
+(`frontend/ui-core/src/screens/OriginLogo.tsx`, on the Models page). Three sites,
 enumerated in `tests/scripts/design_tokens.test.mjs` (the package exposes no `bg-brand`, so a site
 paints with `var(--brand)`). A functional control reaching for `brand`
 is a semantic-colour violation however many other sites already use it correctly, and the gate
@@ -455,7 +457,7 @@ and this section move together or not at all.
 | --- | --- |
 | `frontend/ui-core/src/tokens.test.ts` | The extension stylesheet and token module agree declaration for declaration; no extension shadows a foundation name |
 | `frontend/{ui-core,app}/eslint.config.js` | No colour inside a class string (`bg-[#fff]`, `ring-[var(--x)]`); the package closes Tailwind's default palette, so a named one produces no CSS |
-| `tests/scripts/design_tokens.test.mjs` | `brand` confined to its two identity sites; one icon library; no `tailwind.config.js` |
+| `tests/scripts/design_tokens.test.mjs` | `brand` confined to its three identity sites; one icon library; no `tailwind.config.js` |
 | `frontend/ui-core/src/screens/preprocessing.test.tsx` | The resize's stage draws the chosen fit and the one pointed at, and is hidden from assistive technology; each augmentation's illustrated card opens beside its label, says it in words, and one Escape closes only it; the amount's branch is decorative. The recipe's info buttons open on hover and say the current choice; the model list shows names alone, opens a card on the highlighted option, and one Escape closes both. Where an info button sits on other screens is held by review, not a gate |
 | `frontend/ui-core/src/screens/dataset.test.tsx`, `preprocessing.test.tsx` | The working copy reads as four KPIs with their warnings named and described; a release's export is a panel of its facts — open, last, holding the model, the recipe and the button — and Publish is the project bar's on the working copy only; a folded section's heading says its answer and its fields stay mounted but inert; the export's answer is the job's state, open or folded, and the job keeps going while the section is folded; verify and download failures are sentences, and a stale report leaves; the recipe is a select with the "+" that writes one, the chosen one's Edit recipe and Delete are behind its "⋯", its writer opens as a single modal, and a delete asks first and falls back to no recipe. How a heading, a field's icon and its action are laid out is held by review |
 | `frontend/ui-core/src/screens/ingest.test.tsx`, `videoImport.test.tsx` | Add images walks one step at a time on its track — a reached step behind the one shown walks back, nothing walks back past a launched run; a selection is one card headed by its count, size and ✕; approving the batch is the last step's own content, never a dialog over it; closing keeps a run in flight and reopens on it, and a settled walk starts over |

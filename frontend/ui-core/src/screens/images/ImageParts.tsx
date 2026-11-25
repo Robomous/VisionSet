@@ -209,17 +209,22 @@ export function Facts({
   );
 }
 
-/** The content hash, shortened, and a copy button whose icon cross-fades to a check for a moment. */
-export function CopyHash({ hash }: { readonly hash: string }): JSX.Element {
+/**
+ * A hash, shortened — whole in its tooltip — and a copy button whose icon
+ * cross-fades to a check for a moment. `label` names what is copied.
+ */
+export function CopyHash({ hash, label = "Copy content hash" }: { readonly hash: string; readonly label?: string }): JSX.Element {
   const [copied, setCopied] = useState(false);
   const timer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(timer.current), []);
   return (
     <span className="inline-flex items-center gap-1">
-      <code className="font-mono text-xs text-muted-foreground">{hash.slice(0, 12)}</code>
+      <code className="font-mono text-xs text-muted-foreground" title={hash}>
+        {hash.slice(0, 12)}
+      </code>
       <button
         type="button"
-        aria-label={copied ? "Copied" : "Copy content hash"}
+        aria-label={copied ? "Copied" : label}
         onClick={(event) => {
           event.stopPropagation();
           void navigator.clipboard?.writeText(hash);

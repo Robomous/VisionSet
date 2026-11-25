@@ -299,15 +299,16 @@ test("the page is a grid of cards, and a dropdown narrows it to the ability a ca
   const grid = page.getByTestId("models-grid");
   await expect(grid.getByTestId("connection-sam2-local")).toHaveCount(1);
   const card = grid.getByTestId("connection-sam2-local");
-  await expect(card.getByTestId("connection-origin")).toHaveText("Hugging Face");
+  // Where the weights come from is the origin's logo in front of the weights
+  // id, named by the origin's plain word.
+  await expect(card.getByTestId("connection-origin")).toHaveAttribute("aria-label", "Hugging Face");
   await expect(card.getByTestId("ability-label")).toHaveText([
     "Suggests from clicks",
     "writes boxes or polygons",
   ]);
   await expect(card.getByTestId("connection-source")).toHaveText("Local · cuda · fp16");
-  // The origin's colour is the small mark beside its name — a real fill, which
-  // is the one thing a stylesheet that lost its token would turn transparent.
-  await expect(card.getByTestId("connection-origin").locator("span").first()).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  // A drawn mark, not an empty box.
+  await expect(card.getByTestId("connection-origin").locator("svg").first()).toBeVisible();
   // What the list adds up to is said in the workbench's status bar, not on the
   // page; which models are on screen is the footer's, under the grid.
   await expect(page.getByTestId("status-bar").getByTestId("models-ready")).toHaveText("2 ready");
@@ -419,7 +420,7 @@ test("a check nobody on this page started survives a reload", async ({ page }) =
   // A check in flight is not a setup state: the connection is still ready. The
   // row shows the run in the state's place, so the word is read off the sheet.
   await page.getByTestId("open-sam2-local").click();
-  await expect(page.getByTestId("model-setup").getByTestId("connection-status")).toContainText("Ready");
+  await expect(page.getByTestId("model-detail").getByTestId("connection-status")).toContainText("Ready");
 });
 
 test("a transfer and a re-read are two records on one row", async ({ page }) => {
@@ -465,7 +466,7 @@ test("an http connection is asked what it answers, and moves under it", async ({
   const card = page.getByTestId("connection-remote-seg");
   await expect(card).toBeVisible();
   await expect(card.getByTestId("connection-source")).toHaveText("HTTP · models.example");
-  await expect(card.getByTestId("connection-origin")).toHaveText("Customized");
+  await expect(card.getByTestId("connection-origin")).toHaveAttribute("aria-label", "Customized");
   await expect(card.getByTestId("ability-label")).toHaveCount(0);
   // The test is the model sheet's: a row is read, and pressing it opens the
   // sheet where the connection is managed.
@@ -481,9 +482,10 @@ test("an http connection is asked what it answers, and moves under it", async ({
 
 test("a model list taller than the window scrolls instead of running off it", async ({ page }) => {
   // Layout under a real viewport, so it cannot live in `models.test.tsx`:
-  // jsdom reports every height as zero and would pass against the implementation
-  // this replaced, which clipped the list and left the options past the bottom
-  // edge in the DOM, keyboard-reachable and unreachable with a pointer.
+  // jsdom reports every height as zero. The catalog is a list inside the dialog
+  // that scrolls in its own frame, and the dialog itself never runs past the
+  // window — the last row, the one a clipped list loses, stays reachable with a
+  // pointer, and so does the footer.
   await serveApi(page, () => connection("ready", null));
   await page.route("**/api/inference/download-size*", (route) =>
     route.fulfill({
@@ -496,31 +498,30 @@ test("a model list taller than the window scrolls instead of running off it", as
       } satisfies Wire["DownloadSizeOut"],
     }),
   );
-  // Short enough that the curated list cannot fit under its trigger whatever the
+  // Short enough that the curated list cannot be shown whole whatever the
   // catalog holds — the condition being tested, rather than a window size that
   // happens to provoke it today.
   await page.setViewportSize({ width: 1280, height: 600 });
   await openModels(page);
   await page.getByTestId("new-connection").click();
-  await page.getByTestId("choose-local").click();
-  // The trigger only exists once the catalog request has answered — wait for
-  // it rather than racing the click against the still-open request.
-  await expect(page.getByTestId("connection-model")).toBeVisible();
-  await page.getByTestId("connection-model").click();
+  // The list only exists once the catalog request has answered — wait for it
+  // rather than racing the click against the still-open request.
+  const list = page.getByTestId("connection-model");
+  await expect(list).toBeVisible();
 
-  const listbox = page.getByRole("listbox");
-  await expect(listbox).toBeVisible();
-  const box = (await listbox.boundingBox())!;
+  const box = (await list.boundingBox())!;
   expect(box.y + box.height).toBeLessThanOrEqual(600 + 1);
+  // It scrolls rather than growing: there is more behind its bottom edge.
+  expect(await list.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true);
 
-  // The last entry is the one a clipped list loses, and it is reachable: Radix
-  // scrolls it into view, and clicking it selects it rather than hitting a
-  // control drawn past the bottom of the window.
-  const last = page.getByRole("option", { name: /Custom model/ });
+  const last = page.getByTestId("model-option-custom");
   await last.scrollIntoViewIfNeeded();
   await expect(last).toBeVisible();
   await last.click();
+  await expect(last).toHaveAttribute("aria-checked", "true");
   await expect(page.getByTestId("connection-custom-model")).toBeVisible();
+  await page.getByTestId("connection-submit").scrollIntoViewIfNeeded();
+  await expect(page.getByTestId("connection-submit")).toBeInViewport();
 });
 
 test("a model the installation offers is chosen and becomes a connection", async ({ page }) => {
@@ -580,10 +581,10 @@ test("a model the installation offers is chosen and becomes a connection", async
   await openModels(page);
 
   await page.getByTestId("new-connection").click();
-  await page.getByTestId("choose-local").click();
   await expect(page.getByTestId("connection-model")).toBeVisible();
-  await page.getByTestId("connection-model").click();
-  await page.getByRole("option", { name: /vision-widget/ }).click();
+  await page.getByTestId("model-option-acme/vision-widget").click();
+  // The name followed the model; this one is somebody's own.
+  await expect(page.getByTestId("connection-name")).toHaveValue("vision-widget");
   await page.getByTestId("connection-name").fill("widget");
   await page.getByTestId("connection-submit").click();
 

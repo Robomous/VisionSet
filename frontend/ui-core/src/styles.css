@@ -31,14 +31,13 @@
    */
   --stage: oklch(0.94 0 0);
   /*
-   * Where a model's weights come from, as a card's accent edge on the Models
-   * page: the hub, the user's own, the Robomous registry. A mark, never a
-   * surface or ink — and never status: an origin is a kind, not a state.
-   * Identical in both themes, like the chart palette.
+   * Where a model's weights come from, as the logo in front of its weights on
+   * the Models page: the user's own (the hub draws its own colours, and
+   * Robomous its own mark in `--brand`). A mark, never a surface or text — and
+   * never status: an origin is a kind, not a state. Identical in both themes,
+   * like the chart palette.
    */
-  --origin-hub: oklch(0.8 0.16 85);
   --origin-custom: oklch(0.65 0.15 250);
-  --origin-robomous: oklch(0.68 0.17 35);
   /*
    * Work partway done: the arc of a progress ring, the fill of a meter, the
    * progress chip's ink. A warm, low-chroma bronze — present without shouting,
@@ -51,18 +50,14 @@
 
 .dark {
   --stage: oklch(0.24 0 0);
-  --origin-hub: oklch(0.8 0.16 85);
   --origin-custom: oklch(0.65 0.15 250);
-  --origin-robomous: oklch(0.68 0.17 35);
   --progress: oklch(0.8 0.05 92);
 }
 
 @theme inline {
   /* VisionSet's extensions, exposed the same way as every preset colour. */
   --color-stage: var(--stage);
-  --color-origin-hub: var(--origin-hub);
   --color-origin-custom: var(--origin-custom);
-  --color-origin-robomous: var(--origin-robomous);
   --color-progress: var(--progress);
 
   /* The page-content cap stays here, unlike the rail's width, because
