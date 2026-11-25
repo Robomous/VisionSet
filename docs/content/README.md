@@ -17,6 +17,18 @@ and [ui/annotator.md](ui/annotator.md) for the annotation workspace. Read them
 *before* building any screen, alongside [annotations.md](annotations.md), which
 covers the annotator's kernel-side behaviour.
 
+## VisionSet at a glance
+
+The four screens below are the app on a local workspace: frames cut from a traffic clip and labeled
+with boxes, and three point-cloud maps ingested as scans.
+
+| | |
+| --- | --- |
+| ![The project list: image projects and a point-cloud project, each with its progress](../public/screenshots/projects.png) | ![A project's overview: a clip's frames as one batch, fully labeled, with the class mix and an image grid](../public/screenshots/project-overview.png) |
+| **Projects.** Every project in the workspace with its asset count, how much is annotated, its status and its latest release. | **Overview.** One project: its batches and their state, how much is labeled, what is in the dataset, and the class mix. |
+| ![The annotator on a video frame: boxes for cars, a truck, a motorcycle and a pedestrian, with the objects panel beside them](../public/screenshots/annotator-image.png) | ![The annotator on a point-cloud scan: points colored by height, in the lidar_flu frame, with the 3D editing tools](../public/screenshots/annotator-point-cloud.png) |
+| **Annotating images.** A frame cut from a video, with its boxes drawn and listed in the objects panel. See [the annotator](ui/annotator.md). | **Annotating point clouds.** A scan in the declared `lidar_flu` frame, colored by height; 3D boxes and polylines are drawn here. See [media](media.md). |
+
 If you are new to VisionSet, start with [install.md](install.md), then continue to
 [tutorial.md](tutorial.md).
 

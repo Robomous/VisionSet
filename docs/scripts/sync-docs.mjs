@@ -32,6 +32,7 @@
  *     architecture/README.md  → /architecture/  a directory's index
  *     ../../src/visionset/    → GitHub tree/    code, which this site does not host
  *     ../../CONTRIBUTING.md   → GitHub blob/    a repository file, likewise
+ *     ../public/shot.png      → /shot.png       a file Starlight serves from `docs/public/`
  *     https://…, #anchor      → untouched
  *
  * Fragments survive: Astro slugs headings with github-slugger, the same algorithm
@@ -71,6 +72,7 @@ export const REPO_ROOT = path.resolve(SITE_ROOT, "..");
 
 /** The canonical documentation, repository-relative. Read only; this script never writes here. */
 const CORPUS = "docs/content";
+const PUBLIC = "docs/public";
 
 /** The same, absolute. */
 export const DOCS_DIR = path.join(REPO_ROOT, CORPUS);
@@ -201,6 +203,10 @@ export function rewriteTarget(target, fromDocsRelative) {
     // Anything else under the corpus is a file this site does not serve, so it
     // falls through to the repository below like any other.
   }
+
+  // Starlight serves `docs/public/` at the site root, so a screenshot kept there is one file
+  // that GitHub reads by its relative path and the site by its absolute one.
+  if (repoRelative.startsWith(`${PUBLIC}/`)) return `/${repoRelative.slice(PUBLIC.length + 1)}${fragment}`;
 
   const kind = where.endsWith("/") || isDirectory(repoRelative) ? "tree" : "blob";
   return `${GITHUB}/${kind}/${GITHUB_BRANCH}/${repoRelative.replace(/\/+$/, "")}${fragment}`;
