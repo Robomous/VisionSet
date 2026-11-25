@@ -314,10 +314,10 @@ Geometry = Annotated[
 """Every geometry an Annotation can carry.
 
 Coordinates are ALWAYS floats in the asset's native reference frame — pixels for
-images, and the camera's sensor frame in metres for a 3D variant — and are NEVER
-normalized. Normalization to a [0, 1] range, or to any
-other convention a format demands, is the exporter's concern and happens at the
-boundary, never in the domain.
+a 2D variant; metres for a 3D variant, in the camera's sensor frame on an image and
+in the source's declared frame on a point-cloud scan — and are NEVER normalized.
+Normalization to a [0, 1] range, or to any other convention a format demands, is the
+exporter's concern and happens at the boundary, never in the domain.
 """
 
 

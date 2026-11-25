@@ -1835,7 +1835,8 @@ takes; the first nine places are the annotator's hotkeys 1 to 9, and the row say
 the class or whose place it would take. A class's position is part of the published version, so
 moving it is an unsaved change like any other. **Drawn as**, a segmented row of the six shapes as
 the annotator draws them - box, polygon, polyline and tag for images, 3D box and 3D polyline for
-point-cloud scans - their names said beside it; a class may accept several, and the last one
+point-cloud scans - their names said under it; a class may accept several, image and scan shapes
+together (each label is checked against its own asset when it is written), and the last one
 that is on cannot be switched off, and says why. When editing, **In use** says what an edit costs. A
 class that is not used yet changes freely (*Not used yet, so any change here is free.*). A class in
 use, counted as its labels on its frames, cannot be removed, and cannot lose a shape its labels are
