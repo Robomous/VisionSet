@@ -66,11 +66,6 @@ export function Property({ icon: Icon, label, group = false, children }: { reado
 }
 
 /**
- * A value that unfolds what it stands for beneath it. The summary is the
- * button; the fold is a region it controls, `inert` while shut so nothing in
- * it is tabbed into or read out.
- */
-/**
  * Arrives with the row: at rest 4px to the left and unseen, pointed at or
  * focused in place, 200ms in and 120ms out. Without a pointer it is simply there.
  */
@@ -80,11 +75,11 @@ const ARRIVES = cn(
   "[@media(hover:hover)_and_(pointer:fine)]:-translate-x-1 [@media(hover:hover)_and_(pointer:fine)]:opacity-0",
 );
 
-/** What the row's own hover or focus brings in: the group is the property's row. */
-/** The same, where the arriving part is inside the button that is pointed at or focused. */
+/** Where the arriving part is inside the button that is pointed at or focused. */
 const ARRIVED_IN_BUTTON =
   "[@media(hover:hover)_and_(pointer:fine)]:group-hover/browse:translate-x-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover/browse:opacity-100 [@media(hover:hover)_and_(pointer:fine)]:group-hover/browse:duration-200 group-focus-visible/browse:translate-x-0 group-focus-visible/browse:opacity-100 group-focus-visible/browse:duration-200";
 
+/** What the row's own hover or focus brings in: the group is the property's row. */
 const ARRIVED =
   "[@media(hover:hover)_and_(pointer:fine)]:group-hover/fact:translate-x-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover/fact:opacity-100 [@media(hover:hover)_and_(pointer:fine)]:group-hover/fact:duration-200 has-focus-visible:translate-x-0 has-focus-visible:opacity-100 has-focus-visible:duration-200";
 

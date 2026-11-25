@@ -481,7 +481,7 @@ interface Pointer {
  * batch's panel, where the step is done (or, for a batch of one open job, into
  * that job). Approve, start and promote are labelled from what the wire
  * declares the batch may do — never from its state. *Annotate* is the one read from the phase, as
- * the old inspector and the project bar's Annotate read it: it moves nothing,
+ * the batches band's Annotate reads it: it moves nothing,
  * it only opens work, and whether a frame may be written is the editor's
  * three-way gate to answer, not this link's.
  */
@@ -523,8 +523,8 @@ function useBatchesModel(projectId: string, heldId: string | null | undefined, o
   const batches = useBatches(projectId);
   const items = batches.data?.items;
   // Who holds the jobs of every batch that has been cut into them — one read
-  // per batch, each row waiting on its own, shared by key with the project
-  // bar's Annotate.
+  // per batch, each row waiting on its own, shared by key with the batches
+  // band's Annotate.
   const cut = useMemo(() => (items ?? []).filter((batch) => hasJobs(batch.state)).map((batch) => batch.id), [items]);
   const jobsOf = useJobsByBatch(cut);
   const jobsFor = (batchId: string): readonly Job[] | undefined => {
@@ -1032,8 +1032,8 @@ function FirstRun({
         action={
           <div className="flex flex-col items-center gap-2">
             {onIngest !== undefined && (
-              // Filled: the project bar draws no Add images on the Overview —
-              // the batches band does, and there is no band before the first batch.
+              // Filled: there is no batches band before the first batch, and
+              // the project bar defers to this invitation.
               <Button variant="default" data-testid="overview-ingest" onClick={onIngest}>
                 <Upload aria-hidden="true" />
                 Add images

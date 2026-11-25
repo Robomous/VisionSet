@@ -1347,7 +1347,7 @@ function AccessLine({
   return (
     <p className="text-pretty" data-testid="model-access">
       {access.note}{" "}
-      <a className="vs-link inline-flex items-center gap-0.5 underline-offset-2" href={access.href} target="_blank" rel="noreferrer">
+      <a className="vs-link inline-flex items-center gap-0.5 text-foreground underline-offset-2" href={access.href} target="_blank" rel="noreferrer">
         Request access
         <ArrowUpRight className="size-3" strokeWidth={1.75} aria-hidden="true" />
       </a>
