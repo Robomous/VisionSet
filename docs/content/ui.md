@@ -2134,10 +2134,13 @@ Three other decisions the editor inherits rather than invents:
   schema-less on purpose, so that code becomes an empty draft rather than an error
   surface.
 
-The geometry picker offers `bbox`, `polygon`, `polyline` and `classification_tag` - the
-four an `Annotation` can carry. `GeometryType` declares eight; the kernel refuses the rest
-at write time with `UnsupportedGeometry`, and offering a choice the API will refuse
-is worse than not offering it.
+The geometry picker offers what `GET /geometries` publishes - the kernel's
+`IMPLEMENTED_GEOMETRIES`, the geometries an `Annotation` can carry. `GeometryType` declares
+more; the kernel refuses the rest at write time with `UnsupportedGeometry`, and offering a
+choice the API will refuse is worse than not offering it. The client keeps no list of its
+own, only the order the shapes are shown in (`GEOMETRY_ORDER` in `data/geometryCategory.ts`).
+While the set loads, or if the read fails, the picker shows the class's own shapes disabled,
+and a failure is said with a retry (#1128).
 
 `polyline` was offered here for a release before anything drew one (#223), and #342 closed
 that gap: a lane class now gets a real tool on the annotator's strip. The picker did not

@@ -216,6 +216,9 @@ LabelClass(name="road", geometries=(GeometryType.MASK,))  # constructs fine
 schemas.create_version(project.id, [that])  # UnsupportedGeometry
 ```
 
+`GET /geometries` publishes the same set, so a client offering shapes reads it rather than
+keeping a copy: the schema editor's picker has no list of its own.
+
 A document written before this was plural spells the field `geometry` and singular.
 `LabelClass` reads one and lifts it into a set of one, which is why #584 needed **no
 migration**: schema classes live in a JSON column and release manifests carry these
