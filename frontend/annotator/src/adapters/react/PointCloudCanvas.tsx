@@ -40,7 +40,7 @@ import type { ScanEvent } from "../../core/pointcloud/edit/machine";
 import type { ScanViewKind } from "../../core/pointcloud/edit/scene";
 import type { ScanFrame } from "../../core/pointcloud/frame";
 import { segmentsRelativeTo } from "../../core/pointcloud/labels";
-import { pointColors, type ColorMode } from "../../core/pointcloud/ramp";
+import { pointColors, type ColorMode, type RampTheme } from "../../core/pointcloud/ramp";
 import { screenToNdc, type ScanViewport } from "../../core/pointcloud/ray";
 import type { Point3D } from "../../core/types";
 import { PointCloudRenderer, cssColorToRgb, resolveCssColor } from "./pointCloudGl";
@@ -88,6 +88,8 @@ export interface PointCloudCanvasProps {
   readonly onCameraChange?: (view: ScanView) => void;
   /** Any CSS colour, `var()` included; the colour of an emphasised label. */
   readonly highlightColor?: string;
+  /** The page's theme: picks the ramps, and re-reads `highlightColor` when it changes. Absent means `light`. */
+  readonly theme?: RampTheme;
   /** The top-down view: a pinned camera that follows `followTarget`. */
   readonly pinned?: boolean;
   readonly followTarget?: Point3D;
@@ -109,7 +111,7 @@ interface Live {
 }
 
 export function PointCloudCanvas(props: PointCloudCanvasProps): JSX.Element {
-  const { sample, frame, colorMode, labels, showLabels, resetSignal, highlightColor, editing = false, pinned = false } = props;
+  const { sample, frame, colorMode, labels, showLabels, resetSignal, highlightColor, theme, editing = false, pinned = false } = props;
   const hostRef = useRef<HTMLDivElement>(null);
   const liveRef = useRef<Live | null>(null);
   const propsRef = useRef(props);
@@ -156,7 +158,7 @@ export function PointCloudCanvas(props: PointCloudCanvasProps): JSX.Element {
 
   const uploadColors = useCallback((renderer: PointCloudRenderer): void => {
     const current = propsRef.current;
-    renderer.setColors(pointColors(current.sample, current.colorMode, current.frame));
+    renderer.setColors(pointColors(current.sample, current.colorMode, current.frame, current.theme));
   }, []);
 
   const uploadLabels = useCallback((renderer: PointCloudRenderer): void => {
@@ -441,13 +443,13 @@ export function PointCloudCanvas(props: PointCloudCanvasProps): JSX.Element {
     const renderer = liveRef.current?.renderer;
     if (renderer) uploadColors(renderer);
     requestDraw();
-  }, [sample, frame, colorMode, uploadColors, requestDraw]);
+  }, [sample, frame, colorMode, theme, uploadColors, requestDraw]);
 
   useEffect(() => {
     const renderer = liveRef.current?.renderer;
     if (renderer) uploadLabels(renderer);
     requestDraw();
-  }, [sample, labels, highlightColor, uploadLabels, requestDraw]);
+  }, [sample, labels, highlightColor, theme, uploadLabels, requestDraw]);
 
   useEffect(() => {
     requestDraw();
