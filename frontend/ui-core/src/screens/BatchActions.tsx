@@ -38,7 +38,6 @@ import { BATCH_ACTION, declares } from "../data/capabilities";
 import { IconAction } from "../patterns/IconAction";
 import type { BatchRowView } from "../patterns/project/BatchTable";
 import { ApproveDialog, StartAnnotatingButton } from "./BatchLifecycle";
-import { outstandingWork } from "./batchState";
 import { CompleteBatchButton } from "./ComposedTransitions";
 import { CorrectionButton } from "./CorrectionBatch";
 import { DeleteBatchButton } from "./DeleteBatch";
@@ -141,7 +140,7 @@ function Finish({ batch, projectId, phase, onOpenDataset }: Pick<BatchActionsPro
   );
 }
 
-/** Nothing is outstanding and the batch may be completed: finishing it is the forward step. */
+/** The batch declares `complete`, which the kernel does only once nothing is outstanding: finishing it is the forward step. */
 function isFinishing(batch: Batch): boolean {
-  return declares(batch, BATCH_ACTION.complete) && outstandingWork(batch.progress) === 0;
+  return declares(batch, BATCH_ACTION.complete);
 }

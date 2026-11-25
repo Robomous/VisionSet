@@ -395,6 +395,17 @@ def test_every_implemented_geometry_is_accepted(tmp_path: Path, geometry: Geomet
     workspace.close()
 
 
+def test_one_class_may_declare_image_and_scan_geometries(tmp_path: Path) -> None:
+    workspace, projects, schemas = _services(tmp_path)
+    project = projects.create("signs")
+    mixed = (GeometryType.CUBOID_3D, GeometryType.BBOX, GeometryType.POLYLINE_3D)
+    schema = schemas.create_version(
+        project.id, [LabelClass(name="car", geometries=mixed)]
+    ).published
+    assert set(schema.classes[0].geometries) == set(mixed)
+    workspace.close()
+
+
 @pytest.mark.parametrize("color", ["notacolor", "red", "#12", "#12345", "3355ff", "#33 55ff"])
 def test_a_color_that_is_not_hex_is_refused(tmp_path: Path, color: str) -> None:
     """#969, checked on publish rather than on ``LabelClass`` so stored versions still load."""

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { scanKeyIntent, scanPointerRole } from "./input";
+import { SCAN_KEY_BINDINGS, scanKeyIntent, scanPointerRole } from "./input";
 
 describe("scanPointerRole", () => {
   it("keeps the viewer's mapping in view mode", () => {
@@ -44,6 +44,21 @@ describe("scanKeyIntent", () => {
     expect(press("Backspace")).toBe("delete");
     expect(press("Escape")).toBe("cancel");
     expect(press("Enter")).toBe("commit");
+    expect(press("Delete", { shift: true })).toBe("delete");
+  });
+
+  it("reads ? as the shortcut list, however the layout reaches it", () => {
+    expect(press("?", { shift: true })).toBe("help");
+    expect(press("?")).toBe("help");
+    expect(press("?", { ctrl: true, shift: true })).toBeNull();
+  });
+
+  it("answers exactly the chords its table lists", () => {
+    for (const { chord, intent } of SCAN_KEY_BINDINGS) {
+      const parts = chord.split("+");
+      const key = parts.at(-1) ?? "";
+      expect(press(key, { ctrl: parts.includes("mod"), shift: parts.includes("shift") })).toBe(intent);
+    }
   });
 
   it("leaves everything else, and anything under alt, to the view", () => {
@@ -52,5 +67,7 @@ describe("scanKeyIntent", () => {
     expect(press("0")).toBeNull();
     expect(press("z", { ctrl: true, alt: true })).toBeNull();
     expect(press("Delete", { ctrl: true })).toBeNull();
+    expect(press("y", { ctrl: true, shift: true })).toBeNull();
+    expect(press("s", { ctrl: true, shift: true })).toBeNull();
   });
 });

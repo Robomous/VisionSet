@@ -88,12 +88,6 @@ export { ProjectCard, type ProjectCardProps } from "./patterns/project/ProjectCa
 export { ProjectKpi, type ProjectKpiProps } from "./patterns/project/ProjectKpi.js";
 export { ViewSwitch, type ViewSwitchOption, type ViewSwitchProps } from "./patterns/project/ViewSwitch.js";
 export {
-  BatchSummary,
-  type BatchPhase,
-  type BatchSummaryItem,
-  type BatchSummaryProps,
-} from "./patterns/project/BatchSummary.js";
-export {
   ClassDistribution,
   type ClassDistributionProps,
   type ClassShareRow,
@@ -117,7 +111,7 @@ export { SEGMENT_FILL, SEGMENT_STROKE, labelSegments, type ProgressDetail, type 
 export { ProgressHoverCard, type ProgressHoverCardProps } from "./patterns/ProgressHoverCard.js";
 export { KPI_CARD_HEIGHT, KPI_GRID, KpiCards, type KpiAttention, type KpiCard, type KpiStep } from "./patterns/project/KpiCards.js";
 export { BatchTable, PhaseBadge, useBatchTableView, type BatchRowView, type BatchTableProps, type BatchTableView } from "./patterns/project/BatchTable.js";
-export { PHASE_LABEL, phaseState } from "./patterns/project/batchRowModel.js";
+export { PHASE_LABEL, phaseState, type BatchPhase } from "./patterns/project/batchRowModel.js";
 export { BatchSheet, type BatchDetails, type BatchSheetProps, type SheetJob } from "./patterns/project/BatchSheet.js";
 export { CLASS_RAIL_ROWS, ClassRail, type ClassRailProps, type ClassRow } from "./patterns/project/ClassRail.js";
 

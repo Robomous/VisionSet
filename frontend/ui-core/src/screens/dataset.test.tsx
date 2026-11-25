@@ -1634,7 +1634,7 @@ describe("looking at a member", () => {
     await userEvent.click(await screen.findByTestId(`open-${ASSET}`));
 
     const failure = await screen.findByTestId("preview-labels-error");
-    expect(failure.textContent).toBe("That frame is no longer in the dataset.");
+    expect(failure.textContent).toBe("That asset is no longer in the dataset.");
     expect(screen.queryByTestId(`preview-shape-${BOX}`)).toBeNull();
   });
 

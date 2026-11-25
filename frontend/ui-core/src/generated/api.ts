@@ -361,6 +361,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/batches/{batch_id}/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Finish Batch
+         * @description Complete every unfinished job of the batch, then the batch, in one transaction.
+         *
+         *     Accepted exactly when the batch declares `complete` in `allowed_actions`: it is
+         *     `in_annotation` and every asset across its jobs is settled. Pending jobs are
+         *     started and completed, open ones completed, finished ones left alone. Either
+         *     every change lands or none does — an asset reopened while this runs is 409
+         *     `BATCH_NOT_COMPLETE` and every job stays as it was.
+         *
+         *     A batch with an unsettled asset is 409 `BATCH_NOT_COMPLETE`; one that is not
+         *     `in_annotation` is 409 `INVALID_TRANSITION`. 409 `STALE_WRITE` means a job
+         *     moved under the write lock this call holds; nothing was written, so read the
+         *     batch again and decide again. `POST /complete` is the narrower
+         *     move that needs every job completed first. `jobs_completed` counts the jobs
+         *     this call closed.
+         */
+        post: operations["finish_batch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/batches/{batch_id}/jobs": {
         parameters: {
             query?: never;
@@ -4055,6 +4088,15 @@ export interface components {
             asset_ids?: string[];
             /** Name */
             name: string;
+        };
+        /**
+         * BatchFinishedOut
+         * @description A batch closed together with its jobs, and how many jobs that closed.
+         */
+        BatchFinishedOut: {
+            batch: components["schemas"]["BatchOut"];
+            /** Jobs Completed */
+            jobs_completed: number;
         };
         /**
          * BatchMembership
@@ -7968,6 +8010,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BatchOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    finish_batch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchFinishedOut"];
                 };
             };
             /** @description Missing or invalid bearer token */

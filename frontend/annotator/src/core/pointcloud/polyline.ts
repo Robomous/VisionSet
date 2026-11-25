@@ -6,7 +6,6 @@
  */
 
 import { VERTEX_VISIBILITY, type Point3D, type Polyline3DGeometry } from "../types";
-import { add, dot, scale, subtract } from "./vector";
 
 /** The kernel refuses a path with fewer vertices, and one whose vertices are all the same point. */
 export const MIN_POLYLINE_VERTICES = 2;
@@ -40,24 +39,6 @@ export function removePolylineVertex(g: Polyline3DGeometry, index: number): Poly
   if (g.points.length <= MIN_POLYLINE_VERTICES) return null;
   const keep = (_: unknown, i: number): boolean => i !== index;
   return { ...g, points: g.points.filter(keep), visibility: g.visibility?.filter(keep) };
-}
-
-export function nearestSegment(
-  points: readonly Point3D[],
-  p: Point3D,
-): { segment: number; point: Point3D; distance: number } | null {
-  let best: { segment: number; point: Point3D; distance: number } | null = null;
-  for (let segment = 0; segment < points.length - 1; segment++) {
-    const a = points[segment]!;
-    const ab = subtract(points[segment + 1]!, a);
-    const lengthSquared = dot(ab, ab);
-    const t = lengthSquared === 0 ? 0 : Math.min(1, Math.max(0, dot(subtract(p, a), ab) / lengthSquared));
-    const point = add(a, scale(ab, t));
-    const offset = subtract(p, point);
-    const distance = Math.sqrt(dot(offset, offset));
-    if (best === null || distance < best.distance) best = { segment, point, distance };
-  }
-  return best;
 }
 
 function insertAt<T>(items: readonly T[], index: number, item: T): T[] {

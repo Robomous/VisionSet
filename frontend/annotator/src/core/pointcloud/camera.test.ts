@@ -90,14 +90,14 @@ describe("framingBounds", () => {
     const positions: number[] = [];
     for (let i = 0; i <= 100; i += 1) positions.push(i / 10, -i / 10, i / 100);
     positions.push(1e4, -1e4, 1e3);
-    const bounds = framingBounds(new Float32Array(positions));
+    const bounds = framingBounds(new Float32Array(positions), [0, 0, 0]);
     expect(bounds?.maximum[0]).toBeLessThanOrEqual(10);
     expect(bounds?.minimum[1]).toBeGreaterThanOrEqual(-10);
     expect(bounds?.maximum[2]).toBeLessThanOrEqual(1);
   });
 
   it("is null for no points", () => {
-    expect(framingBounds(new Float32Array())).toBeNull();
+    expect(framingBounds(new Float32Array(), [0, 0, 0])).toBeNull();
   });
 });
 

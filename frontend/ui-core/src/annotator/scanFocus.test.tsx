@@ -118,7 +118,7 @@ async function editingCuboids(): Promise<() => ScanWorkspace> {
     </TooltipProvider>,
   );
   const toggle = await screen.findByTestId("scan-edit-toggle");
-  await waitFor(() => expect(toggle.hasAttribute("disabled")).toBe(false));
+  await waitFor(() => expect(toggle.hasAttribute("aria-disabled")).toBe(false));
   await userEvent.click(toggle);
   await userEvent.click(await screen.findByTestId("scan-tool-cuboid"));
   await screen.findByTestId("scan-cuboid-class");

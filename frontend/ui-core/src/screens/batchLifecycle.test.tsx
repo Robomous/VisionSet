@@ -183,7 +183,7 @@ describe("the approve dialog's one decision and its folded cut", () => {
     schema_version: 3,
     allowed_actions: batchActions("approved"),
   };
-  const STARTED = { ...APPROVED, state: "in_annotation", allowed_actions: batchActions("in_annotation") };
+  const STARTED = { ...APPROVED, state: "in_annotation", allowed_actions: batchActions("in_annotation", { settled: false }) };
 
   const writes = (): string[] =>
     sent.filter((request) => request.method !== "GET").map((request) => `${request.method} ${new URL(request.url).pathname}`);
@@ -394,7 +394,7 @@ describe("Complete's count of what is left, said in its tooltip", () => {
     ...DRAFT,
     state: "in_annotation",
     schema_version: 1,
-    allowed_actions: batchActions("in_annotation"),
+    allowed_actions: batchActions("in_annotation", { settled: false }),
     progress: { ...DRAFT.progress, unannotated: 3, annotated: 45 },
   };
   /** The reason lives in the withheld control's tooltip, reached by keyboard: the control stays focusable. */

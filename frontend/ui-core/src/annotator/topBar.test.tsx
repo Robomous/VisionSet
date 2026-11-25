@@ -14,11 +14,12 @@
  * in a green suite.
  */
 
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX, ReactNode } from "react";
 
+import { SCAN_KEY_BINDINGS } from "@visionset/annotator";
 import { AnnotationPage } from "./AnnotationPage";
 import { REVIEW_ACTIONS } from "./reviewActions";
 import { TooltipProvider } from "@robomous/ui-core";
@@ -90,6 +91,9 @@ let modelBox = false;
  */
 let closedBatch = false;
 
+/** What the job's assets are: a 2D frame, or a scan. */
+let modality: "image" | "point_cloud" = "image";
+
 /** The nth asset's id, distinct enough to read in a failure message. */
 function assetId(index: number): string {
   return `4444444${index}-4444-4444-8444-444444444444`;
@@ -132,8 +136,8 @@ function answer(path: string): unknown {
       state: closedBatch ? "completed" : "in_annotation",
       schema_version: 1,
       asset_count: 1,
-      allowed_actions: batchActions(closedBatch ? "completed" : "in_annotation"),
-      modalities: ["image"],
+      allowed_actions: batchActions(closedBatch ? "completed" : "in_annotation", { settled: false }),
+      modalities: [modality],
       promoted_asset_count: 0,
       parent_batch_id: null,
       pre_label_run: null,
@@ -153,7 +157,7 @@ function answer(path: string): unknown {
     const items = Array.from({ length: assetCount }, (_unused, index) => ({
       id: index === 0 ? ASSET : assetId(index),
       project_id: PROJECT,
-      modality: "image",
+      modality,
       point_cloud: null,
       content_hash: `abcdef0${index}`.padEnd(64, "0"),
       width: 640,
@@ -205,6 +209,7 @@ beforeEach(() => {
   annotated = false;
   modelBox = false;
   closedBatch = false;
+  modality = "image";
   vi.stubGlobal("matchMedia", (query: string) => ({
     media: query,
     matches: true,
@@ -1252,5 +1257,75 @@ describe("hiding every object from the rail", () => {
     expect(screen.queryByTestId("tool-add-class")).toBeNull();
     await userEvent.click(screen.getByTestId("class-add"));
     expect(await screen.findByTestId("add-class-dialog")).toBeDefined();
+  });
+});
+
+describe("a scan's page carries no 2D chrome and names scans (#1113)", () => {
+  beforeEach(() => {
+    modality = "point_cloud";
+  });
+
+  it("keeps the tool bar, the tool rail and the canvas hint on an image", async () => {
+    modality = "image";
+    await open();
+    expect(screen.getByTestId("tool-options")).toBeDefined();
+    expect(screen.getByRole("navigation", { name: "Tools" })).toBeDefined();
+    expect(screen.getByTestId("annotation-page").textContent).toContain("picks a class to draw");
+  });
+
+  it("renders no tool bar, no empty tool rail and no 2D hint on a scan", async () => {
+    await open();
+    expect(screen.queryByTestId("tool-options")).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Tools" })).toBeNull();
+    expect(screen.getByTestId("annotation-page").textContent).not.toContain("picks a class");
+    expect(screen.getByTestId("object-total")).toBeDefined();
+  });
+
+  it("opens the scan editor's own shortcut list, row for row its binding table", async () => {
+    await open();
+    await userEvent.click(screen.getByTestId("more-actions"));
+    await userEvent.click(await screen.findByTestId("menu-shortcuts"));
+    const sheet = await screen.findByTestId("shortcut-sheet");
+    expect(sheet.getAttribute("data-sheet")).toBe("scan");
+    const chords = [...within(sheet).getByTestId("shortcut-rows").querySelectorAll("tr")].map((row) =>
+      row.getAttribute("data-chord"),
+    );
+    expect(chords).toEqual(SCAN_KEY_BINDINGS.map((binding) => binding.chord));
+    expect(sheet.textContent).not.toMatch(/frame|class to draw/i);
+    fireEvent.keyDown(sheet, { key: "?" });
+    await waitFor(() => expect(screen.queryByTestId("shortcut-sheet")).toBeNull());
+  });
+
+  it("names scans in the island, the landmarks and the job's progress", async () => {
+    assetCount = 2;
+    jobCounts = { unannotated: 2, pre_labeled: 0, annotated: 0, skipped: 0, review_pending: 0, accepted: 0, total: 2 };
+    await open();
+    expect(screen.getByTestId("prev-asset").getAttribute("aria-label")).toBe("Previous scan");
+    expect(screen.getByTestId("open-gallery").getAttribute("aria-label")).toBe("Scan 1 of 2 — show the job's scans");
+    expect(screen.getByRole("toolbar", { name: "Scan" })).toBe(screen.getByTestId("frame-island"));
+    expect(screen.getByRole("complementary", { name: "Scan" })).toBeDefined();
+    const readout = await screen.findByTestId("job-progress");
+    await waitFor(() => expect(readout.getAttribute("aria-label")).toBe("0 of 2 scans settled"));
+    await userEvent.hover(screen.getByTestId("open-gallery"));
+    expect((await screen.findAllByText("All scans")).length).toBeGreaterThan(0);
+  });
+
+  it("says why the review move and Finish job are withheld in scans", async () => {
+    jobCounts = { unannotated: 1, pre_labeled: 0, annotated: 0, skipped: 0, review_pending: 0, accepted: 0, total: 1 };
+    await open();
+    await userEvent.hover(screen.getByTestId("submit-for-review"));
+    expect((await screen.findAllByText("Label this scan first — there is nothing to review yet.")).length).toBeGreaterThan(0);
+    await userEvent.hover(screen.getByTestId("finish-job"));
+    expect(
+      (await screen.findAllByText("1 scan unresolved — annotate or skip it to finish the job.")).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("calls a skipped scan a scan, in its notice and on Un-skip", async () => {
+    progress = "skipped";
+    await open();
+    expect(screen.getByTestId("skipped-notice").textContent).toContain("This scan is skipped");
+    await userEvent.hover(screen.getByTestId("unskip"));
+    expect((await screen.findAllByText("Puts this scan back in play")).length).toBeGreaterThan(0);
   });
 });

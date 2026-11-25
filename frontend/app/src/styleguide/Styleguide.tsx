@@ -31,7 +31,6 @@ import {
   CardHeader,
   CardTitle,
   AssetMosaic,
-  BatchSummary,
   ClassDistribution,
   ClassListRow,
   Combobox,
@@ -832,16 +831,6 @@ const ROAD_CLASSES = [
   { name: "Yield sign", annotations: 246569, assets: 140200 },
 ] as const;
 
-const ROAD_BATCHES = [
-  { id: "1", name: "Highway Q3", phase: "annotating", total: 120000, remaining: 40762, percent: 66, inDataset: 0 },
-  { id: "2", name: "Downtown night", phase: "annotating", total: 80000, remaining: 34200, percent: 57, inDataset: 0 },
-  { id: "3", name: "Suburbs batch 4", phase: "draft", total: 6400, remaining: null, percent: null, inDataset: 0 },
-  { id: "4", name: "Downtown day", phase: "completed", total: 9600, remaining: 0, percent: 100, inDataset: 6720 },
-  { id: "5", name: "Rural set A", phase: "in_dataset", total: 212400, remaining: 0, percent: 100, inDataset: 212400 },
-  { id: "6", name: "Bridges & tunnels", phase: "in_dataset", total: 98310, remaining: 0, percent: 100, inDataset: 98310 },
-  { id: "7", name: "Coastal", phase: "in_dataset", total: 64000, remaining: 0, percent: 100, inDataset: 64000 },
-] as const;
-
 function ProjectComponentsDemo(): JSX.Element {
   const [lens, setLens] = useState<"annotations" | "assets">("annotations");
   const [assetLens, setAssetLens] = useState<"imported" | "dataset">("dataset");
@@ -869,17 +858,14 @@ function ProjectComponentsDemo(): JSX.Element {
         <ProjectKpi icon={Database} label="In dataset" value={formatCount(606421)} context="67% of images" onGo={() => toast("Dataset")} />
         <ProjectKpi icon={Tag} label="Latest release" value="v0.6" mono context="Sep 15 · 602,421 images" onGo={() => toast("Dataset")} />
       </div>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
-        <BatchSummary items={ROAD_BATCHES} subtitle={`${formatCount(74962)} images left to annotate`} onOpenBatch={(id) => toast(`Open batch ${id}`)} />
-        <ClassDistribution
-          lens={lens}
-          onLensChange={setLens}
-          subtitle={lens === "annotations" ? "Share of all annotations" : "Share of images showing each class"}
-          rows={rows}
-          empty="No annotations yet."
-          note="Class imbalance: Lane marking is 2% of annotations"
-        />
-      </div>
+      <ClassDistribution
+        lens={lens}
+        onLensChange={setLens}
+        subtitle={lens === "annotations" ? "Share of all annotations" : "Share of images showing each class"}
+        rows={rows}
+        empty="No annotations yet."
+        note="Class imbalance: Lane marking is 2% of annotations"
+      />
       <AssetMosaic
         lens={assetLens}
         onLensChange={setAssetLens}

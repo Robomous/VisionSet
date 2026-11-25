@@ -165,6 +165,22 @@ def _finished(job_id: str) -> None:
     payload(call("complete_job", job_id=job_id))
 
 
+def test_complete_batch_is_declared_once_every_asset_has_settled(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    name, batch_id, job_id = open_batch(monkeypatch, tmp_path, count=2)
+
+    def offered() -> tuple[bool, bool]:
+        one = payload(call("get_batch", batch_id=batch_id))["allowed_actions"]
+        many = payload(call("list_batches", project=name))["items"][0]["allowed_actions"]
+        return "complete" in one, "complete" in many
+
+    assert offered() == (False, False)
+    for asset in payload(call("next_pending_assets", job_id=job_id, count=100))["items"]:
+        call("set_asset_progress", job_id=job_id, asset_id=asset["id"], progress="annotated")
+    assert offered() == (True, True)
+
+
 def test_completing_with_promote_fills_the_trunk_and_counts_what_moved(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -177,6 +193,57 @@ def test_completing_with_promote_fills_the_trunk_and_counts_what_moved(
     assert completed["promoted"] == 2
     assert completed["promoted_asset_count"] == 2
     assert payload(call("promote_batch", batch_id=batch_id)) == {"items": [], "total": 0}
+
+
+def _two_jobs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[str, list[str]]:
+    _, batch_id = ingested(monkeypatch, tmp_path, count=2)
+    approved = payload(call("approve_batch", batch_id=batch_id, jobs_of=1, start=True))
+    return batch_id, [str(job["id"]) for job in approved["jobs"]]
+
+
+def _settle(job_id: str) -> None:
+    for asset in payload(call("next_pending_assets", job_id=job_id, count=100))["items"]:
+        payload(
+            call("set_asset_progress", job_id=job_id, asset_id=asset["id"], progress="annotated")
+        )
+
+
+def test_finish_batch_closes_every_job_and_the_batch_and_promotes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    batch_id, jobs = _two_jobs(monkeypatch, tmp_path)
+    for job_id in jobs:
+        _settle(job_id)
+    payload(call("complete_job", job_id=jobs[0]))
+
+    finished = payload(call("finish_batch", batch_id=batch_id, promote=True))
+
+    assert finished["state"] == "completed"
+    assert [job["state"] for job in finished["jobs"]] == ["completed", "completed"]
+    assert finished["jobs_completed"] == 1
+    assert finished["promoted"] == 2
+
+
+def test_finish_batch_with_an_unsettled_asset_refuses_and_moves_no_job(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    batch_id, jobs = _two_jobs(monkeypatch, tmp_path)
+    _settle(jobs[0])
+
+    refusal = error(call("finish_batch", batch_id=batch_id, promote=True))
+
+    assert refusal["code"] == "BATCH_NOT_COMPLETE"
+    assert "finish_batch" in refusal["hint"]
+    batch = payload(call("get_batch", batch_id=batch_id))
+    assert batch["state"] == "in_annotation"
+    assert [job["state"] for job in batch["jobs"]] == ["in_progress", "pending"]
+
+
+def test_finish_batch_on_a_draft_is_an_invalid_transition(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _, batch_id = ingested(monkeypatch, tmp_path, count=2)
+    assert error(call("finish_batch", batch_id=batch_id))["code"] == "INVALID_TRANSITION"
 
 
 def test_promote_batch_logs_mcp_as_the_actor(

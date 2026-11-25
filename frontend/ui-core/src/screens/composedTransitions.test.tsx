@@ -19,11 +19,10 @@ import {
 import type { Batch } from "./queries";
 import { renderWithData } from "../testing/dataHarness";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
-import { batchActions } from "../testing/wire.fixtures.js";
+import { batchActions, settledOf } from "../testing/wire.fixtures.js";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "55555555-5555-4555-8555-555555555555";
-const JOB = "77777777-7777-4777-8777-777777777777";
 
 type Answer = { status: number; body?: unknown };
 let handlers: ((request: Request) => Answer | undefined)[] = [];
@@ -76,6 +75,7 @@ const NO_PROGRESS = {
 
 function batch(overrides: Partial<Batch> = {}): Batch {
   const state = overrides.state ?? "draft";
+  const progress = overrides.progress ?? { ...NO_PROGRESS, unannotated: 3, total: 3 };
   return {
     id: BATCH,
     project_id: PROJECT,
@@ -83,8 +83,8 @@ function batch(overrides: Partial<Batch> = {}): Batch {
     state,
     schema_version: null,
     asset_count: 3,
-    progress: { ...NO_PROGRESS, unannotated: 3, total: 3 },
-    allowed_actions: batchActions(state),
+    progress,
+    allowed_actions: batchActions(state, { settled: settledOf(progress) }),
     modalities: ["image"],
     promoted_asset_count: 0,
     parent_batch_id: null,
@@ -104,21 +104,18 @@ describe("Complete, and maybe add to the dataset", () => {
     progress: { ...NO_PROGRESS, annotated: 3, total: 3 },
     promoted_asset_count: 3,
   });
+  const outstanding = batch({
+    state: "in_annotation",
+    schema_version: 3,
+    allowed_actions: batchActions("in_annotation", { settled: false }),
+  });
   const completed = batch({
     state: "completed",
     schema_version: 3,
     progress: settled.progress,
     promoted_asset_count: 3,
   });
-  const job = {
-    id: JOB,
-    batch_id: BATCH,
-    state: "completed",
-    asset_count: 3,
-    assignee: null,
-    pre_label_run: null,
-    allowed_actions: [],
-  };
+  const finished = (jobsCompleted: number) => ({ batch: completed, jobs_completed: jobsCompleted });
   const assets = (count: number) => ({
     items: Array.from({ length: count }, (_, at) => ({
       id: `asset-${at}`,
@@ -158,8 +155,7 @@ describe("Complete, and maybe add to the dataset", () => {
   });
 
   it("with the switch on, completes then promotes, and says what the press moved", async () => {
-    on("GET", /\/jobs$/, { status: 200, body: { items: [job], total: 1 } });
-    on("POST", /\/complete$/, { status: 200, body: completed });
+    on("POST", /\/finish$/, { status: 200, body: finished(0) });
     on("POST", /\/promote$/, { status: 200, body: assets(3) });
     const openDataset = vi.fn();
     renderWithData(<CompleteBatchButton batch={settled} projectId={PROJECT} onOpenDataset={openDataset} />);
@@ -168,7 +164,7 @@ describe("Complete, and maybe add to the dataset", () => {
     await userEvent.click(screen.getByTestId("complete-submit"));
 
     await waitFor(() =>
-      expect(posts()).toEqual([`/batches/${BATCH}/complete`, `/batches/${BATCH}/promote`]),
+      expect(posts()).toEqual([`/batches/${BATCH}/finish`, `/batches/${BATCH}/promote`]),
     );
     const line = await screen.findByTestId("completed-drive-01");
     await waitFor(() =>
@@ -179,8 +175,7 @@ describe("Complete, and maybe add to the dataset", () => {
   });
 
   it("with the switch off, completes and nothing else, and says nothing is in the dataset yet", async () => {
-    on("GET", /\/jobs$/, { status: 200, body: { items: [job], total: 1 } });
-    on("POST", /\/complete$/, { status: 200, body: completed });
+    on("POST", /\/finish$/, { status: 200, body: finished(0) });
     renderWithData(<CompleteBatchButton batch={settled} projectId={PROJECT} onOpenDataset={vi.fn()} />);
 
     await openConfirm(false);
@@ -188,7 +183,7 @@ describe("Complete, and maybe add to the dataset", () => {
 
     const line = await screen.findByTestId("completed-drive-01");
     expect(line.textContent).toBe("Completed. Nothing is in the dataset yet.");
-    expect(posts()).toEqual([`/batches/${BATCH}/complete`]);
+    expect(posts()).toEqual([`/batches/${BATCH}/finish`]);
     expect(screen.queryByTestId("complete-promote-open-dataset-drive-01")).toBeNull();
   });
 
@@ -204,8 +199,7 @@ describe("Complete, and maybe add to the dataset", () => {
   });
 
   it("keeps the completion on screen and says the refusal beneath it when promotion is refused", async () => {
-    on("GET", /\/jobs$/, { status: 200, body: { items: [job], total: 1 } });
-    on("POST", /\/complete$/, { status: 200, body: completed });
+    on("POST", /\/finish$/, { status: 200, body: finished(0) });
     on("POST", /\/promote$/, {
       status: 409,
       body: { code: "BATCH_NOT_COMPLETE", message: "batch 'drive-01' is 'in_annotation'" },
@@ -222,10 +216,8 @@ describe("Complete, and maybe add to the dataset", () => {
     expect(screen.queryByTestId("complete-promote-open-dataset-drive-01")).toBeNull();
   });
 
-  it("is withheld while frames are outstanding, and the count is the tooltip's reason", async () => {
-    renderWithData(
-      <CompleteBatchButton batch={batch({ state: "in_annotation", schema_version: 3 })} projectId={PROJECT} />,
-    );
+  it("is withheld while the batch does not declare complete, and the count is the tooltip's reason", async () => {
+    renderWithData(<CompleteBatchButton batch={outstanding} projectId={PROJECT} />);
     const control = screen.getByTestId("complete-drive-01");
     expect(control.getAttribute("aria-disabled")).toBe("true");
     expect(control.getAttribute("aria-label")).toBe("Complete batch");
@@ -234,6 +226,44 @@ describe("Complete, and maybe add to the dataset", () => {
     expect((await screen.findAllByText("3 frames still to annotate or skip")).length).toBeGreaterThan(0);
     await userEvent.click(control);
     expect(screen.queryByTestId("complete-confirm")).toBeNull();
+    expect(posts()).toEqual([]);
+  });
+
+  it("is offered whenever the batch declares complete", async () => {
+    renderWithData(<CompleteBatchButton batch={settled} projectId={PROJECT} />);
+    const control = screen.getByTestId("complete-drive-01");
+    expect(control.getAttribute("aria-disabled")).toBeNull();
+    await userEvent.click(control);
+    expect(await screen.findByTestId("complete-confirm")).toBeTruthy();
+  });
+
+  it("finishes in one request and says how many jobs the press closed", async () => {
+    on("POST", new RegExp(`/batches/${BATCH}/finish$`), { status: 200, body: finished(2) });
+    renderWithData(<CompleteBatchButton batch={settled} projectId={PROJECT} />);
+
+    await openConfirm(false);
+    await userEvent.click(screen.getByTestId("complete-submit"));
+
+    const line = await screen.findByTestId("completed-drive-01");
+    expect(line.textContent).toContain("Completed, closing 2 open jobs.");
+    expect(sent.map((r) => `${r.method} ${new URL(r.url).pathname}`)).toEqual([`POST /batches/${BATCH}/finish`]);
+  });
+
+  it("says a refused finish in words and shows nothing as completed", async () => {
+    on("POST", new RegExp(`/batches/${BATCH}/finish$`), {
+      status: 409,
+      body: { code: "BATCH_NOT_COMPLETE", message: "batch 'drive-01' has 1 of 3 assets still unsettled" },
+    });
+    renderWithData(<CompleteBatchButton batch={settled} projectId={PROJECT} />);
+
+    await openConfirm(false);
+    await userEvent.click(screen.getByTestId("complete-submit"));
+
+    const said = await screen.findByTestId("complete-error-drive-01");
+    expect(said.textContent).toContain("still unfinished");
+    expect(said.textContent).not.toContain("BATCH_NOT_COMPLETE");
+    expect(posts()).toEqual([`/batches/${BATCH}/finish`]);
+    expect(screen.queryByTestId("completed-drive-01")).toBeNull();
   });
 
   it("is not offered on a batch that does not declare complete", () => {

@@ -108,7 +108,7 @@ function batch(id: string, name: string, state: "in_annotation" | "draft", unann
     schema_version: state === "draft" ? null : 1,
     asset_count: 10,
     progress: { ...NO_PROGRESS, total: 10, unannotated },
-    allowed_actions: batchActions(state),
+    allowed_actions: batchActions(state, { settled: unannotated === 0 }),
     modalities: ["image"],
     promoted_asset_count: 0,
     parent_batch_id: null,

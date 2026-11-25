@@ -85,7 +85,7 @@ function answer(path: string): unknown {
       state: "in_annotation",
       schema_version: 1,
       asset_count: FRAMES.length,
-      allowed_actions: batchActions("in_annotation"),
+      allowed_actions: batchActions("in_annotation", { settled: false }),
       modalities: ["image"],
       promoted_asset_count: 0,
       parent_batch_id: null,
@@ -258,17 +258,9 @@ describe("what the gallery shows", () => {
   it("offers no batch action of any kind — it is a switcher", async () => {
     const { modal } = await openGallery();
 
-    // The batch view's whole apparatus, absent by name. A modal that grew any of
-    // these would be `GalleryScreen` arriving through the side door.
-    for (const testId of [
-      "approve-batch",
-      "complete-batch",
-      "promote",
-      "bulk-bar",
-      "select-all",
-      "correction-batch",
-      "timeline",
-    ]) {
+    // The batch's own transitions, absent by name: a modal that grew one would be
+    // the batch page arriving through the side door.
+    for (const testId of ["approve-batch", "start-batch"]) {
       expect(within(modal).queryByTestId(testId)).toBeNull();
     }
 

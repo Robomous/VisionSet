@@ -59,9 +59,9 @@ const BATCH_COUNTS = {
  * Nothing outstanding, which is the whole precondition for finishing.
  *
  * The default fixture is mid-flight (30 of 48 unannotated), which is the wrong
- * shape for every claim about *finishing*: Complete is withheld while work is
- * outstanding, so a test written against the default would assert against a
- * control that is correctly disabled.
+ * shape for every claim about *finishing*: the batch does not declare `complete`
+ * while work is outstanding, so a test written against the default would assert
+ * against a control that is correctly withheld.
  */
 const SETTLED_COUNTS = {
   total: 48,
@@ -134,7 +134,7 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
       schema_version: current === "draft" ? null : 3,
       asset_count: 48,
       progress: counts,
-      allowed_actions: batchActions(current),
+      allowed_actions: batchActions(current, { settled: counts.unannotated + counts.pre_labeled + counts.review_pending === 0 }),
       modalities: ["image"],
       promoted_asset_count: promoted,
       parent_batch_id: null,
@@ -215,17 +215,19 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
       current = "in_annotation";
       return route.fulfill({ json: batchOut() });
     }
-    if (method === "POST" && path === `/batches/${BATCH}/complete`) {
-      // The kernel's own gate, and the 409 the founder saw reproduced exactly:
-      // every asset settled, one job still open, and the batch refusing.
-      if (job !== "completed") {
+    if (method === "POST" && path === `/batches/${BATCH}/finish`) {
+      // The kernel's gate: only a batch that declares `complete` finishes, and
+      // then its open jobs close with it in the same answer.
+      if (!batchOut().allowed_actions.includes("complete")) {
         return route.fulfill({
           status: 409,
-          json: { code: "BATCH_NOT_COMPLETE", message: `batch '${NAME}' has 1 of 1 jobs still unfinished` },
+          json: { code: "BATCH_NOT_COMPLETE", message: `batch '${NAME}' has assets still unsettled` },
         });
       }
+      const jobsCompleted = job === "completed" ? 0 : roster.length;
+      job = "completed";
       current = "completed";
-      return route.fulfill({ json: batchOut() });
+      return route.fulfill({ json: { batch: batchOut(), jobs_completed: jobsCompleted } satisfies Wire["BatchFinishedOut"] });
     }
     if (method === "POST" && path === `/batches/${BATCH}/promote`) {
       // Only finished work is promoted, and the kernel says so before this
@@ -320,6 +322,13 @@ async function serveApi(page: Page, sent: Request[], options: Options = {}): Pro
         return route.fulfill({
           status: 409,
           json: { code: "INVALID_TRANSITION", message: `job cannot become completed from ${job}` },
+        });
+      }
+      // And only once every asset is settled, as `JobService.complete` requires.
+      if (options.settled !== true) {
+        return route.fulfill({
+          status: 409,
+          json: { code: "JOB_NOT_COMPLETE", message: `job ${JOB} has 35 of 48 assets still unsettled` },
         });
       }
       job = "completed";
@@ -688,18 +697,19 @@ test("an approved batch is started from its panel", async ({ page }) => {
 
 // --- finishing -----------------------------------------------------------------
 
-test("completing is withheld while frames are outstanding, and says how many", async ({ page }) => {
+test("completing is withheld while the batch does not declare it, and says how many are left", async ({ page }) => {
   const sent: Request[] = [];
   const panel = await openPanel(page, sent);
 
-  // 30 unannotated and 5 in review: 35 frames are neither annotated nor skipped.
+  // 30 unannotated and 5 in review: 35 frames are neither annotated nor skipped,
+  // so the kernel does not declare `complete`.
   const complete = panel.getByTestId(`complete-${NAME}`);
   await expect(complete).toBeDisabled();
   await expect(complete).toHaveAccessibleName("Complete batch");
   // The count is the tooltip's reason, reached by keyboard: the withheld button stays focusable (`aria-disabled`).
   await expect(complete).toHaveAttribute("aria-disabled", "true");
   await complete.focus();
-  await expect(page.getByRole("tooltip").filter({ hasText: "still to annotate or skip" }).first()).toBeVisible();
+  await expect(page.getByRole("tooltip").filter({ hasText: "35 frames still to annotate or skip" }).first()).toBeVisible();
   await expect(page.getByTestId("complete-confirm")).toHaveCount(0);
   expect(writes(sent)).toEqual([]);
 });
@@ -710,11 +720,9 @@ test("completing a settled batch asks first, and with the switch off finishes it
   const sent: Request[] = [];
   const panel = await openPanel(page, sent, { settled: true });
 
-  // The defect, end to end and in the browser it was reported from: 48 of 48
-  // settled, one job still `in_progress`, and the only request the control used to
-  // send was the one the server answers 409 to. The stub keeps both kernel gates,
-  // so a control that skipped either link would fail here rather than pass on a
-  // permissive fixture. Completing cannot be undone, so a press asks first.
+  // 48 of 48 settled and one job still `in_progress`: one finish closes both,
+  // and the stub keeps the kernel's gate on the declaration. Completing cannot
+  // be undone, so a press asks first.
   await panel.getByTestId(`complete-${NAME}`).click();
   const confirm = page.getByTestId("complete-confirm");
   await expect(confirm).toBeVisible();
@@ -728,9 +736,7 @@ test("completing a settled batch asks first, and with the switch off finishes it
   await expect(add).not.toBeChecked();
   await confirm.getByTestId("complete-submit").click();
 
-  await expect
-    .poll(() => writes(sent))
-    .toEqual([`POST /jobs/${JOB}/complete`, `POST /batches/${BATCH}/complete`]);
+  await expect.poll(() => writes(sent)).toEqual([`POST /batches/${BATCH}/finish`]);
 
   // And the batch really moved — the badge is the server's answer, not the button's
   // optimism, and the batch now declares promotion instead: *Add to dataset* is the
@@ -773,15 +779,11 @@ test("Complete with the switch on finishes the job, closes the batch, adds it to
   await expect(confirm.getByTestId("complete-add")).toBeChecked();
   await confirm.getByTestId("complete-submit").click();
 
-  // In order, and the job first: the batch refuses while its job is open.
+  // One request finishes the job and the batch; the promotion follows it.
   await expect(page.getByTestId(`completed-${NAME}`)).toHaveText(
     "Completed, closing 1 open job. Added 3 images to the dataset. 45 skipped images stayed out.",
   );
-  expect(writes(sent)).toEqual([
-    `POST /jobs/${JOB}/complete`,
-    `POST /batches/${BATCH}/complete`,
-    `POST /batches/${BATCH}/promote`,
-  ]);
+  expect(writes(sent)).toEqual([`POST /batches/${BATCH}/finish`, `POST /batches/${BATCH}/promote`]);
   // The batch is `completed` now and declares no `complete`, so the button is gone —
   // the line that says what it did is not.
   await expect(complete).toHaveCount(0);

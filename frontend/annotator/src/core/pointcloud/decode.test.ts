@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import type { Point3D } from "../types";
+import { homeCamera } from "./camera";
 import { PointBufferError, boundsOf, decodePoints } from "./decode";
 
 function buffer(
@@ -109,13 +111,26 @@ describe("decodePoints", () => {
 
 describe("boundsOf", () => {
   it("is the box around every point", () => {
-    expect(boundsOf(new Float32Array([1, -2, 3, -1, 4, 0.5]))).toEqual({
+    expect(boundsOf(new Float32Array([1, -2, 3, -1, 4, 0.5]), [0, 0, 0])).toEqual({
       minimum: [-1, -2, 0.5],
       maximum: [1, 4, 3],
     });
   });
 
+  it("is in the scan's frame, so a georeferenced scan is framed where it is", () => {
+    const origin: Point3D = [512_364, 4_123_447, 30];
+    const positions = new Float32Array([-20, -10, -1, 20, 10, 3]);
+    const bounds = boundsOf(positions, origin);
+    expect(bounds).toEqual({
+      minimum: [origin[0] - 20, origin[1] - 10, origin[2] - 1],
+      maximum: [origin[0] + 20, origin[1] + 10, origin[2] + 3],
+    });
+    const camera = homeCamera(bounds ?? { minimum: [0, 0, 0], maximum: [0, 0, 0] });
+    expect(camera.target).toEqual([origin[0], origin[1], origin[2] + 1]);
+    expect(Math.hypot(...camera.target)).toBeGreaterThan(1e6);
+  });
+
   it("is null for no points", () => {
-    expect(boundsOf(new Float32Array())).toBeNull();
+    expect(boundsOf(new Float32Array(), [0, 0, 0])).toBeNull();
   });
 });

@@ -40,7 +40,6 @@ import {
   checkAssignJob,
   checkCreateProject,
   checkCompleteBatch,
-  checkCompleteJob,
   checkCompareSchemaVersions,
   checkCreateSchemaVersion,
   checkDatasetStats,
@@ -49,6 +48,7 @@ import {
   checkDeleteProject,
   checkDiscardSchemaDraft,
   checkExportRelease,
+  checkFinishBatch,
   checkGetBackgroundJob,
   checkGetHome,
   checkGetBackgroundJobArtifact,
@@ -1446,85 +1446,29 @@ export interface FinishBatchResult {
 }
 
 /**
- * Finish a batch: its outstanding jobs first, then the batch itself.
+ * Finish a batch: its outstanding jobs and the batch itself, in one request.
  *
- * ## The chain has three links, and sending only the last one refuses
+ * `POST /batches/{id}/finish` is one kernel transaction. It is accepted exactly
+ * when the batch declares `complete`, starts and completes every job that is not
+ * yet `completed`, then completes the batch, and either all of that lands or
+ * none of it does. A refusal therefore leaves every job as it was, and reaches
+ * the caller as itself.
  *
- * Completion is derived at **two** levels, and "derived" in this kernel means
- * *recomputed*, never *implicit*: `JobService.complete` refuses while any asset is
- * unsettled, and `BatchService.complete` refuses while any **job** is outstanding.
- * A batch's `ProgressCounts` describes its assets, so a batch reading `0 to do`
- * beside a 409 saying `1 of 1 jobs still unfinished` is two true answers to two
- * different questions — which is exactly what a person saw.
- *
- * `POST /jobs/{id}/complete` had one caller in the whole app: the `Finish job`
- * button *inside the annotator*. Settling frames in bulk — which is the
- * entire point of bulk skip, and which a client of the API can do — never passes it, so the job stayed `in_progress`
- * forever and `Complete` refused forever, naming no remedy. So this sends the two
- * links nobody was sending, in the only order the machines allow.
- *
- * ## Three rules, each of them load-bearing
- *
- * **`pending` is started first.** `JOB_TRANSITIONS` has no `pending → completed`
- * edge, so a job the annotator was never opened on cannot be closed without
- * `start`. A batch whose frames were *all* bulk-skipped is that case, and without
- * this line it would be unfinishable by any sequence of clicks that exists.
- *
- * **Sequential, not `Promise.all`.** SQLite has one writer and these are writes;
- * firing N job completions at a workspace under a busy timeout is how a green path
- * starts answering `WORKSPACE_BUSY`. A batch has a handful of jobs, not a
- * thousand, so the ordering costs nothing worth having.
- *
- * **The first refusal stops the chain**, and reaches the caller as itself. There is
- * nothing to roll back — a completed job is a true statement about its own assets
- * whether or not the batch went on to close — and inventing a partial-outcome
- * report here would only hide *which* link refused. `useBulkSetProgress` reports
- * partial because it is N independent moves; this is one move in stages.
- *
- * This is the same call `AnnotationPage` makes at the other end of the lifecycle
- * opening a job to work on it **is** starting it, and the batch with
- * it. A surface composing the moves somebody plainly means is not the kernel
- * deriving them behind their back.
+ * Invalidation is on settled rather than on success: a refusal is the server
+ * saying the declaration this screen rendered from is stale, and the re-read is
+ * what replaces it.
  */
 export function useFinishBatch(batchId: string) {
   const client = useApiClient();
   const queries = useQueryClient();
   return useMutation({
     mutationFn: async (): Promise<FinishBatchResult> => {
-      const jobs = unwrap(
-        await client.GET("/batches/{batch_id}/jobs", {
-          params: { path: { batch_id: batchId } },
-        }),
-        checkListBatchJobs,
+      const finished = unwrap(
+        await client.POST("/batches/{batch_id}/finish", { params: { path: { batch_id: batchId } } }),
+        checkFinishBatch,
       );
-
-      let jobsFinished = 0;
-      for (const job of jobs.items) {
-        if (job.state === "completed") continue;
-        if (job.state === "pending") {
-          unwrap(
-            await client.POST("/jobs/{job_id}/start", { params: { path: { job_id: job.id } } }),
-            checkStartJob,
-          );
-        }
-        unwrap(
-          await client.POST("/jobs/{job_id}/complete", { params: { path: { job_id: job.id } } }),
-          checkCompleteJob,
-        );
-        jobsFinished += 1;
-      }
-
-      const batch = unwrap(
-        await client.POST("/batches/{batch_id}/complete", {
-          params: { path: { batch_id: batchId } },
-        }),
-        checkCompleteBatch,
-      );
-      return { jobsFinished, batch };
+      return { jobsFinished: finished.jobs_completed, batch: finished.batch };
     },
-    // On settled rather than on success: a refusal at the batch leaves the jobs it
-    // did finish genuinely finished, and a screen still showing them outstanding
-    // would be the one state this whole hook exists to stop happening.
     onSettled: () => {
       void queries.invalidateQueries({ queryKey: batchKeys.batch(batchId) });
       void queries.invalidateQueries({ queryKey: batchKeys.jobs(batchId) });
@@ -1792,9 +1736,9 @@ export interface BulkProgressResult {
  * If that ever stops being true, this can go back to `allSettled` without the
  * kernel needing anything.
  *
- * A refusal still does not stop the rest, unlike `useFinishBatch`: these are N
- * independent moves rather than one move in stages, so a frame the kernel refuses
- * says nothing about the next one.
+ * A refusal still does not stop the rest: these are N independent moves rather
+ * than one transaction like `useFinishBatch`, so a frame the kernel refuses says
+ * nothing about the next one.
  */
 export function useBulkSetProgress(batchId: string) {
   const client = useApiClient();

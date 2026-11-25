@@ -1428,6 +1428,24 @@
         "title": "BatchCreate",
         "type": "object"
       },
+      "BatchFinishedOut": {
+        "description": "A batch closed together with its jobs, and how many jobs that closed.",
+        "properties": {
+          "batch": {
+            "$ref": "#/components/schemas/BatchOut"
+          },
+          "jobs_completed": {
+            "title": "Jobs Completed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "batch",
+          "jobs_completed"
+        ],
+        "title": "BatchFinishedOut",
+        "type": "object"
+      },
       "BatchMembership": {
         "additionalProperties": false,
         "description": "Which assets to put in, or take out of, a draft batch.",
@@ -8754,6 +8772,105 @@
           }
         ],
         "summary": "Create Correction Batch",
+        "tags": [
+          "batches"
+        ]
+      }
+    },
+    "/batches/{batch_id}/finish": {
+      "post": {
+        "description": "Complete every unfinished job of the batch, then the batch, in one transaction.\n\nAccepted exactly when the batch declares `complete` in `allowed_actions`: it is\n`in_annotation` and every asset across its jobs is settled. Pending jobs are\nstarted and completed, open ones completed, finished ones left alone. Either\nevery change lands or none does \u2014 an asset reopened while this runs is 409\n`BATCH_NOT_COMPLETE` and every job stays as it was.\n\nA batch with an unsettled asset is 409 `BATCH_NOT_COMPLETE`; one that is not\n`in_annotation` is 409 `INVALID_TRANSITION`. 409 `STALE_WRITE` means a job\nmoved under the write lock this call holds; nothing was written, so read the\nbatch again and decide again. `POST /complete` is the narrower\nmove that needs every job completed first. `jobs_completed` counts the jobs\nthis call closed.",
+        "operationId": "finish_batch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchFinishedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Finish Batch",
         "tags": [
           "batches"
         ]

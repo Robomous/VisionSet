@@ -3,8 +3,9 @@
 Convention reminders encoded here:
 - Entity identity is always a UUID (annotations are never addressed by index).
 - Asset content identity is the SHA-256 hash of the bytes.
-- Coordinates live in the asset's native reference frame (pixels for images);
-  normalization is an exporter concern.
+- Coordinates live in the asset's native reference frame (pixels for 2D
+  geometries, metres in the sensor or scan frame for 3D ones); normalization is
+  an exporter concern.
 """
 
 from visionset.kernel.domain.annotation import (

@@ -636,7 +636,7 @@ describe("launching a run", () => {
       body: {
         items: [
           { id: "b1", project_id: PROJECT, name: "open", state: "draft", schema_version: null, asset_count: 4, progress: NO_PROGRESS, allowed_actions: batchActions("draft"), modalities: ["image"], promoted_asset_count: 0, parent_batch_id: null, pre_label_run: null },
-          { id: "b2", project_id: PROJECT, name: "frozen", state: "in_annotation", schema_version: 1, asset_count: 9, progress: NO_PROGRESS, allowed_actions: batchActions("in_annotation"), modalities: ["image"], promoted_asset_count: 0, parent_batch_id: null, pre_label_run: null },
+          { id: "b2", project_id: PROJECT, name: "frozen", state: "in_annotation", schema_version: 1, asset_count: 9, progress: NO_PROGRESS, allowed_actions: batchActions("in_annotation", { settled: true }), modalities: ["image"], promoted_asset_count: 0, parent_batch_id: null, pre_label_run: null },
         ],
         total: 2,
       },

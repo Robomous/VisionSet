@@ -1033,7 +1033,7 @@ describe("the project's identity and its one filled control", () => {
         accepted: 0,
         total: 4,
       },
-      allowed_actions: batchActions(fields.state as BatchState),
+      allowed_actions: batchActions(fields.state as BatchState, { settled: (fields.unannotated ?? 4) === 0 }),
       modalities: ["image"],
       promoted_asset_count: 0,
       parent_batch_id: null,

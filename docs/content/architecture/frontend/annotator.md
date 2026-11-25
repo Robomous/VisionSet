@@ -114,9 +114,16 @@ the same job-scoped calls. The scan plan wraps a yaw into `[-π, π]`, because t
 refuses one outside rather than wrapping it, and sends the stored provenance, so an edited
 import stays `import`.
 
-On a scan, `yaw` turns about the declared frame's up axis. `scanCuboidCorners` draws that
-convention and `pointcloud/cuboid` is its inverse, so an edit writes back exactly what the
-viewer read and no coordinate is re-expressed in another frame. A source that declares no
+On a scan, `yaw` turns about the declared frame's up axis. `pointcloud/cuboid` owns every box
+derivation in that convention: the up axis (`upAxis`), the box's axes (`cuboidAxes`), its corners
+(`cuboidCorners3D`, which the drawn labels and the overlay's footprint both read), a drawn box
+standing on its base (`standingCuboid`) and the yaw of a heading (`yawOfHeading`). An edit
+therefore writes back exactly what the viewer read and no coordinate is re-expressed in another
+frame.
+
+A `PointSample` holds its positions relative to its `origin`; every `PointBounds` is in the scan's
+frame. `boundsOf` and `framingBounds` both take the origin, so a box measured from a
+georeferenced sample cannot aim the camera at the frame's zero. A source that declares no
 frame is drawn in a default frame while the kernel refuses every 3D write on it, so
 `scanEditability` reports editing off there, with the reason.
 
@@ -159,8 +166,11 @@ pointer ray's `rayGroundHit` at that height, so it stays under the pointer. With
 close it falls back to `rayGroundHit` at the ground height, or, for a drag, at the vertex's own
 level. The machine reads the points through the optional `ScanContext.points`, which the host
 sets from the loaded `PointSample`. A query projects only the points of a level grid's cells the
-ray passes over, widened by the tolerance at each depth; the grid is built once per sample, in
-its origin-relative coordinates, and kept in a `WeakMap` keyed by the sample. `commit` (Enter, or a double-click the
+ray passes over, widened by the tolerance at each depth; the grid is built once per sample and up
+axis (index and sign), in its origin-relative coordinates, and kept in a `WeakMap` keyed by the
+sample. Its cells span the 2nd–98th percentile of the two level axes, a point beyond that range
+kept in the nearest edge cell, so one stray return does not coarsen every cell; a point with a
+non-finite coordinate is left out. `commit` (Enter, or a double-click the
 adapter maps to it) adds the line only when it has two vertices not all equal, the kernel's
 rule, and otherwise keeps drafting. `hitTest3D` tries the selected label's handles first - a
 polyline's vertices or a cuboid's faces and yaw ring - then any polyline's segments, then cuboid
@@ -170,6 +180,11 @@ or drag that `isDrawablePolyline` rejects is refused, so the document never hold
 would refuse; `delete-selected` removes whole labels. A polyline is created with `visibility`
 omitted, which the kernel reads as unknown; a declared visibility stays aligned with the points,
 an inserted vertex taking `UNLABELED`. `scanVertexLayout` places the vertex handles with the same `screenOf` as the hit test.
+
+The package root exports everything a `pointcloud` module exports, so a family is public whole
+or not at all (`zoom` with `zoomAt`, `orthographic` with `perspective`, `lookAt` and `multiply`,
+every `POINT_BUFFER_*` and `POINT_FLAG_*` constant). Two exceptions stay internal: the three-vector
+arithmetic of `pointcloud/vector`, and the snap grid behind `snapHeight` (`surfaceGrid`).
 
 ## Zero runtime dependencies
 

@@ -74,6 +74,9 @@ nothing was being distributed. This is the first version that is.
   empty batch, read in one aggregate per project; the MCP batch tools and `visionset batch … --json` carry it
   too. The UI names a batch's assets from it (*12 scans*, or *12 assets* for a batch holding images and scans)
   instead of guessing from the project's sources with one `/assets?limit=1` request per batch (#1111).
+- **The schema editor offers `cuboid_3d` and `polyline_3d`.** *Drawn as* lists **3D box** and **3D polyline**
+  beside the four image shapes, so a class the scan editor can draw is created in the browser; one class may
+  declare image and scan shapes together (#1092).
 - **The exporter port hands a plugin the release's split `assignment`.** Cut once over the whole frozen
   manifest; `folds_of(manifest, assignment)` places assets by it. `supported_modalities` is optional on the
   port (read through `supported_modalities_of`), so a plugin declaring none is discovered and writes images
@@ -90,8 +93,60 @@ nothing was being distributed. This is the first version that is.
   Importing the root no longer pulls in `react`, so the optional peer is genuinely optional. Breaking for
   anything that imported a React adapter name (`AnnotatorCanvas`, `useAnnotatorSnapshot`, `classColor`, …)
   from the root: import it from `@visionset/annotator/react` instead (#843).
+- **`@visionset/annotator`: one place for scan cuboid maths, and one rule for the root's point-cloud exports.**
+  `pointcloud/cuboid` now owns `upAxis`, `standingCuboid` and `cuboidCorners3D`, which the drawn labels, the
+  handle overlay and the editor share. `boundsOf` and `framingBounds` take the sample's `origin` and always
+  return scan-frame bounds. The root exports everything a point-cloud module exports (adding `zoomAt`,
+  `perspective`, `lookAt`, `multiply`, the remaining `POINT_*` buffer constants, `rampRange` among others),
+  except the vector arithmetic and the snap grid. The scan legend reads the ramp's ends from `rampRange`, the
+  same percentiles the canvas coloured with (#1112).
+- **Annotator: one disabled-with-reason pattern for the scan controls.** Edit, the draw tools, colour by and the
+  labels toggle carry `aria-disabled` and their reason on the control itself, as Finish job on an editable page
+  already did, so a withheld tool adds no tab stop inside its tool group and stays reachable by arrow key and
+  hover. The keep-focus-on-canvas handler is one shared helper (#1112).
+- **Refusals about assets say "asset", not "frame".** `ASSET_NOT_WRITABLE`, `JOB_NOT_COMPLETE`, `ASSET_NOT_IN_JOB`,
+  `ASSET_NOT_IN_DATASET`, `ASSET_NOT_IN_BATCH`, `ASSET_NOT_FOUND`, `ANNOTATION_GEOMETRY_OUT_OF_BOUNDS`, `EMPTY_BATCH`
+  and `EMPTY_RELEASE` read the same for a frame and a scan, and no longer collide with a scan's coordinate frame
+  (#1113).
+- **`@visionset/annotator`: the scan editor's chords are one table.** `SCAN_KEY_BINDINGS` lists every chord
+  `scanKeyIntent` answers, and `?` is one of them (intent `help`) (#1113).
+- **A batch declares `complete` only once every asset is settled.** `allowed_actions` on a batch now applies the
+  `SETTLED_PROGRESS` condition a job's `complete` already applied, read from the batch's own progress tally, and
+  REST, the CLI and MCP all publish the same answer. The batch panel's *Complete* follows the declaration alone
+  (withheld, with its count, until it is declared) (#1112).
+- **Finishing a batch is one kernel transaction.** `BatchService.finish` completes every job not yet `completed`
+  (starting a `pending` one first) and then the batch, all or nothing, and only while the batch declares
+  `complete`; an asset reopened while it runs refuses the whole call and moves no job. It is `POST
+  /batches/{id}/finish` (answering the batch and `jobs_completed`), `visionset batch finish [--promote]` and the MCP
+  tool `finish_batch`, with the same refusals on each: `BATCH_NOT_COMPLETE` for an unsettled asset,
+  `INVALID_TRANSITION` outside `in_annotation`. The batch panel's *Complete* sends that one request instead of a
+  request per job (#1127).
+- **Test fixtures no longer declare an open batch's `complete` by default.** The ui-core and e2e transcriptions of
+  a batch's actions require `settled` for an `in_annotation` batch, and every fixture derives it from the progress
+  it stubs (#1129).
+
+### Removed
+
+- **`nearestSegment`, `cuboidFromScanCorners` and `scanCuboidCorners` from `@visionset/annotator`.** None had a
+  caller; `cuboidCorners3D` replaces `scanCuboidCorners` with the same corners (#1112).
+- **`BatchSummary`, `BatchSummaryItem` and `BatchSummaryProps` from `@visionset/ui-core`.** Unused outside the
+  styleguide; `BatchPhase` is still exported (#1112).
 
 ### Fixed
+
+- **A scan's annotation page carries no 2D chrome and says "scan" throughout.** The 2D tool bar, the empty tool
+  rail and the 2D canvas hint are gone on a scan, and Keyboard shortcuts (and `?` from the scan view) open a list
+  read from the scan editor's own key table instead of the 2D sheet. The island, the job's progress, the review
+  move, Skip and Un-skip, Finish job, the finished-job banner and toast, and the skipped notice name scans, not
+  frames or assets (#1113).
+- **A failed request for a scan's source is reported as a failure.** The stage shows the refusal with a retry,
+  Edit says the source could not be read, and the summary says the frame is unknown, instead of claiming the
+  source declares no frame; while the source is read, Edit carries that reason rather than a bare disabled
+  control (#1113).
+
+- **Polyline vertex snapping on a scan with stray or non-finite points.** A point with a non-finite coordinate no
+  longer displaces a real point from the snap grid or stops every snap, and one far stray return no longer
+  coarsens the grid's cells (#1112).
 
 - **A scan cuboid's far-side face handles are neither drawn nor grabbable.** In the perspective view a selected
   box offers a handle only on each face turned towards the camera, so a press can no longer push a face through

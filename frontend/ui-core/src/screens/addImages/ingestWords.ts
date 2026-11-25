@@ -48,10 +48,14 @@ export function readyLine(flow: AddImagesFlow): string {
   return incomplete ? "What this run managed to read is in it." : "Everything this run read is in it.";
 }
 
+/** The noun for `count` of what this flow adds: scans, a clip's frames, or images. */
+export function flowNoun(flow: Pick<AddImagesFlow, "kind">, count: number): string {
+  return assetNoun(flow.kind === "scans" ? "point_cloud" : "image", count, flow.kind === "video" ? "frame" : "image");
+}
+
 /** How many assets the batch itself reports — never the run's own count — once it is read. */
 export function holdsLine(flow: AddImagesFlow): string | null {
   const count = flow.batch?.asset_count;
   if (count === undefined) return null;
-  const noun = assetNoun(flow.kind === "scans" ? "point_cloud" : "image", count, flow.kind === "video" ? "frame" : "image");
-  return `It holds ${formatCount(count)} ${noun}.`;
+  return `It holds ${formatCount(count)} ${flowNoun(flow, count)}.`;
 }

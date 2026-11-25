@@ -61,11 +61,16 @@ import {
   cn,
 } from "@robomous/ui-core";
 import type { components } from "../generated/api.js";
+import { asApiError } from "../data/errors";
+import { refusalProse } from "../data/refusals";
 import { useApiClient } from "../data/VisionSetDataProvider";
+import { ErrorState } from "../patterns/AsyncStates";
 import { AssetThumbnail } from "../screens/AssetThumbnail";
 import { useSource } from "../screens/queries";
 import type { WireAnnotation } from "./jobQueries";
+import { keepCanvasFocus } from "./keepCanvasFocus";
 import { ScanHandles } from "./ScanHandles";
+import { Withheld } from "./Withheld";
 import type { ScanDrawKind, ScanWorkspace } from "./scanWorkspace";
 
 type PointCloudMetadata = components["schemas"]["PointCloudMetadataOut"];
@@ -84,12 +89,20 @@ export interface PointCloudStageProps {
   readonly scan?: ScanWorkspace | null;
   /** `mod+s` from the view. */
   readonly onSave?: () => void;
+  /** `?` from the view: the scan's shortcut list. */
+  readonly onToggleHelp?: () => void;
   /**
    * Where the host wants the view's controls (colour by, labels, reset view): a
    * cell of the stage's bottom row it shares with its own bottom chrome. Absent,
    * they float bottom-right of the perspective view.
    */
   readonly controlsSlot?: HTMLElement | null;
+  /**
+   * Where the host wants the view's status row (point count and frame, the edit
+   * strip, a source failure): the foot of its own top-left status column. Absent,
+   * the row lies along the top of the perspective view.
+   */
+  readonly statusSlot?: HTMLElement | null;
 }
 
 const MODES: readonly { readonly mode: ColorMode; readonly label: string; readonly absent: string }[] = [
@@ -112,6 +125,11 @@ const TOP_DOWN_LABEL =
   "move a cuboid, pull a side face or turn the yaw handle, or click to place a polyline's vertices; " +
   "right-drag or middle-drag to pan, scroll to zoom. " +
   "A cuboid's height is set in the perspective view, and Enter or a click in either view finishes it.";
+
+interface SourceFailure {
+  readonly error: unknown;
+  readonly retry: () => void;
+}
 
 type Fetched =
   | { readonly kind: "loading" }
@@ -151,12 +169,35 @@ function usePointSample(projectId: string, assetId: string): Fetched {
   return fetched;
 }
 
-export function PointCloudStage({ projectId, asset, loaded, schema, scan, onSave, controlsSlot }: PointCloudStageProps): JSX.Element {
-  const fetched = usePointSample(projectId, asset.id);
-  const source = useSource(asset.source_id ?? undefined);
+/** The frame the scan's source declares; `settled` once the source answered or refused. */
+function useScanSource(sourceId: string | null): {
+  readonly frame: ScanFrame | null;
+  readonly settled: boolean;
+  readonly failure: SourceFailure | null;
+} {
+  const source = useSource(sourceId ?? undefined);
   const declared = source.data?.frame;
-  const frame: ScanFrame | null = isScanFrame(declared) ? declared : null;
-  const frameKnown = asset.source_id === null || source.data !== undefined || source.isError;
+  const failed = sourceId !== null && source.data === undefined && source.isError;
+  return {
+    frame: isScanFrame(declared) ? declared : null,
+    settled: sourceId === null || source.data !== undefined || source.isError,
+    failure: failed ? { error: source.error, retry: () => void source.refetch() } : null,
+  };
+}
+
+export function PointCloudStage({
+  projectId,
+  asset,
+  loaded,
+  schema,
+  scan,
+  onSave,
+  onToggleHelp,
+  controlsSlot,
+  statusSlot,
+}: PointCloudStageProps): JSX.Element {
+  const fetched = usePointSample(projectId, asset.id);
+  const { frame, settled: frameKnown, failure: sourceFailure } = useScanSource(asset.source_id);
 
   if (fetched.kind === "failed") {
     return (
@@ -182,8 +223,11 @@ export function PointCloudStage({ projectId, asset, loaded, schema, scan, onSave
       loaded={loaded}
       schema={schema}
       scan={scan ?? null}
+      sourceFailure={sourceFailure}
       controlsSlot={controlsSlot ?? null}
+      statusSlot={statusSlot ?? null}
       {...(onSave === undefined ? {} : { onSave })}
+      {...(onToggleHelp === undefined ? {} : { onToggleHelp })}
     />
   );
 }
@@ -197,13 +241,18 @@ function ScanView({
   schema,
   scan,
   onSave,
+  onToggleHelp,
   controlsSlot,
-}: Omit<PointCloudStageProps, "asset" | "scan" | "controlsSlot"> & {
+  statusSlot,
+  sourceFailure,
+}: Omit<PointCloudStageProps, "asset" | "scan" | "controlsSlot" | "statusSlot"> & {
+  readonly sourceFailure: SourceFailure | null;
   readonly asset: PointCloudStageProps["asset"];
   readonly sample: PointSample;
   readonly frame: ScanFrame | null;
   readonly scan: ScanWorkspace | null;
   readonly controlsSlot: HTMLElement | null;
+  readonly statusSlot: HTMLElement | null;
 }): JSX.Element {
   const [colorMode, setColorMode] = useState<ColorMode>(() => defaultColorMode(sample));
   const [showLabels, setShowLabels] = useState(true);
@@ -271,6 +320,7 @@ function ScanView({
     return out;
   }, [frame, loaded, schema, rendered, selection, draft, polylineDraft, drawingClass]);
   const labelCount = labels.filter((label) => label.emphasis !== "draft").length;
+  const labelsPressed = (showLabels || editing) && labelCount > 0;
 
   const total = asset.point_cloud?.point_count ?? sample.count;
 
@@ -282,7 +332,7 @@ function ScanView({
   }, [pastFootprint]);
 
   if (status === "unsupported") {
-    return <NoWebGl projectId={projectId} asset={asset} frame={frame} />;
+    return <NoWebGl projectId={projectId} asset={asset} frame={frame} sourceFailed={sourceFailure !== null} />;
   }
 
   function onDoubleClick(event: MouseEvent<HTMLDivElement>): void {
@@ -310,6 +360,9 @@ function ScanView({
         break;
       case "save":
         onSave?.();
+        break;
+      case "help":
+        onToggleHelp?.();
         break;
       case "delete":
         if (!editing) return;
@@ -346,62 +399,45 @@ function ScanView({
         value={colorMode}
         aria-label="Colour points by"
         onValueChange={(value) => {
-          if (value === "height" || value === "intensity" || value === "rgb") setColorMode(value);
+          if ((value === "height" || value === "intensity" || value === "rgb") && colorModeAvailable(sample, value)) {
+            setColorMode(value);
+          }
         }}
       >
-        {MODES.map(({ mode, label, absent }) => {
-          const available = colorModeAvailable(sample, mode);
-          const item = (
+        {MODES.map(({ mode, label, absent }) => (
+          <Withheld key={mode} reason={colorModeAvailable(sample, mode) ? null : absent} pressed={colorMode === mode}>
             <ToggleGroupItem
-              key={mode}
               value={mode}
-              disabled={!available}
               data-testid={`color-by-${mode}`}
-              onMouseDown={keepFocus}
+              onMouseDown={keepCanvasFocus}
               className="px-2 text-xs"
             >
               {label}
             </ToggleGroupItem>
-          );
-          return available ? (
-            item
-          ) : (
-            <Tooltip key={mode}>
-              <TooltipTrigger asChild>
-                <span tabIndex={0}>{item}</span>
-              </TooltipTrigger>
-              <TooltipContent>{absent}</TooltipContent>
-            </Tooltip>
-          );
-        })}
+          </Withheld>
+        ))}
       </ToggleGroup>
 
       <span className="mx-0.5 h-5 w-px bg-border" />
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span tabIndex={labelCount === 0 || editing ? 0 : -1}>
-            <Toggle
-              size="sm"
-              pressed={(showLabels || editing) && labelCount > 0}
-              disabled={labelCount === 0 || editing}
-              onPressedChange={setShowLabels}
-              aria-label={showLabels ? "Hide 3D labels" : "Show 3D labels"}
-              data-testid="toggle-scan-labels"
-              onMouseDown={keepFocus}
-            >
-              <Box className="size-4" />
-            </Toggle>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>
-          {labelCount === 0
-            ? "No 3D labels on this scan"
-            : editing
-              ? "3D labels stay on while editing"
-              : `${showLabels ? "Hide" : "Show"} ${labelCount} 3D label${labelCount === 1 ? "" : "s"}`}
-        </TooltipContent>
-      </Tooltip>
+      <Withheld
+        reason={labelCount === 0 ? "No 3D labels on this scan" : editing ? "3D labels stay on while editing" : null}
+        tip={`${showLabels ? "Hide" : "Show"} ${labelCount} 3D label${labelCount === 1 ? "" : "s"}`}
+        pressed={labelsPressed}
+      >
+        <Toggle
+          size="sm"
+          pressed={labelsPressed}
+          onPressedChange={(pressed) => {
+            if (labelCount > 0 && !editing) setShowLabels(pressed);
+          }}
+          aria-label={showLabels ? "Hide 3D labels" : "Show 3D labels"}
+          data-testid="toggle-scan-labels"
+          onMouseDown={keepCanvasFocus}
+        >
+          <Box className="size-4" />
+        </Toggle>
+      </Withheld>
 
       <Tooltip>
         <TooltipTrigger asChild>
@@ -410,7 +446,7 @@ function ScanView({
             size="icon"
             aria-label="Reset view"
             data-testid="reset-scan-view"
-            onMouseDown={keepFocus}
+            onMouseDown={keepCanvasFocus}
             onClick={() => setResetSignal((signal) => signal + 1)}
           >
             <RotateCcw className="size-4" />
@@ -418,6 +454,39 @@ function ScanView({
         </TooltipTrigger>
         <TooltipContent>Reset view (0)</TooltipContent>
       </Tooltip>
+    </div>
+  );
+
+  const statusRow = (
+    <div
+      className={cn(
+        "pointer-events-none flex flex-wrap items-start gap-2",
+        statusSlot === null && "absolute inset-x-2 top-2",
+      )}
+    >
+      <p
+        data-testid="point-cloud-summary"
+        className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+      >
+        {sample.count === total
+          ? `${total.toLocaleString()} points`
+          : `${sample.count.toLocaleString()} of ${total.toLocaleString()} points`}
+        {" · "}
+        {frame ?? (sourceFailure === null ? "no declared frame, shown with z up" : "frame unknown, shown with z up")}
+      </p>
+
+      {scan !== null && <ScanStrip scan={scan} />}
+
+      {sourceFailure !== null && (
+        <div className="pointer-events-auto basis-full" data-testid="scan-source-error">
+          <ErrorState
+            className="max-w-md"
+            code={asApiError(sourceFailure.error).code}
+            message={`This scan's source could not be read, so its frame is unknown. ${refusalProse(sourceFailure.error)}`}
+            onRetry={sourceFailure.retry}
+          />
+        </div>
+      )}
     </div>
   );
 
@@ -454,21 +523,7 @@ function ScanView({
             />
           )}
 
-          {/* Below the page's status tag and object count (two h-8 rows from top-3, gap-2), which overlay the stage's top-left. */}
-          <div className="pointer-events-none absolute inset-x-2 top-[5.75rem] flex flex-wrap items-start gap-2">
-            <p
-              data-testid="point-cloud-summary"
-              className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground"
-            >
-              {sample.count === total
-                ? `${total.toLocaleString()} points`
-                : `${sample.count.toLocaleString()} of ${total.toLocaleString()} points`}
-              {" · "}
-              {frame ?? "no declared frame, shown with z up"}
-            </p>
-
-            {scan !== null && <ScanStrip scan={scan} />}
-          </div>
+          {statusSlot === null && statusRow}
 
           {status === "lost" && (
             <p
@@ -533,6 +588,7 @@ function ScanView({
         )}
       </div>
       {controlsSlot !== null && createPortal(controls, controlsSlot)}
+      {statusSlot !== null && createPortal(statusRow, statusSlot)}
     </div>
   );
 }
@@ -541,25 +597,6 @@ const NO_POINTS: readonly Point3D[] = [];
 
 function inScanView(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest("[data-scan-view]") !== null;
-}
-
-/** Leave focus on the view, whose root reads the shortcuts, as the 2D tool palette does. */
-function keepFocus(event: { preventDefault: () => void }): void {
-  event.preventDefault();
-}
-
-/** A control that says why it is off, on hover and on focus. */
-function WithReason({ reason, children }: { readonly reason: string; readonly children: ReactNode }): JSX.Element {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span tabIndex={0} data-reason={reason}>
-          {children}
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>{reason}</TooltipContent>
-    </Tooltip>
-  );
 }
 
 /**
@@ -577,11 +614,12 @@ export function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Eleme
     <Toggle
       size="sm"
       pressed={editing}
-      disabled={editBlocked !== null || !scan.frameKnown}
-      onPressedChange={scan.setEditing}
+      onPressedChange={(pressed) => {
+        if (editBlocked === null) scan.setEditing(pressed);
+      }}
       aria-label={editing ? "Stop editing 3D labels" : "Edit 3D labels"}
       data-testid="scan-edit-toggle"
-      onMouseDown={keepFocus}
+      onMouseDown={keepCanvasFocus}
       className="gap-1 px-2 text-xs"
     >
       <Pencil className="size-4" />
@@ -589,19 +627,18 @@ export function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Eleme
     </Toggle>
   );
   const drawTool = (kind: ScanDrawKind, label: string, icon: ReactNode): JSX.Element => {
-    const reason = toolBlocked[kind];
-    const item = (
-      <ToggleGroupItem
-        value={kind}
-        disabled={reason !== null}
-        aria-label={label}
-        data-testid={`scan-tool-${kind}`}
-        onMouseDown={keepFocus}
-      >
-        {icon}
-      </ToggleGroupItem>
+    return (
+      <Withheld reason={toolBlocked[kind]} pressed={scan.toolKind === kind}>
+        <ToggleGroupItem
+          value={kind}
+          aria-label={label}
+          data-testid={`scan-tool-${kind}`}
+          onMouseDown={keepCanvasFocus}
+        >
+          {icon}
+        </ToggleGroupItem>
+      </Withheld>
     );
-    return reason === null ? item : <WithReason reason={reason}>{item}</WithReason>;
   };
   const classPick =
     scan.toolKind === "cuboid"
@@ -615,7 +652,9 @@ export function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Eleme
       data-testid="scan-edit-strip"
       className="pointer-events-auto ml-auto flex flex-wrap items-center gap-1 rounded-xl border border-border bg-muted p-1 shadow-lg"
     >
-      {editBlocked === null ? editToggle : <WithReason reason={editBlocked}>{editToggle}</WithReason>}
+      <Withheld reason={editBlocked} pressed={editing}>
+        {editToggle}
+      </Withheld>
 
       {editing && (
         <>
@@ -626,12 +665,14 @@ export function ScanStrip({ scan }: { readonly scan: ScanWorkspace }): JSX.Eleme
             value={scan.toolKind}
             aria-label="Scan tool"
             onValueChange={(value) => {
-              if (value === "select" || value === "cuboid" || value === "polyline") scan.setToolKind(value);
+              if (value === "select" || ((value === "cuboid" || value === "polyline") && toolBlocked[value] === null)) {
+                scan.setToolKind(value);
+              }
             }}
           >
             <ToggleGroupItem value="select" aria-label="Select and adjust"
               data-testid="scan-tool-select"
-              onMouseDown={keepFocus}
+              onMouseDown={keepCanvasFocus}
             >
               <MousePointer2 className="size-4" />
             </ToggleGroupItem>
@@ -677,10 +718,12 @@ function NoWebGl({
   projectId,
   asset,
   frame,
+  sourceFailed,
 }: {
   readonly projectId: string;
   readonly asset: PointCloudStageProps["asset"];
   readonly frame: ScanFrame | null;
+  readonly sourceFailed: boolean;
 }): JSX.Element {
   const metadata = asset.point_cloud;
   return (
@@ -708,7 +751,7 @@ function NoWebGl({
           <dt>Format</dt>
           <dd className="font-mono">{metadata.format}</dd>
           <dt>Frame</dt>
-          <dd className="font-mono">{frame ?? "not declared"}</dd>
+          <dd className="font-mono">{frame ?? (sourceFailed ? "unknown" : "not declared")}</dd>
           <dt>Minimum</dt>
           <dd className="font-mono">{formatPoint(metadata.bounds.minimum)}</dd>
           <dt>Maximum</dt>

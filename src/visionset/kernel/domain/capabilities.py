@@ -20,7 +20,8 @@ the tables rather than asserted beside them (see ``MOVES`` below and
 
 **These are declarations, not permissions.** A declared action is one the resource's
 state does not refuse; it can still fail on something no pure function can see —
-``approve`` on a project with no schema, ``complete`` while a job is outstanding.
+``approve`` on a project with no schema, a batch's ``complete`` while a job is
+unfinished.
 Each is noted where it applies. The converse is the strong half and the one worth
 relying on: an action that is *not* declared will be refused.
 
@@ -227,11 +228,11 @@ which is what this table answers. The entry is ``DELETABLE_STATES`` itself, the
 set ``BatchService.delete`` raises ``BatchImmutable`` against; a second frozenset
 spelled out beside it is exactly the hand-mirror this module exists to remove.
 
-``pre_label`` is declared from the batch's state alone, on ``complete``'s
-precedent: whether this machine has the local runtime installed, and whether the
-pinned schema declares a class a detection can land on, are not facts about the
-batch. Hiding the control on either ground would leave their refusals — one of
-which carries an install command — with nowhere to be shown.
+``pre_label`` is declared from the batch's state alone: whether this machine has
+the local runtime installed, and whether the pinned schema declares a class a
+detection can land on, are not facts about the batch. Hiding the control on
+either ground would leave their refusals — one of which carries an install
+command — with nowhere to be shown.
 """
 
 
@@ -451,26 +452,34 @@ def connection_actions(
     ]
 
 
-def batch_actions(state: BatchState) -> list[BatchAction]:
-    """Everything this batch's state does not refuse, in declaration order.
+def batch_actions(state: BatchState, *, progress: Mapping[AssetProgress, int]) -> list[BatchAction]:
+    """Everything this batch's state and its assets' progress do not refuse.
 
-    ``complete`` is declared from ``BATCH_TRANSITIONS`` alone and is the one
-    declaration that can still be refused: completion is *derived*, so
-    ``BatchService.complete`` reads the jobs and answers ``BatchNotComplete``
-    while any is outstanding. Refining it here would need those jobs, which is a
-    read this function cannot do and which two of its callers do not have in hand.
-    Declaring it from the table keeps every surface's answer identical; a client
-    treats it as "the batch is at the point where completing is the next move",
-    and renders the refusal if the jobs are not done.
+    ``progress`` is the batch's tally across its jobs — the same counts its wire
+    model publishes. ``complete`` is refined by it as a job's is: while any asset
+    sits outside ``SETTLED_PROGRESS``, a job of the batch cannot complete, so
+    neither can the batch, and it is not declared. Keyword-only with no default,
+    because a default would declare for a batch nobody tallied.
+
+    A declared ``complete`` can still be refused: ``BatchService.complete`` also
+    reads the jobs and answers ``BatchNotComplete`` while any is unfinished, and
+    whether each job has been moved to ``completed`` is not in the tally.
+    ``BatchService.finish`` is the one call that honours a declared
+    ``complete`` whatever its jobs' states: it completes them and the batch in
+    one transaction.
 
     ``approve`` carries the smaller version of the same caveat: an empty batch or
     a project with no schema refuses it, and neither is a state of the batch.
     """
+    settled = all(count == 0 for p, count in progress.items() if p not in SETTLED_PROGRESS)
     return [
         action
         for action in BatchAction
         if (
-            BATCH_MOVES[action].offered_from(state, BATCH_TRANSITIONS)
+            (
+                BATCH_MOVES[action].offered_from(state, BATCH_TRANSITIONS)
+                and (settled or action is not BatchAction.COMPLETE)
+            )
             if action in BATCH_MOVES
             else state in BATCH_GATES[action]
         )
@@ -487,9 +496,9 @@ def job_actions(
     that is otherwise startable inside an ``approved`` batch declares nothing,
     which is precisely the dimension the browser's mirror dropped.
 
-    ``complete`` is refined here rather than caveated, unlike a batch's: the
-    kernel's extra condition is that every asset is in ``SETTLED_PROGRESS``, and
-    a job carries its own per-asset map, so the refinement costs no read at all.
+    ``complete`` is refined here as a batch's is: the kernel's extra condition
+    is that every asset is in ``SETTLED_PROGRESS``, and a job carries its own
+    per-asset map, so the refinement costs no read at all.
     """
     if batch_state is not BatchState.IN_ANNOTATION:
         return []

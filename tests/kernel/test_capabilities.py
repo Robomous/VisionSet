@@ -65,6 +65,7 @@ from visionset.kernel.domain import (
     JOB_TRANSITIONS,
     OPEN_JOB_STATES,
     RETARGETABLE_STATES,
+    SETTLED_PROGRESS,
     UNNAMED_EDGES,
     WEIGHT_HOLDING_TYPES,
     Annotation,
@@ -153,18 +154,18 @@ class Fixture:
 
     # --- walking, only ever through the real doors -------------------------
 
-    def walk_batch(self, state: BatchState) -> None:
-        """Take the batch to ``state``, finishing its jobs on the way if needed."""
+    def walk_batch(self, state: BatchState, *, unsettled: bool = False) -> None:
+        """Take the batch to ``state``, finishing its jobs on the way unless ``unsettled``."""
         if state is BatchState.DRAFT:
             return
         self.batches.approve(self.batch.id)
         if state is BatchState.APPROVED:
             return
         self.batches.start(self.batch.id)
-        # Even for IN_ANNOTATION: `complete` is declared from the transition table
-        # alone and refuses while a job is outstanding, so a batch parked here
-        # with unfinished work would fail the soundness half for a reason the
-        # declaration already documents. That caveat has its own test below.
+        if unsettled:
+            return
+        # A declared `complete` still refuses while a job is open, which the
+        # tally cannot see; that caveat has its own test below.
         self.settle_everything()
         if state is BatchState.IN_ANNOTATION:
             return
@@ -393,17 +394,26 @@ def _invoke_batch(fixture: Fixture, action: BatchAction) -> Callable[[], None]:
     }[action]
 
 
+#: Every batch state with its work settled, plus the one state that can hold
+#: unsettled work — where `complete`'s refinement is the whole question.
+_BATCH_WALKS = [(state, False) for state in BatchState] + [(BatchState.IN_ANNOTATION, True)]
+
+
 @pytest.mark.parametrize("action", list(BatchAction), ids=lambda a: a.value)
-@pytest.mark.parametrize("state", list(BatchState), ids=lambda s: s.value)
+@pytest.mark.parametrize(
+    ("state", "unsettled"),
+    _BATCH_WALKS,
+    ids=[f"{s.value}{'-unsettled' if u else ''}" for s, u in _BATCH_WALKS],
+)
 def test_a_batch_allows_exactly_what_it_declares(
-    tmp_path: Path, state: BatchState, action: BatchAction
+    tmp_path: Path, state: BatchState, unsettled: bool, action: BatchAction
 ) -> None:
     """Every square of `BatchState` x `BatchAction`, run against the real service."""
     fixture = Fixture(tmp_path)
-    fixture.walk_batch(state)
+    fixture.walk_batch(state, unsettled=unsettled)
     invoke = _invoke_batch(fixture, action)
 
-    if action in batch_actions(state):
+    if action in batch_actions(state, progress=fixture.jobs.batch_progress(fixture.batch.id)):
         invoke()
     else:
         with pytest.raises(STATE_REFUSALS):
@@ -412,22 +422,31 @@ def test_a_batch_allows_exactly_what_it_declares(
     fixture.close()
 
 
-def test_completing_a_batch_is_declared_from_the_table_and_can_still_refuse(
+def test_completing_a_batch_is_not_declared_while_an_asset_is_unsettled(
     tmp_path: Path,
 ) -> None:
-    """The one caveat on the batch declarations, pinned rather than left in prose.
+    """The refinement, and the caveat that remains, pinned rather than left in prose.
 
-    Completion is *derived* from the jobs, and two of the three serialization
-    sites do not have them in hand. So `complete` is declared wherever the
-    transition table allows it, and a client renders the refusal if the work is
-    not done — which is strictly better than the same batch declaring differently
-    depending on which endpoint answered.
+    Unsettled assets mean a job that cannot complete, so `complete` is not
+    declared and is refused. Settled assets declare it; the jobs still have to
+    be moved to `completed` before the batch closes, which the tally cannot see.
     """
     fixture = Fixture(tmp_path)
     fixture.batches.approve(fixture.batch.id)
     fixture.batches.start(fixture.batch.id)
 
-    assert BatchAction.COMPLETE in batch_actions(BatchState.IN_ANNOTATION)
+    def declared() -> bool:
+        progress = fixture.jobs.batch_progress(fixture.batch.id)
+        return BatchAction.COMPLETE in batch_actions(BatchState.IN_ANNOTATION, progress=progress)
+
+    assert not declared()
+    with pytest.raises(BatchNotComplete):
+        fixture.batches.complete(fixture.batch.id)
+
+    for job in fixture.batches.jobs(fixture.batch.id):
+        for asset_id in job.progress:
+            fixture.jobs.mark(job.id, asset_id, ANNOTATED)
+    assert declared()
     with pytest.raises(BatchNotComplete):
         fixture.batches.complete(fixture.batch.id)
 
@@ -436,12 +455,27 @@ def test_completing_a_batch_is_declared_from_the_table_and_can_still_refuse(
     fixture.close()
 
 
-def test_pre_label_is_offered_only_while_a_batch_is_being_annotated() -> None:
-    """Before it, no jobs carry assets; after it, the work is closed."""
-    assert BatchAction.PRE_LABEL in batch_actions(BatchState.IN_ANNOTATION)
+@pytest.mark.parametrize("unsettled", sorted(set(AssetProgress) - SETTLED_PROGRESS), ids=str)
+def test_any_unsettled_count_withholds_complete_and_nothing_else(unsettled: AssetProgress) -> None:
+    """`pre_labeled` blocks as `unannotated` does; no other action reads the tally."""
+    settled = {p: 1 for p in SETTLED_PROGRESS}
+    open_batch = batch_actions(BatchState.IN_ANNOTATION, progress=settled)
+    withheld = batch_actions(BatchState.IN_ANNOTATION, progress={**settled, unsettled: 1})
+    assert BatchAction.COMPLETE in open_batch
+    assert withheld == [a for a in open_batch if a is not BatchAction.COMPLETE]
     for state in BatchState:
         if state is not BatchState.IN_ANNOTATION:
-            assert BatchAction.PRE_LABEL not in batch_actions(state)
+            assert batch_actions(state, progress={unsettled: 1}) == batch_actions(
+                state, progress={}
+            )
+
+
+def test_pre_label_is_offered_only_while_a_batch_is_being_annotated() -> None:
+    """Before it, no jobs carry assets; after it, the work is closed."""
+    assert BatchAction.PRE_LABEL in batch_actions(BatchState.IN_ANNOTATION, progress={})
+    for state in BatchState:
+        if state is not BatchState.IN_ANNOTATION:
+            assert BatchAction.PRE_LABEL not in batch_actions(state, progress={})
 
 
 # --- enforcement: jobs --------------------------------------------------------
@@ -789,7 +823,7 @@ def test_an_approved_batch_offers_its_jobs_nothing(tmp_path: Path) -> None:
 
 def test_declaration_order_is_stable(tmp_path: Path) -> None:
     """A client may render these in order; the order is the enum's, not a set's."""
-    assert batch_actions(BatchState.DRAFT) == [
+    assert batch_actions(BatchState.DRAFT, progress={}) == [
         BatchAction.APPROVE,
         BatchAction.EDIT_MEMBERSHIP,
         # Last, and deliberately: the only batch action that ends the resource
@@ -846,7 +880,9 @@ def test_delete_is_declared_from_the_kernels_own_gate_and_not_from_a_copy() -> N
     """
     assert BATCH_GATES[BatchAction.DELETE] is DELETABLE_STATES
     for state in BatchState:
-        assert (BatchAction.DELETE in batch_actions(state)) is (state in DELETABLE_STATES)
+        assert (BatchAction.DELETE in batch_actions(state, progress={})) is (
+            state in DELETABLE_STATES
+        )
 
 
 # --- enforcement: inference connections ---------------------------------------

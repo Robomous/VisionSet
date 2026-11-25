@@ -9,6 +9,7 @@
 [![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB.svg?logo=python&logoColor=white)](https://pypi.org/project/visionset/)
 [![Python 3.13](https://img.shields.io/badge/python-3.13-3776AB.svg?logo=python&logoColor=white)](https://pypi.org/project/visionset/)
 [![Python 3.14](https://img.shields.io/badge/python-3.14-3776AB.svg?logo=python&logoColor=white)](https://pypi.org/project/visionset/)
+[![Python 3.15](https://img.shields.io/badge/python-3.15-3776AB.svg?logo=python&logoColor=white)](https://pypi.org/project/visionset/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 **VisionSet** is an open-source, local-first, SDK-first tool by [Robomous](https://robomous.ai)
@@ -17,6 +18,19 @@ images, lanes included, and 3D point-cloud scans; the domain model is built for 
 roadmap, and multimodal data lands on the same foundations. Your data stays on your machines,
 every surface (UI, CLI, MCP) is a thin client of the same SDK, and the release artifact is a
 plain `pip` package.
+
+## See it
+
+The shots below are the app on a local workspace: frames cut from a traffic clip and labeled with
+boxes, and three point-cloud maps ingested as scans.
+
+![The project list: image projects and a point-cloud project side by side, with each one's progress](docs/assets/screenshots/projects.png)
+
+![A project's overview: a clip's frames as one batch, 100% labeled, with the class mix and an image grid](docs/assets/screenshots/project-overview.png)
+
+![The annotator on a video frame: boxes for cars, a truck, a motorcycle and a pedestrian, with the objects panel beside them](docs/assets/screenshots/annotator-image.png)
+
+![The annotator on a point-cloud scan: 439,800 of 2,638,798 points drawn, colored by height, in the lidar_flu frame, with the 3D editing tools](docs/assets/screenshots/annotator-point-cloud.png)
 
 ## What it does
 
@@ -30,6 +44,7 @@ cannot create annotations. [`surfaces.md`](docs/content/surfaces.md) has the ful
 | | |
 | --- | --- |
 | **Ingest** | folders of images, folders of PCD and PLY point-cloud scans in a declared frame, and video (video import is browser-only). Frames are cut, hashed and stored by content, so the same file twice is one asset and a re-run costs nothing. |
+| **Import** | a dataset that already has labels — COCO, Pascal VOC, the YOLO family, OpenLane, classification CSVs, and KITTI or nuScenes lidar scans with their 3D boxes — lands as one approved batch with `import` provenance, for a person to review before it is promoted. CLI and MCP only. See [import](docs/content/import.md). |
 | **Annotate** | boxes, polygons, polylines and classification tags on images, and cuboids and 3D polylines on point-cloud scans, in the browser, with undo/redo, keyboard-first tools, and a headless engine underneath that the UI is only one renderer of. |
 | **Version** | schema versions are immutable and every label records the one it was judged against. A release freezes the whole thing into a manifest; publish twice from unchanged data and the bytes are identical. |
 | **Split** | a stored recipe rather than a materialised assignment, keyed on **content hash** — so two copies of one image cannot straddle a train/test boundary. |
@@ -49,7 +64,7 @@ visionset server                         # API at http://127.0.0.1:8000, app at 
 ```
 
 Then follow [the tutorial](docs/content/tutorial.md): a clip of video to a YOLO dataset in about half an
-hour. Full prerequisites — Python 3.12, and a browser, which is where a video is decoded — are in
+hour. Full prerequisites — Python 3.11 or newer, and a browser, which is where a video is decoded — are in
 [docs/content/install.md](docs/content/install.md).
 
 `init` is the only command that creates a workspace, and it refuses a directory that already holds

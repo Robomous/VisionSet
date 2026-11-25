@@ -232,10 +232,12 @@ scan the browser draws, edits and saves both (see
 [the scan editor](ui/annotator.md#editing-cuboids-and-polylines-on-a-scan)); on an image it has
 no tool for either, and loads a job holding one and saves it untouched. The `kitti` and
 `nuscenes` importers write `cuboid_3d` labels on the scans they import, and a project with no
-schema gets its classes from the dataset (see [import.md](import.md)). **The schema editor does
-not offer either geometry yet**: a class that allows one is created through the SDK, REST, the
-CLI, MCP or an import. See [annotations](annotations.md#a-3d-polyline-is-read-against-a-calibration)
-and [the cuboid's fields](annotations.md#a-3d-cuboid-is-a-center-a-size-and-a-yaw).
+schema gets its classes from the dataset (see [import.md](import.md)). The schema editor offers
+both as **3D box** and **3D polyline** under *Drawn as* (see
+[the schema editor](ui.md#the-schema-editor-and-the-three-409s)), beside the image shapes: one
+class may declare 2D and 3D geometries together, and which of them a label may take is decided
+per asset when it is written. See
+[annotations](annotations.md#a-3d-polyline-is-read-against-a-calibration) and [the cuboid's fields](annotations.md#a-3d-cuboid-is-a-center-a-size-and-a-yaw).
 
 **`polyline` is complete end to end.** It joined the
 union in #223 so that lane datasets work — the SDK, the REST API and MCP all accept one, and

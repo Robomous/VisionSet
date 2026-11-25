@@ -72,7 +72,7 @@ from visionset.kernel.errors import (
     WorkspaceCorrupt,
 )
 from visionset.kernel.ports import UnitOfWork
-from visionset.kernel.services.batch_service import BatchService, jobs_of
+from visionset.kernel.services.batch_service import BatchService, jobs_of, tally
 from visionset.kernel.services.workspace_service import WorkspaceService
 
 
@@ -203,7 +203,7 @@ class JobService:
             JobNotFound: no such job in this workspace.
         """
         with self._workspace.unit_of_work() as uow:
-            return _tally([self.require_job(uow, job_id)])
+            return tally([self.require_job(uow, job_id)])
 
     def batch_progress(self, batch_id: UUID) -> dict[AssetProgress, int]:
         """The same tally across every job of one batch.
@@ -212,7 +212,7 @@ class JobService:
             BatchNotFound: no such batch in this workspace.
         """
         with self._workspace.unit_of_work() as uow:
-            return _tally(jobs_of(uow, self._batches.require_batch(uow, batch_id)))
+            return tally(jobs_of(uow, self._batches.require_batch(uow, batch_id)))
 
     def project_progress(self, project_id: UUID) -> dict[AssetProgress, int]:
         """The same tally across every batch of one project.
@@ -229,7 +229,7 @@ class JobService:
         """
         with self._workspace.unit_of_work() as uow:
             self._require_project(uow, project_id)
-            return _tally(
+            return tally(
                 [job for batch in uow.batches.list(project_id) for job in jobs_of(uow, batch)]
             )
 
@@ -585,15 +585,6 @@ def _require_asset(uow: UnitOfWork, job: AnnotationJob, asset_id: UUID) -> Asset
     if asset is None:
         raise WorkspaceCorrupt(f"job {job.id} tracks asset {asset_id}, which is not stored")
     return asset
-
-
-def _tally(jobs: list[AnnotationJob]) -> dict[AssetProgress, int]:
-    """Count the assets of these jobs by state, with every state present."""
-    counts = dict.fromkeys(AssetProgress, 0)
-    for job in jobs:
-        for progress in job.progress.values():
-            counts[progress] += 1
-    return counts
 
 
 def _require_settled(job: AnnotationJob) -> None:

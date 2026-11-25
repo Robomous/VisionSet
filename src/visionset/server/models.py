@@ -1742,7 +1742,7 @@ class BatchOut(BaseModel):
             schema_version=batch.schema_version,
             asset_count=len(batch.asset_ids),
             progress=ProgressCounts.of(counts),
-            allowed_actions=batch_actions(batch.state),
+            allowed_actions=batch_actions(batch.state, progress=counts),
             promoted_asset_count=sum(1 for one in batch.asset_ids if one in promoted),
             parent_batch_id=batch.parent_batch_id,
             pre_label_run=None if pre_label_run is None else PreLabelRunOut.of(pre_label_run),
@@ -1752,6 +1752,14 @@ class BatchOut(BaseModel):
 
 class BatchPage(Page[BatchOut]):
     """A page of batches."""
+
+
+class BatchFinishedOut(BaseModel):
+    """A batch closed together with its jobs, and how many jobs that closed."""
+
+    batch: BatchOut
+    #: Jobs this call moved to `completed`; zero when every one already was.
+    jobs_completed: int
 
 
 # The three partition strategies are re-spelled rather than reused, for the
