@@ -4,6 +4,7 @@ import type { PointSample } from "./decode";
 import {
   HEIGHT_RAMP,
   INTENSITY_RAMP,
+  RAMPS,
   colorModeAvailable,
   defaultColorMode,
   pointColors,
@@ -37,7 +38,7 @@ describe("rampAt", () => {
   });
 
   it("interpolates between stops", () => {
-    expect(rampAt(INTENSITY_RAMP, 0.5)).toEqual([164, 164, 172]);
+    expect(rampAt(INTENSITY_RAMP, 0.5)).toEqual([100, 100, 112]);
   });
 });
 
@@ -112,6 +113,45 @@ describe("colour modes", () => {
     const coloured = sample([0, 0, 0], { rgb: new Uint8Array(3), intensity: new Float32Array(1) });
     expect(colorModeAvailable(coloured, "intensity")).toBe(true);
     expect(defaultColorMode(coloured)).toBe("rgb");
+  });
+});
+
+describe("pointColors theme", () => {
+  const column = Array.from({ length: 101 }, (_, i) => i);
+  const height = sample(column.flatMap((z) => [0, 0, z]));
+  const lit = sample([0, 0, 0, 1, 0, 0], { intensity: new Float32Array([0, 1]) });
+
+  it("is light unless told otherwise", () => {
+    expect([...pointColors(height, "height", "lidar_flu")]).toEqual([...pointColors(height, "height", "lidar_flu", "light")]);
+    expect([...pointColors(lit, "intensity", "lidar_flu")]).toEqual([...pointColors(lit, "intensity", "lidar_flu", "light")]);
+  });
+
+  it("draws height on each theme's own ramp ends", () => {
+    for (const theme of ["light", "dark"] as const) {
+      const colors = pointColors(height, "height", "lidar_flu", theme);
+      expect(colorAt(colors, 0)).toEqual([...RAMPS[theme].height[0]]);
+      expect(colorAt(colors, 100)).toEqual([...RAMPS[theme].height.at(-1)!]);
+    }
+  });
+
+  it("draws intensity on each theme's own ramp ends", () => {
+    for (const theme of ["light", "dark"] as const) {
+      const colors = pointColors(lit, "intensity", "lidar_flu", theme);
+      expect(colorAt(colors, 0)).toEqual([...RAMPS[theme].intensity[0]]);
+      expect(colorAt(colors, 1)).toEqual([...RAMPS[theme].intensity[1]]);
+    }
+  });
+
+  it("keeps the two themes apart, one sample's range cache notwithstanding", () => {
+    const light = pointColors(height, "height", "lidar_flu", "light");
+    const dark = pointColors(height, "height", "lidar_flu", "dark");
+    expect([...light]).not.toEqual([...dark]);
+    expect([...pointColors(height, "height", "lidar_flu", "light")]).toEqual([...light]);
+  });
+
+  it("leaves recorded colour alone on both themes", () => {
+    const scan = sample([0, 0, 0, 1, 1, 1], { rgb: new Uint8Array([1, 2, 3, 4, 5, 6]) });
+    expect([...pointColors(scan, "rgb", "lidar_flu", "dark")]).toEqual([1, 2, 3, 4, 5, 6]);
   });
 });
 
