@@ -16,6 +16,7 @@ from pydantic import ValidationError
 
 from visionset.kernel import UnserializableManifest
 from visionset.kernel.domain import (
+    GROUPED_MANIFEST_VERSION,
     MANIFEST_VERSION,
     BboxGeometry,
     GeometryType,
@@ -24,9 +25,12 @@ from visionset.kernel.domain import (
     ManifestAnnotation,
     ManifestAsset,
     PolylineGeometry,
+    SplitAssignment,
+    SplitGrouping,
     SplitRecipe,
     assign_split,
     canonical_bytes,
+    manifest_version_for,
     sha256_hex,
 )
 
@@ -293,3 +297,213 @@ def test_a_split_assignment_is_uuids_and_nothing_else() -> None:
     assets = [_asset("a")]
     folds = assign_split(SplitRecipe(train=1.0, val=0.0, test=0.0), assets)
     assert all(isinstance(value, UUID) for value in folds.train)
+
+
+# --- grouping: a group never straddles a fold ---------------------------------
+
+GROUPED = SplitGrouping.GROUP_LABEL
+
+
+def _fixed(index: int, *, group: str | None = None) -> ManifestAsset:
+    return ManifestAsset(
+        asset_id=UUID(int=index + 1),
+        content_hash=sha256_hex(f"a{index}".encode()),
+        uri=f"/data/a{index}.png",
+        group_label=group,
+    )
+
+
+def _scenes(sizes: dict[str, int]) -> list[ManifestAsset]:
+    return [
+        ManifestAsset(
+            asset_id=uuid4(),
+            content_hash=sha256_hex(f"{scene}/{frame}".encode()),
+            uri=f"/data/{scene}/{frame}.pcd",
+            group_label=scene,
+        )
+        for scene, size in sizes.items()
+        for frame in range(size)
+    ]
+
+
+def _fold_of(folds: SplitAssignment) -> dict[UUID, str]:
+    return {
+        asset_id: name
+        for name, members in (("train", folds.train), ("val", folds.val), ("test", folds.test))
+        for asset_id in members
+    }
+
+
+def _folds_per_group(folds: SplitAssignment, assets: list[ManifestAsset]) -> dict[str, set[str]]:
+    fold_of = _fold_of(folds)
+    found: dict[str, set[str]] = {}
+    for asset in assets:
+        assert asset.group_label is not None
+        found.setdefault(asset.group_label, set()).add(fold_of[asset.asset_id])
+    return found
+
+
+def test_an_ungrouped_recipe_serializes_to_the_bytes_it_always_did() -> None:
+    """Golden, from the build before ``group_by`` existed: the stored recipe keeps its bytes."""
+    recipe = SplitRecipe(train=0.7, val=0.15, test=0.15, seed=7)
+    assert canonical_bytes(recipe) == b'{"seed":7,"test":0.15,"train":0.7,"val":0.15}'
+    assert SplitRecipe.model_validate_json(canonical_bytes(recipe)) == recipe
+
+
+def test_an_ungrouped_split_cuts_the_folds_it_always_did() -> None:
+    """Golden, computed by the build before ``group_by`` existed, over fixed ids."""
+    folds = assign_split(
+        SplitRecipe(train=0.7, val=0.15, test=0.15, seed=7), [_fixed(i) for i in range(12)]
+    )
+    assert [u.int for u in folds.train] == [5, 3, 11, 12, 8, 7, 1, 9]
+    assert [u.int for u in folds.val] == [10, 6]
+    assert [u.int for u in folds.test] == [2, 4]
+
+
+def test_a_manifest_of_unlabelled_assets_keeps_its_version_and_its_hash() -> None:
+    """Golden, from the build before group labels: version 3, and the same digest."""
+    assets = [_fixed(i) for i in range(12)]
+    manifest = Manifest(
+        manifest_version=manifest_version_for(assets), schema_version=1, assets=assets
+    )
+    assert manifest.manifest_version == 3
+    assert b"group_label" not in canonical_bytes(manifest)
+    assert sha256_hex(canonical_bytes(manifest)) == (
+        "d358238e33eace37a820d00cf6693fde906bc32a7b4a57f04c165f41a79dc5e1"
+    )
+
+
+def test_a_labelled_asset_needs_the_grouped_manifest_version() -> None:
+    labelled = [_fixed(0, group="scene-0061"), _fixed(1)]
+    assert manifest_version_for(labelled) == GROUPED_MANIFEST_VERSION == MANIFEST_VERSION
+    with pytest.raises(ValidationError, match="carries no group labels"):
+        Manifest(manifest_version=5, schema_version=1, assets=labelled)
+    manifest = Manifest(manifest_version=6, schema_version=1, assets=labelled)
+    document = json.loads(canonical_bytes(manifest))
+    assert sorted("group_label" in asset for asset in document["assets"]) == [False, True]
+    assert {asset.get("group_label") for asset in document["assets"]} == {None, "scene-0061"}
+    assert Manifest.model_validate_json(canonical_bytes(manifest)) == manifest
+
+
+@pytest.mark.parametrize("label", ["", " scene", "scene\n"])
+def test_a_group_label_is_a_name_with_no_surrounding_whitespace(label: str) -> None:
+    with pytest.raises(ValidationError, match="group label"):
+        _fixed(0, group=label)
+
+
+def test_a_grouped_recipe_says_so_and_an_ungrouped_one_does_not() -> None:
+    grouped = SplitRecipe(train=0.8, val=0.1, test=0.1, group_by=GROUPED)
+    assert json.loads(canonical_bytes(grouped))["group_by"] == "group_label"
+    assert "group_by" not in SplitRecipe(train=1.0, val=0.0, test=0.0).model_dump(mode="json")
+
+
+def test_a_grouped_split_never_separates_a_group() -> None:
+    assets = _scenes({f"scene-{n:04d}": 40 for n in range(10)})
+    for seed in range(25):
+        folds = assign_split(
+            SplitRecipe(train=0.8, val=0.1, test=0.1, seed=seed, group_by=GROUPED), assets
+        )
+        assert all(len(found) == 1 for found in _folds_per_group(folds, assets).values())
+        assert len(_fold_of(folds)) == len(assets)
+
+
+def test_the_same_labels_without_group_by_are_cut_per_asset() -> None:
+    """The label alone changes nothing: grouping is the recipe's to ask for."""
+    assets = _scenes({f"scene-{n:04d}": 40 for n in range(10)})
+    folds = assign_split(SplitRecipe(train=0.8, val=0.1, test=0.1, seed=3), assets)
+    unlabelled = [asset.model_copy(update={"group_label": None}) for asset in assets]
+    assert folds == assign_split(SplitRecipe(train=0.8, val=0.1, test=0.1, seed=3), unlabelled)
+    assert any(len(found) > 1 for found in _folds_per_group(folds, assets).values())
+
+
+def test_a_grouped_split_is_deterministic_and_order_independent() -> None:
+    recipe = SplitRecipe(train=0.6, val=0.2, test=0.2, seed=11, group_by=GROUPED)
+    assets = _scenes({"a": 3, "b": 7, "c": 1, "d": 4, "e": 2})
+    assert assign_split(recipe, assets) == assign_split(recipe, list(reversed(assets)))
+    assert assign_split(recipe, assets) == assign_split(recipe, sorted(assets, key=str))
+
+
+def test_a_grouped_split_reproduces_over_fresh_ids() -> None:
+    """Content and labels decide the cut, so a re-ingest into a new project reproduces it."""
+    recipe = SplitRecipe(train=0.6, val=0.2, test=0.2, seed=5, group_by=GROUPED)
+    assets = _scenes({"a": 3, "b": 7, "c": 1, "d": 4, "e": 2})
+    again = [asset.model_copy(update={"asset_id": uuid4()}) for asset in assets]
+    first, second = assign_split(recipe, assets), assign_split(recipe, again)
+    by_hash = {asset.asset_id: asset.content_hash for asset in [*assets, *again]}
+    for fold in ("train", "val", "test"):
+        assert [by_hash[i] for i in getattr(first, fold)] == [
+            by_hash[i] for i in getattr(second, fold)
+        ]
+
+
+def test_the_fractions_apply_to_groups_so_fold_sizes_are_approximate() -> None:
+    """Ten groups under 0.7/0.15/0.15 are 7/2/1 groups, however many assets each holds."""
+    sizes = {f"g{n}": size for n, size in enumerate([1, 2, 3, 5, 8, 13, 21, 34, 55, 89])}
+    assets = _scenes(sizes)
+    for seed in range(10):
+        folds = assign_split(
+            SplitRecipe(train=0.7, val=0.15, test=0.15, seed=seed, group_by=GROUPED), assets
+        )
+        per_group = _folds_per_group(folds, assets)
+        counted = {
+            fold: sum(1 for found in per_group.values() if fold in found)
+            for fold in ("train", "val", "test")
+        }
+        assert counted == {"train": 7, "val": 2, "test": 1}
+        assert len(folds.train) + len(folds.val) + len(folds.test) == len(assets)
+
+
+@pytest.mark.parametrize(
+    ("fractions", "fold"),
+    [((0.8, 0.1, 0.1), "train"), ((1.0, 0.0, 0.0), "train"), ((0.0, 0.0, 1.0), "test")],
+)
+def test_a_single_group_lands_whole_in_the_largest_fold(
+    fractions: tuple[float, float, float], fold: str
+) -> None:
+    assets = _scenes({"only": 400})
+    train, val, test = fractions
+    folds = assign_split(SplitRecipe(train=train, val=val, test=test, group_by=GROUPED), assets)
+    assert len(getattr(folds, fold)) == 400
+    assert sum(len(getattr(folds, name)) for name in ("train", "val", "test")) == 400
+
+
+def test_an_all_train_grouped_recipe_and_an_empty_set() -> None:
+    recipe = SplitRecipe(train=1.0, val=0.0, test=0.0, group_by=GROUPED)
+    folds = assign_split(recipe, _scenes({"a": 2, "b": 3}))
+    assert (len(folds.train), folds.val, folds.test) == (5, (), ())
+    assert assign_split(recipe, []) == SplitAssignment()
+
+
+def test_unlabelled_assets_stay_per_asset_beside_the_groups() -> None:
+    labelled = _scenes({"a": 6, "b": 6})
+    loose = [_fixed(i) for i in range(10)]
+    recipe = SplitRecipe(train=0.5, val=0.25, test=0.25, seed=2, group_by=GROUPED)
+    folds = assign_split(recipe, [*labelled, *loose])
+    per_group = _folds_per_group(folds, labelled)
+    assert all(len(found) == 1 for found in per_group.values())
+    fold_of = _fold_of(folds)
+    units = {
+        fold: sum(1 for found in per_group.values() if fold in found)
+        + sum(1 for asset in loose if fold_of[asset.asset_id] == fold)
+        for fold in ("train", "val", "test")
+    }
+    assert units == {"train": 6, "val": 3, "test": 3}
+    assert len(fold_of) == len(labelled) + len(loose)
+
+
+def test_a_grouped_recipe_over_unlabelled_assets_cuts_the_ungrouped_folds() -> None:
+    assets = [_fixed(i) for i in range(12)]
+    plain = SplitRecipe(train=0.7, val=0.15, test=0.15, seed=7)
+    grouped = plain.model_copy(update={"group_by": GROUPED})
+    assert assign_split(grouped, assets) == assign_split(plain, assets)
+
+
+def test_a_grouped_split_cuts_the_folds_it_cuts_today() -> None:
+    """Golden for the grouped key, so a change to it is a decision rather than an accident."""
+    assets = [_fixed(i, group=f"scene-{i % 4}") for i in range(12)]
+    folds = assign_split(
+        SplitRecipe(train=0.5, val=0.25, test=0.25, seed=7, group_by=GROUPED), assets
+    )
+    assert [u.int for u in folds.train] == [5, 1, 9, 3, 11, 7]
+    assert [u.int for u in folds.val] == [10, 6, 2]
+    assert [u.int for u in folds.test] == [12, 8, 4]

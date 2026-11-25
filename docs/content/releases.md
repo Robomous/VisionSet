@@ -72,7 +72,8 @@ images ingested on another machine produce a different manifest.
 `manifest_version` names the shape of the document itself, independent of the workspace
 database's format and of the package version. A build writes the **lowest version that can
 express the release**: **3** for a release of images with no 3D label, **4** for one that holds
-any, and **5** for one that holds a point-cloud asset.
+any, **5** for one that holds a point-cloud asset, and **6** for one that holds an asset with a
+group label.
 
 | Version | Since | What changed |
 | --- | --- | --- |
@@ -81,6 +82,7 @@ any, and **5** for one that holds a point-cloud asset.
 | 3 | #352 | a polyline may carry per-vertex `visibility` |
 | 4 | #1038, #1045 | the `polyline_3d` and `cuboid_3d` geometries, and a `calibration` on each asset that carries one |
 | 5 | #1046 | an asset's `modality`, and on a point-cloud asset its `point_cloud` metadata and the scan `frame` |
+| 6 | #1147 | an asset's `group_label`, the group its importer placed it in |
 
 An older document keeps the version it was written with, so its bytes and its hash never move and
 `verify` still passes. Version 3 changes no existing bytes: a polyline with unknown visibility
@@ -109,6 +111,12 @@ asset carries `"modality": "point_cloud"`, its `point_cloud` metadata (format, p
 bounds, fields) and the `frame` its source declares, and never a `calibration` or a pixel size; a
 manifest holding one under a version below 5 does not load, and neither does a pixel-space label
 (`bbox`, `polygon`, `polyline`) on a scan.
+
+Version 6 changes no existing bytes either. `group_label` is **omitted** when an asset has none,
+so a release of unlabelled assets keeps the version and the hash it had. The label is copied
+whatever the release's split recipe says: the document is a function of content, and a recipe is
+not content, so a grouped and an ungrouped release of one dataset still share one manifest. A
+manifest carrying a group label under a version below 6 does not load.
 
 Publishing content that needs a newer version than an older build wrote still produces a
 different manifest hash, because the version number is part of the document.
@@ -199,6 +207,45 @@ re-ingest into a fresh project reproduces the split, every id being new.
 Counts come from largest-remainder apportionment, with the last fold taking the tail of the
 ordering outright. One asset under a `0.8/0.1/0.1` recipe is one training asset, not a rounding
 error that loses it, and no asset can go missing to an argument about arithmetic.
+
+### Keeping a group in one fold
+
+Neighbouring frames are not identical bytes, so keying on content does not keep them together.
+nuScenes keyframes are half a second apart and a scene holds about forty of them; split per asset,
+every scene lands in all three folds and validation holds near-copies of training frames. On
+`v1.0-mini` under `0.8/0.1/0.1` with seed 0, all ten scenes do.
+
+A recipe can therefore ask for grouping:
+
+```python
+SplitRecipe(train=0.8, val=0.1, test=0.1, seed=42, group_by="group_label")
+```
+
+`group_label` is a name an importer writes on an asset at first arrival - the
+[nuScenes import](import.md#formats) writes the scene's name. It is provenance, like a source:
+never rewritten by a later import, and taken from the source's own content rather than from an id,
+so a re-ingest into a fresh project carries the same label and reproduces the split. The manifest
+carries it, so the folds are cut from the document alone. With `group_by`:
+
+- Every asset sharing one label is a single unit, keyed by `sha256(seed:group:label)`. An asset
+  with no label is a unit of its own, keyed exactly as above. A group never straddles a fold.
+- **The fractions apply to groups, not assets.** Ten scenes under `0.7/0.15/0.15` are seven, two
+  and one scenes, however many keyframes each holds, so **fold sizes in assets are approximate** -
+  as close to the fractions as the groups are equal. A single group lands whole in the fold with
+  the largest fraction, and a fold may be empty.
+- Everything else holds unchanged: no asset goes missing, ties break on the label and then the
+  asset id, and the result depends only on the seed and the set. Over assets that carry no label,
+  a grouped recipe cuts exactly the folds an ungrouped one does, so it is not refused there.
+
+**Grouping is opt-in.** `group_by` defaults to none and is **omitted** from a stored recipe that
+does not group, so every recipe stored before it existed - and every split it cuts - is the same
+bytes and the same folds it always was.
+
+**Frames cut from a video clip are still split per asset.** Their natural key is the clip, and a
+clip's `source_id` is a per-project id, so a re-ingest would not reproduce a split keyed on it; a
+stable key for clips needs its own design. Until then a grouped recipe treats extracted frames as
+unlabelled. An asset imported before group labels existed carries none either, and importing the
+same bytes again does not add one - import into a fresh project to have them.
 
 An export writes these folds and no others. The assignment is cut once, over the whole frozen
 manifest, and handed to the format plugin as `assignment=` beside the manifest; the plugin
@@ -864,8 +911,11 @@ visionset target list
 
 `--split` is **one** option rather than three, because a split is one concept, `0.7,0.15,0.15` is
 how it is written everywhere, and one flag means one refusal to word. `--seed` stays separate; it is
-not a fraction, and without `--split` it is refused as exit 2 because it would change nothing. Fractions that do not add up are exit 2 - `SplitRecipe` refuses them with a pydantic
-error, which is not a `VisionSetError` - so the CLI parses the recipe before the call.
+not a fraction, and without `--split` it is refused as exit 2 because it would change nothing.
+`--group-by group_label` [keeps a group in one fold](#keeping-a-group-in-one-fold) and is refused
+the same way without `--split`. Fractions that do not add up are exit 2 - `SplitRecipe` refuses
+them with a pydantic error, which is not a `VisionSetError` - so the CLI parses the recipe before
+the call.
 
 **A tag is case-sensitive where a project name is not.** Both comparisons live in the kernel beside
 the index that enforces them (`ReleaseService.get_by_tag`, `ProjectService.get_by_name`), because
@@ -964,6 +1014,10 @@ because a document named by its own hash cannot change.
 it re-reads and re-hashes every blob the release names. `missing` and `corrupt` stay separate
 lists because they are different faults with different remedies, and `ok` is published as a
 plain field so a client does not re-derive the conjunction slightly differently from us.
+
+**`split` is `{train, val, test, seed?, group_by?}`**, and `ReleaseOut.split` answers all five,
+`group_by` `null` for a recipe that does not group. `group_by` takes `"group_label"` and nothing
+else; another value is a 422 `VALIDATION_ERROR`.
 
 **A release with no split recipe has no assignment**, and that is a `404 NO_SPLIT_RECIPE` rather
 than an empty answer. No recipe means one undivided set; answering all-train would be

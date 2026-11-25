@@ -27,9 +27,10 @@ anything in it.
   the artifact's bytes are.
 
 The split recipe is stored, not materialized: ``{train, val, test, seed}`` is
-three fractions and a number, and :func:`assign_split` turns it into folds on
-demand. Keeping the recipe rather than the assignment is what lets a release
-stay small and an export stay reproducible from it.
+three fractions and a number, plus an optional ``group_by``, and
+:func:`assign_split` turns it into folds on demand. Keeping the recipe rather
+than the assignment is what lets a release stay small and an export stay
+reproducible from it.
 """
 
 from __future__ import annotations
@@ -53,6 +54,7 @@ from pydantic import (
 )
 
 from visionset.kernel.domain.annotation import Provenance
+from visionset.kernel.domain.asset import GroupLabel
 from visionset.kernel.domain.calibration import (
     Calibration,
     Modality,
@@ -103,13 +105,23 @@ from visionset.kernel.errors import UnserializableManifest
 #: it is ``image``, so an image-only release is still a version-3 or version-4
 #: document with its bytes and its hash untouched, and only a release holding a
 #: point cloud is one a version-4 build refuses.
-MANIFEST_VERSION: int = 5
+#:
+#: **6** since #1147, which let a :class:`ManifestAsset` carry the
+#: ``group_label`` its importer gave it, so a split recipe with ``group_by`` is
+#: cut from the document alone. The key is omitted when there is none, so a
+#: release of unlabelled assets keeps the version, the bytes and the hash it had
+#: before, and only a release holding a group label is one a version-5 build
+#: refuses.
+MANIFEST_VERSION: int = 6
 
 CALIBRATED_MANIFEST_VERSION: int = 4
 """The first manifest version that can carry a calibration, and so a 3D label."""
 
 MODALITY_MANIFEST_VERSION: int = 5
 """The first manifest version that can carry an asset that is not an image."""
+
+GROUPED_MANIFEST_VERSION: int = 6
+"""The first manifest version that can carry an asset's group label."""
 
 
 class ManifestAnnotation(BaseModel):
@@ -160,6 +172,10 @@ class ManifestAsset(BaseModel):
     image-only manifest at the bytes it had before point clouds existed. A
     ``point_cloud`` asset carries its scan metadata and the ``frame`` its
     source declared, in place of pixel dimensions and a calibration.
+
+    ``group_label`` is the asset's own, copied whatever the release's split
+    recipe says, because the document is a function of content and a recipe is
+    not content. It is **omitted** when the asset has none.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -176,6 +192,7 @@ class ManifestAsset(BaseModel):
         default=None, exclude_if=lambda value: value is None
     )
     frame: ScanFrame | None = Field(default=None, exclude_if=lambda value: value is None)
+    group_label: GroupLabel | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="after")
     def _three_d_labels_carry_their_calibration(self) -> ManifestAsset:
@@ -283,6 +300,13 @@ class Manifest(BaseModel):
                 f"a version-{self.manifest_version} manifest holds images only; "
                 f"a point-cloud asset needs version {MODALITY_MANIFEST_VERSION}"
             )
+        if self.manifest_version < GROUPED_MANIFEST_VERSION and any(
+            asset.group_label is not None for asset in self.assets
+        ):
+            raise ValueError(
+                f"a version-{self.manifest_version} manifest carries no group labels; "
+                f"a labelled asset needs version {GROUPED_MANIFEST_VERSION}"
+            )
         return self
 
     @property
@@ -297,6 +321,8 @@ def manifest_version_for(assets: Sequence[ManifestAsset]) -> int:
     Publishing writes this rather than :data:`MANIFEST_VERSION`, so content a
     version-3 build can read is still written as version 3 and keeps its hash.
     """
+    if any(asset.group_label is not None for asset in assets):
+        return GROUPED_MANIFEST_VERSION
     if any(asset.modality != "image" for asset in assets):
         return MODALITY_MANIFEST_VERSION
     if any(asset.calibration is not None for asset in assets):
@@ -363,6 +389,16 @@ def sha256_hex_of_stream(stream: BinaryIO) -> str:
     return digest.hexdigest()
 
 
+class SplitGrouping(StrEnum):
+    """What a split recipe may keep together in one fold.
+
+    ``group_label`` is the label an importer wrote on each asset — a nuScenes
+    scene's name — so every keyframe of one scene lands in one fold.
+    """
+
+    GROUP_LABEL = "group_label"
+
+
 class SplitRecipe(BaseModel):
     """How to cut a release into train / validation / test, declaratively.
 
@@ -372,6 +408,10 @@ class SplitRecipe(BaseModel):
     an equality test would reject the most ordinary recipe there is.
 
     An all-train recipe (``1.0 / 0.0 / 0.0``) is legal and means what it says.
+
+    ``group_by`` is opt-in and **omitted** from the serialized recipe when it is
+    ``None``, so every recipe stored before it existed reads back, and
+    serializes, exactly as it did. See :func:`assign_split` for what it changes.
 
     Like every per-value rule in the domain, an invalid recipe cannot be
     constructed at all: the refusal is pydantic's, not a service's.
@@ -385,6 +425,7 @@ class SplitRecipe(BaseModel):
     #: Fixed by default rather than random: a recipe nobody seeded should still
     #: reproduce, and a caller who wants a different cut says which one.
     seed: int = 0
+    group_by: SplitGrouping | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="after")
     def _fractions_add_up(self) -> SplitRecipe:
@@ -430,20 +471,50 @@ def assign_split(recipe: SplitRecipe, assets: Sequence[ManifestAsset]) -> SplitA
     train first. One asset under a 0.8/0.1/0.1 recipe is one training asset, not
     a rounding error that loses it — and the last fold takes the tail of the
     ordering outright, so no asset can go missing to an argument about arithmetic.
+
+    **With ``group_by``, the unit is a group, not an asset.** Every asset
+    carrying one ``group_label`` is a single unit keyed by
+    ``sha256(seed:group:label)``, and an asset with no label stays a unit of its
+    own, keyed exactly as above. The units are ordered and apportioned as assets
+    are without grouping, so the fractions apply to *groups*: a group never
+    straddles a fold, and fold sizes in assets are only as close to the
+    fractions as the groups are equal in size. A single group lands whole in one
+    fold, the one with the largest fraction. Every other guarantee holds
+    unchanged — no asset goes missing, and the result depends only on the seed
+    and the set. Over assets that carry no label, a grouped recipe cuts exactly
+    the folds an ungrouped one does.
     """
-    ordered = sorted(
-        assets, key=lambda asset: (_split_key(recipe.seed, asset), str(asset.asset_id))
-    )
+    grouped = recipe.group_by is not None
+    groups: dict[str, list[ManifestAsset]] = {}
+    units: list[tuple[tuple[str, int, str], tuple[ManifestAsset, ...]]] = []
+    for asset in assets:
+        if grouped and asset.group_label is not None:
+            groups.setdefault(asset.group_label, []).append(asset)
+        else:
+            units.append((_asset_key(recipe.seed, asset), (asset,)))
+    for label, members in groups.items():
+        key = (sha256_hex(f"{recipe.seed}:group:{label}".encode()), 0, label)
+        units.append((key, tuple(sorted(members, key=lambda one: _asset_key(recipe.seed, one)))))
+    ordered = [members for _, members in sorted(units, key=lambda unit: unit[0])]
     train, val = _apportion(len(ordered), (recipe.train, recipe.val, recipe.test))
+
+    def fold(chosen: Sequence[tuple[ManifestAsset, ...]]) -> tuple[UUID, ...]:
+        return tuple(asset.asset_id for members in chosen for asset in members)
+
     return SplitAssignment(
-        train=tuple(asset.asset_id for asset in ordered[:train]),
-        val=tuple(asset.asset_id for asset in ordered[train : train + val]),
-        test=tuple(asset.asset_id for asset in ordered[train + val :]),
+        train=fold(ordered[:train]),
+        val=fold(ordered[train : train + val]),
+        test=fold(ordered[train + val :]),
     )
 
 
-def _split_key(seed: int, asset: ManifestAsset) -> str:
-    return sha256_hex(f"{seed}:{asset.content_hash}".encode())
+def _asset_key(seed: int, asset: ManifestAsset) -> tuple[str, int, str]:
+    """An asset's place in the ordering: its content first, its id to break a tie.
+
+    The ``1`` sorts an asset after a group whose key it could only equal by a
+    SHA-256 collision, so the ordering stays total.
+    """
+    return sha256_hex(f"{seed}:{asset.content_hash}".encode()), 1, str(asset.asset_id)
 
 
 def _apportion(total: int, fractions: tuple[float, float, float]) -> tuple[int, int]:

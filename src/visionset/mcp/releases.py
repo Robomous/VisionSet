@@ -76,7 +76,10 @@ def publish_release(
     `split` is stored, not applied: nothing is moved or copied per fold at
     publication. The assignment is computed deterministically from asset content
     hashes, so the same recipe over the same content always gives the same folds
-    and `export_release` writes them out.
+    and `export_release` writes them out. With `group_by: "group_label"`, every
+    asset sharing an import's group label (a nuScenes scene) lands in one fold;
+    the fractions then count groups, so fold sizes are approximate, and an asset
+    with no label is still cut on its own.
 
     Refuses if the dataset is empty, if the tag is blank, or if the tag is
     already used in this dataset — tags are compared case-sensitively, so `v1.0`

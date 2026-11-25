@@ -794,7 +794,13 @@ def dataset_stats(value: DatasetStats) -> shapes.DatasetStats:
 
 def split_recipe(value: SplitRecipe) -> shapes.SplitRecipe:
     """How a release is cut for training."""
-    return {"train": value.train, "val": value.val, "test": value.test, "seed": value.seed}
+    return {
+        "train": value.train,
+        "val": value.val,
+        "test": value.test,
+        "seed": value.seed,
+        "group_by": None if value.group_by is None else value.group_by.value,
+    }
 
 
 def release(value: Release) -> shapes.Release:

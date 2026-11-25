@@ -15,6 +15,10 @@ token that tracks an object across samples, the lidar and radar point counts,
 the poses themselves, a box leaning too far for a cuboid, the sweeps between
 keyframes and every other sensor's data. A keyframe with no annotations is
 imported unlabelled.
+
+Each keyframe carries its scene's name as its ``group_label``, read through
+``sample.scene_token``, so a release split can keep a scene in one fold. The
+scene's other fields are counted as lost.
 """
 
 from __future__ import annotations
@@ -57,6 +61,8 @@ CHANNEL: Final = "LIDAR_TOP"
 LAYOUT: Final = ScanLayout(fields=("x", "y", "z", "intensity", "_"))
 
 TABLES: Final = (
+    "scene",
+    "sample",
     "category",
     "instance",
     "sensor",
@@ -93,9 +99,12 @@ class NuScenesImporter:
         used: set[str] = set()
         scans: list[ImportedScan] = []
         sampled: set[str] = set()
+        scenes: set[str] = set()
         for row in sorted(keyframes, key=lambda row: str(row["filename"])):
             sample = _text(row, "sample_token", "sample_data")
             sampled.add(sample)
+            scene = _scene_of(tables, row, sample)
+            scenes.add(scene)
             path = inside(_text(row, "filename", "sample_data"), "sample_data.json")
             file = src / path
             if file.is_file():
@@ -115,7 +124,17 @@ class NuScenesImporter:
                 if label is not None:
                     labels.append(label)
                     used.add(label.class_name)
-            scans.append(ImportedScan(path=path, layout=LAYOUT, labels=tuple(labels)))
+            scans.append(
+                ImportedScan(path=path, layout=LAYOUT, labels=tuple(labels), group_label=scene)
+            )
+        losses[
+            (
+                ImportLossKind.ATTRIBUTE,
+                "scene",
+                "a scene's name is carried as the group label of each of its keyframes; its "
+                "description, log and map are not",
+            )
+        ] += len(scenes)
         for sample, rows in by_sample.items():
             if sample in sampled:
                 continue
@@ -249,6 +268,25 @@ def _lidar_calibrations(tables: Mapping[str, _Table], losses: _Losses) -> dict[s
             (kind, channel, f"{modality} data is not imported; only {CHANNEL} keyframes are")
         ] += count
     return lidar
+
+
+def _scene_of(tables: Mapping[str, _Table], row: Mapping[str, Any], sample: str) -> str:
+    """The name of the scene a keyframe's sample belongs to."""
+    owner = tables["sample"].get(sample)
+    if owner is None:
+        raise ImportSourceUnreadable(
+            f"sample_data {_token(row)} names sample {sample}, which sample.json does not hold"
+        )
+    token = _text(owner, "scene_token", "sample")
+    scene = tables["scene"].get(token)
+    if scene is None:
+        raise ImportSourceUnreadable(
+            f"sample {sample} names scene {token}, which scene.json does not hold"
+        )
+    name = _text(scene, "name", "scene").strip()
+    if not name:
+        raise ImportSourceUnreadable(f"scene {token} has a blank name")
+    return name
 
 
 def _keyframes(

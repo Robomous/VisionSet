@@ -533,6 +533,16 @@ def _add_point_clouds(connection: Connection) -> None:
     _add_column(connection, "asset", "point_cloud")
 
 
+def _add_group_labels(connection: Connection) -> None:
+    """``asset.group_label``: the importer's group, which a split may keep together.
+
+    **Nothing to backfill.** No import wrote a group before this column, and the
+    label is provenance written once, at first arrival — so NULL is the truth for
+    every existing row, and a later import of the same bytes leaves it NULL.
+    """
+    _add_column(connection, "asset", "group_label")
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
     Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
@@ -560,6 +570,7 @@ MIGRATIONS: list[Migration] = [
     ),
     Migration(version=21, name="calibration", upgrade=_add_calibration),
     Migration(version=22, name="point_clouds", upgrade=_add_point_clouds),
+    Migration(version=23, name="group_labels", upgrade=_add_group_labels),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version

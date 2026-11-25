@@ -17,6 +17,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from visionset.kernel.domain.asset import GroupLabel
 from visionset.kernel.domain.calibration import ScanFrame, geometry_fits_modality
 from visionset.kernel.domain.geometry import Geometry
 from visionset.kernel.domain.schema import GeometryType
@@ -148,13 +149,18 @@ class ScanLayout(BaseModel):
 
 
 class ImportedScan(BaseModel):
-    """One point-cloud scan by its path in the source, and its labels in the dataset's frame."""
+    """One point-cloud scan by its path in the source, and its labels in the dataset's frame.
+
+    ``group_label`` names the set the source says the scan belongs to — a
+    nuScenes scene — and becomes the new asset's ``group_label``.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     path: PurePosixPath
     layout: ScanLayout
     labels: tuple[ImportedLabel, ...] = ()
+    group_label: GroupLabel | None = None
 
     @field_validator("path", mode="before")
     @classmethod

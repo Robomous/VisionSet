@@ -22,6 +22,7 @@ from tests.fixtures.nuscenes_source import (
     scan_bytes,
     write_nuscenes_source,
 )
+from tests.formats.test_kitti_samples import publish
 
 from visionset import wire
 from visionset.formats.nuscenes import NuScenesImporter
@@ -44,6 +45,8 @@ from visionset.kernel.domain import (
     ScanFrame,
     ScanLayout,
     SourceKind,
+    SplitGrouping,
+    SplitRecipe,
 )
 from visionset.kernel.services import (
     BatchService,
@@ -231,9 +234,35 @@ def test_what_the_domain_cannot_hold_is_counted_by_kind(tmp_path: Path) -> None:
         (ImportLossKind.IMAGE, "CAM_FRONT"): 2,
         (ImportLossKind.SCAN, "LIDAR_TOP"): 2,
         (ImportLossKind.ATTRIBUTE, "ego_pose"): 2,
+        (ImportLossKind.ATTRIBUTE, "scene"): 1,
         (ImportLossKind.ATTRIBUTE, "vehicle.car"): 3,
         (ImportLossKind.ATTRIBUTE, "human.pedestrian.adult"): 3,
     }
+
+
+def test_each_keyframe_carries_its_scene_name_as_its_group(tmp_path: Path) -> None:
+    src = build(
+        tmp_path / "src",
+        [
+            Keyframe("a1", (CAR,), scene="scene-0061"),
+            Keyframe("b1", scene="scene-0103"),
+            Keyframe("a2", scene="scene-0061"),
+        ],
+    ).write(tmp_path / "src")
+
+    dataset = NuScenesImporter().read(src)
+
+    assert {str(scan.path): scan.group_label for scan in dataset.scans} == {
+        "samples/LIDAR_TOP/a1.pcd.bin": "scene-0061",
+        "samples/LIDAR_TOP/a2.pcd.bin": "scene-0061",
+        "samples/LIDAR_TOP/b1.pcd.bin": "scene-0103",
+    }
+    (scene,) = [loss for loss in dataset.losses if loss.subject == "scene"]
+    assert (scene.kind, scene.count) == (ImportLossKind.ATTRIBUTE, 2)
+    assert "carried as the group label" in scene.reason
+    assert "description, log and map are not" in scene.reason
+    (tracked,) = {loss.reason for loss in dataset.losses if "instance token" in loss.reason}
+    assert "is not carried" in tracked
 
 
 def test_malformed_and_degenerate_boxes_are_label_losses(tmp_path: Path) -> None:
@@ -315,6 +344,7 @@ def test_a_root_with_no_lidar_top_sensor_is_refused(tmp_path: Path) -> None:
     ("table", "content", "match"),
     [
         ("ego_pose", None, "ego_pose.json is missing"),
+        ("scene", None, "scene.json is missing"),
         ("sample_annotation", "[{", "not readable JSON"),
         ("category", '{"token": "x"}', "a JSON list of objects"),
         ("ego_pose", '[{"token": "e", "translation": [NaN, 0, 0]}]', "non-finite"),
@@ -344,6 +374,10 @@ def test_a_missing_or_corrupt_table_is_refused(
         ("calibrated_sensor", lambda row: row.update(rotation=[2, 0, 0, 0]), "unit quaternion"),
         ("ego_pose", lambda row: row.update(translation=[0, 0]), "translation of three"),
         ("instance", lambda row: row.update(category_token="gone"), "category is named"),
+        ("sample", lambda row: row.update(token=f"{row['token']}-gone"), "sample.json does not"),
+        ("sample", lambda row: row.update(scene_token="gone"), "scene gone"),
+        ("sample", lambda row: row.pop("scene_token"), "has no scene_token"),
+        ("scene", lambda row: row.update(name="  "), "blank name"),
     ],
 )
 def test_a_dangling_or_malformed_reference_is_refused(
@@ -438,6 +472,20 @@ def test_a_commit_is_an_approved_batch_of_scans_under_a_lidar_rfu_source(
     assert (again.batch_id, again.annotations_already_present) == (None, 2)
 
 
+def test_a_committed_scan_keeps_its_scene_and_a_later_import_never_rewrites_it(
+    workspace: WorkspaceService, tmp_path: Path
+) -> None:
+    project = ProjectService(workspace).create("drive")
+    src = write_nuscenes_source(tmp_path / "src")
+    ImportService(workspace).commit(project.id, NuScenesImporter(), src, consent=EVERYTHING)
+    _edit(src, "scene", lambda row: row.update(name="scene-renamed"))
+
+    ImportService(workspace).commit(project.id, NuScenesImporter(), src, consent=EVERYTHING)
+
+    assets = IngestService(workspace).assets(project.id)
+    assert [asset.group_label for asset in assets] == ["scene-0001", "scene-0001"]
+
+
 def test_a_root_registered_in_another_frame_refuses_the_import(
     workspace: WorkspaceService, tmp_path: Path
 ) -> None:
@@ -447,3 +495,43 @@ def test_a_root_registered_in_another_frame_refuses_the_import(
 
     with pytest.raises(CalibrationInUse):
         ImportService(workspace).commit(project.id, NuScenesImporter(), src, consent=EVERYTHING)
+
+
+def test_a_grouped_release_split_keeps_each_scene_in_one_fold(
+    workspace: WorkspaceService, tmp_path: Path
+) -> None:
+    keyframes = [
+        Keyframe(
+            f"{scene}-{frame}",
+            (CAR,),
+            points=tuple((x + 10 * index + frame, y, z, i, r) for x, y, z, i, r in SCAN),
+            scene=scene,
+        )
+        for index, scene in enumerate(("scene-0061", "scene-0103", "scene-0553", "scene-0655"))
+        for frame in range(5)
+    ]
+    src = build(tmp_path / "src", keyframes).write(tmp_path / "src")
+    published = publish(workspace, NuScenesImporter(), src)
+    releases = published.releases
+    dataset_id = ProjectService(workspace).get_dataset(published.project_id).id
+    scene_of = {
+        asset.id: asset.group_label
+        for asset in IngestService(workspace).assets(published.project_id)
+    }
+
+    grouped = releases.publish(
+        dataset_id,
+        "grouped",
+        split=SplitRecipe(train=0.5, val=0.25, test=0.25, group_by=SplitGrouping.GROUP_LABEL),
+    )
+    folds = releases.assignment(grouped.id)
+
+    scenes_in = [{scene_of[i] for i in members} for members in (folds.train, folds.val, folds.test)]
+    assert [len(scenes) for scenes in scenes_in] == [2, 1, 1]
+    assert set().union(*scenes_in) == set(scene_of.values())
+    assert sum(len(members) for members in (folds.train, folds.val, folds.test)) == 20
+    manifest = releases.manifest(grouped.id)
+    assert manifest.manifest_version == 6
+    assert {asset.group_label for asset in manifest.assets} == set(scene_of.values())
+    assert releases.verify(grouped.id).ok
+    assert grouped.manifest_hash == releases.get(published.release_id).manifest_hash

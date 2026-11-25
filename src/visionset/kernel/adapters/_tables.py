@@ -347,8 +347,12 @@ class AssetRow(Base):
     #: Migration 21 appends it.
     calibration: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     #: A ``PointCloudMetadata``, exactly on a ``point_cloud`` asset; NULL on an image.
-    #: Migration 22 appends it, so it is declared last.
+    #: Migration 22 appends it.
     point_cloud: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    #: The importer's group for these bytes, such as a nuScenes scene name; NULL for
+    #: none. Unindexed: a split reads it from the manifest, never by query.
+    #: Migration 23 appends it, so it is declared last.
+    group_label: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 #: The same bytes are the same asset: the backstop under the ingest pipeline's

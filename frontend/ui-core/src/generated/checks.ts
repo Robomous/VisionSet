@@ -381,8 +381,11 @@ export const checkProviderOut: Check<Schemas["ProviderOut"]> =
 export const checkProviderPage: Check<Schemas["ProviderPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkProviderOut)], "total": [true, isInteger] } as const);
 
+export const checkSplitGrouping: Check<Schemas["SplitGrouping"]> =
+  /*#__PURE__*/ oneOf(["group_label"] as const);
+
 export const checkSplitRecipeBody: Check<Schemas["SplitRecipeBody"]> =
-  /*#__PURE__*/ object({ "seed": [true, isInteger], "test": [true, isNumber], "train": [true, isNumber], "val": [true, isNumber] } as const);
+  /*#__PURE__*/ object({ "group_by": [false, either([checkSplitGrouping, isNull] as const)], "seed": [true, isInteger], "test": [true, isNumber], "train": [true, isNumber], "val": [true, isNumber] } as const);
 
 export const checkReleaseOut: Check<Schemas["ReleaseOut"]> =
   /*#__PURE__*/ object({ "annotation_count": [true, isInteger], "asset_count": [true, isInteger], "created_at": [true, isString], "dataset_id": [true, isString], "id": [true, isString], "manifest_hash": [true, isString], "schema_version": [true, isInteger], "split": [true, either([checkSplitRecipeBody, isNull] as const)], "tag": [true, isString], "visionset_version": [true, isString] } as const);

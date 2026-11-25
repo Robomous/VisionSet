@@ -154,7 +154,58 @@ def test_split_is_stored_on_the_release(root: Path, tmp_path: Path) -> None:
     document = payload(
         root, "release", "publish", "--tag", "v1.0", "-p", name, "--split", "0.5,0.25,0.25"
     )
-    assert document["split"] == {"train": 0.5, "val": 0.25, "test": 0.25, "seed": 0}
+    assert document["split"] == {
+        "train": 0.5,
+        "val": 0.25,
+        "test": 0.25,
+        "seed": 0,
+        "group_by": None,
+    }
+
+
+def test_group_by_reaches_the_recipe(root: Path, tmp_path: Path) -> None:
+    name = promoted_project(root, tmp_path)
+    document = payload(
+        root,
+        "release",
+        "publish",
+        "--tag",
+        "v1.0",
+        "-p",
+        name,
+        "--split",
+        "0.7,0.15,0.15",
+        "--group-by",
+        "group_label",
+    )
+    assert document["split"]["group_by"] == "group_label"
+
+
+def test_a_group_by_without_a_split_exits_two_naming_split(root: Path, tmp_path: Path) -> None:
+    name = promoted_project(root, tmp_path)
+    result = run(
+        root, "release", "publish", "--tag", "v1.0", "-p", name, "--group-by", "group_label"
+    )
+    assert result.exit_code == 2, result.output
+    assert "hasnoeffectwithoutsplit" in re.sub(r"\x1b\[[0-9;]*m|[^a-z]", "", result.output)
+
+
+def test_an_unknown_group_by_exits_two(root: Path, tmp_path: Path) -> None:
+    name = promoted_project(root, tmp_path)
+    result = run(
+        root,
+        "release",
+        "publish",
+        "--tag",
+        "v1.0",
+        "-p",
+        name,
+        "--split",
+        "0.7,0.15,0.15",
+        "--group-by",
+        "scene",
+    )
+    assert result.exit_code == 2, result.output
 
 
 def test_seed_reaches_the_recipe(root: Path, tmp_path: Path) -> None:

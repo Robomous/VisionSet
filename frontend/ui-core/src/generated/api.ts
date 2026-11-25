@@ -6853,10 +6853,25 @@ export interface components {
             val: string[];
         };
         /**
+         * SplitGrouping
+         * @description What a split recipe may keep together in one fold.
+         *
+         *     ``group_label`` is the label an importer wrote on each asset — a nuScenes
+         *     scene's name — so every keyframe of one scene lands in one fold.
+         * @enum {string}
+         */
+        SplitGrouping: "group_label";
+        /**
          * SplitRecipeBody
          * @description Train/val/test fractions and the seed that makes the cut reproducible.
+         *
+         *     `group_by: "group_label"` keeps every asset sharing an import's group label —
+         *     a nuScenes scene — in one fold. The fractions then count groups, not assets,
+         *     so fold sizes are approximate; an asset with no label is cut on its own.
+         *     Omitted or `null`, the split is per asset.
          */
         SplitRecipeBody: {
+            group_by?: components["schemas"]["SplitGrouping"] | null;
             /**
              * Seed
              * @default 0

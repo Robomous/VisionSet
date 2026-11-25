@@ -102,6 +102,7 @@ class Keyframe:
     ego_rotation: Quaternion = EGO_ROTATION
     ego_translation: Vector = EGO_TRANSLATION
     points: Sequence[Point] | None = SCAN
+    scene: str = "scene-0001"
 
 
 @dataclass
@@ -153,6 +154,7 @@ def build(root: Path, keyframes: Sequence[Keyframe], *, sweeps: int = 1) -> Root
             },
         ],
         "ego_pose": [],
+        "scene": [],
         "sample": [],
         "sample_data": [],
         "sample_annotation": [],
@@ -161,7 +163,14 @@ def build(root: Path, keyframes: Sequence[Keyframe], *, sweeps: int = 1) -> Root
     (root / LIDAR_DIR).mkdir(parents=True, exist_ok=True)
     for index, keyframe in enumerate(keyframes):
         sample = f"sample-{keyframe.name}"
-        tables["sample"].append({"token": sample, "timestamp": 1_000_000 * index})
+        scene = f"scene-token-{keyframe.scene}"
+        if not any(row["token"] == scene for row in tables["scene"]):
+            tables["scene"].append(
+                {"token": scene, "name": keyframe.scene, "log_token": "log-1", "description": ""}
+            )
+        tables["sample"].append(
+            {"token": sample, "timestamp": 1_000_000 * index, "scene_token": scene}
+        )
         tables["ego_pose"].append(
             {
                 "token": f"ego-{keyframe.name}",

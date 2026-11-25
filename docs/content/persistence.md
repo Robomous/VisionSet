@@ -188,11 +188,12 @@ MIGRATIONS: list[Migration] = [
     Migration(version=20, name="retire_partial_ingest_failures", upgrade=...),
     Migration(version=21, name="calibration", upgrade=_add_calibration),
     Migration(version=22, name="point_clouds", upgrade=_add_point_clouds),
+    Migration(version=23, name="group_labels", upgrade=_add_group_labels),
 ]
-FORMAT_VERSION: int = MIGRATIONS[-1].version  # 22
+FORMAT_VERSION: int = MIGRATIONS[-1].version  # 23
 ```
 
-**Generation 1 is the baseline, and the twenty-one entries after it are ordinary migrations.** A long
+**Generation 1 is the baseline, and the twenty-two entries after it are ordinary migrations.** A long
 chain of generations got this schema to its present shape while VisionSet was unreleased.
 Every database they could have upgraded was disposable test data inside this repository, so
 what they actually bought was an idempotency argument and an undo line per generation, plus
@@ -237,6 +238,10 @@ source-origin index - see [sources.md](sources.md#camera-calibration).
 Migration 22 appends a nullable `frame` column to `source` and a nullable JSON `point_cloud`
 column to `asset`, and backfills nothing: no point-cloud source or asset existed before it, so
 every existing row is an image directory, a clip or an image, for which NULL is the truth.
+Migration 23 appends a nullable `group_label` column to `asset` and backfills nothing: no
+import wrote a group before it, and the label is provenance written at first arrival, so an
+asset imported earlier keeps NULL even when the same bytes are imported again - see
+[releases.md](releases.md#the-split-recipe).
 
 **There are no downgrade paths, deliberately.** Nothing walks a file backwards and the
 tests no longer do either. A downgrade is a compatibility promise and a promise is owed

@@ -93,9 +93,10 @@ def test_a_split_recipe_is_stored_and_its_fractions_must_sum_to_one(
 ) -> None:
     named = promoted(monkeypatch, tmp_path, count=2)
     recipe: dict[str, Any] = {"train": 0.7, "val": 0.15, "test": 0.15, "seed": 42}
-    assert (
-        payload(call("publish_release", project=named, tag="v1.0", split=recipe))["split"] == recipe
-    )
+    assert payload(call("publish_release", project=named, tag="v1.0", split=recipe))["split"] == {
+        **recipe,
+        "group_by": None,
+    }
     # `SplitRecipe`'s own model validator, reached during argument parsing because
     # the domain model is the parameter type.
     assert call(
@@ -103,6 +104,21 @@ def test_a_split_recipe_is_stored_and_its_fractions_must_sum_to_one(
         project=named,
         tag="v2.0",
         split={"train": 0.5, "val": 0.2, "test": 0.2},
+    ).is_error
+
+
+def test_a_grouped_recipe_is_stored_and_an_unknown_grouping_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    named = promoted(monkeypatch, tmp_path, count=2)
+    recipe: dict[str, Any] = {"train": 0.8, "val": 0.1, "test": 0.1, "group_by": "group_label"}
+    stored = payload(call("publish_release", project=named, tag="v1.0", split=recipe))["split"]
+    assert stored == {**recipe, "seed": 0}
+    assert call(
+        "publish_release",
+        project=named,
+        tag="v2.0",
+        split={**recipe, "group_by": "scene"},
     ).is_error
 
 

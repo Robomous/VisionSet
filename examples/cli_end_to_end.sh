@@ -167,7 +167,7 @@ release = document["items"][0]
 assert release["tag"] == "v1.0", release
 assert release["asset_count"] == 6, release
 assert release["annotation_count"] == 0, release
-assert release["split"] == {"train": 0.5, "val": 0.25, "test": 0.25, "seed": 0}, release
+assert release["split"] == {"train": 0.5, "val": 0.25, "test": 0.25, "seed": 0, "group_by": None}, release
 print("--json shapes are what the docs say they are")
 PY
 

@@ -39,7 +39,9 @@ import's frame first when nothing depends on the old one. The frame of every lab
 checked again inside the commit's transaction, under the write lock a frame change takes, so a
 frame declared again while the scans were being stored refuses the import rather than leaving a
 label in axes its source no longer declares. A scan label has no image to fall outside of, so
-none is dropped for its position. The plan counts `scans` and names the `frame`.
+none is dropped for its position. The plan counts `scans` and names the `frame`. A scan may name
+a `group_label` - the set the source says it belongs to, such as a nuScenes scene - and a new
+asset keeps it as provenance; an asset already in the project keeps whatever it arrived with.
 
 An existing schema is never changed by an import. A label the active schema cannot accept refuses
 the whole import, as does a label that would land on an asset already in the dataset or held by
@@ -59,7 +61,7 @@ computed from the content, and a commit that would drop something is refused wit
 | `label` | A whole label: an RLE or crowd mask, a polygon of several rings, a label outside its image. |
 | `image` | An image the source names but does not hold, or one whose bytes repeat an earlier image; its labels go with it. A nuScenes camera frame, which is not read. |
 | `scan` | A scan whose points repeat an earlier scan's, or one gone from the source; its labels go with it. A nuScenes sweep or radar frame, which is not read. |
-| `attribute` | Extras the importer does not carry, such as COCO attributes, VOC difficult or pose flags, an OpenLane camera calibration or track id, KITTI truncation, occlusion, alpha and calibration, nuScenes attributes, visibility, instance tokens, point counts and poses. |
+| `attribute` | Extras the importer does not carry, such as COCO attributes, VOC difficult or pose flags, an OpenLane camera calibration or track id, KITTI truncation, occlusion, alpha and calibration, nuScenes attributes, visibility, instance tokens, point counts, poses and a scene's fields other than its name. |
 
 The refusal carries the full report in its `detail.losses`. Inspecting the source first returns
 the same report and writes nothing; its `loss_kinds` is exactly what the commit has to consent to,
@@ -97,7 +99,7 @@ naming the kinds to accept. See [mcp-tools.md](mcp-tools.md).
 | `voc` | `Annotations/**/*.xml` with pictures under `JPEGImages/`; boxes | Pose, truncated, difficult and occluded values other than unspecified or `0`, other `<object>` children, parts, segmentation, an object with no name or box, a zero-area or outside box |
 | `classification` | `labels.csv` (`image`, `class`) and `classes.txt` beside `images/`; one tag per row | A row naming a class `classes.txt` does not declare, a second row of one class on one picture, a malformed row, a row with no picture or class |
 | `kitti` | A 3D object detection split: `velodyne/*.bin` scans, `label_2/*.txt` and `calib/*.txt`, at the top or in `training/` and `testing/` (or the `train/`, `val/`, `test/` the exporter writes); boxes as `cuboid_3d` in the `lidar_flu` frame | `DontCare` regions, each box's 2D image `bbox`, truncation, occlusion and alpha, the calibration itself, a score outside 0 to 1, a label with no scan, no usable calibration, a malformed line or a dimension that is not positive |
-| `nuscenes` | A data root: a version folder (`v1.0-mini`, `v1.0-trainval`, ...) of JSON tables beside `samples/LIDAR_TOP/*.pcd.bin`; the LIDAR_TOP keyframes, boxes as `cuboid_3d` in the `lidar_rfu` frame | Attributes, visibility, instance tokens (tracking identity), `num_lidar_pts` and `num_radar_pts`, the ego pose and calibration themselves, a box leaning more than 6 degrees, a malformed box or a dimension that is not positive, an annotation whose sample has no LIDAR_TOP keyframe, the sweeps, and every other sensor's data |
+| `nuscenes` | A data root: a version folder (`v1.0-mini`, `v1.0-trainval`, ...) of JSON tables beside `samples/LIDAR_TOP/*.pcd.bin`; the LIDAR_TOP keyframes, boxes as `cuboid_3d` in the `lidar_rfu` frame, and each keyframe's scene name as its group label | Attributes, visibility, instance tokens (tracking identity), `num_lidar_pts` and `num_radar_pts`, a scene's description, log and map, the ego pose and calibration themselves, a box leaning more than 6 degrees, a malformed box or a dimension that is not positive, an annotation whose sample has no LIDAR_TOP keyframe, the sweeps, and every other sensor's data |
 
 **YOLO family** (`ultralytics`, `yolov5-yaml`, `darknet`). A picture is any file under an `images/`
 directory; its label is at the same path with the last `images` segment swapped for `labels` and
@@ -178,14 +180,23 @@ sensor's camera frame, which no export holds.
 **nuScenes.** The source is a data root, the directory that holds `samples/` beside one or more
 version folders of JSON tables (`v1.0-mini`, `v1.0-trainval`, `v1.0-test`); several version
 folders are merged by token, and naming a version folder itself is refused, because the tables
-name files relative to the root. The tables read are `sensor`, `calibrated_sensor`, `ego_pose`,
-`sample_data`, `sample_annotation`, `instance` and `category`; one that is missing, is not a JSON
+name files relative to the root. The tables read are `scene`, `sample`, `sensor`,
+`calibrated_sensor`, `ego_pose`, `sample_data`, `sample_annotation`, `instance` and `category`;
+one that is missing, is not a JSON
 list of objects, or names a row another table does not hold refuses the source. Each LIDAR_TOP
 keyframe (`is_key_frame`) is one scan of float32 `x, y, z, intensity, ring` records, kept byte for
 byte with `ring` skipped; a file that is not a whole number of 20-byte points refuses the source,
 and a root with no LIDAR_TOP keyframe is refused. A keyframe with no annotations is imported
 unlabelled. The scans are declared in the `lidar_rfu` frame (x right, y forward, z up), LIDAR_TOP's
 own axes, so no point is re-expressed.
+
+**Scene membership is carried.** Each keyframe's sample names its scene (`sample.scene_token`),
+and the scene's `name` (such as `scene-0061`) becomes the new asset's **group label**, so a
+release split can [keep every keyframe of a scene in one fold](releases.md#keeping-a-group-in-one-fold).
+The label is written at the asset's first arrival and never rewritten, so an asset imported before
+labels existed keeps none. The loss report names what the scene does not bring along - an
+`attribute` loss on `scene`, counted per scene, for its description, log and map - and the
+instance token that tracks an object across a scene's keyframes is still not carried.
 
 An annotation is in the global frame: `translation` is the box's centre, `size` is `(w, l, h)` and
 `rotation` a `(w, x, y, z)` quaternion. The import moves each box into the scan's frame through

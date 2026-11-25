@@ -921,6 +921,10 @@ def _manifest_assets(uow: UnitOfWork, assets: list[Asset]) -> tuple[ManifestAsse
     frame instead, labelled or not, so the release says how to read every
     coordinate in the scan as well as on it.
 
+    An asset's ``group_label`` is copied whatever ``split`` says, so a grouped
+    recipe is cut from the document alone and the document stays a function of
+    content.
+
     Raises:
         CalibrationMissing: an image with a 3D label has no calibration, or a
             scan has no source declaring its frame.
@@ -952,6 +956,7 @@ def _manifest_assets(uow: UnitOfWork, assets: list[Asset]) -> tuple[ManifestAsse
                 modality=asset.modality,
                 point_cloud=asset.point_cloud,
                 frame=frame,
+                group_label=asset.group_label,
             )
         )
     return tuple(built)

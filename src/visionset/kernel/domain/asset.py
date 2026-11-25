@@ -3,15 +3,33 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from typing import Annotated
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 from visionset.kernel.domain.calibration import Calibration, Modality
 from visionset.kernel.domain.media import ImageFormat, PointCloudMetadata
 from visionset.kernel.errors import UnsupportedMedia
 
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _group_label(value: str) -> str:
+    if not value or value != value.strip():
+        raise ValueError("a group label is a non-blank name with no surrounding whitespace")
+    return value
+
+
+GroupLabel = Annotated[str, AfterValidator(_group_label)]
+"""A name the importer gives a set of assets that belong together, such as a nuScenes scene."""
 
 
 class Asset(BaseModel):
@@ -103,8 +121,18 @@ class Asset(BaseModel):
     #: ``effective_calibration`` for how the two are resolved.
     calibration: Calibration | None = None
     #: What a scan turned out to be, present exactly when ``modality`` is
-    #: ``point_cloud``. Migration 22 appends its column, so it is declared last.
+    #: ``point_cloud``. Migration 22 appends its column.
     point_cloud: PointCloudMetadata | None = None
+    #: The group the importer placed these bytes in — a nuScenes scene's name —
+    #: or NULL for none.
+    #:
+    #: **Provenance, like ``source_id``**: written once, at the first import that
+    #: brought these bytes, and never rewritten. It is a name from the source's
+    #: own content rather than an id, so a re-ingest into a fresh project carries
+    #: the same label, which is what lets a split recipe with ``group_by`` keep a
+    #: group in one fold and still reproduce. Migration 23 appends its column, so
+    #: it is declared last.
+    group_label: GroupLabel | None = None
 
     @field_validator("content_hash", "thumbnail_hash")
     @classmethod

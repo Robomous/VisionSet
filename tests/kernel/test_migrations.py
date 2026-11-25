@@ -200,6 +200,7 @@ def _at_generation_one(path: Path) -> None:
         connection.execute(text("ALTER TABLE asset DROP COLUMN calibration"))
         connection.execute(text("ALTER TABLE source DROP COLUMN frame"))
         connection.execute(text("ALTER TABLE asset DROP COLUMN point_cloud"))
+        connection.execute(text("ALTER TABLE asset DROP COLUMN group_label"))
         connection.execute(text("DROP INDEX uq_source_project_kind_path_fps_ranges_scale"))
         connection.execute(
             text(
@@ -383,6 +384,7 @@ def test_a_generation_20_file_gains_calibration_and_keeps_its_rows(tmp_path: Pat
         connection.execute(text("ALTER TABLE asset DROP COLUMN calibration"))
         connection.execute(text("ALTER TABLE source DROP COLUMN frame"))
         connection.execute(text("ALTER TABLE asset DROP COLUMN point_cloud"))
+        connection.execute(text("ALTER TABLE asset DROP COLUMN group_label"))
         connection.execute(text(f"UPDATE {META_TABLE} SET format_version = 20"))
         connection.execute(text("insert into workspace (id, name) values (:w, 'ws')"), ids)
         connection.execute(
@@ -432,6 +434,7 @@ def test_a_generation_21_file_gains_point_clouds_and_keeps_its_rows(tmp_path: Pa
     with store.engine.begin() as connection:
         connection.execute(text("ALTER TABLE source DROP COLUMN frame"))
         connection.execute(text("ALTER TABLE asset DROP COLUMN point_cloud"))
+        connection.execute(text("ALTER TABLE asset DROP COLUMN group_label"))
         connection.execute(text(f"UPDATE {META_TABLE} SET format_version = 21"))
         connection.execute(text("insert into workspace (id, name) values (:w, 'ws')"), ids)
         connection.execute(
@@ -463,6 +466,45 @@ def test_a_generation_21_file_gains_point_clouds_and_keeps_its_rows(tmp_path: Pa
         asset = uow.assets.get(asset_id)
     assert source is not None and source.frame is None
     assert asset is not None and asset.point_cloud is None and asset.modality == "image"
+    migrated.close()
+
+
+def test_a_generation_22_file_gains_group_labels_and_keeps_its_rows(tmp_path: Path) -> None:
+    """Migration 23: an asset written at 22 reads back with no group, and nothing else moves."""
+    fresh = SqliteMetadataStore(tmp_path / "fresh.db")
+    fresh.initialize()
+    expected = _schema(fresh)
+    fresh.close()
+
+    old = tmp_path / "old.db"
+    store = SqliteMetadataStore(old)
+    store.initialize()
+    workspace_id, project_id, asset_id = uuid4(), uuid4(), uuid4()
+    ids = {"w": workspace_id.hex, "p": project_id.hex, "a": asset_id.hex}
+    with store.engine.begin() as connection:
+        connection.execute(text("ALTER TABLE asset DROP COLUMN group_label"))
+        connection.execute(text(f"UPDATE {META_TABLE} SET format_version = 22"))
+        connection.execute(text("insert into workspace (id, name) values (:w, 'ws')"), ids)
+        connection.execute(
+            text("insert into project (id, workspace_id, name) values (:p, :w, 'rig')"), ids
+        )
+        connection.execute(
+            text(
+                "insert into asset (id, project_id, modality, content_hash, uri)"
+                f" values (:a, :p, 'image', '{'a' * 64}', '/rig/a.png')"
+            ),
+            ids,
+        )
+    store.close()
+
+    migrated = SqliteMetadataStore(old)
+    migrated.initialize()
+    assert migrated.format_version == FORMAT_VERSION
+    assert MIGRATIONS[22].name == "group_labels"
+    assert _schema(migrated) == expected
+    with migrated.unit_of_work() as uow:
+        asset = uow.assets.get(asset_id)
+    assert asset is not None and asset.group_label is None and asset.uri == "/rig/a.png"
     migrated.close()
 
 
@@ -582,7 +624,7 @@ _DECLARED_TAILS = {
     # the ``create_all`` path from the migration path.
     "annotation_schema": ["description", "created_at", "provenance"],
     "source": ["display_name", "calibration", "frame"],
-    "asset": ["thumbnail_hash", "ingested_at", "calibration", "point_cloud"],
+    "asset": ["thumbnail_hash", "ingested_at", "calibration", "point_cloud", "group_label"],
     # Migration 2 and migration 3, in that order. Both arrive by ``ALTER`` and
     # SQLite appends, so declaring either anywhere but last would split the
     # ``create_all`` path from the migration path — which is exactly what the

@@ -644,6 +644,7 @@ class ImportService:
             uri=str(path),
             point_cloud=reading.metadata,
             thumbnail_hash=thumbnail_hash,
+            group_label=scan.group_label,
         )
 
     def _single_still(self, handle: BinaryIO, name: str) -> DecodedStill:
