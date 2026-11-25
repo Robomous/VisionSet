@@ -24,13 +24,13 @@ plain `pip` package.
 The shots below are the app on a local workspace: frames cut from a traffic clip and labeled with
 boxes, and three point-cloud maps ingested as scans.
 
-![The project list: image projects and a point-cloud project side by side, with each one's progress](docs/assets/screenshots/projects.png)
+![The project list: image projects and a point-cloud project side by side, with each one's progress](docs/public/screenshots/projects.png)
 
-![A project's overview: a clip's frames as one batch, 100% labeled, with the class mix and an image grid](docs/assets/screenshots/project-overview.png)
+![A project's overview: a clip's frames as one batch, 100% labeled, with the class mix and an image grid](docs/public/screenshots/project-overview.png)
 
-![The annotator on a video frame: boxes for cars, a truck, a motorcycle and a pedestrian, with the objects panel beside them](docs/assets/screenshots/annotator-image.png)
+![The annotator on a video frame: boxes for cars, a truck, a motorcycle and a pedestrian, with the objects panel beside them](docs/public/screenshots/annotator-image.png)
 
-![The annotator on a point-cloud scan: 439,800 of 2,638,798 points drawn, colored by height, in the lidar_flu frame, with the 3D editing tools](docs/assets/screenshots/annotator-point-cloud.png)
+![The annotator on a point-cloud scan: 439,800 of 2,638,798 points drawn, colored by height, in the lidar_flu frame, with the 3D editing tools](docs/public/screenshots/annotator-point-cloud.png)
 
 ## What it does
 
