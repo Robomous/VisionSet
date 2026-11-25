@@ -119,11 +119,12 @@ Publishing copies, beside every asset that carries a 3D label, the calibration t
 at that moment - the asset's own override, else its source's - so the release can be read
 without the workspace. An asset carrying one with no calibration refuses the publish with
 `CALIBRATION_MISSING` (409), and one whose calibration was measured at another size than the
-asset with `CALIBRATION_RESOLUTION_MISMATCH` (422). No installed format writes a 3D geometry: an
-export reports a `polyline_3d` or `cuboid_3d` class **dropped**, with its annotation and asset counts, and
-needs `allow_lossy` like any other loss. The drop happens before pre-processing, with or without a
-target, so a resize or flip in the export's recipe never refuses over a 3D label the format would
-not write anyway.
+asset with `CALIBRATION_RESOLUTION_MISMATCH` (422). One installed format writes a 3D geometry:
+[`kitti`](#the-kitti-format) writes a `cuboid_3d` on a scan. No format writes a `polyline_3d`, and
+none writes a 3D label on an image. Every other format, and `kitti` for a `polyline_3d`, reports the
+class **dropped**, with its annotation and asset counts, and needs `allow_lossy` like any other
+loss. The drop happens before pre-processing, with or without a target, so a resize or flip in the
+export's recipe never refuses over a 3D label the format would not write anyway.
 
 ### A scan travels with its frame
 
@@ -361,8 +362,9 @@ makes the report incompatible, so the export needs `allow_lossy`. Its labels app
 the plugin, nor is its blob read: an image export does not refuse because a scan's blob is
 missing. A plugin that declares no `supported_modalities`, as every one did before scans existed,
 writes images: it is still discovered, and a release's scans are reported dropped for it rather
-than breaking the export. No installed format writes a point cloud, so every one of them reports
-a release's scans dropped, by count.
+than breaking the export. `kitti` is the one installed format that writes a point cloud, and it
+writes nothing else, so it reports a release's images dropped by count and every other format
+reports its scans dropped.
 
 ### Consent is required if *either* says so
 
@@ -395,7 +397,9 @@ above runs first and the recipe runs over what is left, so a geometry the target
 make a step refuse; consent is asked before any transform. `check_export(..., recipe=)` refuses
 now what the export would refuse: `AugmentationRequiresSplit` for an augmenting recipe over a
 release published without a split, and `PreprocessingStepUnsupportedGeometry` for a step that
-cannot move a geometry the export would carry. `ExportResult` separates `source_file_count` from
+cannot move a geometry the export would carry. A recipe reads and writes images, so an export that
+would hand the format a scan refuses one, at the check and at the export, with
+`ExportSourceUnreadable`. `ExportResult` separates `source_file_count` from
 `augmented_file_count`, and `preprocessing` on the report maps every written image to the asset
 it came from.
 
@@ -767,6 +771,45 @@ and its `degraded_geometries` is empty - but has no row for an open path either.
 `segmentation` is a closed ring and it has no open-path primitive. All four therefore report a
 polyline class as **dropped**, and their label files contain no trace of one.
 
+### The KITTI format
+
+`kitti` writes a release's point-cloud scans as KITTI 3D object detection splits, one per fold:
+`<fold>/velodyne/<content-hash>.bin`, `<fold>/label_2/<content-hash>.txt` and
+`<fold>/calib/<content-hash>.txt`, the layout the [`kitti` importer](import.md#formats) reads
+back. It declares `supported_modalities` `{point_cloud}` and `supported_geometries`
+`{cuboid_3d}`, so a release's images are reported dropped by count, and a `polyline_3d` or a
+classification tag on a scan is reported dropped by class. `lossy = True`: attributes, provenance
+and ids have nowhere to go. A confidence is written as the 16th column, KITTI's score.
+
+**The boxes are in a canonical camera frame, not the sensor's.** A cuboid is stored in its scan's
+declared frame, a `label_2` box is in a rectified camera frame, and a release holds no camera
+calibration for a scan (see [the decision record](architecture/decisions/three-dimensional-labels-are-calibrated-image-labels.md)).
+So every box is converted with one fixed calibration, and that calibration is written beside every
+frame: `Tr_velo_to_cam` is KITTI's nominal axis swap with no offset (`x_cam = -y_lidar`,
+`y_cam = -z_lidar`, `z_cam = x_lidar`) and `R0_rect` is the identity. The centre drops by
+`h / 2` to the bottom face, the size `(l, w, h)` becomes `h w l`, and
+`rotation_y = -yaw - pi/2`, wrapped into `[-pi, pi]`; `alpha` is `rotation_y` less the angle of
+the ray to the box, `atan2(x, z)`. The boxes agree with the calibration that ships beside them,
+and importing the export returns the same boxes to the micrometre, but they are not in the
+original rig's camera frame, and projecting them into the original images would place them wrongly.
+There is no image, so `P0` to `P3` are `[I | 0]`, `Tr_imu_to_velo` is the identity, the 2D box is
+zeros, truncation is `0` and occlusion is `3`, KITTI's unknown.
+
+**A `.bin` is in the lidar's forward-left-up axes.** A scan in `lidar_flu` is written as stored;
+one in `lidar_rfu` or `camera_rdf` is turned into `lidar_flu`, points and boxes alike, by the axis
+permutation its frame declares, which keeps each cuboid's yaw. Coordinates are written in the
+scan's own units, which KITTI reads as metres. Each point is float32 `x, y, z, intensity`, decoded
+from the stored PCD, whose fields are read by name and any numeric type: a scan imported from KITTI
+is written back byte for byte. A point with a non-finite coordinate is left out, and a missing or
+non-finite intensity is written as `0`. Three kinds of scan are refused by asset with
+`ExportSourceUnreadable` rather than written wrongly: a PLY scan, an LZF-compressed
+(`binary_compressed`) PCD, and a scan whose coordinates are stored wider than float32 and lie 8192
+or more from the origin, as a georeferenced scan's do, which a float32 `.bin` would round.
+
+A class name is KITTI's first token, so whitespace inside one is written as `_`; two class names
+that would become one token refuse the export. A pre-processing recipe is refused for this format,
+because it transforms images.
+
 ### The destination is the caller's
 
 `ReleaseService.export` checks `dest` before anything is written, so every surface refuses the
@@ -988,7 +1031,7 @@ carries the identical body under `detail.compatibility`.
 | `CalibrationMissing` | An asset carrying a 3D label has no calibration, neither its own nor its source's. 409. |
 | `CalibrationResolutionMismatch` | An asset carrying a 3D label has a calibration measured at another size than the asset. 422. |
 | `WorkspaceCorrupt` | The manifest blob is gone, or is not a readable manifest, or the trunk holds an asset that is not stored. All are guarantees failing rather than entities missing. |
-| `ExportSourceUnreadable` | The release names bytes an export cannot use - the blob is gone, no longer matches its content hash, or is not an image the format can write. **409, not 500**: the request is fine and the stored state is not, so the message names the asset and reaches the caller. The remedy is `verify` and then restoring the blob. A previous generation of this tool swallowed this and shipped a training set one image short. |
+| `ExportSourceUnreadable` | The release names bytes an export cannot use - the blob is gone, no longer matches its content hash, is not an image the format can write, or is a scan `kitti` cannot decode; also a recipe given for an export that writes scans. **409, not 500**: the request is fine and the stored state is not, so the message names the asset and reaches the caller. The remedy is `verify` and then restoring the blob. A previous generation of this tool swallowed this and shipped a training set one image short. |
 | `ExportDestinationRefused` | The export directory is relative, inside or containing the workspace, a file, or cannot be created or read. Not overridable; the remedy is another path. |
 | `ExportDestinationNotEmpty` | The export directory already holds files and the caller has not passed `allow_non_empty`. Overridable; the files are then kept and counted. |
 | `ExportFormatNotFound` | Nothing is installed under that format name. Raised by the registry in `visionset.formats`, not by this service - the kernel never sees a name. |
