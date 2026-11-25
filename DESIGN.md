@@ -30,7 +30,15 @@ navigation, so nothing reusable reads the standalone shell's rail widths.
 
 The theme is the host's too: a screen follows `.dark` on `<html>` and never sets it. The standalone
 app sets it from the viewer's System / Light / Dark choice on the rail
-([`docs/content/ui/navigation.md`](docs/content/ui/navigation.md#the-rail)).
+([`docs/content/ui/navigation.md`](docs/content/ui/navigation.md#the-rail)), kept per browser and
+never on the server ([`docs/content/ui.md`](docs/content/ui.md#the-theme-and-where-the-choice-is-kept)).
+
+**Light and dark are both first-class.** Every rule on this page holds in each: a surface, ink or
+extension is a token with a value in both, never a colour that only one theme defines, and the
+annotator's `stage` and the scan view follow the page like everything else. Under `.dark`, the app
+also sets `color-scheme: dark` on `<html>` (`frontend/app/src/styles.css`), so native scrollbars and
+form controls follow. The [visual baselines](docs/content/architecture/frontend/visual-baselines.md)
+photograph reference surfaces in light and dark.
 
 An extension that turns out to be universal is a candidate to move into the package — that is
 a design decision and a PR against Robomous/ui-core, with the justification written into its
@@ -459,7 +467,7 @@ keep true.
 ### The scan view
 
 **A point-cloud scan sits on the same `stage` ground as a photograph.** Its WebGL canvas clears
-to transparent, so the surround is the token, not a dark viewport of its own.
+to transparent, so the surround is the token in either theme, not a dark viewport of its own.
 
 | Rule | Where |
 | --- | --- |

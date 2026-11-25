@@ -2263,6 +2263,28 @@ a browser refuses it, during the first render, before any error boundary exists.
 fallback is an in-memory store, so the session degrades to "until you reload" instead
 of to a blank page.
 
+## The theme, and where the choice is kept
+
+Light and dark are one stylesheet: every token has a counterpart under `.dark` on
+`<html>`, and a screen follows that class through `useTheme` and never sets it. The
+standalone app sets it from a **System / Light / Dark** control on the rail, above
+account ([navigation.md](ui/navigation.md#the-rail)). System follows
+`prefers-color-scheme`, light when the system says nothing, and keeps following it
+live; Light and Dark pin it.
+
+**The choice is the viewer's, kept in this browser and never on the server.** It is a
+view preference like a thumbnail size, so it goes through `ui-core`'s `data/prefs.ts`
+into `localStorage` under `visionset.prefs.theme`, with the same probe-write guard and
+in-memory fallback as every preference there. Nothing about a theme is sent to the API,
+two browsers on one workspace each keep their own, and losing it costs one click.
+
+The app's `index.html` reads the same key in an inline script and sets `.dark` before
+the first paint, because the module entry is deferred and a dark page would otherwise
+flash light; `startTheme` in `ui-core`'s `lib/theme.ts` takes over from it, and the
+app's `src/prePaint.test.ts` holds the two to the same answers. A host that mounts the
+screens brings its own control and calls `startTheme` and `setThemePreference`, or
+sets the class itself.
+
 ## The 401 is handled once
 
 `VisionSetDataProvider` observes every normalized `unauthorized` answer from the

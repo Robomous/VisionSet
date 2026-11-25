@@ -1,7 +1,7 @@
 /**
  * The visual baseline: a small set of reference surfaces, in both themes.
  *
- * ## Why these five and not the route list
+ * ## Why these six and not the route list
  *
  * A snapshot is worth keeping when it would catch a change nothing else does — a
  * token resolving to the wrong colour, a font that failed to load, an icon that
@@ -19,9 +19,11 @@
  *   it is the only place a `menuColor` regression shows.
  * - **The annotator** carries the densest chrome in the product: top bar, tool
  *   palette, stage, panel, zoom and the highest icon count anywhere.
+ * - **A scan** is the one surface drawn in WebGL rather than CSS: its points take
+ *   each theme's own ramp, its cuboid the class colour and its surround `stage`.
  *
  * Home, Batches, Dataset and Ingest are covered by behavioural specs and
- * add no design-system vocabulary these five do not already hold. A baseline that
+ * add no design-system vocabulary these six do not already hold. A baseline that
  * mostly photographs empty space is a baseline that fails for reasons nobody can
  * read.
  *
@@ -33,7 +35,7 @@
  * `fullPage` would photograph a scroll position as well as a layout.
  */
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 
 import { VISUAL, openVisual, readyForCapture, useDark } from "./_visual";
 
@@ -123,6 +125,35 @@ test.describe("the annotation workspace", () => {
       if (theme === "dark") await useDark(page);
       await readyForCapture(page);
       await expect(page).toHaveScreenshot(`annotator-desktop-${theme}.png`);
+    });
+  }
+});
+
+/** Drawn, and not drawing again: the canvas draws on demand, so a still count is a still picture. */
+async function scanSettled(view: Locator): Promise<void> {
+  await expect(view).toHaveAttribute("data-status", "ready");
+  let last = "";
+  await expect
+    .poll(async () => {
+      const draws = (await view.getAttribute("data-draws")) ?? "0";
+      const settled = draws !== "0" && draws === last;
+      last = draws;
+      return settled;
+    })
+    .toBe(true);
+}
+
+test.describe("the scan view", () => {
+  for (const theme of ["light", "dark"] as const) {
+    test(`a scan, desktop, ${theme}`, async ({ page }) => {
+      await page.setViewportSize(DESKTOP);
+      // Through the system preference, so the canvas draws its first frame in the theme.
+      await page.emulateMedia({ colorScheme: theme });
+      await openVisual(page, `/jobs/${VISUAL.job}`, { scan: true });
+      await expect(page.getByTestId("annotation-page")).toBeVisible();
+      await readyForCapture(page);
+      await scanSettled(page.getByTestId("point-cloud-canvas"));
+      await expect(page).toHaveScreenshot(`scan-desktop-${theme}.png`);
     });
   }
 });

@@ -170,7 +170,7 @@ export default defineConfig({
     /*
      * Opt-in, because the baselines are not in git: every run of this project
      * that is not the container run in `visual-baselines.md` either fails on
-     * ten missing images or writes ten from the wrong renderer.
+     * twelve missing images or writes twelve from the wrong renderer.
      */
     ...(process.env["VISIONSET_VISUAL"] === undefined ? [] : [{
       /**
