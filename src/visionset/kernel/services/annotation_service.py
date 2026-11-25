@@ -84,9 +84,11 @@ from visionset.kernel.domain import (
     AnnotationOperation,
     AnnotationSchema,
     AnnotationsWritten,
+    Asset,
     AssetProgress,
     Batch,
     ClassificationGeometry,
+    Source,
     geometry_fits_modality,
     geometry_reference,
     progress_after_annotating,
@@ -200,11 +202,12 @@ class AnnotationService:
                 for annotation in annotations
             ]
             tagged = _tags_already_on(uow, {a.asset_id for a in proposed})
+            reads = _AssetReads(uow)
             for index, annotation in enumerate(proposed):
                 with _blaming(index):
                     _require_writable(job, annotation.asset_id)
                     _validate(annotation, schema)
-                    _require_geometry_on_asset(uow, annotation)
+                    _require_geometry_on_asset(uow, annotation, reads)
                     # Checked inside this transaction and against a set that grows
                     # as the loop goes, so a request carrying the same tag twice is
                     # refused at the *second* position rather than by the index at
@@ -297,13 +300,14 @@ class AnnotationService:
             tagged = _tags_already_on(
                 uow, {a.asset_id for a in proposed}, ignoring={a.id for a in outgoing}
             )
+            reads = _AssetReads(uow)
             for index, annotation in enumerate(proposed):
                 with _blaming(index):
                     _require_model_made(annotation)
                     if annotation.asset_id not in superseded:
                         _require_untouched(uow, job, annotation.asset_id)
                     _validate(annotation, schema)
-                    _require_geometry_on_asset(uow, annotation)
+                    _require_geometry_on_asset(uow, annotation, reads)
                     _require_untagged(tagged, annotation)
 
             for old in outgoing:
@@ -386,12 +390,13 @@ class AnnotationService:
             for annotation in annotations
         ]
         tagged = _tags_already_on(uow, {a.asset_id for a in proposed})
+        reads = _AssetReads(uow)
         for index, annotation in enumerate(proposed):
             with _blaming(index):
                 _require_imported(annotation)
                 _require_held_only_here(annotation.asset_id, batch, members, trunk, elsewhere)
                 _validate(annotation, schema)
-                _require_geometry_on_asset(uow, annotation)
+                _require_geometry_on_asset(uow, annotation, reads)
                 _require_untagged(tagged, annotation)
         return [uow.annotations.add(annotation) for annotation in proposed]
 
@@ -432,6 +437,7 @@ class AnnotationService:
             schema = self._pinned_schema(batch)
 
             replacements = []
+            reads = _AssetReads(uow)
             for index, annotation in enumerate(annotations):
                 with _blaming(index):
                     current = self._require_annotation(uow, annotation.id)
@@ -459,7 +465,7 @@ class AnnotationService:
                         }
                     )
                     _validate(replacement, schema)
-                    _require_geometry_on_asset(uow, replacement)
+                    _require_geometry_on_asset(uow, replacement, reads)
                 replacements.append(replacement)
 
             # After the loop, because an update may *move* a tag: the row being
@@ -672,14 +678,42 @@ def _require_writable(job: AnnotationJob, asset_id: UUID) -> None:
         )
 
 
-def _require_geometry_on_asset(uow: UnitOfWork, annotation: Annotation) -> None:
+class _AssetReads:
+    """Each asset, and each source, read from the store once per call.
+
+    One per write, built after its lock is taken and dropped when it returns.
+    Its caller holds the write lock and writes nothing between the first read
+    and the last check, and nothing in this service writes an asset or a
+    source, so a remembered row is the row the store would answer with again.
+    """
+
+    def __init__(self, uow: UnitOfWork) -> None:
+        self._uow = uow
+        self._assets: dict[UUID, Asset | None] = {}
+        self._sources: dict[UUID, Source | None] = {}
+
+    def asset(self, asset_id: UUID) -> Asset | None:
+        if asset_id not in self._assets:
+            self._assets[asset_id] = self._uow.assets.get(asset_id)
+        return self._assets[asset_id]
+
+    def source(self, source_id: UUID) -> Source | None:
+        if source_id not in self._sources:
+            self._sources[source_id] = self._uow.sources.get(source_id)
+        return self._sources[source_id]
+
+
+def _require_geometry_on_asset(
+    uow: UnitOfWork, annotation: Annotation, reads: _AssetReads | None = None
+) -> None:
     """Refuse a spatial annotation wholly outside its measured asset, a 3D one
     on an image with no calibration that fits it or on a scan whose source
     declares no frame, and a pixel-space one on a point cloud.
 
     Every caller holds the write lock before this runs, so the calibration read
     here cannot be changed before the label commits; ``CalibrationService``'s
-    sets and clears take the same lock before checking for 3D labels.
+    sets and clears take the same lock before checking for 3D labels. A caller
+    checking many labels passes one ``reads`` so each asset is read once.
 
     Raises:
         CalibrationMissing: a 3D label on an image with no effective
@@ -688,7 +722,9 @@ def _require_geometry_on_asset(uow: UnitOfWork, annotation: Annotation) -> None:
             a size other than the asset's.
         InvalidAnnotation: a pixel-space shape on a point cloud.
     """
-    asset = uow.assets.get(annotation.asset_id)
+    if reads is None:
+        reads = _AssetReads(uow)
+    asset = reads.asset(annotation.asset_id)
     if asset is None:
         raise WorkspaceCorrupt(
             f"annotation {annotation.id} names asset {annotation.asset_id}, which does not exist"
@@ -700,7 +736,7 @@ def _require_geometry_on_asset(uow: UnitOfWork, annotation: Annotation) -> None:
         )
     reference = geometry_reference(annotation.geometry, modality=asset.modality)
     if reference is not None:
-        source = None if asset.source_id is None else uow.sources.get(asset.source_id)
+        source = None if asset.source_id is None else reads.source(asset.source_id)
         if reference == "calibration":
             require_calibration(asset, source)
         else:
