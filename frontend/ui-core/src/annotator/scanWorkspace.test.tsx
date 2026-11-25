@@ -15,6 +15,8 @@ import {
   NO_CUBOID_CLASS_REASON,
   NO_POLYLINE_CLASS_REASON,
   READ_ONLY_REASON,
+  SOURCE_FAILED_REASON,
+  SOURCE_LOADING_REASON,
   useScanWorkspace,
   type ScanWorkspace,
   type ScanWorkspaceAsset,
@@ -54,12 +56,15 @@ const LOOKING_DOWN: OrbitCamera = { yaw: Math.PI, pitch: 1.2, distance: 30, targ
 const VIEW = { camera: LOOKING_DOWN, viewport: { width: 800, height: 600 } };
 
 let frame: string | null;
+let sourceAnswer: (() => Promise<Response>) | null;
 
 beforeEach(() => {
   frame = "lidar_flu";
+  sourceAnswer = null;
   vi.stubGlobal("fetch", async (request: Request) => {
     const path = new URL(request.url).pathname;
     if (path.endsWith(`/sources/${SOURCE}`)) {
+      if (sourceAnswer !== null) return sourceAnswer();
       return Response.json({
         id: SOURCE,
         project_id: PROJECT,
@@ -123,6 +128,33 @@ describe("useScanWorkspace", () => {
     frame = null;
     const probe = workspace();
     await waitFor(() => expect(probe.current()?.editBlocked).toBe(FRAME_UNDECLARED_REASON));
+    act(() => probe.current()?.setEditing(true));
+    expect(probe.current()?.editing).toBe(false);
+  });
+
+  it("says Edit waits for the source while it is read, then opens", async () => {
+    let release: (() => void) | null = null;
+    const answered = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    sourceAnswer = async () => {
+      await answered;
+      sourceAnswer = null;
+      return Response.json({ id: SOURCE, project_id: PROJECT, kind: "point_cloud_directory", name: "sweeps", registered_at: "2026-11-01T00:00:00Z", frame, video: null });
+    };
+    const probe = workspace();
+    expect(probe.current()?.editBlocked).toBe(SOURCE_LOADING_REASON);
+    act(() => probe.current()?.setEditing(true));
+    expect(probe.current()?.editing).toBe(false);
+    act(() => release?.());
+    await waitFor(() => expect(probe.current()?.editBlocked).toBeNull());
+  });
+
+  it("says the source could not be read when its request fails, never that it declares no frame", async () => {
+    sourceAnswer = async () => Response.json({ code: "UNAUTHORIZED", message: "Sign in again." }, { status: 401 });
+    const probe = workspace();
+    await waitFor(() => expect(probe.current()?.editBlocked).toBe(SOURCE_FAILED_REASON));
+    expect(probe.current()?.frameKnown).toBe(false);
     act(() => probe.current()?.setEditing(true));
     expect(probe.current()?.editing).toBe(false);
   });

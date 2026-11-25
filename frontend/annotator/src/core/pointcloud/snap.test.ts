@@ -205,3 +205,53 @@ describe("snapHeight", () => {
     expect(examined / searched).toBeLessThan(count * PER_QUERY_SHARE);
   });
 });
+
+describe("the grid behind snapHeight", () => {
+  function plate(): Point3D[] {
+    const points: Point3D[] = [];
+    for (let i = 0; i < 8; i += 1) {
+      for (let j = 0; j < 8; j += 1) points.push([i * 1.5 - 5, j * 1.5 - 5, 0.1 * (i + j)]);
+    }
+    return points;
+  }
+
+  it("leaves out non-finite positions without losing a real point", () => {
+    const points = plate();
+    const corrupt: Point3D[] = [[Number.NaN, 0, 0], [0, Number.POSITIVE_INFINITY, 1], ...points, [0, 0, Number.NEGATIVE_INFINITY]];
+    const sample = sampleOf(corrupt);
+    for (const camera of [CAMERA, TOP_DOWN]) {
+      for (const point of points) {
+        const height = snapHeight(sample, "lidar_flu", camera, VIEWPORT, pixel(camera, "lidar_flu", point));
+        expect(height).toBe(bruteForce(sample, "lidar_flu", camera, pixel(camera, "lidar_flu", point)));
+        expect(height).not.toBeNull();
+      }
+    }
+    expect(surfaceGrid(sample, "lidar_flu").indices).toHaveLength(points.length);
+  });
+
+  it("sizes its cells from the body of the scan, so one far stray does not coarsen them", () => {
+    const random = mulberry32(SEEDS[1]);
+    const points: Point3D[] = [];
+    for (let i = 0; i < 20_000; i += 1) points.push([(random() - 0.5) * 120, (random() - 0.5) * 120, random() * 0.2]);
+    const without = surfaceGrid(sampleOf(points), "lidar_flu").cell;
+    const stray: Point3D = [7_000, 3, 5];
+    const sample = sampleOf([...points, stray]);
+    const grid = surfaceGrid(sample, "lidar_flu");
+    expect(grid.cell).toBeLessThan(without * 1.1);
+    expect(grid.maximum[0]).toBe(7_000);
+
+    const far: OrbitCamera = { yaw: Math.PI, pitch: 0.4, distance: 60, target: [7_000, 3, 5] };
+    expect(snapHeight(sample, "lidar_flu", far, VIEWPORT, pixel(far, "lidar_flu", stray))).toBeCloseTo(5, 5);
+    for (let probe = 0; probe < 40; probe += 1) {
+      const pointer: Point = [random() * VIEWPORT.width, random() * VIEWPORT.height];
+      expect(snapHeight(sample, "lidar_flu", CAMERA, VIEWPORT, pointer)).toBe(bruteForce(sample, "lidar_flu", CAMERA, pointer));
+    }
+  });
+
+  it("keeps one grid per up axis and sign", () => {
+    const sample = sampleOf(plate());
+    expect(surfaceGrid(sample, "lidar_flu")).toBe(surfaceGrid(sample, "lidar_rfu"));
+    expect(surfaceGrid(sample, "camera_rdf")).not.toBe(surfaceGrid(sample, "lidar_flu"));
+    expect(surfaceGrid(sample, "camera_rdf").upSign).toBe(-1);
+  });
+});

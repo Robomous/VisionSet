@@ -6,7 +6,6 @@ import {
   insertPolylineVertex,
   isDrawablePolyline,
   movePolylineVertex,
-  nearestSegment,
   removePolylineVertex,
 } from "./polyline";
 
@@ -55,21 +54,5 @@ describe("polyline vertex functions", () => {
     expect(isDrawablePolyline([A, [0, 0, 0]])).toBe(false);
     expect(isDrawablePolyline([A, B])).toBe(true);
     expect(isDrawablePolyline([A, A, B])).toBe(true);
-  });
-
-  it("nearestSegment projects onto the closest segment, clamped to its ends", () => {
-    expect(nearestSegment([A, B, C], [5, 2, 0])).toEqual({ segment: 0, point: [5, 0, 0], distance: 2 });
-    expect(nearestSegment([A, B, C], [13, 6, 0])).toEqual({ segment: 1, point: [10, 6, 0], distance: 3 });
-    expect(nearestSegment([A, B], [-3, 4, 0])).toEqual({ segment: 0, point: A, distance: 5 });
-    expect(nearestSegment([A], [1, 1, 1])).toBeNull();
-  });
-
-  it("nearestSegment keeps the first of two equally close segments", () => {
-    expect(nearestSegment([A, B, C], [12, -2, 0])?.segment).toBe(0);
-    expect(nearestSegment([A, B, C], [10, 0, 0])?.segment).toBe(0);
-  });
-
-  it("nearestSegment survives a zero-length segment", () => {
-    expect(nearestSegment([A, A], [0, 3, 4])).toEqual({ segment: 0, point: A, distance: 5 });
   });
 });

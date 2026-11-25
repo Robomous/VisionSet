@@ -4,16 +4,15 @@
  * between densities, and the ends of the colour ramp the canvas draws.
  *
  * The ramps and their range are the annotator's own (`HEIGHT_RAMP`,
- * `INTENSITY_RAMP`, `robustRange`), so the legend says what the canvas did
+ * `INTENSITY_RAMP`, `rampRange`), so the legend says what the canvas did
  * rather than a copy of it that could drift.
  */
 
 import {
   HEIGHT_RAMP,
   INTENSITY_RAMP,
-  SCAN_FRAME_AXES,
   decodePoints,
-  robustRange,
+  rampRange,
   type ColorMode,
   type PointSample,
   type ScanFrame,
@@ -125,14 +124,5 @@ export const RAMP_GRADIENT: Readonly<Record<ColorMode, string>> = {
  * stretches it over — or `null` for recorded colour, or before there are points.
  */
 export function useRampRange(sample: PointSample | null, frame: ScanFrame | null, mode: ColorMode): readonly [number, number] | null {
-  return useMemo(() => {
-    if (sample === null || sample.count === 0 || mode === "rgb") return null;
-    if (mode === "intensity") {
-      const values = sample.intensity;
-      return values === null ? null : robustRange(sample.count, (i) => values[i] ?? Number.NaN);
-    }
-    const [index, sign] = SCAN_FRAME_AXES[frame ?? "lidar_flu"].up;
-    const offset = sample.origin[index];
-    return robustRange(sample.count, (i) => sign * ((sample.positions[i * 3 + index] ?? Number.NaN) + offset));
-  }, [sample, frame, mode]);
+  return useMemo(() => (sample === null ? null : rampRange(sample, mode, frame ?? "lidar_flu")), [sample, frame, mode]);
 }

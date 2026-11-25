@@ -92,7 +92,7 @@ import {
   type SuggestionState,
 } from "@visionset/annotator";
 import { Check, ChevronDown, Laptop, Loader2, Server, TriangleAlert, X } from "lucide-react";
-import { useRef, useState, type JSX, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { useRef, useState, type JSX, type KeyboardEvent, type ReactNode } from "react";
 
 import {
   Button,
@@ -119,6 +119,7 @@ import type {
 } from "../inference/browserPort.js";
 import { InfoTip } from "../patterns/InfoTip";
 import { GeometryIcon } from "./GeometryIcon";
+import { keepCanvasFocus } from "./keepCanvasFocus";
 
 /** The shapes a class admits that a segmenter can return, and which one a click asks for. */
 export interface SuggestShapeChoice {
@@ -683,7 +684,7 @@ function StatusAction({ facts, status }: { readonly facts: Facts; readonly statu
         size="sm"
         className="h-8 shrink-0"
         data-testid="suggest-discard"
-        onMouseDown={keepFocusOnCanvas}
+        onMouseDown={keepCanvasFocus}
         onClick={onDiscard}
       >
         <X aria-hidden="true" />
@@ -701,7 +702,7 @@ function StatusAction({ facts, status }: { readonly facts: Facts; readonly statu
       size="sm"
       className="h-8 shrink-0"
       data-testid="suggest-configure"
-      onMouseDown={keepFocusOnCanvas}
+      onMouseDown={keepCanvasFocus}
       onClick={onConfigure}
     >
       {action}
@@ -746,7 +747,7 @@ function Decisions({ facts, status }: { readonly facts: Facts; readonly status: 
   return (
     <span className="ml-auto flex shrink-0 items-center gap-1.5 pl-2">
       {acceptable && (
-        <Button size="sm" className="h-8" data-testid="suggest-accept" onMouseDown={keepFocusOnCanvas} onClick={onAccept}>
+        <Button size="sm" className="h-8" data-testid="suggest-accept" onMouseDown={keepCanvasFocus} onClick={onAccept}>
           <Check aria-hidden="true" />
           Accept
           <Kbd className="bg-primary-foreground/15 text-primary-foreground @max-[48rem]:hidden">↵</Kbd>
@@ -755,7 +756,7 @@ function Decisions({ facts, status }: { readonly facts: Facts; readonly status: 
       {/* The take-back where something is pending: Discard beside Accept, or Clear
           where nothing can be accepted — found nothing, refused, or still asking. */}
       {!facts.parked && facts.pending && (acceptable || status?.blocker === undefined) && (
-        <Button variant="ghost" size="sm" className="h-8" data-testid="suggest-discard" onMouseDown={keepFocusOnCanvas} onClick={onDiscard}>
+        <Button variant="ghost" size="sm" className="h-8" data-testid="suggest-discard" onMouseDown={keepCanvasFocus} onClick={onDiscard}>
           <X aria-hidden="true" />
           {acceptable ? "Discard" : "Clear"}
           <Kbd className="@max-[48rem]:hidden">Esc</Kbd>
@@ -766,29 +767,10 @@ function Decisions({ facts, status }: { readonly facts: Facts; readonly status: 
 }
 
 /**
- * Keep the press from moving focus off the canvas.
- *
- * Every keyboard rule in the editor is a `keydown` on the annotator's own root,
- * so a button here that took focus would silently switch them all off — `[` and
- * `]` would stop stepping, and `Esc` and `↵` would stop being the preview's undo
- * and accept, with nothing on screen to say why. Found in a browser: jsdom has
- * no focus to move.
- *
- * On the buttons only. **A range input drags on the default action**, so
- * cancelling its `mousedown` leaves a slider that looks alive and cannot be moved
- * by hand at all — which shipped once, and nothing caught it, because the test
- * asserted the guard fired rather than that the thumb followed the pointer (#563).
- * The slider uses {@link returnFocusToCanvas} instead.
- */
-function keepFocusOnCanvas(event: MouseEvent<HTMLElement>): void {
-  event.preventDefault();
-}
-
-/**
  * Give the canvas its keyboard back once a pointer gesture on a control is over.
  *
- * The other half of the same rule, for a control whose default action is the
- * whole point of it. `ui-core` holds no ref to the annotator's root, so it is
+ * The other half of {@link keepCanvasFocus}'s rule, for a slider, whose drag is
+ * its `mousedown` default and so cannot be cancelled. `ui-core` holds no ref to the annotator's root, so it is
  * found the way `FrameGallery` finds it after its overlay closes. On release
  * rather than on change: a drag emits a change per step, and pulling focus
  * mid-drag would end the gesture under the pointer.
@@ -849,7 +831,7 @@ function Segmented<T extends string>({
             tabIndex={option.value === focusable ? 0 : -1}
             data-value={option.value}
             data-testid={option.testId}
-            onMouseDown={keepFocusOnCanvas}
+            onMouseDown={keepCanvasFocus}
             onClick={() => onChange(option.value)}
             onKeyDown={(event) => step(event, index)}
             className={cn(
@@ -1110,7 +1092,7 @@ function DownloadButton({
       data-testid={`suggest-device-acquire-${id}`}
       aria-label={busy ? "Downloading to this browser" : `Download to this browser, ${megabytes(bytes)} MB`}
       disabled={busy}
-      onMouseDown={keepFocusOnCanvas}
+      onMouseDown={keepCanvasFocus}
       onClick={onPress}
     >
       {busy ? (

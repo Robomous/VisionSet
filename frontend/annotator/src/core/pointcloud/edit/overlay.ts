@@ -7,11 +7,11 @@
  * the runs that stay in front of it.
  */
 
-import { cuboidAxes, headingOfYaw, type CuboidFace } from "../cuboid";
-import { fromForwardLeftUp, type ScanFrame } from "../frame";
+import { cuboidCorners3D, FOOTPRINT_CORNERS, headingOfYaw, type CuboidFace } from "../cuboid";
+import { fromForwardLeftUp } from "../frame";
 import { screenOf } from "../ray";
 import { add, scale } from "../vector";
-import type { Cuboid3DGeometry, Point, Point3D } from "../../types";
+import type { Point, Point3D } from "../../types";
 import { faceHandles, handleFaces, handleTarget, vertexTarget, yawRing, type Scene3D } from "./scene";
 
 export interface ScanHandleLayout {
@@ -77,7 +77,8 @@ export function scanHandleLayout(scene: Scene3D): ScanHandleLayout | null {
   }
   if (run.length > 1) runs.push(run);
 
-  const footprint = footprintCorners(target.geometry, frame).map((corner) => screenOf(camera, frame, viewport, corner));
+  const corners = cuboidCorners3D(target.geometry, frame);
+  const footprint = FOOTPRINT_CORNERS.map((index) => screenOf(camera, frame, viewport, corners[index]));
   const heading = screenOf(camera, frame, viewport, add(ring.center, scale(headingOfYaw(target.geometry.yaw, frame), ring.radius)));
   return {
     id: target.id,
@@ -88,14 +89,3 @@ export function scanHandleLayout(scene: Scene3D): ScanHandleLayout | null {
   };
 }
 
-function footprintCorners(geometry: Cuboid3DGeometry, frame: ScanFrame): Point3D[] {
-  const [along, across, up] = cuboidAxes(geometry, frame);
-  const [length, width, height] = geometry.size;
-  const bottom = add(geometry.center, scale(up, -height / 2));
-  return [
-    [1, 1],
-    [1, -1],
-    [-1, -1],
-    [-1, 1],
-  ].map(([a, b]) => add(bottom, add(scale(along, (a * length) / 2), scale(across, (b * width) / 2))));
-}

@@ -8,6 +8,7 @@ import {
   defaultColorMode,
   pointColors,
   rampAt,
+  rampRange,
   robustRange,
 } from "./ramp";
 
@@ -111,5 +112,29 @@ describe("colour modes", () => {
     const coloured = sample([0, 0, 0], { rgb: new Uint8Array(3), intensity: new Float32Array(1) });
     expect(colorModeAvailable(coloured, "intensity")).toBe(true);
     expect(defaultColorMode(coloured)).toBe("rgb");
+  });
+});
+
+describe("rampRange", () => {
+  const positions: number[] = [];
+  for (let i = 0; i < 6_000; i += 1) positions.push(i % 7, -((i * 0.37) % 11), (i % 13) * 0.25);
+  const origin = [512_364.5, 4_123_447.25, 30.125] as const;
+
+  it("is the span pointColors stretched, heights read in the scan's frame", () => {
+    const one = sample(positions, { origin: [...origin] });
+    pointColors(one, "height", "camera_rdf");
+    const [low, high] = robustRange(one.count, (i) => -(one.positions[i * 3 + 1]! + origin[1]));
+    expect(rampRange(one, "height", "camera_rdf")).toEqual([low, high]);
+    const [zLow, zHigh] = robustRange(one.count, (i) => one.positions[i * 3 + 2]! + origin[2]);
+    expect(rampRange(one, "height", "lidar_flu")).toEqual([zLow, zHigh]);
+  });
+
+  it("is the intensity percentiles, and nothing for recorded colour, a missing channel or no points", () => {
+    const intensity = new Float32Array(positions.length / 3).map((_, i) => (i * 13) % 100);
+    const lit = sample(positions, { intensity });
+    expect(rampRange(lit, "intensity", "lidar_flu")).toEqual(robustRange(lit.count, (i) => intensity[i]!));
+    expect(rampRange(lit, "rgb", "lidar_flu")).toBeNull();
+    expect(rampRange(sample(positions), "intensity", "lidar_flu")).toBeNull();
+    expect(rampRange(sample([]), "height", "lidar_flu")).toBeNull();
   });
 });

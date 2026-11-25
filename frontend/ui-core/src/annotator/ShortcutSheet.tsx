@@ -57,6 +57,7 @@ import {
   FOCUS_CLASS_FIELD,
   RESET_ZOOM,
   SAVE,
+  SCAN_KEY_BINDINGS,
   SAVE_AND_NEXT,
   SKIP_FRAME,
   TOGGLE_HAND,
@@ -64,10 +65,13 @@ import {
   type Action,
   type ActionKind,
   type Registry,
+  type ScanKeyIntent,
 } from "@visionset/annotator";
 import type { JSX } from "react";
 
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@robomous/ui-core";
+
+import { modKey } from "./modKey";
 
 /**
  * What each action kind means, in words.
@@ -116,19 +120,6 @@ function hostPhrase(name: string): string {
   if (name === SKIP_FRAME) return "Skip this frame and go to the next";
   if (name === TOGGLE_HAND) return "Turn the hand on or off — with it on, any drag pans";
   return name;
-}
-
-/**
- * Which key `mod` is on this machine — `⌘` or `Ctrl`.
- *
- * Exported because the top bar shows the same chord on a button, and two
- * spellings of "is this a Mac" is how one of them ends up saying Ctrl on a
- * MacBook. `navigator.platform` is deprecated and is still the only thing every
- * engine agrees on; the guard is for the server and for a test with no DOM.
- */
-export function modKey(): string {
-  const apple = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-  return apple ? "⌘" : "Ctrl";
 }
 
 /**
@@ -272,6 +263,77 @@ export function ShortcutSheet({ open, onOpenChange, registry }: ShortcutSheetPro
           a shape can be carried forward. While you are typing in a field they are the
           browser&rsquo;s, and copy text as usual.
         </p>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** What each scan-editor intent does; a `Record` so a new intent fails to compile here. */
+const SCAN_PHRASES: Readonly<Record<ScanKeyIntent, string>> = {
+  undo: "Undo",
+  redo: "Redo",
+  save: "Save now, and stay on this scan",
+  delete: "In Edit, delete the selected label",
+  cancel: "In Edit, cancel the label being drawn — or, with nothing in progress, clear the selection",
+  commit: "In Edit, finish a polyline, or a cuboid's height",
+  help: "Show or hide this sheet",
+};
+
+const SCAN_GESTURES: readonly GestureRow[] = [
+  { gesture: "Drag", means: "Orbits the view. In Edit, draws or adjusts a label" },
+  { gesture: "Right-drag", means: "Pans the view. In Edit, orbits it" },
+  { gesture: "Middle-drag", means: "Pans the view, in either mode" },
+  { gesture: "Shift-drag", means: "Pans the view. In Edit, Shift and right-drag pans" },
+  { gesture: "Scroll", means: "Zooms the view" },
+];
+
+export interface ScanShortcutSheetProps {
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}
+
+/** A scan's shortcuts, read off the scan editor's own binding table (`SCAN_KEY_BINDINGS`). */
+export function ScanShortcutSheet({ open, onOpenChange }: ScanShortcutSheetProps): JSX.Element {
+  const apple = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        data-testid="shortcut-sheet"
+        data-sheet="scan"
+        className="max-h-[80vh] sm:max-w-xl overflow-y-auto"
+        onKeyDown={(event) => {
+          if (event.key === "?") {
+            event.preventDefault();
+            onOpenChange(false);
+          }
+        }}
+      >
+        <DialogTitle>Shortcuts and gestures</DialogTitle>
+        <DialogDescription>
+          Every chord the scan editor claims, read from its binding table. They answer while the
+          scan view has focus.
+        </DialogDescription>
+
+        <table className="w-full border-separate border-spacing-y-1" data-testid="shortcut-rows">
+          <tbody>
+            {SCAN_KEY_BINDINGS.map((binding) => (
+              <tr key={binding.chord} data-chord={binding.chord}>
+                <td className="w-32 align-top">
+                  <kbd className="rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono text-xs">
+                    {readable(binding.chord, apple)}
+                  </kbd>
+                </td>
+                <td className="text-sm text-muted-foreground">{SCAN_PHRASES[binding.intent]}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <h3 className="mt-2 text-base font-semibold">Move the view</h3>
+        <p className="text-xs text-muted-foreground" data-testid="shortcut-scan-view-keys">
+          With the view focused, the arrow keys orbit, plus and minus zoom, and 0 resets the view.
+        </p>
+        <Gestures testId="shortcut-scan-gesture-rows" caption="With the pointer" rows={SCAN_GESTURES} />
       </DialogContent>
     </Dialog>
   );

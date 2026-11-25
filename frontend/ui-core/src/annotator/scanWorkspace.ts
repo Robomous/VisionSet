@@ -93,6 +93,9 @@ const EMPTY_PLAN: SavePlan<ScanAnnotation> = { created: [], updated: [], deleted
 export const FRAME_UNDECLARED_REASON =
   "This scan's source declares no frame, so its labels cannot be edited. Declare the frame on the source to edit them.";
 export const READ_ONLY_REASON = "This scan is open for viewing only, so its labels cannot be edited.";
+export const SOURCE_LOADING_REASON = "Reading this scan's source for its frame — Edit opens once it answers.";
+export const SOURCE_FAILED_REASON =
+  "This scan's source could not be read, so its frame is unknown and its labels cannot be edited until it is.";
 export const NO_CUBOID_CLASS_REASON = "No class in this schema accepts a 3D cuboid.";
 export const NO_POLYLINE_CLASS_REASON = "No class in this schema accepts a 3D polyline.";
 
@@ -153,7 +156,8 @@ export function useScanWorkspace({
   const snapshot = useAnnotatorSnapshot(store);
 
   const source = useSource(isScan ? (asset.source_id ?? undefined) : undefined);
-  const frameKnown = asset.source_id === null || source.data !== undefined || source.isError;
+  const frameKnown = asset.source_id === null || source.data !== undefined;
+  const sourceFailed = !frameKnown && source.isError;
   const declaredFrame = source.data?.frame;
   const editability = useMemo<ScanEditability>(
     () =>
@@ -165,13 +169,15 @@ export function useScanWorkspace({
 
   const editBlocked = readOnly
     ? READ_ONLY_REASON
-    : !frameKnown
-      ? null
-      : editability.editable
-        ? null
-        : FRAME_UNDECLARED_REASON;
+    : sourceFailed
+      ? SOURCE_FAILED_REASON
+      : !frameKnown
+        ? SOURCE_LOADING_REASON
+        : editability.editable
+          ? null
+          : FRAME_UNDECLARED_REASON;
   const [wantsEditing, setEditing] = useState(false);
-  const editing = wantsEditing && editBlocked === null && frameKnown && editability.editable;
+  const editing = wantsEditing && editBlocked === null && editability.editable;
 
   const cuboid = useDrawClass(store, "cuboid_3d");
   const polyline = useDrawClass(store, "polyline_3d");

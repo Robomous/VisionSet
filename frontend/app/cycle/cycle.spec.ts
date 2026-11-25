@@ -523,7 +523,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     await openBatch(page, PROJECT, "cycle-batch");
     const panel = page.getByTestId("batch-sheet");
     // The panel's footer holds the batch's moves. The closing move, *Complete*, is
-    // withheld while every frame is still to do.
+    // not declared while frames are still to do, so it is withheld with its count.
     await expect(panel.getByTestId("complete-cycle-batch")).toBeDisabled();
     // Approved with no partition, the batch has one job: one card, nobody holding it.
     const jobs = panel.getByTestId("batch-sheet-jobs");

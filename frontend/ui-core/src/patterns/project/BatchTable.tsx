@@ -39,7 +39,7 @@ import { useMemo, useRef, useState, type JSX, type KeyboardEvent, type MouseEven
 import { cn } from "@robomous/ui-core";
 import type { Modality } from "../../lib/assetNoun";
 import { formatCount } from "../../lib/format";
-import type { BatchPhase } from "./BatchSummary";
+import type { BatchPhase } from "./batchRowModel";
 import { initials, labeledDetail, lensAdmits, phaseState, rowNoun, type Lens } from "./batchRowModel";
 import { StateChip } from "../StateChip";
 import { BODY_ROW, ColumnHeader, ListGrid, type ListColumn } from "../ListPage";

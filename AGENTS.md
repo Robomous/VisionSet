@@ -15,7 +15,7 @@ CLI formatting, HTTP status mapping — legitimately stays in its own layer.
 
 | Component | Location | Stack |
 | --- | --- | --- |
-| Python distribution | `src/visionset/` | Python 3.12+, pydantic v2, FastAPI, Typer, MCP, SQLAlchemy, uv |
+| Python distribution | `src/visionset/` | Python 3.11+, pydantic v2, FastAPI, Typer, MCP, SQLAlchemy, uv |
 | Frontend workspace | `frontend/` | Node, pnpm, TypeScript, React 19, Vite, vitest, Radix + lucide |
 | Dev infra | `docker/` | Docker Compose (dev only) |
 

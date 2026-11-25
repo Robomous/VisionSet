@@ -59,8 +59,9 @@ class Annotation(BaseModel):
     are NEVER addressed by array index.
 
     Coordinates are ALWAYS stored in the asset's native reference frame
-    (pixels for images). Normalization is the exporter's concern, never the
-    domain's.
+    (pixels for a 2D geometry; metres in the camera's sensor frame or the scan's
+    declared frame for a 3D one). Normalization is the exporter's concern, never
+    the domain's.
 
     Per-value rules are enforced here and are therefore unskippable: a
     ``provenance='model'`` annotation with no ``model_ref``, or a ``confidence``

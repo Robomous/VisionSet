@@ -474,8 +474,8 @@ the batch declares them: *Approve* (it opens the approve dialog, because approva
 schema, cuts the jobs and has no route back - and, switch on, starts the batch too), *Start annotating*, *Annotate* (only when
 the batch has exactly one job, straight into it), *Complete* and, on a completed batch with
 images still outside the dataset, *Add to dataset*. *Annotate* is filled while there is work left,
-*Complete* once nothing is outstanding; while frames are still to do, *Complete* is withheld and
-its tooltip counts them.
+*Complete* once nothing is outstanding. The batch declares `complete` only once every frame is
+settled, so while frames are still to do *Complete* is withheld and its tooltip counts them.
 
 **Complete asks first, and the answer holds the choice.** A press opens a small confirmation -
 *Complete this batch?*, that any open job closes with it and that a completed batch cannot be
@@ -1256,7 +1256,7 @@ source that declares no frame is shown with `z` up and has no labels to draw.
 The open job's `cuboid_3d` labels on the scan are drawn as their twelve edges, and a
 `polyline_3d` as its segments, in the class colour, in the scan's own frame - no calibration is
 asked for or used. A cuboid's corners are its centre plus half its size along the heading
-`cos(yaw)·forward + sin(yaw)·left`, across it, and along up (`scanCuboidCorners`). Edges are drawn
+`cos(yaw)·forward + sin(yaw)·left`, across it, and along up (`cuboidCorners3D`). Edges are drawn
 over the points rather than hidden inside them. Both kinds live in the page's scan document, so
 in **Edit** mode, which adds an orthographic top-down view beside the perspective one, cuboids
 can be selected, drawn, moved, resized, turned, deleted and saved, and polylines drawn on the
@@ -1435,8 +1435,11 @@ takes them together. **Approve** with its *Start annotating now* switch on, its 
 draft through `approved` to `in_annotation` - in the batch's approve dialog, and in place as the
 Add images dialog's last step, which draws the same form. **Complete**, with its *Add the labeled images to the dataset* switch on, closes
 the batch and moves its work into the trunk; it is the panel footer's one way to finish a batch,
-withheld while any frame is still to do, and says what the press moved in the same sentence *Add
-to dataset* uses.
+withheld until the batch declares it, and says what the press moved in the same sentence *Add to
+dataset* uses. Its press reads the batch afresh and closes the open jobs only if that read still
+declares `complete`; otherwise it sends the batch's own request alone and says the refusal, so a
+refused press closes no job - unless an asset is reopened between that read and the job writes,
+a race the client cannot close.
 
 Neither is a new transition. Each control sends the two requests a person could send one
 at a time, in order, and stops where the kernel stops it: a refusal on the second step
@@ -1832,7 +1835,8 @@ takes; the first nine places are the annotator's hotkeys 1 to 9, and the row say
 the class or whose place it would take. A class's position is part of the published version, so
 moving it is an unsaved change like any other. **Drawn as**, a segmented row of the six shapes as
 the annotator draws them - box, polygon, polyline and tag for images, 3D box and 3D polyline for
-point-cloud scans - their names said beside it; a class may accept several, and the last one
+point-cloud scans - their names said under it; a class may accept several, image and scan shapes
+together (each label is checked against its own asset when it is written), and the last one
 that is on cannot be switched off, and says why. When editing, **In use** says what an edit costs. A
 class that is not used yet changes freely (*Not used yet, so any change here is free.*). A class in
 use, counted as its labels on its frames, cannot be removed, and cannot lose a shape its labels are

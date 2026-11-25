@@ -336,11 +336,11 @@ state, so the two cannot move apart.
 
 Two of them are worth reading precisely:
 
-- **`complete` on a batch is declared from the transition table alone**, so it can still answer
-  409 `BATCH_NOT_COMPLETE`: completion is derived from the jobs, which is a read the projection
-  does not make. Read it as *this batch is at the point where completing is the next move*. A
-  job's `complete` carries no such caveat - a job ships its own per-asset tally, so the
-  `SETTLED_PROGRESS` condition is applied.
+- **`complete` on a batch is declared only while every asset is in `SETTLED_PROGRESS`**, read
+  from the same tally `progress` publishes - the condition a job's `complete` applies to its own
+  assets. It can still answer 409 `BATCH_NOT_COMPLETE`: a batch closes only once each of its jobs
+  has been moved to `completed`, which the tally does not say. Read it as *every job can now be
+  closed, and then the batch*.
 - **`annotate` on a batch asset is the right to write labels**, not a progress move: it is
   declared exactly when `POST /jobs/{id}/annotations` will be accepted. An annotator deciding
   whether to open in edit mode should read this rather than infer it.

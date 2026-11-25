@@ -38,7 +38,11 @@ import type { ScanDocument } from "./scanDocument";
 export type ScanViewKind = "perspective" | "top-down";
 
 export interface Scene3D {
-  /** The committed document, never the store's `rendered`. */
+  /**
+   * The committed document wherever a press is read (the machine, `hitTest3D`),
+   * so a drag measures against what is stored. The handle overlay takes the
+   * store's `rendered` instead, so its handles follow a staged drag.
+   */
   readonly document: ScanDocument;
   readonly selection: Selection;
   readonly frame: ScanFrame;

@@ -3,8 +3,9 @@ import { formatCount } from "../../lib/format";
 import { labelSegments, type ProgressDetail } from "../progressDetail";
 import type { State } from "../StateChip";
 import type { SheetJob } from "./BatchSheet";
-import type { BatchPhase } from "./BatchSummary";
 import type { BatchRowView } from "./BatchTable";
+
+export type BatchPhase = "draft" | "approved" | "annotating" | "completed" | "in_dataset";
 
 export const PHASE_LABEL: Record<BatchPhase, string> = {
   draft: "Draft",

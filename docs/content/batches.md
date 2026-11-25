@@ -216,7 +216,9 @@ batches.complete(batch.id)  # BatchNotComplete: 2 of 5 jobs still unfinished
 
 `complete` reads the jobs and refuses if any is outstanding. Derived does not mean automatic
  - it means the service recomputes rather than taking the caller's word, because a completed
-batch is what lets its annotated assets be promoted into the Dataset. Moving a job to
+batch is what lets its annotated assets be promoted into the Dataset. `complete` is declared
+only while every asset is settled, so a declared `complete` means every job can be closed; the
+service still refuses until each has been. Moving a job to
 `completed` is the job service's business - see [jobs.md](jobs.md); this service only reads it.
 
 ## Corrections open on the labels that are already there
@@ -307,13 +309,13 @@ same table and named sets this service enforces with - never a second copy of th
 | --- | --- | --- |
 | `draft` | `approve`, `edit_membership`, `delete` | `BATCH_TRANSITIONS`, `EDITABLE_STATES`, `DELETABLE_STATES` |
 | `approved` | `start`, `repin`, `delete` | `BATCH_TRANSITIONS`, `REPINNABLE_STATES`, `DELETABLE_STATES` |
-| `in_annotation` | `complete`, `repin`, `pre_label`, `delete` | as above, plus `PRE_LABELABLE_STATES` |
+| `in_annotation` | `complete` (once every asset is settled), `repin`, `pre_label`, `delete` | as above, plus `PRE_LABELABLE_STATES` and `SETTLED_PROGRESS` over the batch's tally |
 | `completed` | `promote`, `create_correction` | `PROMOTABLE_STATES`, `CORRECTABLE_STATES` |
 
 Six of the nine change no state at all and so appear in no row of `BATCH_TRANSITIONS` - which
 is why those sets are named rather than written inline. Promotion is the clearest: it moves
 assets into the trunk and leaves the batch exactly where it was. `pre_label` is declared from
-the batch's state alone, on `complete`'s precedent - whether the local runtime is installed and
+the batch's state alone - whether the local runtime is installed and
 whether the pinned schema has a class a detection can land on are not facts about the batch, and
 hiding the control on either ground would leave their refusals nowhere to be shown. A `JobOut`
 declares `pre_label` on the same precedent, from the job's own openness and the batch's - it is
@@ -331,10 +333,11 @@ declaration and the refusal can never disagree.
 `completed` is therefore the one state that declares no `delete`, and no flag lifts it - see
 `BatchService.delete` below.
 
-`complete` is the one declaration that can still be refused. Completion is *derived* from the
-jobs, and a projection cannot read them, so it is declared wherever the transition table allows
-it and answers `BatchNotComplete` if the work is not done. The alternative - the same batch
-declaring differently depending on which endpoint answered - is worse than one honest caveat.
+`complete` is declared only while every asset in the batch's progress tally is in
+`SETTLED_PROGRESS` - the condition each job's own `complete` applies - so every endpoint that
+publishes the batch declares it the same way. It can still be refused: completion is *derived*
+from the jobs, and `BatchNotComplete` answers until each job has been moved to `completed`,
+which the tally does not say.
 
 ## Pre-labeling
 

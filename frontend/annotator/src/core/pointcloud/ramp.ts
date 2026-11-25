@@ -6,7 +6,7 @@
  */
 
 import type { PointSample } from "./decode";
-import { SCAN_FRAME_AXES, type ScanFrame } from "./frame";
+import { heightOf, SCAN_FRAME_AXES, type ScanFrame } from "./frame";
 
 export type ColorMode = "height" | "intensity" | "rgb";
 
@@ -51,17 +51,58 @@ export function pointColors(sample: PointSample, mode: ColorMode, frame: ScanFra
   }
   if (mode === "intensity" && sample.intensity !== null) {
     const values = sample.intensity;
-    fillRamp(out, sample.count, (i) => values[i], INTENSITY_RAMP);
+    fillRamp(out, sample.count, (i) => values[i], localRange(sample, "intensity", frame), INTENSITY_RAMP);
     return out;
   }
   const [index, sign] = SCAN_FRAME_AXES[frame].up;
   const positions = sample.positions;
-  fillRamp(out, sample.count, (i) => sign * positions[i * 3 + index], HEIGHT_RAMP);
+  fillRamp(out, sample.count, (i) => sign * positions[i * 3 + index], localRange(sample, "height", frame), HEIGHT_RAMP);
   return out;
 }
 
-function fillRamp(out: Uint8Array, count: number, value: (i: number) => number, ramp: readonly Rgb[]): void {
-  const [low, high] = robustRange(count, value);
+const ranges = new WeakMap<PointSample, Map<string, readonly [number, number]>>();
+
+/** The span a ramp is stretched over, heights relative to the sample's origin; kept with the sample. */
+function localRange(sample: PointSample, mode: "height" | "intensity", frame: ScanFrame): readonly [number, number] {
+  const [index, sign] = SCAN_FRAME_AXES[frame].up;
+  const key = mode === "intensity" ? mode : `${mode}${index}${sign}`;
+  let bySample = ranges.get(sample);
+  if (bySample === undefined) {
+    bySample = new Map();
+    ranges.set(sample, bySample);
+  }
+  let range = bySample.get(key);
+  if (range === undefined) {
+    const { positions, intensity } = sample;
+    range =
+      mode === "intensity" && intensity !== null
+        ? robustRange(sample.count, (i) => intensity[i])
+        : robustRange(sample.count, (i) => sign * positions[i * 3 + index]);
+    bySample.set(key, range);
+  }
+  return range;
+}
+
+/**
+ * The values at the ramp's ends `pointColors` draws `mode` with, heights in the
+ * scan's frame: the same 2nd and 98th percentiles, not a second estimate of
+ * them. `null` for recorded colour, a mode the sample cannot answer, or no points.
+ */
+export function rampRange(sample: PointSample, mode: ColorMode, frame: ScanFrame): readonly [number, number] | null {
+  if (sample.count === 0 || mode === "rgb") return null;
+  if (mode === "intensity") return sample.intensity === null ? null : localRange(sample, "intensity", frame);
+  const [low, high] = localRange(sample, "height", frame);
+  const offset = heightOf(frame, sample.origin);
+  return [low + offset, high + offset];
+}
+
+function fillRamp(
+  out: Uint8Array,
+  count: number,
+  value: (i: number) => number,
+  [low, high]: readonly [number, number],
+  ramp: readonly Rgb[],
+): void {
   const span = high - low;
   for (let i = 0; i < count; i += 1) {
     const t = span > 0 ? (value(i) - low) / span : 0.5;

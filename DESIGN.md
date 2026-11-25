@@ -302,7 +302,7 @@ lucide has no icon for a shape it is drawn on lucide's own grid from lucide's ge
 | `ready` | `CircleFadingArrowUp`, turned to point on | on its way somewhere else | a finished batch outside the dataset, a project ready to promote |
 | `done` | `CircleCheck` | done | a batch in the dataset, a project up to date, *Intact* |
 | `drafted` | `CircleDashedCheck` | done, not yet somebody's | a project changed since its release; a model's draft |
-| `skipped` | `Ban`, mirrored | decided against | a skipped frame |
+| `skipped` | `Ban`, mirrored | decided against | a chip whose subject was skipped as a whole; no screen draws one yet — a skipped frame is a dot (below) |
 | `cancelled` | `CircleDashed`'s dashes around `CircleX`'s cross | stopped on request | a cancelled run |
 | `failed` | `CircleAlert` | failed | *Problems found*, *Failed* |
 
@@ -324,6 +324,12 @@ A lifecycle state — a batch's phase, a project's stage — takes its family fr
 product-wide mapping ([`product-principles.md`](docs/content/ui/product-principles.md#status-semantics)),
 hence `active` and `waiting`; a state names its glyph where its tone's default does not say it
 (an approved batch is `draft` with `todo`, a finished one `done` with `ready`).
+
+**A frame's progress is a dot, not a chip.** The annotator's frame tag, its job-progress card and
+the frame gallery's tiles draw an asset's progress — `skipped` included — as a 6–8px dot from
+`progressDotClass` (`screens/batchState.ts`), shape and tone with no glyph, beside its word where
+there is room, so it fits a tile and a 44px bar. These glyphs are for chips; the two vocabularies
+do not mix.
 
 | Rule | Why |
 | --- | --- |

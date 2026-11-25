@@ -34,6 +34,7 @@ export interface PointSample {
   readonly rgb: Uint8Array | null;
 }
 
+/** An axis-aligned box in the scan's declared frame, never relative to a sample's `origin`. */
 export interface PointBounds {
   readonly minimum: Point3D;
   readonly maximum: Point3D;
@@ -114,8 +115,11 @@ function float32s(buffer: ArrayBuffer, offset: number, length: number): Float32A
   return out;
 }
 
-/** The box around every position, or `null` for an empty sample. */
-export function boundsOf(positions: Float32Array): PointBounds | null {
+/**
+ * The box around every position, in the scan's frame: `positions` are relative
+ * to `origin`, as a `PointSample` holds them. `null` for an empty sample.
+ */
+export function boundsOf(positions: Float32Array, origin: Point3D): PointBounds | null {
   if (positions.length < 3) return null;
   const minimum = [Infinity, Infinity, Infinity];
   const maximum = [-Infinity, -Infinity, -Infinity];
@@ -127,7 +131,7 @@ export function boundsOf(positions: Float32Array): PointBounds | null {
     }
   }
   return {
-    minimum: [minimum[0], minimum[1], minimum[2]],
-    maximum: [maximum[0], maximum[1], maximum[2]],
+    minimum: [minimum[0] + origin[0], minimum[1] + origin[1], minimum[2] + origin[2]],
+    maximum: [maximum[0] + origin[0], maximum[1] + origin[1], maximum[2] + origin[2]],
   };
 }
