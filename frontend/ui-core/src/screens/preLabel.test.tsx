@@ -89,6 +89,7 @@ function batch(overrides: Record<string, unknown> = {}): Record<string, unknown>
     asset_count: 48,
     progress: { ...NO_PROGRESS, total: 48, unannotated: 48 },
     allowed_actions: batchActions(state),
+    modalities: ["image"],
     promoted_asset_count: 0,
     parent_batch_id: null,
     pre_label_run: null,

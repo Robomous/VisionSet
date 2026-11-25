@@ -29,8 +29,8 @@ from typing import Any, Final
 from pydantic import ValidationError
 
 from visionset.formats._reading import contained, inside, relative
+from visionset.formats._tilt import TILT_TOLERANCE
 from visionset.formats.nuscenes.poses import (
-    TILT_TOLERANCE,
     GlobalToSensor,
     Pose,
     Quaternion,

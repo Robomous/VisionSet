@@ -81,6 +81,7 @@ function batch(state: Batch["state"], overrides: Partial<Batch> = {}): Batch {
     schema_version: state === "draft" ? null : 1,
     asset_count: 48,
     allowed_actions: batchActions(state),
+    modalities: ["image"],
     promoted_asset_count: 0,
     parent_batch_id: null,
     pre_label_run: null,
@@ -224,98 +225,41 @@ describe("what the dialog says", () => {
 });
 
 describe("what the dialog calls a batch's assets", () => {
-  function source(kind: string, id: string) {
-    return { id, project_id: PROJECT, kind, name: id, registered_at: "2026-11-01T00:00:00Z", frame: null, video: null };
-  }
-  function sources(...kinds: string[]): void {
-    on("GET", /\/sources$/, { status: 200, body: { items: kinds.map((kind, at) => source(kind, `s${at}`)), total: kinds.length } });
-  }
-  function firstAsset(modality: "image" | "point_cloud"): void {
-    on("GET", new RegExp(`/batches/${BATCH}/assets$`), {
-      status: 200,
-      body: {
-        items: [
-          {
-            id: "a0",
-            project_id: PROJECT,
-            modality,
-            point_cloud: null,
-            content_hash: "00000000deadbeef",
-            width: null,
-            height: null,
-            format: null,
-            source_id: "s1",
-            frame_index: null,
-            frame_timestamp: null,
-            thumbnail_hash: null,
-            ingested_at: "2026-11-01T00:00:00Z",
-            job_id: null,
-            progress: null,
-            annotation_count: 0,
-            min_confidence: null,
-            allowed_actions: [],
-          },
-        ],
-        total: 48,
-      },
-    });
-  }
-
-  it("says scans for a project of point-cloud sources, without reading the batch", async () => {
-    sources("point_cloud_directory");
-    renderWithData(<DeleteBatchButton batch={batch("draft")} projectId={PROJECT} />);
-
+  async function dialogFor(over: Partial<Batch>): Promise<HTMLElement> {
+    renderWithData(<DeleteBatchButton batch={batch("draft", over)} projectId={PROJECT} />);
     await openMenu();
+    return screen.findByTestId("delete-batch-dialog");
+  }
 
-    const dialog = await screen.findByTestId("delete-batch-dialog");
-    await waitFor(() => expect(dialog.textContent).toContain("48 scans remain in the project"));
+  it("says scans for a batch of scans, off the batch itself", async () => {
+    const dialog = await dialogFor({ modalities: ["point_cloud"] });
+
+    expect(dialog.textContent).toContain("48 scans remain in the project");
     expect(dialog.textContent).toContain("how far each scan had got");
     expect(dialog.textContent).not.toMatch(/frame/);
-    expect(sent.some((one) => new URL(one.url).pathname.endsWith("/assets"))).toBe(false);
+    expect(sent.some((one) => /\/(assets|sources)$/.test(new URL(one.url).pathname))).toBe(false);
   });
 
   it("says one scan in the singular", async () => {
-    sources("point_cloud_directory");
-    renderWithData(<DeleteBatchButton batch={batch("draft", { asset_count: 1, promoted_asset_count: 1 })} projectId={PROJECT} />);
+    const dialog = await dialogFor({ modalities: ["point_cloud"], asset_count: 1, promoted_asset_count: 1 });
 
-    await openMenu();
-
-    const dialog = await screen.findByTestId("delete-batch-dialog");
-    await waitFor(() => expect(dialog.textContent).toContain("1 scan remains in the project with its work on it"));
+    expect(dialog.textContent).toContain("1 scan remains in the project with its work on it");
     expect(dialog.textContent).toContain("the 1 already promoted stays in the dataset");
   });
 
-  it("reads the batch's first asset when the project holds scans and images", async () => {
-    sources("image_directory", "point_cloud_directory");
-    firstAsset("point_cloud");
-    renderWithData(<DeleteBatchButton batch={batch("draft")} projectId={PROJECT} />);
+  it("keeps frames for a batch of images", async () => {
+    const dialog = await dialogFor({ modalities: ["image"] });
 
-    await openMenu();
-
-    const dialog = await screen.findByTestId("delete-batch-dialog");
-    await waitFor(() => expect(dialog.textContent).toContain("48 scans remain in the project"));
-  });
-
-  it("keeps frames for a batch of images in a project that also holds scans", async () => {
-    sources("image_directory", "point_cloud_directory");
-    firstAsset("image");
-    renderWithData(<DeleteBatchButton batch={batch("draft")} projectId={PROJECT} />);
-
-    await openMenu();
-
-    const dialog = await screen.findByTestId("delete-batch-dialog");
-    await waitFor(() => expect(sent.some((one) => new URL(one.url).pathname.endsWith("/assets"))).toBe(true));
     expect(dialog.textContent).toContain("48 frames remain in the project");
+    expect(dialog.textContent).toContain("how far each frame had got");
   });
 
-  it("keeps frames for a project of images", async () => {
-    sources("image_directory", "video");
-    renderWithData(<DeleteBatchButton batch={batch("draft")} projectId={PROJECT} />);
+  it("says assets for a batch holding images and scans", async () => {
+    const dialog = await dialogFor({ modalities: ["image", "point_cloud"] });
 
-    await openMenu();
-
-    await waitFor(() => expect(sent.some((one) => new URL(one.url).pathname.endsWith("/sources"))).toBe(true));
-    expect((await screen.findByTestId("delete-batch-dialog")).textContent).toContain("48 frames remain in the project");
+    expect(dialog.textContent).toContain("48 assets remain in the project");
+    expect(dialog.textContent).toContain("how far each asset had got");
+    expect(dialog.textContent).not.toMatch(/frame|scan/);
   });
 });
 

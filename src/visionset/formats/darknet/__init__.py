@@ -33,6 +33,7 @@ from visionset.kernel.domain import (
     PreprocessingHints,
     Release,
     ResizeStrategy,
+    SplitAssignment,
     TargetFamily,
     Task,
 )
@@ -87,8 +88,9 @@ class DarknetExporter:
         dest: Path,
         *,
         content: ContentReader,
+        assignment: SplitAssignment | None,
     ) -> None:
-        folds = write_label_layout(release, manifest, dest, content, detect_rows)
+        folds = write_label_layout(manifest, dest, content, assignment, detect_rows)
         names = class_names(manifest)
         (dest / NAMES_FILENAME).write_text("".join(f"{name}\n" for name in names), encoding="utf-8")
 

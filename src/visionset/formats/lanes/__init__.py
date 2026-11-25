@@ -72,6 +72,7 @@ from visionset.kernel.domain import (
     Manifest,
     ManifestAsset,
     Release,
+    SplitAssignment,
     VertexVisibility,
 )
 from visionset.kernel.ports import ContentReader
@@ -127,9 +128,10 @@ class TuSimpleExporter:
         dest: Path,
         *,
         content: ContentReader,
+        assignment: SplitAssignment | None,
     ) -> None:
         rows: dict[str, list[str]] = {}
-        for asset, fold, name in _walk(release, manifest, dest, content):
+        for asset, fold, name in _walk(manifest, dest, content, assignment):
             entry = _tusimple_entry(asset, f"{IMAGES_DIRNAME}/{fold}/{name}")
             rows.setdefault(fold, []).append(json.dumps(entry, allow_nan=False))
 
@@ -161,8 +163,9 @@ class CurveLanesExporter:
         dest: Path,
         *,
         content: ContentReader,
+        assignment: SplitAssignment | None,
     ) -> None:
-        for asset, fold, _ in _walk(release, manifest, dest, content):
+        for asset, fold, _ in _walk(manifest, dest, content, assignment):
             lines = [
                 [{"x": round(x, PRECISION), "y": round(y, PRECISION)} for x, y in lane.points]
                 for lane in lanes_of(asset)
@@ -189,8 +192,9 @@ class Bdd100kLaneExporter:
         dest: Path,
         *,
         content: ContentReader,
+        assignment: SplitAssignment | None,
     ) -> None:
-        for asset, fold, _ in _walk(release, manifest, dest, content):
+        for asset, fold, _ in _walk(manifest, dest, content, assignment):
             labels = [_bdd_label(index, lane) for index, lane in enumerate(lanes_of(asset))]
             _write_json(
                 dest / LABELS_DIRNAME / fold,
@@ -223,8 +227,9 @@ class CuLaneExporter:
         dest: Path,
         *,
         content: ContentReader,
+        assignment: SplitAssignment | None,
     ) -> None:
-        for asset, fold, _ in _walk(release, manifest, dest, content):
+        for asset, fold, _ in _walk(manifest, dest, content, assignment):
             lanes = lanes_of(asset)
             target = dest / LABELS_DIRNAME / fold
             target.mkdir(parents=True, exist_ok=True)
@@ -258,8 +263,9 @@ class OpenLane2dExporter:
         dest: Path,
         *,
         content: ContentReader,
+        assignment: SplitAssignment | None,
     ) -> None:
-        for asset, fold, name in _walk(release, manifest, dest, content):
+        for asset, fold, name in _walk(manifest, dest, content, assignment):
             _write_json(
                 dest / LABELS_DIRNAME / fold,
                 asset,
@@ -278,10 +284,10 @@ class OpenLane2dExporter:
 
 
 def _walk(
-    release: Release,
     manifest: Manifest,
     dest: Path,
     content: ContentReader,
+    assignment: SplitAssignment | None,
 ) -> list[tuple[ManifestAsset, str, str]]:
     """Copy every image into its fold; hand back each asset, its fold and its filename.
 
@@ -292,7 +298,7 @@ def _walk(
     rather than taken from the asset's uri — so only ``write_image`` knows it.
     """
     _validate_manifest_classes(manifest)
-    folds = folds_of(release, manifest)
+    folds = folds_of(manifest, assignment)
     walked = []
     for asset in manifest.assets:
         fold = folds[asset.asset_id]

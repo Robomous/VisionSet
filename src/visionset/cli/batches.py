@@ -121,12 +121,13 @@ def _echo(batch_id: UUID, state: str, json_out: bool, payload: Mapping[str, obje
 def batch_document(service: WorkspaceService, batch: Batch) -> shapes.Batch:
     """One batch as ``--json`` prints it, with its progress and its trunk membership read."""
     counts = JobService(service).batch_progress(batch.id)
-    pre_labeled = BatchService(service).latest_pre_label_job(batch.id)
+    batches = BatchService(service)
     return wire.batch(
         batch,
         counts,
         promoted=DatasetService(service).promoted_asset_ids(batch.project_id),
-        pre_labeled=pre_labeled,
+        pre_labeled=batches.latest_pre_label_job(batch.id),
+        modalities=batches.modalities(batch.project_id).get(batch.id, ()),
     )
 
 
@@ -179,11 +180,18 @@ def batch_list(
         # One queue read for the whole listing rather than one per batch — the
         # same cost model REST's listing uses.
         pre_label_runs = batch_service.pre_label_runs()
+        modalities = batch_service.modalities(resolved.id)
     if json_out:
         document(
             wire.page(
                 [
-                    wire.batch(b, c, promoted=promoted, pre_labeled=pre_label_runs.get(b.id))
+                    wire.batch(
+                        b,
+                        c,
+                        promoted=promoted,
+                        pre_labeled=pre_label_runs.get(b.id),
+                        modalities=modalities.get(b.id, ()),
+                    )
                     for b, c in zip(batches, counts, strict=True)
                 ]
             )
@@ -330,9 +338,8 @@ def batch_start(
     """Open an approved batch for annotation."""
     with opened_workspace(workspace) as service:
         started = BatchService(service).start(batch)
-        counts = JobService(service).batch_progress(started.id)
-        promoted = DatasetService(service).promoted_asset_ids(started.project_id)
-    _echo(started.id, started.state.value, json_out, wire.batch(started, counts, promoted=promoted))
+        payload = batch_document(service, started)
+    _echo(started.id, started.state.value, json_out, payload)
 
 
 #: How each reason a class is left out of the prompt reads at a terminal.

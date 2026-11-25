@@ -27,6 +27,7 @@ function batch(over: Partial<Batch>): Batch {
     project_id: "p",
     state: "in_annotation",
     asset_count: 10,
+    modalities: ["image"],
     promoted_asset_count: 0,
     schema_version: 1,
     parent_batch_id: null,

@@ -1,8 +1,14 @@
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import BinaryIO, Protocol, runtime_checkable
+from typing import BinaryIO, Final, Protocol, runtime_checkable
 
-from visionset.kernel.domain import ExportTarget, GeometryType, Manifest, Release
+from visionset.kernel.domain import (
+    ExportTarget,
+    GeometryType,
+    Manifest,
+    Release,
+    SplitAssignment,
+)
 from visionset.kernel.errors import (
     ExportTargetConflict,
     ExportTargetNotFound,
@@ -54,6 +60,13 @@ class Exporter(Protocol):
     ``content`` is how a format that lays out images gets them; see
     :data:`ContentReader` for why a ``uri`` is not a file and why this is a
     callable rather than a port. A format writing only labels ignores it.
+
+    ``assignment`` is the release's split recipe cut over its **whole** frozen
+    manifest - the folds ``ReleaseService.assignment`` reports - or ``None`` for
+    a release published without one. A plugin places assets by it and never
+    cuts its own: the manifest it is handed may hold fewer assets than the
+    release froze, and a cut by count over fewer assets draws other boundaries.
+    A plugin whose ``export`` does not accept the keyword is called without it.
 
     ``export`` writes into ``dest``, which the caller has already created, and
     returns nothing. Counting what was written is ``ReleaseService.export``'s job
@@ -129,19 +142,15 @@ class Exporter(Protocol):
     # written only when the export carries no other geometry. The compatibility
     # report counts them dropped whenever anything else is written.
 
-    #: Which asset modalities this format can write.
-    #:
-    #: A plain ``str`` set, matching ``Asset.modality``, and for the same reason
-    #: ``DatasetChange.operation`` is a ``str`` while ``DatasetOperation`` is an
-    #: enum: a modality is a value a *format* declares, and a build that has never
-    #: heard of one should report it as unsupported rather than fail to load the
-    #: plugin.
-    #:
-    #: **Judged against the release.** A version-5 ``ManifestAsset`` records its
-    #: modality, and an asset whose modality is not in this set is reported
-    #: dropped by ``_compatibility`` in ``release_service.py`` and never handed
-    #: to the plugin.
-    supported_modalities: frozenset[str]
+    # Optional, read through :func:`supported_modalities_of`:
+    # ``supported_modalities: frozenset[str]`` names the asset modalities this
+    # format can write. A plain ``str`` set, matching ``Asset.modality``: a
+    # modality is a value a *format* declares, and a build that has never heard
+    # of one should report it as unsupported rather than refuse to load the
+    # plugin. A plugin declaring none writes images, as every plugin did before
+    # scans existed. A version-5 ``ManifestAsset`` records its modality, and an
+    # asset whose modality is not in this set is reported dropped by
+    # ``_compatibility`` in ``release_service.py`` and never handed to the plugin.
 
     #: Which models a person can train on this format's output.
     #:
@@ -166,7 +175,20 @@ class Exporter(Protocol):
         dest: Path,
         *,
         content: ContentReader,
+        assignment: SplitAssignment | None,
     ) -> None: ...
+
+
+#: What a plugin that declares no ``supported_modalities`` writes.
+DEFAULT_SUPPORTED_MODALITIES: Final[frozenset[str]] = frozenset({"image"})
+
+
+def supported_modalities_of(exporter: Exporter) -> frozenset[str]:
+    """The modalities ``exporter`` writes: its declaration, or images alone."""
+    declared: frozenset[str] = getattr(
+        exporter, "supported_modalities", DEFAULT_SUPPORTED_MODALITIES
+    )
+    return declared
 
 
 def validate_targets(exporter: Exporter) -> None:

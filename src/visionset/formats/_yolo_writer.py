@@ -30,7 +30,7 @@ from visionset.kernel.domain import (
     PolygonGeometry,
     Polyline3DGeometry,
     PolylineGeometry,
-    Release,
+    SplitAssignment,
     Task,
 )
 from visionset.kernel.errors import ExportSourceUnreadable
@@ -100,15 +100,15 @@ def class_names(manifest: Manifest) -> list[str]:
 
 
 def write_label_layout(
-    release: Release,
     manifest: Manifest,
     dest: Path,
     content: ContentReader,
+    assignment: SplitAssignment | None,
     rows: Rows,
 ) -> set[str]:
     """Images under ``images/<fold>``, labels under ``labels/<fold>``; answer the folds present."""
     index_of = {name: index for index, name in enumerate(class_names(manifest))}
-    folds = folds_of(release, manifest)
+    folds = folds_of(manifest, assignment)
     for asset in manifest.assets:
         fold = folds[asset.asset_id]
         write_image(asset, dest / IMAGES_DIRNAME / fold, content)

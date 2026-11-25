@@ -188,6 +188,35 @@ def test_the_thumbnail_route_serves_a_top_down_jpeg(
     assert Image.open(io.BytesIO(response.content)).format == "JPEG"
 
 
+def test_a_scan_thumbnail_is_revalidated_and_follows_a_frame_change(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path, scans: dict[str, Any]
+) -> None:
+    project, asset = scans["project"], scans["assets"][0]
+    url = f"/projects/{project}/assets/{asset}/thumbnail"
+    first = client.get(url)
+    assert first.headers["cache-control"] == "private, no-cache"
+    etag = first.headers["etag"]
+    assert etag == f'"{client.get(f"/projects/{project}/assets/{asset}").json()["thumbnail_hash"]}"'
+
+    unchanged = client.get(url, headers={"If-None-Match": etag})
+    assert (unchanged.status_code, unchanged.content) == (304, b"")
+    assert unchanged.headers["etag"] == etag
+
+    assert upload_scans(client, project, frame="camera_rdf").status_code == 201
+    assert client.get(url).status_code == 404
+    client.post(f"/projects/{project}/thumbnail-backfill-jobs")
+    runner.wait()
+    redrawn = client.get(url, headers={"If-None-Match": etag})
+    assert redrawn.status_code == 200
+    assert redrawn.headers["etag"] != etag
+    assert redrawn.content != first.content
+
+    images = batch_from_ingest(client, runner, tmp_path / "images", project, images=1)
+    image = asset_ids(client, images)[0]
+    still = client.get(f"/projects/{project}/assets/{image}/thumbnail")
+    assert still.headers["cache-control"] == "public, max-age=31536000, immutable"
+
+
 def test_a_camera_calibration_for_a_scan_is_409(client: TestClient, scans: dict[str, Any]) -> None:
     asset = client.put(
         f"/projects/{scans['project']}/assets/{scans['assets'][0]}/calibration",
@@ -373,6 +402,22 @@ def test_the_points_route_serves_each_scan_as_a_vspc_buffer(
     assert seen == {"pcd", "ply"}
 
 
+def test_the_points_route_answers_304_to_its_own_etag(
+    client: TestClient, scans: dict[str, Any]
+) -> None:
+    project, asset = scans["project"], scans["assets"][0]
+    url = f"/projects/{project}/assets/{asset}/points"
+    first = client.get(url, params={"max_points": 1000})
+    assert first.headers["cache-control"] == "private, no-cache"
+    etag = first.headers["etag"]
+
+    again = client.get(url, params={"max_points": 1000}, headers={"If-None-Match": f"W/{etag}"})
+    other = client.get(url, params={"max_points": 2000}, headers={"If-None-Match": etag})
+
+    assert (again.status_code, again.content, again.headers["etag"]) == (304, b"", etag)
+    assert other.status_code == 200 and other.headers["etag"] != etag
+
+
 @pytest.mark.parametrize(
     ("max_points", "status"),
     [
@@ -486,3 +531,34 @@ def test_the_published_contract_describes_labels_on_a_scan() -> None:
         description = " ".join(operation["description"].split())
         assert "declaring no frame" in description
         assert refusal in description
+
+
+def test_a_batch_publishes_the_modalities_it_holds(
+    client: TestClient, runner: InlineDispatcher, tmp_path: Path, scans: dict[str, Any]
+) -> None:
+    project = scans["project"]
+    images = batch_from_ingest(client, runner, tmp_path / "images", project, images=1)
+    image = asset_ids(client, images)[0]
+    mixed = client.post(
+        f"/projects/{project}/batches",
+        json={"name": "mixed", "asset_ids": [scans["assets"][0], image]},
+    ).json()["id"]
+    empty = client.post(f"/projects/{project}/batches", json={"name": "empty"}).json()["id"]
+
+    listed = {
+        one["id"]: one["modalities"]
+        for one in client.get(f"/projects/{project}/batches").json()["items"]
+    }
+
+    assert listed == {
+        scans["batch"]: ["point_cloud"],
+        images: ["image"],
+        mixed: ["image", "point_cloud"],
+        empty: [],
+    }
+    assert client.get(f"/batches/{mixed}").json()["modalities"] == ["image", "point_cloud"]
+    held = client.get(f"/projects/{project}/assets/{image}/batches").json()["items"]
+    assert {one["id"]: one["modalities"] for one in held} == {
+        images: ["image"],
+        mixed: ["image", "point_cloud"],
+    }

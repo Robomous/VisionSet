@@ -242,6 +242,7 @@ from visionset.kernel.domain.point_sample import (
     PointSample,
     decimation_stride,
     sample_origin,
+    thinned,
 )
 from visionset.kernel.domain.prediction import (
     AssetPrediction,
@@ -522,6 +523,7 @@ __all__ = [
     "PointSample",
     "decimation_stride",
     "sample_origin",
+    "thinned",
     "require_image",
     "DIRECTORY_KINDS",
     "require_calibration",

@@ -23,9 +23,7 @@ from uuid import UUID
 from visionset.kernel.domain import (
     Manifest,
     ManifestAsset,
-    Release,
-    assign_split,
-    source_of_content_hash,
+    SplitAssignment,
 )
 from visionset.kernel.errors import ExportSourceUnreadable
 from visionset.kernel.ports import ContentReader
@@ -64,34 +62,35 @@ _SIGNATURES: Final[tuple[tuple[bytes, str], ...]] = (
 _SIGNATURE_BYTES: Final = max(len(signature) for signature, _ in _SIGNATURES)
 
 
-def folds_of(release: Release, manifest: Manifest) -> dict[UUID, str]:
-    """Which fold each asset belongs to, keyed by asset id.
+def folds_of(manifest: Manifest, assignment: SplitAssignment | None) -> dict[UUID, str]:
+    """Which fold each asset of ``manifest`` belongs to, keyed by asset id.
 
-    Computed from the release's own recipe and its own frozen asset set, which is
-    the same call ``ReleaseService.assignment`` makes — a plugin does not need the
-    service, because ``assign_split`` is a pure function of a recipe and a
-    sequence of manifest assets. An export is therefore reproducible from the
-    release alone, on any machine, forever, and it agrees with what the API
-    reports for the same release because it is the same function.
+    ``assignment`` is the one ``ReleaseService.export`` hands the plugin: the
+    release's split recipe cut over its **whole** frozen manifest, the answer
+    ``GET /releases/{id}/assignment`` reports. It is never recomputed here,
+    because a plugin may be handed fewer assets than the release froze — the
+    scans an image format cannot open are left out — and ``assign_split`` cuts
+    by count, so a cut over the narrower set would move the fold boundaries.
+
+    ``None`` means the release was published without a recipe, and every asset
+    lands in :data:`DEFAULT_FOLD`. An augmented variant, keyed ``<hash>-aug<k>``,
+    shares its source's ``asset_id`` and so lands in its source's fold, which is
+    ``train`` because variants are only generated there.
+
+    Keyed by the assets handed over and no others, so the folds it names are the
+    folds the output holds: a fold the assignment fills with scans alone is not
+    one an image format writes.
     """
-    if release.split is None:
+    if assignment is None:
         return {asset.asset_id: DEFAULT_FOLD for asset in manifest.assets}
-    # Over the base images only. A manifest handed to a plugin under a recipe
-    # also lists augmented variants, keyed ``<hash>-aug<k>`` and sharing their
-    # source's ``asset_id``; cutting over those would move the fold boundaries
-    # the release's own assignment drew, and looking the variant up by the id
-    # it shares is what keeps it in its source's fold.
-    bases = [
-        asset for asset in manifest.assets if source_of_content_hash(asset.content_hash)[1] == 0
-    ]
-    assignment = assign_split(release.split, bases)
-    return {
+    fold_of = {
         asset_id: fold
         for fold, members in zip(
             FOLDS, (assignment.train, assignment.val, assignment.test), strict=True
         )
         for asset_id in members
     }
+    return {asset.asset_id: fold_of[asset.asset_id] for asset in manifest.assets}
 
 
 def image_name(asset: ManifestAsset, suffix: str) -> str:

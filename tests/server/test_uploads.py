@@ -92,10 +92,22 @@ def test_the_order_parts_arrive_in_does_not_fork_the_directory(tmp_path: Path) -
 def test_two_parts_under_one_filename_both_survive(tmp_path: Path) -> None:
     """A directory source reads its files by name, so collapsing them would drop one."""
     staged = stage(tmp_path, [part("photo.png", b"one"), part("photo.png", b"two")])
+    first, second = sorted((b"one", b"two"), key=lambda data: hashlib.sha256(data).hexdigest())
 
     assert staged.names == ("photo.png", "photo-2.png")
-    assert (staged.directory / "photo.png").read_bytes() == b"one"
-    assert (staged.directory / "photo-2.png").read_bytes() == b"two"
+    assert (staged.directory / "photo.png").read_bytes() == first
+    assert (staged.directory / "photo-2.png").read_bytes() == second
+
+
+def test_the_arrival_order_of_two_parts_under_one_filename_does_not_fork_the_set(
+    tmp_path: Path,
+) -> None:
+    forward = stage(tmp_path / "a", [part("photo.png", b"one"), part("photo.png", b"two")])
+    backward = stage(tmp_path / "b", [part("photo.png", b"two"), part("photo.png", b"one")])
+
+    assert forward.directory.name == backward.directory.name
+    for name in forward.names:
+        assert (forward.directory / name).read_bytes() == (backward.directory / name).read_bytes()
 
 
 def test_a_traversing_filename_cannot_escape_the_staging_directory(tmp_path: Path) -> None:

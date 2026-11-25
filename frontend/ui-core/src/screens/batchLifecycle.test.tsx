@@ -76,6 +76,7 @@ const DRAFT: Batch = {
   schema_version: null,
   asset_count: 48,
   allowed_actions: batchActions("draft"),
+  modalities: ["image"],
   promoted_asset_count: 0,
   parent_batch_id: null,
   pre_label_run: null,
@@ -159,6 +160,7 @@ describe("the approve dialog's refusals", () => {
         state: "approved",
         schema_version: 3,
         allowed_actions: batchActions("approved"),
+        modalities: ["image"],
         promoted_asset_count: 0,
         parent_batch_id: null,
         pre_label_run: null,
@@ -395,16 +397,6 @@ describe("Complete's count of what is left, said in its tooltip", () => {
     allowed_actions: batchActions("in_annotation"),
     progress: { ...DRAFT.progress, unannotated: 3, annotated: 45 },
   };
-  function sources(kind: string): void {
-    on("GET", /\/sources$/, {
-      status: 200,
-      body: {
-        items: [{ id: "s0", project_id: PROJECT, kind, name: "s0", registered_at: "2026-11-01T00:00:00Z", frame: null, video: null }],
-        total: 1,
-      },
-    });
-  }
-
   /** The reason lives in the withheld control's tooltip, reached by keyboard: the control stays focusable. */
   async function reason(text: string): Promise<void> {
     const control = screen.getByTestId("complete-drive-01");
@@ -413,25 +405,30 @@ describe("Complete's count of what is left, said in its tooltip", () => {
     await waitFor(() => expect(screen.getAllByText(text).length).toBeGreaterThan(0));
   }
 
-  it("counts scans on a batch of point-cloud scans", async () => {
-    sources("point_cloud_directory");
-    renderWithData(<CompleteBatchButton projectId={PROJECT} batch={ANNOTATING} />);
+  it("counts scans on a batch of point-cloud scans, off the batch itself", async () => {
+    renderWithData(<CompleteBatchButton projectId={PROJECT} batch={{ ...ANNOTATING, modalities: ["point_cloud"] }} />);
 
     await reason("3 scans still to annotate or skip");
+    expect(sent.some((one) => /\/(assets|sources)$/.test(new URL(one.url).pathname))).toBe(false);
   });
 
   it("says one scan in the singular", async () => {
-    sources("point_cloud_directory");
-    renderWithData(<CompleteBatchButton projectId={PROJECT} batch={{ ...ANNOTATING, progress: { ...ANNOTATING.progress, unannotated: 1, annotated: 47 } }} />);
+    renderWithData(
+      <CompleteBatchButton projectId={PROJECT} batch={{ ...ANNOTATING, modalities: ["point_cloud"], progress: { ...ANNOTATING.progress, unannotated: 1, annotated: 47 } }} />,
+    );
 
     await reason("1 scan still to annotate or skip");
   });
 
   it("counts frames on a batch of images", async () => {
-    sources("image_directory");
     renderWithData(<CompleteBatchButton projectId={PROJECT} batch={ANNOTATING} />);
 
-    await waitFor(() => expect(sent.some((one) => new URL(one.url).pathname.endsWith("/sources"))).toBe(true));
     await reason("3 frames still to annotate or skip");
+  });
+
+  it("counts assets on a batch holding images and scans", async () => {
+    renderWithData(<CompleteBatchButton projectId={PROJECT} batch={{ ...ANNOTATING, modalities: ["image", "point_cloud"] }} />);
+
+    await reason("3 assets still to annotate or skip");
   });
 });

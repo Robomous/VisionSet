@@ -63,6 +63,7 @@ from visionset.kernel.domain import (
     ChangeKind,
     ClassCount,
     MembershipChange,
+    Modality,
     OrphanGuard,
     Partition,
     PreLabelRun,
@@ -298,6 +299,15 @@ class BatchService:
         with self._workspace.unit_of_work() as uow:
             self._require_project(uow, project_id)
             return uow.batches.list(project_id)
+
+    def modalities(self, project_id: UUID) -> Mapping[UUID, tuple[Modality, ...]]:
+        """Per batch of that project, the modalities of the assets it holds, sorted.
+
+        One read for every batch at once, on the terms of :meth:`pre_label_runs`:
+        a listing needs it for each row. A batch holding nothing is absent.
+        """
+        with self._workspace.unit_of_work() as uow:
+            return uow.batch_modalities(project_id)
 
     # --- membership: draft only --------------------------------------------
 

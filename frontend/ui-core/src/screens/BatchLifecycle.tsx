@@ -27,7 +27,7 @@ import { ChevronDown, Minus, Play, Plus, Stamp } from "lucide-react";
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
 import { Button, Dialog, DialogContent, DialogDescription, DialogTitle, FieldError, Switch, ToggleGroup, ToggleGroupItem, cn } from "@robomous/ui-core";
-import { assetNoun } from "../lib/assetNoun";
+import { batchNoun } from "../lib/assetNoun";
 import { IconAction } from "../patterns/IconAction";
 import { ProgressBar } from "../patterns/ProgressBar";
 import { annotatedShare } from "./batchState";
@@ -155,7 +155,7 @@ export function ApproveFields({
    */
   readonly onOpenSchema?: () => void;
 }): JSX.Element {
-  const { approve, begin, approvedAt, busy, mode, parts, folded, modality, images } = form;
+  const { approve, begin, approvedAt, busy, mode, parts, folded, modalities, images } = form;
   const bodyId = useId();
   return (
     <>
@@ -204,7 +204,7 @@ export function ApproveFields({
                 <ToggleGroupItem value="split" className={SEGMENT} data-testid="partition-split">Split</ToggleGroupItem>
               </ToggleGroup>
               {mode === "one" ? (
-                <span className="text-xs text-muted-foreground">Every {assetNoun(modality, 1, "image")} in a single job.</span>
+                <span className="text-xs text-muted-foreground">Every {batchNoun(modalities, 1, "image")} in a single job.</span>
               ) : (
                 <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                   <span className="inline-flex h-7 items-center rounded-md border bg-background">

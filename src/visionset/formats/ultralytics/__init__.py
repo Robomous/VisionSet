@@ -66,6 +66,7 @@ from visionset.kernel.domain import (
     PreprocessingHints,
     Release,
     ResizeStrategy,
+    SplitAssignment,
     TargetFamily,
     Task,
 )
@@ -201,13 +202,14 @@ class UltralyticsExporter:
         dest: Path,
         *,
         content: ContentReader,
+        assignment: SplitAssignment | None,
     ) -> None:
         task = derive_task(manifest, TASKS)
         if task is Task.CLASSIFY:
-            _write_class_tree(release, manifest, dest, content)
+            _write_class_tree(manifest, dest, content, assignment)
             return
         rows = segment_rows if task is Task.SEGMENT else detect_rows
-        folds = write_label_layout(release, manifest, dest, content, rows)
+        folds = write_label_layout(manifest, dest, content, assignment, rows)
         _write_data_yaml(dest / DATA_FILENAME, class_names(manifest), folds)
 
 
@@ -242,7 +244,7 @@ def _write_data_yaml(target: Path, names: list[str], folds: set[str]) -> None:
 
 
 def _write_class_tree(
-    release: Release, manifest: Manifest, dest: Path, content: ContentReader
+    manifest: Manifest, dest: Path, content: ContentReader, assignment: SplitAssignment | None
 ) -> None:
     """The classify layout: ``<fold>/<class>/<image>``, one copy of an image per tag.
 
@@ -264,7 +266,7 @@ def _write_class_tree(
                 f"class of an image-classification tree"
             )
     index_of = {name: index for index, name in enumerate(class_names(manifest))}
-    folds = folds_of(release, manifest)
+    folds = folds_of(manifest, assignment)
     for fold in set(folds.values()):
         for name in vocabulary:
             (dest / fold / name).mkdir(parents=True, exist_ok=True)

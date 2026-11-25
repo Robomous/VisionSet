@@ -30,9 +30,10 @@ from __future__ import annotations
 from typing import Annotated, Any, Final
 from uuid import UUID
 
-from fastapi import Query, Response, status
+from fastapi import Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 
+from visionset import __version__
 from visionset.jobs.thumbnails import JOB_TYPE as backfill_job_type
 from visionset.jobs.thumbnails import PROJECT_KEY as backfill_project_key
 from visionset.jobs.thumbnails import payload_for as backfill_payload_for
@@ -79,6 +80,25 @@ project_router = protected_router(prefix="/projects/{project_id}", tags=["assets
 #: a gamble. One year is the maximum ``max-age`` anything honours, and
 #: ``immutable`` tells a browser not to revalidate even on a reload.
 _IMMUTABLE: Final = "public, max-age=31536000, immutable"
+
+#: For bytes whose URL does not name them: kept, but asked about every time.
+_REVALIDATE: Final = "private, no-cache"
+
+
+def _not_modified(request: Request, etag: str) -> bool:
+    """Whether the request's ``If-None-Match`` already names ``etag``."""
+    header = request.headers.get("if-none-match")
+    if header is None:
+        return False
+    tags = {one.strip().removeprefix("W/") for one in header.split(",")}
+    return "*" in tags or etag in tags
+
+
+def _unchanged(etag: str, cache_control: str) -> Response:
+    return Response(
+        status_code=status.HTTP_304_NOT_MODIFIED,
+        headers={"ETag": etag, "Cache-Control": cache_control},
+    )
 
 
 # FastAPI documents a 200 as ``application/json`` unless told otherwise — the
@@ -269,6 +289,7 @@ def list_asset_batches(workspace: WorkspaceDep, project_id: UUID, asset_id: UUID
     promoted = DatasetService(workspace).promoted_asset_ids(project_id)
     found = batches.holding(asset.id)
     pre_label_runs = batches.pre_label_runs()
+    modalities = batches.modalities(project_id)
     return BatchPage(
         items=[
             BatchOut.of(
@@ -276,6 +297,7 @@ def list_asset_batches(workspace: WorkspaceDep, project_id: UUID, asset_id: UUID
                 jobs.batch_progress(batch.id),
                 promoted=promoted,
                 pre_label_run=pre_label_runs.get(batch.id),
+                modalities=modalities.get(batch.id, ()),
             )
             for batch in found
         ],
@@ -329,8 +351,8 @@ def get_asset_content(
     responses={**documented(404), **_THUMBNAIL_RESPONSE},
 )
 def get_asset_thumbnail(
-    workspace: WorkspaceDep, project_id: UUID, asset_id: UUID
-) -> StreamingResponse:
+    workspace: WorkspaceDep, request: Request, project_id: UUID, asset_id: UUID
+) -> Response:
     """The asset's cached preview, streamed. Always JPEG.
 
     A preview is a cache, so this reads one and never renders one. An asset with
@@ -342,18 +364,25 @@ def get_asset_thumbnail(
     and 404 `ASSET_NOT_FOUND`, which say the thing itself is not here rather than
     that its preview is missing.
 
-    Cached the same way `content` is, and for the same reason. The `ETag` is the
-    thumbnail hash, which is a cache key and not an identity: two machines may
-    hold different preview bytes for one image, so never compare these across
-    workspaces.
+    An image's preview is cached the same way `content` is, and for the same
+    reason. A scan's is drawn from above in its source's frame, which can be
+    declared again, so it is sent `Cache-Control: private, no-cache` and a
+    request whose `If-None-Match` names the current `ETag` is answered 304 with
+    no body. The `ETag` is the thumbnail hash, which is a cache key and not an
+    identity: two machines may hold different preview bytes for one image, so
+    never compare these across workspaces.
     """
     ingest = IngestService(workspace)
     asset = ingest.asset(project_id, asset_id)
+    etag = f'"{asset.thumbnail_hash}"'
+    cache_control = _IMMUTABLE if asset.modality == "image" else _REVALIDATE
+    if asset.thumbnail_hash is not None and _not_modified(request, etag):
+        return _unchanged(etag, cache_control)
     stream = ingest.open_thumbnail(asset)
     return StreamingResponse(
         stream,
         media_type=MEDIA_TYPES[THUMBNAIL_FORMAT],
-        headers={"ETag": f'"{asset.thumbnail_hash}"', "Cache-Control": _IMMUTABLE},
+        headers={"ETag": etag, "Cache-Control": cache_control},
     )
 
 
@@ -365,6 +394,7 @@ def get_asset_thumbnail(
 )
 def get_asset_points(
     workspace: WorkspaceDep,
+    request: Request,
     project_id: UUID,
     asset_id: UUID,
     max_points: MaxPointsQuery = DEFAULT_POINT_BUDGET,
@@ -387,12 +417,21 @@ def get_asset_points(
     as is an unknown asset; an unknown project is 404 `PROJECT_NOT_FOUND`. A
     stored scan this installation can no longer read is 422 `UNSUPPORTED_MEDIA`
     or `CORRUPT_MEDIA`.
+
+    Sent `Cache-Control: private, no-cache` with an `ETag` naming the scan's
+    content hash, the budget and this build, and a request whose `If-None-Match`
+    names it is answered 304 with no body, before the scan is read.
     """
-    sample = IngestService(workspace).points(project_id, asset_id, max_points=max_points)
+    ingest = IngestService(workspace)
+    asset = ingest.asset(project_id, asset_id)
+    etag = f'"{asset.content_hash}-{max_points}-{__version__}"'
+    if asset.modality == "point_cloud" and _not_modified(request, etag):
+        return _unchanged(etag, _REVALIDATE)
+    sample = ingest.points(project_id, asset_id, max_points=max_points)
     return Response(
         content=sample.encode(),
         media_type=OCTET_STREAM,
-        headers={"Cache-Control": "private, no-cache"},
+        headers={"ETag": etag, "Cache-Control": _REVALIDATE},
     )
 
 

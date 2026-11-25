@@ -16,6 +16,7 @@ import sys
 from array import array
 from collections.abc import Sequence
 from dataclasses import dataclass
+from itertools import compress
 from typing import Any, BinaryIO, Final
 
 from PIL import Image
@@ -67,11 +68,17 @@ _PLY_CODES: Final[dict[str, str]] = {
     "float64": "d",
 }
 
-#: The longest ascii row read, and the most rows an element skipped on the way
-#: to the vertices may declare relative to the point limit: a mesh has a few
-#: faces per vertex, never billions.
+#: The longest ascii row read.
 _LINE_LIMIT: Final = 64 * 1024
+
+#: The most rows an element skipped on the way to the vertices may declare per
+#: vertex the file declares, and the most rows holding a list - walked one at a
+#: time - all of them may declare together: a mesh has a few faces per vertex.
 _SKIPPED_ROWS_PER_POINT: Final = 8
+_SKIPPED_LIST_ROWS_PER_POINT: Final = 2
+
+#: How much binary point data is read at once while its columns are gathered.
+_CHUNK_BYTES: Final = 8 << 20
 
 _FLOAT_CODES: Final = frozenset("fd")
 _PCD_DATA_MODES: Final = ("ascii", "binary", "binary_compressed")
@@ -183,38 +190,35 @@ def _read_header(content: BinaryIO, name: str | None) -> tuple[PointCloudFormat,
 
 def _finalize(
     fmt: PointCloudFormat,
-    xs: Sequence[float],
-    ys: Sequence[float],
-    zs: Sequence[float],
+    columns: list[array[Any]],
     fields: tuple[str, ...],
     name: str | None,
-    extras: dict[str, _Extra] | None = None,
+    kinds: Sequence[tuple[str, str]] = (),
 ) -> _Cloud:
-    kx: array[float] = array("d")
-    ky: array[float] = array("d")
-    kz: array[float] = array("d")
-    isfinite = math.isfinite
-    if not extras:
-        for x, y, z in zip(xs, ys, zs, strict=True):
-            if isfinite(x) and isfinite(y) and isfinite(z):
-                kx.append(x)
-                ky.append(y)
-                kz.append(z)
-        kept: dict[str, _Extra] = {}
-    else:
-        keys = list(extras)
-        outs = [array(extras[key][1].typecode) for key in keys]
-        for x, y, z, *rest in zip(xs, ys, zs, *(extras[key][1] for key in keys), strict=True):
-            if isfinite(x) and isfinite(y) and isfinite(z):
-                kx.append(x)
-                ky.append(y)
-                kz.append(z)
-                for out, value in zip(outs, rest, strict=True):
-                    out.append(value)
-        kept = {key: (extras[key][0], out) for key, out in zip(keys, outs, strict=True)}
-    if not kx:
+    """The finite points of ``columns`` (x, y, z, then one per ``(key, kind)`` in ``kinds``).
+
+    Filters in place, one column at a time, so a scan with non-finite points
+    holds at most one column twice; a scan with none is not copied at all.
+    """
+    if len(columns[0]) and not all(math.isfinite(sum(columns[k])) for k in range(3)):
+        # A sum is finite only when every term is; one that overflows falls here too,
+        # and the mask below keeps every finite point either way.
+        count = len(columns[0])
+        mask = (
+            _finite_bits(columns[0]) & _finite_bits(columns[1]) & _finite_bits(columns[2])
+        ).to_bytes(count, "little")
+        for k, column in enumerate(columns):
+            columns[k] = array(column.typecode, compress(column, mask))
+            del column
+    if not columns[0]:
         raise _corrupt("every point has a non-finite coordinate", name)
-    return _Cloud(fmt, kx, ky, kz, fields, kept)
+    extras = {key: (kind, column) for (key, kind), column in zip(kinds, columns[3:], strict=True)}
+    return _Cloud(fmt, columns[0], columns[1], columns[2], fields, extras)
+
+
+def _finite_bits(column: array[float]) -> int:
+    """One byte a value, 1 where it is finite, read as a little-endian integer."""
+    return int.from_bytes(bytes(map(math.isfinite, column)), "little")
 
 
 def _canonical(present: set[str]) -> tuple[str, ...]:
@@ -222,36 +226,49 @@ def _canonical(present: set[str]) -> tuple[str, ...]:
 
 
 def _unpack_rows(
-    buffer: bytes | memoryview,
+    content: BinaryIO,
     rows: int,
     row_size: int,
     layout: Sequence[tuple[int, str]],
     endian: str,
+    truncated: str,
+    name: str | None,
 ) -> list[array[Any]]:
-    """Pull the ``(offset, code)`` columns out of ``rows`` fixed-size records.
+    """Read ``rows`` fixed-size records and pull out the ``(offset, code)`` columns.
 
-    The first three are x, y and z, held as doubles; any further column keeps its
-    own code, so an optional field costs what the file spent on it.
+    Read a bounded chunk at a time and gathered a byte lane at a time, so the raw
+    rows are never held whole beside the columns. Every column keeps its own code,
+    so a field costs what the file spent on it: a float32 coordinate reads back as
+    the same double whether it is held as one or not.
     """
-    order = sorted(range(len(layout)), key=lambda k: layout[k][0])
-    parts = [endian]
-    cursor = 0
-    for k in order:
-        offset, code = layout[k]
-        if offset > cursor:
-            parts.append(f"{offset - cursor}x")
-        parts.append(code)
-        cursor = offset + struct.calcsize(code)
-    if row_size > cursor:
-        parts.append(f"{row_size - cursor}x")
-    parsed = struct.Struct("".join(parts))
-    columns: list[array[Any]] = [
-        array("d" if k < 3 else code) for k, (_, code) in enumerate(layout)
-    ]
-    ordered = [columns[k] for k in order]
-    for record in parsed.iter_unpack(buffer[: rows * row_size]):
-        for column, value in zip(ordered, record, strict=True):
-            column.append(value)
+    widths = [struct.calcsize(endian + code) for _, code in layout]
+    raws = [bytearray(rows * width) for width in widths]
+    step = max(1, _CHUNK_BYTES // row_size)
+    for first in range(0, rows, step):
+        count = min(step, rows - first)
+        chunk = content.read(count * row_size)
+        if len(chunk) < count * row_size:
+            raise _corrupt(truncated, name)
+        for (offset, _), width, raw in zip(layout, widths, raws, strict=True):
+            for lane in range(width):
+                raw[first * width + lane : (first + count) * width : width] = chunk[
+                    offset + lane :: row_size
+                ]
+        del chunk
+    columns: list[array[Any]] = []
+    for k, ((_, code), width) in enumerate(zip(layout, widths, strict=True)):
+        raw, raws[k] = raws[k], bytearray()
+        column: array[Any] = array(code)
+        if column.itemsize != width:
+            columns.append(
+                array(code, (value for (value,) in struct.iter_unpack(endian + code, raw)))
+            )
+            continue
+        column.frombytes(raw)
+        del raw
+        if (endian == "<") != (sys.byteorder == "little"):
+            column.byteswap()
+        columns.append(column)
     return columns
 
 
@@ -338,7 +355,13 @@ def _decode_pcd(
     present = {"x", "y", "z"}
     if find("intensity") is not None:
         present.add("intensity")
-    if find("rgb") is not None or find("rgba") is not None:
+    colour = find("rgb")
+    if colour is None:
+        colour = find("rgba")
+    if colour is not None and sizes[colour] != 4:
+        # Colour is a packed 0x00RRGGBB word; any other width is not read as one.
+        colour = None
+    if colour is not None:
         present.add("rgb")
     out_fields = _canonical(present)
 
@@ -348,22 +371,14 @@ def _decode_pcd(
         intensity = find("intensity")
         if intensity is not None:
             wanted["intensity"] = (intensity, codes[intensity], codes[intensity])
-        colour = find("rgb")
-        if colour is None:
-            colour = find("rgba")
-        if colour is not None and sizes[colour] == 4:
+        if colour is not None:
             kind = _PACKED_FLOAT if types[colour] == "F" and mode == "ascii" else _PACKED
             wanted["rgb"] = (colour, "I", kind)
     picks = xyz_index + [index for index, _, _ in wanted.values()]
 
-    def finish(columns: Sequence[array[Any]]) -> _Cloud:
-        extras = {
-            key: (kind, column)
-            for (key, (_, _, kind)), column in zip(wanted.items(), columns[3:], strict=True)
-        }
-        return _finalize(
-            PointCloudFormat.PCD, columns[0], columns[1], columns[2], out_fields, name, extras
-        )
+    def finish(columns: list[array[Any]]) -> _Cloud:
+        kinds = [(key, kind) for key, (_, _, kind) in wanted.items()]
+        return _finalize(PointCloudFormat.PCD, columns, out_fields, name, kinds)
 
     if mode == "ascii":
         return finish(_decode_pcd_ascii(content, points, counts, picks, name))
@@ -373,13 +388,10 @@ def _decode_pcd(
         raise _unsupported(f"{needed} bytes of point data is over the limit", name)
     read_codes = [codes[k] for k in xyz_index] + [code for _, code, _ in wanted.values()]
     if mode == "binary":
-        buffer = content.read(needed)
-        if len(buffer) < needed:
-            raise _corrupt("the binary point data is truncated", name)
         layout = [(offsets[k], code) for k, code in zip(picks, read_codes, strict=True)]
-        columns = _unpack_rows(buffer, points, row_size, layout, "<")
-        # Up to MAX_POINT_CLOUD_BYTES of raw rows; released before the finite-point copy.
-        del buffer
+        columns = _unpack_rows(
+            content, points, row_size, layout, "<", "the binary point data is truncated", name
+        )
         return finish(columns)
 
     sizes_raw = content.read(8)
@@ -397,13 +409,13 @@ def _decode_pcd(
     raw = memoryview(_lzf_decompress(blob, uncompressed, name))
     del blob
     arrays: list[array[Any]] = []
-    for position, (k, code) in enumerate(zip(picks, read_codes, strict=True)):
+    for k, code in zip(picks, read_codes, strict=True):
         start = points * offsets[k]
         block = array(code)
         block.frombytes(raw[start : start + points * sizes[k]])
         if sys.byteorder == "big":
             block.byteswap()
-        arrays.append(array("d", block) if position < 3 else block)
+        arrays.append(block)
     del raw
     return finish(arrays)
 
@@ -518,11 +530,19 @@ def _parse_ply_header(lines: list[str], name: str | None) -> tuple[str, list[_Pl
 
 
 def _skip_binary_element(
-    content: BinaryIO, element: _PlyElement, endian: str, name: str | None
-) -> None:
+    content: BinaryIO, element: _PlyElement, endian: str, budget: int, name: str | None
+) -> int:
+    """Move past one element's rows, and answer how many bytes they held.
+
+    Refuses rows holding more than ``budget`` bytes as over the size limit.
+    """
     if not element.has_list:
-        content.seek(element.count * element.row_size, io.SEEK_CUR)
-        return
+        size = element.count * element.row_size
+        if size > budget:
+            raise _over_the_limit(name)
+        content.seek(size, io.SEEK_CUR)
+        return size
+    consumed = 0
     for _ in range(element.count):
         for prop in element.properties:
             if prop.count_code is None:
@@ -532,10 +552,19 @@ def _skip_binary_element(
                 raw = content.read(width)
                 if len(raw) < width:
                     raise _corrupt("the PLY data is truncated", name)
+                consumed += width
                 skip = struct.unpack(endian + prop.count_code, raw)[0] * struct.calcsize(prop.code)
             if skip < 0:
                 raise _corrupt("a PLY list declares a negative length", name)
+            consumed += skip
+            if consumed > budget:
+                raise _over_the_limit(name)
             content.seek(skip, io.SEEK_CUR)
+    return consumed
+
+
+def _over_the_limit(name: str | None) -> UnsupportedMedia:
+    return _unsupported("the PLY data before the vertices is over the size limit", name)
 
 
 def _decode_ply(
@@ -576,15 +605,28 @@ def _decode_ply(
 
     endian = "<" if mode == "ascii" else _PLY_ENDIANS[mode]
     skipped = elements[: elements.index(vertex)]
-    if any(e.count > _SKIPPED_ROWS_PER_POINT * _port.MAX_POINT_CLOUD_POINTS for e in skipped):
+    listed = sum(e.count for e in skipped if e.has_list or mode == "ascii")
+    if (
+        any(e.count > _SKIPPED_ROWS_PER_POINT * vertex.count for e in skipped)
+        or listed > _SKIPPED_LIST_ROWS_PER_POINT * vertex.count
+    ):
         raise _corrupt("a PLY element before the vertices declares an implausible count", name)
+    budget = _port.MAX_POINT_CLOUD_BYTES - (
+        0 if mode == "ascii" else vertex.count * vertex.row_size
+    )
     for element in skipped:
         if mode == "ascii":
             for _ in range(element.count):
-                if not content.readline():
+                raw = content.readline(_LINE_LIMIT + 1)
+                if not raw:
                     raise _corrupt("the PLY data is truncated", name)
+                if len(raw) > _LINE_LIMIT:
+                    raise _corrupt(f"an ascii row is longer than {_LINE_LIMIT} bytes", name)
+                budget -= len(raw)
+                if budget < 0:
+                    raise _over_the_limit(name)
         else:
-            _skip_binary_element(content, element, endian, name)
+            budget -= _skip_binary_element(content, element, endian, budget, name)
 
     if mode == "ascii":
         columns = _ascii_rows(content, vertex.count, len(names), picks, "vertex", name)
@@ -592,22 +634,21 @@ def _decode_ply(
         needed = vertex.count * vertex.row_size
         if needed > _port.MAX_POINT_CLOUD_BYTES:
             raise _unsupported(f"{needed} bytes of point data is over the limit", name)
-        buffer = content.read(needed)
-        if len(buffer) < needed:
-            raise _corrupt("the PLY vertex data is truncated", name)
         offsets = [0]
         for prop in vertex.properties:
             offsets.append(offsets[-1] + struct.calcsize(prop.code))
         layout = [(offsets[k], vertex.properties[k].code) for k in picks]
-        columns = _unpack_rows(buffer, vertex.count, vertex.row_size, layout, endian)
-        del buffer
-    extras = {
-        key: (vertex.properties[k].code, column)
-        for key, k, column in zip(wanted, picks[3:], columns[3:], strict=True)
-    }
-    return _finalize(
-        PointCloudFormat.PLY, columns[0], columns[1], columns[2], out_fields, name, extras
-    )
+        columns = _unpack_rows(
+            content,
+            vertex.count,
+            vertex.row_size,
+            layout,
+            endian,
+            "the PLY vertex data is truncated",
+            name,
+        )
+    kinds = [(key, vertex.properties[k].code) for key, k in zip(wanted, picks[3:], strict=True)]
+    return _finalize(PointCloudFormat.PLY, columns, out_fields, name, kinds)
 
 
 def _decode(content: BinaryIO, name: str | None, want_extras: bool = False) -> _Cloud:
@@ -711,6 +752,8 @@ def _intensity(cloud: _Cloud, stride: int) -> bytes | None:
         return None
     isfinite = math.isfinite
     values = cloud.extras["intensity"][1][::stride]
+    if values.typecode not in _FLOAT_CODES or isfinite(sum(values)):
+        return _le_bytes(_clamped_f32(values))
     return _le_bytes(
         array("f", (min(_F32_MAX, max(-_F32_MAX, v)) if isfinite(v) else 0.0 for v in values))
     )
@@ -745,6 +788,11 @@ def _rgb(cloud: _Cloud, stride: int) -> bytes | None:
     out = bytearray(3 * count)
     if "rgb" in cloud.extras:
         kind, column = cloud.extras["rgb"]
+        if kind == _PACKED and column.typecode == "I" and column.itemsize == 4:
+            raw = _le_bytes(column[::stride])
+            for channel, lane in enumerate((2, 1, 0)):
+                out[channel::3] = raw[lane::4]
+            return bytes(out)
         packed = [_packed(v, kind == _PACKED_FLOAT) for v in column[::stride]]
         for channel, shift in enumerate((16, 8, 0)):
             out[channel::3] = bytes((p >> shift) & 0xFF for p in packed)

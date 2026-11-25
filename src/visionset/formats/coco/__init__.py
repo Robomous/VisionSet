@@ -68,6 +68,7 @@ from visionset.kernel.domain import (
     Polyline3DGeometry,
     PolylineGeometry,
     Release,
+    SplitAssignment,
 )
 from visionset.kernel.errors import ExportSourceUnreadable
 from visionset.kernel.ports import ContentReader
@@ -132,10 +133,11 @@ class CocoExporter:
         dest: Path,
         *,
         content: ContentReader,
+        assignment: SplitAssignment | None,
     ) -> None:
         categories = _categories(manifest)
         category_of = {declared["name"]: declared["id"] for declared in categories}
-        folds = folds_of(release, manifest)
+        folds = folds_of(manifest, assignment)
 
         documents: dict[str, dict[str, Any]] = {
             fold: {

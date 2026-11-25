@@ -167,7 +167,7 @@ def _manifest(asset: ManifestAsset) -> Manifest:
 
 def _export(exporter: object, asset: ManifestAsset, dest: Path) -> Path:
     manifest = _manifest(asset)
-    exporter.export(_release(), manifest, dest, content=_content)  # type: ignore[attr-defined]
+    exporter.export(_release(), manifest, dest, content=_content, assignment=None)  # type: ignore[attr-defined]
     return dest
 
 
@@ -779,7 +779,7 @@ def test_every_lane_format_refuses_an_undeclared_manifest_class_before_writing(
         ExportSourceUnreadable,
         match=rf"asset {asset.asset_id} carries class 'undeclared'",
     ):
-        exporter().export(_release(), manifest, dest, content=_content)
+        exporter().export(_release(), manifest, dest, content=_content, assignment=None)
 
     assert not dest.exists()
 

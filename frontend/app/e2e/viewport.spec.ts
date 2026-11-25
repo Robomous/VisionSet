@@ -106,6 +106,7 @@ async function serveApi(page: Page): Promise<void> {
         state: "in_annotation",
         schema_version: 1,
         allowed_actions: batchActions("in_annotation"),
+        modalities: ["image"],
         promoted_asset_count: 0,
         parent_batch_id: null,
         pre_label_run: null,

@@ -30,6 +30,7 @@ from visionset.kernel.domain import (
     DatasetMember,
     InferenceConnection,
     IngestJob,
+    Modality,
     OrphanGuard,
     PreprocessingRecipe,
     Project,
@@ -591,6 +592,16 @@ class UnitOfWork(Protocol):
         gives: ``Repository[Annotation]`` is parented on the asset, so a gallery page
         asking per card reads the batch once per frame. Assets carrying no label are
         absent from the mapping; an unknown batch answers an empty one.
+        """
+        ...
+
+    def batch_modalities(self, project_id: UUID) -> Mapping[UUID, tuple[Modality, ...]]:
+        """Per batch of one project: the modalities of the assets it holds, sorted.
+
+        One aggregate joined through membership, for the reason ``annotation_totals``
+        gives: a batch listing asking per row would read every batch's assets. A
+        batch holding nothing is absent from the mapping; an unknown project
+        answers an empty one.
         """
         ...
 

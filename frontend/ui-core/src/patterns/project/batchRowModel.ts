@@ -1,4 +1,4 @@
-import { assetNoun } from "../../lib/assetNoun";
+import { batchNoun } from "../../lib/assetNoun";
 import { formatCount } from "../../lib/format";
 import { labelSegments, type ProgressDetail } from "../progressDetail";
 import type { State } from "../StateChip";
@@ -49,15 +49,19 @@ export function initials(name: string): string {
   return (words.length > 1 ? `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}` : name.trim().slice(0, 2)).toUpperCase();
 }
 
+/** The noun for `count` of a row's assets: what the batch holds, images when the row does not say. */
+export function rowNoun(row: Pick<BatchRowView, "modalities">, count: number): string {
+  return batchNoun(row.modalities ?? ["image"], count, "image");
+}
+
 /** What a batch's Labeled says when pointed at: the batch, and how its images split. */
-export function labeledDetail(row: Pick<BatchRowView, "name" | "done" | "total" | "counts" | "modality">): ProgressDetail {
+export function labeledDetail(row: Pick<BatchRowView, "name" | "done" | "total" | "counts" | "modalities">): ProgressDetail {
   const left = row.done === null ? row.total : row.total - row.done;
-  const modality = row.modality ?? "image";
   return {
     title: "Labeled",
     caption: row.name,
     ...(row.counts == null ? {} : { segments: labelSegments(row.counts) }),
-    note: left === 0 ? `Every ${assetNoun(modality, 1, "image")} is decided.` : `${formatCount(left)} ${assetNoun(modality, left, "image")} still to annotate or skip.`,
+    note: left === 0 ? `Every ${rowNoun(row, 1)} is decided.` : `${formatCount(left)} ${rowNoun(row, left)} still to annotate or skip.`,
   };
 }
 
