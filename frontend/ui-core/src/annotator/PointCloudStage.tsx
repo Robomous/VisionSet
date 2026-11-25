@@ -62,6 +62,7 @@ import {
 } from "@robomous/ui-core";
 import type { components } from "../generated/api.js";
 import { asApiError } from "../data/errors";
+import { useTheme } from "../lib/theme";
 import { refusalProse } from "../data/refusals";
 import { useApiClient } from "../data/VisionSetDataProvider";
 import { ErrorState } from "../patterns/AsyncStates";
@@ -255,6 +256,7 @@ function ScanView({
   readonly statusSlot: HTMLElement | null;
 }): JSX.Element {
   const [colorMode, setColorMode] = useState<ColorMode>(() => defaultColorMode(sample));
+  const theme = useTheme();
   const [showLabels, setShowLabels] = useState(true);
   const [resetSignal, setResetSignal] = useState(0);
   const [status, setStatus] = useState<PointCloudStatus | null>(null);
@@ -511,6 +513,7 @@ function ScanView({
             ariaLabel={editing ? EDIT_LABEL : VIEW_LABEL}
             editing={editing}
             highlightColor="var(--foreground)"
+            theme={theme}
             {...(scan === null
               ? {}
               : { onScanPointer: scan.editor.onScanPointer, onCameraChange: scan.editor.onCameraChange })}
@@ -561,6 +564,7 @@ function ScanView({
                 editing
                 pinned
                 highlightColor="var(--foreground)"
+                theme={theme}
                 testIds={{ view: "scan-top-down-canvas", canvas: "scan-top-down-gl" }}
                 onScanPointer={scan.editor.onScanPointer}
                 onCameraChange={setTopView}
