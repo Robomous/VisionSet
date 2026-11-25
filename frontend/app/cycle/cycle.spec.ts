@@ -523,7 +523,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // server suite.
     await openBatch(page, PROJECT, "cycle-batch");
     const panel = page.getByTestId("batch-sheet");
-    // The panel's footer holds the batch's moves. The closing move, *Complete*, is
+    // The panel's top bar holds the batch's moves. The closing move, *Complete*, is
     // not declared while frames are still to do, so it is withheld with its count.
     await expect(panel.getByTestId("complete-cycle-batch")).toBeDisabled();
     // Approved with no partition, the batch has one job: one card, nobody holding it.
@@ -1329,8 +1329,8 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * Two claims, and both are about the server's own answer rather than about
      * this client's rendering. First: what the panel offers is
      * `allowed_actions` as the kernel computed it, so the completed parent —
-     * which can never be deleted — draws no Delete at all, while a draft shows
-     * it live. Second,
+     * which can never be deleted — draws its Delete disabled, with the reason,
+     * while a draft shows it live. Second,
      * and the one worth a real database: deleting a batch over frames that are
      * already in the trunk takes **nothing** out of it — annotations hang off
      * assets, so the unit of work goes and the work stays.
@@ -1339,9 +1339,13 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * below still has the first one to carry on with.
      */
     // A completed batch has no exit in the kernel's transitions and never declares
-    // `delete`, so its panel draws no Delete; Correct is its way forward.
+    // `delete`, so its panel withholds Delete with the reason; Correct is its way forward.
     await expect(page.getByTestId("correct-cycle-batch")).toBeVisible();
-    await expect(page.getByTestId("delete-batch-cycle-batch")).toHaveCount(0);
+    const withheld = page.getByTestId("delete-batch-cycle-batch");
+    await expect(withheld).toBeVisible();
+    await expect(withheld).toBeDisabled();
+    await withheld.focus();
+    await expect(page.getByRole("tooltip").filter({ hasText: "correction batch" }).first()).toBeVisible();
 
     await page.getByTestId("correct-cycle-batch").click();
     await page.getByTestId("correction-name").fill("doomed");
@@ -1971,7 +1975,7 @@ async function openProject(
  * A batch opened the way a person opens one: from the Overview's Batches table —
  * batches have no section of their own — by pressing its row, which opens it in the
  * panel beside the table. Every batch action (approve, start, complete, promote,
- * correct, delete) is made in that panel's footer, and the address gains
+ * correct, delete) is made in that panel's top bar, and the address gains
  * `?batch=` so the panel survives a reload.
  *
  * The panel stays on the Overview, so there is no page to arrive at: what is
@@ -1987,7 +1991,7 @@ async function openBatch(
   await expect(page.getByTestId("overview-batches")).toBeVisible();
   // The panel labels a correction batch "<name> — correction" unless its own name
   // already ends that way, and its row and heading carry that label rather than the
-  // batch's own name. (The footer's controls are keyed by the batch's own name.)
+  // batch's own name. (The bar's controls are keyed by the batch's own name.)
   const label = correction && !name.endsWith("— correction") ? `${name} — correction` : name;
   if (draft) {
     // A draft's row opens its approval, so its panel is the row menu's Details.
