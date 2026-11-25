@@ -91,6 +91,10 @@ nothing was being distributed. This is the first version that is.
 
 ### Changed
 
+- **The scan view follows the page theme.** The point-cloud view and the scan preview's legend and swatches draw
+  on the ramps for the theme set by `.dark` on `<html>`, and the selection and drawing highlight is read again
+  when that class changes, so a live switch recolours an open scan. `PointCloudCanvas` takes an optional `theme`
+  (`light` when absent); without `.dark` nothing changes (#1124).
 - **Release manifests gain versions 4 and 5.** A release holding a 3D label is written as manifest version 4, with
   the asset's `calibration` embedded beside it (#1038); a release holding a scan is written as version 5, whose
   assets record `modality`, their `point_cloud` metadata and the source's `frame` (#1046). Both keys are omitted

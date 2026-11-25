@@ -3,18 +3,18 @@
  * can be read at, what each costs on the wire, its points without a flash
  * between densities, and the ends of the colour ramp the canvas draws.
  *
- * The ramps and their range are the annotator's own (`HEIGHT_RAMP`,
- * `INTENSITY_RAMP`, `rampRange`), so the legend says what the canvas did
- * rather than a copy of it that could drift.
+ * The ramps and their range are the annotator's own (`RAMPS`, `rampRange`),
+ * so the legend says what the canvas did rather than a copy of it that could
+ * drift — for the same theme the canvas draws in.
  */
 
 import {
-  HEIGHT_RAMP,
-  INTENSITY_RAMP,
+  RAMPS,
   decodePoints,
   rampRange,
   type ColorMode,
   type PointSample,
+  type RampTheme,
   type ScanFrame,
 } from "@visionset/annotator";
 import { useEffect, useMemo, useState } from "react";
@@ -111,12 +111,17 @@ function gradientOf(ramp: readonly (readonly [number, number, number])[]): strin
   return `linear-gradient(to right, ${ramp.map(([r, g, b]) => `rgb(${r} ${g} ${b})`).join(", ")})`;
 }
 
-/** The canvas's own ramps as CSS, for the legend and the colour pick's swatches. */
-export const RAMP_GRADIENT: Readonly<Record<ColorMode, string>> = {
-  height: gradientOf(HEIGHT_RAMP),
-  intensity: gradientOf(INTENSITY_RAMP),
-  // Recorded colour has no ramp; the swatch only says "the scan's own colours".
-  rgb: "linear-gradient(to right, rgb(214 98 72), rgb(232 196 92), rgb(98 160 112), rgb(82 128 196))",
+// Recorded colour has no ramp; the swatch only says "the scan's own colours".
+const RECORDED = "linear-gradient(to right, rgb(214 98 72), rgb(232 196 92), rgb(98 160 112), rgb(82 128 196))";
+
+function gradientsFor(theme: RampTheme): Readonly<Record<ColorMode, string>> {
+  return { height: gradientOf(RAMPS[theme].height), intensity: gradientOf(RAMPS[theme].intensity), rgb: RECORDED };
+}
+
+/** The canvas's own ramps as CSS, per theme, for the legend and the colour pick's swatches. */
+export const RAMP_GRADIENT: Readonly<Record<RampTheme, Readonly<Record<ColorMode, string>>>> = {
+  light: gradientsFor("light"),
+  dark: gradientsFor("dark"),
 };
 
 /**

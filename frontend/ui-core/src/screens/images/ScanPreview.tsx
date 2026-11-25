@@ -52,6 +52,7 @@ import { useEffect, useMemo, useRef, useState, type JSX, type RefObject } from "
 
 import type { WireAnnotation } from "../../annotator/jobQueries";
 import type { components } from "../../generated/api.js";
+import { useTheme, type Theme } from "../../lib/theme";
 import { AssetThumbnail } from "../AssetThumbnail";
 import { useSource } from "../queries";
 import { bytesPerPoint, densityLevels, formatBytes, RAMP_GRADIENT, shareOf, useRampRange, useSteadySample, type SteadySample } from "./scanSample";
@@ -152,6 +153,7 @@ function OpenScan({
   const levels = densityLevels(total);
   const [view, setView] = useState<View>("3d");
   const [mode, setMode] = useState<ColorMode>("height");
+  const theme = useTheme();
   // The first look is the whole scan; thinning is something you ask for.
   const [level, setLevel] = useState(levels.length - 1);
   const steady = useSteadySample(projectId, asset.id, levels[level] ?? total);
@@ -162,7 +164,7 @@ function OpenScan({
 
   const pane = (pinned: boolean, caption: string | null): JSX.Element => (
     <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-      <LiveView projectId={projectId} asset={asset} steady={steady} frame={frame} mode={mode} labels={drawn} pinned={pinned} />
+      <LiveView projectId={projectId} asset={asset} steady={steady} frame={frame} mode={mode} theme={theme} labels={drawn} pinned={pinned} />
       {caption !== null && <span className="pointer-events-none absolute top-11 left-2 rounded-md bg-background/80 px-1.5 py-0.5 text-[11px] text-muted-foreground">{caption}</span>}
     </div>
   );
@@ -194,7 +196,7 @@ function OpenScan({
       </Button>
 
       <div className="pointer-events-none absolute inset-x-2 bottom-2 flex items-end justify-between gap-2">
-        <ColourPill mode={mode} onChange={setMode} sample={steady.sample} frame={frame} />
+        <ColourPill mode={mode} theme={theme} onChange={setMode} sample={steady.sample} frame={frame} />
         <PointsPill levels={levels} level={level} onChange={setLevel} total={total} fields={asset.point_cloud?.fields ?? []} pending={steady.pending} />
       </div>
     </div>
@@ -225,6 +227,7 @@ function LiveView({
   steady,
   frame,
   mode,
+  theme,
   labels,
   pinned,
 }: {
@@ -233,6 +236,7 @@ function LiveView({
   readonly steady: SteadySample;
   readonly frame: ScanFrame | null;
   readonly mode: ColorMode;
+  readonly theme: Theme;
   readonly labels: readonly PointCloudLabel[];
   readonly pinned: boolean;
 }): JSX.Element {
@@ -261,6 +265,7 @@ function LiveView({
         sample={steady.sample}
         frame={frame ?? "lidar_flu"}
         colorMode={mode}
+        theme={theme}
         labels={labels}
         showLabels={labels.length > 0}
         onStatusChange={setStatus}
@@ -278,11 +283,13 @@ function LiveView({
 
 function ColourPill({
   mode,
+  theme,
   onChange,
   sample,
   frame,
 }: {
   readonly mode: ColorMode;
+  readonly theme: Theme;
   readonly onChange: (mode: ColorMode) => void;
   readonly sample: PointSample | null;
   readonly frame: ScanFrame | null;
@@ -298,7 +305,7 @@ function ColourPill({
           data-testid="scan-colour"
         >
           <span className="shrink-0 text-xs font-medium">{label}</span>
-          <RampLegend sample={sample} frame={frame} mode={mode} />
+          <RampLegend sample={sample} frame={frame} mode={mode} theme={theme} />
           <ChevronDown aria-hidden="true" strokeWidth={1.75} className="size-3.5 shrink-0 text-muted-foreground" />
         </button>
       </PopoverTrigger>
@@ -315,7 +322,7 @@ function ColourPill({
               >
                 <RadioGroupItem value={one.mode} disabled={!on} />
                 <span className="w-16">{one.label}</span>
-                <span aria-hidden="true" className="vs-image-outline h-1.5 flex-1 rounded-full" style={{ backgroundImage: RAMP_GRADIENT[one.mode] }} />
+                <span aria-hidden="true" className="vs-image-outline h-1.5 flex-1 rounded-full" style={{ backgroundImage: RAMP_GRADIENT[theme][one.mode] }} />
               </label>
             );
           })}
@@ -326,14 +333,24 @@ function ColourPill({
 }
 
 /** The ramp with the values at its ends: metres for height, the recorded scale for intensity. */
-function RampLegend({ sample, frame, mode }: { readonly sample: PointSample | null; readonly frame: ScanFrame | null; readonly mode: ColorMode }): JSX.Element {
+function RampLegend({
+  sample,
+  frame,
+  mode,
+  theme,
+}: {
+  readonly sample: PointSample | null;
+  readonly frame: ScanFrame | null;
+  readonly mode: ColorMode;
+  readonly theme: Theme;
+}): JSX.Element {
   const range = useRampRange(sample, frame, mode);
   if (mode === "rgb") return <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">The scan&rsquo;s own colours</span>;
   const format = (value: number): string => (mode === "height" ? `${value.toFixed(1)} m` : value.toFixed(2));
   return (
     <span className="flex min-w-0 flex-1 items-center gap-2 text-xs text-muted-foreground tabular-nums" data-testid="scan-legend">
       <span className="shrink-0">{range === null ? "—" : format(range[0])}</span>
-      <span aria-hidden="true" className="vs-image-outline h-1.5 min-w-8 flex-1 rounded-full" style={{ backgroundImage: RAMP_GRADIENT[mode] }} />
+      <span aria-hidden="true" className="vs-image-outline h-1.5 min-w-8 flex-1 rounded-full" style={{ backgroundImage: RAMP_GRADIENT[theme][mode] }} />
       <span className="shrink-0">{range === null ? "—" : format(range[1])}</span>
     </span>
   );
