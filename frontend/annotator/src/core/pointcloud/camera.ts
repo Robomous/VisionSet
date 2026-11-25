@@ -8,6 +8,8 @@
  */
 
 import type { Point3D } from "../types";
+import { wrapAngle } from "./angle";
+import { upAxis } from "./cuboid";
 import type { PointBounds } from "./decode";
 import { fromForwardLeftUp, heightOf, type ScanFrame } from "./frame";
 import { robustRange } from "./ramp";
@@ -45,9 +47,11 @@ export function sceneRadius(bounds: PointBounds): number {
 
 /**
  * The box the opening view frames: each axis cut to its 2nd–98th percentile, so
- * a few far returns do not shrink the scan to a speck. `null` for no points.
+ * a few far returns do not shrink the scan to a speck. In the scan's frame:
+ * `positions` are relative to `origin`, as a `PointSample` holds them. `null`
+ * for no points.
  */
-export function framingBounds(positions: Float32Array, origin: Point3D = NO_ORIGIN): PointBounds | null {
+export function framingBounds(positions: Float32Array, origin: Point3D): PointBounds | null {
   const count = Math.floor(positions.length / 3);
   if (count === 0) return null;
   const ranges = [0, 1, 2].map((axis) => robustRange(count, (i) => positions[i * 3 + axis]));
@@ -113,6 +117,15 @@ export function viewHalfHeight(camera: OrbitCamera): number {
   return camera.distance * Math.tan(FIELD_OF_VIEW / 2);
 }
 
+/**
+ * How many metres one pixel of a `heightPx`-tall view spans at `depth` along the
+ * view direction; an orthographic view's at every depth.
+ */
+export function metresPerPixelAt(camera: OrbitCamera, depth: number, heightPx: number): number {
+  if (camera.projection === "orthographic") return (2 * viewHalfHeight(camera)) / heightPx;
+  return (2 * Math.max(depth, 0) * Math.tan(FIELD_OF_VIEW / 2)) / heightPx;
+}
+
 export function orbit(camera: OrbitCamera, deltaYaw: number, deltaPitch: number): OrbitCamera {
   return {
     ...camera,
@@ -153,8 +166,8 @@ export function zoomAt(
   const half = viewHalfHeight(camera);
   const across = cursor[0] * half * (aspect > 0 ? aspect : 1) * given;
   const shift = add(scale(right, across), scale(up, cursor[1] * half * given));
-  const upAxis = fromForwardLeftUp(frame, [0, 0, 1]);
-  const level = dot(shift, upAxis) / dot(forward, upAxis);
+  const vertical = upAxis(frame);
+  const level = dot(shift, vertical) / dot(forward, vertical);
   return { ...zoomed, target: subtract(add(camera.target, shift), scale(forward, level)) };
 }
 
@@ -168,7 +181,7 @@ export function pan(
 ): OrbitCamera {
   if (!(heightPx > 0)) return camera;
   const { right, up } = viewBasis(camera, frame);
-  const perPixel = (2 * camera.distance * Math.tan(FIELD_OF_VIEW / 2)) / heightPx;
+  const perPixel = metresPerPixelAt(camera, camera.distance, heightPx);
   const [tx, ty, tz] = camera.target;
   return {
     ...camera,
@@ -197,7 +210,7 @@ export function viewBasis(
 ): { readonly forward: Point3D; readonly right: Point3D; readonly up: Point3D } {
   const eye = eyeOf(camera, frame);
   const forward = normalize(subtract(camera.target, eye));
-  const right = normalize(cross(forward, fromForwardLeftUp(frame, [0, 0, 1])));
+  const right = normalize(cross(forward, upAxis(frame)));
   return { forward, right, up: cross(right, forward) };
 }
 
@@ -280,11 +293,4 @@ export function projectToNdc(matrix: Float32Array, [x, y, z]: Point3D): Point3D 
   const clipW = matrix[3] * x + matrix[7] * y + matrix[11] * z + matrix[15];
   if (!(clipW > 0)) return null;
   return [clipX / clipW, clipY / clipW, clipZ / clipW];
-}
-
-/** `angle` turned into `(-π, π]`. */
-export function wrapAngle(angle: number): number {
-  const turn = 2 * Math.PI;
-  const wrapped = ((((angle + Math.PI) % turn) + turn) % turn) - Math.PI;
-  return wrapped === -Math.PI ? Math.PI : wrapped;
 }

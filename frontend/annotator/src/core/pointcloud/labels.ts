@@ -3,9 +3,10 @@
  * takes part: a label on a scan is already in the axes its source declares.
  */
 
-import { CUBOID_EDGES, cuboidCorners } from "../geometry/projection";
+import { CUBOID_EDGES } from "../geometry/projection";
 import type { Cuboid3DGeometry, Point3D, StoredAnnotation } from "../types";
-import { fromForwardLeftUp, type ScanFrame } from "./frame";
+import { cuboidCorners3D } from "./cuboid";
+import type { ScanFrame } from "./frame";
 
 export interface ScanLabel {
   readonly id: string;
@@ -14,25 +15,8 @@ export interface ScanLabel {
   readonly segments: Float64Array;
 }
 
-/**
- * A scan cuboid's eight corners: `length` along the heading
- * `cos(yaw)·forward + sin(yaw)·left`, `width` across it, `height` along up.
- *
- * `cuboidCorners` builds the image convention, a box about +y with heading
- * `(cos yaw, 0, −sin yaw)`; read as `(forward, left, up) = (x, −z, −y)` that is
- * exactly this box, with corner `i` still differing from its neighbours by one
- * bit, so `CUBOID_EDGES` joins these corners too.
- */
-export function scanCuboidCorners(geometry: Cuboid3DGeometry, frame: ScanFrame): readonly Point3D[] {
-  const [cx, cy, cz] = geometry.center;
-  return cuboidCorners({ ...geometry, center: [0, 0, 0] }).map(([x, y, z]) => {
-    const [dx, dy, dz] = fromForwardLeftUp(frame, [x, -z, -y]);
-    return [cx + dx, cy + dy, cz + dz] as const;
-  });
-}
-
 export function cuboidSegments(geometry: Cuboid3DGeometry, frame: ScanFrame): Float64Array {
-  const corners = scanCuboidCorners(geometry, frame);
+  const corners = cuboidCorners3D(geometry, frame);
   const out = new Float64Array(CUBOID_EDGES.length * 6);
   CUBOID_EDGES.forEach(([from, to], edge) => {
     out.set(corners[from], edge * 6);

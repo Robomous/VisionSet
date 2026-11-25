@@ -7,7 +7,15 @@
  */
 
 import type { Cuboid3DGeometry, Point, Point3D } from "../types";
-import { eyeOf, FIELD_OF_VIEW, ORTHOGRAPHIC_STANDOFF, viewBasis, viewHalfHeight, type OrbitCamera } from "./camera";
+import {
+  eyeOf,
+  FIELD_OF_VIEW,
+  metresPerPixelAt,
+  ORTHOGRAPHIC_STANDOFF,
+  viewBasis,
+  viewHalfHeight,
+  type OrbitCamera,
+} from "./camera";
 import { cuboidAxes, CUBOID_FACES, type CuboidFace } from "./cuboid";
 import { SCAN_FRAME_AXES, type ScanFrame } from "./frame";
 import { add, dot, normalize, scale, subtract } from "./vector";
@@ -23,7 +31,8 @@ export interface ScanViewport {
   readonly height: number;
 }
 
-const PARALLEL = 1e-9;
+/** Below this, a rate along an axis or a plane reads as parallel; the ray maths and the snap share it. */
+export const PARALLEL_EPSILON = 1e-9;
 
 /** A screen point as normalized device coordinates, `y` up. */
 export function screenToNdc([x, y]: Point, viewport: ScanViewport): readonly [number, number] {
@@ -89,10 +98,10 @@ export function screenOf(camera: OrbitCamera, frame: ScanFrame, viewport: ScanVi
 
 /** How many metres one screen pixel spans at `point`'s depth; `Infinity` behind a perspective eye. */
 export function metresPerPixel(camera: OrbitCamera, frame: ScanFrame, viewport: ScanViewport, point: Point3D): number {
-  if (camera.projection === "orthographic") return (2 * viewHalfHeight(camera)) / viewport.height;
+  if (camera.projection === "orthographic") return metresPerPixelAt(camera, 0, viewport.height);
   const depth = dot(subtract(point, eyeOf(camera, frame)), viewBasis(camera, frame).forward);
   if (!(depth > 0)) return Infinity;
-  return (2 * depth * Math.tan(FIELD_OF_VIEW / 2)) / viewport.height;
+  return metresPerPixelAt(camera, depth, viewport.height);
 }
 
 export function pointOnRay(ray: Ray, distance: number): Point3D {
@@ -106,7 +115,7 @@ export function pointOnRay(ray: Ray, distance: number): Point3D {
 export function rayGroundHit(ray: Ray, frame: ScanFrame, height: number): Point3D | null {
   const [index, sign] = SCAN_FRAME_AXES[frame].up;
   const rate = sign * ray.direction[index];
-  if (Math.abs(rate) < PARALLEL) return null;
+  if (Math.abs(rate) < PARALLEL_EPSILON) return null;
   const distance = (height - sign * ray.origin[index]) / rate;
   return distance > 0 ? pointOnRay(ray, distance) : null;
 }
@@ -120,7 +129,7 @@ export function closestOnAxis(ray: Ray, origin: Point3D, axis: Point3D): number 
   const offset = subtract(origin, ray.origin);
   const b = dot(axis, ray.direction);
   const denominator = 1 - b * b;
-  if (denominator < PARALLEL) return null;
+  if (denominator < PARALLEL_EPSILON) return null;
   return (b * dot(ray.direction, offset) - dot(axis, offset)) / denominator;
 }
 
@@ -145,7 +154,7 @@ export function rayCuboidHit(ray: Ray, geometry: Cuboid3DGeometry, frame: ScanFr
     const half = geometry.size[axis] / 2;
     const start = dot(offset, axes[axis]);
     const rate = dot(ray.direction, axes[axis]);
-    if (Math.abs(rate) < PARALLEL) {
+    if (Math.abs(rate) < PARALLEL_EPSILON) {
       if (Math.abs(start) > half) return null;
       continue;
     }

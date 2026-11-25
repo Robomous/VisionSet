@@ -12,10 +12,11 @@
  */
 
 import type { Point, Point3D } from "../types";
-import { eyeOf, FIELD_OF_VIEW, viewBasis, viewHalfHeight, type OrbitCamera } from "./camera";
+import { eyeOf, FIELD_OF_VIEW, metresPerPixelAt, viewBasis, viewHalfHeight, type OrbitCamera } from "./camera";
 import type { PointSample } from "./decode";
 import { heightOf, SCAN_FRAME_AXES, type ScanFrame } from "./frame";
-import { screenRay, type ScanViewport } from "./ray";
+import { robustRange } from "./ramp";
+import { PARALLEL_EPSILON, screenRay, type ScanViewport } from "./ray";
 import { subtract } from "./vector";
 
 /** How near on screen, in pixels, a point must come to the pointer to lend it its height. */
@@ -30,13 +31,22 @@ export const SNAP_NEAR_EQUAL_PX = 3;
 const MAX_CELLS = 512 * 512;
 const MAX_CELLS_ACROSS = 1024;
 const POINTS_PER_CELL = 8;
+/** `cellOf`'s mark for a point with a non-finite coordinate, which no query can reach. */
+const SKIPPED = 0xffffffff;
 
-interface SurfaceGrid {
+export interface SurfaceGrid {
   readonly across: readonly [0 | 1 | 2, 0 | 1 | 2];
   readonly up: 0 | 1 | 2;
   readonly upSign: 1 | -1;
+  /** The box around every finite point: what a query's ray is clipped to. */
   readonly minimum: Point3D;
   readonly maximum: Point3D;
+  /**
+   * Where cell `(0, 0)` starts on the two `across` axes: their robust low ends.
+   * The cells span the robust range; a point beyond it is kept in the edge cell
+   * nearest it, so one stray return cannot inflate every cell.
+   */
+  readonly low: readonly [number, number];
   readonly cell: number;
   readonly columns: number;
   readonly rows: number;
@@ -48,20 +58,21 @@ interface SurfaceGrid {
   query: number;
 }
 
-const grids = new WeakMap<PointSample, Map<number, SurfaceGrid>>();
+const grids = new WeakMap<PointSample, Map<string, SurfaceGrid>>();
 
-/** The sample's grid for `frame`'s up axis, built on first use and kept with the sample. */
+/** The sample's grid for `frame`'s up axis and its sign, built on first use and kept with the sample. */
 export function surfaceGrid(sample: PointSample, frame: ScanFrame): SurfaceGrid {
-  const up = SCAN_FRAME_AXES[frame].up[0];
+  const [up, sign] = SCAN_FRAME_AXES[frame].up;
+  const key = `${up}${sign > 0 ? "+" : "-"}`;
   let byAxis = grids.get(sample);
   if (byAxis === undefined) {
     byAxis = new Map();
     grids.set(sample, byAxis);
   }
-  let grid = byAxis.get(up);
+  let grid = byAxis.get(key);
   if (grid === undefined) {
     grid = buildGrid(sample, frame);
-    byAxis.set(up, grid);
+    byAxis.set(key, grid);
   }
   return grid;
 }
@@ -71,22 +82,29 @@ function buildGrid(sample: PointSample, frame: ScanFrame): SurfaceGrid {
   const across = ([0, 1, 2] as const).filter((axis) => axis !== up) as [0 | 1 | 2, 0 | 1 | 2];
   const { positions } = sample;
   const count = Math.min(sample.count, Math.floor(positions.length / 3));
+  const finite = (i: number): boolean =>
+    Number.isFinite(positions[i * 3]) && Number.isFinite(positions[i * 3 + 1]) && Number.isFinite(positions[i * 3 + 2]);
   const minimum = [Infinity, Infinity, Infinity];
   const maximum = [-Infinity, -Infinity, -Infinity];
+  let kept = 0;
   for (let i = 0; i < count; i += 1) {
+    if (!finite(i)) continue;
+    kept += 1;
     for (let axis = 0; axis < 3; axis += 1) {
       const value = positions[i * 3 + axis];
       if (value < minimum[axis]) minimum[axis] = value;
       if (value > maximum[axis]) maximum[axis] = value;
     }
   }
-  if (count === 0) {
+  if (kept === 0) {
     minimum.fill(0);
     maximum.fill(0);
   }
-  const spanA = maximum[across[0]] - minimum[across[0]];
-  const spanB = maximum[across[1]] - minimum[across[1]];
-  const cells = Math.max(1, Math.min(MAX_CELLS, Math.ceil(count / POINTS_PER_CELL)));
+  const [lowA, highA] = robustRange(count, (i) => positions[i * 3 + across[0]]);
+  const [lowB, highB] = robustRange(count, (i) => positions[i * 3 + across[1]]);
+  const spanA = highA - lowA;
+  const spanB = highB - lowB;
+  const cells = Math.max(1, Math.min(MAX_CELLS, Math.ceil(kept / POINTS_PER_CELL)));
   const fitted = Math.sqrt((spanA * spanB) / cells);
   const cell = Math.max(
     fitted > 0 ? fitted : Math.max(spanA, spanB, 1) / Math.sqrt(cells),
@@ -99,16 +117,22 @@ function buildGrid(sample: PointSample, frame: ScanFrame): SurfaceGrid {
   const cellOf = new Uint32Array(count);
   const starts = new Uint32Array(columns * rows + 1);
   for (let i = 0; i < count; i += 1) {
-    const column = Math.min(columns - 1, Math.floor((positions[i * 3 + across[0]] - minimum[across[0]]) / cell));
-    const row = Math.min(rows - 1, Math.floor((positions[i * 3 + across[1]] - minimum[across[1]]) / cell));
+    if (!finite(i)) {
+      cellOf[i] = SKIPPED;
+      continue;
+    }
+    const column = clampIndex(Math.floor((positions[i * 3 + across[0]] - lowA) / cell), columns);
+    const row = clampIndex(Math.floor((positions[i * 3 + across[1]] - lowB) / cell), rows);
     const at = row * columns + column;
     cellOf[i] = at;
     starts[at + 1] += 1;
   }
   for (let c = 0; c < columns * rows; c += 1) starts[c + 1] += starts[c];
   const fill = starts.slice(0, columns * rows);
-  const indices = new Uint32Array(count);
-  for (let i = 0; i < count; i += 1) indices[fill[cellOf[i]]++] = i;
+  const indices = new Uint32Array(kept);
+  for (let i = 0; i < count; i += 1) {
+    if (cellOf[i] !== SKIPPED) indices[fill[cellOf[i]]++] = i;
+  }
 
   return {
     across,
@@ -116,6 +140,7 @@ function buildGrid(sample: PointSample, frame: ScanFrame): SurfaceGrid {
     upSign,
     minimum: [minimum[0], minimum[1], minimum[2]],
     maximum: [maximum[0], maximum[1], maximum[2]],
+    low: [lowA, lowB],
     cell,
     columns,
     rows,
@@ -124,6 +149,10 @@ function buildGrid(sample: PointSample, frame: ScanFrame): SurfaceGrid {
     visited: new Uint32Array(columns * rows),
     query: 0,
   };
+}
+
+function clampIndex(index: number, size: number): number {
+  return Math.min(size - 1, Math.max(0, index));
 }
 
 /**
@@ -152,8 +181,7 @@ export function snapHeight(
   const eye = subtract(eyeOf(camera, frame), origin);
   const { forward, right, up } = viewBasis(camera, frame);
 
-  const metresPerPxAt = (distance: number): number =>
-    orthographic ? (2 * half) / viewport.height : (2 * tangent * Math.max(distance, 0)) / viewport.height;
+  const metresPerPxAt = (distance: number): number => metresPerPixelAt(camera, distance, viewport.height);
   const centre: Point3D = [
     (grid.minimum[0] + grid.maximum[0]) / 2,
     (grid.minimum[1] + grid.maximum[1]) / 2,
@@ -191,10 +219,10 @@ export function snapHeight(
     const radius = tolerancePx * metresPerPxAt(t + stride) + level * stride;
     const atA = rayOrigin[a] + direction[a] * t;
     const atB = rayOrigin[b] + direction[b] * t;
-    const c0 = Math.max(0, Math.floor((atA - radius - grid.minimum[a]) / grid.cell));
-    const c1 = Math.min(grid.columns - 1, Math.floor((atA + radius - grid.minimum[a]) / grid.cell));
-    const r0 = Math.max(0, Math.floor((atB - radius - grid.minimum[b]) / grid.cell));
-    const r1 = Math.min(grid.rows - 1, Math.floor((atB + radius - grid.minimum[b]) / grid.cell));
+    const c0 = clampIndex(Math.floor((atA - radius - grid.low[0]) / grid.cell), grid.columns);
+    const c1 = clampIndex(Math.floor((atA + radius - grid.low[0]) / grid.cell), grid.columns);
+    const r0 = clampIndex(Math.floor((atB - radius - grid.low[1]) / grid.cell), grid.rows);
+    const r1 = clampIndex(Math.floor((atB + radius - grid.low[1]) / grid.cell), grid.rows);
     for (let row = r0; row <= r1; row += 1) {
       for (let column = c0; column <= c1; column += 1) {
         const at = row * grid.columns + column;
@@ -247,7 +275,7 @@ function clipToBox(
   for (let axis = 0; axis < 3; axis += 1) {
     const low = minimum[axis] - margin;
     const high = maximum[axis] + margin;
-    if (Math.abs(direction[axis]) < 1e-12) {
+    if (Math.abs(direction[axis]) < PARALLEL_EPSILON) {
       if (origin[axis] < low || origin[axis] > high) return null;
       continue;
     }

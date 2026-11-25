@@ -1,9 +1,11 @@
 import { act, screen, waitFor } from "@testing-library/react";
+import { userEvent } from "@testing-library/user-event";
 import type { JSX } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@robomous/ui-core";
 import { renderWithData } from "../testing/dataHarness";
+import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { ScanStrip } from "./PointCloudStage";
 import { NO_POLYLINE_CLASS_REASON, useScanWorkspace, type ScanWorkspace } from "./scanWorkspace";
 
@@ -15,6 +17,7 @@ const VEHICLE = { name: "vehicle", geometries: ["cuboid_3d"], color: "#38bdf8", 
 const CURB = { name: "curb", geometries: ["polyline_3d"], color: "#a3e635", attributes: [] };
 
 beforeEach(() => {
+  stubResizeObserver();
   vi.stubGlobal("fetch", async (request: Request) => {
     const path = new URL(request.url).pathname;
     if (path.endsWith(`/sources/${SOURCE}`)) {
@@ -75,9 +78,22 @@ describe("the scan strip", () => {
   });
 
   it("disables Draw a polyline with the reason when no class accepts a 3D polyline", async () => {
-    await strip([VEHICLE]);
+    const scan = await strip([VEHICLE]);
     const tool = screen.getByTestId("scan-tool-polyline");
-    expect(tool).toHaveProperty("disabled", true);
+    expect(tool.getAttribute("aria-disabled")).toBe("true");
     expect(tool.closest("[data-reason]")?.getAttribute("data-reason")).toBe(NO_POLYLINE_CLASS_REASON);
+
+    await userEvent.click(tool);
+    expect(scan().toolKind).not.toBe("polyline");
+  });
+
+  it("keeps a withheld tool focusable with no wrapper inside the tool group, its reason read on focus", async () => {
+    await strip([VEHICLE]);
+    const select = screen.getByTestId("scan-tool-select");
+    const tool = screen.getByTestId("scan-tool-polyline");
+    expect(tool.parentElement).toBe(select.parentElement);
+    tool.focus();
+    expect(document.activeElement).toBe(tool);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(NO_POLYLINE_CLASS_REASON);
   });
 });

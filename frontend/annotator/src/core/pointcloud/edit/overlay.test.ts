@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { EMPTY_SELECTION, selectOnly } from "../../state/selection";
+import type { Point, Point3D } from "../../types";
+import { heightOf, type ScanFrame } from "../frame";
+import { cuboidSegments } from "../labels";
 import { contextOf, pixelOf, scanBox, scanDocumentOf, scanLine } from "./_scan";
 import { scanHandleLayout, scanVertexLayout } from "./overlay";
 import { faceHandles, hitTest3D, yawRing } from "./scene";
@@ -43,6 +46,44 @@ describe("scanHandleLayout", () => {
     const after = scanHandleLayout(contextOf(moved, { selection: selectOnly("near") }));
     expect(after?.handles[0]?.point).not.toEqual(before?.handles[0]?.point);
   });
+});
+
+describe("the footprint and the drawn label", () => {
+  const FRAMES: readonly ScanFrame[] = ["lidar_flu", "camera_rdf", "lidar_rfu"];
+  const YAWS = [-Math.PI, -2, -0.7, 0, 0.3, Math.PI / 2, 2.5, Math.PI];
+
+  for (const frame of FRAMES) {
+    it(`trace the same bottom face in ${frame} at every yaw`, () => {
+      for (const yaw of YAWS) {
+        const box = scanBox("near", { center: [1, 0.5, 0.25], size: [4, 2, 1.5], yaw });
+        const scene = contextOf(scanDocumentOf(box), {
+          selection: selectOnly("near"),
+          frame,
+          camera: { yaw: 0.4, pitch: 0.9, distance: 25, target: [0, 0, 0] },
+        });
+        const segments = cuboidSegments(box.geometry, frame);
+        const edges: [Point, Point][] = [];
+        for (let at = 0; at < segments.length; at += 6) {
+          const from: Point3D = [segments[at]!, segments[at + 1]!, segments[at + 2]!];
+          const to: Point3D = [segments[at + 3]!, segments[at + 4]!, segments[at + 5]!];
+          const bottom = heightOf(frame, box.geometry.center) - 0.75;
+          if (Math.abs(heightOf(frame, from) - bottom) < 1e-9 && Math.abs(heightOf(frame, to) - bottom) < 1e-9) {
+            edges.push([pixelOf(scene, from), pixelOf(scene, to)]);
+          }
+        }
+        expect(edges).toHaveLength(4);
+
+        const footprint = scanHandleLayout(scene)?.footprint ?? [];
+        expect(footprint).toHaveLength(4);
+        const near = (p: Point, q: Point): boolean => Math.hypot(p[0] - q[0], p[1] - q[1]) < 1e-9;
+        for (let i = 0; i < 4; i += 1) {
+          const [a, b] = [footprint[i]!, footprint[(i + 1) % 4]!];
+          const joined = edges.some(([from, to]) => (near(a, from) && near(b, to)) || (near(a, to) && near(b, from)));
+          expect(joined, `footprint side ${i} at yaw ${yaw}`).toBe(true);
+        }
+      }
+    });
+  }
 });
 
 describe("scanVertexLayout", () => {
