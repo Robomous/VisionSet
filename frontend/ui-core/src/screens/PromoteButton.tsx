@@ -134,6 +134,7 @@ export function PromoteButton({
         <SheetLine
           tone="success"
           data-testid={`promoted-${batch.name}`}
+          about={batch}
           {...(promote.isSuccess && onOpenDataset !== undefined
             ? {
                 action: (
@@ -150,7 +151,7 @@ export function PromoteButton({
       )}
 
       {promote.isError && (
-        <SheetLine tone="error" data-testid={`promote-error-${batch.name}`}>
+        <SheetLine tone="error" data-testid={`promote-error-${batch.name}`} about={batch}>
           {refusalProse(promote.error)}
         </SheetLine>
       )}

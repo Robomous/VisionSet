@@ -147,6 +147,7 @@ export function CompleteBatchButton({ batch, projectId, onOpenDataset, onPromote
         <SheetLine
           tone="success"
           data-testid={`completed-${batch.name}`}
+          about={batch}
           {...(promote.isSuccess && onOpenDataset !== undefined
             ? {
                 action: (
@@ -163,12 +164,12 @@ export function CompleteBatchButton({ batch, projectId, onOpenDataset, onPromote
         </SheetLine>
       )}
       {finish.isError && (
-        <SheetLine tone="error" data-testid={`complete-error-${batch.name}`}>
+        <SheetLine tone="error" data-testid={`complete-error-${batch.name}`} about={batch}>
           {refusalProse(finish.error)}
         </SheetLine>
       )}
       {promote.isError && (
-        <SheetLine tone="error" data-testid={`complete-promote-error-${batch.name}`}>
+        <SheetLine tone="error" data-testid={`complete-promote-error-${batch.name}`} about={batch}>
           {refusalProse(promote.error)}
         </SheetLine>
       )}

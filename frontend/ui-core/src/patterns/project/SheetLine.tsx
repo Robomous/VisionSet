@@ -11,8 +11,10 @@
  * dataset ↗*, In dataset). Anywhere else — a test, a screen with no sheet — the
  * line stays in place, as a row.
  *
- * A toast is raised once, when the line appears, and keyed by its test id, so a
- * second render (StrictMode, a refetch) never stacks another; its words follow
+ * A toast is raised once, when the line appears, and keyed by its test id and
+ * the id of what it is `about`, so a second render (StrictMode, a refetch) never
+ * stacks another and two batches of one name never share one; it names what it
+ * is about, because the sheet may have moved on by the time it is read; its words follow
  * the line live (`spokenLines`), so a report that settles after the press is
  * corrected in place, and a toast a person closed stays closed.
  * A refusal stays up twice as long as an outcome: it is the one a person has to
@@ -21,7 +23,7 @@
 
 import { cn } from "@robomous/ui-core";
 import { CircleAlert, CircleCheckBig, type LucideIcon } from "lucide-react";
-import { useContext, useEffect, useEffectEvent, useId, useSyncExternalStore, type JSX, type ReactNode } from "react";
+import { useContext, useEffect, useEffectEvent, useId, useState, useSyncExternalStore, type JSX, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { InSheet, spokenLines } from "./sheetLines";
@@ -44,6 +46,8 @@ export interface SheetLineProps {
   readonly action?: ReactNode;
   /** On the words, so a test reads the sentence and not the link beside it. */
   readonly "data-testid"?: string;
+  /** What the line is about — a toast names it, and is keyed by its id. */
+  readonly about?: { readonly id: string; readonly name: string };
 }
 
 export function SheetLine(props: SheetLineProps): JSX.Element | null {
@@ -51,27 +55,38 @@ export function SheetLine(props: SheetLineProps): JSX.Element | null {
 }
 
 /** Inside a sheet: an outcome or a refusal, raised as a toast once. */
-function AsToast({ tone, children, action, "data-testid": testId }: SheetLineProps): null {
+function AsToast({ tone, children, action, "data-testid": testId, about }: SheetLineProps): null {
   const fallback = useId();
-  const id = testId ?? fallback;
+  const id = `${testId ?? fallback}${about === undefined ? "" : `@${about.id}`}`;
   // The words follow the line every render; the toast is raised once per line.
   useEffect(() => {
-    spokenLines.set(id, { words: children, way: action });
+    spokenLines.follow(id, { words: children, way: action });
   });
   const raise = useEffectEvent((): void => {
-    spokenLines.set(id, { words: children, way: action });
-    (tone === "error" ? toast.error : toast.success)(<Spoken id={id} testId={testId} />, { id, duration: DURATION[tone] });
+    spokenLines.raise(id, { words: children, way: action });
+    const end = (): void => spokenLines.end(id);
+    (tone === "error" ? toast.error : toast.success)(<Spoken id={id} testId={testId} name={about?.name} />, {
+      id,
+      duration: DURATION[tone],
+      onDismiss: end,
+      onAutoClose: end,
+    });
   });
   useEffect(() => raise(), [tone, id]);
   return null;
 }
 
 /** A toast's words, read live from the line that raised it. */
-function Spoken({ id, testId }: { readonly id: string; readonly testId: string | undefined }): JSX.Element | null {
-  const line = useSyncExternalStore(spokenLines.subscribe, () => spokenLines.get(id));
+function Spoken({ id, testId, name }: { readonly id: string; readonly testId: string | undefined; readonly name: string | undefined }): JSX.Element | null {
+  const live = useSyncExternalStore(spokenLines.subscribe, () => spokenLines.get(id));
+  // The entry ends as the toast starts to leave; it leaves still saying its last words.
+  const [last, setLast] = useState(live);
+  if (live !== undefined && live !== last) setLast(live);
+  const line = live ?? last;
   if (line === undefined) return null;
   return (
     <span className="flex min-w-0 flex-col gap-1">
+      {name !== undefined && <span className="truncate font-medium">{name}</span>}
       <span className="text-pretty tabular-nums" data-testid={testId}>
         {line.words as ReactNode}
       </span>

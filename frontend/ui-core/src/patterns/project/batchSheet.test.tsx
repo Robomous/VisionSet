@@ -10,13 +10,14 @@
  */
 
 import { TooltipProvider } from "@robomous/ui-core";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import { describe, expect, it, vi } from "vitest";
 
 import { BatchSheet, type BatchSheetProps, type SheetJob } from "./BatchSheet";
 import { SheetLine } from "./SheetLine";
+import { InSheet, spokenLines } from "./sheetLines";
 import type { BatchRowView } from "./BatchTable";
 
 const ROW: BatchRowView = {
@@ -111,15 +112,16 @@ describe("the batch's panel", () => {
     renderSheet();
     const facts = screen.getByTestId("batch-sheet-facts");
     expect(facts.textContent).toContain("18 of 48 · 38%");
-    expect(screen.queryByTestId("batch-sheet-split-toggle")).toBeNull();
     const labeled = within(facts).getByText("Labeled").closest("div");
-    expect(labeled?.querySelector("button")).toBeNull();
+    expect(labeled?.querySelector("button, [aria-expanded]")).toBeNull();
   });
 
   it("says Not started for a batch with no jobs, with nothing to unfold", () => {
     renderSheet({ row: { ...ROW, done: null } });
-    expect(screen.getByTestId("batch-sheet-facts").textContent).toContain("Not started");
-    expect(screen.queryByTestId("batch-sheet-split-toggle")).toBeNull();
+    const facts = screen.getByTestId("batch-sheet-facts");
+    expect(facts.textContent).toContain("Not started");
+    const labeled = within(facts).getByText("Labeled").closest("div");
+    expect(labeled?.querySelector("button, [aria-expanded]")).toBeNull();
   });
 
   it("puts every action in the top bar, and opens on the forward one", () => {
@@ -132,7 +134,6 @@ describe("the batch's panel", () => {
           <button type="button" data-autofocus="">
             Annotate
           </button>
-          <span data-line="">2 images left</span>
         </>
       ),
     });
@@ -140,7 +141,7 @@ describe("the batch's panel", () => {
     const bar = screen.getByTestId("batch-sheet-actions");
     expect(bar.closest("header")).not.toBeNull();
     expect(within(bar).getByText("Auto-label")).toBeTruthy();
-    expect(within(bar).getByText("2 images left")).toBeTruthy();
+    expect(within(bar).getByText("Annotate")).toBeTruthy();
     expect(document.querySelector("footer")).toBeNull();
     expect(document.activeElement?.textContent).toBe("Annotate");
   });
@@ -204,10 +205,10 @@ describe("the batch's panel", () => {
           noJobs="No jobs yet."
           actions={
             <>
-              <SheetLine tone="success" data-testid="done-line" action={<a href="#dataset">Open the dataset</a>}>
+              <SheetLine tone="success" data-testid="done-line" about={{ id: "b1", name: ROW.name }} action={<a href="#dataset">Open the dataset</a>}>
                 Completed.
               </SheetLine>
-              <SheetLine tone="error" data-testid="refused-line">
+              <SheetLine tone="error" data-testid="refused-line" about={{ id: "b1", name: ROW.name }}>
                 This batch can’t be completed yet.
               </SheetLine>
             </>
@@ -217,14 +218,51 @@ describe("the batch's panel", () => {
       </TooltipProvider>,
     );
 
-    expect(screen.queryByTestId("batch-sheet-status")).toBeNull();
     const done = await screen.findByTestId("done-line");
     const refused = await screen.findByTestId("refused-line");
     // Not in the panel: in the toasts.
     expect(screen.getByTestId("batch-sheet-actions").contains(done)).toBe(false);
+    expect(document.querySelector("[data-line]")).toBeNull();
     expect(done.closest("[data-sonner-toast]")?.getAttribute("data-type")).toBe("success");
     expect(refused.closest("[data-sonner-toast]")?.getAttribute("data-type")).toBe("error");
     expect(done.closest("[data-sonner-toast]")?.textContent).toContain("Open the dataset");
+    // Named, because the panel may be on another batch by the time it is read.
+    expect(done.closest("[data-sonner-toast]")?.textContent).toContain(ROW.name);
+    expect(refused.closest("[data-sonner-toast]")?.textContent).toContain(ROW.name);
+  });
+
+  it("keys a toast by the batch's id, so two batches of one name each raise their own", async () => {
+    render(
+      <InSheet.Provider value>
+        <SheetLine tone="error" data-testid="refused-line" about={{ id: "b1", name: "drive" }}>
+          First.
+        </SheetLine>
+        <SheetLine tone="error" data-testid="refused-line" about={{ id: "b2", name: "drive" }}>
+          Second.
+        </SheetLine>
+        <Toaster />
+      </InSheet.Provider>,
+    );
+
+    await waitFor(() => expect(screen.getAllByTestId("refused-line").map((line) => line.textContent)).toEqual(expect.arrayContaining(["First.", "Second."])));
+  });
+
+  it("forgets a toast's words once it has gone", async () => {
+    render(
+      <InSheet.Provider value>
+        <SheetLine tone="success" data-testid="done-line" about={{ id: "b1", name: "drive" }}>
+          Completed.
+        </SheetLine>
+        <Toaster />
+      </InSheet.Provider>,
+    );
+
+    await screen.findByTestId("done-line");
+    expect(spokenLines.get("done-line@b1")).toBeDefined();
+    act(() => {
+      toast.dismiss("done-line@b1");
+    });
+    await waitFor(() => expect(spokenLines.get("done-line@b1")).toBeUndefined());
   });
 
   it("keeps a line in place, as a row, outside a panel", () => {

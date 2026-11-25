@@ -386,7 +386,7 @@ export function StartAnnotatingButton({ batch }: { readonly batch: Batch }): JSX
         onClick={() => start.mutate()}
       />
       {refusal !== null && (
-        <SheetLine tone="error" data-testid="start-batch-error">
+        <SheetLine tone="error" data-testid="start-batch-error" about={batch}>
           {refusalProse(refusal)}
         </SheetLine>
       )}

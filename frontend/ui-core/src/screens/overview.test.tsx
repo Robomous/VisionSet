@@ -1719,17 +1719,23 @@ describe("the batches panel", () => {
 
     it("says a batch wholly in the dataset is there, rather than offering to add it again", async () => {
       trio();
-      renderWithData(<OverviewPanel projectId={PROJECT} />);
+      renderWithData(
+        <>
+          <OverviewPanel projectId={PROJECT} />
+          <Toaster />
+        </>,
+      );
 
       // Downtown declares promote, but every one of its images is already in the trunk:
-      // no Add to dataset, and no line saying so either — its State says In dataset.
+      // no Add to dataset, and no line or toast saying so either — its State says In dataset.
       const footer = await actionsOf("Downtown");
       expect(within(footer).queryByTestId("promote-Downtown")).toBeNull();
-      expect(screen.queryByTestId("in-dataset-Downtown")).toBeNull();
+      expect(document.querySelector("[data-line], [data-sonner-toast]")).toBeNull();
+      expect(document.body.textContent).not.toMatch(/All \d+ images/);
       expect(within(screen.getByTestId("batch-sheet-facts")).getByTestId("batch-phase").textContent).toBe("In dataset");
     });
 
-    it("puts Correct in a completed batch's bar, with no Delete, away from the forward step, and opens its dialog", async () => {
+    it("puts Correct in a completed batch's bar, after a withheld Delete and away from the forward step, and opens its dialog", async () => {
       trio();
       renderWithData(<OverviewPanel projectId={PROJECT} />);
 
