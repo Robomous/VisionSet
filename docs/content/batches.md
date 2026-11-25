@@ -219,7 +219,27 @@ batches.complete(batch.id)  # BatchNotComplete: 2 of 5 jobs still unfinished
 batch is what lets its annotated assets be promoted into the Dataset. `complete` is declared
 only while every asset is settled, so a declared `complete` means every job can be closed; the
 service still refuses until each has been. Moving a job to
-`completed` is the job service's business - see [jobs.md](jobs.md); this service only reads it.
+`completed` is the job service's business - see [jobs.md](jobs.md); `complete` only reads it.
+
+### Finishing closes the jobs and the batch together
+
+```python
+batches.finish(batch.id)  # FinishedBatch(batch=…, jobs_completed=2)
+```
+
+`finish` is the call for a batch that declares `complete`. In **one transaction** it starts each
+`pending` job and completes it, completes each `in_progress` one, leaves `completed` ones alone -
+every move through `JOB_TRANSITIONS` - and then completes the batch. Every write lands or none
+does. It refuses unless the batch declares `complete` (`batch_actions` over the batch's tally):
+`InvalidTransition` when the batch is not `in_annotation`, `BatchNotComplete` while an asset is
+unsettled.
+
+The decision is made twice: once on the first read, and again under the write lock the call
+then takes on the batch's state, over jobs read again under that lock. An asset reopened
+anywhere between the two makes the whole call refuse and leaves every job as it was. A client
+that closed the jobs one request at a time could not promise that: the jobs closed before the
+refusal stayed closed, because completed work is forward-only. `BatchCompleted` follows the
+commit, as it does for `complete`, and `jobs_completed` counts the jobs this call closed.
 
 ## Corrections open on the labels that are already there
 
@@ -335,9 +355,10 @@ declaration and the refusal can never disagree.
 
 `complete` is declared only while every asset in the batch's progress tally is in
 `SETTLED_PROGRESS` - the condition each job's own `complete` applies - so every endpoint that
-publishes the batch declares it the same way. It can still be refused: completion is *derived*
-from the jobs, and `BatchNotComplete` answers until each job has been moved to `completed`,
-which the tally does not say.
+publishes the batch declares it the same way. `complete` itself can still be refused:
+completion is *derived* from the jobs, and `BatchNotComplete` answers until each job has been
+moved to `completed`, which the tally does not say. `finish` is the move a declared `complete`
+always admits, short of a race: it closes the jobs too.
 
 ## Pre-labeling
 
@@ -479,7 +500,7 @@ selection inline, one job after another.
 
 `approve` and `complete` each publish a [domain event](events.md) - `BatchApproved`, carrying
 the pin and the job ids, and `BatchCompleted`, which is the announcement that this batch is now
-promotable. Both fire *after* the transaction commits, so a subscriber never sees a partition
+promotable. `finish` publishes the same `BatchCompleted`. Both fire *after* the transaction commits, so a subscriber never sees a partition
 that was rolled back and a subscriber that raises cannot roll one back. `start` announces
 nothing: no work is frozen or finished by it.
 
@@ -531,12 +552,13 @@ visionset batch approve "$BATCH" --jobs-of 100 [--start]
 visionset batch start "$BATCH"
 visionset batch pre-label "$BATCH" CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels] [--geometry SHAPE ...]
 visionset batch complete "$BATCH" [--promote]
+visionset batch finish "$BATCH" [--promote]
 visionset batch promote "$BATCH"
 ```
 
 Each is one service call, and the listing carries the progress counts because a batch's name and
 state do not say whether anybody has started on it. `--start` and `--promote` are the next
-command made in the same run - `approve` then `start`, `complete` then `promote` - and
+command made in the same run - `approve` then `start`, `complete` or `finish` then `promote` - and
 `ingest --start` is `approve` (one job) then `start` on the batch it filled. No transition is
 added for them: `start` needs only `approved` and `promote` only `completed`, so the second call
 is legal whenever the first succeeded, and each commits on its own. A refused second step
@@ -573,6 +595,8 @@ POST /batches/{id}/approve   { "partition": … }      → 200 BatchOut
 POST /batches/{id}/start                             → 200 BatchOut
 POST /batches/{id}/repin?allow_destructive=          → 200 BatchOut
 POST /batches/{id}/complete                          → 200 BatchOut
+POST /batches/{id}/finish                            → 200 BatchFinishedOut, the batch and
+                                                        jobs_completed
 GET  /batches/{id}/pre-label?connection_id=&geometries=   → 200 PreLabelPlanOut, the prompt,
                                                         every class left out of it, and
                                                         `produces` (the selection, if one)
@@ -639,7 +663,9 @@ The lifecycle *is* on the wire, because nothing downstream is reachable without 
 annotation may only be written into a batch that is `in_annotation`. Each move keeps the
 refusal this service already makes: a non-draft approve and an unapproved start are 409
 `INVALID_TRANSITION`, an empty batch is 409 `EMPTY_BATCH`, a project with no schema to pin is
-404 `SCHEMA_NOT_FOUND`, and a batch with an unfinished job is 409 `BATCH_NOT_COMPLETE`.
+404 `SCHEMA_NOT_FOUND`, and a batch with an unfinished job is 409 `BATCH_NOT_COMPLETE` on
+`complete`. `finish` answers 409 `BATCH_NOT_COMPLETE` for an unsettled asset and 409
+`INVALID_TRANSITION` outside `in_annotation`.
 
 The **asset listing was the API's first paged collection**, and a batch of fifty thousand frames is why; the trunk's
 own listing is the other one. `limit` and `offset` bound the *response*, never the read: `total` is the size of the whole batch, so a

@@ -45,7 +45,7 @@ visionset batch approve BATCH_ID [--jobs-of N] [--start]
 visionset batch pre-label BATCH_ID CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels] [--geometry SHAPE]...
 visionset project pre-label PROJECT CONNECTION [--batch BATCH_ID]... [--minimum-confidence FLOAT] [--geometry SHAPE]...
 visionset batch start|promote BATCH_ID
-visionset batch complete BATCH_ID [--promote]
+visionset batch complete|finish BATCH_ID [--promote]
 
 visionset job list --batch BATCH_ID
 visionset job next JOB_ID [-n COUNT]
@@ -93,7 +93,7 @@ BATCH=$(visionset ingest ./incoming --project road-signs)
 
 visionset batch approve "$BATCH" --jobs-of 100 --start
 # …label in the app (the CLI records progress with `job mark`, but draws no labels)…
-visionset batch complete "$BATCH" --promote
+visionset batch finish "$BATCH" --promote   # closes the jobs and the batch together
 
 visionset release publish --tag v1.0 --project road-signs --split 0.7,0.15,0.15
 visionset release verify v1.0 --project road-signs && \

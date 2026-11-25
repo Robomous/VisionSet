@@ -1436,10 +1436,9 @@ draft through `approved` to `in_annotation` - in the batch's approve dialog, and
 Add images dialog's last step, which draws the same form. **Complete**, with its *Add the labeled images to the dataset* switch on, closes
 the batch and moves its work into the trunk; it is the panel footer's one way to finish a batch,
 withheld until the batch declares it, and says what the press moved in the same sentence *Add to
-dataset* uses. Its press reads the batch afresh and closes the open jobs only if that read still
-declares `complete`; otherwise it sends the batch's own request alone and says the refusal, so a
-refused press closes no job - unless an asset is reopened between that read and the job writes,
-a race the client cannot close.
+dataset* uses. Its press is one request, `POST /batches/{id}/finish`, which closes the open
+jobs and the batch in one kernel transaction; a refusal is said in words and closes no job, even
+when an asset was reopened after the panel last read the batch.
 
 Neither is a new transition. Each control sends the two requests a person could send one
 at a time, in order, and stops where the kernel stops it: a refusal on the second step

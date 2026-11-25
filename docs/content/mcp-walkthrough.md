@@ -184,7 +184,9 @@ dataset_stats  project=...   ->  {"asset_count": 2, "annotation_count": 2,
 ```
 
 Completing every job does not complete the batch; `complete_batch` derives that itself, because one
-state machine in two places is one too many. Promotion is a union against current membership, so it
+state machine in two places is one too many. `finish_batch` is the shorter walk: once every asset is
+settled it closes the open jobs and the batch together, in one call that either does all of it or
+none. Promotion is a union against current membership, so it
 is idempotent - and it admits only promotable assets, which is why four assets become two.
 
 `dataset_stats` counts **both** annotations and the assets carrying them, per class: a thousand
