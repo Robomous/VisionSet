@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { mulberry32, SEEDS } from "../_random";
 import type { Cuboid3DGeometry, Point3D } from "../types";
-import { projectToNdc, topDownCamera, viewProjection, type OrbitCamera } from "./camera";
+import { eyeOf, projectToNdc, topDownCamera, viewProjection, type OrbitCamera } from "./camera";
 import { fromForwardLeftUp, heightOf, type ScanFrame } from "./frame";
 import {
   closestOnAxis,
@@ -236,5 +236,20 @@ describe("an orthographic camera", () => {
     const ray = screenRay(camera, "lidar_flu", VIEWPORT, pixel ?? [0, 0]);
     expect(dot(subtract(above, ray.origin), ray.direction)).toBeGreaterThan(0);
     expect(rayGroundHit(ray, "lidar_flu", 0)).not.toBeNull();
+  });
+
+  it("picks exactly what it draws above the eye, on a scene kilometres across", () => {
+    const camera = topDownCamera([0, 0, 0], 50);
+    const eye = eyeOf(camera, "lidar_flu");
+    for (const radius of [30, 5_000, 40_000]) {
+      for (const above of [10, 8_000, 9_999, 10_001, 12_000, 30_000]) {
+        const point: Point3D = [0.5, -0.25, eye[2] + above];
+        const ndc = projectToNdc(viewProjection(camera, "lidar_flu", 1, radius), point);
+        const drawn = ndc !== null && Math.abs(ndc[2]) <= 1;
+        const ray = ndcRay(camera, "lidar_flu", 1, ndc === null ? [0, 0] : [ndc[0], ndc[1]]);
+        const picked = dot(subtract(point, ray.origin), ray.direction) > 0;
+        expect(picked, `${above} m above the eye, radius ${radius}`).toBe(drawn);
+      }
+    }
   });
 });

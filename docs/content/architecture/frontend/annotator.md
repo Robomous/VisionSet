@@ -129,11 +129,20 @@ draft boxes go through the canvas's one lines buffer, flagged with an `emphasis`
 in `highlightColor`. In `ui-core`, `useScanWorkspace` holds the scan store beside the image
 store on the annotation page, and `mergePlans` joins the two save plans into one dirty state.
 
+Unlike the image machine, the scan machine takes `undo` and `redo` as events, so every surface
+sends one `useScanEditor.undo` / `redo`: a draft steps back in the state and leaves the history
+alone, a drag emits `discard` before the `undo` or `redo` effect, and at rest the effect alone
+reaches the store. Each drag state also keeps `committed`, the label's geometry when it began,
+and ends with a `discard` once the committed document no longer holds an equal geometry (compared by
+value, so a change to another label or a re-stored copy leaves the drag alone), so a host
+that walks the history behind the machine never has a drag rebuilt from a stale origin.
+
 The top-down view is a second `PointCloudCanvas` with `pinned`: its camera is `topDownCamera`,
 straight down the up axis and **orthographic** (`OrbitCamera.projection`), because a perspective
 camera that close draws a box's top visibly larger than its footprint. `ndcRay`, `screenOf`,
 `metresPerPixel` and `viewProjection` each take the orthographic case, so the machine, the hit
-test and `scanHandleLayout` are unchanged. It follows the perspective camera's target through
+test and `scanHandleLayout` are unchanged. The orthographic near plane and the picking ray's
+start share `ORTHOGRAPHIC_STANDOFF`, so what is drawn above the eye is exactly what can be picked. It follows the perspective camera's target through
 `followTarget` and turns its orbit drag into a pan (`scanPointerRole(…, pinned)`). Both views feed
 the one `useScanEditor`; each `ScanView` names its `kind`, which reaches the machine as
 `Scene3D.view`. A `top-down` view offers only the four side faces (`handleFaces`) and never reads

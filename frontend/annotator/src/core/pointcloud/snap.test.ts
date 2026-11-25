@@ -6,12 +6,13 @@ import { eyeOf, topDownCamera, viewBasis, type OrbitCamera } from "./camera";
 import type { PointSample } from "./decode";
 import { heightOf, type ScanFrame } from "./frame";
 import { screenOf } from "./ray";
-import { SNAP_NEAR_EQUAL_PX, SNAP_TOLERANCE_PX, snapHeight } from "./snap";
+import { SNAP_NEAR_EQUAL_PX, SNAP_TOLERANCE_PX, snapHeight, surfaceGrid } from "./snap";
 import { add, dot, scale, subtract } from "./vector";
 
 const VIEWPORT = { width: 800, height: 600 };
 const CAMERA: OrbitCamera = { yaw: Math.PI, pitch: 0.6, distance: 30, target: [0, 0, 0] };
 const TOP_DOWN = topDownCamera([0, 0, 0], 30);
+const PER_QUERY_SHARE = 0.05;
 
 function sampleOf(points: readonly Point3D[], origin: Point3D = [0, 0, 0]): PointSample {
   const positions = new Float32Array(points.length * 3);
@@ -126,19 +127,26 @@ describe("snapHeight", () => {
   });
 
   for (const seed of SEEDS) {
-    it(`agrees with projecting every point (seed ${seed})`, () => {
+    it(`agrees with projecting every point, near the frame's zero and far from it (seed ${seed})`, () => {
       const random = mulberry32(seed);
       const frames: readonly ScanFrame[] = ["lidar_flu", "camera_rdf", "lidar_rfu"];
+      const origins = (): Point3D[] => [
+        [0, 0, 0],
+        [1000 * random(), 1000 * random(), 10 * random()],
+        [8192 + 1000 * random(), -8192 - 1000 * random(), 10 * random()],
+        [500_000 + 1000 * random(), 4_100_000 + 1000 * random(), 100 + 10 * random()],
+      ];
+      let compared = 0;
       for (let trial = 0; trial < 12; trial += 1) {
         const frame = frames[trial % 3];
         const points: Point3D[] = [];
         for (let i = 0; i < 400; i += 1) {
           points.push([(random() - 0.5) * 40, (random() - 0.5) * 40, (random() - 0.5) * 40]);
         }
-        const origin: Point3D = trial % 2 === 0 ? [0, 0, 0] : [1000 * random(), 1000 * random(), 10 * random()];
+        const origin = origins()[trial % 4];
         const sample = sampleOf(points.map((point) => add(point, origin)), origin);
         const camera: OrbitCamera =
-          trial % 4 === 3
+          trial % 3 === 2
             ? topDownCamera(origin, 20 + random() * 40)
             : {
                 yaw: (random() * 2 - 1) * Math.PI,
@@ -147,17 +155,21 @@ describe("snapHeight", () => {
                 target: add(origin, [(random() - 0.5) * 10, (random() - 0.5) * 10, (random() - 0.5) * 4]),
               };
         for (let probe = 0; probe < 25; probe += 1) {
-          const pointer: Point = [random() * VIEWPORT.width, random() * VIEWPORT.height];
+          // Aimed near a point of the scan, so the probe asks about a surface rather than empty sky.
+          const aim = screenOf(camera, frame, VIEWPORT, add(origin, points[Math.floor(random() * points.length)]));
+          if (aim === null) continue;
+          const pointer: Point = [aim[0] + (random() - 0.5) * 12, aim[1] + (random() - 0.5) * 12];
           const expected = bruteForce(sample, frame, camera, pointer);
-          const actual = snapHeight(sample, frame, camera, VIEWPORT, pointer);
-          if (expected === null) expect(actual).toBeNull();
-          else expect(actual).toBeCloseTo(expected, 3);
+          if (expected === null) continue;
+          expect(snapHeight(sample, frame, camera, VIEWPORT, pointer)).toBeCloseTo(expected, 3);
+          compared += 1;
         }
       }
+      expect(compared).toBeGreaterThan(200);
     });
   }
 
-  it("answers a pointer over half a million points well inside a frame", () => {
+  it("answers a pointer over half a million points by projecting a small share of them", () => {
     const random = mulberry32(SEEDS[0]);
     const count = 500_000;
     const positions = new Float32Array(count * 3);
@@ -174,13 +186,22 @@ describe("snapHeight", () => {
       { yaw: 0.3, pitch: 0.12, distance: 40, target: [0, 0, 0] },
       topDownCamera([0, 0, 0], 60),
     ];
-    snapHeight(sample, "lidar_flu", views[0], VIEWPORT, [400, 300]);
+    const grid = surfaceGrid(sample, "lidar_flu");
     const queries = 300;
-    const started = performance.now();
+    let examined = 0;
+    let searched = 0;
     for (let q = 0; q < queries; q += 1) {
+      const before = grid.query;
       snapHeight(sample, "lidar_flu", views[q % views.length], VIEWPORT, [random() * VIEWPORT.width, random() * VIEWPORT.height]);
+      if (grid.query === before) continue;
+      searched += 1;
+      for (let cell = 0; cell < grid.visited.length; cell += 1) {
+        if (grid.visited[cell] === grid.query) examined += grid.starts[cell + 1] - grid.starts[cell];
+      }
     }
-    const perQuery = (performance.now() - started) / queries;
-    expect(perQuery).toBeLessThan(16);
+    // A count of the work, not a clock: the grid must keep a query to a small share of the points.
+    expect(searched).toBeGreaterThan(queries * 0.9);
+    expect(examined).toBeGreaterThan(0);
+    expect(examined / searched).toBeLessThan(count * PER_QUERY_SHARE);
   });
 });

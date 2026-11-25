@@ -101,6 +101,13 @@ export function topDownCamera(target: Point3D, distance: number): OrbitCamera {
   return { yaw: Math.PI, pitch: TOP_DOWN_PITCH, distance, target, projection: "orthographic" };
 }
 
+/**
+ * How far behind the eye an orthographic view reaches, in metres: its near
+ * plane, and where a picking ray starts (`ndcRay`), so what is drawn above a
+ * close eye is exactly what can be picked.
+ */
+export const ORTHOGRAPHIC_STANDOFF = 10_000;
+
 /** Half the view's height at the target, in metres; an orthographic view's at every depth. */
 export function viewHalfHeight(camera: OrbitCamera): number {
   return camera.distance * Math.tan(FIELD_OF_VIEW / 2);
@@ -259,9 +266,8 @@ export function viewProjection(
   const far = (local.distance + 2 * radius) * 2;
   const ratio = aspect > 0 ? aspect : 1;
   if (local.projection === "orthographic") {
-    // The near plane sits as far behind the eye as the far one ahead, so nothing above a close eye is cut.
     const half = viewHalfHeight(local);
-    return multiply(orthographic(half * ratio, half, -far, far), lookAt(local, frame));
+    return multiply(orthographic(half * ratio, half, -ORTHOGRAPHIC_STANDOFF, far), lookAt(local, frame));
   }
   return multiply(perspective(FIELD_OF_VIEW, ratio, far / 10_000, far), lookAt(local, frame));
 }

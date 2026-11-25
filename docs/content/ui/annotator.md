@@ -96,13 +96,21 @@ press, so the canvas keeps the keyboard.
   Skip.
 - **Autosave says when a gesture is holding it**: once the wait is up while a drag, an open
   polygon or a pending suggestion is in progress, the save state carries
-  `data-autosave="held"`, and the save goes the moment the gesture ends. A scan's cuboids are
-  autosaved the same way: the frame keeps both documents, and one plan carries both.
+  `data-autosave="held"`, and the save goes the moment the gesture ends. A scan's labels are
+  autosaved the same way: the frame keeps both documents, the wait restarts on a change to
+  either, one plan carries both, and a box or polyline being drawn or a drag in the scan's
+  editor holds the save as a drag on the picture does.
 - **The save state claims a save only after one**: it is absent on a frame that has only been
   looked at, and appears once this visit has unsaved work or has saved.
 - **Where the picture is too narrow for the island and the zoom widget side by side** (a
   52rem stage), the zoom widget rises above the island instead, and below 36rem the island
   drops its keycaps — so the two never overlap down to the editor's minimum viewport.
+- **On a scan the view's own controls** (colour by, labels, reset view) take the zoom widget's
+  place, in one bottom row with the island: the island centred, the controls in the row's
+  right-hand cell, the island moving left of centre before the two would touch, and below a
+  50rem stage the controls stacked above the island at the right. Neither is drawn over the
+  other in View or in Edit, and in Edit the top-down view keeps its foot clear for that row
+  (one row's height, two below 50rem), so no handle there sits under either.
 
 **The status tag says which frame and where it stands**, top-left on the picture: the
 content-hash head (there is no filename on the wire), the progress word beside its dot —
@@ -625,7 +633,12 @@ still zooms. Outside Edit the view keeps its own mapping: a left drag orbits.
   face up later.
 - **Keys.** With the view focused: Delete removes the selection, Escape cancels a gesture or
   lets go of the selection, Enter finishes a height or a polyline, `mod+z` / `mod+shift+z` undo and redo,
-  `mod+s` saves. The strip carries undo and redo too. As in the 2D editor, a click on the
+  `mod+s` saves. Undo and redo are the island's: one pair, which the keys send too.
+  While a label is being drawn, undo steps the draft back — the last vertex of a polyline,
+  a box's height back to its width, its width to nothing — and leaves the history alone, and
+  redo does nothing; during a drag both drop the drag first and then undo or redo. A box's
+  width and height are read from where the click that sets them lands, so a tap with no
+  hover before it draws what it points at. As in the 2D editor, a click on the
   strip, the view's controls or a panel row leaves focus on the view: a row's press does not take
   focus, and if focus was not in the perspective view it goes there, so Delete acts on
   the row just selected.
@@ -639,8 +652,9 @@ the strip.
 A scan's edits share the page's one save plan and dirty state with the image document: the
 autosave, `Next`, `mod+s` and the unsaved-changes guard all cover them, a cuboid created on the
 page and already stored is saved again under the server's id, and an edited import keeps
-its provenance. On a scan the island's undo and redo walk the cuboids' history, and the tool
-rail and the zoom widget are absent: the strip and the view carry those. Edit is disabled, with the reason on the control, when the scan's source
+its provenance. On a scan the island's undo and redo walk the scan labels' history, by the
+rule under *Keys*, and the tool rail and the zoom widget are absent: the strip and the view
+carry those. Edit is disabled, with the reason on the control, when the scan's source
 declares no frame (the server refuses every 3D write there) or the frame is open for viewing
 only; a frame that turns read-only mid-edit leaves Edit on the same render.
 

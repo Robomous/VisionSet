@@ -137,6 +137,7 @@ import {
   type Clipboard,
   type Point,
   type Polarity,
+  type ScanDocument,
   type Suggestion,
   type SuggestionState,
   type Tool,
@@ -286,6 +287,12 @@ const PRECISE_DEVICE_PREF = "annotator.precise-device";
  * bar before anybody thinks to ask.
  */
 export const AUTOSAVE_MS = 1200;
+
+/** What an autosave is keyed on: the frame's image document, and its scan document on a scan. */
+interface EditedDocuments {
+  readonly image: AnnotationDocument;
+  readonly scan: ScanDocument | null;
+}
 
 /** A settled promise's outcome, when it belongs to somebody else. */
 function nothing(): void {}
@@ -952,6 +959,8 @@ function Workspace({
    * strip and the zoom widget floating over an otherwise unreachable app.
    */
   const [stage, setStage] = useState<HTMLDivElement | null>(null);
+  /** The bottom row's right cell, where a scan's view controls sit beside the island. */
+  const [scanControls, setScanControls] = useState<HTMLDivElement | null>(null);
 
   /**
    * The suggest session — **here, and outside the store on purpose.**
@@ -1822,24 +1831,31 @@ function Workspace({
   const [gesturing, setGesturing] = useState(false);
   /**
    * Whether somebody is in the middle of changing the document: that gesture, a
-   * drag the store is previewing, or a suggestion on screen waiting to be
-   * accepted or thrown away. Autosave waits for all three to end, and a read is
-   * never taken in during any of them.
+   * drag the store is previewing, a suggestion on screen waiting to be accepted
+   * or thrown away, or on a scan a draft or drag in its own editor. Autosave
+   * waits for all of them to end, and a read is never taken in during any.
    */
   const busy =
-    gesturing || snapshot.preview !== null || (suggesting !== null && hasPending(suggesting));
+    gesturing ||
+    snapshot.preview !== null ||
+    (suggesting !== null && hasPending(suggesting)) ||
+    scan?.busy === true;
 
   /**
-   * The document an autosave was last sent for.
+   * The documents an autosave was last sent for: the image one and, on a scan,
+   * the scan one, since an edit to either is the work to keep.
    *
    * What keeps a refusal from becoming a loop: the timer is armed only for a
-   * document it has not already tried, so once one refused, nothing is sent
-   * again until the person changes something — and the refusal on screen stays
-   * about the work they just did. Explicit saves (`mod+s`, a navigation) do not
-   * read it: a person asking again is asking again.
+   * pair it has not already tried, so once one refused, nothing is sent again
+   * until the person changes something — and the refusal on screen stays about
+   * the work they just did. Explicit saves (`mod+s`, a navigation) do not read
+   * it: a person asking again is asking again.
    */
-  const autosavedFor = useRef<AnnotationDocument | null>(null);
-  const current = snapshot.document;
+  const autosavedFor = useRef<EditedDocuments | null>(null);
+  const image = snapshot.document;
+  const scanned = scan?.snapshot.document ?? null;
+  const isCurrent = (edited: EditedDocuments | null): boolean =>
+    edited !== null && edited.image === image && edited.scan === scanned;
   /**
    * The document whose wait ran out while somebody was mid-gesture. It is held,
    * not dropped: the save goes the moment the gesture ends, unless the gesture
@@ -1848,28 +1864,31 @@ function Workspace({
    * `data-autosave="held"` while it is true, which is the settled state a
    * browser test waits on instead of on a clock.
    */
-  const [heldFor, setHeldFor] = useState<AnnotationDocument | null>(null);
-  const autosaveHeld = heldFor === current && busy && dirty && !readOnly;
+  const [heldFor, setHeldFor] = useState<EditedDocuments | null>(null);
+  const held = isCurrent(heldFor);
+  const autosaveHeld = held && busy && dirty && !readOnly;
   useEffect(() => {
     if (readOnly || !dirty || save.isPending) return;
-    if (autosavedFor.current === current) return;
+    const tried = autosavedFor.current;
+    if (tried !== null && tried.image === image && tried.scan === scanned) return;
+    const current: EditedDocuments = { image, scan: scanned };
     const send = (): void => {
       autosavedFor.current = current;
       // The refusal renders off `save.error`, as every save's does.
       commit().then(nothing, nothing);
     };
-    if (heldFor === current) {
+    if (held) {
       if (!busy) send();
       return;
     }
-    // Every change to the document re-runs this and so restarts the wait —
-    // which is the debounce: the save goes once the document has been still.
+    // Every change to either document re-runs this and so restarts the wait —
+    // which is the debounce: the save goes once the documents have been still.
     const timer = window.setTimeout(() => {
       if (busy) setHeldFor(current);
       else send();
     }, AUTOSAVE_MS);
     return () => window.clearTimeout(timer);
-  }, [current, dirty, readOnly, save.isPending, busy, heldFor, commit]);
+  }, [image, scanned, dirty, readOnly, save.isPending, busy, held, commit]);
 
   /**
    * Every read of the frame's annotations goes to the session, which takes it
@@ -2508,6 +2527,7 @@ function Workspace({
               loaded={loaded}
               schema={store.document.schema}
               scan={scan}
+              controlsSlot={scanControls}
               onSave={() => {
                 if (!readOnly) attempt();
               }}
@@ -2762,25 +2782,35 @@ function Workspace({
             The settle to `annotated` is not sent from here either —
             `progress_after_annotating` makes that move in the same transaction as
             the write.
+
+            It shares one bottom row with a scan's own view controls, which
+            `PointCloudStage` places in the row's right cell, so the two can
+            never cover each other: centred while there is room for both, the
+            island giving way to the left when there is less, and stacked under
+            them where the picture is too narrow for both side by side.
           */}
+          <div
+            data-testid="stage-bottom-row"
+            className="pointer-events-none absolute inset-x-4 bottom-4 z-10 grid grid-cols-[1fr_auto_1fr] items-end gap-2 @max-[50rem]:grid-cols-1"
+          >
           <div
             data-stage-ui
             role="toolbar"
             aria-label="Frame"
             data-testid="frame-island"
-            className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-xl bg-background/95 p-1 backdrop-blur-md vs-stage-island"
+            className="pointer-events-auto col-start-2 flex items-center gap-0.5 rounded-xl bg-background/95 p-1 backdrop-blur-md vs-stage-island @max-[50rem]:col-start-1 @max-[50rem]:row-start-2 @max-[50rem]:justify-self-center"
           >
             {/* Undo and redo keep the frame verbs' lifetime, not the mode's: on a
                 settled frame inside an open job they are withheld with the reason,
                 so the island keeps its shape as the job is walked; once the whole
-                job is closed they leave with Skip. On a scan they walk the
-                cuboids' history, the one the scan's own strip walks. */}
+                job is closed they leave with Skip. On a scan they are the scan
+                workspace's undo and redo, the ones its keys send. */}
             {frameVerbs && (
               <>
                 {(
                   [
-                    { testId: "tool-undo", can: !readOnly && (scan?.snapshot ?? snapshot).canUndo, label: "Undo", empty: readOnly ? "Viewing only — nothing here can be undone" : "Nothing to undo", keys: `${modKey()}Z`, run: () => (scan?.store ?? store).undo(), Icon: Undo2 },
-                    { testId: "tool-redo", can: !readOnly && (scan?.snapshot ?? snapshot).canRedo, label: "Redo", empty: readOnly ? "Viewing only — nothing here can be redone" : "Nothing to redo", keys: `⇧${modKey()}Z`, run: () => (scan?.store ?? store).redo(), Icon: Redo2 },
+                    { testId: "tool-undo", can: !readOnly && (scan === null ? snapshot.canUndo : scan.canUndo), label: scan === null || scan.undoLabel === null ? "Undo" : `Undo ${scan.undoLabel}`, empty: readOnly ? "Viewing only — nothing here can be undone" : "Nothing to undo", keys: `${modKey()}Z`, run: () => (scan === null ? store.undo() : scan.undo()), Icon: Undo2 },
+                    { testId: "tool-redo", can: !readOnly && (scan === null ? snapshot.canRedo : scan.canRedo), label: scan === null || scan.redoLabel === null ? "Redo" : `Redo ${scan.redoLabel}`, empty: readOnly ? "Viewing only — nothing here can be redone" : "Nothing to redo", keys: `⇧${modKey()}Z`, run: () => (scan === null ? store.redo() : scan.redo()), Icon: Redo2 },
                   ] as const
                 ).map(({ testId, can, label, empty, keys, run, Icon }) => (
                   <Tooltip key={testId}>
@@ -2970,6 +3000,14 @@ function Workspace({
                 <Kbd className="bg-primary-foreground/15 text-primary-foreground @max-[36rem]:hidden">↵</Kbd>
               </Button>
             )}
+          </div>
+          {isScan && (
+            <div
+              ref={setScanControls}
+              data-testid="stage-controls-slot"
+              className="pointer-events-auto col-start-3 justify-self-end @max-[50rem]:col-start-1 @max-[50rem]:row-start-1"
+            />
+          )}
           </div>
         </div>
       </main>

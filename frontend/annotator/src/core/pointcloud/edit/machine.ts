@@ -11,6 +11,15 @@
  * discards it. A draft being drawn lives in the state, never in the document,
  * and enters the document as one `add`.
  *
+ * Undo and redo are events here, unlike in the 2D machine, so one rule serves
+ * every surface that offers them: while a draft is being drawn an undo steps it
+ * back (the last polyline vertex, the height back to the width, the width to
+ * nothing) and leaves the history alone, and a redo does nothing; mid-drag both
+ * discard the drag and then reach the history; otherwise they only reach it.
+ * A drag also keeps the geometry it began on, and ends without a write once the
+ * committed label no longer holds it, so a history step taken behind the
+ * machine's back is never rebuilt from the drag's origin.
+ *
  * Orbiting is the adapter's: only a primary press reaches this machine. Each
  * event's context names the view it came through, so two views can share one
  * state: a box's height is never read through the top-down one.
@@ -88,7 +97,9 @@ export type ScanEvent =
   | { readonly type: "pointer-cancel" }
   | { readonly type: "cancel" }
   | { readonly type: "commit" }
-  | { readonly type: "delete-selected" };
+  | { readonly type: "delete-selected" }
+  | { readonly type: "undo" }
+  | { readonly type: "redo" };
 
 export type ScanState =
   | { readonly type: "idle" }
@@ -117,11 +128,16 @@ export type ScanState =
       readonly width: number;
       readonly yaw: number;
       readonly height: number;
+      /** The width step it came from, for an undo to return to. */
+      readonly anchor: Point3D;
+      readonly offset: number;
     }
   | {
       readonly type: "moving";
       readonly id: string;
       readonly origin: Cuboid3DGeometry;
+      /** The label's geometry when the drag began: the drag ends once the document no longer holds it. */
+      readonly committed: Cuboid3DGeometry;
       readonly grab: Point3D;
       readonly level: number;
     }
@@ -129,6 +145,8 @@ export type ScanState =
       readonly type: "resizing";
       readonly id: string;
       readonly origin: Cuboid3DGeometry;
+      /** The label's geometry when the drag began: the drag ends once the document no longer holds it. */
+      readonly committed: Cuboid3DGeometry;
       readonly face: CuboidFace;
       readonly start: number;
     }
@@ -136,6 +154,8 @@ export type ScanState =
       readonly type: "rotating";
       readonly id: string;
       readonly origin: Cuboid3DGeometry;
+      /** The label's geometry when the drag began: the drag ends once the document no longer holds it. */
+      readonly committed: Cuboid3DGeometry;
       readonly start: number;
       readonly level: number;
     }
@@ -149,6 +169,8 @@ export type ScanState =
       readonly type: "moving-vertex";
       readonly id: string;
       readonly origin: Polyline3DGeometry;
+      /** The label's geometry when the drag began, before any vertex it inserted. */
+      readonly committed: Polyline3DGeometry;
       readonly index: number;
       readonly level: number;
     };
@@ -163,7 +185,9 @@ export type ScanEffect =
   | { readonly kind: "commit"; readonly label: string }
   | { readonly kind: "discard" }
   | { readonly kind: "add"; readonly label: string; readonly annotation: ScanAnnotation }
-  | { readonly kind: "remove"; readonly label: string; readonly ids: readonly string[] };
+  | { readonly kind: "remove"; readonly label: string; readonly ids: readonly string[] }
+  | { readonly kind: "undo" }
+  | { readonly kind: "redo" };
 
 export interface ScanTransition {
   readonly state: ScanState;
@@ -234,6 +258,7 @@ export function draftPolyline(state: ScanState): Polyline3DGeometry | null {
 }
 
 function fromIdle(event: ScanEvent, context: ScanContext): ScanTransition {
+  if (event.type === "undo" || event.type === "redo") return to(SCAN_IDLE, { kind: event.type });
   if (event.type === "delete-selected") {
     const ids = [...context.selection].filter((id) => context.document.annotations.has(id));
     return ids.length === 0 ? to(SCAN_IDLE) : to(SCAN_IDLE, { kind: "remove", label: "delete", ids });
@@ -269,7 +294,7 @@ function fromIdle(event: ScanEvent, context: ScanContext): ScanTransition {
       const { axis } = faceSpec(hit.face);
       const start = closestOnAxis(ray, faceCenter(origin, frame, hit.face), cuboidAxes(origin, frame)[axis]);
       if (start === null) return to(SCAN_IDLE);
-      return to({ type: "resizing", id: hit.id, origin, face: hit.face, start });
+      return to({ type: "resizing", id: hit.id, origin, committed: origin, face: hit.face, start });
     }
     case "yaw-ring": {
       const ring = yawRing(origin, frame);
@@ -277,6 +302,7 @@ function fromIdle(event: ScanEvent, context: ScanContext): ScanTransition {
         type: "rotating",
         id: hit.id,
         origin,
+        committed: origin,
         start: yawOfHeading(subtract(hit.point, ring.center), frame),
         level: ring.level,
       });
@@ -289,6 +315,7 @@ function fromIdle(event: ScanEvent, context: ScanContext): ScanTransition {
         type: "moving",
         id: hit.id,
         origin,
+        committed: origin,
         grab: hit.point,
         level: heightOf(frame, hit.point),
       };
@@ -320,7 +347,7 @@ function pressPolyline(
         return to(SCAN_IDLE, { kind: "stage", id, geometry: removed }, { kind: "commit", label: `remove vertex of ${labelClass}` });
       }
       const level = heightOf(frame, origin.points[hit.index]!);
-      return to({ type: "moving-vertex", id, origin, index: hit.index, level });
+      return to({ type: "moving-vertex", id, origin, committed: origin, index: hit.index, level });
     }
     case "segment": {
       if (modifiers.alt) return to(SCAN_IDLE);
@@ -333,6 +360,7 @@ function pressPolyline(
         type: "moving-vertex",
         id,
         origin: inserted,
+        committed: origin,
         index: hit.segment + 1,
         level: heightOf(frame, at),
       };
@@ -370,6 +398,8 @@ function fromPolyline(
     }
     case "cancel":
       return to(SCAN_IDLE);
+    case "undo":
+      return state.points.length > 1 ? to({ ...state, points: state.points.slice(0, -1) }) : to(SCAN_IDLE);
     default:
       return to(state);
   }
@@ -393,6 +423,7 @@ function fromFootprint(
     }
     case "pointer-cancel":
     case "cancel":
+    case "undo":
       return to(SCAN_IDLE);
     default:
       return to(state);
@@ -405,19 +436,28 @@ function fromWidth(
   context: ScanContext,
 ): ScanTransition {
   switch (event.type) {
-    case "pointer-move": {
-      const at = groundUnder(event.point, context);
-      return at === null ? to(state) : to({ ...state, offset: dot(subtract(at, state.anchor), leftOfYaw(state.yaw, context.frame)) });
-    }
+    case "pointer-move":
+      return to(widthAt(state, event.point, context));
     case "pointer-down":
-      return event.button === "primary" ? toHeight(state, context) : to(state);
+      return event.button === "primary" ? toHeight(widthAt(state, event.point, context), context) : to(state);
     case "commit":
       return toHeight(state, context);
     case "cancel":
+    case "undo":
       return to(SCAN_IDLE);
     default:
       return to(state);
   }
+}
+
+/** The width step with the pointer at `point`: its offset from the length edge, across it. */
+function widthAt(
+  state: Extract<ScanState, { type: "drawing-width" }>,
+  point: Point,
+  context: ScanContext,
+): Extract<ScanState, { type: "drawing-width" }> {
+  const at = groundUnder(point, context);
+  return at === null ? state : { ...state, offset: dot(subtract(at, state.anchor), leftOfYaw(state.yaw, context.frame)) };
 }
 
 function toHeight(state: Extract<ScanState, { type: "drawing-width" }>, context: ScanContext): ScanTransition {
@@ -429,6 +469,8 @@ function toHeight(state: Extract<ScanState, { type: "drawing-width" }>, context:
     width: widthOf(state.offset),
     yaw: state.yaw,
     height: MIN_CUBOID_SIZE,
+    anchor: state.anchor,
+    offset: state.offset,
   });
 }
 
@@ -438,22 +480,34 @@ function fromHeight(
   context: ScanContext,
 ): ScanTransition {
   switch (event.type) {
-    case "pointer-move": {
-      if (context.view === "top-down") return to(state);
-      const ray = screenRay(context.camera, context.frame, context.viewport, event.point);
-      const up = fromForwardLeftUp(context.frame, [0, 0, 1]);
-      const along = closestOnAxis(ray, state.base, up);
-      return along === null ? to(state) : to({ ...state, height: Math.max(MIN_CUBOID_SIZE, along) });
-    }
+    case "pointer-move":
+      return to(heightAt(state, event.point, context));
     case "pointer-down":
-      return event.button === "primary" ? finishDraw(state, context) : to(state);
+      return event.button === "primary" ? finishDraw(heightAt(state, event.point, context), context) : to(state);
     case "commit":
       return finishDraw(state, context);
     case "cancel":
       return to(SCAN_IDLE);
+    case "undo": {
+      const { labelClass, anchor, length, yaw, offset } = state;
+      return to({ type: "drawing-width", labelClass, anchor, length, yaw, offset });
+    }
     default:
       return to(state);
   }
+}
+
+/** The height step with the pointer at `point`; a box's height is never read through the top-down view. */
+function heightAt(
+  state: Extract<ScanState, { type: "drawing-height" }>,
+  point: Point,
+  context: ScanContext,
+): Extract<ScanState, { type: "drawing-height" }> {
+  if (context.view === "top-down") return state;
+  const ray = screenRay(context.camera, context.frame, context.viewport, point);
+  const up = fromForwardLeftUp(context.frame, [0, 0, 1]);
+  const along = closestOnAxis(ray, state.base, up);
+  return along === null ? state : { ...state, height: Math.max(MIN_CUBOID_SIZE, along) };
 }
 
 function finishDraw(
@@ -472,8 +526,9 @@ function finishDraw(
 type Drag = Extract<ScanState, { type: "moving" | "resizing" | "rotating" | "moving-vertex" }>;
 
 function fromDrag(state: Drag, event: ScanEvent, context: ScanContext): ScanTransition {
+  if (event.type === "undo" || event.type === "redo") return to(SCAN_IDLE, { kind: "discard" }, { kind: event.type });
   const annotation = context.document.annotations.get(state.id);
-  if (annotation === undefined) return to(SCAN_IDLE, { kind: "discard" });
+  if (annotation === undefined || !sameGeometry(annotation.geometry, state.committed)) return to(SCAN_IDLE, { kind: "discard" });
   switch (event.type) {
     case "pointer-move": {
       const geometry = dragged(state, event.point, context);
@@ -640,6 +695,17 @@ function newScanAnnotation<G extends ScanAnnotation["geometry"]>(
     confidence: null,
     job_id: null,
   };
+}
+
+/** Equal by value, so a label re-stored with an equal geometry keeps its drag. */
+function sameGeometry(a: ScanAnnotation["geometry"], b: Cuboid3DGeometry | Polyline3DGeometry): boolean {
+  if (a === b) return true;
+  if (a.type === "cuboid_3d" && b.type === "cuboid_3d") {
+    return samePoint(a.center, b.center) && samePoint(a.size, b.size) && a.yaw === b.yaw;
+  }
+  if (a.type !== "polyline_3d" || b.type !== "polyline_3d" || a.points.length !== b.points.length) return false;
+  const visibility = a.visibility === b.visibility || (a.visibility?.join() ?? null) === (b.visibility?.join() ?? null);
+  return visibility && a.points.every((point, i) => samePoint(point, b.points[i]!));
 }
 
 function samePoint(a: Point3D, b: Point3D): boolean {

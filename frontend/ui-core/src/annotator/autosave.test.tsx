@@ -32,6 +32,7 @@ const BATCH = "22222222-2222-4222-8222-222222222222";
 const JOB = "33333333-3333-4333-8333-333333333333";
 const ASSET = "44444444-4444-4444-8444-444444444444";
 const SECOND = "44444441-4444-4444-8444-444444444444";
+const SOURCE = "55555555-5555-4555-8555-555555555555";
 
 const SCHEMA = {
   project_id: PROJECT,
@@ -40,6 +41,11 @@ const SCHEMA = {
   created_at: null,
   provenance: "curated",
   classes: [{ name: "vehicle", geometries: ["bbox"], color: null, attributes: [] }],
+};
+
+const SCAN_SCHEMA = {
+  ...SCHEMA,
+  classes: [{ name: "vehicle", geometries: ["cuboid_3d"], color: null, attributes: [] }],
 };
 
 interface Row {
@@ -70,8 +76,13 @@ function box(id: string, x: number): Row {
   };
 }
 
+function cuboid(id: string, x: number): Row {
+  return { ...box(id, x), geometry: { type: "cuboid_3d", center: [x, 0, 0], size: [4, 2, 1.5], yaw: 0 } };
+}
+
 /** What the "server" holds. */
 let stored: Row[] = [];
+let modality: "image" | "point_cloud" = "image";
 let minted = 0;
 let progress = "unannotated";
 /** Every write that left, in order. */
@@ -147,12 +158,23 @@ function answer(path: string): unknown {
       progress: { unannotated: 2, pre_labeled: 0, annotated: 0, skipped: 0, review_pending: 0, accepted: 0, total: 2 },
     };
   }
-  if (path.endsWith("/schema/versions/1")) return SCHEMA;
+  if (path.endsWith(`/sources/${SOURCE}`)) {
+    return {
+      id: SOURCE,
+      project_id: PROJECT,
+      kind: "point_cloud_directory",
+      name: "sweeps",
+      registered_at: "2026-11-01T00:00:00Z",
+      frame: "lidar_flu",
+      video: null,
+    };
+  }
+  if (path.endsWith("/schema/versions/1")) return modality === "image" ? SCHEMA : SCAN_SCHEMA;
   if (path.endsWith("/assets")) {
     const items = [ASSET, SECOND].map((id, index) => ({
       id,
       project_id: PROJECT,
-      modality: "image",
+      modality,
       point_cloud: null,
       content_hash: `abcdef0${index}`.padEnd(64, "0"),
       width: 640,
@@ -161,7 +183,7 @@ function answer(path: string): unknown {
       thumbnail_hash: null,
       frame_index: null,
       frame_timestamp: null,
-      source_id: null,
+      source_id: modality === "image" ? null : SOURCE,
       ingested_at: null,
       job_id: JOB,
       progress,
@@ -208,6 +230,7 @@ function write(method: string, url: URL, body: string): Response {
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   stored = [box("a", 10), box("b", 100)];
+  modality = "image";
   minted = 0;
   progress = "unannotated";
   writes.length = 0;
@@ -483,6 +506,37 @@ describe("autosave", () => {
     await waitFor(() =>
       expect(screen.getByTestId("annotation-page").getAttribute("data-asset")).toBe(SECOND),
     );
+  });
+
+  it("on a scan, saves every edit to its labels on its own, not only the first", async () => {
+    modality = "point_cloud";
+    stored = [cuboid("a", 0), cuboid("b", 10)];
+    await open();
+
+    await user.click(screen.getByTestId("object-delete-0"));
+    await wait(AUTOSAVE_MS + 50);
+    await waitFor(() => expect(writes).toHaveLength(1));
+    await waitFor(() => expect(saveState()).toBe("saved"));
+
+    await user.click(screen.getByTestId("object-delete-0"));
+    expect(saveState()).toBe("edited");
+    await wait(AUTOSAVE_MS + 50);
+    await waitFor(() => expect(writes).toHaveLength(2));
+    expect(new URL(writes[1]!.url).searchParams.getAll("id")).toEqual(["b"]);
+    await waitFor(() => expect(saveState()).toBe("saved"));
+    expect(stored).toEqual([]);
+  });
+
+  it("on a scan, the island's undo and redo name the step they take", async () => {
+    modality = "point_cloud";
+    stored = [cuboid("a", 0), cuboid("b", 10)];
+    await open();
+    expect(screen.getByTestId("tool-undo").getAttribute("aria-label")).toBe("Nothing to undo");
+
+    await user.click(screen.getByTestId("object-delete-0"));
+    expect(screen.getByTestId("tool-undo").getAttribute("aria-label")).toBe("Undo delete");
+    await user.click(screen.getByTestId("tool-undo"));
+    expect(screen.getByTestId("tool-redo").getAttribute("aria-label")).toBe("Redo delete");
   });
 
   it("never saves a read-only frame", async () => {

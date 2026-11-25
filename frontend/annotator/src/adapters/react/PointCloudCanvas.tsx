@@ -284,7 +284,16 @@ export function PointCloudCanvas(props: PointCloudCanvasProps): JSX.Element {
     });
 
     let drag: { readonly id: number; x: number; y: number; readonly role: ScanPointerRole } | null = null;
+    // A release the canvas never heard (an OS menu, a capture taken away) ends the drag as a cancel.
+    const abandon = (): void => {
+      if (drag === null) return;
+      const { id, role } = drag;
+      drag = null;
+      if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
+      if (role === "edit") tell({ type: "pointer-cancel" });
+    };
     const onPointerDown = (event: PointerEvent): void => {
+      if (drag !== null && drag.id === event.pointerId) abandon();
       if (drag !== null) return;
       canvas.focus();
       canvas.setPointerCapture(event.pointerId);
@@ -325,6 +334,9 @@ export function PointCloudCanvas(props: PointCloudCanvasProps): JSX.Element {
       if (role !== "edit") return;
       if (event.type === "pointercancel") tell({ type: "pointer-cancel" });
       else tell({ type: "pointer-up", point: pointOf(event), button: "primary", modifiers: modifiersOf(event) });
+    };
+    const onLostCapture = (event: PointerEvent): void => {
+      if (drag !== null && drag.id === event.pointerId) abandon();
     };
     const onWheel = (event: WheelEvent): void => {
       event.preventDefault();
@@ -380,6 +392,7 @@ export function PointCloudCanvas(props: PointCloudCanvasProps): JSX.Element {
     canvas.addEventListener("pointermove", onPointerMove);
     canvas.addEventListener("pointerup", onPointerUp);
     canvas.addEventListener("pointercancel", onPointerUp);
+    canvas.addEventListener("lostpointercapture", onLostCapture);
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("keydown", onKeyDown);
     canvas.addEventListener("contextmenu", onContextMenu);
@@ -401,6 +414,7 @@ export function PointCloudCanvas(props: PointCloudCanvasProps): JSX.Element {
       canvas.removeEventListener("pointermove", onPointerMove);
       canvas.removeEventListener("pointerup", onPointerUp);
       canvas.removeEventListener("pointercancel", onPointerUp);
+      canvas.removeEventListener("lostpointercapture", onLostCapture);
       canvas.removeEventListener("wheel", onWheel);
       canvas.removeEventListener("keydown", onKeyDown);
       canvas.removeEventListener("contextmenu", onContextMenu);

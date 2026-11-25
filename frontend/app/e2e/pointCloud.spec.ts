@@ -405,7 +405,7 @@ test("in Edit, a drawn cuboid moves, the move undoes, and the save sends the box
   const moved = await handleAt(page, "top");
   expect(Math.hypot(moved[0] - drawn[0], moved[1] - drawn[1])).toBeGreaterThan(30);
 
-  await page.getByTestId("scan-undo").click();
+  await page.getByTestId("tool-undo").click();
   await expect.poll(() => handleAt(page, "top")).toEqual(drawn);
 
   // Autosave may already have stored part of the work; mod+s sends the rest now.
@@ -463,7 +463,7 @@ test("in Edit, pulling the back face out lengthens the box, the far faces offer 
   expect(topAfter[1] - topBefore[1]).toBeGreaterThan(5);
   expect(topAfter[1] - topBefore[1]).toBeLessThan(pulled[1] - back[1]);
 
-  await page.getByTestId("scan-undo").click();
+  await page.getByTestId("tool-undo").click();
   await expect.poll(() => handleAt(page, "back")).toEqual(back);
   await expect(page.getByTestId("point-cloud-gl")).toBeFocused();
   await page.keyboard.press("ControlOrMeta+Shift+z");
@@ -653,9 +653,9 @@ test("in Edit, the top-down view pulls a face and turns the yaw, the perspective
   const turned = await yawHandle(page);
   expect(turned[0]).toBeLessThan(centre[0] - 10);
 
-  await page.getByTestId("scan-undo").click();
+  await page.getByTestId("tool-undo").click();
   await expect.poll(() => yawHandle(page)).toEqual(knob);
-  await page.getByTestId("scan-redo").click();
+  await page.getByTestId("tool-redo").click();
   await expect.poll(() => yawHandle(page)).toEqual(turned);
 
   // Autosave may already have stored part of the work; mod+s sends the rest now.
@@ -894,4 +894,140 @@ test("in Edit, polyline vertices drawn across a ramp take the ramp's height, and
   expect(points[0]?.[0]).toBeLessThan(0);
   expect(points[2]?.[2]).toBeGreaterThan(points[1]?.[2] ?? Infinity);
   expect(points[2]?.[2]).toBeGreaterThan(-0.3);
+});
+
+test("in Edit, undo while a polyline is drawn steps back its last vertex, from the keys and the island alike, and leaves the history alone", async ({ page }) => {
+  await openScan(page, { schema: POLYLINE_SCHEMA });
+  const view = page.getByTestId("point-cloud-canvas");
+  await expect.poll(() => drawCount(view)).toBeGreaterThan(0);
+  await page.getByTestId("scan-edit-toggle").click();
+  const top = page.getByTestId("scan-top-down-canvas");
+  await expect.poll(() => drawCount(top)).toBeGreaterThan(0);
+
+  // An earlier edit in the history, which an undo of a vertex must not reach.
+  await page.getByTestId("object-select-0").click();
+  await page.keyboard.press("Delete");
+  await expect(page.getByTestId("object-count")).toHaveText("0 objects");
+
+  await page.getByTestId("scan-tool-polyline").click();
+  const box = await top.boundingBox();
+  if (box === null) throw new Error("the top-down view has no box");
+  const [cx, cy] = [box.width / 2, box.height / 2];
+  for (const [x, y] of [[cx - 160, cy + 60], [cx - 100, cy + 80], [cx - 40, cy + 60]] as const) {
+    await page.mouse.click(box.x + x, box.y + y);
+  }
+  await expect(page.getByTestId("scan-top-draft-vertex-2")).toBeVisible();
+
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(page.getByTestId("scan-top-draft-vertex-2")).toHaveCount(0);
+  await expect(page.getByTestId("scan-top-draft-vertex-1")).toBeVisible();
+  await expect(page.getByTestId("object-count")).toHaveText("0 objects");
+
+  await page.getByTestId("tool-undo").click();
+  await expect(page.getByTestId("scan-top-draft-vertex-1")).toHaveCount(0);
+  await expect(page.getByTestId("scan-top-draft-vertex-0")).toBeVisible();
+  await expect(page.getByTestId("object-count")).toHaveText("0 objects");
+  // A redo has no draft step to put back, and never reaches the history mid-draw.
+  await expect(page.getByTestId("tool-redo")).toHaveAttribute("aria-disabled", "true");
+
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(page.getByTestId("scan-top-draft-vertex-0")).toHaveCount(0);
+  await expect(page.getByTestId("object-count")).toHaveText("0 objects");
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(page.getByTestId("object-count")).toHaveText("1 object");
+});
+
+test("in Edit, every edit to the scan is saved on its own, and a box being drawn holds the save", async ({ page }) => {
+  const sent = await openScan(page, { schema: CUBOID_SCHEMA });
+  const writes = (method: string): number =>
+    sent.filter((request) => request.method() === method && request.url().includes(`/jobs/${JOB}/annotations`)).length;
+  const view = page.getByTestId("point-cloud-canvas");
+  await expect.poll(() => drawCount(view)).toBeGreaterThan(0);
+  await page.getByTestId("scan-edit-toggle").click();
+
+  await page.getByTestId("scan-tool-cuboid").click();
+  await drawCuboid(page, view);
+  await expect(page.getByTestId("object-count")).toHaveText("2 objects");
+  await expect.poll(() => writes("POST")).toBe(1);
+  await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
+
+  // The second edit on the frame, with no mod+s.
+  await page.getByTestId("object-delete-0").click();
+  await expect(page.getByTestId("object-count")).toHaveText("1 object");
+  await expect.poll(() => writes("DELETE")).toBe(1);
+  await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
+
+  // A third, then a footprint left at its width step: the save waits for the box.
+  await page.getByTestId("object-delete-0").click();
+  await expect(page.getByTestId("object-count")).toHaveText("0 objects");
+  const box = await view.boundingBox();
+  if (box === null) throw new Error("the view has no box");
+  const [cx, cy] = [box.width / 2, box.height / 2];
+  await dragIn(page, view, [cx - 220, cy + 150], [cx - 220, cy + 60]);
+  await expect(page.getByTestId("scan-width-hint")).toBeVisible();
+  await expect(page.getByTestId("save-state")).toHaveAttribute("data-autosave", "held");
+  expect(writes("DELETE")).toBe(1);
+
+  await page.keyboard.press("Escape");
+  await expect.poll(() => writes("DELETE")).toBe(2);
+  await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
+});
+
+const SCAN_CONTROLS = ["color-by-height", "color-by-intensity", "toggle-scan-labels", "reset-scan-view"] as const;
+const ISLAND_CONTROLS = ["tool-undo", "tool-redo", "skip", "prev-asset", "open-gallery", "finish-job"] as const;
+
+/** The ids among `ids` whose own centre is covered by something that is not part of them. */
+async function covered(page: Page, ids: readonly string[]): Promise<string[]> {
+  return page.evaluate((testIds) => {
+    const out: string[] = [];
+    for (const id of testIds) {
+      const control = document.querySelector(`[data-testid="${id}"]`);
+      if (control === null) {
+        out.push(`${id} (absent)`);
+        continue;
+      }
+      const rect = control.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+      // A disabled control takes no pointer, so its tooltip wrapper is what a press meets.
+      if (hit === null || !(control.contains(hit) || hit.contains(control))) {
+        out.push(`${id} under ${hit?.closest("[data-testid]")?.getAttribute("data-testid") ?? hit?.tagName ?? "nothing"}`);
+      }
+    }
+    return out;
+  }, ids);
+}
+
+/** Which of the island and the scan's controls lie over the top-down view's canvas, where its handles are pressed. */
+async function overTopDown(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const view = document.querySelector('[data-testid="scan-top-down-canvas"]')?.getBoundingClientRect();
+    if (view === undefined) return ["no top-down view"];
+    return ["frame-island", "point-cloud-controls"].filter((id) => {
+      const r = document.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect();
+      return r !== undefined && r.x < view.right && view.x < r.right && r.y < view.bottom && view.y < r.bottom;
+    });
+  });
+}
+
+const WIDTHS = [768, 820, 880, 940, 1000, 1024, 1080, 1180, 1240, 1300, 1360] as const;
+
+test("at every width from 768 to 1360 px, the island and the scan's controls cover neither each other nor the top-down view", async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: WIDTHS[0], height: 900 });
+  await openScan(page, { schema: CUBOID_SCHEMA });
+  const view = page.getByTestId("point-cloud-canvas");
+  await expect.poll(() => drawCount(view)).toBeGreaterThan(0);
+  await expect(page.getByTestId("point-cloud-controls")).toBeVisible();
+  for (const width of WIDTHS) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(() => covered(page, [...SCAN_CONTROLS, ...ISLAND_CONTROLS]), { message: `View at ${width}` }).toEqual([]);
+  }
+
+  await page.getByTestId("scan-edit-toggle").click();
+  await expect.poll(() => drawCount(page.getByTestId("scan-top-down-canvas"))).toBeGreaterThan(0);
+  for (const width of WIDTHS) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(() => covered(page, [...SCAN_CONTROLS, ...ISLAND_CONTROLS]), { message: `Edit at ${width}` }).toEqual([]);
+    await expect.poll(() => overTopDown(page), { message: `Edit at ${width}` }).toEqual([]);
+  }
 });
