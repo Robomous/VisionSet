@@ -31,7 +31,7 @@
  * path that reaches it, and the refusals come back from the stub.
  */
 
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
@@ -133,6 +133,19 @@ async function closeSheet(): Promise<void> {
 /** The sheet's one `<button>` for an action, by its test id. */
 function button(sheet: HTMLElement, testId: string): HTMLButtonElement {
   return within(sheet).getByTestId(testId) as HTMLButtonElement;
+}
+
+/**
+ * Whether an icon action is withheld. An `IconAction` is never `disabled` — it
+ * stays focusable so its tooltip can say why — so withheld is `aria-disabled`.
+ */
+function withheld(control: HTMLElement): boolean {
+  return control.getAttribute("aria-disabled") === "true";
+}
+
+/** An icon action's name: it has no visible text, so the name is its `aria-label`. */
+function nameOf(control: HTMLElement): string | null {
+  return control.getAttribute("aria-label");
 }
 
 function on(method: string, pattern: RegExp, answer: Answer): void {
@@ -457,7 +470,7 @@ it("is one table, headed by its columns, with each connection a row of its one b
     within(grid)
       .getAllByRole("columnheader")
       .map((header) => header.textContent),
-  ).toEqual(["Model", "Weights", "Origin", "What it does", "Runs on", "State", "Details"]);
+  ).toEqual(["Model", "Weights", "What it does", "Runs on", "State", "Details"]);
   // A connection is one `<tr>` of the grid's single `<tbody>`, and the screen has
   // no cards.
   expect(grid.querySelectorAll("tbody")).toHaveLength(1);
@@ -567,7 +580,7 @@ it("says nothing matches in a row of the table, not outside it", async () => {
   expect(none.tagName).toBe("TD");
   expect(screen.getByTestId("models-grid").contains(none)).toBe(true);
   // It spans the grid, whatever the number of columns.
-  expect(none.getAttribute("colspan")).toBe("7");
+  expect(none.getAttribute("colspan")).toBe("6");
   expect(screen.getByTestId("table-pager-range").textContent).toBe("No models match");
   // Nothing shown, so nothing to call ready or waiting.
   expect(screen.queryByTestId("models-ready")).toBeNull();
@@ -612,11 +625,10 @@ it("renders every field a full connection carries, along one row", async () => {
   expect(within(shown).getByTestId("model-reference").textContent).toBe(
     `${SAM_BASE_PLUS} @ ${SAM_BASE_PLUS_COMMIT}`,
   );
-  // Where the weights come from: a plain name, and the origin's one colour — a
-  // small mark beside it.
-  expect(within(shown).getByTestId("connection-origin").textContent).toBe("Hugging Face");
+  // Where the weights come from: the origin's logo in front of the id, named
+  // for a screen reader by the origin's plain name.
+  expect(within(shown).getByRole("img", { name: "Hugging Face" })).toBe(within(shown).getByTestId("connection-origin"));
   expect(shown.getAttribute("data-origin")).toBe("huggingface");
-  expect(within(shown).getByTestId("connection-origin").firstElementChild?.className).toMatch(/\bbg-origin-hub\b/);
   // Product prose, every declared ability in the wire's order, then what it
   // writes in the shared plural prose — quiet square labels, no coloured chips.
   expect(
@@ -636,9 +648,9 @@ it("renders every field a full connection carries, along one row", async () => {
   expect(within(shown).queryByTestId("actions-sam2-full")).toBeNull();
   // The last cell is the chevron that says the row opens: decoration, not a word.
   const cells = [...shown.querySelectorAll("tr > td")];
-  expect(cells).toHaveLength(7);
-  expect(cells[6]?.textContent).toBe("");
-  expect(cells[6]?.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+  expect(cells).toHaveLength(6);
+  expect(cells[5]?.textContent).toBe("");
+  expect(cells[5]?.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
 });
 
 it("omits every line whose datum is null rather than drawing a placeholder", async () => {
@@ -726,27 +738,36 @@ it("shows a capability this build has no name for as its raw value, never droppe
   ).toEqual(["depth_estimate", "writes depth_map"]);
 });
 
-it("marks a row's origin with its own colour, and names it plainly", async () => {
+it("puts each origin's logo at the start of its weights, named plainly", async () => {
   listing([
     connection({ id: "a", name: "hub", origin: "huggingface" }),
     connection({ id: "b", name: "own", origin: "custom" }),
     connection({ id: "c", name: "registry", origin: "robomous" }),
+    connection({ id: "d", name: "hub-too", origin: "huggingface" }),
   ]);
   renderModels();
   const hub = await screen.findByTestId("connection-hub");
-  const markOf = (row: HTMLElement): Element | null => within(row).getByTestId("connection-origin").firstElementChild;
-  expect(markOf(hub)?.className).toMatch(/\bbg-origin-hub\b/);
-  expect(markOf(hub)?.className).not.toMatch(/border-l-/);
-  expect(hub.getAttribute("data-origin")).toBe("huggingface");
-  expect(within(hub).getByTestId("connection-origin").textContent).toBe("Hugging Face");
-  const own = screen.getByTestId("connection-own");
-  expect(markOf(own)?.className).toMatch(/\bbg-origin-custom\b/);
-  expect(within(own).getByTestId("connection-origin").textContent).toBe("Customized");
-  const registry = screen.getByTestId("connection-registry");
-  expect(markOf(registry)?.className).toMatch(/\bbg-origin-robomous\b/);
-  expect(within(registry).getByTestId("connection-origin").textContent).toBe("Robomous");
-  // The mark is decoration: the word beside it says it.
-  expect(markOf(hub)?.getAttribute("aria-hidden")).toBe("true");
+  const logoOf = (row: HTMLElement): HTMLElement => within(row).getByTestId("connection-origin");
+  for (const [row, origin, name] of [
+    [hub, "huggingface", "Hugging Face"],
+    [screen.getByTestId("connection-own"), "custom", "Customized"],
+    [screen.getByTestId("connection-registry"), "robomous", "Robomous"],
+  ] as const) {
+    const logo = logoOf(row);
+    expect(logo.getAttribute("data-origin")).toBe(origin);
+    expect(logo.getAttribute("role")).toBe("img");
+    expect(logo.getAttribute("aria-label")).toBe(name);
+    // In the Weights cell, before the id: a fact about the weights, not a column.
+    expect(logo.closest("td")).toBe(within(row).getByTestId("model-reference").closest("td"));
+    expect(logo.compareDocumentPosition(within(row).getByTestId("model-reference")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  }
+  // Robomous is the company's own mark — the robot's head — painted in the brand colour; Hugging Face keeps its own colours.
+  expect(logoOf(screen.getByTestId("connection-registry")).querySelector("svg")?.getAttribute("fill")).toMatch(/^var\(--brand\)$/);
+  expect(logoOf(hub).innerHTML).not.toMatch(/--brand/);
+  // Two rows of the hub each draw their own mask: no id is shared on the page.
+  const masks = [...document.querySelectorAll("mask")].map((mask) => mask.id);
+  expect(masks).toHaveLength(2);
+  expect(new Set(masks).size).toBe(2);
 });
 
 it("never grows a line under a connection: its row is the whole of it, and a run or a failure is read in the State cell", async () => {
@@ -844,12 +865,12 @@ it("shows a ready connection's endpoint test in its sheet, and leaves the row as
   const sheet = await openSheet("remote-seg");
   await userEvent.click(within(sheet).getByTestId("action-test-endpoint"));
 
-  // Pending is a few words under the button that asked, in the sheet's setup
-  // section; the row still says Ready and grew nothing.
+  // Pending is a few words in the strip under the sheet's bar, beside the
+  // button that asked; the row still says Ready and grew nothing.
   const pending = await within(sheet).findByTestId("test-endpoint-pending");
   expect(pending.textContent).toBe("Asking the endpoint…");
-  expect(within(sheet).getByTestId("model-setup").contains(pending)).toBe(true);
-  expect(within(sheet).getByTestId("model-setup").contains(within(sheet).getByTestId("connection-status"))).toBe(true);
+  expect(within(sheet).getByTestId("model-strip").contains(pending)).toBe(true);
+  expect(within(sheet).getByTestId("model-detail").contains(within(sheet).getByTestId("connection-status"))).toBe(true);
   expect(within(row).queryByTestId("test-endpoint-pending")).toBeNull();
   expect(within(row).getByTestId("connection-status").textContent).toBe("Ready");
   expect(within(row).queryByTestId("connection-detail")).toBeNull();
@@ -880,7 +901,7 @@ it("gives a refused endpoint test a sentence in the sheet, which is prose and no
   expect(within(row).queryByTestId("connection-detail")).toBeNull();
 });
 
-it("puts the name, the weights, the origin and the abilities each in their own cell, with a dash for no abilities", async () => {
+it("puts the name, the weights behind their origin, and the abilities each in their own cell, with a dash for no abilities", async () => {
   listing([
     connection({ id: "a", name: "plain", setup_state: "ready", allowed_actions: ["update", "delete"] }),
     connection({ id: "b", name: "able", setup_state: "ready", capabilities: ["point_suggest"], allowed_actions: ["update", "delete"] }),
@@ -889,18 +910,18 @@ it("puts the name, the weights, the origin and the abilities each in their own c
 
   const plain = await screen.findByTestId("connection-plain");
   const cells = [...plain.querySelectorAll("tr > td")];
-  expect(cells).toHaveLength(7);
+  expect(cells).toHaveLength(6);
   expect(cells[0]?.textContent).toBe("plain");
   expect(within(cells[1] as HTMLElement).getByTestId("model-reference")).not.toBeNull();
-  expect(within(cells[2] as HTMLElement).getByTestId("connection-origin")).not.toBeNull();
+  expect(within(cells[1] as HTMLElement).getByTestId("connection-origin")).not.toBeNull();
   // Nothing declared: a dash where the labels would be, never an empty cell.
-  expect(cells[3]?.textContent).toBe("—");
+  expect(cells[2]?.textContent).toBe("—");
   expect(within(plain).queryByTestId("connection-abilities")).toBeNull();
-  expect(within(cells[4] as HTMLElement).getByTestId("connection-source")).not.toBeNull();
-  expect(within(cells[5] as HTMLElement).getByTestId("connection-status")).not.toBeNull();
+  expect(within(cells[3] as HTMLElement).getByTestId("connection-source")).not.toBeNull();
+  expect(within(cells[4] as HTMLElement).getByTestId("connection-status")).not.toBeNull();
   // The last cell is the chevron: it says the row opens, and is no control of its own.
-  expect(within(cells[6] as HTMLElement).queryByRole("button")).toBeNull();
-  expect(cells[6]?.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+  expect(within(cells[5] as HTMLElement).queryByRole("button")).toBeNull();
+  expect(cells[5]?.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
 
   const able = screen.getByTestId("connection-able");
   expect(within(able).getByTestId("connection-abilities").getAttribute("aria-label")).toBe("What it does");
@@ -926,12 +947,18 @@ it("asks for the download size when a sheet opens, and only below Ready", async 
   expect(sent.some((one) => one.url.includes("download-size"))).toBe(false);
 
   const fresh = await openSheet("fresh");
-  // The cost is a sentence above the button that incurs it, said before pressing.
+  // The cost is the Weights row's value, said before pressing.
   const known = await within(fresh).findByTestId("connection-size-known");
-  expect(known.textContent).toBe("Downloads 1.2 GB across 3 files. Nothing is fetched until you ask.");
+  expect(known.textContent).toBe("1.2 GB across 3 files");
   expect(within(fresh).getByTestId("connection-size").contains(known)).toBe(true);
   const download = button(fresh, "download-weights");
   expect(within(fresh).getByRole("button", { name: "Download weights" })).toBe(download);
+  // And the button's own tooltip repeats it with the promise that nothing is fetched until asked.
+  act(() => download.focus());
+  expect((await screen.findByRole("tooltip")).textContent).toContain("1.2 GB. Nothing is fetched until you ask.");
+  // Back to the sheet, so the tooltip is put away and Escape closes the sheet rather than it.
+  act(() => fresh.focus());
+  await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
   // One request, for the one pair the open sheet carries.
   const asked = sent.filter((one) => one.url.includes("download-size"));
   expect(asked).toHaveLength(1);
@@ -939,7 +966,8 @@ it("asks for the download size when a sheet opens, and only below Ready", async 
 
   await closeSheet();
   const done = await openSheet("done");
-  expect(within(done).queryByTestId("connection-size")).toBeNull();
+  // Ready: the weights are here, so the row says so and prices nothing.
+  expect(within(done).getByTestId("connection-size").textContent).toBe("Weights" + "On this machine");
   expect(within(done).queryByTestId("connection-size-known")).toBeNull();
   expect(sent.filter((one) => one.url.includes("download-size"))).toHaveLength(1);
 });
@@ -957,7 +985,7 @@ it("says the size is being read, and then that it cannot be", async () => {
   expect(within(sheet).queryByTestId("connection-size-known")).toBeNull();
   expect(within(sheet).queryByTestId("connection-size-unavailable")).toBeNull();
   // Not knowing the cost is no reason to withhold the action (design principle 9).
-  expect(button(sheet, "download-weights").disabled).toBe(false);
+  expect(withheld(button(sheet, "download-weights"))).toBe(false);
 });
 
 it("shows a connection serving two abilities once, and edits the one connection", async () => {
@@ -970,6 +998,27 @@ it("shows a connection serving two abilities once, and edits the one connection"
   expect(within(sheet).getAllByTestId("action-edit")).toHaveLength(1);
   await userEvent.click(await screen.findByTestId("action-edit"));
   expect(value(await screen.findByTestId("connection-name"))).toBe("sam2-full");
+});
+
+it("opens an edit on its first field rather than an info button, so one Escape closes it and Edit has the focus back", async () => {
+  listing([connection({ name: "remote-seg", connection_type: "http", device: null, precision: null, endpoint_url: "https://models.example/predict", setup_state: "ready", allowed_actions: ["test_endpoint", "update", "delete"] })]);
+  catalog();
+  renderModels();
+  const sheet = await openSheet("remote-seg");
+  const edit = within(sheet).getByTestId("action-edit");
+  edit.focus();
+  await userEvent.click(edit);
+  const dialog = await screen.findByTestId("connection-dialog");
+  // The first thing a person sets, never a field's info button: that one would
+  // open its card unasked, and Escape would close the card instead of the dialog.
+  await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+  expect(document.activeElement?.tagName).toBe("INPUT");
+  expect(document.activeElement?.id.startsWith("info-")).toBe(false);
+  await userEvent.keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryByTestId("connection-dialog")).toBeNull());
+  // Back on the button that opened it, inside the sheet that is still open.
+  expect(screen.getByTestId("model-sheet")).not.toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(within(screen.getByTestId("model-sheet")).getByTestId("action-edit")));
 });
 
 // --- the filters -----------------------------------------------------------------
@@ -1233,19 +1282,23 @@ it("does not offer Download weights when the wire withholds it", async () => {
   // The sheet is open and says what it can: the absence is the wire's.
   expect(within(sheet).getByTestId("action-edit")).not.toBeNull();
   expect(within(sheet).queryByTestId("download-weights")).toBeNull();
-  expect(within(sheet).queryByTestId("connection-size")).toBeNull();
+  // No size is read for a download that is not on offer: the Weights row only says so.
+  expect(within(sheet).getByTestId("connection-size").textContent).toContain("Not here yet");
+  expect(within(sheet).queryByTestId("connection-size-checking")).toBeNull();
+  expect(within(sheet).queryByTestId("connection-size-known")).toBeNull();
+  expect(within(sheet).queryByTestId("connection-size-unavailable")).toBeNull();
 });
 
 it("offers neither edit nor delete when neither is declared", async () => {
   listing([connection({ allowed_actions: [] })]);
   renderModels();
   const sheet = await openSheet("sam2-local");
-  expect(within(sheet).getByTestId("model-setup")).not.toBeNull();
+  expect(within(sheet).getByTestId("model-detail")).not.toBeNull();
   expect(within(sheet).queryByTestId("action-edit")).toBeNull();
   expect(within(sheet).queryByTestId("action-delete")).toBeNull();
   // No overflow menu anywhere: the row has none to offer and the sheet none to need.
   expect(screen.queryByTestId("actions-sam2-local")).toBeNull();
-  expect(within(sheet).queryAllByRole("button").map((one) => one.getAttribute("aria-label"))).toEqual(["Close the model"]);
+  expect(within(sheet).queryAllByRole("button").map((one) => one.getAttribute("aria-label"))).toEqual(["Close the model", "Previous model (K)", "Next model (J)", "Copy revision"]);
 });
 
 it("offers each of Edit and Delete only where the wire declares it", async () => {
@@ -1416,13 +1469,84 @@ it("shows no progress for a connection that has never been downloaded", async ()
 
 // --- creating ------------------------------------------------------------------
 
-it("asks where the model runs before asking anything else", async () => {
+/** The sentinel row that reveals the free model id and revision. */
+const CUSTOM = "custom";
+
+/** Open the New model dialog, which opens on a connection that runs here. */
+async function openNew(): Promise<HTMLElement> {
+  await userEvent.click(await screen.findByTestId("new-connection"));
+  return screen.findByTestId("connection-dialog");
+}
+
+/** Flip where the model runs, with the switch in the dialog's header. */
+async function runOn(kind: "local" | "http"): Promise<void> {
+  await userEvent.click(await screen.findByTestId(`kind-${kind}`));
+}
+
+/** A row of the model list, by the offer it names (or `custom`). */
+function modelRow(modelId: string): HTMLElement {
+  return screen.getByTestId(`model-option-${modelId}`);
+}
+
+/** Wait until the model list has that row selected — the catalog is a query. */
+async function chosen(modelId: string): Promise<void> {
+  await waitFor(() => expect(modelRow(modelId).getAttribute("aria-checked")).toBe("true"));
+}
+
+async function pickModel(modelId: string): Promise<void> {
+  await userEvent.click(await screen.findByTestId(`model-option-${modelId}`));
+}
+
+/** Open a select by its trigger and choose the option with that name. */
+async function selectOption(testId: string, option: string | RegExp): Promise<void> {
+  await userEvent.click(screen.getByTestId(testId));
+  await userEvent.click(screen.getByRole("option", { name: option }));
+}
+
+/**
+ * Focus an info button and read the card it opens — the keyboard's way in, and
+ * one that reopens it after the pointer has been elsewhere.
+ */
+async function infoCard(testId: string): Promise<HTMLElement> {
+  act(() => screen.getByTestId(testId).focus());
+  return screen.findByTestId(`${testId}-card`);
+}
+
+it("opens on a connection that runs here, with where it runs one switch away", async () => {
+  // The two-step "choose a kind" screen is gone: the model is the decision, so
+  // the dialog opens on the catalog, and the kind is a switch in its header.
   listing([]);
   catalog();
   renderModels();
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  expect(await screen.findByTestId("choose-type")).not.toBeNull();
-  expect(screen.queryByTestId("connection-name")).toBeNull();
+  await openNew();
+  const kind = screen.getByTestId("connection-kind");
+  expect(within(kind).getByRole("radio", { name: "Local" }).getAttribute("aria-checked")).toBe("true");
+  expect(within(kind).getByRole("radio", { name: "Remote" }).getAttribute("aria-checked")).toBe("false");
+  expect(screen.getByTestId("connection-name")).not.toBeNull();
+  await chosen(SAM_BASE_PLUS);
+});
+
+it("switches where the model runs without closing the dialog, and carries no offer across", async () => {
+  listing([]);
+  catalog();
+  sizeIs(1_200_000_000);
+  renderModels();
+  await openNew();
+  await chosen(SAM_BASE_PLUS);
+
+  await runOn("http");
+  expect(screen.getByTestId("connection-dialog")).not.toBeNull();
+  expect(screen.queryByTestId("connection-model")).toBeNull();
+  expect(await screen.findByTestId("connection-endpoint")).not.toBeNull();
+  // The offer chosen for this machine is not what an endpoint runs: the remote
+  // form's model id is whatever somebody types, and nothing was typed.
+  expect(value(screen.getByTestId("connection-custom-model"))).toBe("");
+  expect(value(screen.getByTestId("connection-revision"))).toBe("");
+  expect(screen.getByText("VisionSet calls the endpoint; it never downloads or runs these weights.")).not.toBeNull();
+
+  await runOn("local");
+  await chosen(SAM_BASE_PLUS);
+  expect(screen.queryByTestId("connection-endpoint")).toBeNull();
 });
 
 it("pins the offered revision rather than asking anybody to type one", async () => {
@@ -1430,14 +1554,12 @@ it("pins the offered revision rather than asking anybody to type one", async () 
   catalog();
   sizeIs(1_200_000_000);
   renderModels();
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(await screen.findByTestId("choose-local"));
-  await waitFor(() =>
-    expect(screen.getByTestId("connection-model").textContent).toContain(SAM_BASE_PLUS),
-  );
+  await openNew();
+  await chosen(SAM_BASE_PLUS);
   // An offer carries its own revision, so there is nothing to type and nothing
   // left showing a branch name.
   expect(screen.queryByTestId("connection-revision")).toBeNull();
+  await waitFor(() => expect(sent.some((one) => one.url.includes("download-size"))).toBe(true));
   const asked = sent.find((one) => one.url.includes("download-size"));
   expect(asked!.url).toContain(encodeURIComponent(SAM_BASE_PLUS_COMMIT));
 });
@@ -1447,12 +1569,27 @@ it("shows the download size before anything is confirmed", async () => {
   catalog();
   sizeIs(1_200_000_000, 4);
   renderModels();
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(await screen.findByTestId("choose-local"));
+  await openNew();
   expect((await screen.findByTestId("size-known")).textContent).toContain("1.2 GB");
   expect(screen.getByTestId("size-known").textContent).toContain("4 files");
+  // Said once, in the line above the buttons, beside what creating commits to.
+  expect(screen.getByTestId("commit-line").textContent).toContain("Creating it downloads nothing.");
   // Nothing has been created and nothing has been fetched at this point.
   expect(sent.some((one) => one.method === "POST")).toBe(false);
+});
+
+it("asks for the size of the selected model only, never one per row", async () => {
+  // The catalog carries no size, and asking the hub for every offer would be a
+  // request per row per opening. The size is the selected model's.
+  listing([]);
+  catalog();
+  sizeIs(1_200_000_000);
+  renderModels();
+  await openNew();
+  await screen.findByTestId("size-known");
+  const asked = sent.filter((one) => one.url.includes("download-size"));
+  expect(asked).toHaveLength(1);
+  expect(asked[0]!.url).toContain(encodeURIComponent(SAM_BASE_PLUS));
 });
 
 it("keeps the local form usable when the size cannot be read, quoting the refusal without its code", async () => {
@@ -1467,8 +1604,7 @@ it("keeps the local form usable when the size cannot be read, quoting the refusa
     },
   });
   renderModels();
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(await screen.findByTestId("choose-local"));
+  await openNew();
   const shown = await screen.findByTestId("size-unavailable");
   // Withheld from REFUSAL_PROSE on purpose: the message carries its own remedy,
   // and a mapped sentence would delete the one actionable thing it says. Only
@@ -1477,32 +1613,39 @@ it("keeps the local form usable when the size cannot be read, quoting the refusa
   expect(shown.textContent).not.toContain("LOCAL_INFERENCE_UNAVAILABLE");
   // Principle 9: the form is not disabled by not knowing. Creating downloads
   // nothing, so the unknown size is information rather than a gate.
+  await userEvent.clear(screen.getByTestId("connection-name"));
   await userEvent.type(screen.getByTestId("connection-name"), "sam2");
   expect((screen.getByTestId("connection-submit") as HTMLButtonElement).disabled).toBe(false);
 });
 
-it("asks for no size at all for an http connection", async () => {
+it("asks for no size at all for a remote connection", async () => {
   listing([]);
-  catalog();
+  // A catalog that never answers, so the local side seeds no model whose size
+  // would be asked for: every size request below would be the remote form's.
+  catalogHangs();
   renderModels();
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(await screen.findByTestId("choose-http"));
+  await openNew();
+  await runOn("http");
   await screen.findByTestId("connection-endpoint");
+  await userEvent.type(screen.getByTestId("connection-custom-model"), "some/model");
+  await userEvent.type(screen.getByTestId("connection-revision"), "abc123");
   expect(sent.some((one) => one.url.includes("download-size"))).toBe(false);
 });
 
 it("sends only the fields the chosen kind carries", async () => {
   listing([]);
   catalog();
-  const bodies: unknown[] = [];
   handlers.push((request) => {
     if (request.method !== "POST" || !request.url.endsWith("/inference/connections")) return;
     return { status: 201, body: connection() };
   });
-  on("GET", /^\/inference\/download-size$/, { status: 200, body: null });
+  sizeIs(1_200_000_000);
   renderModels();
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(await screen.findByTestId("choose-http"));
+  await openNew();
+  // On a local offer first, so the driver it records is in the form's state
+  // when the kind flips: an endpoint must not inherit it.
+  await chosen(SAM_BASE_PLUS);
+  await runOn("http");
   await userEvent.type(await screen.findByTestId("connection-name"), "remote");
   await userEvent.type(screen.getByTestId("connection-custom-model"), "some/model");
   await userEvent.type(screen.getByTestId("connection-revision"), "abc123");
@@ -1514,11 +1657,13 @@ it("sends only the fields the chosen kind carries", async () => {
   );
   const posted = sent.find((one) => one.method === "POST");
   const body = JSON.parse(await posted!.clone().text()) as Record<string, unknown>;
-  bodies.push(body);
   // The domain refuses an http connection carrying a device, so a form that sent
   // everything it held would turn a field somebody switched away from into a 422.
+  expect(body.connection_type).toBe("http");
   expect(body.device).toBeNull();
   expect(body.precision).toBeNull();
+  expect(body.provider_id).toBeNull();
+  expect(body.model_id).toBe("some/model");
   expect(body.endpoint_url).toBe("https://example.invalid");
   expect(body.credential_env).toBe("ACME_TOKEN");
 });
@@ -1527,10 +1672,14 @@ it("says the credential field takes a variable's name and never the secret", asy
   listing([]);
   catalog();
   renderModels();
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(await screen.findByTestId("choose-http"));
+  await openNew();
+  await runOn("http");
   await screen.findByTestId("connection-credential-env");
-  expect(screen.getByText(/The name of an environment variable, not the secret/)).not.toBeNull();
+  // Said once, in the field's info card rather than under it.
+  expect(screen.getByRole("button", { name: "About the credential variable" })).not.toBeNull();
+  const card = await infoCard("info-credential-env");
+  expect(card.textContent).toContain("A variable’s name, not the secret");
+  expect(card.textContent).toContain("the value is never stored");
   // No field takes the secret itself: the decision is a variable's name, and a
   // password input here would be the plain-storage option nobody chose.
   expect(screen.queryByLabelText(/token|api key|secret/i)).toBeNull();
@@ -1547,8 +1696,8 @@ it("keeps what was typed when a create is refused", async () => {
     body: { code: "ENTITY_ALREADY_EXISTS", message: "That name is taken." },
   });
   renderModels();
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(await screen.findByTestId("choose-http"));
+  await openNew();
+  await runOn("http");
   await userEvent.type(await screen.findByTestId("connection-name"), "remote");
   await userEvent.type(screen.getByTestId("connection-custom-model"), "some/model");
   await userEvent.type(screen.getByTestId("connection-revision"), "abc123");
@@ -1559,6 +1708,8 @@ it("keeps what was typed when a create is refused", async () => {
 });
 
 it("says which connection name is taken, in its stored casing, not as an identifier", async () => {
+  // The server's refusal of a clash this form could not see — another session
+  // made the name a moment ago — still renders as prose.
   listing([]);
   catalog();
   on("POST", /^\/inference\/connections$/, {
@@ -1569,8 +1720,8 @@ it("says which connection name is taken, in its stored casing, not as an identif
     },
   });
   renderModels();
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(await screen.findByTestId("choose-http"));
+  await openNew();
+  await runOn("http");
   await userEvent.type(await screen.findByTestId("connection-name"), "remote");
   await userEvent.type(screen.getByTestId("connection-custom-model"), "some/model");
   await userEvent.type(screen.getByTestId("connection-revision"), "abc123");
@@ -1581,6 +1732,60 @@ it("says which connection name is taken, in its stored casing, not as an identif
   expect(shown.textContent).not.toContain("INFERENCE_CONNECTION_NAME_TAKEN");
 });
 
+it("names a new connection after its model until somebody types a name", async () => {
+  listing([]);
+  catalog();
+  sizeIs(1_200_000_000);
+  renderModels();
+  await openNew();
+  await chosen(SAM_BASE_PLUS);
+  // The model id's last segment, lower case.
+  expect(value(screen.getByTestId("connection-name"))).toBe("sam2.1-hiera-base-plus");
+  await pickModel(DINO_TINY);
+  expect(value(screen.getByTestId("connection-name"))).toBe("grounding-dino-tiny");
+
+  // A name of somebody's own is a decision, and the model moving is not a
+  // reason to throw it away.
+  await userEvent.clear(screen.getByTestId("connection-name"));
+  await userEvent.type(screen.getByTestId("connection-name"), "my-detector");
+  await pickModel(SAM3);
+  expect(value(screen.getByTestId("connection-name"))).toBe("my-detector");
+});
+
+it("follows a typed model id on a remote connection too", async () => {
+  listing([]);
+  catalog();
+  renderModels();
+  await openNew();
+  await runOn("http");
+  await userEvent.type(await screen.findByTestId("connection-custom-model"), "Acme/Vision-Widget");
+  expect(value(screen.getByTestId("connection-name"))).toBe("vision-widget");
+});
+
+it("says a name another model already has before Create, and holds Create until it is free", async () => {
+  // Unique in the workspace, ignoring case: the server's rule, said where the
+  // name is typed. The server stays the authority (see the refusal tests above).
+  listing([connection()]);
+  catalog();
+  sizeIs(1_200_000_000);
+  renderModels();
+  await openNew();
+  await chosen(SAM_BASE_PLUS);
+  const name = screen.getByTestId("connection-name");
+  await userEvent.clear(name);
+  await userEvent.type(name, "SAM2-Local");
+
+  const taken = await screen.findByTestId("connection-name-taken");
+  // In the stored casing, which is the one the list shows.
+  expect(taken.textContent).toContain("“sam2-local”");
+  expect(name.getAttribute("aria-invalid")).toBe("true");
+  expect((screen.getByTestId("connection-submit") as HTMLButtonElement).disabled).toBe(true);
+
+  await userEvent.type(name, "-2");
+  expect(screen.queryByTestId("connection-name-taken")).toBeNull();
+  expect((screen.getByTestId("connection-submit") as HTMLButtonElement).disabled).toBe(false);
+});
+
 // --- the served catalog, and the fields that are closed sets --------------------
 
 it("opens a new local connection on the model the installation offers by default", async () => {
@@ -1588,14 +1793,11 @@ it("opens a new local connection on the model the installation offers by default
   catalog();
   renderModels();
 
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(screen.getByTestId("choose-local"));
+  await openNew();
 
-  // Not in the same tick as the kind: the catalog is a query, and the field says
-  // so until it can answer.
-  await waitFor(() =>
-    expect(screen.getByTestId("connection-model").textContent).toContain(SAM_BASE_PLUS),
-  );
+  // Not in the same tick as the dialog: the catalog is a query, and the field
+  // says so until it can answer.
+  await chosen(SAM_BASE_PLUS);
 });
 
 it("builds the model list from what the wire served, under this build's own headings", async () => {
@@ -1605,13 +1807,15 @@ it("builds the model list from what the wire served, under this build's own head
   catalog();
   renderModels();
 
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(screen.getByTestId("choose-local"));
-  await userEvent.click(await screen.findByTestId("connection-model"));
+  await openNew();
+  const list = await screen.findByTestId("connection-model");
 
-  expect(screen.getByText("Segment — click to mask")).not.toBeNull();
-  expect(screen.getByText("Detect — describe in text")).not.toBeNull();
-  expect(screen.getByRole("option", { name: new RegExp(DINO_TINY) })).not.toBeNull();
+  expect(list.getAttribute("role")).toBe("radiogroup");
+  expect(within(list).getByText("Segment — click to mask")).not.toBeNull();
+  expect(within(list).getByText("Detect — describe in text")).not.toBeNull();
+  expect(within(list).getByTestId(`model-option-${DINO_TINY}`).getAttribute("role")).toBe("radio");
+  // Every offer, then Custom — one radio each.
+  expect(within(list).getAllByRole("radio")).toHaveLength(4);
 });
 
 it("marks only the gated offers in the model list", async () => {
@@ -1619,27 +1823,23 @@ it("marks only the gated offers in the model list", async () => {
   catalog();
   renderModels();
 
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(screen.getByTestId("choose-local"));
-  await userEvent.click(await screen.findByTestId("connection-model"));
+  await openNew();
+  await screen.findByTestId("connection-model");
 
   const gated = screen.getAllByTestId("gated-badge");
   expect(gated).toHaveLength(1);
-  expect(
-    screen.getByRole("option", { name: new RegExp(SAM3) }).contains(gated[0]!),
-  ).toBe(true);
+  expect(modelRow(SAM3).contains(gated[0]!)).toBe(true);
 });
 
 it("says the catalog is being read rather than showing a dead control", async () => {
   listing([]);
   // An answer that never arrives, which is what a slow server looks like. A stub
-  // that refused instead would be testing the refusal, and a disabled grey select
+  // that refused instead would be testing the refusal, and a disabled grey list
   // is precisely what neither state may render.
   catalogHangs();
   renderModels();
 
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(screen.getByTestId("choose-local"));
+  await openNew();
 
   expect(await screen.findByTestId("catalog-loading")).not.toBeNull();
   expect(screen.queryByTestId("connection-model")).toBeNull();
@@ -1656,12 +1856,11 @@ it("renders a refusal as prose when the catalog cannot be read, and leaves the f
   catalog({ code: "WORKSPACE_BUSY", message: "The workspace is busy." }, 503);
   renderModels();
 
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(screen.getByTestId("choose-local"));
+  await openNew();
 
   const refusal = await screen.findByTestId("catalog-unavailable");
   expect(refusal.textContent).toContain("busy");
-  // Prose, not an empty select — and the form still works: a model id typed by
+  // Prose, not an empty list — and the form still works: a model id typed by
   // hand needs no catalog at all, so not knowing what is offered is not a reason
   // to stop somebody configuring a connection.
   expect(screen.queryByTestId("connection-model")).toBeNull();
@@ -1676,8 +1875,7 @@ it("invites an installation with nothing to offer, rather than showing an empty 
   catalog({ items: [], total: 0 });
   renderModels();
 
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(screen.getByTestId("choose-local"));
+  await openNew();
 
   const empty = await screen.findByTestId("catalog-empty");
   expect(empty.textContent).toContain("driver");
@@ -1687,22 +1885,21 @@ it("invites an installation with nothing to offer, rather than showing an empty 
 it("opens a reused dialog on nothing a discarded session left behind", async () => {
   // A local session abandoned while the catalog was still in flight, and the
   // answer landing after it. The form that opens next is a different connection
-  // and an HTTP one: it names whatever somebody else's endpoint runs, so a model
+  // and a remote one: it names whatever somebody else's endpoint runs, so a model
   // id it did not ask for is one nobody typed and nothing on screen explains.
   listing([]);
   const serve = catalogOnCue();
   renderModels();
 
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(screen.getByTestId("choose-local"));
+  await openNew();
   await screen.findByTestId("catalog-loading");
   await userEvent.keyboard("{Escape}");
   await waitFor(() => expect(screen.queryByTestId("connection-dialog")).toBeNull());
 
   serve();
 
-  await userEvent.click(screen.getByTestId("new-connection"));
-  await userEvent.click(await screen.findByTestId("choose-http"));
+  await openNew();
+  await runOn("http");
 
   expect(value(await screen.findByTestId("connection-custom-model"))).toBe("");
   expect(value(screen.getByTestId("connection-revision"))).toBe("");
@@ -1711,7 +1908,7 @@ it("opens a reused dialog on nothing a discarded session left behind", async () 
 it("lands a successful retry on the offers it just read", async () => {
   // What the control promises. The catalog refused, so the form is on its free
   // fields; the retry then works, and leaving it on an empty Custom would make
-  // the select it just filled the only way forward.
+  // the list it just filled the only way forward.
   listing([]);
   let asked = 0;
   handlers.push(
@@ -1724,14 +1921,11 @@ it("lands a successful retry on the offers it just read", async () => {
   );
   renderModels();
 
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(screen.getByTestId("choose-local"));
+  await openNew();
   const refusal = await screen.findByTestId("catalog-unavailable");
   await userEvent.click(within(refusal).getByRole("button", { name: "Try again" }));
 
-  await waitFor(() =>
-    expect(screen.getByTestId("connection-model").textContent).toContain(SAM_BASE_PLUS),
-  );
+  await chosen(SAM_BASE_PLUS);
   expect(screen.queryByTestId("connection-custom-model")).toBeNull();
 });
 
@@ -1751,21 +1945,20 @@ it("keeps a model id typed while the catalog was refusing", async () => {
   );
   renderModels();
 
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(screen.getByTestId("choose-local"));
+  await openNew();
   const refusal = await screen.findByTestId("catalog-unavailable");
   await userEvent.type(screen.getByTestId("connection-custom-model"), "someone/else");
   await userEvent.click(within(refusal).getByRole("button", { name: "Try again" }));
 
-  const model = await screen.findByTestId("connection-model");
-  await waitFor(() => expect(model.textContent).toContain("Custom"));
+  await screen.findByTestId("connection-model");
+  await chosen(CUSTOM);
   expect(value(screen.getByTestId("connection-custom-model"))).toBe("someone/else");
 });
 
 it("shows a stored connection as the offer it names", async () => {
   // The edit form used to resolve the stored pair against a constant, in the tick
   // the dialog opened. It resolves against a served list now, which arrives after
-  // it — and the select must land on the offer rather than on Custom.
+  // it — and the list must land on the offer rather than on Custom.
   listing([connection({ model_id: SAM_BASE_PLUS, model_revision: SAM_BASE_PLUS_COMMIT })]);
   catalog();
   renderModels();
@@ -1773,42 +1966,81 @@ it("shows a stored connection as the offer it names", async () => {
   await openSheet("sam2-local");
   await userEvent.click(await screen.findByTestId("action-edit"));
 
-  await waitFor(() =>
-    expect(screen.getByTestId("connection-model").textContent).toContain(SAM_BASE_PLUS),
-  );
+  await chosen(SAM_BASE_PLUS);
 });
 
-it("stacks each option: the id on one line, what it is for on the next", async () => {
+it("shows each offer as its id, where it comes from, and one line on what it is for", async () => {
   listing([]);
   catalog();
   renderModels();
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(await screen.findByTestId("choose-local"));
+  await openNew();
+  await screen.findByTestId("connection-model");
 
-  // The closed trigger first, which is where the squash was visible: it shows the
-  // selected option's own two lines rather than a second copy of the layout.
-  await waitFor(() =>
-    expect(screen.getByTestId("connection-model").textContent).toContain(SAM_BASE_PLUS),
-  );
-  const trigger = screen.getByTestId("connection-model");
-  const triggerMeta = trigger.querySelector(".text-muted-foreground");
-  expect(triggerMeta?.textContent).toContain(SAM_BASE_PLUS_HINT);
-  // The id keeps the line to itself — the whole point of the restructure.
-  expect(triggerMeta?.textContent).not.toContain(SAM_BASE_PLUS);
-
-  await userEvent.click(trigger);
   for (const [modelId, hint] of [
     [SAM_BASE_PLUS, SAM_BASE_PLUS_HINT],
     [SAM3, SAM3_HINT],
     [DINO_TINY, DINO_TINY_HINT],
   ]) {
-    const option = screen.getByRole("option", { name: new RegExp(modelId!) });
-    expect(option.querySelector(".text-muted-foreground")?.textContent).toBe(hint);
+    const row = modelRow(modelId!);
+    expect(row.textContent).toContain(modelId);
+    expect(within(row).getByTestId("model-hint").textContent).toBe(hint);
+    // A hub checkpoint wears the hub's mark, hidden — the id beside it says so.
+    expect(row.querySelector('[data-origin="huggingface"]')?.getAttribute("aria-hidden")).toBe("true");
   }
-  // Including Custom, so no row in the list is a different height from its
-  // neighbours.
-  const custom = screen.getByRole("option", { name: /Custom model/ });
-  expect(custom.querySelector(".text-muted-foreground")).not.toBeNull();
+  // Including Custom, which says what it lets you do.
+  expect(modelRow(CUSTOM).textContent).toContain("Any model id, at a revision you pin");
+});
+
+it("moves the selection with the arrow keys, one Tab stop for the whole list", async () => {
+  listing([]);
+  catalog();
+  sizeIs(1_200_000_000);
+  renderModels();
+  await openNew();
+  await chosen(SAM_BASE_PLUS);
+
+  // Roving: the selected row is the list's one stop, the rest are reached by arrows.
+  const radios = within(screen.getByTestId("connection-model")).getAllByRole("radio");
+  expect(radios.map((one) => one.tabIndex)).toEqual([0, -1, -1, -1]);
+
+  modelRow(SAM_BASE_PLUS).focus();
+  await userEvent.keyboard("{ArrowDown}");
+  await chosen(SAM3);
+  expect(document.activeElement).toBe(modelRow(SAM3));
+  expect(modelRow(SAM3).tabIndex).toBe(0);
+  expect(modelRow(SAM_BASE_PLUS).tabIndex).toBe(-1);
+
+  // Across the heading, as the list reads.
+  await userEvent.keyboard("{ArrowDown}");
+  await chosen(DINO_TINY);
+
+  await userEvent.keyboard("{End}");
+  await chosen(CUSTOM);
+  expect(await screen.findByTestId("connection-custom-model")).not.toBeNull();
+
+  // And around the ends, both ways.
+  await userEvent.keyboard("{ArrowDown}");
+  await chosen(SAM_BASE_PLUS);
+  expect(document.activeElement).toBe(modelRow(SAM_BASE_PLUS));
+  await userEvent.keyboard("{ArrowUp}");
+  await chosen(CUSTOM);
+  await userEvent.keyboard("{Home}");
+  await chosen(SAM_BASE_PLUS);
+});
+
+it("says what the selected model is in the Model field's info card", async () => {
+  listing([]);
+  catalog();
+  sizeIs(1_200_000_000);
+  renderModels();
+  await openNew();
+  await chosen(SAM_BASE_PLUS);
+
+  expect(screen.getByRole("button", { name: "About the model" })).not.toBeNull();
+  const card = await infoCard("info-model");
+  // The current choice, not the field in general.
+  expect(card.textContent).toContain(SAM_BASE_PLUS_HINT);
+  expect(card.textContent).toContain("pinned to the revision it declares");
 });
 
 it("states a model's access requirement while it is being chosen, not when it is downloaded", async () => {
@@ -1820,17 +2052,13 @@ it("states a model's access requirement while it is being chosen, not when it is
   catalog();
   sizeIs(1_200_000_000);
   renderModels();
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(await screen.findByTestId("choose-local"));
-  await waitFor(() =>
-    expect(screen.getByTestId("connection-model").textContent).toContain(SAM_BASE_PLUS),
-  );
+  await openNew();
+  await chosen(SAM_BASE_PLUS);
 
   // The form opens on an entry anybody can fetch, so there is nothing to say.
   expect(screen.queryByTestId("model-access")).toBeNull();
 
-  await userEvent.click(screen.getByTestId("connection-model"));
-  await userEvent.click(screen.getByRole("option", { name: new RegExp(SAM3) }));
+  await pickModel(SAM3);
 
   const line = await screen.findByTestId("model-access");
   expect(line.textContent).toContain(SAM3_NOTE);
@@ -1848,22 +2076,19 @@ it("drops the access line again when the choice moves back to an open model", as
   catalog();
   sizeIs(1_200_000_000);
   renderModels();
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(await screen.findByTestId("choose-local"));
+  await openNew();
 
-  await userEvent.click(await screen.findByTestId("connection-model"));
-  await userEvent.click(screen.getByRole("option", { name: new RegExp(SAM3) }));
+  await pickModel(SAM3);
   expect(await screen.findByTestId("model-access")).not.toBeNull();
 
-  await userEvent.click(screen.getByTestId("connection-model"));
-  await userEvent.click(screen.getByRole("option", { name: new RegExp(SAM_BASE_PLUS) }));
+  await pickModel(SAM_BASE_PLUS);
   expect(screen.queryByTestId("model-access")).toBeNull();
 });
 
 it("keeps saying a model needs access when it is pinned to another commit", async () => {
   // An access gate belongs to the repository, not to the revision: choosing a
   // different commit of the same model does not exempt anybody from its terms.
-  // The line is therefore looked up by model id alone, where the select's own
+  // The line is therefore looked up by model id alone, where the list's own
   // "is this the offered entry" test compares both halves — a distinction no
   // other test in this file could see, and the reason this one exists.
   listing([
@@ -1889,16 +2114,13 @@ it("curates without restricting: Custom reveals the free model and revision", as
   catalog();
   sizeIs(1_200_000_000);
   renderModels();
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(await screen.findByTestId("choose-local"));
+  await openNew();
   // Once the list is on screen, so this is the offered state hiding the free
   // fields rather than the loading state hiding them.
-  const select = await screen.findByTestId("connection-model");
-  await waitFor(() => expect(select.textContent).toContain(SAM_BASE_PLUS));
+  await chosen(SAM_BASE_PLUS);
   expect(screen.queryByTestId("connection-custom-model")).toBeNull();
 
-  await userEvent.click(select);
-  await userEvent.click(screen.getByRole("option", { name: /Custom model/ }));
+  await pickModel(CUSTOM);
 
   const model = await screen.findByTestId("connection-custom-model");
   await userEvent.clear(model);
@@ -1907,6 +2129,9 @@ it("curates without restricting: Custom reveals the free model and revision", as
   await userEvent.type(screen.getByTestId("connection-revision"), "deadbeef");
   expect(value(model)).toBe("someone/else");
   expect(value(screen.getByTestId("connection-revision"))).toBe("deadbeef");
+  // What a revision must be is said once, in its info card, not under the field.
+  expect(screen.queryByText("A commit, never a branch.")).toBeNull();
+  expect((await infoCard("info-revision")).textContent).toContain("A commit, never a branch");
 });
 
 it("offers half precision only where an adapter would honour it", async () => {
@@ -1914,54 +2139,66 @@ it("offers half precision only where an adapter would honour it", async () => {
   catalog();
   sizeIs(1_200_000_000);
   renderModels();
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(await screen.findByTestId("choose-local"));
+  await openNew();
 
   // A CPU connection: `fp16` is dropped by both adapters, so it is not on offer
-  // and the field says why rather than leaving the absence to be guessed at.
+  // and the precision's card says why rather than leaving the absence to be
+  // guessed at.
   await userEvent.click(await screen.findByTestId("connection-precision"));
   expect(screen.queryByRole("option", { name: "fp16" })).toBeNull();
   expect(screen.getByRole("option", { name: "fp32" })).not.toBeNull();
   await userEvent.keyboard("{Escape}");
-  expect(screen.getByTestId("precision-hint").textContent).toContain("CUDA only");
+  const card = await infoCard("info-precision");
+  expect(card.textContent).toContain("Full precision");
+  expect(card.textContent).toContain("CUDA only");
 
-  await userEvent.click(screen.getByTestId("connection-device"));
-  await userEvent.click(screen.getByRole("option", { name: "cuda" }));
+  await selectOption("connection-device", "CUDA");
   await userEvent.click(screen.getByTestId("connection-precision"));
   expect(screen.getByRole("option", { name: "fp16" })).not.toBeNull();
+});
+
+it("says what the chosen device and precision are, in cards that follow the choice", async () => {
+  listing([]);
+  catalog();
+  sizeIs(1_200_000_000);
+  renderModels();
+  await openNew();
+
+  expect(screen.getByRole("button", { name: "About the device" })).not.toBeNull();
+  expect((await infoCard("info-device")).textContent).toContain("Runs anywhere, slowest");
+
+  await selectOption("connection-device", "Apple GPU");
+  expect((await infoCard("info-device")).textContent).toContain("Apple Silicon’s GPU");
+
+  await selectOption("connection-device", "CUDA");
+  await selectOption("connection-precision", "fp16");
+  const precision = await infoCard("info-precision");
+  expect(precision.textContent).toContain("Half the memory, faster");
+  expect(precision.textContent).toContain("fp16 halves the memory and runs faster on CUDA.");
 });
 
 it("moves the precision with the device rather than leaving a refused pair", async () => {
   listing([]);
   catalog();
   sizeIs(1_200_000_000);
-  const posted: Record<string, unknown>[] = [];
   handlers.push((request) => {
     if (request.method !== "POST" || !request.url.endsWith("/inference/connections")) return;
     return { status: 201, body: connection() };
   });
   renderModels();
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(await screen.findByTestId("choose-local"));
-  await userEvent.type(await screen.findByTestId("connection-name"), "sam2");
+  await openNew();
   // The model half of the pair arrives with the catalog, and the form is not
   // complete until it has.
-  await waitFor(() =>
-    expect(screen.getByTestId("connection-model").textContent).toContain(SAM_BASE_PLUS),
-  );
+  await chosen(SAM_BASE_PLUS);
 
-  await userEvent.click(screen.getByTestId("connection-device"));
-  await userEvent.click(screen.getByRole("option", { name: "cuda" }));
-  await userEvent.click(screen.getByTestId("connection-precision"));
-  await userEvent.click(screen.getByRole("option", { name: "fp16" }));
+  await selectOption("connection-device", "CUDA");
+  await selectOption("connection-precision", "fp16");
   // Back to the CPU, where `fp16` is not a thing the kernel accepts.
-  await userEvent.click(screen.getByTestId("connection-device"));
-  await userEvent.click(screen.getByRole("option", { name: "cpu" }));
+  await selectOption("connection-device", "CPU");
 
   await userEvent.click(screen.getByTestId("connection-submit"));
   await waitFor(() => expect(sent.some((one) => one.method === "POST")).toBe(true));
   const body = JSON.parse(await sent.find((one) => one.method === "POST")!.clone().text());
-  posted.push(body as Record<string, unknown>);
   expect(body.device).toBe("cpu");
   expect(body.precision).toBe("fp32");
 });
@@ -1981,12 +2218,8 @@ it("renders the kernel's refusal of a pair it disagrees with, as prose", async (
     },
   });
   renderModels();
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(await screen.findByTestId("choose-local"));
-  await userEvent.type(await screen.findByTestId("connection-name"), "sam2");
-  await waitFor(() =>
-    expect(screen.getByTestId("connection-model").textContent).toContain(SAM_BASE_PLUS),
-  );
+  await openNew();
+  await chosen(SAM_BASE_PLUS);
   await userEvent.click(screen.getByTestId("connection-submit"));
   expect((await screen.findByTestId("connection-error")).textContent).toContain(
     "fp16 is not available on cpu",
@@ -2006,6 +2239,7 @@ it("shows a stored device the form does not offer instead of rewriting it", asyn
   await openSheet("sam2-local");
   await userEvent.click(await screen.findByTestId("action-edit"));
   expect((await screen.findByTestId("connection-device")).textContent).toContain("cuda:1");
+  expect((await infoCard("info-device")).textContent).toContain("passes through as written");
 });
 
 it("shows an offered model at another revision as a custom connection", async () => {
@@ -2026,7 +2260,7 @@ it("shows an offered model at another revision as a custom connection", async ()
   expect(value(await screen.findByTestId("connection-revision"))).toBe(
     "0000000000000000000000000000000000000000",
   );
-  expect((screen.getByTestId("connection-model")).textContent).toContain("Custom");
+  await chosen(CUSTOM);
 });
 
 // --- the download's whole life --------------------------------------------------
@@ -2133,8 +2367,8 @@ it("surfaces a failed download as prose in the sheet, and leaves the same action
   // The retry *is* the action: no second control appeared, and this one is live.
   expect(within(sheet).getAllByTestId("download-weights")).toHaveLength(1);
   const retry = button(sheet, "download-weights");
-  expect(retry.disabled).toBe(false);
-  expect(retry.textContent).toContain("Retry download");
+  expect(withheld(retry)).toBe(false);
+  expect(nameOf(retry)).toBe("Retry download");
   expect(within(sheet).queryByRole("button", { name: "Download weights" })).toBeNull();
 });
 
@@ -2150,9 +2384,11 @@ it("offers the completeness check in the sheet once a connection is ready", asyn
 
   const sheet = await openSheet("sam2-local");
   expect(within(sheet).queryByTestId("download-weights")).toBeNull();
-  expect(button(sheet, "action-verify-weights").textContent).toContain("Check for missing files");
-  // A set-up local model says what the checks are for, before one is pressed.
-  expect(within(sheet).getByTestId("model-setup").textContent).toContain("The weights are on this machine.");
+  expect(nameOf(button(sheet, "action-verify-weights"))).toBe("Check for missing files");
+  // A set-up local model says what the check is for, before it is pressed: in its tooltip.
+  act(() => button(sheet, "action-verify-weights").focus());
+  expect((await screen.findByRole("tooltip")).textContent).toContain("Re-reads the file list and fetches anything absent.");
+  expect(within(sheet).getByTestId("connection-size").textContent).toContain("On this machine");
 });
 
 it("does not offer the completeness check when the wire withholds the action", async () => {
@@ -2200,16 +2436,19 @@ it("names the two checks by what each one proves", async () => {
   renderModels();
   await openSheet("sam2-local");
 
-  expect((await screen.findByTestId("action-verify-weights")).textContent).toContain(
-    "Check for missing files",
-  );
-  expect((await screen.findByTestId("action-check-integrity")).textContent).toContain(
-    "Check files are undamaged",
-  );
+  // An icon action has no visible text: its name is its aria-label.
+  expect(nameOf(await screen.findByTestId("action-verify-weights"))).toBe("Check for missing files");
+  expect(nameOf(await screen.findByTestId("action-check-integrity"))).toBe("Check files are undamaged");
   expect(screen.queryByText("Verify weights")).toBeNull();
-  // Each is a plain button now, side by side in the sheet's setup section.
+  expect(screen.queryByRole("button", { name: "Verify weights" })).toBeNull();
+  // Each is its own button, side by side in the sheet's bar.
   expect(screen.getByRole("button", { name: "Check for missing files" })).toBe(screen.getByTestId("action-verify-weights"));
   expect(screen.getByRole("button", { name: "Check files are undamaged" })).toBe(screen.getByTestId("action-check-integrity"));
+  // And each tooltip says what its own check proves: the explanation moved off the page and into the hint.
+  act(() => (screen.getByTestId("action-verify-weights") as HTMLElement).focus());
+  expect((await screen.findByRole("tooltip")).textContent).toContain("Re-reads the file list and fetches anything absent.");
+  act(() => (screen.getByTestId("action-check-integrity") as HTMLElement).focus());
+  await waitFor(() => expect(screen.getByRole("tooltip").textContent).toContain("Reads every byte and removes a damaged copy."));
 });
 
 it("sends the integrity check to its own route, not to the download", async () => {
@@ -2293,7 +2532,7 @@ it("lands the row at Not set up when a check finds damage, and says what was don
     "Download the weights again: with the bad files gone, it is a real transfer rather than a cache hit.",
   );
   expect(within(sheet).getByTestId("connection-status").textContent).toContain("Not set up");
-  expect(button(sheet, "download-weights").disabled).toBe(false);
+  expect(withheld(button(sheet, "download-weights"))).toBe(false);
 });
 
 it("keeps a running check from reading as a running download", async () => {
@@ -2328,16 +2567,22 @@ it("withdraws the download while a check is reading the same files", async () =>
   renderModels();
   await openSheet("sam2-local");
 
-  const verify = (await screen.findByTestId("action-verify-weights")) as HTMLButtonElement;
-  const check = (await screen.findByTestId("action-check-integrity")) as HTMLButtonElement;
-  expect(verify.disabled).toBe(true);
-  expect(check.disabled).toBe(true);
-  expect(verify.textContent).toContain("Reading every file");
-  expect(check.textContent).toContain("Reading every file");
+  const verify = await screen.findByTestId("action-verify-weights");
+  const check = await screen.findByTestId("action-check-integrity");
+  // Both are withheld, never absent — and still focusable, which `disabled` would not be.
+  expect(withheld(verify)).toBe(true);
+  expect(withheld(check)).toBe(true);
+  expect((verify as HTMLButtonElement).disabled).toBe(false);
+  // The one running names itself and spins; the other keeps its name and says why in its tooltip.
+  expect(check.getAttribute("aria-busy")).toBe("true");
+  expect(nameOf(check)).toBe("Reading every file…");
+  expect(nameOf(verify)).toBe("Check for missing files");
+  act(() => verify.focus());
+  expect((await screen.findByRole("tooltip")).textContent).toContain("Waits for the run in flight: both read the same files.");
   // And the sheet says what is holding them, and that leaving does not stop it.
-  const setup = screen.getByTestId("model-setup");
-  expect(within(setup).getByTestId("integrity-progress")).not.toBeNull();
-  expect(setup.textContent).toContain("Runs on the server — closing this or leaving the page does not stop it.");
+  const strip = screen.getByTestId("model-strip");
+  expect(within(strip).getByTestId("integrity-progress")).not.toBeNull();
+  expect(strip.textContent).toContain("Runs on the server — closing this or leaving the page does not stop it.");
 });
 
 it("withdraws the check while a download is running", async () => {
@@ -2354,11 +2599,15 @@ it("withdraws the check while a download is running", async () => {
   renderModels();
   await openSheet("sam2-local");
 
-  const check = (await screen.findByTestId("action-check-integrity")) as HTMLButtonElement;
-  expect(check.disabled).toBe(true);
-  expect(check.textContent).toContain("Checking");
-  expect((screen.getByTestId("action-verify-weights") as HTMLButtonElement).disabled).toBe(true);
-  expect(within(screen.getByTestId("model-setup")).getByTestId("download-progress").textContent).toContain("Checking");
+  const check = await screen.findByTestId("action-check-integrity");
+  expect(withheld(check)).toBe(true);
+  expect(nameOf(check)).toBe("Check files are undamaged");
+  // The download running at Ready is the missing-files check: it names itself "Checking…" and spins.
+  const verify = screen.getByTestId("action-verify-weights");
+  expect(withheld(verify)).toBe(true);
+  expect(verify.getAttribute("aria-busy")).toBe("true");
+  expect(nameOf(verify)).toBe("Checking…");
+  expect(within(screen.getByTestId("model-strip")).getByTestId("download-progress").textContent).toContain("Checking");
 });
 
 it("shows the check in the State cell in place of the badge, and takes the download out of reach in the sheet", async () => {
@@ -2386,10 +2635,13 @@ it("shows the check in the State cell in place of the badge, and takes the downl
 
   const sheet = await openSheet("sam2-local");
   const download = button(sheet, "download-weights");
-  expect(download.disabled).toBe(true);
-  expect(download.textContent).toContain("Reading every file…");
-  // No price is asked for while a run holds the files.
-  expect(within(sheet).queryByTestId("connection-size")).toBeNull();
+  expect(withheld(download)).toBe(true);
+  expect(nameOf(download)).toBe("Download weights");
+  // Withheld, never absent: the tooltip says what holds it.
+  act(() => download.focus());
+  expect((await screen.findByRole("tooltip")).textContent).toContain("Waits for the run in flight: both read the same files.");
+  // The strip says which run it is.
+  expect(within(within(sheet).getByTestId("model-strip")).getByTestId("integrity-progress").textContent).toContain("Reading every file");
 });
 
 it("shows a download's run in the State cell in place of the badge and the button", async () => {
@@ -2415,11 +2667,11 @@ it("shows a download's run in the State cell in place of the badge and the butto
   // The sheet shows the same run, and withdraws the download rather than
   // hiding it: the label names what is happening.
   const sheet = await openSheet("sam2-local");
-  expect(within(within(sheet).getByTestId("model-setup")).getByTestId("download-progress").textContent).toContain("Downloading");
+  expect(within(within(sheet).getByTestId("model-strip")).getByTestId("download-progress").textContent).toContain("Downloading");
   const download = button(sheet, "download-weights");
-  expect(download.disabled).toBe(true);
-  expect(download.textContent).toContain("Downloading…");
-  expect(within(sheet).queryByTestId("connection-size")).toBeNull();
+  expect(withheld(download)).toBe(true);
+  expect(download.getAttribute("aria-busy")).toBe("true");
+  expect(nameOf(download)).toBe("Downloading…");
 });
 
 it("names a ready connection's download as a check for missing files", async () => {
@@ -2454,17 +2706,17 @@ it("shows Starting… in the sheet between pressing Download and the wire bringi
   await userEvent.click(await within(sheet).findByTestId("download-weights"));
 
   const starting = await within(sheet).findByTestId("run-starting");
-  expect(within(sheet).getByTestId("model-setup").contains(starting)).toBe(true);
+  expect(within(sheet).getByTestId("model-strip").contains(starting)).toBe(true);
   expect(within(sheet).getByTestId("run-starting-prose").textContent).toBe("Starting…");
-  expect(within(sheet).getByTestId("model-setup").textContent).toContain(
+  expect(within(sheet).getByTestId("model-strip").textContent).toContain(
     "Runs on the server — closing this or leaving the page does not stop it.",
   );
-  // The button stays, disabled and named for what is happening, so it cannot be
-  // pressed twice; and the price is no longer on offer.
+  // The button stays, withheld and named for what is happening, so it cannot be
+  // pressed twice.
   const download = button(sheet, "download-weights");
-  expect(download.disabled).toBe(true);
-  expect(download.textContent).toContain("Downloading…");
-  expect(within(sheet).queryByTestId("connection-size")).toBeNull();
+  expect(withheld(download)).toBe(true);
+  expect(download.getAttribute("aria-busy")).toBe("true");
+  expect(nameOf(download)).toBe("Downloading…");
   // Only the sheet knows a request is out: the row has not been told by the wire.
   expect(within(screen.getByTestId("connection-sam2-local")).queryByTestId("run-starting")).toBeNull();
   expect(within(screen.getByTestId("connection-sam2-local")).getByTestId("connection-status").textContent).toBe("Not set up");
@@ -2474,8 +2726,8 @@ it("shows Starting… in the sheet between pressing Download and the wire bringi
   expect(await within(sheet).findByTestId("download-error")).not.toBeNull();
   expect(within(sheet).queryByTestId("run-starting")).toBeNull();
   const retry = button(sheet, "download-weights");
-  expect(retry.disabled).toBe(false);
-  expect(retry.textContent).toContain("Retry download");
+  expect(withheld(retry)).toBe(false);
+  expect(nameOf(retry)).toBe("Retry download");
 });
 
 it("shows the size's refusal in the sheet, and still offers the download", async () => {
@@ -2491,7 +2743,7 @@ it("shows the size's refusal in the sheet, and still offers the download", async
   expect(unavailable.textContent).toContain('pip install "visionset[local-inference]"');
   expect(unavailable.textContent).not.toContain("LOCAL_INFERENCE_UNAVAILABLE");
   expect(within(sheet).getByTestId("connection-size").contains(unavailable)).toBe(true);
-  expect(button(sheet, "download-weights").disabled).toBe(false);
+  expect(withheld(button(sheet, "download-weights"))).toBe(false);
   expect(within(sheet).queryByTestId("connection-size-known")).toBeNull();
   // Said once, in the sheet: the row has no place for it.
   expect(within(screen.getByTestId("connection-sam2-local")).queryByTestId("connection-size-unavailable")).toBeNull();
@@ -2512,12 +2764,14 @@ it("offers everything again once neither run is live", async () => {
   renderModels();
   await openSheet("sam2-local");
 
-  const verify = (await screen.findByTestId("action-verify-weights")) as HTMLButtonElement;
-  const check = (await screen.findByTestId("action-check-integrity")) as HTMLButtonElement;
-  expect(verify.disabled).toBe(false);
-  expect(check.disabled).toBe(false);
-  expect(verify.textContent).toContain("Check for missing files");
-  expect(check.textContent).toContain("Check files are undamaged");
+  const verify = await screen.findByTestId("action-verify-weights");
+  const check = await screen.findByTestId("action-check-integrity");
+  expect(withheld(verify)).toBe(false);
+  expect(withheld(check)).toBe(false);
+  expect(verify.getAttribute("aria-busy")).toBeNull();
+  expect(check.getAttribute("aria-busy")).toBeNull();
+  expect(nameOf(verify)).toBe("Check for missing files");
+  expect(nameOf(check)).toBe("Check files are undamaged");
 });
 
 it("shows a check nobody on this page started", async () => {
@@ -2633,7 +2887,12 @@ it("edits without offering to change the kind", async () => {
   await openSheet("sam2-local");
   await userEvent.click(await screen.findByTestId("action-edit"));
   expect(value(await screen.findByTestId("connection-name"))).toBe("sam2-local");
-  expect(screen.queryByTestId("choose-type")).toBeNull();
+  // The kind is not editable, so the switch is not drawn at all.
+  expect(screen.getByTestId("connection-dialog").textContent).toContain("Edit sam2-local");
+  expect(screen.queryByTestId("connection-kind")).toBeNull();
+  // Its own name is not a clash with itself.
+  expect(screen.queryByTestId("connection-name-taken")).toBeNull();
+  expect((screen.getByTestId("connection-submit") as HTMLButtonElement).disabled).toBe(false);
 });
 
 it("shows a set-up connection's model as a fact, and offers no field that would move it", async () => {
@@ -2672,9 +2931,7 @@ it("offers the model fields on a connection still waiting for its weights", asyn
   renderModels();
   await openSheet("sam2-local");
   await userEvent.click(await screen.findByTestId("action-edit"));
-  await waitFor(() =>
-    expect(screen.getByTestId("connection-model").textContent).toContain(SAM_BASE_PLUS),
-  );
+  await chosen(SAM_BASE_PLUS);
   expect(screen.queryByTestId("connection-model-fixed")).toBeNull();
 });
 
@@ -2754,12 +3011,8 @@ it("sends a create carrying the kind, which only the create model declares", asy
   );
 
   renderModels();
-  await userEvent.click(await screen.findByTestId("new-connection"));
-  await userEvent.click(await screen.findByTestId("choose-local"));
-  await userEvent.type(await screen.findByTestId("connection-name"), "sam2-local");
-  await waitFor(() =>
-    expect(screen.getByTestId("connection-model").textContent).toContain(SAM_BASE_PLUS),
-  );
+  await openNew();
+  await chosen(SAM_BASE_PLUS);
   await userEvent.click(await screen.findByTestId("connection-submit"));
 
   const post = await waitFor(() => {
@@ -2810,12 +3063,11 @@ it("opens the sheet from anywhere on the row, and gives focus back to the name w
   const sheet = await screen.findByTestId("model-sheet");
   expect(within(sheet).getByRole("heading", { name: "alpha" })).not.toBeNull();
   expect(screen.queryByRole("heading", { name: "beta" })).toBeNull();
-  // A panel at the right of the row, not a dialog over the page: resizable, and the
-  // page behind it stays reachable.
-  expect(sheet.tagName).toBe("ASIDE");
-  expect(screen.getByRole("complementary", { name: "Model" })).toBe(sheet);
-  expect(screen.queryByRole("dialog")).toBeNull();
+  // A modal sheet over the page, as the batch sheet is: a dialog named Model,
+  // resizable, with the focus on the sheet itself rather than its first control.
+  expect(screen.getByRole("dialog", { name: "Model" })).toBe(sheet);
   expect(within(sheet).getByTestId("detail-resize")).not.toBeNull();
+  expect(document.activeElement).toBe(sheet);
 
   await userEvent.keyboard("{Escape}");
   await waitFor(() => expect(screen.queryByTestId("model-sheet")).toBeNull());
@@ -2859,9 +3111,12 @@ it("heads the sheet with the name and the weights, and says everything the row t
   expect(within(sheet).getByRole("heading", { name: "sam2-full" })).not.toBeNull();
   // The description is what the connection *is*: the model id, whole.
   expect(within(sheet).getByTestId("sheet-weights").textContent).toBe(SAM_BASE_PLUS);
-  // The model section: the revision in full, where the weights come from, where
-  // they run, and every ability on one list.
-  expect(within(sheet).getByTestId("sheet-revision").textContent).toContain(SAM_BASE_PLUS_COMMIT);
+  // The properties: the revision — twelve characters, whole in its tooltip and
+  // a copy away — where the weights come from, where they run, and every ability.
+  const revision = within(sheet).getByTestId("sheet-revision");
+  expect(revision.textContent).toContain(SAM_BASE_PLUS_COMMIT.slice(0, 12));
+  expect(revision.querySelector("code")?.getAttribute("title")).toBe(SAM_BASE_PLUS_COMMIT);
+  expect(within(revision).getByRole("button", { name: "Copy revision" })).not.toBeNull();
   expect(within(sheet).getByText("Hugging Face")).not.toBeNull();
   expect(within(sheet).getByTestId("sheet-runs").lastElementChild?.textContent).toBe("Local · cuda · fp16");
   expect(
@@ -2871,9 +3126,13 @@ it("heads the sheet with the name and the weights, and says everything the row t
   ).toEqual(["Suggests from clicks", "Finds what you name", "writes boxes or polygons"]);
   // A local connection has no endpoint to say.
   expect(within(sheet).queryByText("Endpoint")).toBeNull();
-  // Setup first: the state's word, and what a set-up model's two checks are.
-  expect(within(within(sheet).getByTestId("model-setup")).getByRole("heading", { name: "Setup" })).not.toBeNull();
-  expect(within(within(sheet).getByTestId("model-setup")).getByTestId("connection-status").textContent).toBe("Ready");
+  // The state's word is the first property, as a chip; there is no Setup heading, only the name's.
+  expect(within(within(sheet).getByTestId("model-detail")).getByTestId("connection-status").textContent).toBe("Ready");
+  // (The "Model" heading is the dialog's own title, for assistive technology only.)
+  expect(within(sheet).getAllByRole("heading").map((one) => one.textContent)).toEqual(["Model", "sam2-full"]);
+  expect(within(sheet).queryByRole("heading", { name: "Setup" })).toBeNull();
+  // The logo of where the weights come from sits before the id, and is named plainly.
+  expect(within(sheet).getByTestId("sheet-origin").getAttribute("aria-label")).toBe("Hugging Face");
 });
 
 it("says an http connection's endpoint in full, and its runs-on line without a device it does not carry", async () => {
@@ -2921,8 +3180,8 @@ it("shows the sheet the live row on every poll, so a run started elsewhere is wa
   renderModels();
 
   const sheet = await openSheet("sam2-local");
-  expect(within(within(sheet).getByTestId("model-setup")).getByTestId("download-progress-prose").textContent).toContain("50%");
-  expect(within(sheet).getByTestId("download-weights").textContent).toContain("Downloading…");
+  expect(within(within(sheet).getByTestId("model-strip")).getByTestId("download-progress-prose").textContent).toContain("50%");
+  expect(nameOf(within(sheet).getByTestId("download-weights"))).toBe("Downloading…");
 
   // The transfer ends under an open sheet: the panel goes, the badge turns Ready
   // and the download's reading becomes the missing-files check.
@@ -2932,14 +3191,15 @@ it("shows the sheet the live row on every poll, so a run started elsewhere is wa
   );
   expect(within(sheet).queryByTestId("download-progress")).toBeNull();
   expect(within(sheet).queryByTestId("download-weights")).toBeNull();
-  expect((within(sheet).getByTestId("action-verify-weights") as HTMLButtonElement).disabled).toBe(false);
+  expect(withheld(within(sheet).getByTestId("action-verify-weights"))).toBe(false);
+  expect(nameOf(within(sheet).getByTestId("action-verify-weights"))).toBe("Check for missing files");
 });
 
 it("keeps a run going on the server when the sheet is closed, and still shows it on the row", async () => {
   listing([connection({ download: downloadOf("running", 400_000_000, 1_600_000_000) })]);
   renderModels();
   const sheet = await openSheet("sam2-local");
-  expect(within(sheet).getByTestId("model-setup").textContent).toContain(
+  expect(within(sheet).getByTestId("model-strip").textContent).toContain(
     "Runs on the server — closing this or leaving the page does not stop it.",
   );
   await closeSheet();
@@ -3038,7 +3298,7 @@ it("offers Test endpoint exactly where the wire declares it", async () => {
   listing([hosted(), connection({ setup_state: "ready", allowed_actions: READY_BOTH })]);
   renderModels();
   await openSheet("remote-seg");
-  expect((await screen.findByTestId("action-test-endpoint")).textContent).toContain("Test endpoint");
+  expect(nameOf(await screen.findByTestId("action-test-endpoint"))).toBe("Test endpoint");
   await closeSheet();
   const local = await openSheet("sam2-local");
   expect(within(local).getByTestId("action-check-integrity")).not.toBeNull();
@@ -3064,8 +3324,8 @@ it("sends the test to its own route and re-reads the list", async () => {
 
 it("says it is asking while the request is in flight, and stops once it lands", async () => {
   // An unreachable host can hold this open for a real connect timeout, so the
-  // sheet says it twice — on the button, which cannot be pressed again, and in a
-  // line under it — and the test releases the answer by hand the way
+  // sheet says it twice — on the button, which cannot be pressed again, and in the
+  // strip under the bar — and the test releases the answer by hand the way
   // `catalogOnCue` releases a slow catalog answer.
   listing([hosted()]);
   let release = (): void => undefined;
@@ -3083,14 +3343,16 @@ it("says it is asking while the request is in flight, and stops once it lands", 
 
   const hint = await screen.findByTestId("test-endpoint-pending");
   expect(hint.textContent).toContain("Asking the endpoint…");
-  const asking = screen.getByTestId("action-test-endpoint") as HTMLButtonElement;
-  expect(asking.disabled).toBe(true);
-  expect(asking.textContent).toContain("Asking the endpoint…");
+  const asking = screen.getByTestId("action-test-endpoint");
+  expect(withheld(asking)).toBe(true);
+  expect(asking.getAttribute("aria-busy")).toBe("true");
+  expect(nameOf(asking)).toBe("Asking the endpoint…");
 
   release();
   await waitFor(() => expect(screen.queryByTestId("test-endpoint-pending")).toBeNull());
-  expect((screen.getByTestId("action-test-endpoint") as HTMLButtonElement).disabled).toBe(false);
-  expect(screen.getByTestId("action-test-endpoint").textContent).toContain("Test endpoint");
+  expect(withheld(screen.getByTestId("action-test-endpoint"))).toBe(false);
+  expect(screen.getByTestId("action-test-endpoint").getAttribute("aria-busy")).toBeNull();
+  expect(nameOf(screen.getByTestId("action-test-endpoint"))).toBe("Test endpoint");
   expect(screen.getByTestId("test-endpoint-ok").textContent).toBe("The endpoint answered.");
 });
 

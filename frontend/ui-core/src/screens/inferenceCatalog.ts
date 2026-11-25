@@ -58,6 +58,16 @@ export const CUSTOM_MODEL = "custom";
 export const DEVICES = ["cpu", "cuda", "mps"] as const;
 
 /**
+ * How each offered device reads on screen. A device outside {@link DEVICES} —
+ * `cuda:1` — has no entry and is shown as its own value.
+ */
+export const DEVICE_LABEL: Record<(typeof DEVICES)[number], string> = {
+  cpu: "CPU",
+  cuda: "CUDA",
+  mps: "Apple GPU",
+};
+
+/**
  * The precisions that are honoured on that device — the kernel's
  * `precisions_for`, offering-side.
  *
@@ -210,4 +220,15 @@ export function accessFor(
   const entry = entries.find((one) => one.model_id === modelId);
   if (entry?.access_note == null || entry.access_url == null) return undefined;
   return { note: entry.access_note, href: entry.access_url };
+}
+
+/**
+ * The name a new connection starts with: the model id's last segment, lower
+ * case — `facebook/sam2.1-hiera-base-plus` → `sam2.1-hiera-base-plus`.
+ *
+ * A suggestion the form follows only until somebody types a name of their own;
+ * whether it is free in this workspace is still the server's answer.
+ */
+export function suggestedName(modelId: string): string {
+  return (modelId.trim().split("/").pop() ?? "").toLowerCase();
 }
