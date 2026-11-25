@@ -11,7 +11,7 @@ error envelope, and the three gate words.
 
 ## Always offered
 
-66 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
+67 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
 
 | Tool | Takes | What it does |
 | --- | --- | --- |
@@ -59,6 +59,7 @@ error envelope, and the three gate words.
 | `set_asset_progress` | `job_id`, `asset_id`, `progress` | Record where one asset of a job has got to, without writing annotations. |
 | `complete_job` | `job_id` | Close a job, once every one of its assets has been settled. |
 | `complete_batch` | `batch_id`, `promote`? | Close a batch, once every one of its jobs is complete. |
+| `finish_batch` | `batch_id`, `promote`? | Finish a batch: complete every one of its jobs and then the batch, in one step. |
 | `promote_batch` | `batch_id` | Move a completed batch's finished assets into the project's dataset. |
 | `create_correction_batch` | `batch_id`, `name`, `asset_ids`? | Start a draft batch that corrects a completed one. |
 | `dataset_stats` | `project` | Count what is in a project's dataset, class by class. |

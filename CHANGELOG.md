@@ -113,9 +113,17 @@ nothing was being distributed. This is the first version that is.
 - **A batch declares `complete` only once every asset is settled.** `allowed_actions` on a batch now applies the
   `SETTLED_PROGRESS` condition a job's `complete` already applied, read from the batch's own progress tally, and
   REST, the CLI and MCP all publish the same answer. The batch panel's *Complete* follows the declaration alone
-  (withheld, with its count, until it is declared), and a press closes no job unless the batch, read again at the
-  press, still declares `complete`; an asset reopened between that read and the job writes can still leave an
-  earlier job closed (#1112).
+  (withheld, with its count, until it is declared) (#1112).
+- **Finishing a batch is one kernel transaction.** `BatchService.finish` completes every job not yet `completed`
+  (starting a `pending` one first) and then the batch, all or nothing, and only while the batch declares
+  `complete`; an asset reopened while it runs refuses the whole call and moves no job. It is `POST
+  /batches/{id}/finish` (answering the batch and `jobs_completed`), `visionset batch finish [--promote]` and the MCP
+  tool `finish_batch`, with the same refusals on each: `BATCH_NOT_COMPLETE` for an unsettled asset,
+  `INVALID_TRANSITION` outside `in_annotation`. The batch panel's *Complete* sends that one request instead of a
+  request per job (#1127).
+- **Test fixtures no longer declare an open batch's `complete` by default.** The ui-core and e2e transcriptions of
+  a batch's actions require `settled` for an `in_annotation` batch, and every fixture derives it from the progress
+  it stubs (#1129).
 
 ### Removed
 

@@ -31,7 +31,7 @@ and `INTERNAL_ERROR` - are not raised by the kernel and are described in [api.md
 | `AUGMENTATION_REQUIRES_SPLIT` | 409 | An augmenting recipe met a release that was published without a split recipe. |  |  |
 | `BACKGROUND_JOB_NOT_FOUND` | 404 | No background job with that id lives in this workspace. |  |  |
 | `BATCH_IMMUTABLE` | 409 | A completed batch was told to delete itself. |  |  |
-| `BATCH_NOT_COMPLETE` | 409 | The batch is not finished, said by whichever service needed it to be. | Call `complete_job` for each of the batch's jobs first (`get_batch` lists them), then retry. |  |
+| `BATCH_NOT_COMPLETE` | 409 | The batch is not finished, said by whichever service needed it to be. | Settle every asset with `set_asset_progress`, then call `finish_batch`, which completes the jobs and the batch together. `complete_batch` also needs `complete_job` for each job first (`get_batch` lists them). |  |
 | `BATCH_NOT_EDITABLE` | 409 | Membership was changed on a batch that is no longer a draft. |  |  |
 | `BATCH_NOT_FOUND` | 404 | No batch with that id lives in this workspace. |  |  |
 | `BATCH_NOT_IN_ANNOTATION` | 409 | Work was attempted on a job whose batch is not open for annotation. |  |  |

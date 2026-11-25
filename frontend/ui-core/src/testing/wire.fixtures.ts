@@ -53,10 +53,25 @@ const ASSET_ACTIONS: Record<Progress, readonly AssetAction[]> = {
   accepted: [],
 };
 
-/** A batch's actions; `complete` additionally needs every asset settled, as a job's does. */
+/**
+ * A batch's actions; `complete` needs every asset settled, as a job's does. An open
+ * batch must say whether its stubbed progress is settled: the kernel has no default
+ * either, because one would declare for a batch nobody tallied.
+ */
+export function batchActions(state: "in_annotation", options: { settled: boolean }): BatchAction[];
+export function batchActions(state: Exclude<BatchState, "in_annotation">, options?: { settled?: boolean }): BatchAction[];
+export function batchActions(state: BatchState, options: { settled: boolean }): BatchAction[];
 export function batchActions(state: BatchState, options: { settled?: boolean } = {}): BatchAction[] {
-  const { settled = true } = options;
+  const { settled } = options;
+  if (state === "in_annotation" && settled === undefined) {
+    throw new Error("batchActions: an in_annotation batch needs { settled }, derived from its stubbed progress");
+  }
   return BATCH_ACTIONS[state].filter((action) => settled || action !== "complete");
+}
+
+/** Whether a batch's stubbed tally has nothing left to annotate, pre-label or review. */
+export function settledOf(progress: { unannotated?: number; pre_labeled?: number; review_pending?: number }): boolean {
+  return (progress.unannotated ?? 0) + (progress.pre_labeled ?? 0) + (progress.review_pending ?? 0) === 0;
 }
 
 /**

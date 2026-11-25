@@ -21,7 +21,8 @@ is where that freezing happens, and four things follow from it:
   ``domain/partition.py`` for why both halves are load-bearing.
 - **Completion is derived.** ``complete`` recomputes from the jobs rather than
   taking the caller's word, because a completed batch is what lets its annotated
-  assets be promoted into the Dataset.
+  assets be promoted into the Dataset. ``finish`` closes the jobs and the batch
+  together, in one transaction, for a batch whose every asset is settled.
 
 The lifecycle is one-way; ``BATCH_TRANSITIONS`` in ``domain/batch.py`` is the
 whole of what is legal, and this service consults that table rather than
@@ -46,9 +47,11 @@ from visionset.kernel.domain import (
     CORRECTABLE_STATES,
     DELETABLE_STATES,
     EDITABLE_STATES,
+    JOB_TRANSITIONS,
     PRE_LABEL_JOB_TYPE,
     PRE_LABELABLE_STATES,
     REPINNABLE_STATES,
+    SETTLED_PROGRESS,
     AnnotationJob,
     AnnotationJobState,
     AnnotationSchema,
@@ -57,6 +60,7 @@ from visionset.kernel.domain import (
     AssetProgress,
     AssetSort,
     Batch,
+    BatchAction,
     BatchApproved,
     BatchCompleted,
     BatchState,
@@ -71,6 +75,7 @@ from visionset.kernel.domain import (
     SchemaDiff,
     SingleJob,
     TaskGroup,
+    batch_actions,
     diff_classes,
     initial_progress,
     normalize_name,
@@ -683,6 +688,48 @@ class BatchService:
         )
         return completed
 
+    def finish(self, batch_id: UUID) -> FinishedBatch:
+        """Complete every unfinished job of the batch, then the batch, in one transaction.
+
+        Legal exactly when the batch declares ``complete``: it is
+        ``in_annotation`` and every asset across its jobs is settled. A
+        ``pending`` job is started and completed, an ``in_progress`` one
+        completed, and a ``completed`` one left alone, each through
+        ``JOB_TRANSITIONS``. Every write lands or none does: the decision is made
+        again under the write lock, so an asset reopened after the first read
+        refuses the whole call and leaves every job as it was.
+        :class:`BatchCompleted` follows the commit, as it does for :meth:`complete`.
+        The answer counts the jobs this call closed, so "closed three jobs" and
+        "the jobs were already done" read differently.
+
+        Raises:
+            BatchNotFound: no such batch in this workspace.
+            InvalidTransition: the batch is not ``in_annotation``.
+            BatchNotComplete: an asset of the batch is still unsettled.
+            StaleWrite: a job moved under the write lock this call holds, which
+                means a store that is not honouring the lock.
+        """
+        with self._workspace.unit_of_work() as uow:
+            batch = self.require_batch(uow, batch_id)
+            _require_finishable(batch, jobs_of(uow, batch))
+            self._hold_state(uow, batch, _require_closable)
+            jobs = jobs_of(uow, batch)
+            _require_finishable(batch, jobs)
+            for job in jobs:
+                _close_job(uow, job)
+            self._move_guarded(uow, batch, BatchState.COMPLETED)
+            completed = self.require_batch(uow, batch_id)
+            closed = sum(1 for job in jobs if job.state is not AnnotationJobState.COMPLETED)
+
+        self._workspace.event_bus.publish(
+            BatchCompleted(
+                batch_id=completed.id,
+                project_id=completed.project_id,
+                asset_count=len(completed.asset_ids),
+            )
+        )
+        return FinishedBatch(batch=completed, jobs_completed=closed)
+
     def delete(self, batch_id: UUID, *, confirm: bool = False) -> None:
         """Remove a batch, its task groups, its jobs and its membership rows.
 
@@ -913,6 +960,45 @@ def _require_deletable(batch: Batch) -> None:
         )
 
 
+def _require_closable(batch: Batch) -> None:
+    require_move(BATCH_TRANSITIONS, batch.state, BatchState.COMPLETED, _subject(batch))
+
+
+def _require_finishable(batch: Batch, jobs: Sequence[AnnotationJob]) -> None:
+    _require_closable(batch)
+    progress = tally(jobs)
+    if BatchAction.COMPLETE in batch_actions(batch.state, progress=progress):
+        return
+    unsettled = {state: count for state, count in progress.items() if state not in SETTLED_PROGRESS}
+    detail = ", ".join(f"{count} {state.value}" for state, count in unsettled.items() if count)
+    raise BatchNotComplete(
+        f"batch {batch.name!r} has {sum(unsettled.values())} of {sum(progress.values())} "
+        f"assets still unsettled ({detail}); every asset must be annotated, skipped or "
+        f"accepted before the batch can finish"
+    )
+
+
+#: The job moves ``finish`` makes, from each state a job can be in, in order.
+_CLOSING_MOVES: Mapping[AnnotationJobState, tuple[AnnotationJobState, ...]] = {
+    AnnotationJobState.PENDING: (AnnotationJobState.IN_PROGRESS, AnnotationJobState.COMPLETED),
+    AnnotationJobState.IN_PROGRESS: (AnnotationJobState.COMPLETED,),
+    AnnotationJobState.COMPLETED: (),
+}
+
+
+def _close_job(uow: UnitOfWork, job: AnnotationJob) -> None:
+    state = job.state
+    for to in _CLOSING_MOVES[state]:
+        require_move(JOB_TRANSITIONS, state, to, f"job {job.id}")
+        stored = uow.set_job_state(job.id, expected=state, state=to)
+        if stored is not None:
+            raise StaleWrite(
+                f"job {job.id} was {state.value!r} when this move was decided and is "
+                f"{stored.value!r} now; read the batch again and decide again"
+            )
+        state = to
+
+
 def _subject(batch: Batch) -> str:
     """How a refused move names the batch. One spelling, so refusals read alike."""
     return f"batch {batch.name!r}"
@@ -969,6 +1055,15 @@ def _seeding(uow: UnitOfWork, asset_ids: Iterable[UUID]) -> dict[UUID, bool]:
     return seeding
 
 
+class FinishedBatch(BaseModel):
+    """A batch :meth:`BatchService.finish` closed, and how many of its jobs it closed with it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    batch: Batch
+    jobs_completed: int
+
+
 class PlacedAsset(BaseModel):
     """One asset seen from inside its batch: the asset, where its work stands, and
     its labels in two numbers.
@@ -1017,6 +1112,20 @@ def jobs_of(uow: UnitOfWork, batch: Batch) -> list[AnnotationJob]:
         for group in uow.task_groups.list(batch.id)
         for job in uow.annotation_jobs.list(group.id)
     ]
+
+
+def tally(jobs: Iterable[AnnotationJob]) -> dict[AssetProgress, int]:
+    """Count the assets of these jobs by state, with every state present.
+
+    Beside :func:`jobs_of` because ``finish`` and ``JobService``'s progress
+    reads both ask it, and one count is what keeps the declaration and the
+    refusal from disagreeing.
+    """
+    counts = dict.fromkeys(AssetProgress, 0)
+    for job in jobs:
+        for progress in job.progress.values():
+            counts[progress] += 1
+    return counts
 
 
 def _require_assets(uow: UnitOfWork, project_id: UUID, asset_ids: Iterable[UUID]) -> list[UUID]:

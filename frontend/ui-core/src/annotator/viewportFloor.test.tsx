@@ -65,7 +65,7 @@ beforeEach(() => {
               state: "in_annotation",
               schema_version: 1,
               asset_count: 1,
-              allowed_actions: batchActions("in_annotation"),
+              allowed_actions: batchActions("in_annotation", { settled: false }),
               modalities: ["image"],
               promoted_asset_count: 0,
               parent_batch_id: null,

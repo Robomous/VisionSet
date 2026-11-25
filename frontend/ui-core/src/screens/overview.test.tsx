@@ -996,7 +996,7 @@ describe("the cards' pointers", () => {
         batches: [
           // A draft by state that declares nothing is not offered a review.
           draftOf("bare", { allowed_actions: [] }),
-          batchOf({ id: "live", name: "live", state: "in_annotation", allowed_actions: batchActions("in_annotation") }),
+          batchOf({ id: "live", name: "live", state: "in_annotation", allowed_actions: batchActions("in_annotation", { settled: true }) }),
           batchOf({ id: "ok", name: "ok", state: "approved", allowed_actions: batchActions("approved") }),
         ],
       });
@@ -1072,7 +1072,7 @@ describe("the cards' pointers", () => {
     it("is absent for a batch still being labeled", async () => {
       readinessOf({
         stats: statsOf({ asset_count: 48 }),
-        batches: [batchOf({ id: "live", name: "live", state: "in_annotation", allowed_actions: batchActions("in_annotation") })],
+        batches: [batchOf({ id: "live", name: "live", state: "in_annotation", allowed_actions: batchActions("in_annotation", { settled: true }) })],
       });
       renderWithData(<OverviewPanel projectId={PROJECT} />);
 
@@ -1506,7 +1506,7 @@ describe("the batches panel", () => {
     it("lists that batch's jobs, each with who holds it and how far it has come", async () => {
       readinessOf({
         stats: statsOf({ asset_count: 48 }),
-        batches: [batchOf({ id: "live", name: "drive-01", state: "in_annotation", allowed_actions: batchActions("in_annotation") })],
+        batches: [batchOf({ id: "live", name: "drive-01", state: "in_annotation", allowed_actions: batchActions("in_annotation", { settled: true }) })],
         jobs: [
           jobOf("j1", "live", { state: "in_progress", assignee: "Dana Reyes" }),
           jobOf("j2", "live", { state: "pending" }),
@@ -1629,8 +1629,8 @@ describe("the batches panel", () => {
       readinessOf({
         stats: statsOf({ asset_count: 48 }),
         batches: [
-          batchOf({ id: "a", name: "Alpha", state: "in_annotation", allowed_actions: batchActions("in_annotation") }),
-          batchOf({ id: "b", name: "Beta", state: "in_annotation", allowed_actions: batchActions("in_annotation") }),
+          batchOf({ id: "a", name: "Alpha", state: "in_annotation", allowed_actions: batchActions("in_annotation", { settled: true }) }),
+          batchOf({ id: "b", name: "Beta", state: "in_annotation", allowed_actions: batchActions("in_annotation", { settled: true }) }),
         ],
       });
       renderWithData(<OverviewPanel projectId={PROJECT} />);
@@ -1756,17 +1756,19 @@ describe("the batches panel", () => {
         name: "drive-02",
         state: "in_annotation",
         progress: progressOf({ total: 10, annotated: 10 }),
-        allowed_actions: batchActions("in_annotation"),
+        allowed_actions: batchActions("in_annotation", { settled: true }),
       });
       readinessOf({
         stats: statsOf({ asset_count: 10 }),
         batches: [done],
         jobs: [{ id: "job-1", batch_id: "done", state: "completed", asset_count: 10, assignee: null, pre_label_run: null, allowed_actions: [] }],
       });
-      on("GET", /\/batches\/done$/, { status: 200, body: done });
-      on("POST", /\/batches\/done\/complete$/, {
+      on("POST", /\/batches\/done\/finish$/, {
         status: 200,
-        body: batchOf({ id: "done", name: "drive-02", state: "completed", allowed_actions: batchActions("completed") }),
+        body: {
+          batch: batchOf({ id: "done", name: "drive-02", state: "completed", allowed_actions: batchActions("completed") }),
+          jobs_completed: 0,
+        },
       });
       renderWithData(<OverviewPanel projectId={PROJECT} />);
 
@@ -1783,7 +1785,7 @@ describe("the batches panel", () => {
       await waitFor(() => expect(screen.queryByTestId("complete-confirm")).toBeNull());
       expect((await within(footer).findByTestId("completed-drive-02")).textContent).toContain("Nothing is in the dataset yet");
       expect(sent.filter((request) => request.method === "POST").map((request) => new URL(request.url).pathname)).toEqual([
-        "/batches/done/complete",
+        "/batches/done/finish",
       ]);
     });
 
@@ -1816,7 +1818,7 @@ describe("the batches panel", () => {
     it("offers Complete to a batch being labeled, and no separate Add to dataset beside it", async () => {
       readinessOf({
         stats: statsOf({ asset_count: 48 }),
-        batches: [batchOf({ id: "live", name: "drive-01", state: "in_annotation", allowed_actions: batchActions("in_annotation") })],
+        batches: [batchOf({ id: "live", name: "drive-01", state: "in_annotation", allowed_actions: batchActions("in_annotation", { settled: true }) })],
       });
       renderWithData(<OverviewPanel projectId={PROJECT} />);
 
@@ -1883,7 +1885,7 @@ describe("the batches panel", () => {
     it("annotates straight into the one job it has", async () => {
       readinessOf({
         stats: statsOf({ asset_count: 48 }),
-        batches: [batchOf({ id: "live", name: "drive-01", state: "in_annotation", allowed_actions: batchActions("in_annotation") })],
+        batches: [batchOf({ id: "live", name: "drive-01", state: "in_annotation", allowed_actions: batchActions("in_annotation", { settled: true }) })],
         jobs: [jobOf("j1", "live", { state: "in_progress", assignee: "Dana" })],
       });
       const job = vi.fn();
@@ -1900,7 +1902,7 @@ describe("the batches panel", () => {
     it("leaves the choice to the jobs list when there are several jobs to pick from", async () => {
       readinessOf({
         stats: statsOf({ asset_count: 48 }),
-        batches: [batchOf({ id: "live", name: "drive-01", state: "in_annotation", allowed_actions: batchActions("in_annotation") })],
+        batches: [batchOf({ id: "live", name: "drive-01", state: "in_annotation", allowed_actions: batchActions("in_annotation", { settled: true }) })],
         jobs: [jobOf("j1", "live"), jobOf("j2", "live")],
       });
       const job = vi.fn();
@@ -1917,7 +1919,7 @@ describe("the batches panel", () => {
     it("offers no Annotate where the host has no editor to send anybody to", async () => {
       readinessOf({
         stats: statsOf({ asset_count: 48 }),
-        batches: [batchOf({ id: "live", name: "drive-01", state: "in_annotation", allowed_actions: batchActions("in_annotation") })],
+        batches: [batchOf({ id: "live", name: "drive-01", state: "in_annotation", allowed_actions: batchActions("in_annotation", { settled: true }) })],
         jobs: [jobOf("j1", "live")],
       });
       renderWithData(<OverviewPanel projectId={PROJECT} />);
@@ -1934,7 +1936,7 @@ describe("the batches panel", () => {
           name: "drive-01",
           state: "in_annotation",
           progress: progressOf({ total: 10, unannotated: 10 }),
-          allowed_actions: batchActions("in_annotation"),
+          allowed_actions: batchActions("in_annotation", { settled: false }),
         });
 
       it("opens the dialog over that one batch, titled for it", async () => {
@@ -1988,7 +1990,7 @@ describe("the batches panel", () => {
         },
         {
           name: "to annotate",
-          over: { state: "in_annotation", allowed_actions: batchActions("in_annotation") },
+          over: { state: "in_annotation", allowed_actions: batchActions("in_annotation", { settled: true }) },
           key: "annotate",
           label: "Annotate",
         },
@@ -2097,7 +2099,7 @@ describe("the batches panel", () => {
       function labeling(jobs: readonly Record<string, unknown>[]): void {
         readinessOf({
           stats: statsOf({ asset_count: 48 }),
-          batches: [batchOf({ id: "live", name: "drive-01", state: "in_annotation", allowed_actions: batchActions("in_annotation") })],
+          batches: [batchOf({ id: "live", name: "drive-01", state: "in_annotation", allowed_actions: batchActions("in_annotation", { settled: true }) })],
           jobs,
         });
       }
@@ -2150,8 +2152,8 @@ describe("the batches panel", () => {
         readinessOf({
           stats: statsOf({ asset_count: 48 }),
           batches: [
-            batchOf({ id: "live", name: "drive-01", state: "in_annotation", allowed_actions: batchActions("in_annotation") }),
-            batchOf({ id: "broken", name: "drive-02", state: "in_annotation", allowed_actions: batchActions("in_annotation") }),
+            batchOf({ id: "live", name: "drive-01", state: "in_annotation", allowed_actions: batchActions("in_annotation", { settled: true }) }),
+            batchOf({ id: "broken", name: "drive-02", state: "in_annotation", allowed_actions: batchActions("in_annotation", { settled: true }) }),
           ],
           jobs: [jobOf("j1", "live", { state: "in_progress", assignee: "Dana" })],
         });
@@ -2208,7 +2210,7 @@ describe("the batches panel", () => {
       readinessOf({
         stats: statsOf({ asset_count: 48 }),
         batches: [
-          batchOf({ id: "live", name: "Live", state: "in_annotation", allowed_actions: batchActions("in_annotation") }),
+          batchOf({ id: "live", name: "Live", state: "in_annotation", allowed_actions: batchActions("in_annotation", { settled: true }) }),
           batchOf({ id: "d", name: "Draft", state: "draft", allowed_actions: batchActions("draft") }),
           batchOf({ id: "ok", name: "Approved", state: "approved", allowed_actions: batchActions("approved") }),
           batchOf({ id: "fin", name: "Finished", state: "completed", promoted_asset_count: 4, allowed_actions: batchActions("completed") }),
@@ -2270,7 +2272,7 @@ describe("the batches panel", () => {
             name: "drive-01",
             state: "in_annotation",
             progress: progressOf({ total: 10, unannotated: 10 }),
-            allowed_actions: batchActions("in_annotation"),
+            allowed_actions: batchActions("in_annotation", { settled: false }),
           }),
         ],
       });
@@ -2570,7 +2572,7 @@ describe("auto-label over the batches", () => {
       state: "in_annotation",
       asset_count: 200,
       progress: progressOf({ total: 200, unannotated, annotated: 200 - unannotated }),
-      allowed_actions: batchActions("in_annotation"),
+      allowed_actions: batchActions("in_annotation", { settled: unannotated === 0 }),
       ...over,
     });
   }
@@ -2848,7 +2850,7 @@ describe("the batches panel's tool row", () => {
   const DRAFT = "b-draft";
 
   function open(): Record<string, unknown> {
-    return batchOf({ id: OPEN, name: "Open", state: "in_annotation", allowed_actions: batchActions("in_annotation") });
+    return batchOf({ id: OPEN, name: "Open", state: "in_annotation", allowed_actions: batchActions("in_annotation", { settled: true }) });
   }
 
   function draft(): Record<string, unknown> {

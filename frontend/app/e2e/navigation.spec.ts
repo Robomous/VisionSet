@@ -64,7 +64,7 @@ const BATCH_OUT = {
   project_id: PROJECT,
   name: "drive-01",
   state: "in_annotation",
-  allowed_actions: batchActions("in_annotation"),
+  allowed_actions: batchActions("in_annotation", { settled: false }),
   modalities: ["image"],
   promoted_asset_count: 0,
   parent_batch_id: null,

@@ -105,7 +105,7 @@ async function serveApi(page: Page): Promise<void> {
         name: "drive-01",
         state: "in_annotation",
         schema_version: 1,
-        allowed_actions: batchActions("in_annotation"),
+        allowed_actions: batchActions("in_annotation", { settled: false }),
         modalities: ["image"],
         promoted_asset_count: 0,
         parent_batch_id: null,
