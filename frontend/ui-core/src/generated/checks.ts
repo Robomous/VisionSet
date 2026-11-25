@@ -246,6 +246,12 @@ export const checkFormatOut: Check<Schemas["FormatOut"]> =
 export const checkFormatPage: Check<Schemas["FormatPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkFormatOut)], "total": [true, isInteger] } as const);
 
+export const checkGeometryOut: Check<Schemas["GeometryOut"]> =
+  /*#__PURE__*/ object({ "name": [true, checkGeometryType] } as const);
+
+export const checkGeometryPage: Check<Schemas["GeometryPage"]> =
+  /*#__PURE__*/ object({ "items": [true, arrayOf(checkGeometryOut)], "total": [true, isInteger] } as const);
+
 export const checkActivityKind: Check<Schemas["ActivityKind"]> =
   /*#__PURE__*/ oneOf(["release_published", "batch_promoted", "ingest", "schema_version"] as const);
 
@@ -564,6 +570,7 @@ export const checkListDatasetAssets = checkDatasetAssetPage;
 export const checkListDatasetChanges = checkDatasetChangePage;
 export const checkListExportTargets = checkExportTargetPage;
 export const checkListFormats = checkFormatPage;
+export const checkListGeometries = checkGeometryPage;
 export const checkListInferenceConnections = checkConnectionPage;
 export const checkListIngestJobs = checkIngestJobPage;
 export const checkListPreprocessingRecipes = checkPreprocessingRecipePage;
