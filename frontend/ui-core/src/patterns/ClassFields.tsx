@@ -478,6 +478,7 @@ function InspectorFields({
   nameDescribedBy,
 }: ClassFieldsProps): JSX.Element {
   const shapes = orderGeometries(declared.geometries).map((geometry) => capitalised(geometryLabel(geometry)));
+  const drawnAs = new Set(declared.geometries);
   return (
     <div className="flex flex-col">
       <div className="flex flex-col py-2">
@@ -526,7 +527,7 @@ function InspectorFields({
               className="shrink-0 gap-0.5 rounded-lg border border-input bg-input/20 p-[3px] dark:bg-input/30"
             >
               {pickable(offered, declared).map((geometry) => {
-                const on = declared.geometries.includes(geometry);
+                const on = drawnAs.has(geometry);
                 const last = on && declared.geometries.length === 1;
                 const label = capitalised(geometryLabel(geometry));
                 return (
