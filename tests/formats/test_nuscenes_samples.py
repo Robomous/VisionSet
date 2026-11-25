@@ -33,8 +33,14 @@ from visionset.formats.nuscenes.poses import (
     Vector,
     rotation_matrix,
 )
-from visionset.kernel.domain import Cuboid3DGeometry, ImportedDataset, ImportLossKind
-from visionset.kernel.services import IngestService, WorkspaceService
+from visionset.kernel.domain import (
+    Cuboid3DGeometry,
+    ImportedDataset,
+    ImportLossKind,
+    SplitGrouping,
+    SplitRecipe,
+)
+from visionset.kernel.services import IngestService, ProjectService, WorkspaceService
 
 SAMPLES = os.environ.get("VISIONSET_POINTCLOUD_SAMPLES")
 NUSCENES = Path(SAMPLES) / "nuscenes" if SAMPLES else None
@@ -285,3 +291,38 @@ def test_the_keyframes_survive_a_kitti_export_with_their_boxes(
     assert sum(len(scan.labels) for scan in again.scans) == sum(
         len(scan.labels) for scan in present
     )
+
+
+def test_a_grouped_split_keeps_each_scene_in_one_fold_where_a_plain_one_scatters_it(
+    survey: Survey, published: tuple[Published, Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The leak #1147 names, measured: keyframes 0.5 s apart in train, val and test at once."""
+    release, _ = published
+    assets = IngestService(release.workspace).assets(release.project_id)
+    scene_of = {asset.id: asset.group_label for asset in assets}
+    scenes = set(scene_of.values())
+    assert None not in scenes
+    if survey.versions == (UPRIGHT_SPLIT,):
+        assert len(scenes) == 10
+    dataset_id = ProjectService(release.workspace).get_dataset(release.project_id).id
+
+    straddling: dict[str, int] = {}
+    for name, group_by in (("plain", None), ("grouped", SplitGrouping.GROUP_LABEL)):
+        recipe = SplitRecipe(train=0.8, val=0.1, test=0.1, seed=0, group_by=group_by)
+        published_split = release.releases.publish(dataset_id, f"split-{name}", split=recipe)
+        assignment = release.releases.assignment(published_split.id)
+        folds_of: dict[str | None, set[str]] = defaultdict(set)
+        for fold in ("train", "val", "test"):
+            for asset_id in getattr(assignment, fold):
+                folds_of[scene_of[asset_id]].add(fold)
+        straddling[name] = sum(1 for found in folds_of.values() if len(found) > 1)
+        assert release.releases.verify(published_split.id).ok
+        assert release.releases.manifest(published_split.id).manifest_version == 6
+    with capsys.disabled():
+        print(
+            f"\nnuScenes {', '.join(survey.versions)}: {len(scenes)} scenes; "
+            f"split across folds — per asset {straddling['plain']}, grouped "
+            f"{straddling['grouped']}"
+        )
+    assert straddling["grouped"] == 0
+    assert straddling["plain"] > 0
