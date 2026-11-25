@@ -3408,8 +3408,9 @@ function PinDiff({
   }
   return (
     <ul className="flex list-disc flex-col gap-1 pl-4" data-testid="pin-diff">
-      {diff.changes.map((change, index) => (
-        <li key={index} className="text-xs text-muted-foreground">
+      {diff.changes.map((change) => (
+        // One change per class, attribute and verdict: the key `SchemaCommitBar` gives the same rows.
+        <li key={`${change.kind}:${change.label_class}:${change.attribute ?? ""}:${change.detail}`} className="text-xs text-muted-foreground">
           {change.detail}
         </li>
       ))}
