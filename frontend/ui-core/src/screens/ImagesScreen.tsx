@@ -71,7 +71,7 @@ import { ImagesBand } from "./images/ImagesBand";
 import { HEADING_PX, INSET, SourceSection } from "./images/ImageSheet";
 import { useBatchGroups, useImageGroups, type ImageGroups } from "./images/useImageGroups";
 import { useScrollSpy } from "./images/useScrollSpy";
-import { asApiError } from "../data/errors";
+import { ApiError, asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
 import { ErrorState } from "../patterns/AsyncStates";
 import { useBatches, useProjectAssets, type AssetPage, type Source } from "./queries";
@@ -134,7 +134,9 @@ export function ImagesScreen({ projectId, onIngest, batchId = null, onBatchChang
 }
 
 /** The page's headline count, and how many sources it is drawn from. */
-function ImagesCount({ filter, batched, shownTotal, projectTotal, sourceCount }: { readonly filter: string | null; readonly batched: boolean; readonly shownTotal: number; readonly projectTotal: number; readonly sourceCount: number }): JSX.Element {
+function ImagesCount({ filter, batched, settled, shownTotal, projectTotal, sourceCount }: { readonly filter: string | null; readonly batched: boolean; readonly settled: boolean; readonly shownTotal: number; readonly projectTotal: number; readonly sourceCount: number }): JSX.Element | null {
+  // A batch's count is not a fact until its read has answered.
+  if (batched && !settled) return null;
   const narrowed = filter !== null || batched;
   // A batch's run is not drawn from the project's sources, so it does not count them.
   const sourceLine = batched ? 0 : sourceCount;
@@ -217,12 +219,19 @@ function ProjectPane(props: PaneProps): JSX.Element {
 
 /** One batch: the batch's own listing as a single run, under a chip that names it. */
 function BatchPane({ batchId, onClear, ...props }: PaneProps & { readonly batchId: string; readonly onClear: (() => void) | undefined }): JSX.Element {
-  const data = useBatchGroups(props.projectId, batchId);
   const batches = useBatches(props.projectId);
   const known = batches.data?.items.find((one) => one.id === batchId);
+  // Only a batch of this project is read: an id from another one is not this page's to show.
+  const data = useBatchGroups(props.projectId, batchId, known !== undefined);
   // Until the batches answer the name is not a fact; once they have, a batch they do not hold says so.
   const name = known?.name ?? (batches.data === undefined ? null : "Unknown batch");
-  return <Pane {...props} data={data} batch={{ name, onClear }} />;
+  const retry = (): void => void batches.refetch();
+  const scoped: ImageGroups = batches.isError
+    ? { ...data, failure: { error: batches.error, retry } }
+    : batches.isSuccess && known === undefined
+      ? { ...data, failure: { error: new ApiError({ code: "BATCH_NOT_FOUND", message: `batch '${batchId}' is not in this project` }, { status: 404 }), retry } }
+      : data;
+  return <Pane {...props} data={scoped} batch={{ name, onClear }} />;
 }
 
 function Pane({
@@ -362,7 +371,7 @@ function Pane({
       data-testid="images-pane"
     >
       <PageStatus>
-        <ImagesCount filter={filter} batched={batched} shownTotal={shownTotal} projectTotal={projectTotal} sourceCount={sources.length} />
+        <ImagesCount filter={filter} batched={batched} settled={settled} shownTotal={shownTotal} projectTotal={projectTotal} sourceCount={sources.length} />
       </PageStatus>
 
       <ImagesBand

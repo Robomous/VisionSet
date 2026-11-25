@@ -69,10 +69,10 @@ export function useImageGroups(projectId: string, pageSize: number): ImageGroups
  * whole — the batch's images are one group, and each image still names its own
  * source in the detail (`sources` is read for that).
  */
-export function useBatchGroups(projectId: string, batchId: string): ImageGroups {
+export function useBatchGroups(projectId: string, batchId: string, enabled = true): ImageGroups {
   const sourcesQuery = useSources(projectId);
   const sources = useMemo(() => newestFirst(sourcesQuery.data?.items ?? []), [sourcesQuery.data]);
-  const read = useBatchAssets(batchId);
+  const read = useBatchAssets(batchId, undefined, enabled);
   const { data, isSuccess, isError, error, isFetchingNextPage, hasNextPage, fetchNextPage, refetch } = read;
 
   const groups = useMemo<ImageGroup[]>(() => {

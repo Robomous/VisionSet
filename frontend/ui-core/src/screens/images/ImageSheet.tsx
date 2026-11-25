@@ -96,7 +96,7 @@ export function SourceSection({
       {headed && <PinnedHeading group={group} stuck={stuck} range={range} rail={rail} inset={inset} onOpen={onOpenSource} />}
       <div
         role="listbox"
-        aria-label={group.source === undefined ? (label === undefined ? "Images" : `Images in ${label}`) : `Images from ${name}`}
+        aria-label={group.source === undefined ? (label === undefined || label === null ? "Images" : `Images in ${label}`) : `Images from ${name}`}
         className={cn("grid py-3", rail ? "grid-cols-2 gap-2.5" : cn("gap-3", COLUMNS[density]), inset)}
       >
         {group.images.map((item) => (

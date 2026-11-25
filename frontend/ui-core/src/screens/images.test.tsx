@@ -17,6 +17,7 @@ import { useState, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { IMAGES_PAGE_SIZE, ImagesScreen } from "./ImagesScreen";
+import { PageStatusOutlet, PageStatusProvider } from "../patterns/PageStatus";
 import { renderWithData } from "../testing/dataHarness";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
@@ -71,6 +72,8 @@ let batches: Record<string, unknown>[] = [];
 let batchHeld: Record<string, Record<string, unknown>[]> = {};
 /** Every `/batches/{id}/assets` read, in order. */
 let batchAsked: { readonly id: string; readonly offset: string | null; readonly limit: string | null }[] = [];
+/** While set, every `/batches/{id}/assets` read waits on it. */
+let batchGate: Promise<void> | undefined;
 
 function json(body: unknown, status = 200): Promise<Response> {
   return Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }));
@@ -85,6 +88,7 @@ beforeEach(() => {
   batches = [];
   batchHeld = {};
   batchAsked = [];
+  batchGate = undefined;
   vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : new Request(String(input), init);
     const url = new URL(request.url);
@@ -108,7 +112,8 @@ beforeEach(() => {
       const scope = batchHeld[id];
       if (scope === undefined) return json({ code: "BATCH_NOT_FOUND", message: "no such batch" }, 404);
       const start = Number(offset ?? 0);
-      return json({ items: scope.slice(start, start + Number(limit ?? scope.length)).map(batchAsset), total: scope.length });
+      const answer = (): Promise<Response> => json({ items: scope.slice(start, start + Number(limit ?? scope.length)).map(batchAsset), total: scope.length });
+      return batchGate === undefined ? answer() : batchGate.then(answer);
     }
     if (/\/projects\/[^/]+\/batches$/.test(url.pathname)) return json({ items: batches, total: batches.length });
     if (/\/projects\/[^/]+\/sources$/.test(url.pathname)) return json({ items: sources, total: sources.length });
@@ -508,9 +513,43 @@ describe("the Images section narrowed to a batch", () => {
     renderImages(undefined, { id: BATCH, onChange });
 
     expect(await screen.findByTestId("images-failure")).toBeTruthy();
+    expect(screen.getByTestId("images-failure").textContent).toContain("That batch is no longer on record.");
     await waitFor(() => expect(screen.getByTestId("images-batch-name").textContent).toBe("Unknown batch"));
     await userEvent.click(screen.getByTestId("images-batch-clear"));
     expect(onChange).toHaveBeenCalledWith(null);
+  });
+
+  it("never reads a batch this project does not hold, though the address names one", async () => {
+    twoSources();
+    // Another project's batch: the id is real, but not this project's.
+    batchHeld = { [BATCH]: [held[0]!] };
+    renderImages(undefined, { id: BATCH, onChange: vi.fn() });
+
+    expect(await screen.findByTestId("images-failure")).toBeTruthy();
+    expect(screen.getByTestId("images-batch-name").textContent).toBe("Unknown batch");
+    expect(screen.queryAllByRole("option")).toEqual([]);
+    expect(batchAsked).toEqual([]);
+  });
+
+  it("states no count while the batch's read is on its way, rather than none of the project's", async () => {
+    withBatch();
+    let open = (): void => {};
+    batchGate = new Promise((resolve) => {
+      open = resolve;
+    });
+    renderWithData(
+      <PageStatusProvider>
+        <PageStatusOutlet />
+        <TooltipProvider>
+          <ImagesScreen projectId={PROJECT} batchId={BATCH} onBatchChange={vi.fn()} />
+        </TooltipProvider>
+      </PageStatusProvider>,
+    );
+
+    await waitFor(() => expect(batchAsked).toHaveLength(1));
+    expect(screen.queryByTestId("images-count")).toBeNull();
+    act(() => open());
+    await waitFor(() => expect(screen.getByTestId("images-count").textContent).toBe("4 of 8 images"));
   });
 
   it("is the whole project again once the narrowing is lifted, keeping the tile size", async () => {
