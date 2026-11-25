@@ -388,20 +388,22 @@ class EmptyBatch(VisionSetError):
 class BatchNotComplete(VisionSetError):
     """The batch is not finished, said by whichever service needed it to be.
 
-    Two readings, one refusal, on purpose — the precedent is
+    Several readings, one refusal, on purpose — the precedent is
     ``BatchNotInAnnotation``, which ``JobService`` and ``AnnotationService``
     share rather than spelling twice:
 
     - ``BatchService.complete`` raises it when a job is still outstanding.
       Completion is *derived*: the service recomputes it from the jobs rather
       than taking the caller's word.
+    - ``BatchService.finish`` raises it when an asset of the batch is still
+      unsettled, so the batch does not declare ``complete``.
     - ``DatasetService.promote`` raises it when the batch never reached
       ``completed`` at all.
 
-    Both say the same thing to a caller — this batch's work is not done — and
-    both have the same remedy, which is to finish it. A second error would only
+    All say the same thing to a caller — this batch's work is not done — and
+    all have the same remedy, which is to finish it. A second error would only
     make a surface catch two names for one condition. And the reason the gate is
-    there in the first place is the second reading: a completed batch is exactly
+    there in the first place is the last reading: a completed batch is exactly
     what lets its annotated assets into the Dataset.
     """
 

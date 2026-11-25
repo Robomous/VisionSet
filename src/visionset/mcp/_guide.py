@@ -27,7 +27,7 @@ VisionSet builds computer-vision datasets. Typical order: `create_project` -> \
 `create_schema_version` -> `ingest` (a directory of still images on the server's \
 machine) -> `approve_batch` (start=true) -> loop { `next_pending_assets` -> \
 `get_asset_image` -> `add_annotations`, or `set_asset_progress` to skip } -> \
-`complete_job` -> `complete_batch` (promote=true) -> `publish_release` -> \
+`finish_batch` (promote=true) -> `publish_release` -> \
 `check_export` -> `export_release`.
 
 A refused call is still a normal result: `{"error": {"code", "message", \
@@ -55,8 +55,9 @@ WORKFLOW: Final = """\
 5. **Annotate.** Loop: `next_pending_assets` for a job, `get_asset_image` to look,
    `add_annotations` to label, or `set_asset_progress` with `skipped` to pass on one.
    Coordinates are in the asset's native pixels; multiply preview coordinates by `scale`.
-6. **Finish.** `complete_job` for each job, then `complete_batch`. `complete_batch` with
-   `promote=true` moves the finished work into the dataset.
+6. **Finish.** Once every asset is settled, `finish_batch` completes the jobs and the batch
+   together; with `promote=true` it moves the finished work into the dataset.
+   `complete_job` closes one job on its own, and `complete_batch` needs every job closed.
 7. **Release.** `publish_release` freezes the dataset under a tag. `check_export` says what
    an export would drop; `export_release` writes it out for a target or format.
 

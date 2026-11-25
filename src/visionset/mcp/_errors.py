@@ -163,8 +163,9 @@ _HINTS: Final[dict[type[BaseException], str]] = {
         "`set_asset_progress`, then call `complete_job` again."
     ),
     BatchNotComplete: (
-        "Call `complete_job` for each of the batch's jobs first (`get_batch` lists "
-        "them), then retry."
+        "Settle every asset with `set_asset_progress`, then call `finish_batch`, which "
+        "completes the jobs and the batch together. `complete_batch` also needs "
+        "`complete_job` for each job first (`get_batch` lists them)."
     ),
     EmptyRelease: (
         "Nothing is in the dataset yet. Promote a completed batch with "

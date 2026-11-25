@@ -111,6 +111,11 @@ class BatchCompleted(BatchWithJobs):
 
 
 @closed
+class BatchFinished(BatchCompleted):
+    jobs_completed: int
+
+
+@closed
 class BatchDeleted(TypedDict):
     deleted: BatchWithJobs
 
@@ -656,6 +661,44 @@ def complete_batch(
             else []
         )
         return {**_batch_payload(workspace, completed.id), "promoted": len(entered)}
+
+
+def finish_batch(
+    batch_id: BatchRef,
+    promote: Annotated[
+        StrictBool,
+        Field(
+            description=(
+                "Also move the finished assets into the dataset once the batch is closed — "
+                "`promote_batch` in the same call. Omit to promote later."
+            )
+        ),
+    ] = False,
+) -> BatchFinished:
+    """Finish a batch: complete every one of its jobs and then the batch, in one step.
+
+    Accepted exactly when `get_batch` lists `complete` in `allowed_actions`: the
+    batch is in annotation and every asset is settled (annotated, skipped or
+    accepted). Pending jobs are started and completed, open ones completed, and
+    finished ones left alone. Either everything closes or nothing does — an asset
+    reopened while this runs refuses the whole call and leaves every job as it was.
+
+    `jobs_completed` counts the jobs this call closed. Pass `promote` to call
+    `promote_batch` here; `promoted` counts the assets that
+    entered the dataset, and is zero when nothing was asked to move or the trunk
+    already held them all. Finishing is committed before the promotion is attempted.
+    """
+    with opened_workspace() as workspace:
+        finished = BatchService(workspace).finish(identifier(batch_id, what="batch_id"))
+        batch = finished.batch
+        entered = (
+            DatasetService(workspace).promote(batch.id, actor=DatasetActor.MCP) if promote else []
+        )
+        return {
+            **_batch_payload(workspace, batch.id),
+            "promoted": len(entered),
+            "jobs_completed": finished.jobs_completed,
+        }
 
 
 def create_correction_batch(
