@@ -116,7 +116,7 @@ def test_a_calibration_tilted_past_the_tolerance_is_a_label_loss(tmp_path: Path)
         if one.kind is ImportLossKind.LABEL
     ]
     assert (loss.subject, loss.count) == ("Car", 1)
-    assert "leans more than 5 degrees" in loss.reason
+    assert "leans more than 6 degrees" in loss.reason
     assert len(level.labels) == 1
 
 

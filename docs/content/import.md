@@ -97,7 +97,7 @@ naming the kinds to accept. See [mcp-tools.md](mcp-tools.md).
 | `voc` | `Annotations/**/*.xml` with pictures under `JPEGImages/`; boxes | Pose, truncated, difficult and occluded values other than unspecified or `0`, other `<object>` children, parts, segmentation, an object with no name or box, a zero-area or outside box |
 | `classification` | `labels.csv` (`image`, `class`) and `classes.txt` beside `images/`; one tag per row | A row naming a class `classes.txt` does not declare, a second row of one class on one picture, a malformed row, a row with no picture or class |
 | `kitti` | A 3D object detection split: `velodyne/*.bin` scans, `label_2/*.txt` and `calib/*.txt`, at the top or in `training/` and `testing/` (or the `train/`, `val/`, `test/` the exporter writes); boxes as `cuboid_3d` in the `lidar_flu` frame | `DontCare` regions, each box's 2D image `bbox`, truncation, occlusion and alpha, the calibration itself, a score outside 0 to 1, a label with no scan, no usable calibration, a malformed line or a dimension that is not positive |
-| `nuscenes` | A data root: a version folder (`v1.0-mini`, `v1.0-trainval`, ...) of JSON tables beside `samples/LIDAR_TOP/*.pcd.bin`; the LIDAR_TOP keyframes, boxes as `cuboid_3d` in the `lidar_rfu` frame | Attributes, visibility, instance tokens (tracking identity), `num_lidar_pts` and `num_radar_pts`, the ego pose and calibration themselves, a box leaning more than 5 degrees, a malformed box or a dimension that is not positive, an annotation whose sample has no LIDAR_TOP keyframe, the sweeps, and every other sensor's data |
+| `nuscenes` | A data root: a version folder (`v1.0-mini`, `v1.0-trainval`, ...) of JSON tables beside `samples/LIDAR_TOP/*.pcd.bin`; the LIDAR_TOP keyframes, boxes as `cuboid_3d` in the `lidar_rfu` frame | Attributes, visibility, instance tokens (tracking identity), `num_lidar_pts` and `num_radar_pts`, the ego pose and calibration themselves, a box leaning more than 6 degrees, a malformed box or a dimension that is not positive, an annotation whose sample has no LIDAR_TOP keyframe, the sweeps, and every other sensor's data |
 
 **YOLO family** (`ultralytics`, `yolov5-yaml`, `darknet`). A picture is any file under an `images/`
 directory; its label is at the same path with the last `images` segment swapped for `labels` and
@@ -163,7 +163,7 @@ becomes `(l, w, h)`, and the heading `(cos ry, 0, -sin ry)` is mapped through th
 and read back as `yaw = atan2(y, x)`. On KITTI's nominal axes that is `yaw = -rotation_y - pi/2`,
 wrapped into `[-pi, pi]`. A cuboid has no pitch or roll: the small lean a real calibration has
 between camera up and lidar z is projected out of the heading, and a calibration whose camera up
-leans more than 5 degrees from the lidar's up axis - the tolerance the nuScenes import refuses a
+leans more than 6 degrees from the lidar's up axis - the tolerance the nuScenes import refuses a
 leaning box by - places none of its frame's boxes, each a `label` loss, rather than flattening
 them.
 Coordinates are rounded to the micrometre. Classes are the names labels use, KITTI's own
@@ -194,7 +194,7 @@ that keyframe's poses, an explicit conversion the loss report names (an `attribu
 `p_sensor = Rc^T (Re^T (p - te) - tc)`. The box's own x axis, its heading, is mapped through both
 rotations and read back as `yaw = atan2(-x, y)`, the turn from forward (+y) toward left (-x); the
 size becomes `(l, w, h)`. A cuboid has no pitch or roll, so a box whose up axis leans more than
-**5 degrees** from the sensor's is a `label` loss rather than a flattened box; within that, the lean
+**6 degrees** from the sensor's is a `label` loss rather than a flattened box; within that, the lean
 is projected out of the heading. Coordinates are rounded to the micrometre. Classes are
 `category.name` (such as `vehicle.car`), sorted. Sweeps, camera images, radar and tracking
 identity are out of scope; each is reported, never dropped silently.

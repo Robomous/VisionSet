@@ -54,7 +54,7 @@ nothing was being distributed. This is the first version that is.
 - **A `nuscenes` importer and the `lidar_rfu` scan frame.** Reads a nuScenes data root's LIDAR_TOP keyframes
   into `point_cloud` assets under a source declaring the new `lidar_rfu` frame (x right, y forward, z up), with
   each global box moved into the sensor frame through the keyframe's ego pose and calibration as a `cuboid_3d`;
-  a box leaning more than 5 degrees is a `label` loss rather than flattened (#1056).
+  a box leaning more than 6 degrees is a `label` loss rather than flattened (#1056, #1069).
 - **Cuboids are edited on a point-cloud scan.** An Edit mode on the scan view draws, moves, resizes and
   turns a `cuboid_3d` in the scan's declared frame and saves it with the frame's other work; it is disabled,
   with the reason, on a scan whose source declares no frame or a frame open for viewing only (#1070).
@@ -100,6 +100,10 @@ nothing was being distributed. This is the first version that is.
 
 ### Changed
 
+- **The tilt tolerance is 6 degrees, not 5.** Run on the real nuScenes mini split (404 keyframes, 18,538 boxes), the
+  pose chain reproduces nuScenes' own `num_lidar_pts` for every box. The tilt is the sensor's against the world and is
+  the same for every box in a frame; it reaches 5.8 degrees, so five refused 27 frames and every label in them (495
+  boxes, 2.7%), while six keeps them. Both importers share the constant (#1069).
 - **The scan view follows the page theme.** The point-cloud view and the scan preview's legend and swatches draw
   on the ramps for the theme set by `.dark` on `<html>`, and the selection and drawing highlight is read again
   when that class changes, so a live switch recolours an open scan. `PointCloudCanvas` takes an optional `theme`
@@ -254,7 +258,7 @@ nothing was being distributed. This is the first version that is.
 - **A PLY's elements before its vertices are bounded by its vertices.** An element of empty lists ahead of one
   vertex is refused at once instead of being walked for half a minute; the bytes skipped count toward the
   point-data limit (#1111).
-- **KITTI refuses a calibration tilted more than 5 degrees**, the nuScenes tolerance, as a `label` loss per box
+- **KITTI refuses a calibration tilted more than 6 degrees**, the nuScenes tolerance, as a `label` loss per box
   instead of flattening it silently (#1111).
 - **An import re-checks every labelled scan's frame inside its commit**, so a frame declared again while its
   blobs were stored refuses the import; the refusal of an import into a directory declaring another frame says
