@@ -210,6 +210,14 @@ is projected out of the heading. Coordinates are rounded to the micrometre. Clas
 `category.name` (such as `vehicle.car`), sorted. Sweeps, camera images, radar and tracking
 identity are out of scope; each is reported, never dropped silently.
 
+**The scale it has been run at.** The largest root imported so far is `v1.0-mini`: 404 keyframes
+and 18,538 boxes, committed in about 11 seconds on one developer workstation (the median of three
+runs), of which about 5 seconds is the final transaction. The commit's progress counts scans as
+their bytes are stored; the rows that follow - assets, labels, the batch and its approval - are
+written in one transaction that reports no progress and holds the workspace's write lock, so other
+writes to the workspace wait for it. Its time grows with the number of labels. `v1.0-trainval` has
+not been imported, and no time is claimed for it.
+
 nuScenes is licensed CC BY-NC-SA 4.0 and downloaded only after registering at nuscenes.org;
 VisionSet ships none of it, and its tests build a synthetic root instead.
 
