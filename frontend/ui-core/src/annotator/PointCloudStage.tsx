@@ -97,6 +97,12 @@ export interface PointCloudStageProps {
    * they float bottom-right of the perspective view.
    */
   readonly controlsSlot?: HTMLElement | null;
+  /**
+   * Where the host wants the view's status row (point count and frame, the edit
+   * strip, a source failure): the foot of its own top-left status column. Absent,
+   * the row lies along the top of the perspective view.
+   */
+  readonly statusSlot?: HTMLElement | null;
 }
 
 const MODES: readonly { readonly mode: ColorMode; readonly label: string; readonly absent: string }[] = [
@@ -179,7 +185,17 @@ function useScanSource(sourceId: string | null): {
   };
 }
 
-export function PointCloudStage({ projectId, asset, loaded, schema, scan, onSave, onToggleHelp, controlsSlot }: PointCloudStageProps): JSX.Element {
+export function PointCloudStage({
+  projectId,
+  asset,
+  loaded,
+  schema,
+  scan,
+  onSave,
+  onToggleHelp,
+  controlsSlot,
+  statusSlot,
+}: PointCloudStageProps): JSX.Element {
   const fetched = usePointSample(projectId, asset.id);
   const { frame, settled: frameKnown, failure: sourceFailure } = useScanSource(asset.source_id);
 
@@ -209,6 +225,7 @@ export function PointCloudStage({ projectId, asset, loaded, schema, scan, onSave
       scan={scan ?? null}
       sourceFailure={sourceFailure}
       controlsSlot={controlsSlot ?? null}
+      statusSlot={statusSlot ?? null}
       {...(onSave === undefined ? {} : { onSave })}
       {...(onToggleHelp === undefined ? {} : { onToggleHelp })}
     />
@@ -226,14 +243,16 @@ function ScanView({
   onSave,
   onToggleHelp,
   controlsSlot,
+  statusSlot,
   sourceFailure,
-}: Omit<PointCloudStageProps, "asset" | "scan" | "controlsSlot"> & {
+}: Omit<PointCloudStageProps, "asset" | "scan" | "controlsSlot" | "statusSlot"> & {
   readonly sourceFailure: SourceFailure | null;
   readonly asset: PointCloudStageProps["asset"];
   readonly sample: PointSample;
   readonly frame: ScanFrame | null;
   readonly scan: ScanWorkspace | null;
   readonly controlsSlot: HTMLElement | null;
+  readonly statusSlot: HTMLElement | null;
 }): JSX.Element {
   const [colorMode, setColorMode] = useState<ColorMode>(() => defaultColorMode(sample));
   const [showLabels, setShowLabels] = useState(true);
@@ -438,6 +457,39 @@ function ScanView({
     </div>
   );
 
+  const statusRow = (
+    <div
+      className={cn(
+        "pointer-events-none flex flex-wrap items-start gap-2",
+        statusSlot === null && "absolute inset-x-2 top-2",
+      )}
+    >
+      <p
+        data-testid="point-cloud-summary"
+        className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+      >
+        {sample.count === total
+          ? `${total.toLocaleString()} points`
+          : `${sample.count.toLocaleString()} of ${total.toLocaleString()} points`}
+        {" · "}
+        {frame ?? (sourceFailure === null ? "no declared frame, shown with z up" : "frame unknown, shown with z up")}
+      </p>
+
+      {scan !== null && <ScanStrip scan={scan} />}
+
+      {sourceFailure !== null && (
+        <div className="pointer-events-auto basis-full" data-testid="scan-source-error">
+          <ErrorState
+            className="max-w-md"
+            code={asApiError(sourceFailure.error).code}
+            message={`This scan's source could not be read, so its frame is unknown. ${refusalProse(sourceFailure.error)}`}
+            onRetry={sourceFailure.retry}
+          />
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div
       ref={stageRef}
@@ -471,32 +523,7 @@ function ScanView({
             />
           )}
 
-          {/* Below the page's status tag and object count (two h-8 rows from top-3, gap-2), which overlay the stage's top-left. */}
-          <div className="pointer-events-none absolute inset-x-2 top-[5.75rem] flex flex-wrap items-start gap-2">
-            <p
-              data-testid="point-cloud-summary"
-              className="rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground"
-            >
-              {sample.count === total
-                ? `${total.toLocaleString()} points`
-                : `${sample.count.toLocaleString()} of ${total.toLocaleString()} points`}
-              {" · "}
-              {frame ?? (sourceFailure === null ? "no declared frame, shown with z up" : "frame unknown, shown with z up")}
-            </p>
-
-            {scan !== null && <ScanStrip scan={scan} />}
-
-            {sourceFailure !== null && (
-              <div className="pointer-events-auto basis-full" data-testid="scan-source-error">
-                <ErrorState
-                  className="max-w-md"
-                  code={asApiError(sourceFailure.error).code}
-                  message={`This scan's source could not be read, so its frame is unknown. ${refusalProse(sourceFailure.error)}`}
-                  onRetry={sourceFailure.retry}
-                />
-              </div>
-            )}
-          </div>
+          {statusSlot === null && statusRow}
 
           {status === "lost" && (
             <p
@@ -561,6 +588,7 @@ function ScanView({
         )}
       </div>
       {controlsSlot !== null && createPortal(controls, controlsSlot)}
+      {statusSlot !== null && createPortal(statusRow, statusSlot)}
     </div>
   );
 }
