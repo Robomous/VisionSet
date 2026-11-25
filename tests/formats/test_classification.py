@@ -166,7 +166,7 @@ def test_every_row_points_at_a_file_that_exists_under_its_own_fold(
 def test_a_recipe_spreads_the_images_over_folds_and_the_rows_follow(
     tmp_path: Path, tagged: Fixture
 ) -> None:
-    """The split is the release's, computed the way the API computes it.
+    """The split is the release's, handed over as the API reports it.
 
     Which asset lands where is `assign_split`'s answer and not this test's, so
     what is asserted is the property: more than one fold is used, every picture
@@ -255,6 +255,7 @@ def test_an_undeclared_manifest_class_aborts_before_a_label_row_is_emitted(tmp_p
             malformed,
             dest,
             content=fixture.workspace.blob_store.get,
+            assignment=None,
         )
     fixture.close()
 

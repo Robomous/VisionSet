@@ -16,6 +16,7 @@ A scan with no label file is imported unlabelled, as KITTI's testing split is.
 
 from __future__ import annotations
 
+import math
 from collections import Counter
 from pathlib import Path, PurePosixPath
 from typing import Final
@@ -23,6 +24,7 @@ from typing import Final
 from pydantic import ValidationError
 
 from visionset.formats._reading import files_under, number, read_text, relative
+from visionset.formats._tilt import TILT_TOLERANCE
 from visionset.formats.kitti.frames import CameraToLidar, Matrix, Vector, camera_box_to_lidar
 from visionset.kernel.domain import (
     Cuboid3DGeometry,
@@ -199,6 +201,17 @@ def _label(line: str, transform: CameraToLidar | str, losses: _Losses) -> Import
         return None
     if isinstance(transform, str):
         losses[(ImportLossKind.LABEL, name, f"{transform}, so the box cannot be placed")] += 1
+        return None
+    if transform.tilt > TILT_TOLERANCE:
+        losses[
+            (
+                ImportLossKind.LABEL,
+                name,
+                f"a calibration whose camera up leans more than "
+                f"{math.degrees(TILT_TOLERANCE):g} degrees from the lidar's up axis; a "
+                "cuboid has no pitch or roll, so the box is not flattened",
+            )
+        ] += 1
         return None
     box = camera_box_to_lidar(
         (numbers[10], numbers[11], numbers[12]), (height, width, length), numbers[13], transform

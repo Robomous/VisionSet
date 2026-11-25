@@ -130,6 +130,13 @@ A plugin also gets a `ContentReader` and never a `BlobStore`: a reader can read
 where the port could also `put`, and a plugin that could write into the content
 store could give a release bytes nobody published.
 
+It also gets the release's split `assignment`, cut once by the kernel over the whole
+frozen manifest, and places assets by it through `folds_of`; it never cuts its own,
+because the manifest it is handed can hold fewer assets than the release froze.
+`supported_modalities` is optional on the port and read through
+`supported_modalities_of`, so a plugin written before scans existed is still
+discovered and writes images.
+
 ## The gate that keeps a report honest
 
 [`tests/formats/test_report_agreement.py`](../../../../tests/formats/test_report_agreement.py)

@@ -269,8 +269,9 @@ the [`kitti` import](import.md#formats) stores each as a binary PCD of the same 
 | PCD | `DATA ascii`, `binary` and `binary_compressed` (LZF) |
 | PLY | `ascii`, `binary_little_endian` and `binary_big_endian`; the `vertex` element is read, and faces, tristrips and other elements are skipped |
 
-`x`, `y` and `z` must be float fields. `intensity`, and colour as PCD `rgb` or `rgba` or PLY
-`red`/`green`/`blue`, are recorded in `fields` when present; anything else is ignored, including
+`x`, `y` and `z` must be float fields. `intensity`, and colour as a four-byte PCD `rgb` or `rgba`
+or PLY `red`/`green`/`blue`, are recorded in `fields` when present - a PCD colour field of another
+width is not, since it is never read as one; anything else is ignored, including
 PCD padding (`_`). A point with a non-finite coordinate - an organized cloud's empty pixel - is
 dropped and not counted.
 
@@ -280,11 +281,19 @@ behind. It returns `PointCloudMetadata`: the `format`, the `point_count` kept, t
 
 | Refusal | When |
 | --- | --- |
-| `UNSUPPORTED_MEDIA` | not a PCD or PLY header; an encoding not read; no float `x`, `y`, `z`; more than 10 million points declared, or more than 512 MiB of point data |
+| `UNSUPPORTED_MEDIA` | not a PCD or PLY header; an encoding not read; no float `x`, `y`, `z`; more than 10 million points declared, or more than 512 MiB of point data, counting what a PLY holds before its vertices |
 | `CORRUPT_MEDIA` | a recognisable header whose data is truncated or malformed, a header that contradicts itself (a `SIZE` below 1, a negative `COUNT`, `POINTS` other than `WIDTH` x `HEIGHT`, a PLY property named twice, an element before the vertices declaring an implausible count), an ascii row over 64 KiB, a damaged LZF stream, or no finite point at all |
 
+**What a PLY holds before its vertices is bounded by its vertices.** Such an element is skipped,
+not decoded, but a row holding a list has to be walked one at a time. So an element there may
+declare at most eight rows per vertex the file declares, the rows holding a list (and every ascii
+row) at most two per vertex together, and the bytes skipped count toward the 512 MiB; a header
+that declares more is refused before anything is walked. An element of empty lists ahead of one
+vertex is refused at once rather than walked for half a minute.
+
 **The limits are sized for one scan.** Ten million points is several sweeps of a 128-beam lidar,
-and keeps the decoded coordinates - three doubles a point - under a quarter of a gigabyte. The
+and keeps the decoded coordinates - three doubles a point at most, three floats for a scan that
+stores them so - under a quarter of a gigabyte. The
 limits are checked against the header before anything is decoded, and an LZF stream may be no
 larger than LZF can make from the data the header declares. Whatever else a hostile file
 provokes while it is parsed is refused as `CORRUPT_MEDIA` against that one file: an ingest run
@@ -346,17 +355,27 @@ as it was before the origin existed; a reader that does not know bit 2 refuses a
 it, rather than drawing it in the wrong place. Labels are not moved: a cuboid or polyline stays in
 the scan's frame, and the viewer subtracts the origin, in doubles, only from what it hands the GPU.
 
-**A decoded sample is cached per workspace.** The first request for a scan and budget decodes the
-whole scan, at what its ingest cost; the sample is then kept in the open workspace's
-`point_samples` cache, keyed by the asset's `content_hash` and the budget. Content addressing is
-what keeps it from going stale: other bytes have another hash, so an entry is only ever served for
-the bytes it was decoded from. The cache holds at most 128 MiB of samples and drops the least
-recently used first; a sample bigger than that is served and not kept. Concurrent requests for one
-uncached scan and budget decode once and share the answer; a refusal is raised to each of them and
-not kept. At 19 bytes a point with both fields, one sample is about 9.5 MB at the default budget
-and 38 MB at the maximum. The response is held in memory as well: `PointSample.encode()` joins
-the sections into one new buffer on every request, cached or not, so each request in flight holds
-one more copy of its sample.
+**A decoded sample is cached per workspace, and a scan is decoded once whatever the budget.** The
+first request for a scan decodes the whole scan into its stride-1 sample, which is kept in the open
+workspace's `point_samples` cache under the asset's `content_hash` and `MAX_POINT_CLOUD_POINTS`;
+every budget is thinned from it (`thinned` in `visionset.kernel.domain`) and kept under the hash
+and that budget. Every point is encoded on its own and the origin depends on the scan alone, so a
+thinned sample is byte for byte what sampling the scan at that budget answers. Content addressing
+is what keeps an entry from going stale: other bytes have another hash, so an entry is only ever
+served for the bytes it was decoded from. The cache holds at most 128 MiB of samples and drops the
+least recently used first; a sample bigger than that is served and not kept, so a scan whose whole
+sample passes the bound (about seven million points with both fields) is decoded again for a
+budget not yet asked for. Concurrent requests for one uncached scan share one decode, whatever
+their budgets, and at most two scans are decoded at once across the workspace; a refusal is raised
+to each waiting request and not kept. At 19 bytes a point with both fields, one sample is about
+9.5 MB at the default budget and 38 MB at the maximum. The response is held in memory as well:
+`PointSample.encode()` joins the sections into one new buffer on every request, cached or not, so
+each request in flight holds one more copy of its sample.
+
+**A decode holds one copy of the columns it reads.** Binary point data is read in bounded chunks
+and each wanted field gathered into its own column, never the raw rows whole beside them; a
+coordinate keeps the width the file stored it in. A scan with no non-finite coordinate is not
+copied again, and one with some is filtered a column at a time.
 
 ## Video moved to the browser
 

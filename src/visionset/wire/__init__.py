@@ -139,7 +139,7 @@ from visionset.kernel.domain import (
     job_actions,
     loss_kinds,
 )
-from visionset.kernel.ports import Exporter, Provider
+from visionset.kernel.ports import Exporter, Provider, supported_modalities_of
 from visionset.wire import shapes
 
 T = TypeVar("T")
@@ -601,6 +601,7 @@ def batch(
     *,
     promoted: AbstractSet[UUID],
     pre_labeled: PreLabelRun | None = None,
+    modalities: Sequence[str],
 ) -> shapes.Batch:
     """A batch and where its assets have got to. ``asset_ids`` is absent.
 
@@ -614,6 +615,9 @@ def batch(
     terms ``connection`` reads ``download`` and ``check``: a caller with no view
     of the queue passes nothing and ``pre_label_run`` is null, which is also
     what a batch never pre-labeled publishes.
+
+    ``modalities`` is what ``BatchService.modalities`` answers for this batch,
+    passed in for ``promoted``'s reason: one read covers a whole listing.
     """
     return {
         "id": str(value.id),
@@ -627,6 +631,7 @@ def batch(
         "promoted_asset_count": sum(1 for one in value.asset_ids if one in promoted),
         "parent_batch_id": None if value.parent_batch_id is None else str(value.parent_batch_id),
         "pre_label_run": None if pre_labeled is None else pre_label_run(pre_labeled),
+        "modalities": list(modalities),
     }
 
 
@@ -843,7 +848,7 @@ def export_format(value: Exporter) -> shapes.ExportFormat:
         # ["bbox"]` off yolov5-yaml would conclude a polygon is not written, and a
         # polygon is written.
         "degraded_geometries": sorted(one.value for one in value.degraded_geometries),
-        "modalities": sorted(value.supported_modalities),
+        "modalities": sorted(supported_modalities_of(value)),
         "targets": sorted(one.name for one in value.targets),
     }
 

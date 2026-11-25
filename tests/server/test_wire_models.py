@@ -399,12 +399,14 @@ def test_a_batch_publishes_its_lineage() -> None:
     orphan = samples.BATCH.model_copy(update={"parent_batch_id": None})
 
     assert (
-        BatchOut.of(child, samples.COUNTS, promoted=frozenset(), pre_label_run=None).parent_batch_id
+        BatchOut.of(
+            child, samples.COUNTS, promoted=frozenset(), pre_label_run=None, modalities=()
+        ).parent_batch_id
         == parent
     )
     assert (
         BatchOut.of(
-            orphan, samples.COUNTS, promoted=frozenset(), pre_label_run=None
+            orphan, samples.COUNTS, promoted=frozenset(), pre_label_run=None, modalities=()
         ).parent_batch_id
         is None
     )

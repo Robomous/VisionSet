@@ -28,7 +28,7 @@ import { useState, type JSX } from "react";
 
 import { Button } from "@robomous/ui-core";
 import { BATCH_ACTION, declares } from "../data/capabilities";
-import { assetNoun } from "../lib/assetNoun";
+import { batchNoun } from "../lib/assetNoun";
 import { IconAction } from "../patterns/IconAction";
 import type { BatchRowView } from "../patterns/project/BatchTable";
 import { ApproveDialog, StartAnnotatingButton } from "./BatchLifecycle";
@@ -37,7 +37,7 @@ import { CompleteBatchButton } from "./ComposedTransitions";
 import { CorrectionButton } from "./CorrectionBatch";
 import { DeleteBatchButton } from "./DeleteBatch";
 import { PromoteButton } from "./PromoteButton";
-import { useBatchModality, type Batch } from "./queries";
+import type { Batch } from "./queries";
 
 export interface BatchActionsProps {
   readonly batch: Batch;
@@ -116,7 +116,6 @@ function Finish({ batch, projectId, phase, onOpenDataset }: Pick<BatchActionsPro
   const toDataset = onOpenDataset === undefined ? {} : { onOpenDataset };
   const [promotedHere, setPromotedHere] = useState(false);
   const [finishedHere, setFinishedHere] = useState(false);
-  const modality = useBatchModality(projectId, batch.id);
   const promotable = declares(batch, BATCH_ACTION.promote);
   const inDataset = phase === "in_dataset";
   return (
@@ -129,7 +128,7 @@ function Finish({ batch, projectId, phase, onOpenDataset }: Pick<BatchActionsPro
       )}
       {promotable && !finishedHere && inDataset && !promotedHere && (
         <span data-line="" className="flex items-center justify-end gap-3 text-xs text-muted-foreground" data-testid={`in-dataset-${batch.name}`}>
-          All {batch.asset_count} {assetNoun(modality, batch.asset_count)} in the dataset
+          All {batch.asset_count} {batchNoun(batch.modalities, batch.asset_count)} in the dataset
           {onOpenDataset !== undefined && (
             <Button variant="link" className="h-auto p-0 text-xs" data-testid={`in-dataset-open-${batch.name}`} onClick={onOpenDataset}>
               Open the dataset

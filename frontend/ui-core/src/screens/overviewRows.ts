@@ -5,7 +5,6 @@
  */
 
 import { refusalProse } from "../data/refusals";
-import type { Modality } from "../lib/assetNoun";
 import type { BatchRowView } from "../patterns/project/BatchTable";
 import type { ClassRow } from "../patterns/project/ClassRail";
 import { annotatedShare, hasJobs } from "./batchState";
@@ -37,7 +36,6 @@ export function isDrafting(batch: Pick<Batch, "pre_label_run">): boolean {
 export function batchRows(
   batches: readonly Batch[],
   jobsOf: ReadonlyMap<string, BatchJobsRead> | undefined,
-  modalities?: ReadonlyMap<string, Modality>,
 ): BatchRowView[] {
   return batches
     .map((batch): BatchRowView => {
@@ -51,7 +49,7 @@ export function batchRows(
         schemaVersion: batch.schema_version ?? null,
         done: hasJobs(batch.state) ? annotatedShare(batch.progress).done : null,
         total: batch.asset_count,
-        modality: modalities?.get(batch.id) ?? "image",
+        modalities: batch.modalities,
         prelabel: runningPrelabel(batch),
         counts: hasJobs(batch.state) ? batch.progress : null,
         assignees: !hasJobs(batch.state) ? null : read?.status === "ready" ? read.jobs.map((job) => job.assignee ?? null) : undefined,

@@ -10,12 +10,11 @@
 
 import { useState } from "react";
 
-import { assetNoun } from "../lib/assetNoun";
+import { batchNoun, type Modality } from "../lib/assetNoun";
 import { formatCount } from "../lib/format";
 import {
   useActiveSchema,
   useApproveBatch,
-  useBatchModality,
   useBatchTransition,
   type Batch,
   type Partition,
@@ -113,7 +112,7 @@ export interface ApproveForm {
   readonly stepSize: number;
   /** Approve, then start when the switch says so. `onSettled` runs once both requests asked for have landed, with the approved batch. */
   readonly submit: (onSettled: (approved: Batch) => void) => void;
-  readonly modality: ReturnType<typeof useBatchModality>;
+  readonly modalities: readonly Modality[];
   /** Back to the defaults, and no request outstanding: for a host that keeps the form mounted between openings. */
   readonly reset: () => void;
 }
@@ -135,7 +134,7 @@ export function useApproveForm(batch: Batch | null): ApproveForm {
   const approve = useApproveBatch(batch?.id ?? "");
   const begin = useBatchTransition(batch?.id ?? "", "start");
   const schema = useActiveSchema(batch?.project_id ?? "", batch !== null);
-  const modality = useBatchModality(batch?.project_id ?? "", batch?.id ?? null);
+  const modalities = batch?.modalities ?? [];
   const [approvedAt, setApprovedAt] = useState<number | null>(null);
 
   const size = typedSize ?? String(splitDefault(images));
@@ -158,7 +157,7 @@ export function useApproveForm(batch: Batch | null): ApproveForm {
   return {
     batch,
     images,
-    noun: assetNoun(modality, images, "image"),
+    noun: batchNoun(modalities, images, "image"),
     pinned,
     start,
     setStart,
@@ -179,7 +178,7 @@ export function useApproveForm(batch: Batch | null): ApproveForm {
     step: (by) => setTypedSize(steppedSize(images, cut.per, by)),
     stepSize: stepFor(images),
     submit,
-    modality,
+    modalities,
     reset: () => {
       setStart(true);
       setFolded(true);

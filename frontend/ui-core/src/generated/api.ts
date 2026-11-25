@@ -2144,6 +2144,10 @@ export interface paths {
          *     as is an unknown asset; an unknown project is 404 `PROJECT_NOT_FOUND`. A
          *     stored scan this installation can no longer read is 422 `UNSUPPORTED_MEDIA`
          *     or `CORRUPT_MEDIA`.
+         *
+         *     Sent `Cache-Control: private, no-cache` with an `ETag` naming the scan's
+         *     content hash, the budget and this build, and a request whose `If-None-Match`
+         *     names it is answered 304 with no body, before the scan is read.
          */
         get: operations["get_asset_points"];
         put?: never;
@@ -2174,10 +2178,13 @@ export interface paths {
          *     and 404 `ASSET_NOT_FOUND`, which say the thing itself is not here rather than
          *     that its preview is missing.
          *
-         *     Cached the same way `content` is, and for the same reason. The `ETag` is the
-         *     thumbnail hash, which is a cache key and not an identity: two machines may
-         *     hold different preview bytes for one image, so never compare these across
-         *     workspaces.
+         *     An image's preview is cached the same way `content` is, and for the same
+         *     reason. A scan's is drawn from above in its source's frame, which can be
+         *     declared again, so it is sent `Cache-Control: private, no-cache` and a
+         *     request whose `If-None-Match` names the current `ETag` is answered 304 with
+         *     no body. The `ETag` is the thumbnail hash, which is a cache key and not an
+         *     identity: two machines may hold different preview bytes for one image, so
+         *     never compare these across workspaces.
          */
         get: operations["get_asset_thumbnail"];
         put?: never;
@@ -4080,6 +4087,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Modalities */
+            modalities: ("image" | "point_cloud")[];
             /** Name */
             name: string;
             /** Parent Batch Id */

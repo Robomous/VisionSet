@@ -426,7 +426,9 @@ the *Auto-label* icon when it applies ([below](#auto-labeling-from-the-overview)
 In dataset* lens and a filter; between the band and the table sits the auto-label line while
 images are waiting for labels. The table has the list pages' icon-and-word column headers, which
 stay on top while it scrolls. Each row is the batch's name
-with its size and schema pin, its state, one plain meter of how much is labeled (or *Drafting
+with its size and schema pin - the size counted in what the batch holds, read off
+`BatchOut.modalities` with the batch itself (*12 images*, *12 scans*, or *12 assets* for a batch
+holding both) - its state, one plain meter of how much is labeled (or *Drafting
 n/m* while a model pre-labels it, or *Not started* for a draft), and the initials of whoever holds
 its jobs (a dashed circle for an unassigned one). Below the last row the column hairlines run on
 to the cell's foot, so a short list leaves table rather than blank page. The table is driven from
@@ -443,7 +445,7 @@ with previous and next (J/K walk the batches without closing it) and close; unde
 batch's name is the page's title, and its **properties** follow one per row, an icon and a
 label beside the value. The state is one of them - a state chip whose glyph says the phase
 (the dashed ring, the ring, the labeling pie, the arrow to the dataset, the check) and whose
-card says what it means, not a badge beside the name - with Labeled (*18 of 48 · 38%* over a meter), Images and Assigned (who holds
+card says what it means, not a badge beside the name - with Labeled (*18 of 48 · 38%* over a meter), Images (Scans or Assets, by the row's rule) and Assigned (who holds
 the jobs, and how many nobody does). The rest - Review (accepted, waiting, skipped), the schema
 version, Kind (a correction or not) and how many of its images are In dataset - wait behind
 *N more properties*, which opens in place, cannot be tabbed into while folded, and stays open
@@ -1332,9 +1334,11 @@ hands the result over as an object URL - which it then **revokes**, because a
 grid scrolling a thousand assets would otherwise hold a thousand JPEGs alive
 with nothing referencing them.
 
-The cost is smaller than it looks: the route carries
-`Cache-Control: public, max-age=31536000, immutable` with the content hash as its
-`ETag`, and a `fetch` gets the browser's HTTP cache as much as an `<img>` does.
+The cost is smaller than it looks: for an image the route carries
+`Cache-Control: public, max-age=31536000, immutable` with the thumbnail hash as its
+`ETag`, and a `fetch` gets the browser's HTTP cache as much as an `<img>` does. A scan's
+preview is `private, no-cache` and revalidated against its `ETag` (a 304 when unchanged),
+because declaring another frame for its source redraws it.
 
 A **NULL `thumbnail_hash` is a state, not a failure** - a preview that would not
 render is deliberately not an `IngestFailure`, because the asset exists and nothing

@@ -635,8 +635,8 @@ describe("launching a run", () => {
       status: 200,
       body: {
         items: [
-          { id: "b1", project_id: PROJECT, name: "open", state: "draft", schema_version: null, asset_count: 4, progress: NO_PROGRESS, allowed_actions: batchActions("draft"), promoted_asset_count: 0, parent_batch_id: null, pre_label_run: null },
-          { id: "b2", project_id: PROJECT, name: "frozen", state: "in_annotation", schema_version: 1, asset_count: 9, progress: NO_PROGRESS, allowed_actions: batchActions("in_annotation"), promoted_asset_count: 0, parent_batch_id: null, pre_label_run: null },
+          { id: "b1", project_id: PROJECT, name: "open", state: "draft", schema_version: null, asset_count: 4, progress: NO_PROGRESS, allowed_actions: batchActions("draft"), modalities: ["image"], promoted_asset_count: 0, parent_batch_id: null, pre_label_run: null },
+          { id: "b2", project_id: PROJECT, name: "frozen", state: "in_annotation", schema_version: 1, asset_count: 9, progress: NO_PROGRESS, allowed_actions: batchActions("in_annotation"), modalities: ["image"], promoted_asset_count: 0, parent_batch_id: null, pre_label_run: null },
         ],
         total: 2,
       },
@@ -660,8 +660,8 @@ describe("launching a run", () => {
       status: 200,
       body: {
         items: [
-          { id: "b1", project_id: PROJECT, name: "declared", state: "in_annotation", schema_version: 1, asset_count: 4, progress: NO_PROGRESS, allowed_actions: ["edit_membership"], promoted_asset_count: 0, parent_batch_id: null, pre_label_run: null },
-          { id: "b2", project_id: PROJECT, name: "withheld", state: "draft", schema_version: null, asset_count: 9, progress: NO_PROGRESS, allowed_actions: [], promoted_asset_count: 0, parent_batch_id: null, pre_label_run: null },
+          { id: "b1", project_id: PROJECT, name: "declared", state: "in_annotation", schema_version: 1, asset_count: 4, progress: NO_PROGRESS, allowed_actions: ["edit_membership"], modalities: ["image"], promoted_asset_count: 0, parent_batch_id: null, pre_label_run: null },
+          { id: "b2", project_id: PROJECT, name: "withheld", state: "draft", schema_version: null, asset_count: 9, progress: NO_PROGRESS, allowed_actions: [], modalities: ["image"], promoted_asset_count: 0, parent_batch_id: null, pre_label_run: null },
         ],
         total: 2,
       },
@@ -1179,6 +1179,7 @@ describe("approving the batch, or adding another source", () => {
       asset_count: 30,
       progress: NO_PROGRESS,
       allowed_actions: batchActions("draft"),
+      modalities: ["image"],
       promoted_asset_count: 0,
       parent_batch_id: null,
       pre_label_run: null,

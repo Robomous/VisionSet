@@ -1269,7 +1269,7 @@ describe("the batches panel", () => {
     expect(screen.getByTestId("overview-batch-Many").textContent).toContain(`${(1200).toLocaleString(undefined)} images · schema v3`);
   });
 
-  describe("a batch of scans", () => {
+  describe("a batch's noun, from what it holds", () => {
     function sourcesOf(...kinds: string[]): void {
       first("GET", /\/sources$/, {
         status: 200,
@@ -1279,49 +1279,21 @@ describe("the batches panel", () => {
         },
       });
     }
-    function firstAssetOf(batchId: string, modality: "image" | "point_cloud"): void {
-      first("GET", new RegExp(`/batches/${batchId}/assets$`), {
-        status: 200,
-        body: {
-          items: [
-            {
-              id: `${batchId}-a0`,
-              project_id: PROJECT,
-              modality,
-              point_cloud: null,
-              content_hash: "00000000deadbeef",
-              width: null,
-              height: null,
-              format: null,
-              source_id: null,
-              frame_index: null,
-              frame_timestamp: null,
-              thumbnail_hash: null,
-              ingested_at: "2026-11-01T00:00:00Z",
-              job_id: null,
-              progress: null,
-              annotation_count: 0,
-              min_confidence: null,
-              allowed_actions: [],
-            },
-          ],
-          total: 1,
-        },
-      });
+    function assetReads(): string[] {
+      return sent.map((request) => new URL(request.url).pathname).filter((path) => /\/batches\/[^/]+\/assets$/.test(path));
     }
 
-    it("counts it in scans in its row and its sheet, in a project of scans", async () => {
-      sourcesOf("point_cloud_directory");
+    it("counts scans in the row and the sheet of a project whose scans were imported, with no source", async () => {
       readinessOf({
         stats: statsOf({ asset_count: 13 }),
         batches: [
-          batchOf({ id: "one", name: "One", state: "draft", asset_count: 1, schema_version: null }),
-          batchOf({ id: "many", name: "Many", state: "draft", asset_count: 12, schema_version: null }),
+          batchOf({ id: "one", name: "One", state: "draft", asset_count: 1, schema_version: null, modalities: ["point_cloud"] }),
+          batchOf({ id: "many", name: "Many", state: "draft", asset_count: 12, schema_version: null, modalities: ["point_cloud"] }),
         ],
       });
       renderWithData(<OverviewPanel projectId={PROJECT} />);
 
-      await waitFor(() => expect(screen.getByTestId("overview-batch-Many").textContent).toContain("12 scans"));
+      expect((await screen.findByTestId("overview-batch-Many")).textContent).toContain("12 scans");
       expect(screen.getByTestId("overview-batch-One").textContent).toContain("1 scan");
       expect(screen.getByTestId("overview-batch-One").textContent).not.toContain("image");
 
@@ -1329,23 +1301,64 @@ describe("the batches panel", () => {
       const facts = within(await screen.findByTestId("batch-sheet")).getByTestId("batch-sheet-facts");
       expect(facts.textContent).toContain("Scans12");
       expect(facts.textContent).not.toContain("Images");
+      expect(assetReads()).toEqual([]);
     });
 
-    it("reads each batch's first asset in a project holding scans and images", async () => {
-      sourcesOf("image_directory", "point_cloud_directory");
-      firstAssetOf("scans", "point_cloud");
-      firstAssetOf("photos", "image");
+    it("words each batch by its own modalities in a project holding a scan source and image batches", async () => {
+      sourcesOf("point_cloud_directory", "image_directory");
       readinessOf({
         stats: statsOf({ asset_count: 7 }),
         batches: [
-          batchOf({ id: "scans", name: "Scans", state: "draft", asset_count: 3, schema_version: null }),
-          batchOf({ id: "photos", name: "Photos", state: "draft", asset_count: 4, schema_version: null }),
+          batchOf({ id: "scans", name: "Scans", state: "draft", asset_count: 3, schema_version: null, modalities: ["point_cloud"] }),
+          batchOf({ id: "photos", name: "Photos", state: "draft", asset_count: 4, schema_version: null, modalities: ["image"] }),
         ],
       });
       renderWithData(<OverviewPanel projectId={PROJECT} />);
 
-      await waitFor(() => expect(screen.getByTestId("overview-batch-Scans").textContent).toContain("3 scans"));
+      expect((await screen.findByTestId("overview-batch-Scans")).textContent).toContain("3 scans");
       expect(screen.getByTestId("overview-batch-Photos").textContent).toContain("4 images");
+      expect(assetReads()).toEqual([]);
+    });
+
+    it("counts assets for a batch holding both images and scans", async () => {
+      readinessOf({
+        stats: statsOf({ asset_count: 5 }),
+        batches: [batchOf({ id: "both", name: "Both", state: "draft", asset_count: 5, schema_version: null, modalities: ["image", "point_cloud"] })],
+      });
+      renderWithData(<OverviewPanel projectId={PROJECT} />);
+
+      const row = await screen.findByTestId("overview-batch-Both");
+      expect(row.textContent).toContain("5 assets");
+      expect(row.textContent).not.toMatch(/image|scan/);
+
+      await userEvent.click(rowButton("both"));
+      const facts = within(await screen.findByTestId("batch-sheet")).getByTestId("batch-sheet-facts");
+      expect(facts.textContent).toContain("Assets5");
+    });
+
+    it("never draws a scan batch as images while anything else loads", async () => {
+      sourcesOf("image_directory");
+      readinessOf({
+        stats: statsOf({ asset_count: 12 }),
+        batches: [batchOf({ id: "many", name: "Many", state: "draft", asset_count: 12, schema_version: null, modalities: ["point_cloud"] })],
+      });
+      const seen: string[] = [];
+      const watch = new MutationObserver(() => {
+        const row = document.querySelector('[data-testid="overview-batch-Many"]');
+        if (row?.textContent) seen.push(row.textContent);
+      });
+      watch.observe(document.body, { childList: true, subtree: true, characterData: true });
+      try {
+        renderWithData(<OverviewPanel projectId={PROJECT} />);
+        await screen.findByTestId("overview-batch-Many");
+        await waitFor(() => expect(sent.some((request) => new URL(request.url).pathname.endsWith("/sources"))).toBe(true));
+      } finally {
+        watch.disconnect();
+      }
+
+      expect(seen.length).toBeGreaterThan(0);
+      expect(seen.filter((text) => /image/.test(text))).toEqual([]);
+      expect(seen.every((text) => text.includes("12 scans"))).toBe(true);
     });
   });
 
@@ -3032,6 +3045,7 @@ describe("batchRows", () => {
       project_id: PROJECT,
       state: "in_annotation",
       asset_count: 10,
+      modalities: ["image"],
       promoted_asset_count: 0,
       schema_version: 1,
       parent_batch_id: null,
@@ -3060,9 +3074,12 @@ describe("batchRows", () => {
     expect(rows.map((row) => row.phase)).toEqual(["annotating", "approved", "draft", "completed", "in_dataset"]);
   });
 
-  it("carries each batch's modality, images when none is known", () => {
-    const rows = batchRows([batch({ id: "scan", state: "draft" }), batch({ id: "img", state: "draft" })], undefined, new Map([["scan", "point_cloud"]]));
-    expect(rows.map((row) => row.modality)).toEqual(["point_cloud", "image"]);
+  it("carries what each batch holds, off the wire", () => {
+    const rows = batchRows(
+      [batch({ id: "scan", state: "draft", modalities: ["point_cloud"] }), batch({ id: "both", state: "draft", modalities: ["image", "point_cloud"] }), batch({ id: "empty", state: "draft", modalities: [] })],
+      undefined,
+    );
+    expect(rows.map((row) => row.modalities)).toEqual([["point_cloud"], ["image", "point_cloud"], []]);
   });
 
   it("keeps the wire's order within a phase", () => {
@@ -3203,6 +3220,7 @@ function batchOf(over: Record<string, unknown> = {}): Record<string, unknown> {
     project_id: PROJECT,
     state: "in_annotation",
     asset_count: 10,
+    modalities: ["image"],
     promoted_asset_count: 0,
     schema_version: 1,
     parent_batch_id: null,

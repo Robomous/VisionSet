@@ -342,6 +342,7 @@ class Batch(TypedDict):
     promoted_asset_count: int
     parent_batch_id: str | None
     pre_label_run: PreLabelRun | None
+    modalities: list[str]
 
 
 @closed

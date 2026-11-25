@@ -107,6 +107,7 @@ from visionset.kernel.domain import (
     normalize_name,
     report_name,
     require_move,
+    thinned,
 )
 from visionset.kernel.errors import (
     AssetNotFound,
@@ -119,7 +120,7 @@ from visionset.kernel.errors import (
     UnsupportedMedia,
     WorkspaceCorrupt,
 )
-from visionset.kernel.ports import BlobStore, UnitOfWork
+from visionset.kernel.ports import MAX_POINT_CLOUD_POINTS, BlobStore, UnitOfWork
 from visionset.kernel.services.batch_service import BatchService
 from visionset.kernel.services.source_service import SourceService
 from visionset.kernel.services.workspace_service import WorkspaceService
@@ -299,6 +300,12 @@ class IngestService:
         the asset's content hash and the budget, so a repeat request skips the
         decode and a scan with other bytes can never be answered from it.
 
+        A scan is decoded once whatever the budget: every budget is thinned from
+        the scan's stride-1 sample, cached under the content hash and
+        ``MAX_POINT_CLOUD_POINTS``, which is byte for byte what sampling the scan
+        at that budget answers. Requests for one scan share one decode in flight,
+        and the cache bounds how many scans decode at once.
+
         Raises:
             ValueError: ``max_points`` outside ``MIN_POINT_BUDGET`` to
                 ``MAX_POINT_BUDGET``.
@@ -318,13 +325,19 @@ class IngestService:
         if asset.modality != "point_cloud":
             raise AssetNotFound(f"asset {asset_id} is an {asset.modality}, not a point-cloud scan")
 
+        cache = self._workspace.point_samples
+
         def decode() -> PointSample:
-            with self.open_content(asset) as content:
+            with cache.decoding(), self.open_content(asset) as content:
                 return self._workspace.point_cloud_processor.sample(
-                    content, budget=max_points, name=str(asset.id)
+                    content, budget=MAX_POINT_CLOUD_POINTS, name=str(asset.id)
                 )
 
-        return self._workspace.point_samples.get_or_load((asset.content_hash, max_points), decode)
+        def thin() -> PointSample:
+            whole = cache.get_or_load((asset.content_hash, MAX_POINT_CLOUD_POINTS), decode)
+            return thinned(whole, max_points)
+
+        return cache.get_or_load((asset.content_hash, max_points), thin)
 
     # --- ingesting ---------------------------------------------------------
 
@@ -556,7 +569,7 @@ class IngestService:
                 or not self._workspace.blob_store.exists(asset.thumbnail_hash)
             ]
 
-        rendered: dict[UUID, str] = {}
+        rendered: dict[UUID, tuple[str, ScanFrame | None]] = {}
         missing: list[UUID] = []
         unreadable: list[IngestFailure] = []
         for asset_id, content_hash, uri, frame in pending:
@@ -574,13 +587,20 @@ class IngestService:
                 # the only part of that string a reader can act on.
                 unreadable.append(_failure(report_name(uri), exc))
             else:
-                rendered[asset_id] = thumbnail_hash
+                rendered[asset_id] = (thumbnail_hash, frame)
 
         filled: list[UUID] = []
         with self._workspace.unit_of_work() as uow:
-            for asset_id, thumbnail_hash in rendered.items():
+            # Under the lock a frame change takes, so a scan's source cannot be
+            # declared in another frame between the check below and the write.
+            uow.hold_writes()
+            for asset_id, (thumbnail_hash, frame) in rendered.items():
                 asset = uow.assets.get(asset_id)
                 if asset is None:
+                    continue
+                if self._scan_frame_of(uow, asset) != frame:
+                    # Drawn in a frame its source no longer declares; the frame
+                    # change dropped the preview, and the next pass draws it anew.
                     continue
                 if asset.thumbnail_hash != thumbnail_hash:
                     uow.assets.update(asset.model_copy(update={"thumbnail_hash": thumbnail_hash}))

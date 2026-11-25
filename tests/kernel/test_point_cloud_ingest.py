@@ -14,6 +14,7 @@ from tests.fixtures.calibration import calibration
 from tests.fixtures.point_clouds import SCAN, pcd_ascii, write_scans
 from tests.formats.test_ultralytics import CLASSES as IMAGE_CLASSES
 from tests.formats.test_ultralytics import Fixture, _box
+from tests.kernel.test_export_seam import AUGMENTED, MarkingDriver, drivers_of
 
 from visionset.formats.registry import exporters
 from visionset.kernel import (
@@ -36,10 +37,15 @@ from visionset.kernel.domain import (
     RecipeSpec,
     ScanFrame,
     SourceKind,
+    SplitAssignment,
+    SplitRecipe,
+    assign_split,
     sha256_hex,
 )
+from visionset.kernel.ports import Exporter, supported_modalities_of
 from visionset.kernel.services import (
     CalibrationService,
+    IngestService,
     PreprocessingRecipeService,
     annotation_service,
     source_service,
@@ -114,6 +120,32 @@ def test_another_frame_replaces_the_declaration_while_nothing_is_labelled(scans:
     )
     assert moved.id == scans.source.id
     assert scans.sources.get(moved.id).frame is ScanFrame.CAMERA_RDF
+
+
+def test_another_frame_drops_the_previews_drawn_in_the_old_one(scans: Scans) -> None:
+    run = scans.read(ScanFrame.LIDAR_FLU)
+    images_before = {
+        asset.id: asset.thumbnail_hash for asset in scans.batches.assets(scans.image_batch_id)
+    }
+
+    scans.sources.register_point_clouds(
+        scans.project.id, scans.directory, frame=ScanFrame.CAMERA_RDF
+    )
+
+    for asset in run.assets:
+        assert scans.ingest.asset(scans.project.id, asset.id).thumbnail_hash is None
+    assert {
+        asset.id: asset.thumbnail_hash for asset in scans.batches.assets(scans.image_batch_id)
+    } == images_before
+    backfill = scans.ingest.backfill_thumbnails(scans.project.id)
+    assert set(backfill.filled) == {asset.id for asset in run.assets}
+    for asset in run.assets:
+        with scans.workspace.blob_store.get(asset.content_hash) as content:
+            redrawn = scans.workspace.point_cloud_processor.thumbnail(
+                content, frame=ScanFrame.CAMERA_RDF
+            )
+        stored = scans.ingest.asset(scans.project.id, asset.id).thumbnail_hash
+        assert stored == sha256_hex(redrawn) != asset.thumbnail_hash
 
 
 def test_another_frame_is_refused_under_a_stored_3d_label(scans: Scans) -> None:
@@ -307,6 +339,9 @@ def test_every_installed_format_drops_the_scans_by_count(scans: Scans, format_na
     assert not report.compatible
     assert report.excluded_assets >= 2 and report.excluded_annotations >= 1
     assert all(one.label_class != "car_3d" or one.annotations == 0 for one in report.classes)
+    (car,) = [one for one in report.classes if one.label_class == "car_3d"]
+    assert car.reason is not None and "1 label(s)" in car.reason
+    assert "dropped_modalities" in car.reason
 
 
 def test_an_export_refuses_without_consent_and_writes_only_images_with_it(
@@ -429,3 +464,204 @@ def test_a_scan_too_small_to_spread_still_gets_a_preview(scans: Scans) -> None:
     run = scans.read()
     speck = next(asset for asset in run.assets if asset.uri.endswith("speck.pcd"))
     assert speck.thumbnail_hash is not None
+
+
+# --- folds when a release mixes modalities ------------------------------------
+
+
+def _mixed_release(tmp_path: Path, *, images: int, scans: int) -> tuple[Fixture, Any]:
+    fixture = Fixture(tmp_path, images=images, classes=CLASSES)
+    directory = tmp_path / "many-scans"
+    directory.mkdir()
+    for index in range(scans):
+        (directory / f"scan-{index}.pcd").write_bytes(
+            pcd_ascii(tuple((x + index, y, z) for x, y, z in SCAN))
+        )
+    image_batch = fixture.batch_id
+    source = fixture.sources.register_point_clouds(
+        fixture.project.id, directory, frame=ScanFrame.LIDAR_FLU
+    )
+    scan_batch = fixture.ingest.ingest(source.id, batch_name="scans").batch_id
+    fixture.label({})
+    fixture.batch_id = scan_batch
+    fixture.label({})
+    fixture.batch_id = image_batch
+    unsplit = fixture.releases.manifest(fixture.publish("unsplit"))
+    images_only = [one for one in unsplit.assets if one.modality == "image"]
+    seed = next(
+        seed
+        for seed in range(50)
+        if assign_split(SplitRecipe(train=0.8, val=0.1, test=0.1, seed=seed), images_only)
+        != _restricted(
+            assign_split(SplitRecipe(train=0.8, val=0.1, test=0.1, seed=seed), unsplit.assets),
+            {one.asset_id for one in images_only},
+        )
+    )
+    return fixture, fixture.publish(
+        "split", split=SplitRecipe(train=0.8, val=0.1, test=0.1, seed=seed)
+    )
+
+
+def _restricted(assignment: SplitAssignment, kept: set[Any]) -> SplitAssignment:
+    return SplitAssignment(
+        train=tuple(one for one in assignment.train if one in kept),
+        val=tuple(one for one in assignment.val if one in kept),
+        test=tuple(one for one in assignment.test if one in kept),
+    )
+
+
+def test_an_image_export_of_a_mixed_release_writes_the_reported_folds(tmp_path: Path) -> None:
+    fixture, release_id = _mixed_release(tmp_path, images=10, scans=10)
+    manifest = fixture.releases.manifest(release_id)
+    reported = fixture.releases.assignment(release_id)
+    out = tmp_path / "out"
+    driver = MarkingDriver()
+
+    fixture.releases.export(
+        release_id,
+        exporters()["ultralytics"],
+        out,
+        allow_lossy=True,
+        recipe=AUGMENTED,
+        drivers=drivers_of(driver),
+    )
+    fixture.close()
+
+    fold_of = {
+        asset_id: fold
+        for fold, members in (
+            ("train", reported.train),
+            ("val", reported.val),
+            ("test", reported.test),
+        )
+        for asset_id in members
+    }
+    written = {path.stem: path.parent.name for path in (out / "images").rglob("*.png")}
+    for asset in manifest.assets:
+        if asset.modality == "image":
+            assert written[asset.content_hash] == fold_of[asset.asset_id], asset.asset_id
+    variants = {stem: fold for stem, fold in written.items() if "-aug" in stem}
+    assert variants
+    assert set(variants.values()) == {"train"}
+
+
+def test_an_image_export_writes_only_the_folds_its_images_are_in(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path, images=2, classes=CLASSES)
+    directory = tmp_path / "many-scans"
+    directory.mkdir()
+    for index in range(8):
+        (directory / f"scan-{index}.pcd").write_bytes(
+            pcd_ascii(tuple((x + index, y, z) for x, y, z in SCAN))
+        )
+    image_batch = fixture.batch_id
+    source = fixture.sources.register_point_clouds(
+        fixture.project.id, directory, frame=ScanFrame.LIDAR_FLU
+    )
+    scan_batch = fixture.ingest.ingest(source.id, batch_name="scans").batch_id
+    fixture.label({})
+    fixture.batch_id = scan_batch
+    fixture.label({})
+    fixture.batch_id = image_batch
+    unsplit = fixture.releases.manifest(fixture.publish("unsplit"))
+    images = {one.asset_id for one in unsplit.assets if one.modality == "image"}
+    seed = next(
+        seed
+        for seed in range(200)
+        if not images
+        & set(
+            assign_split(SplitRecipe(train=0.6, val=0.2, test=0.2, seed=seed), unsplit.assets).val
+        )
+    )
+    release_id = fixture.publish(
+        "split", split=SplitRecipe(train=0.6, val=0.2, test=0.2, seed=seed)
+    )
+
+    darknet = fixture.releases.export(
+        release_id, exporters()["darknet"], tmp_path / "darknet", allow_lossy=True
+    )
+    fixture.releases.export(
+        release_id, exporters()["ultralytics"], tmp_path / "ultra", allow_lossy=True
+    )
+    fixture.close()
+
+    assert darknet.source_file_count == 2
+    assert not (tmp_path / "darknet" / "images" / "val").exists()
+    assert not (tmp_path / "ultra" / "images" / "val").exists()
+    assert "val: images/val" not in (tmp_path / "ultra" / "data.yaml").read_text()
+
+
+def test_a_backfill_does_not_keep_a_preview_drawn_in_a_replaced_frame(
+    scans: Scans, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = scans.read(ScanFrame.LIDAR_FLU)
+    with scans.workspace.unit_of_work() as uow:
+        for asset in run.assets:
+            uow.assets.update(asset.model_copy(update={"thumbnail_hash": None}))
+    render = IngestService._render_thumbnail
+    moved: list[bool] = []
+
+    def render_then_move(self: Any, content: Any, frame: Any, *, name: str) -> bytes:
+        drawn = render(self, content, frame, name=name)
+        if not moved:
+            moved.append(True)
+            scans.sources.register_point_clouds(
+                scans.project.id, scans.directory, frame=ScanFrame.CAMERA_RDF
+            )
+        return drawn
+
+    monkeypatch.setattr(IngestService, "_render_thumbnail", render_then_move)
+    backfill = scans.ingest.backfill_thumbnails(scans.project.id)
+    monkeypatch.undo()
+
+    assert not set(backfill.filled) & {asset.id for asset in run.assets}
+    for asset in run.assets:
+        assert scans.ingest.asset(scans.project.id, asset.id).thumbnail_hash is None
+    again = scans.ingest.backfill_thumbnails(scans.project.id)
+    assert {asset.id for asset in run.assets} <= set(again.filled)
+
+
+def test_an_image_export_does_not_read_a_scan_blob(scans: Scans, tmp_path: Path) -> None:
+    run = scans.read()
+    scans.label_both({})
+    release_id = scans.publish()
+    scans.workspace.blob_store._path_for(run.assets[0].content_hash).unlink()  # type: ignore[attr-defined]
+
+    result = scans.releases.export(
+        release_id, exporters()["coco"], tmp_path / "out", allow_lossy=True
+    )
+
+    assert result.source_file_count == 2
+
+
+class _PluginBeforeScans:
+    """An exporter written before modalities and the handed split existed."""
+
+    format_name = "before-scans"
+    lossy = True
+    supported_geometries = frozenset({GeometryType.BBOX})
+    degraded_geometries: frozenset[GeometryType] = frozenset()
+
+    def __init__(self) -> None:
+        self.handed: list[str] = []
+        self.targets = exporters()["coco"].targets
+
+    def export(self, release: Any, manifest: Any, dest: Path, *, content: Any) -> None:
+        self.handed = [asset.modality for asset in manifest.assets]
+
+
+def test_a_plugin_declaring_no_modalities_writes_images_and_reports_scans_dropped(
+    scans: Scans, tmp_path: Path
+) -> None:
+    scans.read()
+    scans.label_both({})
+    release_id = scans.publish(split=SplitRecipe(train=0.5, val=0.5, test=0.0, seed=1))
+    plugin = _PluginBeforeScans()
+    assert isinstance(plugin, Exporter)
+
+    report = scans.releases.check_export(release_id, plugin)
+    scans.releases.export(release_id, plugin, tmp_path / "out", allow_lossy=True)
+
+    (row,) = report.dropped_modalities
+    assert (row.modality, row.assets) == ("point_cloud", 2)
+    assert plugin.handed == ["image", "image"]
+    assert supported_modalities_of(plugin) == frozenset({"image"})

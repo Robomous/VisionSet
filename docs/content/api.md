@@ -312,6 +312,17 @@ because its weights never arrived, because its config declared a model type no i
 serves, or because it is an `http` connection nobody has asked yet - see [Asking an endpoint
 what it answers](inference.md#asking-an-endpoint-what-it-answers).
 
+**A batch says what it holds.** `BatchOut.modalities` lists the modalities of the assets in the
+batch, sorted: `["image"]`, `["point_cloud"]`, or both when a batch mixes images and scans, and
+empty only for an empty batch. It is one aggregate for a whole listing, so a client names a
+batch's assets ("12 scans") from the batch itself rather than reading its assets or guessing
+from the project's sources. The MCP batch tools and `visionset batch … --json` carry the same
+field.
+
+```
+GET /batches/{id}   →  { "asset_count": 12, "modalities": ["point_cloud"], … }
+```
+
 **A client renders these; it never computes them.** Re-deriving the rules from `state` and
 `progress` is what the browser used to do, and its copy drifted by dropping the batch-state
 dimension - which is why skipping a frame was offered on a batch the kernel refused every write
@@ -418,6 +429,14 @@ All four are named by something content-addressed, so all four carry
 `Cache-Control: public, max-age=31536000, immutable` and an `ETag` holding the hash. That is not
 optimism: identity *is* content in VisionSet, so the bytes behind one of these URLs cannot
 change. A client that cached one never needs to revalidate it.
+
+One preview is the exception. A scan's thumbnail is drawn from above in the frame its source
+declares, and registering the source again with another frame (allowed while none of its scans
+holds a 3D label) drops it so that a backfill draws it in the new frame - at the same URL. So a
+scan's thumbnail is sent `Cache-Control: private, no-cache` with the thumbnail hash as its `ETag`,
+and a request whose `If-None-Match` names that `ETag` is answered `304` with no body. A scan's
+`points` are sent the same way, with an `ETag` naming the content hash, the budget and the build,
+and the `304` is answered before the scan is read.
 
 The two asset routes take an **asset id**, not a content hash, and the issue that asked for them
 said hash. A hash names bytes and says nothing about what they are, so a route keyed on one

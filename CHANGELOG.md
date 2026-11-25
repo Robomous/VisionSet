@@ -70,6 +70,14 @@ nothing was being distributed. This is the first version that is.
   takes the height of the scan point nearest the pointer on screen within 10 px, preferring the point nearest
   the eye, in the perspective and the top-down view; the vertex keeps the pointer's place, and falls back to the
   ground plane (or, when dragged, its own height) where no point is that close (#1082).
+- **`BatchOut.modalities`.** A batch lists the modalities of the assets it holds, sorted and empty only for an
+  empty batch, read in one aggregate per project; the MCP batch tools and `visionset batch … --json` carry it
+  too. The UI names a batch's assets from it (*12 scans*, or *12 assets* for a batch holding images and scans)
+  instead of guessing from the project's sources with one `/assets?limit=1` request per batch (#1111).
+- **The exporter port hands a plugin the release's split `assignment`.** Cut once over the whole frozen
+  manifest; `folds_of(manifest, assignment)` places assets by it. `supported_modalities` is optional on the
+  port (read through `supported_modalities_of`), so a plugin declaring none is discovered and writes images
+  (#1111).
 
 ### Changed
 
@@ -155,6 +163,29 @@ nothing was being distributed. This is the first version that is.
 - **The `points` route decodes a scan once per budget.** The decoded sample is cached per open workspace, keyed
   by the asset's content hash and the budget, bounded at 128 MiB with the least recently used dropped first;
   concurrent requests for the same uncached sample decode once (#1068).
+- **An export writes the folds its release reports.** A release holding images and scans was re-cut by an image
+  format over the images alone, so its folds differed from `GET /releases/{id}/assignment` and an augmented
+  variant of a train image could land in `val` or `test` (#1111).
+- **An image export no longer refuses over a missing scan blob**, and a class whose labels sit only on a dropped
+  modality says so in its zero-count report row (#1111).
+- **Declaring another frame for a point-cloud source redraws its scan previews.** The same transaction drops
+  them for the thumbnail backfill to draw again, and a scan's thumbnail is served `private, no-cache` with its
+  hash as the `ETag` (304 on a match) rather than as immutable at an unchanged URL (#1111).
+- **The `points` route decodes a scan once for every budget, faster and in less memory.** Every budget is thinned
+  from the scan's stride-1 sample, byte for byte as before; concurrent requests share one decode and at most two
+  scans decode at once. A 2-million-point binary PCD now samples in about 1 s instead of about 4.5 s, and three
+  concurrent budgets of it in under 4 s and about 0.4 GB peak instead of 17 s or more and 0.64 GB. The route
+  sends an `ETag` of content hash, budget and build, and answers 304 before reading the scan (#1111).
+- **A PLY's elements before its vertices are bounded by its vertices.** An element of empty lists ahead of one
+  vertex is refused at once instead of being walked for half a minute; the bytes skipped count toward the
+  point-data limit (#1111).
+- **KITTI refuses a calibration tilted more than 5 degrees**, the nuScenes tolerance, as a `label` loss per box
+  instead of flattening it silently (#1111).
+- **An import re-checks every labelled scan's frame inside its commit**, so a frame declared again while its
+  blobs were stored refuses the import; the refusal of an import into a directory declaring another frame says
+  it stands even while no scan there holds a label (#1111).
+- **A PCD colour field not four bytes wide is no longer listed in a scan's `fields`**, and two upload parts
+  under one filename are named by content rather than arrival order (#1111).
 - **Annotator: Finish job on a read-only page, and the header at 768 px.** On a read-only page Finish job is
   natively `disabled`, and its reason stays reachable by hover and keyboard focus on a wrapper around it. Below a
   56rem header the job progress drops its bar (the count stays) and the save state shows its icon alone (`Not

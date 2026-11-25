@@ -22,6 +22,7 @@ from visionset.kernel.domain import (
     PointSample,
     decimation_stride,
     sample_origin,
+    thinned,
 )
 from visionset.kernel.errors import CorruptMedia
 
@@ -357,3 +358,44 @@ def test_the_origin_section_sits_between_the_header_and_the_positions() -> None:
 def test_a_non_finite_origin_is_refused() -> None:
     with pytest.raises(ValueError, match="origin"):
         PointSample(total=1, stride=1, positions=b"\0" * 12, origin=(math.inf, 0.0, 0.0))
+
+
+def _rows(count: int) -> list[tuple[Any, ...]]:
+    rows: list[tuple[Any, ...]] = []
+    for i in range(count):
+        x = math.nan if i % 97 == 5 else 1e6 + i * 0.25
+        intensity = math.inf if i % 89 == 3 else i / 7
+        rows.append((x, -i * 0.5, i % 13, intensity, packed(i % 256, (i * 7) % 256, (i * 3) % 256)))
+    return rows
+
+
+RICH = [*XYZ, ("intensity", "F", 4), ("rgb", "U", 4)]
+
+
+@pytest.mark.parametrize(
+    "scan",
+    [
+        pcd(RICH, _rows(3_001), "binary"),
+        pcd(RICH, _rows(3_001), "binary_compressed"),
+        pcd(RICH, _rows(1_201), "ascii"),
+        ply(
+            [("x", "double"), ("y", "double"), ("z", "float"), ("red", "uchar")]
+            + [("green", "uchar"), ("blue", "uchar"), ("intensity", "ushort")],
+            [(r[0], r[1], r[2], i % 256, 3, 200, i % 65536) for i, r in enumerate(_rows(3_001))],
+        ),
+    ],
+    ids=["pcd-binary", "pcd-compressed", "pcd-ascii", "ply-binary"],
+)
+@pytest.mark.parametrize("budget", [1, 2, 3, 7, 1_000, 1_199, 2_999, 3_001, 10_000_000])
+def test_thinning_the_whole_scan_answers_what_sampling_at_the_budget_does(
+    scan: bytes, budget: int
+) -> None:
+    whole = sample(scan, budget=10_000_000)
+
+    assert whole.stride == 1
+    assert thinned(whole, budget).encode() == sample(scan, budget=budget).encode()
+
+
+def test_only_a_stride_one_sample_is_thinned() -> None:
+    with pytest.raises(ValueError, match="stride-1"):
+        thinned(sample(pcd(XYZ, LINE, "binary"), budget=3), 2)

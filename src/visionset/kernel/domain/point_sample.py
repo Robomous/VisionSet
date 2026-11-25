@@ -122,3 +122,34 @@ class PointSample:
         )
         origin = POINT_BUFFER_ORIGIN.pack(*self.origin) if any(self.origin) else b""
         return b"".join((header, origin, self.positions, self.intensity or b"", self.rgb or b""))
+
+
+def thinned(sample: PointSample, budget: int) -> PointSample:
+    """``sample``, taken at stride 1, thinned to at most ``budget`` points.
+
+    Every point of a sample is encoded on its own and the origin depends on the
+    scan alone, so keeping every ``stride``-th point of the stride-1 sample is
+    byte for byte what sampling the scan at ``budget`` answers.
+    """
+    if sample.stride != 1:
+        raise ValueError(f"only a stride-1 sample can be thinned, got stride {sample.stride}")
+    stride = decimation_stride(sample.total, budget)
+    if stride == 1:
+        return sample
+    return PointSample(
+        total=sample.total,
+        stride=stride,
+        origin=sample.origin,
+        positions=_every(sample.positions, 12, stride),
+        intensity=None if sample.intensity is None else _every(sample.intensity, 4, stride),
+        rgb=None if sample.rgb is None else _every(sample.rgb, 3, stride),
+    )
+
+
+def _every(records: bytes, width: int, stride: int) -> bytes:
+    """Every ``stride``-th ``width``-byte record, gathered a byte lane at a time."""
+    count = len(range(0, len(records) // width, stride))
+    out = bytearray(count * width)
+    for lane in range(width):
+        out[lane::width] = records[lane :: width * stride]
+    return bytes(out)

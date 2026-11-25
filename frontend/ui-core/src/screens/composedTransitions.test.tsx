@@ -85,6 +85,7 @@ function batch(overrides: Partial<Batch> = {}): Batch {
     asset_count: 3,
     progress: { ...NO_PROGRESS, unannotated: 3, total: 3 },
     allowed_actions: batchActions(state),
+    modalities: ["image"],
     promoted_asset_count: 0,
     parent_batch_id: null,
     pre_label_run: null,

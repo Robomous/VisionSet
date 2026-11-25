@@ -40,9 +40,10 @@ open :class:`WorkspaceService` and nothing else, and never names an adapter.
 
 from __future__ import annotations
 
+import inspect
 import json
 import os
-from collections.abc import Collection, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
@@ -116,10 +117,12 @@ from visionset.kernel.errors import (
 )
 from visionset.kernel.ports import (
     BlobStore,
+    ContentReader,
     Exporter,
     PreprocessingDriver,
     UnitOfWork,
     driver_for,
+    supported_modalities_of,
 )
 from visionset.kernel.services.dataset_service import DatasetService, assets_of
 from visionset.kernel.services.project_service import ProjectService
@@ -457,7 +460,7 @@ class ReleaseService:
         manifest = self._read_manifest(release)
         compatibility = _compatibility(release, manifest, exporter, target)
         if recipe is not None:
-            _transformed(release, manifest, exporter, target, recipe)
+            _transformed(manifest, exporter, target, recipe, _split_of(release, manifest))
         return compatibility
 
     def require_export_consent(
@@ -514,7 +517,7 @@ class ReleaseService:
                 compatibility=compatibility,
             )
         if recipe is not None:
-            _transformed(release, manifest, exporter, target, recipe)
+            _transformed(manifest, exporter, target, recipe, _split_of(release, manifest))
         return compatibility
 
     def export(
@@ -587,9 +590,16 @@ class ReleaseService:
         server's export job and nobody else: its ``dest`` must instead lie under
         the workspace's ``exports/`` directory, which it clears itself.
 
-        The recipe is checked first, then ``dest``, then every blob the release
-        names is hash-checked — all **before** ``dest`` is created, so a refused
-        export writes nothing.
+        The recipe is checked first, then ``dest``, then every blob the export
+        reads is hash-checked — all **before** ``dest`` is created, so a refused
+        export writes nothing. An asset the format cannot open is not read, so
+        its blob is not checked: an image export does not refuse over a scan.
+
+        The plugin is handed the split assignment cut over the whole frozen
+        manifest, the one :meth:`assignment` reports and the augmentation
+        recipe generates train-fold variants from, so the folds it writes are
+        the reported ones even when it is handed fewer assets than the release
+        froze.
 
         Raises:
             ReleaseNotFound: no such release in this workspace.
@@ -617,24 +627,25 @@ class ReleaseService:
             release_id, exporter, allow_lossy=allow_lossy, target=target
         )
         addressed = _handed(manifest, exporter, target)
+        assignment = _split_of(release, manifest)
         reader = _RecordingReader(manifest, self._workspace.blob_store)
         if recipe is None:
             handed, view = addressed, None
         else:
-            view = _transformed(release, manifest, exporter, target, recipe)
+            view = _transformed(manifest, exporter, target, recipe, assignment)
             handed = plugin_manifest(addressed, view)
             reader.transform(recipe, drivers or {})
         self._require_destination(
             dest, allow_non_empty=allow_non_empty, owned_by_workspace=owned_by_workspace
         )
-        _require_intact_blobs(self._workspace.blob_store, manifest)
+        _require_intact_blobs(self._workspace.blob_store, addressed)
         try:
             dest.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
             raise ExportDestinationRefused(
                 f"cannot create the export directory {dest}: {exc.strerror or exc}"
             ) from exc
-        exporter.export(release, handed, dest, content=reader.read)
+        _hand_over(exporter, release, handed, dest, reader.read, assignment)
         # The report is **excluded from the count**, on both sides: it is not
         # written until after the walk, and a report left by an earlier run into
         # the same directory is skipped. Both halves are needed for the same
@@ -1012,26 +1023,55 @@ def _cache_mismatches(release: Release, manifest: Manifest) -> tuple[str, ...]:
     )
 
 
+def _split_of(release: Release, manifest: Manifest) -> SplitAssignment | None:
+    """The release's split over its whole frozen manifest, the cut ``assignment`` answers."""
+    return None if release.split is None else assign_split(release.split, manifest.assets)
+
+
 def _transformed(
-    release: Release,
     manifest: Manifest,
     exporter: Exporter,
     target: ExportTarget | None,
     recipe: RecipeSpec,
+    assignment: SplitAssignment | None,
 ) -> TransformedView:
     """What the recipe makes of the manifest an export would hand the plugin.
 
     Narrowed by :func:`_handed` first, so a geometry the export drops never
-    reaches a step that cannot move it; folds from the release's own split
-    over the frozen manifest, the cut ``assignment`` answers.
+    reaches a step that cannot move it; folds from :func:`_split_of`.
 
     Raises:
         AugmentationRequiresSplit, PreprocessingStepUnsupportedGeometry,
             ExportSourceUnreadable: from ``transform_manifest``.
     """
-    addressed = _handed(manifest, exporter, target)
-    folds = None if release.split is None else assign_split(release.split, manifest.assets)
-    return transform_manifest(addressed, recipe, folds)
+    return transform_manifest(_handed(manifest, exporter, target), recipe, assignment)
+
+
+def _hand_over(
+    exporter: Exporter,
+    release: Release,
+    manifest: Manifest,
+    dest: Path,
+    content: ContentReader,
+    assignment: SplitAssignment | None,
+) -> None:
+    """Call the plugin, with ``assignment`` when its ``export`` takes the keyword."""
+    if _accepts_assignment(exporter):
+        exporter.export(release, manifest, dest, content=content, assignment=assignment)
+    else:
+        legacy: Callable[..., None] = exporter.export
+        legacy(release, manifest, dest, content=content)
+
+
+def _accepts_assignment(exporter: Exporter) -> bool:
+    try:
+        parameters = inspect.signature(exporter.export).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(
+        parameter.name == "assignment" or parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters
+    )
 
 
 def transformed_bytes(
@@ -1333,9 +1373,8 @@ def _compatibility(
     no place for one beside a box. When anything else reaches the output, those
     rows are reported dropped, because that is what the plugin does.
     """
-    unopenable = [
-        asset for asset in manifest.assets if asset.modality not in exporter.supported_modalities
-    ]
+    writes = supported_modalities_of(exporter)
+    unopenable = [asset for asset in manifest.assets if asset.modality not in writes]
     dropped_modalities = tuple(
         ModalityCompatibility(
             modality=modality,
@@ -1401,6 +1440,22 @@ def _compatibility(
             counts[status] += 1
             touched[status].add(asset.asset_id)
 
+    left_out: dict[tuple[str, GeometryType], int] = {}
+    for asset in unopenable:
+        for annotation in asset.annotations:
+            key = (annotation.label_class, GeometryType(annotation.geometry.type))
+            left_out[key] = left_out.get(key, 0) + 1
+
+    def row_reason(name: str, geometry: GeometryType, count: int) -> str | None:
+        reason = reason_for(geometry)
+        elsewhere = left_out.get((name, geometry), 0)
+        if reason is None or count or not elsewhere:
+            return reason
+        return (
+            f"{reason}; none reach it here, because its {elsewhere} label(s) are on assets "
+            f"{exporter.format_name} does not write, counted under dropped_modalities"
+        )
+
     classes = tuple(
         ClassCompatibility(
             label_class=name,
@@ -1408,7 +1463,7 @@ def _compatibility(
             status=status_of(geometry),
             annotations=count,
             assets=len(assets),
-            reason=reason_for(geometry),
+            reason=row_reason(name, geometry, count),
         )
         for (name, geometry), (count, assets) in per_shape.items()
     )
@@ -1436,14 +1491,9 @@ def _compatibility(
 
 def _openable(manifest: Manifest, exporter: Exporter) -> Manifest:
     """The manifest without the assets whose modality the format cannot open."""
+    writes = supported_modalities_of(exporter)
     return manifest.model_copy(
-        update={
-            "assets": tuple(
-                asset
-                for asset in manifest.assets
-                if asset.modality in exporter.supported_modalities
-            )
-        }
+        update={"assets": tuple(asset for asset in manifest.assets if asset.modality in writes)}
     )
 
 

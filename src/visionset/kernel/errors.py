@@ -557,7 +557,7 @@ class CalibrationResolutionMismatch(VisionSetError):
 
 
 class CalibrationInUse(VisionSetError):
-    """Clearing or replacing this calibration would re-read stored 3D labels against another.
+    """A calibration or scan frame that labels are read against cannot change this way.
 
     Removing the last calibration an annotated asset resolves to is refused, and
     so is replacing it with a different one, or clearing an asset's override
@@ -568,7 +568,11 @@ class CalibrationInUse(VisionSetError):
     Labels in a dataset cannot be deleted, so pinning is the only route there.
     Declaring another scan frame for a point-cloud source whose scans hold 3D
     labels is refused the same way, since those labels would be re-read in other
-    axes.
+    axes. An import of scans never re-declares a frame: one into a directory
+    whose source declares another frame is refused even while none of its scans
+    holds a label, and so is one labelling a scan whose source declares another;
+    registering the directory again with the import's frame, which is allowed
+    while nothing depends on the old one, is the remedy there.
     """
 
 

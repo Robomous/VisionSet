@@ -29,7 +29,6 @@ import {
   useQueryClient,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import { useMemo } from "react";
 
 import { useApiClient } from "../data/VisionSetDataProvider";
 import { usePollingQuery } from "../data/polling";
@@ -108,7 +107,6 @@ import {
   checkVerifyRelease,
 } from "../generated/checks";
 import type { components } from "../generated/api";
-import type { Modality } from "../lib/assetNoun";
 import { jobKeys } from "../annotator/jobQueries";
 import type { WireAnnotation } from "../annotator/jobQueries";
 
@@ -1234,44 +1232,6 @@ export function useBatchAssets(batchId: string, view: AssetView = { sort: "membe
       return seen < last.total ? seen : undefined;
     },
   });
-}
-
-/**
- * Whether each batch holds scans or images, for its wording. `BatchOut` carries
- * no modality, so the project's sources answer it when they are all of one
- * kind; only a project holding both reads each batch's first asset. Until an
- * answer arrives a batch reads as images.
- */
-export function useBatchModalities(projectId: string, batchIds: readonly string[]): ReadonlyMap<string, Modality> {
-  const client = useApiClient();
-  const sources = useSources(projectId, batchIds.length > 0);
-  const kinds = sources.data?.items.map((source) => source.kind) ?? [];
-  const scans = kinds.filter((kind) => kind === "point_cloud_directory").length;
-  const mixed = scans > 0 && scans < kinds.length;
-  const firsts = useQueries({
-    queries: batchIds.map((batchId) => ({
-      queryKey: [...batchKeys.assets(batchId), "modality"] as const,
-      enabled: mixed,
-      queryFn: async (): Promise<Modality | null> =>
-        unwrap(
-          await client.GET("/batches/{batch_id}/assets", {
-            params: { path: { batch_id: batchId }, query: { limit: 1, offset: 0, sort: "membership" } },
-          }),
-          checkListBatchAssets,
-        ).items[0]?.modality ?? null,
-    })),
-  });
-  const answers = batchIds.map((batchId, at) => `${batchId}=${scans === 0 ? "image" : !mixed ? "point_cloud" : (firsts[at]?.data ?? "image")}`);
-  // Keyed on the answers, so a re-render that changes none of them hands back the same map.
-  const signature = answers.join(",");
-  return useMemo(
-    () => new Map(signature === "" ? [] : signature.split(",").map((one) => one.split("=") as [string, Modality])),
-    [signature],
-  );
-}
-
-export function useBatchModality(projectId: string, batchId: string | null): Modality {
-  return useBatchModalities(projectId, batchId === null ? [] : [batchId]).get(batchId ?? "") ?? "image";
 }
 
 /**

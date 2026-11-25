@@ -58,6 +58,7 @@ from visionset.kernel.domain import (
     BackgroundJob,
     BackgroundJobState,
     BatchState,
+    Modality,
     OrphanGuard,
     VideoImportState,
 )
@@ -832,6 +833,18 @@ class SqlUnitOfWork:
             asset_id: AnnotationSummary(count=count, min_model_confidence=lowest)
             for asset_id, count, lowest in rows
         }
+
+    def batch_modalities(self, project_id: UUID) -> Mapping[UUID, tuple[Modality, ...]]:
+        rows = self._session.execute(
+            select(t.BatchAssetRow.batch_id, t.AssetRow.modality)
+            .distinct()
+            .join(t.AssetRow, t.BatchAssetRow.asset_id == t.AssetRow.id)
+            .where(t.AssetRow.project_id == project_id)
+        ).all()
+        found: dict[UUID, set[Modality]] = {}
+        for batch_id, modality in rows:
+            found.setdefault(batch_id, set()).add(cast(Modality, modality))
+        return {batch_id: tuple(sorted(kinds)) for batch_id, kinds in found.items()}
 
 
 class SqliteMetadataStore:

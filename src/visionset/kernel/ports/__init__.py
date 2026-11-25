@@ -11,6 +11,7 @@ from visionset.kernel.ports.exporter import (
     ContentReader,
     Exporter,
     resolve_target,
+    supported_modalities_of,
     validate_installed,
     validate_targets,
 )
@@ -67,6 +68,7 @@ __all__ = [
     "UnitOfWork",
     "WeightsSource",
     "resolve_target",
+    "supported_modalities_of",
     "validate_targets",
     "validate_installed",
 ]

@@ -166,6 +166,7 @@ def _batch_payload(workspace: WorkspaceService, batch_id: UUID) -> BatchWithJobs
                 counts,
                 promoted=DatasetService(workspace).promoted_asset_ids(batch.project_id),
                 pre_labeled=batches.latest_pre_label_job(batch.id),
+                modalities=batches.modalities(batch.project_id).get(batch.id, ()),
             )
         ),
         "jobs": [
@@ -282,9 +283,18 @@ def list_batches(project: ProjectRef) -> shapes.Page[shapes.Batch]:
         promoted = DatasetService(workspace).promoted_asset_ids(resolved.id)
         # One queue read for the whole listing rather than one per batch.
         pre_label_runs = batches.pre_label_runs()
+        modalities = batches.modalities(resolved.id)
     return wire.page(
         [
-            mcp_batch(wire.batch(b, c, promoted=promoted, pre_labeled=pre_label_runs.get(b.id)))
+            mcp_batch(
+                wire.batch(
+                    b,
+                    c,
+                    promoted=promoted,
+                    pre_labeled=pre_label_runs.get(b.id),
+                    modalities=modalities.get(b.id, ()),
+                )
+            )
             for b, c in zip(found, counts, strict=True)
         ],
     )

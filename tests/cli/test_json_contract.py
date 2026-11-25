@@ -221,7 +221,11 @@ PAIRS: list[tuple[str, Mapping[str, Any], type[BaseModel]]] = [
     # A promoted set that actually intersects: a count of zero would agree with
     # itself even if the intersection were wrong, and this pair exists to catch
     # exactly the projection that drifted from its model.
-    ("batch", wire.batch(BATCH, COUNTS, promoted=frozenset(BATCH.asset_ids[:1])), models.BatchOut),
+    (
+        "batch",
+        wire.batch(BATCH, COUNTS, promoted=frozenset(BATCH.asset_ids[:1]), modalities=("image",)),
+        models.BatchOut,
+    ),
     ("job", wire.job(JOB, batch_id=BATCH.id, batch_state=BATCH.state), models.JobOut),
     (
         "asset_progress",
@@ -356,7 +360,9 @@ def test_a_settled_pre_label_run_has_wire_parity_when_nested_in_a_batch() -> Non
         annotations_replaced=4,
     )
 
-    projected = wire.batch(BATCH, COUNTS, promoted=frozenset(), pre_labeled=run)
+    projected = wire.batch(
+        BATCH, COUNTS, promoted=frozenset(), pre_labeled=run, modalities=("image",)
+    )
 
     assert set(projected["pre_label_run"] or {}) == set(models.PreLabelRunOut.model_fields)
     models.BatchOut.model_validate(projected)

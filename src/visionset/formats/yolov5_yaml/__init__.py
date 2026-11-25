@@ -39,6 +39,7 @@ from visionset.kernel.domain import (
     PreprocessingHints,
     Release,
     ResizeStrategy,
+    SplitAssignment,
     TargetFamily,
     Task,
 )
@@ -95,8 +96,9 @@ class Yolov5YamlExporter:
         dest: Path,
         *,
         content: ContentReader,
+        assignment: SplitAssignment | None,
     ) -> None:
-        folds = write_label_layout(release, manifest, dest, content, detect_rows)
+        folds = write_label_layout(manifest, dest, content, assignment, detect_rows)
         _write_data_yaml(dest / DATA_FILENAME, class_names(manifest), folds)
 
 
