@@ -202,6 +202,10 @@ identity are out of scope; each is reported, never dropped silently.
 nuScenes is licensed CC BY-NC-SA 4.0 and downloaded only after registering at nuscenes.org;
 VisionSet ships none of it, and its tests build a synthetic root instead.
 
+The importer has therefore been exercised only on that synthetic root. The pose chain and the 5
+degree tolerance above are unverified against real nuScenes data, and how many real boxes lean past
+the tolerance is not known (#1069).
+
 TuSimple, CurveLanes, BDD100K and CULane have no importer: none of them carries anything a
 polyline import does not already get from OpenLane, and none has a per-vertex slot.
 

@@ -98,6 +98,12 @@ nothing was being distributed. This is the first version that is.
   and the theme is set before the first paint. Screens only follow `.dark` on `<html>`; a host sets it with
   `ui-core`'s `startTheme` and `setThemePreference` (#1125).
 
+### Known limits
+
+- **The nuScenes importer is verified only on a synthetic fixture.** Its pose chain and the 5 degree
+  tilt tolerance have not been run against real nuScenes data, which needs a registration-gated download
+  (#1069).
+
 ### Changed
 
 - **The scan view follows the page theme.** The point-cloud view and the scan preview's legend and swatches draw
