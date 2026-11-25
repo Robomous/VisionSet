@@ -467,6 +467,7 @@ test("the forms this gate is about are all still there, and none nests", () => {
     [
       "frontend/app/src/shell/TokenGate.tsx",
       "frontend/ui-core/src/patterns/classFields.test.tsx",
+      "frontend/ui-core/src/screens/ConnectionDialog.tsx",
       "frontend/ui-core/src/screens/ModelsScreen.tsx",
       "frontend/ui-core/src/screens/ProjectFrame.tsx",
       "frontend/ui-core/src/screens/ProjectsScreen.tsx",
