@@ -183,7 +183,7 @@ describe("the approve dialog's one decision and its folded cut", () => {
     schema_version: 3,
     allowed_actions: batchActions("approved"),
   };
-  const STARTED = { ...APPROVED, state: "in_annotation", allowed_actions: batchActions("in_annotation") };
+  const STARTED = { ...APPROVED, state: "in_annotation", allowed_actions: batchActions("in_annotation", { settled: false }) };
 
   const writes = (): string[] =>
     sent.filter((request) => request.method !== "GET").map((request) => `${request.method} ${new URL(request.url).pathname}`);

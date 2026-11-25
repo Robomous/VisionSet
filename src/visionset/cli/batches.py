@@ -1,9 +1,10 @@
 # usage: from visionset.cli.batches import batch_app
 """``visionset batch`` — the lifecycle, and the gate into the trunk.
 
-Six commands: ``list``, then the one-way walk ``approve`` → ``start`` →
-``complete``, then ``promote``; ``pre-label`` invokes shared inference inline,
-because a terminal has no dispatcher.
+``list`` and ``assets``, then the one-way walk ``approve`` → ``start`` →
+``complete``, then ``promote``; ``finish`` closes the jobs and the batch in one
+transaction, and ``pre-label`` invokes shared inference inline, because a
+terminal has no dispatcher.
 
 **A composed flag is two of those calls behind one command, never a new
 transition.** ``approve --start`` and ``complete --promote`` make the first
@@ -61,7 +62,6 @@ from visionset.kernel import VisionSetError
 from visionset.kernel.domain import (
     IMPLEMENTED_GEOMETRIES,
     SETTLED_PROGRESS,
-    Asset,
     AssetProgress,
     Batch,
     BySize,
@@ -445,24 +445,27 @@ def batch_pre_label(
     typer.echo(str(written))
 
 
+PromoteOption = Annotated[
+    bool,
+    typer.Option(
+        "--promote",
+        help="Also move the finished assets into the dataset once the batch is closed, as "
+        "`batch promote` would.",
+    ),
+]
+
+
 @batch_app.command("complete")
 def batch_complete(
     batch: BatchArgument,
-    promote: Annotated[
-        bool,
-        typer.Option(
-            "--promote",
-            help="Also move the finished assets into the dataset once the batch is closed, as "
-            "`batch promote` would.",
-        ),
-    ] = False,
+    promote: PromoteOption = False,
     json_out: JsonOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
     """Close a batch, once every one of its jobs is complete.
 
     Derived means recomputed, not automatic: this reads the jobs and refuses
-    while any is outstanding.
+    while any is outstanding. `batch finish` closes the jobs too.
 
     `--promote` follows with `batch promote`. With `--json` the document is then
     `{"batch": …, "promoted": …}` — the closed batch beside the page of assets
@@ -472,20 +475,60 @@ def batch_complete(
         completed = BatchService(service).complete(batch)
         if not json_out:
             note(f"Batch {completed.id} is now {completed.state.value}.")
-        entered: list[Asset] = []
-        if promote:
-            with second_step("promote", completed.id, completed.state.value):
-                entered = DatasetService(service).promote(completed.id, actor=DatasetActor.CLI)
+        entered = _promoted(service, completed, quiet=json_out) if promote else None
         payload = batch_document(service, completed)
     if json_out:
-        if promote:
-            document({"batch": payload, "promoted": wire.page([wire.asset(a) for a in entered])})
-        else:
-            document(payload)
+        document(payload if entered is None else {"batch": payload, "promoted": entered})
         return
-    if promote:
-        note(f"Promoted {len(entered)} asset(s) into the dataset.")
     typer.echo(str(completed.id))
+
+
+@batch_app.command("finish")
+def batch_finish(
+    batch: BatchArgument,
+    promote: PromoteOption = False,
+    json_out: JsonOption = False,
+    workspace: WorkspaceOption = None,
+) -> None:
+    """Complete every unfinished job of a batch, then the batch, in one step.
+
+    Accepted exactly when the batch declares `complete`: it is in annotation and
+    every asset is settled. Either every job and the batch close, or nothing
+    does.
+
+    `--promote` follows with `batch promote`. With `--json` the document is
+    `{"batch": …, "jobs_completed": …}`, plus `"promoted": …` under `--promote`;
+    stdout otherwise stays the batch id alone.
+    """
+    with opened_workspace(workspace) as service:
+        finished = BatchService(service).finish(batch)
+        completed = finished.batch
+        if not json_out:
+            closing = finished.jobs_completed
+            note(
+                f"Batch {completed.id} is now {completed.state.value}, "
+                f"closing {closing} job(s) with it."
+            )
+        entered = _promoted(service, completed, quiet=json_out) if promote else None
+        payload = batch_document(service, completed)
+    if json_out:
+        body: dict[str, object] = {"batch": payload, "jobs_completed": finished.jobs_completed}
+        if entered is not None:
+            body["promoted"] = entered
+        document(body)
+        return
+    typer.echo(str(completed.id))
+
+
+def _promoted(
+    service: WorkspaceService, completed: Batch, *, quiet: bool
+) -> shapes.Page[shapes.Asset]:
+    """The promote step behind `--promote`, reported as `batch promote` would."""
+    with second_step("promote", completed.id, completed.state.value):
+        entered = DatasetService(service).promote(completed.id, actor=DatasetActor.CLI)
+    if not quiet:
+        note(f"Promoted {len(entered)} asset(s) into the dataset.")
+    return wire.page([wire.asset(a) for a in entered])
 
 
 @batch_app.command("promote")

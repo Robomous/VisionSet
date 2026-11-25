@@ -1754,6 +1754,14 @@ class BatchPage(Page[BatchOut]):
     """A page of batches."""
 
 
+class BatchFinishedOut(BaseModel):
+    """A batch closed together with its jobs, and how many jobs that closed."""
+
+    batch: BatchOut
+    #: Jobs this call moved to `completed`; zero when every one already was.
+    jobs_completed: int
+
+
 # The three partition strategies are re-spelled rather than reused, for the
 # reason at the top of this module: ``BySize``'s docstring carries RST
 # double-backticks and ``BySegments``' carries a ``:func:`` role, and both would

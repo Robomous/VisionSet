@@ -57,6 +57,7 @@ from visionset.server.models import (
     BatchAssetPage,
     BatchCorrection,
     BatchCreate,
+    BatchFinishedOut,
     BatchMembership,
     BatchMembershipOut,
     BatchOut,
@@ -259,6 +260,38 @@ def complete_batch(workspace: WorkspaceDep, batch_id: UUID) -> BatchOut:
         promoted=DatasetService(workspace).promoted_asset_ids(batch.project_id),
         pre_label_run=batches.latest_pre_label_job(batch_id),
         modalities=batches.modalities(batch.project_id).get(batch.id, ()),
+    )
+
+
+@router.post("/{batch_id}/finish", responses=documented(404, 409))
+def finish_batch(workspace: WorkspaceDep, batch_id: UUID) -> BatchFinishedOut:
+    """Complete every unfinished job of the batch, then the batch, in one transaction.
+
+    Accepted exactly when the batch declares `complete` in `allowed_actions`: it is
+    `in_annotation` and every asset across its jobs is settled. Pending jobs are
+    started and completed, open ones completed, finished ones left alone. Either
+    every change lands or none does — an asset reopened while this runs is 409
+    `BATCH_NOT_COMPLETE` and every job stays as it was.
+
+    A batch with an unsettled asset is 409 `BATCH_NOT_COMPLETE`; one that is not
+    `in_annotation` is 409 `INVALID_TRANSITION`. 409 `STALE_WRITE` means a job
+    moved under the write lock this call holds; nothing was written, so read the
+    batch again and decide again. `POST /complete` is the narrower
+    move that needs every job completed first. `jobs_completed` counts the jobs
+    this call closed.
+    """
+    batches = BatchService(workspace)
+    finished = batches.finish(batch_id)
+    batch = finished.batch
+    return BatchFinishedOut(
+        batch=BatchOut.of(
+            batch,
+            JobService(workspace).batch_progress(batch.id),
+            promoted=DatasetService(workspace).promoted_asset_ids(batch.project_id),
+            pre_label_run=batches.latest_pre_label_job(batch_id),
+            modalities=batches.modalities(batch.project_id).get(batch.id, ()),
+        ),
+        jobs_completed=finished.jobs_completed,
     )
 
 

@@ -33,7 +33,7 @@ what each one exposes. This page says, step by step, which surface can do what.
 | Camera calibration of a source or an asset | - | `GET/PUT/DELETE .../calibration` | `calibration show/set/clear` | `get_calibration`, `set_calibration`, `clear_calibration` |
 | Pre-label with a model | yes | yes | `batch pre-label`, `job pre-label` | `pre_label_batch`, `pre_label_job` |
 | Configure model connections | yes | yes | `inference ...` | `*_inference_connection`, `download_connection_weights` |
-| Complete a batch and promote | yes | yes | `batch complete --promote` | `complete_batch`, `promote_batch` |
+| Complete a batch and promote | yes | yes | `batch complete --promote`, `batch finish --promote` | `complete_batch`, `finish_batch`, `promote_batch` |
 | Publish and verify a release | yes | yes | `release publish`, `release verify` | `publish_release`, `verify_release` |
 | Export | yes | yes | `export` | `export_release`, `check_export` |
 | Preprocessing recipes | yes | yes | `recipe ...` | `*_preprocessing_recipe` |
@@ -81,8 +81,8 @@ visionset export --project road-signs --release v1.0 --target yolo11 --out ./out
 
 **MCP** (the same cycle, and the only agent surface that can write labels): start the server with
 `visionset mcp`, then call `create_project`, `create_schema_version`, `ingest`, `approve_batch`,
-then loop `next_pending_assets`, `get_asset_image`, `add_annotations`, then `complete_job`,
-`complete_batch`, `promote_batch`, `publish_release`, `export_release`. [mcp-walkthrough.md](mcp-walkthrough.md)
+then loop `next_pending_assets`, `get_asset_image`, `add_annotations`, then `finish_batch`,
+`promote_batch`, `publish_release`, `export_release`. [mcp-walkthrough.md](mcp-walkthrough.md)
 runs it end to end.
 
 ## Identifiers

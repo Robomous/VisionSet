@@ -370,7 +370,7 @@ describe("choosing where the frames land", () => {
             id: "b2",
             name: "frozen",
             state: "in_annotation",
-            allowed_actions: batchActions("in_annotation"),
+            allowed_actions: batchActions("in_annotation", { settled: false }),
           },
           // A batch the wire says can be asked for nothing. Its *state* still
           // reads "draft", which is exactly what a client re-deriving legality

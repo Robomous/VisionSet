@@ -136,7 +136,7 @@ describe("the control", () => {
   it("is drawn only where the batch declares promote", () => {
     renderWithData(
       <PromoteButton
-        batch={batch({ state: "in_annotation", allowed_actions: batchActions("in_annotation") })}
+        batch={batch({ state: "in_annotation", allowed_actions: batchActions("in_annotation", { settled: true }) })}
         projectId={PROJECT}
       />,
     );
@@ -243,7 +243,7 @@ describe("the correction control", () => {
     // batch already there.
     renderWithData(
       <CorrectionButton
-        batch={batch({ state: "in_annotation", allowed_actions: batchActions("in_annotation") })}
+        batch={batch({ state: "in_annotation", allowed_actions: batchActions("in_annotation", { settled: true }) })}
         projectId={PROJECT}
       />,
     );

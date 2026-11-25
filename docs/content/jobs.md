@@ -268,6 +268,12 @@ review surface yet.
 put the batch's machine in two places, and the two would eventually disagree. The end of the
 snippet above is the whole loop: finish the jobs, then ask the batch to close.
 
+The other way round is the batch's call, not this service's: `BatchService.finish` closes every
+unfinished job and then the batch in one transaction, once every asset is settled - starting a
+`pending` job and completing it through `JOB_TRANSITIONS` as `start` then `complete` would. A
+script that settles assets in bulk and never opens a job needs only that one call. See
+[Finishing closes the jobs and the batch together](batches.md#finishing-closes-the-jobs-and-the-batch-together).
+
 ## Work only happens inside an open batch
 
 Every write here requires the job's batch to be `in_annotation`, else `BatchNotInAnnotation`.

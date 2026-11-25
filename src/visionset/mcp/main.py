@@ -138,6 +138,7 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     (jobs.set_asset_progress, WRITES),
     (jobs.complete_job, WRITES),
     (batches.complete_batch, WRITES),
+    (batches.finish_batch, WRITES),
     (batches.promote_batch, WRITES),
     (batches.create_correction_batch, WRITES),
     (datasets.dataset_stats, READS),

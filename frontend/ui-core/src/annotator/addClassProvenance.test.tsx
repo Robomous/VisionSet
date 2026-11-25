@@ -85,7 +85,7 @@ function batch(): unknown {
     // — and what makes the new class reach the annotator's own schema.
     schema_version: publishedSchema?.version ?? 1,
     asset_count: 1,
-    allowed_actions: batchActions("in_annotation"),
+    allowed_actions: batchActions("in_annotation", { settled: false }),
     modalities: ["image"],
     promoted_asset_count: 0,
     parent_batch_id: null,
