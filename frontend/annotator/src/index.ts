@@ -230,6 +230,7 @@ export {
 export {
   HEIGHT_RAMP,
   INTENSITY_RAMP,
+  RAMPS,
   colorModeAvailable,
   defaultColorMode,
   pointColors,
@@ -237,6 +238,7 @@ export {
   rampRange,
   robustRange,
   type ColorMode,
+  type RampTheme,
 } from "./core/pointcloud/ramp";
 export {
   cuboidSegments,
