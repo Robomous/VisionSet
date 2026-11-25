@@ -161,7 +161,7 @@ test("the token survives a reload, because losing it mid-job is the worst moment
   await expect(page.getByTestId("app-rail")).toBeVisible();
 });
 
-/** The rail: the mark (the collapse toggle's row), Projects, Models, the account control. No more. */
+/** The rail: the mark (the collapse toggle's row), Projects, Models, the theme and account controls. No more. */
 test("the rail carries exactly what the design gives it", async ({ page }) => {
   await signIn(page);
 
@@ -174,6 +174,7 @@ test("the rail carries exactly what the design gives it", async ({ page }) => {
   await expect(page.getByTestId("rail-models")).toBeVisible();
   await expect(page.getByTestId("rail-mark")).toHaveAccessibleName("Robomous VisionSet");
   await expect(page.getByTestId("rail-collapse")).toBeVisible();
+  await expect(page.getByTestId("rail-theme")).toBeVisible();
   await expect(page.getByTestId("rail-sign-out")).toBeVisible();
 });
 
@@ -476,4 +477,52 @@ test("the open tabs survive a reload", async ({ page }) => {
   await expect(page).toHaveURL(/\/models$/);
   await page.reload();
   await expect(page.getByTestId(`open-tab-${PROJECT}`)).toBeVisible();
+});
+
+const isDark = (page: Page): Promise<boolean> =>
+  page.evaluate(() => document.documentElement.classList.contains("dark"));
+
+test("the theme control switches the page, and the choice survives a reload", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await signIn(page);
+  const control = page.getByTestId("rail-theme");
+  await expect(control).toHaveAccessibleName("Theme: System");
+  expect(await isDark(page)).toBe(false);
+
+  await control.click();
+  await expect(page.getByRole("menuitemradio", { name: "System" })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("menuitemradio", { name: "Dark" }).click();
+  expect(await isDark(page)).toBe(true);
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toBe("dark");
+  await expect(control).toHaveAccessibleName("Theme: Dark");
+
+  await page.reload();
+  await expect(page.getByTestId("app-rail")).toBeVisible();
+  expect(await isDark(page)).toBe(true);
+  await expect(page.getByTestId("rail-theme")).toHaveAccessibleName("Theme: Dark");
+
+  // Back to System, which then follows the system as it changes.
+  await page.getByTestId("rail-theme").click();
+  await page.getByRole("menuitemradio", { name: "System" }).click();
+  expect(await isDark(page)).toBe(false);
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect.poll(() => isDark(page)).toBe(true);
+});
+
+test("the stored theme is on the page before any module runs", async ({ page }) => {
+  // With the entry module refused, only `index.html`'s own script can have set
+  // the class — so this is the theme the first paint gets.
+  await page.route("**/src/main.tsx*", (route) => route.abort());
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.addInitScript(() => localStorage.setItem("visionset.prefs.theme", "dark"));
+  await page.goto("/");
+  expect(await isDark(page)).toBe(true);
+  await expect(page.getByTestId("app-rail")).toHaveCount(0);
+});
+
+test("with nothing stored the first paint follows a dark system", async ({ page }) => {
+  await page.route("**/src/main.tsx*", (route) => route.abort());
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/");
+  expect(await isDark(page)).toBe(true);
 });
