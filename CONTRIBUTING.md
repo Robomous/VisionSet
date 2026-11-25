@@ -556,10 +556,32 @@ visionset import kitti ./kitti-split --project scans
   PLY scans, and `tests/fixtures/kitti_source.py` and `tests/fixtures/nuscenes_source.py` write
   small synthetic KITTI splits and nuScenes data roots. CI runs on these.
 - **Opt-in real point-cloud samples.** Set `VISIONSET_POINTCLOUD_SAMPLES` to a directory outside
-  the repository and the otherwise-skipped sample tests run against it:
-  `<root>/kitti` (a KITTI 3D object detection split) is read by `tests/formats/test_kitti_samples.py`,
-  `<root>/nuscenes` (a nuScenes data root) by `tests/formats/test_nuscenes_samples.py`, and every
-  PCD or PLY anywhere under `<root>` by `tests/kernel/test_point_cloud_samples.py`.
+  the repository and the otherwise-skipped sample tests run against it; each part that is missing
+  skips its tests visibly. The layout under `<root>`:
+
+  ```text
+  <root>/
+    SHA256SUMS          # sha256sum of every file below, paths relative to <root>
+    kitti/<split>/{velodyne,label_2,calib}/   # a KITTI 3D object detection split
+    nuscenes/{v1.0-mini,...}/ + samples/LIDAR_TOP/   # a nuScenes data root
+    licenses/           # the licence text of each sample
+    **/*.pcd, **/*.ply  # any other scans
+  ```
+
+  Check the samples with `sha256sum -c SHA256SUMS` from `<root>` before trusting a result.
+  The expected values come from the samples themselves, so nothing derived from them is stored:
+  - `tests/formats/test_kitti_samples.py`: every box holds at least five lidar points and beats
+    its 90-degree turn; the split imports as annotated scans; and import, a `kitti` export and
+    re-import give back byte-identical `.bin` scans and the same boxes, within 2 micrometres and
+    1e-6 rad.
+  - `tests/formats/test_nuscenes_samples.py`: each annotation's box, rebuilt with its full rotation
+    through the importer's pose chain, holds exactly the table's `num_lidar_pts`; the stored
+    yaw-only cuboid misses it by at most 2 points on average; on `v1.0-mini` no box is refused
+    for tilt (another split prints its count instead); the keyframes import as annotated scans;
+    and a `kitti` export re-imports with the same scan and box counts.
+  - `tests/kernel/test_point_cloud_samples.py`: every PCD or PLY anywhere under `<root>` probes,
+    draws a thumbnail, thins to the minimum budget and ingests.
+
   KITTI (CC BY-NC-SA 3.0) and nuScenes (CC BY-NC-SA 4.0) samples are never committed, and neither
   are copies, crops or derived fixtures; keep them outside the checkout together with their
   licence text.
