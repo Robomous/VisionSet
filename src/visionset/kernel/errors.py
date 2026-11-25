@@ -880,8 +880,10 @@ class InvalidExportTarget(VisionSetError):
 class ExportSourceUnreadable(VisionSetError):
     """A release names bytes an export cannot use: gone, or not decodable.
 
-    The remedy is ``ReleaseService.verify``, which says whether the blob is
-    missing or corrupt, and then restoring it. A release is immutable, so the
+    For a missing or corrupt blob the remedy is ``ReleaseService.verify``, which
+    says which, and then restoring it. For a pre-processing recipe given to an
+    export that writes scans, the remedy is to export without the recipe; for
+    a scan the format cannot decode, another format. A release is immutable, so the
     export cannot route around the asset — and it must not: a training set that
     is quietly one image short is worse than one that refused to be written, and
     that exact silence is what a previous generation of this tool shipped, an

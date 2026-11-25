@@ -223,6 +223,7 @@ coco            no
 culane          yes
 curvelanes      yes
 darknet         yes
+kitti           yes
 openlane-2d     yes
 tusimple        yes
 ultralytics     yes
@@ -230,8 +231,8 @@ voc             yes
 yolov5-yaml     yes
 ```
 
-The five lane formats write polylines, `classification` writes image-level tags, and the rest write
-boxes and polygons (`yolo` is still accepted as an alias of `ultralytics` for one release); the whole set is described in [releases.md](releases.md#exporting). Run the
+The five lane formats write polylines, `classification` writes image-level tags, `kitti` writes
+scans and their cuboids, and the rest write boxes and polygons (`yolo` is still accepted as an alias of `ultralytics` for one release); the whole set is described in [releases.md](releases.md#exporting). Run the
 command rather than trusting this listing — it reads installed entry-point metadata, so a
 third-party plugin appears in it too.
 

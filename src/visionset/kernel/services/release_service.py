@@ -453,7 +453,8 @@ class ReleaseService:
             PreprocessingStepUnsupportedGeometry: a recipe step cannot
                 transform a geometry the export would carry.
             ExportSourceUnreadable: a recipe step needs a source size the
-                manifest never recorded.
+                manifest never recorded, or a recipe was given for an export
+                that writes scans.
             WorkspaceCorrupt: the manifest blob is gone, or is not a manifest.
         """
         release = self.get(release_id)
@@ -503,7 +504,8 @@ class ReleaseService:
             PreprocessingStepUnsupportedGeometry: a recipe step cannot
                 transform a geometry the export would carry.
             ExportSourceUnreadable: a recipe step needs a source size the
-                manifest never recorded.
+                manifest never recorded, or a recipe was given for an export
+                that writes scans.
             WorkspaceCorrupt: the manifest blob is gone, or is not a manifest.
         """
         release = self.get(release_id)
@@ -612,8 +614,9 @@ class ReleaseService:
             PreprocessingDriverNotFound: no driver in ``drivers`` applies a
                 step the recipe holds.
             ExportSourceUnreadable: a recipe step needs a source size the
-                manifest never recorded, or a blob the release names is missing
-                or does not match its hash.
+                manifest never recorded, a recipe was given for an export that
+                writes scans, or a blob the release names is missing or does
+                not match its hash.
             ExportDestinationRefused: ``dest`` is relative, inside or
                 containing the workspace (outside its ``exports/`` when
                 ``owned_by_workspace``), a file, or cannot be created or read.
@@ -1038,13 +1041,23 @@ def _transformed(
     """What the recipe makes of the manifest an export would hand the plugin.
 
     Narrowed by :func:`_handed` first, so a geometry the export drops never
-    reaches a step that cannot move it; folds from :func:`_split_of`.
+    reaches a step that cannot move it; folds from :func:`_split_of`. A recipe
+    reads and writes images, so an export handing the plugin a scan refuses one.
 
     Raises:
+        ExportSourceUnreadable: the export would hand the plugin a point-cloud
+            asset, which records no pixel size and is not an image.
         AugmentationRequiresSplit, PreprocessingStepUnsupportedGeometry,
             ExportSourceUnreadable: from ``transform_manifest``.
     """
-    return transform_manifest(_handed(manifest, exporter, target), recipe, assignment)
+    handed = _handed(manifest, exporter, target)
+    scan = next((asset for asset in handed.assets if asset.modality != "image"), None)
+    if scan is not None:
+        raise ExportSourceUnreadable(
+            f"asset {scan.asset_id} is a {scan.modality}, and a pre-processing recipe "
+            f"transforms images only; export to {exporter.format_name} without a recipe"
+        )
+    return transform_manifest(handed, recipe, assignment)
 
 
 def _hand_over(

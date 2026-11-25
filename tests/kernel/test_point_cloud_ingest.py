@@ -21,6 +21,7 @@ from visionset.kernel import (
     CalibrationInUse,
     CalibrationMissing,
     CalibrationNotApplicable,
+    ExportSourceUnreadable,
     InvalidAnnotation,
     LossyExportNotConsented,
     UnsupportedMedia,
@@ -365,26 +366,48 @@ def test_an_export_refuses_without_consent_and_writes_only_images_with_it(
     )
 
 
-def test_no_shipped_format_writes_a_scan() -> None:
+def test_kitti_is_the_one_shipped_format_that_writes_scans() -> None:
     shipped = {
         name: one
         for name, one in exporters().items()
         if type(one).__module__.startswith("visionset.formats")
     }
     assert shipped
-    assert all("point_cloud" not in one.supported_modalities for one in shipped.values())
+    assert {name for name, one in shipped.items() if "point_cloud" in one.supported_modalities} == {
+        "kitti"
+    }
+    assert shipped["kitti"].supported_modalities == frozenset({"point_cloud"})
 
 
 def test_a_format_declaring_point_clouds_is_handed_them(scans: Scans) -> None:
     scans.read()
     scans.label_both({0: [_car()]})
     release_id = scans.publish()
-    (exporter,) = [one for one in exporters().values() if "point_cloud" in one.supported_modalities]
+    exporter = exporters()["dummy"]
+    assert "point_cloud" in exporter.supported_modalities
 
     report = scans.releases.check_export(release_id, exporter)
 
     assert report.dropped_modalities == ()
     assert sum(one.annotations for one in report.classes if one.label_class == "car_3d") == 1
+
+
+def test_a_recipe_is_refused_for_an_export_that_would_hand_over_a_scan(
+    scans: Scans, tmp_path: Path
+) -> None:
+    scans.read()
+    scans.label_both({0: [_car()]})
+    release_id = scans.publish()
+    writes_scans = exporters()["dummy"]
+    recipe = RecipeSpec(target=None, steps=())
+
+    with pytest.raises(ExportSourceUnreadable, match="point_cloud, and a pre-processing recipe"):
+        scans.releases.check_export(release_id, writes_scans, recipe=recipe)
+    with pytest.raises(ExportSourceUnreadable, match="dummy without a recipe"):
+        scans.releases.export(release_id, writes_scans, tmp_path / "out", recipe=recipe)
+    assert not (tmp_path / "out").exists()
+    images_only = scans.releases.check_export(release_id, exporters()["coco"], recipe=recipe)
+    assert images_only.dropped_modalities
 
 
 def test_a_frame_change_checks_for_labels_under_the_write_lock(

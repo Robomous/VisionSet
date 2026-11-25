@@ -257,8 +257,9 @@ def export_release(
     refuses with `EXPORT_SOURCE_UNREADABLE` (`verify_release` says which). A format
     that cannot carry everything the release holds refuses until `allow_lossy=true`;
     call `check_export` for the numbers. `recipe` applies a pre-processing recipe
-    (`list_preprocessing_recipes`) and writes augmented variants for the train fold.
-    A report is written to `dest` as `visionset-export-report.json`.
+    (`list_preprocessing_recipes`) and writes augmented variants for the train fold;
+    an export that writes scans (`kitti`) refuses any recipe with
+    `EXPORT_SOURCE_UNREADABLE`. A report is written to `dest` as `visionset-export-report.json`.
 
     Details: visionset://export
     """

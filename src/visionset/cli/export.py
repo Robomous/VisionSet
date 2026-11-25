@@ -150,8 +150,9 @@ def export(
     `--recipe` applies one of the project's pre-processing recipes: every image
     is resized as the recipe says, and augmented variants are written for the
     train fold. `--check` with a recipe also refuses now what the export would
-    refuse — augmentation over a release published without a split, or a step
-    that cannot move a geometry the release carries.
+    refuse — augmentation over a release published without a split, a step
+    that cannot move a geometry the release carries, or any recipe on an export
+    that writes scans.
     """
     # A usage error rather than a domain one, so Click formats it and it exits 2:
     # nothing has been resolved yet, no workspace has been opened, and the mistake
