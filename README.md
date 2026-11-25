@@ -134,7 +134,7 @@ src/visionset/          Single Python distribution (one wheel, one import namesp
   wire/                 The JSON shapes the CLI and MCP publish (gated against the REST models)
   server/               FastAPI — exposes the SDK via REST; openapi.json is a committed contract
   cli/                  Typer CLI (`visionset` console script)
-  mcp/                  MCP server (stdio) — 67 agent tools over the same SDK, four more on request
+  mcp/                  MCP server (stdio) — 66 agent tools over the same SDK, four more on request
   formats/              Exporter plugins: ultralytics, yolov5-yaml, darknet, coco, voc, classification and
                         the five lane formats; importer plugins for most of them, plus the kitti and
                         nuscenes scan importers (entry-point group `visionset.formats`)
