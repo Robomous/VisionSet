@@ -886,10 +886,11 @@ export function useSources(projectId: string, enabled = true): UseQueryResult<So
 
 const BATCH_POLL_MS = 2000;
 
-export function useBatches(projectId: string): UseQueryResult<BatchPage, Error> {
+export function useBatches(projectId: string, enabled = true): UseQueryResult<BatchPage, Error> {
   const client = useApiClient();
   return useQuery({
     queryKey: ingestKeys.batches(projectId),
+    enabled,
     queryFn: async () =>
       unwrap(
         await client.GET("/projects/{project_id}/batches", {

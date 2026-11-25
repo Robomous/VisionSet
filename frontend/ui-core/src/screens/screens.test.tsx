@@ -1371,6 +1371,24 @@ describe("the project's identity and its one filled control", () => {
       expect(screen.queryByTestId("menu-ingest")).toBeNull();
     });
 
+    it.each([
+      { failing: "batches", pattern: /\/batches$/ },
+      { failing: "stats", pattern: /\/stats$/ },
+    ])("offers it first in the overflow while the $failing read has failed and the band is not drawn", async ({ pattern }) => {
+      const added = vi.fn();
+      on("GET", pattern, { status: 500, body: { code: "BOOM", message: "no" } });
+      headerFor({ batchState: "in_annotation" });
+      renderWithData(<ProjectScreen projectId={PROJECT} onAddImagesOpenChange={added} />);
+
+      await screen.findAllByRole("button", { name: "Try again" });
+      expect(screen.queryByTestId("go-ingest")).toBeNull();
+      await userEvent.click(screen.getByTestId("project-menu"));
+      const item = await screen.findByTestId("menu-ingest");
+      expect(item.parentElement?.querySelector('[role="menuitem"]')).toBe(item);
+      await userEvent.click(item);
+      expect(added).toHaveBeenCalledWith(true);
+    });
+
     it("opens the batch from Annotate even for a host that holds no batch route: the panel holds it", async () => {
       headerFor({ batchState: "in_annotation" });
       renderWithData(<ProjectScreen projectId={PROJECT} />);

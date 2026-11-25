@@ -82,6 +82,7 @@ import { SchemaEditor, type SchemaDraft } from "./SchemaEditor";
 import { same } from "./schemaSame";
 import {
   useActiveSchema,
+  useBatches,
   useProject,
   useProjectDataset,
   useProjectStats,
@@ -442,6 +443,7 @@ export function ProjectScreen({
   const addingImages = onAddImagesOpenChange === undefined ? heldAddImages : (addImagesOpen ?? false);
   const setAddingImages = onAddImagesOpenChange ?? setHeldAddImages;
   const onIngest = (): void => setAddingImages(true);
+  const overviewDrawsIngest = useOverviewDrawsIngest(projectId, current === "overview");
   /**
    * Leave the dialog for somewhere else. A host that holds the open state in
    * its URL closes it by navigating — the destination's address does not carry
@@ -471,8 +473,9 @@ export function ProjectScreen({
       // The bar offers what the open section is about: Add images on Images,
       // in the overflow on Classes and Dataset, which draw their own actions
       // into the bar (`SectionActions`). The Overview's Add images and
-      // Annotate are its batches band's, beside the batches they act on.
-      {...(current === "overview" ? {} : { cta: { onIngest, ingest: current === "images" ? ("action" as const) : ("menu" as const) } })}
+      // Annotate are its batches band's, beside the batches they act on — and
+      // the overflow's while the band is not drawn.
+      {...(overviewDrawsIngest ? {} : { cta: { onIngest, ingest: current === "images" ? ("action" as const) : ("menu" as const) } })}
       {...(meta === null ? {} : { meta })}
       {...(onDeleted === undefined ? {} : { onDeleted })}
       // Images lays out its own grid and detail across the pane; the Overview
@@ -503,6 +506,18 @@ export function ProjectScreen({
     </ProjectFrame>
     </>
   );
+}
+
+/**
+ * Whether the Overview itself offers Add images: its batches band, which waits
+ * on the stats and the batches, or, with no images yet, its invitation. Both
+ * reads are the Overview's own, so this costs no request.
+ */
+function useOverviewDrawsIngest(projectId: string, onOverview: boolean): boolean {
+  const stats = useProjectStats(projectId);
+  const batches = useBatches(projectId, onOverview);
+  if (!onOverview || !stats.isSuccess) return false;
+  return stats.data.asset_count === 0 || batches.isSuccess;
 }
 
 /**
