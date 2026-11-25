@@ -89,6 +89,7 @@ import { schemaCanSuggest, type AnnotationSchema, type Tool } from "@visionset/a
 import { CircleHelp, Eye, EyeOff, Hand, Redo2, Sparkles, Undo2 } from "lucide-react";
 
 import { GeometryIcon } from "./GeometryIcon";
+import { keepCanvasFocus } from "./keepCanvasFocus";
 import { accepts, toolChoices, type ToolChoice } from "./toolChoices";
 import type { JSX, MouseEvent, ReactNode } from "react";
 
@@ -246,19 +247,6 @@ export function ToolPalette({
   readOnly = false,
   layout = "floating",
 }: ToolPaletteProps): JSX.Element {
-  /**
-   * The canvas keeps the focus.
-   *
-   * `AnnotatorCanvas` reads the keyboard off its own root, so a button that took
-   * the focus would leave every chord dead until the user clicked back on the
-   * picture — the same class of failure a removed shape causes when it takes the
-   * focus with it, arrived at from the other direction. `mousedown` is where the
-   * browser moves focus, so that is where it is refused.
-   */
-  function keepFocus(event: MouseEvent): void {
-    event.preventDefault();
-  }
-
   return (
     <div
       data-testid="tool-palette"
@@ -277,7 +265,7 @@ export function ToolPalette({
             label={choice.unavailable ?? `${choice.label} (${choice.hotkey})`}
             active={!hand.active && tool === choice.tool}
             disabled={choice.unavailable !== null}
-            onMouseDown={keepFocus}
+            onMouseDown={keepCanvasFocus}
             // (1) above: the tool did not move, so nothing moves — except that
             // putting the hand down *is* a move. Without the second line, Select
             // is unreachable from the hand on a page whose derived tool is
@@ -315,7 +303,7 @@ export function ToolPalette({
           label={suggest.unavailable ?? "Suggest (S)"}
           active={suggest.active}
           disabled={suggest.unavailable !== undefined && suggest.unavailable !== null}
-          onMouseDown={keepFocus}
+          onMouseDown={keepCanvasFocus}
           onClick={suggest.onToggle}
         >
           <Sparkles className="size-4" />
@@ -333,25 +321,25 @@ export function ToolPalette({
         testId="tool-hand"
         label="Hand (H)"
         active={hand.active}
-        onMouseDown={keepFocus}
+        onMouseDown={keepCanvasFocus}
         onClick={hand.onToggle}
       >
         <Hand className="size-4" />
       </PaletteButton>
 
-      {!readOnly && history !== undefined && <HistoryButtons history={history} keepFocus={keepFocus} />}
+      {!readOnly && history !== undefined && <HistoryButtons history={history} />}
 
       {/* In the rail the help sits at the foot, out of the tools' run — with the
           objects' visibility above it, the other control about looking. */}
       <div className={layout === "rail" ? "mt-auto" : "my-1 h-px w-6 bg-border"} />
 
-      {visibility !== undefined && <VisibilityButton visibility={visibility} keepFocus={keepFocus} />}
+      {visibility !== undefined && <VisibilityButton visibility={visibility} />}
 
       <PaletteButton
         testId="tool-help"
         label="Shortcuts (?)"
         active={false}
-        onMouseDown={keepFocus}
+        onMouseDown={keepCanvasFocus}
         onClick={onToggleHelp}
       >
         <CircleHelp className="size-4" />
@@ -363,10 +351,8 @@ export function ToolPalette({
 /** The command log's two steps — disabled *with the reason*, see `history`. */
 function HistoryButtons({
   history,
-  keepFocus,
 }: {
   readonly history: NonNullable<ToolPaletteProps["history"]>;
-  readonly keepFocus: (event: MouseEvent) => void;
 }): JSX.Element {
   return (
     <>
@@ -383,7 +369,7 @@ function HistoryButtons({
         label={history.canUndo ? "Undo (\u2318Z)" : "Nothing to undo"}
         active={false}
         disabled={!history.canUndo}
-        onMouseDown={keepFocus}
+        onMouseDown={keepCanvasFocus}
         onClick={history.onUndo}
       >
         <Undo2 className="size-4" />
@@ -393,7 +379,7 @@ function HistoryButtons({
         label={history.canRedo ? "Redo (\u21e7\u2318Z)" : "Nothing to redo"}
         active={false}
         disabled={!history.canRedo}
-        onMouseDown={keepFocus}
+        onMouseDown={keepCanvasFocus}
         onClick={history.onRedo}
       >
         <Redo2 className="size-4" />
@@ -405,10 +391,8 @@ function HistoryButtons({
 /** Hide or show every object — see `visibility`. Pressed while all are hidden. */
 function VisibilityButton({
   visibility,
-  keepFocus,
 }: {
   readonly visibility: NonNullable<ToolPaletteProps["visibility"]>;
-  readonly keepFocus: (event: MouseEvent) => void;
 }): JSX.Element {
   const label = visibility.empty
     ? "No objects to hide"
@@ -421,7 +405,7 @@ function VisibilityButton({
       label={label}
       active={visibility.allHidden}
       disabled={visibility.empty}
-      onMouseDown={keepFocus}
+      onMouseDown={keepCanvasFocus}
       onClick={visibility.onToggle}
     >
       {visibility.allHidden ? <EyeOff className="size-4" /> : <Eye className="size-4" />}

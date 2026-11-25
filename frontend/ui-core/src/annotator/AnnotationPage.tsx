@@ -159,7 +159,6 @@ import {
   useState,
   useSyncExternalStore,
   type JSX,
-  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -181,6 +180,8 @@ import { Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, Dro
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { AnnotatorPanel } from "./AnnotatorPanel";
 import { GeometryIcon } from "./GeometryIcon";
+import { keepCanvasFocus } from "./keepCanvasFocus";
+import { Withheld } from "./Withheld";
 import { classColor } from "../palette";
 import { CanvasReassign } from "./CanvasReassign";
 import { EditorNotice, EditorNotices } from "./EditorNotice";
@@ -2161,7 +2162,6 @@ function Workspace({
       data-testid="finish-job"
       data-withheld={finishWithheld === null ? "false" : "true"}
       disabled={finishDisabled || finishJob.isPending}
-      aria-disabled={(!finishDisabled && finishWithheld !== null) || undefined}
       onMouseDown={keepCanvasFocus}
       onClick={() => {
         if (finishWithheld !== null || finishJob.isPending) return;
@@ -2950,18 +2950,19 @@ function Workspace({
                 why; once the job is completed it reads `Finished`.
 
                 **The reason is a real tooltip.** On an editable page the withheld
-                state is `aria-disabled`, never the native attribute: a disabled
-                `<button>` receives no pointer events and cannot take focus, so the
-                reason could not be read (principles 4 and 9). On a read-only page
-                it is natively `disabled` — there is nothing to finish from a
-                viewer — and the tooltip moves to a focusable wrapper so the reason
-                is still reachable by hover and keyboard. Native `disabled` with no
-                reason is only a `Finished` job, whose label is the explanation,
-                and the in-flight press.
+                state is `Withheld`'s `aria-disabled`, so the reason is read on
+                hover and focus (principles 4 and 9), and the handler refuses the
+                press. On a read-only page it is natively `disabled` — there is
+                nothing to finish from a viewer — and the tooltip moves to a
+                focusable wrapper so the reason is still reachable by hover and
+                keyboard. Native `disabled` with no reason is only a `Finished`
+                job, whose label is the explanation, and the in-flight press. Only
+                while withheld does it carry a tooltip: an enabled Finish job
+                explains itself by being pressable.
               */
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  {finishReadOnly ? (
+              finishReadOnly ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
                     <span
                       role="group"
                       aria-label="Finish job"
@@ -2971,19 +2972,16 @@ function Workspace({
                     >
                       {finishButton}
                     </span>
-                  ) : (
-                    finishButton
-                  )}
-                </TooltipTrigger>
-                {/* Only while withheld: an enabled Finish job explains itself by
-                    being pressable, and a tooltip repeating the label would be
-                    noise over the one control the frame exists to end on. */}
-                {finishWithheld !== null && (finishReadOnly || !finishInert) && (
+                  </TooltipTrigger>
                   <TooltipContent side="top" data-testid="finish-withheld">
                     {finishWithheld}
                   </TooltipContent>
-                )}
-              </Tooltip>
+                </Tooltip>
+              ) : (
+                <Withheld reason={finishInert ? null : finishWithheld} side="top" contentTestId="finish-withheld">
+                  {finishButton}
+                </Withheld>
+              )
                         ) : (
               <Button
                 variant="default"
@@ -3414,18 +3412,6 @@ function PinDiff({
       ))}
     </ul>
   );
-}
-
-/**
- * A press on the stage's chrome keeps the keyboard where it was.
- *
- * `AnnotatorCanvas` reads the keyboard off its own root, so a button over the
- * picture that took the focus would leave every chord dead until the next click
- * on the picture. `mousedown` is where the browser moves focus, so that is where
- * it is refused — the tool rail's rule.
- */
-function keepCanvasFocus(event: ReactMouseEvent): void {
-  event.preventDefault();
 }
 
 /** A hairline between the island's groups. */

@@ -90,8 +90,30 @@ nothing was being distributed. This is the first version that is.
   Importing the root no longer pulls in `react`, so the optional peer is genuinely optional. Breaking for
   anything that imported a React adapter name (`AnnotatorCanvas`, `useAnnotatorSnapshot`, `classColor`, …)
   from the root: import it from `@visionset/annotator/react` instead (#843).
+- **`@visionset/annotator`: one place for scan cuboid maths, and one rule for the root's point-cloud exports.**
+  `pointcloud/cuboid` now owns `upAxis`, `standingCuboid` and `cuboidCorners3D`, which the drawn labels, the
+  handle overlay and the editor share. `boundsOf` and `framingBounds` take the sample's `origin` and always
+  return scan-frame bounds. The root exports everything a point-cloud module exports (adding `zoomAt`,
+  `perspective`, `lookAt`, `multiply`, the remaining `POINT_*` buffer constants, `rampRange` among others),
+  except the vector arithmetic and the snap grid. The scan legend reads the ramp's ends from `rampRange`, the
+  same percentiles the canvas coloured with (#1112).
+- **Annotator: one disabled-with-reason pattern for the scan controls.** Edit, the draw tools, colour by and the
+  labels toggle carry `aria-disabled` and their reason on the control itself, as Finish job on an editable page
+  already did, so a withheld tool adds no tab stop inside its tool group and stays reachable by arrow key and
+  hover. The keep-focus-on-canvas handler is one shared helper (#1112).
+
+### Removed
+
+- **`nearestSegment`, `cuboidFromScanCorners` and `scanCuboidCorners` from `@visionset/annotator`.** None had a
+  caller; `cuboidCorners3D` replaces `scanCuboidCorners` with the same corners (#1112).
+- **`BatchSummary`, `BatchSummaryItem` and `BatchSummaryProps` from `@visionset/ui-core`.** Unused outside the
+  styleguide; `BatchPhase` is still exported (#1112).
 
 ### Fixed
+
+- **Polyline vertex snapping on a scan with stray or non-finite points.** A point with a non-finite coordinate no
+  longer displaces a real point from the snap grid or stops every snap, and one far stray return no longer
+  coarsens the grid's cells (#1112).
 
 - **A scan cuboid's far-side face handles are neither drawn nor grabbable.** In the perspective view a selected
   box offers a handle only on each face turned towards the camera, so a press can no longer push a face through

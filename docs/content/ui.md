@@ -1256,7 +1256,7 @@ source that declares no frame is shown with `z` up and has no labels to draw.
 The open job's `cuboid_3d` labels on the scan are drawn as their twelve edges, and a
 `polyline_3d` as its segments, in the class colour, in the scan's own frame - no calibration is
 asked for or used. A cuboid's corners are its centre plus half its size along the heading
-`cos(yaw)·forward + sin(yaw)·left`, across it, and along up (`scanCuboidCorners`). Edges are drawn
+`cos(yaw)·forward + sin(yaw)·left`, across it, and along up (`cuboidCorners3D`). Edges are drawn
 over the points rather than hidden inside them. Both kinds live in the page's scan document, so
 in **Edit** mode, which adds an orthographic top-down view beside the perspective one, cuboids
 can be selected, drawn, moved, resized, turned, deleted and saved, and polylines drawn on the

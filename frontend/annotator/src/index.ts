@@ -76,9 +76,13 @@ export {
 } from "./core/geometry/projection";
 // Point-cloud scans — the buffer, the orbit camera, colours and labels in the declared frame
 export {
+  POINT_BUFFER_HEADER_BYTES,
   POINT_BUFFER_MAGIC,
-  POINT_FLAG_ORIGIN,
   POINT_BUFFER_VERSION,
+  POINT_FLAG_INTENSITY,
+  POINT_FLAG_ORIGIN,
+  POINT_FLAG_RGB,
+  POINT_ORIGIN_BYTES,
   PointBufferError,
   boundsOf,
   decodePoints,
@@ -94,29 +98,37 @@ export {
   type FrameAxis,
   type ScanFrame,
 } from "./core/pointcloud/frame";
+export { wrapAngle } from "./core/pointcloud/angle";
 export {
   FIELD_OF_VIEW,
+  HOME_PITCH,
   MAX_PITCH,
   MIN_PITCH,
+  ORTHOGRAPHIC_STANDOFF,
+  TOP_DOWN_PITCH,
   eyeOf,
   framingBounds,
   groundHeight,
   homeCamera,
+  lookAt,
+  metresPerPixelAt,
+  multiply,
   orbit,
+  orthographic,
   pan,
+  perspective,
   projectToNdc,
   sceneRadius,
-  orthographic,
-  TOP_DOWN_PITCH,
   topDownCamera,
   viewBasis,
   viewHalfHeight,
   viewProjection,
-  wrapAngle,
   zoom,
+  zoomAt,
   type OrbitCamera,
 } from "./core/pointcloud/camera";
 export {
+  PARALLEL_EPSILON,
   closestOnAxis,
   metresPerPixel,
   ndcRay,
@@ -134,13 +146,19 @@ export {
 export { SNAP_NEAR_EQUAL_PX, SNAP_TOLERANCE_PX, snapHeight } from "./core/pointcloud/snap";
 export {
   CUBOID_FACES,
+  FOOTPRINT_CORNERS,
   MIN_CUBOID_SIZE,
   cuboidAxes,
-  cuboidFromScanCorners,
+  cuboidCorners3D,
   faceCenter,
+  faceSpec,
   headingOfYaw,
+  levelOf,
   resizeCuboidFace,
+  standingCuboid,
+  upAxis,
   wrapYaw,
+  yawAxes,
   yawOfHeading,
   type CuboidFace,
 } from "./core/pointcloud/cuboid";
@@ -149,7 +167,6 @@ export {
   insertPolylineVertex,
   isDrawablePolyline,
   movePolylineVertex,
-  nearestSegment,
   removePolylineVertex,
 } from "./core/pointcloud/polyline";
 // The scan editor — a sibling of the image engine, sharing its log, store and selection
@@ -171,6 +188,7 @@ export {
   handleFaces,
   handleTarget,
   hitTest3D,
+  vertexTarget,
   yawRing,
   type Hit3D,
   type HitTolerances3D,
@@ -213,13 +231,14 @@ export {
   colorModeAvailable,
   defaultColorMode,
   pointColors,
+  rampAt,
+  rampRange,
   robustRange,
   type ColorMode,
 } from "./core/pointcloud/ramp";
 export {
   cuboidSegments,
   polylineSegments,
-  scanCuboidCorners,
   scanLabels,
   segmentsRelativeTo,
   type ScanLabel,

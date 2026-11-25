@@ -11,7 +11,6 @@ import { describe, expect, it } from "vitest";
 import {
   assetTitle,
   batchPhase,
-  batchSummaryItems,
   classShareRows,
   datasetCaption,
   imagesLeftToAnnotate,
@@ -48,28 +47,6 @@ describe("batchPhase", () => {
 
   it("never calls an empty completed batch in the dataset", () => {
     expect(batchPhase({ state: "completed", asset_count: 0, promoted_asset_count: 0 })).toBe("completed");
-  });
-});
-
-describe("batchSummaryItems", () => {
-  it("puts live work first and settled batches last", () => {
-    const items = batchSummaryItems([
-      batch({ id: "done", state: "completed", asset_count: 2, promoted_asset_count: 2 }),
-      batch({ id: "draft", state: "draft" }),
-      batch({ id: "live", state: "in_annotation" }),
-    ]);
-    expect(items.map((item) => item.id)).toEqual(["live", "draft", "done"]);
-  });
-
-  it("gives a draft no percentage rather than reading its documented zeros as 0%", () => {
-    const [draft] = batchSummaryItems([batch({ state: "draft" })]);
-    expect(draft?.percent).toBeNull();
-    expect(draft?.remaining).toBeNull();
-  });
-
-  it("names a correction batch for what it corrects", () => {
-    const [item] = batchSummaryItems([batch({ name: "Highway", parent_batch_id: "x" })]);
-    expect(item?.name).toBe("Highway — correction");
   });
 });
 

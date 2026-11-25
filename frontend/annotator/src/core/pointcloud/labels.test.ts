@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { CUBOID_EDGES } from "../geometry/projection";
 import type { Cuboid3DGeometry, Point3D, StoredAnnotation } from "../types";
-import { cuboidSegments, scanCuboidCorners, scanLabels, segmentsRelativeTo } from "./labels";
+import { cuboidCorners3D } from "./cuboid";
+import { cuboidSegments, scanLabels, segmentsRelativeTo } from "./labels";
 
 const BOX: Cuboid3DGeometry = { type: "cuboid_3d", center: [0, 0, 0], size: [4, 2, 1], yaw: 0 };
 
@@ -23,49 +24,49 @@ function expectClose(actual: Point3D, expected: Point3D): void {
   actual.forEach((value, i) => expect(value).toBeCloseTo(expected[i], 9));
 }
 
-describe("scanCuboidCorners", () => {
+describe("cuboidCorners3D", () => {
   it("lidar_flu at yaw 0: length along x, width along y, height along z", () => {
-    const corners = scanCuboidCorners(BOX, "lidar_flu");
+    const corners = cuboidCorners3D(BOX, "lidar_flu");
     expectClose(extents(corners), [4, 2, 1]);
     expectClose(front(corners), [2, 0, 0]);
   });
 
   it("lidar_flu turns counter-clockwise seen from above: heading (cos yaw, sin yaw, 0)", () => {
-    const corners = scanCuboidCorners({ ...BOX, yaw: Math.PI / 2 }, "lidar_flu");
+    const corners = cuboidCorners3D({ ...BOX, yaw: Math.PI / 2 }, "lidar_flu");
     expectClose(extents(corners), [2, 4, 1]);
     expectClose(front(corners), [0, 2, 0]);
   });
 
   it("camera_rdf at yaw 0: heading forward (+z), height along y", () => {
-    const corners = scanCuboidCorners(BOX, "camera_rdf");
+    const corners = cuboidCorners3D(BOX, "camera_rdf");
     expectClose(extents(corners), [2, 1, 4]);
     expectClose(front(corners), [0, 0, 2]);
   });
 
   it("camera_rdf turns about up (-y): a quarter turn heads left (-x)", () => {
-    const corners = scanCuboidCorners({ ...BOX, yaw: Math.PI / 2 }, "camera_rdf");
+    const corners = cuboidCorners3D({ ...BOX, yaw: Math.PI / 2 }, "camera_rdf");
     expectClose(front(corners), [-2, 0, 0]);
   });
 
   it("lidar_rfu at yaw 0: heading forward (+y), width along x, height along z", () => {
-    const corners = scanCuboidCorners(BOX, "lidar_rfu");
+    const corners = cuboidCorners3D(BOX, "lidar_rfu");
     expectClose(extents(corners), [2, 4, 1]);
     expectClose(front(corners), [0, 2, 0]);
   });
 
   it("lidar_rfu turns counter-clockwise about +z: a quarter turn heads left (-x)", () => {
-    const corners = scanCuboidCorners({ ...BOX, yaw: Math.PI / 2 }, "lidar_rfu");
+    const corners = cuboidCorners3D({ ...BOX, yaw: Math.PI / 2 }, "lidar_rfu");
     expectClose(extents(corners), [4, 2, 1]);
     expectClose(front(corners), [-2, 0, 0]);
   });
 
   it("is placed at the centre", () => {
-    const corners = scanCuboidCorners({ ...BOX, center: [10, -3, 1.5] }, "lidar_flu");
+    const corners = cuboidCorners3D({ ...BOX, center: [10, -3, 1.5] }, "lidar_flu");
     expectClose(front(corners), [12, -3, 1.5]);
   });
 
   it("keeps a top face: corners with bit 2 clear are above the others", () => {
-    const corners = scanCuboidCorners(BOX, "lidar_flu");
+    const corners = cuboidCorners3D(BOX, "lidar_flu");
     corners.forEach((corner, i) => expect(corner[2]).toBe((i & 4) === 0 ? 0.5 : -0.5));
   });
 });

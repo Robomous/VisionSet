@@ -9,10 +9,10 @@
  */
 
 import { classColor } from "../palette";
-import type { BatchPhase, BatchSummaryItem } from "../patterns/project/BatchSummary";
+import type { BatchPhase } from "../patterns/project/batchRowModel";
 import type { ClassShareRow, DistributionLens } from "../patterns/project/ClassDistribution";
 import type { MosaicCaption } from "../patterns/project/AssetMosaic";
-import { annotatedShare, hasJobs, outstandingWork } from "./batchState";
+import { hasJobs, outstandingWork } from "./batchState";
 import type { Asset, Batch, ClassCount, DatasetAsset, LabelClassBody } from "./queries";
 
 /**
@@ -41,13 +41,11 @@ export function swatchFor(declared: readonly LabelClassBody[] | undefined, label
 // --- batches -------------------------------------------------------------------
 
 /**
- * A batch as the summary card draws it.
+ * A batch's phase, as the Overview draws it.
  *
  * `in_dataset` is a completed batch whose every image is in the trunk right now —
  * `promoted_asset_count` is membership derived per read, so a removal moves a
- * batch back to `completed`, which is the honest reading. A draft's progress
- * counts are documented zeros rather than data (`hasJobs`), so it carries no
- * percentage at all rather than a 0%.
+ * batch back to `completed`, which is the honest reading.
  */
 export function batchPhase(batch: Pick<Batch, "state" | "asset_count" | "promoted_asset_count">): BatchPhase {
   switch (batch.state) {
@@ -60,29 +58,6 @@ export function batchPhase(batch: Pick<Batch, "state" | "asset_count" | "promote
     case "completed":
       return batch.asset_count > 0 && batch.promoted_asset_count >= batch.asset_count ? "in_dataset" : "completed";
   }
-}
-
-/** Live work first, then what waits on a person, then what is done. */
-const PHASE_ORDER: readonly BatchPhase[] = ["annotating", "approved", "draft", "completed", "in_dataset"];
-
-export function batchSummaryItems(batches: readonly Batch[]): BatchSummaryItem[] {
-  return batches
-    .map((batch): BatchSummaryItem => {
-      const phase = batchPhase(batch);
-      const counted = hasJobs(batch.state);
-      return {
-        id: batch.id,
-        // A correction batch is named for the batch it corrects; the suffix is
-        // what tells the two rows apart.
-        name: batch.parent_batch_id === null ? batch.name : `${batch.name} — correction`,
-        phase,
-        total: batch.asset_count,
-        remaining: counted ? outstandingWork(batch.progress) : null,
-        percent: counted ? annotatedShare(batch.progress).percent : null,
-        inDataset: batch.promoted_asset_count,
-      };
-    })
-    .sort((a, b) => PHASE_ORDER.indexOf(a.phase) - PHASE_ORDER.indexOf(b.phase));
 }
 
 /**

@@ -509,7 +509,7 @@ function sceneOf(sample: PointSample): Scene {
   return {
     home: homeCamera(framed),
     zoomRadius: sceneRadius(framed),
-    depthRadius: sceneRadius(boundsOf(sample.positions) ?? UNIT_BOUNDS),
+    depthRadius: sceneRadius(boundsOf(sample.positions, sample.origin) ?? UNIT_BOUNDS),
   };
 }
 
