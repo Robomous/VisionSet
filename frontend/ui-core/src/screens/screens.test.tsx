@@ -1389,6 +1389,18 @@ describe("the project's identity and its one filled control", () => {
       expect(added).toHaveBeenCalledWith(true);
     });
 
+    it("leaves an empty project's Add images to the invitation alone, though the batches read has failed", async () => {
+      on("GET", /\/batches$/, { status: 500, body: { code: "BOOM", message: "no" } });
+      headerFor({ assets: 0 });
+      renderWithData(<ProjectScreen projectId={PROJECT} onAddImagesOpenChange={vi.fn()} />);
+
+      await screen.findByTestId("overview-ingest");
+      await userEvent.click(screen.getByTestId("project-menu"));
+      await screen.findByTestId("rename-project");
+      expect(screen.queryByTestId("menu-ingest")).toBeNull();
+      expect(screen.queryByTestId("go-ingest")).toBeNull();
+    });
+
     it("opens the batch from Annotate even for a host that holds no batch route: the panel holds it", async () => {
       headerFor({ batchState: "in_annotation" });
       renderWithData(<ProjectScreen projectId={PROJECT} />);
