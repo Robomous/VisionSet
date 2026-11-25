@@ -326,9 +326,9 @@ test("formRanges spans the form and stops at its close", () => {
  * than quietly widening it, which is the failure mode an allow-list normally has.
  */
 const RENDERED_INSIDE_FORMS = {
-  // `AsyncStates`' error card carries a Retry, and `ModelsScreen`'s connection
-  // form renders one when the connection list fails to load.
-  ErrorState: "frontend/ui-core/src/patterns/AsyncStates.tsx",
+  // Empty since the connection form moved to `ConnectionDialog`: its catalog's
+  // error card (`AsyncStates`' `ErrorState`, whose Retry is `type="button"`) is
+  // rendered by a field component, not inside the `<form>` element's own span.
 };
 
 /**
@@ -468,7 +468,6 @@ test("the forms this gate is about are all still there, and none nests", () => {
       "frontend/app/src/shell/TokenGate.tsx",
       "frontend/ui-core/src/patterns/classFields.test.tsx",
       "frontend/ui-core/src/screens/ConnectionDialog.tsx",
-      "frontend/ui-core/src/screens/ModelsScreen.tsx",
       "frontend/ui-core/src/screens/ProjectFrame.tsx",
       "frontend/ui-core/src/screens/ProjectsScreen.tsx",
       "frontend/ui-core/src/screens/SchemaCommitBar.tsx",

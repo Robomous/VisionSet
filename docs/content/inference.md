@@ -820,46 +820,58 @@ use of them, because the same list serves the editor's suggest tool, pre-labelin
 asks next.
 
 A workspace with none says so and offers one thing - the toolbar's **New** (named *New
-model*), which opens the *New model* dialog. Creating one is two steps, because the two kinds share almost no fields:
-first where the model runs, offered as two tiles side by side - **Local**, weights this machine
-downloads and runs; **HTTP**, an endpoint that answers this project's inference contract - then
-that kind's form. The dialog is wider than it is tall, and the form lays its two halves side
-by side: what the model *is* on the left (name, model, and for a custom model its id and
-revision), where it *runs* on the right (device and precision, or endpoint and credential
-variable), so a person reads it as one shape rather than scrolling a column of fields. Editing
-opens on the same form with the kind already settled.
+model*), which opens the *New model* dialog. It opens on the models this installation can run,
+because the model is the decision: where it runs is a switch in the dialog's header - **Local**,
+weights this machine downloads and runs, or **Remote**, an endpoint that answers VisionSet's
+inference contract (the `http` kind) - and creating starts on **Local**. Flipping it changes the
+form in place, keeping the name and the dialog open. Editing opens on the same form without the
+switch, because the kind is not editable. What a field means beyond its label is in an info card
+beside the label rather than in a line under the field, and where the meaning depends on the
+value - the model, the device, the precision - the card says the current one.
 
-- **Local** opens on an offered model, a `cpu` device and `fp32` precision. What the model field
-  lists belongs to *this installation* rather than to this release: every installed driver
-  declares the checkpoints it offers by name, the form asks the server for them, and a driver
-  somebody `pip`-installed is offered here without this repository knowing it exists. The headings
-  are the abilities - *Interactive segmentation*, *Text-prompt detection* - because a driver says
+- **Local** opens on an offered model, a `cpu` device and `fp32` precision. The models are a
+  list of choices, one row each: the hub's mark, the model id, a **Gated** badge on an entry
+  whose weights have to be asked for, and one line on what it is for. What the list holds
+  belongs to *this installation* rather than to this release: every installed driver declares
+  the checkpoints it offers by name, the form asks the server for them, and a driver somebody
+  `pip`-installed is offered here without this repository knowing it exists. The headings are
+  the abilities - *Segment — click to mask*, *Detect — describe in text* - because a driver says
   which question its model answers and never how that question is named on screen. Each entry
-  carries its id, one line on what it is for, the commit the driver that offers it pinned, and
-  the id of that driver; no size, because what a download costs is read live for the exact pair,
-  and a number frozen into a list would be a second answer to a question already answered
-  accurately. Picking an entry records its driver on the connection - a value that rides along
-  with a choice somebody already made, so there is no control to operate. **Custom model...** is
-  the last entry and reveals the free model id and revision fields: the list guides, it does not
-  restrict, and any model this build has an adapter for remains typeable. A custom model records
-  no driver - nobody offered it - and is served by whichever installed driver declares the family
-  its downloaded config names. Device and precision are
-  lists too, and the precision list follows the device, because half precision applies on CUDA
-  only - so picking `mps` leaves `fp32` as the only precision offered. Underneath is what fetching
-  the chosen pair would cost, read while you are still deciding. An entry whose weights have to be
-  asked for says so on the line above that one, with a link to the page where access is requested,
-  so the requirement is read while the model is being chosen rather than met as a refused download
-  later. If this machine has no `local-inference` extra the size cannot be read, and the form says
-  so, in the server's own words, with the install command. **It stays usable**: creating a
-  connection downloads nothing, so not knowing the size is information rather than a barrier.
-- **HTTP** asks for the endpoint URL and, optionally, the **Credential variable** - the name of
-  an environment variable holding the endpoint's credential, never the secret itself, which the
-  hint beside the field says. Once created, **Test endpoint** in the row's menu asks the endpoint
-  what it answers, and the row's labels say what came back.
+  carries its id, its line, the commit the driver that offers it pinned, and the id of that
+  driver; no size, because what a download costs is read live for the exact pair, and asking for
+  every row would be a request per entry each time the dialog opens. Picking an entry records its
+  driver on the connection - a value that rides along with a choice somebody already made, so
+  there is no control to operate. The list is one stop for the keyboard and the arrow keys move
+  the choice, as radio buttons do. **Custom model...** is the last row and reveals the free model
+  id and revision fields: the list guides, it does not restrict, and any model this build has an
+  adapter for remains typeable. A custom model records no driver - nobody offered it - and is
+  served by whichever installed driver declares the family its downloaded config names. Under the
+  list, on one line, the **Name** beside the **Device** (CPU, CUDA, Apple GPU) and **Precision**
+  selects; the precision follows the device, because half precision applies on CUDA only - so
+  picking Apple GPU leaves `fp32` as the only precision offered. One line above the buttons says
+  what creating it commits to: that it downloads nothing, what fetching the chosen pair would
+  cost, read while you are still deciding, and - for a gated entry - that access has to be
+  requested first, with a link to the page where it is, so the requirement is read while the
+  model is being chosen rather than met as a refused download later. If this machine has no
+  `local-inference` extra the size cannot be read, and the form says so, in the server's own
+  words, with the install command. **It stays usable**: creating a connection downloads nothing,
+  so not knowing the size is information rather than a barrier.
+- **Remote** asks for the endpoint URL, the model id and revision the endpoint runs and,
+  optionally, the **Credential variable** - the name of an environment variable holding the
+  endpoint's credential, never the secret itself, which the field's info card says. The model id
+  is typed rather than chosen: the list is what this machine can load, and an endpoint runs
+  whatever somebody else's server runs. Once created, **Test endpoint** in the row's menu asks
+  the endpoint what it answers, and the row's labels say what came back.
+
+**The name follows the model.** A new connection is named after the chosen model id's last
+segment, lower case - `facebook/sam2.1-hiera-base-plus` becomes `sam2.1-hiera-base-plus` - until
+somebody types a name of their own, after which it stays theirs. Names are unique in the workspace
+ignoring case; a name another connection already has is said under the field and holds **Create**
+back, and the server's own refusal of a clash still renders as prose.
 
 Because that list is a request rather than a constant, the model field has four states and says
 which one it is in. While the answer is in flight it says it is reading, and puts nothing else in
-that space: a disabled grey select is a question the interface refuses to answer, and a free model
+that space: a disabled grey list is a question the interface refuses to answer, and a free model
 id field would be asking somebody to answer one the server has not answered yet. A refusal is
 rendered as prose, in the server's own words, with another attempt beside it. An installation that
 offers nothing by name is invited to install a driver rather than shown an empty list. Those last
@@ -871,10 +883,11 @@ The page is a full-bleed table, like the Projects list: a header band with the p
 and, at its end, **New** with a plus (named *New model*), and a grid running edge to edge with one row per
 connection - a connection serving two abilities is one row, not two. Its columns, each named
 with an icon and a word: **Model**, the connection's name; **Weights**, `model @ revision` on one
-line, the revision being the part a short column gives up; **Origin**, where the weights come
-from in plain words (**Hugging Face**, **Customized**, **Robomous**) beside the row's one colour,
-a small square - amber for a hub checkpoint, blue for the user's own, the brand's orange for the
-Robomous registry; **What it does**, one quiet label per ability the connection declares, in a
+line behind the logo of where the weights come from, the revision being the part a short column
+gives up - Hugging Face's own mark for a hub checkpoint, a blue wrench for the user's own, the
+Robomous robot head, in the Robomous coral, for the registry, each named for a screen reader by
+its plain word (**Hugging Face**, **Customized**, **Robomous**), which the sheet's **Origin** row and the
+Origin filter say in full; **What it does**, one quiet label per ability the connection declares, in a
 person's words - **Suggests from clicks** for `point_suggest`, **Finds what you name** for
 `text_detect`, a value this build has no words for printed as it arrived - and one more for what
 it writes (*writes boxes or polygons*), read from `produces`, on one line that fades out at its
@@ -886,7 +899,7 @@ downloaded declares no ability yet, because what a model answers is read out of 
 The status bar says how many connections there are - *2 of 4 models* while a filter narrows them
 - how many of those are ready, and how many are not set up.
 
-In the toolbar sit dropdown filters, one per dimension the workspace varies on - **Origin**,
+At the end of the toolbar, right beside **New**, sit dropdown filters, one per dimension the workspace varies on - **Origin**,
 **Ability**, **Runs** (local or HTTP), **State** (ready or not set up) - each a pill reading its
 name and its value, at **All** until somebody chooses, and combined: a row is shown only while it
 answers every chosen value. A filter offers only the values on the page, named in a person's
@@ -894,7 +907,7 @@ words where this build knows them and printed raw where it does not; and a dimen
 every connection agrees is not offered at all, because a dropdown whose every choice shows the
 same rows is a control in a useless state - a workspace with one connection shows no filter, and
 one whose connections differ only in ability shows exactly one. A connection that has declared no
-ability answers **All** only. While anything is chosen a **Clear** control puts every filter back
+ability answers **All** only. While anything is chosen a **Clear** control, ahead of the filters, puts every filter back
 and the status bar says how many rows the choice left of how many there are; an empty result says
 *nothing here matches the filter* in the grid and invites nothing, because every choice on offer
 is one some row answers, so what left nothing is the combination. Above twenty connections the
@@ -904,31 +917,37 @@ toolbar also grows a text filter, which matches a name substring.
 word or, while a download or a check runs, the run itself - its name, its amounts and a bar - at
 the cell's width, so a run starting or ending moves nothing else in the grid; a run that failed
 adds a short note beside the word (*Download failed*), and the row never grows a line. Pressing a
-row opens the model's **sheet**: what the row truncates said in full - the weights and revision,
-where it runs, the endpoint, every ability - and every action the connection declares, each beside
-the sentence that says what it does.
+row opens the model's **sheet**, over the page from the right and as wide as you drag its left
+edge. A slim bar along its top closes it, walks to the previous or next model (**K** / **J**) and
+says where this one sits among the rows shown, and carries every action the connection declares as
+an icon button named by its tooltip, which also says what the action does. Under the bar the model
+reads as a page: its name, its weights behind the origin's logo, then its properties one per row -
+state, weights, revision, origin, where it runs, the endpoint, the credential's variable, every
+ability. What a press says - a run, a failure and its remedy, the endpoint's answer - is a line in
+a strip between the bar and the page.
 
-A local connection that is not set up says there what fetching its weights would cost - *Downloads
-1.9 GB across 10 files* - the same size read the form shows before a confirm, asked only while
+A local connection that is not set up says in its **Weights** row what fetching them would cost -
+*1.9 GB across 10 files* - the same size read the form shows before a confirm, asked only while
 there is something to fetch, and offers **Download weights**, which launches the background job
 described above. The run shows in the sheet and in the row at once, and the sheet says it runs on
 the server, so closing the sheet or leaving the page does not stop it; the state turns **Ready**
 when the job finishes, without a reload. A connection that is already ready offers two checks
 instead - **Check for missing files**, which is the same request re-run, and **Check files are
-undamaged**, which reads every byte - with one sentence saying which proves what; the table above
+undamaged**, which reads every byte - each tooltip saying what its check proves; the table above
 is what separates them. A machine without the extra still shows the controls, and the size line or
 the press answers with the install command - a control that vanished would take the remedy with
-it. While either run is under way every control over the files is disabled and labelled with what
-is happening, for the reason above: they act on one cache, and the run is read off the
+it. While either run is under way every other control over the files is withheld - still
+focusable, its tooltip saying why - and the running one names what is happening, for the reason above: they act on one cache, and the run is read off the
 connection, so a tab that started nothing shows it too. An HTTP connection offers **Test
-endpoint**, and its answer is said under the button - fresh every time, never stored.
+endpoint**, and its answer is said in the strip - fresh every time, never stored.
 
 A failed download leaves the connection at **Not set up**, because weights arrive or they do not,
 and the sheet says what happened in the job's own words with what to do about it; the button
 becomes **Retry download**, the same action. A failed *integrity* check leaves it at **Not set
 up** for a different reason - the damaged files were removed and the connection stood down before
 the job said so - and the remedy is the same download, which now has to fetch them again for
-real. **Edit** and **Delete** sit at the sheet's foot.
+real. **Edit** and **Delete** sit at the start of the bar, apart from the actions that set a
+model up.
 
 Editing does not offer to change the kind, because the kind is not editable. Saving an edit that
 moves a local connection to another model or revision returns it to **Not set up** in place, with
