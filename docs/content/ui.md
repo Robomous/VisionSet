@@ -345,10 +345,13 @@ band's source menu gives way to a chip, *Batch: drive-01 ×*, whose × lifts the
 with `replace`) and returns the whole project with the tile size kept. The batch's images are one
 run rather than a section per source: the batch listing carries no per-source count, and a heading
 claiming a source's whole over a partial read would be wrong. No source menu or headings, then; the
-image's source is still named in its detail. The status bar says *4 of 61 images*; the unsourced
+image's source is still named in its detail. The status bar says *4 of 61 images* once the batch's
+read has answered, and nothing before; the unsourced
 note is the whole project's and is not shown; density, the selection, the keys and Focus work as
 on the whole project. A batch with no images says so, and one that cannot be read shows the
-refusal, with the chip still there to remove.
+refusal, with the chip still there to remove. Only a batch the project's own batches hold is read:
+an id they do not hold - deleted, or another project's - is *Unknown batch*, says it is not on
+record, and fetches nothing.
 
 *The band.* One row over the grid says what it holds. With several sources it is the source
 menu: a button naming the source in use and its count, and beside it that choice's one-line
@@ -479,13 +482,14 @@ with no editor to send a job to says its state in words instead. The panel opens
 the batch's forward step, and Escape closes it. There is no footer.
 
 **The top bar's end carries every action on the batch, each a ghost icon button named by its
-tooltip** (`patterns/IconAction.tsx`) - *Annotate* alone says its name, because it is where most
-visits to a labeling batch are going. *Auto-label* comes first, when the batch declares
+tooltip** (`patterns/IconAction.tsx`) - except *Annotate*, which says its name because it is
+where most visits to a labeling batch are going, and *Correct* (below). *Auto-label* comes first, when the batch declares
 `pre_label`; then the lifecycle controls, each offered from the batch's `allowed_actions` - never
 from its state read here - and each with its own gating, refusals and outcome. A withheld control
 stays, disabled, and its tooltip says why. **The panel has no footer: what a control says is a
 toast** (`SheetLine`, the house `Toaster` at the bottom right). The outcome of a press and a
-refusal are raised once, with their words and the way on (*Open the dataset ↗*), and their words
+refusal are raised once per batch - keyed by its id and named for it, since the panel may have
+moved on by the time it is read - with their words and the way on (*Open the dataset ↗*), and their words
 follow the control's report if it settles after the press; a refusal stays up twice as long. A
 lasting state (*All 48 images in the dataset*) says nothing in the panel, because State, its *Open
 the dataset ↗* and the In dataset property already say it. So words never squeeze under a 32px
@@ -495,8 +499,8 @@ focus to the other, so a keyboard walking the batches keeps its place. The inter
 kernel's `promote`.
 
 **First, what ends or branches the batch:** *Delete batch*, quiet like the rest and in the
-destructive colour only under the pointer or the focus, withheld with its reason while the batch
-may yet be deleted and not drawn at all on a completed batch, which never can be again; and on a
+destructive colour only under the pointer or the focus, and disabled with its reason wherever the
+batch does not declare `delete`; and on a
 completed batch *Correct*, a ghost button that says its name (its tooltip: *Create correction
 batch*), whose new correction then opens in the panel. A hairline parts them from what follows,
 and is drawn only where it parts something. **Then
@@ -514,8 +518,8 @@ settled, so while frames are still to do *Complete* is withheld and its tooltip 
 reopened - with one switch, *Add the labeled images to the dataset*, on by default and keeping
 the person's last answer; its button says *Complete* whatever the switch says. On, it completes
 and adds in one go; off, it completes and says *Nothing is in the dataset yet*, and *Add to
-dataset* appears beside it. A completed batch wholly in the dataset has no forward step: it says
-*All N images in the dataset*, with the way to the dataset, instead of offering a press that
+dataset* appears beside it. A completed batch wholly in the dataset has no forward step: its
+State says *In dataset*, with *Open the dataset ↗* beside it, instead of offering a press that
 could only report that nothing moved - a curator taking one of its images out puts *Add to
 dataset* back, and that press is how it is restored. What the panel does not do is draw frames:
 there is no frame grid, no bulk moving of frames between states, no removing frames from a draft
@@ -1500,14 +1504,12 @@ a single component (`screens/DeleteBatch.tsx`) so that there is one spelling of 
 states may be deleted, of the blast radius, and of the confirmation, rather than a
 hand-mirror of the rule one layer up from the one `capabilities.ts` removes.
 
-Availability is `delete` in the batch's own `allowed_actions`. Where it is not declared but the
-batch may yet be deleted, the button is **disabled with the reason** in its tooltip (the sentence
-is `withheldBecause`'s, shared with every other withheld control on these screens). A `completed`
-batch is the exception: `completed` has no exit and sits outside the kernel's `DELETABLE_STATES`,
-so no state will ever enable the button, and `ui-capabilities` hides what is never meaningful on
-the screen - it is **not drawn**, and the onward route, *Correct*, stands in its place. A completed
-batch whose declaration does include `delete` (a newer server) still gets the button: the
-declaration decides.
+Availability is `delete` in the batch's own `allowed_actions`. Where it is not declared, the
+button is **disabled with the reason** in its tooltip (the sentence
+is `withheldBecause`'s, shared with every other withheld control on these screens). That includes
+a `completed` batch: the button stays, disabled, and its tooltip points at a correction batch -
+the onward route, *Correct*, beside it. The declaration decides, never the state word: a completed
+batch whose declaration does include `delete` (a newer server) gets a live button.
 
 What the dialog says is the **verified** blast radius. The batch, its jobs and the
 per-frame progress go; the frames and their annotations stay, because

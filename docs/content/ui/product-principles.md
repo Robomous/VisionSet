@@ -219,22 +219,23 @@ project. Every section's header carries one plain sentence under its title; how 
 the project holds is the Overview's *Assets* number and the Images section's own total, not
 a chip.
 
-The navigation carries the one dominant action, **Add images** beside it, and the overflow
-menu (`⋯`) for the rest; each section's own header carries that section's actions as
-`secondary`, right-aligned. The Overview is the one place an action sits in a panel instead:
-batches have no section of their own, so the action on batches as a set — the project-wide
-Auto-label — is offered over the Batches table, as a line while images are waiting and as an
-icon in its tool row once that line is put away ([navigation.md](navigation.md), *Two
-dashboards*).
-On the project page the dominant action is **Annotate**, because principle 3 asks what the
-user came to do and the answer is never "rename this".
+The navigation carries what the open section is about, and the overflow menu (`⋯`) for the
+rest; each section's own header carries that section's actions as `secondary`,
+right-aligned. The Overview is the one place the actions sit in the page instead: batches
+have no section of their own, so what acts on them sits over the Batches table, beside the
+batches it acts on — the project-wide Auto-label, as a line while images are waiting and as an
+icon in its tool row once that line is put away, and at the band's end **Add images** and
+**Annotate** ([navigation.md](navigation.md), *Two dashboards*). On the Overview the dominant
+action is **Annotate**, because principle 3 asks what the user came to do and the answer is
+never "rename this".
 
 **Annotate has three shapes, and the cost of the choice tracks the ambiguity.** With no
-batch open for annotation there is nowhere to send anybody, so the button is absent and
-Add images takes the dominant slot — principle 4, rather than a disabled control that never
-says what would enable it. While Annotate holds the slot, Add images stays reachable as an
-`outline` control beside it, before it, in the same toolbar — one place on every section, and
-never repeated in a panel or a header. With exactly one, it jumps straight there — into that batch's one job where it
+batch open for annotation there is nowhere to send anybody, so the button is absent —
+principle 4, rather than a disabled control that never says what would enable it. Add images
+stays reachable beside it as a quiet `ghost` icon button, before it at the band's end — one
+way to it per section: the band on the Overview (the overflow's first entry while the band
+cannot be drawn, and the invitation's filled button while the project has no images), the bar
+on Images, the overflow on Classes and Dataset. With exactly one, it jumps straight there — into that batch's one job where it
 has exactly one, and onto its panel to pick a job otherwise, since a batch cut into several is
 a second choice nobody has made yet. With two or more it
 reads `Annotate ▾` and opens a menu of those batches, each row carrying the batch name, its
