@@ -119,6 +119,7 @@ def test_the_export_wrote_where_it_was_told(summary: Any) -> None:
         "culane",
         "curvelanes",
         "darknet",
+        "kitti",
         "openlane-2d",
         "tusimple",
         "ultralytics",

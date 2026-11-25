@@ -423,6 +423,7 @@ The catalog this build ships, generated from the declarations by
 | `coco` | coco | `other` | `coco` | — | bbox, polygon | — | — |
 | `culane` | culane | `other` | `culane` | — | polyline | — | — |
 | `curvelanes` | curvelanes | `other` | `curvelanes` | — | polyline | — | — |
+| `kitti` | kitti | `other` | `kitti` | — | cuboid_3d | — | — |
 | `openlane-2d` | openlane-2d | `other` | `openlane-2d` | — | polyline | — | — |
 | `tusimple` | tusimple | `other` | `tusimple` | — | polyline | — | — |
 | `voc` | voc | `other` | `voc` | — | bbox | — | — |

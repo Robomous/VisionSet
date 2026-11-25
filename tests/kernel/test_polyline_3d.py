@@ -52,6 +52,7 @@ from visionset.kernel.domain import (
     transform_manifest,
 )
 from visionset.kernel.domain.geometry import geometry_intersects_asset
+from visionset.kernel.ports import supported_modalities_of
 from visionset.kernel.services import CalibrationService, PreprocessingRecipeService
 from visionset.preprocessing.registry import drivers
 
@@ -515,12 +516,15 @@ def test_the_preview_cap_leaves_a_3d_label_in_metres(tmp_path: Path) -> None:
 
 
 # The test plugin claims every geometry, so it is the one format a 3D label reaches.
+# A format that writes no images never sees this label, which is on an image;
+# kitti's own drop of a scan's polyline_3d is in tests/formats/test_kitti_export.py.
 @pytest.mark.parametrize(
     "format_name",
     sorted(
         name
         for name, one in exporters().items()
         if GeometryType.POLYLINE_3D not in one.supported_geometries
+        and "image" in supported_modalities_of(one)
     ),
 )
 def test_every_format_drops_a_3d_class_by_count_and_needs_lossy_consent(

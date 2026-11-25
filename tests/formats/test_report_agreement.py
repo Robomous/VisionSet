@@ -29,6 +29,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
+from tests.formats.test_kitti_export import Released
 from tests.formats.test_ultralytics import CLASSES, Fixture, _box
 
 from visionset.formats.classification import LABELS_FILENAME as CLASSIFICATION_LABELS
@@ -216,7 +217,9 @@ def test_every_installed_exporter_is_accounted_for() -> None:
     new exporter either gets a counter and is compared against its own output, or
     is declared non-writing on purpose. Silence is not an option.
     """
-    assert set(_installed()) == set(COUNTERS) | set(LANE_COUNTERS) | NON_WRITING
+    assert (
+        set(_installed()) == set(COUNTERS) | set(LANE_COUNTERS) | set(SCAN_COUNTERS) | NON_WRITING
+    )
 
 
 def test_a_non_writing_exporter_really_writes_nothing(tmp_path: Path, labelled: Fixture) -> None:
@@ -834,3 +837,47 @@ def test_written_files_are_source_plus_augmented_per_fold(
     assert {row["variant"] for row in mapping} == {0, 1}
     for row in mapping:
         assert (dest / row["file"]).is_file()
+
+
+# --- scans --------------------------------------------------------------------
+
+
+def _kitti_counts(root: Path) -> Counter[str]:
+    """Every ``label_2`` line, by its first token, the KITTI ``type``."""
+    found: Counter[str] = Counter()
+    for path in sorted(root.rglob("label_2/*.txt")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                found[line.split()[0]] += 1
+    return found
+
+
+#: How to count what each scan format wrote, keyed by ``format_name``. Compared
+#: against an imported KITTI split rather than ``DRAWING``, which holds no scan.
+SCAN_COUNTERS: dict[str, Callable[[Path], Counter[str]]] = {"kitti": _kitti_counts}
+
+
+@pytest.mark.parametrize("format_name", sorted(SCAN_COUNTERS))
+def test_a_scan_format_writes_exactly_the_cuboids_it_reports_supported(
+    tmp_path: Path, format_name: str
+) -> None:
+    released = Released(tmp_path)
+    try:
+        dest = tmp_path / f"out-{format_name}"
+        result = released.releases.export(
+            released.release_id, _installed()[format_name], dest, allow_lossy=True
+        )
+    finally:
+        released.workspace.close()
+    report = result.compatibility
+
+    written = SCAN_COUNTERS[format_name](dest)
+    supported = Counter(
+        {
+            one.label_class: one.annotations
+            for one in report.classes
+            if one.status is ClassExportStatus.SUPPORTED
+        }
+    )
+    assert written == supported == Counter({"Car": 1, "Pedestrian": 1})
+    assert report.excluded_annotations == 0

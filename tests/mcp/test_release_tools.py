@@ -265,6 +265,15 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "targets": ["dummy"],
             },
             {
+                # Scans only: a cuboid in the canonical calibration's camera frame.
+                "name": "kitti",
+                "lossy": True,
+                "geometries": ["cuboid_3d"],
+                "degraded_geometries": [],
+                "modalities": ["point_cloud"],
+                "targets": ["kitti"],
+            },
+            {
                 "name": "openlane-2d",
                 "lossy": True,
                 "geometries": ["polyline"],
@@ -322,7 +331,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "targets": ["yolov7"],
             },
         ],
-        "total": 12,
+        "total": 13,
     }
 
 
