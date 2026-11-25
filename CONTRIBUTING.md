@@ -21,7 +21,7 @@ root, so nothing they write into the checkout ends up owned by somebody you have
 | Who writes it | you — the built services run as `VISIONSET_UID`/`VISIONSET_GID`, default 1000. Another uid? `printf 'VISIONSET_UID=%s\nVISIONSET_GID=%s\n' "$(id -u)" "$(id -g)" > docker/.env`, then `--build` |
 | Token | minted on first boot, printed in the `api` logs |
 | Behind the proxy | The API and vite publish no host port — 8080 and 4321 are the only two the stack takes, so it collides with as little else on the machine as possible. `curl localhost:8080/api/health`, and `logs -f app` for a vite error |
-| Live reload | every layer, with nothing restarted: `src/visionset/` through uvicorn `--reload`, `frontend/app/src/` through vite HMR, `frontend/{ui-core,annotator}/src/` through a `tsc --watch` per package that rewrites the `dist/` vite resolves them from, and `docs/content/` through Astro |
+| Live reload | every layer, with nothing restarted: `src/visionset/` through uvicorn `--reload`, `frontend/app/src/` through vite HMR, `frontend/{browser-inference,annotator,media,ui-core}/src/` through a `tsup --watch` per package that rewrites the `dist/` vite resolves them from, and `docs/content/` through Astro |
 | After a dependency change | `build` — in either language, and nothing else. No `node_modules` is mounted from the host or from a volume, so a rebuilt image is what the containers get |
 | After changing a `package.json`, a tsconfig, `vite.config.ts` or `index.html` | `build` — these are baked into the app image, beside the install they configure |
 | After changing a Dockerfile or an entry script | `build` for the first, `restart api` / `restart app` for the second — an entry script is read once, at container start |
@@ -29,11 +29,11 @@ root, so nothing they write into the checkout ends up owned by somebody you have
 
 Every dependency is installed at **image build** (`docker/api.Dockerfile`,
 `docker/app.Dockerfile`), both honouring their lockfiles, so starting a container downloads
-nothing — the stack comes up offline. What is left at start is compiling the repository's own two
-TypeScript libraries, which no image can hold because the source does not exist until you write it.
+nothing — the stack comes up offline. What is left at start is building the repository's own four
+TypeScript libraries (see [Frontend libraries](#frontend-libraries)), which no image can hold because the source does not exist until you write it.
 
-Only the directories a running service actually reads are mounted — `src/` into the api, the three
-frontend `src/` directories plus `frontend/app/public` into the app, `docker/` into both, and the
+Only the directories a running service actually reads are mounted — `src/` into the api, the four
+library `src/` directories and `frontend/app/src`, plus `frontend/app/public` into the app, `docker/` into both, and the
 storage directory. The whole checkout is not, so `tests/` is absent from the api container and
 `docker compose exec api pytest` collects nothing: run the suite on the host with
 `bash scripts/check.sh python`. The mount list is in `docker/compose.yaml`, next to the reasoning —
@@ -43,6 +43,23 @@ including why the app mounts source directories rather than package roots, which
 Dev only; the release artifact is always the pip package, and these images are never it. Running
 it on the host stays faster, because a bind mount has to poll for file changes rather than being
 told about them.
+
+### Frontend libraries
+
+`frontend/` holds four libraries besides the app: `annotator`, `media`, `browser-inference` and
+`ui-core`. Every consumer resolves them through their built `dist/`, never their source.
+
+- `pnpm -r build` builds all of them in dependency order.
+- The dependency rule: `@visionset/ui-core` depends on `@visionset/annotator` and
+  `@visionset/media`; `annotator`, `media` and `browser-inference` depend on no other workspace
+  package; `frontend/app` depends on all four. A targeted rebuild therefore builds `annotator`,
+  `media` and `browser-inference` in any order, then `ui-core`, and only then the app's
+  typecheck or tests:
+  `pnpm --filter @visionset/annotator --filter @visionset/media --filter @visionset/browser-inference build && pnpm --filter @visionset/ui-core build`.
+  `docker/app-dev.sh` builds in the same order, then keeps all four rebuilding with `tsup --watch`.
+- After editing `annotator`, `media` or `browser-inference`, rebuild it. A filtered `ui-core` test
+  run (`pnpm --filter @visionset/ui-core test`) does not rebuild its dependencies and reads the
+  stale `dist/`, so it fails on a missing export or passes against the old behavior.
 
 ## Adding a dependency: the three-day cool-down
 
@@ -230,7 +247,7 @@ a deliberate manual run, because each costs minutes or needs its own install.
 | Kernel type-safety (strict) | `uv run mypy src/visionset/kernel` — the kernel and nothing else; the script runs `uv run mypy src/visionset`, well over twice as many files | `python` |
 | Lint/format | `uv run ruff check .` / `uv run ruff format .` | `python` |
 | Frontend build + tests | `pnpm -r build && pnpm test` — **no browser at all**; anything only chromium can see passes here | `frontend` |
-| Frontend lint | `pnpm -r lint` — **after** a build: `frontend/app` resolves `@visionset/annotator` through its `dist/`, so its typecheck has no declarations until the engine is built | `frontend` |
+| Frontend lint | `pnpm -r lint` — **after** a build: `frontend/app` resolves the four libraries through their `dist/`, so its typecheck has no declarations until they are built | `frontend` |
 | Annotator headless boundary | `pnpm --filter @visionset/annotator lint` | part of `frontend` (`pnpm -r lint`) |
 | Published-package tarballs (Node ESM) | `bash scripts/verify_npm_packages.sh` — packs `@visionset/annotator` and `@visionset/ui-core`, installs the tarballs into a lone project outside the workspace (no `pnpm-workspace.yaml` above it), and imports them under Node's native ESM resolver and a `nodenext` TypeScript consumer. `pnpm -r build` alone never catches an unresolvable relative import, because `frontend/app` reaches both packages through a pnpm symlink into their `dist/`, not through package `exports` (#839) | — CI (part of `frontend` job) |
 | Annotator end-to-end (chromium) | `pnpm --filter @visionset/app e2e` (needs `playwright install chromium` once) | `browser` |
@@ -500,6 +517,20 @@ privilege; push permission is the only thing that does, and it is checked, not a
 Requested changes land as new commits on the same branch. A second pull request is not how review
 feedback is answered.
 
+## Seeing the scan editor locally
+
+The `/demo` page is 2D only. To open a point-cloud scan in the scan editor, start the stack
+(`visionset server`, or the compose stack above) and either upload a small `.pcd` or `.ply` file
+through the browser's ingest flow ([ingest.md](docs/content/ingest.md#in-the-browser)), or import a local KITTI split:
+
+```bash
+visionset import kitti ./kitti-split --project scans --dry-run   # report what would be lost
+visionset import kitti ./kitti-split --project scans
+```
+
+`visionset import nuscenes <root>` does the same for a nuScenes data root; the layouts are in
+[docs/content/import.md](docs/content/import.md#formats). Do not commit the scans you use.
+
 ## Tests
 
 - New kernel behavior ships with tests under `tests/kernel/`.
@@ -521,6 +552,17 @@ feedback is answered.
 - Generate media instead: `tests/fixtures/media.py` writes tiny images (Pillow) into a `tmp_path`.
   Equal arguments produce byte-identical output, so dedup and content-addressing tests can rely on
   it.
+- Generate point-cloud data the same way: `tests/fixtures/point_clouds.py` writes synthetic PCD and
+  PLY scans, and `tests/fixtures/kitti_source.py` and `tests/fixtures/nuscenes_source.py` write
+  small synthetic KITTI splits and nuScenes data roots. CI runs on these.
+- **Opt-in real point-cloud samples.** Set `VISIONSET_POINTCLOUD_SAMPLES` to a directory outside
+  the repository and the otherwise-skipped sample tests run against it:
+  `<root>/kitti` (a KITTI 3D object detection split) is read by `tests/formats/test_kitti_samples.py`,
+  `<root>/nuscenes` (a nuScenes data root) by `tests/formats/test_nuscenes_samples.py`, and every
+  PCD or PLY anywhere under `<root>` by `tests/kernel/test_point_cloud_samples.py`.
+  KITTI (CC BY-NC-SA 3.0) and nuScenes (CC BY-NC-SA 4.0) samples are never committed, and neither
+  are copies, crops or derived fixtures; keep them outside the checkout together with their
+  licence text.
 - `tests/architecture/test_tracked_file_sizes.py` enforces the rule: any tracked file over
   200 KB fails the build unless it is in that module's `ALLOWLIST`, which grants a *higher
   ceiling*, never an unbounded one. `git ls-files` reads the index, so a merely staged binary

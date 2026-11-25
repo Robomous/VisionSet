@@ -48,7 +48,7 @@ docker run --rm -e CI=true -e VISIONSET_VISUAL=1 \
   -v "$PWD:/repo" -w /repo \
   mcr.microsoft.com/playwright:v1.62.1-noble \
   bash -lc 'corepack enable && pnpm install --frozen-lockfile \
-    && pnpm --filter @visionset/annotator build \
+    && pnpm --filter @visionset/annotator --filter @visionset/media --filter @visionset/browser-inference build \
     && pnpm --filter @visionset/ui-core build \
     && cd frontend/app && CI=1 pnpm exec playwright test --project=visual'
 ```
@@ -56,7 +56,7 @@ docker run --rm -e CI=true -e VISIONSET_VISUAL=1 \
 `-e CI=true` is what lets pnpm replace a host-installed `node_modules` without a
 terminal to ask on, and the mount is writable because Playwright writes its report
 and `test-results/` beside the spec. Afterwards the host's `node_modules` holds Linux
-binaries: run `CI=true pnpm install --frozen-lockfile` and rebuild the two packages
+binaries: run `CI=true pnpm install --frozen-lockfile` and rebuild the four libraries
 before running vitest natively again.
 
 The `chromium` project ignores `visual.spec.ts` and the `visual` project is absent
@@ -74,7 +74,7 @@ docker run --rm -e CI=true -e VISIONSET_VISUAL=1 \
   -v "$PWD:/repo" -w /repo \
   mcr.microsoft.com/playwright:v1.62.1-noble \
   bash -lc 'corepack enable && pnpm install --frozen-lockfile \
-    && pnpm --filter @visionset/annotator build \
+    && pnpm --filter @visionset/annotator --filter @visionset/media --filter @visionset/browser-inference build \
     && pnpm --filter @visionset/ui-core build \
     && cd frontend/app && CI=1 pnpm exec playwright test --project=visual --update-snapshots'
 ```
