@@ -342,7 +342,7 @@ instead, so the Overview never loses its way to it.
   nowhere else to live. Model connections carry no project id, so a project tab would state
   a scope the object does not have. A destination that belongs to one project does not
   qualify, however often it is visited. The current entries: the mark, Projects, Models,
-  the collapse toggle in the mark's row, and account at the bottom — nothing else. The entry is named for the noun
+  the collapse toggle in the mark's row, and theme and account at the bottom — nothing else. The entry is named for the noun
   it lists — the models a workspace can run — rather than for one use of them, and its
   route is `/models`; `/inference`, the address it had before, redirects there.
 - **The rail collapses and expands**: 48px collapsed (`--spacing-rail`, the default), 208px
@@ -353,6 +353,14 @@ instead, so the Overview never loses its way to it.
   whose label is its accessible name and its tooltip; expanded, the full logo and the labels
   show and the tooltips go. Every icon sits in the same 40px-wide slot in both states and the
   logo's mark at the same x, so expanding only adds labels.
+- **The theme is the rail's, and the screens only follow it.** The control above account
+  opens a menu of System, Light and Dark; its icon and accessible name say the current choice.
+  System follows `prefers-color-scheme`, light when the system says nothing, and keeps
+  following it live. The choice is kept per browser through `ui-core`'s `data/prefs.ts`, never
+  on the server. `index.html` sets `.dark` on `<html>` before the first paint and `main.tsx`
+  takes over from it (`startTheme` in `ui-core`'s `lib/theme.ts`), so a page never paints in
+  the wrong theme first. A screen reads the theme only from `.dark` (`useTheme`) and never
+  sets it; a host that mounts the screens brings its own control.
 - **The change is instant.** A panel flipped many times a day is where motion costs more
   than it tells, and animating the width would re-lay out the Overview's panel and the
   tables beside it on every frame. The pages beside the rail reflow once, to the new width.
