@@ -25,6 +25,7 @@ from sqlalchemy import text
 
 from visionset.kernel import (
     BatchImmutable,
+    BatchNotComplete,
     BatchNotEditable,
     BatchNotFound,
     ConstraintViolated,
@@ -49,6 +50,7 @@ from visionset.kernel.domain import (
     BatchCompleted,
     BatchState,
     BboxGeometry,
+    BySize,
     GeometryType,
     LabelClass,
     Project,
@@ -63,6 +65,7 @@ from visionset.kernel.services import (
     ProjectService,
     SchemaService,
     WorkspaceService,
+    batch_service,
 )
 
 #: Every wait in this file. Long enough that a loaded CI runner does not trip it,
@@ -1151,5 +1154,129 @@ def test_a_repin_decided_before_its_batch_completed_is_refused(tmp_path: Path) -
         batch = BatchService(workspace).get(batch_id)
         assert batch.state is BatchState.COMPLETED
         assert batch.schema_version == 1
+    finally:
+        workspace.close()
+
+
+# --- finishing a batch: one decision over every job, made again under the lock --
+
+
+def _settled_batch_of_three_jobs(root: Path) -> tuple[UUID, list[UUID], list[UUID]]:
+    """An open batch of three one-asset jobs — pending, in progress, in progress —
+    whose every asset is skipped, so the batch declares ``complete``.
+    """
+    workspace = WorkspaceService.init(root)
+    try:
+        project = ProjectService(workspace).create("p")
+        SchemaService(workspace).create_version(
+            project.id, [LabelClass(name="sign", geometries=(GeometryType.BBOX,))]
+        )
+        assets = []
+        for seed in ("a", "b", "c"):
+            content_hash = workspace.blob_store.put(BytesIO(seed.encode()))
+            with workspace.unit_of_work() as uow:
+                assets.append(
+                    uow.assets.add(
+                        Asset(project_id=project.id, content_hash=content_hash, uri=f"/{seed}")
+                    ).id
+                )
+        batches = BatchService(workspace)
+        batch = batches.create(project.id, "first", assets)
+        batches.approve(batch.id, BySize(size=1))
+        batches.start(batch.id)
+        jobs = JobService(workspace)
+        job_ids = [job.id for job in batches.jobs(batch.id)]
+        for job_id, asset_id in zip(job_ids, assets, strict=True):
+            jobs.mark(job_id, asset_id, AssetProgress.SKIPPED)
+        jobs.start(job_ids[1])
+        jobs.start(job_ids[2])
+        return batch.id, job_ids, assets
+    finally:
+        workspace.close()
+
+
+_BEFORE_FINISH = [
+    AnnotationJobState.PENDING,
+    AnnotationJobState.IN_PROGRESS,
+    AnnotationJobState.IN_PROGRESS,
+]
+
+
+def _job_states(workspace: WorkspaceService, batch_id: UUID) -> list[AnnotationJobState]:
+    return [job.state for job in BatchService(workspace).jobs(batch_id)]
+
+
+class _BeforeTheLockBatchService(BatchService):
+    """Runs `before_lock` once, after the call has decided and before it takes the lock."""
+
+    def __init__(self, workspace: WorkspaceService, before_lock: Callable[[], None]) -> None:
+        super().__init__(workspace)
+        self._before_lock: Callable[[], None] | None = before_lock
+
+    def _hold_state(self, uow: UnitOfWork, batch: Batch, judge: Callable[[Batch], None]) -> None:
+        hook, self._before_lock = self._before_lock, None
+        if hook is not None:
+            hook()
+        super()._hold_state(uow, batch, judge)
+
+
+@pytest.mark.parametrize("seam", ["after_first_read", "before_the_lock"])
+def test_a_finish_racing_a_reopened_asset_refuses_and_moves_no_job(
+    tmp_path: Path, seam: str
+) -> None:
+    """The last job's asset is reopened elsewhere while the finish is deciding.
+
+    A finish that closed the jobs one by one, or trusted its first read, would
+    leave the first two closed and the batch half-finished, with no way to
+    reopen them.
+    """
+    root = tmp_path / "ws"
+    batch_id, job_ids, assets = _settled_batch_of_three_jobs(root)
+    reopen = _elsewhere(
+        root, lambda ws: JobService(ws).mark(job_ids[2], assets[2], AssetProgress.UNANNOTATED)
+    )
+    announced: list[BatchCompleted] = []
+
+    workspace = WorkspaceService.open(root)
+    try:
+        workspace.event_bus.subscribe(BatchCompleted, announced.append)
+        service = (
+            _AfterFirstReadBatchService(workspace, reopen)
+            if seam == "after_first_read"
+            else _BeforeTheLockBatchService(workspace, reopen)
+        )
+        with pytest.raises(BatchNotComplete):
+            service.finish(batch_id)
+        assert BatchService(workspace).get(batch_id).state is BatchState.IN_ANNOTATION
+        assert _job_states(workspace, batch_id) == _BEFORE_FINISH
+        assert announced == []
+    finally:
+        workspace.close()
+
+
+def test_a_finish_that_fails_partway_leaves_every_job_as_it_was(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """All or nothing: a refusal on the last job undoes the jobs closed before it."""
+    root = tmp_path / "ws"
+    batch_id, _, _ = _settled_batch_of_three_jobs(root)
+    closed: list[UUID] = []
+    close_job = batch_service._close_job
+
+    def fail_on_the_last(uow: UnitOfWork, job: AnnotationJob) -> None:
+        if len(closed) == 2:
+            raise StaleWrite("the last job moved")
+        close_job(uow, job)
+        closed.append(job.id)
+
+    monkeypatch.setattr(batch_service, "_close_job", fail_on_the_last)
+
+    workspace = WorkspaceService.open(root)
+    try:
+        with pytest.raises(StaleWrite):
+            BatchService(workspace).finish(batch_id)
+        assert len(closed) == 2
+        assert BatchService(workspace).get(batch_id).state is BatchState.IN_ANNOTATION
+        assert _job_states(workspace, batch_id) == _BEFORE_FINISH
     finally:
         workspace.close()

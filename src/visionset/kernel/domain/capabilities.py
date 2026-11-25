@@ -463,8 +463,10 @@ def batch_actions(state: BatchState, *, progress: Mapping[AssetProgress, int]) -
 
     A declared ``complete`` can still be refused: ``BatchService.complete`` also
     reads the jobs and answers ``BatchNotComplete`` while any is unfinished, and
-    whether each job has been moved to ``completed`` is not in the tally. A
-    client finishing a batch completes its settled jobs first.
+    whether each job has been moved to ``completed`` is not in the tally.
+    ``BatchService.finish`` is the one call that honours a declared
+    ``complete`` whatever its jobs' states: it completes them and the batch in
+    one transaction.
 
     ``approve`` carries the smaller version of the same caveat: an empty batch or
     a project with no schema refuses it, and neither is a state of the batch.

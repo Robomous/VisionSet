@@ -129,6 +129,7 @@ page groups them by what they are for.
 | `repin_batch` | Move its schema pin onto the current active version. |
 | `list_batch_assets` | What is in it, paged, with each asset's job and progress. `job` narrows it to one job's frames. |
 | `complete_batch` | Close it, once every job is complete. `promote: true` moves the finished assets into the dataset in the same call, and `promoted` in the answer counts them. |
+| `finish_batch` | Close every unfinished job and then the batch, in one step, once every asset is settled. All or nothing: a refusal leaves every job as it was. `promote` as on `complete_batch`; `jobs_completed` counts the jobs it closed. |
 | `promote_batch` | Move the finished assets into the dataset. |
 | `create_correction_batch` | Start a draft that corrects a completed one. |
 
@@ -137,10 +138,10 @@ the other one: picking a subset by hand, which is what a person curating in a ga
 agent doing the same work needs. All three are `draft` only, because past approval the batch
 is already cut into jobs — see [batches.md](batches.md).
 
-`approve_batch` and `complete_batch` each take the next step of the walk as a parameter, on the
+`approve_batch`, `complete_batch` and `finish_batch` each take the next step of the walk as a parameter, on the
 `job_started` principle below: a move an agent asked for is made and reported, never made behind
 it. `start: true` on `approve_batch` is `start_batch` in the same call, and `promote: true` on
-`complete_batch` is `promote_batch` in the same call; `started` and `promoted` in the answers say
+`complete_batch` or `finish_batch` is `promote_batch` in the same call; `started` and `promoted` in the answers say
 what each did, so an agent reading only the answer knows which state the batch is in and how
 many assets entered the dataset - `promoted` is zero when nothing was asked to move and zero
 again when the trunk already held every asset, since promotion is a union. The first step

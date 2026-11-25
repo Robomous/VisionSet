@@ -88,7 +88,8 @@ GET    /batches/{batch_id}/pre-label?connection_id=&geometries=   the classes a 
 POST   /batches/{batch_id}/pre-label                      launch over every open job of the batch; one row per open job
 POST   /projects/{project_id}/batches/pre-label           launch over every open batch, or the named ones; one row per open job
 POST   /batches/{batch_id}/repin                          ?allow_destructive=
-POST   /batches/{batch_id}/complete
+POST   /batches/{batch_id}/complete                       once every job is completed
+POST   /batches/{batch_id}/finish                         every open job, then the batch, in one transaction
 POST   /batches/{batch_id}/corrections                    a new batch over a completed one
 GET    /batches/{batch_id}/jobs
 GET    /batches/{batch_id}/assets                         paged; ?progress=&sort=&job=
@@ -340,7 +341,8 @@ Two of them are worth reading precisely:
   from the same tally `progress` publishes - the condition a job's `complete` applies to its own
   assets. It can still answer 409 `BATCH_NOT_COMPLETE`: a batch closes only once each of its jobs
   has been moved to `completed`, which the tally does not say. Read it as *every job can now be
-  closed, and then the batch*.
+  closed, and then the batch* - which is what `POST /batches/{id}/finish` does in one
+  transaction, answering `{ "batch": …, "jobs_completed": n }`. A refused finish moves no job.
 - **`annotate` on a batch asset is the right to write labels**, not a progress move: it is
   declared exactly when `POST /jobs/{id}/annotations` will be accepted. An annotator deciding
   whether to open in edit mode should read this rather than infer it.

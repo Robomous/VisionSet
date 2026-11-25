@@ -136,7 +136,7 @@ function answer(path: string): unknown {
       state: closedBatch ? "completed" : "in_annotation",
       schema_version: 1,
       asset_count: 1,
-      allowed_actions: batchActions(closedBatch ? "completed" : "in_annotation"),
+      allowed_actions: batchActions(closedBatch ? "completed" : "in_annotation", { settled: false }),
       modalities: [modality],
       promoted_asset_count: 0,
       parent_batch_id: null,

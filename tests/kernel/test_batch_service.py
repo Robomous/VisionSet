@@ -42,6 +42,7 @@ from visionset.kernel.domain import (
     Attribute,
     AttributeValue,
     Batch,
+    BatchCompleted,
     BatchState,
     BboxGeometry,
     BySegments,
@@ -579,6 +580,88 @@ def test_a_batch_completes_once_every_job_has(tmp_path: Path) -> None:
     batch_id = fixture.in_state(BatchState.IN_ANNOTATION)
     fixture.finish_jobs(batch_id)
     assert fixture.batches.complete(batch_id).state is BatchState.COMPLETED
+    fixture.close()
+
+
+# --- finishing: the jobs and the batch in one transaction ---------------------
+
+
+def _three_jobs(fixture: Fixture) -> tuple[UUID, list[UUID]]:
+    """An open batch cut into three jobs: one pending, one in progress, one completed.
+
+    Every asset is skipped, so the batch declares ``complete``.
+    """
+    batch = fixture.batches.create(fixture.project.id, "three", fixture.assets[:3])
+    fixture.batches.approve(batch.id, BySize(size=1))
+    fixture.batches.start(batch.id)
+    jobs = JobService(fixture.workspace)
+    job_ids = [job.id for job in fixture.batches.jobs(batch.id)]
+    for job_id, asset_id in zip(job_ids, fixture.assets[:3], strict=True):
+        jobs.mark(job_id, asset_id, AssetProgress.SKIPPED)
+    jobs.start(job_ids[1])
+    jobs.start(job_ids[2])
+    jobs.complete(job_ids[2])
+    return batch.id, job_ids
+
+
+def test_finish_completes_every_job_whatever_its_state_and_then_the_batch(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    batch_id, job_ids = _three_jobs(fixture)
+    announced: list[BatchCompleted] = []
+    fixture.workspace.event_bus.subscribe(BatchCompleted, announced.append)
+
+    finished = fixture.batches.finish(batch_id)
+
+    assert finished.batch.state is BatchState.COMPLETED
+    assert finished.jobs_completed == 2
+    assert [job.state for job in fixture.batches.jobs(batch_id)] == [
+        AnnotationJobState.COMPLETED
+    ] * 3
+    assert [event.batch_id for event in announced] == [batch_id]
+    assert {job.id for job in fixture.batches.jobs(batch_id)} == set(job_ids)
+    fixture.close()
+
+
+def test_finish_refuses_an_unsettled_asset_and_moves_nothing(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    batch_id, job_ids = _three_jobs(fixture)
+    JobService(fixture.workspace).mark(job_ids[1], fixture.assets[1], AssetProgress.UNANNOTATED)
+    announced: list[BatchCompleted] = []
+    fixture.workspace.event_bus.subscribe(BatchCompleted, announced.append)
+
+    with pytest.raises(BatchNotComplete, match="1 of 3 assets still unsettled"):
+        fixture.batches.finish(batch_id)
+
+    assert fixture.batches.get(batch_id).state is BatchState.IN_ANNOTATION
+    assert [job.state for job in fixture.batches.jobs(batch_id)] == [
+        AnnotationJobState.PENDING,
+        AnnotationJobState.IN_PROGRESS,
+        AnnotationJobState.COMPLETED,
+    ]
+    assert announced == []
+    fixture.close()
+
+
+@pytest.mark.parametrize(
+    "state", [BatchState.DRAFT, BatchState.APPROVED, BatchState.COMPLETED], ids=str
+)
+def test_finish_refuses_a_batch_that_is_not_in_annotation(
+    tmp_path: Path, state: BatchState
+) -> None:
+    fixture = Fixture(tmp_path)
+    batch_id = fixture.in_state(state)
+    with pytest.raises(InvalidTransition):
+        fixture.batches.finish(batch_id)
+    assert fixture.batches.get(batch_id).state is state
+    fixture.close()
+
+
+def test_finish_reports_an_unknown_batch_missing(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    with pytest.raises(BatchNotFound):
+        fixture.batches.finish(uuid4())
     fixture.close()
 
 

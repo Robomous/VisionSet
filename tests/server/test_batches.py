@@ -355,6 +355,57 @@ def test_complete_is_declared_only_once_every_asset_has_settled(
     assert declared() == (True, True)
 
 
+def test_finish_closes_every_job_and_the_batch_in_one_call(
+    client: TestClient, ingested: str
+) -> None:
+    client.post(f"/batches/{ingested}/approve", json={"partition": {"kind": "by_size", "size": 1}})
+    client.post(f"/batches/{ingested}/start")
+    jobs = [job["id"] for job in client.get(f"/batches/{ingested}/jobs").json()["items"]]
+    assert len(jobs) == 3
+    client.post(f"/jobs/{jobs[0]}/start")
+    for job in jobs:
+        for asset in client.get(f"/jobs/{job}/next", params={"n": 99}).json()["items"]:
+            client.put(f"/jobs/{job}/assets/{asset['id']}/progress", json={"progress": "skipped"})
+    client.post(f"/jobs/{jobs[0]}/complete")
+
+    response = client.post(f"/batches/{ingested}/finish")
+
+    assert response.status_code == 200
+    assert response.json()["jobs_completed"] == 2
+    assert response.json()["batch"]["state"] == "completed"
+    assert response.json()["batch"]["progress"]["skipped"] == 3
+    states = [job["state"] for job in client.get(f"/batches/{ingested}/jobs").json()["items"]]
+    assert states == ["completed"] * 3
+
+
+def test_finish_with_an_unsettled_asset_is_refused_and_moves_no_job(
+    client: TestClient, ingested: str
+) -> None:
+    client.post(f"/batches/{ingested}/approve", json={"partition": {"kind": "by_size", "size": 1}})
+    client.post(f"/batches/{ingested}/start")
+    jobs = [job["id"] for job in client.get(f"/batches/{ingested}/jobs").json()["items"]]
+    for job in jobs[:-1]:
+        for asset in client.get(f"/jobs/{job}/next", params={"n": 99}).json()["items"]:
+            client.put(f"/jobs/{job}/assets/{asset['id']}/progress", json={"progress": "skipped"})
+
+    response = client.post(f"/batches/{ingested}/finish")
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "BATCH_NOT_COMPLETE"
+    assert client.get(f"/batches/{ingested}").json()["state"] == "in_annotation"
+    states = [job["state"] for job in client.get(f"/batches/{ingested}/jobs").json()["items"]]
+    assert states == ["pending"] * 3
+
+
+def test_finish_before_the_batch_is_open_is_an_invalid_transition(
+    client: TestClient, ingested: str
+) -> None:
+    response = client.post(f"/batches/{ingested}/finish")
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "INVALID_TRANSITION"
+
+
 def test_approving_twice_is_refused_rather_than_re_partitioned(
     client: TestClient, ingested: str
 ) -> None:
@@ -408,7 +459,7 @@ def test_a_project_with_no_schema_has_nothing_to_pin(
     assert response.json()["code"] == "SCHEMA_NOT_FOUND"
 
 
-@pytest.mark.parametrize("action", ["approve", "start", "complete", "repin"])
+@pytest.mark.parametrize("action", ["approve", "start", "complete", "finish", "repin"])
 def test_a_lifecycle_move_on_an_unknown_batch_is_404(client: TestClient, action: str) -> None:
     response = client.post(f"/batches/{uuid4()}/{action}")
 

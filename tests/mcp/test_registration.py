@@ -52,6 +52,7 @@ SHIPPED = {
     "pre_label_job",
     "repin_batch",
     "complete_batch",
+    "finish_batch",
     "list_batch_assets",
     "promote_batch",
     "create_correction_batch",

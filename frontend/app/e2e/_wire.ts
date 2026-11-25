@@ -94,9 +94,19 @@ const ASSET_ACTIONS: Record<Wire["AssetProgress"], readonly Wire["AssetAction"][
   accepted: [],
 };
 
-/** A batch's actions; `complete` additionally needs every asset settled, as a job's does. */
+/**
+ * A batch's actions; `complete` needs every asset settled, as a job's does. An open
+ * batch must say whether its stubbed progress is settled: the kernel has no default
+ * either, because one would declare for a batch nobody tallied.
+ */
+export function batchActions(state: "in_annotation", options: { settled: boolean }): Wire["BatchAction"][];
+export function batchActions(state: Exclude<Wire["BatchState"], "in_annotation">, options?: { settled?: boolean }): Wire["BatchAction"][];
+export function batchActions(state: string, options: { settled: boolean }): Wire["BatchAction"][];
 export function batchActions(state: string, options: { settled?: boolean } = {}): Wire["BatchAction"][] {
-  const { settled = true } = options;
+  const { settled } = options;
+  if (state === "in_annotation" && settled === undefined) {
+    throw new Error("batchActions: an in_annotation batch needs { settled }, derived from its stubbed progress");
+  }
   return [...(BATCH_ACTIONS[state as Wire["BatchState"]] ?? [])].filter(
     (action) => settled || action !== "complete",
   );

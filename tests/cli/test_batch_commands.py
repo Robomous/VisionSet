@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from tests.cli._flow import (
@@ -30,6 +30,7 @@ from visionset.inference import DEFAULT_MINIMUM_CONFIDENCE, PreLabelExclusionRea
 from visionset.inference import prelabel as prelabel_module
 from visionset.kernel.domain import (
     AssetPrediction,
+    AssetProgress,
     BboxGeometry,
     GeometryType,
     ModelCapability,
@@ -39,7 +40,9 @@ from visionset.kernel.domain import (
 )
 from visionset.kernel.services import (
     WORKSPACE_ENV_VAR,
+    BatchService,
     DatasetService,
+    JobService,
     ProjectService,
     WorkspaceService,
 )
@@ -468,11 +471,78 @@ def test_complete_promote_with_an_outstanding_job_refuses_and_promotes_nothing(
     assert _trunk_size(root, name) == 0
 
 
+# --- finish -------------------------------------------------------------------
+
+
+def _settle_assets(root: Path, batch: str) -> None:
+    """Every asset of every job marked ``annotated``, and no job moved by hand."""
+    with WorkspaceService.open(root) as service:
+        jobs = JobService(service)
+        for job in BatchService(service).jobs(UUID(batch)):
+            for asset_id in job.progress:
+                jobs.mark(job.id, asset_id, AssetProgress.ANNOTATED)
+
+
+def _job_states(root: Path, batch: str) -> list[str]:
+    with WorkspaceService.open(root) as service:
+        return [job.state.value for job in BatchService(service).jobs(UUID(batch))]
+
+
+def test_finish_promote_closes_every_job_and_the_batch_and_fills_the_trunk(
+    root: Path, tmp_path: Path
+) -> None:
+    name, batch = started_batch(root, tmp_path, jobs_of=2)
+    _settle_assets(root, batch)
+
+    document = payload(root, "batch", "finish", batch, "--promote")
+
+    assert document["batch"]["state"] == "completed"
+    assert document["jobs_completed"] == 3
+    assert document["promoted"]["total"] == 6
+    assert _job_states(root, batch) == ["completed"] * 3
+    assert _trunk_size(root, name) == 6
+
+
+def test_finish_prints_the_batch_id_and_reports_the_state(root: Path, tmp_path: Path) -> None:
+    _, batch = started_batch(root, tmp_path)
+    _settle_assets(root, batch)
+
+    result = run(root, "batch", "finish", batch)
+
+    assert result.exit_code == 0, result.output
+    assert result.stdout == f"{batch}\n"
+    assert f"Batch {batch} is now completed, closing 1 job(s) with it." in result.stderr
+
+
+def test_finish_with_an_unsettled_asset_refuses_with_rests_code_and_moves_no_job(
+    root: Path, tmp_path: Path
+) -> None:
+    name, batch = started_batch(root, tmp_path, jobs_of=2)
+
+    result = run(root, "batch", "finish", batch, "--promote", "--json")
+
+    assert result.exit_code == 1, result.output
+    assert json.loads(result.stdout)["error"]["code"] == "BATCH_NOT_COMPLETE"
+    assert _job_states(root, batch) == ["pending"] * 3
+    assert _trunk_size(root, name) == 0
+
+
+def test_finish_on_a_draft_refuses_as_an_invalid_transition(root: Path, tmp_path: Path) -> None:
+    _, batch = ingested_batch(root, tmp_path)
+
+    result = run(root, "batch", "finish", batch, "--json")
+
+    assert result.exit_code == 1, result.output
+    assert json.loads(result.stdout)["error"]["code"] == "INVALID_TRANSITION"
+
+
 def test_batch_help_lists_the_composed_flags() -> None:
     approve = runner.invoke(app, ["batch", "approve", "--help"], env=RENDERING, color=True)
     complete = runner.invoke(app, ["batch", "complete", "--help"], env=RENDERING, color=True)
+    finish = runner.invoke(app, ["batch", "finish", "--help"], env=RENDERING, color=True)
     assert "--start" in plain(approve.output)
     assert "--promote" in plain(complete.output)
+    assert "--promote" in plain(finish.output)
 
 
 # --- pre-label ---------------------------------------------------------------

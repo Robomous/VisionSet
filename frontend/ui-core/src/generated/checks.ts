@@ -141,6 +141,9 @@ export const checkProgressCounts: Check<Schemas["ProgressCounts"]> =
 export const checkBatchOut: Check<Schemas["BatchOut"]> =
   /*#__PURE__*/ object({ "allowed_actions": [true, arrayOf(checkBatchAction)], "asset_count": [true, isInteger], "id": [true, isString], "modalities": [true, arrayOf(oneOf(["image", "point_cloud"] as const))], "name": [true, isString], "parent_batch_id": [true, either([isString, isNull] as const)], "pre_label_run": [true, either([checkPreLabelRunOut, isNull] as const)], "progress": [true, checkProgressCounts], "project_id": [true, isString], "promoted_asset_count": [true, isInteger], "schema_version": [true, either([isInteger, isNull] as const)], "state": [true, checkBatchState] } as const);
 
+export const checkBatchFinishedOut: Check<Schemas["BatchFinishedOut"]> =
+  /*#__PURE__*/ object({ "batch": [true, checkBatchOut], "jobs_completed": [true, isInteger] } as const);
+
 export const checkBatchMembershipOut: Check<Schemas["BatchMembershipOut"]> =
   /*#__PURE__*/ object({ "batch": [true, checkBatchOut], "changed": [true, arrayOf(isString)] } as const);
 
@@ -516,6 +519,7 @@ export const checkDeleteProject = checkNoContent;
 export const checkDiscardSchemaDraft = checkNoContent;
 export const checkDownloadConnectionWeights = checkBackgroundJobOut;
 export const checkExportRelease = checkBackgroundJobOut;
+export const checkFinishBatch = checkBatchFinishedOut;
 export const checkGetActiveSchema = checkSchemaVersionOut;
 export const checkGetAsset = checkAssetOut;
 export const checkGetAssetCalibration = checkAssetCalibrationOut;
