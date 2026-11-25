@@ -129,7 +129,7 @@ function Cell({ card }: { readonly card: KpiCard }): JSX.Element {
       aria-label={card.label}
       data-testid={card["data-testid"]}
       className={cn(
-        "group/kpi relative flex min-w-0 flex-col bg-background py-3",
+        "group/kpi vs-link-row relative flex min-w-0 flex-col bg-background py-3",
         INSET,
         KPI_CARD_HEIGHT,
         // Instant, like a list row's: the pointer sweeps across these.

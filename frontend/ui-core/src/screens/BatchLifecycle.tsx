@@ -22,11 +22,12 @@
  */
 
 import { useId, type JSX } from "react";
-import { ChevronDown, Minus, Play, Plus, Stamp } from "lucide-react";
+import { ArrowUpRight, ChevronDown, Minus, Play, Plus, Stamp } from "lucide-react";
 
 import { asApiError } from "../data/errors";
 import { refusalProse } from "../data/refusals";
 import { Button, Dialog, DialogContent, DialogDescription, DialogTitle, FieldError, Switch, ToggleGroup, ToggleGroupItem, cn } from "@robomous/ui-core";
+import { SheetLine } from "../patterns/project/SheetLine";
 import { batchNoun } from "../lib/assetNoun";
 import { IconAction } from "../patterns/IconAction";
 import { ProgressBar } from "../patterns/ProgressBar";
@@ -250,6 +251,7 @@ export function ApproveFields({
             {onOpenSchema !== undefined && (
               <Button variant="link" className="h-auto p-0" data-testid="approve-go-schema" onClick={onOpenSchema}>
                 Define your labels
+                <ArrowUpRight className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
               </Button>
             )}
           </div>
@@ -380,14 +382,15 @@ export function StartAnnotatingButton({ batch }: { readonly batch: Batch }): JSX
         icon={Play}
         label="Start annotating"
         hint="Opens its jobs for labeling"
-        variant="default"
         busy={start.isPending}
         data-testid="start-batch"
         data-autofocus=""
         onClick={() => start.mutate()}
       />
       {refusal !== null && (
-        <FieldError data-line="" data-testid="start-batch-error">{refusalProse(refusal)}</FieldError>
+        <SheetLine tone="error" data-testid="start-batch-error">
+          {refusalProse(refusal)}
+        </SheetLine>
       )}
     </div>
   );

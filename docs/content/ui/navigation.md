@@ -28,8 +28,10 @@ section or nav entry, or changes an entry point updates this block in the same p
                                      written with replace; closing removes it)
     images                           Images — every image ingested, regardless of batch or
                                      dataset membership; read-only. Narrowed by source
-                                     chips (component state); an image opens in a viewer
-                                     dialog (component state, no route of its own)
+                                     chips (component state) or to one batch (?batch=:batchId,
+                                     written with replace; the chip's × removes it) — the
+                                     Overview's batch panel links to it; an image opens in a
+                                     viewer dialog (component state, no route of its own)
     schema                           Classes (contract)
                                        ├─ History: a panel INSIDE Classes, not a sibling; View shows a
                                        │  version read-only in the section's own table
@@ -74,6 +76,13 @@ band, so a batch named by the URL, or stepped to from its panel, brings its own 
 opens it there (`PARENT.batch`). The old addresses redirect to the Overview, replacing the
 history entry: `/projects/:id/batches`, which was a section, and
 `/projects/:id/batches/:batchId`, which was a page.
+
+**A batch's images are the Images section narrowed, not a page of the batch.** The Overview's
+panel links, from the count on its Images property, to `/projects/:id/images?batch=:batchId` (`PARENT.batchAssets`, a navigation: it is
+another section). The parameter shares its name with the panel's and is read only on its own
+section — Images ignores the Overview's `?batch=`, and leaving a section drops it. The section
+reads the batch's listing, names the batch in a removable chip, and the chip's × removes the
+parameter with `replace`, because lifting a filter is looking, not going.
 
 **A section's label is not its segment.** The segments stay the product's nouns —
 `/projects/:id/schema` is what links, the CLI and the API call it — while the labels are the
@@ -191,8 +200,9 @@ confirmation holds the *add to the dataset* switch) and *add to dataset*. Each i
 where the batch's `allowed_actions` declare it, each with its own gating, refusals and outcome
 line. The interface says *add to dataset* for what the kernel, API, CLI and MCP call
 `promote`: the same operation, named for what a person sees it do. Nothing else on the Overview mutates: the numbers, the class rail and the
-images are pointers. **Add images** is not on the Overview at all as a panel control: it is the project bar's, and it
-opens the dialog whose result is a new batch (see *Inside a project*).
+images are pointers. **Add images** and **Annotate** end the batches band, after the filter: Add images, a `ghost` icon button,
+opens the dialog whose result is a new batch (see *Inside a project*); Annotate, the page's filled control, is drawn
+only while a batch is open for annotation.
 
 ## Ways out
 
@@ -255,9 +265,10 @@ opens the dialog whose result is a new batch (see *Inside a project*).
   its sources. The counts arrive together, once every one has answered, and a tab keeps its
   width when it opens (its medium-weight label is reserved underneath), so changing section
   moves nothing in the bar.
-- **The bar offers what the open section is about, and only that.** Overview: **Annotate**,
-  with **Add images** outlined before it while a batch is open for annotation, or Add images
-  as the filled control when none is. Images: **Add images**. Classes: none in the bar — **New**
+- **The bar offers what the open section is about, and only that.** Overview: nothing — its
+  **Add images** (a `ghost` icon button) and **Annotate** (filled, only while a batch is open for annotation)
+  end the batches band, beside the batches they act on, and an Overview with no images yet
+  makes its invitation's Add images the filled one. Images: **Add images**. Classes: none in the bar — **New**
   sits in the section's band beside the History icon button while the draft has classes (the
   empty table keeps its own **New class**; a past version, which nobody adds to, offers none),
   stepping back to `outline` while the commit bar's **Save version** is up. Dataset: **Publish release**. On Classes and Dataset, Add

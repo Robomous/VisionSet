@@ -8,7 +8,7 @@
 
 import { useMemo, useState } from "react";
 
-import { useAssetPages, useSources, type Source } from "../queries";
+import { useAssetPages, useBatchAssets, useSources, type Asset, type Source } from "../queries";
 import { groupOf, type ImageGroup } from "./imageFacts";
 
 function newestFirst(sources: readonly Source[]): Source[] {
@@ -22,7 +22,12 @@ export interface ImageGroups {
   readonly settled: boolean;
   /** Ask for the next page of one group, unless it has none or one is on its way. */
   readonly more: (key: string) => void;
+  /** Set when the read itself failed — only a batch's read can, the project's runs are counted by the screen above. */
+  readonly failure?: { readonly error: unknown; readonly retry: () => void };
 }
+
+/** The one group a batch's images form: the key every batch view's run answers to. */
+export const BATCH_GROUP_KEY = "batch";
 
 export function useImageGroups(projectId: string, pageSize: number): ImageGroups {
   const sourcesQuery = useSources(projectId);
@@ -53,4 +58,40 @@ export function useImageGroups(projectId: string, pageSize: number): ImageGroups
   }
 
   return { sources, groups, settled: runs.every((run) => run.total !== undefined), more };
+}
+
+/**
+ * The same shape, read from one batch: `GET /batches/{id}/assets`, a page at a
+ * time, in the batch's own order.
+ *
+ * A batch is one run. The listing carries no per-source count, so grouping what
+ * has arrived by source would put a partial tally on a heading that claims a
+ * whole — the batch's images are one group, and each image still names its own
+ * source in the detail (`sources` is read for that).
+ */
+export function useBatchGroups(projectId: string, batchId: string): ImageGroups {
+  const sourcesQuery = useSources(projectId);
+  const sources = useMemo(() => newestFirst(sourcesQuery.data?.items ?? []), [sourcesQuery.data]);
+  const read = useBatchAssets(batchId);
+  const { data, isSuccess, isError, error, isFetchingNextPage, hasNextPage, fetchNextPage, refetch } = read;
+
+  const groups = useMemo<ImageGroup[]>(() => {
+    const last = data?.pages.at(-1);
+    if (data === undefined || last === undefined || last.total === 0) return [];
+    // A batch asset is an asset and more; the group holds the asset's own fields.
+    const assets: Asset[] = data.pages.flatMap((page) => page.items);
+    return [groupOf(BATCH_GROUP_KEY, undefined, assets, last.total, isFetchingNextPage)];
+  }, [data, isFetchingNextPage]);
+
+  function more(): void {
+    if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+  }
+
+  return {
+    sources,
+    groups,
+    settled: isSuccess,
+    more,
+    ...(isError ? { failure: { error, retry: () => void refetch() } } : {}),
+  };
 }

@@ -288,7 +288,7 @@ export function ProjectsScreen({ onOpenProject }: ProjectsScreenProps): JSX.Elem
                             // back to the field it cleared rather than to the page.
                             document.getElementById("projects-search")?.focus();
                           }}
-                          className="rounded-sm font-medium text-foreground underline decoration-foreground/30 underline-offset-4 outline-none hover:decoration-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                          className="vs-link rounded-sm font-medium text-foreground underline-offset-4 outline-none"
                         >
                           Clear search
                         </button>
@@ -476,7 +476,7 @@ function Row({
       data-testid={`project-${project.name}`}
       data-row-id={project.id}
       // No transition on the hover fill: the pointer sweeps this list.
-      className={cn(BODY_ROW, "group cursor-pointer hover:bg-muted/40")}
+      className={cn(BODY_ROW, "group vs-link-row cursor-pointer hover:bg-muted/40")}
     >
       <td>
         <div className="flex min-w-0 items-center gap-2.5">
@@ -507,8 +507,10 @@ function Row({
             // arrow says where, once the row is pointed at.
             className="flex min-w-0 shrink items-center gap-1 rounded-sm text-left font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <span className="truncate underline decoration-foreground/20 underline-offset-[5px] group-hover:decoration-foreground/50">{project.name}</span>
-            <ArrowUpRight aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-within:opacity-100" />
+            {/* The house link (styles.css): a muted underline that takes the text's colour as the row is pointed at. */}
+            <span className="truncate underline decoration-current/30 underline-offset-[5px] transition-[text-decoration-color] duration-150 ease-[ease] group-hover:decoration-current">{project.name}</span>
+            {/* Arrives with the row's pointer, travelling toward where it goes (`.vs-link-row`). */}
+            <ArrowUpRight aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-[opacity,color] duration-150 ease-[ease] group-focus-within:opacity-100 group-hover:text-foreground group-hover:opacity-100" />
           </button>
           {/* One line: the row's height is fixed so the columns stay a grid, and
               the project's own page carries the whole of it. Absent rather than

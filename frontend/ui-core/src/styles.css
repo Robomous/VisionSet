@@ -636,3 +636,135 @@ span.vs-recipe-art-move {
     animation: vs-roll-fade 160ms ease-out both;
   }
 }
+
+/*
+ * Links: the Button's `link` variant, and any hand-made link marked `.vs-link`.
+ *
+ * A link is always marked: its underline sits under the words at rest in a
+ * muted tone (its own colour at 30%), and pointed at or focused it takes the
+ * full colour of its text — a colour change, so 150ms on `ease`. Its ↗ (every
+ * link that goes somewhere ends in one, DESIGN.md "Links") is not there at
+ * rest: pointed at, it arrives — fading in as it travels the last 4px toward
+ * where it points, 200ms on the strong ease-out, in the text's colour — and
+ * leaves faster (120ms) than it came. Where there is no pointer to hover with,
+ * it is simply there. A plain arrow (→) leans 2px, a press presses (0.97,
+ * 100ms); under reduced motion the ↗ only fades, and nothing moves.
+ *
+ * The package's `link` variant is outside any layer here, so it outranks the
+ * variant's own `transition-all` and `hover:underline`, which this repository
+ * does not own. A hand-made `.vs-link` sits in the components layer, so a
+ * link that needs a different offset or weight can still say so in utilities.
+ * `.vs-link-row` gives a whole row's ↗ (a project, a job, a KPI card) the same
+ * arrival on the row's hover.
+ */
+/*
+ * Words a person can select, like the sentence around them: the package's
+ * Button is `select-none` for every variant, which leaves a hole in a copied
+ * line wherever a link sat.
+ */
+:is([data-variant="link"], .vs-link) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+[data-variant="link"] {
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in oklab, currentColor 30%, transparent);
+  transition:
+    color 150ms ease,
+    text-decoration-color 150ms ease,
+    scale 100ms ease-out;
+}
+/*
+ * Focus on a link is the link's own mark, not a button's box: no border, no
+ * ring (the package draws both, hugging the words of a padless link). The
+ * underline takes its full colour and doubles to 2px, and the ↗ arrives — so
+ * the keyboard's place is plain, and reads apart from a hover (1px).
+ */
+:is([data-variant="link"], .vs-link):focus-visible {
+  border-color: transparent;
+  box-shadow: none;
+  outline: none;
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 2px;
+}
+@layer components {
+  .vs-link {
+    text-decoration-line: underline;
+    text-decoration-thickness: 1px;
+    text-decoration-color: color-mix(in oklab, currentColor 30%, transparent);
+    transition:
+      color 150ms ease,
+      text-decoration-color 150ms ease,
+      scale 100ms ease-out;
+  }
+}
+:is([data-variant="link"], .vs-link) > svg {
+  transition:
+    translate 150ms cubic-bezier(0.23, 1, 0.32, 1),
+    color 150ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  [data-variant="link"]:hover {
+    text-decoration-color: currentColor;
+  }
+  @layer components {
+    .vs-link:hover {
+      text-decoration-color: currentColor;
+    }
+  }
+  /* The arrow takes the text's colour with the underline, whatever tone it rests in. */
+  :is([data-variant="link"], .vs-link):hover > svg {
+    color: inherit;
+  }
+
+  /* ↗ waits off-stage: transparent, 4px behind where it points. Leaving is quicker than arriving. */
+  :is([data-variant="link"], .vs-link) > svg.lucide-arrow-up-right:last-child,
+  .vs-link-row svg.lucide-arrow-up-right {
+    opacity: 0;
+    translate: -4px 4px;
+    transition:
+      opacity 120ms ease-out,
+      translate 120ms cubic-bezier(0.23, 1, 0.32, 1),
+      color 150ms ease;
+  }
+  :is([data-variant="link"], .vs-link):is(:hover, :focus-visible) > svg.lucide-arrow-up-right:last-child,
+  .vs-link-row:is(:hover, :has(:focus-visible)) svg.lucide-arrow-up-right {
+    opacity: 1;
+    translate: 0 0;
+    transition-duration: 200ms, 200ms, 150ms;
+  }
+  :is([data-variant="link"], .vs-link):hover > svg:is(.lucide-arrow-right, .lucide-chevron-right):last-child {
+    translate: 2px 0;
+  }
+  :is([data-variant="link"], .vs-link):hover > svg:is(.lucide-arrow-left, .lucide-chevron-left):first-child {
+    translate: -2px 0;
+  }
+}
+:is([data-variant="link"], .vs-link):focus-visible > svg {
+  color: inherit;
+}
+@media (prefers-reduced-motion: no-preference) {
+  :is([data-variant="link"], .vs-link):active:not(:disabled, [aria-disabled="true"]) {
+    scale: 0.97;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-variant="link"] {
+    transition:
+      color 150ms ease,
+      text-decoration-color 150ms ease;
+  }
+  @layer components {
+    .vs-link {
+      transition:
+        color 150ms ease,
+        text-decoration-color 150ms ease;
+    }
+  }
+  /* The ↗ still appears, by fading alone. */
+  :is([data-variant="link"], .vs-link) > svg.lucide-arrow-up-right:last-child,
+  .vs-link-row svg.lucide-arrow-up-right {
+    translate: 0 0;
+  }
+}

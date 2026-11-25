@@ -150,7 +150,7 @@ import {
   type AnnotatorView,
 } from "@visionset/annotator/react";
 import { WireFormatError, parseAssetDescriptor } from "@visionset/annotator";
-import { ArrowLeft, Box, CheckCheck, ChevronLeft, ChevronRight, CircleHelp, CloudAlert, CloudCheck, CloudUpload, Eye, Grid3x3, Hand, LayoutGrid, Loader2, MonitorSmartphone, MoreHorizontal, Redo2, SkipForward, Sparkles, TriangleAlert, Undo2 } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Box, CheckCheck, ChevronLeft, ChevronRight, CircleHelp, CloudAlert, CloudCheck, CloudUpload, Eye, Grid3x3, Hand, LayoutGrid, Loader2, MonitorSmartphone, MoreHorizontal, Redo2, SkipForward, Sparkles, TriangleAlert, Undo2 } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -2494,6 +2494,7 @@ function Workspace({
                   onClick={onOpenGallery}
                 >
                   Correct this batch
+                  <ArrowUpRight className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
                 </Button>
               )}
           </p>

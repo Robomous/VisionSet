@@ -16,7 +16,7 @@
  * a change safe that the API then refuses.
  */
 
-import { Check } from "lucide-react";
+import { ArrowUpRight, Check } from "lucide-react";
 import { useEffect, useState, type JSX } from "react";
 
 import { Button, cn } from "@robomous/ui-core";
@@ -189,11 +189,13 @@ export function BlockingFrames({
                       <Button
                         key={batchId}
                         variant="link"
-                        className="h-auto max-w-full truncate p-0 text-[11px]"
+                        className="h-auto max-w-full p-0 text-[11px]"
                         data-testid="blocking-asset-batch"
                         onClick={() => onOpenBatch(batchId)}
                       >
-                        Open {names.get(batchId) ?? "batch"}
+                        {/* The name truncates; the arrow stays whole after it. */}
+                        <span className="min-w-0 truncate">Open {names.get(batchId) ?? "batch"}</span>
+                        <ArrowUpRight className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
                       </Button>
                     ))}
                   </span>

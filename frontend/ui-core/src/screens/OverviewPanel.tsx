@@ -28,7 +28,7 @@
  * **Batches are the exception, and why.** Batches have no section and no page
  * of their own — this page is where they are listed — so what a batch may be
  * asked to do is done here: the panel carries Approve, Start, Annotate,
- * Complete and add to dataset, Add to dataset and Auto-label in its footer, and
+ * Complete and add to dataset, Add to dataset and Auto-label in its top bar, and
  * Complete without adding, Create correction batch and Delete behind its `⋯`
  * (`BatchActions`), each with its own gating, refusals and outcome, each
  * offered only where the batch declares it. Over the table, auto-label is
@@ -77,6 +77,7 @@ import {
 import { formatCount, formatPercent } from "../lib/format";
 import { EmptyState, ErrorState } from "../patterns/AsyncStates";
 import { BatchSheet, type BatchDetails, type SheetJob } from "../patterns/project/BatchSheet";
+import { BatchesActions } from "../patterns/project/BatchesActions";
 import { BatchTable, useBatchTableView, type BatchRowView } from "../patterns/project/BatchTable";
 import { ClassShares } from "../patterns/project/ClassShareBar";
 import { KPI_CARD_HEIGHT, KPI_GRID, KpiCards, type KpiCard, type KpiStep } from "../patterns/project/KpiCards";
@@ -92,6 +93,7 @@ import { AutoLabelDialog, AutoLabelLine, AutoLabelTool } from "./AutoLabel";
 import { ProjectPreLabelDialog } from "./ProjectPreLabelDialog";
 import { useAutoLabel } from "./useAutoLabel";
 import { firstRunInvitation, type FirstRunInvitation } from "./firstRunInvitation";
+import { useAnnotateTargets } from "./useAnnotateTargets";
 import { imbalanceNote } from "./imbalance";
 import { batchRows, classRows } from "./overviewRows";
 import { batchPhase } from "./overviewView";
@@ -136,6 +138,8 @@ export interface OverviewPanelProps {
   readonly onOpenBatchChange?: (batchId: string | null) => void;
   /** One job, straight into the editor. */
   readonly onOpenJob?: (jobId: string) => void;
+  /** A batch's frames, in the Images section narrowed to it — the batch panel's count leads there. */
+  readonly onOpenBatchAssets?: (batchId: string) => void;
 }
 
 export function OverviewPanel({
@@ -149,6 +153,7 @@ export function OverviewPanel({
   openBatchId,
   onOpenBatchChange,
   onOpenJob,
+  onOpenBatchAssets,
 }: OverviewPanelProps): JSX.Element {
   const stats = useProjectStats(projectId);
   const readiness = useProjectReadiness(projectId);
@@ -207,7 +212,7 @@ export function OverviewPanel({
         />
 
         <div className={WORK_ROW}>
-          <Batches projectId={projectId} model={model} onOpenJob={onOpenJob} onOpenSchema={onOpenSchema} />
+          <Batches projectId={projectId} model={model} onOpenJob={onOpenJob} onOpenSchema={onOpenSchema} onIngest={onIngest} />
           {/* The rail is the fourth KPI column, so its hairline continues the one above. */}
           <div className={RAIL}>
             <RecentImages projectId={projectId} total={counted.asset_count} {...(onOpenImages === undefined ? {} : { onOpenImages })} />
@@ -215,7 +220,7 @@ export function OverviewPanel({
         </div>
       </div>
 
-      <Detail projectId={projectId} model={model} onOpenJob={onOpenJob} onOpenDataset={onBrowseDataset} onOpenSchema={onOpenSchema} />
+      <Detail projectId={projectId} model={model} onOpenJob={onOpenJob} onOpenDataset={onBrowseDataset} onOpenSchema={onOpenSchema} onOpenAssets={onOpenBatchAssets} />
     </div>
   );
 }
@@ -556,15 +561,19 @@ function Batches({
   model,
   onOpenJob,
   onOpenSchema,
+  onIngest,
 }: {
   readonly projectId: string;
   readonly model: BatchesModel;
   readonly onOpenJob: ((jobId: string) => void) | undefined;
   readonly onOpenSchema: (() => void) | undefined;
+  readonly onIngest: (() => void) | undefined;
 }): JSX.Element {
   const { batches, jobsFor, rows, openId, setOpenId, view, prelabelFor, setPrelabelFor } = model;
   // Above the early returns: the offer remembers what it last said across a refetch.
   const autoLabel = useAutoLabel(projectId, batches.data?.items);
+  // Annotate's destinations, for the band: read with the batches, so it never arrives after them.
+  const targets = useAnnotateTargets(batches.data?.items, onOpenJob !== undefined);
   // A draft's row opens its approval rather than its panel: approving is the
   // one thing a draft is opened for. Held by id, so a refetch keeps it current.
   const [approvingId, setApprovingId] = useState<string | null>(null);
@@ -601,6 +610,12 @@ function Batches({
         view={view}
         // Both render nothing when no batch declares `pre_label`.
         tools={<AutoLabelTool offer={autoLabel} />}
+        bandActions={
+          <BatchesActions
+            {...(onIngest === undefined ? {} : { onIngest })}
+            annotate={{ targets, onOpen: setOpenId, ...(onOpenJob === undefined ? {} : { onOpenJob }) }}
+          />
+        }
         note={<AutoLabelLine offer={autoLabel} />}
         actions={(row) => {
           const batch = byId.get(row.id);
@@ -685,12 +700,14 @@ function Detail({
   onOpenJob,
   onOpenDataset,
   onOpenSchema,
+  onOpenAssets,
 }: {
   readonly projectId: string;
   readonly model: BatchesModel;
   readonly onOpenJob: ((jobId: string) => void) | undefined;
   readonly onOpenDataset: (() => void) | undefined;
   readonly onOpenSchema: (() => void) | undefined;
+  readonly onOpenAssets: ((batchId: string) => void) | undefined;
 }): JSX.Element {
   const { items, rows, jobsOf, openId, setOpenId, setPrelabelFor, order, at, step } = model;
   const row = rows.find((one) => one.id === openId);
@@ -781,6 +798,8 @@ function Detail({
             ? { tools: <IconAction icon={WandSparkles} label="Auto-label this batch" hint="A model drafts labels for you to check" data-testid="sheet-prelabel" onClick={() => setPrelabelFor(batch.id)} /> }
             : {})}
           {...(batch === undefined ? {} : { details: detailsOf(batch) })}
+          {...(onOpenAssets === undefined ? {} : { onBrowseAssets: () => onOpenAssets(row.id) })}
+          {...(onOpenDataset === undefined ? {} : { onOpenDataset })}
           actions={
             batch === undefined ? undefined : (
               // Keyed on the batch: each control keeps the outcome of its own press, and stepping to the next batch must not carry it over.
@@ -885,14 +904,10 @@ function RecentImages({
             onClick={onOpenImages}
             aria-label="Browse all images"
             data-testid="overview-browse-images"
-            className="group/browse relative ml-auto flex items-center gap-1 rounded-sm text-xs text-muted-foreground outline-none after:absolute after:-inset-2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+            className="vs-link relative ml-auto flex items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-4 outline-none after:absolute after:-inset-2 hover:text-foreground"
           >
             Browse
-            <ArrowUpRight
-              aria-hidden="true"
-              strokeWidth={STROKE}
-              className="size-3.5 transition-transform duration-150 ease-out group-hover/browse:translate-x-0.5 group-hover/browse:-translate-y-0.5"
-            />
+            <ArrowUpRight aria-hidden="true" strokeWidth={STROKE} className="size-3.5" />
           </button>
         )}
       </header>
@@ -1003,8 +1018,8 @@ function FirstRun({
 
   const first = invitation === "ingest-first";
   return (
-    // The only voice on the page rather than one of three, so the filled Ingest
-    // above it is not competing with a checklist step pointing somewhere else.
+    // The only voice on the page rather than one of three: a project with no
+    // images has no batches band, so this is the page's one Add images.
     <div data-testid="first-run" data-invitation={invitation}>
       <EmptyState
         art="images"
@@ -1017,10 +1032,9 @@ function FirstRun({
         action={
           <div className="flex flex-col items-center gap-2">
             {onIngest !== undefined && (
-              // `secondary`: the toolbar's "Add images" is on screen right
-              // above this one, same label and same handler, so a filled button
-              // here would render the identical action twice.
-              <Button variant="outline" data-testid="overview-ingest" onClick={onIngest}>
+              // Filled: the project bar draws no Add images on the Overview —
+              // the batches band does, and there is no band before the first batch.
+              <Button variant="default" data-testid="overview-ingest" onClick={onIngest}>
                 <Upload aria-hidden="true" />
                 Add images
               </Button>
@@ -1039,6 +1053,7 @@ function FirstRun({
                   onClick={onOpenSchema}
                 >
                   define classes first
+                  <ArrowUpRight className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
                 </Button>{" "}
                 — both orders work.
               </p>

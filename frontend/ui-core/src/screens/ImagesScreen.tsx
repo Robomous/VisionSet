@@ -27,6 +27,18 @@
  * of tiles; an image the listing holds but no source claims (only data from
  * before sources were recorded) is counted, not hidden.
  *
+ * ## One batch's images
+ *
+ * `?batch=` (`batchId`) narrows the section to the images one batch holds, read
+ * from `GET /batches/{id}/assets` — the project's listing has no batch filter,
+ * so nothing here filters it by hand. The band's source menu gives way to a chip
+ * naming the batch, whose × (`onBatchChange(null)`) lifts the narrowing. The
+ * batch's images are one run, a page at a time in the batch's own order, not
+ * grouped by source: the batch listing carries no per-source count, and a heading
+ * claiming a source's whole on a partial read would be wrong. Each image still
+ * names its source in the detail. Density, Focus, the keys and the detail are
+ * the same screen over a different run.
+ *
  * ## Focus
  *
  * Enter, the well or the toggle at the right end of the detail's header widens
@@ -45,7 +57,7 @@
  */
 
 import { Button, cn } from "@robomous/ui-core";
-import { useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentProps, type JSX, type KeyboardEvent } from "react";
 
 import { useViewportAtLeast } from "../annotator/viewportFloor";
 import { Async } from "../data/Async";
@@ -57,9 +69,12 @@ import { DetailPane } from "../patterns/DetailPane";
 import { type Density } from "./images/imageDensity";
 import { ImagesBand } from "./images/ImagesBand";
 import { HEADING_PX, INSET, SourceSection } from "./images/ImageSheet";
-import { useImageGroups } from "./images/useImageGroups";
+import { useBatchGroups, useImageGroups, type ImageGroups } from "./images/useImageGroups";
 import { useScrollSpy } from "./images/useScrollSpy";
-import { useProjectAssets, type AssetPage } from "./queries";
+import { asApiError } from "../data/errors";
+import { refusalProse } from "../data/refusals";
+import { ErrorState } from "../patterns/AsyncStates";
+import { useBatches, useProjectAssets, type AssetPage, type Source } from "./queries";
 
 /** Twelve rows of five on a wide screen; a whole number of rows at most widths. */
 export const IMAGES_PAGE_SIZE = 60;
@@ -68,9 +83,19 @@ export interface ImagesScreenProps {
   readonly projectId: string;
   /** The empty state's way to add the first images. The toolbar carries it otherwise. */
   readonly onIngest?: () => void;
+  /**
+   * The batch the section is narrowed to, as the URL holds it (`?batch=`); null
+   * or absent is the whole project. The batch's images are read from the batch's
+   * own listing.
+   */
+  readonly batchId?: string | null;
+  /** The write that lifts the narrowing (`null`), a `replace` for the host. Absent, the chip has no ×. */
+  readonly onBatchChange?: (batchId: string | null) => void;
 }
 
-export function ImagesScreen({ projectId, onIngest }: ImagesScreenProps): JSX.Element {
+export function ImagesScreen({ projectId, onIngest, batchId = null, onBatchChange }: ImagesScreenProps): JSX.Element {
+  // Held here, above the two panes, so the tile size survives the chip coming and going.
+  const [density, setDensity] = useState<Density>("m");
   // The project's own count: what "empty" means, and what the sources should add up to.
   const whole = useProjectAssets(projectId, 1);
   return (
@@ -95,20 +120,65 @@ export function ImagesScreen({ projectId, onIngest }: ImagesScreenProps): JSX.El
               }),
         }}
       >
-        {(page: AssetPage) => <Pane projectId={projectId} projectTotal={page.total} />}
+        {(page: AssetPage) =>
+          batchId === null || batchId === "" ? (
+            <ProjectPane projectId={projectId} projectTotal={page.total} density={density} onDensity={setDensity} />
+          ) : (
+            // Keyed by the batch: a different batch is a different run, and the selection is not carried across.
+            <BatchPane key={batchId} projectId={projectId} batchId={batchId} projectTotal={page.total} density={density} onDensity={setDensity} onClear={onBatchChange === undefined ? undefined : () => onBatchChange(null)} />
+          )
+        }
       </Async>
     </div>
   );
 }
 
 /** The page's headline count, and how many sources it is drawn from. */
-function ImagesCount({ filter, shownTotal, projectTotal, sourceCount }: { readonly filter: string | null; readonly shownTotal: number; readonly projectTotal: number; readonly sourceCount: number }): JSX.Element {
+function ImagesCount({ filter, batched, shownTotal, projectTotal, sourceCount }: { readonly filter: string | null; readonly batched: boolean; readonly shownTotal: number; readonly projectTotal: number; readonly sourceCount: number }): JSX.Element {
+  const narrowed = filter !== null || batched;
+  // A batch's run is not drawn from the project's sources, so it does not count them.
+  const sourceLine = batched ? 0 : sourceCount;
   return (
     <span className="tabular-nums" data-testid="images-count">
-      {filter === null ? `${formatCount(projectTotal)} ${projectTotal === 1 ? "image" : "images"}` : `${formatCount(shownTotal)} of ${formatCount(projectTotal)} images`}
-      {sourceCount > 0 && ` · ${sourceCount} ${sourceCount === 1 ? "source" : "sources"}`}
+      {!narrowed ? `${formatCount(projectTotal)} ${projectTotal === 1 ? "image" : "images"}` : `${formatCount(shownTotal)} of ${formatCount(projectTotal)} images`}
+      {sourceLine > 0 && ` · ${sourceLine} ${sourceLine === 1 ? "source" : "sources"}`}
     </span>
   );
+}
+
+/** A read that failed, in the grid's place: the sentence, the code, a way to try again. */
+function ReadFailure({ error, onRetry }: { readonly error: unknown; readonly onRetry: () => void }): JSX.Element {
+  const failure = asApiError(error);
+  return (
+    <div className={cn("py-6", INSET)} data-testid="images-failure">
+      <ErrorState code={failure.code} message={refusalProse(error)} {...(failure.incidentId === undefined ? {} : { incidentId: failure.incidentId })} onRetry={onRetry} />
+    </div>
+  );
+}
+
+/** What the grid says instead of tiles: a failed read, a read on its way, or an empty batch. */
+function SheetNotice({ data, batched }: { readonly data: ImageGroups; readonly batched: boolean }): JSX.Element | null {
+  if (data.failure !== undefined) return <ReadFailure error={data.failure.error} onRetry={data.failure.retry} />;
+  if (data.groups.length > 0) return null;
+  const empty = data.settled && batched;
+  return (
+    <p className={cn("py-6 text-sm text-muted-foreground", INSET)} data-testid={empty ? "images-batch-empty" : undefined}>
+      {empty ? "This batch has no images." : "Loading images…"}
+    </p>
+  );
+}
+
+/**
+ * The source an image is shown under. A batch's run is not a source's, so its
+ * images are matched to a source by the id each carries.
+ */
+function sourceOfImage(batched: boolean, sources: readonly Source[], asset: { readonly source_id: string | null }, group: { readonly source: Source | undefined }): Source | undefined {
+  return batched ? sources.find((one) => one.id === asset.source_id) : group.source;
+}
+
+/** The band's chip, with the count it states once the batch has answered. */
+function bandBatch(batch: BatchScope | undefined, settled: boolean, total: number): ComponentProps<typeof ImagesBand>["batch"] {
+  return batch === undefined ? undefined : { name: batch.name, total: settled ? total : null, onClear: batch.onClear };
 }
 
 /** Images the listing holds that no source claims: counted, never hidden. */
@@ -121,12 +191,57 @@ function UnsourcedNote({ count }: { readonly count: number }): JSX.Element | nul
   );
 }
 
-function Pane({ projectId, projectTotal }: { readonly projectId: string; readonly projectTotal: number }): JSX.Element {
+/** How many images no source claims — a count only of the whole project's view, and only once every source has answered. */
+function unsourcedOf({ narrowed, sourceCount, settled, projectTotal, allTotal }: { readonly narrowed: boolean; readonly sourceCount: number; readonly settled: boolean; readonly projectTotal: number; readonly allTotal: number }): number {
+  return !narrowed && sourceCount > 0 && settled ? Math.max(0, projectTotal - allTotal) : 0;
+}
+
+/** The batch a pane is narrowed to: its name, once known, and the write that lifts it. */
+interface BatchScope {
+  readonly name: string | null;
+  readonly onClear: (() => void) | undefined;
+}
+
+interface PaneProps {
+  readonly projectId: string;
+  readonly projectTotal: number;
+  readonly density: Density;
+  readonly onDensity: (next: Density) => void;
+}
+
+/** The whole project: one run per source. */
+function ProjectPane(props: PaneProps): JSX.Element {
+  const data = useImageGroups(props.projectId, IMAGES_PAGE_SIZE);
+  return <Pane {...props} data={data} batch={undefined} />;
+}
+
+/** One batch: the batch's own listing as a single run, under a chip that names it. */
+function BatchPane({ batchId, onClear, ...props }: PaneProps & { readonly batchId: string; readonly onClear: (() => void) | undefined }): JSX.Element {
+  const data = useBatchGroups(props.projectId, batchId);
+  const batches = useBatches(props.projectId);
+  const known = batches.data?.items.find((one) => one.id === batchId);
+  // Until the batches answer the name is not a fact; once they have, a batch they do not hold says so.
+  const name = known?.name ?? (batches.data === undefined ? null : "Unknown batch");
+  return <Pane {...props} data={data} batch={{ name, onClear }} />;
+}
+
+function Pane({
+  projectId,
+  projectTotal,
+  density,
+  onDensity: setDensity,
+  data,
+  batch,
+}: PaneProps & {
+  readonly data: ImageGroups;
+  /** Set when the pane shows one batch's run rather than the project's sources. */
+  readonly batch: BatchScope | undefined;
+}): JSX.Element {
   const wide = useViewportAtLeast(PROJECT_NAV_MIN_VIEWPORT_PX);
-  const { sources, groups, settled, more } = useImageGroups(projectId, IMAGES_PAGE_SIZE);
+  const { sources, groups, settled, more } = data;
+  const batched = batch !== undefined;
 
   const [filter, setFilter] = useState<string | null>(null);
-  const [density, setDensity] = useState<Density>("m");
   const [focus, setFocus] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // The image whose detail was closed: the panel stays shut for it, and moving to any other opens it again.
@@ -231,7 +346,7 @@ function Pane({ projectId, projectTotal }: { readonly projectId: string; readonl
   const shownTotal = shown.reduce((n, g) => n + g.total, 0);
   const allTotal = groups.reduce((n, g) => n + g.total, 0);
   // Only once every source has answered: until then the difference is not a fact.
-  const unsourced = sources.length > 0 && settled ? Math.max(0, projectTotal - allTotal) : 0;
+  const unsourced = unsourcedOf({ narrowed: filter !== null || batched, sourceCount: sources.length, settled, projectTotal, allTotal });
   const many = shown.length > 1;
   const at = selected === undefined ? 0 : shown.slice(0, shown.indexOf(selected.group)).reduce((n, g) => n + g.total, 0) + selected.group.images.indexOf(selected.item);
 
@@ -247,21 +362,31 @@ function Pane({ projectId, projectTotal }: { readonly projectId: string; readonl
       data-testid="images-pane"
     >
       <PageStatus>
-        <ImagesCount filter={filter} shownTotal={shownTotal} projectTotal={projectTotal} sourceCount={sources.length} />
+        <ImagesCount filter={filter} batched={batched} shownTotal={shownTotal} projectTotal={projectTotal} sourceCount={sources.length} />
       </PageStatus>
 
-      <ImagesBand projectId={projectId} groups={groups} filter={filter} onFilter={narrow} density={density} onDensity={setDensity} focus={focus} />
+      <ImagesBand
+        projectId={projectId}
+        groups={groups}
+        filter={filter}
+        onFilter={narrow}
+        density={density}
+        onDensity={setDensity}
+        focus={focus}
+        batch={bandBatch(batch, settled, shownTotal)}
+      />
 
       <div className="flex min-h-0 min-w-0 flex-1">
         <div className={cn("flex min-w-0", focus ? "w-60 shrink-0 border-r xl:w-72" : "flex-1")}>
           {/* No edge fade on this scroller: it would wash out the heading pinned to its top. */}
           <div ref={sheet} onKeyDown={onSheetKey} className="relative min-h-0 min-w-0 flex-1 overflow-y-auto pb-6" data-testid="images-sheet">
-            {groups.length === 0 && <p className={cn("py-6 text-sm text-muted-foreground", INSET)}>Loading images…</p>}
+            <SheetNotice data={data} batched={batched} />
             {shown.map((g) => (
               <SourceSection
                 key={g.key}
                 projectId={projectId}
                 group={g}
+                name={batch?.name}
                 headed={many}
                 rail={focus}
                 density={density}
@@ -277,7 +402,7 @@ function Pane({ projectId, projectTotal }: { readonly projectId: string; readonl
                 onNeedMore={() => more(g.key)}
               />
             ))}
-            {filter === null && <UnsourcedNote count={unsourced} />}
+            <UnsourcedNote count={unsourced} />
           </div>
         </div>
         <DetailPane
@@ -293,7 +418,7 @@ function Pane({ projectId, projectTotal }: { readonly projectId: string; readonl
             <ImageDetail
               projectId={projectId}
               item={selected.item}
-              source={selected.group.source}
+              source={sourceOfImage(batched, sources, selected.item.asset, selected.group)}
               at={at}
               count={shownTotal}
               focus={focus}

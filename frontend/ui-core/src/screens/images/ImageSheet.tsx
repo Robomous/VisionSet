@@ -68,9 +68,12 @@ export function SourceSection({
   onOpenImage,
   onOpenSource,
   onNeedMore,
+  name: label,
 }: {
   readonly projectId: string;
   readonly group: ImageGroup;
+  /** What the section is called to a screen reader, where its source does not say — a batch's name. */
+  readonly name?: string | null | undefined;
   /** False for a page showing one source, whose band already names it. */
   readonly headed: boolean;
   /** The two-column rail beside a focused image. */
@@ -85,7 +88,7 @@ export function SourceSection({
   readonly onNeedMore: () => void;
 }): JSX.Element {
   const inset = rail ? "px-3" : INSET;
-  const name = group.source?.name ?? "All images";
+  const name = label ?? group.source?.name ?? "All images";
   const stuck = spy.stuck.includes(group.key);
   const range = spy.current === group.key ? spy.range : null;
   return (
@@ -93,7 +96,7 @@ export function SourceSection({
       {headed && <PinnedHeading group={group} stuck={stuck} range={range} rail={rail} inset={inset} onOpen={onOpenSource} />}
       <div
         role="listbox"
-        aria-label={group.source === undefined ? "Images" : `Images from ${name}`}
+        aria-label={group.source === undefined ? (label === undefined ? "Images" : `Images in ${label}`) : `Images from ${name}`}
         className={cn("grid py-3", rail ? "grid-cols-2 gap-2.5" : cn("gap-3", COLUMNS[density]), inset)}
       >
         {group.images.map((item) => (

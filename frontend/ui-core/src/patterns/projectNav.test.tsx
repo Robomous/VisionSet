@@ -35,10 +35,6 @@ function props(overrides: Partial<ProjectNavProps> = {}): ProjectNavProps {
     active: "schema",
     hrefFor: (section) => `/projects/p/${section}`,
     onNavigate: vi.fn(),
-    annotate: {
-      targets: [{ id: "b1", name: "drive-01", remaining: 12, schemaVersion: 4, jobIds: ["j1"] }],
-      onOpen: vi.fn(),
-    },
     onIngest: vi.fn(),
     onRename: vi.fn(),
     onDelete: vi.fn(),
@@ -60,7 +56,7 @@ describe("ProjectNav", () => {
 
     expect(filled()).toHaveLength(1);
     // An icon button, named by its tooltip.
-    expect(filled()[0]?.getAttribute("aria-label")).toBe("Annotate");
+    expect(filled()[0]?.getAttribute("aria-label")).toBe("Add images");
 
     const nav = screen.getByTestId("project-nav");
     const items = within(nav).getAllByRole("link").filter((link) => link.dataset.testid?.startsWith("nav-"));
@@ -122,146 +118,29 @@ describe("ProjectNav", () => {
     expect(screen.getByTestId("nav-dataset")).toBeTruthy();
   });
 
-  it("draws Add images outlined before the filled Annotate while a batch is open", () => {
+  it("draws Add images as the bar's one filled control", () => {
     render(<ProjectNav {...props()} />);
-    const ingest = screen.getByTestId("go-ingest");
-    const annotate = screen.getByTestId("go-annotate");
-    expect(ingest.dataset.variant).toBe("outline");
-    expect(annotate.dataset.variant).toBe("default");
-    expect(ingest.compareDocumentPosition(annotate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getAllByTestId("go-ingest")).toHaveLength(1);
-    expect(filled()).toEqual([annotate]);
-  });
-
-  it("keeps Add images outlined before Annotate whether or not the content owns the action", () => {
-    render(<ProjectNav {...props({ contentOwnsTheAction: true })} />);
-    expect(screen.getByTestId("go-ingest").dataset.variant).toBe("outline");
-    expect(screen.getByTestId("go-annotate").dataset.variant).toBe("default");
-  });
-
-  it("fills Add images when nothing is open for annotation, and it is the only control", () => {
-    render(<ProjectNav {...props({ annotate: undefined })} />);
-    expect(screen.getByTestId("go-ingest").dataset.variant).toBe("default");
-    expect(screen.getAllByTestId("go-ingest")).toHaveLength(1);
-  });
-
-  it("draws no Add images without an onIngest, and Annotate stands alone", () => {
-    render(<ProjectNav {...props({ onIngest: undefined })} />);
-    expect(screen.queryByTestId("go-ingest")).toBeNull();
-    expect(filled()).toEqual([screen.getByTestId("go-annotate")]);
-  });
-
-  it("falls back to Add images as the filled control when nothing is open for annotation", () => {
-    render(<ProjectNav {...props({ annotate: undefined })} />);
+    expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
+    // Annotate is the Overview's batches band's, never the bar's.
     expect(screen.queryByTestId("go-annotate")).toBeNull();
-    expect(filled()).toHaveLength(1);
-    expect(filled()[0]?.getAttribute("aria-label")).toBe("Add images");
   });
 
-  it("steps Ingest back when the content owns the page's filled control", () => {
-    render(<ProjectNav {...props({ annotate: undefined, contentOwnsTheAction: true })} />);
-    expect(filled()).toHaveLength(0);
-    expect(screen.getByTestId("go-ingest").dataset.variant).toBe("outline");
+  it("moves Add images into the overflow on a section it is not about", async () => {
+    const onIngest = vi.fn();
+    render(<ProjectNav {...props({ ingest: "menu", onIngest })} />);
+    expect(screen.queryByTestId("go-ingest")).toBeNull();
+    await userEvent.click(screen.getByTestId("project-menu"));
+    await userEvent.click(await screen.findByTestId("menu-ingest"));
+    expect(onIngest).toHaveBeenCalledTimes(1);
   });
 
-  it("renders no filled control at all when the host wired neither action", () => {
-    render(<ProjectNav {...props({ annotate: undefined, onIngest: undefined })} />);
+  it("renders no filled control and no Add images entry when the host wired none — the Overview", async () => {
+    render(<ProjectNav {...props({ onIngest: undefined })} />);
     expect(filled()).toHaveLength(0);
     expect(screen.queryByTestId("go-ingest")).toBeNull();
-  });
-
-  it("splits Annotate when more than one batch is open: it jumps to the newest, and a chevron asks which", async () => {
-    const onOpen = vi.fn();
-    render(
-      <ProjectNav
-        {...props({
-          annotate: {
-            targets: [
-              { id: "b2", name: "drive-02", remaining: 3, schemaVersion: 4 },
-              { id: "b1", name: "drive-01", remaining: 12, schemaVersion: 3 },
-            ],
-            onOpen,
-          },
-        })}
-      />,
-    );
-    const trigger = screen.getByTestId("go-annotate-menu");
-    expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
-    expect(trigger.getAttribute("aria-label")).toBe("Choose a batch to annotate");
-    await userEvent.click(trigger);
-    await userEvent.click(await screen.findByTestId("annotate-batch-drive-01"));
-    expect(onOpen).toHaveBeenCalledWith("b1");
-
-    // The main half does not ask: it goes straight to the first target, the newest.
-    onOpen.mockClear();
-    await userEvent.click(screen.getByTestId("go-annotate"));
-    expect(onOpen).toHaveBeenCalledExactlyOnceWith("b2");
-  });
-
-  it("jumps into the annotator when the one open batch has one job", async () => {
-    const onOpen = vi.fn();
-    const onOpenJob = vi.fn();
-    render(
-      <ProjectNav
-        {...props({
-          annotate: {
-            targets: [{ id: "b1", name: "drive-01", remaining: 12, schemaVersion: 4, jobIds: ["j1"] }],
-            onOpen,
-            onOpenJob,
-          },
-        })}
-      />,
-    );
-    await userEvent.click(screen.getByTestId("go-annotate"));
-    expect(onOpenJob).toHaveBeenCalledWith("j1");
-    expect(onOpen).not.toHaveBeenCalled();
-  });
-
-  it("lands on the gallery to pick a job when the batch has several, or while they are unknown", async () => {
-    for (const jobIds of [["j1", "j2"], undefined]) {
-      const onOpen = vi.fn();
-      const onOpenJob = vi.fn();
-      const { unmount } = render(
-        <ProjectNav
-          {...props({
-            annotate: {
-              targets: [{ id: "b1", name: "drive-01", remaining: 12, schemaVersion: 4, jobIds }],
-              onOpen,
-              onOpenJob,
-            },
-          })}
-        />,
-      );
-      await userEvent.click(screen.getByTestId("go-annotate"));
-      expect(onOpen).toHaveBeenCalledWith("b1");
-      expect(onOpenJob).not.toHaveBeenCalled();
-      unmount();
-    }
-  });
-
-  it("applies the job rule to the batch picked from the dropdown", async () => {
-    const onOpen = vi.fn();
-    const onOpenJob = vi.fn();
-    render(
-      <ProjectNav
-        {...props({
-          annotate: {
-            targets: [
-              { id: "b2", name: "drive-02", remaining: 3, schemaVersion: 4, jobIds: ["j2"] },
-              { id: "b1", name: "drive-01", remaining: 12, schemaVersion: 3, jobIds: ["j1a", "j1b"] },
-            ],
-            onOpen,
-            onOpenJob,
-          },
-        })}
-      />,
-    );
-    await userEvent.click(screen.getByTestId("go-annotate-menu"));
-    await userEvent.click(await screen.findByTestId("annotate-batch-drive-02"));
-    expect(onOpenJob).toHaveBeenCalledWith("j2");
-    await userEvent.click(screen.getByTestId("go-annotate-menu"));
-    await userEvent.click(await screen.findByTestId("annotate-batch-drive-01"));
-    expect(onOpen).toHaveBeenCalledWith("b1");
+    await userEvent.click(screen.getByTestId("project-menu"));
+    expect(await screen.findByTestId("rename-project")).toBeTruthy();
+    expect(screen.queryByTestId("menu-ingest")).toBeNull();
   });
 
   it("keeps rename and delete behind the overflow", async () => {

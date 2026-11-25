@@ -22,7 +22,7 @@
  * than it read. The count said here is the one the batch itself reports.
  */
 
-import { Check, FolderOpen, RefreshCw, Stamp } from "lucide-react";
+import { ArrowUpRight, Check, FolderOpen, RefreshCw, Stamp } from "lucide-react";
 import type { JSX, ReactNode } from "react";
 
 import { Alert, AlertDescription, AlertTitle, Button, FieldError, FieldDescription } from "@robomous/ui-core";
@@ -271,8 +271,9 @@ function NeedsSchema({ onOpenSchema }: { readonly onOpenSchema: (() => void) | u
       {onOpenSchema === undefined ? (
         "Define one"
       ) : (
-        <button type="button" className="text-foreground underline underline-offset-2" data-testid="approve-needs-schema-go" onClick={onOpenSchema}>
+        <button type="button" className="vs-link inline-flex items-center gap-0.5 text-foreground underline-offset-2" data-testid="approve-needs-schema-go" onClick={onOpenSchema}>
           Define one
+          <ArrowUpRight className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
         </button>
       )}{" "}
       and the batch can be approved from its panel.

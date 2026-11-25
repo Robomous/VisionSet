@@ -172,7 +172,7 @@ describe("Complete, and maybe add to the dataset", () => {
     );
     const line = await screen.findByTestId("completed-drive-01");
     await waitFor(() =>
-      expect(line.textContent).toBe("Completed. Added 3 assets to the dataset."),
+      expect(line.textContent).toBe("Completed. Added 3 images to the dataset."),
     );
     await userEvent.click(screen.getByTestId("complete-promote-open-dataset-drive-01"));
     expect(openDataset).toHaveBeenCalledOnce();

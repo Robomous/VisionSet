@@ -156,7 +156,7 @@
  * instead of disabling itself.
  */
 
-import { Box, ChevronRight, CircleDashed, Cpu, Download, FileSearch, Globe, Package, Pencil, Plus, RadioTower, ShieldCheck, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Box, ChevronRight, CircleDashed, Cpu, Download, FileSearch, Globe, Package, Pencil, Plus, RadioTower, ShieldCheck, Sparkles, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type JSX, type ReactNode } from "react";
 
 import { Async } from "../data/Async";
@@ -1839,12 +1839,13 @@ function AccessLine({
     <p className="text-xs text-muted-foreground" data-testid="model-access">
       {access.note}{" "}
       <a
-        className="underline underline-offset-2"
+        className="vs-link inline-flex items-center gap-0.5 underline-offset-2"
         href={access.href}
         target="_blank"
         rel="noreferrer"
       >
         Request access
+        <ArrowUpRight className="size-3" strokeWidth={1.75} aria-hidden="true" />
       </a>
       .
     </p>

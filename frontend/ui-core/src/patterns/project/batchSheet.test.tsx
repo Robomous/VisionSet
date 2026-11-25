@@ -3,18 +3,20 @@
  *
  * What it promises: the state is one of the properties rather than a badge
  * beside the name; what is read less often waits behind "N more properties",
- * and folded it cannot be tabbed into; the line that condenses the batch on
- * scroll echoes the page, so it is hidden from assistive tech and adds no
- * second state; J/K still walk the batches from anywhere in the panel; and
- * each job is a row that is its own way into the editor, walked with ↑/↓.
+ * always the same four, "Empty" until they have a value, and folded it cannot
+ * be tabbed into; every action sits in the top bar, and the panel opens on the
+ * forward one; J/K still walk the batches from anywhere in the panel; and each
+ * job is a row that is its own way into the editor, walked with ↑/↓.
  */
 
 import { TooltipProvider } from "@robomous/ui-core";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
+import { Toaster } from "sonner";
 import { describe, expect, it, vi } from "vitest";
 
 import { BatchSheet, type BatchSheetProps, type SheetJob } from "./BatchSheet";
+import { SheetLine } from "./SheetLine";
 import type { BatchRowView } from "./BatchTable";
 
 const ROW: BatchRowView = {
@@ -59,20 +61,192 @@ describe("the batch's panel", () => {
 
     expect(screen.getByRole("heading", { level: 2, name: "autopista cámara 1" })).toBeTruthy();
     const facts = within(screen.getByTestId("batch-sheet-facts"));
-    // One state on the page for assistive tech: the condensed line's copy is hidden.
     expect(screen.getAllByTestId("batch-phase")).toHaveLength(1);
     expect(facts.getByText("State")).toBeTruthy();
     expect(facts.getByTestId("batch-phase").textContent).toBe("Labeling");
-    expect(facts.getByText("18 of 48")).toBeTruthy();
+    expect(screen.getByTestId("batch-sheet-facts").textContent).toContain("18 of 48 · 38%");
     expect(facts.getByText("ana")).toBeTruthy();
-    expect(screen.getByTestId("batch-sheet-condensed").getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("offers the bar's forward step beside the state, by the bar's own name, and pressing it presses the bar's control", async () => {
+    const approve = vi.fn();
+    renderSheet({
+      row: { ...ROW, phase: "draft", done: null },
+      actions: (
+        <button type="button" aria-label="Approve" data-autofocus="" onClick={approve}>
+          ✓
+        </button>
+      ),
+    });
+    const next = await screen.findByTestId("batch-sheet-next");
+    expect(next.textContent).toBe("Approve");
+    // Beside the chip, in the State property.
+    expect(screen.getByTestId("batch-sheet-facts").contains(next)).toBe(true);
+    await userEvent.click(next);
+    expect(approve).toHaveBeenCalledOnce();
+  });
+
+  it("offers nothing beside the state while the bar withholds its forward step", async () => {
+    renderSheet({
+      actions: (
+        <button type="button" aria-label="Complete batch" aria-disabled="true" data-autofocus="">
+          ✓
+        </button>
+      ),
+    });
+    await screen.findByTestId("batch-phase");
+    expect(screen.queryByTestId("batch-sheet-next")).toBeNull();
+  });
+
+  it("offers the way to the dataset beside the state once the batch is in it", async () => {
+    const onOpenDataset = vi.fn();
+    renderSheet({ row: { ...ROW, phase: "in_dataset", done: 48 }, onOpenDataset });
+    const next = await screen.findByTestId("batch-sheet-next");
+    expect(next.textContent).toBe("Open the dataset");
+    await userEvent.click(next);
+    expect(onOpenDataset).toHaveBeenCalledOnce();
+  });
+
+  it("says Labeled as the table does — x of y · z% and its ring — and it does not unfold", () => {
+    renderSheet();
+    const facts = screen.getByTestId("batch-sheet-facts");
+    expect(facts.textContent).toContain("18 of 48 · 38%");
+    expect(screen.queryByTestId("batch-sheet-split-toggle")).toBeNull();
+    const labeled = within(facts).getByText("Labeled").closest("div");
+    expect(labeled?.querySelector("button")).toBeNull();
+  });
+
+  it("says Not started for a batch with no jobs, with nothing to unfold", () => {
+    renderSheet({ row: { ...ROW, done: null } });
+    expect(screen.getByTestId("batch-sheet-facts").textContent).toContain("Not started");
+    expect(screen.queryByTestId("batch-sheet-split-toggle")).toBeNull();
+  });
+
+  it("puts every action in the top bar, and opens on the forward one", () => {
+    renderSheet({
+      tools: <button type="button">Auto-label</button>,
+      actions: (
+        <>
+          <button type="button">Delete batch</button>
+          <span aria-hidden="true" className="flex-1" />
+          <button type="button" data-autofocus="">
+            Annotate
+          </button>
+          <span data-line="">2 images left</span>
+        </>
+      ),
+    });
+
+    const bar = screen.getByTestId("batch-sheet-actions");
+    expect(bar.closest("header")).not.toBeNull();
+    expect(within(bar).getByText("Auto-label")).toBeTruthy();
+    expect(within(bar).getByText("2 images left")).toBeTruthy();
+    expect(document.querySelector("footer")).toBeNull();
+    expect(document.activeElement?.textContent).toBe("Annotate");
+  });
+
+  it("moves to the forward step when it arrives after the panel, until the person acts", () => {
+    const props: BatchSheetProps = { row: ROW, position: { at: 0, count: 3 }, onStep: vi.fn(), onClose: vi.fn(), jobs: JOBS, noJobs: "No jobs yet." };
+    const bar = (annotate: boolean) => (
+      <>
+        <button type="button">Delete batch</button>
+        <span aria-hidden="true" className="flex-1" />
+        {annotate && (
+          <button type="button" data-autofocus="">
+            Annotate
+          </button>
+        )}
+      </>
+    );
+    const { rerender } = render(
+      <TooltipProvider>
+        <BatchSheet {...props} actions={bar(false)} />
+      </TooltipProvider>,
+    );
+    // Opened from an address, the jobs are still being read: the last live action stands in.
+    expect(document.activeElement?.textContent).toBe("Delete batch");
+
+    rerender(
+      <TooltipProvider>
+        <BatchSheet {...props} actions={bar(true)} />
+      </TooltipProvider>,
+    );
+    return waitFor(() => expect(document.activeElement?.textContent).toBe("Annotate"));
+  });
+
+  it("hands the focus to the other arrow when stepping reaches an end", async () => {
+    const props: BatchSheetProps = { row: ROW, position: { at: 1, count: 3 }, onStep: vi.fn(), onClose: vi.fn(), jobs: JOBS, noJobs: "No jobs yet." };
+    const { rerender } = render(
+      <TooltipProvider>
+        <BatchSheet {...props} />
+      </TooltipProvider>,
+    );
+    screen.getByRole("button", { name: "Next batch (J)" }).focus();
+
+    rerender(
+      <TooltipProvider>
+        <BatchSheet {...props} position={{ at: 2, count: 3 }} />
+      </TooltipProvider>,
+    );
+    expect((screen.getByRole("button", { name: "Next batch (J)" }) as HTMLButtonElement).disabled).toBe(true);
+    await waitFor(() => expect(document.activeElement?.getAttribute("aria-label")).toBe("Previous batch (K)"));
+  });
+
+  it("has no footer: an outcome or a refusal is a toast, with its words and its way on", async () => {
+    render(
+      <TooltipProvider>
+        <BatchSheet
+          row={ROW}
+          position={{ at: 0, count: 3 }}
+          onStep={vi.fn()}
+          onClose={vi.fn()}
+          jobs={JOBS}
+          noJobs="No jobs yet."
+          actions={
+            <>
+              <SheetLine tone="success" data-testid="done-line" action={<a href="#dataset">Open the dataset</a>}>
+                Completed.
+              </SheetLine>
+              <SheetLine tone="error" data-testid="refused-line">
+                This batch can’t be completed yet.
+              </SheetLine>
+            </>
+          }
+        />
+        <Toaster />
+      </TooltipProvider>,
+    );
+
+    expect(screen.queryByTestId("batch-sheet-status")).toBeNull();
+    const done = await screen.findByTestId("done-line");
+    const refused = await screen.findByTestId("refused-line");
+    // Not in the panel: in the toasts.
+    expect(screen.getByTestId("batch-sheet-actions").contains(done)).toBe(false);
+    expect(done.closest("[data-sonner-toast]")?.getAttribute("data-type")).toBe("success");
+    expect(refused.closest("[data-sonner-toast]")?.getAttribute("data-type")).toBe("error");
+    expect(done.closest("[data-sonner-toast]")?.textContent).toContain("Open the dataset");
+  });
+
+  it("keeps a line in place, as a row, outside a panel", () => {
+    render(<SheetLine tone="error" data-testid="refused-line">This batch can’t be completed yet.</SheetLine>);
+    expect(screen.getByTestId("refused-line").closest("[data-line]")?.getAttribute("role")).toBe("alert");
+  });
+
+  it("says Empty where a property has no value yet", async () => {
+    renderSheet({ row: { ...ROW, phase: "draft", schemaVersion: null, done: null }, jobs: [], details: { review: null, correction: false, promoted: 0 } });
+
+    const facts = within(screen.getByTestId("batch-sheet-facts"));
+    expect(facts.getByText("Not started")).toBeTruthy();
+    await userEvent.click(screen.getByTestId("batch-sheet-more-toggle"));
+    const more = screen.getByTestId("batch-sheet-more");
+    expect(within(more).getAllByText("Empty")).toHaveLength(3);
   });
 
   it("keeps the properties read less often behind a fold that cannot be tabbed into until it opens", async () => {
     renderSheet();
 
     const toggle = screen.getByTestId("batch-sheet-more-toggle");
-    expect(toggle.textContent).toBe("3 more properties");
+    expect(toggle.textContent).toBe("4 more properties");
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     const more = screen.getByTestId("batch-sheet-more");
     expect(more.hasAttribute("inert")).toBe(true);
@@ -81,7 +255,7 @@ describe("the batch's panel", () => {
 
     await userEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(toggle.textContent).toBe("Fewer properties");
+    expect(toggle.textContent).toBe("Hide 4 properties");
     expect(more.hasAttribute("inert")).toBe(false);
   });
 
@@ -116,7 +290,7 @@ describe("the batch's panel", () => {
     const first = screen.getByTestId("batch-sheet-job-Job 1");
     expect(first.textContent).toContain("In progress");
     expect(first.textContent).toContain("ana");
-    expect(first.textContent).toContain("12/24");
+    expect(first.textContent).toContain("12 of 24 · 50%");
     // A finished job is read, not continued: the row says View and its name says done.
     expect(screen.getByTestId("batch-sheet-job-Job 3").textContent).toContain("Unassigned");
     await userEvent.click(screen.getByRole("button", { name: "View Job 3 in the editor, done" }));

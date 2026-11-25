@@ -204,6 +204,8 @@ export const PARENT = {
   dataset: (projectId: string) => PARENT.section(projectId, "dataset"),
   schema: (projectId: string) => PARENT.section(projectId, "schema"),
   batch: (projectId: string, batchId: string) => `${PARENT.project(projectId)}?batch=${encodeURIComponent(batchId)}`,
+  //: One batch's images: the Images section narrowed by `?batch=`, a different section from the Overview's panel that shares the parameter's name.
+  batchAssets: (projectId: string, batchId: string) => `${PARENT.section(projectId, "images")}?batch=${encodeURIComponent(batchId)}`,
   //: Add images is a dialog over the Overview, not a page: `?add=images` is its address.
   addImages: (projectId: string) => `${PARENT.project(projectId)}?${ADD_IMAGES}=images`,
 } as const;
@@ -322,6 +324,24 @@ function Project(): JSX.Element {
         );
       }}
       onOpenJob={(jobId) => void navigate(`/jobs/${jobId}`)}
+      // The Overview's way to a batch's images: the Images section, narrowed. A
+      // navigation, because the section is another place, with its own `?batch=`.
+      onOpenBatchAssets={(batchId) => void navigate(PARENT.batchAssets(projectId, batchId))}
+      // The Images section's narrowing is the same parameter name read on a
+      // different section, so it is the URL's only there. `replace`: a filter is
+      // a view of the same page, and Back should leave it rather than walk it.
+      imagesBatchId={section === "images" ? query.get("batch") : null}
+      onImagesBatchChange={(batchId) =>
+        setQuery(
+          (now) => {
+            const next = new URLSearchParams(now);
+            if (batchId === null) next.delete("batch");
+            else next.set("batch", batchId);
+            return next;
+          },
+          { replace: true },
+        )
+      }
       // A deleted project's own URL is a 404 waiting to happen, so the parent is
       // where to land — and `replace`, because Back should not walk into it.
       onDeleted={() => void navigate(PARENT.projects, { replace: true })}

@@ -40,7 +40,8 @@ import { cn } from "@robomous/ui-core";
 import type { Modality } from "../../lib/assetNoun";
 import { formatCount } from "../../lib/format";
 import type { BatchPhase } from "./BatchSummary";
-import { initials, labeledDetail, lensAdmits, phaseState, rowNoun, type Lens } from "./batchRowModel";
+import { initials, lensAdmits, phaseState, rowNoun, type Lens } from "./batchRowModel";
+import { LabeledReadout } from "./LabeledReadout";
 import { StateChip } from "../StateChip";
 import { BODY_ROW, ColumnHeader, ListGrid, type ListColumn } from "../ListPage";
 import { columnLines } from "../listColumns";
@@ -140,10 +141,12 @@ export interface BatchTableProps {
   readonly note?: ReactNode;
   /** The empty table's one next step. */
   readonly emptyAction?: ReactNode;
+  /** The batches' ways forward — Add images, Annotate — last in the band. */
+  readonly bandActions?: ReactNode;
   readonly className?: string;
 }
 
-export function BatchTable({ rows, view, openId, onOpen, actions, tools, note, emptyAction, className }: BatchTableProps): JSX.Element {
+export function BatchTable({ rows, view, openId, onOpen, actions, tools, note, emptyAction, bandActions, className }: BatchTableProps): JSX.Element {
   const { lens, setLens, query, setQuery, shown, pagination } = view;
   const filter = useRef<HTMLInputElement>(null);
   const frame = useRef<HTMLDivElement>(null);
@@ -173,6 +176,7 @@ export function BatchTable({ rows, view, openId, onOpen, actions, tools, note, e
         shown={shown.length}
         {...{ lens, setLens, query, setQuery, tools }}
         filterRef={filter}
+        actions={bandActions}
       />
 
       {note}
@@ -345,9 +349,7 @@ function Progress({ row }: { readonly row: BatchRowView }): JSX.Element {
   }
   if (row.done === null) return <span className="text-xs text-muted-foreground">Not started</span>;
   return (
-    <ProgressReadout value={row.done} total={row.total} className="text-xs" detail={labeledDetail(row)}>
-      {formatCount(row.done)}/{formatCount(row.total)}
-    </ProgressReadout>
+    <LabeledReadout row={row} done={row.done} className="text-xs" />
   );
 }
 

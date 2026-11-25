@@ -128,14 +128,10 @@ export function ClassRail({ rows, totalAnnotations, note, onOpen, className }: C
               onClick={onOpen}
               aria-label="Edit classes"
               data-testid="overview-edit-classes"
-              className="group/edit relative flex items-center gap-1 rounded-sm text-xs text-muted-foreground outline-none after:absolute after:-inset-2 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+              className="vs-link relative flex items-center gap-1 rounded-sm text-xs text-muted-foreground underline-offset-4 outline-none after:absolute after:-inset-2 hover:text-foreground"
             >
               Edit
-              <ArrowUpRight
-                aria-hidden="true"
-                strokeWidth={1.75}
-                className="size-3.5 transition-transform duration-150 ease-out group-hover/edit:translate-x-0.5 group-hover/edit:-translate-y-0.5"
-              />
+              <ArrowUpRight aria-hidden="true" strokeWidth={1.75} className="size-3.5" />
             </button>
           )}
         </span>

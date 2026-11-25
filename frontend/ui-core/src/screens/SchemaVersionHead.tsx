@@ -22,7 +22,7 @@
  * them as the next version.
  */
 
-import { Check, ChevronLeft, ChevronRight, ChevronsUpDown, CircleHelp, PenTool, RotateCcw, Tags, TriangleAlert, Undo2 } from "lucide-react";
+import { ArrowUpRight, Check, ChevronLeft, ChevronRight, ChevronsUpDown, CircleHelp, PenTool, RotateCcw, Tags, TriangleAlert, Undo2 } from "lucide-react";
 import { useEffect, useEffectEvent, useMemo, useState, type JSX, type ReactNode } from "react";
 
 import {
@@ -134,9 +134,10 @@ export function VersionHead({
                 <button
                   type="button"
                   onClick={() => onView(older)}
-                  className="rounded-sm font-mono text-[11px] text-foreground underline decoration-border underline-offset-2 outline-none hover:decoration-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                  className="vs-link inline-flex items-center gap-0.5 rounded-sm font-mono text-[11px] text-foreground underline-offset-2 outline-none"
                 >
                   v{older}
+                  <ArrowUpRight className="size-3" strokeWidth={1.75} aria-hidden="true" />
                 </button>
               </span>
             </>

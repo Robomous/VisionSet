@@ -13,7 +13,7 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { TooltipProvider } from "@robomous/ui-core";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { IMAGES_PAGE_SIZE, ImagesScreen } from "./ImagesScreen";
@@ -66,6 +66,11 @@ let total: number | undefined;
 let watching: { readonly fire: () => void }[] = [];
 /** Every path the screen fetched, in order. */
 let fetched: string[] = [];
+/** The batches of the project, and what each batch's listing holds (the batch's own order). */
+let batches: Record<string, unknown>[] = [];
+let batchHeld: Record<string, Record<string, unknown>[]> = {};
+/** Every `/batches/{id}/assets` read, in order. */
+let batchAsked: { readonly id: string; readonly offset: string | null; readonly limit: string | null }[] = [];
 
 function json(body: unknown, status = 200): Promise<Response> {
   return Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }));
@@ -77,6 +82,9 @@ beforeEach(() => {
   sources = [];
   watching = [];
   fetched = [];
+  batches = [];
+  batchHeld = {};
+  batchAsked = [];
   vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : new Request(String(input), init);
     const url = new URL(request.url);
@@ -91,6 +99,18 @@ beforeEach(() => {
       const items = scope.slice(start, start + Number(limit ?? scope.length));
       return json({ items, total: only === null ? (total ?? scope.length) : scope.length });
     }
+    const inBatch = /\/batches\/([^/]+)\/assets$/.exec(url.pathname);
+    if (inBatch !== null) {
+      const id = inBatch[1]!;
+      const offset = url.searchParams.get("offset");
+      const limit = url.searchParams.get("limit");
+      batchAsked.push({ id, offset, limit });
+      const scope = batchHeld[id];
+      if (scope === undefined) return json({ code: "BATCH_NOT_FOUND", message: "no such batch" }, 404);
+      const start = Number(offset ?? 0);
+      return json({ items: scope.slice(start, start + Number(limit ?? scope.length)).map(batchAsset), total: scope.length });
+    }
+    if (/\/projects\/[^/]+\/batches$/.test(url.pathname)) return json({ items: batches, total: batches.length });
     if (/\/projects\/[^/]+\/sources$/.test(url.pathname)) return json({ items: sources, total: sources.length });
     if (/\/thumbnail$/.test(url.pathname)) return Promise.resolve(new Response(new Uint8Array([255, 216, 255]), { status: 200 }));
     if (/\/content$/.test(url.pathname)) return Promise.resolve(new Response(new Uint8Array([137, 80, 78, 71]), { status: 200 }));
@@ -129,8 +149,20 @@ afterEach(() => {
   total = undefined;
 });
 
-function renderImages(onIngest?: () => void): void {
-  const node: ReactNode = <ImagesScreen projectId={PROJECT} {...(onIngest === undefined ? {} : { onIngest })} />;
+/** What `GET /batches/{id}/assets` adds to an asset: the batch's own facts about it. */
+function batchAsset(one: Record<string, unknown>): Record<string, unknown> {
+  return { ...one, allowed_actions: [], annotation_count: 0, job_id: null, min_confidence: null, progress: null };
+}
+
+function renderImages(onIngest?: () => void, batch?: { readonly id: string | null; readonly onChange?: (id: string | null) => void }): void {
+  const node: ReactNode = (
+    <ImagesScreen
+      projectId={PROJECT}
+      {...(onIngest === undefined ? {} : { onIngest })}
+      {...(batch === undefined ? {} : { batchId: batch.id })}
+      {...(batch?.onChange === undefined ? {} : { onBatchChange: batch.onChange })}
+    />
+  );
   renderWithData(<TooltipProvider>{node}</TooltipProvider>);
 }
 
@@ -369,3 +401,135 @@ describe("the Images section", () => {
     expect(note.textContent).toBe("2 images have no recorded source and are not listed here.");
   });
 });
+
+const BATCH = "44444444-4444-4444-8444-444444444444";
+
+function aBatch(id: string, name: string): Record<string, unknown> {
+  return {
+    id,
+    name,
+    project_id: PROJECT,
+    state: "in_annotation",
+    asset_count: 4,
+    modalities: ["image"],
+    promoted_asset_count: 0,
+    schema_version: 1,
+    parent_batch_id: null,
+    pre_label_run: null,
+    progress: { unannotated: 4, pre_labeled: 0, annotated: 0, skipped: 0, review_pending: 0, accepted: 0, total: 4 },
+    allowed_actions: [],
+  };
+}
+
+describe("the Images section narrowed to a batch", () => {
+  /** The project holds 8 images; the batch holds 4 of them, two from each source. */
+  function withBatch(): void {
+    twoSources();
+    batches = [aBatch(BATCH, "drive-01")];
+    batchHeld = { [BATCH]: [held[0]!, held[1]!, held[3]!, held[4]!] };
+  }
+
+  it("reads the batch's own listing, never the project's, and shows only its images", async () => {
+    withBatch();
+    renderImages(undefined, { id: BATCH, onChange: vi.fn() });
+
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(4));
+    expect(batchAsked[0]).toEqual({ id: BATCH, offset: "0", limit: "100" });
+    // The project's listing is asked once, for its count: one image, no source, no page of the grid.
+    expect(asked.filter((one) => one.limit !== "1")).toEqual([]);
+    expect(screen.queryByTestId("images-source-menu")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Show only/ })).toBeNull();
+    // One run: the batch's order, not a section per source.
+    expect(screen.getAllByRole("listbox")).toHaveLength(1);
+    expect(screen.getByRole("listbox", { name: "Images in drive-01" })).toBeTruthy();
+    expect(screen.getByTestId("images-source-line").textContent).toBe("4 images");
+  });
+
+  it("names the batch in a chip, and the chip's × asks the host to lift the narrowing", async () => {
+    withBatch();
+    const onChange = vi.fn();
+    renderImages(undefined, { id: BATCH, onChange });
+
+    await waitFor(() => expect(screen.getByTestId("images-batch-name").textContent).toBe("drive-01"));
+    expect(screen.getByTestId("images-batch-chip").textContent).toContain("Batch:");
+    await userEvent.click(screen.getByRole("button", { name: "Remove batch filter" }));
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(null);
+  });
+
+  it("offers no × when the host cannot write the narrowing", async () => {
+    withBatch();
+    renderImages(undefined, { id: BATCH });
+
+    await waitFor(() => expect(screen.getByTestId("images-batch-name").textContent).toBe("drive-01"));
+    expect(screen.queryByTestId("images-batch-clear")).toBeNull();
+  });
+
+  it("still names each image's source in the detail, and walks and focuses as the whole section does", async () => {
+    withBatch();
+    renderImages(undefined, { id: BATCH, onChange: vi.fn() });
+
+    await waitFor(() => expect(screen.queryByTestId("image-f1")).not.toBeNull());
+    await userEvent.click(screen.getByTestId("image-f1"));
+    expect(screen.getByTestId("image-detail-position").textContent).toBe("2 of 4");
+    expect(within(screen.getByTestId("image-facts")).getByText("walkthrough.mp4")).toBeTruthy();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByTestId("image-detail-position").textContent).toBe("3 of 4");
+    expect(within(screen.getByTestId("image-facts")).getByText("site-survey/2026-09-15")).toBeTruthy();
+    await userEvent.click(screen.getByTestId("image-focus-toggle"));
+    expect(screen.getByTestId("image-focus-toggle").getAttribute("aria-label")).toBe("Back to grid");
+  });
+
+  it("reads the batch's next page as the end of what has arrived comes within reach", async () => {
+    twoSources();
+    batches = [aBatch(BATCH, "big")];
+    batchHeld = { [BATCH]: Array.from({ length: 130 }, (_, i) => asset(`b${i}`, { source_id: FOLDER })) };
+    renderImages(undefined, { id: BATCH, onChange: vi.fn() });
+
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(100));
+    expect(screen.getByTestId("images-source-line").textContent).toBe("130 images");
+    act(() => watching.forEach((one) => one.fire()));
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(130));
+    expect(batchAsked.map((one) => one.offset)).toEqual(["0", "100"]);
+  });
+
+  it("says so when the batch holds no images", async () => {
+    twoSources();
+    batches = [aBatch(BATCH, "empty-one")];
+    batchHeld = { [BATCH]: [] };
+    renderImages(undefined, { id: BATCH, onChange: vi.fn() });
+
+    expect((await screen.findByTestId("images-batch-empty")).textContent).toBe("This batch has no images.");
+    expect(screen.getByTestId("images-batch-name").textContent).toBe("empty-one");
+  });
+
+  it("shows the refusal, with the chip still there to remove, for a batch that is not there", async () => {
+    twoSources();
+    const onChange = vi.fn();
+    renderImages(undefined, { id: BATCH, onChange });
+
+    expect(await screen.findByTestId("images-failure")).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId("images-batch-name").textContent).toBe("Unknown batch"));
+    await userEvent.click(screen.getByTestId("images-batch-clear"));
+    expect(onChange).toHaveBeenCalledWith(null);
+  });
+
+  it("is the whole project again once the narrowing is lifted, keeping the tile size", async () => {
+    withBatch();
+    const view = renderWithData(<TooltipProvider><Switch /></TooltipProvider>);
+    void view;
+
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(4));
+    await userEvent.click(screen.getByRole("radio", { name: "Large tiles" }));
+    await userEvent.click(screen.getByTestId("images-batch-clear"));
+    await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(8));
+    expect(screen.queryByTestId("images-batch")).toBeNull();
+    expect(screen.getByRole("radio", { name: "Large tiles" }).getAttribute("data-state")).toBe("on");
+    expect(screen.getByTestId("images-source-menu")).toBeTruthy();
+  });
+});
+
+/** The host's half: the narrowing is a value it holds, and the chip's × writes it. */
+function Switch(): ReactNode {
+  const [batch, setBatch] = useState<string | null>(BATCH);
+  return <ImagesScreen projectId={PROJECT} batchId={batch} onBatchChange={setBatch} />;
+}

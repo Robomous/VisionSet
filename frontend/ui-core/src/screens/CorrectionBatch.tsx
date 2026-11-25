@@ -31,13 +31,14 @@
  * selection is a thing somebody chose.
  */
 
-import { GitBranch, GitBranchPlus } from "lucide-react";
+import { ArrowUpRight, GitBranch, GitBranchPlus } from "lucide-react";
 import { useState, type JSX } from "react";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
-import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError } from "@robomous/ui-core";
-import { IconAction } from "../patterns/IconAction";
+import { Button, cn, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldDescription, FieldError, Tooltip, TooltipContent, TooltipTrigger } from "@robomous/ui-core";
+import { IconActionTip } from "../patterns/IconAction";
+import { quietUnlessVisible } from "../patterns/iconFocus";
 import { defaultCorrectionName } from "./batchWords";
 import { useCreateCorrection, type Batch } from "./queries";
 
@@ -72,8 +73,12 @@ export interface CorrectionButtonProps {
   readonly open?: boolean;
   readonly onOpenChange?: (open: boolean) => void;
   readonly size?: "sm" | "lg";
-  /** An icon button named by its tooltip, as the batch panel draws every control. */
-  readonly iconOnly?: boolean;
+  /**
+   * The batch panel's bar: a quiet ghost button that says *Correct*, like
+   * *Annotate* beside it, with what it makes in its tooltip — an icon alone
+   * read as a git merge, not as fixing a finished batch's labels.
+   */
+  readonly inBar?: boolean;
 }
 
 export function CorrectionButton({
@@ -86,7 +91,7 @@ export function CorrectionButton({
   open,
   onOpenChange,
   size = "sm",
-  iconOnly = false,
+  inBar = false,
 }: CorrectionButtonProps): JSX.Element | null {
   const [own, setOwn] = useState(false);
   const showing = open ?? own;
@@ -99,15 +104,24 @@ export function CorrectionButton({
 
   return (
     <>
-      {iconOnly ? (
-        <IconAction
-          icon={GitBranchPlus}
-          label="Create correction batch"
-          hint="A new batch over the same frames"
-          className={className}
-          data-testid={`correct-${batch.name}`}
-          onClick={() => setShowing(true)}
-        />
+      {inBar ? (
+        <Tooltip>
+          <TooltipTrigger asChild onFocus={quietUnlessVisible}>
+            <Button
+              variant="ghost"
+              size="lg"
+              className={cn("text-[13px] transition-[background-color,scale] duration-100 ease-out active:scale-[0.97] motion-reduce:transition-none", className)}
+              data-testid={`correct-${batch.name}`}
+              onClick={() => setShowing(true)}
+            >
+              <GitBranchPlus data-icon="inline-start" aria-hidden="true" strokeWidth={1.75} />
+              Correct
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            <IconActionTip label="Create correction batch" detail="A new batch over the same frames" />
+          </TooltipContent>
+        </Tooltip>
       ) : (
         <Button
           variant="outline"
@@ -300,6 +314,7 @@ export function CorrectionOf({
           onClick={onOpenParent}
         >
           {parentName}
+          <ArrowUpRight className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
         </Button>
       )}
     </span>

@@ -277,15 +277,14 @@ for (const section of SECTIONS) {
     await expect(page.getByTestId("project-tabs")).toHaveCount(0);
 
     // The toolbar holds controls only: the sections, what the open section
-    // offers, and the overflow. Add images is a button where images are the
-    // subject (Overview, Images) and the overflow's first entry elsewhere; the
-    // project has a batch open, so Annotate — the Overview's alone — is the one
-    // filled control there. The identity is the open-project tab above the
-    // toolbar: no eyebrow line is drawn over the content, and no way out,
-    // because the toolbar, the tabs and the rail are it.
+    // offers, and the overflow. Add images is the bar's button on Images and
+    // the overflow's first entry on Classes and Dataset; on the Overview it and
+    // Annotate are the batches band's, beside the batches. The identity is the
+    // open-project tab above the toolbar: no eyebrow line is drawn over the
+    // content, and no way out, because the toolbar, the tabs and the rail are it.
     const imagesSubject = section === "overview" || section === "images";
-    await expect(nav.getByTestId("go-annotate")).toHaveCount(section === "overview" ? 1 : 0);
-    await expect(nav.getByTestId("go-ingest")).toHaveCount(imagesSubject ? 1 : 0);
+    await expect(nav.getByTestId("go-annotate")).toHaveCount(0);
+    await expect(nav.getByTestId("go-ingest")).toHaveCount(section === "images" ? 1 : 0);
     await expect(nav.getByTestId("project-menu")).toBeVisible();
     await expect(nav.getByTestId("project-menu")).toHaveAccessibleName("Project actions");
     await expect(page.getByTestId("project-identity")).toHaveCount(0);
@@ -305,7 +304,7 @@ for (const section of SECTIONS) {
     await expect(page.getByTestId("section-header")).toHaveCount(0);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(HEADINGS[section]);
     await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
-    // Never in a section's content, and never both a button and a menu entry.
+    // One Add images where images are the subject, never two.
     await expect(page.getByTestId("go-ingest")).toHaveCount(imagesSubject ? 1 : 0);
     expect(await filledControls(page)).toBe(1);
   });
@@ -368,23 +367,33 @@ test("the old Batches section address redirects to the Overview, which lists the
   await expect(page.getByTestId("batches-screen")).toHaveCount(0);
 });
 
-test("with a batch open, Add images is secondary and sits in the toolbar before Annotate, once, on the overview", async ({
+test("on the overview Add images and Annotate end the batches band: a ghost icon, then the filled control", async ({
   page,
 }) => {
   await openCold(page, `/projects/${PROJECT}/overview`);
-  const nav = page.getByTestId("project-nav");
-  await expect(nav.getByTestId("go-annotate")).toBeVisible();
-  // The toolbar is the only place Add images lives: outline, and before the
-  // filled Annotate. The Batches panel does not repeat it.
-  const add = nav.getByTestId("go-ingest");
-  await expect(add).toBeVisible();
-  await expect(page.getByTestId("go-ingest")).toHaveCount(1);
+  const band = page.getByTestId("overview-batches");
+  const annotate = band.getByTestId("go-annotate");
+  await expect(annotate).toBeVisible();
+  await expect(annotate).toHaveText("Annotate");
+  await expect(annotate).toHaveClass(/bg-primary/);
+  const add = band.getByTestId("go-ingest");
+  await expect(add).toHaveAccessibleName("Add images");
+  await expect(add).toHaveText("");
   await expect(add).not.toHaveClass(/bg-primary/);
-  await expect(nav.getByTestId("go-annotate")).toHaveClass(/bg-primary/);
+  // Once on the page, and none in the bar.
+  await expect(page.getByTestId("go-ingest")).toHaveCount(1);
+  await expect(page.getByTestId("project-nav").getByTestId("go-ingest")).toHaveCount(0);
+  // After the filter, Add images (a 28px square) before Annotate, all on one line at the filter's height.
+  const filter = (await band.getByTestId("batches-filter").boundingBox())!;
   const addBox = (await add.boundingBox())!;
-  const annotateBox = (await nav.getByTestId("go-annotate").boundingBox())!;
+  const annotateBox = (await annotate.boundingBox())!;
+  expect(filter.x + filter.width).toBeLessThanOrEqual(addBox.x);
   expect(addBox.x + addBox.width).toBeLessThanOrEqual(annotateBox.x + 1);
-  await expect(page.getByTestId("overview-batches").getByTestId("go-ingest")).toHaveCount(0);
+  expect(addBox.height).toBeCloseTo(filter.height, 0);
+  expect(addBox.width).toBeCloseTo(addBox.height, 0);
+  expect(annotateBox.height).toBeCloseTo(filter.height, 0);
+  expect(Math.abs(addBox.y - filter.y)).toBeLessThanOrEqual(1);
+  expect(await filledControls(page)).toBe(1);
 });
 
 test("on the Images section Add images is the toolbar's one filled control, and Annotate is not offered", async ({
@@ -447,9 +456,9 @@ test("with no batch open, Add images is the toolbar's filled control, and still 
   await expect(nav.getByTestId("go-ingest")).toHaveClass(/bg-primary/);
 });
 
-test("Add images in the toolbar opens its dialog over the section, and closing it leaves the section as it was", async ({ page }) => {
+test("Add images in the batches band opens its dialog over the section, and closing it leaves the section as it was", async ({ page }) => {
   await openCold(page, `/projects/${PROJECT}/overview`);
-  await page.getByTestId("project-nav").getByTestId("go-ingest").click();
+  await page.getByTestId("overview-batches").getByTestId("go-ingest").click();
   const dialog = page.getByRole("dialog", { name: "Add images" });
   await expect(dialog).toBeVisible();
   // The address holds it open, so a reload or a pasted link opens it too.
@@ -472,6 +481,24 @@ test("the Images section lists every image of the project, with the total stated
   await expect(page.getByTestId("images-count")).toHaveText("1 image");
   // An app pane, not a document: only the grid scrolls.
   expect(await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight)).toBeLessThanOrEqual(0);
+});
+
+test("the Images section narrowed by ?batch= shows that batch's images under a chip, and removing it replaces the address", async ({ page }) => {
+  await openCold(page, `/projects/${PROJECT}/images?batch=${BATCH}`);
+
+  // Read from the batch's own listing, named by the batches the project lists.
+  await expect(page.getByTestId("images-batch-name")).toHaveText("drive-01");
+  await expect(page.getByTestId("images-sheet").getByTestId("image-asset-1")).toBeVisible();
+  await expect(page.getByTestId("images-source-menu")).toHaveCount(0);
+  await expect(page.getByTestId("images-count")).toHaveText("1 of 1 images");
+
+  // The chip is not history: removing it replaces the entry, so Back leaves the page.
+  const before = await page.evaluate(() => window.history.length);
+  await page.getByRole("button", { name: "Remove batch filter" }).click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT}/images$`));
+  await expect(page.getByTestId("images-batch")).toHaveCount(0);
+  await expect(page.getByTestId("images-sheet").getByTestId("image-asset-1")).toBeVisible();
+  expect(await page.evaluate(() => window.history.length)).toBe(before);
 });
 
 /** Two sources of the project, the second a clip, and the images each produced. */
@@ -645,9 +672,10 @@ test("the toolbar frames a batch's panel and the Add images dialog too", async (
   // and the frame draws no eyebrow above it.
   await expect(page.getByTestId("project-identity")).toHaveCount(0);
   await expect(page.getByTestId("back-link")).toHaveCount(0);
-  // The Overview's toolbar still offers its own actions beside the open panel.
-  await expect(nav.getByTestId("go-annotate")).toHaveCount(1);
-  await expect(nav.getByTestId("go-ingest")).toHaveCount(1);
+  // The Overview's batches band still offers its ways forward beside the open panel.
+  const band = page.getByTestId("overview-batches");
+  await expect(band.getByTestId("go-annotate")).toHaveCount(1);
+  await expect(band.getByTestId("go-ingest")).toHaveCount(1);
 
   // Add images is a dialog over a section, so the section under it stays lit and
   // its toolbar stays drawn behind the scrim.
@@ -694,9 +722,9 @@ test("below lg the tab strip renders and the toolbar does not, with nothing lost
   ).toBe(true);
   await page.setViewportSize({ width: 900, height: 800 });
 
-  // No eyebrow above the strip (the open-project tab names the project), and
-  // Add images, the filled control and the overflow beside the tabs: everything
-  // the toolbar offers, in a row.
+  // No eyebrow above the strip (the open-project tab names the project), the
+  // overflow beside the tabs, and the batches band's Add images and Annotate:
+  // nothing lost.
   await expect(page.getByTestId("project-identity")).toHaveCount(0);
   await expect(page.getByTestId("go-ingest")).toHaveCount(1);
   await expect(page.getByTestId("go-annotate")).toBeVisible();
