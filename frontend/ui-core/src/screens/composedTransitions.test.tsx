@@ -19,7 +19,7 @@ import {
 import type { Batch } from "./queries";
 import { renderWithData } from "../testing/dataHarness";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
-import { batchActions } from "../testing/wire.fixtures.js";
+import { batchActions, settledOf } from "../testing/wire.fixtures.js";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "55555555-5555-4555-8555-555555555555";
@@ -78,6 +78,7 @@ const NO_PROGRESS = {
 
 function batch(overrides: Partial<Batch> = {}): Batch {
   const state = overrides.state ?? "draft";
+  const progress = overrides.progress ?? { ...NO_PROGRESS, unannotated: 3, total: 3 };
   return {
     id: BATCH,
     project_id: PROJECT,
@@ -85,8 +86,8 @@ function batch(overrides: Partial<Batch> = {}): Batch {
     state,
     schema_version: null,
     asset_count: 3,
-    progress: { ...NO_PROGRESS, unannotated: 3, total: 3 },
-    allowed_actions: batchActions(state),
+    progress,
+    allowed_actions: batchActions(state, { settled: settledOf(progress) }),
     modalities: ["image"],
     promoted_asset_count: 0,
     parent_batch_id: null,
@@ -245,8 +246,8 @@ describe("Complete, and maybe add to the dataset", () => {
     expect(posts()).toEqual([]);
   });
 
-  it("is offered whenever the batch declares complete, whatever its counts say", async () => {
-    renderWithData(<CompleteBatchButton batch={{ ...outstanding, allowed_actions: batchActions("in_annotation") }} projectId={PROJECT} />);
+  it("is offered whenever the batch declares complete", async () => {
+    renderWithData(<CompleteBatchButton batch={settled} projectId={PROJECT} />);
     const control = screen.getByTestId("complete-drive-01");
     expect(control.getAttribute("aria-disabled")).toBeNull();
     await userEvent.click(control);

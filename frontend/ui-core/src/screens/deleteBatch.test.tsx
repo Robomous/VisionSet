@@ -4,7 +4,7 @@
  * Three claims here that nothing else in the suite makes:
  *
  * 1. **Availability is the wire's**, not a rule this client keeps. Every case
- *    below builds its batch from `batchActions(state)` — the transcription of
+ *    below builds its batch from `batchActions(state, { settled: false })` — the transcription of
  *    `capabilities.py` — so a state's answer changes here only when the kernel's
  *    does. `completed` renders the button disabled *with the reason* (its tooltip), which is the
  *    `ui-capabilities` requirement that a meaningful-but-unavailable action
@@ -80,7 +80,7 @@ function batch(state: Batch["state"], overrides: Partial<Batch> = {}): Batch {
     state,
     schema_version: state === "draft" ? null : 1,
     asset_count: 48,
-    allowed_actions: batchActions(state),
+    allowed_actions: batchActions(state, { settled: false }),
     modalities: ["image"],
     promoted_asset_count: 0,
     parent_batch_id: null,

@@ -21,7 +21,7 @@ import type { JSX } from "react";
 import { PreLabelButton } from "./PreLabelDialog";
 import { useBatch, useBatchJobs } from "./queries";
 import { renderWithData } from "../testing/dataHarness";
-import { batchActions, jobActions } from "../testing/wire.fixtures.js";
+import { batchActions, jobActions, settledOf } from "../testing/wire.fixtures.js";
 import type { Segment } from "./batchState";
 import type { Connection } from "../data/inferenceQueries";
 import type { components } from "../generated/api";
@@ -80,6 +80,7 @@ const NO_PROGRESS = {
 
 function batch(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   const state = (overrides.state as BatchState | undefined) ?? "in_annotation";
+  const progress = (overrides.progress as Record<string, number> | undefined) ?? { ...NO_PROGRESS, total: 48, unannotated: 48 };
   return {
     id: BATCH,
     project_id: PROJECT,
@@ -87,8 +88,8 @@ function batch(overrides: Record<string, unknown> = {}): Record<string, unknown>
     state: "in_annotation",
     schema_version: 3,
     asset_count: 48,
-    progress: { ...NO_PROGRESS, total: 48, unannotated: 48 },
-    allowed_actions: batchActions(state),
+    progress,
+    allowed_actions: batchActions(state, { settled: settledOf(progress) }),
     modalities: ["image"],
     promoted_asset_count: 0,
     parent_batch_id: null,

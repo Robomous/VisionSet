@@ -226,7 +226,7 @@ export async function serveApi(
     state: lifecycle.batch,
     schema_version: 3,
     asset_count: 2,
-    allowed_actions: batchActions(lifecycle.batch),
+    allowed_actions: batchActions(lifecycle.batch, { settled: false }),
     modalities: ["image"],
     promoted_asset_count: 0,
     parent_batch_id: null,
