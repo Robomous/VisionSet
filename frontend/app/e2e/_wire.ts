@@ -94,8 +94,12 @@ const ASSET_ACTIONS: Record<Wire["AssetProgress"], readonly Wire["AssetAction"][
   accepted: [],
 };
 
-export function batchActions(state: string): Wire["BatchAction"][] {
-  return [...(BATCH_ACTIONS[state as Wire["BatchState"]] ?? [])];
+/** A batch's actions; `complete` additionally needs every asset settled, as a job's does. */
+export function batchActions(state: string, options: { settled?: boolean } = {}): Wire["BatchAction"][] {
+  const { settled = true } = options;
+  return [...(BATCH_ACTIONS[state as Wire["BatchState"]] ?? [])].filter(
+    (action) => settled || action !== "complete",
+  );
 }
 
 /**

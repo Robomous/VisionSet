@@ -53,8 +53,10 @@ const ASSET_ACTIONS: Record<Progress, readonly AssetAction[]> = {
   accepted: [],
 };
 
-export function batchActions(state: BatchState): BatchAction[] {
-  return [...BATCH_ACTIONS[state]];
+/** A batch's actions; `complete` additionally needs every asset settled, as a job's does. */
+export function batchActions(state: BatchState, options: { settled?: boolean } = {}): BatchAction[] {
+  const { settled = true } = options;
+  return BATCH_ACTIONS[state].filter((action) => settled || action !== "complete");
 }
 
 /**

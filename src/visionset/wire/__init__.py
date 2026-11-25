@@ -627,7 +627,7 @@ def batch(
         "schema_version": value.schema_version,
         "asset_count": len(value.asset_ids),
         "progress": progress_counts(counts),
-        "allowed_actions": [a.value for a in batch_actions(value.state)],
+        "allowed_actions": [a.value for a in batch_actions(value.state, progress=counts)],
         "promoted_asset_count": sum(1 for one in value.asset_ids if one in promoted),
         "parent_batch_id": None if value.parent_batch_id is None else str(value.parent_batch_id),
         "pre_label_run": None if pre_labeled is None else pre_label_run(pre_labeled),

@@ -1742,7 +1742,7 @@ class BatchOut(BaseModel):
             schema_version=batch.schema_version,
             asset_count=len(batch.asset_ids),
             progress=ProgressCounts.of(counts),
-            allowed_actions=batch_actions(batch.state),
+            allowed_actions=batch_actions(batch.state, progress=counts),
             promoted_asset_count=sum(1 for one in batch.asset_ids if one in promoted),
             parent_batch_id=batch.parent_batch_id,
             pre_label_run=None if pre_label_run is None else PreLabelRunOut.of(pre_label_run),
