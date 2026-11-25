@@ -1,6 +1,7 @@
 /**
  * The batch table's band: the page header's voice, its count beside the title
- * and its tools — the lens and the filter — at the right.
+ * and its tools — the lens and the filter — at the right, then, past a hairline,
+ * the batches' ways forward (`BatchesActions`): Add images and Annotate.
  */
 
 import { FolderOpen, Search } from "lucide-react";
@@ -20,6 +21,7 @@ export function BatchesBand({
   setQuery,
   tools,
   filterRef,
+  actions,
 }: {
   /** Every batch the project has. */
   readonly rows: number;
@@ -31,6 +33,8 @@ export function BatchesBand({
   readonly setQuery: (query: string) => void;
   readonly tools?: ReactNode;
   readonly filterRef: RefObject<HTMLInputElement | null>;
+  /** Add images and Annotate, last in the band. */
+  readonly actions?: ReactNode;
 }): JSX.Element {
   return (
     <header className="flex min-h-12 shrink-0 flex-wrap items-center gap-x-2.5 gap-y-2 border-b border-border/70 px-4 py-2 md:px-6">
@@ -39,13 +43,18 @@ export function BatchesBand({
       <span className="text-xs text-muted-foreground tabular-nums" data-testid="batches-count">
         {shown === rows ? formatCount(rows) : `${formatCount(shown)} of ${formatCount(rows)}`}
       </span>
-      {rows > 0 && (
-        <div className="ml-auto flex min-w-0 items-center gap-2">
-          {tools}
-          <ViewSwitch label="Show" value={lens} options={LENSES} onChange={setLens} data-testid="batches-lens" />
-          <BatchFilter query={query} onQuery={setQuery} inputRef={filterRef} />
-        </div>
-      )}
+      <div className="ml-auto flex min-w-0 items-center gap-2">
+        {rows > 0 && (
+          <>
+            {tools}
+            <ViewSwitch label="Show" value={lens} options={LENSES} onChange={setLens} data-testid="batches-lens" />
+            <BatchFilter query={query} onQuery={setQuery} inputRef={filterRef} />
+          </>
+        )}
+        {/* Parts the view's tools from the ways forward — only when both are there. */}
+        <span aria-hidden="true" className="mx-0.5 h-4 w-px shrink-0 bg-border first:hidden last:hidden" />
+        {actions}
+      </div>
     </header>
   );
 }

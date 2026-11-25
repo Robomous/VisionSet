@@ -37,7 +37,7 @@
  *
  * ## Shared, not copied
  *
- * The batch panel's footer renders this, as a completed batch's forward step,
+ * The batch panel's top bar renders this, as a completed batch's forward step,
  * and the UI calls it **Add to dataset** — the kernel's `promote`, named for
  * what a person sees it do. It shares its sentences with *Complete and add to
  * dataset* (`ComposedTransitions.tsx`). Two spellings of "did my work reach the dataset"
@@ -46,12 +46,14 @@
  * were on had no promote control at all.
  */
 
-import { ArrowRight, ArrowUpToLine, DatabasePlus } from "lucide-react";
+import { ArrowUpRight, ArrowUpToLine, DatabasePlus } from "lucide-react";
 import type { JSX } from "react";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
+import { batchNoun } from "../lib/assetNoun";
 import { refusalProse } from "../data/refusals";
-import { Button, FieldError } from "@robomous/ui-core";
+import { Button } from "@robomous/ui-core";
+import { SheetLine } from "../patterns/project/SheetLine";
 import { IconAction } from "../patterns/IconAction";
 import { promotionSummary } from "./batchWords";
 import { usePromoteBatch, type Batch } from "./queries";
@@ -62,12 +64,14 @@ export interface PromoteButtonProps {
   /** The dataset screen, so a promotion can be followed to where it landed. */
   readonly onOpenDataset?: () => void;
   readonly className?: string;
-  /** The batch panel's footer draws its actions at its own size, and fills its forward one. */
+  /** The size of the labelled button, where it is not an icon button. */
   readonly size?: "sm" | "lg";
   readonly variant?: "default" | "outline";
+  /** As an icon button, the batch's forward step: the panel opens with the focus on it. */
+  readonly forward?: boolean;
   /**
    * An icon button named by its tooltip, as the batch panel draws every control;
-   * its lines (`data-line`) are laid out by the host, above its controls.
+   * its lines (`SheetLine`) are toasts there.
    */
   readonly iconOnly?: boolean;
 }
@@ -80,6 +84,7 @@ export function PromoteButton({
   className,
   size = "sm",
   variant = "outline",
+  forward = false,
   iconOnly = false,
 }: PromoteButtonProps): JSX.Element | null {
   const promote = usePromoteBatch(projectId);
@@ -87,7 +92,7 @@ export function PromoteButton({
   if (!declares(batch, BATCH_ACTION.promote)) return null;
 
   const summary = promote.isSuccess
-    ? promotionSummary(promote.data.total, batch.promoted_asset_count, batch.asset_count)
+    ? promotionSummary(promote.data.total, batch.promoted_asset_count, batch.asset_count, (count) => batchNoun(batch.modalities, count, "image"))
     : null;
 
   return (
@@ -96,10 +101,9 @@ export function PromoteButton({
         <IconAction
           icon={DatabasePlus}
           label="Add to dataset"
-          variant={variant}
           busy={promote.isPending}
           data-testid={`promote-${batch.name}`}
-          {...(variant === "default" ? { "data-autofocus": "" } : {})}
+          {...(forward ? { "data-autofocus": "" } : {})}
           onClick={() => promote.mutate(batch.id)}
         />
       ) : (
@@ -122,48 +126,34 @@ export function PromoteButton({
       )}
 
       {/*
-        What is in the trunk already, before anybody presses anything. This is
-        the half that survives a reload — `promoted_asset_count` is derived per
-        read, so it is still right in a session that did not do the promoting.
+        What the press moved, and the way onward on the same line. Promotion's
+        whole evidence lives on the dataset screen, and until the link a person
+        was told something had happened and left to find it.
       */}
-      {summary === null && batch.promoted_asset_count > 0 && (
-        <span
-          data-line=""
-          className="text-xs text-muted-foreground"
-          data-testid={`promoted-count-${batch.name}`}
-        >
-          {batch.promoted_asset_count} of {batch.asset_count} in the dataset
-        </span>
-      )}
-
       {summary !== null && (
-        <span data-line="" className="text-xs text-muted-foreground" data-testid={`promoted-${batch.name}`}>
-          {summary}
-        </span>
-      )}
-
-      {/*
-        The way onward. Promotion's whole evidence lives on the dataset screen,
-        and until now nothing linked there from the place the work was finished —
-        so a person was told something had happened and left to find it.
-      */}
-      {promote.isSuccess && onOpenDataset !== undefined && (
-        <Button
-          data-line=""
-          variant="link"
-          className="h-auto justify-end p-0"
-          data-testid={`promoted-open-dataset-${batch.name}`}
-          onClick={onOpenDataset}
+        <SheetLine
+          tone="success"
+          data-testid={`promoted-${batch.name}`}
+          about={batch}
+          {...(promote.isSuccess && onOpenDataset !== undefined
+            ? {
+                action: (
+                  <Button variant="link" className="h-auto p-0 text-xs" data-testid={`promoted-open-dataset-${batch.name}`} onClick={onOpenDataset}>
+                    Open the dataset
+                    <ArrowUpRight className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+                  </Button>
+                ),
+              }
+            : {})}
         >
-          Open the dataset
-          <ArrowRight className="size-3.5" aria-hidden="true" />
-        </Button>
+          {summary}
+        </SheetLine>
       )}
 
       {promote.isError && (
-        <FieldError data-line="" data-testid={`promote-error-${batch.name}`}>
+        <SheetLine tone="error" data-testid={`promote-error-${batch.name}`} about={batch}>
           {refusalProse(promote.error)}
-        </FieldError>
+        </SheetLine>
       )}
     </div>
   );

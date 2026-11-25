@@ -16,27 +16,29 @@ import type { FinishBatchResult } from "./queries";
  * `moved` is what the response carried; `settled` is how many of the batch's
  * assets are in the trunk now. A press that moved nothing over a batch that is
  * entirely in the trunk means "already there"; a press that moved nothing over a
- * batch with nothing in the trunk means every frame was skipped.
+ * batch with nothing in the trunk means every one was skipped.
+ *
+ * `noun` is the batch's own (`batchNoun`: images, scans or assets), so what was
+ * added and what stayed out are counted in one word — the word the panel's
+ * Images property uses.
  */
 export function promotionSummary(
   moved: number,
   settled: number,
   total: number,
+  noun: (count: number) => string,
 ): string {
   if (moved > 0) {
     const excluded = total - settled;
-    const tail =
-      excluded > 0
-        ? ` ${excluded} skipped frame${excluded === 1 ? "" : "s"} stayed out.`
-        : "";
-    return `Added ${moved} asset${moved === 1 ? "" : "s"} to the dataset.${tail}`;
+    const tail = excluded > 0 ? ` ${excluded} skipped ${noun(excluded)} stayed out.` : "";
+    return `Added ${moved} ${noun(moved)} to the dataset.${tail}`;
   }
   if (settled > 0) {
     // The idempotent no-op, which is the case that looked most like a bug: a
     // second press, or a first press in a fresh session after an earlier one.
     return `Already in the dataset — nothing new to add.`;
   }
-  return "Nothing here can be added: every frame was skipped, and a skipped frame never enters the dataset.";
+  return `Nothing here can be added: every ${noun(1)} was skipped, and a skipped ${noun(1)} never enters the dataset.`;
 }
 
 /**

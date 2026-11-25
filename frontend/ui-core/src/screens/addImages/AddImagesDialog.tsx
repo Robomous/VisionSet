@@ -189,7 +189,7 @@ function Track({ flow }: { readonly flow: AddImagesFlow }): JSX.Element {
                 className={cn(
                   "text-xs",
                   here ? "font-medium text-foreground" : "text-muted-foreground",
-                  reachable && "underline-offset-2 group-hover:text-foreground group-hover:underline",
+                  reachable && "underline decoration-transparent underline-offset-2 transition-[color,text-decoration-color] duration-150 ease-[ease] group-hover:text-foreground group-hover:decoration-current",
                 )}
               >
                 {at + 1}. {title}

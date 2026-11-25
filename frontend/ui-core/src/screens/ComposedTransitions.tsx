@@ -22,12 +22,13 @@
  * the line and the refusal along.
  */
 
-import { ArrowRight, CircleCheckBig } from "lucide-react";
+import { ArrowUpRight, CircleCheckBig } from "lucide-react";
 import { useState, type JSX } from "react";
 
 import { BATCH_ACTION, declares } from "../data/capabilities";
 import { refusalProse } from "../data/refusals";
-import { Button, FieldError, Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger, Switch, Tooltip, TooltipContent, TooltipTrigger } from "@robomous/ui-core";
+import { Button, Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger, Switch, Tooltip, TooltipContent, TooltipTrigger } from "@robomous/ui-core";
+import { SheetLine } from "../patterns/project/SheetLine";
 import { IconAction, IconButton } from "../patterns/IconAction";
 import { quietUnlessVisible } from "../patterns/iconFocus";
 import { batchNoun } from "../lib/assetNoun";
@@ -49,8 +50,8 @@ export interface CompleteBatchButtonProps {
   readonly onOpenDataset?: () => void;
   /** Both steps landed, so a host showing a separate *Add to dataset* can stand it down. */
   readonly onPromoted?: () => void;
-  /** Filled while it is the batch's forward step. */
-  readonly variant?: "default" | "outline";
+  /** The batch's forward step: the panel opens with the focus on it. */
+  readonly forward?: boolean;
 }
 
 /**
@@ -68,12 +69,12 @@ export interface CompleteBatchButtonProps {
  * **The declaration alone decides.** The kernel declares `complete` only once
  * every asset has settled, so a batch being labeled that does not declare it is
  * shown withheld, its tooltip counting what is left — the count is the reason's
- * wording, never the gate. A refusal that still arrives is a race, said in words
- * under the footer's controls (`data-line`).
+ * wording, never the gate. A refusal that still arrives is a race, said in
+ * words, as a toast from the panel (`SheetLine`).
  *
  * The UI says "add to dataset" where the kernel, API and CLI say `promote`.
  */
-export function CompleteBatchButton({ batch, projectId, onOpenDataset, onPromoted, variant = "default" }: CompleteBatchButtonProps): JSX.Element | null {
+export function CompleteBatchButton({ batch, projectId, onOpenDataset, onPromoted, forward = false }: CompleteBatchButtonProps): JSX.Element | null {
   const finish = useFinishBatch(batch.id);
   const promote = usePromoteBatch(projectId);
   const [completed, setCompleted] = useState<FinishBatchResult | null>(null);
@@ -87,7 +88,7 @@ export function CompleteBatchButton({ batch, projectId, onOpenDataset, onPromote
   const outstanding = outstandingWork(batch.progress);
   const reason = outstanding > 0 ? `${outstanding} ${batchNoun(batch.modalities, outstanding)} still to annotate or skip` : "This batch can’t be completed right now.";
   const busy = finish.isPending || promote.isPending;
-  const summary = promote.isSuccess ? promotionSummary(promote.data.total, batch.promoted_asset_count, batch.asset_count) : null;
+  const summary = promote.isSuccess ? promotionSummary(promote.data.total, batch.promoted_asset_count, batch.asset_count, (count) => batchNoun(batch.modalities, count, "image")) : null;
 
   function submit(): void {
     setOpen(false);
@@ -102,16 +103,16 @@ export function CompleteBatchButton({ batch, projectId, onOpenDataset, onPromote
 
   return (
     <div className="contents">
-      {withheld && completed === null && <IconAction icon={CircleCheckBig} label="Complete batch" reason={reason} variant="outline" data-testid={`complete-${batch.name}`} />}
+      {withheld && completed === null && <IconAction icon={CircleCheckBig} label="Complete batch" reason={reason} data-testid={`complete-${batch.name}`} />}
       {offered &&
         (busy ? (
-          <IconAction icon={CircleCheckBig} label="Complete batch" busy variant="outline" data-testid={`complete-${batch.name}`} />
+          <IconAction icon={CircleCheckBig} label="Complete batch" busy data-testid={`complete-${batch.name}`} />
         ) : (
           <Popover open={open} onOpenChange={setOpen}>
             <Tooltip>
               <TooltipTrigger asChild onFocus={quietUnlessVisible}>
                 <PopoverTrigger asChild>
-                  <IconButton icon={CircleCheckBig} label="Complete batch" variant={variant} data-testid={`complete-${batch.name}`} data-autofocus={variant === "default" ? "" : undefined} />
+                  <IconButton icon={CircleCheckBig} label="Complete batch" data-testid={`complete-${batch.name}`} data-autofocus={forward ? "" : undefined} />
                 </PopoverTrigger>
               </TooltipTrigger>
               <TooltipContent side="top">Complete batch</TooltipContent>
@@ -142,28 +143,35 @@ export function CompleteBatchButton({ batch, projectId, onOpenDataset, onPromote
           </Popover>
         ))}
       {completed !== null && (
-        <span data-line="" className="text-xs text-muted-foreground" data-testid={`completed-${batch.name}`}>
-          {completedLine(completed)}
-          {summary === null ? (promote.isIdle ? " Nothing is in the dataset yet." : "") : ` ${summary}`}
-        </span>
-      )}
-      {promote.isSuccess && onOpenDataset !== undefined && (
-        <span data-line="" className="flex justify-end">
-          <Button variant="link" className="h-auto p-0" data-testid={`complete-promote-open-dataset-${batch.name}`} onClick={onOpenDataset}>
-            Open the dataset
-            <ArrowRight className="size-3.5" aria-hidden="true" />
-          </Button>
-        </span>
+        // One line: what the press did, and — once the second step lands — the way to where it went.
+        <SheetLine
+          tone="success"
+          data-testid={`completed-${batch.name}`}
+          about={batch}
+          {...(promote.isSuccess && onOpenDataset !== undefined
+            ? {
+                action: (
+                  <Button variant="link" className="h-auto p-0 text-xs" data-testid={`complete-promote-open-dataset-${batch.name}`} onClick={onOpenDataset}>
+                    Open the dataset
+                    <ArrowUpRight className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+                  </Button>
+                ),
+              }
+            : {})}
+        >
+          <span className="font-medium">{completedLine(completed)}</span>
+          <span className="text-muted-foreground">{summary === null ? (promote.isIdle ? " Nothing is in the dataset yet." : "") : ` ${summary}`}</span>
+        </SheetLine>
       )}
       {finish.isError && (
-        <FieldError data-line="" data-testid={`complete-error-${batch.name}`}>
+        <SheetLine tone="error" data-testid={`complete-error-${batch.name}`} about={batch}>
           {refusalProse(finish.error)}
-        </FieldError>
+        </SheetLine>
       )}
       {promote.isError && (
-        <FieldError data-line="" data-testid={`complete-promote-error-${batch.name}`}>
+        <SheetLine tone="error" data-testid={`complete-promote-error-${batch.name}`} about={batch}>
           {refusalProse(promote.error)}
-        </FieldError>
+        </SheetLine>
       )}
     </div>
   );

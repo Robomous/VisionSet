@@ -428,9 +428,9 @@ test("a clip is inspected, cut and imported here, and never uploaded", async ({ 
     await page.getByTestId("project-name").fill("browser-video-import");
     await page.getByTestId("create-submit").click();
     await expect(page.getByTestId("project-screen")).toBeVisible();
-    // A project with no assets carries Add images in the toolbar's action slot,
+    // A project with no assets carries Add images in its Overview's invitation,
     // which is the road a person actually takes here.
-    await page.getByTestId("go-ingest").click();
+    await page.getByTestId("overview-ingest").click();
     await expect(page.getByRole("dialog", { name: "Add images" })).toBeVisible();
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}\/overview\?add=images$/);
   });
@@ -515,8 +515,8 @@ test("a clip is inspected, cut and imported here, and never uploaded", async ({ 
     // source frame and content-addressing collapses nothing: one asset per point.
     // The Images property, read by its label: the panel lists the state first.
     await expect(
-      panel.getByTestId("batch-sheet-facts").locator("div", { has: page.locator("dt", { hasText: /^Images$/ }) }).locator("dd"),
-    ).toHaveText(String(WALK_FRAMES));
+      panel.getByTestId("batch-sheet-facts").locator("div", { has: page.locator("dt", { hasText: /^Images$/ }) }).getByTestId("batch-sheet-assets"),
+    ).toHaveAccessibleName(`${WALK_FRAMES} images, open in Images`);
   });
 
   await test.step("a frame says where it came from and how it was cut", async () => {

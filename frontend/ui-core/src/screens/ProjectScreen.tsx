@@ -75,7 +75,6 @@ import { DEFAULT_PROJECT_SECTION, PROJECT_SECTIONS, type ProjectSection } from "
 import { formatCount, formatPercent, formatWhen } from "../lib/format";
 import { DatasetScreen, type DatasetTab } from "./DatasetScreen";
 import { ImagesScreen } from "./ImagesScreen";
-import { firstRunInvitation, invitationOwnsTheAction } from "./firstRunInvitation";
 import { OverviewPanel } from "./OverviewPanel";
 import { AddImagesDialog } from "./addImages/AddImagesDialog";
 import { ProjectFrame } from "./ProjectFrame";
@@ -83,9 +82,9 @@ import { SchemaEditor, type SchemaDraft } from "./SchemaEditor";
 import { same } from "./schemaSame";
 import {
   useActiveSchema,
+  useBatches,
   useProject,
   useProjectDataset,
-  useProjectReadiness,
   useProjectStats,
   useReleases,
   saveSchemaDraftRequest,
@@ -139,6 +138,15 @@ export interface ProjectScreenProps {
   readonly openBatchId?: string | null;
   readonly onOpenBatchChange?: (batchId: string | null) => void;
   readonly onOpenJob?: (jobId: string) => void;
+  /** A batch's images, in the Images section narrowed to that batch — the Overview's way to them. */
+  readonly onOpenBatchAssets?: (batchId: string) => void;
+  /**
+   * The batch the Images section is narrowed to, as the URL holds it (`?batch=`
+   * on `…/images`), and the write that lifts it (`null`). Absent, the section
+   * shows the whole project and its chip, were there one, would have no ×.
+   */
+  readonly imagesBatchId?: string | null;
+  readonly onImagesBatchChange?: (batchId: string | null) => void;
   /**
    * Where to go once the project is gone. Absent means the overflow menu still
    * deletes, and the caller is left on a screen whose subject no longer exists —
@@ -164,6 +172,9 @@ export function ProjectScreen({
   openBatchId,
   onOpenBatchChange,
   onOpenJob,
+  onOpenBatchAssets,
+  imagesBatchId,
+  onImagesBatchChange,
   onDeleted,
   tab,
   onTabChange,
@@ -419,28 +430,20 @@ export function ProjectScreen({
   const current = available.find((one) => one === asked) ?? DEFAULT_PROJECT_SECTION;
   const go = onTabChange ?? setHeld;
 
-  // Costs no request: `useProjectReadiness` composes the schema and stats queries
-  // this screen already runs, and TanStack keys them identically. Read here
-  // rather than reported upward from the panel, because the navigation is drawn
-  // outside the section and a child telling its parent how to render is a render
-  // cycle waiting to happen.
-  const readiness = useProjectReadiness(projectId);
-  const overviewOwnsTheAction =
-    current === "overview" && readiness !== null && invitationOwnsTheAction(firstRunInvitation(readiness));
   // The Dataset's view name, held here so a host that passes one keeps working;
   // every name opens the working copy, since recipes now live in a release's
   // export. Component state: a view of the same resource, not a place.
   const [datasetTab, setDatasetTab] = useState<DatasetTab>("overview");
   const meta = useSectionMeta(projectId, current, project.data?.description ?? null);
 
-  // Add images lives in the toolbar alone — filled while nothing is open for
-  // annotation, outlined beside Annotate otherwise — so no section draws one.
-  // It opens a dialog this screen owns, so every section's door to it (the
-  // bar, the overflow, an empty section's invitation) is the same one.
+  // Add images opens a dialog this screen owns, so every door to it — the
+  // Overview's batches band, the Images bar, the overflow elsewhere, an empty
+  // Overview's invitation — is the same one.
   const [heldAddImages, setHeldAddImages] = useState(false);
   const addingImages = onAddImagesOpenChange === undefined ? heldAddImages : (addImagesOpen ?? false);
   const setAddingImages = onAddImagesOpenChange ?? setHeldAddImages;
   const onIngest = (): void => setAddingImages(true);
+  const overviewDrawsIngest = useOverviewDrawsIngest(projectId, current === "overview");
   /**
    * Leave the dialog for somewhere else. A host that holds the open state in
    * its URL closes it by navigating — the destination's address does not carry
@@ -467,17 +470,12 @@ export function ProjectScreen({
       sections={available}
       onNavigate={go}
       {...(hrefFor === undefined ? {} : { hrefFor })}
-      // The bar offers what the open section is about: Annotate on the
-      // Overview, where batches are; Add images on the two sections images are
-      // the subject of, and in the overflow everywhere else. Classes and
-      // Dataset draw their own actions into the bar (`SectionActions`).
-      cta={{
-        ...(onOpenBatch === undefined || current !== "overview" ? {} : { onOpenBatch }),
-        ...(onOpenJob === undefined ? {} : { onOpenJob }),
-        onIngest,
-        ingest: current === "overview" || current === "images" ? "action" : "menu",
-        contentOwnsTheAction: overviewOwnsTheAction,
-      }}
+      // The bar offers what the open section is about: Add images on Images,
+      // in the overflow on Classes and Dataset, which draw their own actions
+      // into the bar (`SectionActions`). The Overview's Add images and
+      // Annotate are its batches band's, beside the batches they act on — and
+      // the overflow's while the band is not drawn.
+      {...(overviewDrawsIngest ? {} : { cta: { onIngest, ingest: current === "images" ? ("action" as const) : ("menu" as const) } })}
       {...(meta === null ? {} : { meta })}
       {...(onDeleted === undefined ? {} : { onDeleted })}
       // Images lays out its own grid and detail across the pane; the Overview
@@ -494,6 +492,8 @@ export function ProjectScreen({
         onOpenBatch={onOpenBatch}
         openBatch={onOpenBatchChange === undefined ? undefined : { id: openBatchId ?? null, onChange: onOpenBatchChange }}
         onOpenJob={onOpenJob}
+        onOpenBatchAssets={onOpenBatchAssets}
+        imagesBatch={{ id: imagesBatchId ?? null, onChange: onImagesBatchChange }}
         datasetTab={datasetTab}
         onDatasetTabChange={setDatasetTab}
         schema={{
@@ -506,6 +506,18 @@ export function ProjectScreen({
     </ProjectFrame>
     </>
   );
+}
+
+/**
+ * Whether the Overview itself offers Add images: its batches band, which waits
+ * on the stats and the batches, or, with no images yet, its invitation. Both
+ * reads are the Overview's own, so this costs no request.
+ */
+function useOverviewDrawsIngest(projectId: string, onOverview: boolean): boolean {
+  const stats = useProjectStats(projectId);
+  const batches = useBatches(projectId, onOverview);
+  if (!onOverview || !stats.isSuccess) return false;
+  return stats.data.asset_count === 0 || batches.isSuccess;
 }
 
 /**
@@ -556,6 +568,8 @@ function Section({
   onOpenBatch,
   openBatch,
   onOpenJob,
+  onOpenBatchAssets,
+  imagesBatch,
   datasetTab,
   onDatasetTabChange,
   schema,
@@ -568,6 +582,8 @@ function Section({
   readonly onOpenBatch: ((batchId: string) => void) | undefined;
   readonly openBatch: { readonly id: string | null; readonly onChange: (batchId: string | null) => void } | undefined;
   readonly onOpenJob: ((jobId: string) => void) | undefined;
+  readonly onOpenBatchAssets: ((batchId: string) => void) | undefined;
+  readonly imagesBatch: { readonly id: string | null; readonly onChange: ((batchId: string | null) => void) | undefined };
   readonly datasetTab: DatasetTab;
   readonly onDatasetTabChange: (tab: DatasetTab) => void;
   readonly schema: {
@@ -580,31 +596,16 @@ function Section({
   switch (current) {
     case "overview":
       return (
-        <>
-          {/* The bar is the section's header: its tab names the page to the
-              eye, and this names it to the outline. */}
-          <h1 className="sr-only">Overview</h1>
-          {/* The declared classes travel down so a distribution bar shows the
-              colour the schema authored rather than only the derived hue. The
-              query is shared with the Schema section, so this costs no request. */}
-          <OverviewPanel
-            projectId={projectId}
-            {...(classes === undefined ? {} : { classes })}
-            {...(onIngest === undefined ? {} : { onIngest })}
-            onBrowseDataset={() => {
-              onDatasetTabChange("overview");
-              go("dataset");
-            }}
-            onOpenReleases={() => {
-              onDatasetTabChange("releases");
-              go("dataset");
-            }}
-            onOpenSchema={() => go("schema")}
-            onOpenImages={() => go("images")}
-            {...(openBatch === undefined ? {} : { openBatchId: openBatch.id, onOpenBatchChange: openBatch.onChange })}
-            {...(onOpenJob === undefined ? {} : { onOpenJob })}
-          />
-        </>
+        <OverviewSection
+          projectId={projectId}
+          classes={classes}
+          go={go}
+          onIngest={onIngest}
+          openBatch={openBatch}
+          onOpenJob={onOpenJob}
+          onOpenBatchAssets={onOpenBatchAssets}
+          onDatasetTabChange={onDatasetTabChange}
+        />
       );
     case "schema":
       return (
@@ -621,15 +622,65 @@ function Section({
         </>
       );
     case "images":
-      return (
-        <ImagesScreen
-          projectId={projectId}
-          {...(onIngest === undefined ? {} : { onIngest })}
-        />
-      );
+      return <ImagesSection projectId={projectId} onIngest={onIngest} batch={imagesBatch} />;
     case "dataset":
       return <DatasetScreen projectId={projectId} tab={datasetTab} onTabChange={onDatasetTabChange} />;
   }
+}
+
+interface OverviewSectionProps {
+  readonly projectId: string;
+  readonly classes: readonly LabelClassBody[] | undefined;
+  readonly go: (tab: ProjectTab) => void;
+  readonly onIngest: (() => void) | undefined;
+  readonly openBatch: { readonly id: string | null; readonly onChange: (batchId: string | null) => void } | undefined;
+  readonly onOpenJob: ((jobId: string) => void) | undefined;
+  readonly onOpenBatchAssets: ((batchId: string) => void) | undefined;
+  readonly onDatasetTabChange: (tab: DatasetTab) => void;
+}
+
+/** The Overview, with the host's optional ways out passed on only where it gave one. */
+function OverviewSection({ projectId, classes, go, onIngest, openBatch, onOpenJob, onOpenBatchAssets, onDatasetTabChange }: OverviewSectionProps): JSX.Element {
+  return (
+    <>
+      {/* The bar is the section's header: its tab names the page to the
+          eye, and this names it to the outline. */}
+      <h1 className="sr-only">Overview</h1>
+      {/* The declared classes travel down so a distribution bar shows the
+          colour the schema authored rather than only the derived hue. The
+          query is shared with the Schema section, so this costs no request. */}
+      <OverviewPanel
+        projectId={projectId}
+        {...(classes === undefined ? {} : { classes })}
+        {...(onIngest === undefined ? {} : { onIngest })}
+        onBrowseDataset={() => {
+          onDatasetTabChange("overview");
+          go("dataset");
+        }}
+        onOpenReleases={() => {
+          onDatasetTabChange("releases");
+          go("dataset");
+        }}
+        onOpenSchema={() => go("schema")}
+        onOpenImages={() => go("images")}
+        {...(openBatch === undefined ? {} : { openBatchId: openBatch.id, onOpenBatchChange: openBatch.onChange })}
+        {...(onOpenJob === undefined ? {} : { onOpenJob })}
+        {...(onOpenBatchAssets === undefined ? {} : { onOpenBatchAssets })}
+      />
+    </>
+  );
+}
+
+/** The Images section, narrowed to the batch the host's address names. */
+function ImagesSection({ projectId, onIngest, batch }: { readonly projectId: string; readonly onIngest: (() => void) | undefined; readonly batch: { readonly id: string | null; readonly onChange: ((batchId: string | null) => void) | undefined } }): JSX.Element {
+  return (
+    <ImagesScreen
+      projectId={projectId}
+      {...(onIngest === undefined ? {} : { onIngest })}
+      batchId={batch.id}
+      {...(batch.onChange === undefined ? {} : { onBatchChange: batch.onChange })}
+    />
+  );
 }
 
 /**

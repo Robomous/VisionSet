@@ -28,8 +28,10 @@ section or nav entry, or changes an entry point updates this block in the same p
                                      written with replace; closing removes it)
     images                           Images — every image ingested, regardless of batch or
                                      dataset membership; read-only. Narrowed by source
-                                     chips (component state); an image opens in a viewer
-                                     dialog (component state, no route of its own)
+                                     chips (component state) or to one batch (?batch=:batchId,
+                                     written with replace; the chip's × removes it) — the
+                                     Overview's batch panel links to it; an image opens in a
+                                     viewer dialog (component state, no route of its own)
     schema                           Classes (contract)
                                        ├─ History: a panel INSIDE Classes, not a sibling; View shows a
                                        │  version read-only in the section's own table
@@ -75,6 +77,14 @@ opens it there (`PARENT.batch`). The old addresses redirect to the Overview, rep
 history entry: `/projects/:id/batches`, which was a section, and
 `/projects/:id/batches/:batchId`, which was a page.
 
+**A batch's images are the Images section narrowed, not a page of the batch.** The Overview's
+panel links, from the count on its Images property, to `/projects/:id/images?batch=:batchId` (`PARENT.batchAssets`, a navigation: it is
+another section). The parameter shares its name with the panel's and is read only on its own
+section — Images ignores the Overview's `?batch=`, and leaving a section drops it. The section
+reads the batch's listing only once the project's batches hold it (an id they do not hold is
+*Unknown batch*, and nothing of another project is fetched), names the batch in a removable chip, and the chip's × removes the
+parameter with `replace`, because lifting a filter is looking, not going.
+
 **A section's label is not its segment.** The segments stay the product's nouns —
 `/projects/:id/schema` is what links, the CLI and the API call it — while the labels are the
 words a person reads: Classes for `schema`. A bookmarked URL is a promise, so a relabel never
@@ -93,16 +103,16 @@ URL. An unknown section segment is a 404, because nothing ever linked to one; an
 - **Annotate enters by job.** A project's `Annotate` control opens the chosen `in_annotation`
   batch's one job directly (`/jobs/:jobId`) when it has exactly one, and the batch's panel
   otherwise — the panel lists the jobs, each with its own *Open*, so it is where a job is
-  chosen when there are several, and the job's own door is the only door. The panel's footer
-  carries the `approved → in_annotation` transition, and an *Annotate* only for a batch with
-  exactly one job. Opening a job only navigates: the editor itself takes a `pending` job to
+  chosen when there are several, and the job's own door is the only door. The panel's top
+  bar carries the `approved → in_annotation` transition, and an *Annotate* only for a batch
+  with exactly one job. Opening a job only navigates: the editor itself takes a `pending` job to
   `in_progress` when it opens it.
 - **Per-frame work happens in the annotator, not beside the batch.** The panel states a batch's
   facts and its jobs; it draws no frames. Looking at a job's frames, moving them through the
   states and picking among them is the editor's (its frame gallery overlay), so a batch-wide
   grid never sits beneath a per-job control with two scopes for the same frames.
 - **A correction batch is reached from the batch that needs correcting**, never from a "new
-  batch" form: the panel's footer offers it on a `completed` batch, capability-gated, and the
+  batch" form: the panel's top bar offers it (*Correct*) on a `completed` batch, capability-gated, and the
   new correction then opens in the panel. The annotator's read-only notice *links* to it
   rather than duplicating it — a second place batches are made is a second place the rules can
   drift.
@@ -179,20 +189,24 @@ action itself lives with its gating and refusals. Browsing images is the Images 
 
 **The Overview acts on nothing except batches, and why.** A batch has no section and no page
 of its own - the Overview is where batches are listed - so what a batch may be asked to do is
-done here, in its panel's footer, and nowhere else. The project-wide **Auto-label** dialog runs a
+done here, in its panel's top bar, and nowhere else. The project-wide **Auto-label** dialog runs a
 model over the batches that declare `pre_label`: it opens from a line between the Batches band
 and the table while images are waiting for labels, or from the band's quiet icon once that line
 is put away. A batch that declares it offers the same dialog over itself alone from its row menu
 and its panel's top bar. The panel - a sheet over the page's scrim, put away by a press outside it
-and resized from its left edge - holds every other action in its footer, every one an icon button
-named by its tooltip: *delete* and *create correction batch* at its start, and **one forward
-control per state** at its end - approve, start annotating, annotate, *complete* (whose
-confirmation holds the *add to the dataset* switch) and *add to dataset*. Each is offered only
-where the batch's `allowed_actions` declare it, each with its own gating, refusals and outcome
-line. The interface says *add to dataset* for what the kernel, API, CLI and MCP call
+and resized from its left edge, with no footer - holds every other action at the end of its top
+bar, each a ghost button, icons named by their tooltips and *Annotate* and *Correct* by their
+own words: *delete* and, on a completed batch, *Correct* first, then, past a hairline, **one
+forward control per state** - approve, start annotating, annotate, *complete* (whose
+confirmation holds the *add to the dataset* switch) and *add to dataset*. Each is offered from
+the batch's `allowed_actions` - a withheld one stays, disabled with its reason - each with its
+own gating and refusals, and its outcome or refusal said in a toast that names the batch. The interface says *add to dataset* for what the kernel, API, CLI and MCP call
 `promote`: the same operation, named for what a person sees it do. Nothing else on the Overview mutates: the numbers, the class rail and the
-images are pointers. **Add images** is not on the Overview at all as a panel control: it is the project bar's, and it
-opens the dialog whose result is a new batch (see *Inside a project*).
+images are pointers. **Add images** and **Annotate** end the batches band, after the filter: Add images, a `ghost` icon button,
+opens the dialog whose result is a new batch (see *Inside a project*); Annotate, the page's filled control, is drawn
+only while a batch is open for annotation. While the band cannot be drawn - the counts or the
+batches still loading, or failed - Add images is the project bar's overflow's first entry
+instead, so the Overview never loses its way to it.
 
 ## Ways out
 
@@ -255,9 +269,11 @@ opens the dialog whose result is a new batch (see *Inside a project*).
   its sources. The counts arrive together, once every one has answered, and a tab keeps its
   width when it opens (its medium-weight label is reserved underneath), so changing section
   moves nothing in the bar.
-- **The bar offers what the open section is about, and only that.** Overview: **Annotate**,
-  with **Add images** outlined before it while a batch is open for annotation, or Add images
-  as the filled control when none is. Images: **Add images**. Classes: none in the bar — **New**
+- **The bar offers what the open section is about, and only that.** Overview: nothing — its
+  **Add images** (a `ghost` icon button) and **Annotate** (filled, only while a batch is open for annotation)
+  end the batches band, beside the batches they act on, and an Overview with no images yet
+  makes its invitation's Add images the filled one; while neither is drawn (the page's reads
+  pending or failed), Add images is the overflow's first entry. Images: **Add images**. Classes: none in the bar — **New**
   sits in the section's band beside the History icon button while the draft has classes (the
   empty table keeps its own **New class**; a past version, which nobody adds to, offers none),
   stepping back to `outline` while the commit bar's **Save version** is up. Dataset: **Publish release**. On Classes and Dataset, Add

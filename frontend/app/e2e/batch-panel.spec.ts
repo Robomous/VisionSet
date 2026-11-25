@@ -13,10 +13,9 @@
  * slider, the job accordions — went with it, and so did the scenarios that
  * covered them. The lifecycle scenarios did not: *Approve*, *Start annotating*,
  * *Complete* (whose confirmation decides whether the images are added to the
- * dataset) and *Add to dataset*, with *Create correction batch* and *Delete
- * batch* at its start, are icon buttons in the panel's footer
- * (`batch-sheet-actions`), each named by its tooltip; *Auto-label* is in the
- * panel's top bar. Each is asserted here against the same stubbed kernel gates the
+ * dataset) and *Add to dataset*, with *Delete batch* and *Correct* at its start, are ghost buttons at the end of the
+ * panel's top bar (`batch-sheet-actions`), icons named by their tooltips, after
+ * *Auto-label*; *Annotate* and *Correct* say their names. Each is asserted here against the same stubbed kernel gates the
  * gallery's were.
  *
  * ## Why a browser
@@ -352,7 +351,7 @@ async function openPanel(page: Page, sent: Request[], options: Options = {}): Pr
   const panel = page.getByTestId("batch-sheet");
   await expect(panel).toBeVisible();
   await expect(panel.getByRole("heading", { level: 2, name: NAME })).toBeVisible();
-  // The footer is the panel's second read: it is drawn from the batch's own
+  // The actions are the panel's second read: they are drawn from the batch's own
   // declarations, which arrive after the listing that opened it.
   await expect(panel.getByTestId("batch-sheet-actions")).toBeVisible();
   return panel;
@@ -469,9 +468,9 @@ test("the panel says which batch it is showing and how far it has come", async (
   await expect(facts).toContainText("48");
   // The schema is among the folded properties: present, and read out once opened.
   await expect(facts).toContainText("Version 3");
-  // Done is everything past `unannotated`: 18 of 48, so the readout is a count,
-  // not a state word.
-  await expect(facts).toContainText("18 of 48");
+  // Done is everything past `unannotated`: 18 of 48, so the readout is a count —
+  // in the job rows' own format — not a state word.
+  await expect(facts).toContainText("18 of 48 · 38%");
 });
 
 // --- jobs ----------------------------------------------------------------------
@@ -486,10 +485,11 @@ test("a one-job batch lists its job, and Annotate and the job's Open both go int
   await expect(jobs.getByTestId("batch-sheet-job-Job 1")).toContainText("Unassigned");
   await expect(jobs.getByTestId(/^batch-sheet-job-/)).toHaveCount(1);
 
-  // The panel's forward step is filled while there is work left, and with exactly
-  // one job it goes straight into the editor.
+  // Annotate is the panel's forward step while there is work left — the panel
+  // opens on it — and with exactly one job it goes straight into the editor.
   const annotate = panel.getByTestId("sheet-annotate");
-  await expect(annotate).toHaveAttribute("data-variant", "default");
+  await expect(annotate).toHaveText("Annotate");
+  await expect(annotate).toHaveAttribute("data-autofocus", "");
   await annotate.click();
   await expect(page).toHaveURL(new RegExp(`/jobs/${JOB}$`));
 });
@@ -523,19 +523,19 @@ test("a draft batch has no jobs, and says approving is what cuts them", async ({
   await expect(panel.getByTestId("batch-phase")).toHaveText("Draft");
 });
 
-// --- the footer is drawn from what the batch declares --------------------------
+// --- the top bar's actions are drawn from what the batch declares --------------------------
 
 /**
  * Which controls each state offers, and which it withholds.
  *
- * The footer renders `allowed_actions`, never the state: a control the batch does
+ * The top bar renders `allowed_actions`, never the state: a control the batch does
  * not declare is not there at all. Asserted in the browser, against the real
- * footer, because the claim is about what a person can press.
+ * bar, because the claim is about what a person can press.
  */
 const OFFERED: ReadonlyArray<{
   readonly state: Wire["BatchState"];
   readonly options?: Options;
-  /** In the footer. */
+  /** In the top bar's actions. */
   readonly present: readonly string[];
   readonly absent: readonly string[];
   /** Auto-label is the panel's top bar's, and only for a batch that declares `pre_label`. */
@@ -572,16 +572,15 @@ for (const { state, options, present, absent, prelabel } of OFFERED) {
   test(`a ${state} batch offers exactly the controls it declares`, async ({ page }) => {
     const sent: Request[] = [];
     const panel = await openPanel(page, sent, { ...options, state });
-    const footer = panel.getByTestId("batch-sheet-actions");
+    const actions = panel.getByTestId("batch-sheet-actions");
 
-    for (const id of present) await expect(footer.getByTestId(id), `${id} on a ${state} batch`).toBeVisible();
-    for (const id of absent) await expect(footer.getByTestId(id), `${id} on a ${state} batch`).toHaveCount(0);
+    for (const id of present) await expect(actions.getByTestId(id), `${id} on a ${state} batch`).toBeVisible();
+    for (const id of absent) await expect(actions.getByTestId(id), `${id} on a ${state} batch`).toHaveCount(0);
     // Delete is always there: disabled with its reason (its tooltip) rather than removed.
-    await expect(footer.getByTestId(`delete-batch-${NAME}`)).toBeVisible();
+    await expect(actions.getByTestId(`delete-batch-${NAME}`)).toBeVisible();
     // There is no overflow menu: every control is a button of its own.
-    await expect(footer.getByTestId(`batch-overflow-${NAME}`)).toHaveCount(0);
-    // Auto-label is in the top bar, not the footer.
-    await expect(footer.getByTestId("sheet-prelabel")).toHaveCount(0);
+    await expect(actions.getByTestId(`batch-overflow-${NAME}`)).toHaveCount(0);
+    // Auto-label is not offered to a batch that does not declare it.
     await expect(panel.getByTestId("batch-sheet-tools").getByTestId("sheet-prelabel")).toHaveCount(prelabel ? 1 : 0);
     // Nothing was sent by looking.
     expect(writes(sent)).toEqual([]);
@@ -750,7 +749,7 @@ test("completing a settled batch asks first, and with the switch off finishes it
   await expect(panel.getByTestId("batch-phase")).toHaveText("Completed");
   await expect(panel.getByTestId(`complete-${NAME}`)).toHaveCount(0);
   await expect(panel.getByTestId(`promote-${NAME}`)).toBeVisible();
-  await expect(panel.getByTestId(`completed-${NAME}`)).toHaveText(
+  await expect(page.getByTestId(`completed-${NAME}`)).toHaveText(
     "Completed, closing 1 open job. Nothing is in the dataset yet.",
   );
 });
@@ -774,26 +773,28 @@ test("Complete with the switch on finishes the job, closes the batch, adds it to
   const sent: Request[] = [];
   const panel = await openPanel(page, sent, { settled: true });
 
-  // With nothing outstanding, Complete is the panel's one filled control and
-  // *Annotate* steps down beside it.
+  // With nothing outstanding, Complete is the panel's forward step — the one it
+  // opens on — and *Annotate* steps down beside it.
   const complete = panel.getByTestId(`complete-${NAME}`);
-  await expect(complete).toHaveAttribute("data-variant", "default");
-  await expect(panel.getByTestId("sheet-annotate")).toHaveAttribute("data-variant", "outline");
+  await expect(complete).toHaveAttribute("data-autofocus", "");
+  await expect(panel.getByTestId("sheet-annotate")).not.toHaveAttribute("data-autofocus", "");
   await complete.click();
   const confirm = page.getByTestId("complete-confirm");
   await expect(confirm.getByTestId("complete-add")).toBeChecked();
   await confirm.getByTestId("complete-submit").click();
 
   // One request finishes the job and the batch; the promotion follows it.
-  await expect(panel.getByTestId(`completed-${NAME}`)).toHaveText(
-    "Completed, closing 1 open job. Added 3 assets to the dataset. 45 skipped frames stayed out.",
+  await expect(page.getByTestId(`completed-${NAME}`)).toHaveText(
+    "Completed, closing 1 open job. Added 3 images to the dataset. 45 skipped images stayed out.",
   );
   expect(writes(sent)).toEqual([`POST /batches/${BATCH}/finish`, `POST /batches/${BATCH}/promote`]);
   // The batch is `completed` now and declares no `complete`, so the button is gone —
   // the line that says what it did is not.
   await expect(complete).toHaveCount(0);
   await expect(panel.getByTestId("batch-phase")).toHaveText("Completed");
-  await expect(panel.getByTestId(`complete-promote-open-dataset-${NAME}`)).toBeVisible();
+  await expect(page.getByTestId(`complete-promote-open-dataset-${NAME}`)).toBeVisible();
+  // A link's words are selectable like the sentence they sit in (the package's Button is select-none).
+  await expect(page.getByTestId(`complete-promote-open-dataset-${NAME}`)).toHaveCSS("user-select", "text");
   // The step it took is not offered again beside its report.
   await expect(panel.getByTestId(`promote-${NAME}`)).toHaveCount(0);
 });
@@ -806,14 +807,14 @@ test("a completed batch is promoted from its panel, and the outcome is said", as
 
   await panel.getByTestId(`promote-${NAME}`).click();
 
-  await expect(panel.getByTestId(`promoted-${NAME}`)).toHaveText(
-    "Added 3 assets to the dataset. 45 skipped frames stayed out.",
+  await expect(page.getByTestId(`promoted-${NAME}`)).toHaveText(
+    "Added 3 images to the dataset. 45 skipped images stayed out.",
   );
   expect(writes(sent)).toEqual([`POST /batches/${BATCH}/promote`]);
   // Promotion is not a transition: the batch stays completed, and the way onward is
   // offered beside the report.
   await expect(panel.getByTestId("batch-phase")).toHaveText("Completed");
-  await expect(panel.getByTestId(`promoted-open-dataset-${NAME}`)).toBeVisible();
+  await expect(page.getByTestId(`promoted-open-dataset-${NAME}`)).toBeVisible();
 });
 
 // --- correcting ----------------------------------------------------------------
@@ -824,7 +825,7 @@ test("a completed batch is corrected from its panel, and the panel moves to the 
   const sent: Request[] = [];
   const panel = await openPanel(page, sent, { state: "completed", settled: true });
 
-  await expect(panel.getByTestId(`correct-${NAME}`)).toHaveAccessibleName("Create correction batch");
+  await expect(panel.getByTestId(`correct-${NAME}`)).toHaveAccessibleName("Correct");
   await panel.getByTestId(`correct-${NAME}`).click();
   const dialog = page.getByTestId("correction-dialog");
   await expect(dialog).toBeVisible();
@@ -851,7 +852,7 @@ test("a completed batch is corrected from its panel, and the panel moves to the 
 
 // --- deleting ------------------------------------------------------------------
 
-test("a batch is deleted from its panel's footer, and the panel closes with it", async ({ page }) => {
+test("a batch is deleted from its panel's top bar, and the panel closes with it", async ({ page }) => {
   const sent: Request[] = [];
   const panel = await openPanel(page, sent, { state: "draft" });
 

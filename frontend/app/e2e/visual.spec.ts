@@ -96,7 +96,7 @@ test.describe("an inverted floating surface", () => {
   for (const theme of ["light", "dark"] as const) {
     test(`an open menu, ${theme}`, async ({ page }) => {
       await page.setViewportSize(DESKTOP);
-      // The batch's row menu on the Overview: the panel's footer has no overflow any
+      // The batch's row menu on the Overview: the panel's top bar has no overflow any
       // more (every control there is an icon button), and the panel is modal, so the
       // menu is opened from the table with the panel closed.
       await openVisual(page, `/projects/${VISUAL.project}/overview`);

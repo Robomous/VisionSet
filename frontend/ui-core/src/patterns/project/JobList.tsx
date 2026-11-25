@@ -1,6 +1,7 @@
 /**
- * The jobs a batch was cut into, as the batch's panel lists them: one bordered
- * list of 44px rows, and each row is the way into its job.
+ * The jobs a batch was cut into, as the batch's panel lists them: 44px rows
+ * with no frame and no rules between them — the page around them has none
+ * either — and each row is the way into its job.
  *
  * ## A row
  *
@@ -25,23 +26,24 @@
  * None. The panel is stepped through with J/K many times a day and a row is
  * pointed at in passing, so the hover and the press are instant changes of
  * colour rather than transitions; the press deepens the row instead of
- * scaling it, because a full-width row inside hairlines would pull away from
- * them. The count's card brings its own entrance.
+ * scaling it, because a full-width row would pull away from the edge its
+ * neighbours keep. The count's card brings its own entrance.
  */
 
 import { cn } from "@robomous/ui-core";
 import { ArrowUpRight, UserPlus } from "lucide-react";
 import type { JSX, KeyboardEvent } from "react";
 
-import { formatCount } from "../../lib/format";
 import { ProgressHoverCard } from "../ProgressHoverCard";
 import { StateGlyph } from "../StateChip";
 import type { SheetJob } from "./BatchSheet";
 import { initials, jobDetail } from "./batchRowModel";
+import { ProgressText } from "../ProgressText";
 
 export function JobList({ jobs }: { readonly jobs: readonly SheetJob[] }): JSX.Element {
   return (
-    <ul className="overflow-hidden rounded-lg border" onKeyDown={walk}>
+    // Pulled out by the rows' own inset, so a row's text lines up with the panel's while its hover fills to either side.
+    <ul className="-mx-2 flex flex-col" onKeyDown={walk}>
       {jobs.map((job) => (
         <JobRow key={job.id} job={job} />
       ))}
@@ -63,7 +65,7 @@ function JobRow({ job }: { readonly job: SheetJob }): JSX.Element {
   // A finished job counts as all done whatever its count says: the job is the authority on done.
   const done = job.finished ? job.images : (job.done ?? 0);
   return (
-    <li className="group/row relative flex h-11 items-center gap-3 border-b px-3 last:border-b-0" data-testid={`batch-sheet-job-${job.label}`}>
+    <li className="group/row vs-link-row relative flex h-11 items-center gap-3 px-2" data-testid={`batch-sheet-job-${job.label}`}>
       {job.onOpen !== undefined && <RowButton job={job} onOpen={job.onOpen} />}
       {/* Above the button and transparent to the pointer, so a press anywhere on the row is the button's. */}
       <span className="pointer-events-none relative flex min-w-0 flex-1 items-center gap-3 text-[13px]">
@@ -75,7 +77,7 @@ function JobRow({ job }: { readonly job: SheetJob }): JSX.Element {
         <span className="pointer-events-auto">
           <ProgressHoverCard detail={jobDetail(job)} value={done} total={job.images} tone="progress" complete={job.finished}>
             <span className="text-xs text-muted-foreground tabular-nums">
-              {job.done === undefined ? "—" : formatCount(job.done)}/{formatCount(job.images)}
+              <ProgressText done={job.done} total={job.images} />
             </span>
           </ProgressHoverCard>
         </span>
@@ -95,10 +97,8 @@ function RowButton({ job, onOpen }: { readonly job: SheetJob; readonly onOpen: (
       // A finished job still opens — read-only in the editor, which says so — because this panel is the only way into a batch's frames.
       aria-label={job.finished ? `View ${job.label} in the editor, done` : `Open ${job.label} in the editor`}
       className={cn(
-        "absolute inset-0 cursor-pointer outline-none [-webkit-tap-highlight-color:transparent]",
-        "hover:bg-muted/50 active:bg-muted focus-visible:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset",
-        // The list's radius less its 1px border, so a focus ring on an end row follows the corner.
-        "group-first/row:rounded-t-[calc(var(--radius-lg)-1px)] group-last/row:rounded-b-[calc(var(--radius-lg)-1px)]",
+        "absolute inset-0 cursor-pointer rounded-md outline-none [-webkit-tap-highlight-color:transparent]",
+        "active:bg-muted focus-visible:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset [@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted/50",
       )}
     />
   );

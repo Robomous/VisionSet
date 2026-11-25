@@ -27,35 +27,38 @@ import { renderWithData } from "../testing/dataHarness";
 import { batchActions } from "../testing/wire.fixtures.js";
 import type { Batch } from "./queries";
 
+/** The noun a batch of images counts in. */
+const IMAGES = (count: number): string => (count === 1 ? "image" : "images");
+
 describe("what a press promoted, in one sentence", () => {
   it("counts what moved, and says where the rest went", () => {
     // The founder's real shape, scaled down: 3 promoted out of 48, the other 45
     // skipped. "Promoted 3" over a batch of 48 reads as a failure unless
     // somebody says where the other 45 went.
-    expect(promotionSummary(3, 3, 48)).toContain("Added 3 assets");
-    expect(promotionSummary(3, 3, 48)).toContain("45 skipped frames stayed out");
+    expect(promotionSummary(3, 3, 48, IMAGES)).toContain("Added 3 images");
+    expect(promotionSummary(3, 3, 48, IMAGES)).toContain("45 skipped images stayed out");
   });
 
   it("says nothing about exclusions when there were none", () => {
-    expect(promotionSummary(3, 3, 3)).toBe("Added 3 assets to the dataset.");
+    expect(promotionSummary(3, 3, 3, IMAGES)).toBe("Added 3 images to the dataset.");
   });
 
   it("gets the singular right, because one frame is the common case at the end", () => {
-    expect(promotionSummary(1, 1, 2)).toContain("Added 1 asset ");
-    expect(promotionSummary(1, 1, 2)).toContain("1 skipped frame stayed out");
+    expect(promotionSummary(1, 1, 2, IMAGES)).toContain("Added 1 image ");
+    expect(promotionSummary(1, 1, 2, IMAGES)).toContain("1 skipped image stayed out");
   });
 
   it("calls a second press already-done rather than nothing-happened", () => {
     // Outcome 2, and the one that looked most like a bug: promotion is a union,
     // so pressing twice legitimately moves zero. The trunk count is what tells
     // this apart from a batch that could never promote anything.
-    expect(promotionSummary(0, 3, 3)).toMatch(/already in the dataset/i);
+    expect(promotionSummary(0, 3, 3, IMAGES)).toMatch(/already in the dataset/i);
   });
 
   it("explains a batch that has nothing to give, rather than reporting a failure", () => {
     // Outcome 3's honest twin: zero moved *and* zero in the trunk means every
     // frame was skipped, and `PROMOTABLE_PROGRESS` excludes those on purpose.
-    expect(promotionSummary(0, 0, 48)).toMatch(/every frame was skipped/i);
+    expect(promotionSummary(0, 0, 48, IMAGES)).toMatch(/every image was skipped/i);
   });
 });
 
@@ -153,7 +156,7 @@ describe("the control", () => {
     await userEvent.click(screen.getByTestId("promote-drive-01"));
 
     expect((await screen.findByTestId("promoted-drive-01")).textContent).toContain(
-      "Added 3 assets",
+      "Added 3 images",
     );
     expect(screen.getByTestId("promote-drive-01").textContent).toContain("Add to dataset");
   });
@@ -169,21 +172,6 @@ describe("the control", () => {
     await userEvent.click(await screen.findByTestId("promoted-open-dataset-drive-01"));
 
     expect(opened).toHaveBeenCalledOnce();
-  });
-
-  it("says what is already in the trunk before anybody presses anything", () => {
-    // The half that survives a reload: `promoted_asset_count` is derived per
-    // read, so a session that did not do the promoting still sees it.
-    renderWithData(<PromoteButton batch={batch({ promoted_asset_count: 3 })} projectId={PROJECT} />);
-
-    expect(screen.getByTestId("promoted-count-drive-01").textContent).toBe(
-      "3 of 48 in the dataset",
-    );
-  });
-
-  it("says nothing about the trunk when nothing is in it", () => {
-    renderWithData(<PromoteButton batch={batch()} projectId={PROJECT} />);
-    expect(screen.queryByTestId("promoted-count-drive-01")).toBeNull();
   });
 
   it("renders a refusal as prose", async () => {

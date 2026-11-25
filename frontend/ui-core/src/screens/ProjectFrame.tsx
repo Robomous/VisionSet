@@ -8,16 +8,14 @@
  * says the same thing on every page and the rename and delete dialogs it opens
  * exist once.
  *
- * The one filled control is the frame's only when a caller hands it the slot's
- * inputs (`cta`): the sections do, so Annotate — or Add images in its place — is
- * the project shell's dominant action there, with Add images beside Annotate; a
- * page below the sections would not, because a page that owns its own dominant
- * action beside a second filled control would be two answers to "what now?".
- * Add images is no longer such a page: it is a dialog `ProjectScreen` opens
- * over the section it was asked from.
+ * Add images is the frame's only when a caller hands it the slot's inputs
+ * (`cta`): Images does, as a button, and Classes and Dataset as the overflow's
+ * first entry. The Overview does not — its Add images and Annotate sit in the
+ * batches band, beside the batches they act on. Add images is a dialog
+ * `ProjectScreen` opens over the section it was asked from.
  */
 
-import { useMemo, useState, type JSX, type ReactNode } from "react";
+import { useState, type JSX, type ReactNode } from "react";
 
 import { refusalProse } from "../data/refusals";
 import { asApiError } from "../data/errors";
@@ -28,16 +26,13 @@ import { ProjectShell, type ProjectNavData } from "../patterns/ProjectShell";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle, Input, Label, FieldError } from "@robomous/ui-core";
 import {
   useActiveSchema,
-  useBatches,
   useDatasetStats,
   useDeleteProject,
   useProjectDataset,
-  useJobsOfBatches,
   useProject,
   useProjectStats,
   useRenameProject,
 } from "./queries";
-import { openForAnnotation } from "./projectFrameRules";
 import type { FormEvent } from "react";
 
 export interface ProjectFrameProps {
@@ -49,16 +44,12 @@ export interface ProjectFrameProps {
   readonly onNavigate: (section: ProjectSection) => void;
   readonly hrefFor?: (section: ProjectSection) => string;
   /**
-   * The filled control's inputs. Absent means the navigation draws none and the
-   * page inside owns the dominant action; present, the slot shows Annotate when a
-   * batch is open for annotation and the host can open one, else Ingest, which
-   * steps back to `secondary` while the content owns the filled control.
+   * Add images, for the bar. Absent means the navigation draws none and the
+   * page inside owns its actions — the Overview, whose batches band holds Add
+   * images and Annotate.
    */
   readonly cta?: {
-    readonly onOpenBatch?: (batchId: string) => void;
-    readonly onOpenJob?: (jobId: string) => void;
     readonly onIngest?: () => void;
-    readonly contentOwnsTheAction?: boolean;
     /** Add images as a button, or as the overflow's first entry. See `ProjectNav`. */
     readonly ingest?: "action" | "menu";
   };
@@ -88,20 +79,10 @@ export function ProjectFrame({
   children,
 }: ProjectFrameProps): JSX.Element {
   const project = useProject(projectId);
-  const batches = useBatches(projectId);
   const counts = useSectionCounts(projectId);
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // Hooks cannot be conditional, so this always runs — with an empty list, and
-  // therefore no request, whenever the host wired no `onOpenJob` to apply the
-  // job rule with.
-  const openIds = useMemo(
-    () => (batches.data?.items ?? []).filter((batch) => batch.state === "in_annotation").map((batch) => batch.id),
-    [batches.data],
-  );
-  const jobs = useJobsOfBatches(cta?.onOpenJob === undefined ? [] : openIds);
-  const open = cta?.onOpenBatch === undefined ? [] : openForAnnotation(batches.data?.items, jobs);
   const nav: ProjectNavData = {
     sections,
     active,
@@ -110,14 +91,7 @@ export function ProjectFrame({
     ...(meta === undefined ? {} : { meta }),
     ...(cta?.ingest === undefined ? {} : { ingest: cta.ingest }),
     ...(hrefFor === undefined ? {} : { hrefFor }),
-    ...(open.length > 0 && cta?.onOpenBatch !== undefined
-      ? { annotate: { targets: open, onOpen: cta.onOpenBatch, ...(cta.onOpenJob === undefined ? {} : { onOpenJob: cta.onOpenJob }) } }
-      : {}),
-    // Where Annotate may appear, the actions wait for the batches: Add images
-    // drawn alone and filled, then pushed aside by an arriving Annotate, would
-    // be the bar's one layout shift.
-    ...(cta?.onIngest === undefined || (cta.onOpenBatch !== undefined && batches.isPending) ? {} : { onIngest: cta.onIngest }),
-    contentOwnsTheAction: cta?.contentOwnsTheAction ?? false,
+    ...(cta?.onIngest === undefined ? {} : { onIngest: cta.onIngest }),
     onRename: () => setRenaming(true),
     onDelete: () => setDeleting(true),
   };

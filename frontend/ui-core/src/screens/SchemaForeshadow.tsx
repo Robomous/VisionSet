@@ -19,6 +19,7 @@
  * how banners get ignored.
  */
 
+import { ArrowUpRight } from "lucide-react";
 import type { JSX } from "react";
 
 import { Alert, AlertDescription, Button } from "@robomous/ui-core";
@@ -46,6 +47,7 @@ export function SchemaForeshadow({
           onClick={onOpenSchema}
         >
           Define your labels
+          <ArrowUpRight className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
         </Button>
       )}
       </AlertDescription>

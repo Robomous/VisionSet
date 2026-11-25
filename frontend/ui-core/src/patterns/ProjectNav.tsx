@@ -32,22 +32,15 @@
  *
  * ## The actions are the open section's
  *
- * Both are icon buttons named by their tooltips. Annotate opens the batch that
- * is `in_annotation` — straight into its one job when it has exactly one, onto
- * the batch's panel on the Overview otherwise; with two or more open it is a
- * split button, the icon for the newest and the chevron to pick another,
- * because the batch decides the schema version you annotate under. It is
- * offered where batches are, the Overview.
  * Add images is a button where images are the subject (`ingest: "action"`,
- * Overview and Images) — outlined before Annotate, filled when nothing is open
- * — and the overflow's first entry everywhere else, one click from every
- * section. A section's own actions (Add class, Publish release) are rendered by
- * the section, where their dialogs live, into this bar's `SectionActionsOutlet`.
- * A section whose content holds the page's filled control says so through
- * `contentOwnsTheAction`, and Add images steps back to `outline`, so the page
- * never shows two. Every icon is 14px at the stroke of 12px medium text, and
- * `data-icon` takes 2px off the padding on its side: an icon carries air in its
- * box that equal padding would read as extra.
+ * Images) and the overflow's first entry on the sections that are about
+ * something else (Classes, Dataset), one click from either. The Overview hands
+ * the bar none: its Add images and Annotate sit in the batches band, beside the
+ * batches they act on (`BatchesActions`). A section's own actions (Add class,
+ * Publish release) are rendered by the section, where their dialogs live, into
+ * this bar's `SectionActionsOutlet`. Every icon is 14px at the stroke of 12px
+ * medium text, and `data-icon` takes 2px off the padding on its side: an icon
+ * carries air in its box that equal padding would read as extra.
  *
  * ## The rail it is not
  *
@@ -56,12 +49,11 @@
  * and a hairline, no `sidebar-*` token anywhere in it.
  */
 
-import { ChevronDown, Database, Grid3x3, ImagePlus, Images, MoreHorizontal, PenLine, Tags, TextCursorInput, Trash2, type LucideIcon } from "lucide-react";
+import { Database, Grid3x3, ImagePlus, Images, MoreHorizontal, Tags, TextCursorInput, Trash2, type LucideIcon } from "lucide-react";
 import type { JSX, MouseEvent, ReactNode } from "react";
 
 import {
   Button,
-  ButtonGroup,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -71,15 +63,11 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
 } from "@robomous/ui-core";
 
 import { formatCount } from "../lib/format";
-import { isProjectSection, destinationOf, type AnnotateTarget, type ProjectSection } from "./projectSections";
-import { IconAction, IconButton } from "./IconAction";
-import { quietUnlessVisible } from "./iconFocus";
+import { isProjectSection, type ProjectSection } from "./projectSections";
+import { IconAction } from "./IconAction";
 import { SectionActionsOutlet } from "./SectionActions";
 
 interface SectionLabel {
@@ -120,9 +108,9 @@ export interface ProjectNavProps {
   /** One line about the open section, after the tabs — the section header, folded into the bar. */
   readonly meta?: ReactNode;
   /**
-   * Add images as a button (Overview, Images — where images are the subject)
-   * or as the first entry of the overflow (everywhere else), so it is reachable
-   * from every section without crowding the sections it is not about.
+   * Add images as a button (Images, where images are the subject) or as the
+   * first entry of the overflow (Classes, Dataset), so it is reachable without
+   * crowding the sections it is not about.
    */
   readonly ingest?: "action" | "menu";
   /** The sections on offer, in display order. */
@@ -132,15 +120,7 @@ export interface ProjectNavProps {
   /** The URL of a section, spelled by the host. Absent renders the items as buttons. */
   readonly hrefFor?: (section: ProjectSection) => string;
   readonly onNavigate: (section: ProjectSection) => void;
-  /** The batches open for annotation, newest first. Absent or empty: no Annotate. */
-  readonly annotate?: {
-    readonly targets: readonly AnnotateTarget[];
-    readonly onOpen: (batchId: string) => void;
-    readonly onOpenJob?: (jobId: string) => void;
-  };
   readonly onIngest?: () => void;
-  /** The open section's content holds the page's filled control, so Ingest steps back. */
-  readonly contentOwnsTheAction?: boolean;
   readonly onRename?: () => void;
   readonly onDelete?: () => void;
   /** The strip layout's content: below `lg` the tab bar owns the panel beneath it. */
@@ -296,101 +276,12 @@ function Strip(props: ProjectNavProps): JSX.Element {
  */
 
 /**
- * Add images — beside Annotate once a batch is open for annotation. Both are
- * icon buttons named by their tooltips (`IconAction`), as the batch panel's are.
- *
- * On the sections images are the subject of (Overview, Images) it is a
- * button: outlined before Annotate while a batch is open, the filled control
- * when nothing is — the honest next step. Elsewhere it is the overflow's first
- * entry (`ingest: "menu"`), still one click from every section, never crowding
- * a section it is not about. A section whose content holds the page's filled
- * control (`contentOwnsTheAction`) steps it back to `outline`. One filled
- * control at a time, and never a disabled one.
+ * Add images, as an icon button named by its tooltip (`IconAction`) — the one
+ * filled control in the bar, where it is drawn at all (`ingest: "action"`).
  */
-function Cta({ annotate, onIngest, ingest = "action", contentOwnsTheAction = false }: ProjectNavProps): JSX.Element | null {
-  const annotating = annotate !== undefined && annotate.targets.length > 0;
-  const addImages =
-    onIngest === undefined || ingest === "menu" ? null : (
-      <IconAction icon={ImagePlus} label="Add images" variant={annotating || contentOwnsTheAction ? "outline" : "default"} data-testid="go-ingest" onClick={onIngest} />
-    );
-  if (!annotating) return addImages;
-  return (
-    <>
-      {addImages}
-      <AnnotateAction
-        targets={annotate.targets}
-        onOpen={annotate.onOpen}
-        {...(annotate.onOpenJob === undefined ? {} : { onOpenJob: annotate.onOpenJob })}
-      />
-    </>
-  );
-}
-
-/**
- * Into the work. One open batch: an icon button that goes straight there. Two or
- * more: a split button — the icon goes to the newest open batch with work left
- * (`targets` arrive newest first; the newest of all when none has any), and the
- * chevron welded to it lists every
- * open batch to pick from, in three data points a row: the name, the remaining
- * count in the batch table's own words, and the pinned schema version —
- * invisible everywhere else on this page, and what the pick actually decides.
- * The default is the list's order, never a remembered choice: a control's
- * destination may not be a function of session history. The tooltip names the
- * batch the icon will open, so the destination is said before the press.
- */
-function AnnotateAction({
-  targets,
-  onOpen,
-  onOpenJob,
-}: {
-  readonly targets: readonly AnnotateTarget[];
-  readonly onOpen: (batchId: string) => void;
-  readonly onOpenJob?: (jobId: string) => void;
-}): JSX.Element | null {
-  function go(target: AnnotateTarget): void {
-    const to = destinationOf(target);
-    if (to.kind === "job" && onOpenJob !== undefined) onOpenJob(to.id);
-    else onOpen(target.id);
-  }
-
-  // The first with work left, so the icon never opens a batch with nothing to do; the list's own order otherwise.
-  const first = targets.find((target) => target.remaining > 0) ?? targets[0];
-  if (first === undefined) return null;
-  const hint = `${first.name} · ${formatCount(first.remaining)} to do`;
-  if (targets.length === 1) {
-    return <IconAction icon={PenLine} label="Annotate" hint={hint} variant="default" data-testid="go-annotate" onClick={() => go(first)} />;
-  }
-  return (
-    <ButtonGroup>
-      <IconAction icon={PenLine} label="Annotate" hint={hint} variant="default" data-testid="go-annotate" onClick={() => go(first)} />
-      <DropdownMenu>
-        <Tooltip>
-          <TooltipTrigger asChild onFocus={quietUnlessVisible}>
-            <DropdownMenuTrigger asChild>
-              <IconButton icon={ChevronDown} label="Choose a batch to annotate" variant="default" className="w-6 border-l border-l-primary-foreground/20" data-testid="go-annotate-menu" />
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Choose a batch to annotate</TooltipContent>
-        </Tooltip>
-        <DropdownMenuContent align="end" className="min-w-56">
-          {targets.map((batch) => (
-            <DropdownMenuItem
-              key={batch.id}
-              data-testid={`annotate-batch-${batch.name}`}
-              onSelect={() => go(batch)}
-            >
-              <div className="flex flex-col items-start">
-                <span>{batch.name}</span>
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  {formatCount(batch.remaining)} to do · {batch.schemaVersion === null ? "—" : `v${batch.schemaVersion}`}
-                </span>
-              </div>
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </ButtonGroup>
-  );
+function Cta({ onIngest, ingest = "action" }: ProjectNavProps): JSX.Element | null {
+  if (onIngest === undefined || ingest === "menu") return null;
+  return <IconAction icon={ImagePlus} label="Add images" variant="default" data-testid="go-ingest" onClick={onIngest} />;
 }
 
 function Overflow({ onRename, onDelete, onIngest, ingest = "action" }: ProjectNavProps): JSX.Element | null {

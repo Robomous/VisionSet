@@ -105,7 +105,7 @@ import {
   formatGeometries,
   toast,
 } from "@visionset/ui-core";
-import { CircleCheck, Database, ImageIcon, Info, MousePointer2, Plus, Square, SquareDashed, Tag, Trash2 } from "lucide-react";
+import { ArrowUpRight, CircleCheck, Database, ImageIcon, Info, MousePointer2, Plus, Square, SquareDashed, Tag, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 
@@ -236,6 +236,7 @@ export function Styleguide(): JSX.Element {
             </Button>
             <Button variant="link" className="h-auto p-0">
               Learn more
+              <ArrowUpRight className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
             </Button>
             <Button disabled>Disabled</Button>
           </div>
@@ -466,23 +467,16 @@ export function Styleguide(): JSX.Element {
 
         <Section
           title="Project navigation"
-          description="Inside a project: one link per section with the open one marked, the one filled control, and the overflow. A toolbar across the pane at lg and above; the same data as a strip below. The project's identity is the eyebrow above the content (see Section header)."
+          description="Inside a project: one link per section with the open one marked, Add images where images are the subject (the Overview's is its batches band's, beside Annotate), and the overflow. A toolbar across the pane at lg and above; the same data as a strip below. The project's identity is the eyebrow above the content (see Section header)."
         >
           <div className="flex flex-col gap-6">
             <div className="flex flex-col overflow-hidden rounded-lg border border-border" data-testid="sg-project-nav-bar">
               <ProjectNav
                 layout="bar"
                 sections={PROJECT_SECTIONS}
-                active="overview"
+                active="images"
                 hrefFor={(section) => `#${section}`}
                 onNavigate={() => undefined}
-                annotate={{
-                  targets: [
-                    { id: "b2", name: "drive-02", remaining: 7, schemaVersion: 4 },
-                    { id: "b1", name: "drive-01", remaining: 240, schemaVersion: 3 },
-                  ],
-                  onOpen: () => undefined,
-                }}
                 onIngest={() => undefined}
                 onRename={() => undefined}
                 onDelete={() => undefined}

@@ -271,10 +271,9 @@ A project has four sections - Overview, Images, Classes, Dataset - and they are
 toolbar across the pane, below `lg` a tab strip above the content, one
 component (`ProjectNav`) drawing whichever layout `ProjectShell`'s `matchMedia`
 answer hands it. The bar is the section's header: the tabs with their counts, one line about
-the open section, and the actions that section is about — Annotate and Add images on
-Overview (Annotate goes straight into a batch's one job, or opens the batch's panel to pick one),
-Add images on Images, Publish on Dataset (Classes draws its **New** in its own band) — then the overflow,
-where Add images sits on the sections it is not about. The project's identity is the
+the open section, and the actions that section is about — Add images on Images, Publish on
+Dataset (Classes draws its **New** in its own band; the Overview's Add images and Annotate end its
+batches band) — then the overflow, where Add images sits on Classes and Dataset. The project's identity is the
 open-project tab above the bar, so no eyebrow line sits over the content, and the content
 opens straight on the section. Overview is the default, because a schema
 editor is configuration and renders the same for an empty project and a full one;
@@ -337,6 +336,22 @@ Every count is a `total` from the wire, never a tally of tiles — the status ba
 project's (*61 images · 3 sources*, or *13 of 61 images* while narrowed) — and an image the
 listing holds but no source claims (only data from before sources were recorded) is counted in a
 line under the grid rather than hidden.
+
+*One batch's images.* `/projects/:id/images?batch=:batchId` narrows the section to the images that
+batch holds, which the Overview's batch panel links to from the count on its Images property. They are read from
+`GET /batches/{id}/assets` (a hundred at a time, in the batch's own order, the next page as the end
+comes within reach) — the project's listing has no batch filter, so nothing narrows it by hand. The
+band's source menu gives way to a chip, *Batch: drive-01 ×*, whose × lifts the narrowing (written
+with `replace`) and returns the whole project with the tile size kept. The batch's images are one
+run rather than a section per source: the batch listing carries no per-source count, and a heading
+claiming a source's whole over a partial read would be wrong. No source menu or headings, then; the
+image's source is still named in its detail. The status bar says *4 of 61 images* once the batch's
+read has answered, and nothing before; the unsourced
+note is the whole project's and is not shown; density, the selection, the keys and Focus work as
+on the whole project. A batch with no images says so, and one that cannot be read shows the
+refusal, with the chip still there to remove. Only a batch the project's own batches hold is read:
+an id they do not hold - deleted, or another project's - is *Unknown batch*, says it is not on
+record, and fetches nothing.
 
 *The band.* One row over the grid says what it holds. With several sources it is the source
 menu: a button naming the source in use and its count, and beside it that choice's one-line
@@ -439,41 +454,62 @@ row's menu, *Jobs and details*, or its `?batch=` address) - as a **sheet over th
 batch panel's own exception to [`DESIGN.md`](../../DESIGN.md#detail-panels): it comes from the
 right over the page's scrim, as a dialog does, a press anywhere outside it puts it away, and its
 left edge resizes it (the width is the person's, remembered). The panel is the batch's only home:
-a batch has no page, and the old `/projects/:id/batches/:batchId` address redirects here. A slim
-toolbar holds *Auto-label* at its start when the batch declares `pre_label`, then *Batch n of N*
-with previous and next (J/K walk the batches without closing it) and close; under it the
-batch's name is the page's title, and its **properties** follow one per row, an icon and a
-label beside the value. The state is one of them - a state chip whose glyph says the phase
+a batch has no page, and the old `/projects/:id/batches/:batchId` address redirects here. **One
+bar across the top** holds, at its start, the close (`≫`), previous and next (J/K walk the batches
+without closing it) and *n of N*; at its end, every action on the batch. Under it the batch reads
+as a page: its name as a large title, and its **properties** one per row, an icon and a label beside the value (read, not
+edited, so they do not light on hover, except State's next step and Images, which are also controls), and *Empty* where a property has no value yet. The state is one of them - a state chip whose glyph says the phase
 (the dashed ring, the ring, the labeling pie, the arrow to the dataset, the check) and whose
-card says what it means, not a badge beside the name - with Labeled (*18 of 48 · 38%* over a meter), Images (Scans or Assets, by the row's rule) and Assigned (who holds
-the jobs, and how many nobody does). The rest - Review (accepted, waiting, skipped), the schema
-version, Kind (a correction or not) and how many of its images are In dataset - wait behind
-*N more properties*, which opens in place, cannot be tabbed into while folded, and stays open
-as J/K walks the batches. Then its **jobs**, one row each in a single bordered list: the job's
+card says what it means, not a badge beside the name. Pointing at the State row or focusing it brings in, beside the chip,
+the batch's next step: the bar's own forward control by its own name (*Approve*, *Start annotating*, *Annotate*,
+*Complete batch*, *Add to dataset*), which it presses, and nothing while the bar withholds it; *Open the dataset ↗* once
+the batch is in it (`patterns/project/useForwardStep.ts`). Labeled is the batch table's own readout (`LabeledReadout`): *18 of 48 · 38%*, the
+way every surface says labeled progress - the table's Labeled column and the job rows too - with its ring, and,
+pointed at, the same card that splits the images by annotation state. Images (Scans or Assets, by the row's rule) says *48 images* and is the way to them: *Open in
+Images ↗* arrives beside it on hover or focus and opens the Images section narrowed to the batch, `?batch=`. What
+arrives on hover waits 4px to the left, comes in in 200ms and leaves in 120ms, and is simply there without a pointer
+(`patterns/project/SheetFacts.tsx`).
+Assigned says who holds the jobs, and how many nobody does. The rest - Review (accepted, waiting, skipped), the schema
+version, Kind (a correction or not) and how many of its images are In dataset - are always the
+same four, and wait behind *4 more properties* (*Hide 4 properties* once open), which opens in
+place, cannot be tabbed into while folded, and stays open as J/K walks the batches. A hairline,
+then its **jobs**, one 44px row each with no frame and no rules between them: the job's
 number, its state as a glyph (a ring not started, a pie filling by the quarter, the check once
 done), who holds it, how far it has come (`done/images`, read per job; pointed at, it opens the
 job's split by annotation state), and where the row leads - *Open* into the editor on that job,
 or *View* once it is done, read-only. The whole row is the way in, and ↑/↓ walk the rows; a host
-with no editor to send a job to says its state in words instead. When the
-title scrolls out of view on the way down the jobs, the name, the state and how far it has come
-gather into one line pinned under the toolbar; it echoes the page, so assistive tech is not told
-twice, and pressing it scrolls back up. The panel opens with focus on the batch's forward step,
-and Escape closes it.
+with no editor to send a job to says its state in words instead. The panel opens with focus on
+the batch's forward step, and Escape closes it. There is no footer.
 
-**The panel's footer carries every other action on the batch, each an icon button named by its
-tooltip** (`patterns/IconAction.tsx`), each offered from the batch's `allowed_actions` - never
+**The top bar's end carries every action on the batch, each a ghost icon button named by its
+tooltip** (`patterns/IconAction.tsx`) - except *Annotate*, which says its name because it is
+where most visits to a labeling batch are going, and *Correct* (below). *Auto-label* comes first, when the batch declares
+`pre_label`; then the lifecycle controls, each offered from the batch's `allowed_actions` - never
 from its state read here - and each with its own gating, refusals and outcome. A withheld control
-stays, disabled, and its tooltip says why. What a control says - an outcome, a refusal, a count -
-is a line above the row of buttons, so words never squeeze under a 32px square (a label flip is
-not feedback). The interface says *add to dataset* for the kernel's `promote`.
+stays, disabled, and its tooltip says why. **The panel has no footer: what a control says is a
+toast** (`SheetLine`, the house `Toaster` at the bottom right). The outcome of a press and a
+refusal are raised once per batch - keyed by its id and named for it, since the panel may have
+moved on by the time it is read - with their words and the way on (*Open the dataset ↗*), and their words
+follow the control's report if it settles after the press; a refusal stays up twice as long. A
+lasting state (*All 48 images in the dataset*) says nothing in the panel, because State, its *Open
+the dataset ↗* and the In dataset property already say it. So words never squeeze under a 32px
+square, the top bar stays one 48px row whichever batch is open, and the page never moves for a
+message (a label flip is not feedback). Outside a panel a line stays in place, as a row. At the first or last batch, the arrow that goes disabled hands its
+focus to the other, so a keyboard walking the batches keeps its place. The interface says *add to dataset* for the
+kernel's `promote`.
 
-**At the start, what ends or branches the batch:** *Delete batch*, in the destructive colour and
-withheld with its reason once the batch is completed, and *Create correction batch* on a completed
-one (the new correction then opens in the panel). **At the end, one forward step per state**, as
+**First, what ends or branches the batch:** *Delete batch*, quiet like the rest and in the
+destructive colour only under the pointer or the focus, and disabled with its reason wherever the
+batch does not declare `delete`; and on a
+completed batch *Correct*, a ghost button that says its name (its tooltip: *Create correction
+batch*), whose new correction then opens in the panel. A hairline parts them from what follows,
+and is drawn only where it parts something. **Then
+one forward step per state**, as
 the batch declares them: *Approve* (it opens the approve dialog, because approval pins the
 schema, cuts the jobs and has no route back - and, switch on, starts the batch too), *Start annotating*, *Annotate* (only when
 the batch has exactly one job, straight into it), *Complete* and, on a completed batch with
-images still outside the dataset, *Add to dataset*. *Annotate* is filled while there is work left,
+images still outside the dataset, *Add to dataset*. All are quiet - no control in the bar is
+filled - and the forward step is the one the panel opens on: *Annotate* while there is work left,
 *Complete* once nothing is outstanding. The batch declares `complete` only once every frame is
 settled, so while frames are still to do *Complete* is withheld and its tooltip counts them.
 
@@ -482,8 +518,8 @@ settled, so while frames are still to do *Complete* is withheld and its tooltip 
 reopened - with one switch, *Add the labeled images to the dataset*, on by default and keeping
 the person's last answer; its button says *Complete* whatever the switch says. On, it completes
 and adds in one go; off, it completes and says *Nothing is in the dataset yet*, and *Add to
-dataset* appears beside it. A completed batch wholly in the dataset has no forward step: it says
-*All N images in the dataset*, with the way to the dataset, instead of offering a press that
+dataset* appears beside it. A completed batch wholly in the dataset has no forward step: its
+State says *In dataset*, with *Open the dataset ↗* beside it, instead of offering a press that
 could only report that nothing moved - a curator taking one of its images out puts *Add to
 dataset* back, and that press is how it is restored. What the panel does not do is draw frames:
 there is no frame grid, no bulk moving of frames between states, no removing frames from a draft
@@ -502,8 +538,11 @@ The page's exception to changing nothing is batches, which have no section to ac
 project as a whole over the table, as the line or the band's icon described
 [below](#auto-labeling-from-the-overview), and only where some batch declares `pre_label`. A batch
 that declares it also offers **Auto-label** in its row menu and its panel, which opens the same
-dialog over that one batch, titled for it. **Add images**, the dialog whose result is a new
-batch, is not on the page: it is the project bar's, beside Annotate.
+dialog over that one batch, titled for it. **Add images** and **Annotate** end the batches band,
+after the filter and a hairline (`patterns/project/BatchesActions.tsx`), at the filter's 28px:
+Add images is a `ghost` icon button named by its tooltip, always on offer and never the urgent thing; Annotate
+is the page's one filled control, drawn only while a batch is open for annotation. A project with
+no images has no band, so its invitation's *Add images* is the filled one.
 
 **The Classes card is the last of the four, and it draws the classes rather than describing
 them**: the class count beside its label, one bar split by each class's share of all annotations,
@@ -1377,28 +1416,27 @@ frame at a time, and a draft's membership is edited through the API and MCP only
 
 #### The way in
 
-**`Start annotating` is in the panel's footer only for an `approved` batch, and there it is the
+**`Start annotating` is in the panel's top bar only for an `approved` batch, and there it is the
 transition rather than a door.** That press is `POST /batches/{id}/start`, the batch's own next
 step declared as `start` in its `allowed_actions` - and it navigates nowhere: the panel re-reads
 the batch as `in_annotation`, and the job's own door is then what opens it. There is no icon on
 it; it is a state change, not a link.
 
 **Once the batch is open, the way into the annotator is the job's own door, because only a job
-answers which frames.** A batch is partitioned, so a footer control would have to pick a job
+answers which frames.** A batch is partitioned, so a bar control would have to pick a job
 silently; the panel lists the jobs, and each unfinished one carries *Open*, straight into the
 editor on that job. The one exception hides no choice: a batch with exactly one job has *Annotate*
-in its footer, which opens that job, filled while there is work left and outlined once nothing is
-outstanding. Neither takes the job: opening one only navigates, and the editor itself takes a
+in its top bar, which opens that job, and the panel opens on it while there is work left. Neither takes the job: opening one only navigates, and the editor itself takes a
 `pending` job to `in_progress` when it opens it.
 
-**The project's `Annotate` control follows the same rule one level up.** Like *Add images* beside
-it in the project bar, it is an icon button named by its tooltip. It opens the batch that is open
+**The batches band's `Annotate` follows the same rule one level up.** It says its name, with the
+pen before it, and its tooltip says where it goes. It opens the batch that is open
 for annotation - straight into that batch's one job where it has exactly one, and onto the
 batch's panel to pick a job otherwise. With two or more batches open it is a **split button**: the
-icon opens the newest open batch that still has work (its tooltip names it and what is left), and
+label opens the newest open batch that still has work (its tooltip names it and what is left), and
 the chevron welded to it lists every open batch, because the batch decides which schema version
 the work is judged against; picking one then applies the same rule, its single job or its panel.
-The icon's batch is read off the list's order, never a remembered choice.
+The label's batch is read off the list's order, never a remembered choice.
 
 ### Batches, and a machine that only goes forwards
 
@@ -1434,7 +1472,7 @@ Two pairs of lifecycle steps are offered as one control, on the screens where a 
 takes them together. **Approve** with its *Start annotating now* switch on, its default, takes a
 draft through `approved` to `in_annotation` - in the batch's approve dialog, and in place as the
 Add images dialog's last step, which draws the same form. **Complete**, with its *Add the labeled images to the dataset* switch on, closes
-the batch and moves its work into the trunk; it is the panel footer's one way to finish a batch,
+the batch and moves its work into the trunk; it is the panel's one way to finish a batch,
 withheld until the batch declares it, and says what the press moved in the same sentence *Add to
 dataset* uses. Its press is one request, `POST /batches/{id}/finish`, which closes the open
 jobs and the batch in one kernel transaction; a refusal is said in words and closes no job, even
@@ -1458,18 +1496,20 @@ that read says nothing about the project, and the card offers what it always did
 
 #### Deleting a batch
 
-The one control in the panel's footer that ends a batch rather than moving it
-along, and the only irreversible one - so it sits at the footer's start, away from
-the forward step at its end, in the destructive colour, and asks before it acts. It is
+The one control in the panel's top bar that ends a batch rather than moving it
+along, and the only irreversible one - so it sits first among the batch's actions, parted by a
+hairline from the forward step at their end, quiet until pointed at or focused, when it takes the
+destructive colour, and asks before it acts. It is
 a single component (`screens/DeleteBatch.tsx`) so that there is one spelling of which
 states may be deleted, of the blast radius, and of the confirmation, rather than a
 hand-mirror of the rule one layer up from the one `capabilities.ts` removes.
 
-Availability is `delete` in the batch's own `allowed_actions`, so a `completed`
-batch renders the button **disabled with the reason** in its tooltip - there is an operation behind
-it and a state that would enable it, which is the distinction #354 drew when it
-removed a control instead. The sentence is `withheldBecause`'s, shared with every
-other withheld control on these screens.
+Availability is `delete` in the batch's own `allowed_actions`. Where it is not declared, the
+button is **disabled with the reason** in its tooltip (the sentence
+is `withheldBecause`'s, shared with every other withheld control on these screens). That includes
+a `completed` batch: the button stays, disabled, and its tooltip points at a correction batch -
+the onward route, *Correct*, beside it. The declaration decides, never the state word: a completed
+batch whose declaration does include `delete` (a newer server) gets a live button.
 
 What the dialog says is the **verified** blast radius. The batch, its jobs and the
 per-frame progress go; the frames and their annotations stay, because

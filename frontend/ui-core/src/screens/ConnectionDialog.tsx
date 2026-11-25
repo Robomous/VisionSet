@@ -57,7 +57,7 @@
  */
 
 import type { UseQueryResult } from "@tanstack/react-query";
-import { Check, Cpu, Globe, PencilLine } from "lucide-react";
+import { ArrowUpRight, Check, Cpu, Globe, PencilLine } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent, type JSX, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 
 import { asApiError } from "../data/errors";
@@ -1347,8 +1347,9 @@ function AccessLine({
   return (
     <p className="text-pretty" data-testid="model-access">
       {access.note}{" "}
-      <a className="text-foreground underline underline-offset-2" href={access.href} target="_blank" rel="noreferrer">
+      <a className="vs-link inline-flex items-center gap-0.5 text-foreground underline-offset-2" href={access.href} target="_blank" rel="noreferrer">
         Request access
+        <ArrowUpRight className="size-3" strokeWidth={1.75} aria-hidden="true" />
       </a>
     </p>
   );

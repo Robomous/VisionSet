@@ -1,46 +1,53 @@
 /**
  * One batch, opened from its row: what it is, and the jobs it was cut into.
  *
- * It fills the screen's detail panel (`patterns/DetailPane.tsx`) at the right
- * of the table, so the table stays in view beside it and `J`/`K` (or the
- * arrows in its toolbar) walk the batches without closing it — people open
- * several in a row. The panel owns the width and the motion; this is what it
- * holds. It opens on the batch's forward action rather than on its first
- * control, and Escape closes it.
+ * It fills the screen's detail panel at the right of the table, so the table
+ * stays in view beside it and `J`/`K` (or the arrows in its top bar) walk the
+ * batches without closing it — people open several in a row. The panel owns the
+ * width and the motion; this is what it holds. It opens on the batch's forward
+ * action rather than on its first control, and Escape closes it.
  *
- * ## A page of properties, the state among them
+ * ## A page, with every action at the top
  *
- * A slim toolbar — where the batch sits among the rows, J/K, close — then the
- * batch's name as the page's title, then its properties one per row: an icon
- * and a label in a fixed column, the value beside it. The state is one of
- * them, a state chip with its card, rather than a badge beside the name. What is read most
- * — state, labeled, images, who holds it — is always there; the rest waits
- * behind "N more properties", which stays open as J/K walks the batches.
+ * One bar across the top, always one 48px row: at its start the way out
+ * (`≫`), the walk through the batches and where this one sits among them; at
+ * its end everything the batch may be asked to do — Auto-label, then the
+ * lifecycle controls (`screens/BatchActions.tsx`), all quiet ghost buttons,
+ * what ends the batch parted from what moves it forward by a hairline. At the
+ * first or last batch the walk's disabled arrow hands its focus to the other.
  *
- * ## A line that remembers which batch this is
+ * ## No footer: what a control says is a toast
  *
- * When the title scrolls out of view on the way down the jobs, the name, the
- * state and how far it has come gather into one line pinned under the toolbar;
- * scrolling back lets them go, and pressing the line scrolls back to the top.
- * It echoes what the page already says, so assistive tech is not told twice.
+ * What a control says is a `SheetLine`. Inside this panel the outcome of a press
+ * and a refusal become a toast, with the way on (*Open the dataset ↗*) in it; a
+ * lasting state says nothing, because the properties already say it. So the top
+ * bar keeps one row of controls and the page never moves for a message.
  *
- * **It acts on nothing itself.** The footer's actions are the screen's: the
- * batch's lifecycle controls (`screens/BatchActions.tsx`), each offered from
- * the batch's `allowed_actions` with its own gating, refusals and outcome line.
+ * Under the bar the batch reads as a page: its name as a large title, then its properties
+ * one per row: an icon and a label in a fixed column, the value beside it, and
+ * "Empty" where a property has no value yet. What is read most — state,
+ * labeled, images, who holds it — is always there; the rest waits behind
+ * "N more properties" / "Hide N properties", which stays open as J/K walks
+ * the batches. A hairline, then the jobs.
+ *
+ * **It acts on nothing itself.** The actions are the screen's, each offered
+ * from the batch's `allowed_actions` with its own gating, refusals and outcome.
  * A batch has no page of its own; this panel is where it moves forward.
  */
 
-import { ChevronDown, ChevronRight, ChevronUp, CircleDashed, GitBranch, Images, ListChecks, PackageCheck, ScanEye, Shapes, Users, X, type LucideIcon } from "lucide-react";
-import { useEffect, useRef, useState, type JSX, type ReactNode, type RefObject } from "react";
+import { ChevronDown, ChevronsRight, ChevronUp, GitBranch, PackageCheck, ScanEye, Shapes, Users, type LucideIcon } from "lucide-react";
+import { useEffect, useRef, useState, type FocusEvent, type JSX, type ReactNode } from "react";
 
 import { Button, cn } from "@robomous/ui-core";
-import { formatCount, formatPercent } from "../../lib/format";
+import { formatCount } from "../../lib/format";
 import type { BatchRowView, LabelCounts } from "./BatchTable";
-import { initials, labeledDetail, phaseState, rowNoun } from "./batchRowModel";
+import { initials, rowNoun } from "./batchRowModel";
 import { focusQuietly } from "../iconFocus";
-import { StateChip } from "../StateChip";
 import { ProgressReadout } from "../ProgressRing";
 import { JobList } from "./JobList";
+import { ImagesFact, LabeledFact, Property, StateFact } from "./SheetFacts";
+import { useForwardStep } from "./useForwardStep";
+import { InSheet } from "./sheetLines";
 
 export interface SheetJob {
   readonly id: string;
@@ -84,14 +91,36 @@ export interface BatchSheetProps {
   readonly noJobs: string;
   /** `undefined` while the batch itself is read; the folded properties wait on it. */
   readonly details?: BatchDetails;
-  /** The footer's actions, the forward one marked `data-autofocus`; their words marked `data-line`. */
+  /** The batch's lifecycle controls, the forward one marked `data-autofocus`; what they say is a toast (`SheetLine`). */
   readonly actions?: ReactNode;
-  /** The top bar's own controls, at its start: what works on the whole batch without moving it (Auto-label). */
+  /** What works on the whole batch without moving it (Auto-label), at the start of the actions. */
   readonly tools?: ReactNode;
+  /** Into the Images section narrowed to this batch; its count becomes the way there. */
+  readonly onBrowseAssets?: () => void;
+  /** The dataset — what the State property offers once the batch is in it. */
+  readonly onOpenDataset?: () => void;
 }
 
-/** The house curve: a strong ease-out, for things arriving in answer to a press or a scroll. */
+/** The house curve: a strong ease-out, for things arriving in answer to a press. */
 const EASE = "ease-[cubic-bezier(0.23,1,0.32,1)]";
+
+/** A control lights on hover — instantly, and only where there is a pointer to hover with — because it is crossed a dozen times a minute. */
+const HOVER = "[@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted/60";
+
+/** A press presses: 0.96, back in 100ms. */
+const PRESS = "transition-[background-color,scale] duration-100 ease-out active:scale-[0.96] motion-reduce:transition-none";
+
+/** Something arriving in answer to the batch's data — a line, the jobs — fades in where it lands, 200ms; it never slides, so nothing around it moves. */
+const ARRIVE = "transition-opacity duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] starting:opacity-0";
+
+/**
+ * `BatchActions` parts what ends the batch from what moves it forward with a
+ * growing spacer (`span.flex-1`); in the bar that spacer is a hairline — and
+ * none at all when it would part nothing: when nothing stands before it, or no
+ * control follows it in the bar.
+ */
+const SPACER_AS_HAIRLINE =
+  "[&>span.flex-1]:mx-1 [&>span.flex-1]:h-4 [&>span.flex-1]:w-px [&>span.flex-1]:flex-none [&>span.flex-1]:bg-border [&>span.flex-1:first-child]:hidden [&>span.flex-1:not(:has(~button,~*_button))]:hidden";
 
 /** A key that belongs to the control it was pressed in, not to the panel. */
 function ownedByAControl(target: EventTarget | null): boolean {
@@ -101,41 +130,49 @@ function ownedByAControl(target: EventTarget | null): boolean {
   return el.closest?.("[role=menu],[role=dialog],[role=listbox]") != null;
 }
 
-/** Whether `target` has scrolled up past the top of `root` — the moment you lose sight of it. */
-function useScrolledPast(root: RefObject<HTMLElement | null>, target: RefObject<HTMLElement | null>): boolean {
-  const [past, setPast] = useState(false);
-  useEffect(() => {
-    const el = target.current;
-    if (el === null || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver(
-      ([entry]) => setPast(entry !== undefined && !entry.isIntersecting && entry.boundingClientRect.top < (entry.rootBounds?.top ?? 0)),
-      { root: root.current },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [root, target]);
-  return past;
-}
-
-export function BatchSheet({ row, position, onStep, onClose, jobs, jobsError, noJobs, details, actions, tools }: BatchSheetProps): JSX.Element {
+export function BatchSheet({ row, position, onStep, onClose, jobs, jobsError, noJobs, details, actions, tools, onBrowseAssets, onOpenDataset }: BatchSheetProps): JSX.Element {
   const root = useRef<HTMLDivElement>(null);
-  const scroller = useRef<HTMLDivElement>(null);
-  const titleFoot = useRef<HTMLDivElement>(null);
-  const condensed = useScrolledPast(scroller, titleFoot);
+  const bar = useRef<HTMLDivElement>(null);
+  // The bar's forward step, which the State property offers beside the chip.
+  const next = useForwardStep(bar);
 
-  // Open on the forward action, once — or, with none, on the footer's last live
-  // control — neither `disabled` nor `aria-disabled`, which is how a withheld icon
+  // Open on the forward action, once — or, with none, on the bar's last live
+  // action — neither `disabled` nor `aria-disabled`, which is how a withheld icon
   // button says so. Stepping to another batch keeps the focus where it is.
+  //
+  // The forward step can arrive after the panel does — opened from an address,
+  // *Annotate* waits on the batch's jobs — so until the person presses or
+  // types anything, the focus moves to it when it appears, rather than staying
+  // on whatever stood in for it.
   useEffect(() => {
     const at = root.current;
-    const forward = at?.querySelector<HTMLElement>("[data-autofocus]") ?? [...(at?.querySelectorAll<HTMLElement>("footer button:not(:disabled):not([aria-disabled=true])") ?? [])].at(-1);
-    if (forward != null) focusQuietly(forward);
+    if (at === null) return;
+    const place = (): boolean => {
+      const forward = at.querySelector<HTMLElement>("[data-autofocus]");
+      const fallback = [...at.querySelectorAll<HTMLElement>("[data-sheet-actions] button:not(:disabled):not([aria-disabled=true])")].at(-1);
+      const target = forward ?? fallback;
+      if (target != null && document.activeElement !== target) focusQuietly(target);
+      return forward !== null;
+    };
+    if (place()) return;
+    const observer = new MutationObserver(() => {
+      if (place()) stop();
+    });
+    const stop = (): void => {
+      observer.disconnect();
+      document.removeEventListener("pointerdown", stop, true);
+      document.removeEventListener("keydown", stop, true);
+    };
+    observer.observe(at, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-autofocus", "aria-disabled", "disabled"] });
+    document.addEventListener("pointerdown", stop, true);
+    document.addEventListener("keydown", stop, true);
+    return stop;
   }, []);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent): void {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
-      // A menu opened from the footer owns its own keys.
+      // A menu opened from the bar owns its own keys.
       if (document.querySelector("[role=menu]") !== null) return;
       if (event.key === "Escape") {
         // A dialog owns Escape — on a narrow viewport the panel's own sheet does, and closes itself.
@@ -150,161 +187,132 @@ export function BatchSheet({ row, position, onStep, onClose, jobs, jobsError, no
     return () => document.removeEventListener("keydown", onKey);
   }, [onStep, onClose]);
 
-  const backToTop = (): void => {
-    const smooth = !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    scroller.current?.scrollTo({ top: 0, behavior: smooth ? "smooth" : "auto" });
-  };
-
   return (
+    <InSheet.Provider value={true}>
     <div ref={root} className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-      {/* 48px, the band's height beside it, so the two headers read as one line across the row. */}
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border/70 pr-2 pl-3 md:pl-5">
-        {tools !== undefined && <div className="flex shrink-0 items-center gap-1" data-testid="batch-sheet-tools">{tools}</div>}
-        <span className="ml-auto shrink-0 px-1 text-xs text-muted-foreground tabular-nums">
-          <span className="sr-only">Batch </span>
-          {position.at + 1} of {position.count}
-        </span>
-        <div className="flex shrink-0 items-center">
-          <Button variant="ghost" size="icon-sm" aria-label="Previous batch (K)" disabled={position.at <= 0} onClick={() => onStep(-1)}>
-            <ChevronUp />
+      {/*
+        One row of 48px, always: the walk at its start, every action at its end.
+        What a control says (`SheetLine`) never squeezes in here; it is a toast.
+      */}
+      <header className="flex h-12 shrink-0 items-center gap-x-1 border-b border-border/70 px-2">
+        <div className="flex h-8 shrink-0 items-center gap-1">
+          <Button variant="ghost" size="icon-lg" className={PRESS} aria-label="Close the batch" onClick={onClose} data-testid="batch-close">
+            <ChevronsRight strokeWidth={1.75} aria-hidden="true" />
           </Button>
-          <Button variant="ghost" size="icon-sm" aria-label="Next batch (J)" disabled={position.at >= position.count - 1} onClick={() => onStep(1)}>
-            <ChevronDown />
-          </Button>
+          <span aria-hidden="true" className="mx-0.5 h-4 w-px shrink-0 bg-border" />
+          <StepButtons position={position} onStep={onStep} />
+          <span className="shrink-0 px-1 text-xs text-muted-foreground tabular-nums">
+            <span className="sr-only">Batch </span>
+            {position.at + 1} of {position.count}
+          </span>
         </div>
-        <span aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
-        <Button variant="ghost" size="icon" aria-label="Close the batch" onClick={onClose} data-testid="batch-close">
-          <X strokeWidth={1.75} aria-hidden="true" className="size-4" />
-        </Button>
+        <span aria-hidden="true" className="min-w-0 flex-1" />
+        <div ref={bar} className="flex shrink-0 items-center gap-1" data-testid="batch-sheet-actions">
+          {tools !== undefined && (
+            <div className="flex h-8 shrink-0 items-center gap-1" data-testid="batch-sheet-tools">
+              {tools}
+            </div>
+          )}
+          {actions !== undefined && (
+            <div data-sheet-actions="" className={cn("contents", SPACER_AS_HAIRLINE)}>
+              {actions}
+            </div>
+          )}
+        </div>
       </header>
 
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        <CondensedLine row={row} shown={condensed} onPress={backToTop} />
+      <div className="vs-scroll-fade-y min-h-0 flex-1 overflow-y-auto px-6 pt-8 pb-10 md:px-10">
+        <h2 className="text-[28px] leading-[1.15] font-semibold tracking-tight text-balance">{row.name}</h2>
 
-        <div ref={scroller} className="vs-scroll-fade-y min-h-0 flex-1 overflow-y-auto px-4 pt-5 pb-4 md:px-6">
-          <h2 className="text-xl leading-tight font-semibold tracking-tight text-balance">{row.name}</h2>
-          {/* The foot of the title: once it has scrolled past the top, the line takes over — you have lost which batch this is. */}
-          <div ref={titleFoot} aria-hidden="true" className="h-px" />
-
-          <div className="mt-4" data-testid="batch-sheet-facts">
-            <dl className="flex flex-col">
-              <Property icon={CircleDashed} label="State">
-                <StateChip state={phaseState(row.phase, { ...labeledShare(row), card: true })} testId="batch-phase" />
-              </Property>
-              <Property icon={ListChecks} label="Labeled" top={row.done !== null}>
-                <Labeled row={row} />
-              </Property>
-              {/* Counted in the noun the table's name line uses (`rowNoun`). */}
-              <Property icon={Images} label={capitalized(rowNoun(row, 2))}>
-                {formatCount(row.total)}
-              </Property>
-              <Property icon={Users} label="Assigned">
-                <Holders jobs={jobs} />
-              </Property>
-            </dl>
-            <MoreProperties row={row} details={details} />
-          </div>
-
-          {row.prelabel !== null && (
-            <p className="mt-4 flex items-center gap-2 rounded-lg bg-info-surface px-3 py-2 text-xs text-info" data-testid="batch-sheet-prelabel">
-              <span className="size-1.5 shrink-0 rounded-full bg-info" aria-hidden="true" />
-              <span className="min-w-0 flex-1 truncate">A model is drafting labels</span>
-              <ProgressReadout value={row.prelabel.processed} total={row.prelabel.total ?? row.total} tone="info" className="text-info">
-                {formatCount(row.prelabel.processed)}/{formatCount(row.prelabel.total ?? row.total)}
-              </ProgressReadout>
-            </p>
-          )}
-
-          <JobsSection jobs={jobs} noJobs={noJobs} {...(jobsError === undefined ? {} : { jobsError })} />
+        <div className="mt-5" data-testid="batch-sheet-facts">
+          <dl className="flex flex-col">
+            <StateFact row={row} next={next} onOpenDataset={onOpenDataset} />
+            <LabeledFact row={row} />
+            <ImagesFact row={row} onBrowse={onBrowseAssets} />
+            <Property icon={Users} label="Assigned">
+              <Holders jobs={jobs} />
+            </Property>
+          </dl>
+          <MoreProperties row={row} details={details} />
         </div>
+
+        {row.prelabel !== null && (
+          <p className={cn("mt-4 flex items-center gap-2 rounded-lg bg-info-surface px-3 py-2 text-xs text-info", ARRIVE)} data-testid="batch-sheet-prelabel">
+            <span className="size-1.5 shrink-0 rounded-full bg-info" aria-hidden="true" />
+            <span className="min-w-0 flex-1 truncate">A model is drafting labels</span>
+            <ProgressReadout value={row.prelabel.processed} total={row.prelabel.total ?? row.total} tone="info" className="text-info">
+              {formatCount(row.prelabel.processed)}/{formatCount(row.prelabel.total ?? row.total)}
+            </ProgressReadout>
+          </p>
+        )}
+
+        <JobsSection jobs={jobs} noJobs={noJobs} {...(jobsError === undefined ? {} : { jobsError })} />
       </div>
 
-      {actions !== undefined && (
-        // One row of icon buttons; every line a control says (`data-line`: an
-        // outcome, a refusal, a count) takes a full row above them, right-aligned
-        // over the forward step it came from.
-        <footer
-          className="flex shrink-0 flex-wrap items-center gap-x-1 gap-y-2 border-t border-border/70 px-3 py-2.5 md:px-5 [&_[data-line]]:order-first [&_[data-line]]:basis-full [&_[data-line]]:text-right [&_[data-line]]:text-pretty"
-          data-testid="batch-sheet-actions"
-        >
-          {actions}
-        </footer>
-      )}
     </div>
-  );
-}
-
-/** How far the labeling pie fills: the labeled share, once there are jobs to count. */
-function labeledShare(row: BatchRowView): { fraction?: number } {
-  return row.done === null || row.total === 0 ? {} : { fraction: row.done / row.total };
-}
-
-/**
- * Which batch, its state, how far it has come — in over 200ms on the strong
- * ease-out, out faster, in 150ms; with reduced motion only its opacity moves.
- * An echo of the page, so it is hidden from assistive tech and out of the Tab order.
- */
-function CondensedLine({ row, shown, onPress }: { readonly row: BatchRowView; readonly shown: boolean; readonly onPress: () => void }): JSX.Element {
-  return (
-    <button
-      type="button"
-      aria-hidden="true"
-      tabIndex={-1}
-      onClick={onPress}
-      className={cn(
-        "absolute inset-x-0 top-0 z-10 flex h-11 items-center gap-2.5 border-b border-border/70 bg-background/95 px-4 text-left backdrop-blur-sm md:px-6",
-        "transition-[opacity,translate] motion-reduce:translate-y-0 motion-reduce:transition-opacity",
-        EASE,
-        shown ? "translate-y-0 opacity-100 duration-200" : "pointer-events-none -translate-y-1 opacity-0 duration-150",
-      )}
-      data-testid="batch-sheet-condensed"
-    >
-      <span className="min-w-0 truncate text-[13px] font-medium">{row.name}</span>
-      <StateChip state={phaseState(row.phase, labeledShare(row))} className="h-5 pr-1.5 pl-1 text-[11px]" />
-      {row.done !== null && (
-        <ProgressReadout value={row.done} total={row.total} className="ml-auto shrink-0 text-xs">
-          {formatCount(row.done)}/{formatCount(row.total)}
-        </ProgressReadout>
-      )}
-    </button>
+    </InSheet.Provider>
   );
 }
 
 /**
- * One property: an icon and its label in a fixed column, the value beside it.
- * The row lights on hover — instantly, and only where there is a pointer to
- * hover with — because it is crossed a dozen times a minute.
+ * Previous and next. At either end one of them is disabled — and a disabled
+ * button drops the focus to the page, so a keyboard walking with them would
+ * lose its place at the last batch. When the focused one goes, the focus
+ * moves quietly to its pair.
  */
-function Property({ icon: Icon, label, top = false, children }: { readonly icon: LucideIcon; readonly label: string; readonly top?: boolean; readonly children: ReactNode }): JSX.Element {
+function StepButtons({ position, onStep }: Pick<BatchSheetProps, "position" | "onStep">): JSX.Element {
+  const previous = useRef<HTMLButtonElement>(null);
+  const next = useRef<HTMLButtonElement>(null);
+  // Which of the two held the focus last, until the person moves it elsewhere.
+  const held = useRef<"previous" | "next" | null>(null);
+  const atStart = position.at <= 0;
+  const atEnd = position.at >= position.count - 1;
+
+  useEffect(() => {
+    // Dropped to the page, or — where the browser leaves it — still on the button that just went disabled.
+    const active = document.activeElement;
+    const lost = active === null || active === document.body || (active instanceof HTMLButtonElement && active.disabled);
+    if (!lost) return;
+    if (held.current === "next" && atEnd && previous.current !== null && !atStart) {
+      held.current = "previous";
+      focusQuietly(previous.current);
+    } else if (held.current === "previous" && atStart && next.current !== null && !atEnd) {
+      held.current = "next";
+      focusQuietly(next.current);
+    }
+  }, [atStart, atEnd]);
+
+  const track = (which: "previous" | "next") => ({
+    onFocus: () => {
+      held.current = which;
+    },
+    // Moved elsewhere by the person (a target to go to), not dropped by being disabled.
+    onBlur: (event: FocusEvent<HTMLButtonElement>) => {
+      if (event.relatedTarget !== null) held.current = null;
+    },
+  });
+
   return (
-    <div className={cn("-mx-2 grid min-h-9 grid-cols-[8rem_minmax(0,1fr)] gap-x-3 rounded-md px-2 py-1.5 text-[13px] [@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted/60", top ? "items-start" : "items-center")}>
-      <dt className="flex h-6 items-center gap-2 text-muted-foreground">
-        <Icon aria-hidden="true" strokeWidth={1.75} className="size-4 shrink-0" />
-        {label}
-      </dt>
-      <dd className="m-0 flex min-h-6 min-w-0 items-center tabular-nums">{children}</dd>
-    </div>
+    <>
+      <Button ref={previous} variant="ghost" size="icon-lg" className={PRESS} aria-label="Previous batch (K)" disabled={atStart} onClick={() => onStep(-1)} {...track("previous")}>
+        <ChevronUp strokeWidth={1.75} />
+      </Button>
+      <Button ref={next} variant="ghost" size="icon-lg" className={PRESS} aria-label="Next batch (J)" disabled={atEnd} onClick={() => onStep(1)} {...track("next")}>
+        <ChevronDown strokeWidth={1.75} />
+      </Button>
+    </>
   );
 }
 
-/** "18 of 48 · 38%" and its ring, or "Not started". */
-function Labeled({ row }: { readonly row: BatchRowView }): JSX.Element {
-  const { done, total } = row;
-  if (done === null) return <span className="text-muted-foreground">Not started</span>;
-  return (
-    <ProgressReadout value={done} total={total} detail={labeledDetail(row)}>
-      <span className="text-foreground">
-        {formatCount(done)} of {formatCount(total)}
-      </span>
-      {` · ${formatPercent(total === 0 ? 0 : (done / total) * 100)}`}
-    </ProgressReadout>
-  );
+/** Where a property has no value yet, said as a page says it. */
+function Empty({ children = "Empty" }: { readonly children?: ReactNode }): JSX.Element {
+  return <span className="text-muted-foreground/80">{children}</span>;
 }
 
 /** Who holds the jobs: overlapping initials, then names, then how many nobody holds. */
 function Holders({ jobs }: { readonly jobs: readonly SheetJob[] | undefined }): JSX.Element {
-  if (jobs === undefined) return <span className="text-muted-foreground">—</span>;
-  if (jobs.length === 0) return <span className="text-muted-foreground">No jobs yet</span>;
+  if (jobs === undefined) return <Empty>—</Empty>;
+  if (jobs.length === 0) return <Empty />;
   const names = [...new Set(jobs.map((job) => job.assignee).filter((one): one is string => one !== null))];
   const unassigned = jobs.filter((job) => job.assignee === null).length;
   return (
@@ -320,37 +328,47 @@ function Holders({ jobs }: { readonly jobs: readonly SheetJob[] | undefined }): 
         </span>
       )}
       <span className="min-w-0 truncate">
-        {names.length === 0 ? <span className="text-muted-foreground">Nobody yet</span> : names.join(", ")}
-        {unassigned > 0 && <span className="text-muted-foreground">{` · ${unassigned} unassigned`}</span>}
+        {names.length === 0 ? (
+          <Empty>{`${formatCount(unassigned)} ${unassigned === 1 ? "job" : "jobs"} unassigned`}</Empty>
+        ) : (
+          <>
+            {names.join(", ")}
+            {unassigned > 0 && <span className="text-muted-foreground">{` · ${formatCount(unassigned)} unassigned`}</span>}
+          </>
+        )}
       </span>
     </span>
   );
 }
 
 /**
- * The properties read less often, behind "N more properties". They open by
+ * The properties read less often, behind "N more properties" and back behind
+ * "Hide N properties". Every one is always listed — "Empty" until it has a
+ * value — so the count does not change as J/K walks the batches. They open by
  * height (`grid-template-rows` 0fr → 1fr) over 200ms on the strong ease-out —
  * a transition, so a second press mid-way turns it back — and are `inert`
  * while folded, so Tab never lands in rows nobody can see.
  */
-function MoreProperties({ row, details }: { readonly row: BatchRowView; readonly details: BatchDetails | undefined }): JSX.Element | null {
+function MoreProperties({ row, details }: { readonly row: BatchRowView; readonly details: BatchDetails | undefined }): JSX.Element {
   const [more, setMore] = useState(false);
-  const extra: (readonly [LucideIcon, string, ReactNode])[] = [];
-  if (details?.review != null) {
-    const { accepted, waiting, skipped } = details.review;
-    extra.push([
+  const review = details?.review ?? null;
+  const extra: readonly (readonly [LucideIcon, string, ReactNode])[] = [
+    [Shapes, "Schema", row.schemaVersion === null ? <Empty /> : `Version ${row.schemaVersion}`],
+    [
       ScanEye,
       "Review",
-      <span key="review" className="text-pretty">
-        {formatCount(accepted)} accepted
-        <span className="text-muted-foreground">{` · ${formatCount(waiting)} waiting · ${formatCount(skipped)} skipped`}</span>
-      </span>,
-    ]);
-  }
-  if (row.schemaVersion !== null) extra.push([Shapes, "Schema", `Version ${row.schemaVersion}`]);
-  if (details !== undefined) extra.push([GitBranch, "Kind", details.correction ? "Correction of an earlier batch" : `${capitalized(rowNoun(row, 2))} to label`]);
-  if (details !== undefined && details.promoted > 0) extra.push([PackageCheck, "In dataset", `${formatCount(details.promoted)} ${rowNoun(row, details.promoted)}`]);
-  if (extra.length === 0) return null;
+      review === null ? (
+        <Empty />
+      ) : (
+        <span className="text-pretty">
+          {formatCount(review.accepted)} accepted
+          <span className="text-muted-foreground">{` · ${formatCount(review.waiting)} waiting · ${formatCount(review.skipped)} skipped`}</span>
+        </span>
+      ),
+    ],
+    [GitBranch, "Kind", details === undefined ? <Empty>—</Empty> : details.correction ? "Correction of an earlier batch" : `${capitalized(rowNoun(row, 2))} to label`],
+    [PackageCheck, "In dataset", details === undefined || details.promoted === 0 ? <Empty /> : `${formatCount(details.promoted)} ${rowNoun(row, details.promoted)}`],
+  ];
   return (
     <>
       <div className={cn("grid transition-[grid-template-rows] duration-200 motion-reduce:transition-none", EASE, more ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}>
@@ -366,11 +384,16 @@ function MoreProperties({ row, details }: { readonly row: BatchRowView; readonly
         type="button"
         aria-expanded={more}
         onClick={() => setMore((open) => !open)}
-        className="-mx-2 mt-0.5 flex h-8 w-fit items-center gap-1.5 rounded-md px-2 text-[13px] text-muted-foreground transition-transform duration-100 ease-out outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97] motion-reduce:transition-none [@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted [@media(hover:hover)_and_(pointer:fine)]:hover:text-foreground"
+        className={cn(
+          "-mx-2 mt-1 flex h-8 w-fit items-center gap-1.5 rounded-md px-2 text-[13px] text-muted-foreground outline-none focus-visible:bg-muted/60 focus-visible:ring-1 focus-visible:ring-ring/60",
+          "transition-[color,background-color,scale] duration-100 ease-out active:scale-[0.96] motion-reduce:transition-none [@media(hover:hover)_and_(pointer:fine)]:hover:text-foreground",
+          HOVER,
+        )}
         data-testid="batch-sheet-more-toggle"
       >
-        <ChevronRight aria-hidden="true" strokeWidth={1.75} className={cn("size-3.5 transition-transform duration-200 motion-reduce:transition-none", EASE, more && "rotate-90")} />
-        {more ? "Fewer properties" : `${extra.length} more ${extra.length === 1 ? "property" : "properties"}`}
+        {/* One chevron that turns, on the fold's own curve and time, rather than two that swap. */}
+        <ChevronDown aria-hidden="true" strokeWidth={1.75} className={cn("size-3.5 transition-transform duration-200 motion-reduce:transition-none", EASE, more && "rotate-180")} />
+        {more ? `Hide ${extra.length} properties` : `${extra.length} more properties`}
       </button>
     </>
   );
@@ -379,10 +402,10 @@ function MoreProperties({ row, details }: { readonly row: BatchRowView; readonly
 /** The jobs the batch was cut into: loading, refused, none yet, or the list. */
 function JobsSection({ jobs, jobsError, noJobs }: Pick<BatchSheetProps, "jobs" | "jobsError" | "noJobs">): JSX.Element {
   return (
-    <section aria-label="Jobs" className="mt-6 flex flex-col gap-3 border-t border-border/70 pt-4" data-testid="batch-sheet-jobs">
-      <h3 className="flex items-baseline gap-1.5 text-[13px] font-medium">
+    <section aria-label="Jobs" className="mt-6 flex flex-col gap-2 border-t border-border/70 pt-5" data-testid="batch-sheet-jobs">
+      <h3 className="flex items-baseline gap-1.5 text-xs font-medium text-muted-foreground">
         Jobs
-        {jobs !== undefined && jobs.length > 0 && <span className="text-xs font-normal text-muted-foreground tabular-nums">{jobs.length}</span>}
+        {jobs !== undefined && jobs.length > 0 && <span className="font-normal tabular-nums">{jobs.length}</span>}
       </h3>
       {jobsError !== undefined ? (
         <div className="flex items-center gap-3 rounded-lg border border-dashed px-4 py-3" role="alert" data-testid="batch-sheet-jobs-error">
@@ -393,15 +416,18 @@ function JobsSection({ jobs, jobsError, noJobs }: Pick<BatchSheetProps, "jobs" |
         </div>
       ) : jobs === undefined ? (
         // Two rows of the list's own height, so the jobs arriving fill them instead of pushing.
-        <div className="overflow-hidden rounded-lg border" aria-busy="true">
+        <div className="flex flex-col" aria-busy="true">
           <span className="sr-only">Loading jobs</span>
-          <span className="block h-11 animate-pulse border-b bg-muted/60 motion-reduce:animate-none" />
-          <span className="block h-11 animate-pulse bg-muted/60 motion-reduce:animate-none" />
+          <span className="block h-11 animate-pulse rounded-md bg-muted/60 motion-reduce:animate-none" />
+          <span className="block h-11 animate-pulse rounded-md bg-muted/40 motion-reduce:animate-none" />
         </div>
       ) : jobs.length === 0 ? (
-        <p className="rounded-lg border border-dashed px-4 py-6 text-center text-[13px] text-pretty text-muted-foreground">{noJobs}</p>
+        <p className={cn("py-1 text-[13px] text-pretty text-muted-foreground", ARRIVE)}>{noJobs}</p>
       ) : (
-        <JobList jobs={jobs} />
+        // The rows take the skeleton's place in one fade — the skeleton was drawn at their height, so nothing moves.
+        <div className={ARRIVE}>
+          <JobList jobs={jobs} />
+        </div>
       )}
     </section>
   );

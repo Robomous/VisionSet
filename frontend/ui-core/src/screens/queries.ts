@@ -886,10 +886,11 @@ export function useSources(projectId: string, enabled = true): UseQueryResult<So
 
 const BATCH_POLL_MS = 2000;
 
-export function useBatches(projectId: string): UseQueryResult<BatchPage, Error> {
+export function useBatches(projectId: string, enabled = true): UseQueryResult<BatchPage, Error> {
   const client = useApiClient();
   return useQuery({
     queryKey: ingestKeys.batches(projectId),
+    enabled,
     queryFn: async () =>
       unwrap(
         await client.GET("/projects/{project_id}/batches", {
@@ -1202,10 +1203,11 @@ export function useBatchJobs(batchId: string, enabled = true) {
  * "was the last page short"; and an offset past the end is 200 with an empty
  * `items`, never a 404, so overrunning is harmless.
  */
-export function useBatchAssets(batchId: string, view: AssetView = { sort: "membership" }) {
+export function useBatchAssets(batchId: string, view: AssetView = { sort: "membership" }, enabled = true) {
   const client = useApiClient();
   return useInfiniteQuery({
     queryKey: batchKeys.assetsView(batchId, view),
+    enabled,
     initialPageParam: 0,
     // A segment or sort switch is a new query key, and without this the grid
     // would drop to the loading skeleton for the round trip rather than keep

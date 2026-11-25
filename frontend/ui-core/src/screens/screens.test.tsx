@@ -1215,7 +1215,7 @@ describe("the project's identity and its one filled control", () => {
   it("offers Annotate when a batch is open for annotation, and opens that batch", async () => {
     const opened = vi.fn();
     headerFor({ batchState: "in_annotation" });
-    renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={opened} />);
+    renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatchChange={opened} />);
 
     const cta = await screen.findByTestId("go-annotate");
     // With nothing to choose between, the button is shaped like one that jumps:
@@ -1259,7 +1259,7 @@ describe("the project's identity and its one filled control", () => {
   it("asks which batch when two are open for annotation, instead of picking one", async () => {
     const opened = vi.fn();
     headerFor({ batches: OPEN_PAIR });
-    renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={opened} />);
+    renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatchChange={opened} />);
 
     // A split button: the pen jumps to the first (newest) target and says which in its
     // tooltip; the chevron beside it is the one that asks.
@@ -1303,7 +1303,7 @@ describe("the project's identity and its one filled control", () => {
   it("opens the batch the menu row names", async () => {
     const opened = vi.fn();
     headerFor({ batches: OPEN_PAIR });
-    renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={opened} />);
+    renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatchChange={opened} />);
 
     await userEvent.click(await screen.findByTestId("go-annotate-menu"));
     await userEvent.click(await screen.findByTestId("annotate-batch-drive-02"));
@@ -1321,58 +1321,92 @@ describe("the project's identity and its one filled control", () => {
     expect(screen.queryByTestId("go-annotate")).toBeNull();
   });
 
-  describe("where Add images lives: a button on Overview and Images, the overflow elsewhere", () => {
+  describe("where Add images lives: the batches band on the Overview, the bar on Images, the overflow elsewhere", () => {
+    function inBand(): HTMLElement | null {
+      return within(screen.getByTestId("overview-batches")).queryByTestId("go-ingest");
+    }
     function inToolbar(): HTMLElement | null {
       return within(screen.getByTestId("project-nav")).queryByTestId("go-ingest");
     }
 
-    it("draws it outlined before the filled Annotate while a batch is open", async () => {
+    it("draws it as a ghost icon button before the filled Annotate, at the end of the batches band", async () => {
       headerFor({ batchState: "in_annotation" });
-      renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
+      renderWithData(<ProjectScreen projectId={PROJECT} />);
 
       const annotate = await screen.findByTestId("go-annotate");
       const ingest = screen.getByTestId("go-ingest");
-      expect(ingest.dataset.variant).toBe("outline");
+      expect(ingest.dataset.variant).toBe("ghost");
+      expect(ingest.textContent).toBe("");
+      expect(ingest.getAttribute("aria-label")).toBe("Add images");
       expect(annotate.dataset.variant).toBe("default");
+      expect(annotate.textContent).toBe("Annotate");
       // Add images leads: the DOM order is the visual order.
       expect(ingest.compareDocumentPosition(annotate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-      expect(ingest.parentElement).toBe(annotate.parentElement);
-      expect(inToolbar()).toBe(ingest);
+      expect(inBand()).toBe(ingest);
+      // Last in the band, after the filter.
+      const filter = screen.getByTestId("batches-filter");
+      expect(filter.compareDocumentPosition(ingest) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
       expect(filled()).toEqual([annotate]);
     });
 
-    it("draws it as the filled control when no batch is open", async () => {
+    it("keeps it ghost when no batch is open, and draws no Annotate", async () => {
       headerFor({ batchState: "draft" });
-      renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
-
-      await screen.findByTestId("overview-batches");
-      expect(screen.queryByTestId("go-annotate")).toBeNull();
-      expect(screen.getAllByTestId("go-ingest")).toHaveLength(1);
-      expect(inToolbar()).toBe(screen.getByTestId("go-ingest"));
-      expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
-    });
-
-    it("gives the Overview's content and its Batches panel no Add images: the bar has the only one", async () => {
-      headerFor({ batchState: "in_annotation" });
-      renderWithData(<ProjectScreen projectId={PROJECT} onOpenBatch={vi.fn()} />);
-
-      const panel = await screen.findByTestId("overview-batches");
-      // No section header exists to carry one, and nothing in the content does.
-      expect(screen.queryByTestId("section-header")).toBeNull();
-      expect(within(panel).queryByTestId("go-ingest")).toBeNull();
-      expect(await screen.findAllByTestId("go-ingest")).toEqual([inToolbar()]);
-    });
-
-    it("keeps Add images in the toolbar for a host that cannot open a batch, even over an open one", async () => {
-      // Annotate has nowhere to send anybody without `onOpenBatch`, so it never
-      // takes the slot: Add images is the filled control.
-      headerFor({ batchState: "in_annotation" });
       renderWithData(<ProjectScreen projectId={PROJECT} />);
 
       await screen.findByTestId("overview-batches");
       expect(screen.queryByTestId("go-annotate")).toBeNull();
-      expect(screen.getAllByTestId("go-ingest")).toHaveLength(1);
-      expect(inToolbar()).toBe(screen.getByTestId("go-ingest"));
+      expect(screen.getAllByTestId("go-ingest")).toEqual([inBand()]);
+      expect(inBand()?.dataset.variant).toBe("ghost");
+    });
+
+    it("gives the project bar no Add images on the Overview — not a button, not a menu entry", async () => {
+      headerFor({ batchState: "in_annotation" });
+      renderWithData(<ProjectScreen projectId={PROJECT} />);
+
+      await screen.findByTestId("go-annotate");
+      expect(inToolbar()).toBeNull();
+      expect(within(screen.getByTestId("project-nav")).queryByTestId("go-annotate")).toBeNull();
+      await userEvent.click(screen.getByTestId("project-menu"));
+      await screen.findByTestId("rename-project");
+      expect(screen.queryByTestId("menu-ingest")).toBeNull();
+    });
+
+    it.each([
+      { failing: "batches", pattern: /\/batches$/ },
+      { failing: "stats", pattern: /\/stats$/ },
+    ])("offers it first in the overflow while the $failing read has failed and the band is not drawn", async ({ pattern }) => {
+      const added = vi.fn();
+      on("GET", pattern, { status: 500, body: { code: "BOOM", message: "no" } });
+      headerFor({ batchState: "in_annotation" });
+      renderWithData(<ProjectScreen projectId={PROJECT} onAddImagesOpenChange={added} />);
+
+      await screen.findAllByRole("button", { name: "Try again" });
+      expect(screen.queryByTestId("go-ingest")).toBeNull();
+      await userEvent.click(screen.getByTestId("project-menu"));
+      const item = await screen.findByTestId("menu-ingest");
+      expect(item.parentElement?.querySelector('[role="menuitem"]')).toBe(item);
+      await userEvent.click(item);
+      expect(added).toHaveBeenCalledWith(true);
+    });
+
+    it("leaves an empty project's Add images to the invitation alone, though the batches read has failed", async () => {
+      on("GET", /\/batches$/, { status: 500, body: { code: "BOOM", message: "no" } });
+      headerFor({ assets: 0 });
+      renderWithData(<ProjectScreen projectId={PROJECT} onAddImagesOpenChange={vi.fn()} />);
+
+      await screen.findByTestId("overview-ingest");
+      await userEvent.click(screen.getByTestId("project-menu"));
+      await screen.findByTestId("rename-project");
+      expect(screen.queryByTestId("menu-ingest")).toBeNull();
+      expect(screen.queryByTestId("go-ingest")).toBeNull();
+    });
+
+    it("opens the batch from Annotate even for a host that holds no batch route: the panel holds it", async () => {
+      headerFor({ batchState: "in_annotation" });
+      renderWithData(<ProjectScreen projectId={PROJECT} />);
+
+      await userEvent.click(await screen.findByTestId("go-annotate"));
+      expect(await screen.findByRole("heading", { level: 2, name: "drive-01" })).toBeTruthy();
     });
 
     it("opens its own Add images dialog, so a host with no route for it still offers it", async () => {
@@ -1412,25 +1446,22 @@ describe("the project's identity and its one filled control", () => {
       expect(change).toHaveBeenLastCalledWith(false);
     });
 
-    it.each(["overview", "images"] as const)(
-      "draws exactly one button, in the toolbar, on the %s section: the subject is images",
-      async (tab) => {
-        headerFor({ batchState: "in_annotation", assets: 3 });
-        on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
-        renderWithData(<ProjectScreen projectId={PROJECT} tab={tab} onOpenBatch={vi.fn()} />);
+    it("draws exactly one filled button, in the toolbar, on the Images section: the subject is images", async () => {
+      headerFor({ batchState: "in_annotation", assets: 3 });
+      on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
+      renderWithData(<ProjectScreen projectId={PROJECT} tab="images" onOpenBatch={vi.fn()} />);
 
-        await screen.findByTestId(tab === "images" ? "images-screen" : "go-annotate");
-        const ingest = await screen.findByTestId("go-ingest");
-        expect(screen.getAllByTestId("go-ingest")).toEqual([inToolbar()]);
-        // Not also a menu entry: one way to it per section.
-        await userEvent.click(screen.getByTestId("project-menu"));
-        await screen.findByTestId("rename-project");
-        expect(screen.queryByTestId("menu-ingest")).toBeNull();
-        // Annotate is the Overview's alone, so it is the one that sets the variant.
-        expect(ingest.dataset.variant).toBe(tab === "overview" ? "outline" : "default");
-        expect(screen.queryByTestId("go-annotate") !== null).toBe(tab === "overview");
-      },
-    );
+      await screen.findByTestId("images-screen");
+      const ingest = await screen.findByTestId("go-ingest");
+      expect(screen.getAllByTestId("go-ingest")).toEqual([inToolbar()]);
+      // Not also a menu entry: one way to it per section.
+      await userEvent.click(screen.getByTestId("project-menu"));
+      await screen.findByTestId("rename-project");
+      expect(screen.queryByTestId("menu-ingest")).toBeNull();
+      expect(ingest.dataset.variant).toBe("default");
+      // Annotate is the Overview's batches band's alone.
+      expect(screen.queryByTestId("go-annotate")).toBeNull();
+    });
 
     it.each([
       { tab: "schema", sentinel: "schema-editor" },
@@ -1480,19 +1511,20 @@ describe("the project's identity and its one filled control", () => {
     return [...document.querySelectorAll<HTMLElement>("button.bg-primary")];
   }
 
-  it("keeps the filled Ingest over an empty, schema-less project, with the other order as prose", async () => {
-    // The invitation and the header say the same thing with the same handler, so
-    // the loud one stays in the header; the classes order is a link beneath.
+  it("fills the invitation's Add images over an empty, schema-less project, with the other order as prose", async () => {
+    // An empty Overview has no batches band, so the invitation's Add images is
+    // the page's only one and it is filled; the classes order is a link beneath.
     headerFor({ schema: false, assets: 0 });
     renderWithData(
       <ProjectScreen projectId={PROJECT} onTabChange={vi.fn()} />,
     );
 
     await screen.findByTestId("first-run-alt");
-    expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
+    expect(filled()).toEqual([screen.getByTestId("overview-ingest")]);
+    expect(screen.queryByTestId("go-ingest")).toBeNull();
   });
 
-  it("steps Ingest back while the Overview's invitation owns the filled button", async () => {
+  it("leaves the filled button to the Overview's invitation: the band's Add images is ghost", async () => {
     headerFor({ schema: false, assets: 48 });
     renderWithData(
       <ProjectScreen projectId={PROJECT} onTabChange={vi.fn()} />,
@@ -1512,29 +1544,28 @@ describe("the project's identity and its one filled control", () => {
     renderWithData(<ProjectScreen projectId={PROJECT} />);
 
     const alt = await screen.findByTestId("first-run-alt");
-    expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
+    expect(filled()).toEqual([screen.getByTestId("overview-ingest")]);
     await userEvent.click(alt);
     await screen.findByTestId("schema-editor");
   });
 
-  it("keeps the filled Ingest when the invitation is the ingest one", async () => {
-    // The invitation and the header say the same thing with the same handler, so
-    // the loud one stays in the header and the panel's stays outlined.
+  it("fills the invitation's Add images when the invitation is the ingest one", async () => {
     headerFor({ assets: 0 });
     renderWithData(<ProjectScreen projectId={PROJECT} />);
 
     await screen.findByTestId("overview-ingest");
-    expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
+    expect(filled()).toEqual([screen.getByTestId("overview-ingest")]);
   });
 
-  it("keeps the filled Ingest once the project has both classes and images", async () => {
+  it("fills nothing once the project has classes and images but no batch open: Add images stays a ghost icon", async () => {
     headerFor({});
     renderWithData(<ProjectScreen projectId={PROJECT} />);
 
     await screen.findByTestId("overview-stats");
     expect(screen.queryByTestId("first-run")).toBeNull();
-    expect(filled()).toEqual([screen.getByTestId("go-ingest")]);
-    expect(screen.getByTestId("go-ingest").getAttribute("aria-label")).toBe("Add images");
+    const ingest = await screen.findByTestId("go-ingest");
+    expect(ingest.getAttribute("aria-label")).toBe("Add images");
+    expect(filled()).toEqual([]);
   });
 
   /** The dataset's reads, which put Publish release into the bar. */

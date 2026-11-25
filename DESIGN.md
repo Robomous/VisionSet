@@ -255,6 +255,31 @@ has labeled sit in batches that declare `pre_label`.
 The motion values are named once, in `lib/motion.ts` (`EASE_OUT`, `EASE_SETTLE`, `DURATION`), and
 read from there.
 
+### Links
+
+**A link takes you somewhere, and it says so with ↗.** Every link in the product — the `Button`'s
+`link` variant, or a hand-made one marked `.vs-link` — ends in lucide's `ArrowUpRight`
+(`size-3.5`, `size-3` beside 11–12px text, stroke 1.75), whether it opens another section, a
+batch's panel, the editor or another site. A control that acts where it stands (*Load v4*, *Reload
+the draft*, *Clear search*) may look like a link in a sentence but carries no arrow: the arrow is
+a promise of going.
+
+```text
+All 48 images in the dataset   Open the dataset          rest: underline 30% of the link's colour, no ↗
+                               ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+All 48 images in the dataset   Open the dataset ↗        hover: underline in full, ↗ arrives
+```
+
+| Rule | Why |
+| --- | --- |
+| **The underline is always there, muted**: 1px in the link's own colour at 30%. Pointed at (where there is a pointer to hover with) or focused, it takes the full colour in 150 ms on `ease`. | A link reads as one before anything points at it; the change is a colour, so it does not move. |
+| **The ↗ appears on hover.** At rest it is not shown (it keeps its place, so nothing shifts); pointed at or focused, it fades in while travelling the last 4px toward where it points — 200 ms on the strong ease-out, in the text's colour — and leaves in 120 ms. A row whose link is the whole row (`.vs-link-row`: a project's row, a job's, a KPI card) shows its ↗ the same way on the row's hover. Where there is no pointer to hover with, the ↗ is always shown. | The arrow answers the pointer with where the link goes, without decorating every link at rest. CSS transitions, so a pointer passing through turns it around mid-way. |
+| **Focus is the link's own mark, not a box.** Tabbed to, a link draws no border and no ring; its underline takes the full colour and doubles to 2px, and its ↗ arrives. | A button's focus box hugs the words of a padless link and fights its underline; a 2px underline is plain to the keyboard and reads apart from a hover (1px). |
+| **A link's words select like the sentence around them** (`user-select: text`, overriding the package Button's `select-none`), and a line that sets a link beside its words keeps a real space between them, though the flex gap draws it. | A copied line has no hole where the link sat, and reads as words. |
+| **A press presses**: `scale(0.97)`, 100 ms ease-out. | Feedback where it acts. |
+| **Under reduced motion only the colours change**, and the ↗ appears by fading alone. | The colour carries the hover without the journey. |
+| **One rule, in `ui-core/src/styles.css`.** The `link` variant's rule is outside any layer so it outranks the package's own `transition-all`; `.vs-link` sits in the components layer so a link can still adjust its offset in utilities. | Every link moves the same way without each screen restating it. |
+
 ### Progress
 
 **Progress is said one way: the number, then a small ring.** `ProgressReadout` — the number

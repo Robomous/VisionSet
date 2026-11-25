@@ -1,6 +1,5 @@
 /**
- * Which invitation a new project's state asks for, and whether it carries the
- * page's one filled button. Pure, and kept apart from the Overview's components
+ * Which invitation a new project's state asks for. Pure, and kept apart from the Overview's components
  * so that file exports components only.
  */
 
@@ -43,17 +42,4 @@ export function firstRunInvitation({
 }: ProjectReadiness): FirstRunInvitation | null {
   if (hasSchema) return hasAssets ? null : "ingest";
   return hasAssets ? "classes-after-ingest" : "ingest-first";
-}
-
-/**
- * Whether the invitation carries the page's one filled button.
- *
- * One spelling, read twice: here to pick the variant, and by `ProjectScreen` to
- * step the header's Ingest back to `secondary` for as long as it holds. Both
- * ingest invitations are the deliberate exception — the header's Ingest is the
- * same label and the same handler, so the filled one stays up there and
- * this one stays outlined. Either way the page shows exactly one filled button.
- */
-export function invitationOwnsTheAction(invitation: FirstRunInvitation | null): boolean {
-  return invitation === "classes-after-ingest";
 }

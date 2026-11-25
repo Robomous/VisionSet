@@ -296,7 +296,8 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
       "ingest-first",
     );
     await expect(page.locator("button.bg-primary")).toHaveCount(1);
-    await expect(page.getByTestId("go-ingest")).toHaveClass(/bg-primary/);
+    // An empty Overview has no batches band, so the invitation's Add images is the one.
+    await expect(page.getByTestId("overview-ingest")).toHaveClass(/bg-primary/);
     // And the retired checklist is gone rather than merely dismissed.
     await expect(page.getByTestId("journey-checklist")).toHaveCount(0);
 
@@ -522,17 +523,18 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // server suite.
     await openBatch(page, PROJECT, "cycle-batch");
     const panel = page.getByTestId("batch-sheet");
-    // The panel's footer holds the batch's moves. The closing move, *Complete*, is
+    // The panel's top bar holds the batch's moves. The closing move, *Complete*, is
     // not declared while frames are still to do, so it is withheld with its count.
     await expect(panel.getByTestId("complete-cycle-batch")).toBeDisabled();
     // Approved with no partition, the batch has one job: one card, nobody holding it.
     const jobs = panel.getByTestId("batch-sheet-jobs");
     await expect(jobs.getByTestId(/^batch-sheet-job-/)).toHaveCount(1);
     await expect(jobs.getByTestId("batch-sheet-job-Job 1")).toContainText("Unassigned");
-    // The forward step is filled while there is work left, and with exactly one job it
-    // goes straight into the editor.
+    // The forward step — the one the panel opens on — is Annotate while there is work
+    // left; every control in the bar is quiet. With exactly one job it goes straight
+    // into the editor.
     const annotate = panel.getByTestId("sheet-annotate");
-    await expect(annotate).toHaveAttribute("data-variant", "default");
+    await expect(annotate).toHaveAttribute("data-autofocus", "");
     await annotate.click();
     await expect(page.getByTestId("annotation-page")).toBeVisible();
     // The job names no frame, so it opens on its first — and the annotator then
@@ -1257,7 +1259,7 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     const said = page.getByTestId("promoted-cycle-batch");
     await expect(said).toBeVisible({ timeout: 30_000 });
     // Three assets annotated in the step above, and every one of them promotable.
-    await expect(said).toHaveText(/Added 3 assets/);
+    await expect(said).toHaveText(/Added 3 \w+ to the dataset/);
     // The control keeps its place and its report, even though the batch is now
     // wholly in the dataset; a curator removing something brings it back.
     await expect(page.getByTestId("promote-cycle-batch")).toHaveAccessibleName("Add to dataset");
@@ -1273,8 +1275,11 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // image of the batch is in the trunk, which is what the phase says now.
     await expect(page.getByTestId("batch-sheet").getByRole("heading", { level: 2, name: "cycle-batch" })).toBeVisible();
     await expect(page.getByTestId("batch-sheet").getByTestId("batch-phase")).toHaveText("In dataset");
-    // Wholly in the dataset, the footer says so rather than offering *Add to dataset*.
-    await expect(page.getByTestId("in-dataset-cycle-batch")).toContainText(/All 3 \w+ in the dataset/);
+    // Wholly in the dataset: *Add to dataset* is not offered, and the In dataset property counts all three.
+    await expect(page.getByTestId("promote-cycle-batch")).toHaveCount(0);
+    await expect(
+      page.getByTestId("batch-sheet-more").locator("div", { has: page.locator("dt", { hasText: /^In dataset$/ }) }).locator("dd"),
+    ).toHaveText(/^3 \w+$/);
   });
 
   await test.step("correct the completed batch, forward-only", async () => {
@@ -1309,8 +1314,11 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // forward instead of reopening. Still every image in the trunk.
     await openBatch(page, PROJECT, "cycle-batch");
     await expect(page.getByTestId("batch-sheet").getByTestId("batch-phase")).toHaveText("In dataset");
-    // Wholly in the dataset, the footer says so rather than offering *Add to dataset*.
-    await expect(page.getByTestId("in-dataset-cycle-batch")).toContainText(/All 3 \w+ in the dataset/);
+    // Wholly in the dataset: *Add to dataset* is not offered, and the In dataset property counts all three.
+    await expect(page.getByTestId("promote-cycle-batch")).toHaveCount(0);
+    await expect(
+      page.getByTestId("batch-sheet-more").locator("div", { has: page.locator("dt", { hasText: /^In dataset$/ }) }).locator("dd"),
+    ).toHaveText(/^3 \w+$/);
   });
 
   await test.step("delete a batch, and watch the trunk not move", async () => {
@@ -1319,9 +1327,10 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * cannot make.
      *
      * Two claims, and both are about the server's own answer rather than about
-     * this client's rendering. First: what the footer offers is
-     * `allowed_actions` as the kernel computed it, so the completed parent shows
-     * Delete **disabled with its reason** while a draft shows it live. Second,
+     * this client's rendering. First: what the panel offers is
+     * `allowed_actions` as the kernel computed it, so the completed parent —
+     * which can never be deleted — draws its Delete disabled, with the reason,
+     * while a draft shows it live. Second,
      * and the one worth a real database: deleting a batch over frames that are
      * already in the trunk takes **nothing** out of it — annotations hang off
      * assets, so the unit of work goes and the work stays.
@@ -1329,11 +1338,12 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
      * The subject is a second correction, cut and then thrown away, so the walk
      * below still has the first one to carry on with.
      */
+    // A completed batch has no exit in the kernel's transitions and never declares
+    // `delete`, so its panel withholds Delete with the reason; Correct is its way forward.
+    await expect(page.getByTestId("correct-cycle-batch")).toBeVisible();
     const withheld = page.getByTestId("delete-batch-cycle-batch");
     await expect(withheld).toBeVisible();
     await expect(withheld).toBeDisabled();
-    // The reason is the tooltip's, reached by keyboard: the withheld button stays focusable (`aria-disabled`).
-    await expect(withheld).toHaveAttribute("aria-disabled", "true");
     await withheld.focus();
     await expect(page.getByRole("tooltip").filter({ hasText: "correction batch" }).first()).toBeVisible();
 
@@ -1358,8 +1368,11 @@ test("the whole cycle, from opening the app to a downloaded export", async ({ pa
     // The parent, its promotion and the trunk are all exactly where they were.
     await openBatch(page, PROJECT, "cycle-batch");
     await expect(page.getByTestId("batch-sheet").getByTestId("batch-phase")).toHaveText("In dataset");
-    // Wholly in the dataset, the footer says so rather than offering *Add to dataset*.
-    await expect(page.getByTestId("in-dataset-cycle-batch")).toContainText(/All 3 \w+ in the dataset/);
+    // Wholly in the dataset: *Add to dataset* is not offered, and the In dataset property counts all three.
+    await expect(page.getByTestId("promote-cycle-batch")).toHaveCount(0);
+    await expect(
+      page.getByTestId("batch-sheet-more").locator("div", { has: page.locator("dt", { hasText: /^In dataset$/ }) }).locator("dd"),
+    ).toHaveText(/^3 \w+$/);
   });
 
   await test.step("publish a release", async () => {
@@ -1962,7 +1975,7 @@ async function openProject(
  * A batch opened the way a person opens one: from the Overview's Batches table —
  * batches have no section of their own — by pressing its row, which opens it in the
  * panel beside the table. Every batch action (approve, start, complete, promote,
- * correct, delete) is made in that panel's footer, and the address gains
+ * correct, delete) is made in that panel's top bar, and the address gains
  * `?batch=` so the panel survives a reload.
  *
  * The panel stays on the Overview, so there is no page to arrive at: what is
@@ -1978,7 +1991,7 @@ async function openBatch(
   await expect(page.getByTestId("overview-batches")).toBeVisible();
   // The panel labels a correction batch "<name> — correction" unless its own name
   // already ends that way, and its row and heading carry that label rather than the
-  // batch's own name. (The footer's controls are keyed by the batch's own name.)
+  // batch's own name. (The bar's controls are keyed by the batch's own name.)
   const label = correction && !name.endsWith("— correction") ? `${name} — correction` : name;
   if (draft) {
     // A draft's row opens its approval, so its panel is the row menu's Details.

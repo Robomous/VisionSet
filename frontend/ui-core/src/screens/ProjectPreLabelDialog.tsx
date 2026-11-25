@@ -18,6 +18,7 @@
  * pressing Start could only reproduce the refusal the row already shows.
  */
 
+import { ArrowUpRight } from "lucide-react";
 import { useState, type JSX } from "react";
 
 import { useConnections, type Connection } from "../data/inferenceQueries";
@@ -239,6 +240,7 @@ export function ProjectPreLabelDialog({
                   onClick={() => onOpenBatch(item.batch_id)}
                 >
                   {label}
+                  <ArrowUpRight className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
                 </Button>
                 <span className="text-xs text-muted-foreground">
                   {item.joined ? "already running — joined" : "queued"}

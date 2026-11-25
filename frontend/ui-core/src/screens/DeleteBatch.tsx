@@ -3,20 +3,21 @@
  *
  * ## Why it is a component and not two
  *
- * The batch panel's footer offers this (it once had a second mount, on the
+ * The batch panel's top bar offers this (it once had a second mount, on the
  * Batches row), and a second spelling of "which states may be deleted", of the
  * blast radius, or of the confirmation would be the hand-mirror one layer up from the one `capabilities.ts` exists to
  * remove. The annotator's reassignment picker has the same shape: the
  * shared piece holds everything the control *decides*, and each mount supplies
  * only its anchor and what to do afterwards.
  *
- * ## An icon button at the footer's start
+ * ## An icon button first among the batch's actions
  *
  * Deleting a batch is not a step of the workflow — every other control in the
  * panel moves the batch along, and this one ends it. It is also the only action
- * the panel offers that cannot be undone. So it sits at the footer's start, away
- * from the forward step at its end, drawn in the destructive colour, and opens a
- * confirmation rather than acting on a press.
+ * the panel offers that cannot be undone. So it sits first among the batch's
+ * actions, parted by a hairline from the forward step at their end. It is quiet
+ * at rest like every control beside it, turns the destructive colour under the
+ * pointer or the focus, and opens a confirmation rather than acting on a press.
  *
  * ## What the dialog is allowed to say
  *
@@ -64,12 +65,7 @@ export interface DeleteBatchButtonProps {
 export function DeleteBatchButton({ batch, projectId, onDeleted }: DeleteBatchButtonProps): JSX.Element {
   const [confirming, setConfirming] = useState(false);
   const deletable = declares(batch, BATCH_ACTION.delete);
-  // Only reached when the action is withheld, which for `delete` is `completed`
-  // alone — every other state is in `DELETABLE_STATES`. The sentence is the
-  // shared one, so every withheld control explains a completed batch the same way.
-  // The declaration decides, never the state word: a batch that does not declare
-  // `delete` is withheld whatever its state, with the shared sentence when there
-  // is one for that state and a plain one when there is not.
+  // The declaration decides, never the state word; the state only picks the sentence.
   const reason = deletable ? null : (withheldBecause(batch.state) ?? "This batch can’t be deleted right now.");
 
   return (
@@ -78,7 +74,8 @@ export function DeleteBatchButton({ batch, projectId, onDeleted }: DeleteBatchBu
         icon={Trash2}
         label="Delete batch"
         reason={reason}
-        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+        // Quiet at rest like the rest of the bar; the destructive colour arrives as the pointer or the focus does.
+        className="text-muted-foreground transition-[color,background-color,scale] duration-150 [@media(hover:hover)_and_(pointer:fine)]:hover:bg-destructive/10 [@media(hover:hover)_and_(pointer:fine)]:hover:text-destructive focus-visible:text-destructive aria-disabled:hover:bg-transparent aria-disabled:hover:text-muted-foreground"
         data-testid={`delete-batch-${batch.name}`}
         onClick={() => setConfirming(true)}
       />

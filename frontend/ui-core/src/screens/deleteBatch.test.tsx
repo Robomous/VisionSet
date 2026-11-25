@@ -124,12 +124,25 @@ describe("what the delete button offers", () => {
   it("disables it on a completed batch and says why, rather than hiding it", async () => {
     renderWithData(<DeleteBatchButton batch={batch("completed")} projectId={PROJECT} />);
 
-    // Shown, because there is an operation behind it and a state that would
-    // enable it — the distinction between this and removing the control.
     expect(deleteButton().getAttribute("aria-disabled")).toBe("true");
     // The reason is the tooltip's, reached by keyboard: the withheld button stays focusable.
     await userEvent.tab();
     expect((await screen.findAllByText(/correction batch/)).length).toBeGreaterThan(0);
+  });
+
+  it("still offers it on a completed batch that declares it — the declaration decides", () => {
+    renderWithData(<DeleteBatchButton batch={batch("completed", { allowed_actions: ["delete", "promote"] })} projectId={PROJECT} />);
+
+    expect(deleteButton().getAttribute("aria-disabled")).toBeNull();
+  });
+
+  it("withholds it with its reason while the batch may yet be deleted", async () => {
+    renderWithData(<DeleteBatchButton batch={batch("in_annotation", { allowed_actions: ["complete"] })} projectId={PROJECT} />);
+
+    expect(deleteButton().getAttribute("aria-disabled")).toBe("true");
+    // The reason is the tooltip's, reached by keyboard: the withheld button stays focusable.
+    await userEvent.tab();
+    expect((await screen.findAllByText(/can’t be deleted right now/)).length).toBeGreaterThan(0);
   });
 
   it("follows the declaration and not the state word, when the two disagree", async () => {
@@ -160,7 +173,7 @@ describe("what the delete button offers", () => {
   });
 
   it("does not open the dialog from a disabled button", async () => {
-    renderWithData(<DeleteBatchButton batch={batch("completed")} projectId={PROJECT} />);
+    renderWithData(<DeleteBatchButton batch={batch("in_annotation", { allowed_actions: ["complete"] })} projectId={PROJECT} />);
 
     await openMenu();
 

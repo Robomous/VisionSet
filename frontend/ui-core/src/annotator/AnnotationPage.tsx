@@ -150,7 +150,7 @@ import {
   type AnnotatorView,
 } from "@visionset/annotator/react";
 import { WireFormatError, parseAssetDescriptor } from "@visionset/annotator";
-import { ArrowLeft, Box, CheckCheck, ChevronLeft, ChevronRight, CircleHelp, CloudAlert, CloudCheck, CloudUpload, Eye, Grid3x3, Hand, LayoutGrid, Loader2, MonitorSmartphone, MoreHorizontal, Redo2, SkipForward, Sparkles, TriangleAlert, Undo2 } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Box, CheckCheck, ChevronLeft, ChevronRight, CircleHelp, CloudAlert, CloudCheck, CloudUpload, Eye, Grid3x3, Hand, LayoutGrid, Loader2, MonitorSmartphone, MoreHorizontal, Redo2, SkipForward, Sparkles, TriangleAlert, Undo2 } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -2506,6 +2506,7 @@ function Workspace({
                   onClick={onOpenGallery}
                 >
                   Correct this batch
+                  <ArrowUpRight className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
                 </Button>
               )}
           </p>
@@ -3427,8 +3428,9 @@ function PinDiff({
   }
   return (
     <ul className="flex list-disc flex-col gap-1 pl-4" data-testid="pin-diff">
-      {diff.changes.map((change, index) => (
-        <li key={index} className="text-xs text-muted-foreground">
+      {diff.changes.map((change) => (
+        // One change per class, attribute and verdict: the key `SchemaCommitBar` gives the same rows.
+        <li key={`${change.kind}:${change.label_class}:${change.attribute ?? ""}:${change.detail}`} className="text-xs text-muted-foreground">
           {change.detail}
         </li>
       ))}

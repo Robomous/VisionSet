@@ -115,6 +115,17 @@ describe("the project's addresses", () => {
     expect(PARENT.batch(PROJECT, "b-1")).toBe(`/projects/${PROJECT}/overview?batch=b-1`);
   });
 
+  it("spells a batch's images as the Images section narrowed, not the Overview's panel", () => {
+    expect(PARENT.batchAssets(PROJECT, "b-1")).toBe(`/projects/${PROJECT}/images?batch=b-1`);
+    expect(PARENT.batchAssets(PROJECT, "a b")).toBe(`/projects/${PROJECT}/images?batch=a%20b`);
+  });
+
+  it("keeps ?batch= on Images as that section's own parameter, and leaves the address as it was", async () => {
+    open(`/projects/${PROJECT}/images?batch=b-1`);
+    await screen.findByTestId("project-screen");
+    expect(screen.getByTestId("location").textContent).toBe(`/projects/${PROJECT}/images?batch=b-1`);
+  });
+
   it("lands a bookmarked ?tab=versions on Schema, where the history lives", async () => {
     open(`/projects/${PROJECT}?tab=versions`);
     expect(await landed()).toBe(`/projects/${PROJECT}/schema`);
