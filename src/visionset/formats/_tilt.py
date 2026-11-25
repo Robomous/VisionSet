@@ -14,9 +14,10 @@ from visionset.kernel.domain import ScanFrame
 
 Vector = tuple[float, float, float]
 
-#: Five degrees: a sensor's mounting tilt and a road's grade lean a box by one
-#: or two, and flattening five moves the ends of a 5 m box by under 0.22 m.
-TILT_TOLERANCE: Final = math.radians(5.0)
+#: Six degrees: a sensor's mounting tilt and a road's grade lean every box in a
+#: frame by the same angle. Real nuScenes frames reach 5.8, so five would drop whole
+#: frames; flattening six moves the ends of a 5 m box by under 0.27 m.
+TILT_TOLERANCE: Final = math.radians(6.0)
 
 
 def tilt_from(up: Vector, frame: ScanFrame) -> float:

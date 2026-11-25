@@ -188,7 +188,7 @@ def test_a_box_tilted_beyond_the_tolerance_is_a_label_loss_not_flattened(
     tmp_path: Path,
 ) -> None:
     tipped = SensorBox(
-        CAR.category, CAR.center, CAR.size_lwh, CAR.yaw, axis_angle((1.0, 0.0, 0.0), 0.1)
+        CAR.category, CAR.center, CAR.size_lwh, CAR.yaw, axis_angle((1.0, 0.0, 0.0), 0.15)
     )
     src = build(tmp_path / "src", [Keyframe("k", (tipped, PEDESTRIAN))]).write(tmp_path / "src")
 
@@ -197,7 +197,7 @@ def test_a_box_tilted_beyond_the_tolerance_is_a_label_loss_not_flattened(
     assert [label.class_name for label in dataset.scans[0].labels] == [PEDESTRIAN.category]
     (loss,) = [loss for loss in dataset.losses if loss.kind is ImportLossKind.LABEL]
     assert (loss.subject, loss.count) == (CAR.category, 1)
-    assert "5 degrees" in loss.reason
+    assert "6 degrees" in loss.reason
 
 
 def test_the_tilt_is_measured_against_the_sensor_up_axis() -> None:
@@ -209,6 +209,19 @@ def test_the_tilt_is_measured_against_the_sensor_up_axis() -> None:
     global_box_to_sensor(*box, upright)
     with pytest.raises(TiltedBox):
         global_box_to_sensor(*box, leaning)
+
+
+def test_the_tolerance_keeps_the_five_point_eight_degree_frames_real_data_has() -> None:
+    identity = Pose.of((1.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+    box = ((0.0, 0.0, 0.0), (2.0, 5.0, 1.5), (1.0, 0.0, 0.0, 0.0))
+
+    def pitched(degrees: float) -> GlobalToSensor:
+        sensor = Pose.of(axis_angle((0.0, 1.0, 0.0), math.radians(degrees)), (0, 0, 0))
+        return GlobalToSensor(identity, sensor)
+
+    global_box_to_sensor(*box, pitched(5.8))
+    with pytest.raises(TiltedBox):
+        global_box_to_sensor(*box, pitched(6.2))
 
 
 def test_what_the_domain_cannot_hold_is_counted_by_kind(tmp_path: Path) -> None:
