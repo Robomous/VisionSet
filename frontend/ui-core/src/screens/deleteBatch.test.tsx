@@ -121,12 +121,13 @@ describe("what the delete button offers", () => {
     },
   );
 
-  it("leaves it out of a completed batch, which can never be deleted again", () => {
+  it("disables it on a completed batch and says why, rather than hiding it", async () => {
     renderWithData(<DeleteBatchButton batch={batch("completed")} projectId={PROJECT} />);
 
-    // `completed` has no exit and is outside the kernel's DELETABLE_STATES: a
-    // control no state will ever enable is not withheld, it is not there.
-    expect(screen.queryByTestId("delete-batch-drive-01")).toBeNull();
+    expect(deleteButton().getAttribute("aria-disabled")).toBe("true");
+    // The reason is the tooltip's, reached by keyboard: the withheld button stays focusable.
+    await userEvent.tab();
+    expect((await screen.findAllByText(/correction batch/)).length).toBeGreaterThan(0);
   });
 
   it("still offers it on a completed batch that declares it — the declaration decides", () => {

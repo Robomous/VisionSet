@@ -57,25 +57,16 @@ export interface DeleteBatchButtonProps {
 }
 
 /**
- * An icon button, and its confirmation. Withheld with its reason while the
- * batch may yet be deleted — the declaration says no for now, and the tooltip's
- * second line (reachable by focus as well as pointer) says why. A completed
- * batch can never be deleted again (the kernel's `DELETABLE_STATES`; `completed`
- * has no exit), so there it is not drawn at all: `ui-capabilities` hides what is
- * never meaningful on the screen, and the onward route — a correction — stands
- * beside it in the bar.
+ * An icon button, and its confirmation. Disabled with its reason rather than
+ * hidden: there *is* an operation behind it and a state that would enable it,
+ * which is the whole distinction between this and removing the control. The
+ * reason is the tooltip's second line, reachable by focus as well as pointer.
  */
-export function DeleteBatchButton({ batch, projectId, onDeleted }: DeleteBatchButtonProps): JSX.Element | null {
+export function DeleteBatchButton({ batch, projectId, onDeleted }: DeleteBatchButtonProps): JSX.Element {
   const [confirming, setConfirming] = useState(false);
   const deletable = declares(batch, BATCH_ACTION.delete);
-  // Only reached when the action is withheld, which for `delete` is `completed`
-  // alone — every other state is in `DELETABLE_STATES`. The sentence is the
-  // shared one, so every withheld control explains a completed batch the same way.
-  // The declaration decides, never the state word: a batch that does not declare
-  // `delete` is withheld whatever its state, with the shared sentence when there
-  // is one for that state and a plain one when there is not.
+  // The declaration decides, never the state word; the state only picks the sentence.
   const reason = deletable ? null : (withheldBecause(batch.state) ?? "This batch can’t be deleted right now.");
-  if (!deletable && batch.state === "completed") return null;
 
   return (
     <>

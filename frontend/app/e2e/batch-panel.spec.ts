@@ -13,8 +13,7 @@
  * slider, the job accordions — went with it, and so did the scenarios that
  * covered them. The lifecycle scenarios did not: *Approve*, *Start annotating*,
  * *Complete* (whose confirmation decides whether the images are added to the
- * dataset) and *Add to dataset*, with *Delete batch* (never on a completed
- * batch) and *Correct* at its start, are ghost buttons at the end of the
+ * dataset) and *Add to dataset*, with *Delete batch* and *Correct* at its start, are ghost buttons at the end of the
  * panel's top bar (`batch-sheet-actions`), icons named by their tooltips, after
  * *Auto-label*; *Annotate* and *Correct* say their names. Each is asserted here against the same stubbed kernel gates the
  * gallery's were.
@@ -577,9 +576,8 @@ for (const { state, options, present, absent, prelabel } of OFFERED) {
 
     for (const id of present) await expect(actions.getByTestId(id), `${id} on a ${state} batch`).toBeVisible();
     for (const id of absent) await expect(actions.getByTestId(id), `${id} on a ${state} batch`).toHaveCount(0);
-    // Delete is there while the batch may be deleted; a completed batch never can be again, so it has none.
-    if (state === "completed") await expect(actions.getByTestId(`delete-batch-${NAME}`)).toHaveCount(0);
-    else await expect(actions.getByTestId(`delete-batch-${NAME}`)).toBeVisible();
+    // Delete is always there: disabled with its reason (its tooltip) rather than removed.
+    await expect(actions.getByTestId(`delete-batch-${NAME}`)).toBeVisible();
     // There is no overflow menu: every control is a button of its own.
     await expect(actions.getByTestId(`batch-overflow-${NAME}`)).toHaveCount(0);
     // Auto-label is not offered to a batch that does not declare it.
@@ -589,12 +587,18 @@ for (const { state, options, present, absent, prelabel } of OFFERED) {
   });
 }
 
-test("a completed batch has no Delete: it can never be deleted again, and Correct stands in its place", async ({ page }) => {
+test("a completed batch's Delete is withheld with its reason, not hidden", async ({ page }) => {
   const sent: Request[] = [];
   const panel = await openPanel(page, sent, { state: "completed", settled: true });
 
-  await expect(panel.getByTestId(`correct-${NAME}`)).toBeVisible();
-  await expect(panel.getByTestId(`delete-batch-${NAME}`)).toHaveCount(0);
+  const remove = panel.getByTestId(`delete-batch-${NAME}`);
+  await expect(remove).toBeVisible();
+  await expect(remove).toBeDisabled();
+  await expect(remove).toHaveAccessibleName("Delete batch");
+  // The reason is the tooltip's, reached by keyboard: the withheld button stays focusable (`aria-disabled`).
+  await expect(remove).toHaveAttribute("aria-disabled", "true");
+  await remove.focus();
+  await expect(page.getByRole("tooltip").filter({ hasText: "correction batch" }).first()).toBeVisible();
   expect(writes(sent)).toEqual([]);
 });
 

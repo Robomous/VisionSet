@@ -1738,9 +1738,10 @@ describe("the batches panel", () => {
       const correct = within(footer).getByTestId("correct-Harbor");
       // Said in words: no icon reads as "fix a finished batch's labels".
       expect(correct.textContent).toBe("Correct");
-      // A completed batch can never be deleted, so there is no Delete beside it.
-      expect(within(footer).queryByTestId("delete-batch-Harbor")).toBeNull();
+      // Delete is withheld with its reason, not hidden; Delete, then Correct, then the forward step.
+      expect(within(footer).getByTestId("delete-batch-Harbor").getAttribute("aria-disabled")).toBe("true");
       const order = [...footer.querySelectorAll<HTMLElement>("button")].map((one) => one.getAttribute("data-testid"));
+      expect(order.indexOf("delete-batch-Harbor")).toBeLessThan(order.indexOf("correct-Harbor"));
       expect(order.indexOf("correct-Harbor")).toBeLessThan(order.indexOf("promote-Harbor"));
       // No overflow menu any more.
       expect(within(footer).queryByTestId("batch-overflow-Harbor")).toBeNull();
@@ -1864,14 +1865,9 @@ describe("the batches panel", () => {
         for (const id of ["approve-batch", "start-batch", "sheet-annotate", "sheet-prelabel", `complete-${name}`, `complete-promote-${name}`, `promote-${name}`, `correct-${name}`]) {
           expect(within(footer).queryByTestId(id), `${name}: ${id}`).toBeNull();
         }
-        // A draft that does not declare delete may yet be deletable: withheld with its reason.
-        // A completed batch never can be again, so it has no Delete at all.
-        if (name === "bare-done") {
-          expect(within(footer).queryByTestId(`delete-batch-${name}`), `${name}: delete`).toBeNull();
-        } else {
-          const remove = within(footer).getByTestId(`delete-batch-${name}`);
-          expect(remove.getAttribute("aria-disabled"), `${name}: delete`).toBe("true");
-        }
+        // Delete stays, withheld with its reason rather than hidden.
+        const remove = within(footer).getByTestId(`delete-batch-${name}`);
+        expect(remove.getAttribute("aria-disabled"), `${name}: delete`).toBe("true");
         unmount();
       }
     });
