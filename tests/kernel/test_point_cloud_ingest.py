@@ -21,6 +21,7 @@ from visionset.kernel import (
     CalibrationInUse,
     CalibrationMissing,
     CalibrationNotApplicable,
+    ExportSourceUnreadable,
     InvalidAnnotation,
     LossyExportNotConsented,
     UnsupportedMedia,
@@ -385,6 +386,24 @@ def test_a_format_declaring_point_clouds_is_handed_them(scans: Scans) -> None:
 
     assert report.dropped_modalities == ()
     assert sum(one.annotations for one in report.classes if one.label_class == "car_3d") == 1
+
+
+def test_a_recipe_is_refused_for_an_export_that_would_hand_over_a_scan(
+    scans: Scans, tmp_path: Path
+) -> None:
+    scans.read()
+    scans.label_both({0: [_car()]})
+    release_id = scans.publish()
+    writes_scans = exporters()["dummy"]
+    recipe = RecipeSpec(target=None, steps=())
+
+    with pytest.raises(ExportSourceUnreadable, match="point_cloud, and a pre-processing recipe"):
+        scans.releases.check_export(release_id, writes_scans, recipe=recipe)
+    with pytest.raises(ExportSourceUnreadable, match="dummy without a recipe"):
+        scans.releases.export(release_id, writes_scans, tmp_path / "out", recipe=recipe)
+    assert not (tmp_path / "out").exists()
+    images_only = scans.releases.check_export(release_id, exporters()["coco"], recipe=recipe)
+    assert images_only.dropped_modalities
 
 
 def test_a_frame_change_checks_for_labels_under_the_write_lock(
