@@ -13,6 +13,15 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **A split recipe can keep a group in one fold.** `SplitRecipe.group_by="group_label"` (REST `split.group_by`,
+  CLI `release publish --group-by group_label`, MCP `publish_release`) cuts by the group label an importer wrote on
+  each asset instead of by asset, so a group never straddles train, val and test. The fractions then count groups,
+  so fold sizes are approximate; an asset with no label is still cut on its own. Opt-in: a recipe that does not
+  group omits the key, so every existing recipe, split and manifest keeps its bytes. The nuScenes import writes each
+  keyframe's scene name as its group label (an asset field, migration 23), and a release holding a labelled asset
+  is written as manifest version 6. On `v1.0-mini` under `0.8/0.1/0.1` (seed 0), a per-asset split puts every one of the 10
+  scenes in more than one fold; a grouped one puts none. Frames cut from a video clip are still split per asset
+  (#1147).
 - **`GET /geometries`, the geometries a class may declare.** A read-only catalog generated from the kernel's
   `IMPLEMENTED_GEOMETRIES`. The schema editor's class sheet and the annotator's add-a-class dialog read their
   shape picker from it instead of a hard-coded list; while it loads, or if the read fails, the picker is

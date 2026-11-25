@@ -53,7 +53,7 @@ visionset job progress|start|complete JOB_ID
 visionset job mark JOB_ID ASSET_ID --progress STATE
 visionset job pre-label JOB_ID CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels] [--geometry SHAPE]...
 
-visionset release publish --tag T --project P [--split TRAIN,VAL,TEST [--seed N]]
+visionset release publish --tag T --project P [--split TRAIN,VAL,TEST [--seed N] [--group-by group_label]]
 visionset release list --project P
 visionset release verify TAG --project P
 visionset export --project P --release TAG --target T|--format F --out DIR [--allow-lossy] [--allow-non-empty] [--recipe NAME]
@@ -536,7 +536,7 @@ lifecycle must be drivable from a script, not because this is how labelling happ
 
 ### `visionset release` and `visionset export`
 
-`release publish --tag T --project P [--split TRAIN,VAL,TEST] [--seed N]` → `ReleaseService.publish`. `--seed` needs `--split`; alone it is exit 2. A dataset whose assets carry no annotations still publishes, and
+`release publish --tag T --project P [--split TRAIN,VAL,TEST] [--seed N] [--group-by group_label]` → `ReleaseService.publish`. `--seed` and `--group-by` need `--split`; alone either is exit 2. `--group-by group_label` keeps every asset sharing an import's group label - a nuScenes scene - in one fold, and the fractions then count groups (see [releases.md](releases.md#keeping-a-group-in-one-fold)). A dataset whose assets carry no annotations still publishes, and
 the command says so on stderr (`Warning: this release has no annotations`) — a warning, not a refusal.
 `release list --project P`, and `release verify TAG --project P`, whose **exit code is the answer**.
 

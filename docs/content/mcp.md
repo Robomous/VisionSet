@@ -214,7 +214,7 @@ call until the end. #439 has since added a job gate, but it changes none of this
 | | |
 | --- | --- |
 | `dataset_stats` | Class balance in the trunk right now. |
-| `publish_release` | Freeze it under a tag, immutably. |
+| `publish_release` | Freeze it under a tag, immutably. `split` takes `group_by: "group_label"` to keep each import group, such as a nuScenes scene, in one fold. |
 | `list_releases` | Everything published, with counts and hashes. |
 | `verify_release` | Re-hash every blob a release names. |
 | `list_formats` | Installed exporters, which are lossy, what each can write, and the targets it writes for. |
