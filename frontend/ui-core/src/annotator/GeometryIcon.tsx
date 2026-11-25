@@ -15,10 +15,11 @@ import type { JSX } from "react";
 
 export interface GeometryIconProps {
   /**
-   * A `Tool`, or any of the wider vocabulary the strip also draws — it shows
-   * buttons for geometries that have no implementation yet, and those are not
-   * `Tool`s. Anything unrecognised answers the pointer, which is what the strip's
-   * own map did before this was shared, so the widening loses nothing.
+   * A `Tool`, or a geometry name that is not one — the suggest bar passes the
+   * shape it asks a model for, and the strip's `PENDING_TOOLS` would pass a
+   * geometry declared before it is drawable (none is today). Anything
+   * unrecognised answers the pointer, which is what the strip's own map did
+   * before this was shared, so the widening loses nothing.
    */
   readonly tool: string;
   /** Tailwind size, because the strip wants `size-4` and a row chip wants less. */

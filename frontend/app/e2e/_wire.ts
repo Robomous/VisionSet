@@ -33,10 +33,25 @@
  * to exercise the malformed-response path.
  */
 
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import type { components } from "@visionset/ui-core";
 
 /** The generated response shapes, under the name a stub spells them with. */
 export type Wire = components["schemas"];
+
+/**
+ * What `GET /geometries` answers. Read off the kernel-written wire fixture,
+ * which `tests/server/test_wire_fixtures.py` holds to `IMPLEMENTED_GEOMETRIES`,
+ * so a geometry implemented server-side reaches the stubs with no edit here.
+ */
+export function geometryPage(): Wire["GeometryPage"] {
+  const fixture = JSON.parse(
+    readFileSync(path.resolve(import.meta.dirname, "..", "..", "..", "tests", "fixtures", "wire_annotations.json"), "utf8"),
+  ) as { readonly implemented_geometry_types: readonly Wire["GeometryType"][] };
+  const names = fixture.implemented_geometry_types;
+  return { items: names.map((name) => ({ name })), total: names.length };
+}
 
 /**
  * A project-list digest with nothing in it — what the kernel says about a

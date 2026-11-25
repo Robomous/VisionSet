@@ -30,7 +30,7 @@
 
 import { expect, type Page, type Route } from "@playwright/test";
 
-import { assetActions, batchActions, jobActions, projectDigest, type Wire } from "./_wire";
+import { assetActions, batchActions, geometryPage, jobActions, projectDigest, type Wire } from "./_wire";
 
 export const VISUAL = {
   project: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
@@ -332,6 +332,7 @@ export async function serveVisualApi(page: Page, options: VisualOptions = {}): P
     const P = VISUAL.project;
 
     if (path === "/session") return route.fulfill({ json: { issued: false } });
+    if (path === "/geometries") return route.fulfill({ json: geometryPage() });
 
     if (path === "/home") {
       return route.fulfill({

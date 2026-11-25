@@ -29,6 +29,7 @@ import type { JSX, ReactNode } from "react";
 import { Toaster, TooltipProvider } from "@robomous/ui-core";
 import { AnnotationPage } from "./AnnotationPage";
 import { renderWithData } from "../testing/dataHarness";
+import { geometryPage } from "../testing/geometries";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
 import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
 
@@ -115,6 +116,7 @@ function answer(path: string): unknown {
     };
   }
   if (path === `/batches/${BATCH}`) return batch();
+  if (path === "/geometries") return geometryPage();
   if (path.endsWith("/schema/versions/2") && publishedSchema !== null) {
     return { ...SCHEMA, ...publishedSchema, provenance: "annotation" };
   }
@@ -344,6 +346,15 @@ it("opens empty from the class region's `+`, where nobody named a class", async 
   await userEvent.click(screen.getByTestId("class-add"));
 
   expect(await screen.findByTestId("class-name-new")).toHaveProperty("value", "");
+});
+
+it("offers the server's geometries in the add-a-class dialog", async () => {
+  renderWithData(mount(<AnnotationPage jobId={JOB} />));
+  await userEvent.click(await screen.findByTestId("class-add"));
+  await screen.findByTestId("add-class-dialog");
+
+  expect(await screen.findByTestId("class-geometry-new-cuboid_3d")).toHaveProperty("disabled", false);
+  expect(screen.queryByTestId("class-geometry-new-mask")).toBeNull();
 });
 
 /**

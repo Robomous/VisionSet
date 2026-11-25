@@ -21,6 +21,7 @@ import { ProjectScreen } from "./ProjectScreen";
 import { type LabelClassBody } from "./queries";
 import { harnessClient, renderWithData } from "../testing/dataHarness";
 import { batchActions } from "../testing/wire.fixtures.js";
+import { IMPLEMENTED_GEOMETRIES, geometryPage } from "../testing/geometries";
 import {
   CLASSES,
   OTHER_PROJECT,
@@ -1316,7 +1317,7 @@ describe("the schema editor", () => {
     expect(alert.textContent).not.toContain("internal wording must not appear");
   });
 
-  it("offers only the geometries an annotation can carry", async () => {
+  it("offers the geometries the server publishes, and asks it for them", async () => {
     projectWithSchema();
     renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("schema-editor");
@@ -1330,14 +1331,78 @@ describe("the schema editor", () => {
     // beside it is the display word — so this asserts which geometries are on
     // offer without also asserting what they are called, which is
     // `geometryCategory.test.ts`'s job.
-    for (const geometry of ["bbox", "polygon", "polyline", "classification_tag", "cuboid_3d", "polyline_3d"]) {
-      expect(screen.getByTestId(`class-geometry-0-${geometry}`)).toBeTruthy();
+    for (const geometry of IMPLEMENTED_GEOMETRIES) {
+      expect(await screen.findByTestId(`class-geometry-0-${geometry}`)).toBeTruthy();
     }
     // `GeometryType` has eight members; two are refused at write time with
-    // `UnsupportedGeometry`, so offering them would be offering a refusal.
+    // `UnsupportedGeometry`, and the server does not publish them.
     for (const geometry of ["mask", "keypoints"]) {
       expect(screen.queryByTestId(`class-geometry-0-${geometry}`)).toBeNull();
     }
+    expect(sent.some((request) => new URL(request.url).pathname.endsWith("/geometries"))).toBe(true);
+  });
+
+  it("offers a geometry the server adds, with no list in the client to edit", async () => {
+    on("GET", /\/geometries$/, { status: 200, body: geometryPage([...IMPLEMENTED_GEOMETRIES, "mask"]) });
+    projectWithSchema();
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
+    await screen.findByTestId("schema-editor");
+    await selectClass(0);
+
+    expect(await screen.findByTestId("class-geometry-0-mask")).toBeTruthy();
+    expect(screen.queryByTestId("class-geometry-0-keypoints")).toBeNull();
+  });
+
+  it("offers only the subset the server publishes", async () => {
+    on("GET", /\/geometries$/, { status: 200, body: geometryPage(["polygon", "bbox"]) });
+    projectWithSchema();
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
+    await screen.findByTestId("schema-editor");
+    await selectClass(0);
+
+    await waitFor(() =>
+      expect(within(screen.getByTestId("class-geometry-0")).getAllByRole("button").map((item) => item.getAttribute("data-testid"))).toEqual([
+        "class-geometry-0-bbox",
+        "class-geometry-0-polygon",
+      ]),
+    );
+    expect(screen.getByTestId("class-geometry-0-bbox")).toHaveProperty("disabled", false);
+  });
+
+  it("keeps the shapes disabled while the set loads", async () => {
+    handlers.push((request) => (new URL(request.url).pathname.endsWith("/geometries") ? new Promise<HandlerAnswer>(() => {}) : undefined));
+    projectWithSchema();
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
+    await screen.findByTestId("schema-editor");
+    await selectClass(0);
+
+    const group = screen.getByTestId("class-geometry-0");
+    expect(group.getAttribute("aria-busy")).toBe("true");
+    expect(within(group).getAllByRole("button").map((item) => item.getAttribute("data-testid"))).toEqual(["class-geometry-0-bbox"]);
+    expect(screen.getByTestId("class-geometry-0-bbox")).toHaveProperty("disabled", true);
+  });
+
+  it("says a failed read with the shapes disabled, and offers them once a retry answers", async () => {
+    let refusals = 1;
+    handlers.push((request) => {
+      if (!new URL(request.url).pathname.endsWith("/geometries") || refusals === 0) return undefined;
+      refusals -= 1;
+      return { status: 500, body: { code: "INTERNAL_ERROR", message: "The geometry catalog could not be read." } };
+    });
+    projectWithSchema();
+    renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
+    await screen.findByTestId("schema-editor");
+    await selectClass(0);
+
+    const error = await screen.findByTestId("class-geometry-0-error");
+    expect(error.textContent).toContain("The geometry catalog could not be read.");
+    expect(screen.getByTestId("class-geometry-0-bbox")).toHaveProperty("disabled", true);
+    expect(screen.queryByTestId("class-geometry-0-polygon")).toBeNull();
+
+    await userEvent.click(within(error).getByRole("button", { name: "Try again" }));
+
+    expect(await screen.findByTestId("class-geometry-0-polygon")).toHaveProperty("disabled", false);
+    expect(screen.queryByTestId("class-geometry-0-error")).toBeNull();
   });
 
   /**

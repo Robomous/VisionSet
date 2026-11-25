@@ -71,6 +71,7 @@ import {
   checkListDatasetAssets,
   checkListExportTargets,
   checkListFormats,
+  checkListGeometries,
   checkListProjectAssets,
   checkListProjects,
   checkListReleases,
@@ -154,7 +155,37 @@ export const queryKeys = {
     ["projects", projectId, "schema", "blocking-assets", classes, limit ?? "all"] as const,
   schemaPreview: (projectId: string, classes: readonly LabelClassBody[]) =>
     ["projects", projectId, "schema", "preview", classes] as const,
+  geometries: () => ["geometries"] as const,
 };
+
+/**
+ * The geometries a class can offer, as a picker reads them: the server's set,
+ * or why there is none to offer yet. The server's list is the only one — the
+ * client keeps no copy to fall back on — so a picker that is not `ready` has
+ * nothing to offer and says so.
+ */
+export type OfferedGeometries =
+  | { readonly state: "ready"; readonly geometries: readonly GeometryType[] }
+  | { readonly state: "loading" }
+  | { readonly state: "failed"; readonly error: unknown; readonly retry: () => void };
+
+/**
+ * `GET /geometries`, the kernel's `IMPLEMENTED_GEOMETRIES`. The set is a property
+ * of the server's build, so it is read once and kept. `enabled` is for a surface
+ * that only sometimes shows a picker, as `useSchemaDraft`'s is.
+ */
+export function useOfferedGeometries(enabled = true): OfferedGeometries {
+  const client = useApiClient();
+  const query = useQuery({
+    enabled,
+    queryKey: queryKeys.geometries(),
+    queryFn: async () => unwrap(await client.GET("/geometries", {}), checkListGeometries),
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  if (query.data !== undefined) return { state: "ready", geometries: query.data.items.map((one) => one.name) };
+  if (query.isError) return { state: "failed", error: query.error, retry: () => void query.refetch() };
+  return { state: "loading" };
+}
 
 /**
  * The workspace's front page, in one request.
