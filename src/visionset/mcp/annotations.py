@@ -230,6 +230,10 @@ def update_annotations(
     The geometry is replaced whole too: a polyline sent without `visibility`
     loses the stored one, so resend it — one state per point — to keep it.
 
+    An annotation a track observes keeps the track's class: changing it is
+    refused as `TRACK_CLASS_MISMATCH`; use `set_track_class` to rename the
+    track and every annotation it observes together.
+
     Same validation and the same all-or-nothing rule as `add_annotations`, and
     the same `job_started` in the answer.
 

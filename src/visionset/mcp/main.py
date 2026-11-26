@@ -63,6 +63,7 @@ from visionset.mcp import (
     releases,
     schemas,
     sources,
+    tracks,
 )
 from visionset.mcp._errors import guarded
 from visionset.mcp._guide import INSTRUCTIONS, WORKFLOW, WORKFLOW_URI
@@ -135,6 +136,19 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     (annotations.add_annotations, WRITES),
     (annotations.update_annotations, WRITES),
     (annotations.delete_annotations, WRITES),
+    # Beside the annotations they follow: a track observes annotations already drawn.
+    (tracks.list_frame_occurrences, READS),
+    (tracks.list_tracks, READS),
+    (tracks.get_track_status, READS),
+    (tracks.create_track, WRITES),
+    (tracks.observe_track, WRITES),
+    (tracks.unobserve_track, WRITES),
+    (tracks.set_track_class, WRITES),
+    (tracks.merge_tracks, WRITES),
+    (tracks.split_track, WRITES),
+    # WRITES, not DESTROYS, on `delete_annotations`' terms: no `confirm`, the
+    # job write gate is the guard.
+    (tracks.delete_track, WRITES),
     (jobs.set_asset_progress, WRITES),
     (jobs.complete_job, WRITES),
     (batches.complete_batch, WRITES),
@@ -171,10 +185,11 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
 )
 """Every tool this server always offers, with what it does to the workspace.
 
-``delete_annotations`` is ``WRITES`` rather than ``DESTROYS``, on purpose: it
-takes no ``confirm``, because removing a label is the annotator edit loop and the
-guard is the batch gate. In this surface ``destructiveHint`` and ``confirm`` mean
-the same thing, and the registration test holds them to it.
+``delete_annotations`` and ``delete_track`` are ``WRITES`` rather than
+``DESTROYS``, on purpose: they take no ``confirm``, because removing a label or a
+track is the annotator edit loop and the guard is the batch gate. In this surface
+``destructiveHint`` and ``confirm`` mean the same thing, and the registration
+test holds them to it.
 
 Nothing here is destructive. See :data:`DESTRUCTIVE_TOOLS`.
 """
