@@ -17,7 +17,7 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 from sqlalchemy import text
-from tests.fixtures.store_reads import CountingUnitOfWork
+from tests.fixtures.store_reads import CountingUnitOfWork, executed_statements
 
 from visionset.kernel import (
     AnnotationGeometryOutOfBounds,
@@ -28,6 +28,7 @@ from visionset.kernel import (
     BatchNotInAnnotation,
     DisallowedGeometry,
     DuplicateClassificationTag,
+    EntityAlreadyExists,
     InvalidAnnotation,
     InvalidAttributeValue,
     JobFinished,
@@ -421,6 +422,37 @@ def test_add_reads_each_asset_once_however_many_boxes_it_carries(
     reads = sum((one.asset_reads for one in counted), Counter[UUID]())
     assert reads == dict.fromkeys(fixture.assets[:2], 1)
     fixture.close()
+
+
+def test_add_refuses_a_payload_repeating_an_id_and_stores_none_of_it(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path, asset_width=100, asset_height=80)
+    job = fixture.working()
+    box = _box(fixture.assets[0])
+
+    with pytest.raises(EntityAlreadyExists, match=str(box.id)):
+        fixture.annotations.add(job.id, [_box(fixture.assets[1]), box, box])
+
+    for asset_id in fixture.assets[:2]:
+        assert fixture.annotations.for_asset(job.id, asset_id) == []
+    fixture.close()
+
+
+def test_add_costs_the_same_statements_however_many_boxes_it_carries(
+    tmp_path: Path,
+) -> None:
+    counts = []
+    for boxes_per_asset in (1, 10):
+        fixture = Fixture(tmp_path / str(boxes_per_asset), asset_width=100, asset_height=80)
+        job = fixture.working()
+        payload = [
+            _box(asset_id) for asset_id in fixture.assets[:2] for _ in range(boxes_per_asset)
+        ]
+        with executed_statements() as statements:
+            stored = fixture.annotations.add(job.id, payload)
+        assert stored == [box.model_copy(update={"job_id": job.id}) for box in payload]
+        counts.append(len(statements))
+        fixture.close()
+    assert counts[0] == counts[1]
 
 
 def test_add_refuses_a_later_box_on_an_asset_an_earlier_box_already_read(

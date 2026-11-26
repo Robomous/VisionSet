@@ -275,6 +275,10 @@ def _first_gap(connection: Connection) -> str | None:
 
 T = TypeVar("T", bound=m.Entity)
 
+#: Ids bound into one ``IN (...)`` existence read. Well under SQLite's
+#: host-parameter ceiling, which builds before 3.32 put at 999.
+_IN_CLAUSE_LIMIT: Final = 900
+
 
 class SqlRepository(Generic[T]):
     """Generic repository driven by one ``EntityMapping``.
@@ -321,6 +325,33 @@ class SqlRepository(Generic[T]):
         self._write_children(entity, inserting=True)
         self._flush()
         return entity
+
+    def add_many(self, entities: Sequence[T]) -> list[T]:
+        if not entities:
+            return []
+        stored = self._stored_ids([entity.id for entity in entities])
+        seen: set[UUID] = set()
+        for entity in entities:
+            if entity.id in stored or entity.id in seen:
+                raise EntityAlreadyExists(
+                    f"{self._mapping.row.__tablename__} {entity.id} already exists"
+                )
+            seen.add(entity.id)
+        self._session.add_all([self._mapping.to_row(entity) for entity in entities])
+        # Every row before any child, for the reason `add` flushes between them.
+        self._flush()
+        for entity in entities:
+            self._write_children(entity, inserting=True)
+        self._flush()
+        return list(entities)
+
+    def _stored_ids(self, ids: Sequence[UUID]) -> set[UUID]:
+        id_column = cast(Any, self._mapping.row).id
+        found: set[UUID] = set()
+        for start in range(0, len(ids), _IN_CLAUSE_LIMIT):
+            chunk = ids[start : start + _IN_CLAUSE_LIMIT]
+            found.update(self._session.scalars(select(id_column).where(id_column.in_(chunk))))
+        return found
 
     def update(self, entity: T) -> T:
         if self._row(entity.id) is None:

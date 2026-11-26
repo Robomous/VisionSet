@@ -120,6 +120,13 @@ nothing was being distributed. This is the first version that is.
   time; they now read each once per call. On the nuScenes mini split (404 keyframes, 18,538 boxes) the import's
   final transaction falls from about 9.3 to 5.1 seconds and the whole commit from about 15.3 to 11.2 (medians of
   three runs). Every refusal, its message and the position it blames are unchanged (#1148).
+- **A batch of labels is inserted with one flush, not one per label.** The `Repository` port gains `add_many`,
+  which reads which ids are taken for the whole batch at once, flushes every row together and then writes their
+  children. An import, `add` and `enter_unreviewed` store their labels through it. On the nuScenes mini split
+  (404 keyframes, 18,538 boxes) the import's final transaction falls from about 5.2 to 1.5 seconds and the whole
+  commit from about 11.2 to 7.5 (medians of three runs). A duplicate id, in the store or within the batch, is
+  still `EntityAlreadyExists` and a constraint failure still `ConstraintViolated`; a duplicate is now refused
+  before any row of the batch is written (#1153).
 - **The tilt tolerance is 6 degrees, not 5.** Run on the real nuScenes mini split (404 keyframes, 18,538 boxes), the
   pose chain reproduces nuScenes' own `num_lidar_pts` for every box. The tilt is the sensor's against the world and is
   the same for every box in a frame; it reaches 5.8 degrees, so five refused 27 frames and every label in them (495
