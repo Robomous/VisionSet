@@ -23,6 +23,13 @@ nothing was being distributed. This is the first version that is.
   and hatched, labelled `left out`), `Accept N` writes only the chosen ones with their own scores in one undo step,
   and with none chosen Accept is disabled and `↵` writes nothing. A point suggestion still proposes at most one
   shape (#548).
+
+- **Frame occurrences.** A video import's commit writes one `FrameOccurrence` - `(source_id, position,
+  timestamp, asset_id)`, unique on `(source_id, position)` - per committed frame, so two grid positions whose
+  bytes deduplicate to one asset are two occurrences of it, and a second import of one clip keeps its own.
+  Assets, deduplication and batch membership are unchanged. Migration 24 creates the table and backfills each
+  video frame's first-seen position; positions an earlier import deduplicated away were never recorded and are
+  not invented (#1178).
 - **`fill` and `center_crop` resize strategies.** `fill` scales a recipe's images to cover the size and crops the
   overflow, centred; `center_crop` cuts a centred window at the source's own scale and pads an axis the source is
   too small to fill. A box or polygon is clipped to the canvas - a polygon cut into pieces keeps its largest -

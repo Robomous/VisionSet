@@ -47,3 +47,9 @@ browser runs. They were written together, and they are easiest to read in this o
 | Page | The rule |
 | --- | --- |
 | [Three-dimensional labels are calibrated image labels](three-dimensional-labels-are-calibrated-image-labels.md) | A 3D label belongs to an image asset, in its sensor frame, with calibration stored per source. Point clouds are a separate modality, not admitted by adding a geometry, and their labels are read in the frame their source declares. |
+
+## Tracking across frames
+
+| Page | The rule |
+| --- | --- |
+| [A track observes frame occurrences](a-track-observes-frame-occurrences.md) | An asset is bytes, an occurrence is a position in a source, and a track is a set of observations over existing annotations. |

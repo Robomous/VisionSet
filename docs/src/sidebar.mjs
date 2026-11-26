@@ -76,6 +76,7 @@ export const sidebar = [
           { slug: "architecture/decisions/the-image-embedding-stays-in-the-worker" },
           { slug: "architecture/decisions/an-import-is-a-labeled-batch" },
           { slug: "architecture/decisions/three-dimensional-labels-are-calibrated-image-labels" },
+          { slug: "architecture/decisions/a-track-observes-frame-occurrences" },
         ],
       },
     ],

@@ -53,8 +53,8 @@ But a rule with no backstop is a wish, so the store carries the constraint too:
 `uq_project_workspace_name` on `project (workspace_id, name COLLATE NOCASE)`, alongside
 `uq_schema_project_version`, `uq_schema_draft_project_kind`, `uq_member_dataset_asset`,
 `uq_release_dataset_tag`, `uq_asset_project_content_hash`, `uq_source_project_kind_path_fps_ranges_scale`,
-`uq_annotation_asset_classification`, `uq_token_workspace_name` and
-`uq_inference_connection_name`. The invariant then survives
+`uq_annotation_asset_classification`, `uq_token_workspace_name`,
+`uq_inference_connection_name` and `uq_frame_occurrence_source_position`. The invariant then survives
 a service bug, a forgotten code path, and a second process.
 
 `uq_source_project_kind_path_fps_ranges_scale` is one of the two whose terms are not all
@@ -193,11 +193,12 @@ MIGRATIONS: list[Migration] = [
     Migration(version=21, name="calibration", upgrade=_add_calibration),
     Migration(version=22, name="point_clouds", upgrade=_add_point_clouds),
     Migration(version=23, name="group_labels", upgrade=_add_group_labels),
+    Migration(version=24, name="frame_occurrences", upgrade=_add_frame_occurrences),
 ]
-FORMAT_VERSION: int = MIGRATIONS[-1].version  # 23
+FORMAT_VERSION: int = MIGRATIONS[-1].version  # 24
 ```
 
-**Generation 1 is the baseline, and the twenty-two entries after it are ordinary migrations.** A long
+**Generation 1 is the baseline, and the twenty-three entries after it are ordinary migrations.** A long
 chain of generations got this schema to its present shape while VisionSet was unreleased.
 Every database they could have upgraded was disposable test data inside this repository, so
 what they actually bought was an idempotency argument and an undo line per generation, plus
@@ -246,6 +247,12 @@ Migration 23 appends a nullable `group_label` column to `asset` and backfills no
 import wrote a group before it, and the label is provenance written at first arrival, so an
 asset imported earlier keeps NULL even when the same bytes are imported again - see
 [releases.md](releases.md#the-split-recipe).
+Migration 24 creates the `frame_occurrence` table and backfills one occurrence per asset whose
+recorded origin is a position in a `video` source, from `source_id` and `frame_index`. That is the
+first-seen origin only: a position whose bytes deduplicated onto an earlier asset was never
+recorded, so a clip imported before it may hold fewer occurrences than frames it extracted, and the
+migration does not invent the missing ones. Decomposed animations in an image directory are not a
+sequence and get none - see [ingest.md](ingest.md#identity-is-content-origin-is-provenance).
 
 **There are no downgrade paths, deliberately.** Nothing walks a file backwards and the
 tests no longer do either. A downgrade is a compatibility promise and a promise is owed

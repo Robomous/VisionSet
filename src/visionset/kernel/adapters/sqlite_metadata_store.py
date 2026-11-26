@@ -399,6 +399,7 @@ class SqlUnitOfWork:
         self.video_imports = SqlRepository(session, m.VIDEO_IMPORTS)
         self.video_import_frames = SqlRepository(session, m.VIDEO_IMPORT_FRAMES)
         self.ingest_jobs = SqlRepository(session, m.INGEST_JOBS)
+        self.frame_occurrences = SqlRepository(session, m.FRAME_OCCURRENCES)
         self.assets = SqlRepository(session, m.ASSETS)
         self.batches = SqlRepository(session, m.BATCHES)
         self.task_groups = SqlRepository(session, m.TASK_GROUPS)

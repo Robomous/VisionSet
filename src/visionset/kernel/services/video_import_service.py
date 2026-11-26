@@ -16,10 +16,11 @@ upload that stalled — every one of them adds no asset and no batch to the proj
 ``commit`` is the single moment that changes, and it is one transaction.
 
 What *is* reused is everything below the session: content hashing and
-``BlobStore``, the project-scoped dedup rule (``store_assets``, shared with
+``BlobStore``, the project-scoped dedup rule (``store_each``, shared with
 ingest), thumbnails as a best-effort cache, and ``BatchService``'s draft batch as
-the destination. A frame is an ordinary image asset by the time it lands; the
-only thing that makes it a video frame is the ``VIDEO`` source it points at.
+the destination. A frame is an ordinary image asset by the time it lands; what
+makes it a video frame is the ``FrameOccurrence`` naming its position in the
+``VIDEO`` source.
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ from visionset.kernel.domain import (
     VIDEO_FRAME_FORMAT,
     Asset,
     Batch,
+    FrameOccurrence,
     IncomingFrame,
     Project,
     Source,
@@ -69,7 +71,7 @@ from visionset.kernel.errors import (
 )
 from visionset.kernel.ports import UnitOfWork
 from visionset.kernel.services.batch_service import BatchService
-from visionset.kernel.services.ingest_service import store_assets
+from visionset.kernel.services.ingest_service import store_each
 
 if TYPE_CHECKING:
     from visionset.kernel.services.workspace_service import WorkspaceService
@@ -577,10 +579,10 @@ class VideoImportService:
 
         **Two ordinals with identical bytes collapse into one asset, and that is
         correct.** A static shot at 1 fps genuinely yields the same image twice;
-        content addressing has always said so, and a frame-level identity built
-        to keep them apart would be a second identity system contradicting the
-        first. The batch is then shorter than the frame count, which is the
-        honest report.
+        content addressing has always said so. The positions are not lost: every
+        staged frame becomes one ``FrameOccurrence`` naming the asset its bytes
+        landed on, so the two ordinals are two occurrences of one asset. The
+        batch is then shorter than the frame count, which is the honest report.
 
         **The staged rows go**, exactly as they do on an abort and for the same
         reason: they have become assets, the session is terminal, and no read
@@ -656,8 +658,20 @@ class VideoImportService:
                 for frame in frames
             ]
             now = datetime.now(UTC)
-            assets, _ = store_assets(uow, session.project_id, candidates, stamped_at=now)
-            batch = self._destination(uow, session, source, [asset.id for asset in assets])
+            each, _ = store_each(uow, session.project_id, candidates, stamped_at=now)
+            asset_ids = list(dict.fromkeys(stored.id for stored in each))
+            batch = self._destination(uow, session, source, asset_ids)
+            uow.frame_occurrences.add_many(
+                [
+                    FrameOccurrence(
+                        source_id=source.id,
+                        position=frame.ordinal,
+                        timestamp=frame.timestamp,
+                        asset_id=stored.id,
+                    )
+                    for frame, stored in zip(frames, each, strict=True)
+                ]
+            )
             for frame in frames:
                 uow.video_import_frames.delete(frame.id)
             # The claim, and the last check before the session settles. The asset
