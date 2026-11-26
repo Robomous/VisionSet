@@ -23,7 +23,7 @@ from visionset.kernel import (
     WorkspaceCorrupt,
     WorkspaceFormatTooNew,
 )
-from visionset.kernel.adapters import SqliteMetadataStore
+from visionset.kernel.adapters import SqliteMetadataStore, sqlite_metadata_store
 from visionset.kernel.adapters.migrations import FORMAT_VERSION
 from visionset.kernel.domain import (
     Annotation,
@@ -754,14 +754,31 @@ def test_add_many_costs_the_same_statements_for_four_entities_as_for_forty(
     store.close()
 
 
-def test_add_many_reads_existence_in_chunks_past_the_parameter_limit(tmp_path: Path) -> None:
+@pytest.mark.parametrize("stored_at", [0, 3, 4, 7, 9])
+def test_add_many_finds_a_stored_id_at_any_chunk_edge(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stored_at: int
+) -> None:
+    monkeypatch.setattr(sqlite_metadata_store, "_IN_CLAUSE_LIMIT", 4)
     store = _store(tmp_path)
-    existing = Workspace(name="last")
+    existing = Workspace(name="stored")
     with store.unit_of_work() as uow:
         uow.workspaces.add(existing)
-    batch = [Workspace(name=f"w{index}") for index in range(2500)] + [existing]
+    batch = [Workspace(name=f"w{index}") for index in range(10)]
+    batch[stored_at] = existing
     with pytest.raises(EntityAlreadyExists, match=str(existing.id)), store.unit_of_work() as uow:
         uow.workspaces.add_many(batch)
+    store.close()
+
+
+def test_add_many_reads_existence_one_chunk_at_a_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sqlite_metadata_store, "_IN_CLAUSE_LIMIT", 4)
+    store = _store(tmp_path)
+    with store.unit_of_work() as uow, executed_statements() as statements:
+        uow.workspaces.add_many([Workspace(name=f"w{index}") for index in range(10)])
+    lookups = [sql for sql in statements if sql.lstrip().upper().startswith("SELECT")]
+    assert len(lookups) == 3
     store.close()
 
 
