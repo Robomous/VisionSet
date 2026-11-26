@@ -44,7 +44,9 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from visionset.kernel import (
+    AnnotationAlreadyObserved,
     AnnotationGeometryOutOfBounds,
+    AnnotationNotAtOccurrence,
     AnnotationNotFound,
     AnnotationNotFromModel,
     AssetNotFound,
@@ -81,6 +83,7 @@ from visionset.kernel import (
     ExportTargetConflict,
     ExportTargetNotFound,
     FrameContentConflict,
+    FrameOccurrenceNotFound,
     FrameOrdinalOutOfRange,
     FrameTimestampOffGrid,
     GeometryNotProduced,
@@ -117,6 +120,8 @@ from visionset.kernel import (
     ModelNotFound,
     NoSplitRecipe,
     NotAWorkspace,
+    ObservationNotFound,
+    OccurrenceAlreadyObserved,
     PreprocessingDriverNotFound,
     PreprocessingRecipeNameTaken,
     PreprocessingRecipeNotFound,
@@ -133,11 +138,18 @@ from visionset.kernel import (
     SchemaNotFound,
     SchemaVersionConflict,
     SourceNotFound,
+    SourceNotSequence,
     StaleWrite,
     ThumbnailNotCached,
     TokenNameTaken,
     TokenNotFound,
     TooManyOpenVideoImports,
+    TrackClassMismatch,
+    TrackExternalIdTaken,
+    TrackMergeWithItself,
+    TrackNotFound,
+    TrackSourceMismatch,
+    TrackSplitEmpty,
     UnknownAttribute,
     UnknownJobType,
     UnserializableManifest,
@@ -245,6 +257,9 @@ _HTTP: Final[dict[type[VisionSetError], _Http]] = {
     BackgroundJobNotFound: _Http(404),
     AssetNotFound: _Http(404),
     SourceNotFound: _Http(404),
+    TrackNotFound: _Http(404),
+    FrameOccurrenceNotFound: _Http(404),
+    ObservationNotFound: _Http(404),
     DatasetNotFound: _Http(404),
     AnnotationNotFound: _Http(404),
     ReleaseNotFound: _Http(404),
@@ -424,6 +439,13 @@ _HTTP: Final[dict[type[VisionSetError], _Http]] = {
     # Change-the-state-and-resubmit: delete the 3D labels, or give their assets
     # a calibration of their own, and the identical clear succeeds.
     CalibrationInUse: _Http(409),
+    # A track's observations are its state: unobserve, split or edit the
+    # annotation's class, and the identical request succeeds.
+    TrackExternalIdTaken: _Http(409),
+    TrackClassMismatch: _Http(409),
+    OccurrenceAlreadyObserved: _Http(409),
+    AnnotationAlreadyObserved: _Http(409),
+    TrackSplitEmpty: _Http(409),
     # AUGMENTATION_REQUIRES_SPLIT's reading: set a calibration on the asset or
     # its source and the identical write or publish succeeds.
     CalibrationMissing: _Http(409),
@@ -482,6 +504,12 @@ _HTTP: Final[dict[type[VisionSetError], _Http]] = {
     # The resolution is a field of the payload, and the asset's size is fixed by
     # its bytes, so no state change makes the same calibration fit.
     CalibrationResolutionMismatch: _Http(422),
+    # A source's kind and an occurrence's asset are fixed, so no state change
+    # makes the same track request fit.
+    SourceNotSequence: _Http(422),
+    TrackSourceMismatch: _Http(422),
+    AnnotationNotAtOccurrence: _Http(422),
+    TrackMergeWithItself: _Http(422),
     # --- 502: the other end did not answer the contract ---------------------
     # The first 502 in this table, and the only honest status for it: the
     # request was fine and this program is fine; the upstream an `http`

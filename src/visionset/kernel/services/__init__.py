@@ -23,6 +23,7 @@ from visionset.kernel.services.schema_service import SchemaService
 from visionset.kernel.services.source_service import SourceService
 from visionset.kernel.services.summary_service import SummaryService
 from visionset.kernel.services.token_service import TokenService
+from visionset.kernel.services.track_service import TrackService
 from visionset.kernel.services.video_import_service import VideoImportService
 from visionset.kernel.services.workspace_service import (
     BLOBS_DIRNAME,
@@ -56,6 +57,7 @@ __all__ = [
     "SourceService",
     "SummaryService",
     "TokenService",
+    "TrackService",
     "VideoImportService",
     "WorkspaceService",
     "resolve_workspace_root",

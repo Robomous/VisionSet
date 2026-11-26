@@ -48,6 +48,7 @@ from pathlib import Path
 from uuid import UUID
 
 from visionset.kernel.domain import (
+    FrameOccurrence,
     Project,
     ScanFrame,
     Source,
@@ -77,6 +78,16 @@ class SourceService:
         """
         with self._workspace.unit_of_work() as uow:
             return self.require_source(uow, source_id)
+
+    def occurrences(self, source_id: UUID) -> list[FrameOccurrence]:
+        """The source's frame occurrences, in position order. Empty for a non-video source.
+
+        Raises:
+            SourceNotFound: no such source in this workspace.
+        """
+        with self._workspace.unit_of_work() as uow:
+            self.require_source(uow, source_id)
+            return sorted(uow.frame_occurrences.list(source_id), key=lambda o: o.position)
 
     # --- writing -----------------------------------------------------------
 
