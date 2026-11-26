@@ -375,6 +375,10 @@ function listed(words: readonly string[]): string {
  * the question the per-class list beneath it then itemises. A target that
  * accepts nothing the release holds still names what it does accept, so the
  * remedy — pick another target — is readable off the sentence.
+ *
+ * Rows a cropping resize split off (`cropped_by`) are the recipe's loss, not
+ * the target's, and get a sentence of their own: `"The recipe's fill resize
+ * would leave 5 boxes cut away."` — alone when the target refuses nothing.
  */
 export function describeTargetDrops(
   target: { readonly label: string; readonly geometries: readonly string[] },
@@ -388,15 +392,26 @@ export function describeTargetDrops(
         ? `${target.label} accepts ${accepted[0]} only`
         : `${target.label} accepts ${listed(accepted)}`;
 
+  const refused = lost.filter((one) => one.cropped_by == null);
+  const cropped = lost.filter((one) => one.cropped_by != null);
+  const clauses = summed(refused, (status) => (status === "degraded" ? "would be degraded" : "would be dropped"));
+  const sentence = clauses.length === 0 ? `${accepts}.` : `${accepts} — ${listed(clauses)}.`;
+  if (cropped.length === 0) return sentence;
+  const crops = listed([...new Set(cropped.map((one) => one.cropped_by))].map((one) => `${one}`));
+  const cut = listed(summed(cropped, (status) => (status === "degraded" ? "cut down" : "cut away")));
+  const recipe = `The recipe's ${crops} resize would leave ${cut}.`;
+  return refused.length === 0 ? recipe : `${sentence} ${recipe}`;
+}
+
+/** `["5 boxes would be dropped"]`: the rows' counts summed per status and geometry. */
+function summed(rows: readonly ClassCompatibility[], verb: (status: string) => string): string[] {
   const totals = new Map<string, number>();
-  for (const one of lost) {
+  for (const one of rows) {
     const key = `${one.status}:${one.geometry}`;
     totals.set(key, (totals.get(key) ?? 0) + one.annotations);
   }
-  const clauses = [...totals].map(([key, count]) => {
+  return [...totals].map(([key, count]) => {
     const [status, geometry] = key.split(":") as [string, string];
-    const verb = status === "degraded" ? "would be degraded" : "would be dropped";
-    return `${formatCount(count)} ${geometryNoun(geometry, count)} ${verb}`;
+    return `${formatCount(count)} ${geometryNoun(geometry, count)} ${verb(status)}`;
   });
-  return clauses.length === 0 ? `${accepts}.` : `${accepts} — ${listed(clauses)}.`;
 }

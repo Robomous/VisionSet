@@ -300,7 +300,7 @@ function Consent({
         {lost !== null && lost.length > 0 && (
           <ul className="mt-2 list-disc pl-5 text-sm" data-testid="lossy-classes">
             {lost.map((one) => (
-              <li key={one.label_class}>
+              <li key={`${one.label_class}:${one.geometry}:${one.status}`}>
                 {describeClassCount(one)}
                 {one.reason != null && <span className="text-muted-foreground"> {one.reason}.</span>}
               </li>
