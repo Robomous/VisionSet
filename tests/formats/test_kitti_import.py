@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from pathlib import Path
+from typing import Any
 
 import pytest
 from tests.fixtures.kitti_source import (
@@ -15,12 +16,14 @@ from tests.fixtures.kitti_source import (
     write_frame,
     write_kitti_source,
 )
+from tests.fixtures.store_reads import CountingUnitOfWork
 
 from visionset import wire
 from visionset.formats.kitti import KittiImporter
 from visionset.formats.registry import importer, importers
 from visionset.kernel import CalibrationInUse, ImportNotConsented, ImportSourceUnreadable
 from visionset.kernel.domain import (
+    Annotation,
     AssetProgress,
     BatchState,
     Cuboid3DGeometry,
@@ -32,6 +35,7 @@ from visionset.kernel.domain import (
     SourceKind,
 )
 from visionset.kernel.services import (
+    AnnotationService,
     BatchService,
     ImportService,
     IngestService,
@@ -321,6 +325,33 @@ def test_a_re_run_writes_nothing(workspace: WorkspaceService, tmp_path: Path) ->
 
     assert (again.batch_id, again.annotations_already_present) == (None, 2)
     assert len(SourceService(workspace).list(project.id)) == 1
+
+
+def test_the_label_writes_read_each_scan_and_its_source_once(
+    workspace: WorkspaceService, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = ProjectService(workspace).create("drive")
+    src = tmp_path / "src"
+    cars = tuple(CAR.replace("0.00 1.50 10.00", f"{x:.2f} 1.50 10.00") for x in (0, 2, 4))
+    write_frame(src, "000000", labels=cars)
+    write_frame(src, "000001", points=tuple((x + 1, y, z, i) for x, y, z, i in SCAN), labels=cars)
+    counted: list[CountingUnitOfWork] = []
+    add_imported_in = AnnotationService.add_imported_in
+
+    def counting(
+        self: AnnotationService, uow: Any, batch_id: Any, labels: Sequence[Annotation]
+    ) -> list[Annotation]:
+        counted.append(CountingUnitOfWork(uow))
+        return add_imported_in(self, counted[-1], batch_id, labels)
+
+    monkeypatch.setattr(AnnotationService, "add_imported_in", counting)
+    run = ImportService(workspace).commit(project.id, KittiImporter(), src, consent=EVERYTHING)
+
+    assert run.annotations_written == 6
+    (reads,) = counted
+    (source,) = SourceService(workspace).list(project.id)
+    assert reads.asset_reads == dict.fromkeys(run.created_asset_ids, 1)
+    assert reads.source_reads == {source.id: 1}
 
 
 def test_a_scan_whose_points_repeat_another_is_a_scan_loss(

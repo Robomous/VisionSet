@@ -6,7 +6,9 @@ so `progress_after_annotating` cannot drift into a move the table forbids.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections import Counter
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -15,6 +17,7 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 from sqlalchemy import text
+from tests.fixtures.store_reads import CountingUnitOfWork
 
 from visionset.kernel import (
     AnnotationGeometryOutOfBounds,
@@ -391,6 +394,57 @@ def test_add_rolls_back_when_its_second_box_is_outside_a_measured_asset(tmp_path
 
     assert raised.value.index == 1
     for asset_id in fixture.assets[:2]:
+        assert fixture.annotations.for_asset(job.id, asset_id) == []
+        assert fixture.progress_of(job, asset_id) is UNANNOTATED
+    fixture.close()
+
+
+def test_add_reads_each_asset_once_however_many_boxes_it_carries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = Fixture(tmp_path, asset_width=100, asset_height=80)
+    job = fixture.working()
+    counted: list[CountingUnitOfWork] = []
+    unit_of_work = fixture.workspace.unit_of_work
+
+    @contextmanager
+    def counting() -> Iterator[Any]:
+        with unit_of_work() as uow:
+            counted.append(CountingUnitOfWork(uow))
+            yield counted[-1]
+
+    monkeypatch.setattr(fixture.workspace, "unit_of_work", counting)
+    fixture.annotations.add(
+        job.id, [_box(asset_id) for asset_id in fixture.assets[:2] for _ in range(3)]
+    )
+
+    reads = sum((one.asset_reads for one in counted), Counter[UUID]())
+    assert reads == dict.fromkeys(fixture.assets[:2], 1)
+    fixture.close()
+
+
+def test_add_refuses_a_later_box_on_an_asset_an_earlier_box_already_read(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path, asset_width=100, asset_height=80)
+    job = fixture.working()
+    first, second = fixture.assets[:2]
+
+    with pytest.raises(AnnotationGeometryOutOfBounds) as raised:
+        fixture.annotations.add(
+            job.id,
+            [
+                _box(first),
+                _box(second),
+                _box(second, geometry=BboxGeometry(x=101, y=20, width=5, height=5)),
+            ],
+        )
+
+    assert raised.value.index == 2
+    assert str(raised.value) == (
+        f"a bbox annotation on asset {second} has no overlap with its 100 by 80 pixel frame"
+    )
+    for asset_id in (first, second):
         assert fixture.annotations.for_asset(job.id, asset_id) == []
         assert fixture.progress_of(job, asset_id) is UNANNOTATED
     fixture.close()

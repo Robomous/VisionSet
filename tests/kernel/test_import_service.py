@@ -13,6 +13,7 @@ import pytest
 from tests.fixtures.media import write_image
 
 from visionset.kernel import (
+    AnnotationGeometryOutOfBounds,
     AssetNotInBatch,
     AssetNotWritable,
     BatchNotEditable,
@@ -547,6 +548,30 @@ def test_add_imported_writes_into_a_draft_and_approval_seeds_it(world: World) ->
     world.batches.approve(batch_id)
     (job,) = world.batches.jobs(batch_id)
     assert job.progress[asset_id] is AssetProgress.ANNOTATED
+
+
+def test_add_imported_refuses_a_later_label_on_an_asset_an_earlier_label_already_read(
+    world: World,
+) -> None:
+    batch_id, first = _draft_with_one_asset(world)
+    second = next(
+        asset_id for asset_id in world.batches.get(batch_id).asset_ids if asset_id != first
+    )
+    outside = _import_label(second).model_copy(
+        update={"geometry": BboxGeometry(x=40, y=2, width=4, height=4)}
+    )
+
+    with pytest.raises(AnnotationGeometryOutOfBounds) as raised:
+        world.annotations.add_imported(
+            batch_id, [_import_label(first), _import_label(second), outside]
+        )
+
+    assert raised.value.index == 2
+    assert str(raised.value) == (
+        f"a bbox annotation on asset {second} has no overlap with its 32 by 24 pixel frame"
+    )
+    assert world.workspace_annotations(first) == []
+    assert world.workspace_annotations(second) == []
 
 
 def test_add_imported_takes_only_import_provenance(world: World) -> None:
