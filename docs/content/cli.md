@@ -589,7 +589,8 @@ the REST route and the MCP tool publish.
 and `recipe list`, `recipe show NAME`, `recipe update NAME` and `recipe delete NAME` do what they
 say; `--json` shapes are the wire's, and `recipe show --json` prints under `spec` exactly what
 `--spec FILE` reads back. **Two ways to say what a recipe does, never both**: `--spec FILE` for
-a script, or the flag form at a prompt - `--resize letterbox:640x640` (`--pad` for the grey),
+a script, or the flag form at a prompt - `--resize letterbox:640x640` (or `stretch`, `fill`,
+`center_crop`; `--pad` for the grey),
 `--augment hflip,brightness_contrast` (`--amount` for how far), `--variants 2`, `--target yolo11`.
 Mixing the file with a flag, or giving neither, is a usage error at exit 2, and so is a spec
 that breaks the recipe grammar - the rule is named. `recipe update` replaces the spec whole and

@@ -70,7 +70,7 @@ identifies it. Three consequences follow, and all three are by design:
 
 | Step | Fields | What it does |
 | --- | --- | --- |
-| `resize` | `strategy` (`letterbox` or `stretch`), `width`, `height` (32 to 8192), `pad_value` (0 to 255, default 114) | Every exported image, base and variant, lands at `width × height`. `stretch` scales each axis on its own; `letterbox` keeps the aspect, scales to fit, and pads the rest with `pad_value` - the grey YOLO trainers letterbox with themselves. |
+| `resize` | `strategy` (`letterbox`, `stretch`, `fill` or `center_crop`), `width`, `height` (32 to 8192), `pad_value` (0 to 255, default 114) | Every exported image, base and variant, lands at `width × height`. `stretch` scales each axis on its own; `letterbox` keeps the aspect, scales to fit, and pads the rest with `pad_value` - the grey YOLO trainers letterbox with themselves. `fill` keeps the aspect, scales by `max(W'/W, H'/H)` so the image covers the canvas, and crops the overflow, centred. `center_crop` does not scale: it cuts a centred `width × height` window out of the source, and pads with `pad_value` along an axis where the source is smaller than the window. The two cropping strategies can cut labels down or away - see [Cropping](#cropping-what-survives-the-cut). |
 | `augment` | `op` (`hflip`, `brightness_contrast`, `rot90`), `amount` (above 0 and at most 0.5, default 0.2) | One augmentation applied when generating variants. `amount` bounds the brightness and contrast factors and means nothing to the other two. |
 
 Cross-field rules, refused with the rule named: at most one `resize` step, and it comes first;
@@ -90,13 +90,16 @@ requirement.
 The kernel owns every coordinate an export writes. `transform_manifest` moves the annotations -
 scale and offset for a resize, mirror for `hflip`, a quarter turn for `rot90`, nothing for
 `brightness_contrast` - and the pixel driver moves the bytes, and the two agree because both read
-the same arithmetic: `letterbox_fit` is the single spelling of where letterboxed content lands,
-and the per-variant draws come from one seed.
+the same arithmetic: `canvas_fit` is the single spelling of where `letterbox`, `fill` and
+`center_crop` content lands - the scale, the content size `round(W·scale) × round(H·scale)`, and
+each offset as the integer-floored half of `target - content`, negative where the content
+overflows and is cropped - and the per-variant draws come from one seed.
 
 | step | bbox | polygon | polyline | polyline_3d, cuboid_3d | classification_tag |
 | --- | --- | --- | --- | --- | --- |
 | stretch | scale x, y | scale | scale | **refused** | unchanged |
 | letterbox | scale then offset | same | same | **refused** | unchanged |
+| fill, center_crop | scale then offset, clipped to the canvas | same, clipped; the largest piece kept | **refused** | **refused** | unchanged |
 | hflip | `x' = W - x - w` | mirror points | mirror points, order kept | **refused** | unchanged |
 | brightness_contrast | unchanged | unchanged | unchanged | unchanged, calibration kept | unchanged |
 | rot90 | rotate corners, rebuilt axis-aligned | rotate points | **refused** | **refused** | unchanged |
@@ -104,7 +107,10 @@ and the per-variant draws come from one seed.
 A step declares what it can transform, and a geometry it cannot is a **typed refusal, never a
 consent**: `PreprocessingStepUnsupportedGeometry` names the step, the geometry and the first asset
 carrying it. Today that is `rot90` over a polyline, whose point order carries meaning relative
-to the frame's axes, and every pixel-moving step over a 3D label: a resize changes the
+to the frame's axes; a `fill` or `center_crop` resize over a polyline, which a crop can cut into
+pieces with no rule for which piece is the lane - a resize's reach depends on its strategy, and
+`stretch` and `letterbox` still carry every pixel geometry; and every pixel-moving step over a
+3D label: a resize changes the
 intrinsics it is read through, and a mirror or a quarter turn changes the frame's handedness or
 axes, so each would need a new calibration per variant. Only `brightness_contrast` keeps one, and
 each variant carries its source's calibration. An export that does not write the 3D label - every
@@ -113,6 +119,31 @@ runs, counted and behind lossy consent, so it cannot make a step refuse; only th
 shows every label, and a format that writes 3D meet the refusal. `kitti`, the one format that
 writes 3D, writes scans, and a recipe is refused for an export that writes scans. The lossy-consent path is for a format that cannot *carry* a label; a label
 that cannot *follow its image* is not something to consent to.
+
+### Cropping: what survives the cut
+
+`fill` and `center_crop` are the only steps that lose labels. Each label is placed on the canvas
+by the same arithmetic as the pixels and then cut to the canvas rectangle:
+
+- a **box** is clipped to the canvas;
+- a **polygon** is clipped to the canvas. When the cut leaves several separate pieces - a concave
+  shape whose middle falls off the edge - only the largest piece by area is written; the others
+  are not joined to it along the edge, and no zero-area piece is ever written;
+- a label left with **less than half** its area on the canvas (`CROP_KEEP_FRACTION`, a fixed 0.5
+  measured against the label as scaled, before the cut; for a polygon, the piece kept) is
+  **dropped**, and so is one wholly off it. Exactly half is kept;
+- a `classification_tag` has no coordinates and always passes.
+
+A label cut down and kept is reported **degraded**; a label cut away is reported **dropped**. The
+resize runs before every augmentation, so each variant loses exactly the labels its base image
+does, and the counts are of the release's own labels. Both go into the export's compatibility
+report beside what the format loses - `excluded_annotations` and `degraded_annotations`, and the
+`(class, geometry)` row, which turns `degraded` when the crop touched some of its labels and
+`dropped` only when it took all of them, with the crop's counts in its `reason` - so a drop asks
+for `allow_lossy` like any other loss. The geometry transform writes nothing, so pre-flight
+(`GET /releases/{id}/export-compatibility`, `export --check`, `check_export`) shows the loss, and
+the export refuses with `LossyExportNotConsented` **before anything is written**: consent for the
+format is asked first, and the crop's loss is asked about once the transform has run.
 
 Drivers are plugins on the `PreprocessingDriver` port, discovered over the
 `visionset.preprocessing` entry-point group the way exporters are, and the kernel takes driver
@@ -149,8 +180,10 @@ so.
 
 The transform runs **after** the export is narrowed to its target. A geometry the target's task
 set does not accept is dropped first, consented through `allow_lossy` like every other drop, so
-a polyline a boxes-only target would never write cannot make `rot90` refuse. Consent itself is
-asked before any transform: a caller who has not accepted the loss is answered about the loss.
+a polyline a boxes-only target would never write cannot make `rot90` refuse. Consent for the
+format is asked before any transform: a caller who has not accepted the format's loss is answered
+about that loss. What a cropping resize cuts away is asked about after the transform, which writes
+nothing, so either refusal still comes before any output exists.
 
 ## Naming, counting, and the report
 
@@ -164,7 +197,9 @@ fold lookup keeps it with its source.
 and `augmented_file_count` count the images the plugin read and wrote, and the annotation pair
 counts the labels the same way; `file_count` stays the total of everything written, labels and
 descriptors included. `visionset-export-report.json` gains a `preprocessing` block - `null` for
-an export that applied no recipe:
+an export that applied no recipe. `dropped_annotations` and `clipped_annotations` count the
+release's labels a cropping resize cut away, and cut down and kept; both are 0 for any other
+recipe:
 
 ```json
 {
@@ -176,7 +211,9 @@ an export that applied no recipe:
     "mapping": [
       { "file": "images/train/<hash>.jpg", "source_content_hash": "<hash>", "exported_sha256": "…", "variant": 0 },
       { "file": "images/train/<hash>-aug1.jpg", "source_content_hash": "<hash>", "exported_sha256": "…", "variant": 1 }
-    ]
+    ],
+    "dropped_annotations": 0,
+    "clipped_annotations": 0
   }
 }
 ```
@@ -212,7 +249,8 @@ recognise, so the pixel driver and the geometry transform still agree through th
 | `InvalidName` | The name is not a slug: lowercase letters, digits, dots, hyphens and underscores, starting with a letter or digit, at most 64 characters. 422. |
 | `VALIDATION_ERROR` | The spec breaks the grammar: two resize steps, a resize after an augmentation, an augmentation repeated, augmentation steps with `variants_per_asset` 0, or variants with no augmentation step. The rule that was broken is the message, in the words above. Refused by the spec model itself, so every surface says the same thing. 422. |
 | `AugmentationRequiresSplit` | The recipe augments and the release was published without a split recipe. Raised at pre-flight and at export. 409. |
-| `PreprocessingStepUnsupportedGeometry` | A step met a geometry outside the set it declares it can transform - every step declares `supported_geometries` the way an exporter does, and today the exclusions are `rot90` over a polyline and every step but `brightness_contrast` over a 3D label. Carries `step`, `geometry` and the first `asset_id`. 409. |
+| `PreprocessingStepUnsupportedGeometry` | A step met a geometry outside the set it declares it can transform - every step declares `supported_geometries` the way an exporter does, and today the exclusions are `rot90` and a `fill` or `center_crop` resize over a polyline, and every step but `brightness_contrast` over a 3D label. Carries `step`, `geometry` and the first `asset_id`. 409. |
+| `LossyExportNotConsented` | A `fill` or `center_crop` resize cuts a label down or away and `allow_lossy` is false - the same refusal, and the same report, as a format that cannot carry a label. Raised at pre-flight and at export, before anything is written. 409. |
 | `ExportSourceUnreadable` | A step needs the source's pixel size and the manifest never recorded one, or the asset's bytes are gone. 409. |
 | `PreprocessingDriverNotFound` | No installed driver applies a step kind the recipe holds. A fact about the installation, not the request. 500. |
 
