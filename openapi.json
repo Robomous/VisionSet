@@ -13885,7 +13885,7 @@
     },
     "/jobs/{job_id}/tracks/{track_id}/class": {
       "put": {
-        "description": "Give the track and every annotation it observes a new class.\n\nThe annotations are rewritten in one transaction with the track, against the\nbatch's pinned version, which must declare the class, even for a track with\nno observation; the same class again changes nothing. The job must\ncarry every observed asset at a writable progress. 404: `JOB_NOT_FOUND`,\n`TRACK_NOT_FOUND`. 409: `BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`,\n`ASSET_NOT_IN_JOB` (rendered as a 409 here: act through the job holding the\ntrack's observations), `ASSET_NOT_WRITABLE`, `STALE_WRITE`. 422:\n`LABEL_CLASS_NOT_IN_SCHEMA`, `INVALID_ANNOTATION`. 500: `WORKSPACE_CORRUPT`.",
+        "description": "Give the track and every annotation it observes a new class.\n\nThe annotations are rewritten in one transaction with the track, against the\nbatch's pinned version, which must declare the class, even for a track with\nno observation; the same class again changes nothing. The job must\ncarry every observed asset at a writable progress. 404: `JOB_NOT_FOUND`,\n`TRACK_NOT_FOUND`. 409: `BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`,\n`ASSET_NOT_IN_JOB` (rendered as a 409 here: act through the job holding the\ntrack's observations), `ASSET_NOT_WRITABLE`, `STALE_WRITE`. 422:\n`LABEL_CLASS_NOT_IN_SCHEMA`, `INVALID_ANNOTATION`, `INVALID_NAME`. 500:\n`WORKSPACE_CORRUPT`.",
         "operationId": "set_track_class",
         "parameters": [
           {
@@ -20163,7 +20163,7 @@
         ]
       },
       "post": {
-        "description": "Start an empty track of one class on a video source.\n\nNot gated on a job: a track observes nothing until a job observes an\nannotation with it. The class must be declared by the project's active\nschema version. 404: `SOURCE_NOT_FOUND`, `SCHEMA_NOT_FOUND`. 409:\n`TRACK_EXTERNAL_ID_TAKEN`, for an `external_id` another track of the source\ncarries. 422: `SOURCE_NOT_SEQUENCE` for a source that is not a video,\n`LABEL_CLASS_NOT_IN_SCHEMA`.",
+        "description": "Start an empty track of one class on a video source.\n\nNot gated on a job: a track observes nothing until a job observes an\nannotation with it. The class must be declared by the project's active\nschema version. 404: `SOURCE_NOT_FOUND`, `SCHEMA_NOT_FOUND`. 409:\n`TRACK_EXTERNAL_ID_TAKEN`, for an `external_id` another track of the source\ncarries. 422: `SOURCE_NOT_SEQUENCE` for a source that is not a video,\n`LABEL_CLASS_NOT_IN_SCHEMA`, `INVALID_NAME` for a blank class or external id.",
         "operationId": "create_track",
         "parameters": [
           {

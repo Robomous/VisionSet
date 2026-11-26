@@ -2031,7 +2031,8 @@ export interface paths {
          *     `TRACK_NOT_FOUND`. 409: `BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`,
          *     `ASSET_NOT_IN_JOB` (rendered as a 409 here: act through the job holding the
          *     track's observations), `ASSET_NOT_WRITABLE`, `STALE_WRITE`. 422:
-         *     `LABEL_CLASS_NOT_IN_SCHEMA`, `INVALID_ANNOTATION`. 500: `WORKSPACE_CORRUPT`.
+         *     `LABEL_CLASS_NOT_IN_SCHEMA`, `INVALID_ANNOTATION`, `INVALID_NAME`. 500:
+         *     `WORKSPACE_CORRUPT`.
          */
         put: operations["set_track_class"];
         post?: never;
@@ -3701,7 +3702,7 @@ export interface paths {
          *     schema version. 404: `SOURCE_NOT_FOUND`, `SCHEMA_NOT_FOUND`. 409:
          *     `TRACK_EXTERNAL_ID_TAKEN`, for an `external_id` another track of the source
          *     carries. 422: `SOURCE_NOT_SEQUENCE` for a source that is not a video,
-         *     `LABEL_CLASS_NOT_IN_SCHEMA`.
+         *     `LABEL_CLASS_NOT_IN_SCHEMA`, `INVALID_NAME` for a blank class or external id.
          */
         post: operations["create_track"];
         delete?: never;
