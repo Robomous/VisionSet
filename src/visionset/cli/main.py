@@ -27,6 +27,7 @@ from visionset.cli.schemas import schema_app
 from visionset.cli.server import server
 from visionset.cli.targets import target_app
 from visionset.cli.tokens import token_app
+from visionset.cli.tracks import track_app
 
 
 class _Root(TyperGroup):
@@ -87,6 +88,7 @@ app.command("import")(import_dataset)
 app.add_typer(calibration_app, name="calibration")
 app.add_typer(batch_app, name="batch")
 app.add_typer(job_app, name="job")
+app.add_typer(track_app, name="track")
 app.add_typer(release_app, name="release")
 app.command("export")(export)
 app.add_typer(format_app, name="format")
