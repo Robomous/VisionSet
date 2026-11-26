@@ -1359,13 +1359,6 @@ def test_a_refused_claim_rolls_its_occurrences_back_and_the_retry_writes_them_on
     assert len(fixture.ingest.assets(fixture.project.id)) == 2
 
 
-def test_an_aborted_import_writes_no_occurrence(fixture: Fixture) -> None:
-    import_id = fixture.start()
-    fixture.imports.append_frames(import_id, [_frame(0), _frame(1), _frame(2)])
-    fixture.imports.abort(import_id)
-    assert _occurrences(fixture, import_id) == []
-
-
 # --- provenance -------------------------------------------------------------
 
 

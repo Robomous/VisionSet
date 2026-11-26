@@ -873,7 +873,7 @@ class IngestService:
     def _store(self, project_id: UUID, candidates: list[Asset]) -> tuple[list[Asset], list[UUID]]:
         """A transaction of this run's own, around the shared dedup rule.
 
-        The rule itself is ``store_assets`` below, which the video-import commit
+        The rule itself is ``store_assets`` below, which ``import_service``
         shares. What is this method's own is the scope: an ingest run has already
         decoded and hashed everything by the time it gets here, so opening the
         transaction at the last possible moment is what keeps a single-writer
@@ -1075,11 +1075,12 @@ def store_assets(
 ) -> tuple[list[Asset], list[UUID]]:
     """Write the rows, reusing whatever content the project already holds.
 
-    Module level and taking a ``uow``, because there are two callers and they
-    need different transaction scopes: an ingest run gives this a transaction of
-    its own, while a video import commits assets, a batch and the session's own
-    state together and cannot afford a second one. Both need the *same* dedup
-    rule, and two spellings of it is two places for it to be got wrong.
+    Module level and taking a ``uow``, because the callers need different
+    transaction scopes: an ingest run gives this a transaction of its own, while
+    ``import_service`` writes inside one it already holds. A video import commit
+    uses :func:`store_each`, the same dedup rule answering per candidate. They
+    need the *same* rule, and two spellings of it is two places for it to be got
+    wrong.
 
     The project's assets are read once, into a map keyed by content hash,
     rather than queried per item — ``Repository`` has one query shape, and a

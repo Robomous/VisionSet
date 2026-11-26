@@ -42,7 +42,8 @@ substitute for one another.
 ## Migration
 
 A migration adds `frame_occurrence`, `track` and `track_observation`. It backfills occurrences
-from assets whose `source_id` and `frame_index` are set. That is the first-seen origin only: the
+from assets of `video` sources whose `source_id` and `frame_index` are set. Image-directory
+animations are excluded because two files share frame 0. That is the first-seen origin only: the
 origins `store_assets` discarded are not recoverable, and the migration does not invent them. A
 historical source may therefore have fewer occurrences than frames it was extracted with, and a
 track can only observe an occurrence that exists. New video imports write every occurrence.

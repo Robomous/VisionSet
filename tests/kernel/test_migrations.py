@@ -59,9 +59,19 @@ _UNIQUENESS_INDEXES = {
     # under one class are two facts, two tags of one class are one statement
     # made twice.
     "uq_annotation_asset_classification": ("classification_tag", "WHERE"),
-    # A source position is one occurrence; one asset may sit at many positions.
-    "uq_frame_occurrence_source_position": ("source_id", "position"),
 }
+
+
+def _unique_index_columns(store: SqliteMetadataStore, table: str) -> set[tuple[str, ...]]:
+    with store.engine.connect() as connection:
+        indexes = connection.execute(text(f"pragma index_list('{table}')")).all()
+        return {
+            tuple(
+                row[2] for row in connection.execute(text(f"pragma index_info('{index[1]}')")).all()
+            )
+            for index in indexes
+            if index[2]
+        }
 
 
 def _schema(store: SqliteMetadataStore) -> set[str]:
@@ -121,6 +131,13 @@ def test_the_baseline_carries_each_uniqueness_index(
     assert statement is not None, f"{index} is not in the baseline schema"
     for term in terms:
         assert term in statement
+    store.close()
+
+
+def test_a_source_position_is_unique_as_a_pair(tmp_path: Path) -> None:
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    assert ("source_id", "position") in _unique_index_columns(store, "frame_occurrence")
     store.close()
 
 
@@ -1240,6 +1257,37 @@ def test_a_generation_23_file_backfills_one_occurrence_per_first_seen_frame(
         MIGRATIONS[23].upgrade(connection)
         count = connection.execute(text("select count(*) from frame_occurrence")).scalar_one()
     assert count == 3
+    migrated.close()
+
+
+def test_a_backfill_keeps_the_lowest_rowid_and_ignores_a_cross_project_asset(
+    tmp_path: Path,
+) -> None:
+    clip, stray = uuid4().hex, uuid4().hex
+    winner, loser = uuid4().hex, uuid4().hex
+    store = _at_generation_twenty_three(tmp_path / "old.db")
+    with store.engine.begin() as connection:
+        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
+        for project in ("p", "q"):
+            connection.execute(
+                text("insert into project (id, workspace_id, name) values (:p, 'w', :p)"),
+                {"p": project},
+            )
+        _insert_source(connection, clip, "video", "video-import:one")
+        _insert_asset(connection, winner, clip, "video-import:one#frame=0", (0, 0.0))
+        _insert_asset(connection, loser, clip, "video-import:one#frame=0", (0, 5.0))
+        _insert_asset(connection, stray, clip, "video-import:one#frame=7", (7, 7.0))
+        connection.execute(text("update asset set project_id = 'q' where id = :id"), {"id": stray})
+    store.close()
+
+    migrated = SqliteMetadataStore(tmp_path / "old.db")
+    migrated.initialize()
+    with migrated.unit_of_work() as uow:
+        found = [
+            (o.position, o.timestamp, o.asset_id.hex)
+            for o in uow.frame_occurrences.list(UUID(clip))
+        ]
+    assert found == [(0, 0.0, winner)]
     migrated.close()
 
 
