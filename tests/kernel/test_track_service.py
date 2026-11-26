@@ -21,6 +21,7 @@ from visionset.kernel import (
     DisallowedGeometry,
     FrameOccurrenceNotFound,
     InvalidAnnotation,
+    InvalidName,
     JobFinished,
     LabelClassNotInSchema,
     ObservationNotFound,
@@ -728,6 +729,30 @@ def test_a_track_class_must_be_declared(world: World) -> None:
     with pytest.raises(LabelClassNotInSchema):
         world.tracks.change_class(job.id, empty.track.id, "ghost")
     assert world.tracks.change_class(job.id, empty.track.id, "van").track.label_class == "van"
+
+
+@pytest.mark.parametrize(
+    ("label_class", "external_id"), [("", None), ("  ", None), ("car", ""), ("car", " ")]
+)
+def test_a_blank_class_or_external_id_is_an_invalid_name(
+    world: World, label_class: str, external_id: str | None
+) -> None:
+    clip = world.clip()
+    with pytest.raises(InvalidName):
+        world.tracks.create(clip.source_id, label_class, external_id=external_id)
+    assert world.tracks.list(clip.source_id) == []
+
+
+@pytest.mark.parametrize("label_class", ["", "  "])
+def test_a_class_change_to_a_blank_class_is_an_invalid_name(
+    world: World, label_class: str
+) -> None:
+    clip = world.clip()
+    (job,) = world.working(clip.batch_id)
+    detail = world.observed(job, clip, [0])
+    with pytest.raises(InvalidName):
+        world.tracks.change_class(job.id, detail.track.id, label_class)
+    assert world.tracks.get(detail.track.id) == detail
 
 
 def test_the_same_class_again_changes_nothing(world: World) -> None:

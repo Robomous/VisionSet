@@ -45,6 +45,7 @@ from visionset.kernel.errors import (
     AnnotationNotAtOccurrence,
     BatchNotFound,
     FrameOccurrenceNotFound,
+    InvalidName,
     LabelClassNotInSchema,
     ObservationNotFound,
     OccurrenceAlreadyObserved,
@@ -144,12 +145,16 @@ class TrackService:
         """Start an empty track of one class on a video source.
 
         Raises:
+            InvalidName: the class or the external id is blank.
             SourceNotFound: no such source in this workspace.
             SourceNotSequence: the source is not a video.
             SchemaNotFound: the project has no schema yet.
             LabelClassNotInSchema: the active schema version does not declare the class.
             TrackExternalIdTaken: another track of the source carries ``external_id``.
         """
+        _require_text(label_class, what="class")
+        if external_id is not None:
+            _require_text(external_id, what="external id")
         track = Track(source_id=source_id, label_class=label_class, external_id=external_id)
         with self._workspace.unit_of_work() as uow:
             uow.hold_writes()
@@ -260,6 +265,7 @@ class TrackService:
         track; the same class again changes nothing.
 
         Raises:
+            InvalidName: the class is blank.
             JobNotFound: no such job in this workspace.
             BatchNotInAnnotation: the job's batch is not open for annotation.
             JobFinished: the job is already completed.
@@ -271,6 +277,7 @@ class TrackService:
             StaleWrite: an asset moved between this call's read and its write.
             WorkspaceCorrupt: the open batch has no pinned schema version.
         """
+        _require_text(label_class, what="class")
         with self._workspace.unit_of_work() as uow:
             job, batch = self._open(uow, job_id)
             track = self._require_track(uow, track_id, project_id=batch.project_id)
@@ -514,6 +521,11 @@ def _require_declared(schema: AnnotationSchema, label_class: str) -> None:
             f"class {label_class!r} is not in schema version {schema.version}, so no "
             f"annotation of it could be observed"
         )
+
+
+def _require_text(value: str, *, what: str) -> None:
+    if not value.strip():
+        raise InvalidName(f"a track's {what} must contain at least one non-blank character")
 
 
 def _require_scope(job: AnnotationJob, frames: Iterable[ObservedFrame]) -> None:

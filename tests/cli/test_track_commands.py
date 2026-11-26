@@ -72,6 +72,21 @@ def test_create_prints_the_id_and_refuses_a_taken_external_id(
     assert refused["code"] == "SOURCE_NOT_SEQUENCE"
 
 
+def test_a_blank_class_or_external_id_is_refused_not_crashed(
+    root: Path, world: TrackWorld
+) -> None:
+    refused = _refusal(root, "track", "create", "--source", world.source, "--class", "")
+    assert refused["code"] == "INVALID_NAME"
+    refused = _refusal(
+        root, "track", "create", "--source", world.source, "--class", "car", "--external-id", ""
+    )
+    assert refused["code"] == "INVALID_NAME"
+    refused = _refusal(
+        root, "track", "set-class", world.track, "--job", world.jobs[0], "--class", ""
+    )
+    assert refused["code"] == "INVALID_NAME"
+
+
 def test_observe_and_unobserve(root: Path, world: TrackWorld) -> None:
     job = world.jobs[1]
     observed = payload(
