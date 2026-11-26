@@ -22,8 +22,21 @@ export type RecipeSpec = components["schemas"]["RecipeSpecBody"];
 export type ResizeStepSpec = components["schemas"]["ResizeStepBody"];
 export type AugmentStepSpec = components["schemas"]["AugmentStepBody"];
 export type AugmentOp = components["schemas"]["AugmentOp"];
+export type ResizeStrategy = components["schemas"]["ResizeStrategy"];
 
-export type ResizeChoice = "letterbox" | "stretch" | "none";
+export type ResizeChoice = ResizeStrategy | "none";
+
+const RESIZE_STRATEGIES: readonly string[] = ["stretch", "letterbox", "fill", "center_crop"] satisfies readonly ResizeStrategy[];
+
+/** A target's hint names its strategy as a plain string; this says whether this build knows it. */
+function isResizeStrategy(value: string | null | undefined): value is ResizeStrategy {
+  return value != null && RESIZE_STRATEGIES.includes(value);
+}
+
+/** The fits that leave part of the canvas to `pad_value`. */
+function pads(strategy: ResizeChoice): boolean {
+  return strategy === "letterbox" || strategy === "center_crop";
+}
 export type ResizeField = "strategy" | "width" | "height";
 
 export const AUGMENT_OPS: readonly { readonly op: AugmentOp; readonly label: string }[] = [
@@ -101,9 +114,7 @@ export function applyTargetHints(draft: RecipeDraft, target: ExportTarget | unde
     ...draft,
     target: target.name,
     strategy:
-      !touched.has("strategy") && (strategy === "letterbox" || strategy === "stretch")
-        ? strategy
-        : draft.strategy,
+      !touched.has("strategy") && isResizeStrategy(strategy) ? strategy : draft.strategy,
     width: !touched.has("width") && size != null ? String(size[0]) : draft.width,
     height: !touched.has("height") && size != null ? String(size[1]) : draft.height,
   };
@@ -149,7 +160,7 @@ export function draftToSpec(draft: RecipeDraft): SpecOutcome {
     if (height === null || height < SIZE_MIN || height > SIZE_MAX) {
       problems.push({ step: "resize", text: `Height is a whole number from ${SIZE_MIN} to ${SIZE_MAX}.` });
     }
-    if (draft.strategy === "letterbox" && (pad === null || pad < PAD_MIN || pad > PAD_MAX)) {
+    if (pads(draft.strategy) && (pad === null || pad < PAD_MIN || pad > PAD_MAX)) {
       problems.push({ step: "resize", text: `Pad value is a whole number from ${PAD_MIN} to ${PAD_MAX}.` });
     }
     if (width !== null && height !== null && pad !== null) {
@@ -158,7 +169,7 @@ export function draftToSpec(draft: RecipeDraft): SpecOutcome {
         strategy: draft.strategy,
         width,
         height,
-        pad_value: draft.strategy === "letterbox" ? pad : 114,
+        pad_value: pads(draft.strategy) ? pad : 114,
       });
     }
   }

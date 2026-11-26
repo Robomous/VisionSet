@@ -48,14 +48,22 @@ function moved(transform: string, opacity = 1): CSSProperties {
 /**
  * A wide photograph meeting the size the recipe trains at. Letterbox: it
  * shrinks to fit and the rest is padding, hatched. Stretch: it fills the
- * frame, and its box bends with it. Original: there is no frame.
+ * frame, and its box bends with it. Fill: it grows to cover the frame and
+ * spills past it. Crop: it keeps its size and spills past the frame.
+ * Original: there is no frame.
  */
 export function FitArt({ fit, width, height, className }: { readonly fit: ResizeChoice; readonly width?: number; readonly height?: number; readonly className?: string }): JSX.Element {
   const id = useId();
   const aspect = width !== undefined && height !== undefined ? Math.min(1.8, Math.max(0.6, width / height)) : 1;
   const fw = Math.min(84, 56 * aspect);
   const fh = fw / aspect;
-  const scale = fit === "letterbox" ? `scale(${Math.min(fw / PW, fh / PH)})` : fit === "stretch" ? `scale(${fw / PW}, ${fh / PH})` : "scale(1)";
+  const scale = {
+    letterbox: `scale(${Math.min(fw / PW, fh / PH)})`,
+    stretch: `scale(${fw / PW}, ${fh / PH})`,
+    fill: `scale(${Math.max(fw / PW, fh / PH)})`,
+    center_crop: "scale(1)",
+    none: "scale(1)",
+  }[fit];
   const frame = fit === "none" ? 0 : 1;
   return (
     <svg aria-hidden="true" viewBox="-50 -34 100 68" className={cn("block", className)} data-fit={fit}>
