@@ -72,9 +72,7 @@ def test_create_prints_the_id_and_refuses_a_taken_external_id(
     assert refused["code"] == "SOURCE_NOT_SEQUENCE"
 
 
-def test_a_blank_class_or_external_id_is_refused_not_crashed(
-    root: Path, world: TrackWorld
-) -> None:
+def test_a_blank_class_or_external_id_is_refused_not_crashed(root: Path, world: TrackWorld) -> None:
     refused = _refusal(root, "track", "create", "--source", world.source, "--class", "")
     assert refused["code"] == "INVALID_NAME"
     refused = _refusal(

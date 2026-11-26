@@ -16,7 +16,7 @@ tables the surfaces use, so it cannot drift from what they answer.
 The framework's own codes - `VALIDATION_ERROR`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `UNAUTHORIZED`
 and `INTERNAL_ERROR` - are not raised by the kernel and are described in [api.md](api.md).
 
-123 codes, alphabetical.
+124 codes, alphabetical.
 
 | Code | Status | Meaning | Remedy | Retry with |
 | --- | --- | --- | --- | --- |
@@ -29,6 +29,7 @@ and `INTERNAL_ERROR` - are not raised by the kernel and are described in [api.md
 | `ASSET_NOT_IN_BATCH` | 422 | An asset was named for a correction of a batch that never carried it. |  |  |
 | `ASSET_NOT_IN_DATASET` | 404 | An asset was addressed through a dataset whose trunk does not hold it. |  |  |
 | `ASSET_NOT_IN_JOB` | 404 | An asset id was addressed in a job that does not carry it. |  |  |
+| `ASSET_NOT_JUDGED` | 409 | A track was asked to observe a label on an asset nobody has judged yet. |  |  |
 | `ASSET_NOT_WRITABLE` | 409 | Labels were written onto an asset whose progress says labeling is over. |  |  |
 | `AUGMENTATION_REQUIRES_SPLIT` | 409 | An augmenting recipe met a release that was published without a split recipe. |  |  |
 | `BACKGROUND_JOB_NOT_FOUND` | 404 | No background job with that id lives in this workspace. |  |  |

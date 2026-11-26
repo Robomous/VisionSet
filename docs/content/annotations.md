@@ -379,7 +379,12 @@ everything above - schema validation, provenance, progress - is untouched by tra
   (`SOURCE_NOT_SEQUENCE`). An observed annotation carries the track's class
   (`TRACK_CLASS_MISMATCH`) and sits on the occurrence's asset (`ANNOTATION_NOT_AT_OCCURRENCE`).
   A track follows 2D geometry; a 3D label is `INVALID_ANNOTATION`. `external_id` is an imported
-  identity, unique per source (`TRACK_EXTERNAL_ID_TAKEN`).
+  identity, unique per source (`TRACK_EXTERNAL_ID_TAKEN`), and neither it nor the class may be
+  blank (`INVALID_NAME`).
+- **A model's unjudged output carries no track.** Observing an annotation on a `pre_labeled` asset
+  is `ASSET_NOT_JUDGED`: a replacing pre-label run deletes those labels without asking, and the
+  observation would go with them. A person's edit or confirm moves the asset to `annotated`, after
+  which the same observe succeeds and no replacing run in that batch may touch the asset.
 - **Changing a class rewrites every observed annotation, or nothing.** The rewrite is an ordinary
   `update` against the batch's pinned version, in the same transaction as the track, so a class the
   version does not declare, or one that declares another geometry, refuses the whole change. Being an
@@ -395,8 +400,12 @@ everything above - schema validation, provenance, progress - is untouched by tra
 - **Deletion.** Deleting an annotation deletes its observation, and deleting a track deletes its
   observations only. Deleting the annotations as well is its own operation,
   `delete_with_annotations`, which removes them through `delete` and so moves progress the same way.
-  Deleting a source or an occurrence deletes what observes it, and so does a pre-label run replacing
-  a model's annotation a track observed.
+  Deleting a source or an occurrence deletes what observes it. A replacing pre-label run deletes
+  only labels on a `pre_labeled` asset, so within one batch it never reaches an observed label. A
+  later batch cut over an asset whose labels are all a model's opens it `pre_labeled` again
+  ([batches.md](batches.md#corrections-open-on-the-labels-that-are-already-there)), and a
+  replacing run there, while the asset is outside the dataset, deletes an observed label and its
+  observation with it, as it deletes any correction.
 - **A paste is never observed.** Copy and paste mints a fresh annotation id
   ([below](#copy-and-paste-and-where-a-clipboard-lives)), so the pasted label belongs to no track.
 

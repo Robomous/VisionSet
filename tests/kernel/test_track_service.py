@@ -14,6 +14,7 @@ from visionset.kernel import (
     AnnotationAlreadyObserved,
     AnnotationNotAtOccurrence,
     AssetNotInJob,
+    AssetNotJudged,
     AssetNotWritable,
     BatchNotFound,
     BatchNotInAnnotation,
@@ -544,6 +545,54 @@ def test_a_settled_asset_refuses_a_new_observation(world: World) -> None:
         world.tracks.observe(job.id, track.id, clip.at(0).id, box.id)
 
 
+def _pre_labeled(world: World, job: AnnotationJob, asset_id: UUID) -> Annotation:
+    (stored,) = world.annotations.enter_unreviewed(
+        job.id,
+        [
+            Annotation(
+                asset_id=asset_id,
+                label_class="car",
+                schema_version=1,
+                geometry=BboxGeometry(x=1.0, y=1.0, width=5.0, height=5.0),
+                provenance="model",
+                model_ref="acme/detector@abc123",
+                confidence=0.6,
+            )
+        ],
+    )
+    assert world.progress(job, asset_id) is AssetProgress.PRE_LABELED
+    return stored
+
+
+def test_a_model_label_nobody_has_judged_is_not_observed(world: World) -> None:
+    clip = world.clip()
+    (job,) = world.working(clip.batch_id)
+    track = world.tracks.create(clip.source_id, "car").track
+    model_box = _pre_labeled(world, job, clip.at(0).asset_id)
+    with pytest.raises(AssetNotJudged):
+        world.tracks.observe(job.id, track.id, clip.at(0).id, model_box.id)
+    assert world.tracks.get(track.id).observations == ()
+
+
+def test_a_model_label_a_person_edited_is_observed_and_survives_a_replacing_run(
+    world: World,
+) -> None:
+    clip = world.clip()
+    (job,) = world.working(clip.batch_id)
+    track = world.tracks.create(clip.source_id, "car").track
+    asset_id = clip.at(0).asset_id
+    model_box = _pre_labeled(world, job, asset_id)
+    moved = model_box.geometry.model_copy(update={"x": 2.0})
+    world.annotations.update(job.id, [model_box.model_copy(update={"geometry": moved})])
+    assert world.progress(job, asset_id) is AssetProgress.ANNOTATED
+
+    observed = world.tracks.observe(job.id, track.id, clip.at(0).id, model_box.id)
+    assert _positions(observed) == [0]
+    with pytest.raises(AssetNotWritable):
+        world.annotations.enter_unreviewed(job.id, [], replacing=[asset_id])
+    assert world.tracks.get(track.id) == observed
+
+
 class _AcceptedAfterFirstRead(JobService):
     """Accepts ``asset_id`` from another workspace right after the call first reads the job.
 
@@ -646,6 +695,7 @@ def test_status_is_read_off_each_observed_assets_progress(world: World) -> None:
             )
         ],
     )[0]
+    world.jobs.mark(job.id, clip.at(1).asset_id, AssetProgress.ANNOTATED)
     accepted = world.box(job, clip.at(2).asset_id)
     for annotation, position in ((skipped, 0), (guessed, 1), (accepted, 2)):
         world.tracks.observe(job.id, track.id, clip.at(position).id, annotation.id)
@@ -655,15 +705,13 @@ def test_status_is_read_off_each_observed_assets_progress(world: World) -> None:
     status = world.tracks.status(track.id, clip.batch_id)
     assert {k: v for k, v in status.progress.items() if v} == {
         AssetProgress.UNANNOTATED: 1,
-        AssetProgress.PRE_LABELED: 1,
+        AssetProgress.ANNOTATED: 1,
         AssetProgress.ACCEPTED: 1,
     }
     assert status.outside == 0
     assert not status.settled
-    assert world.progress(job, clip.at(1).asset_id) is AssetProgress.PRE_LABELED
 
     world.jobs.mark(job.id, clip.at(0).asset_id, AssetProgress.SKIPPED)
-    world.jobs.mark(job.id, clip.at(1).asset_id, AssetProgress.ANNOTATED)
     assert world.tracks.status(track.id, clip.batch_id).settled
 
 

@@ -112,11 +112,12 @@ def observe_track(
     """Record that the track is seen at an occurrence, as an annotation drawn there.
 
     The annotation must sit on the occurrence's asset, carry the track's class
-    and be 2D. 404: `JOB_NOT_FOUND`, `TRACK_NOT_FOUND`,
+    and be 2D, and that asset must not be `pre_labeled`: a model's output nobody
+    has judged is not tracked. 404: `JOB_NOT_FOUND`, `TRACK_NOT_FOUND`,
     `FRAME_OCCURRENCE_NOT_FOUND`, `ANNOTATION_NOT_FOUND`. 409:
     `BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`, `ASSET_NOT_IN_JOB` (rendered as a
     409 here: the job does not carry the occurrence's asset), `ASSET_NOT_WRITABLE`,
-    `TRACK_CLASS_MISMATCH`, `OCCURRENCE_ALREADY_OBSERVED`,
+    `ASSET_NOT_JUDGED`, `TRACK_CLASS_MISMATCH`, `OCCURRENCE_ALREADY_OBSERVED`,
     `ANNOTATION_ALREADY_OBSERVED`. 422: `TRACK_SOURCE_MISMATCH`,
     `ANNOTATION_NOT_AT_OCCURRENCE`, `INVALID_ANNOTATION`.
     """

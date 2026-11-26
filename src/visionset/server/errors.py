@@ -53,6 +53,7 @@ from visionset.kernel import (
     AssetNotInBatch,
     AssetNotInDataset,
     AssetNotInJob,
+    AssetNotJudged,
     AssetNotWritable,
     AugmentationRequiresSplit,
     BackgroundJobNotFound,
@@ -445,6 +446,7 @@ _HTTP: Final[dict[type[VisionSetError], _Http]] = {
     TrackClassMismatch: _Http(409),
     OccurrenceAlreadyObserved: _Http(409),
     AnnotationAlreadyObserved: _Http(409),
+    AssetNotJudged: _Http(409),
     TrackSplitEmpty: _Http(409),
     # AUGMENTATION_REQUIRES_SPLIT's reading: set a calibration on the asset or
     # its source and the identical write or publish succeeds.

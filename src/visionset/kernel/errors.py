@@ -838,6 +838,16 @@ class AnnotationAlreadyObserved(VisionSetError):
     """
 
 
+class AssetNotJudged(VisionSetError):
+    """A track was asked to observe a label on an asset nobody has judged yet.
+
+    A ``pre_labeled`` asset holds a model's unattended output, and a replacing
+    pre-label run deletes it without asking, so an observation of it would go
+    with it. A person's edit or confirm moves the asset to ``annotated``, and
+    the identical observe then succeeds.
+    """
+
+
 class TrackSplitEmpty(VisionSetError):
     """A split at that occurrence would leave one of the two tracks with no observation.
 

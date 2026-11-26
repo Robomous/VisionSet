@@ -146,6 +146,7 @@ EXPECTED: dict[str, tuple[int, str]] = {
     "TrackClassMismatch": (409, "TRACK_CLASS_MISMATCH"),
     "OccurrenceAlreadyObserved": (409, "OCCURRENCE_ALREADY_OBSERVED"),
     "AnnotationAlreadyObserved": (409, "ANNOTATION_ALREADY_OBSERVED"),
+    "AssetNotJudged": (409, "ASSET_NOT_JUDGED"),
     "TrackSplitEmpty": (409, "TRACK_SPLIT_EMPTY"),
     "SourceNotSequence": (422, "SOURCE_NOT_SEQUENCE"),
     "TrackSourceMismatch": (422, "TRACK_SOURCE_MISMATCH"),

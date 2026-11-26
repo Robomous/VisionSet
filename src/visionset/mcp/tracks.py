@@ -108,8 +108,9 @@ def observe_track(
 
     Draw the annotation first with `add_annotations` on the occurrence's asset.
     It must carry the track's class and be 2D, the job must carry that asset at
-    a writable progress, the track may observe an occurrence once, and an
-    annotation belongs to at most one observation.
+    a writable progress other than `pre_labeled` (edit or confirm a model's
+    labels first), the track may observe an occurrence once, and an annotation
+    belongs to at most one observation.
     """
     with opened_workspace() as workspace:
         found = TrackService(workspace).observe(

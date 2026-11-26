@@ -43,6 +43,7 @@ from visionset.kernel.domain import (
 from visionset.kernel.errors import (
     AnnotationAlreadyObserved,
     AnnotationNotAtOccurrence,
+    AssetNotJudged,
     BatchNotFound,
     FrameOccurrenceNotFound,
     InvalidName,
@@ -185,6 +186,7 @@ class TrackService:
             AnnotationNotAtOccurrence: the annotation sits on another asset.
             AssetNotInJob: the job does not carry the occurrence's asset.
             AssetNotWritable: that asset's progress says its labeling is over.
+            AssetNotJudged: that asset is ``pre_labeled``; nobody has judged its labels.
             TrackClassMismatch: the annotation's class is not the track's.
             InvalidAnnotation: the annotation is a 3D label; tracks follow 2D ones.
             OccurrenceAlreadyObserved: the track already observes the occurrence.
@@ -201,6 +203,12 @@ class TrackService:
                     f"occurrence {occurrence.id} decoded to asset {occurrence.asset_id}"
                 )
             require_writable(job, occurrence.asset_id)
+            if job.progress[occurrence.asset_id] is AssetProgress.PRE_LABELED:
+                raise AssetNotJudged(
+                    f"asset {occurrence.asset_id} in job {job.id} is 'pre_labeled', and a "
+                    f"replacing pre-label run would delete what the track observes; edit or "
+                    f"confirm the asset first"
+                )
             if annotation.label_class != track.label_class:
                 raise TrackClassMismatch(
                     f"annotation {annotation.id} is {annotation.label_class!r} and track "

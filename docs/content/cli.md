@@ -558,7 +558,8 @@ schema version declares.
 Every other command names the job acting with `--job`, and passes the gates an annotation write
 does against every observation it touches - a job carrying only some of a track's assets cannot
 restructure it. `observe` attaches an annotation already drawn at the occurrence's asset, which
-needs a canvas or a model; `unobserve` detaches one and keeps the annotation; `set-class`
+needs a canvas or a model, and refuses a `pre_labeled` asset with `ASSET_NOT_JUDGED` until a
+person edits or confirms it; `unobserve` detaches one and keeps the annotation; `set-class`
 rewrites the track and every annotation it observes in one transaction; `merge` absorbs the
 second track into the first; `split` moves the cut occurrence and every later one to a new track
 and prints `{kept, created}` with `--json`. `delete` keeps the annotations unless

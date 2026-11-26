@@ -52,6 +52,7 @@ ERROR_CODES: Final[Mapping[type[errors.VisionSetError], str]] = {
     errors.TrackClassMismatch: "TRACK_CLASS_MISMATCH",
     errors.OccurrenceAlreadyObserved: "OCCURRENCE_ALREADY_OBSERVED",
     errors.AnnotationAlreadyObserved: "ANNOTATION_ALREADY_OBSERVED",
+    errors.AssetNotJudged: "ASSET_NOT_JUDGED",
     errors.TrackSplitEmpty: "TRACK_SPLIT_EMPTY",
     errors.TrackMergeWithItself: "TRACK_MERGE_WITH_ITSELF",
     errors.CalibrationInUse: "CALIBRATION_IN_USE",
