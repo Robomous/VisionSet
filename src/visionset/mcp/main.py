@@ -187,9 +187,10 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
 
 ``delete_annotations`` and ``delete_track`` are ``WRITES`` rather than
 ``DESTROYS``, on purpose: they take no ``confirm``, because removing a label or a
-track is the annotator edit loop and the guard is the batch gate. In this surface
-``destructiveHint`` and ``confirm`` mean the same thing, and the registration
-test holds them to it.
+track is the annotator edit loop and the guard is the job write gate over every
+observed asset; a track with no observation is deletable by any open job of its
+project. In this surface ``destructiveHint`` and ``confirm`` mean the same thing,
+and the registration test holds them to it.
 
 Nothing here is destructive. See :data:`DESTRUCTIVE_TOOLS`.
 """

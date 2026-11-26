@@ -6,8 +6,9 @@ There is no ``get_track``: every write answers the whole track, and
 track id in the first place.
 
 ``delete_track`` has no ``confirm``, on ``delete_annotations``' rationale: the
-job write gate is the guard, so once the batch closes nothing here can touch the
-track at all.
+job write gate is the guard, so once the batch holding a track's observations
+closes nothing here can touch that track. A track with no observations touches
+no asset, so any open job of its project may still delete it.
 """
 
 from __future__ import annotations
