@@ -2523,7 +2523,7 @@ class TrackStatusOut(BaseModel):
     progress: ProgressCounts
     #: Observations on assets the batch does not hold.
     outside: int
-    #: Every observation the batch holds sits on a settled asset.
+    #: At least one observation, all held by the batch, each on a settled asset.
     settled: bool
 
     @classmethod

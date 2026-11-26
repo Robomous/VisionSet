@@ -13885,7 +13885,7 @@
     },
     "/jobs/{job_id}/tracks/{track_id}/class": {
       "put": {
-        "description": "Give the track and every annotation it observes a new class.\n\nThe annotations are rewritten in one transaction with the track, against the\nbatch's pinned version; the same class again changes nothing. The job must\ncarry every observed asset at a writable progress. 404: `JOB_NOT_FOUND`,\n`TRACK_NOT_FOUND`. 409: `BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`,\n`ASSET_NOT_IN_JOB` (rendered as a 409 here: act through the job holding the\ntrack's observations), `ASSET_NOT_WRITABLE`, `STALE_WRITE`. 422:\n`INVALID_ANNOTATION`. 500: `WORKSPACE_CORRUPT`.",
+        "description": "Give the track and every annotation it observes a new class.\n\nThe annotations are rewritten in one transaction with the track, against the\nbatch's pinned version, which must declare the class, even for a track with\nno observation; the same class again changes nothing. The job must\ncarry every observed asset at a writable progress. 404: `JOB_NOT_FOUND`,\n`TRACK_NOT_FOUND`. 409: `BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`,\n`ASSET_NOT_IN_JOB` (rendered as a 409 here: act through the job holding the\ntrack's observations), `ASSET_NOT_WRITABLE`, `STALE_WRITE`. 422:\n`LABEL_CLASS_NOT_IN_SCHEMA`, `INVALID_ANNOTATION`. 500: `WORKSPACE_CORRUPT`.",
         "operationId": "set_track_class",
         "parameters": [
           {
@@ -20163,7 +20163,7 @@
         ]
       },
       "post": {
-        "description": "Start an empty track of one class on a video source.\n\nNot gated on a job: a track observes nothing until a job observes an\nannotation with it. An unknown source is 404 `SOURCE_NOT_FOUND`; a source\nthat is not a video is 422 `SOURCE_NOT_SEQUENCE`, and an `external_id`\nanother track of the source carries is 409 `TRACK_EXTERNAL_ID_TAKEN`.",
+        "description": "Start an empty track of one class on a video source.\n\nNot gated on a job: a track observes nothing until a job observes an\nannotation with it. The class must be declared by the project's active\nschema version. 404: `SOURCE_NOT_FOUND`, `SCHEMA_NOT_FOUND`. 409:\n`TRACK_EXTERNAL_ID_TAKEN`, for an `external_id` another track of the source\ncarries. 422: `SOURCE_NOT_SEQUENCE` for a source that is not a video,\n`LABEL_CLASS_NOT_IN_SCHEMA`.",
         "operationId": "create_track",
         "parameters": [
           {
@@ -20361,7 +20361,7 @@
     },
     "/tracks/{track_id}/status": {
       "get": {
-        "description": "How far one batch's work on the track's observed assets has got.\n\nDerived on every read. Each observation counts once under the progress its\nasset holds in the batch, or under `outside` when the batch does not hold\nthat asset. `settled` is true when every observation the batch holds sits on\na settled asset. An unknown track is 404 `TRACK_NOT_FOUND`, and a batch\noutside the track's project is 404 `BATCH_NOT_FOUND`.",
+        "description": "How far one batch's work on the track's observed assets has got.\n\nDerived on every read. Each observation counts once under the progress its\nasset holds in the batch, or under `outside` when the batch does not hold\nthat asset. `settled` is true when the track has at least one observation,\nthe batch holds every one (`outside` is 0) and each sits on a settled asset.\nAn unknown track is 404 `TRACK_NOT_FOUND`, and a batch\noutside the track's project is 404 `BATCH_NOT_FOUND`.",
         "operationId": "get_track_status",
         "parameters": [
           {

@@ -64,9 +64,11 @@ def create_track(workspace: WorkspaceDep, source_id: UUID, body: TrackCreate) ->
     """Start an empty track of one class on a video source.
 
     Not gated on a job: a track observes nothing until a job observes an
-    annotation with it. An unknown source is 404 `SOURCE_NOT_FOUND`; a source
-    that is not a video is 422 `SOURCE_NOT_SEQUENCE`, and an `external_id`
-    another track of the source carries is 409 `TRACK_EXTERNAL_ID_TAKEN`.
+    annotation with it. The class must be declared by the project's active
+    schema version. 404: `SOURCE_NOT_FOUND`, `SCHEMA_NOT_FOUND`. 409:
+    `TRACK_EXTERNAL_ID_TAKEN`, for an `external_id` another track of the source
+    carries. 422: `SOURCE_NOT_SEQUENCE` for a source that is not a video,
+    `LABEL_CLASS_NOT_IN_SCHEMA`.
     """
     return TrackOut.of(
         TrackService(workspace).create(source_id, body.label_class, external_id=body.external_id)
@@ -90,8 +92,9 @@ def get_track_status(
 
     Derived on every read. Each observation counts once under the progress its
     asset holds in the batch, or under `outside` when the batch does not hold
-    that asset. `settled` is true when every observation the batch holds sits on
-    a settled asset. An unknown track is 404 `TRACK_NOT_FOUND`, and a batch
+    that asset. `settled` is true when the track has at least one observation,
+    the batch holds every one (`outside` is 0) and each sits on a settled asset.
+    An unknown track is 404 `TRACK_NOT_FOUND`, and a batch
     outside the track's project is 404 `BATCH_NOT_FOUND`.
     """
     return TrackStatusOut.of(TrackService(workspace).status(track_id, batch_id))
@@ -155,12 +158,13 @@ def set_track_class(
     """Give the track and every annotation it observes a new class.
 
     The annotations are rewritten in one transaction with the track, against the
-    batch's pinned version; the same class again changes nothing. The job must
+    batch's pinned version, which must declare the class, even for a track with
+    no observation; the same class again changes nothing. The job must
     carry every observed asset at a writable progress. 404: `JOB_NOT_FOUND`,
     `TRACK_NOT_FOUND`. 409: `BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`,
     `ASSET_NOT_IN_JOB` (rendered as a 409 here: act through the job holding the
     track's observations), `ASSET_NOT_WRITABLE`, `STALE_WRITE`. 422:
-    `INVALID_ANNOTATION`. 500: `WORKSPACE_CORRUPT`.
+    `LABEL_CLASS_NOT_IN_SCHEMA`, `INVALID_ANNOTATION`. 500: `WORKSPACE_CORRUPT`.
     """
     try:
         detail = TrackService(workspace).change_class(job_id, track_id, body.label_class)

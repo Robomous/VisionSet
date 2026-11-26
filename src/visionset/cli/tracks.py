@@ -129,7 +129,8 @@ def track_status(
     """Count a track's observations by the progress their assets hold in a batch.
 
     OUTSIDE counts observations on assets the batch does not hold. SETTLED is
-    yes when every observation the batch holds sits on a settled asset.
+    yes when the track has an observation, the batch holds every one, and each
+    sits on a settled asset.
     """
     with opened_workspace(workspace) as service:
         found = TrackService(service).status(track, batch)
@@ -161,7 +162,7 @@ def track_create(
     json_out: JsonOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
-    """Start an empty track of one class on a video source."""
+    """Start an empty track on a video source, of a class the active schema declares."""
     with opened_workspace(workspace) as service:
         created = TrackService(service).create(source, label_class, external_id=external_id)
     if json_out:

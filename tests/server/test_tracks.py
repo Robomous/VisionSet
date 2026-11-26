@@ -115,6 +115,11 @@ def test_a_track_is_refused_on_a_source_that_is_not_a_video(rig: Rig) -> None:
         "SOURCE_NOT_SEQUENCE",
     )
     _refused(
+        rig.client.post(f"/sources/{rig.world.source}/tracks", json={"label_class": "bus"}),
+        422,
+        "LABEL_CLASS_NOT_IN_SCHEMA",
+    )
+    _refused(
         rig.client.post(f"/sources/{uuid4()}/tracks", json={"label_class": "car"}),
         404,
         "SOURCE_NOT_FOUND",
