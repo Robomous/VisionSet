@@ -112,7 +112,7 @@ test("the undo and redo chords walk the history, and the buttons agree with them
  * they are the same history rather than two that happen to agree.
  *
  * The click is on chrome **outside** the annotator, which also exercises the demo's
- * `keepFocus` guard: a button that stole focus would be a keyboard that stops
+ * `keepCanvasFocus` guard: a button that stole focus would be a keyboard that stops
  * working after the first palette click.
  */
 test("the history buttons drive the same log the chords do", async ({ page }) => {

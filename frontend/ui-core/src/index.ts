@@ -298,6 +298,7 @@ export {
 // The annotation page's side panel. Driven entirely by the `AnnotatorStore`
 // the page already holds — no second door to the document.
 export { AnnotatorPanel, type AnnotatorPanelProps } from "./annotator/AnnotatorPanel.js";
+export { keepCanvasFocus } from "./annotator/keepCanvasFocus.js";
 export { ClassRegion, type ClassRegionProps } from "./annotator/ClassRegion.js";
 export { classListHeight, MAX_CLASS_ROWS, MIN_CLASS_ROWS } from "./annotator/classRegionLayout.js";
 export { ShortcutSheet, type ShortcutSheetProps } from "./annotator/ShortcutSheet.js";

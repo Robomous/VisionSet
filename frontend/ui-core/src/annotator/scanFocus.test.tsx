@@ -1,14 +1,14 @@
 /**
  * Where keyboard focus lands in the scan editor. jsdom has no WebGL2, so the
- * view is a stand-in carrying the same `data-scan-view` host and focusable
- * canvas; the store, the machine and the stage's key handling are real.
+ * view is a stand-in carrying the same `data-scan-view` host, focusable canvas
+ * and `viewRef` handle; the store, the machine and the stage's key handling are real.
  */
 
 import { screenOf, type AnnotationSchema, type OrbitCamera } from "@visionset/annotator";
-import type { ScanPointerEvent, ScanView } from "@visionset/annotator/react";
+import type { PointCloudView, ScanPointerEvent, ScanView } from "@visionset/annotator/react";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import type { JSX } from "react";
+import { useImperativeHandle, useRef, type JSX, type RefObject } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@robomous/ui-core";
@@ -23,11 +23,17 @@ vi.mock("@visionset/annotator/react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@visionset/annotator/react")>();
   return {
     ...actual,
-    PointCloudCanvas: (props: { pinned?: boolean; onScanPointer?: Pointer }): JSX.Element => {
+    PointCloudCanvas: function StandIn(props: {
+      pinned?: boolean;
+      onScanPointer?: Pointer;
+      viewRef?: RefObject<PointCloudView | null>;
+    }): JSX.Element {
       if (props.pinned !== true && props.onScanPointer !== undefined) pointers.perspective = props.onScanPointer;
+      const canvas = useRef<HTMLCanvasElement>(null);
+      useImperativeHandle(props.viewRef, () => ({ focus: () => canvas.current?.focus() }), []);
       return (
         <div data-scan-view={props.pinned === true ? "top-down" : "perspective"}>
-          <canvas tabIndex={0} data-testid={props.pinned === true ? "top-gl" : "perspective-gl"} />
+          <canvas ref={canvas} tabIndex={0} data-testid={props.pinned === true ? "top-gl" : "perspective-gl"} />
         </div>
       );
     },

@@ -78,6 +78,7 @@ export {
   type PointCloudCanvasProps,
   type PointCloudLabel,
   type PointCloudStatus,
+  type PointCloudView,
   type ScanPointerEvent,
   type ScanView,
 } from "./PointCloudCanvas";

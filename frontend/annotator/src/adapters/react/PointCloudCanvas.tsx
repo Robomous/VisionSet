@@ -20,7 +20,7 @@
  * what a remount of a rendered `<canvas>` would do.
  */
 
-import { useCallback, useEffect, useRef, type JSX } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, type JSX, type RefObject } from "react";
 
 import {
   framingBounds,
@@ -94,6 +94,13 @@ export interface PointCloudCanvasProps {
   readonly pinned?: boolean;
   readonly followTarget?: Point3D;
   readonly testIds?: { readonly view: string; readonly canvas: string };
+  readonly viewRef?: RefObject<PointCloudView | null>;
+}
+
+/** What a host can do to the view. */
+export interface PointCloudView {
+  /** Hand the keyboard to the view, unless focus is already somewhere inside it. */
+  focus(): void;
 }
 
 const ROTATE_PER_PX = 0.008;
@@ -120,6 +127,18 @@ export function PointCloudCanvas(props: PointCloudCanvasProps): JSX.Element {
   const sceneRef = useRef<Scene>(UNIT_SCENE);
   const frameRequest = useRef<number | null>(null);
   const draws = useRef(0);
+
+  useImperativeHandle(
+    props.viewRef,
+    () => ({
+      focus: () => {
+        const host = hostRef.current;
+        if (host === null || host.contains(document.activeElement)) return;
+        liveRef.current?.canvas.focus();
+      },
+    }),
+    [],
+  );
 
   const homeOf = useCallback((): OrbitCamera => {
     const { home } = sceneRef.current;

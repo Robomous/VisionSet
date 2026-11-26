@@ -709,14 +709,17 @@ describe("Detail, inline in the bar", () => {
   it("hands the keyboard back to the canvas when the drag ends", () => {
     // The slider may hold focus while it is being dragged, but not after, or
     // `[`, `]`, Esc and Enter stay dead with nothing to say why.
+    // The page hands the bar its view's focus; nothing here finds the view by name.
     const root = document.createElement("div");
-    root.setAttribute("data-testid", "annotator-root");
     root.tabIndex = 0;
     document.body.appendChild(root);
 
-    render(mount({ session: showingPolygon(), onTolerance: vi.fn() }));
+    render(mount({ session: showingPolygon(), onTolerance: vi.fn(), onReturnFocus: () => root.focus() }));
     const slider = screen.getByTestId("suggest-detail");
     slider.focus();
+    expect(document.activeElement).toBe(slider);
+
+    fireEvent.change(slider, { target: { value: "1" } });
     expect(document.activeElement).toBe(slider);
 
     fireEvent.mouseUp(slider);

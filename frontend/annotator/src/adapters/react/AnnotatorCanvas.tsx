@@ -387,10 +387,10 @@ export interface AnnotatorCanvasProps {
   readonly mint?: IdFactory;
   readonly className?: string;
   /**
-   * Zoom controls, for a host that has somewhere to put them.
+   * Zoom controls and the keyboard, for a host that has somewhere to put them.
    *
-   * Driving the zoom from outside needs an imperative handle, and this is it —
-   * deliberately **two methods and no state**:
+   * Driving the stage from outside needs an imperative handle, and this is it —
+   * deliberately **methods and no state**:
    * `onViewChange` already reports where the stage is, and a controlled `zoom`
    * prop would make the wheel a round trip through the host on every notch.
    *
@@ -521,6 +521,8 @@ export interface AnnotatorView {
   zoomBy(factor: number): void;
   /** The whole asset, centred — `mod+0`'s own implementation. */
   fit(): void;
+  /** Hand the keyboard to the stage, unless focus is already somewhere inside it. */
+  focus(): void;
 }
 
 /** See `TransientLayer`'s `NO_SUGGESTIONS`: one reference, so `memo` can bail. */
@@ -762,6 +764,11 @@ export function AnnotatorCanvas({
         applyViewport(zoomAbout(viewNow.current, factor, rect.width / 2, rect.height / 2));
       },
       fit,
+      focus: () => {
+        const root = rootRef.current;
+        if (root === null || root.contains(document.activeElement)) return;
+        root.focus();
+      },
     }),
     [applyViewport, fit],
   );

@@ -54,29 +54,18 @@ import {
   classColor,
   useAnnotatorSnapshot,
   useAnnotatorStore,
+  type AnnotatorView,
 } from "@visionset/annotator/react";
 import type { LabelClass, Viewport } from "@visionset/annotator";
-import { useCallback, useState } from "react";
-import type { CSSProperties, JSX, MouseEvent, ReactNode } from "react";
+import { useCallback, useRef, useState } from "react";
+import type { CSSProperties, JSX, ReactNode } from "react";
 
-import { AnnotatorPanel } from "@visionset/ui-core";
+import { AnnotatorPanel, keepCanvasFocus } from "@visionset/ui-core";
 
 import { SAMPLE_ASSET, SAMPLE_IMAGE_SRC } from "./sampleAsset";
 import { SAMPLE_SCHEMA } from "./sampleSchema";
 import { ToolStrip, ZoomBadge } from "./ToolStrip";
 import { COLOR, FONT_STACK, RADIUS, SHADOW, SPACE, TEXT } from "./theme";
-
-/**
- * Keep the canvas focused when a control is clicked.
- *
- * A button that steals focus is a keyboard that stops working after the first
- * palette click, which is the single most annoying thing an editor can do. It
- * also keeps the canvas's `onBlur` — which cancels a drag in flight — for the
- * cases it is actually for: a window blur, or focus moving to the notes field.
- */
-function keepFocus(event: MouseEvent): void {
-  event.preventDefault();
-}
 
 export function AnnotatorDemo(): JSX.Element {
   const store = useAnnotatorStore({
@@ -89,6 +78,7 @@ export function AnnotatorDemo(): JSX.Element {
   const [showHelp, setShowHelp] = useState(false);
   const [notes, setNotes] = useState("");
   const [view, setView] = useState<Viewport | null>(null);
+  const viewRef = useRef<AnnotatorView | null>(null);
   // Held here, and handed to both: the panel writes it and the canvas reads it.
   // A `useState` rather than a fresh `Set` per render, because an unstable set
   // defeats `AnnotationLayer`'s `memo` — the same trap `skipId` avoids.
@@ -145,13 +135,14 @@ export function AnnotatorDemo(): JSX.Element {
           onViewChange={setView}
           hiddenIds={hiddenIds}
           onHostAction={hostAction}
+          viewRef={viewRef}
         />
         <ToolStrip
           schema={schema}
           tool={tool}
           onActivateClass={setActiveClass}
           onToggleHelp={toggleHelp}
-          onMouseDown={keepFocus}
+          onMouseDown={keepCanvasFocus}
         />
         {view !== null && <ZoomBadge zoom={view.zoom} />}
         {showHelp && <Shortcuts onClose={() => setShowHelp(false)} />}
@@ -186,6 +177,7 @@ export function AnnotatorDemo(): JSX.Element {
             onHiddenChange={setHiddenIds}
             activeClass={activeClass}
             onActivateClass={setActiveClass}
+            onReturnFocus={() => viewRef.current?.focus()}
           />
         </div>
 
@@ -236,7 +228,7 @@ export function AnnotatorDemo(): JSX.Element {
                 type="checkbox"
                 data-testid={`tag-${declared.name}`}
                 checked={tagged.has(declared.name)}
-                onMouseDown={keepFocus}
+                onMouseDown={keepCanvasFocus}
                 onChange={() => toggleTag(declared.name)}
                 style={{ accentColor: COLOR.primary, margin: 0 }}
               />
@@ -351,7 +343,7 @@ function Button({
       type="button"
       data-testid={testId}
       disabled={disabled}
-      onMouseDown={keepFocus}
+      onMouseDown={keepCanvasFocus}
       onClick={onClick}
       style={{
         ...BUTTON,
@@ -394,7 +386,7 @@ function PaletteRow({
       type="button"
       data-testid={testId}
       data-active={active ? "true" : "false"}
-      onMouseDown={keepFocus}
+      onMouseDown={keepCanvasFocus}
       onClick={onClick}
       style={{
         ...BUTTON,
@@ -455,7 +447,7 @@ function Shortcuts({ onClose }: { readonly onClose: () => void }): JSX.Element {
         type="button"
         data-testid="shortcuts-close"
         style={{ ...BUTTON, float: "right" }}
-        onMouseDown={keepFocus}
+        onMouseDown={keepCanvasFocus}
         onClick={onClose}
       >
         Close

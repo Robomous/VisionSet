@@ -148,6 +148,7 @@ import {
   useAnnotatorSnapshot,
   usePendingIndicator,
   type AnnotatorView,
+  type PointCloudView,
 } from "@visionset/annotator/react";
 import { WireFormatError, parseAssetDescriptor } from "@visionset/annotator";
 import { ArrowLeft, ArrowUpRight, Box, CheckCheck, ChevronLeft, ChevronRight, CircleHelp, CloudAlert, CloudCheck, CloudUpload, Eye, Grid3x3, Hand, LayoutGrid, Loader2, MonitorSmartphone, MoreHorizontal, Redo2, SkipForward, Sparkles, TriangleAlert, Undo2 } from "lucide-react";
@@ -956,6 +957,8 @@ function Workspace({
   /** Whether the pin badge's popover is open — and therefore whether it fetches. */
   const [pinOpen, setPinOpen] = useState(false);
   const viewRef = useRef<AnnotatorView | null>(null);
+  const scanViewRef = useRef<PointCloudView | null>(null);
+  const returnFocus = (): void => (isScan ? scanViewRef : viewRef).current?.focus();
   /**
    * The stage, for fullscreen. The *stage*, never the document: taking the whole
    * page fullscreen would take the browser chrome with it and leave the tool
@@ -2409,6 +2412,7 @@ function Workspace({
               */
               <SuggestBar
                 session={suggesting}
+                onReturnFocus={returnFocus}
                 // The class the workspace is on, which the session's own only stops
                 // matching while parked — the one reading that has to name it.
                 heldClass={activeClass}
@@ -2548,6 +2552,7 @@ function Workspace({
                 if (!readOnly) attempt();
               }}
               onToggleHelp={() => setHelpOpen((open) => !open)}
+              viewRef={scanViewRef}
             />
           ) : (
             <AssetImage projectId={projectId} assetId={asset.id}>
@@ -3046,6 +3051,7 @@ function Workspace({
         */}
         <AnnotatorPanel
           layout="flush"
+          onReturnFocus={returnFocus}
           store={store}
           readOnly={readOnly}
           labels3D={scanLabels}
@@ -3139,6 +3145,7 @@ function Workspace({
         assets={assets}
         currentIndex={assetIndex}
         onPick={pickFrame}
+        onReturnFocus={returnFocus}
       />
     </div>
   );
