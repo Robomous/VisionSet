@@ -49,6 +49,8 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from visionset.inference import (
     DEFAULT_MINIMUM_CONFIDENCE,
+    MAXIMUM_CANDIDATES,
+    Detection,
     PreLabelExclusionReason,
     PreLabelPlan,
     capabilities_of,
@@ -3837,6 +3839,106 @@ class SuggestionOut(BaseModel):
     regions: list[SuggestedRegion]
     applied: AppliedParameters
     parameters: list[SuggestParameter]
+
+
+class DetectRequest(BaseModel):
+    """Find every instance of one class on one image, through which connection.
+
+    Shaped like `SuggestRequest`, and for its reason everything is in the body.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    project_id: UUID
+    asset_id: UUID
+    connection_id: UUID
+    #: The schema class every candidate is proposed as. One class per request.
+    label_class: str = Field(min_length=1)
+    #: The geometry kinds that class admits, as the caller holds them. Candidates
+    #: come back only in those of them the model declares.
+    allowed_geometries: list[GeometryType] = Field(min_length=1)
+    #: What the model is asked for. Omitted means the class's own name, the
+    #: phrase a pre-label run asks that class under.
+    phrase: str | None = Field(default=None, min_length=1, max_length=200)
+    #: Regions scored below this are not proposed. Omitted means the pre-label
+    #: default, because both read the same detector score.
+    minimum_confidence: float = Field(default=DEFAULT_MINIMUM_CONFIDENCE, ge=0.0, le=1.0)
+
+
+class DetectedCandidate(BaseModel):
+    """One instance the model found, as the class it would be written as.
+
+    Carries no `contour`: a detection is not reduced from an outline, so there
+    is nothing to re-simplify.
+    """
+
+    #: Positional in this answer's order, `c0` first. Means nothing outside it.
+    id: str
+    #: The class it would be written as — the one the request named.
+    label_class: str
+    #: What the model answered with, as it said it.
+    label: str
+    geometry: Geometry
+    #: The model's own score for this candidate, never shared with another.
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class DetectionDiscardsOut(BaseModel):
+    """Regions the model answered with that are not among the candidates, by why."""
+
+    #: The label named no phrase that was asked for.
+    unmapped_label: int
+    #: The shape is not one the class admits and the model declares.
+    incompatible_geometry: int
+    #: The geometry has no overlap with the asset.
+    out_of_bounds: int
+    #: Scored below `minimum_confidence`.
+    below_minimum_confidence: int
+    #: Past the `limit`; the least confident are the ones cut.
+    over_limit: int
+
+
+class DetectionOut(BaseModel):
+    """What the model found, or an honest nothing. Nothing is written.
+
+    `candidates` is ordered by confidence, highest first, then by the top and
+    the left of each geometry. Empty is an ordinary answer. Overlapping
+    candidates are not merged.
+    """
+
+    model_ref: str
+    #: The phrase the model was actually asked.
+    phrase: str
+    candidates: list[DetectedCandidate]
+    discarded: DetectionDiscardsOut
+    #: The most candidates one answer carries.
+    limit: int
+
+    @classmethod
+    def of(cls, detection: Detection) -> DetectionOut:
+        discarded = detection.discarded
+        return cls(
+            model_ref=detection.model_ref,
+            phrase=detection.phrase,
+            candidates=[
+                DetectedCandidate(
+                    id=candidate.id,
+                    label_class=candidate.label_class,
+                    label=candidate.label,
+                    geometry=candidate.geometry,
+                    confidence=candidate.confidence,
+                )
+                for candidate in detection.candidates
+            ],
+            discarded=DetectionDiscardsOut(
+                unmapped_label=discarded.unmapped_label,
+                incompatible_geometry=discarded.incompatible_geometry,
+                out_of_bounds=discarded.out_of_bounds,
+                below_minimum_confidence=discarded.below_minimum_confidence,
+                over_limit=discarded.over_limit,
+            ),
+            limit=MAXIMUM_CANDIDATES,
+        )
 
 
 # --- the workspace's front page --------------------------------------------
