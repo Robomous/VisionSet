@@ -441,11 +441,16 @@ wired), the model answering (its name, or a picker once there are two; Local's m
 Download and its size, `Downloading…`, `Loading…` or `Ready`, and Remove in a small menu on
 its name), the state in a few words — `Click the thing you want`, `Looking at that…`,
 `Proposed shape`, `Nothing to suggest there`, `Suggestion refused`, `No model connection`,
-`“lane” cannot hold a suggestion` — with an ⓘ whose card holds the full explanation word for
+`“lane” cannot hold a suggestion`, and for a detection `Detecting…`, `Nothing detected` or
+`N of M chosen` (a button that opens the list of candidates) — with an ⓘ whose card holds the full explanation word for
 word (a server refusal quoted exactly, because it carries the remedy) and is also the
 button's description, the way out where there is one (`Set up`, `Put the tool away`), then
-`Box | Polygon` for a class that admits both, Detail once the answer declares it, and the
-class; Accept `↵` and Discard `Esc` sit at the bar's far end while a proposal is shown.
+*Detect all* on Server while nothing is pending (disabled, with its reason as its
+description, where no ready text-detection connection draws a shape the class holds; absent
+on Local), `Box | Polygon` for a class that admits both, Detail once the answer declares it,
+and the class; Accept `↵` (`Accept N` over a detection, disabled with none chosen) and
+Discard `Esc` sit at the bar's far end while a proposal is shown (below 48rem Discard keeps
+only its `X`).
 Where the click runs, the model and the shape are drawn only while nothing is pending. The
 bar is a size container: below 48rem of bar its words drop and its icons stay (each control
 keeps its name), and what still does not fit scrolls inside the row with no scrollbar — it
@@ -711,7 +716,10 @@ carries the panel row, the delete key and the keyboard rules a proposal must not
 vertices are up the whole time it is on screen, undecimated at every tolerance change, because
 where precision was gained or lost *is* what the tolerance control is about. Its outline is
 dashed and an accepted annotation's is solid, which is what tells proposed from committed
-at a glance.
+at a glance. A detection candidate left out of the accept is drawn as excluded rather than
+merely fainter: a dotted outline, a black-and-white hatch in place of its fill (so it reads
+over a photograph whose colour matches the class, in either theme), vertices muted further,
+and `left out` after its label.
 
 **An occluded stretch of a polyline is dashed, with a pattern of its own.** A segment is
 occluded when either of its vertices is recorded occluded, so the line reads hidden from the

@@ -13,6 +13,16 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **Detect all: every instance of a class on one image, and you keep the ones you want.** `POST /inference/detect`
+  asks a `text_detect` connection for one class on one asset - by the class's name unless a `phrase` is sent - and
+  writes nothing. Each candidate carries its own `confidence`, the class it maps to, the model's label and its
+  geometry, highest confidence first, at most 100; regions whose label names no phrase asked, whose shape the class
+  does not admit or the model does not draw, that miss the asset or score under `minimum_confidence` are dropped and
+  counted in `discarded`, never relabeled or redrawn. The editor's suggest bar gains *Detect all*, on Server only;
+  every candidate starts chosen, a click on one or a tick in the `N of M chosen` list leaves it out (drawn dotted
+  and hatched, labelled `left out`), `Accept N` writes only the chosen ones with their own scores in one undo step,
+  and with none chosen Accept is disabled and `↵` writes nothing. A point suggestion still proposes at most one
+  shape (#548).
 - **`fill` and `center_crop` resize strategies.** `fill` scales a recipe's images to cover the size and crops the
   overflow, centred; `center_crop` cuts a centred window at the source's own scale and pads an axis the source is
   too small to fill. A box or polygon is clipped to the canvas - a polygon cut into pieces keeps its largest -
@@ -194,6 +204,8 @@ nothing was being distributed. This is the first version that is.
 
 ### Fixed
 
+- **A suggestion answer that arrives after Escape or a class change no longer repaints the discarded preview**,
+  and `↵` pressed while a suggestion is still being asked no longer moves to the next frame.
 - **A scan's annotation page carries no 2D chrome and says "scan" throughout.** The 2D tool bar, the empty tool
   rail and the 2D canvas hint are gone on a scan, and Keyboard shortcuts (and `?` from the scan view) open a list
   read from the scan editor's own key table instead of the 2D sheet. The island, the job's progress, the review

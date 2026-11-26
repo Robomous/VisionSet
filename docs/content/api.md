@@ -142,6 +142,7 @@ POST   /inference/connections/{connection_id}/check-integrity   launch
 GET    /inference/download-size                           ?model_id=&model_revision=
 GET    /inference/providers                               which models the installation can run
 POST   /inference/suggest                                 a shape under some points
+POST   /inference/detect                                  every instance of one class, nothing written
 
 GET    /background-jobs                                   every launched job
 GET    /background-jobs/{job_id}                          poll
