@@ -597,6 +597,15 @@ def _add_frame_occurrences(connection: Connection) -> None:
         connection.execute(occurrences.insert(), rows)
 
 
+def _add_tracks(connection: Connection) -> None:
+    """``track`` and ``track_observation``, created whole and empty.
+
+    Nothing is backfilled: no earlier generation recorded a track.
+    """
+    for name in ("track", "track_observation"):
+        Base.metadata.tables[name].create(connection, checkfirst=True)
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
     Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
@@ -626,6 +635,7 @@ MIGRATIONS: list[Migration] = [
     Migration(version=22, name="point_clouds", upgrade=_add_point_clouds),
     Migration(version=23, name="group_labels", upgrade=_add_group_labels),
     Migration(version=24, name="frame_occurrences", upgrade=_add_frame_occurrences),
+    Migration(version=25, name="tracks", upgrade=_add_tracks),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version

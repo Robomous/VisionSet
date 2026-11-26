@@ -11,7 +11,7 @@ error envelope, and the three gate words.
 
 ## Always offered
 
-67 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
+77 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
 
 | Tool | Takes | What it does |
 | --- | --- | --- |
@@ -56,6 +56,16 @@ error envelope, and the three gate words.
 | `add_annotations` | `job_id`, `annotations` | Write new annotations into a job. All succeed together or none are written. |
 | `update_annotations` | `job_id`, `annotations` | Replace existing annotations wholesale. All succeed together or none are written. |
 | `delete_annotations` | `job_id`, `annotation_ids` | Remove annotations from a job. All succeed together or none are removed. |
+| `list_frame_occurrences` | `source_id` | List a video source's frame occurrences, in position order. |
+| `list_tracks` | `source_id` | List a video source's tracks, in creation order, each with its observations. |
+| `get_track_status` | `track_id`, `batch_id` | Count a track's observations by the progress their assets hold in one batch. |
+| `create_track` | `source_id`, `label_class`, `external_id`? | Start an empty track of one class on a video source. |
+| `observe_track` | `job_id`, `track_id`, `occurrence_id`, `annotation_id` | Record that the track is seen at an occurrence, as an annotation drawn there. |
+| `unobserve_track` | `job_id`, `track_id`, `occurrence_id` | Remove the track's observation at an occurrence. The annotation stays. |
+| `set_track_class` | `job_id`, `track_id`, `label_class` | Give a track and every annotation it observes a new class, in one transaction. |
+| `merge_tracks` | `job_id`, `track_id`, `absorbed_track_id` | Move every observation of `absorbed_track_id` onto `track_id`, and delete the absorbed one. |
+| `split_track` | `job_id`, `track_id`, `occurrence_id` | Cut a track at an occurrence: it and every later observation move to a new track. |
+| `delete_track` | `job_id`, `track_id`, `with_annotations`? | Delete a track and its observations; the annotations stay unless `with_annotations`. |
 | `set_asset_progress` | `job_id`, `asset_id`, `progress` | Record where one asset of a job has got to, without writing annotations. |
 | `complete_job` | `job_id` | Close a job, once every one of its assets has been settled. |
 | `complete_batch` | `batch_id`, `promote`? | Close a batch, once every one of its jobs is complete. |

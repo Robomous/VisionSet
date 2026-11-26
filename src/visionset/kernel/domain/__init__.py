@@ -403,6 +403,13 @@ from visionset.kernel.domain.token import (
     generate_secret,
     hash_secret,
 )
+from visionset.kernel.domain.track import (
+    ObservedFrame,
+    Track,
+    TrackDetail,
+    TrackObservation,
+    TrackStatus,
+)
 from visionset.kernel.domain.transitions import require_move, require_state
 from visionset.kernel.domain.video_import import (
     DEFAULT_EXTRACTION_FPS,
@@ -602,6 +609,11 @@ __all__ = [
     "AugmentStep",
     "Fold",
     "FrameOccurrence",
+    "ObservedFrame",
+    "Track",
+    "TrackDetail",
+    "TrackObservation",
+    "TrackStatus",
     "LetterboxFit",
     "CanvasFit",
     "CROP_KEEP_FRACTION",

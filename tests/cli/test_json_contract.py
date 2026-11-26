@@ -83,6 +83,7 @@ from visionset.kernel.domain import (
     AssetCalibration,
     AssetProgress,
     BackgroundJobState,
+    FrameOccurrence,
     GeometryType,
     ImportedClass,
     ImportedDataset,
@@ -92,8 +93,12 @@ from visionset.kernel.domain import (
     ImportLossKind,
     ImportPlan,
     ImportRun,
+    ObservedFrame,
     PolylineGeometry,
     PreLabelRun,
+    Track,
+    TrackDetail,
+    TrackStatus,
 )
 from visionset.server import models
 from visionset.wire import shapes
@@ -115,6 +120,35 @@ PRE_LABEL_PLAN = PreLabelPlan(
             ),
         ),
     ),
+)
+
+OCCURRENCE = FrameOccurrence(source_id=SOURCE.id, position=3, timestamp=1.5, asset_id=ASSET.id)
+#: Two observations, so the position order and the per-frame encoding are both exercised.
+TRACK = TrackDetail(
+    track=Track(source_id=SOURCE.id, label_class="sign", external_id="instance-7"),
+    observations=(
+        ObservedFrame(
+            occurrence_id=uuid4(),
+            position=1,
+            timestamp=0.5,
+            asset_id=ASSET.id,
+            annotation_id=uuid4(),
+        ),
+        ObservedFrame(
+            occurrence_id=OCCURRENCE.id,
+            position=3,
+            timestamp=1.5,
+            asset_id=ASSET.id,
+            annotation_id=ANNOTATION.id,
+        ),
+    ),
+)
+UNNAMED_TRACK = TrackDetail(track=Track(source_id=SOURCE.id, label_class="sign"), observations=())
+TRACK_STATUS = TrackStatus(
+    track_id=TRACK.track.id,
+    batch_id=BATCH.id,
+    progress={**dict.fromkeys(AssetProgress, 0), AssetProgress.ANNOTATED: 2},
+    outside=1,
 )
 
 # One row per pair: a label, the projected payload, and the wire model it must
@@ -281,6 +315,17 @@ PAIRS: list[tuple[str, Mapping[str, Any], type[BaseModel]]] = [
         models.ClassCompatibilityOut,
     ),
     ("pre_label_plan", wire.pre_label_plan(PRE_LABEL_PLAN), models.PreLabelPlanOut),
+    ("frame_occurrence", wire.frame_occurrence(OCCURRENCE), models.FrameOccurrenceOut),
+    (
+        "track_observation",
+        wire.track_observation(TRACK.observations[0]),
+        models.TrackObservationOut,
+    ),
+    ("track", wire.track(TRACK), models.TrackOut),
+    # A null external id and no observations: the other half of each nullable leaf.
+    ("track_unnamed", wire.track(UNNAMED_TRACK), models.TrackOut),
+    ("track_status", wire.track_status(TRACK_STATUS), models.TrackStatusOut),
+    ("track_split", wire.track_split(TRACK, UNNAMED_TRACK), models.TrackSplitOut),
 ]
 
 IDS = [label for label, _, _ in PAIRS]
@@ -423,6 +468,7 @@ SURFACE_DEFINED: list[tuple[str, Mapping[str, Any]]] = [
     ("schema_diff", wire.schema_diff(SCHEMA_DIFF)),
     ("import_plan", wire.import_plan(IMPORT_PLAN)),
     ("import_run", wire.import_run(IMPORT_RUN)),
+    ("track_deletion", wire.track_deletion(TRACK.track.id, 2)),
 ]
 
 
@@ -489,6 +535,13 @@ SHAPES: dict[str, Any] = {
     "export_compatibility": shapes.ExportCompatibility,
     "class_compatibility": shapes.ClassCompatibility,
     "pre_label_plan": shapes.PreLabelPlan,
+    "frame_occurrence": shapes.FrameOccurrence,
+    "track_observation": shapes.TrackObservation,
+    "track": shapes.Track,
+    "track_unnamed": shapes.Track,
+    "track_status": shapes.TrackStatus,
+    "track_split": shapes.TrackSplit,
+    "track_deletion": shapes.TrackDeletion,
     "export_result": shapes.ExportResult,
     "export_result_with_recipe": shapes.ExportResult,
     "thumbnail_backfill": shapes.ThumbnailBackfill,

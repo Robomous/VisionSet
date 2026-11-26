@@ -41,6 +41,8 @@ from visionset.server.errors import documented
 from visionset.server.models import (
     WIRE_TEXT_MAX_LENGTH,
     CalibrationBody,
+    FrameOccurrenceOut,
+    FrameOccurrencePage,
     IngestJobOut,
     IngestJobPage,
     IngestStart,
@@ -162,6 +164,19 @@ def list_sources(workspace: WorkspaceDep, project_id: UUID) -> SourcePage:
 def get_source(workspace: WorkspaceDep, source_id: UUID) -> SourceOut:
     """The source with that id."""
     return SourceOut.of(SourceService(workspace).get(source_id))
+
+
+@router.get("/{source_id}/occurrences", responses=documented(404))
+def list_frame_occurrences(workspace: WorkspaceDep, source_id: UUID) -> FrameOccurrencePage:
+    """Every frame occurrence of this source, in position order.
+
+    An occurrence is one position of a clip's extraction grid and the asset it
+    decoded to; identical frames at two positions are one asset at two
+    occurrences. A source that is not a video has none. An unknown source is
+    404 `SOURCE_NOT_FOUND`.
+    """
+    found = SourceService(workspace).occurrences(source_id)
+    return FrameOccurrencePage(items=[FrameOccurrenceOut.of(o) for o in found], total=len(found))
 
 
 @router.get("/{source_id}/calibration", responses=documented(404))

@@ -1677,7 +1677,9 @@ export interface paths {
          *     An asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST,
          *     and so are the two gates around it: a batch that is not open for annotation
          *     is 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409
-         *     `JOB_FINISHED`. An edit is a write, and every gate that stops a new label
+         *     `JOB_FINISHED`. An annotation a track observes keeps the track's class: an
+         *     edit to any other class is 409 `TRACK_CLASS_MISMATCH`, so change the track's
+         *     class instead. An edit is a write, and every gate that stops a new label
          *     stops a replacement too — including 409 `CALIBRATION_MISSING` and 422
          *     `CALIBRATION_RESOLUTION_MISMATCH` for a 3D label, and on a scan 409
          *     `CALIBRATION_MISSING` for a source declaring no frame and 422
@@ -1977,6 +1979,172 @@ export interface paths {
          *     is already in progress or finished never starts again.
          */
         post: operations["start_job"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs/{job_id}/tracks/{track_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Track
+         * @description Delete the track and its observations.
+         *
+         *     Every annotation it observed stays unless `with_annotations` is true, which
+         *     deletes them too, in one transaction, by the rules of an annotation delete.
+         *     No confirmation gate: like an annotation delete, the batch gate is the guard.
+         *     404: `JOB_NOT_FOUND`, `TRACK_NOT_FOUND`. 409: `BATCH_NOT_IN_ANNOTATION`,
+         *     `JOB_FINISHED`, `ASSET_NOT_IN_JOB` (rendered as a 409 here: act through the
+         *     job holding the track's observations), `ASSET_NOT_WRITABLE`, `STALE_WRITE`.
+         */
+        delete: operations["delete_track"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs/{job_id}/tracks/{track_id}/class": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Track Class
+         * @description Give the track and every annotation it observes a new class.
+         *
+         *     The annotations are rewritten in one transaction with the track, against the
+         *     batch's pinned version, which must declare the class, even for a track with
+         *     no observation; the same class again changes nothing. The job must
+         *     carry every observed asset at a writable progress. 404: `JOB_NOT_FOUND`,
+         *     `TRACK_NOT_FOUND`. 409: `BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`,
+         *     `ASSET_NOT_IN_JOB` (rendered as a 409 here: act through the job holding the
+         *     track's observations), `ASSET_NOT_WRITABLE`, `STALE_WRITE`. 422:
+         *     `LABEL_CLASS_NOT_IN_SCHEMA`, `INVALID_ANNOTATION`, `INVALID_NAME`. 500:
+         *     `WORKSPACE_CORRUPT`.
+         */
+        put: operations["set_track_class"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs/{job_id}/tracks/{track_id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge Tracks
+         * @description Move every observation of `body.track_id` onto this track, and delete that one.
+         *
+         *     The tracks share a source and a class and observe disjoint occurrences. This
+         *     track keeps its own `external_id`, and takes the absorbed one's when it has
+         *     none. 404: `JOB_NOT_FOUND`, `TRACK_NOT_FOUND`. 409: `BATCH_NOT_IN_ANNOTATION`,
+         *     `JOB_FINISHED`, `ASSET_NOT_IN_JOB` (rendered as a 409 here: act through the
+         *     job holding both tracks' observations), `ASSET_NOT_WRITABLE`,
+         *     `TRACK_CLASS_MISMATCH`, `OCCURRENCE_ALREADY_OBSERVED`. 422:
+         *     `TRACK_MERGE_WITH_ITSELF`, `TRACK_SOURCE_MISMATCH`.
+         */
+        post: operations["merge_tracks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs/{job_id}/tracks/{track_id}/observations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Observe Track
+         * @description Record that the track is seen at an occurrence, as an annotation drawn there.
+         *
+         *     The annotation must sit on the occurrence's asset, carry the track's class
+         *     and be 2D, and that asset must not be `pre_labeled`: a model's output nobody
+         *     has judged is not tracked. 404: `JOB_NOT_FOUND`, `TRACK_NOT_FOUND`,
+         *     `FRAME_OCCURRENCE_NOT_FOUND`, `ANNOTATION_NOT_FOUND`. 409:
+         *     `BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`, `ASSET_NOT_IN_JOB` (rendered as a
+         *     409 here: the job does not carry the occurrence's asset), `ASSET_NOT_WRITABLE`,
+         *     `ASSET_NOT_JUDGED`, `TRACK_CLASS_MISMATCH`, `OCCURRENCE_ALREADY_OBSERVED`,
+         *     `ANNOTATION_ALREADY_OBSERVED`. 422: `TRACK_SOURCE_MISMATCH`,
+         *     `ANNOTATION_NOT_AT_OCCURRENCE`, `INVALID_ANNOTATION`.
+         */
+        post: operations["observe_track"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs/{job_id}/tracks/{track_id}/observations/{occurrence_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unobserve Track
+         * @description Remove the track's observation at an occurrence. The annotation stays.
+         *
+         *     404: `JOB_NOT_FOUND`, `TRACK_NOT_FOUND`, `OBSERVATION_NOT_FOUND`. 409:
+         *     `BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`, `ASSET_NOT_IN_JOB` (rendered as a
+         *     409 here: another job carries the observed asset), `ASSET_NOT_WRITABLE`.
+         */
+        delete: operations["unobserve_track"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs/{job_id}/tracks/{track_id}/split": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Split Track
+         * @description Cut the track at an occurrence: it and every later observation move to a new track.
+         *
+         *     The new track has the same source and class and no `external_id`. Answers
+         *     the shortened track as `kept` and the new one as `created`. 404:
+         *     `JOB_NOT_FOUND`, `TRACK_NOT_FOUND`, `FRAME_OCCURRENCE_NOT_FOUND`. 409:
+         *     `BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`, `ASSET_NOT_IN_JOB` (rendered as a
+         *     409 here: act through the job holding the track's observations),
+         *     `ASSET_NOT_WRITABLE`, `TRACK_SPLIT_EMPTY`. 422: `TRACK_SOURCE_MISMATCH`.
+         */
+        post: operations["split_track"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3479,6 +3647,113 @@ export interface paths {
          *     never creates one. Either way the completed job's `batch_id` stays null.
          */
         post: operations["start_ingest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sources/{source_id}/occurrences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Frame Occurrences
+         * @description Every frame occurrence of this source, in position order.
+         *
+         *     An occurrence is one position of a clip's extraction grid and the asset it
+         *     decoded to; identical frames at two positions are one asset at two
+         *     occurrences. A source that is not a video has none. An unknown source is
+         *     404 `SOURCE_NOT_FOUND`.
+         */
+        get: operations["list_frame_occurrences"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sources/{source_id}/tracks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tracks
+         * @description Every track of this source, in creation order.
+         *
+         *     An unknown source is 404 `SOURCE_NOT_FOUND`.
+         */
+        get: operations["list_tracks"];
+        put?: never;
+        /**
+         * Create Track
+         * @description Start an empty track of one class on a video source.
+         *
+         *     Not gated on a job: a track observes nothing until a job observes an
+         *     annotation with it. The class must be declared by the project's active
+         *     schema version. 404: `SOURCE_NOT_FOUND`, `SCHEMA_NOT_FOUND`. 409:
+         *     `TRACK_EXTERNAL_ID_TAKEN`, for an `external_id` another track of the source
+         *     carries. 422: `SOURCE_NOT_SEQUENCE` for a source that is not a video,
+         *     `LABEL_CLASS_NOT_IN_SCHEMA`, `INVALID_NAME` for a blank class or external id.
+         */
+        post: operations["create_track"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tracks/{track_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Track
+         * @description The track with that id, and its observations in position order.
+         *
+         *     An unknown track is 404 `TRACK_NOT_FOUND`.
+         */
+        get: operations["get_track"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tracks/{track_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Track Status
+         * @description How far one batch's work on the track's observed assets has got.
+         *
+         *     Derived on every read. Each observation counts once under the progress its
+         *     asset holds in the batch, or under `outside` when the batch does not hold
+         *     that asset. `settled` is true when the track has at least one observation,
+         *     the batch holds every one (`outside` is 0) and each sits on a settled asset.
+         *     An unknown track is 404 `TRACK_NOT_FOUND`, and a batch
+         *     outside the track's project is 404 `BATCH_NOT_FOUND`.
+         */
+        get: operations["get_track_status"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5273,6 +5548,41 @@ export interface components {
             total: number;
         };
         /**
+         * FrameOccurrenceOut
+         * @description One position of a video source, and the asset that position decoded to.
+         */
+        FrameOccurrenceOut: {
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            asset_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Position */
+            position: number;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /** Timestamp */
+            timestamp: number;
+        };
+        /**
+         * FrameOccurrencePage
+         * @description A page of frame occurrences, in position order.
+         */
+        FrameOccurrencePage: {
+            /** Items */
+            items: components["schemas"]["FrameOccurrenceOut"][];
+            /** Total */
+            total: number;
+        };
+        /**
          * GeometryOut
          * @description One geometry an annotation can carry on this server.
          */
@@ -5562,6 +5872,22 @@ export interface components {
          * @enum {string}
          */
         ModelOrigin: "huggingface" | "custom" | "robomous";
+        /**
+         * ObservationCreate
+         * @description An occurrence for the track to observe, and the annotation drawn there.
+         */
+        ObservationCreate: {
+            /**
+             * Annotation Id
+             * Format: uuid
+             */
+            annotation_id: string;
+            /**
+             * Occurrence Id
+             * Format: uuid
+             */
+            occurrence_id: string;
+        };
         /**
          * PointCloudBoundsOut
          * @description The box a scan's points span, in its source's declared frame and unit.
@@ -7157,6 +7483,132 @@ export interface components {
          * @enum {string}
          */
         Task: "detect" | "segment" | "classify" | "pose" | "obb" | "semantic" | "depth" | (string & {});
+        /**
+         * TrackClassBody
+         * @description The class a track and every annotation it observes take.
+         */
+        TrackClassBody: {
+            /** Label Class */
+            label_class: string;
+        };
+        /**
+         * TrackCreate
+         * @description A new, empty track of one class.
+         */
+        TrackCreate: {
+            /** External Id */
+            external_id?: string | null;
+            /** Label Class */
+            label_class: string;
+        };
+        /**
+         * TrackMerge
+         * @description The track to absorb.
+         */
+        TrackMerge: {
+            /**
+             * Track Id
+             * Format: uuid
+             */
+            track_id: string;
+        };
+        /**
+         * TrackObservationOut
+         * @description One occurrence a track observes, and the annotation drawn there.
+         */
+        TrackObservationOut: {
+            /**
+             * Annotation Id
+             * Format: uuid
+             */
+            annotation_id: string;
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            asset_id: string;
+            /**
+             * Occurrence Id
+             * Format: uuid
+             */
+            occurrence_id: string;
+            /** Position */
+            position: number;
+            /** Timestamp */
+            timestamp: number;
+        };
+        /**
+         * TrackOut
+         * @description One object followed through a video source, with its observations in position order.
+         */
+        TrackOut: {
+            /** External Id */
+            external_id: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Label Class */
+            label_class: string;
+            /** Observations */
+            observations: components["schemas"]["TrackObservationOut"][];
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+        };
+        /**
+         * TrackPage
+         * @description A page of tracks.
+         */
+        TrackPage: {
+            /** Items */
+            items: components["schemas"]["TrackOut"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * TrackSplit
+         * @description Where to cut: this occurrence and every later one move to a new track.
+         */
+        TrackSplit: {
+            /**
+             * Occurrence Id
+             * Format: uuid
+             */
+            occurrence_id: string;
+        };
+        /**
+         * TrackSplitOut
+         * @description The shortened track, and the new one holding the cut-off observations.
+         */
+        TrackSplitOut: {
+            created: components["schemas"]["TrackOut"];
+            kept: components["schemas"]["TrackOut"];
+        };
+        /**
+         * TrackStatusOut
+         * @description How far one batch's work on a track's observed assets has got.
+         */
+        TrackStatusOut: {
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Outside */
+            outside: number;
+            progress: components["schemas"]["ProgressCounts"];
+            /** Settled */
+            settled: boolean;
+            /**
+             * Track Id
+             * Format: uuid
+             */
+            track_id: string;
+        };
         /**
          * VertexVisibility
          * @description What is known about one vertex of a path: COCO keypoint visibility's three states.
@@ -11542,6 +11994,484 @@ export interface operations {
             };
         };
     };
+    delete_track: {
+        parameters: {
+            query?: {
+                /** @description Also delete every annotation the track observes. */
+                with_annotations?: boolean;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+                track_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    set_track_class: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                track_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrackClassBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    merge_tracks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                track_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrackMerge"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    observe_track: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                track_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ObservationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    unobserve_track: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                track_id: string;
+                occurrence_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    split_track: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                track_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrackSplit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackSplitOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_projects: {
         parameters: {
             query?: never;
@@ -15406,6 +16336,357 @@ export interface operations {
             };
             /** @description The resource's state refuses this request */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_frame_occurrences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FrameOccurrencePage"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_tracks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackPage"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_track: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrackCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_track: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                track_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_track_status: {
+        parameters: {
+            query: {
+                /** @description The batch whose work on the track to count. */
+                batch_id: string;
+            };
+            header?: never;
+            path: {
+                track_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackStatusOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

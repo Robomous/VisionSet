@@ -58,6 +58,11 @@ POST   /projects/{project_id}/sources/images              multipart
 POST   /projects/{project_id}/sources/point-clouds        multipart + frame; 409 CALIBRATION_IN_USE
 GET    /projects/{project_id}/sources
 GET    /sources/{source_id}
+GET    /sources/{source_id}/occurrences                   frame occurrences, in position order
+GET    /sources/{source_id}/tracks
+POST   /sources/{source_id}/tracks                        empty, of a declared class; video only
+GET    /tracks/{track_id}
+GET    /tracks/{track_id}/status                          ?batch_id=, required
 GET    /sources/{source_id}/calibration                   null when none is stated
 PUT    /sources/{source_id}/calibration                   replaces whole; 409 CALIBRATION_IN_USE
 DELETE /sources/{source_id}/calibration                   204; 409 CALIBRATION_IN_USE
@@ -107,6 +112,12 @@ GET    /jobs/{job_id}/assets/{asset_id}/annotations
 POST   /jobs/{job_id}/annotations                         bulk, all-or-nothing
 PATCH  /jobs/{job_id}/annotations                         bulk, all-or-nothing
 DELETE /jobs/{job_id}/annotations                         ?id=&id=
+POST   /jobs/{job_id}/tracks/{track_id}/observations      an annotation already drawn
+DELETE /jobs/{job_id}/tracks/{track_id}/observations/{occurrence_id}  204; the annotation stays
+PUT    /jobs/{job_id}/tracks/{track_id}/class             the track and every annotation it observes
+POST   /jobs/{job_id}/tracks/{track_id}/merge             absorbs body.track_id
+POST   /jobs/{job_id}/tracks/{track_id}/split             { kept, created }
+DELETE /jobs/{job_id}/tracks/{track_id}                   204; ?with_annotations=, no confirmation gate
 GET    /projects/{project_id}/dataset                     the one trunk
 GET    /datasets/{dataset_id}
 GET    /datasets/{dataset_id}/stats
@@ -351,6 +362,16 @@ Two of them are worth reading precisely:
 
 An empty list is normal and means what it says. Every asset of a `completed` batch declares
 nothing, because nothing may be written into a batch that has closed.
+
+**A track is read on its own and written through a job.** Listing, reading, creating and
+counting a track hang off its source and its id; every other write sits under
+`/jobs/{job_id}/tracks`, because the job is the actor whose write scope is checked - against
+every observation the operation touches, not only the one it adds. A job that does not carry
+those assets answers 409 `ASSET_NOT_IN_JOB`, not the 404 an asset path segment gets: no asset is
+named in the path, and the remedy is to act through the job that holds them. `GET
+/tracks/{id}/status?batch_id=` is derived on every read; its `settled` is true only when the
+track has an observation, the batch holds every one (`outside` is 0) and each sits on a settled
+asset.
 
 **Statuses.** 201 with the created resource in the body; 200 for a read or an update; 204 with an
 empty body for a delete. And **202 when the work has not happened yet** - see below.
@@ -681,10 +702,10 @@ argument for branching on `code`.
 | Status | Codes |
 | --- | --- |
 | **401** | `UNAUTHORIZED` — with a `WWW-Authenticate: Bearer` challenge |
-| **404** | `PROJECT_NOT_FOUND` · `SCHEMA_NOT_FOUND` · `SCHEMA_DRAFT_NOT_FOUND` · `BATCH_NOT_FOUND` · `JOB_NOT_FOUND` · `INGEST_JOB_NOT_FOUND` · `VIDEO_IMPORT_NOT_FOUND` · `BACKGROUND_JOB_NOT_FOUND` · `ASSET_NOT_FOUND` · `SOURCE_NOT_FOUND` · `DATASET_NOT_FOUND` · `ANNOTATION_NOT_FOUND` · `RELEASE_NOT_FOUND` · `TOKEN_NOT_FOUND` · `INFERENCE_CONNECTION_NOT_FOUND` · `ASSET_NOT_IN_JOB` · `ASSET_NOT_IN_DATASET` · `NO_SPLIT_RECIPE` · `EXPORT_FORMAT_NOT_FOUND` · `EXPORT_TARGET_NOT_FOUND` · `IMPORT_FORMAT_NOT_FOUND` · `THUMBNAIL_NOT_CACHED` · `PREPROCESSING_RECIPE_NOT_FOUND` · `NOT_FOUND` (no such route) |
+| **404** | `PROJECT_NOT_FOUND` · `SCHEMA_NOT_FOUND` · `SCHEMA_DRAFT_NOT_FOUND` · `BATCH_NOT_FOUND` · `JOB_NOT_FOUND` · `INGEST_JOB_NOT_FOUND` · `VIDEO_IMPORT_NOT_FOUND` · `BACKGROUND_JOB_NOT_FOUND` · `ASSET_NOT_FOUND` · `SOURCE_NOT_FOUND` · `DATASET_NOT_FOUND` · `ANNOTATION_NOT_FOUND` · `RELEASE_NOT_FOUND` · `TOKEN_NOT_FOUND` · `INFERENCE_CONNECTION_NOT_FOUND` · `ASSET_NOT_IN_JOB` · `ASSET_NOT_IN_DATASET` · `NO_SPLIT_RECIPE` · `EXPORT_FORMAT_NOT_FOUND` · `EXPORT_TARGET_NOT_FOUND` · `IMPORT_FORMAT_NOT_FOUND` · `THUMBNAIL_NOT_CACHED` · `PREPROCESSING_RECIPE_NOT_FOUND` · `TRACK_NOT_FOUND` · `FRAME_OCCURRENCE_NOT_FOUND` · `OBSERVATION_NOT_FOUND` · `NOT_FOUND` (no such route) |
 | **405** | `METHOD_NOT_ALLOWED` |
-| **409** | `PROJECT_NAME_TAKEN` · `RELEASE_TAG_TAKEN` · `TOKEN_NAME_TAKEN` · `INFERENCE_CONNECTION_NAME_TAKEN` · `PREPROCESSING_RECIPE_NAME_TAKEN` · `WORKSPACE_ALREADY_EXISTS` · `WORKSPACE_NOT_EMPTY` · `SCHEMA_VERSION_CONFLICT` · `INVALID_TRANSITION` · `STALE_WRITE` · `VIDEO_IMPORT_NOT_OPEN` · `VIDEO_IMPORT_INCOMPLETE` · `FRAME_CONTENT_CONFLICT` · `TOO_MANY_OPEN_VIDEO_IMPORTS` · `BATCH_NOT_EDITABLE` · `BATCH_IMMUTABLE` · `BATCH_NOT_IN_ANNOTATION` · `ASSET_NOT_WRITABLE` · `JOB_FINISHED` · `BATCH_NOT_COMPLETE` · `JOB_NOT_COMPLETE` · `EMPTY_BATCH` · `EMPTY_RELEASE` · `RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA` · `CONFIRMATION_REQUIRED` · `DESTRUCTIVE_SCHEMA_CHANGE` · `SCHEMA_CHANGE_WOULD_ORPHAN` · `SCHEMA_HAS_NO_DETECTABLE_CLASS` · `UNSERIALIZABLE_MANIFEST` · `LOSSY_EXPORT_NOT_CONSENTED` · `IMPORT_NOT_CONSENTED` · `EXPORT_SOURCE_UNREADABLE` · `EXPORT_DESTINATION_NOT_EMPTY` · `INFERENCE_CONNECTION_NOT_DOWNLOADABLE` · `INFERENCE_CONNECTION_NOT_CHECKABLE` · `INFERENCE_CONNECTION_NOT_TESTABLE` · `INFERENCE_CONNECTION_MODEL_FIXED` · `WEIGHTS_DAMAGED` · `INFERENCE_CONNECTION_NOT_SET_UP` · `AUGMENTATION_REQUIRES_SPLIT` · `PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY` · `CALIBRATION_IN_USE` · `CALIBRATION_MISSING` · `CALIBRATION_NOT_APPLICABLE` |
-| **422** | `VALIDATION_ERROR` · `EXPORT_DESTINATION_REFUSED` · `IMPORT_SOURCE_UNREADABLE` · `ASSET_NOT_IN_BATCH` · `FRAME_ORDINAL_OUT_OF_RANGE` · `FRAME_TIMESTAMP_OFF_GRID` · `VIDEO_IMPORT_TOO_LARGE` · `ANNOTATION_NOT_FROM_MODEL` · `INVALID_NAME` · `MODEL_NOT_FOUND` · `INFERENCE_CONNECTION_INVALID` · `INVALID_SCHEMA` · `UNSUPPORTED_GEOMETRY` · `INVALID_ANNOTATION` · `LABEL_CLASS_NOT_IN_SCHEMA` · `DISALLOWED_GEOMETRY` · `ANNOTATION_GEOMETRY_OUT_OF_BOUNDS` · `DUPLICATE_CLASSIFICATION_TAG` · `MISSING_REQUIRED_ATTRIBUTE` · `UNKNOWN_ATTRIBUTE` · `INVALID_ATTRIBUTE_VALUE` · `INVALID_PARTITION` · `UNKNOWN_JOB_TYPE` · `MEDIA_ERROR` · `UNSUPPORTED_MEDIA` · `CORRUPT_MEDIA` · `UNSUPPORTED_PROMPT` · `PROMPT_POINT_OUT_OF_BOUNDS` · `GEOMETRY_NOT_PRODUCED` · `CALIBRATION_RESOLUTION_MISMATCH` |
+| **409** | `PROJECT_NAME_TAKEN` · `RELEASE_TAG_TAKEN` · `TOKEN_NAME_TAKEN` · `INFERENCE_CONNECTION_NAME_TAKEN` · `PREPROCESSING_RECIPE_NAME_TAKEN` · `WORKSPACE_ALREADY_EXISTS` · `WORKSPACE_NOT_EMPTY` · `SCHEMA_VERSION_CONFLICT` · `INVALID_TRANSITION` · `STALE_WRITE` · `VIDEO_IMPORT_NOT_OPEN` · `VIDEO_IMPORT_INCOMPLETE` · `FRAME_CONTENT_CONFLICT` · `TOO_MANY_OPEN_VIDEO_IMPORTS` · `BATCH_NOT_EDITABLE` · `BATCH_IMMUTABLE` · `BATCH_NOT_IN_ANNOTATION` · `ASSET_NOT_WRITABLE` · `JOB_FINISHED` · `BATCH_NOT_COMPLETE` · `JOB_NOT_COMPLETE` · `EMPTY_BATCH` · `EMPTY_RELEASE` · `RELEASE_CONTENT_WOULD_VIOLATE_SCHEMA` · `CONFIRMATION_REQUIRED` · `DESTRUCTIVE_SCHEMA_CHANGE` · `SCHEMA_CHANGE_WOULD_ORPHAN` · `SCHEMA_HAS_NO_DETECTABLE_CLASS` · `UNSERIALIZABLE_MANIFEST` · `LOSSY_EXPORT_NOT_CONSENTED` · `IMPORT_NOT_CONSENTED` · `EXPORT_SOURCE_UNREADABLE` · `EXPORT_DESTINATION_NOT_EMPTY` · `INFERENCE_CONNECTION_NOT_DOWNLOADABLE` · `INFERENCE_CONNECTION_NOT_CHECKABLE` · `INFERENCE_CONNECTION_NOT_TESTABLE` · `INFERENCE_CONNECTION_MODEL_FIXED` · `WEIGHTS_DAMAGED` · `INFERENCE_CONNECTION_NOT_SET_UP` · `AUGMENTATION_REQUIRES_SPLIT` · `PREPROCESSING_STEP_UNSUPPORTED_GEOMETRY` · `CALIBRATION_IN_USE` · `CALIBRATION_MISSING` · `CALIBRATION_NOT_APPLICABLE` · `TRACK_EXTERNAL_ID_TAKEN` · `TRACK_CLASS_MISMATCH` · `OCCURRENCE_ALREADY_OBSERVED` · `ANNOTATION_ALREADY_OBSERVED` · `ASSET_NOT_JUDGED` · `TRACK_SPLIT_EMPTY` |
+| **422** | `VALIDATION_ERROR` · `EXPORT_DESTINATION_REFUSED` · `IMPORT_SOURCE_UNREADABLE` · `ASSET_NOT_IN_BATCH` · `FRAME_ORDINAL_OUT_OF_RANGE` · `FRAME_TIMESTAMP_OFF_GRID` · `VIDEO_IMPORT_TOO_LARGE` · `ANNOTATION_NOT_FROM_MODEL` · `INVALID_NAME` · `MODEL_NOT_FOUND` · `INFERENCE_CONNECTION_INVALID` · `INVALID_SCHEMA` · `UNSUPPORTED_GEOMETRY` · `INVALID_ANNOTATION` · `LABEL_CLASS_NOT_IN_SCHEMA` · `DISALLOWED_GEOMETRY` · `ANNOTATION_GEOMETRY_OUT_OF_BOUNDS` · `DUPLICATE_CLASSIFICATION_TAG` · `MISSING_REQUIRED_ATTRIBUTE` · `UNKNOWN_ATTRIBUTE` · `INVALID_ATTRIBUTE_VALUE` · `INVALID_PARTITION` · `UNKNOWN_JOB_TYPE` · `MEDIA_ERROR` · `UNSUPPORTED_MEDIA` · `CORRUPT_MEDIA` · `UNSUPPORTED_PROMPT` · `PROMPT_POINT_OUT_OF_BOUNDS` · `GEOMETRY_NOT_PRODUCED` · `CALIBRATION_RESOLUTION_MISMATCH` · `SOURCE_NOT_SEQUENCE` · `TRACK_SOURCE_MISMATCH` · `ANNOTATION_NOT_AT_OCCURRENCE` · `TRACK_MERGE_WITH_ITSELF` |
 | **502** | `INFERENCE_ENDPOINT_UNAVAILABLE` |
 | **503** | `WORKSPACE_BUSY` |
 | **500** | `WORKSPACE_CORRUPT` · `NOT_A_WORKSPACE` · `WORKSPACE_FORMAT_TOO_NEW` · `WORKSPACE_SCHEMA_MISMATCH` · `ENTITY_NOT_FOUND` · `ENTITY_ALREADY_EXISTS` · `CONSTRAINT_VIOLATED` · `LOCAL_INFERENCE_UNAVAILABLE` · `INFERENCE_CONNECTION_NOT_RUNNABLE` · `INFERENCE_OUT_OF_MEMORY` · `EXPORT_TARGET_CONFLICT` · `INVALID_EXPORT_TARGET` · `PREPROCESSING_DRIVER_NOT_FOUND` · `INTERNAL_ERROR` |

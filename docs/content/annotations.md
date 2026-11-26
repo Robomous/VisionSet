@@ -360,6 +360,70 @@ or not the annotation is also wrong, and hearing about it only sometimes would h
 Reads are not gated: `get` and `for_asset` work long after the batch closed or the job
 finished, because a label outlives the work that produced it.
 
+## A track observes annotations; an annotation knows nothing of tracks
+
+A track follows one object through one video source - see
+[the decision](architecture/decisions/a-track-observes-frame-occurrences.md). It is
+`Track(id, source_id, label_class, external_id?)` and a set of observations, each
+`(track_id, occurrence_id, annotation_id)`: a [frame occurrence](ingest.md) of the track's source and
+an ordinary annotation on the asset that occurrence decoded to. `Annotation` has no track field, so
+everything above - schema validation, provenance, progress - is untouched by tracking, and
+`TrackService` is the one writer of tracks.
+
+- **One observation per occurrence, one per annotation.** A track observes an occurrence at most
+  once, and an annotation is observed at most once anywhere. Two occurrences that decoded to the
+  same bytes are one asset, so tracking an object at both needs two annotations on it
+  (`OCCURRENCE_ALREADY_OBSERVED`, `ANNOTATION_ALREADY_OBSERVED`).
+- **One source, one class.** Observing another source's occurrence, or merging tracks of two
+  sources, is `TRACK_SOURCE_MISMATCH`; a track is created only on a video source
+  (`SOURCE_NOT_SEQUENCE`). An observed annotation carries the track's class
+  (`TRACK_CLASS_MISMATCH`) and sits on the occurrence's asset (`ANNOTATION_NOT_AT_OCCURRENCE`).
+  A track follows 2D geometry; a 3D label is `INVALID_ANNOTATION`. `external_id` is an imported
+  identity, unique per source (`TRACK_EXTERNAL_ID_TAKEN`), and neither it nor the class may be
+  blank (`INVALID_NAME`).
+- **A model's unjudged output carries no track.** Observing an annotation on a `pre_labeled` asset
+  is `ASSET_NOT_JUDGED`: a replacing pre-label run deletes those labels without asking, and the
+  observation would go with them. A person's edit or confirm moves the asset to `annotated`, after
+  which the same observe succeeds and no replacing run in that batch may touch the asset.
+- **Changing a class rewrites every observed annotation, or nothing.** The rewrite is an ordinary
+  `update` against the batch's pinned version, in the same transaction as the track, so a class the
+  version does not declare, or one that declares another geometry, refuses the whole change. Being an
+  edit, it moves a `pre_labeled` asset to `annotated`, as any edit does. A track's class must be
+  declared - by the active version on creation, by the pinned one on a change - and an edit through
+  `update` cannot take an observed annotation off its track's class or into 3D.
+- **Merge and split are one transaction each.** Merge needs the same source and class and disjoint
+  occurrences; the surviving track keeps its external id, or takes the absorbed track's when it has
+  none; when both carry one, the absorbed track's is dropped with it. A split cuts at an occurrence of the track's source: that position and every later one move
+  to a new track of the same class and no external id, and a cut that would leave either track empty is
+  `TRACK_SPLIT_EMPTY`. Gaps need nothing: a track ends where its observations end and reappears at
+  the next one.
+- **Deletion.** Deleting an annotation deletes its observation, and deleting a track deletes its
+  observations only. Deleting the annotations as well is its own operation,
+  `delete_with_annotations`, which removes them through `delete` and so moves progress the same way.
+  Deleting a source or an occurrence deletes what observes it. A replacing pre-label run deletes
+  only labels on a `pre_labeled` asset, so within one batch it never reaches an observed label. A
+  later batch cut over an asset whose labels are all a model's opens it `pre_labeled` again
+  ([batches.md](batches.md#corrections-open-on-the-labels-that-are-already-there)), and a
+  replacing run there, while the asset is outside the dataset, deletes an observed label and its
+  observation with it, as it deletes any correction.
+- **A paste is never observed.** Copy and paste mints a fresh annotation id
+  ([below](#copy-and-paste-and-where-a-clipboard-lives)), so the pasted label belongs to no track.
+
+**Writes follow the annotation.** Every track write except creating an empty track names the job
+acting and passes the gates above: an open batch, an open job, and for every observation the
+operation touches an asset that job carries at a writable progress - the same `require_writable`
+check `add`, `update` and `delete` make, refusing with `ASSET_NOT_IN_JOB` or `ASSET_NOT_WRITABLE`.
+Merge, split, a class change and deletion touch every observation of every track they name, so a
+job holding some of a track's assets - a correction batch's, say - cannot restructure the rest; it
+can still observe or unobserve the frames it holds. A track with no observations touches no asset, so any
+open job of its project may change, merge or delete it. A completed batch is never reopened for it.
+
+**Status is derived, never stored.** `TrackService.status(track, batch)` counts the track's
+observations by the progress their assets hold in that batch's jobs, plus `outside` for those on
+assets the batch does not hold; `settled` is true when the batch holds every observation and each
+sits on an asset in `SETTLED_PROGRESS`.
+Settling one asset says nothing about another in the same track, and no progress state was added.
+
 ## Over HTTP
 
 The [API](api.md) is this service's four methods, under the job that owns the work.

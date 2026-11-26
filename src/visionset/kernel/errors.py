@@ -175,7 +175,7 @@ class ConfirmationRequired(VisionSetError):
     ``DestructiveSchemaChange`` instead, because the two have different
     remedies and should not be caught by one ``except``.
 
-    Two methods are deliberately exempt, and both are somebody's ordinary edit
+    These methods are deliberately exempt, and each is somebody's ordinary edit
     loop rather than the destruction of a lifecycle entity:
 
     - ``AnnotationService.delete`` — drawing a box, looking at it and taking it
@@ -185,8 +185,12 @@ class ConfirmationRequired(VisionSetError):
       the asset, its annotations and its blob all stay, and the append-only
       change log records the removal, so the state before it is still on record
       and re-promoting is an informed decision rather than an undo nobody kept.
+    - ``TrackService.delete`` and ``delete_with_annotations`` — a track is a
+      link between annotations, and both pass the same write gate as
+      ``AnnotationService.delete`` over every observation, which the second
+      calls for the annotations themselves.
 
-    An exemption is a decision written down here. Do not add a third without one.
+    An exemption is a decision written down here. Do not add another without one.
     """
 
 
@@ -764,6 +768,96 @@ class AnnotationNotFound(VisionSetError):
     Like ``ProjectNotFound`` and ``JobNotFound``: an annotation belonging to
     another workspace reads as missing rather than as forbidden.
     """
+
+
+class TrackNotFound(VisionSetError):
+    """No track with that id lives in this workspace.
+
+    A track belonging to another workspace reads as missing rather than as
+    forbidden.
+    """
+
+
+class FrameOccurrenceNotFound(VisionSetError):
+    """No frame occurrence with that id lives in this workspace."""
+
+
+class ObservationNotFound(VisionSetError):
+    """The track observes no annotation at that occurrence."""
+
+
+class TrackExternalIdTaken(VisionSetError):
+    """Another track of the same source already carries that external id.
+
+    An imported identity names one object within one source. The remedy is a
+    different id, or none.
+    """
+
+
+class SourceNotSequence(VisionSetError):
+    """A track was asked of a source that is not a sequence.
+
+    A sequence is a video source and its frame occurrences; an image directory
+    or a point-cloud directory has no occurrences for a track to observe.
+    """
+
+
+class TrackSourceMismatch(VisionSetError):
+    """A track was asked to reach an occurrence or a track of another source.
+
+    A track belongs to exactly one source and never spans two, so merging tracks
+    of two sources, or observing another source's occurrence, is refused.
+    """
+
+
+class AnnotationNotAtOccurrence(VisionSetError):
+    """The annotation sits on an asset other than the one the occurrence decoded to."""
+
+
+class TrackClassMismatch(VisionSetError):
+    """An annotation's class, or a merge partner's, is not the track's class.
+
+    Every observed annotation carries the track's class. The remedy is to change
+    the annotation's class, or the track's through its own class change.
+    """
+
+
+class OccurrenceAlreadyObserved(VisionSetError):
+    """The track already observes that occurrence.
+
+    A track has at most one observation per occurrence, so observing it again,
+    or merging a track that observes it too, is refused. Unobserve it first.
+    """
+
+
+class AnnotationAlreadyObserved(VisionSetError):
+    """Another observation already names that annotation.
+
+    An annotation is observed at most once, so an asset that appears at two
+    occurrences needs one annotation per occurrence it is tracked at.
+    """
+
+
+class AssetNotJudged(VisionSetError):
+    """A track was asked to observe a label on an asset nobody has judged yet.
+
+    A ``pre_labeled`` asset holds a model's unattended output, and a replacing
+    pre-label run deletes it without asking, so an observation of it would go
+    with it. A person's edit or confirm moves the asset to ``annotated``, and
+    the identical observe then succeeds.
+    """
+
+
+class TrackSplitEmpty(VisionSetError):
+    """A split at that occurrence would leave one of the two tracks with no observation.
+
+    The cut occurrence starts the new track, so it must fall after the track's
+    first observation and at or before its last.
+    """
+
+
+class TrackMergeWithItself(VisionSetError):
+    """A track was asked to merge with itself."""
 
 
 class ReleaseNotFound(VisionSetError):

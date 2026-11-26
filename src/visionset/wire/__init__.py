@@ -37,8 +37,9 @@ names — and there are still **two** spellings to keep in step, not three.
 
 Some things here have no wire partner, because no route publishes them: an
 export report (the API returns the archive itself, not a description of it), a
-thumbnail backfill, a schema diff, and an import's plan and run (an import reads
-a directory on this machine, which REST has no way to name). They are gated only
+thumbnail backfill, a schema diff, an import's plan and run (an import reads
+a directory on this machine, which REST has no way to name), and a track
+deletion's count (REST answers 204). They are gated only
 for encoding, at the bottom of the parity test.
 
 Leaf encoding is explicit everywhere: UUIDs as strings, enums as ``.value``,
@@ -95,6 +96,7 @@ from visionset.kernel.domain import (
     ExportPreprocessing,
     ExportResult,
     ExportTarget,
+    FrameOccurrence,
     Geometry,
     ImportedClass,
     ImportLoss,
@@ -105,6 +107,7 @@ from visionset.kernel.domain import (
     IngestJob,
     IntegrityCheck,
     LabelClass,
+    ObservedFrame,
     PointCloudMetadata,
     PolygonGeometry,
     Polyline3DGeometry,
@@ -129,6 +132,8 @@ from visionset.kernel.domain import (
     SplitRecipe,
     Step,
     ThumbnailBackfill,
+    TrackDetail,
+    TrackStatus,
     TransformedAnnotation,
     VertexVisibility,
     VideoProvenance,
@@ -758,6 +763,60 @@ def annotation(value: Annotation) -> shapes.Annotation:
 
 
 # --- datasets ----------------------------------------------------------------
+
+
+def frame_occurrence(value: FrameOccurrence) -> shapes.FrameOccurrence:
+    """One position of a video source, and the asset that position decoded to."""
+    return {
+        "id": str(value.id),
+        "source_id": str(value.source_id),
+        "position": value.position,
+        "timestamp": value.timestamp,
+        "asset_id": str(value.asset_id),
+    }
+
+
+def track_observation(value: ObservedFrame) -> shapes.TrackObservation:
+    """One occurrence a track observes, and the annotation drawn there."""
+    return {
+        "occurrence_id": str(value.occurrence_id),
+        "position": value.position,
+        "timestamp": value.timestamp,
+        "asset_id": str(value.asset_id),
+        "annotation_id": str(value.annotation_id),
+    }
+
+
+def track(value: TrackDetail) -> shapes.Track:
+    """A track and its observations, in position order."""
+    return {
+        "id": str(value.track.id),
+        "source_id": str(value.track.source_id),
+        "label_class": value.track.label_class,
+        "external_id": value.track.external_id,
+        "observations": [track_observation(frame) for frame in value.observations],
+    }
+
+
+def track_status(value: TrackStatus) -> shapes.TrackStatus:
+    """How far one batch's work on a track's observed assets has got. Derived per read."""
+    return {
+        "track_id": str(value.track_id),
+        "batch_id": str(value.batch_id),
+        "progress": progress_counts(value.progress),
+        "outside": value.outside,
+        "settled": value.settled,
+    }
+
+
+def track_split(kept: TrackDetail, created: TrackDetail) -> shapes.TrackSplit:
+    """The shortened track, and the new one holding the cut-off observations."""
+    return {"kept": track(kept), "created": track(created)}
+
+
+def track_deletion(track_id: UUID, annotations_deleted: int) -> shapes.TrackDeletion:
+    """What deleting a track removed. **Surface-defined**: REST answers 204."""
+    return {"track_id": str(track_id), "annotations_deleted": annotations_deleted}
 
 
 def class_count(value: ClassCount) -> shapes.ClassCount:

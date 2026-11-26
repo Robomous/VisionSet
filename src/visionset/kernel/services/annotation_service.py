@@ -107,6 +107,7 @@ from visionset.kernel.errors import (
     DuplicateClassificationTag,
     InvalidAnnotation,
     StaleWrite,
+    TrackClassMismatch,
     VisionSetError,
     WorkspaceCorrupt,
 )
@@ -140,7 +141,7 @@ class AnnotationService:
             AnnotationNotFound: no such annotation in this workspace.
         """
         with self._workspace.unit_of_work() as uow:
-            return self._require_annotation(uow, annotation_id)
+            return self.require_annotation(uow, annotation_id)
 
     def for_asset(self, job_id: UUID, asset_id: UUID) -> list[Annotation]:
         """Every annotation on one asset of a job, in the order they were added.
@@ -190,7 +191,7 @@ class AnnotationService:
             job = self._jobs.require_job(uow, job_id)
             batch = self._jobs.require_open_batch(uow, job)
             self._jobs.hold_open_job(uow, job)
-            schema = self._pinned_schema(batch)
+            schema = self.pinned_schema(batch)
 
             # `job_id` is stamped exactly like `schema_version`, and for the same
             # reason: the service knows which round this is and the caller does
@@ -205,7 +206,7 @@ class AnnotationService:
             reads = _AssetReads(uow)
             for index, annotation in enumerate(proposed):
                 with _blaming(index):
-                    _require_writable(job, annotation.asset_id)
+                    require_writable(job, annotation.asset_id)
                     _validate(annotation, schema)
                     _require_geometry_on_asset(uow, annotation, reads)
                     # Checked inside this transaction and against a set that grows
@@ -217,7 +218,7 @@ class AnnotationService:
             stored = uow.annotations.add_many(proposed)
             _refresh_progress(uow, job, (a.asset_id for a in proposed))
 
-        self._announce(job.id, batch.id, AnnotationOperation.ADD, stored)
+        self.announce(job.id, batch.id, AnnotationOperation.ADD, stored)
         return stored
 
     def enter_unreviewed(
@@ -279,7 +280,7 @@ class AnnotationService:
             job = self._jobs.require_job(uow, job_id)
             batch = self._jobs.require_open_batch(uow, job)
             self._jobs.hold_open_job(uow, job)
-            schema = self._pinned_schema(batch)
+            schema = self.pinned_schema(batch)
 
             superseded = tuple(dict.fromkeys(replacing))
             for asset_id in superseded:
@@ -318,9 +319,9 @@ class AnnotationService:
             )
 
         if stored or not outgoing:
-            self._announce(job.id, batch.id, AnnotationOperation.ADD, stored)
+            self.announce(job.id, batch.id, AnnotationOperation.ADD, stored)
         else:
-            self._announce(job.id, batch.id, AnnotationOperation.DELETE, outgoing)
+            self.announce(job.id, batch.id, AnnotationOperation.DELETE, outgoing)
         return stored
 
     def add_imported(self, batch_id: UUID, annotations: Sequence[Annotation]) -> list[Annotation]:
@@ -423,7 +424,10 @@ class AnnotationService:
             AssetNotInJob: a stored annotation sits on an asset outside this job.
             AssetNotWritable: an asset's progress says its labeling is over.
             InvalidAnnotation: a replacement does not satisfy the pinned version,
-                or claims a ``provenance`` other than the stored one.
+                or claims a ``provenance`` other than the stored one, or gives an
+                annotation a track observes a 3D geometry.
+            TrackClassMismatch: a replacement changes the class of an annotation
+                a track observes to one other than the track's.
             CalibrationMissing: a 3D label names an asset with no calibration,
                 neither its own nor its source's.
             CalibrationResolutionMismatch: a 3D label names an asset whose
@@ -434,53 +438,83 @@ class AnnotationService:
             job = self._jobs.require_job(uow, job_id)
             batch = self._jobs.require_open_batch(uow, job)
             self._jobs.hold_open_job(uow, job)
-            schema = self._pinned_schema(batch)
+            stored = self.update_in(uow, job, batch, annotations)
 
-            replacements = []
-            reads = _AssetReads(uow)
-            for index, annotation in enumerate(annotations):
-                with _blaming(index):
-                    current = self._require_annotation(uow, annotation.id)
-                    _require_writable(job, current.asset_id)
-                    _require_same_provenance(current, annotation)
-                    # `job_id` is stamped with the job doing the replacing, not
-                    # carried over from `current` the way `asset_id` is — and the
-                    # two go opposite ways on purpose. `asset_id` answers *what
-                    # this label is on*, which an edit must not silently move.
-                    # `job_id` answers *which round produced the label as it now
-                    # stands*, and a replacement is a thing this round produced.
-                    # Preserving the original would make the field mean "first
-                    # written in", which is a different fact and the less useful
-                    # one: it goes stale the moment a correction round edits.
-                    # Who made a label is a fact about the stored row, so an edit
-                    # keeps it: a box a person moved is still a model's box.
-                    replacement = annotation.model_copy(
-                        update={
-                            "asset_id": current.asset_id,
-                            "schema_version": schema.version,
-                            "job_id": job.id,
-                            "provenance": current.provenance,
-                            "model_ref": current.model_ref,
-                            "confidence": current.confidence,
-                        }
-                    )
-                    _validate(replacement, schema)
-                    _require_geometry_on_asset(uow, replacement, reads)
-                replacements.append(replacement)
+        self.announce(job.id, batch.id, AnnotationOperation.UPDATE, stored)
+        return stored
 
-            # After the loop, because an update may *move* a tag: the row being
-            # replaced is one of the ones already stored, so it has to leave the
-            # set before the replacement is judged against it.
-            moved = {a.id for a in replacements}
-            tagged = _tags_already_on(uow, {a.asset_id for a in replacements}, ignoring=moved)
-            for index, replacement in enumerate(replacements):
-                with _blaming(index):
-                    _require_untagged(tagged, replacement)
+    def update_in(
+        self,
+        uow: UnitOfWork,
+        job: AnnotationJob,
+        batch: Batch,
+        annotations: Sequence[Annotation],
+    ) -> list[Annotation]:
+        """:meth:`update` inside a caller's transaction.
 
-            stored = [uow.annotations.update(annotation) for annotation in replacements]
-            _refresh_progress(uow, job, (a.asset_id for a in replacements))
+        The caller has passed the batch gate and holds the job open, and
+        announces the write once its transaction commits.
 
-        self._announce(job.id, batch.id, AnnotationOperation.UPDATE, stored)
+        Raises:
+            AnnotationNotFound: an id is not stored in this workspace.
+            AssetNotInJob: a stored annotation sits on an asset outside this job.
+            AssetNotWritable: an asset's progress says its labeling is over.
+            InvalidAnnotation: a replacement does not satisfy the pinned version,
+                or claims a ``provenance`` other than the stored one, or gives an
+                annotation a track observes a 3D geometry.
+            TrackClassMismatch: a replacement changes the class of an annotation
+                a track observes to one other than the track's.
+            CalibrationMissing: a 3D label names an asset with no calibration,
+                neither its own nor its source's.
+            CalibrationResolutionMismatch: a 3D label names an asset whose
+                calibration was measured at another size.
+            WorkspaceCorrupt: the open batch has no pinned schema version.
+        """
+        schema = self.pinned_schema(batch)
+        replacements = []
+        reads = _AssetReads(uow)
+        for index, annotation in enumerate(annotations):
+            with _blaming(index):
+                current = self.require_annotation(uow, annotation.id)
+                require_writable(job, current.asset_id)
+                _require_same_provenance(current, annotation)
+                _require_track_class(uow, current, annotation)
+                # `job_id` is stamped with the job doing the replacing, not
+                # carried over from `current` the way `asset_id` is — and the
+                # two go opposite ways on purpose. `asset_id` answers *what
+                # this label is on*, which an edit must not silently move.
+                # `job_id` answers *which round produced the label as it now
+                # stands*, and a replacement is a thing this round produced.
+                # Preserving the original would make the field mean "first
+                # written in", which is a different fact and the less useful
+                # one: it goes stale the moment a correction round edits.
+                # Who made a label is a fact about the stored row, so an edit
+                # keeps it: a box a person moved is still a model's box.
+                replacement = annotation.model_copy(
+                    update={
+                        "asset_id": current.asset_id,
+                        "schema_version": schema.version,
+                        "job_id": job.id,
+                        "provenance": current.provenance,
+                        "model_ref": current.model_ref,
+                        "confidence": current.confidence,
+                    }
+                )
+                _validate(replacement, schema)
+                _require_geometry_on_asset(uow, replacement, reads)
+            replacements.append(replacement)
+
+        # After the loop, because an update may *move* a tag: the row being
+        # replaced is one of the ones already stored, so it has to leave the
+        # set before the replacement is judged against it.
+        moved = {a.id for a in replacements}
+        tagged = _tags_already_on(uow, {a.asset_id for a in replacements}, ignoring=moved)
+        for index, replacement in enumerate(replacements):
+            with _blaming(index):
+                _require_untagged(tagged, replacement)
+
+        stored = [uow.annotations.update(annotation) for annotation in replacements]
+        _refresh_progress(uow, job, (a.asset_id for a in replacements))
         return stored
 
     def delete(self, job_id: UUID, annotation_ids: Sequence[UUID]) -> int:
@@ -509,37 +543,52 @@ class AnnotationService:
             job = self._jobs.require_job(uow, job_id)
             batch = self._jobs.require_open_batch(uow, job)
             self._jobs.hold_open_job(uow, job)
+            doomed = self.delete_in(uow, job, annotation_ids)
 
-            # No schema is read: removing a label never has to satisfy a
-            # contract, and a version that has since been narrowed must not stop
-            # somebody deleting the annotations that narrowing would orphan.
-            #
-            # ``first_seen`` is ``dict.fromkeys`` with the caller's own position
-            # kept alongside each id, so a refusal blames the argument the
-            # caller wrote rather than its offset in the deduplicated list —
-            # which for ``[a, a, b]`` are two different numbers.
-            first_seen: dict[UUID, int] = {}
-            for index, annotation_id in enumerate(annotation_ids):
-                first_seen.setdefault(annotation_id, index)
-
-            doomed = []
-            for annotation_id, index in first_seen.items():
-                with _blaming(index):
-                    doomed.append(self._require_annotation(uow, annotation_id))
-            for annotation, index in zip(doomed, first_seen.values(), strict=True):
-                with _blaming(index):
-                    _require_writable(job, annotation.asset_id)
-
-            for annotation in doomed:
-                uow.annotations.delete(annotation.id)
-            _refresh_progress(uow, job, (a.asset_id for a in doomed))
-
-        self._announce(job.id, batch.id, AnnotationOperation.DELETE, doomed)
+        self.announce(job.id, batch.id, AnnotationOperation.DELETE, doomed)
         return len(doomed)
+
+    def delete_in(
+        self, uow: UnitOfWork, job: AnnotationJob, annotation_ids: Sequence[UUID]
+    ) -> list[Annotation]:
+        """:meth:`delete` inside a caller's transaction, answering the distinct annotations removed.
+
+        The caller has passed the batch gate and holds the job open, and
+        announces the write once its transaction commits.
+
+        Raises:
+            AnnotationNotFound: an id is not stored in this workspace.
+            AssetNotInJob: an annotation sits on an asset outside this job.
+            AssetNotWritable: an asset's progress says its labeling is over.
+        """
+        # No schema is read: removing a label never has to satisfy a
+        # contract, and a version that has since been narrowed must not stop
+        # somebody deleting the annotations that narrowing would orphan.
+        #
+        # ``first_seen`` is ``dict.fromkeys`` with the caller's own position
+        # kept alongside each id, so a refusal blames the argument the
+        # caller wrote rather than its offset in the deduplicated list —
+        # which for ``[a, a, b]`` are two different numbers.
+        first_seen: dict[UUID, int] = {}
+        for index, annotation_id in enumerate(annotation_ids):
+            first_seen.setdefault(annotation_id, index)
+
+        doomed = []
+        for annotation_id, index in first_seen.items():
+            with _blaming(index):
+                doomed.append(self.require_annotation(uow, annotation_id))
+        for annotation, index in zip(doomed, first_seen.values(), strict=True):
+            with _blaming(index):
+                require_writable(job, annotation.asset_id)
+
+        for annotation in doomed:
+            uow.annotations.delete(annotation.id)
+        _refresh_progress(uow, job, (a.asset_id for a in doomed))
+        return doomed
 
     # --- announcing --------------------------------------------------------
 
-    def _announce(
+    def announce(
         self,
         job_id: UUID,
         batch_id: UUID,
@@ -572,7 +621,7 @@ class AnnotationService:
 
     # --- lookups shared by the operations above ----------------------------
 
-    def _pinned_schema(self, batch: Batch) -> AnnotationSchema:
+    def pinned_schema(self, batch: Batch) -> AnnotationSchema:
         """The version this batch's work is judged against.
 
         A nested read, which is why every caller does it before its first write:
@@ -592,7 +641,7 @@ class AnnotationService:
             )
         return self._schemas.get(batch.project_id, batch.schema_version)
 
-    def _require_annotation(self, uow: UnitOfWork, annotation_id: UUID) -> Annotation:
+    def require_annotation(self, uow: UnitOfWork, annotation_id: UUID) -> Annotation:
         """The annotation, checked through its asset's project.
 
         An annotation in another workspace reads as missing rather than as
@@ -653,7 +702,7 @@ def _require_asset_in_job(job: AnnotationJob, asset_id: UUID) -> None:
         )
 
 
-def _require_writable(job: AnnotationJob, asset_id: UUID) -> None:
+def require_writable(job: AnnotationJob, asset_id: UUID) -> None:
     """Refuse an asset whose progress says its labeling is over.
 
     The membership check first, because "this job does not carry that asset" is
@@ -757,6 +806,38 @@ def _require_same_provenance(current: Annotation, replacement: Annotation) -> No
         )
 
 
+def _require_track_class(uow: UnitOfWork, current: Annotation, replacement: Annotation) -> None:
+    """Refuse an edit that would take an observed annotation off its track's class or into 3D."""
+    observation = uow.observation_of(current.id)
+    if observation is None:
+        return
+    track = uow.tracks.get(observation.track_id)
+    if track is not None and track.label_class != replacement.label_class:
+        raise TrackClassMismatch(
+            f"annotation {current.id} is observed by track {track.id}, which is "
+            f"{track.label_class!r}; change the track's class to change it"
+        )
+    require_trackable(uow, replacement)
+
+
+def require_trackable(uow: UnitOfWork, annotation: Annotation) -> None:
+    """Refuse an annotation a track may not observe: a track follows 2D geometry only.
+
+    Raises:
+        InvalidAnnotation: the annotation is a 3D label.
+    """
+    asset = uow.assets.get(annotation.asset_id)
+    if asset is None:
+        raise WorkspaceCorrupt(
+            f"annotation {annotation.id} names asset {annotation.asset_id}, which does not exist"
+        )
+    if geometry_reference(annotation.geometry, modality=asset.modality) is not None:
+        raise InvalidAnnotation(
+            f"annotation {annotation.id} is a {annotation.geometry.type.value}, and a "
+            f"track follows 2D geometry only"
+        )
+
+
 def _require_model_made(annotation: Annotation) -> None:
     """Refuse a label this door was not built for."""
     if annotation.provenance != "model":
@@ -804,7 +885,7 @@ def _require_held_only_here(
 def _require_untouched(uow: UnitOfWork, job: AnnotationJob, asset_id: UUID) -> None:
     """Refuse an asset somebody has already worked, without erasing what they did.
 
-    The membership check first, on ``_require_writable``'s reasoning: "this job
+    The membership check first, on ``require_writable``'s reasoning: "this job
     does not carry that asset" is the more basic complaint.
 
     Progress alone does not prove untouched: ``annotated -> skipped ->

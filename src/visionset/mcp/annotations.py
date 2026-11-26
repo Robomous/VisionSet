@@ -23,7 +23,7 @@ recoverable nowhere else, because nothing landed for the caller to count from.
 ``delete_annotations`` has **no ``confirm``**, and that is deliberate rather than
 an oversight. Deleting a box is the annotator edit loop, not a destructive
 operation; the guard is the batch gate, which refuses every write once a batch is
-no longer open. It is one of exactly two methods in the whole kernel exempted
+no longer open. It is one of the few methods in the kernel exempted
 from ``confirm``, and the exemption is written down in the error's own docstring.
 """
 
@@ -229,6 +229,10 @@ def update_annotations(
 
     The geometry is replaced whole too: a polyline sent without `visibility`
     loses the stored one, so resend it — one state per point — to keep it.
+
+    An annotation a track observes keeps the track's class: changing it is
+    refused as `TRACK_CLASS_MISMATCH`; use `set_track_class` to rename the
+    track and every annotation it observes together.
 
     Same validation and the same all-or-nothing rule as `add_annotations`, and
     the same `job_started` in the answer.

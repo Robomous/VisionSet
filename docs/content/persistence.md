@@ -54,7 +54,8 @@ But a rule with no backstop is a wish, so the store carries the constraint too:
 `uq_schema_project_version`, `uq_schema_draft_project_kind`, `uq_member_dataset_asset`,
 `uq_release_dataset_tag`, `uq_asset_project_content_hash`, `uq_source_project_kind_path_fps_ranges_scale`,
 `uq_annotation_asset_classification`, `uq_token_workspace_name`,
-`uq_inference_connection_name` and `uq_frame_occurrence_source_position`. The invariant then survives
+`uq_inference_connection_name`, `uq_frame_occurrence_source_position`, `uq_track_source_external_id`
+and `uq_track_observation_occurrence` (plus the unique `track_observation.annotation_id`). The invariant then survives
 a service bug, a forgotten code path, and a second process.
 
 `uq_source_project_kind_path_fps_ranges_scale` is one of the two whose terms are not all
@@ -194,11 +195,12 @@ MIGRATIONS: list[Migration] = [
     Migration(version=22, name="point_clouds", upgrade=_add_point_clouds),
     Migration(version=23, name="group_labels", upgrade=_add_group_labels),
     Migration(version=24, name="frame_occurrences", upgrade=_add_frame_occurrences),
+    Migration(version=25, name="tracks", upgrade=_add_tracks),
 ]
-FORMAT_VERSION: int = MIGRATIONS[-1].version  # 24
+FORMAT_VERSION: int = MIGRATIONS[-1].version  # 25
 ```
 
-**Generation 1 is the baseline, and the twenty-three entries after it are ordinary migrations.** A long
+**Generation 1 is the baseline, and the twenty-four entries after it are ordinary migrations.** A long
 chain of generations got this schema to its present shape while VisionSet was unreleased.
 Every database they could have upgraded was disposable test data inside this repository, so
 what they actually bought was an idempotency argument and an undo line per generation, plus
@@ -253,6 +255,10 @@ first-seen origin only: a position whose bytes deduplicated onto an earlier asse
 recorded, so a clip imported before it may hold fewer occurrences than frames it extracted, and the
 migration does not invent the missing ones. Decomposed animations in an image directory are not a
 sequence and get none - see [ingest.md](ingest.md#identity-is-content-origin-is-provenance).
+Migration 25 creates `track` and `track_observation` whole and backfills nothing: no track existed
+before it. Every key of an observation cascades - from its track, its occurrence and its annotation -
+so `annotation` and `frame_occurrence` join `asset` as tables a later migration may not rebuild
+without counting those rows first - see [annotations.md](annotations.md#a-track-observes-annotations-an-annotation-knows-nothing-of-tracks).
 
 **There are no downgrade paths, deliberately.** Nothing walks a file backwards and the
 tests no longer do either. A downgrade is a compatibility promise and a promise is owed

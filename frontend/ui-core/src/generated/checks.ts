@@ -276,6 +276,12 @@ export const checkFormatOut: Check<Schemas["FormatOut"]> =
 export const checkFormatPage: Check<Schemas["FormatPage"]> =
   /*#__PURE__*/ object({ "items": [true, arrayOf(checkFormatOut)], "total": [true, isInteger] } as const);
 
+export const checkFrameOccurrenceOut: Check<Schemas["FrameOccurrenceOut"]> =
+  /*#__PURE__*/ object({ "asset_id": [true, isString], "id": [true, isString], "position": [true, isInteger], "source_id": [true, isString], "timestamp": [true, isNumber] } as const);
+
+export const checkFrameOccurrencePage: Check<Schemas["FrameOccurrencePage"]> =
+  /*#__PURE__*/ object({ "items": [true, arrayOf(checkFrameOccurrenceOut)], "total": [true, isInteger] } as const);
+
 export const checkGeometryOut: Check<Schemas["GeometryOut"]> =
   /*#__PURE__*/ object({ "name": [true, checkGeometryType] } as const);
 
@@ -498,6 +504,21 @@ export const checkSuggestedRegion: Check<Schemas["SuggestedRegion"]> =
 export const checkSuggestionOut: Check<Schemas["SuggestionOut"]> =
   /*#__PURE__*/ object({ "applied": [true, checkAppliedParameters], "confidence": [true, isNumber], "model_ref": [true, isString], "parameters": [true, arrayOf(checkSuggestParameter)], "regions": [true, arrayOf(checkSuggestedRegion)] } as const);
 
+export const checkTrackObservationOut: Check<Schemas["TrackObservationOut"]> =
+  /*#__PURE__*/ object({ "annotation_id": [true, isString], "asset_id": [true, isString], "occurrence_id": [true, isString], "position": [true, isInteger], "timestamp": [true, isNumber] } as const);
+
+export const checkTrackOut: Check<Schemas["TrackOut"]> =
+  /*#__PURE__*/ object({ "external_id": [true, either([isString, isNull] as const)], "id": [true, isString], "label_class": [true, isString], "observations": [true, arrayOf(checkTrackObservationOut)], "source_id": [true, isString] } as const);
+
+export const checkTrackPage: Check<Schemas["TrackPage"]> =
+  /*#__PURE__*/ object({ "items": [true, arrayOf(checkTrackOut)], "total": [true, isInteger] } as const);
+
+export const checkTrackSplitOut: Check<Schemas["TrackSplitOut"]> =
+  /*#__PURE__*/ object({ "created": [true, checkTrackOut], "kept": [true, checkTrackOut] } as const);
+
+export const checkTrackStatusOut: Check<Schemas["TrackStatusOut"]> =
+  /*#__PURE__*/ object({ "batch_id": [true, isString], "outside": [true, isInteger], "progress": [true, checkProgressCounts], "settled": [true, isBoolean], "track_id": [true, isString] } as const);
+
 export const checkVideoImportState: Check<Schemas["VideoImportState"]> =
   /*#__PURE__*/ oneOf(["open", "committed", "aborted"] as const);
 
@@ -528,12 +549,14 @@ export const checkCreateInferenceConnection = checkConnectionOut;
 export const checkCreatePreprocessingRecipe = checkPreprocessingRecipeOut;
 export const checkCreateProject = checkProjectOut;
 export const checkCreateSchemaVersion = checkSchemaPublicationOut;
+export const checkCreateTrack = checkTrackOut;
 export const checkDatasetStats = checkDatasetStatsOut;
 export const checkDeleteAnnotations = checkNoContent;
 export const checkDeleteBatch = checkNoContent;
 export const checkDeleteInferenceConnection = checkNoContent;
 export const checkDeletePreprocessingRecipe = checkNoContent;
 export const checkDeleteProject = checkNoContent;
+export const checkDeleteTrack = checkNoContent;
 export const checkDetectInstances = checkDetectionOut;
 export const checkDiscardSchemaDraft = checkNoContent;
 export const checkDownloadConnectionWeights = checkBackgroundJobOut;
@@ -566,6 +589,8 @@ export const checkGetSchemaDraft = checkSchemaDraftOut;
 export const checkGetSchemaVersion = checkSchemaVersionOut;
 export const checkGetSource = checkSourceOut;
 export const checkGetSourceCalibration = checkSourceCalibrationOut;
+export const checkGetTrack = checkTrackOut;
+export const checkGetTrackStatus = checkTrackStatusOut;
 export const checkGetVideoImport = checkVideoImportOut;
 export const checkHealth: Check<operations["health"]["responses"][200]["content"]["application/json"]> =
   /*#__PURE__*/ mapOf(isString);
@@ -583,6 +608,7 @@ export const checkListDatasetAssets = checkDatasetAssetPage;
 export const checkListDatasetChanges = checkDatasetChangePage;
 export const checkListExportTargets = checkExportTargetPage;
 export const checkListFormats = checkFormatPage;
+export const checkListFrameOccurrences = checkFrameOccurrencePage;
 export const checkListGeometries = checkGeometryPage;
 export const checkListInferenceConnections = checkConnectionPage;
 export const checkListIngestJobs = checkIngestJobPage;
@@ -593,7 +619,10 @@ export const checkListProviders = checkProviderPage;
 export const checkListReleases = checkReleasePage;
 export const checkListSchemaVersions = checkSchemaVersionPage;
 export const checkListSources = checkSourcePage;
+export const checkListTracks = checkTrackPage;
+export const checkMergeTracks = checkTrackOut;
 export const checkNextPendingAssets = checkAssetPage;
+export const checkObserveTrack = checkTrackOut;
 export const checkPreLabelBatch = checkPreLabelFanOutOut;
 export const checkPreLabelJob = checkBackgroundJobOut;
 export const checkPreLabelPlan = checkPreLabelPlanOut;
@@ -614,12 +643,15 @@ export const checkSaveSchemaDraft = checkSchemaDraftOut;
 export const checkSetAssetCalibration = checkAssetCalibrationOut;
 export const checkSetAssetProgress = checkAssetProgressOut;
 export const checkSetSourceCalibration = checkSourceCalibrationOut;
+export const checkSetTrackClass = checkTrackOut;
+export const checkSplitTrack = checkTrackSplitOut;
 export const checkStartBatch = checkBatchOut;
 export const checkStartIngest = checkIngestJobOut;
 export const checkStartJob = checkJobOut;
 export const checkStartVideoImport = checkVideoImportOut;
 export const checkSuggestRegion = checkSuggestionOut;
 export const checkTestConnectionEndpoint = checkConnectionOut;
+export const checkUnobserveTrack = checkNoContent;
 export const checkUpdateAnnotations = checkAnnotationPage;
 export const checkUpdateInferenceConnection = checkConnectionOut;
 export const checkUpdatePreprocessingRecipe = checkPreprocessingRecipeOut;

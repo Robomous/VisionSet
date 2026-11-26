@@ -26,7 +26,7 @@ from sqlalchemy.exc import IntegrityError
 from visionset.kernel.adapters import SqliteMetadataStore
 from visionset.kernel.adapters._tables import META_TABLE, Base
 from visionset.kernel.adapters.migrations import FORMAT_VERSION, MIGRATIONS
-from visionset.kernel.domain import FrameOccurrence, IngestFailureKind
+from visionset.kernel.domain import FrameOccurrence, IngestFailureKind, Track
 from visionset.kernel.errors import (
     ConstraintViolated,
     WorkspaceCorrupt,
@@ -1156,6 +1156,8 @@ def _at_generation_twenty_three(path: Path) -> SqliteMetadataStore:
     store = SqliteMetadataStore(path)
     store.initialize()
     with store.engine.begin() as connection:
+        connection.execute(text("DROP TABLE track_observation"))
+        connection.execute(text("DROP TABLE track"))
         connection.execute(text("DROP TABLE frame_occurrence"))
         connection.execute(text(f"UPDATE {META_TABLE} SET format_version = 23"))
     return store
@@ -1316,3 +1318,53 @@ def test_a_source_position_holds_one_occurrence(tmp_path: Path) -> None:
         )
         assert len(uow.frame_occurrences.list(clip)) == 2
     store.close()
+
+
+def test_a_generation_24_file_gains_empty_track_tables_and_keeps_its_occurrences(
+    tmp_path: Path,
+) -> None:
+    """Migration 25: ``track`` and ``track_observation`` arrive empty, nothing is backfilled."""
+    fresh = SqliteMetadataStore(tmp_path / "fresh.db")
+    fresh.initialize()
+    expected = _schema(fresh)
+    fresh.close()
+
+    clip, asset = uuid4(), uuid4()
+    store = SqliteMetadataStore(tmp_path / "old.db")
+    store.initialize()
+    with store.engine.begin() as connection:
+        connection.execute(text("DROP TABLE track_observation"))
+        connection.execute(text("DROP TABLE track"))
+        connection.execute(text(f"UPDATE {META_TABLE} SET format_version = 24"))
+        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
+        connection.execute(
+            text("insert into project (id, workspace_id, name) values ('p', 'w', 'clips')")
+        )
+        _insert_source(connection, clip.hex, "video", "video-import:one")
+        _insert_asset(connection, asset.hex, clip.hex, "video-import:one#frame=0", (0, 0.0))
+    with store.unit_of_work() as uow:
+        uow.frame_occurrences.add(
+            FrameOccurrence(source_id=clip, position=0, timestamp=0.0, asset_id=asset)
+        )
+    store.close()
+
+    migrated = SqliteMetadataStore(tmp_path / "old.db")
+    migrated.initialize()
+    assert migrated.format_version == FORMAT_VERSION
+    assert MIGRATIONS[24].name == "tracks"
+    assert _schema(migrated) == expected
+    assert ("source_id", "external_id") in _unique_index_columns(migrated, "track")
+    assert {("track_id", "occurrence_id"), ("annotation_id",)} <= _unique_index_columns(
+        migrated, "track_observation"
+    )
+    with migrated.unit_of_work() as uow:
+        assert uow.tracks.list() == []
+        assert [o.asset_id for o in uow.frame_occurrences.list(clip)] == [asset]
+    with migrated.unit_of_work() as uow:
+        uow.tracks.add(Track(source_id=clip, label_class="car"))
+    with migrated.engine.begin() as connection:
+        MIGRATIONS[24].upgrade(connection)
+    assert _schema(migrated) == expected
+    with migrated.unit_of_work() as uow:
+        assert [t.label_class for t in uow.tracks.list(clip)] == ["car"]
+    migrated.close()

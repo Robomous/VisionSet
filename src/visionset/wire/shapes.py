@@ -429,6 +429,54 @@ class Annotation(TypedDict):
 
 
 @closed
+class FrameOccurrence(TypedDict):
+    id: str
+    source_id: str
+    position: int
+    timestamp: float
+    asset_id: str
+
+
+@closed
+class TrackObservation(TypedDict):
+    occurrence_id: str
+    position: int
+    timestamp: float
+    asset_id: str
+    annotation_id: str
+
+
+@closed
+class Track(TypedDict):
+    id: str
+    source_id: str
+    label_class: str
+    external_id: str | None
+    observations: list[TrackObservation]
+
+
+@closed
+class TrackStatus(TypedDict):
+    track_id: str
+    batch_id: str
+    progress: ProgressCounts
+    outside: int
+    settled: bool
+
+
+@closed
+class TrackSplit(TypedDict):
+    kept: Track
+    created: Track
+
+
+@closed
+class TrackDeletion(TypedDict):
+    track_id: str
+    annotations_deleted: int
+
+
+@closed
 class DatasetStats(TypedDict):
     dataset_id: str
     asset_count: int

@@ -53,6 +53,17 @@ visionset job progress|start|complete JOB_ID
 visionset job mark JOB_ID ASSET_ID --progress STATE
 visionset job pre-label JOB_ID CONNECTION [--minimum-confidence FLOAT] [--replace-model-labels] [--geometry SHAPE]...
 
+visionset track occurrences|list --source SOURCE_ID
+visionset track show TRACK_ID
+visionset track status TRACK_ID --batch BATCH_ID
+visionset track create --source SOURCE_ID --class C [--external-id X]
+visionset track observe TRACK_ID --job JOB_ID --occurrence OCCURRENCE_ID --annotation ANNOTATION_ID
+visionset track unobserve TRACK_ID --job JOB_ID --occurrence OCCURRENCE_ID
+visionset track set-class TRACK_ID --job JOB_ID --class C
+visionset track merge TRACK_ID ABSORBED_ID --job JOB_ID
+visionset track split TRACK_ID --job JOB_ID --occurrence OCCURRENCE_ID
+visionset track delete TRACK_ID --job JOB_ID [--with-annotations]
+
 visionset release publish --tag T --project P [--split TRAIN,VAL,TEST [--seed N] [--group-by group_label]]
 visionset release list --project P
 visionset release verify TAG --project P
@@ -533,6 +544,27 @@ release published off a batch driven
 this way reports `annotation_count: 0`, and its manifest says so. These commands exist because the
 lifecycle must be drivable from a script, not because this is how labelling happens. See
 [jobs.md](jobs.md#at-a-terminal).
+
+### `visionset track`
+
+A track follows one object through the frame occurrences of a video source (see
+[annotations.md](annotations.md#a-track-observes-annotations-an-annotation-knows-nothing-of-tracks)). `occurrences` and `list` read a source's occurrences and
+tracks, `show` one track with its observations in position order, and `status --batch B` counts
+its observations by the progress their assets hold in that batch: `OUTSIDE` is those the batch
+does not hold, and `SETTLED` is yes only when the track has an observation, the batch holds every
+one, and each is settled. `create` prints the new track's id; its class must be one the active
+schema version declares.
+
+Every other command names the job acting with `--job`, and passes the gates an annotation write
+does against every observation it touches - a job carrying only some of a track's assets cannot
+restructure it. `observe` attaches an annotation already drawn at the occurrence's asset, which
+needs a canvas or a model, and refuses a `pre_labeled` asset with `ASSET_NOT_JUDGED` until a
+person edits or confirms it; `unobserve` detaches one and keeps the annotation; `set-class`
+rewrites the track and every annotation it observes in one transaction; `merge` absorbs the
+second track into the first; `split` moves the cut occurrence and every later one to a new track
+and prints `{kept, created}` with `--json`. `delete` keeps the annotations unless
+`--with-annotations` is given, and `--json` prints `{track_id, annotations_deleted}`; there is
+no confirmation flag, as there is none for deleting an annotation.
 
 ### `visionset release` and `visionset export`
 

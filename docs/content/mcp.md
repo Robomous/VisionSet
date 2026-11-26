@@ -79,7 +79,7 @@ it, and what twelve real agent runs did with it - see
 
 ## The tools
 
-Sixty-three tools are offered by default, in the order an agent meets them, plus the four
+Seventy-three tools are offered by default, in the order an agent meets them, plus the four
 below that are offered only on request — see
 [above](#destructive-tools-are-not-offered-unless-you-ask).
 [mcp-tools.md](mcp-tools.md) is the complete listing, generated from the server itself; this
@@ -208,6 +208,30 @@ real agent runs labeled a whole job and then had `complete_job` refuse, having h
 start it - writing was gated on the *batch* and not on the job, so nothing in the loop forced the
 call until the end. #439 has since added a job gate, but it changes none of this: `pending` is an
 *open* state, so the first write still starts the job it walks into.
+
+### Tracks
+
+A track follows one object through the frame occurrences of a video source, observing an
+annotation already drawn at each (see
+[annotations.md](annotations.md#a-track-observes-annotations-an-annotation-knows-nothing-of-tracks)).
+
+| | |
+| --- | --- |
+| `list_frame_occurrences` | A video source's positions and the asset each decoded to, in position order. |
+| `list_tracks` | A source's tracks, each with its observations. Where a track id comes from. |
+| `get_track_status` | A track's observations counted by the progress their assets hold in one batch; `settled` only when the batch holds every observation of a non-empty track and each is settled. |
+| `create_track` | An empty track of a class the active schema declares, on a video source. |
+| `observe_track` | Attach an annotation drawn at an occurrence's asset, through the job carrying it. A `pre_labeled` asset is refused: a person edits or confirms it first. |
+| `unobserve_track` | Detach one observation; the annotation stays. |
+| `set_track_class` | Rename a track and every annotation it observes, in one transaction. |
+| `merge_tracks` | Absorb one track into another of the same source and class. |
+| `split_track` | Cut a track at an occurrence; answers `{kept, created}`. |
+| `delete_track` | Delete a track, and its annotations with `with_annotations`. No confirmation. |
+
+Every write but `create_track` names the job acting, and the job must carry every observed asset
+the operation touches at a writable progress - a job holding some of a track's assets cannot
+restructure the rest. None of them starts a job: an observation needs an annotation, and the
+annotation write already did. There is no `get_track`; every write answers the whole track.
 
 ### Datasets, releases and export
 
@@ -449,7 +473,7 @@ The API's upload staging exists because HTTP has bytes where the kernel has path
 beside the workspace and has the filesystem.
 
 **One workspace per server.** No tool takes a workspace parameter — threading one through
-sixty-three tools would put a path an agent has no way to know into every call. The workspace is
+seventy-three tools would put a path an agent has no way to know into every call. The workspace is
 opened and closed per tool call rather than held, so the file is never kept from `visionset server`
 or a second agent between calls.
 
@@ -482,7 +506,9 @@ from; and the five recipe tools, because `export_release` takes a recipe by name
 has to be able to write one, read it back and edit it on the same terms as REST and the CLI; and
 `list_project_assets`, because `list_batch_assets` cannot show an asset no batch holds; and
 `inspect_import` and `import_dataset`, the plan and the commit of an [import](import.md), on the
-`check_export` precedent. That is sixty-three offered by default and sixty-seven in all. The parity rule means
+`check_export` precedent; and the ten track tools below, because a track is written through a
+job on every other surface and an agent annotating a clip has to be able to follow an object
+through it. That is seventy-three offered by default and seventy-seven in all. The parity rule means
 *evaluated*, not *implemented* — tool-selection accuracy degrades with count, so a tool ships
 only when an agent has a reason to reach for it that no neighbour covers.
 
