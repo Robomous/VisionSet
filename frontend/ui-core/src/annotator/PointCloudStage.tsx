@@ -38,11 +38,12 @@ import {
   PointCloudCanvas,
   classColor,
   type PointCloudLabel,
+  type PointCloudView,
   type PointCloudStatus,
   type ScanView as ScanCamera,
 } from "@visionset/annotator/react";
 import { Box, Cuboid, MousePointer2, Pencil, RotateCcw, Waypoints } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 import {
@@ -104,6 +105,8 @@ export interface PointCloudStageProps {
    * the row lies along the top of the perspective view.
    */
   readonly statusSlot?: HTMLElement | null;
+  /** The perspective view's handle, for a host that hands the keyboard back to it. */
+  readonly viewRef?: RefObject<PointCloudView | null>;
 }
 
 const MODES: readonly { readonly mode: ColorMode; readonly label: string; readonly absent: string }[] = [
@@ -196,6 +199,7 @@ export function PointCloudStage({
   onToggleHelp,
   controlsSlot,
   statusSlot,
+  viewRef,
 }: PointCloudStageProps): JSX.Element {
   const fetched = usePointSample(projectId, asset.id);
   const { frame, settled: frameKnown, failure: sourceFailure } = useScanSource(asset.source_id);
@@ -229,6 +233,7 @@ export function PointCloudStage({
       statusSlot={statusSlot ?? null}
       {...(onSave === undefined ? {} : { onSave })}
       {...(onToggleHelp === undefined ? {} : { onToggleHelp })}
+      {...(viewRef === undefined ? {} : { viewRef })}
     />
   );
 }
@@ -246,6 +251,7 @@ function ScanView({
   controlsSlot,
   statusSlot,
   sourceFailure,
+  viewRef,
 }: Omit<PointCloudStageProps, "asset" | "scan" | "controlsSlot" | "statusSlot"> & {
   readonly sourceFailure: SourceFailure | null;
   readonly asset: PointCloudStageProps["asset"];
@@ -326,12 +332,13 @@ function ScanView({
 
   const total = asset.point_cloud?.point_count ?? sample.count;
 
-  const stageRef = useRef<HTMLDivElement>(null);
+  const ownView = useRef<PointCloudView | null>(null);
+  const perspective = viewRef ?? ownView;
   const pastFootprint = scan?.editor.state.type === "drawing-width" || scan?.editor.state.type === "drawing-height";
   useEffect(() => {
     if (!pastFootprint || inScanView(document.activeElement)) return;
-    stageRef.current?.querySelector<HTMLElement>('[data-scan-view="perspective"] canvas')?.focus();
-  }, [pastFootprint]);
+    perspective.current?.focus();
+  }, [pastFootprint, perspective]);
 
   if (status === "unsupported") {
     return <NoWebGl projectId={projectId} asset={asset} frame={frame} sourceFailed={sourceFailure !== null} />;
@@ -494,7 +501,6 @@ function ScanView({
 
   return (
     <div
-      ref={stageRef}
       className="@container relative size-full"
       data-testid="point-cloud-stage"
       onKeyDown={onKeyDown}
@@ -514,6 +520,7 @@ function ScanView({
             editing={editing}
             highlightColor="var(--foreground)"
             theme={theme}
+            viewRef={perspective}
             {...(scan === null
               ? {}
               : { onScanPointer: scan.editor.onScanPointer, onCameraChange: scan.editor.onCameraChange })}

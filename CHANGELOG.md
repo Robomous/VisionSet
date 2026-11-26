@@ -109,6 +109,12 @@ nothing was being distributed. This is the first version that is.
 
 ### Changed
 
+- **The annotator returns focus to its view through a handle, not a DOM lookup.** `AnnotatorView` gains `focus()`,
+  and `PointCloudCanvas` takes a `viewRef` whose `PointCloudView.focus()` does the same for a scan view; each leaves
+  focus alone when it is already inside the view. The object panel, the frame gallery and the suggest bar call an
+  `onReturnFocus` the page wires to the active view, instead of looking the view up by test id. Closing the frame
+  gallery on a scan now hands the keyboard to the perspective view. The showcase uses the same handle, and
+  `keepCanvasFocus` from `@visionset/ui-core` in place of its own copy (#1130).
 - **A label write reads each asset once, not once per label.** The checks an import, `add`, `update` and
   `enter_unreviewed` run on every label read the label's asset, and its source for a 3D label, from the store each
   time; they now read each once per call. On the nuScenes mini split (404 keyframes, 18,538 boxes) the import's

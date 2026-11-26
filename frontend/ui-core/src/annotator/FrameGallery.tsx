@@ -76,6 +76,8 @@ export interface FrameGalleryProps {
    * same path `‹` / `›` use — so a refused save keeps the work and the frame.
    */
   readonly onPick: (index: number) => void;
+  /** Hand the keyboard back to the view once the overlay closes. */
+  readonly onReturnFocus?: () => void;
 }
 
 export function FrameGallery({
@@ -85,6 +87,7 @@ export function FrameGallery({
   assets,
   currentIndex,
   onPick,
+  onReturnFocus,
 }: FrameGalleryProps): JSX.Element {
   const [segment, setSegment] = useState<Segment>("all");
   const grid = useRef<HTMLDivElement>(null);
@@ -134,7 +137,7 @@ export function FrameGallery({
         // that no longer exists, and the annotator reads its chords off the root.
         onCloseAutoFocus={(event) => {
           event.preventDefault();
-          document.querySelector<HTMLElement>('[data-testid="annotator-root"]')?.focus();
+          onReturnFocus?.();
         }}
       >
         <DialogTitle>Frames</DialogTitle>

@@ -18,10 +18,16 @@ import {
   selectOnly,
   type ScanDocument,
 } from "@visionset/annotator";
+import {
+  AnnotatorCanvas,
+  PointCloudCanvas,
+  type AnnotatorView,
+  type PointCloudView,
+} from "@visionset/annotator/react";
 import { act, render, screen, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { JSX } from "react";
+import { useRef, type JSX } from "react";
 
 import { AnnotatorPanel } from "./AnnotatorPanel";
 import { TooltipProvider } from "@robomous/ui-core";
@@ -97,6 +103,51 @@ function mount(
   );
 }
 
+/**
+ * The panel beside a real 2D canvas, wired the way the page wires them: the
+ * panel reaches the view only through the handle the page holds.
+ */
+function besideImage(store: AnnotatorStore): JSX.Element {
+  function Host(): JSX.Element {
+    const view = useRef<AnnotatorView | null>(null);
+    return (
+      <>
+        <AnnotatorCanvas store={store} imageSrc="blob:a" activeClass={null} onActivateClass={vi.fn()} viewRef={view} />
+        {mount(store, { onReturnFocus: () => view.current?.focus() })}
+      </>
+    );
+  }
+  return <Host />;
+}
+
+const SCAN_LABEL = "Scan view";
+
+/** The same for a scan: a real perspective view, given a context that cannot draw. */
+function besideScan(scan: AnnotatorStore<ScanDocument>): JSX.Element {
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ isContextLost: () => false, getExtension: () => null } as never);
+  function Host(): JSX.Element {
+    const view = useRef<PointCloudView | null>(null);
+    return (
+      <>
+        <PointCloudCanvas
+          sample={{ count: 1, positions: new Float32Array([0, 0, 0]), origin: [0, 0, 0], intensity: null, rgb: null }}
+          frame="lidar_flu"
+          colorMode="height"
+          labels={[]}
+          showLabels
+          ariaLabel={SCAN_LABEL}
+          viewRef={view}
+        />
+        {mount(storeWith([]), { scan: { store: scan, onRemove: vi.fn() }, onReturnFocus: () => view.current?.focus() })}
+      </>
+    );
+  }
+  return <Host />;
+}
+
+const imageView = (): HTMLElement => screen.getByRole("application", { name: "Annotation canvas" });
+const scanView = (): HTMLElement => screen.getByRole("application", { name: SCAN_LABEL });
+
 // The provenance badge on an accepted row is a Tooltip trigger. See
 // `testing/resizeObserver.ts`.
 beforeEach(() => {
@@ -105,6 +156,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("a scan's 3D labels (#1061)", () => {
@@ -171,32 +223,19 @@ describe("a scan's 3D labels (#1061)", () => {
   });
 
   it("returns focus to the perspective view from the filter field on a scan row click", async () => {
-    const scan = scanStoreOf();
-    render(
-      <>
-        <div data-scan-view="perspective">
-          <canvas tabIndex={0} data-testid="persp-canvas" />
-        </div>
-        {mount(storeWith([]), { scan: { store: scan, onRemove: vi.fn() } })}
-      </>,
-    );
+    render(besideScan(scanStoreOf()));
     await userEvent.type(screen.getByLabelText("Filter objects"), "veh");
     await userEvent.click(screen.getByTestId("object-select-0"));
-    expect(document.activeElement).toBe(screen.getByTestId("persp-canvas"));
+    expect(document.activeElement).toBe(scanView());
   });
 
   it("selects a cuboid from its row without taking focus off the view", async () => {
     const scan = scanStoreOf();
-    render(
-      <>
-        <canvas tabIndex={0} data-testid="view" />
-        {mount(storeWith([]), { scan: { store: scan, onRemove: vi.fn() } })}
-      </>,
-    );
-    screen.getByTestId("view").focus();
+    render(besideScan(scan));
+    scanView().focus();
     await userEvent.click(screen.getByTestId("object-select-0"));
     expect([...scan.selection]).toEqual(["c1"]);
-    expect(document.activeElement).toBe(screen.getByTestId("view"));
+    expect(document.activeElement).toBe(scanView());
   });
 
   it("offers no delete on a scan that cannot be edited, or in the read-only mode", () => {
@@ -388,44 +427,39 @@ describe("the object list", () => {
 
   it("selects from a row without taking focus off the annotator root, whose keys then act on it", async () => {
     const store = storeWith([annotation("a", "vehicle", "bbox")]);
-    render(
-      <>
-        <div tabIndex={0} data-testid="annotator-root" />
-        {mount(store)}
-      </>,
-    );
-    screen.getByTestId("annotator-root").focus();
+    render(besideImage(store));
+    imageView().focus();
     await userEvent.click(screen.getByTestId("object-select-0"));
     expect([...store.selection]).toEqual(["a"]);
-    expect(document.activeElement).toBe(screen.getByTestId("annotator-root"));
+    expect(document.activeElement).toBe(imageView());
+  });
+
+  it("leaves focus on a control inside the canvas, which already hands its keys to the canvas", async () => {
+    const store = storeWith([annotation("a", "vehicle", "bbox")]);
+    render(besideImage(store));
+    const inside = document.createElement("button");
+    imageView().appendChild(inside);
+    inside.focus();
+    await userEvent.click(screen.getByTestId("object-select-0"));
+    expect(document.activeElement).toBe(inside);
   });
 
   it("returns focus to the annotator root from the filter field, so Backspace does not edit the filter", async () => {
     const store = storeWith([annotation("a", "vehicle", "bbox")]);
-    render(
-      <>
-        <div tabIndex={0} data-testid="annotator-root" />
-        {mount(store)}
-      </>,
-    );
+    render(besideImage(store));
     const filter = screen.getByLabelText("Filter objects") as HTMLInputElement;
     await userEvent.type(filter, "veh");
     await userEvent.click(screen.getByTestId("object-select-0"));
-    expect(document.activeElement).toBe(screen.getByTestId("annotator-root"));
+    expect(document.activeElement).toBe(imageView());
     await userEvent.keyboard("{Backspace}");
     expect(filter.value).toBe("veh");
   });
 
   it("moves focus from the page body to the annotator root on a row click", async () => {
     const store = storeWith([annotation("a", "vehicle", "bbox")]);
-    render(
-      <>
-        <div tabIndex={0} data-testid="annotator-root" />
-        {mount(store)}
-      </>,
-    );
+    render(besideImage(store));
     await userEvent.click(screen.getByTestId("object-select-0"));
-    expect(document.activeElement).toBe(screen.getByTestId("annotator-root"));
+    expect(document.activeElement).toBe(imageView());
   });
 
   it("round-trips the selection, because there is only one", async () => {

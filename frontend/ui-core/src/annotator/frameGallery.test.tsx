@@ -350,4 +350,12 @@ describe("choosing a frame", () => {
     expect(leave).not.toHaveBeenCalled();
     expect(sent.filter((request) => request.method !== "GET")).toEqual([]);
   });
+  it("hands the keyboard back to the canvas when it closes", async () => {
+    await openGallery();
+
+    await userEvent.keyboard("{Escape}");
+
+    await waitFor(() => expect(screen.queryByTestId("frame-gallery")).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole("application", { name: "Annotation canvas" }));
+  });
 });
