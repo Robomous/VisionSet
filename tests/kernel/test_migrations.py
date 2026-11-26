@@ -17,17 +17,18 @@ pressure is how that class of bug gets back in.
 
 import json
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import inspect, text
+from sqlalchemy import Connection, inspect, text
 from sqlalchemy.exc import IntegrityError
 
 from visionset.kernel.adapters import SqliteMetadataStore
 from visionset.kernel.adapters._tables import META_TABLE, Base
 from visionset.kernel.adapters.migrations import FORMAT_VERSION, MIGRATIONS
-from visionset.kernel.domain import IngestFailureKind
+from visionset.kernel.domain import FrameOccurrence, IngestFailureKind
 from visionset.kernel.errors import (
+    ConstraintViolated,
     WorkspaceCorrupt,
     WorkspaceFormatTooNew,
     WorkspaceSchemaMismatch,
@@ -59,6 +60,18 @@ _UNIQUENESS_INDEXES = {
     # made twice.
     "uq_annotation_asset_classification": ("classification_tag", "WHERE"),
 }
+
+
+def _unique_index_columns(store: SqliteMetadataStore, table: str) -> set[tuple[str, ...]]:
+    with store.engine.connect() as connection:
+        indexes = connection.execute(text(f"pragma index_list('{table}')")).all()
+        return {
+            tuple(
+                row[2] for row in connection.execute(text(f"pragma index_info('{index[1]}')")).all()
+            )
+            for index in indexes
+            if index[2]
+        }
 
 
 def _schema(store: SqliteMetadataStore) -> set[str]:
@@ -118,6 +131,13 @@ def test_the_baseline_carries_each_uniqueness_index(
     assert statement is not None, f"{index} is not in the baseline schema"
     for term in terms:
         assert term in statement
+    store.close()
+
+
+def test_a_source_position_is_unique_as_a_pair(tmp_path: Path) -> None:
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    assert ("source_id", "position") in _unique_index_columns(store, "frame_occurrence")
     store.close()
 
 
@@ -1122,4 +1142,177 @@ def test_the_new_provenance_fields_leave_the_origin_index_alone(tmp_path: Path) 
                 + "')"
             )
         )
+    store.close()
+
+
+_CLIP = (
+    '{"metadata": {"width": 64, "height": 48, "fps": 10.0,'
+    ' "duration_seconds": 4.0, "codec": "h264"}, "extraction_fps": 1.0}'
+)
+
+
+def _at_generation_twenty_three(path: Path) -> SqliteMetadataStore:
+    """A file the way a workspace created before migration 24 would look."""
+    store = SqliteMetadataStore(path)
+    store.initialize()
+    with store.engine.begin() as connection:
+        connection.execute(text("DROP TABLE frame_occurrence"))
+        connection.execute(text(f"UPDATE {META_TABLE} SET format_version = 23"))
+    return store
+
+
+def _insert_source(connection: Connection, source_id: str, kind: str, path: str) -> None:
+    connection.execute(
+        text(
+            "insert into source (id, project_id, kind, path, registered_at, capture_params,"
+            " video) values (:id, :p, :kind, :path, '2026-01-01T00:00:00+00:00', '{}', :video)"
+        ),
+        {
+            "id": source_id,
+            "p": "p",
+            "kind": kind,
+            "path": path,
+            "video": _CLIP if kind == "video" else None,
+        },
+    )
+
+
+def _insert_asset(
+    connection: Connection,
+    asset_id: str,
+    source_id: str,
+    uri: str,
+    frame: tuple[int, float] | None,
+) -> None:
+    connection.execute(
+        text(
+            "insert into asset (id, project_id, modality, content_hash, uri, source_id,"
+            " frame_index, frame_timestamp)"
+            " values (:id, 'p', 'image', :hash, :uri, :source, :index, :ts)"
+        ),
+        {
+            "id": asset_id,
+            "hash": asset_id * 2,
+            "uri": uri,
+            "source": source_id,
+            "index": None if frame is None else frame[0],
+            "ts": None if frame is None else frame[1],
+        },
+    )
+
+
+def test_a_generation_23_file_backfills_one_occurrence_per_first_seen_frame(
+    tmp_path: Path,
+) -> None:
+    """Migration 24: video frames gain their recorded position, and nothing is invented.
+
+    Clip one extracted frames 0, 1 and 2, and frame 2 deduplicated onto frame
+    0's asset, so the file never recorded position 2: it stays absent. Two
+    animations in one image directory share frame 0 and are not a sequence.
+    """
+    fresh = SqliteMetadataStore(tmp_path / "fresh.db")
+    fresh.initialize()
+    expected = _schema(fresh)
+    fresh.close()
+
+    clip, other, folder = uuid4().hex, uuid4().hex, uuid4().hex
+    first, second, later = uuid4().hex, uuid4().hex, uuid4().hex
+    store = _at_generation_twenty_three(tmp_path / "old.db")
+    with store.engine.begin() as connection:
+        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
+        connection.execute(
+            text("insert into project (id, workspace_id, name) values ('p', 'w', 'clips')")
+        )
+        _insert_source(connection, clip, "video", "video-import:one")
+        _insert_source(connection, other, "video", "video-import:two")
+        _insert_source(connection, folder, "image_directory", "/rig")
+        _insert_asset(connection, first, clip, "video-import:one#frame=0", (0, 0.0))
+        _insert_asset(connection, second, clip, "video-import:one#frame=1", (1, 0.98))
+        _insert_asset(connection, later, other, "video-import:two#frame=3", (3, 3.0))
+        _insert_asset(connection, uuid4().hex, folder, "/rig/a.gif#frame=0", (0, 0.0))
+        _insert_asset(connection, uuid4().hex, folder, "/rig/b.gif#frame=0", (0, 0.0))
+        _insert_asset(connection, uuid4().hex, folder, "/rig/c.png", None)
+    store.close()
+
+    migrated = SqliteMetadataStore(tmp_path / "old.db")
+    migrated.initialize()
+    assert migrated.format_version == FORMAT_VERSION
+    assert MIGRATIONS[23].name == "frame_occurrences"
+    assert _schema(migrated) == expected
+    with migrated.unit_of_work() as uow:
+        found = {
+            name: [
+                (o.position, o.timestamp, o.asset_id.hex)
+                for o in sorted(uow.frame_occurrences.list(UUID(sid)), key=lambda o: o.position)
+            ]
+            for name, sid in (("clip", clip), ("other", other), ("folder", folder))
+        }
+    assert found == {
+        "clip": [(0, 0.0, first), (1, 0.98, second)],
+        "other": [(3, 3.0, later)],
+        "folder": [],
+    }
+
+    with migrated.engine.begin() as connection:
+        MIGRATIONS[23].upgrade(connection)
+        count = connection.execute(text("select count(*) from frame_occurrence")).scalar_one()
+    assert count == 3
+    migrated.close()
+
+
+def test_a_backfill_keeps_the_lowest_rowid_and_ignores_a_cross_project_asset(
+    tmp_path: Path,
+) -> None:
+    clip, stray = uuid4().hex, uuid4().hex
+    winner, loser = uuid4().hex, uuid4().hex
+    store = _at_generation_twenty_three(tmp_path / "old.db")
+    with store.engine.begin() as connection:
+        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
+        for project in ("p", "q"):
+            connection.execute(
+                text("insert into project (id, workspace_id, name) values (:p, 'w', :p)"),
+                {"p": project},
+            )
+        _insert_source(connection, clip, "video", "video-import:one")
+        _insert_asset(connection, winner, clip, "video-import:one#frame=0", (0, 0.0))
+        _insert_asset(connection, loser, clip, "video-import:one#frame=0", (0, 5.0))
+        _insert_asset(connection, stray, clip, "video-import:one#frame=7", (7, 7.0))
+        connection.execute(text("update asset set project_id = 'q' where id = :id"), {"id": stray})
+    store.close()
+
+    migrated = SqliteMetadataStore(tmp_path / "old.db")
+    migrated.initialize()
+    with migrated.unit_of_work() as uow:
+        found = [
+            (o.position, o.timestamp, o.asset_id.hex)
+            for o in uow.frame_occurrences.list(UUID(clip))
+        ]
+    assert found == [(0, 0.0, winner)]
+    migrated.close()
+
+
+def test_a_source_position_holds_one_occurrence(tmp_path: Path) -> None:
+    store = SqliteMetadataStore(tmp_path / "visionset.db")
+    store.initialize()
+    clip, asset = uuid4(), uuid4()
+    with store.engine.begin() as connection:
+        connection.execute(text("insert into workspace (id, name) values ('w', 'ws')"))
+        connection.execute(
+            text("insert into project (id, workspace_id, name) values ('p', 'w', 'clips')")
+        )
+        _insert_source(connection, clip.hex, "video", "video-import:one")
+        _insert_asset(connection, asset.hex, clip.hex, "video-import:one#frame=0", (0, 0.0))
+    with store.unit_of_work() as uow:
+        uow.frame_occurrences.add(
+            FrameOccurrence(source_id=clip, position=0, timestamp=0.0, asset_id=asset)
+        )
+    with pytest.raises(ConstraintViolated), store.unit_of_work() as uow:
+        uow.frame_occurrences.add(
+            FrameOccurrence(source_id=clip, position=0, timestamp=0.0, asset_id=asset)
+        )
+    with store.unit_of_work() as uow:
+        uow.frame_occurrences.add(
+            FrameOccurrence(source_id=clip, position=1, timestamp=1.0, asset_id=asset)
+        )
+        assert len(uow.frame_occurrences.list(clip)) == 2
     store.close()

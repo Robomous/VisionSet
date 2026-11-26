@@ -26,10 +26,12 @@ import pytest
 from PIL import Image
 from pydantic import ValidationError
 
+from visionset.kernel.adapters.sqlite_metadata_store import SqlUnitOfWork
 from visionset.kernel.domain import (
     SAMPLING_POLICY_VERSION,
     Batch,
     BatchState,
+    FrameOccurrence,
     GeometryType,
     ImageFormat,
     IncomingFrame,
@@ -1252,6 +1254,109 @@ def test_two_projects_commit_into_their_own_batches(tmp_path: Path) -> None:
         assert len(fixture.ingest.assets(other.id)) == 3
     finally:
         fixture.close()
+
+
+# --- frame occurrences -----------------------------------------------------
+
+
+def _occurrences(fixture: Fixture, import_id: UUID) -> list[FrameOccurrence]:
+    source_id = fixture.imports.get(import_id).source_id
+    with fixture.workspace.unit_of_work() as uow:
+        return sorted(uow.frame_occurrences.list(source_id), key=lambda o: o.position)
+
+
+def test_identical_frames_at_two_ordinals_are_two_occurrences_of_one_asset(
+    fixture: Fixture,
+) -> None:
+    import_id = fixture.start()
+    fixture.imports.append_frames(
+        import_id, [_frame(0, seed=9), _frame(1, seed=9), _frame(2, seed=4)]
+    )
+    batch = fixture.imports.commit(import_id)
+
+    occurrences = _occurrences(fixture, import_id)
+    assert [o.position for o in occurrences] == [0, 1, 2]
+    assert occurrences[0].asset_id == occurrences[1].asset_id != occurrences[2].asset_id
+    assert batch.asset_ids == [occurrences[0].asset_id, occurrences[2].asset_id]
+
+
+def test_a_selection_with_gaps_holds_only_its_own_positions(fixture: Fixture) -> None:
+    import_id = fixture.start(
+        metadata=_metadata(10.0),
+        ranges=(
+            TimeRange(start_seconds=0.0, end_seconds=2.0),
+            TimeRange(start_seconds=5.0, end_seconds=7.0),
+        ),
+    )
+    fixture.imports.append_frames(
+        import_id, [_frame(0), _frame(1), _frame(5, source_timestamp=4.96), _frame(6)]
+    )
+    fixture.imports.commit(import_id)
+
+    occurrences = _occurrences(fixture, import_id)
+    by_frame = {a.frame_index: a.id for a in fixture.ingest.assets(fixture.project.id)}
+    assert [(o.position, o.timestamp) for o in occurrences] == [
+        (0, 0.0),
+        (1, 1.0),
+        (5, 4.96),
+        (6, 6.0),
+    ]
+    assert [o.asset_id for o in occurrences] == [by_frame[o.position] for o in occurrences]
+
+
+def test_two_imports_of_one_clip_are_two_sequences_over_the_same_assets(
+    fixture: Fixture,
+) -> None:
+    first = fixture.start()
+    second = fixture.start()
+    for import_id in (first, second):
+        fixture.imports.append_frames(import_id, [_frame(0), _frame(1), _frame(2)])
+    first_batch = fixture.imports.commit(first)
+    second_batch = fixture.imports.commit(second)
+
+    ours, theirs = _occurrences(fixture, first), _occurrences(fixture, second)
+    assert {o.source_id for o in ours}.isdisjoint({o.source_id for o in theirs})
+    assert [o.position for o in theirs] == [0, 1, 2]
+    assert [o.asset_id for o in theirs] == [o.asset_id for o in ours]
+    assert second_batch.asset_ids == first_batch.asset_ids
+    first_source = fixture.imports.get(first).source_id
+    assert {a.source_id for a in fixture.ingest.assets(fixture.project.id)} == {first_source}
+
+
+def test_committing_twice_writes_no_second_set_of_occurrences(fixture: Fixture) -> None:
+    import_id = fixture.start()
+    fixture.imports.append_frames(import_id, [_frame(0), _frame(1), _frame(2)])
+    fixture.imports.commit(import_id)
+    fixture.imports.commit(import_id)
+    assert [o.position for o in _occurrences(fixture, import_id)] == [0, 1, 2]
+
+
+def test_a_refused_claim_rolls_its_occurrences_back_and_the_retry_writes_them_once(
+    fixture: Fixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import_id = fixture.start()
+    fixture.imports.append_frames(import_id, [_frame(0, seed=9), _frame(1, seed=9), _frame(2)])
+    claim = SqlUnitOfWork.set_video_import_state
+    refusals = [VideoImportState.COMMITTED]
+
+    def contested(
+        uow: SqlUnitOfWork,
+        import_id: UUID,
+        *,
+        expected: VideoImportState,
+        state: VideoImportState,
+    ) -> VideoImportState | None:
+        if refusals:
+            return refusals.pop()
+        return claim(uow, import_id, expected=expected, state=state)
+
+    monkeypatch.setattr(SqlUnitOfWork, "set_video_import_state", contested)
+    batch = fixture.imports.commit(import_id)
+
+    assert refusals == []
+    assert [o.position for o in _occurrences(fixture, import_id)] == [0, 1, 2]
+    assert [b.id for b in fixture.batches.list(fixture.project.id)] == [batch.id]
+    assert len(fixture.ingest.assets(fixture.project.id)) == 2
 
 
 # --- provenance -------------------------------------------------------------

@@ -67,8 +67,9 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Final
+from uuid import uuid4
 
-from sqlalchemy import Connection, inspect, text
+from sqlalchemy import Connection, inspect, literal_column, select, text
 from sqlalchemy.schema import CreateColumn, CreateIndex
 
 from visionset.kernel.adapters._tables import SOURCE_ORIGIN_UNIQUE, Base
@@ -543,6 +544,59 @@ def _add_group_labels(connection: Connection) -> None:
     _add_column(connection, "asset", "group_label")
 
 
+def _add_frame_occurrences(connection: Connection) -> None:
+    """``frame_occurrence``: each video source's grid positions, and the asset at each.
+
+    The table is created whole. The backfill writes one occurrence per asset
+    whose recorded origin is a ``video`` source position — the first-seen origin
+    only. A position whose bytes deduplicated onto an earlier asset left no
+    trace, so a historical source may hold fewer occurrences than it extracted
+    frames; nothing here invents the missing ones. An image directory's
+    decomposed animations are not a sequence, and two files in one directory
+    share frame indices, so they are not backfilled.
+
+    Idempotent: a position already held is skipped, and the earliest asset
+    written at a position is the one kept.
+    """
+    occurrences = Base.metadata.tables["frame_occurrence"]
+    occurrences.create(connection, checkfirst=True)
+    asset = Base.metadata.tables["asset"]
+    source = Base.metadata.tables["source"]
+    held = {
+        (row.source_id, row.position)
+        for row in connection.execute(select(occurrences.c.source_id, occurrences.c.position))
+    }
+    found = connection.execute(
+        select(asset.c.id, asset.c.source_id, asset.c.frame_index, asset.c.frame_timestamp)
+        .join(
+            source,
+            (asset.c.source_id == source.c.id) & (asset.c.project_id == source.c.project_id),
+        )
+        .where(
+            source.c.kind == "video",
+            asset.c.frame_index.is_not(None),
+            asset.c.frame_timestamp.is_not(None),
+        )
+        .order_by(literal_column("asset.rowid"))
+    )
+    rows: list[dict[str, Any]] = []
+    for asset_id, source_id, position, timestamp in found:
+        if (source_id, position) in held:
+            continue
+        held.add((source_id, position))
+        rows.append(
+            {
+                "id": uuid4(),
+                "source_id": source_id,
+                "position": position,
+                "timestamp": timestamp,
+                "asset_id": asset_id,
+            }
+        )
+    if rows:
+        connection.execute(occurrences.insert(), rows)
+
+
 MIGRATIONS: list[Migration] = [
     Migration(version=1, name="baseline_schema", upgrade=_create_baseline_schema),
     Migration(version=2, name="batch_lineage", upgrade=_add_batch_lineage),
@@ -571,6 +625,7 @@ MIGRATIONS: list[Migration] = [
     Migration(version=21, name="calibration", upgrade=_add_calibration),
     Migration(version=22, name="point_clouds", upgrade=_add_point_clouds),
     Migration(version=23, name="group_labels", upgrade=_add_group_labels),
+    Migration(version=24, name="frame_occurrences", upgrade=_add_frame_occurrences),
 ]
 
 FORMAT_VERSION: int = MIGRATIONS[-1].version

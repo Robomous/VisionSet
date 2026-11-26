@@ -2,8 +2,9 @@
 
 Status: **proposed** (#364). The direction was approved on 2026-11-26: keep content-addressed
 media, model ordered frame occurrences separately, and give persistent sequence-scoped tracks
-explicit observations. This page settles the details that approval left open. Nothing here is
-implemented; [#1170](https://github.com/Robomous/VisionSet/issues/1170) and the video variant of
+explicit observations. This page settles the details that approval left open. Slice 1, the
+occurrence model, migration and importer writes, is implemented; the rest is not, and
+[#1170](https://github.com/Robomous/VisionSet/issues/1170) and the video variant of
 [#1171](https://github.com/Robomous/VisionSet/issues/1171) stay blocked until the slices below ship.
 
 ## The rule
@@ -41,7 +42,8 @@ substitute for one another.
 ## Migration
 
 A migration adds `frame_occurrence`, `track` and `track_observation`. It backfills occurrences
-from assets whose `source_id` and `frame_index` are set. That is the first-seen origin only: the
+from assets of `video` sources whose `source_id` and `frame_index` are set. Image-directory
+animations are excluded because two files share frame 0. That is the first-seen origin only: the
 origins `store_assets` discarded are not recoverable, and the migration does not invent them. A
 historical source may therefore have fewer occurrences than frames it was extracted with, and a
 track can only observe an occurrence that exists. New video imports write every occurrence.

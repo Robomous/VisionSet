@@ -221,6 +221,7 @@ from visionset.kernel.domain.media import (
     media_type_of,
 )
 from visionset.kernel.domain.names import derived_name, normalize_name, normalize_release_tag
+from visionset.kernel.domain.occurrence import FrameOccurrence
 from visionset.kernel.domain.partition import (
     BySegments,
     BySize,
@@ -600,6 +601,7 @@ __all__ = [
     "AugmentOp",
     "AugmentStep",
     "Fold",
+    "FrameOccurrence",
     "LetterboxFit",
     "CanvasFit",
     "CROP_KEEP_FRACTION",
