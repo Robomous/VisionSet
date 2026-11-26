@@ -1113,9 +1113,31 @@ def store_assets(
     and it leaves the ordering *within* a run to ``_in_stable_order``, which has
     actual meaning, rather than to whichever file the loop reached first.
     """
+    each, created = store_each(uow, project_id, candidates, stamped_at=stamped_at)
     assets: list[Asset] = []
-    created: list[UUID] = []
     seen: set[UUID] = set()
+    for stored in each:
+        if stored.id not in seen:
+            seen.add(stored.id)
+            assets.append(stored)
+    return assets, created
+
+
+def store_each(
+    uow: UnitOfWork,
+    project_id: UUID,
+    candidates: list[Asset],
+    *,
+    stamped_at: datetime,
+) -> tuple[list[Asset], list[UUID]]:
+    """:func:`store_assets`, answering the stored asset for **each** candidate in order.
+
+    A candidate whose bytes deduplicated answers the asset that holds them, so
+    the list may repeat an asset. A video import reads it to know which asset
+    each grid position became.
+    """
+    each: list[Asset] = []
+    created: list[UUID] = []
     known = {asset.content_hash: asset for asset in uow.assets.list(project_id)}
     for candidate in candidates:
         stored = known.get(candidate.content_hash)
@@ -1128,10 +1150,8 @@ def store_assets(
                 stored.model_copy(update={"thumbnail_hash": candidate.thumbnail_hash})
             )
             known[stored.content_hash] = stored
-        if stored.id not in seen:
-            seen.add(stored.id)
-            assets.append(stored)
-    return assets, created
+        each.append(stored)
+    return each, created
 
 
 def _open_blob(blobs: BlobStore, content_hash: str, subject: str) -> BinaryIO:
