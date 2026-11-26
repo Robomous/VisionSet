@@ -148,7 +148,9 @@ def update_annotations(
     An asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST,
     and so are the two gates around it: a batch that is not open for annotation
     is 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409
-    `JOB_FINISHED`. An edit is a write, and every gate that stops a new label
+    `JOB_FINISHED`. An annotation a track observes keeps the track's class: an
+    edit to any other class is 409 `TRACK_CLASS_MISMATCH`, so change the track's
+    class instead. An edit is a write, and every gate that stops a new label
     stops a replacement too — including 409 `CALIBRATION_MISSING` and 422
     `CALIBRATION_RESOLUTION_MISMATCH` for a 3D label, and on a scan 409
     `CALIBRATION_MISSING` for a source declaring no frame and 422

@@ -3807,6 +3807,65 @@
         "title": "FormatPage",
         "type": "object"
       },
+      "FrameOccurrenceOut": {
+        "description": "One position of a video source, and the asset that position decoded to.",
+        "properties": {
+          "asset_id": {
+            "format": "uuid",
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "source_id",
+          "position",
+          "timestamp",
+          "asset_id"
+        ],
+        "title": "FrameOccurrenceOut",
+        "type": "object"
+      },
+      "FrameOccurrencePage": {
+        "description": "A page of frame occurrences, in position order.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FrameOccurrenceOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "FrameOccurrencePage",
+        "type": "object"
+      },
       "GeometryOut": {
         "description": "One geometry an annotation can carry on this server.",
         "properties": {
@@ -4390,6 +4449,28 @@
         ],
         "title": "ModelOrigin",
         "type": "string"
+      },
+      "ObservationCreate": {
+        "additionalProperties": false,
+        "description": "An occurrence for the track to observe, and the annotation drawn there.",
+        "properties": {
+          "annotation_id": {
+            "format": "uuid",
+            "title": "Annotation Id",
+            "type": "string"
+          },
+          "occurrence_id": {
+            "format": "uuid",
+            "title": "Occurrence Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "occurrence_id",
+          "annotation_id"
+        ],
+        "title": "ObservationCreate",
+        "type": "object"
       },
       "PointCloudBoundsOut": {
         "description": "The box a scan's points span, in its source's declared frame and unit.",
@@ -7367,6 +7448,242 @@
         "title": "Task",
         "type": "string",
         "x-visionset-open": true
+      },
+      "TrackClassBody": {
+        "additionalProperties": false,
+        "description": "The class a track and every annotation it observes take.",
+        "properties": {
+          "label_class": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Label Class",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label_class"
+        ],
+        "title": "TrackClassBody",
+        "type": "object"
+      },
+      "TrackCreate": {
+        "additionalProperties": false,
+        "description": "A new, empty track of one class.",
+        "properties": {
+          "external_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "label_class": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Label Class",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label_class"
+        ],
+        "title": "TrackCreate",
+        "type": "object"
+      },
+      "TrackMerge": {
+        "additionalProperties": false,
+        "description": "The track to absorb.",
+        "properties": {
+          "track_id": {
+            "format": "uuid",
+            "title": "Track Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "track_id"
+        ],
+        "title": "TrackMerge",
+        "type": "object"
+      },
+      "TrackObservationOut": {
+        "description": "One occurrence a track observes, and the annotation drawn there.",
+        "properties": {
+          "annotation_id": {
+            "format": "uuid",
+            "title": "Annotation Id",
+            "type": "string"
+          },
+          "asset_id": {
+            "format": "uuid",
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "occurrence_id": {
+            "format": "uuid",
+            "title": "Occurrence Id",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "number"
+          }
+        },
+        "required": [
+          "occurrence_id",
+          "position",
+          "timestamp",
+          "asset_id",
+          "annotation_id"
+        ],
+        "title": "TrackObservationOut",
+        "type": "object"
+      },
+      "TrackOut": {
+        "description": "One object followed through a video source, with its observations in position order.",
+        "properties": {
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "label_class": {
+            "title": "Label Class",
+            "type": "string"
+          },
+          "observations": {
+            "items": {
+              "$ref": "#/components/schemas/TrackObservationOut"
+            },
+            "title": "Observations",
+            "type": "array"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source_id",
+          "label_class",
+          "external_id",
+          "observations"
+        ],
+        "title": "TrackOut",
+        "type": "object"
+      },
+      "TrackPage": {
+        "description": "A page of tracks.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TrackOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "TrackPage",
+        "type": "object"
+      },
+      "TrackSplit": {
+        "additionalProperties": false,
+        "description": "Where to cut: this occurrence and every later one move to a new track.",
+        "properties": {
+          "occurrence_id": {
+            "format": "uuid",
+            "title": "Occurrence Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "occurrence_id"
+        ],
+        "title": "TrackSplit",
+        "type": "object"
+      },
+      "TrackSplitOut": {
+        "description": "The shortened track, and the new one holding the cut-off observations.",
+        "properties": {
+          "created": {
+            "$ref": "#/components/schemas/TrackOut"
+          },
+          "kept": {
+            "$ref": "#/components/schemas/TrackOut"
+          }
+        },
+        "required": [
+          "kept",
+          "created"
+        ],
+        "title": "TrackSplitOut",
+        "type": "object"
+      },
+      "TrackStatusOut": {
+        "description": "How far one batch's work on a track's observed assets has got.",
+        "properties": {
+          "batch_id": {
+            "format": "uuid",
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "outside": {
+            "title": "Outside",
+            "type": "integer"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/ProgressCounts"
+          },
+          "settled": {
+            "title": "Settled",
+            "type": "boolean"
+          },
+          "track_id": {
+            "format": "uuid",
+            "title": "Track Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "track_id",
+          "batch_id",
+          "progress",
+          "outside",
+          "settled"
+        ],
+        "title": "TrackStatusOut",
+        "type": "object"
       },
       "VertexVisibility": {
         "description": "What is known about one vertex of a path: COCO keypoint visibility's three states.\n\nThe integers are COCO's own ``v`` values, so a keypoint exporter writes them\nunchanged. ``UNLABELED`` is a vertex nobody judged, which is not the same\nclaim as ``OCCLUDED`` (judged, and hidden) \u2014 a format with a binary flag has\nto decide what an unjudged vertex becomes, and each one says so where it\nwrites it.\n\nClosed and integer on the wire: it is accepted in requests, so it can never\nbe an open vocabulary, and a client switching on three numbers needs no\nstring table.",
@@ -12415,7 +12732,7 @@
         ]
       },
       "patch": {
-        "description": "Replace stored annotations whole, judged against the same pinned version.\n\nAddressed by `id` and by nothing else \u2014 annotations are never reached by\nindex or position. There is no `asset_id` on the body because the stored one\nwins: moving a label from one asset to another is a delete and an add, not an\nedit, and doing it silently would take an asset's last annotation away\nwithout anything saying so. Who made a label is kept the same way: a\n`provenance` other than the stored one is 422 `INVALID_ANNOTATION`, and\n`model_ref` and `confidence` are taken from the stored annotation. An edit\nchanges what a label says, never who made it.\n\nAll-or-nothing, and `detail.index` names the culprit, exactly as on the POST.\nAn asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST,\nand so are the two gates around it: a batch that is not open for annotation\nis 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409\n`JOB_FINISHED`. An edit is a write, and every gate that stops a new label\nstops a replacement too \u2014 including 409 `CALIBRATION_MISSING` and 422\n`CALIBRATION_RESOLUTION_MISMATCH` for a 3D label, and on a scan 409\n`CALIBRATION_MISSING` for a source declaring no frame and 422\n`INVALID_ANNOTATION` for a `bbox`, `polygon` or `polyline`.",
+        "description": "Replace stored annotations whole, judged against the same pinned version.\n\nAddressed by `id` and by nothing else \u2014 annotations are never reached by\nindex or position. There is no `asset_id` on the body because the stored one\nwins: moving a label from one asset to another is a delete and an add, not an\nedit, and doing it silently would take an asset's last annotation away\nwithout anything saying so. Who made a label is kept the same way: a\n`provenance` other than the stored one is 422 `INVALID_ANNOTATION`, and\n`model_ref` and `confidence` are taken from the stored annotation. An edit\nchanges what a label says, never who made it.\n\nAll-or-nothing, and `detail.index` names the culprit, exactly as on the POST.\nAn asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST,\nand so are the two gates around it: a batch that is not open for annotation\nis 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409\n`JOB_FINISHED`. An annotation a track observes keeps the track's class: an\nedit to any other class is 409 `TRACK_CLASS_MISMATCH`, so change the track's\nclass instead. An edit is a write, and every gate that stops a new label\nstops a replacement too \u2014 including 409 `CALIBRATION_MISSING` and 422\n`CALIBRATION_RESOLUTION_MISMATCH` for a 3D label, and on a scan 409\n`CALIBRATION_MISSING` for a source declaring no frame and 422\n`INVALID_ANNOTATION` for a `bbox`, `polygon` or `polyline`.",
         "operationId": "update_annotations",
         "parameters": [
           {
@@ -13449,6 +13766,708 @@
         "summary": "Start Job",
         "tags": [
           "jobs"
+        ]
+      }
+    },
+    "/jobs/{job_id}/tracks/{track_id}": {
+      "delete": {
+        "description": "Delete the track and its observations.\n\nEvery annotation it observed stays unless `with_annotations` is true, which\ndeletes them too, in one transaction, by the rules of an annotation delete.\nNo confirmation gate: like an annotation delete, the batch gate is the guard.\n404: `JOB_NOT_FOUND`, `TRACK_NOT_FOUND`. 409: `BATCH_NOT_IN_ANNOTATION`,\n`JOB_FINISHED`, `ASSET_NOT_IN_JOB` (rendered as a 409 here: act through the\njob holding the track's observations), `ASSET_NOT_WRITABLE`, `STALE_WRITE`.",
+        "operationId": "delete_track",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "track_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Track Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Also delete every annotation the track observes.",
+            "in": "query",
+            "name": "with_annotations",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Also delete every annotation the track observes.",
+              "title": "With Annotations",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Track",
+        "tags": [
+          "tracks"
+        ]
+      }
+    },
+    "/jobs/{job_id}/tracks/{track_id}/class": {
+      "put": {
+        "description": "Give the track and every annotation it observes a new class.\n\nThe annotations are rewritten in one transaction with the track, against the\nbatch's pinned version; the same class again changes nothing. The job must\ncarry every observed asset at a writable progress. 404: `JOB_NOT_FOUND`,\n`TRACK_NOT_FOUND`. 409: `BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`,\n`ASSET_NOT_IN_JOB` (rendered as a 409 here: act through the job holding the\ntrack's observations), `ASSET_NOT_WRITABLE`, `STALE_WRITE`. 422:\n`INVALID_ANNOTATION`. 500: `WORKSPACE_CORRUPT`.",
+        "operationId": "set_track_class",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "track_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Track Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrackClassBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Track Class",
+        "tags": [
+          "tracks"
+        ]
+      }
+    },
+    "/jobs/{job_id}/tracks/{track_id}/merge": {
+      "post": {
+        "description": "Move every observation of `body.track_id` onto this track, and delete that one.\n\nThe tracks share a source and a class and observe disjoint occurrences. This\ntrack keeps its own `external_id`, and takes the absorbed one's when it has\nnone. 404: `JOB_NOT_FOUND`, `TRACK_NOT_FOUND`. 409: `BATCH_NOT_IN_ANNOTATION`,\n`JOB_FINISHED`, `ASSET_NOT_IN_JOB` (rendered as a 409 here: act through the\njob holding both tracks' observations), `ASSET_NOT_WRITABLE`,\n`TRACK_CLASS_MISMATCH`, `OCCURRENCE_ALREADY_OBSERVED`. 422:\n`TRACK_MERGE_WITH_ITSELF`, `TRACK_SOURCE_MISMATCH`.",
+        "operationId": "merge_tracks",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "track_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Track Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrackMerge"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Merge Tracks",
+        "tags": [
+          "tracks"
+        ]
+      }
+    },
+    "/jobs/{job_id}/tracks/{track_id}/observations": {
+      "post": {
+        "description": "Record that the track is seen at an occurrence, as an annotation drawn there.\n\nThe annotation must sit on the occurrence's asset, carry the track's class\nand be 2D. 404: `JOB_NOT_FOUND`, `TRACK_NOT_FOUND`,\n`FRAME_OCCURRENCE_NOT_FOUND`, `ANNOTATION_NOT_FOUND`. 409:\n`BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`, `ASSET_NOT_IN_JOB` (rendered as a\n409 here: the job does not carry the occurrence's asset), `ASSET_NOT_WRITABLE`,\n`TRACK_CLASS_MISMATCH`, `OCCURRENCE_ALREADY_OBSERVED`,\n`ANNOTATION_ALREADY_OBSERVED`. 422: `TRACK_SOURCE_MISMATCH`,\n`ANNOTATION_NOT_AT_OCCURRENCE`, `INVALID_ANNOTATION`.",
+        "operationId": "observe_track",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "track_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Track Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObservationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Observe Track",
+        "tags": [
+          "tracks"
+        ]
+      }
+    },
+    "/jobs/{job_id}/tracks/{track_id}/observations/{occurrence_id}": {
+      "delete": {
+        "description": "Remove the track's observation at an occurrence. The annotation stays.\n\n404: `JOB_NOT_FOUND`, `TRACK_NOT_FOUND`, `OBSERVATION_NOT_FOUND`. 409:\n`BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`, `ASSET_NOT_IN_JOB` (rendered as a\n409 here: another job carries the observed asset), `ASSET_NOT_WRITABLE`.",
+        "operationId": "unobserve_track",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "track_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Track Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "occurrence_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Occurrence Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unobserve Track",
+        "tags": [
+          "tracks"
+        ]
+      }
+    },
+    "/jobs/{job_id}/tracks/{track_id}/split": {
+      "post": {
+        "description": "Cut the track at an occurrence: it and every later observation move to a new track.\n\nThe new track has the same source and class and no `external_id`. Answers\nthe shortened track as `kept` and the new one as `created`. 404:\n`JOB_NOT_FOUND`, `TRACK_NOT_FOUND`, `FRAME_OCCURRENCE_NOT_FOUND`. 409:\n`BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`, `ASSET_NOT_IN_JOB` (rendered as a\n409 here: act through the job holding the track's observations),\n`ASSET_NOT_WRITABLE`, `TRACK_SPLIT_EMPTY`. 422: `TRACK_SOURCE_MISMATCH`.",
+        "operationId": "split_track",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "track_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Track Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrackSplit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackSplitOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Split Track",
+        "tags": [
+          "tracks"
         ]
       }
     },
@@ -18963,6 +19982,481 @@
         "summary": "Start Ingest",
         "tags": [
           "sources"
+        ]
+      }
+    },
+    "/sources/{source_id}/occurrences": {
+      "get": {
+        "description": "Every frame occurrence of this source, in position order.\n\nAn occurrence is one position of a clip's extraction grid and the asset it\ndecoded to; identical frames at two positions are one asset at two\noccurrences. A source that is not a video has none. An unknown source is\n404 `SOURCE_NOT_FOUND`.",
+        "operationId": "list_frame_occurrences",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrameOccurrencePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Frame Occurrences",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
+    "/sources/{source_id}/tracks": {
+      "get": {
+        "description": "Every track of this source, in creation order.\n\nAn unknown source is 404 `SOURCE_NOT_FOUND`.",
+        "operationId": "list_tracks",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Tracks",
+        "tags": [
+          "tracks"
+        ]
+      },
+      "post": {
+        "description": "Start an empty track of one class on a video source.\n\nNot gated on a job: a track observes nothing until a job observes an\nannotation with it. An unknown source is 404 `SOURCE_NOT_FOUND`; a source\nthat is not a video is 422 `SOURCE_NOT_SEQUENCE`, and an `external_id`\nanother track of the source carries is 409 `TRACK_EXTERNAL_ID_TAKEN`.",
+        "operationId": "create_track",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrackCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Track",
+        "tags": [
+          "tracks"
+        ]
+      }
+    },
+    "/tracks/{track_id}": {
+      "get": {
+        "description": "The track with that id, and its observations in position order.\n\nAn unknown track is 404 `TRACK_NOT_FOUND`.",
+        "operationId": "get_track",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "track_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Track Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Track",
+        "tags": [
+          "tracks"
+        ]
+      }
+    },
+    "/tracks/{track_id}/status": {
+      "get": {
+        "description": "How far one batch's work on the track's observed assets has got.\n\nDerived on every read. Each observation counts once under the progress its\nasset holds in the batch, or under `outside` when the batch does not hold\nthat asset. `settled` is true when every observation the batch holds sits on\na settled asset. An unknown track is 404 `TRACK_NOT_FOUND`, and a batch\noutside the track's project is 404 `BATCH_NOT_FOUND`.",
+        "operationId": "get_track_status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "track_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Track Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The batch whose work on the track to count.",
+            "in": "query",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "description": "The batch whose work on the track to count.",
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Track Status",
+        "tags": [
+          "tracks"
         ]
       }
     },

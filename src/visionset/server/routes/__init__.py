@@ -40,6 +40,7 @@ from visionset.server.routes import (
     releases,
     schemas,
     sources,
+    tracks,
     video_imports,
 )
 
@@ -69,6 +70,10 @@ ROUTERS: Final[tuple[APIRouter, ...]] = (
     batches.router,
     jobs.router,
     annotations.router,
+    # Beside the annotations they follow: a track's writes go through a job too.
+    tracks.source_router,
+    tracks.router,
+    tracks.job_router,
     datasets.project_router,
     datasets.router,
     releases.project_router,

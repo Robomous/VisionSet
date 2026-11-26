@@ -16,11 +16,13 @@ tables the surfaces use, so it cannot drift from what they answer.
 The framework's own codes - `VALIDATION_ERROR`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `UNAUTHORIZED`
 and `INTERNAL_ERROR` - are not raised by the kernel and are described in [api.md](api.md).
 
-111 codes, alphabetical.
+123 codes, alphabetical.
 
 | Code | Status | Meaning | Remedy | Retry with |
 | --- | --- | --- | --- | --- |
+| `ANNOTATION_ALREADY_OBSERVED` | 409 | Another observation already names that annotation. |  |  |
 | `ANNOTATION_GEOMETRY_OUT_OF_BOUNDS` | 422 | A spatial annotation has no overlap with its measured asset. |  |  |
+| `ANNOTATION_NOT_AT_OCCURRENCE` | 422 | The annotation sits on an asset other than the one the occurrence decoded to. |  |  |
 | `ANNOTATION_NOT_FOUND` | 404 | No annotation with that id lives in this workspace. |  |  |
 | `ANNOTATION_NOT_FROM_MODEL` | 422 | A label without model provenance was offered to the unreviewed entry path. |  |  |
 | `ASSET_NOT_FOUND` | 404 | An asset id does not belong to the project it was used in. |  |  |
@@ -57,6 +59,7 @@ and `INTERNAL_ERROR` - are not raised by the kernel and are described in [api.md
 | `EXPORT_TARGET_CONFLICT` | 500 | Two installed exporters declare a target under one name. |  |  |
 | `EXPORT_TARGET_NOT_FOUND` | 404 | No installed exporter declares a target with that name. | A target names a trainer (see `visionset target list`); a file layout such as `yolo` is a format - use --format yolo. |  |
 | `FRAME_CONTENT_CONFLICT` | 409 | Two different frames were offered at one grid position. |  |  |
+| `FRAME_OCCURRENCE_NOT_FOUND` | 404 | No frame occurrence with that id lives in this workspace. |  |  |
 | `FRAME_ORDINAL_OUT_OF_RANGE` | 422 | A frame was offered at a grid position the session does not have. |  |  |
 | `FRAME_TIMESTAMP_OFF_GRID` | 422 | A frame's declared timestamp is not the one its ordinal names. |  |  |
 | `GEOMETRY_NOT_PRODUCED` | 422 | A pre-labeling run was asked to write a shape this model does not answer in. |  |  |
@@ -93,6 +96,8 @@ and `INTERNAL_ERROR` - are not raised by the kernel and are described in [api.md
 | `MODEL_NOT_FOUND` | 422 | The hub has no model under that id and revision. | Check the model id and revision with `model_download_size` before creating or downloading a connection; a private repository needs HF_TOKEN on the server. |  |
 | `NOT_A_WORKSPACE` | 500 | There is no VisionSet workspace at that path. | This MCP server is not pointed at a VisionSet workspace (the directory in the message is the one it tried). Whoever runs it must set VISIONSET_WORKSPACE in its environment to an existing workspace, or start it with `visionset mcp --workspace <path>`; `visionset init` creates one. |  |
 | `NO_SPLIT_RECIPE` | 404 | A split was asked of a release that was published without a recipe. |  |  |
+| `OBSERVATION_NOT_FOUND` | 404 | The track observes no annotation at that occurrence. |  |  |
+| `OCCURRENCE_ALREADY_OBSERVED` | 409 | The track already observes that occurrence. |  |  |
 | `PREPROCESSING_DRIVER_NOT_FOUND` | 500 | No installed driver applies steps of that kind. |  |  |
 | `PREPROCESSING_RECIPE_NAME_TAKEN` | 409 | Another recipe of this project already carries that name. |  |  |
 | `PREPROCESSING_RECIPE_NOT_FOUND` | 404 | The project has no pre-processing recipe under that name. |  |  |
@@ -109,11 +114,18 @@ and `INTERNAL_ERROR` - are not raised by the kernel and are described in [api.md
 | `SCHEMA_NOT_FOUND` | 404 | The project has no schema at all, or not the version that was asked for. | Publish a first schema version with `create_schema_version` (or `set_schema_draft` then `publish_schema_draft`), then retry. |  |
 | `SCHEMA_VERSION_CONFLICT` | 409 | Two writers raced for the same next version number, and this one lost. |  |  |
 | `SOURCE_NOT_FOUND` | 404 | A source id does not belong to the project or workspace it was used in. |  |  |
+| `SOURCE_NOT_SEQUENCE` | 422 | A track was asked of a source that is not a sequence. |  |  |
 | `STALE_WRITE` | 409 | Something moved between the caller's read and the caller's write. |  |  |
 | `THUMBNAIL_NOT_CACHED` | 404 | No preview has been rendered for this asset. | Call `backfill_thumbnails` for this project to render the missing previews, or ask for `full=true` to read the original bytes. |  |
 | `TOKEN_NAME_TAKEN` | 409 | Another token in this workspace already uses that name. |  |  |
 | `TOKEN_NOT_FOUND` | 404 | No API token with that id or name lives in this workspace. |  |  |
 | `TOO_MANY_OPEN_VIDEO_IMPORTS` | 409 | This project already holds as many open import sessions as it may. |  |  |
+| `TRACK_CLASS_MISMATCH` | 409 | An annotation's class, or a merge partner's, is not the track's class. |  |  |
+| `TRACK_EXTERNAL_ID_TAKEN` | 409 | Another track of the same source already carries that external id. |  |  |
+| `TRACK_MERGE_WITH_ITSELF` | 422 | A track was asked to merge with itself. |  |  |
+| `TRACK_NOT_FOUND` | 404 | No track with that id lives in this workspace. |  |  |
+| `TRACK_SOURCE_MISMATCH` | 422 | A track was asked to reach an occurrence or a track of another source. |  |  |
+| `TRACK_SPLIT_EMPTY` | 409 | A split at that occurrence would leave one of the two tracks with no observation. |  |  |
 | `UNKNOWN_ATTRIBUTE` | 422 | The annotation carries an attribute the class does not declare. |  |  |
 | `UNKNOWN_JOB_TYPE` | 422 | Nothing is registered to run work of that type. |  |  |
 | `UNSERIALIZABLE_MANIFEST` | 409 | A manifest holds a value canonical JSON cannot express. |  |  |

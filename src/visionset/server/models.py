@@ -107,6 +107,7 @@ from visionset.kernel.domain import (
     DraftLabelClass,
     ExportCompatibility,
     ExportTarget,
+    FrameOccurrence,
     Geometry,
     GeometryType,
     ImageFormat,
@@ -124,6 +125,7 @@ from visionset.kernel.domain import (
     ModalityCompatibility,
     ModelCapability,
     ModelOrigin,
+    ObservedFrame,
     Partition,
     PlumbBobDistortion,
     PointCloudFormat,
@@ -169,6 +171,8 @@ from visionset.kernel.domain import (
     SuggestParameter,
     Task,
     TimeRange,
+    TrackDetail,
+    TrackStatus,
     TransformedAnnotation,
     VertexVisibilities,
     VideoImport,
@@ -2435,6 +2439,157 @@ class AnnotationOut(BaseModel):
 
 class AnnotationPage(Page[AnnotationOut]):
     """A page of annotations."""
+
+
+# --- frame occurrences and tracks ----------------------------------------------
+
+
+class FrameOccurrenceOut(BaseModel):
+    """One position of a video source, and the asset that position decoded to."""
+
+    id: UUID
+    source_id: UUID
+    position: int
+    #: Seconds into the clip.
+    timestamp: float
+    asset_id: UUID
+
+    @classmethod
+    def of(cls, value: FrameOccurrence) -> Self:
+        return cls(
+            id=value.id,
+            source_id=value.source_id,
+            position=value.position,
+            timestamp=value.timestamp,
+            asset_id=value.asset_id,
+        )
+
+
+class FrameOccurrencePage(Page[FrameOccurrenceOut]):
+    """A page of frame occurrences, in position order."""
+
+
+class TrackObservationOut(BaseModel):
+    """One occurrence a track observes, and the annotation drawn there."""
+
+    occurrence_id: UUID
+    position: int
+    timestamp: float
+    asset_id: UUID
+    annotation_id: UUID
+
+    @classmethod
+    def of(cls, value: ObservedFrame) -> Self:
+        return cls(
+            occurrence_id=value.occurrence_id,
+            position=value.position,
+            timestamp=value.timestamp,
+            asset_id=value.asset_id,
+            annotation_id=value.annotation_id,
+        )
+
+
+class TrackOut(BaseModel):
+    """One object followed through a video source, with its observations in position order."""
+
+    id: UUID
+    source_id: UUID
+    label_class: str
+    #: An identity an imported dataset brought with it, unique within the source.
+    external_id: str | None
+    observations: list[TrackObservationOut]
+
+    @classmethod
+    def of(cls, value: TrackDetail) -> Self:
+        return cls(
+            id=value.track.id,
+            source_id=value.track.source_id,
+            label_class=value.track.label_class,
+            external_id=value.track.external_id,
+            observations=[TrackObservationOut.of(frame) for frame in value.observations],
+        )
+
+
+class TrackPage(Page[TrackOut]):
+    """A page of tracks."""
+
+
+class TrackStatusOut(BaseModel):
+    """How far one batch's work on a track's observed assets has got."""
+
+    track_id: UUID
+    batch_id: UUID
+    #: Observations counted by the progress of the asset each sits on in the batch.
+    progress: ProgressCounts
+    #: Observations on assets the batch does not hold.
+    outside: int
+    #: Every observation the batch holds sits on a settled asset.
+    settled: bool
+
+    @classmethod
+    def of(cls, value: TrackStatus) -> Self:
+        return cls(
+            track_id=value.track_id,
+            batch_id=value.batch_id,
+            progress=ProgressCounts.of(dict(value.progress)),
+            outside=value.outside,
+            settled=value.settled,
+        )
+
+
+class TrackSplitOut(BaseModel):
+    """The shortened track, and the new one holding the cut-off observations."""
+
+    kept: TrackOut
+    created: TrackOut
+
+    @classmethod
+    def of(cls, kept: TrackDetail, created: TrackDetail) -> Self:
+        return cls(kept=TrackOut.of(kept), created=TrackOut.of(created))
+
+
+# ``min_length`` is load-bearing: ``Track`` refuses a blank class or external id
+# with a pydantic error, which would answer 500 rather than 422.
+class TrackCreate(BaseModel):
+    """A new, empty track of one class."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label_class: WireText = Field(min_length=1)
+    external_id: WireText | None = Field(default=None, min_length=1)
+
+
+class ObservationCreate(BaseModel):
+    """An occurrence for the track to observe, and the annotation drawn there."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    occurrence_id: UUID
+    annotation_id: UUID
+
+
+class TrackClassBody(BaseModel):
+    """The class a track and every annotation it observes take."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label_class: WireText = Field(min_length=1)
+
+
+class TrackMerge(BaseModel):
+    """The track to absorb."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    track_id: UUID
+
+
+class TrackSplit(BaseModel):
+    """Where to cut: this occurrence and every later one move to a new track."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    occurrence_id: UUID
 
 
 # --- datasets ----------------------------------------------------------------
