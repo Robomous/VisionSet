@@ -3217,8 +3217,10 @@ export interface paths {
          *     step needing a source size the manifest never recorded, or any recipe on
          *     an export that writes scans, is 409 `EXPORT_SOURCE_UNREADABLE`. An unknown
          *     recipe is 404
-         *     `PREPROCESSING_RECIPE_NOT_FOUND`. The report itself does not change: what
-         *     a format drops is decided before any transform.
+         *     `PREPROCESSING_RECIPE_NOT_FOUND`. A `fill` or `center_crop` resize is the
+         *     one step that loses labels, and the report counts it: a label it cuts away
+         *     is dropped and one it cuts down is degraded, and either needs
+         *     `allow_lossy`.
          *
          *     Exactly one of `target` and `format`. A target narrows its format to the
          *     geometries its trainer has a task for, so a report for `target=yolov10`
@@ -6431,8 +6433,11 @@ export interface components {
          * ResizeStepBody
          * @description Bring every exported image to one size, by one strategy.
          *
-         *     `pad_value` is the grey a letterbox pads with and means nothing to
-         *     `stretch`. Sizes are 32 to 8192 pixels a side.
+         *     `strategy` is `stretch`, `letterbox`, `fill` (cover the size, crop the
+         *     overflow centred) or `center_crop` (a centred window at the source's own
+         *     scale). `pad_value` is the grey a letterbox pads with, and the grey
+         *     `center_crop` pads an axis the source is too small to fill; it means
+         *     nothing to `stretch` or `fill`. Sizes are 32 to 8192 pixels a side.
          */
         ResizeStepBody: {
             /** Height */
@@ -6457,9 +6462,12 @@ export interface components {
          *
          *     ``stretch`` scales each axis independently onto the size; ``letterbox``
          *     scales by the limiting axis and pads the rest, preserving aspect ratio.
+         *     ``fill`` scales by the other axis so the image covers the size and crops
+         *     the overflow, centred; ``center_crop`` cuts a centred window at the
+         *     source's own scale, padding an axis the source is too small to fill.
          * @enum {string}
          */
-        ResizeStrategy: "stretch" | "letterbox";
+        ResizeStrategy: "stretch" | "letterbox" | "fill" | "center_crop";
         /**
          * ResumeKind
          * @description What an open batch is being offered for, and so what `next_asset_id` is.

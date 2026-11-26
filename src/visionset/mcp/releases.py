@@ -199,7 +199,8 @@ def check_export(
     counted by `excluded_annotations`) or `degraded` (written reduced, e.g. a polygon
     as its bounding box, counted by `degraded_annotations`). `compatible` true means
     nothing is lost and `export_release` needs no `allow_lossy`. `recipe` also checks
-    what the export would refuse for that pre-processing recipe.
+    what the export would refuse for that pre-processing recipe, and counts the labels
+    a `fill` or `center_crop` resize would cut down or away.
 
     Details: visionset://export
     """

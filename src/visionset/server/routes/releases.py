@@ -298,8 +298,10 @@ def check_export(
     step needing a source size the manifest never recorded, or any recipe on
     an export that writes scans, is 409 `EXPORT_SOURCE_UNREADABLE`. An unknown
     recipe is 404
-    `PREPROCESSING_RECIPE_NOT_FOUND`. The report itself does not change: what
-    a format drops is decided before any transform.
+    `PREPROCESSING_RECIPE_NOT_FOUND`. A `fill` or `center_crop` resize is the
+    one step that loses labels, and the report counts it: a label it cuts away
+    is dropped and one it cuts down is degraded, and either needs
+    `allow_lossy`.
 
     Exactly one of `target` and `format`. A target narrows its format to the
     geometries its trainer has a task for, so a report for `target=yolov10`

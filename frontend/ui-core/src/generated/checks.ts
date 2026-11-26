@@ -334,7 +334,7 @@ export const checkAugmentStepBody: Check<Schemas["AugmentStepBody"]> =
   /*#__PURE__*/ object({ "amount": [true, isNumber], "kind": [true, lit("augment")], "op": [true, checkAugmentOp] } as const);
 
 export const checkResizeStrategy: Check<Schemas["ResizeStrategy"]> =
-  /*#__PURE__*/ oneOf(["stretch", "letterbox"] as const);
+  /*#__PURE__*/ oneOf(["stretch", "letterbox", "fill", "center_crop"] as const);
 
 export const checkResizeStepBody: Check<Schemas["ResizeStepBody"]> =
   /*#__PURE__*/ object({ "height": [true, isInteger], "kind": [true, lit("resize")], "pad_value": [true, isInteger], "strategy": [true, checkResizeStrategy], "width": [true, isInteger] } as const);
