@@ -128,7 +128,11 @@ by the same arithmetic as the pixels and then cut to the canvas rectangle:
 - a **box** is clipped to the canvas;
 - a **polygon** is clipped to the canvas. When the cut leaves several separate pieces - a concave
   shape whose middle falls off the edge - only the largest piece by area is written; the others
-  are not joined to it along the edge, and no zero-area piece is ever written;
+  are not joined to it along the edge. A run of vertices along a canvas edge is reduced to its
+  two ends, so a source edge lying on the crop line leaves no zero-width spike to stretch a box
+  derived from the points, and no zero-area piece is ever written. Areas are unsigned, per piece.
+  A ring that crosses itself is outside what this promises: the schema does not refuse one, and
+  it may come back as one clipped ring rather than its separate pieces;
 - a label left with **less than half** its area on the canvas (`CROP_KEEP_FRACTION`, a fixed 0.5
   measured against the label as scaled, before the cut; for a polygon, the piece kept) is
   **dropped**, and so is one wholly off it. Exactly half is kept;
@@ -137,13 +141,19 @@ by the same arithmetic as the pixels and then cut to the canvas rectangle:
 A label cut down and kept is reported **degraded**; a label cut away is reported **dropped**. The
 resize runs before every augmentation, so each variant loses exactly the labels its base image
 does, and the counts are of the release's own labels. Both go into the export's compatibility
-report beside what the format loses - `excluded_annotations` and `degraded_annotations`, and the
-`(class, geometry)` row, which turns `degraded` when the crop touched some of its labels and
-`dropped` only when it took all of them, with the crop's counts in its `reason` - so a drop asks
-for `allow_lossy` like any other loss. The geometry transform writes nothing, so pre-flight
-(`GET /releases/{id}/export-compatibility`, `export --check`, `check_export`) shows the loss, and
-the export refuses with `LossyExportNotConsented` **before anything is written**: consent for the
-format is asked first, and the crop's loss is asked about once the transform has run.
+report beside what the format loses - `excluded_annotations` and `degraded_annotations` - and
+in rows of their own: the labels the crop cut away leave their `(class, geometry)` row for a
+`dropped` row, and the ones it cut down for a `degraded` row, each with `cropped_by` naming the
+strategy and the crop's count in its `reason`, while the class's other row counts only what the
+crop left alone. Summed by status, the rows then agree with the totals, and a surface can say the
+recipe cut a label rather than blaming the format or the target. A drop asks for `allow_lossy`
+like any other loss. The geometry transform writes nothing, so it runs before consent is asked:
+pre-flight (`GET /releases/{id}/export-compatibility`, `export --check`, `check_export`) answers
+200 with the loss in the report, and an export without `allow_lossy` is refused with
+`LossyExportNotConsented` **before anything is written**, carrying the same report - the
+format's loss and the crop's together, so what a person consents to is what the export writes.
+A cut-away label is no company for a solitary geometry: if the crop takes every box, a format
+that writes tags only when they are alone is reported writing them.
 
 Drivers are plugins on the `PreprocessingDriver` port, discovered over the
 `visionset.preprocessing` entry-point group the way exporters are, and the kernel takes driver
@@ -180,10 +190,12 @@ so.
 
 The transform runs **after** the export is narrowed to its target. A geometry the target's task
 set does not accept is dropped first, consented through `allow_lossy` like every other drop, so
-a polyline a boxes-only target would never write cannot make `rot90` refuse. Consent for the
-format is asked before any transform: a caller who has not accepted the format's loss is answered
-about that loss. What a cropping resize cuts away is asked about after the transform, which writes
-nothing, so either refusal still comes before any output exists.
+a polyline a boxes-only target would never write cannot make `rot90` refuse. The transform
+runs before consent is asked, so the refusal's report includes what a cropping resize cuts away;
+a recipe the transform refuses outright (`AugmentationRequiresSplit`,
+`PreprocessingStepUnsupportedGeometry`, `ExportSourceUnreadable`) still loses to an unconsented
+format loss, so a caller who has not accepted that loss is answered about it first. Either
+refusal comes before any output exists.
 
 ## Naming, counting, and the report
 
@@ -250,7 +262,7 @@ recognise, so the pixel driver and the geometry transform still agree through th
 | `VALIDATION_ERROR` | The spec breaks the grammar: two resize steps, a resize after an augmentation, an augmentation repeated, augmentation steps with `variants_per_asset` 0, or variants with no augmentation step. The rule that was broken is the message, in the words above. Refused by the spec model itself, so every surface says the same thing. 422. |
 | `AugmentationRequiresSplit` | The recipe augments and the release was published without a split recipe. Raised at pre-flight and at export. 409. |
 | `PreprocessingStepUnsupportedGeometry` | A step met a geometry outside the set it declares it can transform - every step declares `supported_geometries` the way an exporter does, and today the exclusions are `rot90` and a `fill` or `center_crop` resize over a polyline, and every step but `brightness_contrast` over a 3D label. Carries `step`, `geometry` and the first `asset_id`. 409. |
-| `LossyExportNotConsented` | A `fill` or `center_crop` resize cuts a label down or away and `allow_lossy` is false - the same refusal, and the same report, as a format that cannot carry a label. Raised at pre-flight and at export, before anything is written. 409. |
+| `LossyExportNotConsented` | A `fill` or `center_crop` resize cuts a label down or away and `allow_lossy` is false - the same refusal, and the same report, as a format that cannot carry a label. Raised by `POST /releases/{id}/export` (before the job is queued), the CLI's `export` and MCP's `export_release`, before anything is written; `GET /releases/{id}/export-compatibility` and `--check` answer 200 with the report instead. 409. |
 | `ExportSourceUnreadable` | A step needs the source's pixel size and the manifest never recorded one, or the asset's bytes are gone. 409. |
 | `PreprocessingDriverNotFound` | No installed driver applies a step kind the recipe holds. A fact about the installation, not the request. 500. |
 

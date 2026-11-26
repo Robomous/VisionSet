@@ -323,12 +323,14 @@ against one format's declaration and returns an `ExportCompatibility`:
   "classes": [
     {"label_class": "lane", "geometry": "polygon", "status": "degraded",
      "annotations": 1204, "assets": 310,
-     "reason": "yolov5-yaml writes a polygon as its bounding box; the shape is lost"},
+     "reason": "yolov5-yaml writes a polygon as its bounding box; the shape is lost",
+     "cropped_by": null},
     {"label_class": "sign", "geometry": "bbox", "status": "supported",
-     "annotations": 8800, "assets": 2400, "reason": null},
+     "annotations": 8800, "assets": 2400, "reason": null, "cropped_by": null},
     {"label_class": "weather", "geometry": "classification_tag", "status": "dropped",
      "annotations": 40, "assets": 40,
-     "reason": "yolov5-yaml cannot place a classification_tag and drops it"}
+     "reason": "yolov5-yaml cannot place a classification_tag and drops it",
+     "cropped_by": null}
   ],
   "dropped_modalities": []
 }
@@ -340,6 +342,12 @@ labelled both as boxes and as outlines is, to YOLO, one half written whole and o
 written reduced. It contributes two rows. A single row could carry only one of those verdicts
 and would describe half its own output wrongly whichever it picked - the same defect
 `compatible: bool` had before three statuses replaced it, one level down.
+
+The one exception is a recipe whose resize crops (`fill` or `center_crop`): the labels it cuts
+away or cuts down move to `dropped` and `degraded` rows of their own with `cropped_by` naming
+the strategy, so a class can have up to three rows for one geometry and each row's count is
+the labels that meet its status. `cropped_by` is null on every other row. See
+[preprocessing.md](preprocessing.md#cropping-what-survives-the-cut).
 
 A class the schema declares and nobody used still gets a row per geometry, at zero. Zero
 excludes nothing, so it never makes a report incompatible however unsupported its shape is.
