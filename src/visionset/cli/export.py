@@ -226,17 +226,25 @@ def export(
     # exporter goes on to write as boxes, so the one sentence a user reads about
     # their export would be wrong about half of what it listed. What disappears
     # and what arrives coarser are different decisions.
-    excluded = result.compatibility.excluded
-    if excluded:
-        listed = ", ".join(f"{one.label_class} ({one.annotations})" for one in excluded)
-        note(f"Not carried by {result.format_name}: {listed}. See {EXPORT_REPORT_FILENAME}.")
-    degraded = result.compatibility.degraded
-    if degraded:
-        listed = ", ".join(f"{one.label_class} ({one.annotations})" for one in degraded)
-        note(
-            f"Written in a reduced form by {result.format_name}: {listed}. "
-            f"See {EXPORT_REPORT_FILENAME}."
-        )
+    #
+    # A row a cropping resize split off is the recipe's loss, not the format's,
+    # and says so.
+    for rows, by_format, by_crop in (
+        (result.compatibility.excluded, "Not carried by {}", "Cut away by the {} resize"),
+        (
+            result.compatibility.degraded,
+            "Written in a reduced form by {}",
+            "Cut down by the {} resize",
+        ),
+    ):
+        format_rows = [one for one in rows if one.cropped_by is None]
+        if format_rows:
+            listed = ", ".join(f"{one.label_class} ({one.annotations})" for one in format_rows)
+            note(f"{by_format.format(result.format_name)}: {listed}. See {EXPORT_REPORT_FILENAME}.")
+        for strategy in sorted({one.cropped_by for one in rows if one.cropped_by is not None}):
+            cut = [one for one in rows if one.cropped_by == strategy]
+            listed = ", ".join(f"{one.label_class} ({one.annotations})" for one in cut)
+            note(f"{by_crop.format(strategy)}: {listed}. See {EXPORT_REPORT_FILENAME}.")
     typer.echo(str(result.directory))
 
 
@@ -301,8 +309,10 @@ def _report(report: ExportCompatibility, *, json_out: bool) -> None:
         note(f"{report.format_name} carries everything this release holds.")
         return
     if not report.compatible:
+        crops = sorted({one.cropped_by for one in report.classes if one.cropped_by is not None})
+        subject = report.format_name + "".join(f" after the {one} resize" for one in crops)
         note(
-            f"{report.format_name} would drop {report.excluded_annotations} annotation(s) "
+            f"{subject} would drop {report.excluded_annotations} annotation(s) "
             f"across {report.excluded_assets} asset(s), and write "
             f"{report.degraded_annotations} annotation(s) across "
             f"{report.degraded_assets} asset(s) in a reduced form."

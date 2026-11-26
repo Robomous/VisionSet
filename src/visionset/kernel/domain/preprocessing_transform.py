@@ -15,7 +15,7 @@ is a hash-pinned contract and this document is derived and transient.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Final, Literal, assert_never
+from typing import Final, Literal, NamedTuple, assert_never
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -33,6 +33,7 @@ from visionset.kernel.domain.geometry import (
     PolylineGeometry,
 )
 from visionset.kernel.domain.preprocessing import (
+    CROPPING_STRATEGIES,
     SHOWCASE_SEED,
     THREE_D,
     AugmentOp,
@@ -70,14 +71,33 @@ VARIANT_MARKER: Final = "-aug"
 VARIANT_ID_NAMESPACE: Final = uuid5(NAMESPACE_URL, "visionset:preprocessing:variant")
 
 
-class LetterboxFit(BaseModel):
-    """Where letterboxed content lands on the padded canvas.
+#: The share of a label's area a crop must leave for the label to be kept.
+#: Measured against the label as scaled onto the canvas, before the crop;
+#: below it the label is dropped rather than written as a sliver.
+CROP_KEEP_FRACTION: Final = 0.5
 
-    The reference arithmetic for both sides of the export seam: the geometry
-    transform reads it to place annotations and the pixel driver reads the
-    same values to place pixels, so neither can be half a pixel off the other.
-    ``scale`` is ``min(W'/W, H'/H)``; the content is ``round(W·scale)`` by
-    ``round(H·scale)``; each offset is the integer-floored half of the margin.
+# Below this many square pixels a clipped polygon piece is a line or a point.
+_DEGENERATE_AREA: Final = 1e-9
+
+# A coordinate this close to a crop edge is on it, so float noise from the
+# scale never marks an untouched label as clipped.
+_EDGE_TOLERANCE: Final = 1e-9
+
+Point = tuple[float, float]
+
+
+class CanvasFit(BaseModel):
+    """Where uniformly scaled content lands on a fixed-size canvas.
+
+    The reference arithmetic for both sides of the export seam, for every
+    strategy that keeps the aspect ratio: the geometry transform reads it to
+    place annotations and the pixel driver reads the same values to place
+    pixels, so neither can be half a pixel off the other. ``scale`` is
+    ``min(W'/W, H'/H)`` for ``letterbox``, ``max(W'/W, H'/H)`` for ``fill`` and
+    ``1`` for ``center_crop``; the content is ``round(W·scale)`` by
+    ``round(H·scale)``; each offset is the integer-floored half of
+    ``target − content``. An offset is negative where the content overflows
+    the canvas, and what lies outside the canvas is cropped away.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -85,23 +105,58 @@ class LetterboxFit(BaseModel):
     scale: float = Field(gt=0.0)
     content_width: int = Field(ge=0)
     content_height: int = Field(ge=0)
-    offset_x: int = Field(ge=0)
-    offset_y: int = Field(ge=0)
+    offset_x: int
+    offset_y: int
 
 
-def letterbox_fit(
-    width: int, height: int, *, target_width: int, target_height: int
-) -> LetterboxFit:
-    """Fit ``width × height`` content onto a ``target`` canvas, aspect kept."""
-    scale = min(target_width / width, target_height / height)
+LetterboxFit = CanvasFit
+"""The name :func:`letterbox_fit` answered with before ``fill`` and ``center_crop``."""
+
+
+def canvas_fit(
+    width: int,
+    height: int,
+    *,
+    strategy: ResizeStrategy,
+    target_width: int,
+    target_height: int,
+) -> CanvasFit:
+    """Place ``width × height`` content on a ``target`` canvas by one strategy.
+
+    Raises:
+        ValueError: ``stretch``, which scales each axis on its own and so has
+            no single fit.
+    """
+    match strategy:
+        case ResizeStrategy.LETTERBOX:
+            scale = min(target_width / width, target_height / height)
+        case ResizeStrategy.FILL:
+            scale = max(target_width / width, target_height / height)
+        case ResizeStrategy.CENTER_CROP:
+            scale = 1.0
+        case ResizeStrategy.STRETCH:
+            raise ValueError("stretch scales each axis on its own and has no canvas fit")
+        case _:
+            assert_never(strategy)
     content_width = round(width * scale)
     content_height = round(height * scale)
-    return LetterboxFit(
+    return CanvasFit(
         scale=scale,
         content_width=content_width,
         content_height=content_height,
         offset_x=(target_width - content_width) // 2,
         offset_y=(target_height - content_height) // 2,
+    )
+
+
+def letterbox_fit(width: int, height: int, *, target_width: int, target_height: int) -> CanvasFit:
+    """Fit ``width × height`` content onto a ``target`` canvas, aspect kept."""
+    return canvas_fit(
+        width,
+        height,
+        strategy=ResizeStrategy.LETTERBOX,
+        target_width=target_width,
+        target_height=target_height,
     )
 
 
@@ -135,6 +190,11 @@ class TransformedFile(BaseModel):
     from. ``variant`` 0 is the base image; augmented variants count from 1.
     ``width`` and ``height`` are the transformed size — ``None`` only where
     the manifest never recorded a size and no resize step decides one.
+
+    ``dropped`` names the manifest annotations a cropping resize cut away —
+    nothing, or less than :data:`CROP_KEEP_FRACTION` of the label, was left on
+    the canvas — and ``clipped`` the ones it cut down and kept; a dropped
+    label is absent from ``annotations``.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -146,6 +206,8 @@ class TransformedFile(BaseModel):
     width: int | None
     height: int | None
     annotations: tuple[TransformedAnnotation, ...] = ()
+    dropped: tuple[UUID, ...] = ()
+    clipped: tuple[UUID, ...] = ()
 
 
 class TransformedView(BaseModel):
@@ -169,6 +231,16 @@ class TransformedView(BaseModel):
     def augmented_file_count(self) -> int:
         """How many augmented variants the export writes, across all assets."""
         return sum(1 for file in self.files if file.variant > 0)
+
+    @property
+    def dropped_count(self) -> int:
+        """How many of the release's own labels a cropping resize cut away."""
+        return sum(len(file.dropped) for file in self.files if file.variant == 0)
+
+    @property
+    def clipped_count(self) -> int:
+        """How many of the release's own labels a cropping resize cut down and kept."""
+        return sum(len(file.clipped) for file in self.files if file.variant == 0)
 
 
 class PreprocessingPreview(BaseModel):
@@ -264,24 +336,38 @@ def _fold_of(folds: SplitAssignment | None) -> dict[UUID, Fold]:
     return by_asset
 
 
+class _Placed(NamedTuple):
+    labels: list[tuple[ManifestAnnotation, Geometry]]
+    width: int | None
+    height: int | None
+    dropped: tuple[UUID, ...] = ()
+    clipped: tuple[UUID, ...] = ()
+
+
+def _placed(asset: ManifestAsset, resize: ResizeStep | None) -> _Placed:
+    labels = [(annotation, annotation.geometry) for annotation in asset.annotations]
+    if resize is None:
+        return _Placed(labels, asset.width, asset.height)
+    return _resized(asset, resize, labels)
+
+
 def _base_file(
     asset: ManifestAsset, resize: ResizeStep | None, fold: Fold | None
 ) -> TransformedFile:
-    geometries = [annotation.geometry for annotation in asset.annotations]
-    width, height = asset.width, asset.height
-    if resize is not None:
-        geometries, width, height = _resized(asset, resize, geometries)
+    placed = _placed(asset, resize)
     return TransformedFile(
         asset_id=asset.asset_id,
         content_hash=asset.content_hash,
         variant=0,
         fold=fold,
-        width=width,
-        height=height,
+        width=placed.width,
+        height=placed.height,
         annotations=tuple(
             _copied(annotation, geometry, str(annotation.id))
-            for annotation, geometry in zip(asset.annotations, geometries, strict=True)
+            for annotation, geometry in placed.labels
         ),
+        dropped=placed.dropped,
+        clipped=placed.clipped,
     )
 
 
@@ -293,10 +379,10 @@ def _variant_file(
     variant: int,
     seed: bytes,
 ) -> TransformedFile:
-    geometries = [annotation.geometry for annotation in asset.annotations]
-    width, height = asset.width, asset.height
-    if resize is not None:
-        geometries, width, height = _resized(asset, resize, geometries)
+    placed = _placed(asset, resize)
+    annotations = [annotation for annotation, _ in placed.labels]
+    geometries = [geometry for _, geometry in placed.labels]
+    width, height = placed.width, placed.height
     for step in augments:
         _refuse_unsupported(asset, step, geometries)
         if step.op is AugmentOp.HFLIP:
@@ -318,34 +404,52 @@ def _variant_file(
         height=height,
         annotations=tuple(
             _copied(annotation, geometry, f"{annotation.id}-aug{variant}")
-            for annotation, geometry in zip(asset.annotations, geometries, strict=True)
+            for annotation, geometry in zip(annotations, geometries, strict=True)
         ),
+        dropped=placed.dropped,
+        clipped=placed.clipped,
     )
 
 
 def _resized(
-    asset: ManifestAsset, step: ResizeStep, geometries: list[Geometry]
-) -> tuple[list[Geometry], int, int]:
-    _refuse_unsupported(asset, step, geometries)
-    if _any_coordinates(geometries):
-        source_width, source_height = _dimensions(asset, step.kind)
-        if step.strategy is ResizeStrategy.STRETCH:
-            scale_x = step.width / source_width
-            scale_y = step.height / source_height
-            offset_x = offset_y = 0.0
-        else:
-            fit = letterbox_fit(
-                source_width,
-                source_height,
-                target_width=step.width,
-                target_height=step.height,
-            )
-            scale_x = scale_y = fit.scale
-            offset_x, offset_y = float(fit.offset_x), float(fit.offset_y)
-        geometries = [
-            _scaled(geometry, scale_x, scale_y, offset_x, offset_y) for geometry in geometries
-        ]
-    return geometries, step.width, step.height
+    asset: ManifestAsset, step: ResizeStep, labels: list[tuple[ManifestAnnotation, Geometry]]
+) -> _Placed:
+    _refuse_unsupported(asset, step, [geometry for _, geometry in labels])
+    if not _any_coordinates([geometry for _, geometry in labels]):
+        return _Placed(labels, step.width, step.height)
+    source_width, source_height = _dimensions(asset, step.kind)
+    if step.strategy is ResizeStrategy.STRETCH:
+        scale_x = step.width / source_width
+        scale_y = step.height / source_height
+        offset_x = offset_y = 0.0
+    else:
+        fit = canvas_fit(
+            source_width,
+            source_height,
+            strategy=step.strategy,
+            target_width=step.width,
+            target_height=step.height,
+        )
+        scale_x = scale_y = fit.scale
+        offset_x, offset_y = float(fit.offset_x), float(fit.offset_y)
+    moved = [
+        (annotation, _scaled(geometry, scale_x, scale_y, offset_x, offset_y))
+        for annotation, geometry in labels
+    ]
+    if step.strategy not in CROPPING_STRATEGIES:
+        return _Placed(moved, step.width, step.height)
+    kept: list[tuple[ManifestAnnotation, Geometry]] = []
+    dropped: list[UUID] = []
+    clipped: list[UUID] = []
+    for annotation, geometry in moved:
+        cut, was_clipped = _cropped(geometry, float(step.width), float(step.height))
+        if cut is None:
+            dropped.append(annotation.id)
+            continue
+        if was_clipped:
+            clipped.append(annotation.id)
+        kept.append((annotation, cut))
+    return _Placed(kept, step.width, step.height, tuple(dropped), tuple(clipped))
 
 
 def _copied(
@@ -425,6 +529,209 @@ def _scaled(
             raise _unreachable_3d(geometry)
         case _:
             assert_never(geometry)
+
+
+def _cropped(geometry: Geometry, width: float, height: float) -> tuple[Geometry | None, bool]:
+    """The label as the ``width × height`` canvas keeps it, and whether it was cut.
+
+    A box is clipped to the canvas. A polygon is clipped to it too, and when
+    the cut leaves several separate pieces only the largest by area is kept.
+    Either is dropped — ``None`` — when nothing is left on the canvas or what
+    is left is less than :data:`CROP_KEEP_FRACTION` of its area before the cut.
+    A label wholly on the canvas comes back as it was, uncut. Classification
+    has no coordinates and always passes; every other geometry is refused by
+    the cropping strategies' ``supported_geometries`` before it gets here.
+    """
+    match geometry:
+        case ClassificationGeometry():
+            return geometry, False
+        case BboxGeometry():
+            return _cropped_box(geometry, width, height)
+        case PolygonGeometry():
+            return _cropped_polygon(geometry, width, height)
+        case PolylineGeometry() | Polyline3DGeometry() | Cuboid3DGeometry():
+            raise AssertionError(f"no cropping resize transforms a {geometry.type.value}")
+        case _:
+            assert_never(geometry)
+
+
+def _on_canvas(x: float, y: float, width: float, height: float) -> bool:
+    return (
+        -_EDGE_TOLERANCE <= x <= width + _EDGE_TOLERANCE
+        and -_EDGE_TOLERANCE <= y <= height + _EDGE_TOLERANCE
+    )
+
+
+def _cropped_box(
+    box: BboxGeometry, width: float, height: float
+) -> tuple[BboxGeometry | None, bool]:
+    right, bottom = box.x + box.width, box.y + box.height
+    if _on_canvas(box.x, box.y, width, height) and _on_canvas(right, bottom, width, height):
+        return box, False
+    left, top = max(box.x, 0.0), max(box.y, 0.0)
+    right, bottom = min(right, width), min(bottom, height)
+    if right <= left or bottom <= top:
+        return None, True
+    if (right - left) * (bottom - top) < CROP_KEEP_FRACTION * box.width * box.height:
+        return None, True
+    return BboxGeometry(x=left, y=top, width=right - left, height=bottom - top), True
+
+
+def _cropped_polygon(
+    polygon: PolygonGeometry, width: float, height: float
+) -> tuple[PolygonGeometry | None, bool]:
+    if all(_on_canvas(x, y, width, height) for x, y in polygon.points):
+        return polygon, False
+    pieces = [
+        piece
+        for piece in _clip_ring(list(polygon.points), width, height)
+        if abs(_ring_area(piece)) > _DEGENERATE_AREA
+    ]
+    if not pieces:
+        return None, True
+    largest = max(pieces, key=lambda piece: abs(_ring_area(piece)))
+    if abs(_ring_area(largest)) < CROP_KEEP_FRACTION * abs(_ring_area(polygon.points)):
+        return None, True
+    return PolygonGeometry(points=largest), True
+
+
+def _ring_area(points: Sequence[Point]) -> float:
+    """The signed shoelace area of a ring: positive when counter-clockwise in y-up axes."""
+    return 0.5 * sum(
+        x0 * y1 - x1 * y0
+        for (x0, y0), (x1, y1) in zip(points, [*points[1:], points[0]], strict=True)
+    )
+
+
+def _clip_ring(points: list[Point], width: float, height: float) -> list[list[Point]]:
+    """The separate pieces of a ring that lie on the ``width × height`` canvas.
+
+    The ring is split against each canvas edge in turn. Each split pairs the
+    places the ring crosses that edge in order along it, which is what keeps
+    two pieces of a concave ring apart rather than joining them along the
+    edge the way a single Sutherland–Hodgman pass does. A run of vertices
+    along a canvas edge is reduced to its two ends, which removes the zero-area
+    spike a source edge lying on the canvas edge would leave. Pieces without
+    three distinct points are left out.
+    """
+    rings = [points]
+    edges = ((0, 0.0, True), (0, width, False), (1, 0.0, True), (1, height, False))
+    for axis, bound, keep_above in edges:
+        rings = [piece for ring in rings for piece in _split(ring, axis, bound, keep_above)]
+    pieces = (_edge_runs_ended(_distinct(ring), edges) for ring in rings)
+    return [ring for ring in pieces if len(ring) >= 3]
+
+
+def _edge_runs_ended(ring: list[Point], edges: Sequence[tuple[int, float, bool]]) -> list[Point]:
+    """The ring without any vertex whose neighbours lie on the same canvas edge with it."""
+    ring = list(ring)
+    removed = True
+    while removed and len(ring) >= 3:
+        removed = False
+        for index, point in enumerate(ring):
+            before, after = ring[index - 1], ring[(index + 1) % len(ring)]
+            if any(before[axis] == point[axis] == after[axis] == bound for axis, bound, _ in edges):
+                del ring[index]
+                removed = True
+                break
+    return _distinct(ring)
+
+
+def _split(ring: list[Point], axis: int, bound: float, keep_above: bool) -> list[list[Point]]:
+    def inside(point: Point) -> float:
+        distance = point[axis] - bound
+        return distance if keep_above else -distance
+
+    values = [inside(point) for point in ring]
+    if all(value >= 0 for value in values):
+        return [ring]
+    if all(value <= 0 for value in values):
+        return []
+    start = next(index for index, value in enumerate(values) if value < 0)
+    ring = ring[start:] + ring[:start]
+    values = values[start:] + values[:start]
+
+    def crossing(p: Point, q: Point, vp: float, vq: float) -> Point:
+        if vp == 0:
+            return p
+        if vq == 0:
+            return q
+        t = vp / (vp - vq)
+        along = p[1 - axis] + t * (q[1 - axis] - p[1 - axis])
+        return (bound, along) if axis == 0 else (along, bound)
+
+    chains: list[list[Point]] = []
+    current: list[Point] = []
+    for index, (p, vp) in enumerate(zip(ring, values, strict=True)):
+        q, vq = ring[(index + 1) % len(ring)], values[(index + 1) % len(ring)]
+        if vp < 0:
+            if vq >= 0:
+                current = [crossing(p, q, vp, vq)]
+            continue
+        current.append(p)
+        if vq < 0:
+            current.append(crossing(p, q, vp, vq))
+            chains.append(current)
+    # A chain that only touches the edge encloses nothing on this side of it.
+    chains = [chain for chain in chains if any(inside(point) > 0 for point in chain)]
+    if not chains:
+        return []
+    return _joined(chains, axis) or [[point for chain in chains for point in chain]]
+
+
+def _joined(chains: list[list[Point]], axis: int) -> list[list[Point]] | None:
+    """Close each chain onto the next along the edge, or ``None`` if they do not pair.
+
+    Along the edge, the ring's entries and exits alternate in a fixed order
+    for a simple ring, and each consecutive (entry, exit) pair bounds one
+    stretch of the edge inside the ring; a chain's exit joins the entry it is
+    paired with. A ring that touches itself on the edge, or crosses itself,
+    can break that order, and the caller then falls back to one ring.
+    """
+    events = sorted(
+        [(chain[0][1 - axis], 0, index) for index, chain in enumerate(chains)]
+        + [(chain[-1][1 - axis], 1, index) for index, chain in enumerate(chains)],
+        key=lambda event: event[0],
+    )
+    ordered: list[tuple[float, int, int]] = []
+    expected = events[0][1]
+    while events:
+        tied = [event for event in events if event[0] == events[0][0]]
+        chosen = next((event for event in tied if event[1] == expected), tied[0])
+        events.remove(chosen)
+        ordered.append(chosen)
+        expected = 1 - chosen[1]
+    following: dict[int, int] = {}
+    for opening, closing in zip(ordered[::2], ordered[1::2], strict=True):
+        if opening[1] == closing[1]:
+            return None
+        exit_event, entry_event = (opening, closing) if opening[1] == 1 else (closing, opening)
+        following[exit_event[2]] = entry_event[2]
+    rings: list[list[Point]] = []
+    seen: set[int] = set()
+    for first in range(len(chains)):
+        if first in seen:
+            continue
+        ring: list[Point] = []
+        index = first
+        while index not in seen:
+            seen.add(index)
+            ring.extend(chains[index])
+            index = following[index]
+        if index != first:
+            return None
+        rings.append(ring)
+    return rings
+
+
+def _distinct(ring: list[Point]) -> list[Point]:
+    kept: list[Point] = []
+    for point in ring:
+        if not kept or point != kept[-1]:
+            kept.append(point)
+    while len(kept) > 1 and kept[0] == kept[-1]:
+        kept.pop()
+    return kept
 
 
 def _mirrored(geometry: Geometry, width: float) -> Geometry:

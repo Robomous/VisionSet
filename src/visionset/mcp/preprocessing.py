@@ -57,7 +57,8 @@ def create_preprocessing_recipe(
         Field(
             description=(
                 "What the recipe does. `steps` is a list of `{kind: 'resize', strategy: "
-                "'letterbox'|'stretch', width, height, pad_value?}` (at most one, first) and "
+                "'letterbox'|'stretch'|'fill'|'center_crop', width, height, pad_value?}` "
+                "(at most one, first) and "
                 "`{kind: 'augment', op: 'hflip'|'brightness_contrast'|'rot90', amount?}` "
                 "(each at most once); `variants_per_asset` (0 to 8) is how many augmented "
                 "variants each train-fold image gets and requires an augment step; `target` "

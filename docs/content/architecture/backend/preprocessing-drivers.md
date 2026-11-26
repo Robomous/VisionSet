@@ -22,8 +22,8 @@ and answers with the transformed bytes.
 
 **Drivers do pixels only.** A driver that moved annotations would be a second spelling of
 arithmetic the kernel already owns, and the two spellings would drift. What keeps a variant's
-labels on its pixels is that both sides read the same arithmetic: `letterbox_fit` is the one
-statement of where letterboxed content lands, and the per-variant draws come from the kernel's
+labels on its pixels is that both sides read the same arithmetic: `canvas_fit` is the one
+statement of where letterboxed, filled or centre-cropped content lands, and the per-variant draws come from the kernel's
 seed helpers, never from a driver's own random source.
 
 ## The port
@@ -116,7 +116,7 @@ wrong thing, which is a limit of the report's shape in this release rather than 
 ```python
 from typing import Final
 
-from visionset.kernel.domain import ResizeStep, ResizeStrategy, Step, letterbox_fit
+from visionset.kernel.domain import ResizeStep, ResizeStrategy, Step, canvas_fit
 
 
 class MyResizeDriver:
@@ -133,8 +133,12 @@ class MyResizeDriver:
         if step.strategy is ResizeStrategy.STRETCH:
             result = source.resize(step.width, step.height)
         else:
-            fit = letterbox_fit(
-                source.width, source.height, target_width=step.width, target_height=step.height
+            fit = canvas_fit(
+                source.width,
+                source.height,
+                strategy=step.strategy,
+                target_width=step.width,
+                target_height=step.height,
             )
             content = source.resize(fit.content_width, fit.content_height)
             result = my_image_library.canvas(step.width, step.height, grey=step.pad_value)
@@ -142,9 +146,11 @@ class MyResizeDriver:
         return my_image_library.encode(result, like=source)
 ```
 
-The letterbox arithmetic is the kernel's, read back through `letterbox_fit` rather than
-re-derived, so the content lands exactly where the geometry transform placed the annotations - a
-letterbox worked out in the driver would be a second spelling that could be half a pixel off. An
+The canvas arithmetic is the kernel's, read back through `canvas_fit` rather than re-derived, so
+the content lands exactly where the geometry transform placed the annotations - a letterbox or a
+crop worked out in the driver would be a second spelling that could be half a pixel off. A
+negative offset puts part of the content off the canvas: pasting there is the `fill` and
+`center_crop` crop, and a library whose paste does not clip must crop the content first. An
 augmentation driver reads the seed the same way: `brightness_contrast_factors(seed, step.amount)`
 and `rot90_quarter_turns(seed)`, and mirrors on every `hflip` variant.
 

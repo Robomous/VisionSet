@@ -535,6 +535,7 @@ class ClassCompatibility(TypedDict):
     annotations: int
     assets: int
     reason: str | None
+    cropped_by: str | None
 
 
 @closed
@@ -648,6 +649,8 @@ class ExportPreprocessing(TypedDict):
     recipe_hash: str
     pillow_version: str
     mapping: list[ExportFileMapping]
+    dropped_annotations: int
+    clipped_annotations: int
 
 
 @closed

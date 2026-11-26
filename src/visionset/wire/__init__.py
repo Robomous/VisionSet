@@ -940,6 +940,7 @@ def class_compatibility(value: ClassCompatibility) -> shapes.ClassCompatibility:
         "annotations": value.annotations,
         "assets": value.assets,
         "reason": value.reason,
+        "cropped_by": None if value.cropped_by is None else value.cropped_by.value,
     }
 
 
@@ -1072,6 +1073,8 @@ def export_preprocessing(value: ExportPreprocessing) -> shapes.ExportPreprocessi
         "recipe_hash": value.recipe_hash,
         "pillow_version": value.pillow_version,
         "mapping": [export_file_mapping(row) for row in value.mapping],
+        "dropped_annotations": value.dropped_annotations,
+        "clipped_annotations": value.clipped_annotations,
     }
 
 

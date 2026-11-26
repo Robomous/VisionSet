@@ -181,6 +181,32 @@ describe("recipeDraft", () => {
     expect(draftToSpec({ ...base, strategy: "stretch", padValue: "300" }).kind).toBe("spec");
   });
 
+  it("sends the pad value for the fits that pad, and the default for the ones that cover the frame", () => {
+    const base = { ...applyTargetHints(EMPTY_DRAFT, YOLO11), padValue: "0" };
+    const padOf = (strategy: "center_crop" | "fill"): number | undefined => {
+      const outcome = draftToSpec({ ...base, strategy });
+      const resize = outcome.kind === "spec" ? outcome.spec.steps[0] : undefined;
+      return resize?.kind === "resize" ? resize.pad_value : undefined;
+    };
+    expect(padOf("center_crop")).toBe(0);
+    expect(padOf("fill")).toBe(114);
+    expect(draftToSpec({ ...base, strategy: "center_crop", padValue: "300" }).kind).toBe("problems");
+    expect(draftToSpec({ ...base, strategy: "fill", padValue: "300" }).kind).toBe("spec");
+  });
+
+  it("round-trips a stored cropping spec and names it by its fit", () => {
+    const crop: RecipeSpec = {
+      target: null,
+      steps: [{ kind: "resize", strategy: "center_crop", width: 512, height: 512, pad_value: 0 }],
+      variants_per_asset: 0,
+    };
+    const draft = draftFromSpec("crop", crop);
+    const outcome = draftToSpec(draft);
+    expect(outcome.kind === "spec" && outcome.spec).toEqual(crop);
+    expect(suggestName({ ...draft, strategy: "fill" })).toBe("recipe-512-fill");
+    expect(describeRecipeSpec(crop)).toBe("center_crop 512×512");
+  });
+
   it("holds the cross-field rule in both directions", () => {
     const base = applyTargetHints(EMPTY_DRAFT, YOLO11);
     const opsWithoutVariants = draftToSpec({ ...base, ops: ["hflip"], variants: "0" });
@@ -867,6 +893,14 @@ describe("writing a new recipe", () => {
     expect(within(dialog).getByTestId("resize-letterbox").getAttribute("data-state")).toBe("on");
     pointerLeaves(within(dialog).getByTestId("resize-stretch"), dialog);
     expect(drawn()).toBe("letterbox");
+
+    // The cropping fits are offered beside them, each drawn and captioned with its loss.
+    for (const fit of ["fill", "center_crop"]) {
+      await userEvent.hover(within(dialog).getByTestId(`resize-${fit}`));
+      expect(drawn()).toBe(fit);
+      expect(within(dialog).getByTestId("recipe-stage-caption").textContent).toContain("Labels cut mostly away are dropped.");
+      pointerLeaves(within(dialog).getByTestId(`resize-${fit}`), dialog);
+    }
 
     await userEvent.click(within(dialog).getByTestId("resize-none"));
     pointerLeaves(within(dialog).getByTestId("resize-none"), dialog);

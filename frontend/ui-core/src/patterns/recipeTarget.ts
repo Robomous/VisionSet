@@ -32,7 +32,7 @@ export function targetCarries(target: ExportTarget, classCount: number | undefin
 export function trainerResizesLine(target: ExportTarget): string {
   const size = target.hints.recommended_size;
   const strategy = target.hints.recommended_strategy;
-  const verb = strategy === "letterbox" ? "letterboxes" : strategy === "stretch" ? "stretches" : "resizes";
+  const verb = (strategy == null ? undefined : { letterbox: "letterboxes", stretch: "stretches", fill: "fills", center_crop: "crops" }[strategy]) ?? "resizes";
   const to = size == null ? "" : ` to ${size[0] === size[1] ? size[0] : `${size[0]}×${size[1]}`}`;
   return `${target.label} ${verb}${to} on its own. Pre-resizing shrinks the archive and speeds up loading.`;
 }

@@ -73,7 +73,7 @@ export function suggestName(draft: RecipeDraft): string {
   if (draft.strategy !== "none" && /^\d+$/.test(draft.width)) {
     parts.push(draft.width === draft.height || draft.height === "" ? draft.width : `${draft.width}x${draft.height}`);
   }
-  if (draft.strategy === "stretch") parts.push("stretch");
+  if (draft.strategy !== "none" && draft.strategy !== "letterbox") parts.push(draft.strategy);
   if (draft.ops.length > 0) parts.push(`aug${draft.variants}`);
   return parts.join("-");
 }

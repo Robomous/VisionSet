@@ -288,3 +288,18 @@ def test_an_unknown_recipe_exits_one_naming_it(root: Path, tmp_path: Path) -> No
 
     assert result.exit_code == 1
     assert "no pre-processing recipe named 'nope'" in result.output
+
+
+def test_a_crop_loss_is_named_as_the_resize_not_the_format(root: Path, tmp_path: Path) -> None:
+    """32×24 onto fill 32×96 scales by 4 and cuts 48 off each side: the box goes."""
+    name, out = _labeled_release(root, tmp_path)
+    ok(root, "recipe", "create", "tall", "-p", name, "--resize", "fill:32x96")
+    export = ["export", "-p", name, "--release", "v1.0", "-f", "ultralytics", "--recipe", "tall"]
+
+    checked = run(root, *export, "--check")
+    written = run(root, *export, "--allow-lossy", "--out", str(out))
+
+    assert "ultralytics after the fill resize would drop" in checked.stderr
+    assert written.exit_code == 0, written.output
+    assert "Cut away by the fill resize: sign" in written.stderr
+    assert "Not carried by ultralytics" not in written.stderr

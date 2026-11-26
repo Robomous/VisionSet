@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "./errors.js";
-import { refusalProse } from "./refusals.js";
+import { describeTargetDrops, refusalProse, type ClassCompatibility } from "./refusals.js";
 
 describe("refusalProse — browser target refusals", () => {
   it("explains that this device is positive-point only, without inventing a server-error sentence", () => {
@@ -33,5 +33,23 @@ describe("refusalProse — CALIBRATION_IN_USE", () => {
     const prose = refusalProse(new ApiError({ code: "CALIBRATION_IN_USE", message: "server wording" }));
     expect(prose).toMatch(/already carry 3D labels drawn in their declared frame/);
     expect(prose).not.toContain("server wording");
+  });
+});
+
+describe("describeTargetDrops — a cropping resize", () => {
+  const yolo = { label: "YOLO11", geometries: ["bbox", "polygon"] };
+  const row = (status: string, annotations: number, cropped_by: string | null, geometry = "bbox"): ClassCompatibility =>
+    ({ label_class: "sign", geometry, status, annotations, assets: annotations, reason: null, cropped_by }) as ClassCompatibility;
+
+  it("blames the recipe, not the target, for what the crop cut", () => {
+    const sentence = describeTargetDrops(yolo, [row("dropped", 5, "fill"), row("degraded", 2, "fill")]);
+    expect(sentence).toBe("The recipe's fill resize would leave 5 boxes cut away and 2 boxes cut down.");
+  });
+
+  it("keeps the target's own losses and the crop's apart, each with its own count", () => {
+    const sentence = describeTargetDrops(yolo, [row("dropped", 3, null, "polyline"), row("dropped", 5, "fill")]);
+    expect(sentence).toBe(
+      "YOLO11 accepts boxes and polygons — 3 polylines would be dropped. The recipe's fill resize would leave 5 boxes cut away.",
+    );
   });
 });

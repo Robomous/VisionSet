@@ -700,13 +700,14 @@ browser computes a size. **Changing the model rewrites the suggestion only for f
 typed in**, so a size chosen on purpose survives a change of model (`recipeDraft.ts`,
 `touched`). *Resize* opens on a drawing of what the fit does (`art.tsx`): a wide photograph meeting
 the frame of the size below — shrunk with the rest hatched as padding for Letterbox, bent to fill
-it for Stretch, unframed for Original — on a stage whose caption is what the drawn fit does (*Keeps the shape and pads the rest.*) — the
+it for Stretch, grown past the frame for Fill, spilling past it unscaled for Crop, unframed for
+Original — on a stage whose caption is what the drawn fit does (*Keeps the shape and pads the rest.*) — the
 fit and the size are the fields under it, so the caption does not repeat them. It
 draws the chosen fit, and the option under the pointer or focus before it is chosen. It is a
-diagram, never the person's images, and hidden from assistive technology. Under it, the fit as a three-way toggle group — Letterbox, Stretch, Original —
+diagram, never the person's images, and hidden from assistive technology. Under it, the fit as a five-way toggle group — Letterbox, Stretch, Fill, Crop, Original; the two cropping fits' lines say that labels cut mostly away are dropped —
 (its line is the stage's caption, and the toggle group's description for a screen reader); the width and height as numeric fields in
 pixels, with the common sizes under them (320 to 1280) as a second toggle group. The pad is not
-asked: a letterbox keeps the grey the recipe has (114 for a new one). *Augmentation* is one row
+asked: a letterbox or a crop keeps the grey the recipe has (114 for a new one). *Augmentation* is one row
 per step — *Flip*, *Brightness* (brightness and contrast), *Rotate* (quarter turns) — each a
 switch labelled by its row and nothing else beside it. What it does is said once, in the card of
 the info button beside its label (`ArtTip`): it draws it — original → result, brightness as one

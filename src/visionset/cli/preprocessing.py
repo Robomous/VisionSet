@@ -69,11 +69,17 @@ ResizeOption = Annotated[
     typer.Option(
         "--resize",
         metavar="STRATEGY:WxH",
-        help="Resize every image: `letterbox:640x640` or `stretch:640x480`.",
+        help=(
+            "Resize every image: `letterbox:640x640`, `stretch:640x480`, `fill:640x640` "
+            "or `center_crop:640x640`."
+        ),
     ),
 ]
 PadOption = Annotated[
-    int, typer.Option("--pad", help="The grey a letterbox pads with, 0 to 255.", min=0, max=255)
+    int,
+    typer.Option(
+        "--pad", help="The grey letterbox and center_crop pad with, 0 to 255.", min=0, max=255
+    ),
 ]
 AugmentOption = Annotated[
     str | None,

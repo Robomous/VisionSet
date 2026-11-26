@@ -13,6 +13,15 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **`fill` and `center_crop` resize strategies.** `fill` scales a recipe's images to cover the size and crops the
+  overflow, centred; `center_crop` cuts a centred window at the source's own scale and pads an axis the source is
+  too small to fill. A box or polygon is clipped to the canvas - a polygon cut into pieces keeps its largest -
+  and a label left with under half its area is dropped. Cut-down labels are reported degraded and cut-away ones
+  dropped, in the compatibility report - in rows of their own, marked by the new `cropped_by` field on a class
+  row - and in the export report's `preprocessing` block (`dropped_annotations`, `clipped_annotations`); either
+  needs `allow_lossy`, and the refusal carries the format's and the crop's loss in one report, before anything
+  is written. Both strategies refuse a polyline with `PreprocessingStepUnsupportedGeometry`; `canvas_fit` is the
+  shared arithmetic the geometry transform and the Pillow driver read (#786).
 - **A split recipe can keep a group in one fold.** `SplitRecipe.group_by="group_label"` (REST `split.group_by`,
   CLI `release publish --group-by group_label`, MCP `publish_release`) cuts by the group label an importer wrote on
   each asset instead of by asset, so a group never straddles train, val and test. The fractions then count groups,
