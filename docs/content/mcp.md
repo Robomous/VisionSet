@@ -529,6 +529,7 @@ worse than no refusal. `backfill_thumbnails` is `POST /projects/{id}/thumbnail-b
 | `GET /datasets/{id}/assets/{asset_id}/annotations` | An asset's annotations on the dataset trunk. `list_asset_annotations` reads them through a job. |
 | `POST /projects/{id}/preprocessing-preview` | Renders one asset through a recipe spec. The CLI has no equivalent either. |
 | `POST /inference/suggest` | Model-suggested bounds for the annotator. Not offered. |
+| `POST /inference/detect` | Every instance of one class, proposed for the annotator to choose from. Not offered. |
 | `POST /jobs/{job_id}/start` | Takes a pending job; see [below](#actions-with-no-matching-tool). |
 | `GET /background-jobs`, `/background-jobs/{id}`, `/background-jobs/{id}/artifact`, `POST /background-jobs/{id}/cancel` | Long-running work the browser follows. Not offered. |
 | `POST /projects/{id}/video-imports`, `/video-imports/{id}/frames`, `/video-imports/{id}/commit`, `GET` and `DELETE /video-imports/{id}` | Browser-side video import; see the dropped `register_video_source` above. |

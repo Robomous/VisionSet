@@ -20,7 +20,7 @@ import { userEvent } from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JSX } from "react";
 
-import { answered, armed, refused, withClass, withPoint } from "@visionset/annotator";
+import { answered, armed, detecting, refused, withChoice, withClass, withPoint } from "@visionset/annotator";
 import type { Answer, Suggestion, SuggestionState } from "@visionset/annotator";
 import { TooltipProvider } from "@robomous/ui-core";
 
@@ -1225,5 +1225,141 @@ describe("Local, once a browser runtime is wired", () => {
     const svg = phrase.querySelector("svg");
     expect(svg).toBeTruthy();
     expect(svg?.classList.contains("animate-spin")).toBe(true);
+  });
+});
+
+describe("Detect all, and choosing among its candidates", () => {
+  const FAR_BOX = { type: "bbox", x: 200, y: 200, width: 20, height: 20 } as const;
+
+  let issued = 0;
+
+  function candidate(confidence: number, geometry: Suggestion["geometry"] = A_BOX): Suggestion {
+    return {
+      geometry,
+      confidence,
+      modelRef: "acme/detector@abc",
+      contour: [],
+      labelClass: "vehicle",
+      id: `c${issued++}`,
+    };
+  }
+
+  function detected(...candidates: readonly Suggestion[]): SuggestionState {
+    const session = detecting(armed("vehicle"));
+    return answered(session, session.serial, {
+      modelRef: "acme/detector@abc",
+      confidence: null,
+      suggestions: candidates,
+      parameters: [],
+    });
+  }
+
+  function two(): SuggestionState {
+    return detected(candidate(0.83), candidate(0.61, FAR_BOX));
+  }
+
+  it("offers Detect all while nothing is pending, and asks when pressed", async () => {
+    const onDetect = vi.fn();
+    render(mount({ detect: { blocker: null, onDetect } }));
+    const button = screen.getByRole("button", { name: "Detect all" });
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    await userEvent.click(button);
+    expect(onDetect).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers no Detect all where the host passes none, which is Local and read-only", () => {
+    render(mount());
+    expect(screen.queryByTestId("suggest-detect")).toBeNull();
+  });
+
+  it("disables Detect all with the blocker as its description", async () => {
+    const onDetect = vi.fn();
+    render(mount({ detect: { blocker: "no-shape", onDetect } }));
+    const button = screen.getByTestId("suggest-detect") as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    const reason = document.getElementById(button.getAttribute("aria-describedby") ?? "");
+    expect(reason?.textContent).toContain("No ready detection model draws a shape this class can hold");
+    expect(tip()).toContain("No ready detection model draws a shape this class can hold");
+  });
+
+  it("offers no Detect all over a proposal on screen", () => {
+    render(mount({ session: shown(), detect: { blocker: null, onDetect: vi.fn() } }));
+    expect(screen.queryByTestId("suggest-detect")).toBeNull();
+  });
+
+  it("states one count, the chosen of the detected, and opens the list from it", () => {
+    render(mount({ session: withChoice(two(), 1, false), onToggleSuggestion: vi.fn() }));
+    const status = screen.getByTestId("suggest-status");
+    expect(status.textContent).toBe("1 of 2 chosen");
+    expect(status.contains(screen.getByTestId("suggest-chosen"))).toBe(true);
+    expect(screen.getByTestId("suggest-accept").textContent).toContain("Accept 1");
+    expect(tip()).toContain("only the chosen ones are accepted");
+  });
+
+  it("names the list's trigger with what it does", () => {
+    render(mount({ session: withChoice(two(), 1, false), onToggleSuggestion: vi.fn() }));
+    expect(screen.getByRole("button", { name: "Choose candidates to accept — 1 of 2 chosen" })).toBe(
+      screen.getByTestId("suggest-chosen"),
+    );
+  });
+
+  it("keeps the list for a lone candidate, so one let go can be taken back", async () => {
+    const onToggleSuggestion = vi.fn();
+    render(mount({ session: withChoice(detected(candidate(0.7)), 0, false), onToggleSuggestion }));
+    expect(screen.getByTestId("suggest-status").textContent).toContain("Choose a candidate to accept");
+    await userEvent.click(screen.getByTestId("suggest-chosen"));
+    await userEvent.click(await screen.findByTestId("suggest-chosen-0"));
+    expect(onToggleSuggestion).toHaveBeenCalledWith(0);
+  });
+
+  it("keeps a point answer's Accept as it was, with no count and no list", () => {
+    render(mount({ session: shown(), onToggleSuggestion: vi.fn() }));
+    expect(screen.getByTestId("suggest-accept").textContent).toMatch(/^Accept↵?/);
+    expect(screen.getByTestId("suggest-accept").textContent).not.toMatch(/Accept \d/);
+    expect(screen.queryByTestId("suggest-chosen")).toBeNull();
+  });
+
+  it("disables Accept with its reason in the count's place when nothing is chosen", async () => {
+    const onAccept = vi.fn();
+    const none = withChoice(withChoice(two(), 0, false), 1, false);
+    render(mount({ session: none, onAccept, onToggleSuggestion: vi.fn() }));
+
+    const accept = screen.getByTestId("suggest-accept") as HTMLButtonElement;
+    expect(accept.disabled).toBe(true);
+    const reason = document.getElementById(accept.getAttribute("aria-describedby") ?? "");
+    expect(reason?.textContent).toContain("Choose a candidate to accept");
+    expect(screen.getByTestId("suggest-chosen").contains(reason)).toBe(true);
+    await userEvent.click(accept);
+    expect(onAccept).not.toHaveBeenCalled();
+  });
+
+  it("lists each candidate with its own score and choice, and reports a tick by index", async () => {
+    const onToggleSuggestion = vi.fn();
+    render(mount({ session: withChoice(two(), 1, false), onToggleSuggestion }));
+
+    await userEvent.click(screen.getByTestId("suggest-chosen"));
+    const first = await screen.findByTestId("suggest-chosen-0");
+    const second = screen.getByTestId("suggest-chosen-1");
+    expect(first.getAttribute("aria-checked")).toBe("true");
+    expect(first.textContent).toContain("vehicle 1 · 83%");
+    expect(second.getAttribute("aria-checked")).toBe("false");
+    expect(second.textContent).toContain("vehicle 2 · 61%");
+
+    await userEvent.click(second);
+    expect(onToggleSuggestion).toHaveBeenCalledWith(1);
+    expect(screen.getByTestId("suggest-chosen-0")).toBeTruthy();
+  });
+
+  it("renders no Detail for a detection, which has no contour to reduce", () => {
+    render(mount({ session: two(), onTolerance: vi.fn() }));
+    expect(screen.queryByTestId("suggest-detail")).toBeNull();
+  });
+
+  it("says Detecting while the ask is out, and Nothing detected for an empty answer", () => {
+    const asking = detecting(armed("vehicle"));
+    const { rerender } = render(mount({ session: asking }));
+    expect(screen.getByTestId("suggest-status").textContent).toBe("Detecting…");
+    rerender(mount({ session: detected() }));
+    expect(screen.getByTestId("suggest-status").textContent).toBe("Nothing detected");
   });
 });

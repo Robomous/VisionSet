@@ -18,8 +18,14 @@ import { addAnnotationCommand } from "../state/commands";
 import type { AnnotationSchema, AssetDescriptor, Geometry, LabelClass, Point } from "../types";
 import type { Answer } from "./suggestion";
 import {
+  choiceAt,
+  chosenCount,
+  isProposed,
   vertexCount,
+  withChoice,
   withTolerance,
+  detecting,
+  isDetection,
   SUGGESTIBLE_GEOMETRY_TYPES,
   acceptedAnnotations,
   allowedGeometriesFor,
@@ -236,14 +242,16 @@ describe("the active class moves and the session goes with it", () => {
     const asked = withPoint(armed("car"), [10, 10], "positive");
     const moved = withClass(asked, "road");
 
-    expect(moved.serial).toBe(asked.serial);
-    // The ask that was in flight lands under the old serial and is dropped whole.
-    expect(answered(moved, asked.serial - 1, answerOf(proposal()))).toBe(moved);
+    expect(moved.serial).toBe(asked.serial + 1);
+    // The ask that was in flight lands under its own serial and is dropped whole.
+    expect(answered(moved, asked.serial, answerOf(proposal()))).toBe(moved);
+    expect(refused(moved, asked.serial, "late")).toBe(moved);
 
     // And the next click on the new class cannot be answered by it either: the
     // serial moves on rather than being handed back out.
     const again = withPoint(moved, [20, 20], "positive");
-    expect(again.serial).toBe(asked.serial + 1);
+    expect(again.serial).toBe(asked.serial + 2);
+    expect(answered(again, asked.serial, answerOf(proposal()))).toBe(again);
   });
 
   it("parks on a class that can hold nothing, rather than ending", () => {
@@ -402,9 +410,8 @@ describe("acceptance", () => {
     expect(accepted?.geometry).toEqual(A_BOX);
   });
 
-  it("builds one annotation per proposal, so a plural answer is accepted whole", () => {
-    // What makes acceptance all-or-nothing rather than a shape at a time: the
-    // caller gets a list and puts it into one command, so one undo takes back
+  it("builds one annotation per chosen proposal, and every shape starts chosen", () => {
+    // The caller gets a list and puts it into one command, so one undo takes back
     // exactly what one acceptance created.
     const accepted = acceptedAnnotations(
       documentOf(),
@@ -614,5 +621,181 @@ describe("what the answer declares", () => {
     });
     expect(empty.status).toBe("none");
     expect(empty.parameters).toEqual(["tolerance"]);
+  });
+});
+
+/** A detection answered with those candidates, each with its own score. */
+function detected(...candidates: readonly Suggestion[]): SuggestionState {
+  const asked = detecting(armed("car"));
+  return answered(asked, asked.serial, {
+    modelRef: "acme/detector@abc",
+    confidence: null,
+    suggestions: candidates,
+    parameters: [],
+  });
+}
+
+function candidate(geometry: Geometry, confidence: number): Suggestion {
+  return { geometry, confidence, modelRef: "acme/detector@abc", contour: [], labelClass: "car" };
+}
+
+const BOXES: readonly Geometry[] = [0, 1, 2, 3, 4].map((at) => ({
+  type: "bbox",
+  x: 10 + at * 100,
+  y: 20,
+  width: 50,
+  height: 50,
+}));
+
+function five(): SuggestionState {
+  return detected(...BOXES.map((geometry, at) => candidate(geometry, 0.9 - at * 0.1)));
+}
+
+describe("an answer that lands after Escape", () => {
+  it("is dropped, so a discarded preview is never repainted", () => {
+    const asked = detecting(armed("car"));
+    const discarded = cleared(asked);
+    expect(answered(discarded, asked.serial, answerOf(proposal()))).toBe(discarded);
+  });
+});
+
+describe("detecting every instance", () => {
+  it("drops the clicks and the point preview, and asks under a new serial", () => {
+    const state = showing(proposal(A_BOX));
+    const next = detecting(state);
+    expect(next.source).toBe("detection");
+    expect(next.points).toEqual([]);
+    expect(next.suggestions).toEqual([]);
+    expect(next.status).toBe("asking");
+    expect(next.serial).toBe(state.serial + 1);
+  });
+
+  it("drops a point answer that arrives after Detect all was pressed", () => {
+    const pointed = withPoint(armed("car"), [1, 1], "positive");
+    const next = detecting(pointed);
+    expect(answered(next, pointed.serial, answerOf(proposal()))).toBe(next);
+  });
+
+  it("does nothing for a parked session", () => {
+    const parked = withClass(armed("car"), null);
+    expect(detecting(parked)).toBe(parked);
+  });
+
+  it("goes back to points when cleared or when the class moves", () => {
+    expect(isDetection(cleared(five()))).toBe(false);
+    expect(isDetection(withClass(five(), "road"))).toBe(false);
+    expect(withClass(five(), "road").suggestions).toEqual([]);
+  });
+
+  it("starts with every candidate chosen, each keeping its own score", () => {
+    const state = five();
+    expect(state.chosen).toEqual([true, true, true, true, true]);
+    expect(state.suggestions.map((one) => one.confidence)).toEqual([0.9, 0.8, 0.7, 0.6, 0.5]);
+  });
+});
+
+describe("choosing some of a detection", () => {
+  it("writes only the two chosen of five, each with its own score and the model", () => {
+    let state = five();
+    for (const index of [1, 3, 4]) state = withChoice(state, index, false);
+    const accepted = acceptedAnnotations(documentOf(), state, byCount());
+    expect(accepted.map((one) => one.geometry)).toEqual([BOXES[0], BOXES[2]]);
+    expect(accepted.map((one) => one.confidence)).toEqual([0.9, 0.7]);
+    expect(accepted.every((one) => one.model_ref === "acme/detector@abc" && one.provenance === "model")).toBe(true);
+    expect(accepted.every((one) => one.label_class === "car")).toBe(true);
+  });
+
+  it("is not acceptable with nothing chosen, though the candidates are still on screen", () => {
+    let state = five();
+    for (const index of [0, 1, 2, 3, 4]) state = withChoice(state, index, false);
+    expect(isProposed(state)).toBe(true);
+    expect(isAcceptable(state)).toBe(false);
+    expect(acceptedAnnotations(documentOf(), state, byCount())).toEqual([]);
+  });
+
+  it("lets a candidate go and takes it back", () => {
+    const off = withChoice(five(), 2, false);
+    expect(chosenCount(off)).toBe(4);
+    expect(withChoice(off, 2, true).chosen).toEqual([true, true, true, true, true]);
+  });
+
+  it("returns the state by identity for a choice that changes nothing", () => {
+    const state = five();
+    expect(withChoice(state, 0, true)).toBe(state);
+    expect(withChoice(state, 7, false)).toBe(state);
+    const idle = armed("car");
+    expect(withChoice(idle, 0, false)).toBe(idle);
+  });
+
+  it("resets the choice to every candidate on a new detection", () => {
+    const state = withChoice(withChoice(five(), 0, false), 1, false);
+    const again = detecting(state);
+    expect(again.chosen).toEqual([]);
+    const fresh = answered(again, again.serial, {
+      modelRef: "acme/detector@abc",
+      confidence: null,
+      suggestions: [candidate(BOXES[0]!, 0.9), candidate(BOXES[1]!, 0.8)],
+      parameters: [],
+    });
+    expect(fresh.chosen).toEqual([true, true]);
+  });
+
+  it("forgets the choice with the candidates", () => {
+    const state = withChoice(five(), 0, false);
+    expect(cleared(state).chosen).toEqual([]);
+    expect(refused(state, state.serial, "no").chosen).toEqual([]);
+  });
+
+  it("writes nothing for a candidate mapped to another class", () => {
+    const stray = detected({ ...candidate(A_BOX, 0.9), labelClass: "road" });
+    expect(acceptedAnnotations(documentOf(), stray, byCount())).toEqual([]);
+  });
+});
+
+describe("a tolerance over several outlined shapes", () => {
+  it("keeps each choice with its own shape when another shape drops out", () => {
+    const square: readonly Point[] = [
+      [0, 0],
+      [40, 0],
+      [40, 40],
+      [0, 40],
+    ];
+    const sliver: readonly Point[] = [
+      [100, 100],
+      [101, 100],
+      [101, 100.5],
+      [100, 100.5],
+    ];
+    const big = proposal({ type: "polygon", points: [...square] }, 0.9, square);
+    const thin = proposal({ type: "polygon", points: [...sliver] }, 0.9, sliver);
+    const state = withChoice(showing(thin, big, big), 2, false);
+
+    const coarse = withTolerance(state, 16);
+    expect(coarse.suggestions).toHaveLength(2);
+    expect(coarse.chosen).toEqual([true, false]);
+  });
+});
+
+describe("clicking a detection chooses rather than refines", () => {
+  it("names the topmost candidate under the point", () => {
+    expect(choiceAt(five(), [215, 30], 0)).toBe(2);
+    expect(choiceAt(five(), [15, 30], 0)).toBe(0);
+  });
+
+  it("answers null off every candidate", () => {
+    expect(choiceAt(five(), [5, 500], 0)).toBeNull();
+  });
+
+  it("chooses a lone candidate too, so one let go can be taken back", () => {
+    const lone = withChoice(detected(candidate(A_BOX, 0.7)), 0, false);
+    expect(choiceAt(lone, [20, 30], 0)).toBe(0);
+  });
+
+  it("never chooses over a point answer, where a click refines", () => {
+    expect(choiceAt(showing(proposal(A_BOX)), [20, 30], 0)).toBeNull();
+  });
+
+  it("answers null while a detection is still out", () => {
+    expect(choiceAt(detecting(armed("car")), [20, 30], 0)).toBeNull();
   });
 });

@@ -63,6 +63,20 @@
  * Detail is inline, and appears only where the server's answer declared the
  * tolerance (`session.parameters`); nothing here knows that a box has none.
  *
+ * ## Detect all, and a detection is a choice
+ *
+ * *Detect all* asks a text-detection model, on Server, for every instance of the
+ * held class. It is drawn only where `detect` is passed — a host on Local passes
+ * none, because no browser detector exists and the ask is never sent to the
+ * server in Local's place — and disabled with its reason while no ready
+ * detection model draws a shape the class holds.
+ *
+ * Each candidate starts chosen; the bar's phrase becomes the count, `N of M
+ * chosen`, and opens the list that — like a click on the candidate itself — lets
+ * one go or takes it back. Accept names how many it will write. With none chosen
+ * there is nothing to accept, so Accept is disabled and the phrase in the count's
+ * place is its reason.
+ *
  * ## The action is a callback, and its absence renders nothing
  *
  * `ui-core` imports no router — `docs/content/ui/navigation.md` states it — so
@@ -84,19 +98,22 @@
 import {
   MAXIMUM_TOLERANCE,
   MINIMUM_TOLERANCE,
+  chosenCount,
   hasPending,
-  isAcceptable,
+  isDetection,
   isParked,
+  isProposed,
   vertexCount,
   type SuggestibleGeometryType,
   type SuggestionState,
 } from "@visionset/annotator";
-import { Check, ChevronDown, Laptop, Loader2, Server, TriangleAlert, X } from "lucide-react";
+import { Check, ChevronDown, Laptop, Loader2, ScanSearch, Server, TriangleAlert, X } from "lucide-react";
 import { useRef, useState, type JSX, type KeyboardEvent, type ReactNode } from "react";
 
 import {
   Button,
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -110,7 +127,7 @@ import {
   SelectValue,
   cn,
 } from "@robomous/ui-core";
-import type { Connection, SuggestBlocker } from "../data/inferenceQueries";
+import type { Connection, DetectBlocker, SuggestBlocker } from "../data/inferenceQueries";
 import type {
   ActiveSuggestionTarget,
   BrowserModelAcquisition,
@@ -189,6 +206,13 @@ export interface SuggestBarProps {
   readonly onDiscard: () => void;
   /** A tolerance, applied without a request. */
   readonly onTolerance?: (tolerance: number) => void;
+  /** One detection candidate chosen or let go. Absent renders no list. */
+  readonly onToggleSuggestion?: (index: number) => void;
+  /**
+   * Detect all, and why it cannot run when it cannot. Absent renders no control:
+   * the host passes none on Local or on a read-only page.
+   */
+  readonly detect?: { readonly blocker: DetectBlocker | null; readonly onDetect: () => void };
   /**
    * Whether the wait has lasted long enough to be worth explaining.
    *
@@ -268,6 +292,17 @@ const BLOCKER_COPY: Readonly<
   },
 };
 
+/** Why Detect all is disabled, one sentence per blocker. */
+const DETECT_BLOCKER_COPY: Readonly<Record<DetectBlocker, string>> = {
+  checking: "Checking which model connection can detect here.",
+  "no-connections": "Detect all needs a text-detection model connection, and this workspace has none.",
+  "not-ready": "Detect all needs a text-detection model whose weights are on this machine, and none is ready yet.",
+  "not-capable": "Detect all needs a model asked in words that answers every instance. No ready connection here does.",
+  "no-shape": "No ready detection model draws a shape this class can hold.",
+};
+
+const DETECT_REASON_ID = "suggest-detect-reason";
+
 const REFINEMENT_GUIDANCE = "Click again to refine it — alt-click to take a part away.";
 
 type Tone = "calm" | "warn" | "busy";
@@ -279,6 +314,10 @@ interface Status {
   readonly phrase: string;
   /** Set when the phrase is a blocker's, whose card and action come from `BLOCKER_COPY`. */
   readonly blocker?: SuggestBlocker;
+  /** The phrase's gist, said instead where the bar is below 48rem. */
+  readonly short?: string;
+  /** Set when the phrase is why Accept is disabled, which then points at it. */
+  readonly reasonId?: string;
 }
 
 /** One line of the ⓘ's card, keyed by what it says rather than where it falls. */
@@ -299,7 +338,7 @@ export function SuggestBar(props: SuggestBarProps): JSX.Element {
   return (
     <div className="flex min-w-max flex-1 items-center gap-2" data-testid="suggest-bar">
       {facts.choosing && <Choices facts={facts} local={local} />}
-      <StatusPhrase status={status} />
+      <StatusPhrase status={status} chooser={chooserFor(facts)} />
       {tip.length > 0 && (
         <InfoTip label="About Suggest" describe testId="suggest-info" contentTestId="suggest-tip-card" descriptionTestId="suggest-tip">
           {tip.map(([key, line]) => (
@@ -310,6 +349,7 @@ export function SuggestBar(props: SuggestBarProps): JSX.Element {
         </InfoTip>
       )}
       <StatusAction facts={facts} status={status} />
+      <DetectAll facts={facts} />
       <Adjust facts={facts} />
       {props.classSlot !== undefined && (
         <>
@@ -395,10 +435,18 @@ function readStatus(facts: Facts): Status | null {
   // The blocker outranks everything else: a session over a workspace with no
   // usable connection has nothing to report about a request it never made.
   // Only with no runtime wired — once one is, the blocker is `Server`'s alone.
-  if (!facts.runtimeWired && blocker !== null) return blockerStatus(blocker);
-  const answer = SESSION_STATUS[session.status];
+  const detection = isDetection(session);
+  if (!detection && !facts.runtimeWired && blocker !== null) return blockerStatus(blocker);
+  const answer = (detection ? DETECTION_STATUS[session.status] : undefined) ?? SESSION_STATUS[session.status];
   if (answer !== undefined) return answer;
-  if (isAcceptable(session)) return { testId: "suggest-shown", tone: "calm", phrase: "Proposed shape" };
+  if (isProposed(session)) {
+    const total = session.suggestions.length;
+    if (!detection) return { testId: "suggest-shown", tone: "calm", phrase: "Proposed shape" };
+    const count = chosenCount(session);
+    return count === 0
+      ? { testId: "suggest-shown", tone: "calm", phrase: "Choose a candidate to accept", short: "None chosen", reasonId: ACCEPT_REASON_ID }
+      : { testId: "suggest-shown", tone: "calm", phrase: `${count} of ${total} chosen` };
+  }
   return idleStatus(facts);
 }
 
@@ -419,6 +467,13 @@ const SESSION_STATUS: Partial<Record<SuggestionState["status"], Status>> = {
   refused: { testId: "suggest-refused", tone: "warn", phrase: "Suggestion refused" },
   asking: { testId: "suggest-asking", tone: "busy", phrase: "Looking at that…" },
   none: { testId: "suggest-none", tone: "calm", phrase: "Nothing to suggest there" },
+};
+
+/** Where a detection reads differently from a point answer. */
+const DETECTION_STATUS: Partial<Record<SuggestionState["status"], Status>> = {
+  refused: { testId: "suggest-refused", tone: "warn", phrase: "Detection refused" },
+  asking: { testId: "suggest-asking", tone: "busy", phrase: "Detecting…" },
+  none: { testId: "suggest-none", tone: "calm", phrase: "Nothing detected" },
 };
 
 function idleStatus(facts: Facts): Status | null {
@@ -448,13 +503,46 @@ function readTip(facts: Facts, status: Status | null, failure: Failure | null): 
       // The server's sentence, verbatim. It is the one that carries the install
       // command when the cause is a missing extra.
       ["refusal", facts.props.refusal ?? session.refusal ?? ""],
-      ["clicks", "Your clicks are still here — press Esc to clear them, or click again to retry."],
+      isDetection(session)
+        ? ["clicks", "Press Esc to clear it, Detect all to retry, or click the thing you want."]
+        : ["clicks", "Your clicks are still here — press Esc to clear them, or click again to retry."],
     ];
   }
+  if (isDetection(session)) return detectionTip(session);
   if (session.status === "asking") return askingTip(facts.props.pendingEscalated === true);
   if (session.status === "none") return [["none", noneTip(session, facts.props.onTolerance !== undefined)]];
-  if (isAcceptable(session)) return [["shown", REFINEMENT_GUIDANCE]];
-  return [...idleTip(facts, status), ...(facts.choosing && facts.target === "browser" ? localTip(facts, failure) : [])];
+  if (isProposed(session)) return [["shown", REFINEMENT_GUIDANCE]];
+  return [
+    ...idleTip(facts, status),
+    ...(facts.choosing && facts.target === "browser" ? localTip(facts, failure) : []),
+    ...detectTip(facts),
+  ];
+}
+
+function detectionTip(session: SuggestionState): readonly TipLine[] {
+  const name = session.labelClass ?? "";
+  if (session.status === "none") {
+    return [["none", `The model found no “${name}” here above its confidence floor. Nothing was written. Detect all again, or click the thing you want.`]];
+  }
+  if (isProposed(session)) {
+    return [
+      ["choose", "Click a candidate, or use the list, to leave it out — only the chosen ones are accepted."],
+      ["discard", "Esc discards every candidate. Nothing is written until you accept."],
+    ];
+  }
+  return [];
+}
+
+/** An empty or refused detection, where Detect all is offered again. */
+function retryable(session: SuggestionState): boolean {
+  return isDetection(session) && (session.status === "none" || session.status === "refused");
+}
+
+function detectTip(facts: Facts): readonly TipLine[] {
+  const detect = facts.props.detect;
+  if (detect === undefined || facts.parked || facts.pending) return [];
+  if (detect.blocker !== null) return [["detect", DETECT_BLOCKER_COPY[detect.blocker]]];
+  return [["detect", `Detect all asks the server's detection model for every “${facts.session.labelClass ?? ""}” on this image.`]];
 }
 
 /**
@@ -653,8 +741,19 @@ function Choices({ facts, local }: { readonly facts: Facts; readonly local: Loca
   );
 }
 
-/** One live region for every phrase, mounted for the whole session so a change is announced. */
-function StatusPhrase({ status }: { readonly status: Status | null }): JSX.Element {
+/**
+ * One live region for every phrase, mounted for the whole session so a change is announced.
+ *
+ * Over a plural proposal the phrase is the count, and the count opens the list
+ * that changes it — one line, not a total beside a tally.
+ */
+function StatusPhrase({
+  status,
+  chooser,
+}: {
+  readonly status: Status | null;
+  readonly chooser: ((phrase: ReactNode) => ReactNode) | null;
+}): JSX.Element {
   return (
     <span
       role="status"
@@ -669,9 +768,19 @@ function StatusPhrase({ status }: { readonly status: Status | null }): JSX.Eleme
         <span className="flex items-center gap-1.5" data-testid={status.testId}>
           {status.tone === "warn" && <TriangleAlert className="size-4 shrink-0 text-warning" aria-hidden="true" />}
           {status.tone === "busy" && <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" />}
-          {status.phrase}
+          {chooser === null ? <PhraseText status={status} /> : chooser(<PhraseText status={status} />)}
         </span>
       )}
+    </span>
+  );
+}
+
+function PhraseText({ status }: { readonly status: Status }): JSX.Element {
+  if (status.short === undefined) return <span id={status.reasonId}>{status.phrase}</span>;
+  return (
+    <span id={status.reasonId}>
+      <span className="@max-[48rem]:hidden">{status.phrase}</span>
+      <span className="hidden @max-[48rem]:inline">{status.short}</span>
     </span>
   );
 }
@@ -719,7 +828,7 @@ function StatusAction({ facts, status }: { readonly facts: Facts; readonly statu
   );
 }
 
-/** The shape it returns and its Detail — each only where it applies. */
+/** The shape it returns, its Detail and its pieces — each only where it applies. */
 function Adjust({ facts }: { readonly facts: Facts }): JSX.Element | null {
   const { session, props } = facts;
   const shape = facts.choosing && props.shape !== undefined && props.shape.kinds.length >= 2 ? props.shape : null;
@@ -749,18 +858,149 @@ function Adjust({ facts }: { readonly facts: Facts }): JSX.Element | null {
   );
 }
 
+/**
+ * Detect all, beside the phrase, only while nothing is pending: pressing it over
+ * a proposal would discard that proposal for a question nobody on screen asked.
+ * Disabled with its reason where no ready detection model fits the class.
+ */
+function DetectAll({ facts }: { readonly facts: Facts }): JSX.Element | null {
+  const detect = facts.props.detect;
+  if (detect === undefined || facts.parked || (facts.pending && !retryable(facts.session))) return null;
+  const blocked = detect.blocker !== null;
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-8 shrink-0"
+        data-testid="suggest-detect"
+        disabled={blocked}
+        aria-describedby={blocked ? DETECT_REASON_ID : undefined}
+        onMouseDown={keepCanvasFocus}
+        onClick={detect.onDetect}
+      >
+        <ScanSearch aria-hidden="true" />
+        Detect all
+      </Button>
+      {detect.blocker !== null && (
+        <span id={DETECT_REASON_ID} className="sr-only" data-testid="suggest-detect-reason">
+          {DETECT_BLOCKER_COPY[detect.blocker]}
+        </span>
+      )}
+    </>
+  );
+}
+
+const ACCEPT_REASON_ID = "suggest-accept-reason";
+
+/**
+ * The count's list, for a detection on screen. Gated on the session being a
+ * detection rather than on how many candidates it has, so a lone candidate that
+ * was let go can still be taken back.
+ */
+function chooserFor(facts: Facts): ((phrase: ReactNode) => ReactNode) | null {
+  const { session, props } = facts;
+  const onToggle = props.onToggleSuggestion;
+  if (onToggle === undefined || !isDetection(session) || !isProposed(session)) return null;
+  return (phrase) => <Chosen session={session} phrase={phrase} onToggle={onToggle} onReturnFocus={props.onReturnFocus} />;
+}
+
+/**
+ * Which candidates Accept will write, as a list to tick.
+ *
+ * A menu rather than a row of chips: an answer can carry many candidates, and the
+ * bar is one line. It stays open across ticks, and hands the keyboard back to
+ * the canvas when it closes so Enter accepts rather than reopening it.
+ */
+function Chosen({
+  session,
+  phrase,
+  onToggle,
+  onReturnFocus,
+}: {
+  readonly session: SuggestionState;
+  readonly phrase: ReactNode;
+  readonly onToggle: (index: number) => void;
+  readonly onReturnFocus: (() => void) | undefined;
+}): JSX.Element {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 shrink-0 gap-1 px-2 text-sm font-normal tabular-nums"
+          data-testid="suggest-chosen"
+          aria-label={chooserName(session)}
+          onMouseDown={keepCanvasFocus}
+        >
+          {phrase}
+          <ChevronDown aria-hidden="true" className="size-3 text-muted-foreground" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          onReturnFocus?.();
+        }}
+      >
+        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Accept these candidates</DropdownMenuLabel>
+        {session.suggestions.map((one, index) =>
+          one.id === undefined ? null : (
+            <DropdownMenuCheckboxItem
+              key={one.id}
+              checked={session.chosen[index] === true}
+              data-testid={`suggest-chosen-${index}`}
+              onSelect={(event) => event.preventDefault()}
+              onCheckedChange={() => onToggle(index)}
+            >
+              {candidateLabel(one, index)}
+            </DropdownMenuCheckboxItem>
+          ),
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** The trigger's accessible name: what pressing it does, then the count it shows. */
+function chooserName(session: SuggestionState): string {
+  const count = chosenCount(session);
+  const total = session.suggestions.length;
+  return count === 0
+    ? `Choose candidates to accept — none of ${total} chosen`
+    : `Choose candidates to accept — ${count} of ${total} chosen`;
+}
+
+/** `car 2 · 83%` — its own score, so two candidates can be told apart. */
+function candidateLabel(one: SuggestionState["suggestions"][number], index: number): string {
+  const name = `${one.labelClass ?? "Candidate"} ${index + 1}`;
+  return one.confidence === null ? name : `${name} · ${Math.round(one.confidence * 100)}%`;
+}
+
 /** The bar's far end: accept or discard a proposal, or clear what is pending. */
 function Decisions({ facts, status }: { readonly facts: Facts; readonly status: Status | null }): JSX.Element {
   const { onAccept, onDiscard } = facts.props;
   // Only the shown reading can be accepted — a blocker over a shown session has
   // nothing to report about a request it never made, and offers no Accept.
   const acceptable = status?.testId === "suggest-shown";
+  const detection = isDetection(facts.session);
+  const count = chosenCount(facts.session);
   return (
     <span className="ml-auto flex shrink-0 items-center gap-1.5 pl-2">
       {acceptable && (
-        <Button size="sm" className="h-8" data-testid="suggest-accept" onMouseDown={keepCanvasFocus} onClick={onAccept}>
+        <Button
+          size="sm"
+          className="h-8"
+          data-testid="suggest-accept"
+          disabled={count === 0}
+          aria-describedby={count === 0 ? ACCEPT_REASON_ID : undefined}
+          onMouseDown={keepCanvasFocus}
+          onClick={onAccept}
+        >
           <Check aria-hidden="true" />
-          Accept
+          {detection && count > 0 ? `Accept ${count}` : "Accept"}
           <Kbd className="bg-primary-foreground/15 text-primary-foreground @max-[48rem]:hidden">↵</Kbd>
         </Button>
       )}
@@ -769,7 +1009,7 @@ function Decisions({ facts, status }: { readonly facts: Facts; readonly status: 
       {!facts.parked && facts.pending && (acceptable || status?.blocker === undefined) && (
         <Button variant="ghost" size="sm" className="h-8" data-testid="suggest-discard" onMouseDown={keepCanvasFocus} onClick={onDiscard}>
           <X aria-hidden="true" />
-          {acceptable ? "Discard" : "Clear"}
+          <span className="@max-[48rem]:sr-only">{acceptable ? "Discard" : "Clear"}</span>
           <Kbd className="@max-[48rem]:hidden">Esc</Kbd>
         </Button>
       )}

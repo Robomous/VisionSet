@@ -27,7 +27,14 @@ from uuid import UUID
 
 from fastapi import Response, status
 
-from visionset.inference import STUB_MODEL_ID, ask_endpoint, download_size, suggest, with_families
+from visionset.inference import (
+    STUB_MODEL_ID,
+    ask_endpoint,
+    detect,
+    download_size,
+    suggest,
+    with_families,
+)
 from visionset.inference import require as require_local_inference
 from visionset.jobs.integrity import JOB_TYPE as integrity_job_type
 from visionset.jobs.integrity import payload_for as integrity_payload_for
@@ -44,11 +51,14 @@ from visionset.server.models import (
     ConnectionOut,
     ConnectionPage,
     ConnectionUpdate,
+    DetectionOut,
+    DetectRequest,
     DownloadSizeOut,
     SuggestedRegion,
     SuggestionOut,
     SuggestRequest,
 )
+from visionset.server.routes._prelabel import text_detect_connection
 
 router = protected_router(prefix="/inference/connections", tags=["inference"])
 
@@ -478,6 +488,58 @@ def suggest_region(workspace: WorkspaceDep, body: SuggestRequest) -> SuggestionO
         applied=AppliedParameters(tolerance=body.tolerance),
         parameters=list(answer.parameters),
     )
+
+
+@beside_connections.post("/detect", responses=documented(404, 409, 502))
+def detect_instances(workspace: WorkspaceDep, body: DetectRequest) -> DetectionOut:
+    """Propose every instance of one class on one image, through a text-detection connection.
+
+    The deliberate plural beside `/inference/suggest`: a point prompt is about
+    one object, and this asks a `text_detect` model, in words, for all of them.
+    One asset, one class, one phrase — the class's own name unless `phrase` is
+    sent.
+
+    **Nothing is written and nothing is remembered.** Accepting a candidate is a
+    later, ordinary annotation write carrying `provenance: model`, this
+    response's `model_ref`, and that candidate's own `confidence`.
+
+    **A candidate is a region the class can hold.** Its label must name the
+    phrase asked for, its shape must be one of `allowed_geometries` that the model
+    declares, it must overlap the asset, and it must score at least
+    `minimum_confidence`. Every other region is dropped and counted in
+    `discarded` by reason, never relabeled or redrawn in another shape. A model
+    that answers in boxes answers boxes, whatever else the class admits.
+
+    **Order and limit.** Confidence descending, then top, then left. At most
+    `limit` candidates (100); the least confident past it are counted as
+    `over_limit`. Each candidate's `id` is its position, `c0` first, and means
+    nothing outside this answer. Overlapping candidates are not merged: overlap
+    alone does not make two answers one object.
+
+    An empty `candidates` is a successful answer. Refusals: an unknown project,
+    asset or connection is 404 — `PROJECT_NOT_FOUND`, `ASSET_NOT_FOUND` or
+    `INFERENCE_CONNECTION_NOT_FOUND`; a connection whose weights or endpoint are not
+    set up is 409 `INFERENCE_CONNECTION_NOT_SET_UP`; a connection whose model
+    answers places rather than words is 422 `UNSUPPORTED_PROMPT`; a model that
+    answers in no shape `allowed_geometries` names is 422
+    `GEOMETRY_NOT_PRODUCED`; a point-cloud asset is 422 `UNSUPPORTED_MEDIA`; an
+    `http` endpoint that does not answer the contract is 502
+    `INFERENCE_ENDPOINT_UNAVAILABLE`. Failures about this installation answer 500
+    with the message that names the remedy: `INFERENCE_CONNECTION_NOT_RUNNABLE`,
+    `LOCAL_INFERENCE_UNAVAILABLE` and `INFERENCE_OUT_OF_MEMORY`.
+    """
+    text_detect_connection(workspace, body.connection_id)
+    answer = detect(
+        workspace,
+        project_id=body.project_id,
+        asset_id=body.asset_id,
+        connection_id=body.connection_id,
+        label_class=body.label_class,
+        allowed=tuple(body.allowed_geometries),
+        phrase=body.phrase,
+        minimum_confidence=body.minimum_confidence,
+    )
+    return DetectionOut.of(answer)
 
 
 @router.delete(

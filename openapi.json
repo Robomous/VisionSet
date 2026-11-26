@@ -3137,6 +3137,205 @@
         "title": "DatasetStatsOut",
         "type": "object"
       },
+      "DetectRequest": {
+        "additionalProperties": false,
+        "description": "Find every instance of one class on one image, through which connection.\n\nShaped like `SuggestRequest`, and for its reason everything is in the body.",
+        "properties": {
+          "allowed_geometries": {
+            "items": {
+              "$ref": "#/components/schemas/GeometryType"
+            },
+            "minItems": 1,
+            "title": "Allowed Geometries",
+            "type": "array"
+          },
+          "asset_id": {
+            "format": "uuid",
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "connection_id": {
+            "format": "uuid",
+            "title": "Connection Id",
+            "type": "string"
+          },
+          "label_class": {
+            "minLength": 1,
+            "title": "Label Class",
+            "type": "string"
+          },
+          "minimum_confidence": {
+            "default": 0.35,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Minimum Confidence",
+            "type": "number"
+          },
+          "phrase": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phrase"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "asset_id",
+          "connection_id",
+          "label_class",
+          "allowed_geometries"
+        ],
+        "title": "DetectRequest",
+        "type": "object"
+      },
+      "DetectedCandidate": {
+        "description": "One instance the model found, as the class it would be written as.\n\nCarries no `contour`: a detection is not reduced from an outline, so there\nis nothing to re-simplify.",
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "geometry": {
+            "discriminator": {
+              "mapping": {
+                "bbox": "#/components/schemas/BboxGeometry",
+                "classification_tag": "#/components/schemas/ClassificationGeometry",
+                "cuboid_3d": "#/components/schemas/Cuboid3DGeometry",
+                "polygon": "#/components/schemas/PolygonGeometry",
+                "polyline": "#/components/schemas/PolylineGeometry",
+                "polyline_3d": "#/components/schemas/Polyline3DGeometry"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BboxGeometry"
+              },
+              {
+                "$ref": "#/components/schemas/PolygonGeometry"
+              },
+              {
+                "$ref": "#/components/schemas/PolylineGeometry"
+              },
+              {
+                "$ref": "#/components/schemas/Polyline3DGeometry"
+              },
+              {
+                "$ref": "#/components/schemas/Cuboid3DGeometry"
+              },
+              {
+                "$ref": "#/components/schemas/ClassificationGeometry"
+              }
+            ],
+            "title": "Geometry"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "label_class": {
+            "title": "Label Class",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label_class",
+          "label",
+          "geometry",
+          "confidence"
+        ],
+        "title": "DetectedCandidate",
+        "type": "object"
+      },
+      "DetectionDiscardsOut": {
+        "description": "Regions the model answered with that are not among the candidates, by why.",
+        "properties": {
+          "below_minimum_confidence": {
+            "title": "Below Minimum Confidence",
+            "type": "integer"
+          },
+          "incompatible_geometry": {
+            "title": "Incompatible Geometry",
+            "type": "integer"
+          },
+          "out_of_bounds": {
+            "title": "Out Of Bounds",
+            "type": "integer"
+          },
+          "over_limit": {
+            "title": "Over Limit",
+            "type": "integer"
+          },
+          "unmapped_label": {
+            "title": "Unmapped Label",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "unmapped_label",
+          "incompatible_geometry",
+          "out_of_bounds",
+          "below_minimum_confidence",
+          "over_limit"
+        ],
+        "title": "DetectionDiscardsOut",
+        "type": "object"
+      },
+      "DetectionOut": {
+        "description": "What the model found, or an honest nothing. Nothing is written.\n\n`candidates` is ordered by confidence, highest first, then by the top and\nthe left of each geometry. Empty is an ordinary answer. Overlapping\ncandidates are not merged.",
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/DetectedCandidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "discarded": {
+            "$ref": "#/components/schemas/DetectionDiscardsOut"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "model_ref": {
+            "title": "Model Ref",
+            "type": "string"
+          },
+          "phrase": {
+            "title": "Phrase",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_ref",
+          "phrase",
+          "candidates",
+          "discarded",
+          "limit"
+        ],
+        "title": "DetectionOut",
+        "type": "object"
+      },
       "DistortionBody": {
         "additionalProperties": false,
         "description": "OpenCV radial-tangential distortion coefficients.",
@@ -11459,6 +11658,113 @@
           }
         ],
         "summary": "Test Connection Endpoint",
+        "tags": [
+          "inference"
+        ]
+      }
+    },
+    "/inference/detect": {
+      "post": {
+        "description": "Propose every instance of one class on one image, through a text-detection connection.\n\nThe deliberate plural beside `/inference/suggest`: a point prompt is about\none object, and this asks a `text_detect` model, in words, for all of them.\nOne asset, one class, one phrase \u2014 the class's own name unless `phrase` is\nsent.\n\n**Nothing is written and nothing is remembered.** Accepting a candidate is a\nlater, ordinary annotation write carrying `provenance: model`, this\nresponse's `model_ref`, and that candidate's own `confidence`.\n\n**A candidate is a region the class can hold.** Its label must name the\nphrase asked for, its shape must be one of `allowed_geometries` that the model\ndeclares, it must overlap the asset, and it must score at least\n`minimum_confidence`. Every other region is dropped and counted in\n`discarded` by reason, never relabeled or redrawn in another shape. A model\nthat answers in boxes answers boxes, whatever else the class admits.\n\n**Order and limit.** Confidence descending, then top, then left. At most\n`limit` candidates (100); the least confident past it are counted as\n`over_limit`. Each candidate's `id` is its position, `c0` first, and means\nnothing outside this answer. Overlapping candidates are not merged: overlap\nalone does not make two answers one object.\n\nAn empty `candidates` is a successful answer. Refusals: an unknown project,\nasset or connection is 404 \u2014 `PROJECT_NOT_FOUND`, `ASSET_NOT_FOUND` or\n`INFERENCE_CONNECTION_NOT_FOUND`; a connection whose weights or endpoint are not\nset up is 409 `INFERENCE_CONNECTION_NOT_SET_UP`; a connection whose model\nanswers places rather than words is 422 `UNSUPPORTED_PROMPT`; a model that\nanswers in no shape `allowed_geometries` names is 422\n`GEOMETRY_NOT_PRODUCED`; a point-cloud asset is 422 `UNSUPPORTED_MEDIA`; an\n`http` endpoint that does not answer the contract is 502\n`INFERENCE_ENDPOINT_UNAVAILABLE`. Failures about this installation answer 500\nwith the message that names the remedy: `INFERENCE_CONNECTION_NOT_RUNNABLE`,\n`LOCAL_INFERENCE_UNAVAILABLE` and `INFERENCE_OUT_OF_MEMORY`.",
+        "operationId": "detect_instances",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DetectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DetectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "An http connection's endpoint did not answer"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Detect Instances",
         "tags": [
           "inference"
         ]

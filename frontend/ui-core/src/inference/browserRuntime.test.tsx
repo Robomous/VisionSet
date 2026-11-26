@@ -350,6 +350,32 @@ describe("target selection routes a ready browser target around the server", () 
     unmount();
   });
 
+  it("offers no Detect all on Local, even with a ready detection connection on the server", async () => {
+    connections = [
+      {
+        ...connectionRow(),
+        id: "77777777-7777-4777-8777-777777777777",
+        capabilities: ["text_detect"],
+        produces: ["bbox"],
+      },
+    ];
+    writePref(`suggest.target.${PROJECT}`, "browser:efficient-sam-ti");
+    const runtime: VisionSetBrowserInferenceRuntime = {
+      listTargets: async () => [
+        { id: "efficient-sam-ti", label: "EfficientSAM-Ti", modelRef: "efficient-sam-ti@rev" },
+      ],
+      executorFor: () => ({ suggest: vi.fn() }),
+    };
+
+    const unmount = await open(runtime);
+    await arm();
+    await screen.findByTestId("suggest-idle");
+
+    expect(screen.queryByTestId("suggest-detect")).toBeNull();
+    expect(sent.some((row) => row.path === "/inference/detect")).toBe(false);
+    unmount();
+  });
+
   it("falls back to Server silently when the stored browser target isn't in a resolved list", async () => {
     // Acquired model bytes are never persisted across a reload, so this — a stored
     // preference naming a browser target `listTargets()` no longer reports — is the

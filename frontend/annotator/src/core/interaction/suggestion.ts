@@ -30,6 +30,20 @@
  * Escape is the preview's undo, and it is `cleared()`: a pure transition back to
  * armed-with-nothing. `canUndo` never moves for a suggestion nobody accepted.
  *
+ * ## Two producers, and only detection is plural
+ *
+ * A point prompt is about one object and answers at most one shape. Several
+ * independent objects are asked for deliberately, with {@link detecting}: the
+ * session's `source` becomes `"detection"`, its points are dropped, and the
+ * answer is every instance a text-detection model found for the class. In a
+ * detection session a click chooses a candidate rather than placing a point.
+ *
+ * Which candidates are kept is `chosen`, one flag per shape: every shape of a
+ * fresh answer starts chosen, {@link withChoice} flips one, and
+ * {@link acceptedAnnotations} writes only the chosen ones. The rest are discarded
+ * with the session — nothing unchosen is ever written, and accepting with nothing
+ * chosen is not acceptance at all ({@link isAcceptable}).
+ *
  * ## Who holds it, and why not the adapter
  *
  * The **host** holds it. `AnnotatorCanvas` deliberately never fetches anything
@@ -89,6 +103,7 @@
  * that belongs to a class nobody is on any more.
  */
 
+import { geometryContains } from "../geometry/hitTest";
 import { DEFAULT_TOLERANCE, polygonAt } from "../geometry/simplify";
 import { classNamed } from "../state/document";
 import type { AnnotationDocument } from "../state/document";
@@ -226,7 +241,7 @@ export interface Suggestion {
   /** The model that proposed it, carried onto the annotation if it is accepted. */
   readonly modelRef: string;
   /**
-   * The outline this shape was reduced from, empty for a box.
+   * The outline this shape was reduced from, empty for a box and for a detection.
    *
    * What makes {@link withTolerance} arithmetic rather than a round trip. It is the
    * *same* points the server reduced, which matters because Douglas-Peucker is
@@ -234,6 +249,10 @@ export interface Suggestion {
    * server's answer, and the server is what finally writes.
    */
   readonly contour: readonly Point[];
+  /** The class a detection candidate was mapped to. Absent for a point answer. */
+  readonly labelClass?: string;
+  /** A detection candidate's id within its answer, stable for the session. Absent for a point answer. */
+  readonly id?: string;
 }
 
 /**
@@ -294,6 +313,9 @@ export const DEFAULT_ADJUSTMENTS: Adjustments = {
   tolerance: DEFAULT_TOLERANCE,
 };
 
+/** What produced the shapes on screen: points placed by a person, or a detection. */
+export type SuggestionSource = "points" | "detection";
+
 /** The whole of a suggest session. `null`, in a host, is a tool that is not armed. */
 export interface SuggestionState {
   /**
@@ -310,11 +332,17 @@ export interface SuggestionState {
   /**
    * The previews, when there are any. Kept across `asking` so they do not flicker.
    *
-   * Plural though today an answer carries at most one, because accepting part of
-   * a plural proposal is tracked work (#548). Accepting is all of them or none,
-   * in one history entry — see {@link acceptedAnnotations}.
+   * At most one for a point answer, any number for a detection. Accepting writes
+   * the chosen ones in one history entry — see {@link acceptedAnnotations}.
    */
   readonly suggestions: readonly Suggestion[];
+  /** Which producer the session is on. Back to `points` whenever it is cleared. */
+  readonly source: SuggestionSource;
+  /**
+   * Whether each of `suggestions` will be written on accept, index for index.
+   * Every shape of a fresh answer starts chosen.
+   */
+  readonly chosen: readonly boolean[];
   /** Where the setting stands. Sent on every ask, echoed by every answer. */
   readonly adjustments: Adjustments;
   /** Which settings the server says apply here. Empty until an answer arrives. */
@@ -341,6 +369,8 @@ export function armed(
     points: [],
     status: "idle",
     suggestions: [],
+    source: "points",
+    chosen: [],
     adjustments,
     parameters: [],
     refusal: null,
@@ -367,6 +397,7 @@ export function withPoint(
 ): SuggestionState {
   return {
     ...state,
+    source: "points",
     points: [...state.points, { point, polarity }],
     status: "asking",
     refusal: null,
@@ -397,12 +428,13 @@ export function answered(state: SuggestionState, serial: number, answer: Answer)
   if (answer.suggestions.length === 0) {
     // The controls survive an empty answer, which is the whole of how somebody
     // adjusts their way back out of one.
-    return { ...state, status: "none", suggestions: [], parameters, refusal: null };
+    return { ...state, status: "none", suggestions: [], chosen: [], parameters, refusal: null };
   }
   return {
     ...state,
     status: "shown",
     suggestions: answer.suggestions,
+    chosen: answer.suggestions.map(() => true),
     parameters,
     refusal: null,
   };
@@ -421,7 +453,7 @@ export function refused(
   prose: string,
 ): SuggestionState {
   if (serial !== state.serial) return state;
-  return { ...state, status: "refused", suggestions: [], refusal: prose };
+  return { ...state, status: "refused", suggestions: [], chosen: [], refusal: prose };
 }
 
 /**
@@ -434,7 +466,45 @@ export function refused(
  * allow the next click to do.
  */
 export function cleared(state: SuggestionState): SuggestionState {
-  return { ...state, points: [], status: "idle", suggestions: [], refusal: null };
+  return {
+    ...state,
+    points: [],
+    status: "idle",
+    suggestions: [],
+    chosen: [],
+    source: "points",
+    refusal: null,
+    // Moved, so an answer still in flight lands on a serial nobody is waiting on.
+    serial: state.serial + 1,
+  };
+}
+
+/**
+ * Detect every instance of the session's class: a new ask, with no points.
+ *
+ * Whatever was on screen goes — clicks, a point preview, an earlier detection
+ * and its choices — because the answer coming is about none of them. The serial
+ * moves, so an answer to anything asked before cannot land on it. A parked
+ * session has no class to detect and is returned **by identity**.
+ */
+export function detecting(state: SuggestionState): SuggestionState {
+  if (isParked(state)) return state;
+  return {
+    ...state,
+    source: "detection",
+    points: [],
+    status: "asking",
+    suggestions: [],
+    chosen: [],
+    parameters: [],
+    refusal: null,
+    serial: state.serial + 1,
+  };
+}
+
+/** Whether the session is a detection, where a click chooses rather than prompts. */
+export function isDetection(state: SuggestionState): boolean {
+  return state.source === "detection";
 }
 
 /**
@@ -473,9 +543,49 @@ export function hasPending(state: SuggestionState): boolean {
   return state.points.length > 0 || state.status !== "idle";
 }
 
-/** Whether Enter would commit something. Only a shown suggestion can be accepted. */
-export function isAcceptable(state: SuggestionState): boolean {
+/** Whether a proposal is on screen to decide about, chosen or not. */
+export function isProposed(state: SuggestionState): boolean {
   return state.status === "shown" && state.suggestions.length > 0;
+}
+
+/** How many of the shapes on screen accepting would write. */
+export function chosenCount(state: SuggestionState): number {
+  if (!isProposed(state)) return 0;
+  return state.chosen.filter(Boolean).length;
+}
+
+/**
+ * Whether Enter would commit something: a shown proposal with at least one shape
+ * chosen. Accepting nothing is not an acceptance, so it is not offered.
+ */
+export function isAcceptable(state: SuggestionState): boolean {
+  return chosenCount(state) > 0;
+}
+
+/**
+ * One shape of a shown proposal chosen or let go — the canvas's click and the
+ * bar's list both end here. Anything else returns the state **by identity**.
+ */
+export function withChoice(state: SuggestionState, index: number, chosen: boolean): SuggestionState {
+  if (!isProposed(state) || index < 0 || index >= state.suggestions.length) return state;
+  if (state.chosen[index] === chosen) return state;
+  return { ...state, chosen: state.chosen.map((one, at) => (at === index ? chosen : one)) };
+}
+
+/**
+ * The candidate a plain click lands on in a detection session, or `null`.
+ *
+ * Only a detection's candidates are chosen by clicking — however many there are,
+ * so a lone candidate that was let go can be taken back. Over a point answer a
+ * click refines. Walked backwards for `topmostAnnotationAt`'s reason: the last
+ * drawn is on top. `tolerance` is in asset pixels, as every hit test's is.
+ */
+export function choiceAt(state: SuggestionState, point: Point, tolerance: number): number | null {
+  if (!isDetection(state) || !isProposed(state)) return null;
+  for (let index = state.suggestions.length - 1; index >= 0; index -= 1) {
+    if (geometryContains(state.suggestions[index]!.geometry, point, tolerance)) return index;
+  }
+  return null;
 }
 
 /**
@@ -503,9 +613,19 @@ export function withTolerance(state: SuggestionState, tolerance: number): Sugges
   if (tolerance === state.adjustments.tolerance) return state;
   const adjustments = { ...state.adjustments, tolerance };
   if (state.status !== "shown" && state.status !== "none") return { ...state, adjustments };
-  const suggestions = state.suggestions.flatMap((one) => resimplified(one, tolerance) ?? []);
-  if (suggestions.length === 0) return { ...state, adjustments, status: "none" };
-  return { ...state, adjustments, suggestions, status: "shown" };
+  const kept = state.suggestions.flatMap((one, index) => {
+    const reduced = resimplified(one, tolerance);
+    return reduced === null ? [] : [{ one: reduced, chosen: state.chosen[index] === true }];
+  });
+  if (kept.length === 0) return { ...state, adjustments, status: "none" };
+  // Each choice travels with its own shape, never with a position.
+  return {
+    ...state,
+    adjustments,
+    suggestions: kept.map((entry) => entry.one),
+    chosen: kept.map((entry) => entry.chosen),
+    status: "shown",
+  };
 }
 
 function resimplified(one: Suggestion, tolerance: number): Suggestion | null {
@@ -515,11 +635,16 @@ function resimplified(one: Suggestion, tolerance: number): Suggestion | null {
   return { ...one, geometry: { ...one.geometry, type: "polygon", points } as Geometry };
 }
 
-/** How many vertices the preview is currently spending. What the counter reads. */
+/**
+ * How many vertices accepting would write, over the shapes still chosen. What
+ * the counter reads.
+ */
 export function vertexCount(state: SuggestionState): number {
   if (state.status === "none") return 0;
   return state.suggestions.reduce(
-    (total, one) => total + (one.geometry.type === "polygon" ? one.geometry.points.length : 0),
+    (total, one, index) =>
+      total +
+      (state.chosen[index] !== false && one.geometry.type === "polygon" ? one.geometry.points.length : 0),
     0,
   );
 }
@@ -539,9 +664,11 @@ export function vertexCount(state: SuggestionState): number {
  * that *"every caller is a gesture or a keystroke"* stays true: this is a
  * keystroke, and the acceptance is the human act the provenance records.
  *
- * `null` when there is nothing to accept, so a caller cannot commit a preview
- * that is not showing. The class is looked up only to fail honestly: a schema
- * that lost the class mid-session has nothing to write.
+ * Only the **chosen** shapes, in the answer's order; the others are never
+ * written. Empty when there is nothing to accept, so a caller cannot commit a
+ * preview that is not showing or one with nothing chosen. The class is looked up
+ * only to fail honestly: a schema that lost the class mid-session has nothing to
+ * write.
  */
 export function acceptedAnnotations(
   document: AnnotationDocument,
@@ -555,7 +682,11 @@ export function acceptedAnnotations(
   if (state.labelClass === null) return [];
   const labelClass = state.labelClass;
   if (classNamed(document, labelClass) === undefined) return [];
-  return state.suggestions.map((one) => ({
+  const chosen = state.suggestions.filter((_, index) => state.chosen[index] === true);
+  // A candidate mapped to a class other than the session's was answered for a
+  // question nobody on screen asked, so nothing is written rather than part of it.
+  if (chosen.some((one) => one.labelClass !== undefined && one.labelClass !== labelClass)) return [];
+  return chosen.map((one) => ({
     ...draftAnnotation(document, labelClass, one.geometry, mint),
     provenance: "model" as const,
     model_ref: one.modelRef,

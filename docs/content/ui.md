@@ -1216,9 +1216,37 @@ shape - and when it does, the bar says what happened and every control stays
 where it was, so the way back is the way you came. The preview never simply
 vanishes.
 
-**Accepting is one action and one undo.** Where an answer proposes more than one
-shape, `Accept` writes all of them and a single `mod+z` takes all of them back.
-Accepting some and not others is planned rather than present (#548).
+**A click proposes one shape.** A mask that comes back in several pieces is one
+object seen around an occlusion, not several objects, so a point answer never
+splits into several proposals.
+
+**Detect all proposes every instance, and you choose which to keep.** Beside the
+state, *Detect all* asks a text-detection model connection - one declaring
+`text_detect` - for every instance of the held class on this image, by the
+class's name (`POST /inference/detect`, `docs/content/inference.md`). It runs on
+Server only: there is no detector in the browser, so on Local the button is not
+there, and nothing asked on Local is ever sent to the server instead. Without a
+ready detection connection that draws a shape the class holds, the button is
+disabled and its description says which is missing. A box-only model answers
+boxes, even for a class that also takes polygons.
+
+Every candidate starts chosen, each with its own confidence, and the bar's state
+reads as one count, `N of M chosen`, a button that opens the list of candidates.
+Click a candidate on the picture, or untick it in that list, to leave it out; it
+stays on screen so it can be taken back, drawn as excluded - a dotted outline, a
+black-and-white hatch instead of its fill, muted vertices, and `left out` after
+its label. In a detection a click only chooses: a click on no candidate places no
+point. `Accept N` names how many it will write; with none chosen it is disabled and
+the count's place says why (`Choose a candidate to accept`, or `None chosen` where
+the bar is narrow), and `↵` writes nothing and does not move to the next frame -
+nor does `↵` while an answer is still out. `Esc` discards every candidate. A
+detection carries no outline to reduce, so Detail does not appear for it.
+
+**Accepting is one action and one undo.** `Accept` writes the chosen shapes and a
+single `mod+z` takes all of them back; `mod+shift+z` brings all of them back. The
+ones left out go with the proposal and are never written. Changing class or frame
+while candidates are up, or while the answer is out, discards them and writes
+nothing.
 
 **The tool stays armed while you change class.** Arming it is a decision about how
 to work, and picking the class to work on is the next thing you do - so a class

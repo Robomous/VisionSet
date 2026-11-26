@@ -57,6 +57,13 @@ from visionset.inference.cache import (
     DEFAULT_PROVIDER_CAPACITY,
     BoundedCache,
 )
+from visionset.inference.detections import (
+    MAXIMUM_CANDIDATES,
+    Detection,
+    DetectionCandidate,
+    DetectionDiscards,
+    detect,
+)
 from visionset.inference.families import capabilities_of, family_of, produces_of
 from visionset.inference.http_provider import HTTP_PROVIDER_ID, HttpProvider, ask_endpoint
 from visionset.inference.integrity import (
@@ -194,6 +201,11 @@ __all__ = [
     "capabilities_of",
     "check_integrity",
     "detectable_classes",
+    "detect",
+    "Detection",
+    "DetectionCandidate",
+    "DetectionDiscards",
+    "MAXIMUM_CANDIDATES",
     "effective_produces",
     "geometry_selection",
     "pre_label_selection",

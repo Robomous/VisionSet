@@ -48,6 +48,9 @@ export {
 export {
   SUGGESTION_DASH,
   SUGGESTION_OPACITY,
+  UNCHOSEN_SUGGESTION_DASH,
+  UNCHOSEN_SUGGESTION_MARK,
+  UNCHOSEN_SUGGESTION_OPACITY,
   classColor,
   confidenceLabel,
   confidencePercent,

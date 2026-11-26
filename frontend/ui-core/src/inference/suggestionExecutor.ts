@@ -15,7 +15,12 @@
 import { useMemo } from "react";
 import type { Adjustments, GeometryType } from "@visionset/annotator";
 
-import { useSuggestRegion, type SuggestionOut } from "../data/inferenceQueries";
+import {
+  useDetectInstances,
+  useSuggestRegion,
+  type DetectionOut,
+  type SuggestionOut,
+} from "../data/inferenceQueries";
 
 export interface SuggestionRequest {
   readonly projectId: string;
@@ -68,4 +73,44 @@ export function useServerSuggestionExecutor(connectionId: string | null): Sugges
         }),
     };
   }, [connectionId, suggestRegion]);
+}
+
+/** Every instance of one class on one asset — `DetectInput` minus the connection. */
+export interface DetectionRequest {
+  readonly projectId: string;
+  readonly assetId: string;
+  readonly labelClass: string;
+  readonly allowedGeometries: readonly GeometryType[];
+  readonly phrase?: string;
+}
+
+/**
+ * Asking for every instance of a class, apart from asking about a point.
+ *
+ * Its own interface rather than a method every executor carries, because only the
+ * server answers it: a browser executor runs a point segmenter and has no text
+ * detector, so it does not implement this — there is nothing to fall back to, and
+ * a local request is never sent to a server in its place.
+ */
+export interface DetectionExecutor {
+  detect(request: DetectionRequest): Promise<DetectionOut>;
+}
+
+/** The server's detection executor, or `null` with no text-detection connection to send through. */
+export function useServerDetectionExecutor(connectionId: string | null): DetectionExecutor | null {
+  const detectInstances = useDetectInstances();
+  return useMemo(() => {
+    if (connectionId === null) return null;
+    return {
+      detect: (request) =>
+        detectInstances.mutateAsync({
+          projectId: request.projectId,
+          assetId: request.assetId,
+          connectionId,
+          labelClass: request.labelClass,
+          allowedGeometries: request.allowedGeometries,
+          ...(request.phrase === undefined ? {} : { phrase: request.phrase }),
+        }),
+    };
+  }, [connectionId, detectInstances]);
 }

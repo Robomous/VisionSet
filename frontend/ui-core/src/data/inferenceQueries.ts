@@ -60,6 +60,7 @@ import { unwrap } from "./errors";
 import {
   checkCheckConnectionIntegrity,
   checkCreateInferenceConnection,
+  checkDetectInstances,
   checkDeleteInferenceConnection,
   checkDownloadConnectionWeights,
   checkInferenceDownloadSize,
@@ -125,6 +126,24 @@ export interface SuggestionOut {
    * exists to forbid.
    */
   readonly parameters: readonly SuggestParameter[];
+}
+
+/** One detected instance. `geometry` is `unknown` for `SuggestedRegion`'s reason. */
+export interface DetectedCandidate {
+  readonly id: string;
+  readonly label_class: string;
+  readonly label: string;
+  readonly geometry: unknown;
+  readonly confidence: number;
+}
+
+/** The detect route's answer, declared structurally for `SuggestionOut`'s reason. */
+export interface DetectionOut {
+  readonly model_ref: string;
+  readonly phrase: string;
+  readonly candidates: readonly DetectedCandidate[];
+  readonly discarded: components["schemas"]["DetectionDiscardsOut"];
+  readonly limit: number;
 }
 
 export type ConnectionType = components["schemas"]["ConnectionType"];
@@ -547,6 +566,39 @@ export function useSuggestRegion() {
   });
 }
 
+/** What a detect call needs: whose asset, which class, and through what. */
+export interface DetectInput {
+  readonly projectId: string;
+  readonly assetId: string;
+  readonly connectionId: string;
+  readonly labelClass: string;
+  /** The class's own kinds; candidates come back only in those the model draws. */
+  readonly allowedGeometries: readonly GeometryType[];
+  /** Omitted asks for the class by its own name. */
+  readonly phrase?: string;
+}
+
+/** Ask a text-detection model for every instance of one class. Nothing is written. */
+export function useDetectInstances() {
+  const client = useApiClient();
+  return useMutation({
+    mutationFn: async (input: DetectInput): Promise<DetectionOut> =>
+      unwrap(
+        await client.POST("/inference/detect", {
+          body: {
+            project_id: input.projectId,
+            asset_id: input.assetId,
+            connection_id: input.connectionId,
+            label_class: input.labelClass,
+            allowed_geometries: [...input.allowedGeometries],
+            ...(input.phrase === undefined ? {} : { phrase: input.phrase }),
+          } as never,
+        }),
+        checkDetectInstances,
+      ),
+  });
+}
+
 /**
  * Why the suggest tool cannot run *yet*, when it cannot. `null` when it can.
  *
@@ -610,14 +662,46 @@ export interface UsableConnection {
 export function usableConnection(
   connections: readonly Connection[] | undefined,
   preferredId?: string | null,
+  capability: Connection["capabilities"][number] = SUGGEST_CAPABILITY,
 ): UsableConnection {
   if (connections === undefined) return { connection: null, candidates: [], blocker: "checking" };
   if (connections.length === 0)
     return { connection: null, candidates: [], blocker: "no-connections" };
   const ready = connections.filter((row) => row.setup_state === "ready");
   if (ready.length === 0) return { connection: null, candidates: [], blocker: "not-ready" };
-  const candidates = ready.filter((row) => row.capabilities.includes(SUGGEST_CAPABILITY));
+  const candidates = ready.filter((row) => row.capabilities.includes(capability));
   if (candidates.length === 0) return { connection: null, candidates: [], blocker: "not-capable" };
   const preferred = candidates.find((row) => row.id === preferredId);
   return { connection: preferred ?? candidates[0], candidates, blocker: null };
+}
+
+/** The capability Detect all needs: a model asked in words that answers every instance. */
+export const DETECT_CAPABILITY = "text_detect" as const;
+
+/**
+ * Why Detect all cannot run for this class. `usableConnection`'s four, plus
+ * `no-shape`: a detection model is ready, but none of them draws a shape the
+ * class admits — a box-only model and a polygon-only class.
+ */
+export type DetectBlocker = SuggestBlocker | "no-shape";
+
+/** The connection Detect all goes through, or why there is none. */
+export interface UsableDetectConnection {
+  readonly connection: Connection | null;
+  readonly blocker: DetectBlocker | null;
+}
+
+/**
+ * The first ready text-detection connection that draws a shape this class
+ * admits, with `usableConnection`'s order of refusals ahead of the shape one.
+ */
+export function usableDetectConnection(
+  connections: readonly Connection[] | undefined,
+  kinds: readonly GeometryType[],
+): UsableDetectConnection {
+  const usable = usableConnection(connections, null, DETECT_CAPABILITY);
+  if (usable.blocker !== null) return { connection: null, blocker: usable.blocker };
+  const admitted = new Set(kinds);
+  const fits = usable.candidates.find((row) => row.produces.some((kind) => admitted.has(kind)));
+  return fits === undefined ? { connection: null, blocker: "no-shape" } : { connection: fits, blocker: null };
 }

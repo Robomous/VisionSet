@@ -635,7 +635,7 @@ and that confidence is about nowhere.
 
 **`allowed_geometries` is bounded by your schema, and chosen within it.** The answer comes back
 in one of the kinds you named or not at all: name `polygon` and you get the outline; name only
-`bbox` and you get that outline's extent; name a kind that holds no shape and `region` is `null`.
+`bbox` and you get that outline's extent; name a kind that holds no shape and `regions` is empty.
 Every kind you send must be one the class admits — answering in a kind your schema would refuse
 would hand you a suggestion that cannot be accepted.
 
@@ -741,11 +741,10 @@ simplification is not nested, so a client starting from anything else could not 
 server's answer. A box carries none, because it is an extent rather than something reduced from
 anything.
 
-**`regions` is a list that holds at most one shape today.** One click asks about one object, and
-both geometries now answer with one. The plural shape is kept rather than collapsed because
-accepting *part* of a plural proposal is real planned work - it needs a selection the preview
-does not have - tracked as *accepting part of a plural suggestion* (#548). Where several are
-proposed they are written together as one entry in the undo history.
+**`regions` is a list that holds at most one shape.** One click asks about one object, and
+both geometries answer with one; a mask in several pieces is not split into several proposals.
+Several independent objects are asked for deliberately, in words - see
+[Detecting every instance of a class](#detecting-every-instance-of-a-class).
 
 ### Nothing is written, and the first click is the slow one
 
@@ -772,6 +771,78 @@ outside it - is `INFERENCE_ENDPOINT_UNAVAILABLE`, a 502.
 That last one is still the law and is still enforced on every call. It is simply no longer how a
 person finds out: a client with `capabilities` in hand can decline to ask, which is why the
 editor now says so once on the panel instead of collecting one refusal per click.
+
+## Detecting every instance of a class
+
+A connection whose model answers *words* - one declaring `text_detect` - can propose every
+instance of one class on one image. It is the deliberate way to ask for several objects at once,
+beside the point suggestion that asks about one:
+
+```http
+POST /inference/detect
+{
+  "project_id": "…", "asset_id": "…", "connection_id": "…",
+  "label_class": "car",
+  "allowed_geometries": ["bbox", "polygon"]
+}
+```
+
+```json
+{
+  "model_ref": "IDEA-Research/grounding-dino-tiny@main",
+  "phrase": "car",
+  "candidates": [
+    {"id": "c0", "label_class": "car", "label": "car",
+     "geometry": {"type": "bbox", "x": 40.0, "y": 80.0, "width": 90.0, "height": 70.0},
+     "confidence": 0.91},
+    {"id": "c1", "label_class": "car", "label": "car",
+     "geometry": {"type": "bbox", "x": 160.0, "y": 82.0, "width": 88.0, "height": 69.0},
+     "confidence": 0.82}
+  ],
+  "discarded": {"unmapped_label": 0, "incompatible_geometry": 0, "out_of_bounds": 0,
+                "below_minimum_confidence": 1, "over_limit": 0},
+  "limit": 100
+}
+```
+
+**One class, one phrase.** The model is asked for `phrase`, which defaults to the class's own name -
+the phrase a [pre-label run](batches.md#pre-labeling) asks that class under. `minimum_confidence` defaults
+to the pre-label default, `0.35`, because both read the same detector score.
+
+**A candidate is a region the class can hold.** Its label must name the phrase asked for,
+case-insensitively; its shape must be one of `allowed_geometries` that the model declares; it must
+overlap the asset; and it must score at least `minimum_confidence`. Every other region is dropped
+and counted in `discarded` by reason - never relabeled, and never redrawn in a shape it was not
+answered in. A model that draws boxes answers boxes, whatever else the class admits; a request
+where none of `allowed_geometries` is a shape the model draws is refused with
+`GEOMETRY_NOT_PRODUCED` rather than answered empty.
+
+**Each candidate carries its own score.** `confidence` is the model's own number for that
+candidate, and an accepted candidate is written with it. A detection is not reduced from an
+outline, so a candidate has no `contour` and there is no tolerance to apply to it.
+
+**Order and limit.** Candidates come highest confidence first, then by the top and then the left of
+their geometry. At most `limit` - 100 - come back; the least confident past it are counted as
+`over_limit`. `id` is the candidate's position in that order, `c0` first, and means nothing outside
+this answer. An empty `candidates` is a successful answer.
+
+**Overlapping candidates are not merged.** Spatial overlap alone does not establish that two
+answers are one object, and the model has already applied whatever suppression it applies.
+
+**Nothing is written.** As with a suggestion, accepting a candidate is an ordinary annotation write
+carrying `provenance: model`, `model_ref` and that candidate's `confidence`. No job, no progress
+move, no pre-label state: the batch pre-label write path is not reached.
+
+**It runs on the server.** The connection is checked the way a pre-label launch checks it: it
+must be set up (`INFERENCE_CONNECTION_NOT_SET_UP`), declare `text_detect`
+(`UNSUPPORTED_PROMPT` otherwise), and, for a local model, have the `local-inference` extra
+(`LOCAL_INFERENCE_UNAVAILABLE`). An unknown project, asset or connection is 404, a point-cloud asset
+is `UNSUPPORTED_MEDIA`, and an `http` endpoint outside the contract is
+`INFERENCE_ENDPOINT_UNAVAILABLE`. No browser-side detector exists, and a request made on the
+editor's Local target is never sent here in its place.
+
+The route is not offered as an MCP tool, for the reason the suggest route is not: it is the
+editor's preview, and an agent labels through pre-labeling and the annotation tools.
 
 ## The built-in stand-in, and what it is for
 

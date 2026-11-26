@@ -24,6 +24,14 @@ export default {
         files: ["src/lib/motion.ts"],
         rules: ["react-doctor/no-layout-property-animation"],
       },
+      {
+        // The suggestion and detection asks are mutations that write nothing:
+        // the ask is an event, not a cache entry, and acceptance is a separate
+        // ordinary annotation create that invalidates what it touches. An
+        // invalidation here would refetch data nothing changed.
+        files: ["src/data/inferenceQueries.ts"],
+        rules: ["react-doctor/query-mutation-missing-invalidation"],
+      },
     ],
   },
 } satisfies ReactDoctorConfig;

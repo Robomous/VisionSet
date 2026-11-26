@@ -56,6 +56,7 @@ from visionset.kernel.domain import (
     GeometryType,
     LabelClass,
     ModelCapability,
+    PredictedRegion,
     PredictionRequest,
     PredictionTarget,
     ServedFamily,
@@ -557,7 +558,7 @@ def pre_label(
     if on_plan is not None:
         on_plan(plan)
     phrases = plan.asked
-    class_by_answer = _class_by_answer(phrases)
+    classes = class_by_answer({phrase: phrase for phrase in phrases})
     admits = {
         label_class.name: frozenset(label_class.geometries) & produces
         for label_class in schema.classes
@@ -615,7 +616,7 @@ def pre_label(
                 answer,
                 asset_id=asset_id,
                 schema_version=schema.version,
-                class_by_answer=class_by_answer,
+                class_by_answer=classes,
                 admits=admits,
             )
             discarded += dropped
@@ -962,14 +963,44 @@ def _targets(
         )
 
 
-def _class_by_answer(phrases: Sequence[str]) -> dict[str, str]:
-    """The casefolded form of each phrase asked for, to the schema's own spelling.
+def class_by_answer(phrases: Mapping[str, str]) -> dict[str, str]:
+    """The casefolded form of each phrase asked for, to the class it was asked for.
 
     ``prompt_text`` casefolds every phrase into the prompt, so the answer arrives
     casefolded too; this is the one place both sides are compared, and it maps
-    the match back to what a person actually named the class.
+    the match back to what a person actually named the class. Keyed by phrase,
+    because a run asks each class under its own name while an interactive
+    detection may ask one class under a phrase somebody typed.
     """
-    return {phrase.casefold(): phrase for phrase in phrases}
+    return {phrase.casefold(): label_class for phrase, label_class in phrases.items()}
+
+
+class RegionDrop(OpenVocabulary):
+    """Why a region a model answered with cannot be written as any class asked for."""
+
+    #: The label names no phrase that was asked for.
+    UNMAPPED_LABEL = "unmapped_label"
+    #: The matched class does not admit the region's shape, or the model never declared it.
+    INCOMPATIBLE_GEOMETRY = "incompatible_geometry"
+
+
+def mapped_class(
+    region: PredictedRegion,
+    *,
+    classes: Mapping[str, str],
+    admits: Mapping[str, frozenset[GeometryType]],
+) -> str | RegionDrop:
+    """The class a region is written as, or why it is dropped. Never widened or relabeled.
+
+    ``classes`` is :func:`class_by_answer`'s mapping; ``admits`` is each class's
+    geometries narrowed to what the model produces.
+    """
+    label_class = classes.get(region.label.casefold())
+    if label_class is None:
+        return RegionDrop.UNMAPPED_LABEL
+    if region.geometry.type not in admits.get(label_class, frozenset()):
+        return RegionDrop.INCOMPATIBLE_GEOMETRY
+    return label_class
 
 
 def _annotations_from(
@@ -1004,11 +1035,8 @@ def _annotations_from(
     annotations = []
     discarded = 0
     for region in answer.regions:
-        label_class = class_by_answer.get(region.label.casefold())
-        if label_class is None:
-            discarded += 1
-            continue
-        if region.geometry.type not in admits[label_class]:
+        label_class = mapped_class(region, classes=class_by_answer, admits=admits)
+        if isinstance(label_class, RegionDrop):
             discarded += 1
             continue
         annotations.append(
