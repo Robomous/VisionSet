@@ -23,7 +23,7 @@ recoverable nowhere else, because nothing landed for the caller to count from.
 ``delete_annotations`` has **no ``confirm``**, and that is deliberate rather than
 an oversight. Deleting a box is the annotator edit loop, not a destructive
 operation; the guard is the batch gate, which refuses every write once a batch is
-no longer open. It is one of exactly two methods in the whole kernel exempted
+no longer open. It is one of the few methods in the kernel exempted
 from ``confirm``, and the exemption is written down in the error's own docstring.
 """
 

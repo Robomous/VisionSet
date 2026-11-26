@@ -175,7 +175,7 @@ class ConfirmationRequired(VisionSetError):
     ``DestructiveSchemaChange`` instead, because the two have different
     remedies and should not be caught by one ``except``.
 
-    Two methods are deliberately exempt, and both are somebody's ordinary edit
+    These methods are deliberately exempt, and each is somebody's ordinary edit
     loop rather than the destruction of a lifecycle entity:
 
     - ``AnnotationService.delete`` — drawing a box, looking at it and taking it
@@ -185,8 +185,12 @@ class ConfirmationRequired(VisionSetError):
       the asset, its annotations and its blob all stay, and the append-only
       change log records the removal, so the state before it is still on record
       and re-promoting is an informed decision rather than an undo nobody kept.
+    - ``TrackService.delete`` and ``delete_with_annotations`` — a track is a
+      link between annotations, and both pass the same write gate as
+      ``AnnotationService.delete`` over every observation, which the second
+      calls for the annotations themselves.
 
-    An exemption is a decision written down here. Do not add a third without one.
+    An exemption is a decision written down here. Do not add another without one.
     """
 
 

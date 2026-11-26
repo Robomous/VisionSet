@@ -282,7 +282,12 @@ class TrackService:
                 return _detail(uow, track)
             replacements = []
             for frame in frames:
-                annotation = self._annotations.require_annotation(uow, frame.annotation_id)
+                annotation = uow.annotations.get(frame.annotation_id)
+                if annotation is None:
+                    raise WorkspaceCorrupt(
+                        f"track {track.id} observes annotation {frame.annotation_id}, "
+                        f"which does not exist"
+                    )
                 replacements.append(annotation.model_copy(update={"label_class": label_class}))
             uow.tracks.update(renamed)
             stored = self._annotations.update_in(uow, job, batch, replacements)
