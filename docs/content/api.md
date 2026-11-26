@@ -58,6 +58,11 @@ POST   /projects/{project_id}/sources/images              multipart
 POST   /projects/{project_id}/sources/point-clouds        multipart + frame; 409 CALIBRATION_IN_USE
 GET    /projects/{project_id}/sources
 GET    /sources/{source_id}
+GET    /sources/{source_id}/occurrences                   frame occurrences, in position order
+GET    /sources/{source_id}/tracks
+POST   /sources/{source_id}/tracks                        empty, of a declared class; video only
+GET    /tracks/{track_id}
+GET    /tracks/{track_id}/status                          ?batch_id=, required
 GET    /sources/{source_id}/calibration                   null when none is stated
 PUT    /sources/{source_id}/calibration                   replaces whole; 409 CALIBRATION_IN_USE
 DELETE /sources/{source_id}/calibration                   204; 409 CALIBRATION_IN_USE
@@ -107,6 +112,12 @@ GET    /jobs/{job_id}/assets/{asset_id}/annotations
 POST   /jobs/{job_id}/annotations                         bulk, all-or-nothing
 PATCH  /jobs/{job_id}/annotations                         bulk, all-or-nothing
 DELETE /jobs/{job_id}/annotations                         ?id=&id=
+POST   /jobs/{job_id}/tracks/{track_id}/observations      an annotation already drawn
+DELETE /jobs/{job_id}/tracks/{track_id}/observations/{occurrence_id}  204; the annotation stays
+PUT    /jobs/{job_id}/tracks/{track_id}/class             the track and every annotation it observes
+POST   /jobs/{job_id}/tracks/{track_id}/merge             absorbs body.track_id
+POST   /jobs/{job_id}/tracks/{track_id}/split             { kept, created }
+DELETE /jobs/{job_id}/tracks/{track_id}                   204; ?with_annotations=, no confirmation gate
 GET    /projects/{project_id}/dataset                     the one trunk
 GET    /datasets/{dataset_id}
 GET    /datasets/{dataset_id}/stats
@@ -351,6 +362,16 @@ Two of them are worth reading precisely:
 
 An empty list is normal and means what it says. Every asset of a `completed` batch declares
 nothing, because nothing may be written into a batch that has closed.
+
+**A track is read on its own and written through a job.** Listing, reading, creating and
+counting a track hang off its source and its id; every other write sits under
+`/jobs/{job_id}/tracks`, because the job is the actor whose write scope is checked - against
+every observation the operation touches, not only the one it adds. A job that does not carry
+those assets answers 409 `ASSET_NOT_IN_JOB`, not the 404 an asset path segment gets: no asset is
+named in the path, and the remedy is to act through the job that holds them. `GET
+/tracks/{id}/status?batch_id=` is derived on every read; its `settled` is true only when the
+track has an observation, the batch holds every one (`outside` is 0) and each sits on a settled
+asset.
 
 **Statuses.** 201 with the created resource in the body; 200 for a read or an update; 204 with an
 empty body for a delete. And **202 when the work has not happened yet** - see below.
