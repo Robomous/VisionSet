@@ -31,6 +31,10 @@ with store.unit_of_work() as uow:
 - `add` raises `EntityAlreadyExists` on a primary-key collision; `update` raises
   `EntityNotFound`. They are deliberately not one upsert - a service that inserts a
   duplicate or updates something deleted has a bug and should hear about it.
+- `add_many` inserts a sequence with a single flush of its rows, after reading which of its
+  ids are taken in batches rather than one at a time, and returns it in the order given. It
+  refuses exactly what `add` would refuse on each in turn - an id already stored, or one
+  repeated within the sequence - but checks every id before writing any of them.
 - `delete` returns `False` rather than raising when there was nothing to remove.
 - `list(parent_id)` on `workspaces` - the one root entity - raises `ValueError`.
 - Ordering is insertion order (SQLite's implicit `rowid`).

@@ -214,7 +214,7 @@ class AnnotationService:
                     # commit time, where nothing could say which one was at fault.
                     _require_untagged(tagged, annotation)
 
-            stored = [uow.annotations.add(annotation) for annotation in proposed]
+            stored = uow.annotations.add_many(proposed)
             _refresh_progress(uow, job, (a.asset_id for a in proposed))
 
         self._announce(job.id, batch.id, AnnotationOperation.ADD, stored)
@@ -312,7 +312,7 @@ class AnnotationService:
 
             for old in outgoing:
                 uow.annotations.delete(old.id)
-            stored = [uow.annotations.add(annotation) for annotation in proposed]
+            stored = uow.annotations.add_many(proposed)
             _refresh_progress(
                 uow, job, (*superseded, *(a.asset_id for a in proposed)), judged=False
             )
@@ -398,7 +398,7 @@ class AnnotationService:
                 _validate(annotation, schema)
                 _require_geometry_on_asset(uow, annotation, reads)
                 _require_untagged(tagged, annotation)
-        return [uow.annotations.add(annotation) for annotation in proposed]
+        return uow.annotations.add_many(proposed)
 
     def update(self, job_id: UUID, annotations: Sequence[Annotation]) -> list[Annotation]:
         """Replace stored annotations, judged against the same pinned version.

@@ -14,6 +14,7 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 from sqlalchemy import text
+from tests.fixtures.store_reads import executed_statements
 
 from visionset.kernel import (
     ConstraintViolated,
@@ -22,7 +23,7 @@ from visionset.kernel import (
     WorkspaceCorrupt,
     WorkspaceFormatTooNew,
 )
-from visionset.kernel.adapters import SqliteMetadataStore
+from visionset.kernel.adapters import SqliteMetadataStore, sqlite_metadata_store
 from visionset.kernel.adapters.migrations import FORMAT_VERSION
 from visionset.kernel.domain import (
     Annotation,
@@ -632,6 +633,152 @@ def test_add_rejects_a_duplicate_id(tmp_path: Path) -> None:
         uow.workspaces.add(workspace)
         with pytest.raises(EntityAlreadyExists, match=str(workspace.id)):
             uow.workspaces.add(workspace)
+    store.close()
+
+
+def test_add_many_returns_and_stores_in_the_order_given(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    workspaces = [Workspace(name=f"w{index}") for index in range(5)]
+    with store.unit_of_work() as uow:
+        assert uow.workspaces.add_many(workspaces) == workspaces
+    with store.unit_of_work() as uow:
+        assert uow.workspaces.list() == workspaces
+    store.close()
+
+
+def test_add_many_of_nothing_stores_nothing_and_says_so(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    with store.unit_of_work() as uow, executed_statements() as statements:
+        assert uow.workspaces.add_many([]) == []
+    assert statements == []
+    with store.unit_of_work() as uow:
+        assert uow.workspaces.list() == []
+    store.close()
+
+
+def test_add_many_refuses_an_id_already_stored_and_writes_none(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    existing = Workspace(name="existing")
+    with store.unit_of_work() as uow:
+        uow.workspaces.add(existing)
+    fresh = Workspace(name="fresh")
+    with (
+        pytest.raises(EntityAlreadyExists, match=str(existing.id)),
+        store.unit_of_work() as uow,
+    ):
+        uow.workspaces.add_many([fresh, existing])
+    with store.unit_of_work() as uow:
+        assert uow.workspaces.list() == [existing]
+    store.close()
+
+
+def test_add_many_refuses_an_id_repeated_within_the_batch_and_writes_none(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    repeated = Workspace(name="twice")
+    with store.unit_of_work() as uow:
+        with pytest.raises(EntityAlreadyExists, match=str(repeated.id)):
+            uow.workspaces.add_many([Workspace(name="first"), repeated, repeated])
+        assert uow.workspaces.list() == []
+    store.close()
+
+
+def test_add_many_translates_a_constraint_failure_and_rolls_back(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    with store.unit_of_work() as uow:
+        workspace_id = uow.workspaces.add(Workspace(name="w")).id
+    with pytest.raises(ConstraintViolated, match="FOREIGN KEY"), store.unit_of_work() as uow:
+        uow.projects.add_many(
+            [
+                Project(workspace_id=workspace_id, name="fine"),
+                Project(workspace_id=uuid4(), name="orphan"),
+            ]
+        )
+    with store.unit_of_work() as uow:
+        assert uow.projects.list() == []
+    store.close()
+
+
+def test_add_many_writes_each_entitys_children_after_every_row(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    with store.unit_of_work() as uow:
+        workspace = uow.workspaces.add(Workspace(name="w"))
+        project = uow.projects.add(Project(workspace_id=workspace.id, name="p"))
+        first, second = uow.assets.add_many(
+            [
+                Asset(project_id=project.id, content_hash="a" * 64, uri="file:///1.png"),
+                Asset(project_id=project.id, content_hash="b" * 64, uri="file:///2.png"),
+            ]
+        )
+        batches = uow.batches.add_many(
+            [
+                Batch(project_id=project.id, name="one", asset_ids=[second.id, first.id]),
+                Batch(project_id=project.id, name="two", asset_ids=[first.id]),
+            ]
+        )
+    with store.unit_of_work() as uow:
+        assert [uow.batches.get(batch.id) for batch in batches] == batches
+    store.close()
+
+
+def test_a_childs_constraint_failure_in_add_many_rolls_back_every_row(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    with store.unit_of_work() as uow:
+        workspace = uow.workspaces.add(Workspace(name="w"))
+        project_id = uow.projects.add(Project(workspace_id=workspace.id, name="p")).id
+    with pytest.raises(ConstraintViolated, match="FOREIGN KEY"), store.unit_of_work() as uow:
+        uow.batches.add_many(
+            [
+                Batch(project_id=project_id, name="empty"),
+                Batch(project_id=project_id, name="ghost", asset_ids=[uuid4()]),
+            ]
+        )
+    with store.unit_of_work() as uow:
+        assert uow.batches.list() == []
+    store.close()
+
+
+def test_add_many_costs_the_same_statements_for_four_entities_as_for_forty(
+    tmp_path: Path,
+) -> None:
+    """One existence read and one insert per batch, however long it is."""
+    store = _store(tmp_path)
+    counts = []
+    for size in (4, 40):
+        workspaces = [Workspace(name=f"w{index}") for index in range(size)]
+        with store.unit_of_work() as uow, executed_statements() as statements:
+            uow.workspaces.add_many(workspaces)
+        counts.append(len(statements))
+    assert counts[0] == counts[1]
+    store.close()
+
+
+@pytest.mark.parametrize("stored_at", [0, 3, 4, 7, 9])
+def test_add_many_finds_a_stored_id_at_any_chunk_edge(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stored_at: int
+) -> None:
+    monkeypatch.setattr(sqlite_metadata_store, "_IN_CLAUSE_LIMIT", 4)
+    store = _store(tmp_path)
+    existing = Workspace(name="stored")
+    with store.unit_of_work() as uow:
+        uow.workspaces.add(existing)
+    batch = [Workspace(name=f"w{index}") for index in range(10)]
+    batch[stored_at] = existing
+    with pytest.raises(EntityAlreadyExists, match=str(existing.id)), store.unit_of_work() as uow:
+        uow.workspaces.add_many(batch)
+    store.close()
+
+
+def test_add_many_reads_existence_one_chunk_at_a_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sqlite_metadata_store, "_IN_CLAUSE_LIMIT", 4)
+    store = _store(tmp_path)
+    with store.unit_of_work() as uow, executed_statements() as statements:
+        uow.workspaces.add_many([Workspace(name=f"w{index}") for index in range(10)])
+    lookups = [sql for sql in statements if sql.lstrip().upper().startswith("SELECT")]
+    assert len(lookups) == 3
     store.close()
 
 
