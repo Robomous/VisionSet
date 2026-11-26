@@ -154,7 +154,7 @@ reads is inside a transaction at all.
 Two things close it, and they are different halves:
 
 - **Progress is written one asset at a time**, through `UnitOfWork.set_asset_progress` - the
-  port's one write that is not a repository, for the reason `batches_holding` is its one read
+  port's one write that is not a repository, for the reason `batches_holding` is a read
   that is not. Two moves over different assets are two rows and cannot conflict at all.
 - **The write is guarded on the value the move was decided against**, in the same statement that
   writes it. There is no version column: the contended datum *is* the progress, so a version

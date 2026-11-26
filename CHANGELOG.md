@@ -23,7 +23,16 @@ nothing was being distributed. This is the first version that is.
   and hatched, labelled `left out`), `Accept N` writes only the chosen ones with their own scores in one undo step,
   and with none chosen Accept is disabled and `↵` writes nothing. A point suggestion still proposes at most one
   shape (#548).
-
+- **Tracks.** A `Track(id, source_id, label_class, external_id?)` follows one object through a video
+  source as a set of observations, each naming a frame occurrence and an existing annotation on that
+  occurrence's asset; `Annotation` gains no field. `TrackService` creates, observes, unobserves,
+  changes a class (rewriting every observed annotation atomically, or refusing), merges, splits and
+  deletes - with or without the annotations - and derives a track's status in a batch from its observed
+  assets' progress, storing none. Every write but creation acts through a job and is refused unless that
+  job may write every observation it touches, so a job holding part of a track cannot restructure the
+  rest. Twelve new error codes; REST routes under `/sources/{id}/tracks`, `/tracks/{id}` and
+  `/jobs/{id}/tracks/{track_id}`, `GET /sources/{id}/occurrences`, a `visionset track` command group and
+  ten MCP tools. Migration 25 creates `track` and `track_observation` (#1179).
 - **Frame occurrences.** A video import's commit writes one `FrameOccurrence` - `(source_id, position,
   timestamp, asset_id)`, unique on `(source_id, position)` - per committed frame, so two grid positions whose
   bytes deduplicate to one asset are two occurrences of it, and a second import of one clip keeps its own.
