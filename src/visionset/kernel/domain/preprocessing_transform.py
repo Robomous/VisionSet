@@ -609,14 +609,32 @@ def _clip_ring(points: list[Point], width: float, height: float) -> list[list[Po
     The ring is split against each canvas edge in turn. Each split pairs the
     places the ring crosses that edge in order along it, which is what keeps
     two pieces of a concave ring apart rather than joining them along the
-    edge the way a single Sutherland–Hodgman pass does. Pieces without three
-    distinct points are left out.
+    edge the way a single Sutherland–Hodgman pass does. A run of vertices
+    along a canvas edge is reduced to its two ends, which removes the zero-area
+    spike a source edge lying on the canvas edge would leave. Pieces without
+    three distinct points are left out.
     """
     rings = [points]
     edges = ((0, 0.0, True), (0, width, False), (1, 0.0, True), (1, height, False))
     for axis, bound, keep_above in edges:
         rings = [piece for ring in rings for piece in _split(ring, axis, bound, keep_above)]
-    return [ring for ring in (_distinct(ring) for ring in rings) if len(ring) >= 3]
+    pieces = (_edge_runs_ended(_distinct(ring), edges) for ring in rings)
+    return [ring for ring in pieces if len(ring) >= 3]
+
+
+def _edge_runs_ended(ring: list[Point], edges: Sequence[tuple[int, float, bool]]) -> list[Point]:
+    """The ring without any vertex whose neighbours lie on the same canvas edge with it."""
+    ring = list(ring)
+    removed = True
+    while removed and len(ring) >= 3:
+        removed = False
+        for index, point in enumerate(ring):
+            before, after = ring[index - 1], ring[(index + 1) % len(ring)]
+            if any(before[axis] == point[axis] == after[axis] == bound for axis, bound, _ in edges):
+                del ring[index]
+                removed = True
+                break
+    return _distinct(ring)
 
 
 def _split(ring: list[Point], axis: int, bound: float, keep_above: bool) -> list[list[Point]]:

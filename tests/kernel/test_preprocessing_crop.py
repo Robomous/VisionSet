@@ -36,7 +36,7 @@ from visionset.kernel.domain import (
     canvas_fit,
     transform_manifest,
 )
-from visionset.kernel.domain.preprocessing_transform import _clip_ring, _ring_area
+from visionset.kernel.domain.preprocessing_transform import _clip_ring, _cropped, _ring_area
 from visionset.kernel.errors import PreprocessingStepUnsupportedGeometry
 
 CROPPING = (ResizeStrategy.FILL, ResizeStrategy.CENTER_CROP)
@@ -310,6 +310,90 @@ def test_the_pieces_cover_exactly_the_clipped_area_and_stay_on_the_canvas(seed: 
     )
     assert all(_ring_area(piece) * sign > 0 for piece in pieces)
     assert all(0.0 <= x <= 100.0 and 0.0 <= y <= 100.0 for piece in pieces for x, y in piece)
+
+
+def test_a_source_edge_on_the_canvas_edge_leaves_no_spike() -> None:
+    """Its run along the edge would otherwise double back and stretch the box to y 10."""
+    shape = PolygonGeometry(
+        points=[
+            (50.0, 50.0),
+            (100.0, 50.0),
+            (100.0, 10.0),
+            (110.0, 10.0),
+            (110.0, 90.0),
+            (50.0, 90.0),
+        ]
+    )
+
+    cut, clipped = _cropped(shape, 100.0, 100.0)
+
+    assert clipped
+    assert isinstance(cut, PolygonGeometry)
+    assert sorted(cut.points) == [(50.0, 50.0), (50.0, 90.0), (100.0, 50.0), (100.0, 90.0)]
+
+
+def _inside(point: tuple[float, float], ring: list[tuple[float, float]]) -> bool:
+    x, y = point
+    hit = False
+    for (x0, y0), (x1, y1) in zip(ring, [*ring[1:], ring[0]], strict=True):
+        if (y0 > y) != (y1 > y) and x < x0 + (y - y0) * (x1 - x0) / (y1 - y0):
+            hit = not hit
+    return hit
+
+
+def _skyline(seed: int) -> list[tuple[float, float]]:
+    """A rectilinear ring on a 10-pixel grid whose edges run along and across the canvas edges."""
+    rng = random.Random(seed)
+    xs = list(range(rng.choice([-20, 0, 20]), rng.choice([80, 100, 120]) + 1, 10))
+    base = float(rng.choice([-20, 0, 10]))
+    tops = [float(rng.choice([30, 60, 90, 100, 120])) for _ in xs[:-1]]
+    ring = [(float(xs[0]), base), (float(xs[-1]), base)]
+    for index in range(len(tops) - 1, -1, -1):
+        ring += [(float(xs[index + 1]), tops[index]), (float(xs[index]), tops[index])]
+    if rng.random() < 0.5:
+        ring = [(y, x) for x, y in ring]
+    return ring
+
+
+@pytest.mark.parametrize("seed", range(40))
+def test_the_pieces_span_exactly_the_clipped_region(seed: int) -> None:
+    """Sampled at pixel centres; a spike along a canvas edge would stretch the span past it."""
+    ring = _skyline(seed)
+    inside = [
+        (x + 0.5, y + 0.5)
+        for x in range(100)
+        for y in range(100)
+        if _inside((x + 0.5, y + 0.5), ring)
+    ]
+    pieces = _clip_ring(ring, 100.0, 100.0)
+    points = [point for piece in pieces for point in piece]
+
+    if not inside:
+        assert sum(abs(_ring_area(piece)) for piece in pieces) < 1.0
+        return
+    sampled = (
+        min(x for x, _ in inside),
+        min(y for _, y in inside),
+        max(x for x, _ in inside),
+        max(y for _, y in inside),
+    )
+    spanned = (
+        min(x for x, _ in points),
+        min(y for _, y in points),
+        max(x for x, _ in points),
+        max(y for _, y in points),
+    )
+    assert spanned == pytest.approx(sampled, abs=0.5)
+    for piece in pieces:
+        for index, point in enumerate(piece):
+            before, after = piece[index - 1], piece[(index + 1) % len(piece)]
+            for axis, bound in ((0, 0.0), (0, 100.0), (1, 0.0), (1, 100.0)):
+                on_edge = before[axis] == point[axis] == after[axis] == bound
+                assert not (
+                    on_edge
+                    and (point[1 - axis] - before[1 - axis]) * (after[1 - axis] - point[1 - axis])
+                    < 0
+                )
 
 
 def test_a_ring_dipping_out_and_back_in_splits_into_its_pieces() -> None:
