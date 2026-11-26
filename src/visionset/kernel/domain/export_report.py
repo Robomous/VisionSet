@@ -45,6 +45,11 @@ class ExportPreprocessing(BaseModel):
     caller pointed at, or ``None`` for a spec handed over directly.
     ``pillow_version`` says which codecs produced the bytes, because byte
     stability is promised within one environment only.
+
+    ``dropped_annotations`` and ``clipped_annotations`` count the release's own
+    labels a cropping resize — ``fill`` or ``center_crop`` — cut away, and cut
+    down and kept; each variant of an image loses the same ones. Both are 0
+    for every other recipe.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -54,6 +59,8 @@ class ExportPreprocessing(BaseModel):
     recipe_hash: str
     pillow_version: str
     mapping: tuple[ExportFileMapping, ...] = ()
+    dropped_annotations: int = Field(default=0, ge=0)
+    clipped_annotations: int = Field(default=0, ge=0)
 
 
 class ExportResult(BaseModel):

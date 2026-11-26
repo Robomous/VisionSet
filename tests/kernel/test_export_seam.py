@@ -19,6 +19,8 @@ from visionset.kernel.domain import (
     Annotation,
     AugmentOp,
     AugmentStep,
+    BboxGeometry,
+    ClassExportStatus,
     ExportTarget,
     GeometryType,
     LabelClass,
@@ -386,4 +388,176 @@ def test_a_plugin_naming_files_its_own_way_is_traced_by_digest(tmp_path: Path) -
         assert row.file.startswith("images/")
         assert (dest / row.file).is_file()
     assert len({row.file for row in mapping}) == len(mapping)
+    fixture.close()
+
+
+# --- a cropping resize: drops behind consent, counted in both reports ---------
+
+#: 640×480 assets onto 480×480 at scale 1: 80 pixels off each side, so every
+#: fixture box (x 1..31) lands wholly off the canvas.
+FILL_AWAY = RecipeSpec(
+    target=None, steps=(ResizeStep(strategy=ResizeStrategy.FILL, width=480, height=480),)
+)
+#: 10 pixels off each side: every box keeps 21 of its 30 pixels of width.
+CROP_DOWN = RecipeSpec(
+    target=None,
+    steps=(ResizeStep(strategy=ResizeStrategy.CENTER_CROP, width=620, height=480),),
+)
+
+
+def _row(report: dict) -> dict:
+    (row,) = [one for one in report["classes"] if one["label_class"] == "sign"]
+    return row
+
+
+def test_a_crop_that_drops_labels_is_refused_before_anything_is_written(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    release = _published(fixture, split=None)
+    dest = tmp_path / "out"
+    plugin, driver = ImageWriter(), MarkingDriver()
+
+    with pytest.raises(LossyExportNotConsented) as caught:
+        fixture.releases.require_export_consent(
+            release.id, plugin, allow_lossy=False, recipe=FILL_AWAY
+        )
+    assert caught.value.compatibility.excluded_annotations == 5
+    assert "after a fill resize" in str(caught.value)
+    with pytest.raises(LossyExportNotConsented):
+        fixture.releases.export(
+            release.id, plugin, dest, recipe=FILL_AWAY, drivers=drivers_of(driver)
+        )
+    assert not dest.exists()
+    assert driver.calls == []
+    assert plugin.handed is None
+    fixture.close()
+
+
+def test_a_crop_that_drops_every_label_of_a_class_reports_it_dropped(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = _published(fixture, split=None)
+    dest = tmp_path / "out"
+    plugin = ImageWriter()
+
+    checked = fixture.releases.check_export(release.id, plugin, recipe=FILL_AWAY)
+    result = fixture.releases.export(
+        release.id,
+        plugin,
+        dest,
+        allow_lossy=True,
+        recipe=FILL_AWAY,
+        drivers=drivers_of(MarkingDriver()),
+    )
+
+    assert not checked.compatible
+    assert (checked.excluded_annotations, checked.excluded_assets) == (5, 5)
+    assert checked.degraded_annotations == 0
+    assert result.compatibility == checked
+    report = _report(dest)
+    assert report["excluded_annotations"] == 5
+    assert _row(report)["status"] == "dropped"
+    assert "fill resize cuts 5 off the canvas" in _row(report)["reason"]
+    assert (
+        report["preprocessing"]["dropped_annotations"],
+        report["preprocessing"]["clipped_annotations"],
+    ) == (5, 0)
+    assert plugin.handed is not None
+    assert all(asset.annotations == () for asset in plugin.handed.assets)
+    assert result.source_annotation_count == 0
+    fixture.close()
+
+
+def test_a_crop_that_cuts_labels_down_reports_them_degraded(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    release = _published(fixture, split=None)
+    dest = tmp_path / "out"
+
+    with pytest.raises(LossyExportNotConsented) as caught:
+        fixture.releases.require_export_consent(
+            release.id, ImageWriter(), allow_lossy=False, recipe=CROP_DOWN
+        )
+    assert caught.value.compatibility.degraded_annotations == 5
+    result = fixture.releases.export(
+        release.id,
+        ImageWriter(),
+        dest,
+        allow_lossy=True,
+        recipe=CROP_DOWN,
+        drivers=drivers_of(MarkingDriver()),
+    )
+
+    assert (result.compatibility.degraded_annotations, result.compatibility.degraded_assets) == (
+        5,
+        5,
+    )
+    assert result.compatibility.excluded_annotations == 0
+    report = _report(dest)
+    assert _row(report)["status"] == "degraded"
+    assert "center_crop resize cuts 5 down" in _row(report)["reason"]
+    assert (
+        report["preprocessing"]["dropped_annotations"],
+        report["preprocessing"]["clipped_annotations"],
+    ) == (0, 5)
+    assert result.source_annotation_count == 5
+    fixture.close()
+
+
+def test_a_class_the_crop_only_partly_drops_is_degraded_not_dropped(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    fixture.schemas.create_version(fixture.project.id, [SIGN])
+    batch = fixture.batches.create(fixture.project.id, "two-boxes", fixture.asset_ids)
+    fixture.batches.approve(batch.id)
+    (job,) = fixture.batches.jobs(batch.id)
+    fixture.batches.start(batch.id)
+    fixture.jobs.start(job.id)
+    centred = BboxGeometry(x=300.0, y=200.0, width=40.0, height=40.0)
+    for asset_id in fixture.asset_ids:
+        fixture.annotations.add(
+            job.id,
+            [
+                _box(asset_id),
+                Annotation(
+                    asset_id=asset_id,
+                    label_class="sign",
+                    schema_version=1,
+                    geometry=centred,
+                    provenance="human",
+                ),
+            ],
+        )
+    fixture.jobs.complete(job.id)
+    fixture.batches.complete(batch.id)
+    fixture.datasets.promote(batch.id)
+    release = fixture.releases.publish(fixture.dataset_id, "v1")
+
+    report = fixture.releases.check_export(release.id, ImageWriter(), recipe=FILL_AWAY)
+
+    (row,) = report.classes
+    assert (row.status, row.annotations) == (ClassExportStatus.DEGRADED, 10)
+    assert (report.excluded_annotations, report.degraded_annotations) == (5, 0)
+    fixture.close()
+
+
+def test_a_polyline_is_refused_by_a_crop_and_carried_by_a_letterbox(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    fixture.schemas.create_version(
+        fixture.project.id, [SIGN, LabelClass(name="lane", geometries=(GeometryType.POLYLINE,))]
+    )
+    batch = fixture.batches.create(fixture.project.id, "lanes", fixture.asset_ids)
+    fixture.batches.approve(batch.id)
+    (job,) = fixture.batches.jobs(batch.id)
+    fixture.batches.start(batch.id)
+    fixture.jobs.start(job.id)
+    for asset_id in fixture.asset_ids:
+        fixture.annotations.add(job.id, [_polyline(asset_id)])
+    fixture.jobs.complete(job.id)
+    fixture.batches.complete(batch.id)
+    fixture.datasets.promote(batch.id)
+    release = fixture.releases.publish(fixture.dataset_id, "v1")
+
+    with pytest.raises(PreprocessingStepUnsupportedGeometry) as caught:
+        fixture.releases.check_export(release.id, ImageWriter(), recipe=CROP_DOWN)
+    assert (caught.value.step, caught.value.geometry) == ("resize", "polyline")
+    assert fixture.releases.check_export(release.id, ImageWriter(), recipe=LETTERBOX).compatible
     fixture.close()

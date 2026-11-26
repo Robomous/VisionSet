@@ -55,6 +55,7 @@ from pydantic import ValidationError
 
 from visionset import __version__
 from visionset.kernel.domain import (
+    CROPPING_STRATEGIES,
     IMPLEMENTED_GEOMETRIES,
     SHOWCASE_SEED,
     THREE_D,
@@ -423,8 +424,10 @@ class ReleaseService:
         geometry transform runs over what the export would hand the plugin, so
         a step that cannot move a label this release carries, or augmentation
         against a release with no split, refuses now rather than in a worker.
-        The report itself says nothing about the recipe — what a format drops
-        is decided before any transform.
+        A resize that crops — ``fill`` or ``center_crop`` — is the one step
+        that loses labels, and its losses are in the report beside the
+        format's: a label cut away is dropped, a label cut down is degraded,
+        and either asks for consent the way a format's loss does.
 
         Computed from the **frozen manifest**, never from live membership: an
         export describes a release, and a release is a snapshot. Two runs against
@@ -461,7 +464,10 @@ class ReleaseService:
         manifest = self._read_manifest(release)
         compatibility = _compatibility(release, manifest, exporter, target)
         if recipe is not None:
-            _transformed(manifest, exporter, target, recipe, _split_of(release, manifest))
+            view = _transformed(manifest, exporter, target, recipe, _split_of(release, manifest))
+            compatibility = _compatibility(
+                release, manifest, exporter, target, cropping=_cropping_of(recipe, view)
+            )
         return compatibility
 
     def require_export_consent(
@@ -492,13 +498,17 @@ class ReleaseService:
         geometry it never claimed to write.
 
         Consent comes first and the recipe is checked after it: a caller who
-        has not accepted the loss is answered about the loss, and only a
-        consented export goes on to ask whether its recipe can run.
+        has not accepted the format's loss is answered about the loss, and only
+        a consented export goes on to ask whether its recipe can run. The
+        transform is pure and writes nothing, so what a cropping resize cuts
+        away is known here too and asks for the same consent, before any
+        output exists.
 
         Raises:
             ReleaseNotFound: no such release in this workspace.
-            LossyExportNotConsented: the format drops information and the caller
-                has not said that is acceptable.
+            LossyExportNotConsented: the format, or a cropping resize in the
+                recipe, drops information and the caller has not said that is
+                acceptable.
             AugmentationRequiresSplit: the recipe augments and the release was
                 published without a split recipe.
             PreprocessingStepUnsupportedGeometry: a recipe step cannot
@@ -510,17 +520,7 @@ class ReleaseService:
         """
         release = self.get(release_id)
         manifest = self._read_manifest(release)
-        compatibility = _compatibility(release, manifest, exporter, target)
-        if (exporter.lossy or not compatibility.compatible) and not allow_lossy:
-            raise LossyExportNotConsented(
-                f"format {exporter.format_name!r} cannot carry everything release "
-                f"{release.tag!r} holds ({_loss_reason(compatibility)}); "
-                "re-run with allow_lossy to accept the loss",
-                compatibility=compatibility,
-            )
-        if recipe is not None:
-            _transformed(manifest, exporter, target, recipe, _split_of(release, manifest))
-        return compatibility
+        return _consented(release, manifest, exporter, allow_lossy, target, recipe)[0]
 
     def export(
         self,
@@ -605,8 +605,9 @@ class ReleaseService:
 
         Raises:
             ReleaseNotFound: no such release in this workspace.
-            LossyExportNotConsented: the format drops information and the caller
-                has not said that is acceptable.
+            LossyExportNotConsented: the format, or a cropping resize in the
+                recipe, drops information and the caller has not said that is
+                acceptable.
             AugmentationRequiresSplit: the recipe augments and the release was
                 published without a split recipe.
             PreprocessingStepUnsupportedGeometry: a recipe step cannot
@@ -626,16 +627,13 @@ class ReleaseService:
         """
         release = self.get(release_id)
         manifest = self._read_manifest(release)
-        compatibility = self.require_export_consent(
-            release_id, exporter, allow_lossy=allow_lossy, target=target
-        )
+        compatibility, view = _consented(release, manifest, exporter, allow_lossy, target, recipe)
         addressed = _handed(manifest, exporter, target)
         assignment = _split_of(release, manifest)
         reader = _RecordingReader(manifest, self._workspace.blob_store)
-        if recipe is None:
-            handed, view = addressed, None
+        if recipe is None or view is None:
+            handed = addressed
         else:
-            view = _transformed(manifest, exporter, target, recipe, assignment)
             handed = plugin_manifest(addressed, view)
             reader.transform(recipe, drivers or {})
         self._require_destination(
@@ -669,6 +667,8 @@ class ReleaseService:
                 recipe_hash=recipe_hash(recipe),
                 pillow_version=PILLOW_VERSION,
                 mapping=reader.mapping(dest, written),
+                dropped_annotations=0 if view is None else view.dropped_count,
+                clipped_annotations=0 if view is None else view.clipped_count,
             )
         )
         _write_report(dest, compatibility, preprocessing)
@@ -1036,6 +1036,80 @@ def _split_of(release: Release, manifest: Manifest) -> SplitAssignment | None:
     return None if release.split is None else assign_split(release.split, manifest.assets)
 
 
+def _consented(
+    release: Release,
+    manifest: Manifest,
+    exporter: Exporter,
+    allow_lossy: bool,
+    target: ExportTarget | None,
+    recipe: RecipeSpec | None,
+) -> tuple[ExportCompatibility, TransformedView | None]:
+    """The report, and the recipe's view, or refuse an export nobody consented to.
+
+    Asked twice when a recipe is given: once for the format alone, so a
+    caller who has not accepted the format's loss hears about that before
+    the recipe is checked, and again with what a cropping resize cuts away,
+    which only the transform can say. Both happen before anything is written.
+    """
+    compatibility = _compatibility(release, manifest, exporter, target)
+    _require_consent(release, exporter, compatibility, allow_lossy)
+    if recipe is None:
+        return compatibility, None
+    view = _transformed(manifest, exporter, target, recipe, _split_of(release, manifest))
+    cropping = _cropping_of(recipe, view)
+    if cropping is None:
+        return compatibility, view
+    compatibility = _compatibility(release, manifest, exporter, target, cropping=cropping)
+    _require_consent(release, exporter, compatibility, allow_lossy, cropping)
+    return compatibility, view
+
+
+def _require_consent(
+    release: Release,
+    exporter: Exporter,
+    compatibility: ExportCompatibility,
+    allow_lossy: bool,
+    cropping: _Cropping | None = None,
+) -> None:
+    if (exporter.lossy or not compatibility.compatible) and not allow_lossy:
+        subject = f"format {exporter.format_name!r}"
+        if cropping is not None:
+            subject = f"{subject} after a {cropping.strategy} resize"
+        raise LossyExportNotConsented(
+            f"{subject} cannot carry everything release "
+            f"{release.tag!r} holds ({_loss_reason(compatibility)}); "
+            "re-run with allow_lossy to accept the loss",
+            compatibility=compatibility,
+        )
+
+
+@dataclass(frozen=True)
+class _Cropping:
+    """What a cropping resize did to the release's own labels, by annotation id."""
+
+    strategy: str
+    dropped: frozenset[UUID]
+    clipped: frozenset[UUID]
+
+
+def _cropping_of(recipe: RecipeSpec, view: TransformedView) -> _Cropping | None:
+    """The base images' crop losses, or ``None`` when the recipe crops nothing.
+
+    Read from the base images alone: the resize runs before every
+    augmentation and identically for every variant, so a variant loses
+    exactly the labels its base image does.
+    """
+    resize = next((step for step in recipe.steps if isinstance(step, ResizeStep)), None)
+    if resize is None or resize.strategy not in CROPPING_STRATEGIES:
+        return None
+    base = [file for file in view.files if file.variant == 0]
+    return _Cropping(
+        strategy=resize.strategy.value,
+        dropped=frozenset(one for file in base for one in file.dropped),
+        clipped=frozenset(one for file in base for one in file.clipped),
+    )
+
+
 def _transformed(
     manifest: Manifest,
     exporter: Exporter,
@@ -1352,6 +1426,8 @@ def _compatibility(
     manifest: Manifest,
     exporter: Exporter,
     target: ExportTarget | None = None,
+    *,
+    cropping: _Cropping | None = None,
 ) -> ExportCompatibility:
     """Judge one manifest against one format's declared capabilities.
 
@@ -1390,6 +1466,12 @@ def _compatibility(
     other geometry, the way a YOLO dialect writes tags as a class tree but has
     no place for one beside a box. When anything else reaches the output, those
     rows are reported dropped, because that is what the plugin does.
+
+    **A cropping resize loses labels one by one.** Given ``cropping``, a label
+    the crop cut away counts as dropped and one it cut down as degraded,
+    unless the format already loses it more. A row the crop touched is
+    degraded — some of its labels survive — or dropped when none do, and its
+    reason gives the crop's counts.
     """
     writes = supported_modalities_of(exporter)
     unopenable = [asset for asset in manifest.assets if asset.modality not in writes]
@@ -1413,6 +1495,7 @@ def _compatibility(
     # reduces the other and a single row could only say one of those. Seeded from
     # the declared classes so a class nobody used still appears, at zero.
     per_shape: dict[tuple[str, GeometryType], tuple[int, set[UUID]]] = {}
+    cut: dict[tuple[str, GeometryType], dict[ClassExportStatus, int]] = {}
     for declared in manifest.classes:
         for geometry in declared.geometries:
             if geometry in IMPLEMENTED_GEOMETRIES:
@@ -1455,6 +1538,11 @@ def _compatibility(
                 assets | {asset.asset_id},
             )
             status = status_of(geometry)
+            crop = _crop_status(cropping, annotation.id)
+            if crop is not None and _LOSS_ORDER[crop] > _LOSS_ORDER[status]:
+                status = crop
+                row = cut.setdefault((annotation.label_class, geometry), {})
+                row[crop] = row.get(crop, 0) + 1
             counts[status] += 1
             touched[status].add(asset.asset_id)
 
@@ -1466,6 +1554,9 @@ def _compatibility(
 
     def row_reason(name: str, geometry: GeometryType, count: int) -> str | None:
         reason = reason_for(geometry)
+        crop_reason = _crop_reason(cropping, cut.get((name, geometry)))
+        if crop_reason is not None:
+            return crop_reason if reason is None else f"{reason}; {crop_reason}"
         elsewhere = left_out.get((name, geometry), 0)
         if reason is None or count or not elsewhere:
             return reason
@@ -1474,11 +1565,20 @@ def _compatibility(
             f"{exporter.format_name} does not write, counted under dropped_modalities"
         )
 
+    def row_status(name: str, geometry: GeometryType, count: int) -> ClassExportStatus:
+        status = status_of(geometry)
+        row = cut.get((name, geometry))
+        if not row:
+            return status
+        if row.get(ClassExportStatus.DROPPED, 0) == count:
+            return ClassExportStatus.DROPPED
+        return max(status, ClassExportStatus.DEGRADED, key=_LOSS_ORDER.__getitem__)
+
     classes = tuple(
         ClassCompatibility(
             label_class=name,
             geometry=geometry,
-            status=status_of(geometry),
+            status=row_status(name, geometry, count),
             annotations=count,
             assets=len(assets),
             reason=row_reason(name, geometry, count),
@@ -1505,6 +1605,36 @@ def _compatibility(
         classes=classes,
         dropped_modalities=dropped_modalities,
     )
+
+
+_LOSS_ORDER: Final = {
+    ClassExportStatus.SUPPORTED: 0,
+    ClassExportStatus.DEGRADED: 1,
+    ClassExportStatus.DROPPED: 2,
+}
+
+
+def _crop_status(cropping: _Cropping | None, annotation_id: UUID) -> ClassExportStatus | None:
+    if cropping is None:
+        return None
+    if annotation_id in cropping.dropped:
+        return ClassExportStatus.DROPPED
+    if annotation_id in cropping.clipped:
+        return ClassExportStatus.DEGRADED
+    return None
+
+
+def _crop_reason(
+    cropping: _Cropping | None, row: dict[ClassExportStatus, int] | None
+) -> str | None:
+    if cropping is None or not row:
+        return None
+    parts = []
+    if dropped := row.get(ClassExportStatus.DROPPED, 0):
+        parts.append(f"cuts {dropped} off the canvas")
+    if clipped := row.get(ClassExportStatus.DEGRADED, 0):
+        parts.append(f"cuts {clipped} down to the part on the canvas")
+    return f"the {cropping.strategy} resize {' and '.join(parts)}"
 
 
 def _openable(manifest: Manifest, exporter: Exporter) -> Manifest:
