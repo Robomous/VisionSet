@@ -26,7 +26,7 @@ section or nav entry, or changes an entry point updates this block in the same p
     overview                         Overview (console) — the project's batches are listed here
                                      and opened in a panel beside the table (?batch=:batchId,
                                      written with replace; closing removes it)
-    images                           Images — every image ingested, regardless of batch or
+    images                           Assets — every image ingested, regardless of batch or
                                      dataset membership; read-only. Narrowed by source
                                      chips (component state) or to one batch (?batch=:batchId,
                                      written with replace; the chip's × removes it) — the
@@ -63,7 +63,7 @@ Redirects kept as promises (a bookmarked URL is one):
 ```
 
 The section order is work order: what a project *is* and what needs doing (Overview, where its
-batches are listed and opened), what came *in* (Images — every one), what it *means* (Classes),
+batches are listed and opened), what came *in* (Assets — every one), what it *means* (Classes),
 what came *out* (Dataset). A project has four sections.
 
 **Batches have no section and no page of their own.** A batch is listed on the Overview's
@@ -77,17 +77,17 @@ opens it there (`PARENT.batch`). The old addresses redirect to the Overview, rep
 history entry: `/projects/:id/batches`, which was a section, and
 `/projects/:id/batches/:batchId`, which was a page.
 
-**A batch's images are the Images section narrowed, not a page of the batch.** The Overview's
+**A batch's images are the Assets section narrowed, not a page of the batch.** The Overview's
 panel links, from the count on its Images property, to `/projects/:id/images?batch=:batchId` (`PARENT.batchAssets`, a navigation: it is
 another section). The parameter shares its name with the panel's and is read only on its own
-section — Images ignores the Overview's `?batch=`, and leaving a section drops it. The section
+section — Assets ignores the Overview's `?batch=`, and leaving a section drops it. The section
 reads the batch's listing only once the project's batches hold it (an id they do not hold is
 *Unknown batch*, and nothing of another project is fetched), names the batch in a removable chip, and the chip's × removes the
 parameter with `replace`, because lifting a filter is looking, not going.
 
 **A section's label is not its segment.** The segments stay the product's nouns —
 `/projects/:id/schema` is what links, the CLI and the API call it — while the labels are the
-words a person reads: Classes for `schema`. A bookmarked URL is a promise, so a relabel never
+words a person reads: Classes for `schema`, Assets for `images`. A bookmarked URL is a promise, so a relabel never
 renames a segment; `images` is the one segment added, and it is new rather than renamed. Where
 this page says *Batches* or *Schema* as a domain concept it means the batch or the schema, not a
 section.
@@ -149,7 +149,7 @@ URL. An unknown section segment is a 404, because nothing ever linked to one; an
   holding its frame rather than one, because an annotation carries an `asset_id` and no batch.
   It shows a window of the frames and states the total as text rather than a "see all": the
   destination such a control would need is a view narrowed to exactly those frames, and the
-  Images section, which lists every image of the project and narrows only by source, has no
+  Assets section, which lists every image of the project and narrows only by source, has no
   such filter.
 
 ## Two dashboards, and what separates them
@@ -166,7 +166,7 @@ an annotation or an asset's progress.
 
 **Overview never duplicates a section's full function.** A number on it that has a section to
 answer it is a *door* into that section: the whole card is a real button, keyboard-reachable and
-announced as an action (Images, Classes and In dataset); *Labeled* is a plain figure, because
+announced as an action (Assets, Classes and In dataset); *Labeled* is a plain figure, because
 the batches that answer it are the panel directly below. The four figures are four equal cards,
 each with a meter where the number is a share of something and at most one action - a pointer,
 labelled from what the batches declare (*Review draft*, *Review and add to dataset*, *Publish a
@@ -185,7 +185,7 @@ opened for, and once approved the panel opens on the batch's next step. Its poin
 approve", "Review and start", "Review and add to dataset", "Annotate") live in the row's menu -
 nothing appears on hover - and are labelled from the batch's `allowed_actions`; they open the
 batch's panel (a draft's, its approval; *Annotate* on a batch of one job, that job), where the
-action itself lives with its gating and refusals. Browsing images is the Images section's job, not the Overview's.
+action itself lives with its gating and refusals. Browsing images is the Assets section's job, not the Overview's.
 
 **The Overview acts on nothing except batches, and why.** A batch has no section and no page
 of its own - the Overview is where batches are listed - so what a batch may be asked to do is
@@ -247,7 +247,7 @@ instead, so the Overview never loses its way to it.
 ## Inside a project
 
 - **The sections are a toolbar across the pane.** At `lg` and above, every route under
-  `/projects/:id/` — the four sections (Overview, Images, Classes, Dataset), and the Add images
+  `/projects/:id/` — the four sections (Overview, Assets, Classes, Dataset), and the Add images
   dialog over whichever is open — renders under a 48px project bar that spans the pane from the
   rail's edge, directly under the open-project tabs (`patterns/ProjectNav.tsx`'s `bar`
   layout, laid out by `ProjectShell`, composed by `screens/ProjectFrame.tsx`). It replaced a

@@ -19,8 +19,8 @@ a value in `:root`, a dark counterpart in `.dark`, exposure through `@theme inli
 | `origin-custom` | A model's provenance, as the logo at the start of its weights on the Models page (`screens/OriginLogo.tsx`): the Customized glyph's stroke. Hugging Face draws its own published colours and Robomous its mark in `brand` (*Where the brand is*), so neither has a token. A mark: never a surface, never text, and an origin is a kind rather than a state, so it never stands in for a status. Theme-stable, like the chart palette |
 | `progress` | Work partway done: a progress ring's arc, a meter's or an operation bar's fill, the `progress` state chip's ink. A warm, low-chroma bronze, apart from `warning` because partway is not a problem; its track is the same colour at 15%, a tint of the hue rather than a grey. Done is still `success`. Drawn by `ProgressReadout` / `ProgressRing` (`patterns/ProgressRing.tsx`) and `ProgressBar` (`patterns/ProgressBar.tsx`) |
 | `--container-page` | The 96rem page cap — read by `PaddedContent`, a reusable VisionSet surface |
-| `--page-inset-bottom` | Not a declared token: a variable a host sets to the height of chrome it pins to the viewport's bottom, read by the sections that fit the window (Overview, Images, Classes, Dataset and Models) and by the Classes commit bar, which floats above it. Unset means 0 |
-| `--page-inset-top` | Not a declared token: the same for chrome a host pins to the viewport's top (the standalone app's tab strip), read by the Images section so its pane takes exactly the height between the two. Unset means 0 |
+| `--page-inset-bottom` | Not a declared token: a variable a host sets to the height of chrome it pins to the viewport's bottom, read by the sections that fit the window (Overview, Assets, Classes, Dataset and Models) and by the Classes commit bar, which floats above it. Unset means 0 |
+| `--page-inset-top` | Not a declared token: the same for chrome a host pins to the viewport's top (the standalone app's tab strip), read by the Assets section so its pane takes exactly the height between the two. Unset means 0 |
 
 A layout value lives with whoever reads it. The rail's two widths, `--spacing-rail` (48px,
 collapsed) and `--spacing-rail-expanded` (208px), are declared in `frontend/app/src/styles.css`
@@ -181,7 +181,7 @@ for the option being considered. The pattern is `ExportTargetSelect`'s `compact`
 filters and sorts.** The pager is `patterns/TablePager.tsx`, its arithmetic is
 `patterns/pagination.ts` (`usePagination(rows, { pageSize, resetKey, reveal })`), and no query or
 API changes: a table that can grow past a page pages, and a gallery that already loads one source
-at a time (the Images section) does not. It comes in two forms, by what the table is to its page.
+at a time (the Assets section) does not. It comes in two forms, by what the table is to its page.
 
 | Form | When | Where | Says |
 | --- | --- | --- | --- |
@@ -457,7 +457,7 @@ they say is a line above them, never under a 32px square.
 
 ### One image detail
 
-**An image opens in the same detail wherever it is opened.** The Images section's
+**An image opens in the same detail wherever it is opened.** The Assets section's
 `ImageDetail` (`screens/images/ImageDetail.tsx`) — its well, header, arrows and focus mode, in a
 `DetailPane` that focus expands to the whole row — is the Dataset's too; what only a surface knows comes in through its two openings, `overlay`
 (drawn over the picture, in a box exactly the picture's) and `children` (under the picture's

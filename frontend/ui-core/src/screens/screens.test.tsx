@@ -773,7 +773,7 @@ describe("the project view's sections", () => {
     // whoever navigates by headings. Exactly one, so nothing is said twice.
     const sections = [
       { tab: "overview", title: "Overview", sentinel: "overview-panel" },
-      { tab: "images", title: "Images", sentinel: "images-screen" },
+      { tab: "images", title: "Assets", sentinel: "images-screen" },
       { tab: "schema", title: "Classes", sentinel: "schema-editor" },
       { tab: "dataset", title: "Dataset", sentinel: "dataset-screen" },
     ] as const;
@@ -856,7 +856,7 @@ describe("the project view's sections", () => {
     on("GET", /\/assets$/, { status: 200, body: { items: [], total: 0 } });
     renderWithData(<ProjectScreen projectId={PROJECT} tab="images" onOpenBatch={vi.fn()} />);
     await screen.findByTestId("images-screen");
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Images");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Assets");
     expect(screen.queryByTestId("section-header")).toBeNull();
   });
 
@@ -890,7 +890,7 @@ describe("the project view's sections", () => {
    * `Images12`, and the name is what a person and a screen reader take from it.
    */
   function sectionNames(): string[] {
-    const names = ["Overview", "Images", "Classes", "Dataset"];
+    const names = ["Overview", "Assets", "Classes", "Dataset"];
     return sectionItems().map((item) => names.find((name) => within(item).queryByText(name) !== null) ?? item.textContent ?? "");
   }
 
@@ -907,7 +907,7 @@ describe("the project view's sections", () => {
       // Every image, then what the labels mean, then what came out. The id stays
       // `schema` — a bookmarked URL is a promise — while the word is the
       // person's. Batches have no section: they are opened from Overview.
-      "Images",
+      "Assets",
       "Classes",
       // **Dataset, where "Schema history" used to be.** The trunk is the
       // product's central object and was reachable only through an overflow
@@ -929,7 +929,7 @@ describe("the project view's sections", () => {
     renderWithData(<ProjectScreen projectId={PROJECT} />);
 
     await screen.findByTestId("overview-panel");
-    expect(sectionNames()).toEqual(["Overview", "Images", "Classes", "Dataset"]);
+    expect(sectionNames()).toEqual(["Overview", "Assets", "Classes", "Dataset"]);
   });
 
   it("round-trips ?tab=overview, so the default is addressable too", async () => {

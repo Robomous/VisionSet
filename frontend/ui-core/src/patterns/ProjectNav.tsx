@@ -92,7 +92,7 @@ const TAB_FACE =
 
 const SECTION_LABELS: Record<ProjectSection, SectionLabel> = {
   overview: { label: "Overview", icon: Grid3x3 },
-  images: { label: "Images", icon: Images },
+  images: { label: "Assets", icon: Images },
   schema: { label: "Classes", icon: Tags },
   dataset: { label: "Dataset", icon: Database },
 };

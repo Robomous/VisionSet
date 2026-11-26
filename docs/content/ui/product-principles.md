@@ -216,7 +216,7 @@ Overview's *Annotations* card as `schema v4` and as `no schema yet` when there i
 description shows on Overview only, under its meta line, **if there is one** — if not, render *nothing*, because "No
 description." spends a line telling somebody about a field rather than about their
 project. Every section's header carries one plain sentence under its title; how much data
-the project holds is the Overview's *Assets* number and the Images section's own total, not
+the project holds is the Overview's *Assets* number and the Assets section's own total, not
 a chip.
 
 The navigation carries what the open section is about, and the overflow menu (`⋯`) for the
