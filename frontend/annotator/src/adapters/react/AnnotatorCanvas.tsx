@@ -180,7 +180,7 @@ import {
   runAction,
 } from "../../core/input";
 import type { Action, Binding, InputHost } from "../../core/input";
-import { hasPending, isAcceptable } from "../../core/interaction/suggestion";
+import { choiceAt, hasPending, isDetection, isProposed } from "../../core/interaction/suggestion";
 import type { Polarity, SuggestionState } from "../../core/interaction/suggestion";
 import { createClipboard } from "../../core/interaction/clipboard";
 import type { Clipboard } from "../../core/interaction/clipboard";
@@ -468,6 +468,14 @@ export interface AnnotatorCanvasProps {
    */
   readonly onSuggestPoint?: (point: Point, polarity: Polarity) => void;
   /**
+   * A plain press on a detection candidate: choose it or let it go.
+   *
+   * Which press that is, is `choiceAt`'s rule — a detection session only, so a
+   * click on a point answer still refines it. In a detection session a press on
+   * no candidate places no point either: a detection is not refined by clicking.
+   */
+  readonly onToggleSuggestion?: (index: number) => void;
+  /**
    * The hand: while it is on, a **primary** drag pans instead of drawing.
    *
    * The host holds it for the reason it holds `suggestion` — the palette lights
@@ -550,6 +558,7 @@ export function AnnotatorCanvas({
   readOnly = false,
   suggestion = null,
   onSuggestPoint,
+  onToggleSuggestion,
   panTool = false,
   preciseDeviceSeen = false,
   onPreciseDevice,
@@ -1044,7 +1053,10 @@ export function AnnotatorCanvas({
     const action: Action =
       suggestion !== null && escaping && hasPending(suggestion)
         ? { kind: "host", name: DISCARD_SUGGESTION }
-        : suggestion !== null && finishing && isAcceptable(suggestion)
+        : // A proposal with nothing chosen, or an answer still in flight, owns ↵:
+          // the host's accept writes nothing, where falling through would advance
+          // the frame and lose it.
+          suggestion !== null && finishing && (isProposed(suggestion) || suggestion.status === "asking")
           ? { kind: "host", name: ACCEPT_SUGGESTION }
           : finishing && interactionNow.current.type === "idle"
             ? { kind: "host", name: SAVE_AND_NEXT }
@@ -1229,6 +1241,12 @@ export function AnnotatorCanvas({
       // already accounted for by `imagePoint` and there is no second transform
       // to keep in step with the first.
       if (!withinBounds(point, asset)) return;
+      // After an empty or refused detection a click is a point again.
+      if (isDetection(suggestion) && suggestion.status !== "none" && suggestion.status !== "refused") {
+        const choice = event.altKey ? null : choiceAt(suggestion, point, assetTolerances(viewNow.current.zoom).shape);
+        if (choice !== null) onToggleSuggestion?.(choice);
+        return;
+      }
       onSuggestPoint?.(point, event.altKey ? "negative" : "positive");
       return;
     }

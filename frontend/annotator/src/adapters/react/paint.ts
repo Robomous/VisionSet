@@ -286,6 +286,22 @@ export const SUGGESTION_OPACITY = 0.6;
 /** The preview's stroke pattern — see `SUGGESTION_OPACITY`. */
 export const SUGGESTION_DASH = "10 6";
 
+/**
+ * A proposal somebody has let go of: still on screen so it can be taken back,
+ * and marked excluded by four signals rather than by strength alone — a dotted
+ * outline, a hatch over it in black and white (so it reads on any photograph and
+ * either theme, where the class colour can match the very thing under it), muted
+ * vertices, and a label that says so in words. Opacity alone failed: over the
+ * image a let-go outline read nearly as solid as a chosen one.
+ */
+export const UNCHOSEN_SUGGESTION_OPACITY = 0.5;
+
+/** The let-go outline's pattern: dotted, so it is a different line, not a fainter one. */
+export const UNCHOSEN_SUGGESTION_DASH = "2 6";
+
+/** What a let-go shape's label adds after its class and confidence. */
+export const UNCHOSEN_SUGGESTION_MARK = "left out";
+
 /** A pending suggestion, ready to draw. */
 export interface PaintedSuggestion {
   /** Never a tag or a path: the two kinds `SUGGESTIBLE_GEOMETRY_TYPES` names. */
@@ -295,6 +311,8 @@ export interface PaintedSuggestion {
   readonly label: string;
   /** The clicks that produced it, so the preview shows what it was asked. */
   readonly points: readonly PromptPoint[];
+  /** Whether accepting would write it. A let-go shape is drawn dimmed. */
+  readonly chosen: boolean;
 }
 
 /**
@@ -322,11 +340,10 @@ export interface PaintedSuggestion {
  * must stay on screen while the answer to the click that placed them is still
  * coming back.
  *
- * **A list, though an answer carries at most one shape today.** The plural shape
- * is kept because accepting part of a plural proposal is tracked work (#548);
- * they are drawn the same way and accepted together, and the label rides on each,
- * because a reader looking at one shape should not have to find another to learn
- * what class it is.
+ * **A list, because a detection answers with every instance it found.** Each is
+ * drawn chosen or let go, and only the chosen ones are written on accept.
+ * The label rides on each, because a reader looking at one shape should not have
+ * to find another to learn what class it is.
  */
 export function paintSuggestions(
   state: SuggestionState,
@@ -340,16 +357,19 @@ export function paintSuggestions(
   if (state.status === "none") return [];
   const color = classColor(declared, labelClass);
   const painted: PaintedSuggestion[] = [];
-  for (const suggestion of state.suggestions) {
+  state.suggestions.forEach((suggestion, index) => {
     const geometry = suggestion.geometry;
-    if (geometry.type !== "bbox" && geometry.type !== "polygon") continue;
+    if (geometry.type !== "bbox" && geometry.type !== "polygon") return;
+    const chosen = state.chosen[index] !== false;
+    const label = confidenceLabel(labelClass, suggestion.confidence);
     painted.push({
       geometry,
       color,
-      label: confidenceLabel(labelClass, suggestion.confidence),
+      label: chosen ? label : `${label} · ${UNCHOSEN_SUGGESTION_MARK}`,
       points: state.points,
+      chosen,
     });
-  }
+  });
   return painted;
 }
 

@@ -14,6 +14,9 @@ import type { Annotation } from "../../core/types";
 import {
   SUGGESTION_DASH,
   SUGGESTION_OPACITY,
+  UNCHOSEN_SUGGESTION_DASH,
+  UNCHOSEN_SUGGESTION_MARK,
+  UNCHOSEN_SUGGESTION_OPACITY,
   classColor,
   confidenceLabel,
   confidencePercent,
@@ -34,6 +37,7 @@ import {
   armed,
   cleared,
   refused,
+  withChoice,
   withPoint,
 } from "../../core/interaction/suggestion";
 import type { Answer, Suggestion, SuggestionState } from "../../core/interaction/suggestion";
@@ -289,6 +293,20 @@ describe("the shape under construction", () => {
 describe("a pending suggestion, drawn as a proposal (#424)", () => {
   const SIGN = SCHEMA.classes.find((declared) => declared.name === "sign");
 
+
+  it("carries each shape's choice, so a let-go shape is drawn dimmed", () => {
+    const state = withChoice(shown(proposal(), proposal()), 1, false);
+    expect(paintSuggestions(state, SIGN).map((one) => one.chosen)).toEqual([true, false]);
+    expect(UNCHOSEN_SUGGESTION_OPACITY).toBeLessThan(SUGGESTION_OPACITY);
+    expect(UNCHOSEN_SUGGESTION_DASH).not.toBe(SUGGESTION_DASH);
+  });
+
+  it("says in the label that a let-go shape is left out, and only that one", () => {
+    const state = withChoice(shown(proposal(), proposal()), 1, false);
+    const [kept, dropped] = paintSuggestions(state, SIGN);
+    expect(kept?.label).not.toContain(UNCHOSEN_SUGGESTION_MARK);
+    expect(dropped?.label).toBe(`${kept?.label ?? ""} · ${UNCHOSEN_SUGGESTION_MARK}`);
+  });
 
   it("is told apart by two signals, and never by colour alone", () => {
     // The shape draws in its class's own colour — that is the point of it — so

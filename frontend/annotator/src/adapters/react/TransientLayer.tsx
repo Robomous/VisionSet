@@ -18,7 +18,7 @@
  * would otherwise make the committed layer's props move on every hover.
  */
 
-import type { JSX } from "react";
+import { useId, type JSX } from "react";
 
 import { polygonCloseAttempt } from "../../core/geometry/hitTest";
 import type { Target } from "../../core/interaction/target";
@@ -28,6 +28,8 @@ import type { AssetDescriptor, Point } from "../../core/types";
 import {
   SUGGESTION_DASH,
   SUGGESTION_OPACITY,
+  UNCHOSEN_SUGGESTION_DASH,
+  UNCHOSEN_SUGGESTION_OPACITY,
   pendingPolygon,
   rubberBand,
   screenPx,
@@ -65,8 +67,8 @@ export interface TransientLayerProps {
    * `AnnotatorStore`, so the committed layer has nothing to draw them from —
    * their ephemerality made visible rather than merely promised.
    *
-   * A list because one click can propose several shapes: asking for every piece
-   * of a mask answers with every piece, and they are accepted together.
+   * A list because a detection proposes every instance it found, and the chosen
+   * ones are accepted together.
    */
   readonly suggestions?: readonly PaintedSuggestion[];
   /**
@@ -193,8 +195,12 @@ function SuggestedShape({
   readonly suggestion: PaintedSuggestion;
   readonly zoom: number;
 }): JSX.Element {
-  const { geometry, color, label } = suggestion;
+  const { geometry, color, label, chosen } = suggestion;
+  const hatchId = `vs-left-out-${useId().replace(/[^\w-]/g, "")}`;
   const stroke = screenPx(STROKE_PX + 1, zoom);
+  const fill = chosen ? color : `url(#${hatchId})`;
+  const fillOpacity = chosen ? 0.14 : 1;
+  const dash = chosen ? SUGGESTION_DASH : UNCHOSEN_SUGGESTION_DASH;
   const anchor: Point =
     geometry.type === "bbox"
       ? [geometry.x, geometry.y]
@@ -203,7 +209,12 @@ function SuggestedShape({
           geometry.points[0] ?? [0, 0],
         ));
   return (
-    <g data-testid="suggestion-preview" opacity={SUGGESTION_OPACITY}>
+    <g
+      data-testid="suggestion-preview"
+      data-chosen={chosen}
+      opacity={chosen ? SUGGESTION_OPACITY : UNCHOSEN_SUGGESTION_OPACITY}
+    >
+      {!chosen && <ExcludedHatch id={hatchId} zoom={zoom} />}
       {geometry.type === "bbox" ? (
         <rect
           data-testid="suggestion-shape"
@@ -211,21 +222,23 @@ function SuggestedShape({
           y={geometry.y}
           width={geometry.width}
           height={geometry.height}
-          fill={color}
-          fillOpacity={0.14}
+          fill={fill}
+          fillOpacity={fillOpacity}
           stroke={color}
           strokeWidth={stroke}
-          strokeDasharray={SUGGESTION_DASH}
+          strokeDasharray={dash}
+          strokeLinecap={chosen ? undefined : "round"}
         />
       ) : (
         <polygon
           data-testid="suggestion-shape"
           points={geometry.points.map((point) => `${point[0]},${point[1]}`).join(" ")}
-          fill={color}
-          fillOpacity={0.14}
+          fill={fill}
+          fillOpacity={fillOpacity}
           stroke={color}
           strokeWidth={stroke}
-          strokeDasharray={SUGGESTION_DASH}
+          strokeDasharray={dash}
+          strokeLinecap={chosen ? undefined : "round"}
           strokeLinejoin="round"
         />
       )}
@@ -243,7 +256,9 @@ function SuggestedShape({
         preview has nothing to drag.
       */}
       {geometry.type === "polygon" && (
-        <Vertices points={geometry.points} color={color} zoom={zoom} hotIndex={null} />
+        <g opacity={chosen ? undefined : 0.4}>
+          <Vertices points={geometry.points} color={color} zoom={zoom} hotIndex={null} />
+        </g>
       )}
       {/* `ShapeLabel`'s treatment, at the meta size — the halo is what keeps it
           readable over a photograph, and the lift rides the CSS custom property
@@ -266,6 +281,31 @@ function SuggestedShape({
         {label}
       </text>
     </g>
+  );
+}
+
+/**
+ * The let-go shape's hatch: a black and a white stroke side by side, because the
+ * class colour can be the colour of the very thing under it and either theme can
+ * frame the picture. Spaced in screen pixels, like every other stroke here.
+ */
+function ExcludedHatch({ id, zoom }: { readonly id: string; readonly zoom: number }): JSX.Element {
+  const step = screenPx(8, zoom);
+  const line = screenPx(1.5, zoom);
+  return (
+    <defs>
+      <pattern
+        id={id}
+        data-testid="suggestion-hatch"
+        patternUnits="userSpaceOnUse"
+        width={step}
+        height={step}
+        patternTransform="rotate(45)"
+      >
+        <rect x={0} y={0} width={line} height={step} fill="#000000" fillOpacity={0.55} />
+        <rect x={line} y={0} width={line} height={step} fill="#ffffff" fillOpacity={0.75} />
+      </pattern>
+    </defs>
   );
 }
 
