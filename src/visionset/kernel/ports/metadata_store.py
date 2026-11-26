@@ -41,6 +41,8 @@ from visionset.kernel.domain import (
     StagedFrame,
     TaskGroup,
     Token,
+    Track,
+    TrackObservation,
     VideoImport,
     VideoImportState,
     Workspace,
@@ -166,6 +168,19 @@ class UnitOfWork(Protocol):
 
         Unique on ``(source_id, position)``. An asset reached at two positions has
         two occurrences, so this, not the asset, is what says where a frame sat.
+        """
+        ...
+
+    @property
+    def tracks(self) -> Repository[Track]:
+        """Tracks, parented on their source. ``external_id`` is unique per source."""
+        ...
+
+    @property
+    def track_observations(self) -> Repository[TrackObservation]:
+        """Observations, parented on their track.
+
+        Unique on ``(track_id, occurrence_id)`` and on ``annotation_id``.
         """
         ...
 
@@ -481,7 +496,7 @@ class UnitOfWork(Protocol):
     def batches_holding(self, asset_id: UUID) -> list[UUID]:
         """Which batches carry this asset, oldest membership first.
 
-        **The one read here that is not a repository**, and it is the shape
+        **A read here that is not a repository**, and it is the shape
         ``Repository`` deliberately cannot express: membership is a join table
         with a composite key, and every scoped read the repositories serve is one
         ``parent_id`` filter in the other direction — a batch's assets. This is
@@ -500,6 +515,14 @@ class UnitOfWork(Protocol):
         An asset in no batch answers ``[]`` — the ordinary state of anything
         freshly ingested into a project whose ingest targeted nothing, not an
         error.
+        """
+        ...
+
+    def observation_of(self, annotation_id: UUID) -> TrackObservation | None:
+        """The observation of this annotation, or ``None`` when no track observes it.
+
+        Not a repository read for ``batches_holding``'s reason: observations are
+        parented on their track, and this walks the edge from the annotation.
         """
         ...
 

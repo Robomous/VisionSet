@@ -60,6 +60,7 @@ from visionset.kernel.domain import (
     BatchState,
     Modality,
     OrphanGuard,
+    TrackObservation,
     VideoImportState,
 )
 from visionset.kernel.errors import (
@@ -400,6 +401,8 @@ class SqlUnitOfWork:
         self.video_import_frames = SqlRepository(session, m.VIDEO_IMPORT_FRAMES)
         self.ingest_jobs = SqlRepository(session, m.INGEST_JOBS)
         self.frame_occurrences = SqlRepository(session, m.FRAME_OCCURRENCES)
+        self.tracks = SqlRepository(session, m.TRACKS)
+        self.track_observations = SqlRepository(session, m.TRACK_OBSERVATIONS)
         self.assets = SqlRepository(session, m.ASSETS)
         self.batches = SqlRepository(session, m.BATCHES)
         self.task_groups = SqlRepository(session, m.TASK_GROUPS)
@@ -757,6 +760,14 @@ class SqlUnitOfWork:
                 .order_by(t.BatchAssetRow.position)
             ).all()
         )
+
+    def observation_of(self, annotation_id: UUID) -> TrackObservation | None:
+        row = self._session.scalars(
+            select(t.TrackObservationRow).where(
+                t.TrackObservationRow.annotation_id == annotation_id
+            )
+        ).one_or_none()
+        return None if row is None else m.TRACK_OBSERVATIONS.to_domain(self._session, row)
 
     def add_schema_version_unless_annotated(
         self, schema: AnnotationSchema, guards: frozenset[OrphanGuard]

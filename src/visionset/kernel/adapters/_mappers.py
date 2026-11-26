@@ -76,6 +76,8 @@ from visionset.kernel.domain import (
     StagedFrame,
     TaskGroup,
     Token,
+    Track,
+    TrackObservation,
     VideoImport,
     VideoImportState,
     VideoProvenance,
@@ -840,6 +842,10 @@ VIDEO_IMPORT_FRAMES: EntityMapping[StagedFrame] = _flat_mapping(
 )
 FRAME_OCCURRENCES: EntityMapping[FrameOccurrence] = _flat_mapping(
     FrameOccurrence, t.FrameOccurrenceRow, "source_id"
+)
+TRACKS: EntityMapping[Track] = _flat_mapping(Track, t.TrackRow, "source_id")
+TRACK_OBSERVATIONS: EntityMapping[TrackObservation] = _flat_mapping(
+    TrackObservation, t.TrackObservationRow, "track_id"
 )
 SOURCES: EntityMapping[Source] = EntityMapping(
     row=t.SourceRow,

@@ -978,3 +978,49 @@ class FrameOccurrenceRow(Base):
     asset_id: Mapped[UUID] = mapped_column(
         SaUuid, ForeignKey("asset.id", ondelete="CASCADE"), index=True, nullable=False
     )
+
+
+class TrackRow(Base):
+    """One object followed through one source.
+
+    ``external_id`` is unique per source when present; SQLite treats NULLs as
+    distinct, so tracks without one never collide.
+    """
+
+    __tablename__ = "track"
+    __table_args__ = (
+        UniqueConstraint("source_id", "external_id", name="uq_track_source_external_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(SaUuid, primary_key=True)
+    source_id: Mapped[UUID] = mapped_column(
+        SaUuid, ForeignKey("source.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    label_class: Mapped[str] = mapped_column(String, nullable=False)
+    external_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class TrackObservationRow(Base):
+    """One occurrence a track observes, and the annotation drawn there.
+
+    Every key cascades: deleting the track, the occurrence or the annotation
+    removes the observation and nothing else. That makes ``annotation`` and
+    ``frame_occurrence`` tables a migration may not rebuild without counting
+    these rows first, for the reason ``AssetRow`` gives.
+    """
+
+    __tablename__ = "track_observation"
+    __table_args__ = (
+        UniqueConstraint("track_id", "occurrence_id", name="uq_track_observation_occurrence"),
+    )
+
+    id: Mapped[UUID] = mapped_column(SaUuid, primary_key=True)
+    track_id: Mapped[UUID] = mapped_column(
+        SaUuid, ForeignKey("track.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    occurrence_id: Mapped[UUID] = mapped_column(
+        SaUuid, ForeignKey("frame_occurrence.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    annotation_id: Mapped[UUID] = mapped_column(
+        SaUuid, ForeignKey("annotation.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
