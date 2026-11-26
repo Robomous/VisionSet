@@ -113,7 +113,14 @@ from visionset.kernel.errors import UnserializableManifest
 #: release of unlabelled assets keeps the version, the bytes and the hash it had
 #: before, and only a release holding a group label is one a version-5 build
 #: refuses.
-MANIFEST_VERSION: int = 6
+#:
+#: **7** since #1181, which let a manifest carry ``tracks``: each track of a
+#: source with its observations, listed only where the release holds the
+#: observed asset and annotation, in source position order. The key is omitted
+#: when no track observes anything in the release, so an untracked release keeps
+#: the version, the bytes and the hash it had before, and only a release holding
+#: a track is one a version-6 build refuses.
+MANIFEST_VERSION: int = 7
 
 CALIBRATED_MANIFEST_VERSION: int = 4
 """The first manifest version that can carry a calibration, and so a 3D label."""
@@ -123,6 +130,9 @@ MODALITY_MANIFEST_VERSION: int = 5
 
 GROUPED_MANIFEST_VERSION: int = 6
 """The first manifest version that can carry an asset's group label."""
+
+TRACKED_MANIFEST_VERSION: int = 7
+"""The first manifest version that can carry tracks."""
 
 
 class ManifestAnnotation(BaseModel):
@@ -244,6 +254,66 @@ class ManifestAsset(BaseModel):
         return tuple(sorted(value, key=lambda annotation: str(annotation.id)))
 
 
+class ManifestObservation(BaseModel):
+    """One frame occurrence a track observes, and the annotation drawn there.
+
+    ``position`` and ``timestamp`` are the occurrence's, copied, so the document
+    says where in its source the frame sat without the workspace.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    position: int = Field(ge=0)
+    timestamp: float = Field(ge=0)
+    asset_id: UUID
+    annotation_id: UUID
+
+
+class ManifestTrack(BaseModel):
+    """One track, copied with the observations the release holds.
+
+    Observations sort by position, never by when they were recorded. A track
+    with nothing in the release is not listed at all.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: UUID
+    source_id: UUID
+    label_class: str = Field(min_length=1)
+    external_id: str | None = None
+    observations: tuple[ManifestObservation, ...] = Field(min_length=1)
+
+    @field_validator("observations")
+    @classmethod
+    def _in_position_order(
+        cls, value: tuple[ManifestObservation, ...]
+    ) -> tuple[ManifestObservation, ...]:
+        ordered = tuple(sorted(value, key=lambda observation: observation.position))
+        positions = [observation.position for observation in ordered]
+        if len(set(positions)) != len(positions):
+            raise ValueError("a track observes each position of its source at most once")
+        return ordered
+
+
+def tracks_within(
+    tracks: Sequence[ManifestTrack], assets: Sequence[ManifestAsset]
+) -> tuple[ManifestTrack, ...]:
+    """The tracks cut to the observations whose asset and annotation ``assets`` hold.
+
+    A track left with no observation is dropped.
+    """
+    held = {(asset.asset_id, annotation.id) for asset in assets for annotation in asset.annotations}
+    kept = []
+    for track in tracks:
+        observations = tuple(
+            one for one in track.observations if (one.asset_id, one.annotation_id) in held
+        )
+        if observations:
+            kept.append(track.model_copy(update={"observations": observations}))
+    return tuple(kept)
+
+
 class Manifest(BaseModel):
     """The frozen inventory of a Release: the contract, the bytes, the labels.
 
@@ -266,6 +336,11 @@ class Manifest(BaseModel):
     the trunk was built, and letting it reach the bytes would mean two identical
     datasets published two different manifests.
 
+    ``tracks`` sort by source, then by the position each is first observed at,
+    then by id, and each track's observations by position. The key is
+    **omitted** when there is none. Every observation names an annotation on
+    the asset it names, here in this document.
+
     ``classes`` is **not** sorted, unlike the two collections around it. A
     schema's class order is authored — it drives how a labeling surface lists
     them — so it is part of the frozen contract rather than incidental, and it
@@ -278,12 +353,51 @@ class Manifest(BaseModel):
     schema_version: int = Field(ge=1)
     classes: tuple[LabelClass, ...] = ()
     assets: tuple[ManifestAsset, ...] = ()
+    tracks: tuple[ManifestTrack, ...] = Field(default=(), exclude_if=lambda value: not value)
 
     @field_validator("assets")
     @classmethod
     def _in_canonical_order(cls, value: tuple[ManifestAsset, ...]) -> tuple[ManifestAsset, ...]:
         """By content, then by id — never by the order they were promoted in."""
         return tuple(sorted(value, key=lambda asset: (asset.content_hash, str(asset.asset_id))))
+
+    @field_validator("tracks")
+    @classmethod
+    def _tracks_in_canonical_order(
+        cls, value: tuple[ManifestTrack, ...]
+    ) -> tuple[ManifestTrack, ...]:
+        return tuple(
+            sorted(
+                value,
+                key=lambda track: (
+                    str(track.source_id),
+                    track.observations[0].position,
+                    str(track.id),
+                ),
+            )
+        )
+
+    @model_validator(mode="after")
+    def _observations_name_what_the_release_holds(self) -> Manifest:
+        held = {
+            (asset.asset_id, annotation.id)
+            for asset in self.assets
+            for annotation in asset.annotations
+        }
+        seen: set[UUID] = set()
+        for track in self.tracks:
+            for observation in track.observations:
+                if (observation.asset_id, observation.annotation_id) not in held:
+                    raise ValueError(
+                        f"track {track.id} observes annotation {observation.annotation_id} "
+                        f"on asset {observation.asset_id}, which this manifest does not hold"
+                    )
+                if observation.annotation_id in seen:
+                    raise ValueError(
+                        f"annotation {observation.annotation_id} is observed more than once"
+                    )
+                seen.add(observation.annotation_id)
+        return self
 
     @model_validator(mode="after")
     def _version_can_express_the_content(self) -> Manifest:
@@ -308,6 +422,11 @@ class Manifest(BaseModel):
                 f"a version-{self.manifest_version} manifest carries no group labels; "
                 f"a labelled asset needs version {GROUPED_MANIFEST_VERSION}"
             )
+        if self.manifest_version < TRACKED_MANIFEST_VERSION and self.tracks:
+            raise ValueError(
+                f"a version-{self.manifest_version} manifest carries no tracks; "
+                f"a tracked release needs version {TRACKED_MANIFEST_VERSION}"
+            )
         return self
 
     @property
@@ -316,12 +435,16 @@ class Manifest(BaseModel):
         return sum(len(asset.annotations) for asset in self.assets)
 
 
-def manifest_version_for(assets: Sequence[ManifestAsset]) -> int:
-    """The lowest manifest version that can express these assets.
+def manifest_version_for(
+    assets: Sequence[ManifestAsset], tracks: Sequence[ManifestTrack] = ()
+) -> int:
+    """The lowest manifest version that can express these assets and tracks.
 
     Publishing writes this rather than :data:`MANIFEST_VERSION`, so content a
     version-3 build can read is still written as version 3 and keeps its hash.
     """
+    if tracks:
+        return TRACKED_MANIFEST_VERSION
     if any(asset.group_label is not None for asset in assets):
         return GROUPED_MANIFEST_VERSION
     if any(asset.modality != "image" for asset in assets):

@@ -23,6 +23,12 @@ nothing was being distributed. This is the first version that is.
   and hatched, labelled `left out`), `Accept N` writes only the chosen ones with their own scores in one undo step,
   and with none chosen Accept is disabled and `↵` writes nothing. A point suggestion still proposes at most one
   shape (#548).
+- **Release manifests carry tracks.** `MANIFEST_VERSION` is 7: a release lists every track observing an
+  annotation it copies - `id`, `source_id`, `label_class`, `external_id` - with only the observations whose
+  asset and annotation it holds, each as `position`, `timestamp`, `asset_id` and `annotation_id`, ordered by
+  position and never by when it was recorded; tracks sort by source, first position and id, so publishing twice
+  still agrees byte for byte. `tracks` is omitted when nothing in the release is observed, so an untracked
+  release keeps the version and the hash it had, and every published manifest reads unchanged (#1181).
 - **Tracks.** A `Track(id, source_id, label_class, external_id?)` follows one object through a video
   source as a set of observations, each naming a frame occurrence and an existing annotation on that
   occurrence's asset; `Annotation` gains no field. `TrackService` creates, observes, unobserves,

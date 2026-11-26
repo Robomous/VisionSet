@@ -303,7 +303,7 @@ def test_an_archived_manifest_loads_and_hashes_as_it_was_published(
 
 def test_the_modality_version_is_5_and_the_current_one_is_newer() -> None:
     assert MODALITY_MANIFEST_VERSION == 5
-    assert MANIFEST_VERSION == 6
+    assert MANIFEST_VERSION > MODALITY_MANIFEST_VERSION
     assert CALIBRATED_MANIFEST_VERSION == 4
 
 
