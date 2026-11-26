@@ -22,7 +22,8 @@ nothing about the pixel or geometry side is special-cased for a screen.
 
 Every step declares the geometries it can transform, the way an exporter
 declares ``supported_geometries``: :data:`AUGMENT_GEOMETRIES` is the table per
-augmentation, and each step reads it back as ``supported_geometries``. The
+augmentation and :data:`RESIZE_GEOMETRIES` the one per resize strategy, and
+each step reads its row back as ``supported_geometries``. The
 geometry transform refuses a manifest geometry outside that set, so a step's
 reach is declared here once and never inferred from which branch of the
 arithmetic happens to handle it.
@@ -68,12 +69,29 @@ export can produce it by accident. Never written by an export.
 """
 
 
+RESIZE_GEOMETRIES: Final[Mapping[ResizeStrategy, frozenset[GeometryType]]] = {
+    ResizeStrategy.STRETCH: PIXEL_GEOMETRIES,
+    ResizeStrategy.LETTERBOX: PIXEL_GEOMETRIES,
+    # A crop can cut a path into pieces, and which piece is the lane is not a
+    # question the arithmetic can answer.
+    ResizeStrategy.FILL: PIXEL_GEOMETRIES - {GeometryType.POLYLINE},
+    ResizeStrategy.CENTER_CROP: PIXEL_GEOMETRIES - {GeometryType.POLYLINE},
+}
+"""Which geometries each resize strategy can transform, per :class:`ResizeStrategy`."""
+
+CROPPING_STRATEGIES: Final[frozenset[ResizeStrategy]] = frozenset(
+    {ResizeStrategy.FILL, ResizeStrategy.CENTER_CROP}
+)
+"""The strategies that cut pixels away, and so can clip or drop a label."""
+
+
 class ResizeStep(BaseModel):
     """Bring every exported image to one size, by one strategy.
 
     ``pad_value`` is the grey a letterbox pads with — 114 is the value YOLO
-    trainers letterbox with themselves — and is ignored by ``stretch``, which
-    has nothing to pad.
+    trainers letterbox with themselves — and the grey ``center_crop`` pads an
+    axis the source is too small to fill; ``stretch`` and ``fill`` cover the
+    whole canvas and ignore it.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -91,8 +109,8 @@ class ResizeStep(BaseModel):
 
     @property
     def supported_geometries(self) -> frozenset[GeometryType]:
-        """Every pixel geometry: a resize scales and offsets each coordinate alike."""
-        return PIXEL_GEOMETRIES
+        """What this strategy can transform, read from :data:`RESIZE_GEOMETRIES`."""
+        return RESIZE_GEOMETRIES[self.strategy]
 
 
 class AugmentOp(StrEnum):

@@ -7,6 +7,7 @@ pixel position or a byte identity, none of which needs a fixture file.
 from __future__ import annotations
 
 import io
+from uuid import uuid4
 
 import pytest
 from PIL import Image
@@ -15,11 +16,17 @@ from visionset.kernel.domain import (
     SHOWCASE_SEED,
     AugmentOp,
     AugmentStep,
+    BboxGeometry,
+    Manifest,
+    ManifestAnnotation,
+    ManifestAsset,
+    RecipeSpec,
     ResizeStep,
     ResizeStrategy,
     brightness_contrast_factors,
     letterbox_fit,
     rot90_quarter_turns,
+    transform_manifest,
     variant_seed,
 )
 from visionset.kernel.errors import UnsupportedMedia
@@ -146,6 +153,112 @@ def test_letterbox_pads_with_the_pad_value_in_every_band() -> None:
     assert out.mode == "RGBA"
     assert out.getpixel((0, 0)) == (114, 114, 114, 255)
     assert out.getpixel((32, 16)) == (0, 0, 0, 255)
+
+
+def _rectangle(size: tuple[int, int], box: tuple[int, int, int, int]) -> bytes:
+    """A black image with a white rectangle ``[x0, x1) × [y0, y1)`` drawn on it."""
+    image = Image.new("L", size, 0)
+    image.paste(255, box)
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _transformed_box(
+    source: tuple[int, int], box: tuple[int, int, int, int], step: ResizeStep
+) -> BboxGeometry | None:
+    """Where the geometry transform puts a bbox drawn over ``box``, or None if it drops it."""
+    x0, y0, x1, y1 = box
+    asset = ManifestAsset(
+        asset_id=uuid4(),
+        content_hash="aa",
+        uri="/img/aa.png",
+        width=source[0],
+        height=source[1],
+        annotations=(
+            ManifestAnnotation(
+                id=uuid4(),
+                label_class="thing",
+                schema_version=1,
+                geometry=BboxGeometry(x=x0, y=y0, width=x1 - x0, height=y1 - y0),
+                provenance="human",
+            ),
+        ),
+    )
+    spec = RecipeSpec(target=None, steps=(step,))
+    (file,) = transform_manifest(Manifest(schema_version=1, assets=(asset,)), spec, None).files
+    if not file.annotations:
+        return None
+    geometry = file.annotations[0].geometry
+    assert isinstance(geometry, BboxGeometry)
+    return geometry
+
+
+@pytest.mark.parametrize(
+    ("source", "box", "target"),
+    [
+        # Cut on every side, odd margins floored: x by -5, y by -20.
+        ((41, 88), (3, 10, 30, 60), (32, 48)),
+        # Wholly inside the window.
+        ((64, 64), (20, 20, 40, 40), (33, 33)),
+        # A source narrower than the canvas: padded on x, cut on y.
+        ((20, 100), (0, 30, 20, 90), (40, 64)),
+    ],
+)
+def test_center_crop_cuts_the_pixels_where_the_geometry_says(
+    source: tuple[int, int], box: tuple[int, int, int, int], target: tuple[int, int]
+) -> None:
+    """No scaling, so the white pixels are the transformed box's pixels exactly."""
+    step = ResizeStep(
+        strategy=ResizeStrategy.CENTER_CROP, width=target[0], height=target[1], pad_value=0
+    )
+    out = _open(RESIZE.apply(step, _rectangle(source, box), seed=NO_SEED, variant=0))
+    placed = _transformed_box(source, box, step)
+
+    assert out.size == target
+    assert placed is not None
+    left, top = int(placed.x), int(placed.y)
+    assert _white_pixels(out) == {
+        (x, y)
+        for y in range(top, top + int(placed.height))
+        for x in range(left, left + int(placed.width))
+    }
+
+
+def test_center_crop_pads_with_the_pad_value() -> None:
+    step = ResizeStep(strategy=ResizeStrategy.CENTER_CROP, width=64, height=32, pad_value=114)
+    out = _open(RESIZE.apply(step, _png((32, 32), (0, 0, 0)), seed=NO_SEED, variant=0))
+
+    assert out.getpixel((0, 16)) == (114, 114, 114)
+    assert out.getpixel((32, 16)) == (0, 0, 0)
+
+
+@pytest.mark.parametrize(
+    ("source", "box", "target"),
+    [
+        # Scale 4: 64×160 content, 48 cut off the top and the bottom.
+        ((16, 40), (2, 14, 10, 20), (64, 64)),
+        # Scale 2 on a wide source: 128×64 content, 32 cut off each side.
+        ((64, 32), (10, 4, 40, 28), (64, 64)),
+    ],
+)
+def test_fill_scales_and_crops_the_pixels_where_the_geometry_says(
+    source: tuple[int, int], box: tuple[int, int, int, int], target: tuple[int, int]
+) -> None:
+    """Resampling softens the rectangle's rim, so its edges are read at half grey."""
+    step = ResizeStep(strategy=ResizeStrategy.FILL, width=target[0], height=target[1])
+    out = _open(RESIZE.apply(step, _rectangle(source, box), seed=NO_SEED, variant=0))
+    placed = _transformed_box(source, box, step)
+
+    assert out.size == target
+    assert placed is not None
+    bright = [
+        (x, y) for y in range(out.height) for x in range(out.width) if out.getpixel((x, y)) > 127
+    ]
+    xs, ys = [x for x, _ in bright], [y for _, y in bright]
+    assert (min(xs), min(ys), max(xs) + 1, max(ys) + 1) == pytest.approx(
+        (placed.x, placed.y, placed.x + placed.width, placed.y + placed.height), abs=1
+    )
 
 
 def test_a_letterbox_that_leaves_no_pixels_on_one_side_is_refused() -> None:

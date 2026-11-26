@@ -53,10 +53,15 @@ class ResizeStrategy(StrEnum):
 
     ``stretch`` scales each axis independently onto the size; ``letterbox``
     scales by the limiting axis and pads the rest, preserving aspect ratio.
+    ``fill`` scales by the other axis so the image covers the size and crops
+    the overflow, centred; ``center_crop`` cuts a centred window at the
+    source's own scale, padding an axis the source is too small to fill.
     """
 
     STRETCH = "stretch"
     LETTERBOX = "letterbox"
+    FILL = "fill"
+    CENTER_CROP = "center_crop"
 
 
 class PreprocessingHints(BaseModel):

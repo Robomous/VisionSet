@@ -5,8 +5,9 @@ Both drivers decode, orient, transform and re-encode; they never move a
 coordinate. The orientation step mirrors ingest — ``PillowImageProcessor``
 bakes the EXIF turn in before it measures, so the manifest's width and height
 already describe the oriented picture, and a driver that skipped the turn
-would resize a picture the kernel's geometry never saw. Where a letterbox
-lands and what a variant draws are read from the kernel, never recomputed.
+would resize a picture the kernel's geometry never saw. Where a letterbox,
+fill or centre crop lands and what a variant draws are read from the kernel,
+never recomputed.
 
 Re-encoding keeps the source's format: a JPEG comes back a JPEG at quality 95
 with its chroma subsampling kept, a PNG comes back a lossless PNG, and any
@@ -33,7 +34,7 @@ from visionset.kernel.domain import (
     ResizeStrategy,
     Step,
     brightness_contrast_factors,
-    letterbox_fit,
+    canvas_fit,
     rot90_quarter_turns,
 )
 from visionset.kernel.errors import UnsupportedMedia
@@ -124,15 +125,16 @@ def _resized(image: Image.Image, size: tuple[int, int]) -> Image.Image:
 
 
 class PillowResizeDriver:
-    """``resize`` steps: stretch to the size, or letterbox onto a padded canvas.
+    """``resize`` steps: stretch to the size, or place on a canvas of it.
 
     Stretch is one ``Image.resize`` per axis, LANCZOS when the pixel count
-    shrinks and BICUBIC when it grows. Letterbox reads ``letterbox_fit`` for
-    the content size and offset and pastes the resized content there on a
-    canvas filled with ``pad_value`` — the same numbers the kernel used to
-    place the annotations, so pixels and labels cannot disagree by a rounding.
-    Neither reads the seed or the variant: a resize is the same for every
-    variant of an image.
+    shrinks and BICUBIC when it grows. Letterbox, fill and center_crop read
+    ``canvas_fit`` for the content size and offset and paste the resized
+    content there on a canvas filled with ``pad_value`` — the same numbers the
+    kernel used to place the annotations, so pixels and labels cannot disagree
+    by a rounding. A negative offset puts part of the content off the canvas,
+    which is the crop. None reads the seed or the variant: a resize is the same
+    for every variant of an image.
     """
 
     step_kinds: frozenset[str] = frozenset({"resize"})
@@ -151,18 +153,25 @@ class PillowResizeDriver:
             if step.strategy is ResizeStrategy.STRETCH:
                 result = _resized(source, (step.width, step.height))
             else:
-                result = _letterboxed(source, step)
+                result = _placed(source, step)
         with result:
             return _encode(result, decoded)
 
 
-def _letterboxed(source: Image.Image, step: ResizeStep) -> Image.Image:
-    fit = letterbox_fit(
-        source.width, source.height, target_width=step.width, target_height=step.height
+def _placed(source: Image.Image, step: ResizeStep) -> Image.Image:
+    fit = canvas_fit(
+        source.width,
+        source.height,
+        strategy=step.strategy,
+        target_width=step.width,
+        target_height=step.height,
     )
     canvas = Image.new(
         source.mode, (step.width, step.height), _pad_colour(source.mode, step.pad_value)
     )
+    if (fit.content_width, fit.content_height) == source.size:
+        canvas.paste(source, (fit.offset_x, fit.offset_y))
+        return canvas
     with _resized(source, (fit.content_width, fit.content_height)) as content:
         canvas.paste(content, (fit.offset_x, fit.offset_y))
     return canvas
