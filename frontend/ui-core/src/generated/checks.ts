@@ -219,8 +219,11 @@ export const checkDownloadSizeOut: Check<Schemas["DownloadSizeOut"]> =
 export const checkClassExportStatus: Check<Schemas["ClassExportStatus"]> =
   /*#__PURE__*/ oneOf(["supported", "degraded", "dropped"] as const);
 
+export const checkResizeStrategy: Check<Schemas["ResizeStrategy"]> =
+  /*#__PURE__*/ oneOf(["stretch", "letterbox", "fill", "center_crop"] as const);
+
 export const checkClassCompatibilityOut: Check<Schemas["ClassCompatibilityOut"]> =
-  /*#__PURE__*/ object({ "annotations": [true, isInteger], "assets": [true, isInteger], "geometry": [true, checkGeometryType], "label_class": [true, isString], "reason": [false, either([isString, isNull] as const)], "status": [true, checkClassExportStatus] } as const);
+  /*#__PURE__*/ object({ "annotations": [true, isInteger], "assets": [true, isInteger], "cropped_by": [false, either([checkResizeStrategy, isNull] as const)], "geometry": [true, checkGeometryType], "label_class": [true, isString], "reason": [false, either([isString, isNull] as const)], "status": [true, checkClassExportStatus] } as const);
 
 export const checkModalityCompatibilityOut: Check<Schemas["ModalityCompatibilityOut"]> =
   /*#__PURE__*/ object({ "annotations": [true, isInteger], "assets": [true, isInteger], "modality": [true, oneOf(["image", "point_cloud"] as const)], "reason": [true, isString] } as const);
@@ -332,9 +335,6 @@ export const checkAugmentOp: Check<Schemas["AugmentOp"]> =
 
 export const checkAugmentStepBody: Check<Schemas["AugmentStepBody"]> =
   /*#__PURE__*/ object({ "amount": [true, isNumber], "kind": [true, lit("augment")], "op": [true, checkAugmentOp] } as const);
-
-export const checkResizeStrategy: Check<Schemas["ResizeStrategy"]> =
-  /*#__PURE__*/ oneOf(["stretch", "letterbox", "fill", "center_crop"] as const);
 
 export const checkResizeStepBody: Check<Schemas["ResizeStepBody"]> =
   /*#__PURE__*/ object({ "height": [true, isInteger], "kind": [true, lit("resize")], "pad_value": [true, isInteger], "strategy": [true, checkResizeStrategy], "width": [true, isInteger] } as const);

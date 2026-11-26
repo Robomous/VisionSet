@@ -21,6 +21,7 @@ from visionset.kernel.domain import (
     AugmentStep,
     BboxGeometry,
     ClassExportStatus,
+    ClassificationGeometry,
     ExportTarget,
     GeometryType,
     LabelClass,
@@ -405,9 +406,47 @@ CROP_DOWN = RecipeSpec(
 )
 
 
-def _row(report: dict) -> dict:
-    (row,) = [one for one in report["classes"] if one["label_class"] == "sign"]
-    return row
+def _rows(report: dict) -> list[tuple[str, int, str | None]]:
+    return [
+        (one["status"], one["annotations"], one["cropped_by"])
+        for one in report["classes"]
+        if one["label_class"] == "sign"
+    ]
+
+
+class LossyWriter(ImageWriter):
+    format_name = "lossy-writer"
+    lossy = True
+
+
+SCENE = LabelClass(name="scene", geometries=(GeometryType.CLASSIFICATION_TAG,))
+CENTRED = BboxGeometry(x=300.0, y=200.0, width=40.0, height=40.0)
+
+
+def _annotation(asset_id: UUID, label_class: str, geometry) -> Annotation:
+    return Annotation(
+        asset_id=asset_id,
+        label_class=label_class,
+        schema_version=1,
+        geometry=geometry,
+        provenance="human",
+    )
+
+
+def _released(fixture: Fixture, classes: list[LabelClass], labels) -> Release:
+    """A release whose every asset carries ``labels(asset_id)``."""
+    fixture.schemas.create_version(fixture.project.id, classes)
+    batch = fixture.batches.create(fixture.project.id, "labelled", fixture.asset_ids)
+    fixture.batches.approve(batch.id)
+    (job,) = fixture.batches.jobs(batch.id)
+    fixture.batches.start(batch.id)
+    fixture.jobs.start(job.id)
+    for asset_id in fixture.asset_ids:
+        fixture.annotations.add(job.id, labels(asset_id))
+    fixture.jobs.complete(job.id)
+    fixture.batches.complete(batch.id)
+    fixture.datasets.promote(batch.id)
+    return fixture.releases.publish(fixture.dataset_id, "v1")
 
 
 def test_a_crop_that_drops_labels_is_refused_before_anything_is_written(
@@ -434,6 +473,77 @@ def test_a_crop_that_drops_labels_is_refused_before_anything_is_written(
     fixture.close()
 
 
+@pytest.mark.parametrize(("recipe", "excluded", "degraded"), [(FILL_AWAY, 5, 0), (CROP_DOWN, 0, 5)])
+def test_a_lossy_format_is_refused_with_the_crop_loss_in_its_report(
+    tmp_path: Path, recipe: RecipeSpec, excluded: int, degraded: int
+) -> None:
+    """The report consent is asked over is the report the export writes."""
+    fixture = Fixture(tmp_path)
+    release = _published(fixture, split=None)
+    dest = tmp_path / "out"
+
+    with pytest.raises(LossyExportNotConsented) as caught:
+        fixture.releases.require_export_consent(
+            release.id, LossyWriter(), allow_lossy=False, recipe=recipe
+        )
+    refused = caught.value.compatibility
+    checked = fixture.releases.check_export(release.id, LossyWriter(), recipe=recipe)
+    result = fixture.releases.export(
+        release.id,
+        LossyWriter(),
+        dest,
+        allow_lossy=True,
+        recipe=recipe,
+        drivers=drivers_of(MarkingDriver()),
+    )
+
+    assert (refused.excluded_annotations, refused.degraded_annotations) == (excluded, degraded)
+    assert not refused.compatible
+    assert refused == checked == result.compatibility
+    assert _report(dest)["excluded_annotations"] == excluded
+    fixture.close()
+
+
+def test_a_format_loss_and_a_crop_loss_are_refused_in_one_report(tmp_path: Path) -> None:
+    class BoxesOnly(ImageWriter):
+        format_name = "boxes-only-writer"
+        supported_geometries = frozenset({GeometryType.BBOX})
+
+    fixture = Fixture(tmp_path)
+    release = _released(
+        fixture,
+        [SIGN, SCENE],
+        lambda asset_id: [_box(asset_id), _annotation(asset_id, "scene", ClassificationGeometry())],
+    )
+
+    with pytest.raises(LossyExportNotConsented) as caught:
+        fixture.releases.require_export_consent(
+            release.id, BoxesOnly(), allow_lossy=False, recipe=CROP_DOWN
+        )
+
+    refused = caught.value.compatibility
+    assert (refused.excluded_annotations, refused.degraded_annotations) == (5, 5)
+    assert refused == fixture.releases.check_export(release.id, BoxesOnly(), recipe=CROP_DOWN)
+    fixture.close()
+
+
+def test_an_unconsented_format_loss_still_answers_before_a_recipe_refusal(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    release = _published(fixture, split=None)
+
+    with pytest.raises(LossyExportNotConsented):
+        fixture.releases.require_export_consent(
+            release.id, LossyWriter(), allow_lossy=False, recipe=AUGMENTED
+        )
+    with pytest.raises(AugmentationRequiresSplit):
+        fixture.releases.require_export_consent(
+            release.id, LossyWriter(), allow_lossy=True, recipe=AUGMENTED
+        )
+    fixture.close()
+
+
 def test_a_crop_that_drops_every_label_of_a_class_reports_it_dropped(tmp_path: Path) -> None:
     fixture = Fixture(tmp_path)
     release = _published(fixture, split=None)
@@ -456,8 +566,9 @@ def test_a_crop_that_drops_every_label_of_a_class_reports_it_dropped(tmp_path: P
     assert result.compatibility == checked
     report = _report(dest)
     assert report["excluded_annotations"] == 5
-    assert _row(report)["status"] == "dropped"
-    assert "fill resize cuts 5 off the canvas" in _row(report)["reason"]
+    assert _rows(report) == [("dropped", 5, "fill")]
+    (row,) = [one for one in report["classes"] if one["label_class"] == "sign"]
+    assert row["reason"] == "the fill resize cuts these 5 off the canvas"
     assert (
         report["preprocessing"]["dropped_annotations"],
         report["preprocessing"]["clipped_annotations"],
@@ -493,8 +604,7 @@ def test_a_crop_that_cuts_labels_down_reports_them_degraded(tmp_path: Path) -> N
     )
     assert result.compatibility.excluded_annotations == 0
     report = _report(dest)
-    assert _row(report)["status"] == "degraded"
-    assert "center_crop resize cuts 5 down" in _row(report)["reason"]
+    assert _rows(report) == [("degraded", 5, "center_crop")]
     assert (
         report["preprocessing"]["dropped_annotations"],
         report["preprocessing"]["clipped_annotations"],
@@ -503,39 +613,49 @@ def test_a_crop_that_cuts_labels_down_reports_them_degraded(tmp_path: Path) -> N
     fixture.close()
 
 
-def test_a_class_the_crop_only_partly_drops_is_degraded_not_dropped(tmp_path: Path) -> None:
+def test_a_class_the_crop_partly_drops_splits_into_a_row_per_outcome(tmp_path: Path) -> None:
+    """Summed by status, the rows say what the totals say: 5 kept, 5 cut away."""
     fixture = Fixture(tmp_path)
-    fixture.schemas.create_version(fixture.project.id, [SIGN])
-    batch = fixture.batches.create(fixture.project.id, "two-boxes", fixture.asset_ids)
-    fixture.batches.approve(batch.id)
-    (job,) = fixture.batches.jobs(batch.id)
-    fixture.batches.start(batch.id)
-    fixture.jobs.start(job.id)
-    centred = BboxGeometry(x=300.0, y=200.0, width=40.0, height=40.0)
-    for asset_id in fixture.asset_ids:
-        fixture.annotations.add(
-            job.id,
-            [
-                _box(asset_id),
-                Annotation(
-                    asset_id=asset_id,
-                    label_class="sign",
-                    schema_version=1,
-                    geometry=centred,
-                    provenance="human",
-                ),
-            ],
-        )
-    fixture.jobs.complete(job.id)
-    fixture.batches.complete(batch.id)
-    fixture.datasets.promote(batch.id)
-    release = fixture.releases.publish(fixture.dataset_id, "v1")
+    release = _released(
+        fixture, [SIGN], lambda asset_id: [_box(asset_id), _annotation(asset_id, "sign", CENTRED)]
+    )
 
     report = fixture.releases.check_export(release.id, ImageWriter(), recipe=FILL_AWAY)
 
-    (row,) = report.classes
-    assert (row.status, row.annotations) == (ClassExportStatus.DEGRADED, 10)
+    assert [
+        (row.status, row.annotations, row.assets, row.cropped_by) for row in report.classes
+    ] == [
+        (ClassExportStatus.SUPPORTED, 5, 5, None),
+        (ClassExportStatus.DROPPED, 5, 5, ResizeStrategy.FILL),
+    ]
+    assert [(row.label_class, row.annotations) for row in report.excluded] == [("sign", 5)]
     assert (report.excluded_annotations, report.degraded_annotations) == (5, 0)
+    fixture.close()
+
+
+def test_a_solitary_geometry_is_carried_when_the_crop_takes_its_company(tmp_path: Path) -> None:
+    """Every box cut away leaves the plugin tags alone, which it then writes."""
+
+    class TagsWhenAlone(ImageWriter):
+        format_name = "tags-when-alone"
+        solitary_geometries = frozenset({GeometryType.CLASSIFICATION_TAG})
+
+    fixture = Fixture(tmp_path)
+    release = _released(
+        fixture,
+        [SIGN, SCENE],
+        lambda asset_id: [_box(asset_id), _annotation(asset_id, "scene", ClassificationGeometry())],
+    )
+
+    def scene(report) -> list[ClassExportStatus]:
+        return [row.status for row in report.classes if row.label_class == "scene"]
+
+    assert scene(fixture.releases.check_export(release.id, TagsWhenAlone())) == [
+        ClassExportStatus.DROPPED
+    ]
+    assert scene(fixture.releases.check_export(release.id, TagsWhenAlone(), recipe=FILL_AWAY)) == [
+        ClassExportStatus.SUPPORTED
+    ]
     fixture.close()
 
 

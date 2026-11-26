@@ -2057,6 +2057,16 @@
             "title": "Assets",
             "type": "integer"
           },
+          "cropped_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResizeStrategy"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "geometry": {
             "$ref": "#/components/schemas/GeometryType"
           },

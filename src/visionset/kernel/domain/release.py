@@ -62,6 +62,7 @@ from visionset.kernel.domain.calibration import (
     geometry_fits_modality,
     geometry_needs_calibration,
 )
+from visionset.kernel.domain.export_target import ResizeStrategy
 from visionset.kernel.domain.geometry import Geometry
 from visionset.kernel.domain.media import PointCloudMetadata
 from visionset.kernel.domain.schema import AttributeValue, GeometryType, LabelClass
@@ -658,6 +659,13 @@ class ClassCompatibility(BaseModel):
     geometries. One row per class could only report one of the two answers, and
     would describe the output wrongly whichever it picked.
 
+    A cropping resize in the export's recipe is the one exception to one row
+    per ``(label_class, geometry)``: the labels it cut away or cut down are
+    counted in rows of their own, ``dropped`` and ``degraded``, with
+    ``cropped_by`` naming the strategy, and the class's other row counts only
+    what the crop left alone. Every row's count is then the labels that meet
+    its status, so totals summed by status agree with the report's.
+
     Per class rather than per annotation, and the counts are what make it useful:
     "polygon is unsupported" is a fact about the schema, while "polygon is
     unsupported, 1,204 annotations across 310 assets" is the number somebody
@@ -687,6 +695,7 @@ class ClassCompatibility(BaseModel):
     annotations: int = Field(ge=0)
     assets: int = Field(ge=0)
     reason: str | None = None
+    cropped_by: ResizeStrategy | None = None
 
     @property
     def supported(self) -> bool:

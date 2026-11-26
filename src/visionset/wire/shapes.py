@@ -535,6 +535,7 @@ class ClassCompatibility(TypedDict):
     annotations: int
     assets: int
     reason: str | None
+    cropped_by: str | None
 
 
 @closed

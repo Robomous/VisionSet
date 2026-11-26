@@ -940,6 +940,7 @@ def class_compatibility(value: ClassCompatibility) -> shapes.ClassCompatibility:
         "annotations": value.annotations,
         "assets": value.assets,
         "reason": value.reason,
+        "cropped_by": None if value.cropped_by is None else value.cropped_by.value,
     }
 
 

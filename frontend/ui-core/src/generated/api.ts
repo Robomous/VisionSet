@@ -4405,6 +4405,7 @@ export interface components {
             annotations: number;
             /** Assets */
             assets: number;
+            cropped_by?: components["schemas"]["ResizeStrategy"] | null;
             geometry: components["schemas"]["GeometryType"];
             /** Label Class */
             label_class: string;

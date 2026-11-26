@@ -82,6 +82,7 @@ from visionset.kernel.domain import (
     ReleasePublished,
     ReleaseVerification,
     ResizeStep,
+    ResizeStrategy,
     SplitAssignment,
     SplitRecipe,
     TransformedView,
@@ -103,6 +104,7 @@ from visionset.kernel.domain import (
     variant_seed,
 )
 from visionset.kernel.errors import (
+    AugmentationRequiresSplit,
     ConstraintViolated,
     EmptyRelease,
     ExportDestinationNotEmpty,
@@ -111,6 +113,7 @@ from visionset.kernel.errors import (
     InvalidAnnotation,
     LossyExportNotConsented,
     NoSplitRecipe,
+    PreprocessingStepUnsupportedGeometry,
     ReleaseContentWouldViolateSchema,
     ReleaseNotFound,
     ReleaseTagTaken,
@@ -497,12 +500,11 @@ class ReleaseService:
         and a format declaring itself lossless still cannot silently drop a
         geometry it never claimed to write.
 
-        Consent comes first and the recipe is checked after it: a caller who
-        has not accepted the format's loss is answered about the loss, and only
-        a consented export goes on to ask whether its recipe can run. The
-        transform is pure and writes nothing, so what a cropping resize cuts
-        away is known here too and asks for the same consent, before any
-        output exists.
+        The transform is pure and writes nothing, so it runs before consent is
+        asked, and what a cropping resize cuts away is in the one report the
+        refusal carries, beside the format's loss. A recipe the transform
+        refuses outright still loses to an unconsented format loss: a caller
+        who has not accepted the loss is answered about the loss first.
 
         Raises:
             ReleaseNotFound: no such release in this workspace.
@@ -1036,6 +1038,13 @@ def _split_of(release: Release, manifest: Manifest) -> SplitAssignment | None:
     return None if release.split is None else assign_split(release.split, manifest.assets)
 
 
+_RECIPE_REFUSALS: Final = (
+    AugmentationRequiresSplit,
+    PreprocessingStepUnsupportedGeometry,
+    ExportSourceUnreadable,
+)
+
+
 def _consented(
     release: Release,
     manifest: Manifest,
@@ -1046,20 +1055,25 @@ def _consented(
 ) -> tuple[ExportCompatibility, TransformedView | None]:
     """The report, and the recipe's view, or refuse an export nobody consented to.
 
-    Asked twice when a recipe is given: once for the format alone, so a
-    caller who has not accepted the format's loss hears about that before
-    the recipe is checked, and again with what a cropping resize cuts away,
-    which only the transform can say. Both happen before anything is written.
+    The transform is pure, so it runs first and the one consent question is
+    asked over everything the export would lose — the format's and a cropping
+    resize's together — so the report a refusal carries is the report the
+    export writes. A recipe the transform refuses outright is answered after
+    consent, as before: a caller who has not accepted the format's loss hears
+    about that first. Nothing is written either way.
     """
     compatibility = _compatibility(release, manifest, exporter, target)
-    _require_consent(release, exporter, compatibility, allow_lossy)
     if recipe is None:
+        _require_consent(release, exporter, compatibility, allow_lossy)
         return compatibility, None
-    view = _transformed(manifest, exporter, target, recipe, _split_of(release, manifest))
+    try:
+        view = _transformed(manifest, exporter, target, recipe, _split_of(release, manifest))
+    except _RECIPE_REFUSALS:
+        _require_consent(release, exporter, compatibility, allow_lossy)
+        raise
     cropping = _cropping_of(recipe, view)
-    if cropping is None:
-        return compatibility, view
-    compatibility = _compatibility(release, manifest, exporter, target, cropping=cropping)
+    if cropping is not None:
+        compatibility = _compatibility(release, manifest, exporter, target, cropping=cropping)
     _require_consent(release, exporter, compatibility, allow_lossy, cropping)
     return compatibility, view
 
@@ -1087,7 +1101,7 @@ def _require_consent(
 class _Cropping:
     """What a cropping resize did to the release's own labels, by annotation id."""
 
-    strategy: str
+    strategy: ResizeStrategy
     dropped: frozenset[UUID]
     clipped: frozenset[UUID]
 
@@ -1104,7 +1118,7 @@ def _cropping_of(recipe: RecipeSpec, view: TransformedView) -> _Cropping | None:
         return None
     base = [file for file in view.files if file.variant == 0]
     return _Cropping(
-        strategy=resize.strategy.value,
+        strategy=resize.strategy,
         dropped=frozenset(one for file in base for one in file.dropped),
         clipped=frozenset(one for file in base for one in file.clipped),
     )
@@ -1469,9 +1483,11 @@ def _compatibility(
 
     **A cropping resize loses labels one by one.** Given ``cropping``, a label
     the crop cut away counts as dropped and one it cut down as degraded,
-    unless the format already loses it more. A row the crop touched is
-    degraded — some of its labels survive — or dropped when none do, and its
-    reason gives the crop's counts.
+    unless the format already loses it more. Those labels leave their
+    ``(class, geometry)`` row for rows of their own — one ``dropped``, one
+    ``degraded`` — naming the crop in ``cropped_by``, so every row's count is
+    the labels that meet its status and no more. A label the crop cut away
+    is not company for a solitary geometry: the plugin never sees it.
     """
     writes = supported_modalities_of(exporter)
     unopenable = [asset for asset in manifest.assets if asset.modality not in writes]
@@ -1495,7 +1511,7 @@ def _compatibility(
     # reduces the other and a single row could only say one of those. Seeded from
     # the declared classes so a class nobody used still appears, at zero.
     per_shape: dict[tuple[str, GeometryType], tuple[int, set[UUID]]] = {}
-    cut: dict[tuple[str, GeometryType], dict[ClassExportStatus, int]] = {}
+    cut: dict[tuple[str, GeometryType, ClassExportStatus], tuple[int, set[UUID]]] = {}
     for declared in manifest.classes:
         for geometry in declared.geometries:
             if geometry in IMPLEMENTED_GEOMETRIES:
@@ -1506,6 +1522,7 @@ def _compatibility(
         GeometryType(annotation.geometry.type) not in solitary
         and _status_of(GeometryType(annotation.geometry.type), exporter, target)
         is not ClassExportStatus.DROPPED
+        and _crop_status(cropping, annotation.id) is not ClassExportStatus.DROPPED
         for asset in manifest.assets
         for annotation in asset.annotations
     )
@@ -1532,17 +1549,20 @@ def _compatibility(
             # Publication rejects new inconsistent manifests, but this report also
             # reads archived or externally supplied manifests. Dropping an
             # undeclared label here would make the report silently wrong.
-            count, assets = per_shape.get((annotation.label_class, geometry), (0, set()))
-            per_shape[(annotation.label_class, geometry)] = (
-                count + 1,
-                assets | {asset.asset_id},
-            )
             status = status_of(geometry)
             crop = _crop_status(cropping, annotation.id)
             if crop is not None and _LOSS_ORDER[crop] > _LOSS_ORDER[status]:
                 status = crop
-                row = cut.setdefault((annotation.label_class, geometry), {})
-                row[crop] = row.get(crop, 0) + 1
+                cut_key = (annotation.label_class, geometry, crop)
+                count, assets = cut.get(cut_key, (0, set()))
+                cut[cut_key] = (count + 1, assets | {asset.asset_id})
+                per_shape.setdefault((annotation.label_class, geometry), (0, set()))
+            else:
+                count, assets = per_shape.get((annotation.label_class, geometry), (0, set()))
+                per_shape[(annotation.label_class, geometry)] = (
+                    count + 1,
+                    assets | {asset.asset_id},
+                )
             counts[status] += 1
             touched[status].add(asset.asset_id)
 
@@ -1554,9 +1574,6 @@ def _compatibility(
 
     def row_reason(name: str, geometry: GeometryType, count: int) -> str | None:
         reason = reason_for(geometry)
-        crop_reason = _crop_reason(cropping, cut.get((name, geometry)))
-        if crop_reason is not None:
-            return crop_reason if reason is None else f"{reason}; {crop_reason}"
         elsewhere = left_out.get((name, geometry), 0)
         if reason is None or count or not elsewhere:
             return reason
@@ -1565,26 +1582,34 @@ def _compatibility(
             f"{exporter.format_name} does not write, counted under dropped_modalities"
         )
 
-    def row_status(name: str, geometry: GeometryType, count: int) -> ClassExportStatus:
-        status = status_of(geometry)
-        row = cut.get((name, geometry))
-        if not row:
-            return status
-        if row.get(ClassExportStatus.DROPPED, 0) == count:
-            return ClassExportStatus.DROPPED
-        return max(status, ClassExportStatus.DEGRADED, key=_LOSS_ORDER.__getitem__)
-
-    classes = tuple(
-        ClassCompatibility(
-            label_class=name,
-            geometry=geometry,
-            status=row_status(name, geometry, count),
-            annotations=count,
-            assets=len(assets),
-            reason=row_reason(name, geometry, count),
-        )
-        for (name, geometry), (count, assets) in per_shape.items()
-    )
+    classes: list[ClassCompatibility] = []
+    for (name, geometry), (count, assets) in per_shape.items():
+        crop_rows = [
+            ClassCompatibility(
+                label_class=name,
+                geometry=geometry,
+                status=crop,
+                annotations=cut_count,
+                assets=len(cut_assets),
+                reason=_crop_reason(cropping, crop, cut_count),
+                cropped_by=None if cropping is None else cropping.strategy,
+            )
+            for crop in (ClassExportStatus.DEGRADED, ClassExportStatus.DROPPED)
+            for cut_count, cut_assets in [cut.get((name, geometry, crop), (0, set()))]
+            if cut_count
+        ]
+        if count or not crop_rows:
+            classes.append(
+                ClassCompatibility(
+                    label_class=name,
+                    geometry=geometry,
+                    status=status_of(geometry),
+                    annotations=count,
+                    assets=len(assets),
+                    reason=row_reason(name, geometry, count),
+                )
+            )
+        classes.extend(crop_rows)
 
     dropped = counts[ClassExportStatus.DROPPED] + sum(row.annotations for row in dropped_modalities)
     touched[ClassExportStatus.DROPPED] |= {asset.asset_id for asset in unopenable}
@@ -1602,7 +1627,7 @@ def _compatibility(
         excluded_assets=len(touched[ClassExportStatus.DROPPED]),
         degraded_annotations=degraded,
         degraded_assets=len(touched[ClassExportStatus.DEGRADED]),
-        classes=classes,
+        classes=tuple(classes),
         dropped_modalities=dropped_modalities,
     )
 
@@ -1624,17 +1649,11 @@ def _crop_status(cropping: _Cropping | None, annotation_id: UUID) -> ClassExport
     return None
 
 
-def _crop_reason(
-    cropping: _Cropping | None, row: dict[ClassExportStatus, int] | None
-) -> str | None:
-    if cropping is None or not row:
-        return None
-    parts = []
-    if dropped := row.get(ClassExportStatus.DROPPED, 0):
-        parts.append(f"cuts {dropped} off the canvas")
-    if clipped := row.get(ClassExportStatus.DEGRADED, 0):
-        parts.append(f"cuts {clipped} down to the part on the canvas")
-    return f"the {cropping.strategy} resize {' and '.join(parts)}"
+def _crop_reason(cropping: _Cropping | None, status: ClassExportStatus, count: int) -> str:
+    strategy = "cropping" if cropping is None else cropping.strategy
+    if status is ClassExportStatus.DROPPED:
+        return f"the {strategy} resize cuts these {count} off the canvas"
+    return f"the {strategy} resize cuts these {count} down to the part on the canvas"
 
 
 def _openable(manifest: Manifest, exporter: Exporter) -> Manifest:

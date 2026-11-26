@@ -2782,6 +2782,9 @@ class ClassCompatibilityOut(BaseModel):
     annotations: int
     assets: int
     reason: str | None = None
+    # Set on the rows a cropping resize split off: the labels it cut away or
+    # cut down, which no format or target refused.
+    cropped_by: ResizeStrategy | None = None
 
     @classmethod
     def of(cls, compatibility: ClassCompatibility) -> Self:
@@ -2792,6 +2795,7 @@ class ClassCompatibilityOut(BaseModel):
             annotations=compatibility.annotations,
             assets=compatibility.assets,
             reason=compatibility.reason,
+            cropped_by=compatibility.cropped_by,
         )
 
 
