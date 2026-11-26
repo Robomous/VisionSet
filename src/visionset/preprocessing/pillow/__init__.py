@@ -169,11 +169,27 @@ def _placed(source: Image.Image, step: ResizeStep) -> Image.Image:
     canvas = Image.new(
         source.mode, (step.width, step.height), _pad_colour(source.mode, step.pad_value)
     )
-    if (fit.content_width, fit.content_height) == source.size:
+    content = (fit.content_width, fit.content_height)
+    if content == source.size:
         canvas.paste(source, (fit.offset_x, fit.offset_y))
         return canvas
-    with _resized(source, (fit.content_width, fit.content_height)) as content:
-        canvas.paste(content, (fit.offset_x, fit.offset_y))
+    left, top = max(0, -fit.offset_x), max(0, -fit.offset_y)
+    right = min(fit.content_width, step.width - fit.offset_x)
+    bottom = min(fit.content_height, step.height - fit.offset_y)
+    if (left, top, right, bottom) == (0, 0, *content):
+        with _resized(source, content) as resized:
+            canvas.paste(resized, (fit.offset_x, fit.offset_y))
+        return canvas
+    # Only the part of the content the canvas keeps is resampled, so a fill
+    # of an extreme aspect ratio never builds its whole overflow in memory;
+    # Pillow's box resample reads the same source pixels for those outputs.
+    to_source_x = source.width / fit.content_width
+    to_source_y = source.height / fit.content_height
+    box = (left * to_source_x, top * to_source_y, right * to_source_x, bottom * to_source_y)
+    with source.resize(
+        (right - left, bottom - top), _resample(source.size, content), box=box, reducing_gap=None
+    ) as window:
+        canvas.paste(window, (fit.offset_x + left, fit.offset_y + top))
     return canvas
 
 

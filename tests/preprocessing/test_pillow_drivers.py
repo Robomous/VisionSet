@@ -24,6 +24,7 @@ from visionset.kernel.domain import (
     ResizeStep,
     ResizeStrategy,
     brightness_contrast_factors,
+    canvas_fit,
     letterbox_fit,
     rot90_quarter_turns,
     transform_manifest,
@@ -259,6 +260,62 @@ def test_fill_scales_and_crops_the_pixels_where_the_geometry_says(
     assert (min(xs), min(ys), max(xs) + 1, max(ys) + 1) == pytest.approx(
         (placed.x, placed.y, placed.x + placed.width, placed.y + placed.height), abs=1
     )
+
+
+def _noise(size: tuple[int, int]) -> bytes:
+    """Every pixel different from its neighbours, so a misplaced resample shows."""
+    image = Image.new("L", size)
+    image.frombytes(bytes((x * 37 + y * 101) % 256 for y in range(size[1]) for x in range(size[0])))
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("source", "target"), [((16, 40), (64, 64)), ((101, 50), (64, 64)), ((90, 41), (33, 65))]
+)
+def test_fill_writes_the_pixels_a_whole_resize_cropped_to_the_canvas_would(
+    source: tuple[int, int], target: tuple[int, int]
+) -> None:
+    step = ResizeStep(strategy=ResizeStrategy.FILL, width=target[0], height=target[1])
+    fit = canvas_fit(
+        *source, strategy=ResizeStrategy.FILL, target_width=target[0], target_height=target[1]
+    )
+    whole = _open(_noise(source)).resize(
+        (fit.content_width, fit.content_height),
+        Image.Resampling.LANCZOS
+        if fit.content_width * fit.content_height < source[0] * source[1]
+        else Image.Resampling.BICUBIC,
+        reducing_gap=None,
+    )
+    expected = whole.crop(
+        (-fit.offset_x, -fit.offset_y, -fit.offset_x + target[0], -fit.offset_y + target[1])
+    )
+
+    out = _open(RESIZE.apply(step, _noise(source), seed=NO_SEED, variant=0))
+
+    assert out.tobytes() == expected.tobytes()
+
+
+def test_fill_never_resamples_more_than_the_canvas_keeps(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A 4×1000 strip onto 1000×1000 would otherwise resample to 1000×250000 first."""
+    requested: list[tuple[int, int]] = []
+    original = Image.Image.resize
+
+    def recording(
+        self: Image.Image, size: tuple[int, int], *args: object, **kwargs: object
+    ) -> Image.Image:
+        requested.append(tuple(size))
+        assert size[0] <= 1000 and size[1] <= 1000
+        return original(self, size, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Image.Image, "resize", recording)
+    step = ResizeStep(strategy=ResizeStrategy.FILL, width=1000, height=1000)
+
+    out = _open(RESIZE.apply(step, _png((4, 1000), 255, "L"), seed=NO_SEED, variant=0))
+
+    assert out.size == (1000, 1000)
+    assert requested == [(1000, 1000)]
 
 
 def test_a_letterbox_that_leaves_no_pixels_on_one_side_is_refused() -> None:
