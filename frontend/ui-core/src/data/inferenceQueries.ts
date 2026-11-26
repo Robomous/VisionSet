@@ -701,6 +701,7 @@ export function usableDetectConnection(
 ): UsableDetectConnection {
   const usable = usableConnection(connections, null, DETECT_CAPABILITY);
   if (usable.blocker !== null) return { connection: null, blocker: usable.blocker };
-  const fits = usable.candidates.find((row) => row.produces.some((kind) => kinds.includes(kind)));
+  const admitted = new Set(kinds);
+  const fits = usable.candidates.find((row) => row.produces.some((kind) => admitted.has(kind)));
   return fits === undefined ? { connection: null, blocker: "no-shape" } : { connection: fits, blocker: null };
 }

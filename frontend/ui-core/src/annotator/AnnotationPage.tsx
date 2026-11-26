@@ -374,6 +374,7 @@ function readDetection(answer: DetectionOut): Answer {
         modelRef: answer.model_ref,
         contour: [],
         labelClass: candidate.label_class,
+        id: candidate.id,
       });
     } catch {
       continue;

@@ -946,17 +946,19 @@ function Chosen({
         }}
       >
         <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Accept these candidates</DropdownMenuLabel>
-        {session.suggestions.map((one, index) => (
-          <DropdownMenuCheckboxItem
-            key={index}
-            checked={session.chosen[index] === true}
-            data-testid={`suggest-chosen-${index}`}
-            onSelect={(event) => event.preventDefault()}
-            onCheckedChange={() => onToggle(index)}
-          >
-            {candidateLabel(one, index)}
-          </DropdownMenuCheckboxItem>
-        ))}
+        {session.suggestions.map((one, index) =>
+          one.id === undefined ? null : (
+            <DropdownMenuCheckboxItem
+              key={one.id}
+              checked={session.chosen[index] === true}
+              data-testid={`suggest-chosen-${index}`}
+              onSelect={(event) => event.preventDefault()}
+              onCheckedChange={() => onToggle(index)}
+            >
+              {candidateLabel(one, index)}
+            </DropdownMenuCheckboxItem>
+          ),
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

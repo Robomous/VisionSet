@@ -251,6 +251,8 @@ export interface Suggestion {
   readonly contour: readonly Point[];
   /** The class a detection candidate was mapped to. Absent for a point answer. */
   readonly labelClass?: string;
+  /** A detection candidate's id within its answer, stable for the session. Absent for a point answer. */
+  readonly id?: string;
 }
 
 /**

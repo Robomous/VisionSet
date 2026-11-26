@@ -1231,8 +1231,17 @@ describe("Local, once a browser runtime is wired", () => {
 describe("Detect all, and choosing among its candidates", () => {
   const FAR_BOX = { type: "bbox", x: 200, y: 200, width: 20, height: 20 } as const;
 
+  let issued = 0;
+
   function candidate(confidence: number, geometry: Suggestion["geometry"] = A_BOX): Suggestion {
-    return { geometry, confidence, modelRef: "acme/detector@abc", contour: [], labelClass: "vehicle" };
+    return {
+      geometry,
+      confidence,
+      modelRef: "acme/detector@abc",
+      contour: [],
+      labelClass: "vehicle",
+      id: `c${issued++}`,
+    };
   }
 
   function detected(...candidates: readonly Suggestion[]): SuggestionState {
