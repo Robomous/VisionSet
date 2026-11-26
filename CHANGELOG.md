@@ -109,11 +109,24 @@ nothing was being distributed. This is the first version that is.
 
 ### Changed
 
+- **The annotator returns focus to its view through a handle, not a DOM lookup.** `AnnotatorView` gains `focus()`,
+  and `PointCloudCanvas` takes a `viewRef` whose `PointCloudView.focus()` does the same for a scan view; each leaves
+  focus alone when it is already inside the view. The object panel, the frame gallery and the suggest bar call an
+  `onReturnFocus` the page wires to the active view, instead of looking the view up by test id. Closing the frame
+  gallery on a scan now hands the keyboard to the perspective view. The showcase uses the same handle, and
+  `keepCanvasFocus` from `@visionset/ui-core` in place of its own copy (#1130).
 - **A label write reads each asset once, not once per label.** The checks an import, `add`, `update` and
   `enter_unreviewed` run on every label read the label's asset, and its source for a 3D label, from the store each
   time; they now read each once per call. On the nuScenes mini split (404 keyframes, 18,538 boxes) the import's
   final transaction falls from about 9.3 to 5.1 seconds and the whole commit from about 15.3 to 11.2 (medians of
   three runs). Every refusal, its message and the position it blames are unchanged (#1148).
+- **A batch of labels is inserted with one flush, not one per label.** The `Repository` port gains `add_many`,
+  which reads which ids are taken for the whole batch at once, flushes every row together and then writes their
+  children. An import, `add` and `enter_unreviewed` store their labels through it. On the nuScenes mini split
+  (404 keyframes, 18,538 boxes) the import's final transaction falls from about 5.2 to 1.5 seconds and the whole
+  commit from about 11.2 to 7.5 (medians of three runs). A duplicate id, in the store or within the batch, is
+  still `EntityAlreadyExists` and a constraint failure still `ConstraintViolated`; a duplicate is now refused
+  before any row of the batch is written (#1153).
 - **The tilt tolerance is 6 degrees, not 5.** Run on the real nuScenes mini split (404 keyframes, 18,538 boxes), the
   pose chain reproduces nuScenes' own `num_lidar_pts` for every box. The tilt is the sensor's against the world and is
   the same for every box in a frame; it reaches 5.8 degrees, so five refused 27 frames and every label in them (495

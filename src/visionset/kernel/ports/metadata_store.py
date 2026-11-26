@@ -77,6 +77,16 @@ class Repository(Protocol[T]):
         """Insert. Raises ``EntityAlreadyExists`` if the id is already stored."""
         ...
 
+    def add_many(self, entities: Sequence[T]) -> list[T]:
+        """Insert every entity, returned in the order given.
+
+        The same refusals as calling ``add`` on each in turn — an id already
+        stored, or one repeated within ``entities``, raises
+        ``EntityAlreadyExists`` naming the first offender — but checked before
+        anything is written, so a refusal leaves none of them behind.
+        """
+        ...
+
     def update(self, entity: T) -> T:
         """Replace by id. Raises ``EntityNotFound`` if the id is not stored."""
         ...

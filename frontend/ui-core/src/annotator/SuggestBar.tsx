@@ -202,6 +202,15 @@ export interface SuggestBarProps {
   readonly shape?: SuggestShapeChoice;
   /** The class chip the bar draws for every tool, placed where these options put it. */
   readonly classSlot?: ReactNode;
+  /**
+   * Give the canvas its keyboard back once a pointer gesture on a control is over.
+   *
+   * The other half of {@link keepCanvasFocus}'s rule, for a slider, whose drag is
+   * its `mousedown` default and so cannot be cancelled. On release rather than on
+   * change: a drag emits a change per step, and pulling focus mid-drag would end
+   * the gesture under the pointer.
+   */
+  readonly onReturnFocus?: () => void;
 }
 
 /**
@@ -733,7 +742,9 @@ function Adjust({ facts }: { readonly facts: Facts }): JSX.Element | null {
           }))}
         />
       )}
-      {onTolerance !== undefined && <Detail session={session} onTolerance={onTolerance} />}
+      {onTolerance !== undefined && (
+        <Detail session={session} onTolerance={onTolerance} onReturnFocus={props.onReturnFocus} />
+      )}
     </>
   );
 }
@@ -764,19 +775,6 @@ function Decisions({ facts, status }: { readonly facts: Facts; readonly status: 
       )}
     </span>
   );
-}
-
-/**
- * Give the canvas its keyboard back once a pointer gesture on a control is over.
- *
- * The other half of {@link keepCanvasFocus}'s rule, for a slider, whose drag is
- * its `mousedown` default and so cannot be cancelled. `ui-core` holds no ref to the annotator's root, so it is
- * found the way `FrameGallery` finds it after its overlay closes. On release
- * rather than on change: a drag emits a change per step, and pulling focus
- * mid-drag would end the gesture under the pointer.
- */
-function returnFocusToCanvas(): void {
-  document.querySelector<HTMLElement>('[data-testid="annotator-root"]')?.focus();
 }
 
 function Divider(): JSX.Element {
@@ -1156,9 +1154,11 @@ function hasAdjustments(session: SuggestionState): boolean {
 function Detail({
   session,
   onTolerance,
+  onReturnFocus,
 }: {
   readonly session: SuggestionState;
   readonly onTolerance: (tolerance: number) => void;
+  readonly onReturnFocus: (() => void) | undefined;
 }): JSX.Element {
   const { tolerance } = session.adjustments;
   return (
@@ -1186,8 +1186,8 @@ function Detail({
         aria-label="Detail"
         aria-valuetext={`${px(tolerance)} px, ${vertexCount(session)} points`}
         data-testid="suggest-detail"
-        onMouseUp={returnFocusToCanvas}
-        onTouchEnd={returnFocusToCanvas}
+        onMouseUp={onReturnFocus}
+        onTouchEnd={onReturnFocus}
         onChange={(event) => onTolerance(Math.round(2 ** Number(event.target.value) * 100) / 100)}
       />
       {/*

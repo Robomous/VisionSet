@@ -163,6 +163,11 @@ export interface AnnotatorPanelProps {
     readonly store: AnnotatorStore<ScanDocument>;
     readonly onRemove: ((id: string) => void) | null;
   } | null;
+  /**
+   * Hand the keyboard back to the view after a row selects, so its keys act on
+   * the selection. The page owns the view, so it owns the way to focus it.
+   */
+  readonly onReturnFocus?: () => void;
 }
 
 export function AnnotatorPanel({
@@ -179,6 +184,7 @@ export function AnnotatorPanel({
   labels3D = [],
   scan = null,
   layout = "card",
+  onReturnFocus,
 }: AnnotatorPanelProps): JSX.Element {
   const snapshot = useAnnotatorSnapshot(store);
   const scanSnapshot = useAnnotatorSnapshot(scan?.store ?? null);
@@ -375,7 +381,7 @@ export function AnnotatorPanel({
                 hidden={hiddenIds.has(annotation.id)}
                 onSelect={() => {
                   store.select(selectOnly(annotation.id));
-                  focusView('[data-testid="annotator-root"]', '[data-testid="annotator-root"]');
+                  onReturnFocus?.();
                 }}
                 onToggleVisible={() => toggleHidden(annotation.id)}
                 {...(readOnly
@@ -397,7 +403,7 @@ export function AnnotatorPanel({
                 selected={scanSnapshot?.selection.has(annotation.id) === true}
                 onSelect={() => {
                   scan?.store.select(selectOnly(annotation.id));
-                  focusView('[data-scan-view="perspective"]', '[data-scan-view="perspective"] canvas');
+                  onReturnFocus?.();
                 }}
                 onRemove={readOnly || scan?.onRemove == null ? null : () => scan.onRemove?.(annotation.id)}
               />
@@ -799,13 +805,6 @@ function RowActions({
       </Button>
     </>
   );
-}
-
-/** After a row selects, hand focus back to the view, unless it is already inside it. */
-function focusView(selector: string, target: string): void {
-  const view = document.querySelector<HTMLElement>(selector);
-  if (view === null || view.contains(document.activeElement)) return;
-  document.querySelector<HTMLElement>(target)?.focus();
 }
 
 /** One cuboid or polyline on a scan: select it, or delete it. No visibility toggle: the scan view has none per label. */

@@ -1,10 +1,14 @@
-"""A unit of work that counts which assets and sources were read from it."""
+"""Counting what a unit of work reads, and the statements a store executes."""
 
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 from uuid import UUID
+
+from sqlalchemy import Engine, event
 
 
 class _CountedRepository:
@@ -38,3 +42,22 @@ class CountingUnitOfWork:
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._uow, name)
+
+
+@contextmanager
+def executed_statements() -> Iterator[list[str]]:
+    """Every SQL statement any engine sends while the block runs, in order.
+
+    An ``executemany`` is one entry, which is what makes this a measure of round
+    trips rather than of rows.
+    """
+    statements: list[str] = []
+
+    def record(*args: Any) -> None:
+        statements.append(args[2])
+
+    event.listen(Engine, "before_cursor_execute", record)
+    try:
+        yield statements
+    finally:
+        event.remove(Engine, "before_cursor_execute", record)
