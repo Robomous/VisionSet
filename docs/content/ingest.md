@@ -52,8 +52,11 @@ folder's path in its `uri` and the first source's id in its origin, because the 
 asset whose recorded origin depends on which ingest happened to run last.
 
 The deliberate consequence: an asset records **one** origin, and a duplicate across two sources
-loses the second. A join table is the honest upgrade if that information is ever wanted; it would
-be its own migration and is not needed by anything today.
+loses the second. A video import is the exception that keeps every position: each committed frame
+writes a `FrameOccurrence` - `(source_id, position, timestamp, asset_id)`, unique on
+`(source_id, position)` - so two grid positions that decode to the same bytes are two occurrences
+of one asset, and a second import of one clip is a second source with occurrences of its own. Gaps
+and unselected ranges are absent positions. Batch membership stays per asset.
 
 An asset's `calibration` is neither identity nor provenance: it is an optional override of its
 source's camera, stated after the fact and replaceable, or clearable, until a 3D label is drawn
@@ -495,8 +498,9 @@ property an `IngestJob` never had to promise, because an ordinary ingest run is 
 process's one pass and either completes or leaves a job stuck at `running` with whatever it had
 already written. `commit` is the single moment that changes: it refuses with
 `VIDEO_IMPORT_INCOMPLETE` while any expected ordinal is still missing, and otherwise turns every
-staged frame into an asset, attaches them to a batch, and marks the session `committed` - all in
-one transaction, and idempotent, so a retried commit answers the batch the first one made rather
+staged frame into an asset, writes one frame occurrence per staged frame (including a frame whose
+bytes deduplicated onto an existing asset), attaches the assets to a batch, and marks the session
+`committed` - all in one transaction, and idempotent, so a retried commit answers the batch the first one made rather
 than making a second. The batch is the draft `start` was given as `batch_id`, or one created here
 named by `batch_name` and failing that after the clip; a target that was approved or deleted while
 the clip decoded is refused - `BATCH_NOT_EDITABLE`, `BATCH_NOT_FOUND` - rather than replaced with

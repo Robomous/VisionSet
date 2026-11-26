@@ -2,8 +2,9 @@
 
 Status: **proposed** (#364). The direction was approved on 2026-11-26: keep content-addressed
 media, model ordered frame occurrences separately, and give persistent sequence-scoped tracks
-explicit observations. This page settles the details that approval left open. Nothing here is
-implemented; [#1170](https://github.com/Robomous/VisionSet/issues/1170) and the video variant of
+explicit observations. This page settles the details that approval left open. Slice 1, the
+occurrence model, migration and importer writes, is implemented; the rest is not, and
+[#1170](https://github.com/Robomous/VisionSet/issues/1170) and the video variant of
 [#1171](https://github.com/Robomous/VisionSet/issues/1171) stay blocked until the slices below ship.
 
 ## The rule
