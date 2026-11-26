@@ -361,6 +361,71 @@ test("visiting a project opens its tab; closing the open tab lands on the list",
 });
 
 /**
+ * Tabs that do not fit fold behind "N more", and the open one never does.
+ *
+ * Eight remembered projects on a narrow window: the strip draws what fits at
+ * full width, keeps the open project drawn although it is last in the list, and
+ * lists the rest in a menu that opens one — which then takes a slot — or closes
+ * one in place. Given the room, nothing folds.
+ */
+test("open-project tabs that do not fit fold behind N more, and the open one stays drawn", async ({ page }) => {
+  const others = ["Warehouse pallets", "Retail shelf SKUs", "Drone roof inspection", "Construction PPE", "Weld seams", "Strawberry ripeness", "Forklift safety zones"].map(
+    (name, i) => ({ id: `22222222-2222-4222-8222-00000000000${i}`, name }),
+  );
+  const ids = [...others.map((o) => o.id), PROJECT];
+  await page.addInitScript((open) => {
+    if (localStorage.getItem("visionset.open-projects") === null) localStorage.setItem("visionset.open-projects", JSON.stringify(open));
+  }, ids);
+  await serveApi(page);
+  // Registered after `serveApi`, so it answers first: each other project by its own name.
+  await page.route("**/api/projects/*", (route) => {
+    const id = new URL(route.request().url()).pathname.split("/").pop() ?? "";
+    const other = others.find((o) => o.id === id);
+    if (other === undefined) return route.fallback();
+    return route.fulfill({
+      status: 200,
+      json: { id, name: other.name, description: null, thumbnail_asset_id: null, thumbnail_hash: null, created_at: null } satisfies Wire["ProjectOut"],
+    });
+  });
+  await page.setViewportSize({ width: 760, height: 600 });
+  await page.goto(`/projects/${PROJECT}/schema`);
+  await page.getByTestId("token-input").fill("a-token");
+  await page.getByTestId("token-submit").click();
+  await expect(page.getByTestId("project-screen")).toBeVisible();
+
+  // The open project is last in the list and still drawn, as the current tab.
+  await expect(page.getByTestId(`open-tab-${PROJECT}`).getByRole("link")).toHaveAttribute("aria-current", "page");
+  const more = page.getByTestId("open-tabs-more");
+  await expect(more).toBeVisible();
+  const folded = Number.parseInt((await more.textContent()) ?? "", 10);
+  expect(folded).toBeGreaterThan(0);
+  // Every open project is either a tab or a row in the menu, never both.
+  await expect(page.locator('[data-testid^="open-tab-"]:not([data-testid^="open-tab-folded-"])')).toHaveCount(ids.length - folded);
+
+  // A folded project opens from the menu and takes a slot in the strip.
+  const last = others[others.length - 1];
+  await more.click();
+  await page.getByTestId(`open-tab-folded-${last?.id}`).click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${last?.id}`));
+  await expect(page.getByTestId(`open-tab-${last?.id}`).getByRole("link")).toHaveAttribute("aria-current", "page");
+
+  // A folded project closes in place; the menu stays open on the rest.
+  await more.click();
+  const row = page.locator('[data-testid^="open-tab-folded-"]').first();
+  const closing = await row.getAttribute("data-testid");
+  await row.hover();
+  await row.getByRole("button", { name: /^Close / }).click();
+  await expect(page.getByTestId(closing ?? "")).toHaveCount(0);
+  await expect(page.getByRole("menu")).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  // Given the room, nothing folds.
+  await page.setViewportSize({ width: 2400, height: 600 });
+  await expect(more).toHaveCount(0);
+  await expect(page.locator('[data-testid^="open-tab-"]')).toHaveCount(ids.length - 1);
+});
+
+/**
  * The project view's section is in the URL, and this is the only place that
  * wiring exists.
  *

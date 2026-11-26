@@ -318,6 +318,13 @@ instead, so the Overview never loses its way to it.
   any project not already open. The list persists per browser (`localStorage`, capped at
   eight, oldest dropped first); a tab whose project the server answers 404 for closes
   itself (`app/src/shell/openProjects.ts`, `ProjectTabs.tsx`).
+- **Tabs that do not fit fold; the open one never does.** A tab keeps its natural width,
+  sized to the name up to 208px, so no name is cut to make room for another. The tabs that
+  fit are drawn in order and the rest fold behind an *N more* control before the `+`, whose
+  menu opens a folded project or closes one in place (its ×, or Delete on the row). The
+  open tab is always drawn: past the edge it takes the last slots in its own order, and what
+  it displaces folds. The fold point is measured from the names as drawn, so it moves with
+  the window and with a name that arrives late (`foldTabs`).
 - **The tabs are not a second sitemap.** They are a shortcut to project routes that already
   exist, and carry no destination of their own; the project list on the rail stays the one
   place that answers "what projects exist".
