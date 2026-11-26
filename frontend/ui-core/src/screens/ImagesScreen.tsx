@@ -101,7 +101,7 @@ export function ImagesScreen({ projectId, onIngest, batchId = null, onBatchChang
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="images-screen">
       {/* The section bar names the page; the heading is for whoever navigates by headings. */}
-      <h1 className="sr-only">Images</h1>
+      <h1 className="sr-only">Assets</h1>
       <Async
         query={whole}
         loadingRows={4}

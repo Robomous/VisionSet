@@ -13,20 +13,32 @@
  * tab" work, and a screen reader meets them as what they are. The close button
  * is a sibling of the link, never nested inside it.
  *
+ * ## Tabs that do not fit fold, and the open one never does
+ *
+ * Each tab keeps its natural width — sized to the name, up to 208px — so a name
+ * is never cut to make room for another. The tabs that fit are drawn in order;
+ * the rest fold behind an "N more" control at the end of the row, which lists
+ * them, opens one, or closes one in place. The open tab is always drawn: when it
+ * would fall past the edge it takes the last slots, in its own order, and what it
+ * displaces folds (`foldTabs`). The fold point is measured, not estimated: an
+ * invisible, inert copy of the whole row is laid out beside the strip and read on
+ * every resize, so a name that arrives late moves the fold with it.
+ *
  * ## A tab whose project is gone closes itself
  *
  * The list is local memory and the project is the server's. When the server
  * answers 404 for a remembered id — deleted here, or from the CLI — the tab is
  * dropped rather than drawn as a dead link. Any other failure keeps the tab and
  * shows the id: a server that is briefly unreachable is not a reason to forget
- * what you had open.
+ * what you had open. The measuring copy is where this is noticed, because it is
+ * the one place every open tab is drawn, folded or not.
  *
  * This is standalone-shell chrome: a host that mounts VisionSet's screens brings
  * its own global navigation, so nothing here is reusable and it reads only
  * `ui-core`'s public queries.
  */
 
-import { Plus, X } from "lucide-react";
+import { ChevronDown, Plus, X } from "lucide-react";
 import {
   asApiError,
   classColor,
@@ -39,10 +51,22 @@ import {
   useProject,
   useProjects,
 } from "@visionset/ui-core";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { Link, useLocation, useMatch, useNavigate } from "react-router";
 
-import { neighbourOf, readOpenProjects, withOpened, writeOpenProjects } from "./openProjects";
+import { foldTabs, neighbourOf, readOpenProjects, withOpened, writeOpenProjects } from "./openProjects";
 
 interface OpenProjects {
   readonly open: readonly string[];
@@ -124,12 +148,51 @@ function useOpenProjects(): OpenProjects {
   return value;
 }
 
+/** The `+` button's width (`w-9`) and the "N more" control's (`w-20`): the room the tabs do not get. */
+const PLUS_WIDTH = 36;
+const MORE_WIDTH = 80;
+
+interface Measured {
+  readonly widths: ReadonlyMap<string, number>;
+  readonly room: number;
+}
+
 export function ProjectTabs(): JSX.Element {
   const { open, current, pathOf, close, forget } = useOpenProjects();
   const navigate = useNavigate();
+  const barRef = useRef<HTMLDivElement>(null);
+  const rowRef = useRef<HTMLUListElement>(null);
+  // Before the first measure everything fits; the layout effect measures before
+  // the browser paints, so the strip never shows a fold it then undoes.
+  const [measured, setMeasured] = useState<Measured>({ widths: new Map(), room: Number.POSITIVE_INFINITY });
+
+  useLayoutEffect(() => {
+    const bar = barRef.current;
+    const row = rowRef.current;
+    if (bar === null || row === null) return;
+    const read = (): void => {
+      const widths = new Map<string, number>();
+      for (const li of row.querySelectorAll<HTMLElement>("li[data-tab-id]")) {
+        widths.set(li.dataset.tabId ?? "", li.getBoundingClientRect().width);
+      }
+      setMeasured({ widths, room: bar.clientWidth - PLUS_WIDTH });
+    };
+    read();
+    // Without an observer (jsdom, as `ui-core`'s `useColumns`) the strip is
+    // measured once per change of tabs and does not follow the window.
+    if (typeof ResizeObserver === "undefined") return;
+    // The bar resizes with the window; the row, when a name arrives or a tab opens.
+    const observer = new ResizeObserver(read);
+    observer.observe(bar);
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, [open]);
+
+  const { shown, folded } = foldTabs(open, measured.widths, measured.room, current, MORE_WIDTH);
 
   return (
     <div
+      ref={barRef}
       data-testid="project-tabs-bar"
       // The bottom hairline is drawn as `::after` rather than as a border, so the
       // open tab (a `z-10` sibling on `background`) can sit over it and run
@@ -137,46 +200,55 @@ export function ProjectTabs(): JSX.Element {
       // one surface, the way an editor's do.
       className="sticky top-0 z-20 flex h-9 shrink-0 items-stretch bg-sidebar text-sidebar-foreground after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-border"
     >
-      <nav aria-label="Open projects" className="flex min-w-0 items-stretch overflow-x-auto">
-        <ul className="flex items-stretch">
+      {/* The measuring copy: every open tab at its natural width, invisible and inert. */}
+      <div aria-hidden="true" inert className="pointer-events-none invisible absolute inset-0 overflow-hidden">
+        <ul ref={rowRef} className="absolute inset-y-0 left-0 flex w-max items-stretch">
           {open.map((id) => (
-            <Tab key={id} id={id} to={pathOf(id)} current={id === current} onClose={() => close(id)} onGone={() => forget(id)} />
+            <MeasuredTab key={id} id={id} onGone={() => forget(id)} />
+          ))}
+        </ul>
+      </div>
+      <nav aria-label="Open projects" className="flex min-w-0 items-stretch overflow-hidden">
+        <ul className="flex items-stretch">
+          {shown.map((id) => (
+            <Tab key={id} id={id} to={pathOf(id)} current={id === current} onClose={() => close(id)} />
           ))}
         </ul>
       </nav>
+      {folded.length > 0 && <FoldedTabs ids={folded} onPick={(id) => void navigate(pathOf(id))} onClose={close} />}
       <OpenProjectMenu open={open} onPick={(id) => void navigate(pathOf(id))} />
     </div>
   );
 }
+
+/**
+ * A tab's box. Sized to the name, up to a cap, rather than a fixed 192px that
+ * left a short name floating in empty tab. 13px, like the rail's labels: the
+ * tabs are chrome, and chrome reads a step below the page's 14px.
+ */
+const TAB = "group relative flex max-w-52 shrink-0 items-center border-r border-sidebar-border text-[13px]";
+const TAB_FACE = "flex h-full min-w-0 flex-1 items-center gap-1.5 pr-1 pl-2.5";
+/** 20px drawn, a 28×32 hit area: it grows into the tab's own margin on the right and into the face's 4px end padding on the left, never over the name. */
+const TAB_CLOSE = "relative mr-1.5 grid size-5 shrink-0 place-items-center rounded-sm before:absolute before:-inset-x-1 before:-inset-y-1.5";
 
 function Tab({
   id,
   to,
   current,
   onClose,
-  onGone,
 }: {
   readonly id: string;
   readonly to: string;
   readonly current: boolean;
   readonly onClose: () => void;
-  readonly onGone: () => void;
 }): JSX.Element {
   const project = useProject(id);
-  const gone = project.isError && asApiError(project.error).status === 404;
-  useEffect(() => {
-    if (gone) onGone();
-  }, [gone, onGone]);
-
   const name = project.data?.name;
   return (
     <li
       data-testid={`open-tab-${id}`}
       className={cn(
-        // Sized to the name, up to a cap, rather than a fixed 192px that left a
-        // short name floating in empty tab. 13px, like the rail's labels: the
-        // tabs are chrome, and chrome reads a step below the page's 14px.
-        "group relative flex max-w-52 shrink-0 items-center border-r border-sidebar-border text-[13px]",
+        TAB,
         current
           ? "z-10 bg-background text-foreground"
           : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -186,14 +258,9 @@ function Tab({
       <Link
         to={to}
         aria-current={current ? "page" : undefined}
-        className="flex h-full min-w-0 flex-1 items-center gap-1.5 pr-1 pl-2.5 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        className={cn(TAB_FACE, "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset")}
       >
-        <ProjectGlyph name={name ?? id} />
-        {name === undefined && project.isPending ? (
-          <span aria-label="Loading project" className="h-2.5 w-20 animate-pulse rounded-sm bg-muted" />
-        ) : (
-          <span className="truncate">{name ?? id}</span>
-        )}
+        <TabLabel id={id} name={name} pending={project.isPending} />
       </Link>
       <button
         type="button"
@@ -201,10 +268,7 @@ function Tab({
         data-testid={`close-tab-${id}`}
         onClick={onClose}
         className={cn(
-          // 20px drawn, a 28×32 hit area: it grows into the tab's own margin on
-          // the right and into the link's 4px end padding on the left, never
-          // over the name.
-          "relative mr-1.5 grid size-5 shrink-0 place-items-center rounded-sm before:absolute before:-inset-x-1 before:-inset-y-1.5",
+          TAB_CLOSE,
           "text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring",
           // The open tab always shows its close; the others show it on hover, the
           // way an editor does, so a row of tabs is not a row of crosses.
@@ -214,6 +278,116 @@ function Tab({
         <X className="size-3" strokeWidth={1.75} aria-hidden="true" />
       </button>
     </li>
+  );
+}
+
+/**
+ * A tab as the measuring copy draws it: the same box, glyph, name and close
+ * slot, with nothing to click. Every open tab is drawn here, folded or not, so
+ * this is where a project the server no longer has is noticed and forgotten.
+ */
+function MeasuredTab({ id, onGone }: { readonly id: string; readonly onGone: () => void }): JSX.Element {
+  const project = useProject(id);
+  const gone = project.isError && asApiError(project.error).status === 404;
+  useEffect(() => {
+    if (gone) onGone();
+  }, [gone, onGone]);
+  return (
+    <li data-tab-id={id} className={TAB}>
+      <span className={TAB_FACE}>
+        <TabLabel id={id} name={project.data?.name} pending={project.isPending} />
+      </span>
+      <span className={TAB_CLOSE} />
+    </li>
+  );
+}
+
+function TabLabel({ id, name, pending }: { readonly id: string; readonly name: string | undefined; readonly pending: boolean }): JSX.Element {
+  return (
+    <>
+      <ProjectGlyph name={name ?? id} />
+      {name === undefined && pending ? (
+        <span aria-label="Loading project" className="h-2.5 w-20 animate-pulse rounded-sm bg-muted" />
+      ) : (
+        <span className="truncate">{name ?? id}</span>
+      )}
+    </>
+  );
+}
+
+/**
+ * "N more": the tabs that did not fit, in the strip's order. Picking one opens
+ * it — it then takes a slot in the strip, and the tab it displaces folds. A
+ * folded tab closes in place, from its × or with Delete, and the menu stays
+ * open on the rest.
+ */
+function FoldedTabs({
+  ids,
+  onPick,
+  onClose,
+}: {
+  readonly ids: readonly string[];
+  readonly onPick: (id: string) => void;
+  readonly onClose: (id: string) => void;
+}): JSX.Element {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label={`${ids.length} more open ${ids.length === 1 ? "project" : "projects"}`}
+          data-testid="open-tabs-more"
+          className="flex w-20 shrink-0 items-center justify-center gap-1 border-r border-sidebar-border text-[12px] text-muted-foreground tabular-nums outline-none hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset data-[state=open]:bg-sidebar-accent data-[state=open]:text-foreground"
+        >
+          {ids.length} more
+          <ChevronDown className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-64">
+        <DropdownMenuLabel>More open projects</DropdownMenuLabel>
+        {ids.map((id) => (
+          <FoldedTab key={id} id={id} onPick={() => onPick(id)} onClose={() => onClose(id)} />
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function FoldedTab({ id, onPick, onClose }: { readonly id: string; readonly onPick: () => void; readonly onClose: () => void }): JSX.Element {
+  const project = useProject(id);
+  const name = project.data?.name;
+  const closeWithKey = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (event.key !== "Delete" && event.key !== "Backspace") return;
+    event.preventDefault();
+    onClose();
+  };
+  return (
+    <DropdownMenuItem
+      data-testid={`open-tab-folded-${id}`}
+      aria-keyshortcuts="Delete"
+      onSelect={onPick}
+      onKeyDown={closeWithKey}
+      className="group/item pr-1"
+    >
+      <ProjectGlyph name={name ?? id} />
+      <span className="min-w-0 flex-1 truncate">{name ?? id}</span>
+      <button
+        type="button"
+        aria-label={`Close ${name ?? "project"}`}
+        data-testid={`close-tab-folded-${id}`}
+        // The keyboard closes a folded tab with Delete on its row; the × is the pointer's.
+        tabIndex={-1}
+        onClick={(event) => {
+          // Close in place: the row's own select would open the tab and shut the menu.
+          event.stopPropagation();
+          event.preventDefault();
+          onClose();
+        }}
+        className="relative grid size-5 shrink-0 place-items-center rounded-sm text-muted-foreground opacity-0 group-hover/item:opacity-100 group-data-[highlighted]/item:opacity-100 before:absolute before:-inset-1.5 hover:bg-muted hover:text-foreground"
+      >
+        <X className="size-3" strokeWidth={1.75} aria-hidden="true" />
+      </button>
+    </DropdownMenuItem>
   );
 }
 

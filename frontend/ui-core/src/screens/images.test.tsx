@@ -224,7 +224,7 @@ describe("the Images section", () => {
     expect(screen.queryByRole("button", { name: /^Show only/ })).toBeNull();
     // Asked by source, a page at a time.
     expect(asked).toContainEqual({ offset: "0", limit: String(IMAGES_PAGE_SIZE), source: CLIP });
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Images");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Assets");
   });
 
   it("groups several sources, newest source first, each under a heading that says what it is", async () => {

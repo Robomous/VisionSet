@@ -89,3 +89,47 @@ export function neighbourOf(ids: readonly string[], id: string): string | null {
   if (at === -1) return null;
   return ids[at + 1] ?? ids[at - 1] ?? null;
 }
+
+/** What the strip draws, and what it folds behind its "N more" control. Both keep the list's order. */
+export interface TabFold {
+  readonly shown: readonly string[];
+  readonly folded: readonly string[];
+}
+
+/**
+ * Which tabs fit in `room` pixels at their natural widths, and which fold.
+ *
+ * Everything fits, or the tabs that fit beside the fold control are drawn and
+ * the rest fold. The open tab is always drawn: when it would fall past the edge
+ * it takes the last slots, still in its own order, and what it displaces folds.
+ * A tab with no measured width counts at the 208px cap, so an unmeasured tab
+ * folds early rather than overflowing.
+ */
+export function foldTabs(
+  ids: readonly string[],
+  widths: ReadonlyMap<string, number>,
+  room: number,
+  current: string | null,
+  moreWidth: number,
+): TabFold {
+  const width = (id: string): number => widths.get(id) ?? 208;
+  if (ids.reduce((sum, id) => sum + width(id), 0) <= room) return { shown: ids, folded: [] };
+
+  const space = room - moreWidth;
+  const shown: string[] = [];
+  let used = 0;
+  for (const id of ids) {
+    if (used + width(id) > space) break;
+    shown.push(id);
+    used += width(id);
+  }
+  if (current !== null && ids.includes(current) && !shown.includes(current)) {
+    while (shown.length > 0 && used + width(current) > space) {
+      const dropped = shown.pop();
+      if (dropped !== undefined) used -= width(dropped);
+    }
+    shown.push(current);
+  }
+  const kept = new Set(shown);
+  return { shown, folded: ids.filter((id) => !kept.has(id)) };
+}

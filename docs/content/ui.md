@@ -266,7 +266,7 @@ and the screen derives none of it from batch states.
 
 ### The project view, and the one screen whose section is in the URL
 
-A project has four sections - Overview, Images, Classes, Dataset - and they are
+A project has four sections - Overview, Assets, Classes, Dataset - and they are
 **navigation**, not five things stacked in one column (#171): at `lg` and above a
 toolbar across the pane, below `lg` a tab strip above the content, one
 component (`ProjectNav`) drawing whichever layout `ProjectShell`'s `matchMedia`
@@ -466,7 +466,7 @@ the batch's next step: the bar's own forward control by its own name (*Approve*,
 the batch is in it (`patterns/project/useForwardStep.ts`). Labeled is the batch table's own readout (`LabeledReadout`): *18 of 48 · 38%*, the
 way every surface says labeled progress - the table's Labeled column and the job rows too - with its ring, and,
 pointed at, the same card that splits the images by annotation state. Images (Scans or Assets, by the row's rule) says *48 images* and is the way to them: *Open in
-Images ↗* arrives beside it on hover or focus and opens the Images section narrowed to the batch, `?batch=`. What
+Images ↗* arrives beside it on hover or focus and opens the Assets section narrowed to the batch, `?batch=`. What
 arrives on hover waits 4px to the left, comes in in 200ms and leaves in 120ms, and is simply there without a pointer
 (`patterns/project/SheetFacts.tsx`).
 Assigned says who holds the jobs, and how many nobody does. The rest - Review (accepted, waiting, skipped), the schema
@@ -556,7 +556,7 @@ card's door opens the Classes section, where the full legend lives. The rail und
 **Images** panel alone. It previews the
 project's first images in a grid that fills what the classes leave and scrolls past it, the
 cut edge fading; each image's frame and size are on hover, and each, like the band's *Browse*,
-opens the Images section. There is no releases panel: the In dataset cell's badge points at the
+opens the Assets section. There is no releases panel: the In dataset cell's badge points at the
 Dataset's releases. The
 components are data-only - view models in, callbacks out - and `screens/overviewView.ts` is where
 the wire becomes those view models.
@@ -740,7 +740,7 @@ tile — the picture, with how many labels it carries and its frame number over 
 read off the listing itself — forty-eight to a page, in promotion order. The grid is a listbox,
 as the Images sheet is: a press selects a tile, the arrows move the selection by tile and by
 row (turning the page at its edge), Enter puts the image in focus and Escape steps back. The
-selected image opens beside the wall **in the Images section's own detail**
+selected image opens beside the wall **in the Assets section's own detail**
 (`screens/images/ImageDetail.tsx`) — the same well, header, arrows and focus mode, so a
 picture reads the same wherever it is opened — with what only a member has coming in through
 its two openings (`screens/dataset/Member.tsx`): its labels drawn over the picture in the
@@ -1389,7 +1389,7 @@ everything" is answered.** `limit`/`offset` bound the *response*, and a client r
 batch's frames pages it with `useInfiniteQuery` (`useBatchAssets`, exported for hosts):
 "have I seen everything" is `seen < total`, because `total` is the size of what the request
 matched - the whole batch, or one job's frames where `job=` narrows it - and does not move
-while you page it. The standalone app's Overview and Images sections read the project's own
+while you page it. The standalone app's Overview and Assets sections read the project's own
 listing instead (`useProjectAssets`), a window at a time; no screen of it draws a batch's
 frames, which is the annotator's to show.
 
@@ -2068,7 +2068,7 @@ The dialog lists the narrowing changes and the per-class counts and, for a host 
 batch, the first twelve blocking frames and the total, because each row fetches a thumbnail on
 mount and a narrowing that orphans five thousand frames would otherwise open five thousand
 requests at once. The remainder is stated as text rather than offered as a "see all", since
-there is no view narrowed to those frames to send anybody to; the Images section lists every
+there is no view narrowed to those frames to send anybody to; the Assets section lists every
 image of the project, and can be narrowed to a source but not to those frames. **A row
 links to every batch holding its frame, never to one** - an annotation carries an
 `asset_id` and no batch, so a frame in three batches has three honest destinations and

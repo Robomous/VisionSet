@@ -9,6 +9,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  foldTabs,
   MAX_OPEN_PROJECTS,
   neighbourOf,
   normalizeOpenProjects,
@@ -77,5 +78,41 @@ describe("the list's shape", () => {
     expect(neighbourOf(["a", "b", "c"], "c")).toBe("b");
     expect(neighbourOf(["a"], "a")).toBeNull();
     expect(neighbourOf(["a"], "z")).toBeNull();
+  });
+});
+
+describe("folding the tabs that do not fit", () => {
+  const ids = ["a", "b", "c", "d", "e"];
+  const widths = new Map(ids.map((id) => [id, 100]));
+  const MORE = 80;
+
+  it("draws every tab when they all fit, and shows no fold", () => {
+    expect(foldTabs(ids, widths, 500, "a", MORE)).toEqual({ shown: ids, folded: [] });
+  });
+
+  it("draws the tabs that fit beside the fold control, in order, and folds the rest", () => {
+    // 400 - 80 leaves room for three 100px tabs.
+    expect(foldTabs(ids, widths, 400, "a", MORE)).toEqual({ shown: ["a", "b", "c"], folded: ["d", "e"] });
+  });
+
+  it("always draws the open tab, in its own order, displacing the last one that fit", () => {
+    expect(foldTabs(ids, widths, 400, "e", MORE)).toEqual({ shown: ["a", "b", "e"], folded: ["c", "d"] });
+  });
+
+  it("displaces as many as a wide open tab needs", () => {
+    const wide = new Map([...widths, ["e", 208]]);
+    expect(foldTabs(ids, wide, 400, "e", MORE)).toEqual({ shown: ["a", "e"], folded: ["b", "c", "d"] });
+  });
+
+  it("still draws the open tab alone when nothing else fits", () => {
+    expect(foldTabs(ids, widths, 150, "c", MORE)).toEqual({ shown: ["c"], folded: ["a", "b", "d", "e"] });
+  });
+
+  it("counts an unmeasured tab at the 208px cap", () => {
+    expect(foldTabs(["a", "x"], widths, 300, "a", MORE)).toEqual({ shown: ["a"], folded: ["x"] });
+  });
+
+  it("folds around a current id that is not open as if there were none", () => {
+    expect(foldTabs(ids, widths, 400, "zzz", MORE)).toEqual({ shown: ["a", "b", "c"], folded: ["d", "e"] });
   });
 });

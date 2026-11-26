@@ -62,7 +62,7 @@ describe("ProjectNav", () => {
     const items = within(nav).getAllByRole("link").filter((link) => link.dataset.testid?.startsWith("nav-"));
     expect(items.map((item) => item.textContent)).toEqual([
       "Overview",
-      "Images",
+      "Assets",
       "Classes",
       "Dataset",
     ]);
@@ -161,7 +161,7 @@ describe("ProjectNav", () => {
     expect(screen.getByTestId("project-tabs")).toBeTruthy();
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
       "Overview",
-      "Images",
+      "Assets",
       "Classes",
       "Dataset",
     ]);

@@ -770,7 +770,7 @@ describe("the cards as doors", () => {
 
     await screen.findByTestId("overview-stats");
     // The accessible name says what the number is and where the door leads.
-    await userEvent.click(screen.getByRole("button", { name: "Assets, 48. Open Images" }));
+    await userEvent.click(screen.getByRole("button", { name: "Assets, 48. Open Assets" }));
     await userEvent.click(screen.getByRole("button", { name: "Classes, 3. Open Classes" }));
     await userEvent.click(await screen.findByRole("button", { name: /^In dataset, 0\. Open the Dataset$/ }));
 

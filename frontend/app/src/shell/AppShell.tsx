@@ -83,7 +83,7 @@
  */
 
 import {
-  Cpu,
+  Bot,
   Folders,
   LogOut,
   Monitor,
@@ -197,7 +197,7 @@ export function AppShell(): JSX.Element {
             to="/models"
             testId="rail-models"
             label="Models"
-            icon={Cpu}
+            icon={Bot}
             collapsed={collapsed}
           />
 

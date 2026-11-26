@@ -358,7 +358,7 @@ function Kpis({
           ? undefined
           : `from ${formatCount(sources.data.total)} ${sources.data.total === 1 ? "source" : "sources"}`,
       "data-testid": "kpi-images",
-      ...door(onOpenImages, "Images"),
+      ...door(onOpenImages, "Assets"),
       ...(reviewSteps.length === 0
         ? {}
         : {
@@ -958,7 +958,7 @@ function Tile({ asset, projectId, onOpen }: { readonly asset: Asset; readonly pr
             <button
               type="button"
               onClick={onOpen}
-              aria-label={`${about}. Open Images`}
+              aria-label={`${about}. Open Assets`}
               className={cn(face, "transition-[filter] duration-150 ease-out hover:brightness-95 focus-visible:outline-2 focus-visible:outline-ring")}
             >
               {picture}

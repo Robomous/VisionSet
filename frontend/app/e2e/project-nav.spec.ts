@@ -241,7 +241,7 @@ async function openWithJobs(page: Page, url: string, jobs: readonly string[]): P
 const SECTIONS = ["overview", "images", "schema", "dataset"] as const;
 
 /** The one heading each section carries for the outline, in the words its tab uses. */
-const HEADINGS = { overview: "Overview", images: "Images", schema: "Classes", dataset: "Dataset" } as const;
+const HEADINGS = { overview: "Overview", images: "Assets", schema: "Classes", dataset: "Dataset" } as const;
 
 /**
  * How many visible controls are filled with the `primary` token, by computed
@@ -349,7 +349,7 @@ test("the toolbar offers the four sections in the order work happens in, under t
   // Each tab may carry its count beside the name ("Images1"), so the name leads.
   await expect(nav.locator('[data-testid^="nav-"]')).toHaveText([
     /^Overview$/,
-    /^Images\d*$/,
+    /^Assets\d*$/,
     /^Classes\d*$/,
     /^Dataset\d*$/,
   ]);
@@ -476,7 +476,7 @@ test("the Images section lists every image of the project, with the total stated
   await openCold(page, `/projects/${PROJECT}/images`);
   await expect(page.getByTestId("images-screen")).toBeVisible();
   // The section bar names the page; the heading is for whoever navigates by headings.
-  await expect(page.getByRole("heading", { level: 1, name: "Images" })).toBeAttached();
+  await expect(page.getByRole("heading", { level: 1, name: "Assets" })).toBeAttached();
   await expect(page.getByTestId("images-sheet").getByTestId("image-asset-1")).toBeVisible();
   await expect(page.getByTestId("images-count")).toHaveText("1 image");
   // An app pane, not a document: only the grid scrolls.
