@@ -1272,6 +1272,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/inference/detect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Detect Instances
+         * @description Propose every instance of one class on one image, through a text-detection connection.
+         *
+         *     The deliberate plural beside `/inference/suggest`: a point prompt is about
+         *     one object, and this asks a `text_detect` model, in words, for all of them.
+         *     One asset, one class, one phrase — the class's own name unless `phrase` is
+         *     sent.
+         *
+         *     **Nothing is written and nothing is remembered.** Accepting a candidate is a
+         *     later, ordinary annotation write carrying `provenance: model`, this
+         *     response's `model_ref`, and that candidate's own `confidence`.
+         *
+         *     **A candidate is a region the class can hold.** Its label must name the
+         *     phrase asked for, its shape must be one of `allowed_geometries` that the model
+         *     declares, it must overlap the asset, and it must score at least
+         *     `minimum_confidence`. Every other region is dropped and counted in
+         *     `discarded` by reason, never relabeled or redrawn in another shape. A model
+         *     that answers in boxes answers boxes, whatever else the class admits.
+         *
+         *     **Order and limit.** Confidence descending, then top, then left. At most
+         *     `limit` candidates (100); the least confident past it are counted as
+         *     `over_limit`. Each candidate's `id` is its position, `c0` first, and means
+         *     nothing outside this answer. Overlapping candidates are not merged: overlap
+         *     alone does not make two answers one object.
+         *
+         *     An empty `candidates` is a successful answer. Refusals: an unknown project,
+         *     asset or connection is 404 — `PROJECT_NOT_FOUND`, `ASSET_NOT_FOUND` or
+         *     `INFERENCE_CONNECTION_NOT_FOUND`; a connection whose weights or endpoint are not
+         *     set up is 409 `INFERENCE_CONNECTION_NOT_SET_UP`; a connection whose model
+         *     answers places rather than words is 422 `UNSUPPORTED_PROMPT`; a model that
+         *     answers in no shape `allowed_geometries` names is 422
+         *     `GEOMETRY_NOT_PRODUCED`; a point-cloud asset is 422 `UNSUPPORTED_MEDIA`; an
+         *     `http` endpoint that does not answer the contract is 502
+         *     `INFERENCE_ENDPOINT_UNAVAILABLE`. Failures about this installation answer 500
+         *     with the message that names the remedy: `INFERENCE_CONNECTION_NOT_RUNNABLE`,
+         *     `LOCAL_INFERENCE_UNAVAILABLE` and `INFERENCE_OUT_OF_MEMORY`.
+         */
+        post: operations["detect_instances"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/inference/download-size": {
         parameters: {
             query?: never;
@@ -4873,6 +4927,94 @@ export interface components {
              * Format: uuid
              */
             dataset_id: string;
+        };
+        /**
+         * DetectRequest
+         * @description Find every instance of one class on one image, through which connection.
+         *
+         *     Shaped like `SuggestRequest`, and for its reason everything is in the body.
+         */
+        DetectRequest: {
+            /** Allowed Geometries */
+            allowed_geometries: components["schemas"]["GeometryType"][];
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            asset_id: string;
+            /**
+             * Connection Id
+             * Format: uuid
+             */
+            connection_id: string;
+            /** Label Class */
+            label_class: string;
+            /**
+             * Minimum Confidence
+             * @default 0.35
+             */
+            minimum_confidence: number;
+            /** Phrase */
+            phrase?: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+        };
+        /**
+         * DetectedCandidate
+         * @description One instance the model found, as the class it would be written as.
+         *
+         *     Carries no `contour`: a detection is not reduced from an outline, so there
+         *     is nothing to re-simplify.
+         */
+        DetectedCandidate: {
+            /** Confidence */
+            confidence: number;
+            /** Geometry */
+            geometry: components["schemas"]["BboxGeometry"] | components["schemas"]["PolygonGeometry"] | components["schemas"]["PolylineGeometry"] | components["schemas"]["Polyline3DGeometry"] | components["schemas"]["Cuboid3DGeometry"] | components["schemas"]["ClassificationGeometry"];
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Label Class */
+            label_class: string;
+        };
+        /**
+         * DetectionDiscardsOut
+         * @description Regions the model answered with that are not among the candidates, by why.
+         */
+        DetectionDiscardsOut: {
+            /** Below Minimum Confidence */
+            below_minimum_confidence: number;
+            /** Incompatible Geometry */
+            incompatible_geometry: number;
+            /** Out Of Bounds */
+            out_of_bounds: number;
+            /** Over Limit */
+            over_limit: number;
+            /** Unmapped Label */
+            unmapped_label: number;
+        };
+        /**
+         * DetectionOut
+         * @description What the model found, or an honest nothing. Nothing is written.
+         *
+         *     `candidates` is ordered by confidence, highest first, then by the top and
+         *     the left of each geometry. Empty is an ordinary answer. Overlapping
+         *     candidates are not merged.
+         */
+        DetectionOut: {
+            /** Candidates */
+            candidates: components["schemas"]["DetectedCandidate"][];
+            discarded: components["schemas"]["DetectionDiscardsOut"];
+            /** Limit */
+            limit: number;
+            /** Model Ref */
+            model_ref: string;
+            /** Phrase */
+            phrase: string;
         };
         /**
          * DistortionBody
@@ -10008,6 +10150,93 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConnectionOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description An http connection's endpoint did not answer */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    detect_instances: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DetectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetectionOut"];
                 };
             };
             /** @description Missing or invalid bearer token */

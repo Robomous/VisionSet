@@ -127,6 +127,8 @@ import {
   suggestGeometriesFor,
   allowedGeometriesFor,
   suggestibleClassIn,
+  withChoice,
+  detecting,
   toolFor,
   withClass,
   withPoint,
@@ -219,10 +221,10 @@ import { AddClassDialog } from "./AddClassDialog";
 import { runAddClass } from "./addClassRules";
 import { FrameGallery } from "./FrameGallery";
 import { SuggestBar, type SuggestShapeChoice } from "./SuggestBar";
-import { useConnections, usableConnection } from "../data/inferenceQueries";
-import type { SuggestionOut } from "../data/inferenceQueries";
-import { useServerSuggestionExecutor } from "../inference/suggestionExecutor";
-import type { SuggestionExecutor } from "../inference/suggestionExecutor";
+import { useConnections, usableConnection, usableDetectConnection } from "../data/inferenceQueries";
+import type { DetectionOut, SuggestionOut } from "../data/inferenceQueries";
+import { useServerDetectionExecutor, useServerSuggestionExecutor } from "../inference/suggestionExecutor";
+import type { DetectionExecutor, SuggestionExecutor } from "../inference/suggestionExecutor";
 import { useBrowserInferenceRuntime } from "../inference/VisionSetBrowserInferenceProvider.js";
 import type {
   ActiveSuggestionTarget,
@@ -356,6 +358,28 @@ function readAnswer(answer: SuggestionOut): Answer {
     suggestions,
     parameters: answer.parameters,
   };
+}
+
+/**
+ * A detection as the engine's answer: each candidate keeps its own score, class
+ * and model, and none carries a contour, so no Detail applies to it.
+ */
+function readDetection(answer: DetectionOut): Answer {
+  const suggestions: Suggestion[] = [];
+  for (const candidate of answer.candidates) {
+    try {
+      suggestions.push({
+        geometry: parseGeometry(candidate.geometry),
+        confidence: candidate.confidence,
+        modelRef: answer.model_ref,
+        contour: [],
+        labelClass: candidate.label_class,
+      });
+    } catch {
+      continue;
+    }
+  }
+  return { modelRef: answer.model_ref, confidence: null, suggestions, parameters: [] };
 }
 
 /**
@@ -1035,6 +1059,12 @@ function Workspace({
     preferredConnection,
   );
   const serverExecutor = useServerSuggestionExecutor(connection?.id ?? null);
+  const detectClass = store.document.schema.classes.find((declared) => declared.name === session?.labelClass);
+  const { connection: detectConnection, blocker: detectBlocker } = usableDetectConnection(
+    connections.data?.items,
+    detectClass === undefined ? [] : allowedGeometriesFor(detectClass),
+  );
+  const serverDetectExecutor = useServerDetectionExecutor(detectConnection?.id ?? null);
 
   const [browserTargetsRefreshKey, setBrowserTargetsRefreshKey] = useState(0);
   const [browserTargets, setBrowserTargets] = useState<readonly BrowserSuggestionTarget[] | undefined>(undefined);
@@ -1115,6 +1145,9 @@ function Workspace({
         ? browserRuntime.executorFor(activeTarget.targetId)
         : null
       : serverExecutor;
+  // Server only: Local has no detector, and a detection is never sent to the
+  // server in its place.
+  const detectExecutor: DetectionExecutor | null = activeTarget.kind === "server" ? serverDetectExecutor : null;
 
   function chooseTarget(target: ActiveSuggestionTarget): void {
     if (target.kind === "browser") explicitlyChosenBrowser.current = true;
@@ -1205,13 +1238,21 @@ function Workspace({
    * by the time an answer lands the session has usually moved.
    */
   function suggestAt(point: Point, polarity: Polarity): void {
-    if (session === null || executor === null) return;
+    if (session === null) return;
+    ask(withPoint(session, point, polarity));
+  }
+
+  /**
+   * Send the ask `withPoint` has just stamped: the accumulated points, the held
+   * tool's kinds and the current setting.
+   */
+  function ask(next: SuggestionState): void {
+    if (executor === null) return;
     const declared = store.document.schema.classes.find(
-      (candidate) => candidate.name === session.labelClass,
+      (candidate) => candidate.name === next.labelClass,
     );
     if (declared === undefined) return;
 
-    const next = withPoint(session, point, polarity);
     setSession(next);
     const asked = next.serial;
     const prompt = promptOf(next);
@@ -1240,11 +1281,45 @@ function Workspace({
   }
 
   /**
-   * Accept: one ordinary annotation, one history entry, `provenance: model`.
+   * Detect all: every instance of the session's class, through the server.
    *
-   * Through `addAnnotationCommand` — the same command a finished draw produces —
-   * so the write path, the undo step and the save diff are all the ones that
-   * already exist. The frame enters at `annotated` through the normal settle,
+   * A new ask with no points, stamped by `detecting` so an answer to anything
+   * asked before is dropped. Offered only where `detectExecutor` exists — a
+   * ready text-detection connection on Server — and never on Local, which has no
+   * detector and is never routed to the server in its place.
+   */
+  function detectAll(): void {
+    if (session === null || readOnly || detectExecutor === null) return;
+    const declared = store.document.schema.classes.find((candidate) => candidate.name === session.labelClass);
+    if (declared === undefined) return;
+    const next = detecting(session);
+    if (next === session) return;
+    setSession(next);
+    const asked = next.serial;
+    void detectExecutor
+      .detect({
+        projectId,
+        assetId: asset.id,
+        labelClass: declared.name,
+        allowedGeometries: allowedGeometriesFor(declared),
+      })
+      .then(
+        (answer) => {
+          setSession((live) => (live === null ? live : answered(live, asked, readDetection(answer))));
+        },
+        (error: unknown) => {
+          setSession((live) => (live === null ? live : refused(live, asked, refusalProse(error))));
+        },
+      );
+  }
+
+  /**
+   * Accept: the chosen shapes as ordinary annotations, one history entry,
+   * `provenance: model`.
+   *
+   * Through `addAnnotationsCommand` — the plural of the command a finished draw
+   * produces — so the write path, the undo step and the save diff are all the
+   * ones that already exist. The frame enters at `annotated` through the normal settle,
    * which is the decision that matters here: an interactively accepted suggestion
    * is not a *silent* write. A person chose this shape, so they own it, and
    * `pre_labeled` — where unattended batch prediction lands, unowned — is not
@@ -1257,13 +1332,18 @@ function Workspace({
     if (session === null || readOnly) return;
     const drawn = acceptedAnnotations(store.document, session, randomUuid);
     if (drawn.length === 0) return;
-    // One command for however many shapes were proposed, so one undo takes back
-    // exactly what one acceptance created. Accepting some of a plural proposal is
-    // real and is deliberately not here — it needs a selection the preview does
-    // not have, and it is tracked as its own piece of work.
+    // One command for however many shapes were chosen, so one undo takes back
+    // exactly what one acceptance created. The shapes let go of go with the
+    // session and are never written.
     store.execute(addAnnotationsCommand(drawn));
     store.select(selectionOf(drawn.map((one) => one.id)));
     setSession(cleared(session));
+  }
+
+  /** One detection candidate chosen or let go, from the canvas or the bar. */
+  function toggleSuggestion(index: number): void {
+    if (session === null) return;
+    setSession((live) => (live === null ? live : withChoice(live, index, live.chosen[index] !== true)));
   }
 
   /** A tolerance applied here: no request, so a held key is free. */
@@ -1807,6 +1887,8 @@ function Workspace({
    */
   const canAnnotate = declares(asset, ASSET_ACTION.annotate);
   const readOnly = !canAnnotate;
+  const detect =
+    activeTarget.kind === "server" && !readOnly ? { blocker: detectBlocker, onDetect: detectAll } : undefined;
 
   /**
    * The session, gated on the mode rather than torn down by an effect.
@@ -2436,6 +2518,8 @@ function Workspace({
                 onAccept={acceptSuggestion}
                 onDiscard={discardSuggestion}
                 onTolerance={applyTolerance}
+                {...(detect === undefined ? {} : { detect })}
+                onToggleSuggestion={toggleSuggestion}
                 // Off the same clock the canvas reads, so the bar and the canvas are
                 // one report of one wait. The phrase follows the session's status
                 // directly; only the cold-start sentence needs a threshold.
@@ -2624,6 +2708,7 @@ function Workspace({
                   onPreciseDevice={noteTrackpadSeen}
                   suggestion={diverting}
                   onSuggestPoint={suggestAt}
+                  onToggleSuggestion={toggleSuggestion}
                   // Autosave waits for a gesture to end — see `busy`.
                   onGestureChange={setGesturing}
                   // The halo and the busy cursor. Keyed to `diverting` for the same

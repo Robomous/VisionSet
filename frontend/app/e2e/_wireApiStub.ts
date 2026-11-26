@@ -181,7 +181,7 @@ function schemaOfSize(size: SchemaSize | undefined): Wire["SchemaVersionOut"] {
  * the empty list — that is the state the tool's explanation panel exists for,
  * and it is what a workspace that has never been to the Models page is in.
  */
-const READY_SAM = {
+export const READY_SAM = {
   id: "66666666-6666-4666-8666-666666666666",
   name: "local sam",
   connection_type: "local",

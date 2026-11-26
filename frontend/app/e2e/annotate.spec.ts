@@ -20,7 +20,7 @@ import {
   saveNow,
   zoomWheel,
 } from "./_frame";
-import { BATCH, JOB, openedWorld, openJob, PROJECT, progressStore, serveApi } from "./_wireApiStub";
+import { BATCH, JOB, openedWorld, openJob, PROJECT, progressStore, READY_SAM, serveApi } from "./_wireApiStub";
 
 test("the page loads the job's assets, its pinned schema and its progress", async ({ page }) => {
   const sent: Request[] = [];
@@ -3066,6 +3066,77 @@ test("the detail slider moves under the pointer, and hands the keyboard back", a
   await expect(slider).toHaveValue("-1");
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("suggestion-shape")).toHaveCount(0);
+});
+
+/**
+ * Detect all, in a real browser: a text-detection connection answers every
+ * instance of the held class, a click on a candidate leaves it out, and Accept
+ * writes the chosen ones as one undo step. The detect route is faked here: the
+ * stub segmenter cannot detect, and no detector runs in this suite.
+ */
+test("detect all proposes every instance, and accepting two of five is one undo step", async ({ page }) => {
+  const sent: Request[] = [];
+  await openJob(page, sent, undefined, undefined, undefined, undefined, true);
+  const detector = {
+    ...READY_SAM,
+    id: "77777777-7777-4777-8777-777777777777",
+    name: "grounding dino",
+    model_id: "IDEA-Research/grounding-dino-tiny",
+    capabilities: ["text_detect"],
+    produces: ["bbox"],
+  } satisfies Wire["ConnectionOut"];
+  await page.route("**/inference/connections", async (route) =>
+    route.fulfill({ json: { items: [READY_SAM, detector], total: 2 } satisfies Wire["ConnectionPage"] }),
+  );
+  const scores = [0.91, 0.82, 0.73, 0.64, 0.55];
+  const asked: unknown[] = [];
+  await page.route("**/inference/detect", async (route) => {
+    asked.push(route.request().postDataJSON());
+    await route.fulfill({
+      json: {
+        model_ref: "IDEA-Research/grounding-dino-tiny@main",
+        phrase: "vehicle",
+        candidates: scores.map((confidence, at) => ({
+          id: `c${at}`,
+          label_class: "vehicle",
+          label: "vehicle",
+          geometry: { type: "bbox", x: 40 + at * 120, y: 80, width: 90, height: 70 },
+          confidence,
+        })),
+        discarded: {
+          unmapped_label: 0,
+          incompatible_geometry: 0,
+          out_of_bounds: 0,
+          below_minimum_confidence: 0,
+          over_limit: 0,
+        },
+        limit: 100,
+      } satisfies Wire["DetectionOut"],
+    });
+  });
+
+  await page.getByTestId("tool-suggest").click();
+  await page.getByTestId("suggest-detect").click();
+  await expect(page.getByTestId("suggestion-shape")).toHaveCount(5);
+  await expect(page.getByTestId("suggest-status")).toHaveText("5 of 5 chosen");
+  expect(asked).toEqual([expect.objectContaining({ label_class: "vehicle", allowed_geometries: ["bbox"] })]);
+
+  for (const at of [1, 3, 4]) {
+    const shape = (await page.getByTestId("suggestion-shape").nth(at).boundingBox())!;
+    await page.mouse.click(shape.x + shape.width / 2, shape.y + shape.height / 2);
+  }
+  await expect(page.getByTestId("suggest-status")).toHaveText("2 of 5 chosen");
+  await expect(page.getByTestId("suggestion-preview").nth(1)).toHaveAttribute("data-chosen", "false");
+  await expect(page.getByTestId("suggest-accept")).toContainText("Accept 2");
+
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("object-total")).toHaveText("2 objects");
+  await expect(page.getByTestId("suggestion-shape")).toHaveCount(0);
+
+  await page.getByTestId("tool-undo").click();
+  await expect(page.getByTestId("object-total")).toHaveText("0 objects");
+  await page.getByTestId("tool-redo").click();
+  await expect(page.getByTestId("object-total")).toHaveText("2 objects");
 });
 
 test("a press in the suggest bar never reaches the picture", async ({ page }) => {

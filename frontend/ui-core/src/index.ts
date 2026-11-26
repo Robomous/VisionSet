@@ -181,7 +181,10 @@ export type {
   VisionSetBrowserInferenceRuntime,
 } from "./inference/browserPort.js";
 export {
+  useServerDetectionExecutor,
   useServerSuggestionExecutor,
+  type DetectionExecutor,
+  type DetectionRequest,
   type SuggestionExecutor,
   type SuggestionRequest,
 } from "./inference/suggestionExecutor.js";
@@ -372,6 +375,8 @@ export {
   inferenceKeys,
   isLive,
   usableConnection,
+  usableDetectConnection,
+  DETECT_CAPABILITY,
   useConnections,
   useCreateConnection,
   useDeleteConnection,
@@ -386,6 +391,8 @@ export {
   type ConnectionType,
   type DownloadSizeOut,
   type SuggestBlocker,
+  type DetectBlocker,
+  type DetectionOut,
   type SuggestInput,
   type SuggestionOut,
   type SuggestedRegion,

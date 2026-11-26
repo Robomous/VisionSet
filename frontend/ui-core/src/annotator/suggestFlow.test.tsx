@@ -84,6 +84,10 @@ let suggestRefusal: { status: number; code: string; message: string } | null = n
  * the latch and the test decides when to close it.
  */
 let suggestHold: { readonly wait: Promise<void>; readonly release: () => void } | null = null;
+/** What `POST /inference/detect` answers. */
+let detection: Record<string, unknown> | null = null;
+/** A latch the detect route waits on, as `suggestHold` is for the suggest route. */
+let detectHold: { readonly wait: Promise<void>; readonly release: () => void } | null = null;
 
 function held(): { readonly release: () => void } {
   let open = (): void => {};
@@ -147,6 +151,8 @@ function aDetector(): Record<string, unknown> {
 }
 
 let assetSize: { width: number | null; height: number | null } = { width: 640, height: 480 };
+/** Whether the wire declares the frame annotatable; off is a read-only page. */
+let annotatable = true;
 
 function assetRow(id: string, hash: string): Record<string, unknown> {
   return {
@@ -164,7 +170,7 @@ function assetRow(id: string, hash: string): Record<string, unknown> {
     ingested_at: null,
     job_id: JOB,
     progress: "unannotated",
-    allowed_actions: assetActions("unannotated", { batchState: "in_annotation" }),
+    allowed_actions: annotatable ? assetActions("unannotated", { batchState: "in_annotation" }) : [],
     annotation_count: 0,
     min_confidence: null,
   };
@@ -227,6 +233,7 @@ beforeEach(() => {
   clearPrefs();
   connections = [connectionRow("ready")];
   assetSize = { width: 640, height: 480 };
+  annotatable = true;
   suggestion = {
     model_ref: MODEL_REF,
     confidence: 0.9125,
@@ -243,6 +250,8 @@ beforeEach(() => {
   };
   suggestRefusal = null;
   suggestHold = null;
+  detection = null;
+  detectHold = null;
   vi.stubGlobal("matchMedia", (query: string) => ({
     media: query,
     matches: true,
@@ -268,6 +277,13 @@ beforeEach(() => {
           );
         }
         return new Response(JSON.stringify(suggestion), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (path === "/inference/detect") {
+        if (detectHold !== null) await detectHold.wait;
+        return new Response(JSON.stringify(detection), {
           status: 200,
           headers: { "content-type": "application/json" },
         });
@@ -873,6 +889,238 @@ describe("acceptance", () => {
     expect(body[0]["confidence"]).toBe(0.9125);
     expect(body[0]["label_class"]).toBe("vehicle");
     expect(body[0]["geometry"]).toEqual({ type: "bbox", x: 12, y: 34, width: 56, height: 78 });
+  });
+});
+
+describe("Detect all, and accepting some of it", () => {
+  const DETECTOR = "77777777-7777-4777-8777-777777777777";
+  const DINO_REF = "IDEA-Research/grounding-dino-tiny@main";
+  const BOXES = [0, 1, 2, 3, 4].map((at) => ({ type: "bbox", x: 20 + at * 120, y: 40, width: 80, height: 60 }));
+  const SCORES = [0.91, 0.82, 0.73, 0.64, 0.55];
+
+  function fiveDetected(): Record<string, unknown> {
+    return {
+      model_ref: DINO_REF,
+      phrase: "vehicle",
+      candidates: BOXES.map((geometry, at) => ({
+        id: `c${at}`,
+        label_class: "vehicle",
+        label: "vehicle",
+        geometry,
+        confidence: SCORES[at],
+      })),
+      discarded: {
+        unmapped_label: 0,
+        incompatible_geometry: 0,
+        out_of_bounds: 0,
+        below_minimum_confidence: 0,
+        over_limit: 0,
+      },
+      limit: 100,
+    };
+  }
+
+  function detects(): readonly Record<string, unknown>[] {
+    return sent
+      .filter((row) => row.path === "/inference/detect")
+      .map((row) => JSON.parse(row.body) as Record<string, unknown>);
+  }
+
+  /** Press on the middle of the candidate at that index. */
+  function clickCandidate(at: number): void {
+    const box = BOXES[at]!;
+    clickCanvasAt(box.x + box.width / 2, box.y + box.height / 2);
+  }
+
+  async function detectFive(): Promise<void> {
+    connections = [connectionRow("ready"), aDetector()];
+    detection = fiveDetected();
+    await open();
+    await arm();
+    await userEvent.click(await screen.findByTestId("suggest-detect"));
+    await waitFor(() => expect(screen.getAllByTestId("suggestion-shape")).toHaveLength(5));
+  }
+
+  async function saved(): Promise<readonly Record<string, unknown>[]> {
+    screen.getByTestId("annotator-root").focus();
+    await userEvent.keyboard("{Control>}s{/Control}");
+    await waitFor(() => expect(sent.some((row) => row.path.endsWith("/annotations"))).toBe(true));
+    const write = sent.find((row) => row.path.endsWith("/annotations"));
+    return JSON.parse(write?.body ?? "[]") as readonly Record<string, unknown>[];
+  }
+
+  it("asks the detection connection for every instance of the held class, never the segmenter", async () => {
+    await detectFive();
+    expect(detects()).toEqual([
+      {
+        project_id: PROJECT,
+        asset_id: ASSET,
+        connection_id: DETECTOR,
+        label_class: "vehicle",
+        allowed_geometries: ["bbox"],
+      },
+    ]);
+    expect(asks()).toHaveLength(0);
+    expect(screen.getByTestId("suggest-status").textContent).toBe("5 of 5 chosen");
+  });
+
+  it("is not offered without a ready detection connection, and says why", async () => {
+    await open();
+    await arm();
+    const button = (await screen.findByTestId("suggest-detect")) as HTMLButtonElement;
+    await waitFor(() => expect(button.disabled).toBe(true));
+    expect(screen.getByTestId("suggest-detect-reason").textContent).toContain("Detect all needs");
+  });
+
+  it("writes only the two of five chosen, each with its own score, as one undo step", async () => {
+    await detectFive();
+    for (const at of [1, 3, 4]) clickCandidate(at);
+    expect(asks()).toHaveLength(0);
+    expect(screen.getByTestId("suggest-accept").textContent).toContain("Accept 2");
+
+    await userEvent.click(screen.getByTestId("suggest-accept"));
+    expect(screen.getByTestId("object-total").textContent).toBe("2 objects");
+    expect(screen.queryByTestId("suggestion-shape")).toBeNull();
+
+    await userEvent.click(screen.getByTestId("tool-undo"));
+    expect(screen.getByTestId("object-total").textContent).toBe("0 objects");
+    expect(screen.getByTestId("tool-undo").getAttribute("aria-disabled")).toBe("true");
+    await userEvent.click(screen.getByTestId("tool-redo"));
+    expect(screen.getByTestId("object-total").textContent).toBe("2 objects");
+
+    const body = await saved();
+    expect(body.map((one) => one["geometry"])).toEqual([BOXES[0], BOXES[2]]);
+    expect(body.map((one) => one["confidence"])).toEqual([0.91, 0.73]);
+    expect(body.every((one) => one["model_ref"] === DINO_REF && one["provenance"] === "model")).toBe(true);
+    expect(body.every((one) => one["label_class"] === "vehicle")).toBe(true);
+  });
+
+  it("places no point and asks nothing when a click lands on no candidate", async () => {
+    await detectFive();
+    clickCanvasAt(300, 400);
+    expect(asks()).toHaveLength(0);
+    expect(detects()).toHaveLength(1);
+    expect(screen.getByTestId("suggest-status").textContent).toBe("5 of 5 chosen");
+  });
+
+  it("draws a let-go candidate as excluded: dotted, hatched, and named so in its label", async () => {
+    await detectFive();
+    clickCandidate(1);
+    const previews = screen.getAllByTestId("suggestion-preview");
+    const kept = previews[0];
+    const dropped = previews[1];
+    const keptShape = kept?.querySelector("[data-testid='suggestion-shape']");
+    const droppedShape = dropped?.querySelector("[data-testid='suggestion-shape']");
+    expect(dropped?.getAttribute("data-chosen")).toBe("false");
+    expect(droppedShape?.getAttribute("stroke-dasharray")).not.toBe(keptShape?.getAttribute("stroke-dasharray"));
+    const hatch = dropped?.querySelector("[data-testid='suggestion-hatch']");
+    expect(droppedShape?.getAttribute("fill")).toBe(`url(#${hatch?.id ?? "missing"})`);
+    expect(dropped?.querySelector("[data-testid='suggestion-label']")?.textContent).toMatch(/· left out$/);
+    expect(kept?.querySelector("[data-testid='suggestion-label']")?.textContent).toContain("91");
+  });
+
+  it("writes nothing on Esc, which discards every candidate", async () => {
+    await detectFive();
+    screen.getByTestId("annotator-root").focus();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByTestId("suggestion-shape")).toBeNull();
+    expect(screen.getByTestId("object-total").textContent).toBe("0 objects");
+  });
+
+  it("writes nothing and stays on the frame when ↵ lands with none chosen", async () => {
+    await detectFive();
+    const frame = screen.getByTestId("asset-identity").textContent;
+    for (const at of [0, 1, 2, 3, 4]) clickCandidate(at);
+    expect((screen.getByTestId("suggest-accept") as HTMLButtonElement).disabled).toBe(true);
+
+    screen.getByTestId("annotator-root").focus();
+    await userEvent.keyboard("{Enter}");
+    expect(screen.getByTestId("object-total").textContent).toBe("0 objects");
+
+    // Taking one back and saving goes through the same save queue a frame advance
+    // would have joined, so the write landing here proves no advance was queued.
+    clickCandidate(2);
+    await userEvent.keyboard("{Enter}");
+    const body = await saved();
+    expect(body.map((one) => one["geometry"])).toEqual([BOXES[2]]);
+    expect(body[0]?.["asset_id"]).toBe(ASSET);
+    expect(screen.getByTestId("asset-identity").textContent).toBe(frame);
+  });
+
+  it("writes nothing and stays on the frame when ↵ lands while the detection is out", async () => {
+    connections = [connectionRow("ready"), aDetector()];
+    detection = fiveDetected();
+    const latch = held();
+    detectHold = suggestHold;
+    suggestHold = null;
+    await open();
+    await arm();
+    const frame = screen.getByTestId("asset-identity").textContent;
+    await userEvent.click(await screen.findByTestId("suggest-detect"));
+    await waitFor(() => expect(detects()).toHaveLength(1));
+
+    screen.getByTestId("annotator-root").focus();
+    await userEvent.keyboard("{Enter}");
+    latch.release();
+
+    // The answer landing on this frame is the proof: a frame advance would have
+    // cleared the session before it arrived.
+    await waitFor(() => expect(screen.getAllByTestId("suggestion-shape")).toHaveLength(5));
+    expect(screen.getByTestId("asset-identity").textContent).toBe(frame);
+    expect(screen.getByTestId("object-total").textContent).toBe("0 objects");
+  });
+
+  it("drops a detection answer that lands after the class moved, and writes nothing", async () => {
+    connections = [connectionRow("ready"), aDetector()];
+    detection = fiveDetected();
+    const latch = held();
+    detectHold = suggestHold;
+    suggestHold = null;
+    await open();
+    await arm();
+    await userEvent.click(await screen.findByTestId("suggest-detect"));
+    await waitFor(() => expect(detects()).toHaveLength(1));
+
+    await userEvent.click(screen.getByTestId("class-row-sign-name"));
+    latch.release();
+    await waitFor(() => expect(screen.getByTestId("suggest-idle")).toBeTruthy());
+    expect(screen.queryByTestId("suggestion-shape")).toBeNull();
+    expect(screen.getByTestId("object-total").textContent).toBe("0 objects");
+  });
+
+  it("after an empty detection, offers Detect all again and takes a click as a point", async () => {
+    connections = [connectionRow("ready"), aDetector()];
+    detection = { ...fiveDetected(), candidates: [] };
+    await open();
+    await arm();
+    await userEvent.click(await screen.findByTestId("suggest-detect"));
+    await screen.findByTestId("suggest-none");
+    expect(screen.getByTestId("suggest-detect")).toBeTruthy();
+
+    clickCanvas();
+    await waitFor(() => expect(asks()).toHaveLength(1));
+  });
+
+  it("offers nothing to detect or write on a read-only frame", async () => {
+    annotatable = false;
+    connections = [connectionRow("ready"), aDetector()];
+    detection = fiveDetected();
+    await open();
+    expect(screen.queryByTestId("tool-suggest")).toBeNull();
+    screen.getByTestId("annotator-root").focus();
+    await userEvent.keyboard("s");
+    expect(screen.queryByTestId("suggest-bar")).toBeNull();
+    expect(screen.queryByTestId("suggest-detect")).toBeNull();
+    expect(detects()).toHaveLength(0);
+    expect(sent.some((row) => row.path.endsWith("/annotations"))).toBe(false);
+  });
+
+  it("drops the candidates when the frame changes, and writes nothing", async () => {
+    await detectFive();
+    await userEvent.click(screen.getByTestId("save-and-next"));
+    await waitFor(() => expect(screen.queryByTestId("suggest-bar")).toBeNull());
+    expect(screen.queryByTestId("suggestion-shape")).toBeNull();
+    expect(sent.some((row) => row.path.endsWith("/annotations"))).toBe(false);
   });
 });
 

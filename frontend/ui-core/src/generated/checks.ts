@@ -213,6 +213,33 @@ export const checkClassCountOut: Check<Schemas["ClassCountOut"]> =
 export const checkDatasetStatsOut: Check<Schemas["DatasetStatsOut"]> =
   /*#__PURE__*/ object({ "annotated_asset_count": [true, isInteger], "annotation_count": [true, isInteger], "asset_count": [true, isInteger], "classes": [true, arrayOf(checkClassCountOut)], "dataset_id": [true, isString] } as const);
 
+export const checkBboxGeometry: Check<Schemas["BboxGeometry"]> =
+  /*#__PURE__*/ object({ "height": [true, isNumber], "type": [true, lit("bbox")], "width": [true, isNumber], "x": [true, isNumber], "y": [true, isNumber] } as const);
+
+export const checkClassificationGeometry: Check<Schemas["ClassificationGeometry"]> =
+  /*#__PURE__*/ object({ "type": [true, lit("classification_tag")] } as const);
+
+export const checkCuboid3DGeometry: Check<Schemas["Cuboid3DGeometry"]> =
+  /*#__PURE__*/ object({ "center": [true, tuple([isNumber, isNumber, isNumber] as const)], "size": [true, tuple([isNumber, isNumber, isNumber] as const)], "type": [true, lit("cuboid_3d")], "yaw": [true, isNumber] } as const);
+
+export const checkPolygonGeometry: Check<Schemas["PolygonGeometry"]> =
+  /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("polygon")] } as const);
+
+export const checkPolyline3DGeometry: Check<Schemas["Polyline3DGeometry"]> =
+  /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber, isNumber] as const))], "type": [true, lit("polyline_3d")], "visibility": [false, arrayOf(checkVertexVisibility)] } as const);
+
+export const checkPolylineGeometry: Check<Schemas["PolylineGeometry"]> =
+  /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("polyline")], "visibility": [false, arrayOf(checkVertexVisibility)] } as const);
+
+export const checkDetectedCandidate: Check<Schemas["DetectedCandidate"]> =
+  /*#__PURE__*/ object({ "confidence": [true, isNumber], "geometry": [true, tagged("type", { "bbox": checkBboxGeometry, "classification_tag": checkClassificationGeometry, "cuboid_3d": checkCuboid3DGeometry, "polygon": checkPolygonGeometry, "polyline": checkPolylineGeometry, "polyline_3d": checkPolyline3DGeometry })], "id": [true, isString], "label": [true, isString], "label_class": [true, isString] } as const);
+
+export const checkDetectionDiscardsOut: Check<Schemas["DetectionDiscardsOut"]> =
+  /*#__PURE__*/ object({ "below_minimum_confidence": [true, isInteger], "incompatible_geometry": [true, isInteger], "out_of_bounds": [true, isInteger], "over_limit": [true, isInteger], "unmapped_label": [true, isInteger] } as const);
+
+export const checkDetectionOut: Check<Schemas["DetectionOut"]> =
+  /*#__PURE__*/ object({ "candidates": [true, arrayOf(checkDetectedCandidate)], "discarded": [true, checkDetectionDiscardsOut], "limit": [true, isInteger], "model_ref": [true, isString], "phrase": [true, isString] } as const);
+
 export const checkDownloadSizeOut: Check<Schemas["DownloadSizeOut"]> =
   /*#__PURE__*/ object({ "file_count": [true, isInteger], "model_id": [true, isString], "model_revision": [true, isString], "total_bytes": [true, isInteger] } as const);
 
@@ -465,24 +492,6 @@ export const checkAppliedParameters: Check<Schemas["AppliedParameters"]> =
 export const checkSuggestParameter: Check<Schemas["SuggestParameter"]> =
   /*#__PURE__*/ openOneOf(["tolerance"] as const);
 
-export const checkBboxGeometry: Check<Schemas["BboxGeometry"]> =
-  /*#__PURE__*/ object({ "height": [true, isNumber], "type": [true, lit("bbox")], "width": [true, isNumber], "x": [true, isNumber], "y": [true, isNumber] } as const);
-
-export const checkClassificationGeometry: Check<Schemas["ClassificationGeometry"]> =
-  /*#__PURE__*/ object({ "type": [true, lit("classification_tag")] } as const);
-
-export const checkCuboid3DGeometry: Check<Schemas["Cuboid3DGeometry"]> =
-  /*#__PURE__*/ object({ "center": [true, tuple([isNumber, isNumber, isNumber] as const)], "size": [true, tuple([isNumber, isNumber, isNumber] as const)], "type": [true, lit("cuboid_3d")], "yaw": [true, isNumber] } as const);
-
-export const checkPolygonGeometry: Check<Schemas["PolygonGeometry"]> =
-  /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("polygon")] } as const);
-
-export const checkPolyline3DGeometry: Check<Schemas["Polyline3DGeometry"]> =
-  /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber, isNumber] as const))], "type": [true, lit("polyline_3d")], "visibility": [false, arrayOf(checkVertexVisibility)] } as const);
-
-export const checkPolylineGeometry: Check<Schemas["PolylineGeometry"]> =
-  /*#__PURE__*/ object({ "points": [true, arrayOf(tuple([isNumber, isNumber] as const))], "type": [true, lit("polyline")], "visibility": [false, arrayOf(checkVertexVisibility)] } as const);
-
 export const checkSuggestedRegion: Check<Schemas["SuggestedRegion"]> =
   /*#__PURE__*/ object({ "contour": [true, arrayOf(tuple([isNumber, isNumber] as const))], "geometry": [true, tagged("type", { "bbox": checkBboxGeometry, "classification_tag": checkClassificationGeometry, "cuboid_3d": checkCuboid3DGeometry, "polygon": checkPolygonGeometry, "polyline": checkPolylineGeometry, "polyline_3d": checkPolyline3DGeometry })] } as const);
 
@@ -525,6 +534,7 @@ export const checkDeleteBatch = checkNoContent;
 export const checkDeleteInferenceConnection = checkNoContent;
 export const checkDeletePreprocessingRecipe = checkNoContent;
 export const checkDeleteProject = checkNoContent;
+export const checkDetectInstances = checkDetectionOut;
 export const checkDiscardSchemaDraft = checkNoContent;
 export const checkDownloadConnectionWeights = checkBackgroundJobOut;
 export const checkExportRelease = checkBackgroundJobOut;
