@@ -280,8 +280,8 @@ class TrackService:
                 annotation = uow.annotations.get(frame.annotation_id)
                 assert annotation is not None
                 replacements.append(annotation.model_copy(update={"label_class": label_class}))
-            stored = self._annotations.update_in(uow, job, batch, replacements)
             uow.tracks.update(renamed)
+            stored = self._annotations.update_in(uow, job, batch, replacements)
             detail = _detail(uow, renamed)
         if stored:
             self._annotations.announce(job.id, batch.id, AnnotationOperation.UPDATE, stored)

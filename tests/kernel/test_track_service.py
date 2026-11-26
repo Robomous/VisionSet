@@ -700,3 +700,16 @@ def test_the_polygon_class_is_not_reached_by_a_box(world: World) -> None:
     track = world.tracks.create(clip.source_id, "lane").track
     detail = world.tracks.observe(job.id, track.id, clip.at(0).id, lane.id)
     assert [f.annotation_id for f in detail.observations] == [lane.id]
+
+
+def test_an_observed_annotation_keeps_its_tracks_class_under_an_edit(world: World) -> None:
+    clip = world.clip()
+    (job,) = world.working(clip.batch_id)
+    detail = world.observed(job, clip, [0])
+    observed = world.annotations.get(detail.observations[0].annotation_id)
+    with pytest.raises(TrackClassMismatch):
+        world.annotations.update(job.id, [observed.model_copy(update={"label_class": "van"})])
+    moved = observed.model_copy(
+        update={"geometry": BboxGeometry(x=2.0, y=2.0, width=4.0, height=4.0)}
+    )
+    assert world.annotations.update(job.id, [moved])[0].label_class == "car"

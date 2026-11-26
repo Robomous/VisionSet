@@ -107,6 +107,7 @@ from visionset.kernel.errors import (
     DuplicateClassificationTag,
     InvalidAnnotation,
     StaleWrite,
+    TrackClassMismatch,
     VisionSetError,
     WorkspaceCorrupt,
 )
@@ -424,6 +425,8 @@ class AnnotationService:
             AssetNotWritable: an asset's progress says its labeling is over.
             InvalidAnnotation: a replacement does not satisfy the pinned version,
                 or claims a ``provenance`` other than the stored one.
+            TrackClassMismatch: a replacement changes the class of an annotation
+                a track observes to one other than the track's.
             CalibrationMissing: a 3D label names an asset with no calibration,
                 neither its own nor its source's.
             CalibrationResolutionMismatch: a 3D label names an asset whose
@@ -457,6 +460,8 @@ class AnnotationService:
             AssetNotWritable: an asset's progress says its labeling is over.
             InvalidAnnotation: a replacement does not satisfy the pinned version,
                 or claims a ``provenance`` other than the stored one.
+            TrackClassMismatch: a replacement changes the class of an annotation
+                a track observes to one other than the track's.
             CalibrationMissing: a 3D label names an asset with no calibration,
                 neither its own nor its source's.
             CalibrationResolutionMismatch: a 3D label names an asset whose
@@ -471,6 +476,7 @@ class AnnotationService:
                 current = self.require_annotation(uow, annotation.id)
                 require_writable(job, current.asset_id)
                 _require_same_provenance(current, annotation)
+                _require_track_class(uow, current, annotation)
                 # `job_id` is stamped with the job doing the replacing, not
                 # carried over from `current` the way `asset_id` is — and the
                 # two go opposite ways on purpose. `asset_id` answers *what
@@ -795,6 +801,21 @@ def _require_same_provenance(current: Annotation, replacement: Annotation) -> No
         raise InvalidAnnotation(
             f"annotation {current.id} is {current.provenance!r} and an edit cannot make it "
             f"{replacement.provenance!r}; who made a label is kept, so send the stored provenance"
+        )
+
+
+def _require_track_class(uow: UnitOfWork, current: Annotation, replacement: Annotation) -> None:
+    """Refuse a class edit that would leave an observed annotation off its track's class."""
+    if replacement.label_class == current.label_class:
+        return
+    observation = uow.observation_of(current.id)
+    if observation is None:
+        return
+    track = uow.tracks.get(observation.track_id)
+    if track is not None and track.label_class != replacement.label_class:
+        raise TrackClassMismatch(
+            f"annotation {current.id} is observed by track {track.id}, which is "
+            f"{track.label_class!r}; change the track's class to change it"
         )
 
 

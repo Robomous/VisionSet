@@ -744,7 +744,7 @@ class SqlUnitOfWork:
         )
 
     def batches_holding(self, asset_id: UUID) -> list[UUID]:
-        """The port's one non-repository read — see its docstring for why.
+        """A non-repository read on the port — see its docstring for why.
 
         Ordered by ``position`` within a batch and then by nothing else, which
         for this question means *the order the memberships were written*: an
