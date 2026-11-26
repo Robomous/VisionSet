@@ -29,6 +29,7 @@ from uuid import UUID
 from visionset.kernel.domain import (
     AnnotationJob,
     AnnotationOperation,
+    AnnotationSchema,
     AssetProgress,
     Batch,
     FrameOccurrence,
@@ -38,14 +39,13 @@ from visionset.kernel.domain import (
     TrackDetail,
     TrackObservation,
     TrackStatus,
-    geometry_reference,
 )
 from visionset.kernel.errors import (
     AnnotationAlreadyObserved,
     AnnotationNotAtOccurrence,
     BatchNotFound,
     FrameOccurrenceNotFound,
-    InvalidAnnotation,
+    LabelClassNotInSchema,
     ObservationNotFound,
     OccurrenceAlreadyObserved,
     SourceNotFound,
@@ -59,9 +59,14 @@ from visionset.kernel.errors import (
     WorkspaceCorrupt,
 )
 from visionset.kernel.ports import UnitOfWork
-from visionset.kernel.services.annotation_service import AnnotationService, require_writable
+from visionset.kernel.services.annotation_service import (
+    AnnotationService,
+    require_trackable,
+    require_writable,
+)
 from visionset.kernel.services.batch_service import BatchService, jobs_of
 from visionset.kernel.services.job_service import JobService
+from visionset.kernel.services.schema_service import SchemaService
 from visionset.kernel.services.source_service import SourceService
 from visionset.kernel.services.workspace_service import WorkspaceService
 
@@ -75,6 +80,7 @@ class TrackService:
         self._batches = BatchService(workspace)
         self._sources = SourceService(workspace)
         self._annotations = AnnotationService(workspace)
+        self._schemas = SchemaService(workspace)
 
     # --- reading -----------------------------------------------------------
 
@@ -140,6 +146,8 @@ class TrackService:
         Raises:
             SourceNotFound: no such source in this workspace.
             SourceNotSequence: the source is not a video.
+            SchemaNotFound: the project has no schema yet.
+            LabelClassNotInSchema: the active schema version does not declare the class.
             TrackExternalIdTaken: another track of the source carries ``external_id``.
         """
         track = Track(source_id=source_id, label_class=label_class, external_id=external_id)
@@ -151,6 +159,7 @@ class TrackService:
                     f"source {source.id} is a {source.kind.value}, and only a video source has "
                     f"frame occurrences for a track to observe"
                 )
+            _require_declared(self._schemas.require_active(uow, source.project_id), label_class)
             _require_external_id_free(uow, source_id, external_id)
             uow.tracks.add(track)
             return _detail(uow, track)
@@ -192,17 +201,7 @@ class TrackService:
                     f"annotation {annotation.id} is {annotation.label_class!r} and track "
                     f"{track.id} is {track.label_class!r}"
                 )
-            asset = uow.assets.get(occurrence.asset_id)
-            if asset is None:
-                raise WorkspaceCorrupt(
-                    f"occurrence {occurrence.id} names asset {occurrence.asset_id}, "
-                    f"which does not exist"
-                )
-            if geometry_reference(annotation.geometry, modality=asset.modality) is not None:
-                raise InvalidAnnotation(
-                    f"annotation {annotation.id} is a {annotation.geometry.type.value}, and a "
-                    f"track follows 2D geometry only"
-                )
+            require_trackable(uow, annotation)
             if any(o.occurrence_id == occurrence.id for o in uow.track_observations.list(track.id)):
                 raise OccurrenceAlreadyObserved(
                     f"track {track.id} already observes occurrence {occurrence.id} "
@@ -245,7 +244,11 @@ class TrackService:
                 )
             require_writable(job, frame.asset_id)
             observation = uow.observation_of(frame.annotation_id)
-            assert observation is not None
+            if observation is None:
+                raise WorkspaceCorrupt(
+                    f"track {track.id} lists annotation {frame.annotation_id}, which no "
+                    f"observation names"
+                )
             uow.track_observations.delete(observation.id)
             return _detail(uow, track)
 
@@ -263,6 +266,7 @@ class TrackService:
             TrackNotFound: no such track in the job's project.
             AssetNotInJob: the job does not carry an observed asset.
             AssetNotWritable: an observed asset's progress says its labeling is over.
+            LabelClassNotInSchema: the batch's pinned version does not declare the class.
             InvalidAnnotation: a rewritten annotation does not satisfy the pinned version.
             StaleWrite: an asset moved between this call's read and its write.
             WorkspaceCorrupt: the open batch has no pinned schema version.
@@ -271,14 +275,14 @@ class TrackService:
             job, batch = self._open(uow, job_id)
             track = self._require_track(uow, track_id, project_id=batch.project_id)
             renamed = Track.model_validate({**track.model_dump(), "label_class": label_class})
+            _require_declared(self._annotations.pinned_schema(batch), label_class)
             frames = _detail(uow, track).observations
             _require_scope(job, frames)
             if renamed == track:
                 return _detail(uow, track)
             replacements = []
             for frame in frames:
-                annotation = uow.annotations.get(frame.annotation_id)
-                assert annotation is not None
+                annotation = self._annotations.require_annotation(uow, frame.annotation_id)
                 replacements.append(annotation.model_copy(update={"label_class": label_class}))
             uow.tracks.update(renamed)
             stored = self._annotations.update_in(uow, job, batch, replacements)
@@ -497,6 +501,14 @@ def _detail(uow: UnitOfWork, track: Track) -> TrackDetail:
         )
     frames.sort(key=lambda frame: frame.position)
     return TrackDetail(track=track, observations=tuple(frames))
+
+
+def _require_declared(schema: AnnotationSchema, label_class: str) -> None:
+    if not any(declared.name == label_class for declared in schema.classes):
+        raise LabelClassNotInSchema(
+            f"class {label_class!r} is not in schema version {schema.version}, so no "
+            f"annotation of it could be observed"
+        )
 
 
 def _require_scope(job: AnnotationJob, frames: Iterable[ObservedFrame]) -> None:

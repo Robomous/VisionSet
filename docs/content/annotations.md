@@ -382,17 +382,21 @@ everything above - schema validation, provenance, progress - is untouched by tra
   identity, unique per source (`TRACK_EXTERNAL_ID_TAKEN`).
 - **Changing a class rewrites every observed annotation, or nothing.** The rewrite is an ordinary
   `update` against the batch's pinned version, in the same transaction as the track, so a class the
-  version does not declare, or one that declares another geometry, refuses the whole change.
+  version does not declare, or one that declares another geometry, refuses the whole change. Being an
+  edit, it moves a `pre_labeled` asset to `annotated`, as any edit does. A track's class must be
+  declared - by the active version on creation, by the pinned one on a change - and an edit through
+  `update` cannot take an observed annotation off its track's class or into 3D.
 - **Merge and split are one transaction each.** Merge needs the same source and class and disjoint
   occurrences; the surviving track keeps its external id, or takes the absorbed track's when it has
-  none. A split cuts at an occurrence of the track's source: that position and every later one move
-  to a new track of the same class, and a cut that would leave either track empty is
+  none; when both carry one, the absorbed track's is dropped with it. A split cuts at an occurrence of the track's source: that position and every later one move
+  to a new track of the same class and no external id, and a cut that would leave either track empty is
   `TRACK_SPLIT_EMPTY`. Gaps need nothing: a track ends where its observations end and reappears at
   the next one.
 - **Deletion.** Deleting an annotation deletes its observation, and deleting a track deletes its
   observations only. Deleting the annotations as well is its own operation,
   `delete_with_annotations`, which removes them through `delete` and so moves progress the same way.
-  Deleting a source or an occurrence deletes what observes it.
+  Deleting a source or an occurrence deletes what observes it, and so does a pre-label run replacing
+  a model's annotation a track observed.
 - **A paste is never observed.** Copy and paste mints a fresh annotation id
   ([below](#copy-and-paste-and-where-a-clipboard-lives)), so the pasted label belongs to no track.
 
@@ -402,11 +406,13 @@ operation touches an asset that job carries at a writable progress - the same `r
 check `add`, `update` and `delete` make, refusing with `ASSET_NOT_IN_JOB` or `ASSET_NOT_WRITABLE`.
 Merge, split, a class change and deletion touch every observation of every track they name, so a
 job holding some of a track's assets - a correction batch's, say - cannot restructure the rest; it
-can still observe or unobserve the frames it holds. A completed batch is never reopened for it.
+can still observe or unobserve the frames it holds. A track with no observations touches no asset, so any
+open job of its project may change, merge or delete it. A completed batch is never reopened for it.
 
 **Status is derived, never stored.** `TrackService.status(track, batch)` counts the track's
 observations by the progress their assets hold in that batch's jobs, plus `outside` for those on
-assets the batch does not hold; `settled` is true when every counted one is in `SETTLED_PROGRESS`.
+assets the batch does not hold; `settled` is true when the batch holds every observation and each
+sits on an asset in `SETTLED_PROGRESS`.
 Settling one asset says nothing about another in the same track, and no progress state was added.
 
 ## Over HTTP

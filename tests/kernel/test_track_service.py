@@ -21,6 +21,7 @@ from visionset.kernel import (
     DisallowedGeometry,
     FrameOccurrenceNotFound,
     InvalidAnnotation,
+    JobFinished,
     LabelClassNotInSchema,
     ObservationNotFound,
     OccurrenceAlreadyObserved,
@@ -492,7 +493,10 @@ def test_a_job_holding_part_of_a_track_cannot_restructure_it(world: World) -> No
         box = world.box(job, clip.at(position).asset_id)
         world.tracks.observe(job.id, track.id, clip.at(position).id, box.id)
 
+    other = world.tracks.create(clip.source_id, "car").track
     for attempt in (
+        lambda: world.tracks.merge(first.id, track.id, other.id),
+        lambda: world.tracks.merge(first.id, other.id, track.id),
         lambda: world.tracks.change_class(first.id, track.id, "van"),
         lambda: world.tracks.split(first.id, track.id, clip.at(1).id),
         lambda: world.tracks.delete(first.id, track.id),
@@ -682,7 +686,7 @@ def test_the_store_holds_one_observation_per_annotation_and_per_occurrence(world
             uow.track_observations.add(observation)
 
 
-def test_the_polygon_class_is_not_reached_by_a_box(world: World) -> None:
+def test_a_track_follows_a_polygon_class_as_well_as_a_box(world: World) -> None:
     clip = world.clip()
     (job,) = world.working(clip.batch_id)
     lane = world.annotations.add(
@@ -713,3 +717,75 @@ def test_an_observed_annotation_keeps_its_tracks_class_under_an_edit(world: Worl
         update={"geometry": BboxGeometry(x=2.0, y=2.0, width=4.0, height=4.0)}
     )
     assert world.annotations.update(job.id, [moved])[0].label_class == "car"
+
+
+def test_a_track_class_must_be_declared(world: World) -> None:
+    clip = world.clip()
+    (job,) = world.working(clip.batch_id)
+    with pytest.raises(LabelClassNotInSchema):
+        world.tracks.create(clip.source_id, "ghost")
+    empty = world.tracks.create(clip.source_id, "car")
+    with pytest.raises(LabelClassNotInSchema):
+        world.tracks.change_class(job.id, empty.track.id, "ghost")
+    assert world.tracks.change_class(job.id, empty.track.id, "van").track.label_class == "van"
+
+
+def test_the_same_class_again_changes_nothing(world: World) -> None:
+    clip = world.clip()
+    (job,) = world.working(clip.batch_id)
+    detail = world.observed(job, clip, [0])
+    heard: list[AnnotationsWritten] = []
+    world.workspace.event_bus.subscribe(AnnotationsWritten, heard.append)
+    assert world.tracks.change_class(job.id, detail.track.id, "car") == detail
+    assert heard == []
+
+
+def test_a_merge_keeps_the_survivors_own_external_id(world: World) -> None:
+    clip = world.clip()
+    (job,) = world.working(clip.batch_id)
+    kept = world.tracks.create(clip.source_id, "car", external_id="a").track
+    absorbed = world.tracks.create(clip.source_id, "car", external_id="b").track
+    assert world.tracks.merge(job.id, kept.id, absorbed.id).track.external_id == "a"
+    created = world.tracks.create(clip.source_id, "car", external_id="b")
+    assert created.track.external_id == "b"
+
+
+def test_a_finished_job_writes_no_track(world: World) -> None:
+    clip = world.clip()
+    (job,) = world.working(clip.batch_id)
+    detail = world.observed(job, clip, [0])
+    for occurrence in clip.occurrences:
+        if world.progress(job, occurrence.asset_id) is not AssetProgress.ANNOTATED:
+            world.jobs.mark(job.id, occurrence.asset_id, AssetProgress.ANNOTATED)
+    world.jobs.complete(job.id)
+    with pytest.raises(JobFinished):
+        world.tracks.delete(job.id, detail.track.id)
+
+
+def test_an_observed_annotation_is_not_edited_into_3d(world: World) -> None:
+    SchemaService(world.workspace).create_version(
+        world.project.id,
+        [
+            LabelClass(name="car", geometries=(GeometryType.BBOX, GeometryType.CUBOID_3D)),
+            VAN,
+            LANE,
+        ],
+    )
+    clip = world.clip()
+    (job,) = world.working(clip.batch_id)
+    detail = world.observed(job, clip, [0])
+    observed = world.annotations.get(detail.observations[0].annotation_id)
+    cuboid = Cuboid3DGeometry(center=(0.0, 0.0, 5.0), size=(1.0, 1.0, 1.0), yaw=0.0)
+    with pytest.raises(InvalidAnnotation):
+        world.annotations.update(job.id, [observed.model_copy(update={"geometry": cuboid})])
+
+
+def test_settled_needs_every_observation_inside_the_batch(world: World) -> None:
+    clip = world.clip()
+    (job,) = world.working(clip.batch_id)
+    detail = world.observed(job, clip, [0])
+    assert world.tracks.status(detail.track.id, clip.batch_id).settled
+    elsewhere = world.batches.create(world.project.id, "none")
+    assert not world.tracks.status(detail.track.id, elsewhere.id).settled
+    empty = world.tracks.create(clip.source_id, "car")
+    assert not world.tracks.status(empty.track.id, clip.batch_id).settled

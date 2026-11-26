@@ -83,7 +83,17 @@ class TrackStatus(BaseModel):
 
     @property
     def settled(self) -> bool:
-        """Every observation the batch holds sits on a settled asset."""
-        return all(
-            count == 0 for state, count in self.progress.items() if state not in SETTLED_PROGRESS
+        """The batch holds every observation, and each sits on a settled asset.
+
+        False for a track with no observation, or with one outside the batch.
+        """
+        counted = sum(self.progress.values())
+        return (
+            counted > 0
+            and self.outside == 0
+            and all(
+                count == 0
+                for state, count in self.progress.items()
+                if state not in SETTLED_PROGRESS
+            )
         )

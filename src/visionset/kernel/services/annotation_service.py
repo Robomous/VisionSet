@@ -191,7 +191,7 @@ class AnnotationService:
             job = self._jobs.require_job(uow, job_id)
             batch = self._jobs.require_open_batch(uow, job)
             self._jobs.hold_open_job(uow, job)
-            schema = self._pinned_schema(batch)
+            schema = self.pinned_schema(batch)
 
             # `job_id` is stamped exactly like `schema_version`, and for the same
             # reason: the service knows which round this is and the caller does
@@ -280,7 +280,7 @@ class AnnotationService:
             job = self._jobs.require_job(uow, job_id)
             batch = self._jobs.require_open_batch(uow, job)
             self._jobs.hold_open_job(uow, job)
-            schema = self._pinned_schema(batch)
+            schema = self.pinned_schema(batch)
 
             superseded = tuple(dict.fromkeys(replacing))
             for asset_id in superseded:
@@ -424,7 +424,8 @@ class AnnotationService:
             AssetNotInJob: a stored annotation sits on an asset outside this job.
             AssetNotWritable: an asset's progress says its labeling is over.
             InvalidAnnotation: a replacement does not satisfy the pinned version,
-                or claims a ``provenance`` other than the stored one.
+                or claims a ``provenance`` other than the stored one, or gives an
+                annotation a track observes a 3D geometry.
             TrackClassMismatch: a replacement changes the class of an annotation
                 a track observes to one other than the track's.
             CalibrationMissing: a 3D label names an asset with no calibration,
@@ -459,7 +460,8 @@ class AnnotationService:
             AssetNotInJob: a stored annotation sits on an asset outside this job.
             AssetNotWritable: an asset's progress says its labeling is over.
             InvalidAnnotation: a replacement does not satisfy the pinned version,
-                or claims a ``provenance`` other than the stored one.
+                or claims a ``provenance`` other than the stored one, or gives an
+                annotation a track observes a 3D geometry.
             TrackClassMismatch: a replacement changes the class of an annotation
                 a track observes to one other than the track's.
             CalibrationMissing: a 3D label names an asset with no calibration,
@@ -468,7 +470,7 @@ class AnnotationService:
                 calibration was measured at another size.
             WorkspaceCorrupt: the open batch has no pinned schema version.
         """
-        schema = self._pinned_schema(batch)
+        schema = self.pinned_schema(batch)
         replacements = []
         reads = _AssetReads(uow)
         for index, annotation in enumerate(annotations):
@@ -619,7 +621,7 @@ class AnnotationService:
 
     # --- lookups shared by the operations above ----------------------------
 
-    def _pinned_schema(self, batch: Batch) -> AnnotationSchema:
+    def pinned_schema(self, batch: Batch) -> AnnotationSchema:
         """The version this batch's work is judged against.
 
         A nested read, which is why every caller does it before its first write:
@@ -805,9 +807,7 @@ def _require_same_provenance(current: Annotation, replacement: Annotation) -> No
 
 
 def _require_track_class(uow: UnitOfWork, current: Annotation, replacement: Annotation) -> None:
-    """Refuse a class edit that would leave an observed annotation off its track's class."""
-    if replacement.label_class == current.label_class:
-        return
+    """Refuse an edit that would take an observed annotation off its track's class or into 3D."""
     observation = uow.observation_of(current.id)
     if observation is None:
         return
@@ -816,6 +816,25 @@ def _require_track_class(uow: UnitOfWork, current: Annotation, replacement: Anno
         raise TrackClassMismatch(
             f"annotation {current.id} is observed by track {track.id}, which is "
             f"{track.label_class!r}; change the track's class to change it"
+        )
+    require_trackable(uow, replacement)
+
+
+def require_trackable(uow: UnitOfWork, annotation: Annotation) -> None:
+    """Refuse an annotation a track may not observe: a track follows 2D geometry only.
+
+    Raises:
+        InvalidAnnotation: the annotation is a 3D label.
+    """
+    asset = uow.assets.get(annotation.asset_id)
+    if asset is None:
+        raise WorkspaceCorrupt(
+            f"annotation {annotation.id} names asset {annotation.asset_id}, which does not exist"
+        )
+    if geometry_reference(annotation.geometry, modality=asset.modality) is not None:
+        raise InvalidAnnotation(
+            f"annotation {annotation.id} is a {annotation.geometry.type.value}, and a "
+            f"track follows 2D geometry only"
         )
 
 

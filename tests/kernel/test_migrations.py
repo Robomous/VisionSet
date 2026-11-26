@@ -26,7 +26,7 @@ from sqlalchemy.exc import IntegrityError
 from visionset.kernel.adapters import SqliteMetadataStore
 from visionset.kernel.adapters._tables import META_TABLE, Base
 from visionset.kernel.adapters.migrations import FORMAT_VERSION, MIGRATIONS
-from visionset.kernel.domain import FrameOccurrence, IngestFailureKind
+from visionset.kernel.domain import FrameOccurrence, IngestFailureKind, Track
 from visionset.kernel.errors import (
     ConstraintViolated,
     WorkspaceCorrupt,
@@ -1360,6 +1360,11 @@ def test_a_generation_24_file_gains_empty_track_tables_and_keeps_its_occurrences
     with migrated.unit_of_work() as uow:
         assert uow.tracks.list() == []
         assert [o.asset_id for o in uow.frame_occurrences.list(clip)] == [asset]
+    with migrated.unit_of_work() as uow:
+        uow.tracks.add(Track(source_id=clip, label_class="car"))
     with migrated.engine.begin() as connection:
         MIGRATIONS[24].upgrade(connection)
+    assert _schema(migrated) == expected
+    with migrated.unit_of_work() as uow:
+        assert [t.label_class for t in uow.tracks.list(clip)] == ["car"]
     migrated.close()
