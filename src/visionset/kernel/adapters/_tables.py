@@ -291,11 +291,11 @@ class AssetRow(Base):
     uri: Mapped[str] = mapped_column(String, nullable=False)
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # ``asset`` is the table a migration can only ever *alter*: four tables carry
+    # ``asset`` is the table a migration can only ever *alter*: five tables carry
     # ``ON DELETE CASCADE`` keys into it (``batch_asset``, ``annotation``,
-    # ``dataset_member``, ``annotation_job_asset``), and under
-    # ``PRAGMA foreign_keys = ON`` a ``DROP TABLE`` runs an implicit ``DELETE``
-    # that takes all four silently. So a column added here arrives by ``ALTER``,
+    # ``dataset_member``, ``annotation_job_asset``, ``frame_occurrence``), and
+    # under ``PRAGMA foreign_keys = ON`` a ``DROP TABLE`` runs an implicit
+    # ``DELETE`` that takes all five silently. So a column added here arrives by ``ALTER``,
     # goes last, and cannot carry a foreign key — the seven below are in that
     # position already, and ``source_id`` says what the last part costs.
     #: The decoded format, never the filename's suffix.
@@ -955,3 +955,26 @@ class VideoImportFrameRow(Base):
     #: A rendered preview, or NULL when it would not render — a cache, exactly
     #: as on ``asset``, and the state ``backfill_thumbnails`` repairs.
     thumbnail_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class FrameOccurrenceRow(Base):
+    """One extraction-grid position of a source, and the asset it decoded to.
+
+    The unique constraint is the identity, as on ``video_import_frame``. Both keys
+    cascade: an occurrence means nothing without its source or its asset.
+    """
+
+    __tablename__ = "frame_occurrence"
+    __table_args__ = (
+        UniqueConstraint("source_id", "position", name="uq_frame_occurrence_source_position"),
+    )
+
+    id: Mapped[UUID] = mapped_column(SaUuid, primary_key=True)
+    source_id: Mapped[UUID] = mapped_column(
+        SaUuid, ForeignKey("source.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    timestamp: Mapped[float] = mapped_column(Float, nullable=False)
+    asset_id: Mapped[UUID] = mapped_column(
+        SaUuid, ForeignKey("asset.id", ondelete="CASCADE"), index=True, nullable=False
+    )

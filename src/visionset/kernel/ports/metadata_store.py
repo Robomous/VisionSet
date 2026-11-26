@@ -28,6 +28,7 @@ from visionset.kernel.domain import (
     Dataset,
     DatasetChange,
     DatasetMember,
+    FrameOccurrence,
     InferenceConnection,
     IngestJob,
     Modality,
@@ -156,6 +157,15 @@ class UnitOfWork(Protocol):
         both to adjudicate an append and to build the assets at commit — so a
         lookup by ordinal is a dict the service builds rather than a query the
         port grows.
+        """
+        ...
+
+    @property
+    def frame_occurrences(self) -> Repository[FrameOccurrence]:
+        """Each source's extraction-grid positions, parented on the source.
+
+        Unique on ``(source_id, position)``. An asset reached at two positions has
+        two occurrences, so this, not the asset, is what says where a frame sat.
         """
         ...
 

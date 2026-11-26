@@ -55,6 +55,7 @@ from visionset.kernel.domain import (
     Dataset,
     DatasetChange,
     DatasetMember,
+    FrameOccurrence,
     Geometry,
     ImageFormat,
     InferenceConnection,
@@ -836,6 +837,9 @@ VIDEO_IMPORTS: EntityMapping[VideoImport] = EntityMapping(
 #: ``Repository`` has.
 VIDEO_IMPORT_FRAMES: EntityMapping[StagedFrame] = _flat_mapping(
     StagedFrame, t.VideoImportFrameRow, "import_id"
+)
+FRAME_OCCURRENCES: EntityMapping[FrameOccurrence] = _flat_mapping(
+    FrameOccurrence, t.FrameOccurrenceRow, "source_id"
 )
 SOURCES: EntityMapping[Source] = EntityMapping(
     row=t.SourceRow,
