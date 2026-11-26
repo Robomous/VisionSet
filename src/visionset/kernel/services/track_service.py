@@ -444,11 +444,16 @@ class TrackService:
     # --- lookups -----------------------------------------------------------
 
     def _open(self, uow: UnitOfWork, job_id: UUID) -> tuple[AnnotationJob, Batch]:
-        """The job and its batch, past the gates every annotation write passes, held open."""
+        """The job and its batch, past the gates every annotation write passes, held open.
+
+        The job is read again once held: its progress is what ``require_writable``
+        judges, and a mark committed before the lock would otherwise be judged
+        stale and written over.
+        """
         job = self._jobs.require_job(uow, job_id)
         batch = self._jobs.require_open_batch(uow, job)
         self._jobs.hold_open_job(uow, job)
-        return job, batch
+        return self._jobs.require_job(uow, job_id), batch
 
     def _project_of(self, uow: UnitOfWork, track: Track) -> UUID:
         return self._sources.require_source(uow, track.source_id).project_id

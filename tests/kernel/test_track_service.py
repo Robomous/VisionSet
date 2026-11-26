@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -55,6 +55,7 @@ from visionset.kernel.domain import (
     TrackObservation,
     VideoMetadata,
 )
+from visionset.kernel.ports import UnitOfWork
 from visionset.kernel.services import (
     AnnotationService,
     BatchService,
@@ -543,6 +544,63 @@ def test_a_settled_asset_refuses_a_new_observation(world: World) -> None:
         world.tracks.observe(job.id, track.id, clip.at(0).id, box.id)
 
 
+class _AcceptedAfterFirstRead(JobService):
+    """Accepts ``asset_id`` from another workspace right after the call first reads the job.
+
+    Single-threaded: the write has not taken its lock yet, so a second
+    connection can still commit in the gap, which is all the race needs.
+    """
+
+    def __init__(self, workspace: WorkspaceService, job_id: UUID, asset_id: UUID) -> None:
+        super().__init__(workspace)
+        self._pending: tuple[UUID, UUID] | None = (job_id, asset_id)
+
+    def require_job(self, uow: UnitOfWork, job_id: UUID) -> AnnotationJob:
+        job = super().require_job(uow, job_id)
+        pending, self._pending = self._pending, None
+        if pending is not None:
+            elsewhere = WorkspaceService.open(self._workspace.root)
+            try:
+                jobs = JobService(elsewhere)
+                jobs.mark(*pending, AssetProgress.REVIEW_PENDING)
+                jobs.mark(*pending, AssetProgress.ACCEPTED)
+            finally:
+                elsewhere.close()
+        return job
+
+
+def _prepared(world: World, job: AnnotationJob, clip: Clip, operation: str) -> Callable[[], object]:
+    """The write, its tracks already in place, each touching the asset at position 0."""
+    tracks = world.tracks
+    if operation == "observe":
+        track = world.observed(job, clip, [1]).track
+        box = world.box(job, clip.at(0).asset_id)
+        return lambda: tracks.observe(job.id, track.id, clip.at(0).id, box.id)
+    if operation == "merge":
+        kept = world.observed(job, clip, [1]).track
+        absorbed = world.observed(job, clip, [0]).track
+        return lambda: tracks.merge(job.id, kept.id, absorbed.id)
+    track = world.observed(job, clip, [0, 1, 2]).track
+    if operation == "unobserve":
+        return lambda: tracks.unobserve(job.id, track.id, clip.at(0).id)
+    if operation == "split":
+        return lambda: tracks.split(job.id, track.id, clip.at(2).id)
+    return lambda: tracks.delete(job.id, track.id)
+
+
+@pytest.mark.parametrize("operation", ["observe", "unobserve", "merge", "split", "delete"])
+def test_a_track_write_judges_the_progress_it_holds_the_lock_on(
+    world: World, operation: str
+) -> None:
+    clip = world.clip()
+    (job,) = world.working(clip.batch_id)
+    write = _prepared(world, job, clip, operation)
+    world.tracks._jobs = _AcceptedAfterFirstRead(world.workspace, job.id, clip.at(0).asset_id)
+    with pytest.raises(AssetNotWritable):
+        write()
+    assert world.progress(job, clip.at(0).asset_id) is AssetProgress.ACCEPTED
+
+
 def test_a_track_of_another_project_is_not_found_through_this_job(
     world: World, tmp_path: Path
 ) -> None:
@@ -744,9 +802,7 @@ def test_a_blank_class_or_external_id_is_an_invalid_name(
 
 
 @pytest.mark.parametrize("label_class", ["", "  "])
-def test_a_class_change_to_a_blank_class_is_an_invalid_name(
-    world: World, label_class: str
-) -> None:
+def test_a_class_change_to_a_blank_class_is_an_invalid_name(world: World, label_class: str) -> None:
     clip = world.clip()
     (job,) = world.working(clip.batch_id)
     detail = world.observed(job, clip, [0])
