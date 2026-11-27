@@ -20,16 +20,20 @@ import { refusalProse } from "../data/refusals";
 import { Withheld } from "./Withheld";
 import {
   observationOf,
+  sequenceTrackLabel,
   trackAnchor,
   trackName,
   trackStatusLine,
   trackStep,
   useObserveTrack,
+  usePrefetchAssetOccurrences,
   useStartTrack,
   useTrackStatus,
   useUnobserveTrack,
   type FrameOccurrence,
+  type ReadFailure,
   type Track,
+  type TrackSequence,
 } from "./trackQueries";
 
 /** Which track the region is following, and where along it — held above the frame so it survives navigation. */
@@ -47,29 +51,10 @@ export interface TrackCandidate {
   readonly labelClass: string;
 }
 
-/** A read that failed, and how to ask again. */
-export interface ReadFailure {
-  readonly error: unknown;
-  readonly retry: () => void;
-}
-
-/** One sequence source the frame sits in: its positions there, and its tracks. */
-export interface TrackSequence {
-  readonly sourceId: string;
-  /** The heading over this source's tracks; null when the frame sits in only one, which goes unnamed. */
-  readonly heading: string | null;
-  /** The source's name for a track's name and an outcome; null when unnamed or not read. */
-  readonly name: string | null;
-  readonly here: readonly FrameOccurrence[];
-  /** Null while this source's tracks have never been read. */
-  readonly tracks: readonly Track[] | null;
-  /** This source's last tracks read failed. */
-  readonly failure: ReadFailure | null;
-}
-
 export interface TrackRegionProps {
   readonly jobId: string;
   readonly batchId: string;
+  readonly projectId: string;
   readonly assetId: string;
   readonly sequences: readonly TrackSequence[];
   /** The job's assets, in the job's order: a step lands only on one of these. */
@@ -85,8 +70,6 @@ export interface TrackRegionProps {
   readonly serverIdOf: (localId: string) => string | null;
   /** Save first, then run `then` — only if the save stored everything. */
   readonly saveThen: (then: () => void) => void;
-  /** Read ahead what the frames these assets would show, before a step opens one. */
-  readonly prefetch: (assetIds: readonly string[]) => void;
   /** Open the job's asset at that position, saving first, then run `then`. */
   readonly openAsset: (index: number, then: () => void) => void;
   readonly focus: TrackFocus | null;
@@ -103,16 +86,6 @@ export type TrackOutcome = { readonly tone: "error" | "done"; readonly text: str
 
 function frameWord(position: number, source: string | null = null): string {
   return source === null ? `frame ${position}` : `frame ${position} in ${source}`;
-}
-
-/**
- * A track's name, and its source's when the frame sits in several: two sources
- * can each have a `car 7`.
- */
-export function sequenceTrackLabel(track: Track, sequences: readonly TrackSequence[]): string {
-  const sequence = sequences.find((one) => one.sourceId === track.source_id);
-  const name = trackName(track, sequence?.tracks ?? [track]);
-  return sequence?.name == null ? name : `${name} in ${sequence.name}`;
 }
 
 export function TrackRegion(props: TrackRegionProps): JSX.Element {
@@ -329,7 +302,7 @@ function FocusedTrack({
   onFocus,
   jobAssetIds,
   openAsset,
-  prefetch,
+  projectId,
   withheld,
   observeWithheld,
   candidate,
@@ -351,6 +324,7 @@ function FocusedTrack({
   readonly onUnobserve: (occurrence: FrameOccurrence) => void;
 }): JSX.Element {
   const status = useTrackStatus(track.id, batchId);
+  const prefetch = usePrefetchAssetOccurrences(projectId);
   const inJob = new Set(jobAssetIds);
   const last = focus?.trackId === track.id ? focus.position : null;
   const anchor = trackAnchor(track, here, last);

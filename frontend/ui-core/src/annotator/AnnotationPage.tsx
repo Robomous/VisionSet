@@ -185,8 +185,17 @@ import { REFUSAL_PROSE, refusalProse } from "../data/refusals";
 import { Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, HoverCard, HoverCardContent, HoverCardTrigger, Kbd, Tooltip, TooltipContent, TooltipTrigger, cn } from "@robomous/ui-core";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { AnnotatorPanel, type TrackMark } from "./AnnotatorPanel";
-import { TrackRegion, sequenceTrackLabel, type TrackCandidate, type TrackFocus, type TrackOutcome, type TrackSequence } from "./TrackRegion";
-import { observationOf, sequencesOf, useAssetOccurrences, usePrefetchAssetOccurrences, useSourceNames, useSourcesTracks } from "./trackQueries";
+import { TrackRegion, type TrackCandidate, type TrackFocus, type TrackOutcome } from "./TrackRegion";
+import {
+  observationOf,
+  sequenceTrackLabel,
+  sequencesOf,
+  useAssetOccurrences,
+  usePrefetchAssetOccurrences,
+  useSourceNames,
+  useSourcesTracks,
+  type TrackSequence,
+} from "./trackQueries";
 import { GeometryIcon } from "./GeometryIcon";
 import { keepCanvasFocus } from "./keepCanvasFocus";
 import { Withheld } from "./Withheld";
@@ -3366,6 +3375,7 @@ function Workspace({
                   <TrackRegion
                     jobId={jobId}
                     batchId={batchId}
+                    projectId={projectId}
                     assetId={asset.id}
                     sequences={trackSequences}
                     jobAssetIds={jobAssetIds}
@@ -3376,7 +3386,6 @@ function Workspace({
                     serverIdOf={serverIdOf}
                     saveThen={attempt}
                     openAsset={openTrackStep}
-                    prefetch={prefetchOccurrences}
                     focus={trackFocus}
                     onFocus={onTrackFocus}
                     colorOf={(labelClass) => classColor(classNamed(store.document, labelClass), labelClass)}

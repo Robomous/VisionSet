@@ -275,6 +275,36 @@ export function sequencesOf(occurrences: readonly FrameOccurrence[]): readonly F
   return [...bySource].map(([sourceId, here]) => ({ sourceId, here }));
 }
 
+/** A read that failed, and how to ask again. */
+export interface ReadFailure {
+  readonly error: unknown;
+  readonly retry: () => void;
+}
+
+/** One sequence source the frame sits in: its positions there, and its tracks. */
+export interface TrackSequence {
+  readonly sourceId: string;
+  /** The heading over this source's tracks; null when the frame sits in only one, which goes unnamed. */
+  readonly heading: string | null;
+  /** The source's name for a track's name and an outcome; null when unnamed or not read. */
+  readonly name: string | null;
+  readonly here: readonly FrameOccurrence[];
+  /** Null while this source's tracks have never been read. */
+  readonly tracks: readonly Track[] | null;
+  /** This source's last tracks read failed. */
+  readonly failure: ReadFailure | null;
+}
+
+/**
+ * A track's name, and its source's when the frame sits in several: two sources
+ * can each have a `car 7`.
+ */
+export function sequenceTrackLabel(track: Track, sequences: readonly TrackSequence[]): string {
+  const sequence = sequences.find((one) => one.sourceId === track.source_id);
+  const name = trackName(track, sequence?.tracks ?? [track]);
+  return sequence?.name == null ? name : `${name} in ${sequence.name}`;
+}
+
 /** Which track observes this annotation, and where. An annotation is observed at most once. */
 export function observationOf(
   tracks: readonly Track[],
