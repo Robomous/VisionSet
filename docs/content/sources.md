@@ -40,6 +40,12 @@ through `SourceService.add_image_sequence_in`, with the sequence's frame occurre
 can observe them. Like a video import, every run writes a new one, under a fresh
 `image-sequence-import:<uuid4>` locator that names no path, and nothing ingests from it.
 
+A `POINT_CLOUD_SEQUENCE` source is the same for scans: an import whose dataset orders its scans,
+such as a nuScenes scene, writes one per sequence through `SourceService.add_point_cloud_sequence_in`,
+under a `point-cloud-sequence-import:<uuid4>` locator. It declares no `frame` and takes no
+calibration (`CALIBRATION_NOT_APPLICABLE`): each scan stays an asset of the point-cloud directory
+at the import root, whose declared frame its labels are read in.
+
 `register_images` checks that the directory exists and is a directory, and stops there. What is
 *in* it is read at ingest, because a count taken at registration would be stale by the time
 anything used it.
@@ -48,13 +54,13 @@ anything used it.
 
 | Field | Meaning |
 | --- | --- |
-| `kind` | `image_directory`, `point_cloud_directory`, `video` or `image_sequence` - a `SourceKind` |
+| `kind` | `image_directory`, `point_cloud_directory`, `video`, `image_sequence` or `point_cloud_sequence` - a `SourceKind` |
 | `locator` | identifies the origin; only the two directory kinds promise it is a path this process can open |
 | `display_name` | what somebody asked this source to be *called*, or `None` for nobody said |
 | `registered_at` | timezone-aware UTC, the **first** registration |
 | `capture_params` | opaque operator-supplied provenance; nothing branches on it |
 | `video` | a `VideoProvenance`, present exactly when `kind` is `video` |
-| `calibration` | the camera behind its frames, or `None` - see [Camera calibration](#camera-calibration). Never on a point-cloud directory |
+| `calibration` | the camera behind its frames, or `None` - see [Camera calibration](#camera-calibration). Never on a point-cloud directory or sequence |
 | `frame` | the axis convention a point-cloud directory's scans are written in, present exactly when `kind` is `point_cloud_directory` |
 
 `locator` is the domain's name for what used to be unconditionally `path`, and the rename is the

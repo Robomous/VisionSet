@@ -1725,7 +1725,8 @@ export interface paths {
          *     is 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409
          *     `JOB_FINISHED`. An annotation a track observes keeps the track's class: an
          *     edit to any other class is 409 `TRACK_CLASS_MISMATCH`, so change the track's
-         *     class instead. An edit is a write, and every gate that stops a new label
+         *     class instead, and its geometry type: an edit to another is 409
+         *     `TRACK_GEOMETRY_MISMATCH`. An edit is a write, and every gate that stops a new label
          *     stops a replacement too — including 409 `CALIBRATION_MISSING` and 422
          *     `CALIBRATION_RESOLUTION_MISMATCH` for a 3D label, and on a scan 409
          *     `CALIBRATION_MISSING` for a source declaring no frame and 422
@@ -2134,13 +2135,14 @@ export interface paths {
          * Merge Tracks
          * @description Move every observation of `body.track_id` onto this track, and delete that one.
          *
-         *     The tracks share a source and a class and observe disjoint occurrences. This
+         *     The tracks share a source, a class and a geometry type, and observe disjoint
+         *     occurrences. This
          *     track keeps its own `external_id`, and takes the absorbed one's when it has
          *     none. 404: `JOB_NOT_FOUND`, `TRACK_NOT_FOUND`. 409: `BATCH_NOT_IN_ANNOTATION`,
          *     `JOB_FINISHED`, `ASSET_NOT_IN_JOB` (rendered as a 409 here: act through the
          *     job holding both tracks' observations), `ASSET_NOT_WRITABLE`,
-         *     `TRACK_CLASS_MISMATCH`, `OCCURRENCE_ALREADY_OBSERVED`. 422:
-         *     `TRACK_MERGE_WITH_ITSELF`, `TRACK_SOURCE_MISMATCH`.
+         *     `TRACK_CLASS_MISMATCH`, `TRACK_GEOMETRY_MISMATCH`, `OCCURRENCE_ALREADY_OBSERVED`.
+         *     422: `TRACK_MERGE_WITH_ITSELF`, `TRACK_SOURCE_MISMATCH`.
          */
         post: operations["merge_tracks"];
         delete?: never;
@@ -2163,13 +2165,15 @@ export interface paths {
          * @description Record that the track is seen at an occurrence, as an annotation drawn there.
          *
          *     The annotation must sit on the occurrence's asset, carry the track's class
-         *     and be 2D, and that asset must not be `pre_labeled`: a model's output nobody
-         *     has judged is not tracked. 404: `JOB_NOT_FOUND`, `TRACK_NOT_FOUND`,
+         *     and its geometry type, and be a 2D label on an image or a `cuboid_3d` on a
+         *     scan, and that asset must not be `pre_labeled`: a model's output nobody has
+         *     judged is not tracked. 404: `JOB_NOT_FOUND`, `TRACK_NOT_FOUND`,
          *     `FRAME_OCCURRENCE_NOT_FOUND`, `ANNOTATION_NOT_FOUND`. 409:
          *     `BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`, `ASSET_NOT_IN_JOB` (rendered as a
          *     409 here: the job does not carry the occurrence's asset), `ASSET_NOT_WRITABLE`,
-         *     `ASSET_NOT_JUDGED`, `TRACK_CLASS_MISMATCH`, `OCCURRENCE_ALREADY_OBSERVED`,
-         *     `ANNOTATION_ALREADY_OBSERVED`. 422: `TRACK_SOURCE_MISMATCH`,
+         *     `ASSET_NOT_JUDGED`, `TRACK_CLASS_MISMATCH`, `TRACK_GEOMETRY_MISMATCH`,
+         *     `OCCURRENCE_ALREADY_OBSERVED`, `ANNOTATION_ALREADY_OBSERVED`. 422:
+         *     `TRACK_SOURCE_MISMATCH`,
          *     `ANNOTATION_NOT_AT_OCCURRENCE`, `INVALID_ANNOTATION`.
          */
         post: operations["observe_track"];
@@ -3771,8 +3775,8 @@ export interface paths {
          *
          *     An occurrence is one position of a clip's extraction grid and the asset it
          *     decoded to; identical frames at two positions are one asset at two
-         *     occurrences. A source that is neither a video nor an image sequence has
-         *     none. An unknown source is 404 `SOURCE_NOT_FOUND`.
+         *     occurrences. A source that is not a video, an image sequence or a
+         *     point-cloud sequence has none. An unknown source is 404 `SOURCE_NOT_FOUND`.
          */
         get: operations["list_frame_occurrences"];
         put?: never;
@@ -3800,14 +3804,15 @@ export interface paths {
         put?: never;
         /**
          * Create Track
-         * @description Start an empty track of one class on a video or image-sequence source.
+         * @description Start an empty track of one class on a video, image-sequence or point-cloud-sequence source.
          *
          *     Not gated on a job: a track observes nothing until a job observes an
          *     annotation with it. The class must be declared by the project's active
          *     schema version. 404: `SOURCE_NOT_FOUND`, `SCHEMA_NOT_FOUND`. 409:
          *     `TRACK_EXTERNAL_ID_TAKEN`, for an `external_id` another track of the source
-         *     carries. 422: `SOURCE_NOT_SEQUENCE` for a source that is neither a video nor an image sequence,
-         *     `LABEL_CLASS_NOT_IN_SCHEMA`, `INVALID_NAME` for a blank class or external id.
+         *     carries. 422: `SOURCE_NOT_SEQUENCE` for a source that is not a video, an image
+         *     sequence or a point-cloud sequence, `LABEL_CLASS_NOT_IN_SCHEMA`, `INVALID_NAME`
+         *     for a blank class or external id.
          */
         post: operations["create_track"];
         delete?: never;
@@ -7638,7 +7643,7 @@ export interface components {
          *     — a ``StrEnum`` member *is* a ``str``.
          * @enum {string}
          */
-        SourceKind: "image_directory" | "video" | "point_cloud_directory" | "image_sequence";
+        SourceKind: "image_directory" | "video" | "point_cloud_directory" | "image_sequence" | "point_cloud_sequence";
         /**
          * SourceOut
          * @description A registered origin: a folder of stills, a clip, or a folder of point-cloud scans.

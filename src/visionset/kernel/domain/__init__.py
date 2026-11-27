@@ -405,6 +405,8 @@ from visionset.kernel.domain.segmentation import (
 )
 from visionset.kernel.domain.source import (
     DIRECTORY_KINDS,
+    IMPORTED_SEQUENCE_KINDS,
+    SCAN_KINDS,
     SEQUENCE_KINDS,
     Source,
     SourceKind,
@@ -611,6 +613,8 @@ __all__ = [
     "thinned",
     "require_image",
     "DIRECTORY_KINDS",
+    "IMPORTED_SEQUENCE_KINDS",
+    "SCAN_KINDS",
     "SEQUENCE_KINDS",
     "require_calibration",
     "AssetPrediction",

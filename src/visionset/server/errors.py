@@ -147,6 +147,7 @@ from visionset.kernel import (
     TooManyOpenVideoImports,
     TrackClassMismatch,
     TrackExternalIdTaken,
+    TrackGeometryMismatch,
     TrackingUnavailable,
     TrackMergeWithItself,
     TrackNotFound,
@@ -445,6 +446,7 @@ _HTTP: Final[dict[type[VisionSetError], _Http]] = {
     # annotation's class, and the identical request succeeds.
     TrackExternalIdTaken: _Http(409),
     TrackClassMismatch: _Http(409),
+    TrackGeometryMismatch: _Http(409),
     OccurrenceAlreadyObserved: _Http(409),
     AnnotationAlreadyObserved: _Http(409),
     AssetNotJudged: _Http(409),

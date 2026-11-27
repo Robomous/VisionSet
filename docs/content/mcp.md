@@ -211,7 +211,7 @@ call until the end. #439 has since added a job gate, but it changes none of this
 
 ### Tracks
 
-A track follows one object through the frame occurrences of a video or image-sequence source, observing an
+A track follows one object through the frame occurrences of a video, image-sequence or point-cloud-sequence source, observing an
 annotation already drawn at each (see
 [annotations.md](annotations.md#a-track-observes-annotations-an-annotation-knows-nothing-of-tracks)).
 
@@ -221,12 +221,12 @@ annotation already drawn at each (see
 | `list_asset_occurrences` | An asset's occurrences in every sequence source it sits in, by source registration then position: which sources' tracks may observe it. |
 | `list_tracks` | A source's tracks, each with its observations. Where a track id comes from. |
 | `get_track_status` | A track's observations counted by the progress their assets hold in one batch; `settled` only when the batch holds every observation of a non-empty track and each is settled. |
-| `create_track` | An empty track of a class the active schema declares, on a video or image-sequence source. |
+| `create_track` | An empty track of a class the active schema declares, on a video, image-sequence or point-cloud-sequence source. |
 | `start_track` | Create a track of an annotation's class and observe the annotation with it, in one write: a refusal leaves no empty track. The class is judged against the batch's pinned version. |
 | `observe_track` | Attach an annotation drawn at an occurrence's asset, through the job carrying it. A `pre_labeled` asset is refused: a person edits or confirms it first. |
 | `unobserve_track` | Detach one observation; the annotation stays. |
 | `set_track_class` | Rename a track and every annotation it observes, in one transaction. |
-| `merge_tracks` | Absorb one track into another of the same source and class. |
+| `merge_tracks` | Absorb one track into another of the same source, class and geometry type. |
 | `split_track` | Cut a track at an occurrence; answers `{kept, created}`. |
 | `delete_track` | Delete a track, and its annotations with `with_annotations`. No confirmation. |
 

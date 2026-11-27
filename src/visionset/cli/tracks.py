@@ -30,7 +30,10 @@ track_app = typer.Typer(
 
 TrackArgument = Annotated[UUID, typer.Argument(help="The track, by id.")]
 SourceOption = Annotated[
-    UUID, typer.Option("--source", help="The video or image-sequence source, by id.")
+    UUID,
+    typer.Option(
+        "--source", help="The video, image-sequence or point-cloud-sequence source, by id."
+    ),
 ]
 JobOption = Annotated[UUID, typer.Option("--job", help="The annotation job acting, by id.")]
 OccurrenceOption = Annotated[
@@ -92,7 +95,10 @@ def _print_track(detail: TrackDetail, *, json_out: bool) -> None:
 def track_occurrences(
     source: Annotated[
         UUID | None,
-        typer.Option("--source", help="The video or image-sequence source, by id. Or --asset."),
+        typer.Option(
+            "--source",
+            help="The video, image-sequence or point-cloud-sequence source, by id. Or --asset.",
+        ),
     ] = None,
     asset: Annotated[
         UUID | None,
@@ -214,7 +220,8 @@ def track_observe(
     """Record that the track is seen at an occurrence, as an annotation drawn there.
 
     The annotation must sit on the occurrence's asset, carry the track's class
-    and be 2D, and the job must carry that asset at a writable progress.
+    and geometry type, and be a 2D label on an image or a cuboid_3d on a scan,
+    and the job must carry that asset at a writable progress.
     """
     with opened_workspace(workspace) as service:
         found = TrackService(service).observe(job, track, occurrence, annotation)
@@ -279,7 +286,8 @@ def track_merge(
 ) -> None:
     """Move every observation of ABSORBED onto TRACK, and delete ABSORBED.
 
-    The tracks share a source and a class and observe disjoint occurrences.
+    The tracks share a source, a class and a geometry type and observe disjoint
+    occurrences.
     TRACK keeps its external id, and takes ABSORBED's when it has none.
     """
     with opened_workspace(workspace) as service:

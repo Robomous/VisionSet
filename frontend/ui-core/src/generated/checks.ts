@@ -502,7 +502,7 @@ export const checkScanFrame: Check<Schemas["ScanFrame"]> =
   /*#__PURE__*/ oneOf(["lidar_flu", "camera_rdf", "lidar_rfu"] as const);
 
 export const checkSourceKind: Check<Schemas["SourceKind"]> =
-  /*#__PURE__*/ oneOf(["image_directory", "video", "point_cloud_directory", "image_sequence"] as const);
+  /*#__PURE__*/ oneOf(["image_directory", "video", "point_cloud_directory", "image_sequence", "point_cloud_sequence"] as const);
 
 export const checkClipRange: Check<Schemas["ClipRange"]> =
   /*#__PURE__*/ object({ "end_seconds": [true, isNumber], "start_seconds": [true, isNumber] } as const);

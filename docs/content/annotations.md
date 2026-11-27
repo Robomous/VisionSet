@@ -516,8 +516,9 @@ everything above - schema validation, provenance, progress - is untouched by tra
   version does not declare, or one that declares another geometry, refuses the whole change. Being an
   edit, it moves a `pre_labeled` asset to `annotated`, as any edit does. A track's class must be
   declared - by the active version on creation, by the pinned one on a change - and an edit through
-  `update` cannot take an observed annotation off its track's class or into 3D.
-- **Merge and split are one transaction each.** Merge needs the same source and class and disjoint
+  `update` cannot take an observed annotation off its track's class or geometry type.
+- **Merge and split are one transaction each.** Merge needs the same source, class and geometry
+  type (`TRACK_GEOMETRY_MISMATCH`) and disjoint
   occurrences; the surviving track keeps its external id, or takes the absorbed track's when it has
   none; when both carry one, the absorbed track's is dropped with it. A split cuts at an occurrence of the track's source: that position and every later one move
   to a new track of the same class and no external id, and a cut that would leave either track empty is

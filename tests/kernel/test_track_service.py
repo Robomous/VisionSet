@@ -34,6 +34,7 @@ from visionset.kernel import (
     SourceNotSequence,
     TrackClassMismatch,
     TrackExternalIdTaken,
+    TrackGeometryMismatch,
     TrackMergeWithItself,
     TrackNotFound,
     TrackSourceMismatch,
@@ -81,6 +82,8 @@ SIZE = (16, 12)
 CAR = LabelClass(name="car", geometries=(GeometryType.BBOX,))
 VAN = LabelClass(name="van", geometries=(GeometryType.BBOX,))
 LANE = LabelClass(name="lane", geometries=(GeometryType.POLYGON,))
+SIGN = LabelClass(name="sign", geometries=(GeometryType.BBOX, GeometryType.POLYGON))
+TRIANGLE = PolygonGeometry(points=[(1.0, 1.0), (5.0, 1.0), (5.0, 5.0)])
 
 
 def _jpeg(seed: int) -> bytes:
@@ -126,7 +129,7 @@ class World:
         self.tracks = TrackService(self.workspace)
         self.imports = VideoImportService(self.workspace)
         self.project = ProjectService(self.workspace).create("clips")
-        SchemaService(self.workspace).create_version(self.project.id, [CAR, VAN, LANE])
+        SchemaService(self.workspace).create_version(self.project.id, [CAR, VAN, LANE, SIGN])
         self._clips = 0
 
     def clip(
@@ -416,6 +419,51 @@ def test_a_3d_label_is_not_tracked(world: World) -> None:
         uow.annotations.add(cuboid)
     with pytest.raises(InvalidAnnotation):
         world.tracks.observe(job.id, track.id, clip.at(0).id, cuboid.id)
+
+
+def _sign(world: World, job: AnnotationJob, asset_id: UUID, polygon: bool = False) -> Annotation:
+    return world.annotations.add(
+        job.id,
+        [
+            Annotation(
+                asset_id=asset_id,
+                label_class="sign",
+                schema_version=1,
+                geometry=TRIANGLE if polygon else BboxGeometry(x=1.0, y=1.0, width=5.0, height=5.0),
+                provenance="human",
+            )
+        ],
+    )[0]
+
+
+def test_a_track_never_mixes_geometry_types(world: World) -> None:
+    clip = world.clip()
+    (job,) = world.working(clip.batch_id)
+    boxes = world.tracks.start(job.id, clip.at(0).id, _sign(world, job, clip.at(0).asset_id).id)
+    polygon = _sign(world, job, clip.at(1).asset_id, polygon=True)
+
+    with pytest.raises(TrackGeometryMismatch):
+        world.tracks.observe(job.id, boxes.track.id, clip.at(1).id, polygon.id)
+    outlines = world.tracks.start(job.id, clip.at(1).id, polygon.id)
+    with pytest.raises(TrackGeometryMismatch):
+        world.tracks.merge(job.id, boxes.track.id, outlines.track.id)
+    box = _sign(world, job, clip.at(2).asset_id)
+    world.tracks.observe(job.id, boxes.track.id, clip.at(2).id, box.id)
+    with pytest.raises(TrackGeometryMismatch):
+        world.annotations.update(job.id, [box.model_copy(update={"geometry": TRIANGLE})])
+    assert _positions(world.tracks.get(boxes.track.id)) == [0, 2]
+    assert _positions(world.tracks.get(outlines.track.id)) == [1]
+
+
+def test_the_only_observation_of_a_track_may_change_its_geometry_type(world: World) -> None:
+    clip = world.clip()
+    (job,) = world.working(clip.batch_id)
+    box = _sign(world, job, clip.at(0).asset_id)
+    world.tracks.start(job.id, clip.at(0).id, box.id)
+
+    (stored,) = world.annotations.update(job.id, [box.model_copy(update={"geometry": TRIANGLE})])
+
+    assert stored.geometry == TRIANGLE
 
 
 def test_a_track_never_spans_two_sources(world: World) -> None:
@@ -1101,6 +1149,7 @@ def test_an_observed_annotation_is_not_edited_into_3d(world: World) -> None:
             LabelClass(name="car", geometries=(GeometryType.BBOX, GeometryType.CUBOID_3D)),
             VAN,
             LANE,
+            SIGN,
         ],
     )
     clip = world.clip()

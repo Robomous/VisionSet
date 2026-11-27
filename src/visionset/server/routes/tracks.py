@@ -61,14 +61,15 @@ def list_tracks(workspace: WorkspaceDep, source_id: UUID) -> TrackPage:
 
 @source_router.post("", status_code=status.HTTP_201_CREATED, responses=documented(404, 409))
 def create_track(workspace: WorkspaceDep, source_id: UUID, body: TrackCreate) -> TrackOut:
-    """Start an empty track of one class on a video or image-sequence source.
+    """Start an empty track of one class on a video, image-sequence or point-cloud-sequence source.
 
     Not gated on a job: a track observes nothing until a job observes an
     annotation with it. The class must be declared by the project's active
     schema version. 404: `SOURCE_NOT_FOUND`, `SCHEMA_NOT_FOUND`. 409:
     `TRACK_EXTERNAL_ID_TAKEN`, for an `external_id` another track of the source
-    carries. 422: `SOURCE_NOT_SEQUENCE` for a source that is neither a video nor an image sequence,
-    `LABEL_CLASS_NOT_IN_SCHEMA`, `INVALID_NAME` for a blank class or external id.
+    carries. 422: `SOURCE_NOT_SEQUENCE` for a source that is not a video, an image
+    sequence or a point-cloud sequence, `LABEL_CLASS_NOT_IN_SCHEMA`, `INVALID_NAME`
+    for a blank class or external id.
     """
     return TrackOut.of(
         TrackService(workspace).create(source_id, body.label_class, external_id=body.external_id)
@@ -140,13 +141,15 @@ def observe_track(
     """Record that the track is seen at an occurrence, as an annotation drawn there.
 
     The annotation must sit on the occurrence's asset, carry the track's class
-    and be 2D, and that asset must not be `pre_labeled`: a model's output nobody
-    has judged is not tracked. 404: `JOB_NOT_FOUND`, `TRACK_NOT_FOUND`,
+    and its geometry type, and be a 2D label on an image or a `cuboid_3d` on a
+    scan, and that asset must not be `pre_labeled`: a model's output nobody has
+    judged is not tracked. 404: `JOB_NOT_FOUND`, `TRACK_NOT_FOUND`,
     `FRAME_OCCURRENCE_NOT_FOUND`, `ANNOTATION_NOT_FOUND`. 409:
     `BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`, `ASSET_NOT_IN_JOB` (rendered as a
     409 here: the job does not carry the occurrence's asset), `ASSET_NOT_WRITABLE`,
-    `ASSET_NOT_JUDGED`, `TRACK_CLASS_MISMATCH`, `OCCURRENCE_ALREADY_OBSERVED`,
-    `ANNOTATION_ALREADY_OBSERVED`. 422: `TRACK_SOURCE_MISMATCH`,
+    `ASSET_NOT_JUDGED`, `TRACK_CLASS_MISMATCH`, `TRACK_GEOMETRY_MISMATCH`,
+    `OCCURRENCE_ALREADY_OBSERVED`, `ANNOTATION_ALREADY_OBSERVED`. 422:
+    `TRACK_SOURCE_MISMATCH`,
     `ANNOTATION_NOT_AT_OCCURRENCE`, `INVALID_ANNOTATION`.
     """
     try:
@@ -210,13 +213,14 @@ def merge_tracks(
 ) -> TrackOut | Response:
     """Move every observation of `body.track_id` onto this track, and delete that one.
 
-    The tracks share a source and a class and observe disjoint occurrences. This
+    The tracks share a source, a class and a geometry type, and observe disjoint
+    occurrences. This
     track keeps its own `external_id`, and takes the absorbed one's when it has
     none. 404: `JOB_NOT_FOUND`, `TRACK_NOT_FOUND`. 409: `BATCH_NOT_IN_ANNOTATION`,
     `JOB_FINISHED`, `ASSET_NOT_IN_JOB` (rendered as a 409 here: act through the
     job holding both tracks' observations), `ASSET_NOT_WRITABLE`,
-    `TRACK_CLASS_MISMATCH`, `OCCURRENCE_ALREADY_OBSERVED`. 422:
-    `TRACK_MERGE_WITH_ITSELF`, `TRACK_SOURCE_MISMATCH`.
+    `TRACK_CLASS_MISMATCH`, `TRACK_GEOMETRY_MISMATCH`, `OCCURRENCE_ALREADY_OBSERVED`.
+    422: `TRACK_MERGE_WITH_ITSELF`, `TRACK_SOURCE_MISMATCH`.
     """
     try:
         detail = TrackService(workspace).merge(job_id, track_id, body.track_id)

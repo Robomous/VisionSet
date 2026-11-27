@@ -333,10 +333,11 @@ before it — so a vertex added inside an occluded run stays occluded — and a 
 takes its own state with it.
 
 **Tracks (bottom), on a frame of a sequence source.** A [track](../annotations.md#a-track-observes-annotations-an-annotation-knows-nothing-of-tracks)
-follows one object through the frame occurrences of one video or image-sequence source, so the
+follows one object through the frame occurrences of one video, image-sequence or point-cloud-sequence source, so the
 region reads the frame's occurrences in every source (`GET
 /projects/{id}/assets/{id}/occurrences`) and renders only when it has some; a folder's frame and an
-upload in no sequence have none, and a scan is never asked. Identical bytes imported into two
+upload in no sequence have none, and a scan is never asked, so a point-cloud sequence's tracks
+are read and edited through REST, the CLI and MCP only. Identical bytes imported into two
 sequences are one asset in both, and each source keeps its own tracks, so the region reads and
 lists the tracks of every source the frame sits in; with more than one, each source's tracks sit
 under its name (each read from `GET /sources/{id}`, only when there is more than one), and a

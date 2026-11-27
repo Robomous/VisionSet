@@ -90,6 +90,7 @@ from visionset.kernel.domain import (
     AssetProgress,
     Batch,
     ClassificationGeometry,
+    GeometryType,
     Source,
     geometry_fits_modality,
     geometry_reference,
@@ -114,6 +115,7 @@ from visionset.kernel.errors import (
     InvalidAnnotation,
     StaleWrite,
     TrackClassMismatch,
+    TrackGeometryMismatch,
     VisionSetError,
     WorkspaceCorrupt,
 )
@@ -437,9 +439,11 @@ class AnnotationService:
             AssetNotWritable: an asset's progress says its labeling is over.
             InvalidAnnotation: a replacement does not satisfy the pinned version,
                 or claims a ``provenance`` other than the stored one, or gives an
-                annotation a track observes a 3D geometry.
+                annotation a track observes a geometry no track follows.
             TrackClassMismatch: a replacement changes the class of an annotation
                 a track observes to one other than the track's.
+            TrackGeometryMismatch: a replacement changes the geometry type of an
+                annotation a track observes to one its other observations lack.
             CalibrationMissing: a 3D label names an asset with no calibration,
                 neither its own nor its source's.
             CalibrationResolutionMismatch: a 3D label names an asset whose
@@ -473,9 +477,11 @@ class AnnotationService:
             AssetNotWritable: an asset's progress says its labeling is over.
             InvalidAnnotation: a replacement does not satisfy the pinned version,
                 or claims a ``provenance`` other than the stored one, or gives an
-                annotation a track observes a 3D geometry.
+                annotation a track observes a geometry no track follows.
             TrackClassMismatch: a replacement changes the class of an annotation
                 a track observes to one other than the track's.
+            TrackGeometryMismatch: a replacement changes the geometry type of an
+                annotation a track observes to one its other observations lack.
             CalibrationMissing: a 3D label names an asset with no calibration,
                 neither its own nor its source's.
             CalibrationResolutionMismatch: a 3D label names an asset whose
@@ -827,7 +833,7 @@ def _require_same_provenance(current: Annotation, replacement: Annotation) -> No
 
 
 def _require_track_class(uow: UnitOfWork, current: Annotation, replacement: Annotation) -> None:
-    """Refuse an edit that would take an observed annotation off its track's class or into 3D."""
+    """Refuse an edit that would take an observed annotation off its track's class or geometry."""
     observation = uow.observation_of(current.id)
     if observation is None:
         return
@@ -838,24 +844,62 @@ def _require_track_class(uow: UnitOfWork, current: Annotation, replacement: Anno
             f"{track.label_class!r}; change the track's class to change it"
         )
     require_trackable(uow, replacement)
+    require_track_geometry(uow, observation.track_id, replacement.geometry.type, besides=current.id)
 
 
 def require_trackable(uow: UnitOfWork, annotation: Annotation) -> None:
-    """Refuse an annotation a track may not observe: a track follows 2D geometry only.
+    """Refuse an annotation a track may not observe.
+
+    A track follows a 2D label on an image and a ``cuboid_3d`` on a scan.
 
     Raises:
-        InvalidAnnotation: the annotation is a 3D label.
+        InvalidAnnotation: the annotation is a 3D label on an image, or a scan
+            label other than a cuboid.
     """
     asset = uow.assets.get(annotation.asset_id)
     if asset is None:
         raise WorkspaceCorrupt(
             f"annotation {annotation.id} names asset {annotation.asset_id}, which does not exist"
         )
-    if geometry_reference(annotation.geometry, modality=asset.modality) is not None:
+    if asset.modality == "point_cloud":
+        if annotation.geometry.type is not GeometryType.CUBOID_3D:
+            raise InvalidAnnotation(
+                f"annotation {annotation.id} is a {annotation.geometry.type.value} on a scan, "
+                f"and a track follows a scan's cuboid_3d labels only"
+            )
+    elif geometry_reference(annotation.geometry, modality=asset.modality) is not None:
         raise InvalidAnnotation(
             f"annotation {annotation.id} is a {annotation.geometry.type.value}, and a "
-            f"track follows 2D geometry only"
+            f"track follows an image's 2D labels only"
         )
+
+
+def require_track_geometry(
+    uow: UnitOfWork, track_id: UUID, geometry: GeometryType, *, besides: UUID | None = None
+) -> None:
+    """Refuse a geometry type the track's other observations do not have.
+
+    Every observation of one track has one geometry type, so the first one
+    other than ``besides`` answers for all of them.
+
+    Raises:
+        TrackGeometryMismatch: the track observes another geometry type.
+    """
+    for observation in uow.track_observations.list(track_id):
+        if observation.annotation_id == besides:
+            continue
+        observed = uow.annotations.get(observation.annotation_id)
+        if observed is None:
+            raise WorkspaceCorrupt(
+                f"track {track_id} observes annotation {observation.annotation_id}, "
+                f"which does not exist"
+            )
+        if observed.geometry.type is not geometry:
+            raise TrackGeometryMismatch(
+                f"track {track_id} follows {observed.geometry.type.value} labels, and this "
+                f"one is a {geometry.value}; a track never mixes geometry types"
+            )
+        return
 
 
 def _require_model_made(annotation: Annotation) -> None:

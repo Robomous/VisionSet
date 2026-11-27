@@ -797,8 +797,9 @@ class TrackExternalIdTaken(VisionSetError):
 class SourceNotSequence(VisionSetError):
     """A track was asked of a source that is not a sequence.
 
-    A sequence is a video or an image-sequence source and its frame occurrences;
-    an image directory or a point-cloud directory has none for a track to observe.
+    A sequence is a video, image-sequence or point-cloud-sequence source and its
+    frame occurrences; an image directory or a point-cloud directory has none for
+    a track to observe.
     """
 
 
@@ -819,6 +820,15 @@ class TrackClassMismatch(VisionSetError):
 
     Every observed annotation carries the track's class. The remedy is to change
     the annotation's class, or the track's through its own class change.
+    """
+
+
+class TrackGeometryMismatch(VisionSetError):
+    """An annotation's geometry type, or a merge partner's, is not the track's.
+
+    Every observation of one track has the same geometry type, so a track never
+    mixes boxes and polygons, or boxes and cuboids. The remedy is to observe
+    the object with a label of the track's geometry, or start another track.
     """
 
 

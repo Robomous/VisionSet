@@ -170,7 +170,7 @@ def test_an_asset_the_batch_does_not_hold_is_refused(world: Importing) -> None:
         (
             "import",
             Cuboid3DGeometry(center=(0.0, 0.0, 5.0), size=(1.0, 1.0, 1.0), yaw=0.0),
-            "2D geometry only",
+            "an image.s 2D labels only",
         ),
     ],
 )
