@@ -17,7 +17,7 @@ import { TooltipProvider } from "@robomous/ui-core";
 import { AnnotationPage } from "./AnnotationPage";
 import { renderWithData } from "../testing/dataHarness";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
-import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
+import { assetActions, assetWithheld, batchActions, jobActions } from "../testing/wire.fixtures.js";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
@@ -83,7 +83,11 @@ interface World {
   occurrences: typeof OCCURRENCES;
   tracks: { id: string; source_id: string; label_class: string; external_id: string | null; observations: ReturnType<typeof observation>[] }[];
   readOnly: boolean;
+  /** The first frame holds a model's labels nobody has judged. */
+  preLabeled: boolean;
   refuseObserve: { code: string; message: string } | null;
+  /** A refused observe finds the first frame pre-labeled by then, as a run elsewhere would leave it. */
+  preLabeledOnRefusal: boolean;
   /** While set, an observe waits on it. */
   observeGate: Promise<void> | null;
   /** How many more occurrence reads answer 500. */
@@ -108,7 +112,9 @@ function freshWorld(): World {
       { id: "track-2", source_id: SOURCE, label_class: "pedestrian", external_id: null, observations: [] },
     ],
     readOnly: false,
+    preLabeled: false,
     refuseObserve: null,
+    preLabeledOnRefusal: false,
     observeGate: null,
     failOccurrences: 0,
   };
@@ -153,6 +159,7 @@ function answer(method: string, path: string, body: unknown): Response {
   }
   if (path.endsWith("/schema/versions/1")) return json(SCHEMA);
   if (path === `/batches/${BATCH}/assets`) {
+    const progressOf = (index: number) => (index === 0 ? (world.preLabeled ? "pre_labeled" : "unannotated") : "annotated");
     const items = [A1, A2].map((id, index) => ({
       id,
       project_id: PROJECT,
@@ -168,11 +175,11 @@ function answer(method: string, path: string, body: unknown): Response {
       source_id: world.sourceId,
       ingested_at: null,
       job_id: JOB,
-      progress: index === 0 ? "unannotated" : "annotated",
-      allowed_actions: assetActions(index === 0 ? "unannotated" : "annotated", { batchState }),
+      progress: progressOf(index),
+      allowed_actions: assetActions(progressOf(index), { batchState }),
       annotation_count: 0,
       min_confidence: null,
-      withheld_actions: [],
+      withheld_actions: assetWithheld(progressOf(index), { batchState }),
     }));
     return json({ items, total: items.length });
   }
@@ -210,7 +217,10 @@ function answer(method: string, path: string, body: unknown): Response {
   }
   const observe = new RegExp(`^/jobs/${JOB}/tracks/([^/]+)/observations$`).exec(path);
   if (observe !== null && method === "POST") {
-    if (world.refuseObserve !== null) return json(world.refuseObserve, 409);
+    if (world.refuseObserve !== null) {
+      if (world.preLabeledOnRefusal) world.preLabeled = true;
+      return json(world.refuseObserve, 409);
+    }
     const { occurrence_id, annotation_id } = body as { occurrence_id: string; annotation_id: string };
     const at = OCCURRENCES.find((one) => one.id === occurrence_id)!;
     const track = trackOut(observe[1]!);
@@ -403,6 +413,19 @@ describe("writing", () => {
     expect(refusal.textContent).not.toContain("ASSET_NOT_JUDGED");
   });
 
+  it("rereads the frame's declaration after a refused observe, so the control then says why", async () => {
+    world.refuseObserve = { code: "ASSET_NOT_JUDGED", message: "kernel wording" };
+    world.preLabeledOnRefusal = true;
+    await open();
+    await userEvent.click(await screen.findByTestId("object-select-1"));
+    await focusTrack("track-1");
+    await userEvent.click(screen.getByTestId("track-observe"));
+    await screen.findByTestId("track-refusal");
+    await waitFor(() =>
+      expect(screen.getByTestId("track-observe").getAttribute("data-reason")).toMatch(/have not been judged yet/),
+    );
+  });
+
   it("still says a refusal that lands after a step to another frame", async () => {
     let release: () => void = () => {};
     world.observeGate = new Promise((resolve) => {
@@ -455,6 +478,24 @@ describe("writing", () => {
     await userEvent.click(await screen.findByTestId("track-start-at-1"));
     expect((await screen.findByTestId("track-refusal")).textContent).toMatch(/^Started an empty track\. .*judged/);
     await waitFor(() => expect(screen.getByTestId("track-row-track-3").textContent).toMatch(/0 frames/));
+  });
+
+  it("withholds adding to a track on a frame of unjudged model labels, saying why, and still removes", async () => {
+    world.preLabeled = true;
+    await open();
+    await userEvent.click(await screen.findByTestId("object-select-1"));
+    await focusTrack("track-1");
+    const unjudged = /^A model's labels on this frame have not been judged yet/;
+    expect(screen.getByTestId("track-observe").getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByTestId("track-observe").getAttribute("data-reason")).toMatch(unjudged);
+    expect(screen.getByTestId("track-start").getAttribute("data-reason")).toMatch(unjudged);
+    fireEvent.click(screen.getByTestId("track-observe"));
+    fireEvent.click(screen.getByTestId("track-start"));
+    expect(writes()).toEqual([]);
+
+    expect(screen.getByTestId("track-unobserve-1").getAttribute("data-reason")).toBeNull();
+    await userEvent.click(screen.getByTestId("track-unobserve-1"));
+    await waitFor(() => expect(writes()).toEqual([{ method: "DELETE", path: `/jobs/${JOB}/tracks/track-1/observations/occ-1`, body: null }]));
   });
 
   it("withholds every write in the read-only mode and keeps the steps", async () => {

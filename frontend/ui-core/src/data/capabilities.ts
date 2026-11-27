@@ -85,6 +85,7 @@ export const JOB_ACTION = {
 
 export const ASSET_ACTION = {
   annotate: "annotate",
+  observe: "observe",
   skip: "skip",
   restore: "restore",
   confirm: "confirm",
@@ -133,6 +134,28 @@ export function declares<A extends string>(
   action: NoInfer<A>,
 ): boolean {
   return resource != null && resource.allowed_actions.includes(action);
+}
+
+/** Anything the wire also says *why* it withholds an action for. */
+export interface Withholding<A extends string> {
+  readonly withheld_actions: readonly {
+    readonly code: string;
+    readonly actions: readonly OpenMember<A>[];
+  }[];
+}
+
+/**
+ * The refusal code the wire names for an action this resource withholds, or `null`.
+ *
+ * The kernel names one only where the resource is otherwise writable — a frame
+ * that may be annotated but not yet observed — so `null` beside an undeclared
+ * action means the resource's mode is the reason, which its caller already says.
+ */
+export function withheldCode<A extends string>(
+  resource: Withholding<A> | undefined | null,
+  action: NoInfer<A>,
+): string | null {
+  return resource?.withheld_actions.find((one) => one.actions.includes(action))?.code ?? null;
 }
 
 /**

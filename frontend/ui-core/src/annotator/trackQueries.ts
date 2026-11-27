@@ -106,6 +106,8 @@ export function useObserveTrack(jobId: string) {
       ),
     onSettled: () => {
       void queries.invalidateQueries({ queryKey: trackKeys.all });
+      // A refused observe can mean the frame's declaration moved under it.
+      void queries.invalidateQueries({ queryKey: ["batches"] });
     },
   });
 }
@@ -176,6 +178,7 @@ export function useStartTrack(jobId: string) {
     },
     onSettled: () => {
       void queries.invalidateQueries({ queryKey: trackKeys.all });
+      void queries.invalidateQueries({ queryKey: ["batches"] });
     },
   });
 }

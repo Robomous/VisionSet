@@ -57,6 +57,8 @@ export interface TrackRegionProps {
   readonly jobAssetIds: readonly string[];
   /** Why writing is withheld on this frame, or null when the wire declares `annotate`. */
   readonly withheld: string | null;
+  /** Why adding an object to a track is withheld on this frame, or null when the wire declares `observe`. */
+  readonly observeWithheld: string | null;
   /** How many objects are selected, and the one object when it is exactly one drawn 2D shape. */
   readonly selectionCount: number;
   readonly candidate: TrackCandidate | null;
@@ -83,7 +85,7 @@ function frameWord(position: number): string {
 }
 
 export function TrackRegion(props: TrackRegionProps): JSX.Element {
-  const { jobId, sourceId, assetId, occurrences, tracks, withheld, candidate, focus, onFocus } = props;
+  const { jobId, sourceId, assetId, occurrences, tracks, candidate, focus, onFocus } = props;
   const observe = useObserveTrack(jobId);
   const unobserve = useUnobserveTrack(jobId);
   const start = useStartTrack(jobId);
@@ -110,7 +112,7 @@ export function TrackRegion(props: TrackRegionProps): JSX.Element {
     });
   }
 
-  const startReason = startWithheld({ withheld, candidate, selectionCount: props.selectionCount, candidateOn, tracks, here, busy });
+  const startReason = startWithheld({ withheld: props.observeWithheld, candidate, selectionCount: props.selectionCount, candidateOn, tracks, here, busy });
 
   function startAt(occurrence: FrameOccurrence): void {
     if (startReason !== null || candidate === null) return;
@@ -244,6 +246,7 @@ function FocusedTrack({
   jobAssetIds,
   openAsset,
   withheld,
+  observeWithheld,
   candidate,
   candidateServerId,
   candidateOn,
@@ -284,7 +287,7 @@ function FocusedTrack({
     openAsset(index, () => onFocus({ trackId: track.id, position: target.position, passed: step.skipped }));
   }
 
-  const addReason = addWithheld({ withheld, candidate, track, candidateOn: candidateServerId === null ? null : candidateOn, tracks, here, free, busy });
+  const addReason = addWithheld({ withheld: observeWithheld, candidate, track, candidateOn: candidateServerId === null ? null : candidateOn, tracks, here, free, busy });
   const previousReason = stepReason(previous, "earlier");
   const nextReason = stepReason(next, "later");
 

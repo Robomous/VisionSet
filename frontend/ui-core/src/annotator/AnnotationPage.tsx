@@ -173,13 +173,15 @@ import {
   JOB_ACTION,
   declares,
   withheldBecause,
+  withheldCode,
   type AssetAction,
   type BatchAction,
   type JobAction,
+  type Withholding,
 } from "../data/capabilities";
 import type { OpenMember } from "../generated/api.js";
 import { asApiError } from "../data/errors";
-import { refusalProse } from "../data/refusals";
+import { REFUSAL_PROSE, refusalProse } from "../data/refusals";
 import { Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, HoverCard, HoverCardContent, HoverCardTrigger, Kbd, Tooltip, TooltipContent, TooltipTrigger, cn } from "@robomous/ui-core";
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { AnnotatorPanel, type TrackMark } from "./AnnotatorPanel";
@@ -794,6 +796,8 @@ interface WorkspaceProps {
      * must be one the labels can still move with.
      */
     readonly allowed_actions: readonly OpenMember<AssetAction>[];
+    /** Why the wire withholds an action this frame would otherwise allow — `observe` on unjudged model output. */
+    readonly withheld_actions: Withholding<AssetAction>["withheld_actions"];
   };
   readonly schema: unknown;
   /** The version the batch pinned at approval — what every write here is judged against. */
@@ -1920,6 +1924,11 @@ function Workspace({
    */
   const canAnnotate = declares(asset, ASSET_ACTION.annotate);
   const readOnly = !canAnnotate;
+  const observeWithheld = readOnly
+    ? "Viewing only"
+    : declares(asset, ASSET_ACTION.observe)
+      ? null
+      : (REFUSAL_PROSE[withheldCode(asset, ASSET_ACTION.observe) ?? ""] ?? "Adding to a track is not available on this frame.");
 
   // Tracks are 2D and follow a sequence source's occurrences; a scan has none.
   const trackSource = isScan ? null : asset.source_id;
@@ -3261,6 +3270,7 @@ function Workspace({
                     tracks={tracks}
                     jobAssetIds={jobAssetIds}
                     withheld={readOnly ? "Viewing only" : null}
+                    observeWithheld={observeWithheld}
                     selectionCount={snapshot.selection.size}
                     candidate={trackCandidate}
                     serverIdOf={serverIdOf}
