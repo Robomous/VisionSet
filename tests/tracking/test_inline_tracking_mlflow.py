@@ -151,7 +151,6 @@ def test_a_stdio_tool_call_is_tracked_and_stdout_carries_only_protocol_messages(
             lines.append(line)
             if json.loads(line).get("id") == 2:
                 break
-        child.stdin.close()
         rest, errors = child.communicate(timeout=EXIT_FLUSH_S + 30)
         lines += rest.splitlines(keepends=True)
 
