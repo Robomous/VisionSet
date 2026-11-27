@@ -255,6 +255,8 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "degraded_geometries": ["polygon"],
                 "modalities": ["image"],
                 "targets": ["coco-panoptic"],
+            },
+            {
                 "name": "createml",
                 "lossy": True,
                 "geometries": ["bbox"],
@@ -419,7 +421,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "targets": ["yolov7"],
             },
         ],
-        "total": 21,
+        "total": 22,
     }
 
 

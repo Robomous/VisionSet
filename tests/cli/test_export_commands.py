@@ -201,6 +201,8 @@ def test_format_list_json_is_the_envelope() -> None:
             "degraded_geometries": ["polygon"],
             "modalities": ["image"],
             "targets": ["coco-panoptic"],
+        },
+        {
             "name": "createml",
             "lossy": True,
             "geometries": ["bbox"],
