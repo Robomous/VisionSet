@@ -662,7 +662,7 @@ sentence. The real message and traceback go to the server log under the same id 
 greps one string, and a response body never becomes a channel for filesystem paths, SQL text, or
 a stack trace.
 
-Eight errors opt out and expose their real message, each because that message *is* the remedy:
+Nine errors opt out and expose their real message, each because that message *is* the remedy:
 
 | Code | Why the message is published |
 | --- | --- |
@@ -670,6 +670,7 @@ Eight errors opt out and expose their real message, each because that message *i
 | `WORKSPACE_FORMAT_TOO_NEW` | Says which of the two things happened - a later VisionSet wrote it, or one that numbered its generations differently - and only one of those has a fix. |
 | `WORKSPACE_SCHEMA_MISMATCH` | Names the table and column the workspace lacks. Opaque, this is a 500 with no cause on a route with no connection to it, and the answer is only in the server's log. |
 | `LOCAL_INFERENCE_UNAVAILABLE` | Carries the `pip install` for the optional runtime it is missing. |
+| `TRACKING_UNAVAILABLE` | Tracking was turned on and cannot run here: names the variable to set or the extra to install. Never carries the configured tracking URI. |
 | `INFERENCE_CONNECTION_NOT_RUNNABLE` | Says which of the two things nothing installed here can run - a recorded driver that is not installed, or a model family (declared by the config, or by the endpoint) no installed driver serves - and lists what is installed instead. A fact about the installation rather than about the request, and one that changes when a driver is installed. |
 | `INFERENCE_OUT_OF_MEMORY` | Names which memory ran out - the device's or the machine's - and the ways off it, which are not the same ways: a full device can be answered by moving the connection to the CPU, and a full machine is only made worse by it. No generic sentence can carry that. |
 | `INFERENCE_ENDPOINT_UNAVAILABLE` | Names the endpoint an `http` connection points at and what it did - unreachable, timed out, a bad status, or a body outside the contract - which is the whole remedy: look at the endpoint, not at this connection or this machine. |
@@ -708,7 +709,7 @@ argument for branching on `code`.
 | **422** | `VALIDATION_ERROR` · `EXPORT_DESTINATION_REFUSED` · `IMPORT_SOURCE_UNREADABLE` · `ASSET_NOT_IN_BATCH` · `FRAME_ORDINAL_OUT_OF_RANGE` · `FRAME_TIMESTAMP_OFF_GRID` · `VIDEO_IMPORT_TOO_LARGE` · `ANNOTATION_NOT_FROM_MODEL` · `INVALID_NAME` · `MODEL_NOT_FOUND` · `INFERENCE_CONNECTION_INVALID` · `INVALID_SCHEMA` · `UNSUPPORTED_GEOMETRY` · `INVALID_ANNOTATION` · `LABEL_CLASS_NOT_IN_SCHEMA` · `DISALLOWED_GEOMETRY` · `ANNOTATION_GEOMETRY_OUT_OF_BOUNDS` · `DUPLICATE_CLASSIFICATION_TAG` · `MISSING_REQUIRED_ATTRIBUTE` · `UNKNOWN_ATTRIBUTE` · `INVALID_ATTRIBUTE_VALUE` · `INVALID_PARTITION` · `UNKNOWN_JOB_TYPE` · `MEDIA_ERROR` · `UNSUPPORTED_MEDIA` · `CORRUPT_MEDIA` · `UNSUPPORTED_PROMPT` · `PROMPT_POINT_OUT_OF_BOUNDS` · `GEOMETRY_NOT_PRODUCED` · `CALIBRATION_RESOLUTION_MISMATCH` · `SOURCE_NOT_SEQUENCE` · `TRACK_SOURCE_MISMATCH` · `ANNOTATION_NOT_AT_OCCURRENCE` · `TRACK_MERGE_WITH_ITSELF` |
 | **502** | `INFERENCE_ENDPOINT_UNAVAILABLE` |
 | **503** | `WORKSPACE_BUSY` |
-| **500** | `WORKSPACE_CORRUPT` · `NOT_A_WORKSPACE` · `WORKSPACE_FORMAT_TOO_NEW` · `WORKSPACE_SCHEMA_MISMATCH` · `ENTITY_NOT_FOUND` · `ENTITY_ALREADY_EXISTS` · `CONSTRAINT_VIOLATED` · `LOCAL_INFERENCE_UNAVAILABLE` · `INFERENCE_CONNECTION_NOT_RUNNABLE` · `INFERENCE_OUT_OF_MEMORY` · `EXPORT_TARGET_CONFLICT` · `INVALID_EXPORT_TARGET` · `PREPROCESSING_DRIVER_NOT_FOUND` · `INTERNAL_ERROR` |
+| **500** | `WORKSPACE_CORRUPT` · `NOT_A_WORKSPACE` · `WORKSPACE_FORMAT_TOO_NEW` · `WORKSPACE_SCHEMA_MISMATCH` · `ENTITY_NOT_FOUND` · `ENTITY_ALREADY_EXISTS` · `CONSTRAINT_VIOLATED` · `LOCAL_INFERENCE_UNAVAILABLE` · `TRACKING_UNAVAILABLE` · `INFERENCE_CONNECTION_NOT_RUNNABLE` · `INFERENCE_OUT_OF_MEMORY` · `EXPORT_TARGET_CONFLICT` · `INVALID_EXPORT_TARGET` · `PREPROCESSING_DRIVER_NOT_FOUND` · `INTERNAL_ERROR` |
 
 Every row but `VALIDATION_ERROR`, `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `UNAUTHORIZED` and
 `INTERNAL_ERROR` — the five the framework and the auth guard raise — comes from `ERROR_RULES`
