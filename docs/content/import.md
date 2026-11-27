@@ -91,10 +91,10 @@ computed from the content, and a commit that would drop something is refused wit
 | --- | --- |
 | `class` | A class the project's schema does not declare and no label uses; a CVAT label that names no geometry the domain holds. |
 | `geometry` | Part of a shape the kernel has no type for, such as YOLO keypoints, VOC parts, 3D lane points or an unusable per-vertex visibility, while the shape itself is kept; a `yolo-obb` or `dota` row whose corners are only near a rectangle, kept as the nearest rectangle; or a COCO polygon of several rings, kept as one mask rasterized at pixel centres. |
-| `label` | A whole label: a COCO RLE mask that is malformed or not its image's size, a `segmentation-png` mask with no picture or not the size of its picture, the pixels a `segmentation-png` ignore id marks, a label outside its image, a label lacking an attribute its class requires, a MOT row whose `conf` marks it ignored, a CVAT shape the domain has no geometry for (points, ellipse, cuboid, mask, skeleton) or a CVAT box whose `rotation` is not a finite number, a `yolo-obb` or `dota` row whose four corners are not near a rectangle, or enclose no area. |
-| `image` | An image the source names but does not hold, or one outside any sequence whose bytes repeat an earlier image; its labels go with it. A sequence frame that repeats one keeps its labels on that image's asset. A nuScenes camera frame, which is not read. A `segmentation-png` picture with no mask file, which is not imported. |
+| `label` | A whole label: a COCO RLE mask that is malformed or not its image's size, a `segmentation-png` mask with no picture or not the size of its picture, the pixels a `segmentation-png` ignore id marks, a label outside its image, a label lacking an attribute its class requires, a MOT row whose `conf` marks it ignored, a CVAT shape the domain has no geometry for (points, ellipse, cuboid, mask, skeleton) or a CVAT box whose `rotation` is not a finite number, a LabelMe shape other than a rectangle or a polygon, or one with the wrong number of points, a `yolo-obb` or `dota` row whose four corners are not near a rectangle, or enclose no area. |
+| `image` | An image the source names but does not hold, or one outside any sequence whose bytes repeat an earlier image; its labels go with it. A sequence frame that repeats one keeps its labels on that image's asset. A nuScenes camera frame, which is not read. A `segmentation-png` picture with no mask file, which is not imported. A LabelMe picture held only as embedded `imageData`. |
 | `scan` | A scan whose points repeat an earlier scan's, or one gone from the source; its labels go with it. A nuScenes sweep or radar frame, which is not read. |
-| `attribute` | An attribute value its class does not declare or does not accept, or one a label already on its asset holds otherwise, and extras the importer does not carry, such as a COCO attribute value that is not a string, a boolean or a number, COCO's `iscrowd` flag (the region is kept as an ordinary label), VOC difficult or pose flags, a DOTA `difficult` flag other than `0` or `1`, an OpenLane camera calibration, a track id outside a sequence or one a track cannot hold, a MOT box's visibility ratio or the absence of an identity (an `id` that is not positive), a CVAT attribute definition the domain has no kind for or a number's range, `occluded`, `z_order`, `group_id`, a `subset` and the interpolation CVAT would expand, KITTI truncation, occlusion, alpha and calibration, nuScenes attributes, visibility, instance tokens, point counts, poses and a scene's fields other than its name. |
+| `attribute` | An attribute value its class does not declare or does not accept, or one a label already on its asset holds otherwise, and extras the importer does not carry, such as a COCO attribute value that is not a string, a boolean or a number, COCO's `iscrowd` flag (the region is kept as an ordinary label), VOC difficult or pose flags, a DOTA `difficult` flag other than `0` or `1`, an OpenLane camera calibration, a track id outside a sequence or one a track cannot hold, a MOT box's visibility ratio or the absence of an identity (an `id` that is not positive), a CVAT attribute definition the domain has no kind for or a number's range, `occluded`, `z_order`, `group_id`, a `subset` and the interpolation CVAT would expand, a LabelMe `group_id`, picture flags, a shape flag that is not a boolean and keys LabelMe does not define, KITTI truncation, occlusion, alpha and calibration, nuScenes attributes, visibility, instance tokens, point counts, poses and a scene's fields other than its name. |
 
 The refusal carries the full report in its `detail.losses`. Inspecting the source first returns
 the same report and writes nothing; its `loss_kinds` is exactly what the commit has to consent to,
@@ -135,12 +135,19 @@ naming the kinds to accept. See [mcp-tools.md](mcp-tools.md).
 | `yolo-obb` | The `ultralytics` layout and `data.yaml`, every row a class index and four normalized corners; each a rotated box | Corners only near a rectangle, kept as the nearest rectangle and a `geometry` loss; a row that is not a class and exactly eight numbers, four corners that are not near a rectangle or enclose no area, an unknown class index, a box wholly outside its picture, a label file with no picture, the labels of a picture whose size cannot be read |
 | `dota` | Pictures under any `images/` directory, labels at the matching `labelTxt/` path (`<fold>/images` and `<fold>/labelTxt` as the benchmark and the exporter lay them out), every row four pixel corners, a category and an optional `difficult`; each a rotated box, the category its class, a `0` or `1` flag its boolean `difficult` attribute | A `difficult` flag other than `0` or `1`, kept as the box and lost as the flag; corners only near a rectangle, kept as the nearest rectangle and a `geometry` loss; a row that is not eight numbers, a category and at most one flag, four corners that are not near a rectangle or enclose no area, a box wholly outside its picture, a label file with no picture |
 | `voc` | `Annotations/**/*.xml` with pictures under `JPEGImages/`; boxes | Pose, truncated, difficult and occluded values other than unspecified or `0`, other `<object>` children, parts, segmentation, an object with no name or box, a zero-area or outside box |
+| `labelme` | Every `.json` under the source that is an object holding `shapes`, one LabelMe document per picture, `imagePath` resolved against the document's directory; `rectangle` shapes as boxes and `polygon` shapes (or shapes with no `shape_type`) as polygons, in pixels as written; shape `flags` as boolean attributes and a non-empty `description` as a string attribute | Every other shape type (`circle`, `line`, `linestrip`, `point`, `points`, `mask`, `oriented_rectangle`, ...), a rectangle that is not two points, a polygon of fewer than three, a shape with no area, no label or wholly outside its picture, `group_id`, picture flags, other keys, a picture held only as `imageData`. An `imagePath` leaving the source, malformed JSON, a non-finite coordinate or bad `imageData` refuses the source |
 | `classification` | `labels.csv` (`image`, `class`) and `classes.txt` beside `images/`; one tag per row | A row naming a class `classes.txt` does not declare, a second row of one class on one picture, a malformed row, a row with no picture or class |
 | `kitti` | A 3D object detection split: `velodyne/*.bin` scans, `label_2/*.txt` and `calib/*.txt`, at the top or in `training/` and `testing/` (or the `train/`, `val/`, `test/` the exporter writes); boxes as `cuboid_3d` in the `lidar_flu` frame | `DontCare` regions, each box's 2D image `bbox`, truncation, occlusion and alpha, the calibration itself, a score outside 0 to 1, a label with no scan, no usable calibration, a malformed line or a dimension that is not positive |
 | `mot` | MOTChallenge (MOT16/17/20) sequences: every directory holding a `seqinfo.ini`, its frames `<imDir>/<frame:06d><imExt>` for frames 1 to `seqLength`, and `gt/gt.txt` boxes with `gt/labels.txt` as the class table; each sequence as an image sequence and its ids as tracks | A row whose `conf` is `0` (ignored), each box's `visibility`, the identity of a row whose `id` is not positive (the box is kept untracked), frames the sequence names but does not hold; `det/det.txt` is not read. A malformed row or `seqinfo.ini` refuses the source |
 | `cvat-images` | CVAT for images 1.1: every `annotations.xml` holding `<image>` elements, its pictures under `images/` beside it; boxes, rotated boxes, polygons, polylines and image-level tags | Points, ellipses, cuboids, masks, skeletons, a box whose `rotation` is not a finite number, attribute definitions of an input type the domain has no kind for, `occluded`, a non-zero `z_order`, a `group_id`, a `subset` other than `default`, a second tag of one class on a picture. A malformed document refuses the source by file and line |
 | `cvat-video` | CVAT for video 1.1: every `annotations.xml` holding `<track>` elements, its frames `images/frame_<frame:06d><ext>` beside it; each task as an image sequence and its tracks' ids as tracks, with boxes, rotated boxes, polygons and polylines per frame and `<tag frame>` as untracked tags | Tracks of shapes the domain has no geometry for, a box whose `rotation` is not a finite number, attribute definitions of an input type the domain has no kind for, `occluded`, `z_order`, `group_id`, the `keyframe="0"` mark of an interpolated frame, the frames CVAT interpolates between stored shapes or carries to the task's end, frames the task counts but does not hold. A malformed document refuses the source by file and line |
 | `nuscenes` | A data root: a version folder (`v1.0-mini`, `v1.0-trainval`, ...) of JSON tables beside `samples/LIDAR_TOP/*.pcd.bin`; the LIDAR_TOP keyframes, boxes as `cuboid_3d` in the `lidar_rfu` frame, and each keyframe's scene name as its group label | Attributes, visibility, instance tokens (tracking identity, because a track follows 2D labels only), `num_lidar_pts` and `num_radar_pts`, a scene's description, log and map, the ego pose and calibration themselves, a box leaning more than 6 degrees, a malformed box or a dimension that is not positive, an annotation whose sample has no LIDAR_TOP keyframe, the sweeps, and every other sensor's data |
+
+This table says what each importer reads. What has been checked, and how, is the
+[verification matrix](architecture/backend/formats.md#verification-matrix): per format and
+direction, the tests recorded for it and whether each is a fixture, a round trip through the
+exporter, or an independent reader. `visionset format matrix` prints it for the formats installed
+here.
 
 **COCO attributes.** A label's attribute values are read from the `"visionset"` object the
 exporter writes on each annotation, else from the row's own `attributes`, as CVAT's COCO export
@@ -166,6 +173,43 @@ polygons by its own rule, so the mask can differ from `annToMask` along the edge
 exactly. VisionSet has no crowd flag: a row with `iscrowd` `1` keeps its shape - a crowd RLE becomes
 an ordinary mask, a crowd polygon an ordinary polygon - and the flag is an `attribute` loss. Holes,
 disconnected regions and an all-background mask are pixels like any other and read as they are.
+
+**LabelMe JSON** (`labelme`). The documents LabelMe 3.x to 7.x writes are read: the top-level
+`version`, `flags`, `shapes`, `imagePath`, `imageData`, `imageHeight` and `imageWidth`, and each
+shape's `label`, `points`, `shape_type`, `flags`, `group_id`, `description` and `mask`. A JSON file
+that is not an object holding `shapes`, such as an export report, is not read; a source holding no
+document is refused. `version` is not checked. A `rectangle` is two opposite corners in either
+order and becomes the box between them; a `polygon` is three or more vertices, kept in order with
+no closing repeat added or removed; a shape with no `shape_type` is a polygon, as LabelMe 3.x
+treats it. No coordinate is rounded, clamped or normalized. Nothing else is converted: a
+`linestrip` is not read as a polyline, nor a `circle`, `point` or `oriented_rectangle` as anything,
+each a `label` loss.
+
+Only one attribute mapping is made, because only it is unambiguous: each entry of a shape's
+`flags` is a boolean attribute of that name, and a non-empty `description` is the string attribute
+`description`; a class defines each by the first label carrying it. A flag whose value is not a
+boolean, or which is named `description`, is an `attribute` loss. `group_id` joins shapes into one
+object, which a label cannot say, so a non-null one is an `attribute` loss and the shape is kept;
+so are picture-level `flags` set true and any other non-null key, such as LabelMe 3.x's colours.
+
+`imagePath` is untrusted. A `\` is read as `/`, so a file written on Windows resolves; the path is
+joined to the document's directory and normalized, and an absolute path, a drive letter or one that
+leaves the source refuses the import. A `..` that stays inside the source, as LabelMe writes for a
+document saved apart from its picture, is followed. A path naming a link that resolves outside the
+source is refused. A picture the source does not hold is an `image` loss of the import, and a
+picture no document names is imported unlabelled. A document above 128 MiB is refused unread.
+
+`imageData`, when present, is decoded before anything trusts it: above 64 MiB of base64 text it is
+refused undecoded, and otherwise it must be strict base64 (no whitespace, no `data:` prefix) of a
+picture Pillow can read and verify, of exactly `imageWidth` by `imageHeight` when those are given;
+anything else refuses the import. Its pixels are not imported: VisionSet ingests the linked file,
+which LabelMe writes beside the document. A picture held only as `imageData` is an `image` loss,
+its labels with it; extract it beside the document under its `imagePath` to import it.
+
+Verified against LabelMe 7.9.1's own reader and writer: a file it writes, with embedded
+`imageData`, a `group_id` and a `linestrip`, imports with exactly the losses above. Files of
+earlier LabelMe versions are read from their documented shape and were not opened in those
+versions.
 
 **Semantic segmentation masks** (`segmentation-png`). Nothing about a mask is guessed: the source
 holds `segmentation.json` at its top, and an import without one is refused with an example of what

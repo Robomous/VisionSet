@@ -30,11 +30,17 @@ from fastapi.routing import APIRoute
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.requests import Request
 
-from visionset.formats.registry import exporters
+from visionset.formats.registry import exporters, importers
 from visionset.inference.registry import registered
 from visionset.jobs import JobRunner
 from visionset.kernel.errors import TrackingUnavailable, VisionSetError
-from visionset.kernel.ports import AuthProvider, Exporter, PreprocessingDriver, Provider
+from visionset.kernel.ports import (
+    AuthProvider,
+    Exporter,
+    Importer,
+    PreprocessingDriver,
+    Provider,
+)
 from visionset.kernel.services import (
     WORKSPACE_ENV_VAR as WORKSPACE_ENV_VAR,
 )
@@ -290,6 +296,14 @@ def get_exporters() -> dict[str, Exporter]:
     return exporters()
 
 
+def get_importers() -> dict[str, Importer]:
+    """Every importer installed alongside this server, by name.
+
+    :func:`get_exporters`'s reason, for the other port.
+    """
+    return importers()
+
+
 def get_drivers() -> Mapping[str, PreprocessingDriver]:
     """Every installed pre-processing driver, keyed by the step kind it applies.
 
@@ -394,6 +408,9 @@ RunnerDep = Annotated[DispatcherHandle, Depends(get_job_runner)]
 """The dispatcher, for a route that launches work rather than doing it."""
 
 ExportersDep = Annotated[dict[str, Exporter], Depends(get_exporters)]
+
+ImportersDep = Annotated[dict[str, Importer], Depends(get_importers)]
+"""The installed importers, for a route that lists them."""
 
 DriversDep = Annotated[Mapping[str, PreprocessingDriver], Depends(get_drivers)]
 """The installed export formats, for a route that lists or runs one."""

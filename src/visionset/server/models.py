@@ -47,6 +47,7 @@ from uuid import UUID, uuid4
 from fastapi import Query
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
+from visionset.formats.matrix import Evidence, FormatMatrix, MatrixRow
 from visionset.inference import (
     DEFAULT_MINIMUM_CONFIDENCE,
     MAXIMUM_CANDIDATES,
@@ -3208,6 +3209,103 @@ class FormatOut(BaseModel):
 
 class FormatPage(Page[FormatOut]):
     """A page of export formats."""
+
+
+class FormatEvidenceOut(BaseModel):
+    """One recorded test behind a format's verification status.
+
+    `kind` is `fixture`, `schema`, `round_trip` or `independent_reader`. `test` is
+    the pytest node that proves it. `gate` is where it runs: `python` (the default
+    CI suite), `format-smoke` (CI with the optional format groups) or `opt-in`
+    (only where a developer supplies data or tools; it does not count towards
+    `validated`). `reader` and `external` describe an independent reader: a
+    third-party library when `external` is true, a test-local parser written from
+    the published format otherwise. `requires` names the optional dependency
+    group the test needs.
+    """
+
+    kind: str
+    test: str
+    gate: str
+    reader: str | None
+    external: bool | None
+    requires: str | None
+
+    @classmethod
+    def of(cls, value: Evidence) -> Self:
+        return cls(
+            kind=value.kind,
+            test=value.test,
+            gate=value.gate,
+            reader=value.reader,
+            external=value.external,
+            requires=value.requires,
+        )
+
+
+class FormatMatrixRowOut(BaseModel):
+    """One installed format plugin in one direction, and what is known about it.
+
+    `direction` is `export` or `import`; `availability` is `both`, `export_only`
+    or `import_only`. For an exporter, the geometries, `lossy` and `targets` are
+    the plugin's own declarations; an importer declares none, so its geometries
+    are the verification descriptor's record and `lossy` is null — an import
+    reports what it drops per run. `status` is `validated` (a test CI runs backs
+    it), `implemented` (recorded, but no test CI runs) or `no_recorded_evidence`
+    (a plugin the descriptor does not cover, such as a third-party one).
+    """
+
+    format: str
+    direction: str
+    availability: str
+    aliases: list[str]
+    task: str | None
+    dialects: list[str]
+    geometries: list[str]
+    degraded_geometries: list[str]
+    unsupported_geometries: list[str]
+    modalities: list[str]
+    targets: list[str]
+    lossy: bool | None
+    status: str
+    evidence: list[FormatEvidenceOut]
+    notes: str | None
+
+    @classmethod
+    def of(cls, value: MatrixRow) -> Self:
+        return cls(
+            format=value.format,
+            direction=value.direction,
+            availability=value.availability,
+            aliases=list(value.aliases),
+            task=value.task,
+            dialects=list(value.dialects),
+            geometries=list(value.geometries),
+            degraded_geometries=list(value.degraded_geometries),
+            unsupported_geometries=list(value.unsupported_geometries),
+            modalities=list(value.modalities),
+            targets=list(value.targets),
+            lossy=value.lossy,
+            status=value.status,
+            evidence=[FormatEvidenceOut.of(one) for one in value.evidence],
+            notes=value.notes,
+        )
+
+
+class FormatMatrixOut(BaseModel):
+    """Every installed format plugin, once per direction, with its verification status."""
+
+    descriptor_version: int
+    items: list[FormatMatrixRowOut]
+    total: int
+
+    @classmethod
+    def of(cls, value: FormatMatrix) -> Self:
+        return cls(
+            descriptor_version=value.descriptor_version,
+            items=[FormatMatrixRowOut.of(row) for row in value.rows],
+            total=len(value.rows),
+        )
 
 
 class GeometryOut(BaseModel):

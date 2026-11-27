@@ -163,6 +163,7 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     (releases.verify_release, READS),
     (formats.list_formats, READS),
     (formats.list_export_targets, READS),
+    (formats.format_matrix, READS),
     (releases.check_export, READS),
     (releases.export_release, WRITES),
     (preprocessing.list_preprocessing_recipes, READS),

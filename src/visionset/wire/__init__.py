@@ -58,7 +58,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal, TypeVar, assert_never
 from uuid import UUID
 
-# The one import here that is not the kernel's, and it is the same direction as
+# The first import here that is not the kernel's, and it is the same direction as
 # everything else in this package: `visionset.inference` is a sibling below the
 # surfaces, it imports nothing from here, and what it owns is the fact this
 # module has no way to know — which model families this build can serve. The
@@ -66,6 +66,9 @@ from uuid import UUID
 # rule in this file exists to prevent. ``PreLabelPlan`` arrives the same way:
 # the narrowing of a pinned schema to the classes a served model's shapes can
 # be written as is derived there, and every surface publishes it.
+# ``FormatMatrix`` is the second, for the same reason: `visionset.formats` is the
+# sibling that owns the verification descriptor, and imports nothing from here.
+from visionset.formats.matrix import Evidence, FormatMatrix, MatrixRow
 from visionset.inference import PreLabelPlan, capabilities_of, produces_of
 from visionset.kernel.domain import (
     Annotation,
@@ -948,6 +951,48 @@ def export_format(value: Exporter) -> shapes.ExportFormat:
         "degraded_geometries": sorted(one.value for one in value.degraded_geometries),
         "modalities": sorted(supported_modalities_of(value)),
         "targets": sorted(one.name for one in value.targets),
+    }
+
+
+def format_evidence(value: Evidence) -> shapes.FormatEvidence:
+    """One recorded test behind a format's verification status."""
+    return {
+        "kind": value.kind,
+        "test": value.test,
+        "gate": value.gate,
+        "reader": value.reader,
+        "external": value.external,
+        "requires": value.requires,
+    }
+
+
+def format_matrix_row(value: MatrixRow) -> shapes.FormatMatrixRow:
+    """One installed plugin in one direction: what it carries and what proves it."""
+    return {
+        "format": value.format,
+        "direction": value.direction,
+        "availability": value.availability,
+        "aliases": list(value.aliases),
+        "task": value.task,
+        "dialects": list(value.dialects),
+        "geometries": list(value.geometries),
+        "degraded_geometries": list(value.degraded_geometries),
+        "unsupported_geometries": list(value.unsupported_geometries),
+        "modalities": list(value.modalities),
+        "targets": list(value.targets),
+        "lossy": value.lossy,
+        "status": value.status,
+        "evidence": [format_evidence(one) for one in value.evidence],
+        "notes": value.notes,
+    }
+
+
+def format_matrix(value: FormatMatrix) -> shapes.FormatMatrix:
+    """Every installed plugin, once per direction, with its verification status."""
+    return {
+        "descriptor_version": value.descriptor_version,
+        "items": [format_matrix_row(row) for row in value.rows],
+        "total": len(value.rows),
     }
 
 

@@ -573,6 +573,42 @@ class ExportFormat(TypedDict):
 
 
 @closed
+class FormatEvidence(TypedDict):
+    kind: str
+    test: str
+    gate: str
+    reader: str | None
+    external: bool | None
+    requires: str | None
+
+
+@closed
+class FormatMatrixRow(TypedDict):
+    format: str
+    direction: str
+    availability: str
+    aliases: list[str]
+    task: str | None
+    dialects: list[str]
+    geometries: list[str]
+    degraded_geometries: list[str]
+    unsupported_geometries: list[str]
+    modalities: list[str]
+    targets: list[str]
+    lossy: bool | None
+    status: str
+    evidence: list[FormatEvidence]
+    notes: str | None
+
+
+@closed
+class FormatMatrix(TypedDict):
+    descriptor_version: int
+    items: list[FormatMatrixRow]
+    total: int
+
+
+@closed
 class CuratedModel(TypedDict):
     provider_id: str
     model_id: str

@@ -422,7 +422,8 @@ The fix is vocabulary rather than capability. `Exporter` declares two geometry s
   polygon}` for `yolov5-yaml`, `darknet` and `voc`, each written as its axis-aligned bounding box;
   `{polygon}` for `segmentation-png`, which rasterizes a polygon into its class map; and empty
   for `coco`, which writes a polygon as a polygon and a mask as RLE and drops a rotated box,
-  for `yolo-obb` and `dota`, which write a rotated box as itself and drop everything else, and for
+  for `yolo-obb` and `dota`, which write a rotated box as itself and drop everything else, for
+  `labelme`, which writes boxes and polygons as themselves and drops everything else, and for
   `cvat-images` and `cvat-video`, which write a rotated box as a CVAT box and its `rotation`. The two sets are disjoint, and `supported` wins if a plugin
   says both, because resolving a contradiction towards the weaker claim would report a loss that
   does not happen.
@@ -542,6 +543,7 @@ The catalog this build ships, generated from the declarations by
 | `cvat-video` | cvat-video | `other` | `cvat-video` | — | bbox, obb, polygon, polyline | — | — |
 | `dota` | dota | `other` | `dota` | — | obb | — | — |
 | `kitti` | kitti | `other` | `kitti` | — | cuboid_3d | — | — |
+| `labelme` | labelme | `other` | `labelme` | — | bbox, polygon | — | — |
 | `mot` | mot | `other` | `mot` | — | bbox | — | — |
 | `openlane-2d` | openlane-2d | `other` | `openlane-2d` | — | polyline | — | — |
 | `segmentation-png` | segmentation-png | `other` | `segmentation-png` | — | mask, polygon | — | — |
@@ -916,6 +918,27 @@ There is **no reference-reader smoke test** for this format, unlike the other tw
 MATLAB and every Python consumer parses the XML itself, so there is no loader worth pinning a CI
 job to: the document is the contract, and the golden-file tests assert it as text.
 
+### The LabelMe format
+
+`labelme` writes one LabelMe JSON document beside each picture: `<hash>.<ext>` and `<hash>.json`
+at the top of the export for a release without a split recipe, and under `<fold>/` for one with.
+The [`labelme` importer](import.md#formats) reads either layout back.
+
+Each document holds every key LabelMe's own loader reads, and nothing more: `version` (`5.5.0`,
+the schema written rather than a tool that wrote it), `flags` (`{}`), `shapes`, `imagePath` (the
+picture's file name, relative to the document), `imageData` (`null`: the picture is linked, never
+embedded), `imageHeight` and `imageWidth`. A box is a `rectangle` of its top-left and bottom-right
+corners, `[[x, y], [x + width, y + height]]`, and a polygon a `polygon` of its vertices; every
+coordinate is written as stored, in pixels, unrounded. A shape's `flags` are its boolean attribute
+values and its `description` its string attribute `description` (empty without one); `group_id`
+and `mask` are `null`.
+
+`lossy = True` and `supported_geometries` is `{bbox, polygon}`, with nothing degraded: rotated
+boxes, polylines, masks, tags and 3D geometry are dropped and reported, and confidence,
+provenance and every attribute value other than a boolean and `description` have nowhere to go.
+An export opens in LabelMe 7.9.1's own reader without repair; other LabelMe versions were not
+tried.
+
 ### The classification format
 
 The one installed format whose content *is* tags, and the only one that does not drop them. It
@@ -1204,7 +1227,8 @@ For `export`, the CLI resolves the name through the plugin registry and hands th
 format with `pick` and a target with `resolve_target`, never a dict lookup: a `KeyError` is outside
 the `VisionSetError` tree and a typo would answer with a traceback instead of the list of installed
 names. `visionset format list` and `visionset target list` print those lists without opening a
-workspace at all.
+workspace at all, and `visionset format matrix` adds the importers and the tests recorded for each
+format (see the [verification matrix](architecture/backend/formats.md#verification-matrix)).
 
 **`--target` and `--format` are one choice.** A target is the model the release will train and
 resolves to the format that writes for it; a format addresses no trainer. Giving both, or neither,

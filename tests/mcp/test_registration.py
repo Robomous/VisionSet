@@ -96,6 +96,7 @@ SHIPPED = {
     "create_preprocessing_recipe",
     "update_preprocessing_recipe",
     "list_formats",
+    "format_matrix",
     "inspect_import",
     "import_dataset",
     "list_inference_connections",

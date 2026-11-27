@@ -71,6 +71,8 @@ from tests.fixtures.samples import (
 from visionset_test_formats import DummyExporter
 
 from visionset import wire
+from visionset.formats.matrix import build as build_matrix
+from visionset.formats.registry import exporters, importers
 from visionset.formats.ultralytics import UltralyticsExporter
 from visionset.inference import (
     PreLabelExcludedClass,
@@ -151,6 +153,9 @@ TRACK_STATUS = TrackStatus(
     progress={**dict.fromkeys(AssetProgress, 0), AssetProgress.ANNOTATED: 2},
     outside=1,
 )
+
+MATRIX = build_matrix(exporters(), importers())
+COCO_EXPORT, COCO_IMPORT = (row for row in MATRIX.rows if row.format == "coco")
 
 # One row per pair: a label, the projected payload, and the wire model it must
 # agree with. Built eagerly — every projection runs at import, so a leaf that
@@ -298,6 +303,12 @@ PAIRS: list[tuple[str, Mapping[str, Any], type[BaseModel]]] = [
         models.ReleaseVerificationOut,
     ),
     ("export_format", wire.export_format(DummyExporter()), models.FormatOut),
+    # Every installed plugin, so both directions, an external and a test-local
+    # reader, and the third-party `dummy` with no evidence at all are all present.
+    ("format_matrix", wire.format_matrix(MATRIX), models.FormatMatrixOut),
+    ("format_matrix_row_export", wire.format_matrix_row(COCO_EXPORT), models.FormatMatrixRowOut),
+    ("format_matrix_row_import", wire.format_matrix_row(COCO_IMPORT), models.FormatMatrixRowOut),
+    ("format_evidence", wire.format_evidence(COCO_EXPORT.evidence[-1]), models.FormatEvidenceOut),
     ("provider", wire.provider(registered().providers["sam"]), models.ProviderOut),
     (
         "export_target",
@@ -575,6 +586,10 @@ SHAPES: dict[str, Any] = {
     "split_recipe": shapes.SplitRecipe,
     "release_verification": shapes.ReleaseVerification,
     "export_format": shapes.ExportFormat,
+    "format_matrix": shapes.FormatMatrix,
+    "format_matrix_row_export": shapes.FormatMatrixRow,
+    "format_matrix_row_import": shapes.FormatMatrixRow,
+    "format_evidence": shapes.FormatEvidence,
     "provider": shapes.Provider,
     "export_target": shapes.ExportTarget,
     "preprocessing_hints_empty": shapes.PreprocessingHints,

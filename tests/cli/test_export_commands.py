@@ -30,9 +30,11 @@ from tests.cli._flow import (
 )
 from typer.testing import CliRunner
 
+from visionset import wire
 from visionset.cli.main import app
 from visionset.formats import registry
 from visionset.formats._targets import self_target
+from visionset.formats.matrix import format_matrix
 from visionset.kernel.domain import (
     Annotation,
     BboxGeometry,
@@ -113,7 +115,7 @@ def test_format_list_names_the_installed_exporters() -> None:
     rows = result.stdout.splitlines()
     assert rows[0].split() == ["NAME", "LOSSY"]
     # Sorted by name, so `bdd100k-lane` leads and `yolov5-yaml` closes. Five of
-    # the nineteen are the lane family, and every one of them is lossy — a lane file has
+    # the twenty are the lane family, and every one of them is lossy — a lane file has
     # fields for a lane and none for an annotation's attributes or confidence.
     assert [row.split() for row in rows[1:]] == [
         ["bdd100k-lane", "yes"],
@@ -127,6 +129,7 @@ def test_format_list_names_the_installed_exporters() -> None:
         ["dota", "yes"],
         ["dummy", "no"],
         ["kitti", "yes"],
+        ["labelme", "yes"],
         ["mot", "yes"],
         ["openlane-2d", "yes"],
         ["segmentation-png", "yes"],
@@ -264,6 +267,14 @@ def test_format_list_json_is_the_envelope() -> None:
             "targets": ["kitti"],
         },
         {
+            "name": "labelme",
+            "lossy": True,
+            "geometries": ["bbox", "polygon"],
+            "degraded_geometries": [],
+            "modalities": ["image"],
+            "targets": ["labelme"],
+        },
+        {
             "name": "mot",
             "lossy": True,
             "geometries": ["bbox"],
@@ -347,6 +358,44 @@ def test_format_list_json_is_the_envelope() -> None:
             "targets": ["yolov7"],
         },
     ]
+
+
+# --- format matrix -----------------------------------------------------------
+
+
+def test_format_matrix_needs_no_workspace_and_lists_each_direction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(app, ["format", "matrix"])
+    assert result.exit_code == 0, result.output
+    header, *rows = result.stdout.splitlines()
+    assert header.split() == [
+        "FORMAT",
+        "DIRECTION",
+        "GEOMETRIES",
+        "DEGRADED",
+        "LOSSY",
+        "STATUS",
+        "EVIDENCE",
+    ]
+    cells = {tuple(row.split()[:2]): row.split()[2:] for row in rows}
+    assert cells[("coco", "export")] == [
+        "bbox,mask,polygon",
+        "-",
+        "no",
+        "validated",
+        "fixture,independent_reader,round_trip",
+    ]
+    assert cells[("nuscenes", "import")] == ["cuboid_3d", "-", "-", "validated", "fixture"]
+    assert cells[("dummy", "export")][-2:] == ["no_recorded_evidence", "-"]
+    assert ("tusimple", "import") not in cells
+
+
+def test_format_matrix_json_is_the_wire_projection() -> None:
+    result = CliRunner().invoke(app, ["format", "matrix", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == wire.format_matrix(format_matrix())
 
 
 # --- export ------------------------------------------------------------------
