@@ -44,6 +44,9 @@ function canonical(classes: readonly LabelClassBody[]): string {
         attribute.options ?? null,
         attribute.default ?? null,
       ]),
+      // Names in order and edges as listed: both are authored, and a spec change
+      // alone must still read as a change, or a save would drop it.
+      declared.keypoints == null ? null : [declared.keypoints.names, declared.keypoints.skeleton ?? []],
     ]),
   );
 }

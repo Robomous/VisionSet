@@ -46,7 +46,7 @@ import { PreviewSchemaChangeProbe, SchemaBlockingAssetsProbe } from "../testing/
 installScreensHarness();
 
 describe("the schema editor", () => {
-  function projectWithSchema(): void {
+  function projectWithSchema(classes: readonly LabelClassBody[] = CLASSES as LabelClassBody[]): void {
     on("GET", /^\/projects\/[^/]+$/, {
       status: 200,
       body: {
@@ -60,7 +60,7 @@ describe("the schema editor", () => {
     });
     on("GET", /^\/projects\/[^/]+\/schema$/, {
       status: 200,
-      body: { project_id: PROJECT, version: 3, classes: CLASSES },
+      body: { project_id: PROJECT, version: 3, classes },
     });
     on("GET", /schema\/versions$/, {
       status: 200,
@@ -68,7 +68,7 @@ describe("the schema editor", () => {
         items: [
           { project_id: PROJECT, version: 1, classes: [CLASSES[0]] },
           { project_id: PROJECT, version: 2, classes: CLASSES },
-          { project_id: PROJECT, version: 3, classes: CLASSES },
+          { project_id: PROJECT, version: 3, classes },
         ],
         total: 3,
       },
@@ -1334,14 +1334,11 @@ describe("the schema editor", () => {
     for (const geometry of IMPLEMENTED_GEOMETRIES) {
       expect(await screen.findByTestId(`class-geometry-0-${geometry}`)).toBeTruthy();
     }
-    // `keypoints` is refused at write time with `UnsupportedGeometry`, and the
-    // server does not publish it.
-    expect(screen.queryByTestId("class-geometry-0-keypoints")).toBeNull();
     expect(sent.some((request) => new URL(request.url).pathname.endsWith("/geometries"))).toBe(true);
   });
 
   it("offers a geometry the server adds, with no list in the client to edit", async () => {
-    on("GET", /\/geometries$/, { status: 200, body: geometryPage([...IMPLEMENTED_GEOMETRIES, "keypoints"]) });
+    on("GET", /\/geometries$/, { status: 200, body: geometryPage([...IMPLEMENTED_GEOMETRIES.filter((one) => one !== "keypoints"), "keypoints"]) });
     projectWithSchema();
     renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("schema-editor");
@@ -1425,6 +1422,7 @@ describe("the schema editor", () => {
       "class-geometry-0-obb",
       "class-geometry-0-polygon",
       "class-geometry-0-mask",
+      "class-geometry-0-keypoints",
       "class-geometry-0-polyline",
       "class-geometry-0-classification_tag",
       "class-geometry-0-cuboid_3d",
@@ -1433,11 +1431,11 @@ describe("the schema editor", () => {
     // The display words, not the wire values: `classification_tag` is an
     // identifier and `tag` is what it is called. Icon only, so the word is
     // each button's name, and it is said again beside the group.
-    expect(chips.map((chip) => chip.getAttribute("aria-label"))).toEqual(["Box", "Rotated box", "Polygon", "Mask", "Polyline", "Tag", "3D box", "3D polyline"]);
-    expect(chips.map((chip) => chip.textContent)).toEqual(["", "", "", "", "", "", "", ""]);
+    expect(chips.map((chip) => chip.getAttribute("aria-label"))).toEqual(["Box", "Rotated box", "Polygon", "Mask", "Keypoints", "Polyline", "Tag", "3D box", "3D polyline"]);
+    expect(chips.map((chip) => chip.textContent)).toEqual(["", "", "", "", "", "", "", "", ""]);
     expect(within(group.parentElement!).getByText("Box").getAttribute("aria-hidden")).toBe("true");
     // What the class accepts is readable at a glance, with nothing opened.
-    expect(chips.map((chip) => chip.getAttribute("aria-pressed"))).toEqual(["true", "false", "false", "false", "false", "false", "false", "false"]);
+    expect(chips.map((chip) => chip.getAttribute("aria-pressed"))).toEqual(["true", "false", "false", "false", "false", "false", "false", "false", "false"]);
     expect(screen.queryByTestId(/^geometry-category-/)).toBeNull();
   });
 
@@ -1567,6 +1565,74 @@ describe("the schema editor", () => {
     expect(body.classes.find((one) => one.name === "lane")?.color).toBeNull();
     expect(body.classes.find((one) => one.name === "pedestrian")?.color).toBeNull();
     expect(body.classes.find((one) => one.name === "vehicle")?.color).toBe("#38bdf8");
+  });
+
+  describe("a keypoints class's spec", () => {
+    const FACE: LabelClassBody = {
+      name: "face",
+      geometries: ["keypoints"],
+      color: null,
+      attributes: [],
+      keypoints: { names: ["left_eye", "right_eye", "nose"], skeleton: [[0, 1], [1, 2]] },
+    };
+    const WITH_FACE = [...(CLASSES as LabelClassBody[]), FACE];
+    const FACE_AT = CLASSES.length;
+
+    async function savedClasses(): Promise<LabelClassBody[]> {
+      await userEvent.click(screen.getByTestId("save-schema"));
+      await waitFor(() => expect(sent.some((r) => r.method === "PUT")).toBe(true));
+      const request = sent.find((r) => r.method === "PUT")!;
+      return (JSON.parse(bodies.get(request) ?? "{}") as { classes: LabelClassBody[] }).classes;
+    }
+
+    function publishes(): void {
+      on("POST", /schema\/drafts\/curated\/publish$/, {
+        status: 201,
+        body: { published: { project_id: PROJECT, version: 4, classes: WITH_FACE }, advanced_batches: [] },
+      });
+    }
+
+    it("shows the names in order and each edge as a pair of names, read-only", async () => {
+      projectWithSchema(WITH_FACE);
+      renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
+      await screen.findByTestId("schema-editor");
+      await selectClass(FACE_AT);
+
+      const names = within(screen.getByTestId(`keypoint-names-${FACE_AT}`)).getAllByRole("listitem");
+      expect(names.map((one) => one.textContent)).toEqual(["left_eye", "right_eye", "nose"]);
+      const edges = within(screen.getByTestId(`keypoint-skeleton-${FACE_AT}`)).getAllByRole("listitem");
+      expect(edges.map((one) => one.textContent)).toEqual(["left_eye – right_eye", "right_eye – nose"]);
+      expect(within(screen.getByTestId(`keypoint-spec-${FACE_AT}`)).queryByRole("textbox")).toBeNull();
+    });
+
+    it("travels unchanged when the class itself is renamed and saved", async () => {
+      projectWithSchema(WITH_FACE);
+      publishes();
+      renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
+      await screen.findByTestId("schema-editor");
+      await selectClass(FACE_AT);
+      await userEvent.clear(screen.getByTestId(`class-name-${FACE_AT}`));
+      await userEvent.type(screen.getByTestId(`class-name-${FACE_AT}`), "head");
+      await closeSheet();
+
+      const saved = await savedClasses();
+      expect(saved.find((one) => one.name === "head")?.keypoints).toEqual(FACE.keypoints);
+    });
+
+    it("travels unchanged when another class is edited and saved", async () => {
+      projectWithSchema(WITH_FACE);
+      publishes();
+      renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
+      await screen.findByTestId("schema-editor");
+      await selectClass(0);
+      await userEvent.clear(screen.getByTestId("class-name-0"));
+      await userEvent.type(screen.getByTestId("class-name-0"), "car");
+      await closeSheet();
+
+      const saved = await savedClasses();
+      expect(saved.map((one) => one.name)).toEqual(["car", "lane", "face"]);
+      expect(saved.find((one) => one.name === "face")?.keypoints).toEqual(FACE.keypoints);
+    });
   });
 
   it("\"Use the name’s colour\" clears a declared colour back to the derived one, once saved", async () => {

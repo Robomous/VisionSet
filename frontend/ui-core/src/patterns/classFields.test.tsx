@@ -23,7 +23,7 @@ import type { AttributeBody, LabelClassBody, OfferedGeometries } from "../screen
 import { ApiError } from "../data/errors";
 import { IMPLEMENTED_GEOMETRIES, offeredGeometries } from "../testing/geometries";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
-import { ClassFields } from "./ClassFields";
+import { ClassFields, ClassReadout } from "./ClassFields";
 import { CLASS_PALETTE, hexOf } from "./classFieldsRules";
 
 // A Radix Checkbox or Switch measures itself through `ResizeObserver` once it
@@ -362,7 +362,7 @@ describe("the inspector's name, shortcut and shapes", () => {
     expect(screen.queryByText("Shortcut")).toBeNull();
   });
 
-  it("offers the eight shapes an annotation can carry, as icon buttons named for them", () => {
+  it("offers the nine shapes an annotation can carry, as icon buttons named for them", () => {
     mountSheet(declaredWith());
 
     const group = screen.getByTestId("class-geometry-0");
@@ -372,15 +372,16 @@ describe("the inspector's name, shortcut and shapes", () => {
       "class-geometry-0-obb",
       "class-geometry-0-polygon",
       "class-geometry-0-mask",
+      "class-geometry-0-keypoints",
       "class-geometry-0-polyline",
       "class-geometry-0-classification_tag",
       "class-geometry-0-cuboid_3d",
       "class-geometry-0-polyline_3d",
     ]);
     // Icon only: the word is the accessible name, never visible text.
-    expect(items.map((item) => item.getAttribute("aria-label"))).toEqual(["Box", "Rotated box", "Polygon", "Mask", "Polyline", "Tag", "3D box", "3D polyline"]);
-    expect(items.map((item) => item.textContent)).toEqual(["", "", "", "", "", "", "", ""]);
-    expect(items.map((item) => item.getAttribute("aria-pressed"))).toEqual(["true", "false", "false", "false", "false", "false", "false", "false"]);
+    expect(items.map((item) => item.getAttribute("aria-label"))).toEqual(["Box", "Rotated box", "Polygon", "Mask", "Keypoints", "Polyline", "Tag", "3D box", "3D polyline"]);
+    expect(items.map((item) => item.textContent)).toEqual(["", "", "", "", "", "", "", "", ""]);
+    expect(items.map((item) => item.getAttribute("aria-pressed"))).toEqual(["true", "false", "false", "false", "false", "false", "false", "false", "false"]);
     expect(screen.queryByTestId(/^geometry-category-/)).toBeNull();
   });
 
@@ -1011,9 +1012,9 @@ describe("the stacked layout", () => {
     expect(screen.getByTestId("class-color-new")).toBeTruthy();
     expect(screen.getByTestId("clear-color-new")).toBeTruthy();
     expect(screen.queryByTestId("class-color-trigger-new")).toBeNull();
-    // Eight shapes, each a toggle the group reports as pressed or not.
+    // Nine shapes, each a toggle the group reports as pressed or not.
     const shapes = within(screen.getByTestId("class-geometry-new")).getAllByRole("button");
-    expect(shapes).toHaveLength(8);
+    expect(shapes).toHaveLength(9);
     expect(shapes.every((shape) => shape.hasAttribute("aria-pressed"))).toBe(true);
   });
 
@@ -1023,7 +1024,7 @@ describe("the stacked layout", () => {
     const captions = screen.getAllByTestId(/^geometry-category-/);
     expect(captions.length).toBeGreaterThan(1);
     const grouped = captions.flatMap((caption) => [...(caption.parentElement?.querySelectorAll("[data-testid^='class-geometry-new-']") ?? [])]);
-    expect(grouped).toHaveLength(8);
+    expect(grouped).toHaveLength(9);
   });
 
   it("names the attribute kinds in words and keeps the wire values", async () => {
@@ -1104,7 +1105,7 @@ describe("the shapes on offer come from the server", () => {
   }
 
   it("offers a geometry the server adds, in picker order, with no list edited here", () => {
-    mountSheet(declaredWith(), { offered: offeredGeometries([...IMPLEMENTED_GEOMETRIES, "keypoints"]) });
+    mountSheet(declaredWith(), { offered: offeredGeometries([...IMPLEMENTED_GEOMETRIES.filter((one) => one !== "keypoints"), "keypoints"]) });
 
     expect(offeredIds("0")).toEqual([
       "class-geometry-0-bbox",
@@ -1162,5 +1163,45 @@ describe("the shapes on offer come from the server", () => {
     expect(screen.getByTestId("class-geometry-new-polygon")).toHaveProperty("disabled", true);
     await userEvent.click(within(screen.getByTestId("class-geometry-new-error")).getByRole("button", { name: "Try again" }));
     expect(retry).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("a keypoints class's spec", () => {
+  const SPEC = { names: ["left_eye", "right_eye", "nose"], skeleton: [[0, 1], [1, 2], [2, 7]] as [number, number][] };
+
+  function listed(testId: string): (string | null)[] {
+    return within(screen.getByTestId(testId)).getAllByRole("listitem").map((item) => item.textContent);
+  }
+
+  it("is shown in the stacked form, names in order and edges as name pairs", () => {
+    render(<ClassFields offered={offeredGeometries()} declared={declaredWith({ geometries: ["keypoints"], keypoints: SPEC })} slot="new" swatch="#888888" hotkey={null} onChange={vi.fn()} />);
+
+    expect(listed("keypoint-names-new")).toEqual(["left_eye", "right_eye", "nose"]);
+    // An edge past the names, as a draft may hold, is named by its position.
+    expect(listed("keypoint-skeleton-new")).toEqual(["left_eye – right_eye", "right_eye – nose", "nose – point 8"]);
+  });
+
+  it("is shown on a published class's readout", () => {
+    render(<ClassReadout declared={declaredWith({ geometries: ["keypoints"], keypoints: SPEC })} index={4} />);
+
+    expect(listed("keypoint-names-past-4")).toEqual(["left_eye", "right_eye", "nose"]);
+  });
+
+  it("says a keypoints class without a spec has none, and says nothing for any other class", () => {
+    const { unmount } = render(<ClassReadout declared={declaredWith({ geometries: ["keypoints"], keypoints: null })} index={0} />);
+    expect(screen.getByTestId("keypoint-spec-past-0").textContent).toContain("No spec");
+    unmount();
+
+    render(<ClassReadout declared={declaredWith()} index={0} />);
+    expect(screen.queryByTestId("keypoint-spec-past-0")).toBeNull();
+  });
+
+  it("is carried through every edit the form makes", async () => {
+    const sheet = mountSheet(declaredWith({ geometries: ["keypoints"], keypoints: SPEC }));
+
+    await userEvent.type(screen.getByTestId("class-name-0"), "s");
+    await userEvent.click(screen.getByTestId("class-geometry-0-bbox"));
+
+    expect(sheet.latest()).toMatchObject({ name: "vehicles", geometries: ["keypoints", "bbox"], keypoints: SPEC });
   });
 });
