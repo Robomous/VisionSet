@@ -13,6 +13,7 @@ from PIL import Image
 from visionset.kernel import (
     AnnotationAlreadyObserved,
     AnnotationNotAtOccurrence,
+    AssetNotFound,
     AssetNotInJob,
     AssetNotJudged,
     AssetNotWritable,
@@ -66,6 +67,7 @@ from visionset.kernel.ports import UnitOfWork
 from visionset.kernel.services import (
     AnnotationService,
     BatchService,
+    IngestService,
     JobService,
     ProjectService,
     SchemaService,
@@ -135,6 +137,17 @@ class World:
         duration: float | None = None,
         ranges: tuple[TimeRange, ...] | None = None,
     ) -> Clip:
+        session = self.begin(len(seeds), duration=duration, ranges=ranges)
+        return self.finish(session, seeds, positions=positions)
+
+    def begin(
+        self,
+        frames: int,
+        *,
+        duration: float | None = None,
+        ranges: tuple[TimeRange, ...] | None = None,
+    ) -> UUID:
+        """Start a clip's import, which registers its source, and commit nothing yet."""
         self._clips += 1
         extra = {} if ranges is None else {"ranges": ranges}
         session = self.imports.start(
@@ -144,7 +157,7 @@ class World:
                 width=SIZE[0],
                 height=SIZE[1],
                 fps=30.0,
-                duration_seconds=float(len(seeds)) if duration is None else duration,
+                duration_seconds=float(frames) if duration is None else duration,
                 codec="vp9",
             ),
             extraction_fps=1.0,
@@ -152,12 +165,17 @@ class World:
             batch_name=f"clip {self._clips}",
             **extra,  # type: ignore[arg-type]
         )
+        return session.id
+
+    def finish(
+        self, session_id: UUID, seeds: Sequence[int], *, positions: Sequence[int] | None = None
+    ) -> Clip:
         ordinals = list(range(len(seeds))) if positions is None else list(positions)
         self.imports.append_frames(
-            session.id, [_frame(o, s) for o, s in zip(ordinals, seeds, strict=True)]
+            session_id, [_frame(o, s) for o, s in zip(ordinals, seeds, strict=True)]
         )
-        batch = self.imports.commit(session.id)
-        source_id = self.imports.get(session.id).source_id
+        batch = self.imports.commit(session_id)
+        source_id = self.imports.get(session_id).source_id
         return Clip(source_id, batch.id, SourceService(self.workspace).occurrences(source_id))
 
     def working(self, batch_id: UUID, *, size: int | None = None) -> list[AnnotationJob]:
@@ -252,6 +270,69 @@ def test_an_unknown_track_is_not_found(world: World) -> None:
 
 
 # --- observing ---------------------------------------------------------------
+
+
+def test_an_asset_lists_its_occurrences_across_sources(world: World) -> None:
+    # The first source is registered first but its occurrences are written last,
+    # so the order is the sources', not the rows'.
+    begun_first, begun_second = world.begin(3), world.begin(3)
+    second = world.finish(begun_second, (1, 5, 1))
+    first = world.finish(begun_first, (0, 1, 2))
+    shared = first.at(1).asset_id
+    assert second.at(0).asset_id == shared == second.at(2).asset_id
+
+    found = SourceService(world.workspace).asset_occurrences(shared)
+    assert [(o.source_id, o.position) for o in found] == [
+        (first.source_id, 1),
+        (second.source_id, 0),
+        (second.source_id, 2),
+    ]
+    assert [o.id for o in found] == [first.at(1).id, second.at(0).id, second.at(2).id]
+    assert SourceService(world.workspace).asset_occurrences(first.at(0).asset_id) == [first.at(0)]
+
+
+def test_the_store_walks_from_an_asset_to_its_occurrences(world: World) -> None:
+    begun_first, begun_second = world.begin(2), world.begin(2)
+    second = world.finish(begun_second, (4, 4))
+    first = world.finish(begun_first, (3, 4))
+    with world.workspace.unit_of_work() as uow:
+        assert [o.id for o in uow.occurrences_of(first.at(1).asset_id)] == [
+            first.at(1).id,
+            second.at(0).id,
+            second.at(1).id,
+        ]
+        assert uow.occurrences_of(uuid4()) == []
+
+
+def test_an_asset_outside_any_sequence_has_no_occurrences(world: World, tmp_path: Path) -> None:
+    stills = tmp_path / "stills"
+    stills.mkdir()
+    (stills / "a.jpg").write_bytes(_jpeg(8))
+    source = SourceService(world.workspace).register_images(world.project.id, stills)
+    (asset,) = IngestService(world.workspace).ingest(source.id).assets
+    assert SourceService(world.workspace).asset_occurrences(asset.id) == []
+    with pytest.raises(AssetNotFound):
+        SourceService(world.workspace).asset_occurrences(uuid4())
+
+
+def test_each_source_s_track_observes_the_shared_asset_at_its_own_occurrence(
+    world: World,
+) -> None:
+    first = world.clip(seeds=(0, 1))
+    second = world.clip(seeds=(1,))
+    (job,) = world.working(first.batch_id)
+    shared = first.at(1).asset_id
+    one = world.tracks.create(first.source_id, "car").track
+    other = world.tracks.create(second.source_id, "car").track
+    world.tracks.observe(job.id, one.id, first.at(1).id, world.box(job, shared).id)
+    world.tracks.observe(job.id, other.id, second.at(0).id, world.box(job, shared).id)
+
+    for clip, track in ((first, one), (second, other)):
+        (listed,) = world.tracks.list(clip.source_id)
+        assert listed.track.id == track.id
+        assert [f.asset_id for f in listed.observations] == [shared]
+    with pytest.raises(TrackSourceMismatch):
+        world.tracks.observe(job.id, one.id, second.at(0).id, world.box(job, shared).id)
 
 
 def test_identical_frames_need_one_annotation_per_occurrence(world: World) -> None:

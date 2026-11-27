@@ -218,6 +218,7 @@ annotation already drawn at each (see
 | | |
 | --- | --- |
 | `list_frame_occurrences` | A sequence source's positions and the asset each decoded to, in position order. |
+| `list_asset_occurrences` | An asset's occurrences in every sequence source it sits in, by source registration then position: which sources' tracks may observe it. |
 | `list_tracks` | A source's tracks, each with its observations. Where a track id comes from. |
 | `get_track_status` | A track's observations counted by the progress their assets hold in one batch; `settled` only when the batch holds every observation of a non-empty track and each is settled. |
 | `create_track` | An empty track of a class the active schema declares, on a video or image-sequence source. |

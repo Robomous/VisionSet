@@ -2475,6 +2475,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/assets/{asset_id}/occurrences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Asset Occurrences
+         * @description Every frame occurrence of this asset, across every sequence source it sits in.
+         *
+         *     Identical bytes imported into two sequences are one asset at occurrences of
+         *     both, and each source keeps its own tracks. Ordered by source registration,
+         *     then position. An asset no sequence holds answers `{"items": [], "total": 0}`.
+         *     An unknown project is 404 `PROJECT_NOT_FOUND` and an unknown asset 404
+         *     `ASSET_NOT_FOUND`.
+         */
+        get: operations["list_asset_occurrences"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/assets/{asset_id}/points": {
         parameters: {
             query?: never;
@@ -13752,6 +13778,74 @@ export interface operations {
                     "application/octet-stream": unknown;
                     "image/jpeg": unknown;
                     "image/png": unknown;
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_asset_occurrences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FrameOccurrencePage"];
                 };
             };
             /** @description Missing or invalid bearer token */

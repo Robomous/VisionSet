@@ -233,12 +233,12 @@ export const READY_SAM = {
 } satisfies Wire["ConnectionOut"];
 
 /**
- * A sequence source the job's frames came from, its occurrences and its tracks,
+ * A sequence source the job's frames sit in, its occurrences and its tracks,
  * which the observe, unobserve and create POSTs actually move — `progressStore`'s
  * reasoning: the track claims are about what the page shows afterwards.
  *
- * Absent by default, and then every frame has no source and nothing about
- * tracks is asked.
+ * Absent by default, and then every frame sits in no sequence and no source is
+ * asked about tracks.
  */
 export interface TrackWorld {
   readonly sourceId: string;
@@ -502,6 +502,11 @@ export async function serveApi(
         } satisfies Wire["AssetCalibrationOut"],
       });
     }
+    const assetOccurrences = /^\/projects\/[^/]+\/assets\/([^/]+)\/occurrences$/.exec(path);
+    if (assetOccurrences !== null) {
+      const items = (tracks?.occurrences ?? []).filter((one) => one.asset_id === assetOccurrences[1]);
+      return route.fulfill({ json: { items, total: items.length } satisfies Wire["FrameOccurrencePage"] });
+    }
     if (tracks !== undefined) {
       const classOf = (annotationId: string): string | undefined => stored.find((one) => one.id === annotationId)?.label_class;
       const answered = trackRoute(tracks, request.method(), path, request.postData(), progress, classOf);
@@ -562,9 +567,6 @@ function trackRoute(
   classOf: (annotationId: string) => string | undefined,
 ): Fulfilment | null {
   const sourcePath = `/sources/${world.sourceId}`;
-  if (path === `${sourcePath}/occurrences`) {
-    return { json: { items: [...world.occurrences], total: world.occurrences.length } satisfies Wire["FrameOccurrencePage"] };
-  }
   if (path === `${sourcePath}/tracks` && method === "GET") {
     return { json: { items: world.tracks, total: world.tracks.length } satisfies Wire["TrackPage"] };
   }

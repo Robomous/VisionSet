@@ -11,6 +11,7 @@ positions 0 and 1. Unobserved ``car`` boxes wait at positions 2 and 3, and a
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
@@ -21,6 +22,7 @@ from PIL import Image
 from visionset.kernel.domain import (
     Annotation,
     AnnotationJob,
+    Batch,
     BboxGeometry,
     BySize,
     GeometryType,
@@ -48,6 +50,7 @@ PROJECT = "clips"
 @dataclass(frozen=True)
 class TrackWorld:
     project: str
+    project_id: str
     source: str
     stills: str
     batch: str
@@ -90,6 +93,52 @@ def _box(
     )[0].id
 
 
+def _import_clip(
+    workspace: WorkspaceService, project_id: UUID, name: str, seeds: Sequence[int]
+) -> tuple[Batch, UUID]:
+    imports = VideoImportService(workspace)
+    session = imports.start(
+        project_id,
+        display_name=f"{name}.webm",
+        metadata=VideoMetadata(
+            width=SIZE[0], height=SIZE[1], fps=30.0, duration_seconds=len(seeds), codec="vp9"
+        ),
+        extraction_fps=1.0,
+        materializer="mediabunny/1.56.1",
+        batch_name=name,
+    )
+    imports.append_frames(
+        session.id,
+        [
+            IncomingFrame(
+                ordinal=n,
+                requested_timestamp=float(n),
+                source_timestamp=None,
+                width=SIZE[0],
+                height=SIZE[1],
+                content=BytesIO(_jpeg(seed)),
+            )
+            for n, seed in enumerate(seeds)
+        ],
+    )
+    batch = imports.commit(session.id)
+    return batch, imports.get(session.id).source_id
+
+
+def repeat_clip(root: Path, seeds: Sequence[int]) -> str:
+    """Import a second clip into the world's project, its frames drawn from ``seeds``.
+
+    The world's clip draws position ``n`` from seed ``n``, so a seed below
+    ``FRAMES`` repeats that frame's bytes: one asset, now in both sources.
+    """
+    workspace = WorkspaceService.open(root)
+    try:
+        project = ProjectService(workspace).resolve(PROJECT)
+        return str(_import_clip(workspace, project.id, "repeat", seeds)[1])
+    finally:
+        workspace.close()
+
+
 def track_world(root: Path, scratch: Path) -> TrackWorld:
     """Populate the workspace at ``root``; ``scratch`` holds an empty stills folder."""
     workspace = WorkspaceService.open(root)
@@ -102,33 +151,7 @@ def track_world(root: Path, scratch: Path) -> TrackWorld:
                 LabelClass(name="van", geometries=(GeometryType.BBOX,)),
             ],
         )
-        imports = VideoImportService(workspace)
-        session = imports.start(
-            project.id,
-            display_name="clip.webm",
-            metadata=VideoMetadata(
-                width=SIZE[0], height=SIZE[1], fps=30.0, duration_seconds=FRAMES, codec="vp9"
-            ),
-            extraction_fps=1.0,
-            materializer="mediabunny/1.56.1",
-            batch_name="clip",
-        )
-        imports.append_frames(
-            session.id,
-            [
-                IncomingFrame(
-                    ordinal=n,
-                    requested_timestamp=float(n),
-                    source_timestamp=None,
-                    width=SIZE[0],
-                    height=SIZE[1],
-                    content=BytesIO(_jpeg(n)),
-                )
-                for n in range(FRAMES)
-            ],
-        )
-        batch = imports.commit(session.id)
-        source_id = imports.get(session.id).source_id
+        batch, source_id = _import_clip(workspace, project.id, "clip", range(FRAMES))
         occurrences = SourceService(workspace).occurrences(source_id)
 
         batches, jobs = BatchService(workspace), JobService(workspace)
@@ -162,6 +185,7 @@ def track_world(root: Path, scratch: Path) -> TrackWorld:
 
         return TrackWorld(
             project=PROJECT,
+            project_id=str(project.id),
             source=str(source_id),
             stills=str(stills.id),
             batch=str(batch.id),

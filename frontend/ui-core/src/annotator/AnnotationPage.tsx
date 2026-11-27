@@ -186,7 +186,16 @@ import { Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, Dro
 import { EmptyState, ErrorState, LoadingState } from "../patterns/AsyncStates";
 import { AnnotatorPanel, type TrackMark } from "./AnnotatorPanel";
 import { TrackRegion, type TrackCandidate, type TrackFocus, type TrackOutcome } from "./TrackRegion";
-import { observationOf, trackName, useSourceOccurrences, useSourceTracks } from "./trackQueries";
+import {
+  observationOf,
+  sequenceTrackLabel,
+  sequencesOf,
+  useAssetOccurrences,
+  usePrefetchAssetOccurrences,
+  useSourceNames,
+  useSourcesTracks,
+  type TrackSequence,
+} from "./trackQueries";
 import { GeometryIcon } from "./GeometryIcon";
 import { keepCanvasFocus } from "./keepCanvasFocus";
 import { Withheld } from "./Withheld";
@@ -1934,11 +1943,64 @@ function Workspace({
       : (REFUSAL_PROSE[withheldCode(asset, ASSET_ACTION.observe) ?? ""] ?? "Adding to a track is not available on this frame.");
 
   // Tracks are 2D and follow a sequence source's occurrences; a scan has none.
-  const trackSource = isScan ? null : asset.source_id;
+  // One asset can sit in several sequences, and each keeps its own tracks.
   const jobAssetIds = useMemo(() => assets.map((one) => one.id), [assets]);
-  const occurrences = useSourceOccurrences(trackSource);
-  const sourceTracks = useSourceTracks(trackSource);
-  const tracks = sourceTracks.data;
+  const occurrences = useAssetOccurrences(projectId, isScan ? null : asset.id);
+  const sequences = useMemo(() => sequencesOf(occurrences.data ?? []), [occurrences.data]);
+  const prefetchOccurrences = usePrefetchAssetOccurrences(projectId);
+  const previousAsset = assets[assetIndex - 1];
+  const nextAsset = assets[assetIndex + 1];
+  useEffect(() => {
+    if (sequences.length === 0) return;
+    prefetchOccurrences(
+      [previousAsset, nextAsset].flatMap((one) => (one === undefined || one.modality === "point_cloud" ? [] : [one.id])),
+    );
+  }, [sequences.length, previousAsset, nextAsset, prefetchOccurrences]);
+  const sourceIds = useMemo(() => sequences.map((one) => one.sourceId), [sequences]);
+  const trackReads = useSourcesTracks(sourceIds);
+  const sourceNames = useSourceNames(sourceIds);
+  const { refetch: refetchTracksOf } = trackReads;
+  /**
+   * The sequences to show, once every source's tracks read has answered or
+   * failed. A source that failed is shown failed beside the ones that answered.
+   */
+  const trackSequences: readonly TrackSequence[] | undefined = useMemo(() => {
+    if (trackReads.bySource.some((one) => one.tracks === undefined && one.error === null)) return undefined;
+    const named = sequences.length > 1;
+    return sequences.map((sequence, index) => {
+      const read = trackReads.bySource[index];
+      const name = named ? (sourceNames.names[index] ?? null) : null;
+      return {
+        ...sequence,
+        name,
+        heading: named ? (name ?? (sourceNames.error === null ? "Reading the name…" : "Name not read")) : null,
+        tracks: read?.tracks ?? null,
+        failure: read?.error == null ? null : { error: read.error, retry: () => refetchTracksOf(index) },
+      };
+    });
+  }, [sequences, sourceNames.names, sourceNames.error, trackReads.bySource, refetchTracksOf]);
+  /** Every track read so far, of whichever sources have answered. */
+  const readTracks = useMemo(() => trackReads.bySource.flatMap((one) => one.tracks ?? []), [trackReads.bySource]);
+  const { refetch: refetchOccurrences } = occurrences;
+  const { refetchFailed: refetchNames } = sourceNames;
+  /** Nothing to show yet: the occurrences cannot be read, or no source's tracks could. */
+  const trackReadFailed =
+    occurrences.data === undefined
+      ? occurrences.error
+      : trackSequences !== undefined && trackSequences.length > 0 && trackSequences.every((one) => one.tracks === null)
+        ? (trackReads.bySource[0]?.error ?? null)
+        : null;
+  const retryTrackReads = useCallback(() => {
+    void refetchOccurrences();
+    trackReads.bySource.forEach((one, index) => {
+      if (one.error !== null) refetchTracksOf(index);
+    });
+  }, [refetchOccurrences, refetchTracksOf, trackReads.bySource]);
+  const regionFailure = occurrences.error ?? sourceNames.error;
+  const retryRegionReads = useCallback(() => {
+    void refetchOccurrences();
+    refetchNames();
+  }, [refetchOccurrences, refetchNames]);
   const serverIdOf = useCallback(
     (localId: string): string | null => {
       const { server, minted } = frameSession.getSnapshot();
@@ -1949,40 +2011,43 @@ function Workspace({
   );
   const trackMarks = useMemo(() => {
     const marks = new Map<string, TrackMark>();
-    if (tracks === undefined) return marks;
+    if (trackSequences === undefined) return marks;
     for (const annotation of snapshot.document.annotations.values()) {
-      const on = observationOf(tracks, frame.minted.get(annotation.id) ?? annotation.id);
+      const on = observationOf(readTracks, frame.minted.get(annotation.id) ?? annotation.id);
       if (on === null) continue;
       marks.set(annotation.id, {
-        label: `${trackName(on.track, tracks)} at frame ${on.observation.position}`,
+        label: `${sequenceTrackLabel(on.track, trackSequences)} at frame ${on.observation.position}`,
         onShow: () => onTrackFocus({ trackId: on.track.id, position: on.observation.position, passed: 0 }),
       });
     }
     return marks;
-  }, [tracks, snapshot.document, frame.minted, onTrackFocus]);
+  }, [trackSequences, readTracks, snapshot.document, frame.minted, onTrackFocus]);
   /**
-   * The class a track keeps each drawn object to. This source's tracks, once
-   * read, are the fresher word on their own tracks — a Remove from track here
-   * unlocks at once — and the frame's declaration (`observed`, from any source)
-   * covers what they cannot: a track of another sequence, and a read that is
-   * pending or has failed, so neither ever unlocks an object.
+   * The class a track keeps each drawn object to. The tracks read of each
+   * source the frame sits in are the fresher word on their own tracks — a
+   * Remove from track here unlocks at once — and the frame's declaration
+   * (`observed`) covers what they cannot: a source whose read is pending or has
+   * failed, so neither ever unlocks an object.
    */
   const classLocks = useMemo(() => {
     const locks = new Map<string, ClassLock>();
     const declared = new Map(asset.observed.map((one) => [one.annotation_id, one]));
     for (const annotation of snapshot.document.annotations.values()) {
       const serverId = frame.minted.get(annotation.id) ?? annotation.id;
-      const on = tracks === undefined ? null : observationOf(tracks, serverId);
-      if (on !== null && tracks !== undefined) {
-        locks.set(annotation.id, { labelClass: on.track.label_class, track: trackName(on.track, tracks) });
+      const on = observationOf(readTracks, serverId);
+      if (on !== null) {
+        locks.set(annotation.id, {
+          labelClass: on.track.label_class,
+          track: trackSequences === undefined ? null : sequenceTrackLabel(on.track, trackSequences),
+        });
         continue;
       }
       const one = declared.get(serverId);
-      if (one === undefined || tracks?.some((track) => track.id === one.track_id) === true) continue;
+      if (one === undefined || readTracks.some((track) => track.id === one.track_id)) continue;
       locks.set(annotation.id, { labelClass: one.label_class, track: null });
     }
     return locks;
-  }, [asset.observed, tracks, snapshot.document, frame.minted]);
+  }, [asset.observed, readTracks, trackSequences, snapshot.document, frame.minted]);
   // Undo and redo are the other road to a class change: a step that would move a
   // locked object to any class but its lock, from the one it holds, is refused.
   // One guard per store, reading the locks through a ref; a change of locks asks
@@ -3292,20 +3357,13 @@ function Workspace({
           }}
           trackMarks={trackMarks}
           classLocks={classLocks}
-          {...(trackSource === null || occurrences.data === undefined || occurrences.data.length === 0 || tracks === undefined
-            ? sourceTracks.isError || occurrences.isError
+          {...(trackSequences === undefined || trackSequences.length === 0 || trackReadFailed !== null
+            ? trackReadFailed !== null
               ? {
                   tracks: (
                     <p className="px-2 text-xs text-destructive" role="alert" data-testid="track-read-failed">
-                      {refusalProse(occurrences.error ?? sourceTracks.error)}{" "}
-                      <button
-                        type="button"
-                        className="underline underline-offset-2"
-                        onClick={() => {
-                          void occurrences.refetch();
-                          void sourceTracks.refetch();
-                        }}
-                      >
+                      {refusalProse(trackReadFailed)}{" "}
+                      <button type="button" className="underline underline-offset-2" onClick={retryTrackReads}>
                         Try again
                       </button>
                     </p>
@@ -3317,9 +3375,9 @@ function Workspace({
                   <TrackRegion
                     jobId={jobId}
                     batchId={batchId}
+                    projectId={projectId}
                     assetId={asset.id}
-                    occurrences={occurrences.data}
-                    tracks={tracks}
+                    sequences={trackSequences}
                     jobAssetIds={jobAssetIds}
                     withheld={readOnly ? "Viewing only" : null}
                     observeWithheld={observeWithheld}
@@ -3333,17 +3391,7 @@ function Workspace({
                     colorOf={(labelClass) => classColor(classNamed(store.document, labelClass), labelClass)}
                     outcome={trackOutcome}
                     onOutcome={onTrackOutcome}
-                    readFailure={
-                      occurrences.isError || sourceTracks.isError
-                        ? {
-                            error: occurrences.error ?? sourceTracks.error,
-                            retry: () => {
-                              void occurrences.refetch();
-                              void sourceTracks.refetch();
-                            },
-                          }
-                        : null
-                    }
+                    readFailure={regionFailure === null ? null : { error: regionFailure, retry: retryRegionReads }}
                   />
                 ),
               })}
