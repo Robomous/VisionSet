@@ -981,7 +981,8 @@ def _manifest_tracks(
 
     Raises:
         WorkspaceCorrupt: an observation names a missing track, or an occurrence that
-            is missing or decoded to another asset than its annotation's.
+            is missing, decoded to another asset than its annotation's, or sits in
+            another source than its track.
     """
     tracks: dict[UUID, Track] = {}
     observed: dict[UUID, list[ManifestObservation]] = {}
@@ -992,11 +993,16 @@ def _manifest_tracks(
                 continue
             occurrence = uow.frame_occurrences.get(observation.occurrence_id)
             track = tracks.get(observation.track_id) or uow.tracks.get(observation.track_id)
-            if occurrence is None or track is None or occurrence.asset_id != asset.asset_id:
+            if (
+                occurrence is None
+                or track is None
+                or occurrence.asset_id != asset.asset_id
+                or occurrence.source_id != track.source_id
+            ):
                 raise WorkspaceCorrupt(
                     f"annotation {annotation.id} on asset {asset.asset_id} is observed at "
                     f"occurrence {observation.occurrence_id} by track {observation.track_id}, "
-                    f"which do not both exist on that asset"
+                    f"which do not both exist, on that asset and in one source"
                 )
             tracks[track.id] = track
             observed.setdefault(track.id, []).append(
@@ -1714,9 +1720,8 @@ def _crop_reason(cropping: _Cropping | None, status: ClassExportStatus, count: i
 def _openable(manifest: Manifest, exporter: Exporter) -> Manifest:
     """The manifest without the assets whose modality the format cannot open."""
     writes = supported_modalities_of(exporter)
-    assets = tuple(asset for asset in manifest.assets if asset.modality in writes)
     return manifest.model_copy(
-        update={"assets": assets, "tracks": tracks_within(manifest.tracks, assets)}
+        update={"assets": tuple(asset for asset in manifest.assets if asset.modality in writes)}
     )
 
 

@@ -281,7 +281,7 @@ class ManifestTrack(BaseModel):
     id: UUID
     source_id: UUID
     label_class: str = Field(min_length=1)
-    external_id: str | None = None
+    external_id: str | None = Field(default=None, min_length=1)
     observations: tuple[ManifestObservation, ...] = Field(min_length=1)
 
     @field_validator("observations")
@@ -301,7 +301,8 @@ def tracks_within(
 ) -> tuple[ManifestTrack, ...]:
     """The tracks cut to the observations whose asset and annotation ``assets`` hold.
 
-    A track left with no observation is dropped.
+    A track left with no observation is dropped. The result is in canonical
+    order, because a manifest updated through ``model_copy`` is not revalidated.
     """
     held = {(asset.asset_id, annotation.id) for asset in assets for annotation in asset.annotations}
     kept = []
@@ -310,8 +311,16 @@ def tracks_within(
             one for one in track.observations if (one.asset_id, one.annotation_id) in held
         )
         if observations:
-            kept.append(track.model_copy(update={"observations": observations}))
-    return tuple(kept)
+            kept.append(
+                track.model_copy(
+                    update={"observations": tuple(sorted(observations, key=lambda o: o.position))}
+                )
+            )
+    return tuple(sorted(kept, key=_track_order))
+
+
+def _track_order(track: ManifestTrack) -> tuple[str, int, str]:
+    return (str(track.source_id), track.observations[0].position, str(track.id))
 
 
 class Manifest(BaseModel):
@@ -366,16 +375,10 @@ class Manifest(BaseModel):
     def _tracks_in_canonical_order(
         cls, value: tuple[ManifestTrack, ...]
     ) -> tuple[ManifestTrack, ...]:
-        return tuple(
-            sorted(
-                value,
-                key=lambda track: (
-                    str(track.source_id),
-                    track.observations[0].position,
-                    str(track.id),
-                ),
-            )
-        )
+        ids = [track.id for track in value]
+        if len(set(ids)) != len(ids):
+            raise ValueError("a track is listed at most once")
+        return tuple(sorted(value, key=_track_order))
 
     @model_validator(mode="after")
     def _observations_name_what_the_release_holds(self) -> Manifest:

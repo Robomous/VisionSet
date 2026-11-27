@@ -11,6 +11,7 @@ import pytest
 from pydantic import ValidationError
 from tests.kernel.test_track_service import Clip, World
 
+from visionset.kernel import WorkspaceCorrupt
 from visionset.kernel.domain import (
     GROUPED_MANIFEST_VERSION,
     MANIFEST_VERSION,
@@ -18,17 +19,25 @@ from visionset.kernel.domain import (
     AnnotationJob,
     AssetProgress,
     BboxGeometry,
+    GeometryType,
     Manifest,
     ManifestAnnotation,
     ManifestAsset,
     ManifestObservation,
     ManifestTrack,
+    RecipeSpec,
+    ResizeStep,
+    ResizeStrategy,
     TimeRange,
+    TrackObservation,
     canonical_bytes,
     manifest_version_for,
+    plugin_manifest,
     tracks_within,
+    transform_manifest,
 )
 from visionset.kernel.services import DatasetService, ProjectService, ReleaseService
+from visionset.kernel.services.release_service import _handed
 
 
 class Releasing(World):
@@ -258,13 +267,13 @@ def test_canonical_order_is_independent_of_how_the_document_was_built() -> None:
     source = uuid4()
     a, b = _asset(1, 2), _asset(2, 1)
     late = ManifestTrack(
-        id=uuid4(),
+        id=UUID(int=1),
         source_id=source,
         label_class="car",
         observations=(_observing(b, 0, 4), _observing(a, 1, 3)),
     )
     early = ManifestTrack(
-        id=uuid4(), source_id=source, label_class="car", observations=(_observing(a, 0, 0),)
+        id=UUID(int=2), source_id=source, label_class="car", observations=(_observing(a, 0, 0),)
     )
     one = Manifest(schema_version=1, assets=(a, b), tracks=(late, early))
     other = Manifest(
@@ -364,3 +373,142 @@ def test_an_export_that_loses_annotations_loses_their_observations() -> None:
     (cut,) = tracks_within((track, only_lost), (kept, stripped))
     assert cut.id == track.id
     assert [o.position for o in cut.observations] == [0]
+
+
+def test_a_pruned_track_moves_to_where_it_now_starts() -> None:
+    source = UUID(int=9)
+    a = _asset(1, 3)
+    starts_early = ManifestTrack(
+        id=UUID(int=1),
+        source_id=source,
+        label_class="car",
+        observations=(_observing(a, 0, 0), _observing(a, 1, 5)),
+    )
+    starts_between = ManifestTrack(
+        id=UUID(int=2), source_id=source, label_class="car", observations=(_observing(a, 2, 2),)
+    )
+    without_first = a.model_copy(update={"annotations": a.annotations[1:]})
+
+    cut = tracks_within((starts_early, starts_between), (without_first,))
+    assert [t.id for t in cut] == [starts_between.id, starts_early.id]
+
+
+def test_a_manifest_lists_a_track_once_and_never_with_a_blank_external_id() -> None:
+    a = _asset(1, 2)
+    track = ManifestTrack(
+        id=UUID(int=1), source_id=uuid4(), label_class="car", observations=(_observing(a, 0, 0),)
+    )
+    again = track.model_copy(update={"observations": (_observing(a, 1, 1),)})
+    with pytest.raises(ValidationError, match="at most once"):
+        Manifest(schema_version=1, assets=(a,), tracks=(track, again))
+    with pytest.raises(ValidationError):
+        ManifestTrack.model_validate({**track.model_dump(mode="json"), "external_id": ""})
+
+
+def _cropped_asset() -> tuple[ManifestAsset, ManifestAnnotation, ManifestAnnotation]:
+    def box(x: float) -> ManifestAnnotation:
+        return ManifestAnnotation(
+            id=uuid4(),
+            label_class="car",
+            schema_version=1,
+            geometry=BboxGeometry(x=x, y=40.0, width=10.0, height=10.0),
+            provenance="human",
+        )
+
+    kept, lost = box(95.0), box(1.0)
+    asset = ManifestAsset(
+        asset_id=uuid4(),
+        content_hash="a" * 64,
+        uri="/clip/0.jpg",
+        width=200,
+        height=100,
+        annotations=(kept, lost),
+    )
+    return asset, kept, lost
+
+
+def test_a_crop_that_drops_an_observed_annotation_drops_its_observation() -> None:
+    asset, kept, lost = _cropped_asset()
+    observing = [
+        ManifestTrack(
+            id=uuid4(),
+            source_id=uuid4(),
+            label_class="car",
+            observations=(
+                ManifestObservation(
+                    position=p, timestamp=0.0, asset_id=asset.asset_id, annotation_id=one.id
+                ),
+            ),
+        )
+        for p, one in ((0, kept), (1, lost))
+    ]
+    manifest = Manifest(schema_version=1, assets=(asset,), tracks=tuple(observing))
+    spec = RecipeSpec(
+        target=None,
+        steps=(ResizeStep(strategy=ResizeStrategy.CENTER_CROP, width=100, height=100),),
+    )
+
+    handed = plugin_manifest(manifest, transform_manifest(manifest, spec, None))
+
+    assert [a.id for a in handed.assets[0].annotations] == [kept.id]
+    assert [o.annotation_id for t in handed.tracks for o in t.observations] == [kept.id]
+    assert Manifest.model_validate_json(canonical_bytes(handed)) == handed
+
+
+class _PolygonsOnly:
+    format_name = "polygons"
+    lossy = True
+    supported_geometries = frozenset({GeometryType.POLYGON})
+    degraded_geometries: frozenset[GeometryType] = frozenset()
+    supported_modalities = frozenset({"image"})
+
+
+class _ScansOnly(_PolygonsOnly):
+    supported_modalities = frozenset({"point_cloud"})
+
+
+def _tracked(world: Releasing) -> Manifest:
+    clip = world.clip()
+    (job,) = world.working(clip.batch_id)
+    world.observed(job, clip, [0, 1])
+    world.settle(job, clip.batch_id)
+    manifest = world.publish("v1")
+    assert len(manifest.tracks) == 1
+    return manifest
+
+
+def test_an_export_hands_over_only_the_tracks_its_annotations_carry(world: Releasing) -> None:
+    from tests.kernel.test_release_service import _narrow_target
+
+    manifest = _tracked(world)
+    polygons = _narrow_target(frozenset({GeometryType.POLYGON}))
+
+    for handed in (
+        _handed(manifest, _PolygonsOnly(), polygons),  # type: ignore[arg-type]
+        _handed(manifest, _ScansOnly(), None),  # type: ignore[arg-type]
+    ):
+        assert handed.tracks == ()
+        assert Manifest.model_validate_json(canonical_bytes(handed)) == handed
+    assert _handed(manifest, _PolygonsOnly(), None).tracks == manifest.tracks  # type: ignore[arg-type]
+
+
+def _corrupted(world: Releasing, *, other_source: bool) -> None:
+    first, second = world.clip(), world.clip()
+    (job,) = world.working(first.batch_id)
+    track = world.tracks.create(first.source_id, "car").track
+    occurrence = second.at(0) if other_source else first.at(1)
+    box = world.box(job, first.at(0).asset_id)
+    world.settle(job, first.batch_id)
+    with world.workspace.unit_of_work() as uow:
+        uow.track_observations.add(
+            TrackObservation(track_id=track.id, occurrence_id=occurrence.id, annotation_id=box.id)
+        )
+
+
+@pytest.mark.parametrize("other_source", [True, False], ids=["another-source", "another-asset"])
+def test_an_observation_the_kernel_would_refuse_fails_the_publish(
+    world: Releasing, other_source: bool
+) -> None:
+    _corrupted(world, other_source=other_source)
+    with pytest.raises(WorkspaceCorrupt):
+        world.releases.publish(world.dataset_id, "v1")
