@@ -5,9 +5,11 @@ The inverse of :class:`YoloObbExporter`. The descriptor and the layout are read
 as the ``ultralytics`` importer reads them; each row must be a class index and
 exactly eight numbers, the corners of a rectangle in order round it from any
 start, in either direction, scaled out of the picture's oriented size. Each
-becomes a canonical rotated box. A row of any other length, four corners that
-are not a rectangle or enclose no area, a class the descriptor does not name and
-a box wholly outside its picture are each a lost label. The split is not imported.
+becomes a canonical rotated box; corners that are a rectangle only to the row's
+own decimals become the nearest one and a degraded geometry. A row of any other
+length, four corners farther than that from a rectangle or enclosing no area, a
+class the descriptor does not name and a box wholly outside its picture are each
+a lost label. The split is not imported.
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Final
 
-from visionset.formats._obb import NOT_FINITE, read_corners
+from visionset.formats._obb import NOT_FINITE, half_unit, read_corners
 from visionset.formats._reading import Losses, index, number
 from visionset.formats._yolo_reader import (
     Descriptor,
@@ -97,13 +99,16 @@ def _label(
     points = tuple(
         (x * width, y * height) for x, y in zip(coordinates[::2], coordinates[1::2], strict=True)
     )
-    geometry, refusal = read_corners(points)
+    unit = half_unit(tokens[1:])
+    geometry, reason = read_corners(points, (unit * width, unit * height))
     if geometry is None:
-        losses[(ImportLossKind.LABEL, name, refusal)] += 1
+        losses[(ImportLossKind.LABEL, name, reason)] += 1
         return None
     if not geometry_intersects_asset(geometry, width=width, height=height):
         losses[(ImportLossKind.LABEL, name, "it lies wholly outside its picture")] += 1
         return None
+    if reason:
+        losses[(ImportLossKind.GEOMETRY, name, reason)] += 1
     geometries[name].add(geometry.type)
     return ImportedLabel(class_name=name, geometry=geometry)
 

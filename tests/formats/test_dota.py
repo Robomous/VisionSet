@@ -21,6 +21,7 @@ from tests.formats.test_yolo_obb import (
     same_box,
 )
 
+from visionset.formats._obb import ROUNDED
 from visionset.formats.dota import DotaExporter, DotaImporter
 from visionset.formats.registry import exporters, importers
 from visionset.kernel import ExportSourceUnreadable, ImportSourceUnreadable
@@ -229,7 +230,9 @@ def test_a_row_is_a_canonical_box_of_the_class_its_category_names(tmp_path: Path
 @pytest.mark.parametrize(
     ("row", "subject", "reason"),
     [
-        ("30 10 62 34 58 42 24 18 ship 0", "ship", "not a rectangle"),
+        ("30 10 62 34 50 42 24 18 ship 0", "ship", "not a rectangle"),
+        ("20 10 60 10 54 20 26 20 ship 0", "ship", "not a rectangle"),
+        ("20 10 60 10 66 20 26 20 ship 0", "ship", "not a rectangle"),
         ("10 10 20 10 30 10 40 10 ship 0", "ship", "no area"),
         ("530 510 562 534 556 542 524 518 ship 0", "ship", "wholly outside"),
         ("30 10 62 34 56 42 24 abc ship 0", "ship", "not finite"),
@@ -237,7 +240,17 @@ def test_a_row_is_a_canonical_box_of_the_class_its_category_names(tmp_path: Path
         ("30 10 62 34 56 42 ship 0", "label row", "not four corners"),
         ("30 10 62 34 56 42 24 18 ship 0 extra", "label row", "not four corners"),
     ],
-    ids=["skewed", "collinear", "wholly-outside", "not-a-number", "overflow", "short", "long"],
+    ids=[
+        "skewed",
+        "trapezoid",
+        "parallelogram",
+        "collinear",
+        "wholly-outside",
+        "not-a-number",
+        "overflow",
+        "short",
+        "long",
+    ],
 )
 def test_a_row_the_format_cannot_hold_is_a_label_loss(
     tmp_path: Path, row: str, subject: str, reason: str
@@ -249,6 +262,34 @@ def test_a_row_the_format_cannot_hold_is_a_label_loss(
     assert reason in why
     assert [label.class_name for label in dataset.images[0].labels] == ["plane"]
     assert [c.name for c in dataset.classes] == ["plane"]
+
+
+@pytest.mark.parametrize(
+    "truth",
+    [
+        ObbGeometry(cx=50.0, cy=25.0, width=40.0, height=12.0, angle=0.4),
+        ObbGeometry(cx=50.0, cy=25.0, width=30.0, height=9.0, angle=-1.1),
+    ],
+)
+def test_whole_pixel_corners_off_a_rectangle_are_its_nearest_rectangle_and_degraded(
+    tmp_path: Path, truth: ObbGeometry
+) -> None:
+    drawn = [(round(x), round(y)) for x, y in obb_corners(truth)]
+    dataset = _read(_source(tmp_path, f"{_corners(drawn)} ship 0\n"))
+
+    assert _losses(dataset) == [(ImportLossKind.GEOMETRY, "ship", ROUNDED, 1)]
+    (label,) = dataset.images[0].labels
+    fitted = label.geometry
+    assert isinstance(fitted, ObbGeometry)
+    assert fitted != ObbGeometry.model_validate(truth.model_dump())
+    for x, y in drawn:
+        assert min(max(abs(x - fx), abs(y - fy)) for fx, fy in obb_corners(fitted)) <= 1.0
+    assert (fitted.cx, fitted.cy) == pytest.approx((truth.cx, truth.cy), abs=0.5)
+    assert (fitted.width, fitted.height) == pytest.approx((truth.width, truth.height), abs=1.0)
+
+    tenths = [(float(x), float(y)) for x, y in drawn]
+    claimed = _read(_source(tmp_path / "tenths", f"{_corners(tenths)} ship 0\n"))
+    assert [kind for kind, *_ in _losses(claimed)] == [ImportLossKind.LABEL]
 
 
 def test_a_difficult_flag_other_than_0_or_1_is_an_attribute_loss(tmp_path: Path) -> None:

@@ -8,11 +8,14 @@ benchmark's ``<fold>/images`` layout reads. ``imagesource:`` and ``gsd:`` header
 lines are skipped. A row is eight pixel coordinates, the corners of a rectangle
 in order round it from any start in either direction, then a category and an
 optional ``difficult`` flag; each becomes a canonical rotated box of the class
-the category names. The classes are the categories the kept boxes name, in the
-order they first appear.
+the category names. Corners that are a rectangle only to the row's own
+decimals, as whole-pixel hand-drawn ones usually are, become the nearest
+rectangle and a degraded geometry. The classes are the categories the kept
+boxes name, in the order they first appear.
 
-A row of any other length, four corners that are not a rectangle or enclose no
-area and a box wholly outside its measured picture are each a lost label. The
+A row of any other length, four corners farther than that from a rectangle or
+enclosing no area and a box wholly outside its measured picture are each a lost
+label. The
 importer has no place for ``difficult``: a box flagged ``1`` is kept and its
 flag counted as a lost attribute, as ``voc`` counts its own. A picture with no
 label file is imported unlabelled, a label file with no picture loses its rows,
@@ -25,7 +28,7 @@ from pathlib import Path, PurePosixPath
 from typing import Final
 
 from visionset.formats._layout import IMAGES_DIRNAME
-from visionset.formats._obb import NOT_FINITE, read_corners
+from visionset.formats._obb import NOT_FINITE, half_unit, read_corners
 from visionset.formats._reading import (
     IMAGE_SUFFIXES,
     Losses,
@@ -161,14 +164,17 @@ def _label(
         return None
     coordinates = [float(value) for value in values if value is not None]
     points = tuple(zip(coordinates[::2], coordinates[1::2], strict=True))
-    geometry, refusal = read_corners(points)
+    unit = half_unit(tokens[:8])
+    geometry, reason = read_corners(points, (unit, unit))
     if geometry is None:
-        losses[(ImportLossKind.LABEL, name, refusal)] += 1
+        losses[(ImportLossKind.LABEL, name, reason)] += 1
         return None
     width, height = size if size is not None else (None, None)
     if not geometry_intersects_asset(geometry, width=width, height=height):
         losses[(ImportLossKind.LABEL, name, "it lies wholly outside its picture")] += 1
         return None
+    if reason:
+        losses[(ImportLossKind.GEOMETRY, name, reason)] += 1
     difficult = tokens[9] if len(tokens) == 10 else "0"
     if difficult == "1":
         losses[(ImportLossKind.ATTRIBUTE, name, "difficult is not imported")] += 1

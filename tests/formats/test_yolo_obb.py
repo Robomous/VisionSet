@@ -19,6 +19,7 @@ from tests.fixtures.media import write_image
 from tests.formats.test_report_agreement import _yolo_counts
 from tests.formats.test_ultralytics import CLASSES, IMAGE_SIZE, Fixture, _box
 
+from visionset.formats._obb import ROUNDED
 from visionset.formats.registry import exporters, importers
 from visionset.formats.ultralytics import UltralyticsImporter
 from visionset.formats.yolo_obb import YoloObbExporter, YoloObbImporter
@@ -301,12 +302,14 @@ def test_any_start_corner_in_either_direction_is_the_same_canonical_box(
 @pytest.mark.parametrize(
     ("points", "reason"),
     [
-        (((30.0, 10.0), (62.0, 34.0), (58.0, 42.0), (24.0, 18.0)), "not a rectangle"),
+        (((30.0, 10.0), (62.0, 34.0), (50.0, 42.0), (24.0, 18.0)), "not a rectangle"),
+        (((20.0, 10.0), (60.0, 10.0), (54.0, 20.0), (26.0, 20.0)), "not a rectangle"),
+        (((20.0, 10.0), (60.0, 10.0), (66.0, 20.0), (26.0, 20.0)), "not a rectangle"),
         (((30.0, 10.0), (62.0, 34.0), (24.0, 18.0), (56.0, 42.0)), "not a rectangle"),
         (((10.0, 10.0), (20.0, 10.0), (30.0, 10.0), (40.0, 10.0)), "no area"),
         (((10.0, 10.0), (10.0, 10.0), (10.0, 10.0), (10.0, 10.0)), "no area"),
     ],
-    ids=["skewed", "bow-tie", "collinear", "a-point"],
+    ids=["skewed", "trapezoid", "parallelogram", "bow-tie", "collinear", "a-point"],
 )
 def test_a_quadrilateral_that_is_not_a_rectangle_is_a_label_loss(
     tmp_path: Path, points: Any, reason: str
@@ -317,6 +320,34 @@ def test_a_quadrilateral_that_is_not_a_rectangle_is_a_label_loss(
     assert (kind, subject, count) == (ImportLossKind.LABEL, "ship", 1)
     assert reason in why
     assert [label.class_name for label in dataset.images[0].labels] == ["plane"]
+
+
+@pytest.mark.parametrize("decimals", [6, 3])
+@pytest.mark.parametrize(
+    "truth",
+    [
+        ObbGeometry(cx=50.0, cy=25.0, width=40.0, height=12.0, angle=0.4),
+        ObbGeometry(cx=50.0, cy=25.0, width=30.0, height=9.0, angle=-1.1),
+    ],
+)
+def test_corners_rounded_to_the_rows_decimals_are_the_nearest_rectangle(
+    tmp_path: Path, truth: ObbGeometry, decimals: int
+) -> None:
+    row = " ".join(
+        f"{x / SIZE[0]:.{decimals}f} {y / SIZE[1]:.{decimals}f}" for x, y in obb_corners(truth)
+    )
+    dataset = _read(_source(tmp_path, f"0 {row}\n"))
+
+    assert set(_losses(dataset)) <= {(ImportLossKind.GEOMETRY, "ship", ROUNDED, 1)}
+    (label,) = dataset.images[0].labels
+    fitted = label.geometry
+    assert isinstance(fitted, ObbGeometry)
+    unit = 10.0**-decimals
+    for found, expected in zip(obb_corners(fitted), obb_corners(truth), strict=True):
+        assert abs(found[0] - expected[0]) <= unit * SIZE[0]
+        assert abs(found[1] - expected[1]) <= unit * SIZE[1]
+    if decimals == 3:
+        assert _losses(dataset) == [(ImportLossKind.GEOMETRY, "ship", ROUNDED, 1)]
 
 
 @pytest.mark.parametrize(

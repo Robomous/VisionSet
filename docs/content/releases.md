@@ -725,7 +725,10 @@ does not clamp either. They are written with enough digits - twelve decimals of 
 `yolo-obb`, nine of a pixel for `dota`, trailing zeros dropped - that **a round trip returns every
 corner within `1e-6` of the box's longest side**, and the angle equal modulo the canonical form;
 a box whose canonical angle sits at `-pi/2` may come back a hair inside `pi/2`, which is the same
-rectangle. Each picture gets a label file, empty when it holds no rotated box.
+rectangle. That is the importer's exact case, so an export reads back with no loss. A file written
+elsewhere, with fewer decimals or whole pixels, is held to its own precision instead: corners within
+one unit of their last decimal of the nearest rectangle import as that rectangle and a `geometry`
+loss, and anything farther is a lost label (see [import](import.md#formats)). Each picture gets a label file, empty when it holds no rotated box.
 
 #### `yolo-obb`
 

@@ -18,8 +18,10 @@ nothing was being distributed. This is the first version that is.
   is the DOTA benchmark's `<fold>/images` and `<fold>/labelTxt`, rows of four pixel corners, a category and
   `difficult`. Both write rotated boxes only: every other geometry is reported dropped, and a rectangular polygon is
   not converted. Corners are written unclamped and precise enough that a round trip returns every corner within
-  `1e-6` of the box's longest side. On import, any start corner in either direction is the same canonical box; four
-  corners that are not a rectangle, or enclose no area, are a `label` loss. `difficult` is written from a boolean
+  `1e-6` of the box's longest side. On import, any start corner in either direction is the same canonical box. A
+  row is held to its own precision: corners within one unit of the row's last decimal of the nearest rectangle -
+  whole-pixel hand-drawn DOTA quadrilaterals, six-decimal OBB files - import as that rectangle and a `geometry` loss,
+  and four corners farther from a rectangle, or enclosing no area, are a `label` loss. `difficult` is written from a boolean
   `difficult` attribute and, having nowhere to land on import, a `1` is an `attribute` loss. The `ultralytics`
   formats and targets are unchanged (#1161).
 - **Export, ingest and weight-download runs carry their own facts, and releases their lineage.** When tracking is
