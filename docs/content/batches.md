@@ -278,8 +278,9 @@ question here; what an earlier round's progress said about the frame is not read
 confirmed in one batch therefore opens `pre_labeled` in a later one cut over it, and is
 confirmed again there. An edit keeps a label's provenance — a box a person moved is still a
 model's box — so an asset whose labels are all model-made, adjusted or not, opens `pre_labeled`
-in a later batch. A replacing run there still leaves it alone once a completed batch settled it,
-promoted or not: see [pre-labeling](#pre-labeling) for the rule and its one exception.
+in a later batch. A replacing run there still leaves it alone once any other batch confirmed it,
+open or completed, promoted or not: see [pre-labeling](#pre-labeling) for the rule and its one
+exception.
 
 The honest consequence: `annotated` is in `SETTLED_PROGRESS`, so **a correction whose every
 asset seeded `annotated` can be completed with no edits at all**. That is the intended reading -
@@ -446,15 +447,41 @@ and `--replace-model-labels` at a terminal - widens that reach to every frame st
 `pre_labeled`: the model's earlier labels there are deleted and the new ones land in the same
 transaction, one frame at a time, so no frame is ever briefly bare. A frame anybody edited,
 confirmed or skipped in this job is passed over whatever the flag says, and so is a frame already
-in the dataset or settled `annotated` or `accepted` in a completed batch, promoted or not: its
-labels were confirmed there, which a run on another batch must not delete - nor the track
-observations on them - so the run leaves it untouched and counts it in `assets_protected` rather
-than `assets_considered`. Only a **completed** batch counts: a frame confirmed in a batch that is
-still open is not protected by this rule, and a frame `skipped` in a completed batch was never
-confirmed, so its model labels stay replaceable. One exception keeps a run able to redo its own
-work: model labels this job's own earlier run wrote stay replaceable on such a frame (a frame a
-correction emptied and this job pre-labeled again), because an edit re-stamps a label with the
-job that made it and a label carried in from an earlier batch never carries this job. A
+in the dataset or `annotated`, `review_pending` or `accepted` in **any other batch** - completed or
+still open, promoted or not: its labels were confirmed there, which a run on another batch must
+not delete - nor the track observations on them - so the run leaves it untouched and counts it in
+`assets_protected` rather than `assets_considered`. `review_pending` counts because only
+`annotated` reaches it; a frame `skipped` elsewhere was never confirmed, so its model labels stay
+replaceable.
+
+What counts is a **person's** confirmation. A batch cut over a frame that already carries a
+person's label opens it `annotated` with nobody having looked (see
+[corrections](#corrections-open-on-the-labels-that-are-already-there)); that seeded state counts
+only once its batch completes, because completing the batch is somebody standing behind it, as in
+#1211. While that batch is open the seeded state protects nothing; a person moving the frame
+there (an edit, a confirm, a review step) does. The difference is read off the job's record of when
+somebody last moved the frame (`touched_at`), which seeding never writes. A frame confirmed in an
+open batch before that record existed (before 0.0.1b3) therefore reads as seeded until its batch
+completes.
+
+A frame may sit in several open batches at once - `create` and `add_assets` do not refuse that,
+and this stays so: cutting overlapping batches is ordinary, and refusing it would push the same
+question onto membership instead. What the overlap must not do is let one batch delete the labels
+another batch's person just confirmed, and then let that batch promote labels nobody judged
+(#1212). The confirmation counts from the moment it is made, not from its batch's completion,
+because the deletion happens while both batches are open; nothing else about the two batches'
+progress is reconciled.
+
+One exception keeps a run able to redo its own work: model labels this job's own earlier run
+wrote stay replaceable on such a frame (a frame a correction emptied and this job pre-labeled
+again) - but only when this job wrote them **after** every other batch's confirmation of the
+frame. A batch open beside this one can confirm exactly the labels this job wrote, so "this job's
+own" alone is not enough. The order comes from when each job last moved the frame: this job's
+record is its last write there, and every model label on the frame dates from that write or
+later, since a run writes only onto a bare frame or replaces every model label on it. A frame this
+job never wrote, or a tie, stays protected. A confirmation with no record - a seeded state its
+completed batch settled, or one older than the record - is not a person's judgment of anything
+this job wrote, so it does not stand in the way of this job's own later labels. A
 `pre_labeled` frame the second run finds nothing on returns to `unannotated`. Both the outcome
 and `pre_label_run` carry `annotations_replaced`, the count of earlier model labels the run
 superseded, and `assets_protected`. The job's `progress.pre_labeled`, which the Pre-label dialog

@@ -16,7 +16,7 @@ place rather than a habit spread across several.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -61,6 +61,7 @@ from visionset.kernel.domain import (
     Modality,
     ObservedLabel,
     OrphanGuard,
+    ProgressHeld,
     TrackObservation,
     VideoImportState,
 )
@@ -632,6 +633,42 @@ class SqlUnitOfWork:
             )
         )
         return None if stamped is None else datetime.fromisoformat(stamped)
+
+    def asset_touched(self, job_id: UUID, asset_id: UUID) -> datetime | None:
+        stamped = self._session.scalar(
+            select(t.AnnotationJobAssetRow.touched_at)
+            .where(t.AnnotationJobAssetRow.job_id == job_id)
+            .where(t.AnnotationJobAssetRow.asset_id == asset_id)
+        )
+        return None if stamped is None else datetime.fromisoformat(stamped)
+
+    def progress_held(
+        self,
+        asset_ids: Collection[UUID],
+        *,
+        progress: Collection[AssetProgress],
+        outside_batch: UUID,
+    ) -> list[ProgressHeld]:
+        held = t.AnnotationJobAssetRow
+        rows = self._session.execute(
+            select(held.asset_id, held.job_id, held.progress, t.BatchRow.state, held.touched_at)
+            .join(t.AnnotationJobRow, t.AnnotationJobRow.id == held.job_id)
+            .join(t.TaskGroupRow, t.TaskGroupRow.id == t.AnnotationJobRow.task_group_id)
+            .join(t.BatchRow, t.BatchRow.id == t.TaskGroupRow.batch_id)
+            .where(held.asset_id.in_(list(asset_ids)))
+            .where(held.progress.in_([state.value for state in progress]))
+            .where(t.TaskGroupRow.batch_id != outside_batch)
+        ).all()
+        return [
+            ProgressHeld(
+                asset_id=asset_id,
+                job_id=job_id,
+                progress=AssetProgress(state),
+                batch_state=BatchState(batch_state),
+                touched_at=None if stamped is None else datetime.fromisoformat(stamped),
+            )
+            for asset_id, job_id, state, batch_state, stamped in rows
+        ]
 
     def add_batch_assets(self, batch_id: UUID, asset_ids: Sequence[UUID]) -> list[UUID]:
         """One ``INSERT ... SELECT`` per asset — see the port's docstring for why.

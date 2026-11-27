@@ -283,7 +283,7 @@ def job_pre_label(
         else ""
     )
     protected = (
-        f", passed over {outcome.assets_protected} frame(s) confirmed in a completed batch"
+        f", passed over {outcome.assets_protected} frame(s) confirmed in another batch"
         if outcome.assets_protected
         else ""
     )

@@ -398,12 +398,20 @@ nothing was being distributed. This is the first version that is.
 
 ### Fixed
 
+- **A replacing pre-label run no longer deletes labels another open batch confirmed.** A frame may sit in several
+  open batches at once, and a run with `replace_model_labels` in one of them deleted the labels a person had just
+  confirmed in another, which then completed and promoted labels nobody judged. The run now passes over, and
+  `enter_unreviewed` refuses, a frame a person moved to `annotated`, `review_pending` or `accepted` in any other
+  batch, open or completed; a state seeded at approval counts only once its batch completes. The job's own earlier
+  model labels stay replaceable only when they were written after every such confirmation, so labels another batch
+  confirmed after this job wrote them are protected too. Reading the confirmations is now one query over the
+  superseded frames instead of a walk through every batch holding them (#1212).
 - **A replacing pre-label run no longer deletes labels a completed batch confirmed.** A frame settled `annotated`
   or `accepted` in a completed batch, promoted or not, reopens `pre_labeled` in a later batch because its labels
   are all a model's; a run with `replace_model_labels` now passes it over and `enter_unreviewed` refuses it, as both
-  already did for a frame in the dataset, so those labels and the track observations on them survive. Model labels
-  the same job's earlier run wrote stay replaceable. A frame confirmed only in a batch that is still open is not
-  covered. The run outcome, `pre_label_run`, the CLI summary, the MCP outcome and the MLflow metrics carry a new
+  already did for a frame in the dataset, so those labels and the track observations on them survive; the entry
+  above extends this to batches still open and narrows when the same job's own earlier labels stay replaceable.
+  The run outcome, `pre_label_run`, the CLI summary, the MCP outcome and the MLflow metrics carry a new
   `assets_protected` count, and the Pre-label dialog reports it (#1211).
 - **A suggestion answer that arrives after Escape or a class change no longer repaints the discarded preview**,
   and `↵` pressed while a suggestion is still being asked no longer moves to the next frame.

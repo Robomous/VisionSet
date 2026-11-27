@@ -688,9 +688,30 @@ def test_a_label_confirmed_in_a_completed_batch_survives_a_replacing_run_in_the_
     (again,) = world.working(second.id)
     assert world.progress(again, asset_id) is AssetProgress.PRE_LABELED
 
-    with pytest.raises(AssetNotWritable, match="confirmed in a completed batch"):
+    with pytest.raises(AssetNotWritable, match="confirmed in another batch"):
         world.annotations.enter_unreviewed(again.id, [], replacing=[asset_id])
     assert [a.id for a in world.annotations.for_asset(again.id, asset_id)] == [model_box.id]
+    assert world.tracks.get(track.id) == observed
+
+
+def test_a_label_another_open_batch_confirmed_survives_this_batchs_replacing_run(
+    world: World,
+) -> None:
+    """#1212: B wrote the box, A confirmed and observed it, and both are still open."""
+    clip = world.clip()
+    (job,) = world.working(clip.batch_id)
+    track = world.tracks.create(clip.source_id, "car").track
+    asset_id = clip.at(0).asset_id
+    model_box = _pre_labeled(world, job, asset_id)
+
+    other = world.batches.create(world.project.id, "other", [asset_id])
+    (confirming,) = world.working(other.id)
+    world.jobs.mark(confirming.id, asset_id, AssetProgress.ANNOTATED)
+    observed = world.tracks.observe(confirming.id, track.id, clip.at(0).id, model_box.id)
+
+    with pytest.raises(AssetNotWritable, match="confirmed in another batch"):
+        world.annotations.enter_unreviewed(job.id, [], replacing=[asset_id])
+    assert [a.id for a in world.annotations.for_asset(job.id, asset_id)] == [model_box.id]
     assert world.tracks.get(track.id) == observed
 
 

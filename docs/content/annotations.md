@@ -379,9 +379,11 @@ label says, never who made it - which is what lets a later batch read an asset w
 all model-made as `pre_labeled`.
 
 The trade-off is deliberate: a model box a person corrected stays `model`, so when a later batch
-is cut over that asset it opens `pre_labeled` again, and a replacing pre-label run in that batch
-can delete the correction. Every "never touched" promise a replacing run makes is scoped to its
-own batch - see [batches.md](batches.md#corrections-open-on-the-labels-that-are-already-there).
+is cut over that asset it opens `pre_labeled` again. A replacing pre-label run in that batch still
+leaves the correction alone while the frame is confirmed in another batch - a person moved it to
+`annotated`, `review_pending` or `accepted` there, or that batch completed with it settled so - and
+the frame is outside the dataset only then; a correction nobody stands behind any more (its batch
+skipped the frame) can be replaced. See [pre-labeling](batches.md#pre-labeling) for the rule.
 
 An annotation accepted from the editor's suggest tool is written this way and no other: an
 ordinary `add` carrying `provenance="model"`, the `model_ref` the suggestion named, and its
@@ -485,7 +487,8 @@ everything above - schema validation, provenance, progress - is untouched by tra
 - **A model's unjudged output carries no track.** Observing an annotation on a `pre_labeled` asset
   is `ASSET_NOT_JUDGED`: a replacing pre-label run deletes those labels without asking, and the
   observation would go with them. A person's edit or confirm moves the asset to `annotated`, after
-  which the same observe succeeds and no replacing run in that batch may touch the asset. The asset
+  which the same observe succeeds and no replacing run, in that batch or another, may touch the
+  asset. The asset
   says so ahead of time: it does not declare `observe`, and its `withheld_actions` names the code
   ([jobs](jobs.md#what-a-job-and-an-asset-say-they-allow)).
 - **Starting a track from an object is one write.** `TrackService.start` (`POST /jobs/{job_id}/tracks`)
@@ -512,9 +515,11 @@ everything above - schema validation, provenance, progress - is untouched by tra
   Deleting a source or an occurrence deletes what observes it. A replacing pre-label run deletes
   only labels on a `pre_labeled` asset, so within one batch it never reaches an observed label. A
   later batch cut over an asset whose labels are all a model's opens it `pre_labeled` again
-  ([batches.md](batches.md#corrections-open-on-the-labels-that-are-already-there)), and a
-  replacing run there, while the asset is outside the dataset, deletes an observed label and its
-  observation with it, as it deletes any correction.
+  ([batches.md](batches.md#corrections-open-on-the-labels-that-are-already-there)), but a
+  replacing run there leaves the asset alone while it is in the dataset or confirmed in another
+  batch ([pre-labeling](batches.md#pre-labeling)), so an observed label on a confirmed frame
+  survives with its observation. Only where no other batch stands behind the frame does a
+  replacing run delete an observed label and its observation, as it deletes any model label.
 - **A paste is never observed.** Copy and paste mints a fresh annotation id
   ([below](#copy-and-paste-and-where-a-clipboard-lives)), so the pasted label belongs to no track.
 

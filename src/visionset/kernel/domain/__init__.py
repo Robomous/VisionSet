@@ -435,6 +435,7 @@ from visionset.kernel.domain.summary import (
 )
 from visionset.kernel.domain.task import (
     ASSET_PROGRESS_TRANSITIONS,
+    CONFIRMED_PROGRESS,
     JOB_TRANSITIONS,
     MARK_TRANSITIONS,
     OPEN_JOB_STATES,
@@ -444,6 +445,7 @@ from visionset.kernel.domain.task import (
     AnnotationJob,
     AnnotationJobState,
     AssetProgress,
+    ProgressHeld,
     TaskGroup,
     initial_progress,
     progress_after_annotating,
@@ -529,6 +531,8 @@ __all__ = [
     "ASSET_PROGRESS_TRANSITIONS",
     "BACKGROUND_JOB_TRANSITIONS",
     "BATCH_TRANSITIONS",
+    "CONFIRMED_PROGRESS",
+    "ProgressHeld",
     "CORRECTABLE_STATES",
     "DELETABLE_STATES",
     "EDITABLE_STATES",

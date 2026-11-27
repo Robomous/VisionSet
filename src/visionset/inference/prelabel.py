@@ -132,7 +132,7 @@ class PreLabelOutcome:
     #: could land. Zero for a run that was not asked to replace.
     annotations_replaced: int = 0
     #: ``pre_labeled`` frames a replacing run passed over because their labels
-    #: were confirmed in a completed batch or are in the dataset. Not counted
+    #: were confirmed in another batch, open or completed, or are in the dataset. Not counted
     #: in ``assets_considered``. Zero for a run that was not asked to replace.
     assets_protected: int = 0
 
@@ -513,9 +513,10 @@ def pre_label(
     still ``pre_labeled`` — labels a model wrote and nobody has judged — and
     supersedes those labels with this run's answer, one frame per transaction.
     A frame anyone edited, confirmed or skipped in this batch is never touched,
-    flagged or not. A frame the model now finds nothing on loses its stale
-    labels and reads untouched again; ``PreLabelOutcome.annotations_replaced`` says how many
-    labels went.
+    flagged or not, and neither is one in the dataset or confirmed in another
+    batch (``PreLabelOutcome.assets_protected``). A frame the model now finds
+    nothing on loses its stale labels and reads untouched again;
+    ``PreLabelOutcome.annotations_replaced`` says how many labels went.
 
     ``geometries`` narrows what the run writes to those of the shapes the model
     declares: a region in any other shape is discarded and counted, and a class
@@ -571,7 +572,11 @@ def pre_label(
     }
 
     targets, protected = _targets(
-        workspace, job, project_id=batch.project_id, replace_model_labels=replace_model_labels
+        workspace,
+        job,
+        batch_id=batch.id,
+        project_id=batch.project_id,
+        replace_model_labels=replace_model_labels,
     )
     total = len(targets)
     annotations_service = AnnotationService(workspace)
@@ -952,6 +957,7 @@ def _targets(
     workspace: WorkspaceService,
     job: AnnotationJob,
     *,
+    batch_id: UUID,
     project_id: UUID,
     replace_model_labels: bool,
 ) -> tuple[tuple[tuple[UUID, bool], ...], int]:
@@ -973,14 +979,15 @@ def _targets(
     and is marked so: it goes through the door's replacing path, which is the
     only path that may remove what an earlier run wrote.
 
-    **A replacing target is never in the trunk, nor settled in a completed
-    batch.** A batch cut over such an asset opens it ``pre_labeled`` — every
-    label on it is a model's, whoever confirmed it — so progress cannot tell an
-    unjudged guess from a confirmed box. Its labels were judged in a completed
-    batch, promoted or not, and replacing them would delete that work; such an
+    **A replacing target is never in the trunk, nor confirmed in another
+    batch**, completed or still open. A batch cut over such an asset opens it
+    ``pre_labeled`` — every label on it is a model's, whoever confirmed it — so
+    this job's progress cannot tell an unjudged guess from a box a person in
+    another batch confirmed. Replacing them would delete that work; such an
     asset is passed over, as ``enter_unreviewed`` would refuse it, and counted
     as protected. Labels this job's own earlier run wrote there stay
-    replaceable (:func:`confirmed_elsewhere`).
+    replaceable only if they came after that confirmation
+    (:func:`confirmed_elsewhere`).
     """
     candidates = [
         (asset_id, progress is AssetProgress.PRE_LABELED)
@@ -993,7 +1000,7 @@ def _targets(
         protected = (
             member_asset_ids_of(uow, ProjectService(workspace).require_dataset(uow, project_id))
             .intersection(replacing_ids)
-            .union(confirmed_elsewhere(uow, job, replacing_ids))
+            .union(confirmed_elsewhere(uow, job, batch_id, replacing_ids))
         )
         targets = tuple(
             (asset_id, replacing)

@@ -7,7 +7,7 @@ written against this file cannot accidentally depend on SQLite.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from contextlib import AbstractContextManager
 from datetime import datetime
 from typing import Final, Protocol, TypeVar, runtime_checkable
@@ -35,6 +35,7 @@ from visionset.kernel.domain import (
     ObservedLabel,
     OrphanGuard,
     PreprocessingRecipe,
+    ProgressHeld,
     Project,
     Release,
     SchemaDraft,
@@ -416,6 +417,29 @@ class UnitOfWork(Protocol):
         workspace summary already accepts elsewhere, and if it starts to cost the
         fix is a form of this method taking several job ids — never a SQLAlchemy
         import in a service.
+        """
+        ...
+
+    def asset_touched(self, job_id: UUID, asset_id: UUID) -> datetime | None:
+        """When somebody last moved this one asset in this job, or NULL if nobody has.
+
+        :meth:`last_touched` narrowed to one row.
+        """
+        ...
+
+    def progress_held(
+        self,
+        asset_ids: Collection[UUID],
+        *,
+        progress: Collection[AssetProgress],
+        outside_batch: UUID,
+    ) -> list[ProgressHeld]:
+        """Every job outside ``outside_batch`` holding one of these assets at one of these states.
+
+        One read over ``annotation_job_asset`` joined to its batch, rather than a
+        walk from each asset to its batches and from each batch to its jobs: a
+        replacing pre-label run asks this for every frame it would supersede,
+        under the write lock (#1212). Unordered.
         """
         ...
 
