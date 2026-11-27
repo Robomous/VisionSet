@@ -3808,7 +3808,7 @@
         "type": "object"
       },
       "FrameOccurrenceOut": {
-        "description": "One position of a video source, and the asset that position decoded to.",
+        "description": "One position of a sequence source, and the asset that position decoded to.",
         "properties": {
           "asset_id": {
             "format": "uuid",
@@ -7551,7 +7551,7 @@
         "type": "object"
       },
       "TrackOut": {
-        "description": "One object followed through a video source, with its observations in position order.",
+        "description": "One object followed through a sequence source, with its observations in position order.",
         "properties": {
           "external_id": {
             "anyOf": [

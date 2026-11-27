@@ -36,10 +36,12 @@ per position it holds, and every track id in it becomes a track of that source w
 Every import writes its own sources, so the same id in two sequences, or in two imports of one,
 is two tracks and never merges. A position whose image the source does not hold is a gap, and one
 whose bytes repeat an earlier image is an occurrence of that image's asset, its labels dropped as
-an `image` loss as any repeat's are. A track takes the class of its first label in sequence order: a
+an `image` loss as any repeat's are; within a sequence, earlier means earlier in the sequence's own
+order, not in path order. A track takes the class of its first label in sequence order: a
 later label of the same id and another class, or a second label of one id in one frame, is kept
-untracked and reported as an `attribute` loss. The plan counts `sequences` and `tracks`; the run
-returns the sources in `source_ids` and counts `tracks_written`. A track observes 2D labels only.
+untracked and reported as an `attribute` loss. The plan counts the `sequences` a commit would
+write and the `tracks` over the labels it would write, so a re-run that writes nothing counts none;
+the run returns the sources in `source_ids` and counts `tracks_written`. A track observes 2D labels only.
 
 A dataset of scans differs in three ways. A headerless scan is stored as a binary PCD of its own
 bytes, so it is a `point_cloud` asset like an ingested one, with its preview. The same transaction
@@ -173,7 +175,11 @@ a number, as upstream OpenLane names a frame by its timestamp, is one image sequ
 directory. Its frames are ordered by that number and read as hundredths of a microsecond, OpenLane's
 Waymo timestamp with two digits appended, so a frame's occurrence `timestamp` is its time in seconds
 since the segment's first frame. A lane's `track_id`, which OpenLane keeps unique across a segment,
-becomes its label's track id, as the integer's decimal text or the name as written. The exporter
+becomes its label's track id, as the integer's decimal text or the name as written. A name that
+spells an integer id of the same segment, such as `"7"` beside `7`, is not assumed to be that lane:
+its label is kept untracked and reported as an `attribute` loss. The segment's directory name
+becomes the source's name and must be a valid one, so a name a source cannot carry refuses the
+source at inspection. The exporter
 writes `lane_<n>`, its echo of the lane's order in the image rather than an identity, so that value
 is neither carried nor reported. Any other track id outside a sequence, such as in the exporter's
 fold directories or a segment with a document not named by a number, is an `attribute` loss, as is

@@ -16,6 +16,8 @@ format has no "unknown", so an import never produces unlabeled.
 A directory named ``segment-*`` whose documents are all named by a number is a
 sequence: its frames are ordered by that number, OpenLane's frame timestamp in
 units of 10 ns, and each lane's ``track_id`` becomes the ``track`` of its label.
+An id written as the name ``"7"`` in a segment that also has the integer ``7``
+is a loss rather than a merge: the two spellings are not assumed to be one lane.
 
 What the domain cannot hold is counted into ``losses`` by kind: 3D points, a
 camera calibration, a track id outside a sequence, a position ``attribute`` that
@@ -59,6 +61,11 @@ SEGMENT_PREFIX: Final = "segment-"
 #: Seconds per unit of a frame's name: OpenLane names a frame by Waymo's
 #: microsecond timestamp with two digits appended.
 _SECONDS_PER_TICK: Final = 1e-8
+
+_SPELLED_TWICE: Final = (
+    "its track id is a name spelling an integer track id of the same segment; "
+    "the label is kept untracked"
+)
 
 #: OpenLane's category integers and their names, plus the exporter's road edges.
 #:
@@ -107,6 +114,8 @@ class OpenLane2dImporter:
         found = _label_files(src, root)
         segments = _segments(found)
         frames: dict[Path, PurePosixPath] = {}
+        numbered: dict[Path, set[str]] = {}
+        named: list[tuple[Path, list[ImportedLabel], int]] = []
         for document_path in found:
             document = _load(document_path)
             name = document_path.relative_to(src).as_posix()
@@ -120,8 +129,19 @@ class OpenLane2dImporter:
             sequenced = document_path.parent in segments
             for position, lane in enumerate(_lanes(document, name)):
                 label = _label(lane, position, name, categories, losses, sequenced=sequenced)
-                if label is not None:
-                    labels.append(label)
+                if label is None:
+                    continue
+                if label.track is not None:
+                    if _is_integer(lane["track_id"]):
+                        numbered.setdefault(document_path.parent, set()).add(label.track)
+                    else:
+                        named.append((document_path.parent, labels, len(labels)))
+                labels.append(label)
+        for directory, labels, index in named:
+            label = labels[index]
+            if label.track in numbered.get(directory, set()):
+                losses[(ImportLossKind.ATTRIBUTE, label.class_name, _SPELLED_TWICE)] += 1
+                labels[index] = label.model_copy(update={"track": None})
 
         classes = tuple(
             ImportedClass(name=name, geometries=(GeometryType.POLYLINE,))

@@ -24,7 +24,9 @@ from visionset.kernel.domain.calibration import (
     geometry_reference,
 )
 from visionset.kernel.domain.geometry import Geometry
+from visionset.kernel.domain.names import normalize_name
 from visionset.kernel.domain.schema import GeometryType
+from visionset.kernel.errors import InvalidName
 
 
 class ImportLossKind(StrEnum):
@@ -212,7 +214,13 @@ class ImportedSequence(BaseModel):
     name: str
     frames: tuple[ImportedFrame, ...] = Field(min_length=1)
 
-    _named = field_validator("name")(_class_name)
+    @field_validator("name")
+    @classmethod
+    def _a_source_name(cls, value: str) -> str:
+        try:
+            return normalize_name(value, what="source name")
+        except InvalidName as refusal:
+            raise ValueError(str(refusal)) from None
 
     @model_validator(mode="after")
     def _ordered(self) -> ImportedSequence:
@@ -350,9 +358,11 @@ class ImportPlan(BaseModel):
     ``scans`` and ``missing_scans`` are the same for a dataset of scans, whose
     labels have no image to fall outside of.
 
-    ``tracks`` counts the tracks the kept labels carry, one per sequence and
-    track id; a label whose id repeats within a frame, or names a track of
-    another class, is kept untracked and reported as an ``attribute`` loss.
+    ``sequences`` counts the sequences a commit would write, those holding an
+    asset it creates or labels, and ``tracks`` the tracks over them, one per
+    sequence and track id among the labels it would write. A label whose id
+    repeats within a frame, or names a track of another class, is kept
+    untracked and reported as an ``attribute`` loss.
 
     ``conflicts`` are refusals a commit would raise even with full consent: a
     label the active schema cannot accept, classes that cannot form a schema,
@@ -374,6 +384,7 @@ class ImportPlan(BaseModel):
     new_assets: int = Field(ge=0)
     new_annotations: int = Field(ge=0)
     annotations_already_present: int = Field(ge=0)
+    sequences: int = Field(default=0, ge=0)
     tracks: int = Field(default=0, ge=0)
 
 

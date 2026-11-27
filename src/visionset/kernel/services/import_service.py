@@ -414,8 +414,10 @@ class ImportService:
         kept: list[ImportedImage] = []
         duplicates: dict[PurePosixPath, PurePosixPath] = {}
         first_with: dict[str, PurePosixPath] = {}
+        order = _listing_order(dataset)
         for image in sorted(
-            (image for image in dataset.images if image.path in probes), key=lambda i: str(i.path)
+            (image for image in dataset.images if image.path in probes),
+            key=lambda i: order.get(i.path, (str(i.path), 0)),
         ):
             probe = probes[image.path]
             original = first_with.setdefault(probe.content_hash, image.path)
@@ -437,10 +439,11 @@ class ImportService:
             ImportLoss(kind=ImportLossKind.LABEL, subject=name, count=count, reason=reason)
             for (name, reason), count in label_losses.items()
         )
-        kept, tracks, track_losses = _consistent_tracks(dataset, kept)
+        kept, track_losses = _consistent_tracks(dataset, kept)
         losses.extend(track_losses)
 
         writes: set[PurePosixPath] = set()
+        tracked: dict[PurePosixPath, set[str]] = {}
         with self._workspace.unit_of_work() as uow:
             active = self._schemas.active(uow, project_id)
             known = {asset.content_hash: asset for asset in uow.assets.list(project_id)}
@@ -458,6 +461,7 @@ class ImportService:
                 asset = known.get(probes[image.path].content_hash)
                 if asset is None:
                     writes.add(image.path)
+                    tracked[image.path] = {one.track for one in image.labels if one.track}
                     new_assets += 1
                     new_annotations += len(image.labels)
                     if any(
@@ -477,6 +481,7 @@ class ImportService:
                 new_annotations += len(new)
                 if new:
                     writes.add(image.path)
+                    tracked[image.path] = {one.track for one in new if one.track}
                 if any(
                     geometry_needs_calibration(one.geometry, modality=asset.modality) for one in new
                 ):
@@ -495,6 +500,15 @@ class ImportService:
                         )
                     )
 
+        touched = [
+            sequence
+            for sequence in dataset.sequences
+            if any(one.path in writes for one in sequence.frames)
+        ]
+        tracks = sum(
+            len(set().union(*(tracked.get(one.path, set()) for one in sequence.frames)))
+            for sequence in touched
+        )
         members = bool(new_assets or new_annotations)
         refusals: list[VisionSetError] = []
         if active is not None:
@@ -519,6 +533,7 @@ class ImportService:
             new_assets=new_assets,
             new_annotations=new_annotations,
             annotations_already_present=already,
+            sequences=len(touched),
             tracks=tracks,
         )
         return _Planned(
@@ -841,19 +856,31 @@ def _image_loss(image: ImportedImage, why: str) -> ImportLoss:
     )
 
 
+def _listing_order(dataset: ImportedDataset) -> dict[PurePosixPath, tuple[str, int]]:
+    """Where a sequenced image sorts: at its sequence's first path, then by position.
+
+    The first of two images with equal bytes wins, so a sequence's frames are
+    ranked in its own order rather than by how their paths happen to sort.
+    """
+    return {
+        one.path: (str(sequence.frames[0].path), position)
+        for sequence in dataset.sequences
+        for position, one in enumerate(sequence.frames)
+    }
+
+
 def _consistent_tracks(
     dataset: ImportedDataset, kept: list[ImportedImage]
-) -> tuple[list[ImportedImage], int, list[ImportLoss]]:
+) -> tuple[list[ImportedImage], list[ImportLoss]]:
     """The kept images with every track id a track cannot hold taken off its label.
 
     A track takes the class of its first label in sequence order. A later label
     of another class, or a second label of the same track in one frame, stays a
     label and loses its track id, counted as an ``attribute`` loss. Answers the
-    images, the tracks they still carry, and those losses.
+    images and those losses.
     """
     by_path = {image.path: image for image in kept}
     dropped: Counter[tuple[str, str]] = Counter()
-    tracks = 0
     for sequence in dataset.sequences:
         classes: dict[str, str] = {}
         for one in sequence.frames:
@@ -879,12 +906,11 @@ def _consistent_tracks(
                         label = label.model_copy(update={"track": None})
                 labels.append(label)
             by_path[one.path] = image.model_copy(update={"labels": tuple(labels)})
-        tracks += len(classes)
     losses = [
         ImportLoss(kind=ImportLossKind.ATTRIBUTE, subject=name, count=count, reason=reason)
         for (name, reason), count in dropped.items()
     ]
-    return [by_path[image.path] for image in kept], tracks, losses
+    return [by_path[image.path] for image in kept], losses
 
 
 def _derived_classes(dataset: ImportedDataset) -> list[LabelClass]:

@@ -766,7 +766,7 @@ def annotation(value: Annotation) -> shapes.Annotation:
 
 
 def frame_occurrence(value: FrameOccurrence) -> shapes.FrameOccurrence:
-    """One position of a video source, and the asset that position decoded to."""
+    """One position of a sequence source, and the asset that position decoded to."""
     return {
         "id": str(value.id),
         "source_id": str(value.source_id),
@@ -1206,7 +1206,7 @@ def import_plan(value: ImportPlan) -> shapes.ImportPlan:
         "new_assets": value.new_assets,
         "new_annotations": value.new_annotations,
         "annotations_already_present": value.annotations_already_present,
-        "sequences": len(value.dataset.sequences),
+        "sequences": value.sequences,
         "tracks": value.tracks,
     }
 

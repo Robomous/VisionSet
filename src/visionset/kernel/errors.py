@@ -797,8 +797,8 @@ class TrackExternalIdTaken(VisionSetError):
 class SourceNotSequence(VisionSetError):
     """A track was asked of a source that is not a sequence.
 
-    A sequence is a video source and its frame occurrences; an image directory
-    or a point-cloud directory has no occurrences for a track to observe.
+    A sequence is a video or an image-sequence source and its frame occurrences;
+    an image directory or a point-cloud directory has none for a track to observe.
     """
 
 

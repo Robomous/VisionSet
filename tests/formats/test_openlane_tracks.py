@@ -12,7 +12,7 @@ import pytest
 from tests.fixtures.media import write_image
 
 from visionset.formats.lanes import OpenLane2dImporter
-from visionset.kernel import AssetNotInJob, SourceNotSequence, TrackExternalIdTaken
+from visionset.kernel import AssetNotInJob, ImportSourceUnreadable
 from visionset.kernel.domain import (
     TRACKED_MANIFEST_VERSION,
     AnnotationJob,
@@ -117,6 +117,24 @@ def test_a_track_id_that_is_no_integer_or_name_is_an_attribute_loss(
 
     assert dataset.images[0].labels[0].track is None
     assert [(loss.kind, loss.count) for loss in dataset.losses] == [(ImportLossKind.ATTRIBUTE, 1)]
+
+
+def test_a_name_spelling_an_integer_id_of_its_segment_is_a_loss(tmp_path: Path) -> None:
+    frames: list[Frame] = [(0, 1, [_lane(7), _lane("7", uv=RIGHT)]), (TICK, 2, [_lane("8")])]
+    dataset = OpenLane2dImporter().read(_segment(tmp_path, "segment-1", frames))
+
+    first, second = sorted(dataset.images, key=lambda image: str(image.path))
+    assert [label.track for label in first.labels] == ["7", None]
+    assert [label.track for label in second.labels] == ["8"]
+    (loss,) = dataset.losses
+    assert (loss.kind, loss.count) == (ImportLossKind.ATTRIBUTE, 1)
+    assert "spelling an integer" in loss.reason
+
+
+def test_a_segment_name_no_source_can_carry_is_refused_on_reading(tmp_path: Path) -> None:
+    src = _segment(tmp_path, "segment-\t1", [(0, 1, [_lane(7)])])
+    with pytest.raises(ImportSourceUnreadable, match="control characters"):
+        OpenLane2dImporter().read(src)
 
 
 @pytest.mark.parametrize("directory", ["train", "segment-1"])
@@ -238,6 +256,19 @@ def test_duplicate_content_frames_are_two_occurrences_of_one_asset(imported: Imp
     assert duplicate.subject.endswith(f"/{TICK}.png")
 
 
+def test_a_repeated_frame_is_judged_in_frame_order_not_path_order(imported: Imported) -> None:
+    early, late = 9 * TICK, 10 * TICK
+    frames: list[Frame] = [(early, 1, [_lane(7)]), (late, 1, [_lane(7)]), (11 * TICK, 2, [])]
+    run = imported.run(_segment(imported.root / "src", "segment-1", frames), ImportLossKind.IMAGE)
+
+    (duplicate,) = run.losses
+    assert duplicate.subject.endswith(f"/{late}.png")
+    (source_id,) = run.source_ids
+    first, second, _ = imported.sources.occurrences(source_id)
+    assert first.asset_id == second.asset_id
+    assert _positions(imported.tracked(source_id)["7"]) == [0]
+
+
 def test_a_missing_frame_is_a_gap_the_tracks_reappear_after(imported: Imported) -> None:
     run = imported.run(
         _segment(imported.root / "src", "segment-1", _three(seeds=(1, None, 3))),
@@ -272,13 +303,13 @@ def test_a_second_import_never_merges_into_the_first(imported: Imported) -> None
     assert ours != theirs
     assert imported.tracked(ours)["7"].track.id != imported.tracked(theirs)["7"].track.id
     assert _positions(imported.tracked(ours)["7"]) == [0, 1, 2]
-    with pytest.raises(TrackExternalIdTaken):
-        imported.tracks.create(ours, "white-dash", external_id="7")
 
 
 def test_running_the_same_source_again_writes_no_source_and_no_track(imported: Imported) -> None:
     src = _segment(imported.root / "src", "segment-1", _three())
     first = imported.run(src)
+    plan = imported.imports.inspect(imported.project.id, OpenLane2dImporter(), src)
+    assert (plan.sequences, plan.tracks, plan.new_annotations) == (0, 0, 0)
     again = imported.run(src)
 
     assert (again.batch_id, again.source_ids, again.tracks_written) == (None, (), 0)
@@ -289,9 +320,16 @@ def test_a_new_frame_in_a_rerun_is_a_new_sequence_over_only_the_new_labels(
     imported: Imported,
 ) -> None:
     src = _segment(imported.root / "src", "segment-1", _three())
-    (ours,) = imported.run(src).source_ids
+    _segment(src, "segment-2", _three(seeds=(5, 6, 7)), split="validation")
+    ours, untouched = imported.run(src).source_ids
     _segment(src, "segment-1", [(3 * TICK, 4, [_lane(7)])])
+    plan = imported.imports.inspect(imported.project.id, OpenLane2dImporter(), src)
+    assert (plan.sequences, plan.tracks) == (1, 1)
     (theirs,) = imported.run(src).source_ids
+
+    assert len(imported.sources.list(imported.project.id)) == 3
+    assert untouched != theirs
+    assert imported.sources.get(theirs).name == "segment-1"
 
     assert [o.position for o in imported.sources.occurrences(theirs)] == [0, 1, 2, 3]
     assert {key: _positions(d) for key, d in imported.tracked(theirs).items()} == {"7": [3]}
@@ -305,7 +343,7 @@ def test_an_id_a_track_cannot_hold_stays_a_label_and_is_declared(imported: Impor
     ]
     src = _segment(imported.root / "src", "segment-1", frames)
     plan = imported.imports.inspect(imported.project.id, OpenLane2dImporter(), src)
-    assert (plan.tracks, plan.new_annotations) == (1, 3)
+    assert (plan.sequences, plan.tracks, plan.new_annotations) == (1, 1, 3)
     assert sorted((loss.kind, loss.subject, loss.count) for loss in plan.losses) == [
         (ImportLossKind.ATTRIBUTE, "white-dash", 1),
         (ImportLossKind.ATTRIBUTE, "yellow-solid", 1),
@@ -380,11 +418,3 @@ def test_an_imported_track_releases_and_a_rerun_keeps_the_hash(imported: Importe
     ]
     assert imported.run(src).batch_id is None
     assert releases.publish(dataset_id, "v2").manifest_hash == first.manifest_hash
-
-
-def test_a_track_is_still_refused_on_a_source_that_is_no_sequence(imported: Imported) -> None:
-    (imported.root / "stills").mkdir()
-    stills = imported.sources.register_images(imported.project.id, imported.root / "stills")
-    imported.run(_segment(imported.root / "src", "segment-1", _three()))
-    with pytest.raises(SourceNotSequence):
-        imported.tracks.create(stills.id, "white-dash")

@@ -90,8 +90,8 @@ def create_track(
     """Start an empty track of one class on a video or image-sequence source.
 
     The class must be declared by the project's active schema version. Then
-    attach annotations with `observe_track`. Refused on a source that is not a
-    video, and for an `external_id` another track of the source carries.
+    attach annotations with `observe_track`. Refused on a source that is neither a
+    video nor an image sequence, and for an `external_id` another track of the source carries.
     """
     with opened_workspace() as workspace:
         created = TrackService(workspace).create(

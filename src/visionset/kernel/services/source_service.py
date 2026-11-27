@@ -50,6 +50,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from visionset.kernel.domain import (
+    SEQUENCE_KINDS,
     FrameOccurrence,
     Project,
     ScanFrame,
@@ -248,11 +249,16 @@ class SourceService:
         """Write an image sequence's ``(position, timestamp, asset_id)`` occurrences.
 
         Raises:
-            SourceNotSequence: the source is not an image sequence; a video's
-                occurrences are its import's to write.
+            SourceNotSequence: the source is no sequence, so it has no positions.
+            ValueError: the source is a video, whose occurrences only its own
+                import writes, from the frames it staged.
         """
+        if source.kind not in SEQUENCE_KINDS:
+            raise SourceNotSequence(
+                f"source {source.id} is a {source.kind.value}, which has no frame occurrences"
+            )
         if source.kind is not SourceKind.IMAGE_SEQUENCE:
-            raise SourceNotSequence(f"source {source.id} is a {source.kind.value}")
+            raise ValueError(f"source {source.id} is a video; its import writes its occurrences")
         return uow.frame_occurrences.add_many(
             [
                 FrameOccurrence(

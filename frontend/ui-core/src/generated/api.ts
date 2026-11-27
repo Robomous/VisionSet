@@ -5554,7 +5554,7 @@ export interface components {
         };
         /**
          * FrameOccurrenceOut
-         * @description One position of a video source, and the asset that position decoded to.
+         * @description One position of a sequence source, and the asset that position decoded to.
          */
         FrameOccurrenceOut: {
             /**
@@ -7544,7 +7544,7 @@ export interface components {
         };
         /**
          * TrackOut
-         * @description One object followed through a video source, with its observations in position order.
+         * @description One object followed through a sequence source, with its observations in position order.
          */
         TrackOut: {
             /** External Id */

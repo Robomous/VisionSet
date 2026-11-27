@@ -146,8 +146,8 @@ def _report(plan: ImportPlan, consent: ImportConsent, *, json_out: bool) -> None
         f"{plan.new_assets} new asset(s), {plan.new_annotations} new label(s), "
         f"{plan.annotations_already_present} already present."
     )
-    if plan.dataset.sequences:
-        note(f"{len(plan.dataset.sequences)} sequence(s) carrying {plan.tracks} track(s).")
+    if plan.sequences:
+        note(f"{plan.sequences} sequence(s) and {plan.tracks} track(s) to write.")
     if plan.creates_schema:
         note(f"Schema version 1 would be created from {len(plan.dataset.classes)} class(es).")
     for conflict in plan.conflicts:
