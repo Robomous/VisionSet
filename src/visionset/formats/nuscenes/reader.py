@@ -403,7 +403,10 @@ def _label(
             (
                 ImportLossKind.ATTRIBUTE,
                 name,
-                "the instance token that tracks an object across samples is not carried",
+                (
+                    "the instance token that tracks an object across samples is not carried; "
+                    "a track follows 2D labels only, and these are 3D boxes in lidar scans"
+                ),
             )
         ] += 1
     if "num_lidar_pts" in annotation or "num_radar_pts" in annotation:
