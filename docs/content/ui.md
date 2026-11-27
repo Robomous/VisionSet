@@ -1060,13 +1060,14 @@ as this section's worked example of declared-but-not-drawable - #223 shipped the
 geometry end to end and stopped short of the tool - and it is a live button now.
 
 The rule that example demonstrated is kept as a mechanism, and `PENDING_TOOLS` holds it
-with nothing in it: **a geometry listed there that a schema declares gets a disabled
+with `mask` in it: **a geometry listed there that a schema declares gets a disabled
 button carrying the reason**, placed after every usable tool, never a gap. A missing
 control would say "this schema has no lanes", which is false, and it is exactly the
 ambiguity `ui-capabilities` forbids: absent and not-yet-available look identical and
-only one of them is true. While the record is empty, no geometry gets that button:
-`mask` and `keypoints` are refused when a schema version is written, so no schema
-declares one, and a class declaring `polyline_3d` or `cuboid_3d` gets **no** button on
+only one of them is true. The record holds `mask`, so a schema declaring one gets that
+button, with the reason that masks cannot be drawn or edited here yet and stored masks are
+kept as they are. `keypoints` is still refused when a schema version is written, so no
+schema declares it and it gets no button. A class declaring `polyline_3d` or `cuboid_3d` gets **no** button on
 an image - those two are drawn on a scan, in its own
 [editor](ui/annotator.md#editing-cuboids-and-polylines-on-a-scan), and drawn read-only
 on an image (see [below](#3d-labels-are-drawn-not-edited)).
@@ -1294,6 +1295,9 @@ segment is clipped at a near plane 1 cm in front of the camera, and, under disto
 radius where the lens model starts to fold back, radially or tangentially; a label wholly behind
 the camera draws nothing.
 Under distortion a straight segment is sampled so it bends as the lens bends it.
+
+A raster `mask` annotation is carried the same way, minus the drawing: the annotator loads it,
+never draws, selects or edits it, and sends it back unchanged on save.
 
 A `cuboid_3d` is drawn as its twelve edges, each projected and clipped exactly as a two-point
 segment of a path is: an edge that crosses the near plane is cut at it rather than dropped, an

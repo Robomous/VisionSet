@@ -468,7 +468,9 @@ still floats the same strip over its canvas (`layout="floating"`). Tooltips open
 the shortcut ("Select (V)", "Box (B)", "Polygon (P)"). Only tools the schema's geometries
 allow — and, **with a class selected, only that class's own**: offering a polygon button
 under a boxes-only class would answer *what can I draw here* with a lie. With no class
-selected it is the schema's union. Switching to a class that forbids the active tool never
+selected it is the schema's union. A `mask` class can be declared, and the strip lists a disabled
+Mask button carrying the reason, because the annotator has no tool to draw or edit one; stored masks
+are kept as they are. Switching to a class that forbids the active tool never
 strands it — the derived tool resolves to the class's first allowed shape — and the route to
 a different class's geometry is the class list, which is where choosing a class belongs.
 **The rail picks how to draw; it does not add classes** — a class is added from the panel's

@@ -111,6 +111,11 @@ image engine. `Geometry`, `Annotation` and the image interaction machine stay 2D
 dispatch over them stays exhaustive without a 3D arm; the 3D variants never enter
 `AnnotationDocument`.
 
+A raster `mask` annotation (`{type: "mask", size: [height, width], counts}`, COCO compressed RLE)
+is carried untouched in the same way: it parses as a `StoredGeometry`, `documentFromWire` leaves it
+out of the scene, nothing draws, selects or edits it, and it goes back unchanged on save;
+`parseGeometry` refuses it explicitly.
+
 | Piece | Image engine | Scan editor |
 | --- | --- | --- |
 | Document | `AnnotationDocument` (`documentFromWire`) | `ScanDocument` (`scanDocumentFromWire`), `cuboid_3d` and `polyline_3d` |

@@ -1334,23 +1334,20 @@ describe("the schema editor", () => {
     for (const geometry of IMPLEMENTED_GEOMETRIES) {
       expect(await screen.findByTestId(`class-geometry-0-${geometry}`)).toBeTruthy();
     }
-    // `GeometryType` has eight members; two are refused at write time with
-    // `UnsupportedGeometry`, and the server does not publish them.
-    for (const geometry of ["mask", "keypoints"]) {
-      expect(screen.queryByTestId(`class-geometry-0-${geometry}`)).toBeNull();
-    }
+    // `keypoints` is refused at write time with `UnsupportedGeometry`, and the
+    // server does not publish it.
+    expect(screen.queryByTestId("class-geometry-0-keypoints")).toBeNull();
     expect(sent.some((request) => new URL(request.url).pathname.endsWith("/geometries"))).toBe(true);
   });
 
   it("offers a geometry the server adds, with no list in the client to edit", async () => {
-    on("GET", /\/geometries$/, { status: 200, body: geometryPage([...IMPLEMENTED_GEOMETRIES, "mask"]) });
+    on("GET", /\/geometries$/, { status: 200, body: geometryPage([...IMPLEMENTED_GEOMETRIES, "keypoints"]) });
     projectWithSchema();
     renderWithData(<ProjectScreen projectId={PROJECT} tab="schema" />);
     await screen.findByTestId("schema-editor");
     await selectClass(0);
 
-    expect(await screen.findByTestId("class-geometry-0-mask")).toBeTruthy();
-    expect(screen.queryByTestId("class-geometry-0-keypoints")).toBeNull();
+    expect(await screen.findByTestId("class-geometry-0-keypoints")).toBeTruthy();
   });
 
   it("offers only the subset the server publishes", async () => {
@@ -1427,6 +1424,7 @@ describe("the schema editor", () => {
       "class-geometry-0-bbox",
       "class-geometry-0-obb",
       "class-geometry-0-polygon",
+      "class-geometry-0-mask",
       "class-geometry-0-polyline",
       "class-geometry-0-classification_tag",
       "class-geometry-0-cuboid_3d",
@@ -1435,11 +1433,11 @@ describe("the schema editor", () => {
     // The display words, not the wire values: `classification_tag` is an
     // identifier and `tag` is what it is called. Icon only, so the word is
     // each button's name, and it is said again beside the group.
-    expect(chips.map((chip) => chip.getAttribute("aria-label"))).toEqual(["Box", "Rotated box", "Polygon", "Polyline", "Tag", "3D box", "3D polyline"]);
-    expect(chips.map((chip) => chip.textContent)).toEqual(["", "", "", "", "", "", ""]);
+    expect(chips.map((chip) => chip.getAttribute("aria-label"))).toEqual(["Box", "Rotated box", "Polygon", "Mask", "Polyline", "Tag", "3D box", "3D polyline"]);
+    expect(chips.map((chip) => chip.textContent)).toEqual(["", "", "", "", "", "", "", ""]);
     expect(within(group.parentElement!).getByText("Box").getAttribute("aria-hidden")).toBe("true");
     // What the class accepts is readable at a glance, with nothing opened.
-    expect(chips.map((chip) => chip.getAttribute("aria-pressed"))).toEqual(["true", "false", "false", "false", "false", "false", "false"]);
+    expect(chips.map((chip) => chip.getAttribute("aria-pressed"))).toEqual(["true", "false", "false", "false", "false", "false", "false", "false"]);
     expect(screen.queryByTestId(/^geometry-category-/)).toBeNull();
   });
 

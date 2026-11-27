@@ -124,12 +124,43 @@ describe("the tools a schema can reach", () => {
     expect(onActivateClass).toHaveBeenCalledWith("crate");
   });
 
-  it("has nothing left that is declared and not drawable, and keeps the mechanism", () => {
-    // `PENDING_TOOLS` is empty now and the rule it encodes still holds: `mask` and
-    // `keypoints` are in the position `polyline` was, so this asserts the *absence
-    // of a pending entry for this schema* rather than the absence of the feature.
+  it("has no unavailable choice for a schema declaring nothing undrawable", () => {
     const choices = toolChoices(SCHEMA);
     expect(choices.filter((choice) => choice.unavailable !== null)).toEqual([]);
+  });
+
+  describe("a schema declaring a mask", () => {
+    const WITH_MASK = {
+      ...SCHEMA,
+      classes: [
+        ...SCHEMA.classes,
+        { name: "road", geometries: ["mask"], color: null, attributes: [] },
+      ],
+    } as typeof SCHEMA;
+    const REASON = "Masks can't be drawn or edited here yet; stored masks are kept as they are.";
+
+    it("gets exactly one disabled mask choice with its reason, after the usable tools", () => {
+      const choices = toolChoices(WITH_MASK);
+      const unavailable = choices.filter((choice) => choice.unavailable !== null);
+
+      expect(unavailable).toEqual([
+        { tool: "mask", label: "Mask", labelClass: null, hotkey: "—", unavailable: REASON },
+      ]);
+      expect(choices.at(-1)).toBe(unavailable[0]);
+      expect(choices.map((choice) => choice.tool)).toEqual(["select", "bbox", "polygon", "polyline", "mask"]);
+    });
+
+    it("renders it disabled and never activates a class when pressed", () => {
+      const onActivateClass = vi.fn();
+      const onActivateTool = vi.fn();
+      render(mount({ schema: WITH_MASK, onActivateClass, onActivateTool }));
+
+      const button = screen.getByTestId("tool-mask");
+      expect(button.getAttribute("aria-disabled")).toBe("true");
+      fireEvent.click(button);
+      expect(onActivateClass).not.toHaveBeenCalled();
+      expect(onActivateTool).not.toHaveBeenCalled();
+    });
   });
 
   it("names each geometry's first declaring class, in authored order", () => {

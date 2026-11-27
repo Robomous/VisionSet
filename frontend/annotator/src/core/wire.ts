@@ -24,10 +24,10 @@
  *    half-drawn shape is allowed to be belongs to the document model, not to the
  *    parser of stored annotations.
  *
- * 3. **A declared-but-unimplemented geometry gets its own message.** `mask` is a
+ * 3. **A declared-but-unimplemented geometry gets its own message.** `keypoints` is a
  *    real `GeometryType` with no model, not a typo, and the refusal says so —
  *    because someone reading it needs to know the answer is "not yet" rather than
- *    "you misspelled it". Four names still have no model.
+ *    "you misspelled it". One name still has no model.
  *
  * The schema and the asset bring a fourth rule:
  *
@@ -80,6 +80,7 @@ import {
   type Cuboid3DGeometry,
   type Geometry,
   type LabelClass,
+  type MaskGeometry,
   type Point,
   type Point3D,
   type Polyline3DGeometry,
@@ -173,6 +174,7 @@ const POLYLINE_KEYS = ["type", "points"] as const;
 // Declared but optional: the kernel omits it when nobody has said.
 const POLYLINE_OPTIONAL_KEYS = ["visibility"] as const;
 const VERTEX_VISIBILITIES: readonly number[] = Object.values(VERTEX_VISIBILITY);
+const MASK_KEYS = ["type", "size", "counts"] as const;
 const CUBOID_KEYS = ["type", "center", "size", "yaw"] as const;
 const CLASSIFICATION_KEYS = ["type"] as const;
 
@@ -349,6 +351,11 @@ export function parseGeometry(value: unknown): Geometry {
         `only projectLabels3D draws it, read-only, and a scan edits it in a ScanDocument`,
     );
   }
+  if (geometry.type === "mask") {
+    throw new WireFormatError(
+      `geometry.type "mask" is carried untouched: this engine neither draws nor edits a raster mask`,
+    );
+  }
   return geometry;
 }
 
@@ -424,6 +431,8 @@ export function parseStoredGeometry(value: unknown): StoredGeometry {
       return parsePolyline3D(value);
     case "cuboid_3d":
       return parseCuboid3D(value);
+    case "mask":
+      return parseMask(value);
     default:
       requireExactKeys(value, CLASSIFICATION_KEYS, "classification_tag geometry");
       return { type: "classification_tag" };
@@ -444,6 +453,19 @@ function parsePolyline3D(value: Record<string, unknown>): Polyline3DGeometry {
     points: parsed,
     visibility:
       "visibility" in value ? requireVisibility(value["visibility"], parsed.length) : undefined,
+  };
+}
+
+function parseMask(value: Record<string, unknown>): MaskGeometry {
+  requireExactKeys(value, MASK_KEYS, "mask geometry");
+  const size = value["size"];
+  if (!Array.isArray(size) || size.length !== 2) {
+    throw new WireFormatError("geometry.size must be a [height, width] pair");
+  }
+  return {
+    type: "mask",
+    size: [requirePixelCount(size[0], "geometry.size[0]"), requirePixelCount(size[1], "geometry.size[1]")],
+    counts: requireString(value["counts"], "geometry.counts"),
   };
 }
 

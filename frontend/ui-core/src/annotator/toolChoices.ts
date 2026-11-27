@@ -17,16 +17,17 @@ import { geometryLabel } from "../data/geometryCategory";
 /**
  * Why a declared geometry has no tool yet, keyed by the geometry.
  *
- * **Empty**, and kept rather than deleted along with its last entry.
- * The mechanism is what earns its place: the day `mask` or `keypoints` is declared
- * in a schema, the strip says so without anyone remembering that it should, and
- * that is a property worth more than the twelve lines it costs.
+ * Holds `mask`: a schema may declare it and stored masks are carried, but nothing
+ * here draws or edits one. The day `keypoints` is declared in a schema, an entry
+ * here is what makes the strip say so without anyone remembering that it should.
  *
  * The record is typed on `string` rather than on the geometry union so an entry
  * can name a geometry `drawableGeometries` never returns, which is the case it
  * exists for.
  */
-const PENDING_TOOLS: Readonly<Record<string, string>> = {};
+const PENDING_TOOLS: Readonly<Record<string, string>> = {
+  mask: "Masks can't be drawn or edited here yet; stored masks are kept as they are.",
+};
 
 /**
  * What each drawing tool is called on the strip.
@@ -117,7 +118,7 @@ export function toolChoices(
       if (choices.some((choice) => choice.tool === geometry)) continue;
       choices.push({
         tool: geometry,
-        label: geometry,
+        label: toolLabel(geometry),
         // No class to activate, because there is no tool to activate it for.
         labelClass: null,
         hotkey: "—",

@@ -354,7 +354,8 @@ it("offers the server's geometries in the add-a-class dialog", async () => {
   await screen.findByTestId("add-class-dialog");
 
   expect(await screen.findByTestId("class-geometry-new-cuboid_3d")).toHaveProperty("disabled", false);
-  expect(screen.queryByTestId("class-geometry-new-mask")).toBeNull();
+  expect(await screen.findByTestId("class-geometry-new-mask")).toHaveProperty("disabled", false);
+  expect(screen.queryByTestId("class-geometry-new-keypoints")).toBeNull();
 });
 
 /**

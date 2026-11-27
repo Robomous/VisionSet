@@ -362,7 +362,7 @@ describe("the inspector's name, shortcut and shapes", () => {
     expect(screen.queryByText("Shortcut")).toBeNull();
   });
 
-  it("offers the seven shapes an annotation can carry, as icon buttons named for them", () => {
+  it("offers the eight shapes an annotation can carry, as icon buttons named for them", () => {
     mountSheet(declaredWith());
 
     const group = screen.getByTestId("class-geometry-0");
@@ -371,15 +371,16 @@ describe("the inspector's name, shortcut and shapes", () => {
       "class-geometry-0-bbox",
       "class-geometry-0-obb",
       "class-geometry-0-polygon",
+      "class-geometry-0-mask",
       "class-geometry-0-polyline",
       "class-geometry-0-classification_tag",
       "class-geometry-0-cuboid_3d",
       "class-geometry-0-polyline_3d",
     ]);
     // Icon only: the word is the accessible name, never visible text.
-    expect(items.map((item) => item.getAttribute("aria-label"))).toEqual(["Box", "Rotated box", "Polygon", "Polyline", "Tag", "3D box", "3D polyline"]);
-    expect(items.map((item) => item.textContent)).toEqual(["", "", "", "", "", "", ""]);
-    expect(items.map((item) => item.getAttribute("aria-pressed"))).toEqual(["true", "false", "false", "false", "false", "false", "false"]);
+    expect(items.map((item) => item.getAttribute("aria-label"))).toEqual(["Box", "Rotated box", "Polygon", "Mask", "Polyline", "Tag", "3D box", "3D polyline"]);
+    expect(items.map((item) => item.textContent)).toEqual(["", "", "", "", "", "", "", ""]);
+    expect(items.map((item) => item.getAttribute("aria-pressed"))).toEqual(["true", "false", "false", "false", "false", "false", "false", "false"]);
     expect(screen.queryByTestId(/^geometry-category-/)).toBeNull();
   });
 
@@ -1010,9 +1011,9 @@ describe("the stacked layout", () => {
     expect(screen.getByTestId("class-color-new")).toBeTruthy();
     expect(screen.getByTestId("clear-color-new")).toBeTruthy();
     expect(screen.queryByTestId("class-color-trigger-new")).toBeNull();
-    // Seven shapes, each a toggle the group reports as pressed or not.
+    // Eight shapes, each a toggle the group reports as pressed or not.
     const shapes = within(screen.getByTestId("class-geometry-new")).getAllByRole("button");
-    expect(shapes).toHaveLength(7);
+    expect(shapes).toHaveLength(8);
     expect(shapes.every((shape) => shape.hasAttribute("aria-pressed"))).toBe(true);
   });
 
@@ -1022,7 +1023,7 @@ describe("the stacked layout", () => {
     const captions = screen.getAllByTestId(/^geometry-category-/);
     expect(captions.length).toBeGreaterThan(1);
     const grouped = captions.flatMap((caption) => [...(caption.parentElement?.querySelectorAll("[data-testid^='class-geometry-new-']") ?? [])]);
-    expect(grouped).toHaveLength(7);
+    expect(grouped).toHaveLength(8);
   });
 
   it("names the attribute kinds in words and keeps the wire values", async () => {
@@ -1103,19 +1104,20 @@ describe("the shapes on offer come from the server", () => {
   }
 
   it("offers a geometry the server adds, in picker order, with no list edited here", () => {
-    mountSheet(declaredWith(), { offered: offeredGeometries([...IMPLEMENTED_GEOMETRIES, "mask"]) });
+    mountSheet(declaredWith(), { offered: offeredGeometries([...IMPLEMENTED_GEOMETRIES, "keypoints"]) });
 
     expect(offeredIds("0")).toEqual([
       "class-geometry-0-bbox",
       "class-geometry-0-obb",
       "class-geometry-0-polygon",
       "class-geometry-0-mask",
+      "class-geometry-0-keypoints",
       "class-geometry-0-polyline",
       "class-geometry-0-classification_tag",
       "class-geometry-0-cuboid_3d",
       "class-geometry-0-polyline_3d",
     ]);
-    expect(screen.getByTestId("class-geometry-0-mask").getAttribute("title")).toBe("Mask · Painted pixels");
+    expect(screen.getByTestId("class-geometry-0-keypoints").getAttribute("title")).toBe("Keypoints · Named points");
   });
 
   it("offers only what the server offers", () => {
