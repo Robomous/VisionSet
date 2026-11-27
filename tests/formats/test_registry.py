@@ -148,6 +148,8 @@ def test_every_installed_exporter_stays_discovered() -> None:
         "openlane-2d",
         "kitti",
         "mot",
+        "cvat-images",
+        "cvat-video",
     }
 
 

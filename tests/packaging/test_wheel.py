@@ -355,6 +355,8 @@ def test_the_installed_command_finds_every_exporter(installed: Path) -> None:
         "coco",
         "culane",
         "curvelanes",
+        "cvat-images",
+        "cvat-video",
         "darknet",
         "kitti",
         "mot",

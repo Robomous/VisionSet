@@ -133,6 +133,12 @@ def write_image_as(asset: ManifestAsset, into: Path, stem: str, content: Content
     return name
 
 
+def image_suffix(asset: ManifestAsset, content: ContentReader) -> str:
+    """The suffix :func:`write_image` would give the asset, read without writing it."""
+    with content(asset.content_hash) as stream:
+        return _suffix_for(stream.read(_SIGNATURE_BYTES), asset)
+
+
 def dimensions_of(asset: ManifestAsset) -> tuple[int, int]:
     """The recorded pixel size, or refuse by name.
 

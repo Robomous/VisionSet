@@ -263,6 +263,22 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "targets": ["curvelanes"],
             },
             {
+                "name": "cvat-images",
+                "lossy": True,
+                "geometries": ["bbox", "classification_tag", "polygon", "polyline"],
+                "degraded_geometries": [],
+                "modalities": ["image"],
+                "targets": ["cvat-images"],
+            },
+            {
+                "name": "cvat-video",
+                "lossy": True,
+                "geometries": ["bbox", "polygon", "polyline"],
+                "degraded_geometries": [],
+                "modalities": ["image"],
+                "targets": ["cvat-video"],
+            },
+            {
                 "name": "darknet",
                 "lossy": True,
                 "geometries": ["bbox"],
@@ -355,7 +371,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "targets": ["yolov7"],
             },
         ],
-        "total": 14,
+        "total": 16,
     }
 
 

@@ -11,9 +11,11 @@ and slice 4, tracks in the release manifest at version 7, are implemented - see
 and [releases](../../releases.md#the-manifests-own-format-version). So is
 [#1170](https://github.com/Robomous/VisionSet/issues/1170), MOTChallenge sequences in and out with
 2D boxes over image-sequence sources - see [import](../../import.md#formats) and
-[releases](../../releases.md#the-motchallenge-format); MOTS waits for raster masks. The rest is not,
-and the video variant of [#1171](https://github.com/Robomous/VisionSet/issues/1171) stays blocked
-until the slices below ship.
+[releases](../../releases.md#the-motchallenge-format); MOTS waits for raster masks. So is
+[#1171](https://github.com/Robomous/VisionSet/issues/1171), CVAT XML 1.1 in and out as two named
+dialects, CVAT for video's tracks over image-sequence sources with interpolation left unexpanded -
+see [import](../../import.md#formats) and [releases](../../releases.md#the-cvat-xml-formats). The
+rest is not.
 
 **Amended for slice 5 on 2026-11-26.** Neither imported identity had anything to land on: OpenLane
 frames are stills with no source, and nuScenes keyframes are point-cloud scans with 3D boxes. The

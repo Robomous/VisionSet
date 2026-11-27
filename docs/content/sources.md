@@ -35,7 +35,7 @@ row and do not care which service wrote it.
 [Point-cloud directories and their frame](#point-cloud-directories-and-their-frame).
 
 An `IMAGE_SEQUENCE` source has no registration at all. An [import](import.md) whose dataset
-orders stills, such as an OpenLane segment or a MOTChallenge sequence, writes one per sequence inside its own transaction
+orders stills, such as an OpenLane segment, a MOTChallenge sequence or a CVAT video task, writes one per sequence inside its own transaction
 through `SourceService.add_image_sequence_in`, with the sequence's frame occurrences, so tracks
 can observe them. Like a video import, every run writes a new one, under a fresh
 `image-sequence-import:<uuid4>` locator that names no path, and nothing ingests from it.
