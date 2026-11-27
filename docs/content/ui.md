@@ -1604,16 +1604,16 @@ during a run too, with its fields and the tick disabled, and under a `done`, `st
 `failed` summary whenever the job has an untouched asset left, whether or not anything in it
 is pre-labeled. Where the job holds
 pre-labeled frames, under it sits **Replace the model labels on N pre-labeled frame(s)**,
-unticked, saying that frames anyone has edited, confirmed or skipped in this job, or that a
-completed batch confirmed, are never touched and that this cannot be undone. N is the job's
-`pre_labeled` count, so it includes frames a completed batch confirmed: it is an upper bound,
+unticked, saying that frames anyone has edited, confirmed or skipped in this job, or that
+another batch confirmed, are never touched and that this cannot be undone. N is the job's
+`pre_labeled` count, so it includes frames another batch confirmed: it is an upper bound,
 because no cheaper declared count exists. Ticked, the count line adds that the run also replaces
 the model labels on those N frames, and the launch -
 `Start`, `Run again`, `Continue` or `Try again` - goes live. A job with nothing untouched left
 and the box unticked has no run to launch at all, so the press is disabled and the notice names
 the tick as what would give the run something to do. A settled run's summary reports how many
-earlier model regions it replaced, and how many pre-labeled frames it left alone because a
-completed batch confirmed their labels (`assets_protected`).
+earlier model regions it replaced, and how many pre-labeled frames it left alone because
+another batch confirmed their labels (`assets_protected`).
 
 `POST /jobs/{id}/pre-label` answers `202` with a background job, on the export and
 weight-download routes' contract, and the dialog polls it exactly as `ExportDialog` polls an

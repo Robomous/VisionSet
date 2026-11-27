@@ -57,3 +57,18 @@ than loudly.
 Cross-batch progress reconciliation for an asset that sits in more than one batch. Each
 job holds its own progress and nothing reconciles them. If a task appears to need a
 policy here, stop and flag it rather than choosing one inline.
+
+One piece is settled (#1211, #1212; see `docs/content/batches.md#pre-labeling`): an asset
+may stay in several open batches, and a **replacing pre-label run** never deletes labels a
+person confirmed in any other batch, open or completed — nor a seeded state its completed
+batch settled — except this job's own labels written after every such confirmation. Do not
+re-derive that rule; `confirmed_elsewhere` is its one implementation.
+
+Still not settled:
+
+- A **person** editing or deleting, in batch B, labels batch A already confirmed. Ordinary
+  writes check only B's own progress, so A can still complete and promote labels it never
+  saw.
+- The **confirm-versus-view race**: a person confirms in A what A's view showed, while B's
+  writes changed the labels underneath between that view and the confirm. The same gap is
+  why a seeded `annotated` frame a completed batch promotes was never looked at in it.

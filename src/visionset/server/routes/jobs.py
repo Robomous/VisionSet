@@ -123,7 +123,9 @@ def pre_label_job(
     `replace_model_labels` widens it to every frame still `pre_labeled` and
     supersedes those labels with this run's answer, one frame per transaction;
     a frame anyone edited, confirmed or skipped in this job is never touched,
-    and a frame the model now finds nothing on returns to `unannotated`. A
+    nor is one in the dataset or confirmed in another batch, open or completed
+    (`assets_protected` counts them), and a frame the model now finds nothing on
+    returns to `unannotated`. A
     replacing request arriving while a run is in flight joins that run,
     whichever flag it carries.
 

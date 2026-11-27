@@ -310,7 +310,7 @@ function DoneSummary({
       {(view.assetsProtected ?? 0) > 0 && (
         <p className="text-xs text-muted-foreground" data-testid="prelabel-protected">
           Left {view.assetsProtected} pre-labeled frame{view.assetsProtected === 1 ? "" : "s"}{" "}
-          alone: a completed batch confirmed {view.assetsProtected === 1 ? "its" : "their"} labels.
+          alone: another batch confirmed {view.assetsProtected === 1 ? "its" : "their"} labels.
         </p>
       )}
       {skipped > 0 && (
@@ -843,8 +843,8 @@ function PreLabelDialog({
                     </span>
                   </label>
                   <FieldDescription>
-                    Frames anyone has edited, confirmed or skipped in this job, or that a
-                    completed batch confirmed, are never touched. This cannot be undone.
+                    Frames anyone has edited, confirmed or skipped in this job, or that
+                    another batch confirmed, are never touched. This cannot be undone.
                   </FieldDescription>
                 </div>
               )}

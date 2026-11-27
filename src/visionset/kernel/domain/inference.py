@@ -798,9 +798,9 @@ class PreLabelRun(BaseModel):
     #: Model labels a replacing run superseded. ``None`` until the job settles
     #: with a result.
     annotations_replaced: int | None = None
-    #: ``pre_labeled`` frames a replacing run passed over because a completed
-    #: batch confirmed their labels. ``None`` until the job settles with a
-    #: result, and for a run settled before the count existed.
+    #: ``pre_labeled`` frames a replacing run passed over because another batch,
+    #: open or completed, confirmed their labels. ``None`` until the job settles
+    #: with a result, and for a run settled before the count existed.
     assets_protected: int | None = None
 
     @model_validator(mode="after")

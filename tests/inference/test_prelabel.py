@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
+from datetime import datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from typing import Final
@@ -76,6 +77,8 @@ from visionset.kernel.services import (
     SchemaService,
     WorkspaceService,
 )
+from visionset.kernel.services.annotation_service import confirmed_elsewhere
+from visionset.kernel.services.dataset_service import member_asset_ids_of
 
 #: The kernel suite's own ``SIGN`` shape: a bbox class carrying a required
 #: attribute. A bare model prediction has no attribute values to give it, so
@@ -1967,7 +1970,7 @@ def test_the_door_refuses_to_replace_labels_confirmed_in_a_completed_batch(
     job_id, confirmed = _promoted_then_reopened(prelabel_fixture, promote=False)
     asset_id = prelabel_fixture.assets[0]
 
-    with pytest.raises(AssetNotWritable, match="confirmed in a completed batch"):
+    with pytest.raises(AssetNotWritable, match="confirmed in another batch"):
         prelabel_fixture.annotations.enter_unreviewed(job_id, [], replacing={asset_id})
 
     assert [x.id for x in prelabel_fixture.annotations.for_asset(job_id, asset_id)] == confirmed[
@@ -2014,6 +2017,7 @@ _SETTLE_BY: dict[AssetProgress, tuple[AssetProgress, ...]] = {
         AssetProgress.REVIEW_PENDING,
         AssetProgress.ACCEPTED,
     ),
+    AssetProgress.REVIEW_PENDING: (AssetProgress.ANNOTATED, AssetProgress.REVIEW_PENDING),
     AssetProgress.SKIPPED: (AssetProgress.SKIPPED,),
 }
 
@@ -2078,16 +2082,208 @@ def test_only_a_frame_a_completed_batch_settled_promotable_is_protected(
     assert outcome.annotations_replaced == (0 if protected else count)
 
 
-def test_a_frame_settled_in_a_batch_still_open_is_not_protected(
-    prelabel_fixture: Fixture,
+@pytest.mark.parametrize(
+    ("settled", "protected"),
+    [
+        (AssetProgress.ANNOTATED, True),
+        (AssetProgress.REVIEW_PENDING, True),
+        (AssetProgress.ACCEPTED, True),
+        (AssetProgress.SKIPPED, False),
+    ],
+)
+def test_a_frame_confirmed_in_a_batch_still_open_is_protected(
+    prelabel_fixture: Fixture, settled: AssetProgress, protected: bool
 ) -> None:
-    """Only completed batches count; an open batch's settling is #1211's sibling decision."""
-    job_id = _settled_then_reopened(prelabel_fixture, AssetProgress.ANNOTATED, complete=False)
+    """#1212: a confirmation counts from the moment it is made, not from completion."""
+    job_id = _settled_then_reopened(prelabel_fixture, settled, complete=False)
 
     outcome = _replace(prelabel_fixture, job_id)
 
+    count = len(prelabel_fixture.assets)
+    assert outcome.assets_protected == (count if protected else 0)
+    assert outcome.annotations_replaced == (0 if protected else count)
+
+
+# --- #1212: a confirmation in another open batch is protected too -------------
+
+
+def _pre_labeled_then_confirmed_elsewhere(
+    fixture: Fixture,
+) -> tuple[UUID, UUID, dict[UUID, list[UUID]]]:
+    """B (the fixture's batch) pre-labels; A, open over the same frames, confirms B's labels."""
+    pre_label(
+        fixture.workspace,
+        job_id=fixture.job_id,
+        connection_id=fixture.connection.id,
+        pool=fixture.pool,
+    )
+    batch_a, confirming = _open_over(fixture, "A", fixture.assets)
+    for asset_id in fixture.assets:
+        fixture.jobs.mark(confirming, asset_id, AssetProgress.ANNOTATED)
+    confirmed = {a: [x.id for x in fixture.annotations_on(a)] for a in fixture.assets}
+    assert all(
+        x.job_id == fixture.job_id for a in fixture.assets for x in fixture.annotations_on(a)
+    )
+    return batch_a, confirming, confirmed
+
+
+def test_a_replacing_run_leaves_its_own_labels_another_open_batch_confirmed(
+    prelabel_fixture: Fixture,
+) -> None:
+    """#1212: the rows are B's own, but A judged them after B wrote them."""
+    fixture = prelabel_fixture
+    _, _, confirmed = _pre_labeled_then_confirmed_elsewhere(fixture)
+
+    outcome = _replace(fixture, fixture.job_id)
+
+    assert outcome.assets_protected == len(confirmed)
+    assert outcome.annotations_replaced == 0
+    for asset_id, ids in confirmed.items():
+        assert [x.id for x in fixture.annotations_on(asset_id)] == ids
+
+
+def test_the_door_refuses_to_replace_labels_another_open_batch_confirmed(
+    prelabel_fixture: Fixture,
+) -> None:
+    fixture = prelabel_fixture
+    _, _, confirmed = _pre_labeled_then_confirmed_elsewhere(fixture)
+    asset_id = fixture.assets[0]
+
+    with pytest.raises(AssetNotWritable, match="confirmed in another batch"):
+        fixture.annotations.enter_unreviewed(fixture.job_id, [], replacing={asset_id})
+
+    assert [x.id for x in fixture.annotations_on(asset_id)] == confirmed[asset_id]
+
+
+def test_the_batch_that_confirmed_promotes_the_labels_it_judged(
+    prelabel_fixture: Fixture,
+) -> None:
+    """#1212's report: A completes and promotes; the trunk holds what A's person saw."""
+    fixture = prelabel_fixture
+    batch_a, confirming, confirmed = _pre_labeled_then_confirmed_elsewhere(fixture)
+    _replace(fixture, fixture.job_id)
+
+    fixture.jobs.complete(confirming)
+    fixture.batches.complete(batch_a)
+    DatasetService(fixture.workspace).promote(batch_a)
+
+    with fixture.workspace.unit_of_work() as uow:
+        dataset = ProjectService(fixture.workspace).require_dataset(uow, fixture.project.id)
+        assert member_asset_ids_of(uow, dataset) == frozenset(confirmed)
+    for asset_id, ids in confirmed.items():
+        assert [x.id for x in fixture.annotations_on(asset_id)] == ids
+
+
+def test_a_completed_batch_that_confirmed_this_jobs_labels_protects_them(
+    prelabel_fixture: Fixture,
+) -> None:
+    """The edge #1211 left: E confirmed rows D wrote, then completed while D stayed open."""
+    fixture = prelabel_fixture
+    batch_a, confirming, confirmed = _pre_labeled_then_confirmed_elsewhere(fixture)
+    fixture.jobs.complete(confirming)
+    fixture.batches.complete(batch_a)
+
+    outcome = _replace(fixture, fixture.job_id)
+
+    assert outcome.assets_protected == len(confirmed)
+    assert outcome.annotations_replaced == 0
+
+
+def _touched(fixture: Fixture, job_id: UUID, asset_id: UUID) -> datetime | None:
+    with fixture.workspace.unit_of_work() as uow:
+        return uow.asset_touched(job_id, asset_id)
+
+
+def _seeded_annotated(fixture: Fixture, asset_id: UUID, name: str) -> tuple[UUID, UUID]:
+    """A batch cut over a frame a person labeled elsewhere: it opens ``annotated``, unmoved."""
+    _, labeling = _open_over(fixture, f"{name}-by-hand", [asset_id])
+    fixture.annotations.add(labeling, [_box(asset_id)])
+    fixture.jobs.mark(labeling, asset_id, AssetProgress.SKIPPED)
+    batch_id, seeded = _open_over(fixture, name, [asset_id])
+    assert fixture.jobs.get(seeded).progress[asset_id] is AssetProgress.ANNOTATED
+    assert _touched(fixture, seeded, asset_id) is None
+    return batch_id, seeded
+
+
+@pytest.mark.parametrize("complete", [False, True])
+def test_a_seeded_annotated_frame_protects_only_once_its_batch_completes(
+    prelabel_fixture: Fixture, complete: bool
+) -> None:
+    """Nobody in an open batch stood behind a state its approval seeded (#1212)."""
+    fixture = prelabel_fixture
+    asset_id = fixture.assets[0]
+    pre_label(
+        fixture.workspace,
+        job_id=fixture.job_id,
+        connection_id=fixture.connection.id,
+        pool=fixture.pool,
+    )
+    _, replacing = _open_over(fixture, "replacing", [asset_id])
+    assert _touched(fixture, replacing, asset_id) is None
+    seeded_batch, seeded = _seeded_annotated(fixture, asset_id, "seeded")
+    if complete:
+        fixture.jobs.complete(seeded)
+        fixture.batches.complete(seeded_batch)
+
+    outcome = _replace(fixture, replacing)
+
+    assert outcome.assets_protected == (1 if complete else 0)
+    assert outcome.annotations_replaced == (0 if complete else 1)
+    assert [a.provenance for a in fixture.annotations.for_asset(replacing, asset_id)].count(
+        "human"
+    ) == 1
+
+
+def test_a_seeded_annotated_frame_never_protects_this_jobs_own_later_labels(
+    prelabel_fixture: Fixture,
+) -> None:
+    """Completed or not, an unstamped state was seeded at approval or predates the stamp."""
+    fixture = prelabel_fixture
+    asset_id = fixture.assets[0]
+    seeded_batch, seeded = _seeded_annotated(fixture, asset_id, "seeded")
+    fixture.jobs.complete(seeded)
+    fixture.batches.complete(seeded_batch)
+    fixture.annotations.delete(fixture.job_id, [a.id for a in fixture.annotations_on(asset_id)])
+    pre_label(
+        fixture.workspace,
+        job_id=fixture.job_id,
+        connection_id=fixture.connection.id,
+        pool=fixture.pool,
+    )
+    assert _touched(fixture, fixture.job_id, asset_id) is not None
+
+    outcome = _replace(fixture, fixture.job_id)
+
     assert outcome.assets_protected == 0
-    assert outcome.annotations_replaced == len(prelabel_fixture.assets)
+    assert outcome.annotations_replaced == len(fixture.assets)
+
+
+@pytest.mark.parametrize(("offset", "protected"), [(-1, False), (0, True)])
+def test_this_jobs_labels_are_replaceable_only_when_written_strictly_after_a_confirmation(
+    prelabel_fixture: Fixture, offset: int, protected: bool
+) -> None:
+    """A tie cannot say which came first, so it protects."""
+    fixture = prelabel_fixture
+    asset_id = fixture.assets[0]
+    _, confirming, _ = _pre_labeled_then_confirmed_elsewhere(fixture)
+    written = _touched(fixture, fixture.job_id, asset_id)
+    assert written is not None
+    with fixture.workspace.unit_of_work() as uow:
+        assert (
+            uow.set_asset_progress(
+                confirming,
+                asset_id,
+                expected=AssetProgress.ANNOTATED,
+                progress=AssetProgress.ANNOTATED,
+                touched_at=written + timedelta(microseconds=offset),
+            )
+            is None
+        )
+
+    with fixture.workspace.unit_of_work() as uow:
+        confirmed = confirmed_elsewhere(uow, fixture.job(), fixture.batch.id, [asset_id])
+
+    assert (asset_id in confirmed) is protected
 
 
 def test_a_replacing_run_replaces_its_own_job_labels_on_a_frame_confirmed_earlier(

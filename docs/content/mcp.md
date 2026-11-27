@@ -448,8 +448,8 @@ still untouched - plus, where `replace_model_labels` is set, the frames still `p
 
 `pre_label_job` reports unmappable model labels as `regions_discarded`, mapped regions
 without overlap with a measured asset as `regions_out_of_bounds`, the model labels a replacing
-run superseded as `annotations_replaced`, the `pre_labeled` frames it passed over because a
-completed batch confirmed their labels or they are in the dataset as `assets_protected`, and the prompt it ran under as `plan` —
+run superseded as `annotations_replaced`, the `pre_labeled` frames it passed over because
+another batch confirmed their labels or they are in the dataset as `assets_protected`, and the prompt it ran under as `plan` —
 `asked_classes` beside `excluded_classes` and `produces`, so a run that labeled nothing says
 which classes it never asked about, and what shapes it was answering in, rather than leaving
 that to a second call. **The job is the unit, so the fan-outs report per job**: `pre_label_batch`

@@ -83,10 +83,11 @@ still `pre_labeled` and supersedes the model's labels with this call's answer, o
 frame per transaction. A frame the model now finds nothing on returns to
 `unannotated`; `annotations_replaced` says how many labels went. A frame anyone
 edited, confirmed or skipped in the batch is never touched either way, and neither
-is a frame a completed batch settled `annotated` or `accepted` or one already in the
-dataset; `assets_protected` says how many were passed over, and the model's own labels
-from an earlier run in this job stay replaceable. This cannot be undone: read `progress.pre_labeled`
-on `get_batch` or `get_job` first.
+is a frame another batch, open or completed, holds `annotated`, `review_pending` or
+`accepted`, or one already in the dataset; `assets_protected` says how many were passed
+over. The model's own labels from an earlier run in this job stay replaceable unless
+another batch confirmed them after this job wrote them. This cannot be undone: read
+`progress.pre_labeled` on `get_batch` or `get_job` first.
 
 An asset somebody starts working while the call is running is passed over rather
 than failing the call; `assets_skipped` says how many.

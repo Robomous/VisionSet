@@ -14,11 +14,14 @@ through a service — the shape ``BATCH_TRANSITIONS`` established in
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from enum import StrEnum
 from typing import Final
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from visionset.kernel.domain.batch import BatchState
 
 
 class AnnotationJobState(StrEnum):
@@ -185,6 +188,26 @@ being the thing that lets it into the curated trunk unseen.
 """
 
 
+CONFIRMED_PROGRESS: Final[frozenset[AssetProgress]] = PROMOTABLE_PROGRESS | {
+    AssetProgress.REVIEW_PENDING
+}
+"""The states in which a person may stand behind a frame's labels, in any batch.
+
+What a replacing pre-label run consults before it may delete a model's labels
+from another batch (#1211, #1212). ``review_pending`` is here and not in
+``PROMOTABLE_PROGRESS`` because it is only reachable from ``annotated``: the
+annotator confirmed the labels and a reviewer has yet to take them, so a model
+rewriting them underneath would hand that reviewer labels nobody judged.
+``skipped`` is absent because a skipped frame's labels were decided against,
+not confirmed.
+
+Being in one of these states is necessary, not sufficient: a batch cut over a
+frame that already carries a person's label opens it ``annotated`` with nobody
+having looked. Which holdings count as a confirmation is the service's
+question (``confirmed_elsewhere``), read off :class:`ProgressHeld`.
+"""
+
+
 WRITABLE_PROGRESS: Final[frozenset[AssetProgress]] = frozenset(
     {AssetProgress.UNANNOTATED, AssetProgress.ANNOTATED, AssetProgress.PRE_LABELED}
 )
@@ -301,6 +324,24 @@ def initial_progress(*, has_annotations: bool, judged: bool = True) -> AssetProg
     if not has_annotations:
         return AssetProgress.UNANNOTATED
     return AssetProgress.ANNOTATED if judged else AssetProgress.PRE_LABELED
+
+
+class ProgressHeld(BaseModel):
+    """One job's progress on one asset, with the state of the batch it sits in.
+
+    ``touched_at`` is ``annotation_job_asset.touched_at``: when somebody last
+    moved this asset in this job, or ``None`` when nobody has since the column
+    existed — a state seeded at approval and never moved, or one older than the
+    column.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    asset_id: UUID
+    job_id: UUID
+    progress: AssetProgress
+    batch_state: BatchState
+    touched_at: datetime | None
 
 
 class TaskGroup(BaseModel):

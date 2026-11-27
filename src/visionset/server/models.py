@@ -1606,9 +1606,9 @@ class PreLabelRunOut(BaseModel):
     #: Model labels a replacing run superseded. `null` until the job settles
     #: with a result.
     annotations_replaced: int | None
-    #: `pre_labeled` frames a replacing run passed over because a completed
-    #: batch confirmed their labels or they are in the dataset. `null` until the
-    #: job settles with a result.
+    #: `pre_labeled` frames a replacing run passed over because another batch,
+    #: open or completed, confirmed their labels or they are in the dataset.
+    #: `null` until the job settles with a result.
     assets_protected: int | None
 
     @classmethod
