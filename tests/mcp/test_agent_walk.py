@@ -202,7 +202,7 @@ def test_an_agent_can_take_a_folder_of_images_to_an_exported_release(
     # A box format says so, and names the polygon it reduces rather than
     # dropping it silently.
     assert formats["yolov5-yaml"]["geometries"] == ["bbox"]
-    assert formats["yolov5-yaml"]["degraded_geometries"] == ["polygon"]
+    assert formats["yolov5-yaml"]["degraded_geometries"] == ["obb", "polygon"]
     # `dummy` declares every geometry, which is what makes it the format
     # that never refuses.
     assert formats["dummy"]["geometries"] == sorted(one.value for one in GeometryType)
