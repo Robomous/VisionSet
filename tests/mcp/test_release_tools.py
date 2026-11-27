@@ -249,6 +249,12 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "targets": ["coco"],
             },
             {
+                "name": "coco-panoptic",
+                "lossy": True,
+                "geometries": ["mask"],
+                "degraded_geometries": ["polygon"],
+                "modalities": ["image"],
+                "targets": ["coco-panoptic"],
                 "name": "createml",
                 "lossy": True,
                 "geometries": ["bbox"],

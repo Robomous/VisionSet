@@ -35,6 +35,7 @@ from tests.formats.test_ultralytics import CLASSES, Fixture, _box
 
 from visionset.formats.classification import LABELS_FILENAME as CLASSIFICATION_LABELS
 from visionset.formats.coco import ANNOTATIONS_DIRNAME as COCO_ANNOTATIONS_DIRNAME
+from visionset.formats.coco_panoptic import read_segment_map
 from visionset.formats.createml import ANNOTATIONS_FILENAME as CREATEML_ANNOTATIONS
 from visionset.formats.lanes import LABELS_DIRNAME as LANE_LABELS_DIRNAME
 from visionset.formats.registry import exporters
@@ -233,6 +234,25 @@ def _createml_counts(root: Path) -> Counter[str]:
     return found
 
 
+def _coco_panoptic_counts(root: Path) -> Counter[str]:
+    """Every ``segments_info`` entry, by its category's name, each one a segment of the PNG."""
+    found: Counter[str] = Counter()
+    for path in sorted((root / COCO_ANNOTATIONS_DIRNAME).glob("panoptic_*.json")):
+        document = json.loads(path.read_text(encoding="utf-8"))
+        names = {one["id"]: one["name"] for one in document["categories"]}
+        for annotation in document["annotations"]:
+            _, _, values = read_segment_map(
+                path.parent / path.stem / annotation["file_name"], annotation["file_name"]
+            )
+            present = set(values)
+            found.update(
+                names[one["category_id"]]
+                for one in annotation["segments_info"]
+                if one["id"] in present
+            )
+    return found
+
+
 def _segmentation_png_counts(root: Path) -> Counter[str]:
     """Every class present in a mask, once per mask, by the name the descriptor gives its id.
 
@@ -259,6 +279,7 @@ COUNTERS: dict[str, Callable[[Path], Counter[str]]] = {
     "dota": _dota_counts,
     "voc": _voc_counts,
     "coco": _coco_counts,
+    "coco-panoptic": _coco_panoptic_counts,
     "classification": _classification_counts,
     "mot": _mot_counts,
     "cvat-images": _cvat_images_counts,

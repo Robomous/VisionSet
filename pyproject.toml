@@ -180,6 +180,9 @@ segmentation-png-import = "visionset.formats.segmentation_png:SegmentationPngImp
 # LabelMe JSON: one document per picture, rectangles and polygons in pixels.
 labelme = "visionset.formats.labelme:LabelmeExporter"
 labelme-import = "visionset.formats.labelme:LabelmeImporter"
+# COCO panoptic: RGB segment PNGs and their segments_info, independent of coco instances.
+coco-panoptic = "visionset.formats.coco_panoptic:CocoPanopticExporter"
+coco-panoptic-import = "visionset.formats.coco_panoptic:CocoPanopticImporter"
 # Create ML object detection: one JSON array per folder, centre-based boxes in pixels.
 createml = "visionset.formats.createml:CreatemlExporter"
 createml-import = "visionset.formats.createml:CreatemlImporter"
