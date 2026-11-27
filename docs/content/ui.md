@@ -1055,7 +1055,7 @@ schema declares, built from `drawableGeometry`. A `classification_tag` gets no
 button and never will: there is nothing to draw, because the label is about the
 whole image, and the Labels tab is where it is toggled.
 
-**Three tools since #342**: box, polygon and polyline. `polyline` spent one release
+**Four tools**: box, rotated box (#1160), polygon and polyline. `polyline` spent one release
 as this section's worked example of declared-but-not-drawable - #223 shipped the
 geometry end to end and stopped short of the tool - and it is a live button now.
 
@@ -1904,8 +1904,8 @@ once it is a whole six-digit colour - and **Use the name's colour** goes back to
 **Shortcut**, the class's place in the list, picked as a number, each naming the class whose place it
 takes; the first nine places are the annotator's hotkeys 1 to 9, and the row says which key picks
 the class or whose place it would take. A class's position is part of the published version, so
-moving it is an unsaved change like any other. **Drawn as**, a segmented row of the six shapes as
-the annotator draws them - box, polygon, polyline and tag for images, 3D box and 3D polyline for
+moving it is an unsaved change like any other. **Drawn as**, a segmented row of the seven shapes as
+the annotator draws them - box, rotated box, polygon, polyline and tag for images, 3D box and 3D polyline for
 point-cloud scans - their names said under it; a class may accept several, image and scan shapes
 together (each label is checked against its own asset when it is written), and the last one
 that is on cannot be switched off, and says why. When editing, **In use** says what an edit costs. A
@@ -2181,7 +2181,7 @@ whether a tool exists for it is the annotator's business to state, not this scre
 
 The shapes are offered as a set of **toggle buttons, one per shape**, each showing the shape as the
 annotator draws it and its name, and the toggles are **grouped by category** rather than listed flat
-(#375): `bbox`, `polygon` and `classification_tag` under *Basic Computer Vision*, `polyline` under
+(#375): `bbox`, `obb`, `polygon` and `classification_tag` under *Basic Computer Vision*, `polyline` under
 *Robotics and AD*. Each category is a labelled group, and a category with nothing offered under it
 renders no heading at all. The same grouping and toggles appear in the annotator's add-a-class
 dialog without a second call site, because both render `patterns/ClassFields.tsx`. A class keeps at

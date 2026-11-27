@@ -92,6 +92,17 @@ shape: extend the exporter and regenerate, which holds both gates in step.
 A field the *service* stamps stays off `AnnotationCreate`/`AnnotationUpdate`. A field a client
 could set and never observe is a lie in the schema.
 
+## The rotated box
+
+`obb` is a 2D shape in the same machine as `bbox`. Its arithmetic is `core/geometry/obb.ts`: the
+canonical spelling, a port of the kernel's `canonical_obb` that is a fixed point on a canonical
+value, the corners, the hit test, the eight grips in the box's turned frame and the rotation
+grip beyond the side facing most upward (`Tolerances.rotateOffset`, from `ROTATE_HANDLE_OFFSET_PX`), and the pure resize, rotate and
+move functions. The machine adds `drawing-obb` and `rotating`, and `resizing` takes a box or a
+rotated box; a drag previews raw values and the release commits `canonicalObb`, so the document
+holds only canonical boxes. The wire parser does not canonicalize, so a stored box round-trips
+byte for byte.
+
 ## The scan editor is a sibling, not a widening
 
 A point-cloud scan's labels are cuboids and polylines in the frame its source declares, and they are edited
