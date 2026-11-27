@@ -485,6 +485,9 @@ writes images: it is still discovered, and a release's scans are reported droppe
 than breaking the export. `kitti` is the one installed format that writes a point cloud, and it
 writes nothing else, so it reports a release's images dropped by count and every other format
 reports its scans dropped.
+A release holding nothing a format can carry still exports, as the report and no error: the
+`ultralytics`, `yolo-obb`, `yolov5-yaml` and `darknet` dialects then write no descriptor, because
+no fold exists for its `train` key to name.
 
 **A tracked-only format drops what no track observes.** A format may declare `tracked_only`, as
 [`mot`](#the-motchallenge-format) and [`cvat-video`](#the-cvat-xml-formats) do, because a MOT row or a

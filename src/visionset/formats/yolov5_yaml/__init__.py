@@ -99,7 +99,8 @@ class Yolov5YamlExporter:
         assignment: SplitAssignment | None,
     ) -> None:
         folds = write_label_layout(manifest, dest, content, assignment, degraded_detect_rows)
-        _write_data_yaml(dest / DATA_FILENAME, class_names(manifest), folds)
+        if folds:
+            _write_data_yaml(dest / DATA_FILENAME, class_names(manifest), folds)
 
 
 def _write_data_yaml(target: Path, names: list[str], folds: set[str]) -> None:

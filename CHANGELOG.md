@@ -543,6 +543,10 @@ nothing was being distributed. This is the first version that is.
   six times, plus once more for every mask already on the asset; reading one back decoded it twice. A write now
   decodes the new mask once, and a mask read back from the workspace store is trusted as the canonical form the
   write stored. What is accepted and refused, and the wire form, are unchanged (#1214).
+- **A YOLO-family export of a release holding only point-cloud scans no longer stops with an `IndexError`.**
+  With every asset dropped by modality, `darknet`, `ultralytics`, `yolo-obb` and `yolov5-yaml` read the first of no
+  folds while naming the `train` split. They now write nothing and the export report carries the dropped-modality row,
+  as `mot` and `cvat-video` do (#1232).
 - **A replacing pre-label run no longer deletes labels another open batch confirmed.** A frame may sit in several
   open batches at once, and a run with `replace_model_labels` in one of them deleted the labels a person had just
   confirmed in another, which then completed and promoted labels nobody judged. The run now passes over, and

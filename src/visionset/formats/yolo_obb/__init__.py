@@ -79,7 +79,8 @@ class YoloObbExporter:
         assignment: SplitAssignment | None,
     ) -> None:
         folds = write_label_layout(manifest, dest, content, assignment, obb_rows)
-        write_data_yaml(dest / DATA_FILENAME, class_names(manifest), folds)
+        if folds:
+            write_data_yaml(dest / DATA_FILENAME, class_names(manifest), folds)
 
 
 def obb_rows(asset: ManifestAsset, index_of: Mapping[str, int]) -> Iterable[str]:
