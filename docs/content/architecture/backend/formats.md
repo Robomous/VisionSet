@@ -27,9 +27,10 @@ target - never through a dict, so a typo answers a `VisionSetError` rather than 
 
 ## What ships
 
-Twenty-seven plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
-`[project.entry-points."visionset.formats"]`: the fifteen exporters below and twelve importers,
-`ultralytics-import`, `yolov5-yaml-import`, `darknet-import`, `coco-import`, `voc-import`,
+Thirty-one plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
+`[project.entry-points."visionset.formats"]`: the seventeen exporters below and fourteen importers,
+`ultralytics-import`, `yolov5-yaml-import`, `darknet-import`, `yolo-obb-import`, `dota-import`,
+`coco-import`, `voc-import`,
 `classification-import`, `openlane-2d-import`, `kitti-import`, `mot-import`, `cvat-images-import`,
 `cvat-video-import` and `nuscenes-import` (see [Importers](#importers)).
 
@@ -38,6 +39,8 @@ Twenty-seven plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
 | `ultralytics` | [`ultralytics/`](../../../../src/visionset/formats/ultralytics/) - `data.yaml` with `path` and `names` as a mapping; `yolo` is accepted as an alias for one release |
 | `yolov5-yaml` | [`yolov5_yaml/`](../../../../src/visionset/formats/yolov5_yaml/) - `data.yaml` with `nc` and `names` as a list; shares [`_yolo_writer.py`](../../../../src/visionset/formats/_yolo_writer.py) with `ultralytics` |
 | `darknet` | [`darknet/`](../../../../src/visionset/formats/darknet/) - `obj.data`, `obj.names` and `train.txt`/`valid.txt` image lists; shares [`_yolo_writer.py`](../../../../src/visionset/formats/_yolo_writer.py) with `ultralytics` |
+| `yolo-obb` | [`yolo_obb/`](../../../../src/visionset/formats/yolo_obb/) - Ultralytics OBB rows, four normalized corners per rotated box, under the `ultralytics` layout and `data.yaml`; shares [`_yolo_writer.py`](../../../../src/visionset/formats/_yolo_writer.py) and the corner rules in [`_obb.py`](../../../../src/visionset/formats/_obb.py) |
+| `dota` | [`dota/`](../../../../src/visionset/formats/dota/) - `<fold>/images` and `<fold>/labelTxt`, four pixel corners, a category and `difficult` per rotated box; shares [`_obb.py`](../../../../src/visionset/formats/_obb.py) with `yolo-obb` |
 | `coco` | [`coco/`](../../../../src/visionset/formats/coco/) |
 | `voc` | [`voc/`](../../../../src/visionset/formats/voc/) |
 | `classification` | [`classification/`](../../../../src/visionset/formats/classification/) - `labels.csv`, one row per (image, tag) |
@@ -61,12 +64,15 @@ and labels in the one `ScanFrame` the dataset declares; `ImportService` stores e
 of the same bytes under a point-cloud source declaring that frame. `registry.importers()` filters the scan by that
 port, and `registry.pick_importer(installed, name)` resolves a name with the same aliases,
 refusing with `ImportFormatNotFound`. `ImportService` takes the instance, as `ReleaseService.export`
-takes an exporter. The built-ins are twelve, eleven of them answering to their exporter's `format_name`:
+takes an exporter. The built-ins are fourteen, thirteen of them answering to their exporter's `format_name`:
 [`ultralytics-import`](../../../../src/visionset/formats/ultralytics/reader.py),
-[`yolov5-yaml-import`](../../../../src/visionset/formats/yolov5_yaml/reader.py) and
-[`darknet-import`](../../../../src/visionset/formats/darknet/reader.py), which share
+[`yolov5-yaml-import`](../../../../src/visionset/formats/yolov5_yaml/reader.py),
+[`darknet-import`](../../../../src/visionset/formats/darknet/reader.py) and
+[`yolo-obb-import`](../../../../src/visionset/formats/yolo_obb/reader.py), which share
 [`_yolo_reader.py`](../../../../src/visionset/formats/_yolo_reader.py) and
 [`_reading.py`](../../../../src/visionset/formats/_reading.py);
+[`dota-import`](../../../../src/visionset/formats/dota/reader.py), which with `yolo-obb-import`
+reads corners through [`_obb.py`](../../../../src/visionset/formats/_obb.py);
 [`coco-import`](../../../../src/visionset/formats/coco/reader.py),
 [`voc-import`](../../../../src/visionset/formats/voc/reader.py),
 [`classification-import`](../../../../src/visionset/formats/classification/reader.py) and

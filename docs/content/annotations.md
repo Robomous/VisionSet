@@ -235,7 +235,9 @@ within `OBB_CORNER_TOLERANCE` (a relative `1e-6`): the wrong number of points, a
 coordinate, a zero area, a parallelogram or a trapezoid. `obb_enclosing_box`, the axis-aligned
 box around the corners, is **lossy** whenever the angle is not a multiple of `pi/2`, and only an
 exporter that declares `obb` in `degraded_geometries` writes it; see
-[releases](releases.md#dropped-is-not-degraded-and-one-word-for-both-was-a-lie). Nothing projects a rotated box onto an
+[releases](releases.md#dropped-is-not-degraded-and-one-word-for-both-was-a-lie). `yolo-obb` and
+`dota` write a rotated box as its four corners and read one back through `obb_from_corners`; see
+[the rotated-box formats](releases.md#the-rotated-box-formats). Nothing projects a rotated box onto an
 axis-aligned one silently.
 
 **Against the frame**, a rotated box is judged by the rectangle itself, not its enclosing box:

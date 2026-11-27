@@ -410,7 +410,8 @@ The fix is vocabulary rather than capability. `Exporter` declares two geometry s
 - **`supported_geometries`** - written as they stand.
 - **`degraded_geometries`** - written, having lost something the kernel could represent. `{obb,
   polygon}` for `yolov5-yaml`, `darknet` and `voc`, each written as its axis-aligned bounding box;
-  and empty for `coco`, which writes a polygon as a polygon and drops a rotated box. The two sets are disjoint, and `supported` wins if a plugin
+  and empty for `coco`, which writes a polygon as a polygon and drops a rotated box, and for
+  `yolo-obb` and `dota`, which write a rotated box as itself and drop everything else. The two sets are disjoint, and `supported` wins if a plugin
   says both, because resolving a contradiction towards the weaker claim would report a loss that
   does not happen.
 
@@ -572,7 +573,8 @@ a `detect` layout of its boxes, and the report says the polygons were dropped.
 
 ### The YOLO dialects
 
-Three formats write a YOLO dataset, and they differ only in the descriptor grammar. Each is a
+Three formats write a YOLO detection dataset, and they differ only in the descriptor grammar; the
+fourth YOLO layout, Ultralytics OBB, is written by [`yolo-obb`](#the-rotated-box-formats). Each is a
 *dialect*: the wire identifier `format_name` names the descriptor grammar, and the model a person
 will train - the *target* - resolves to exactly one dialect. `ultralytics` is what every trainer
 from YOLOv3 to YOLO26 in the Ultralytics line reads; `yolov5-yaml` is the older grammar YOLOv7
@@ -652,7 +654,8 @@ trainer's tasks:
 - `detect` otherwise - `class cx cy w h` per box, clamped into the image.
 
 `supported_geometries` is `{bbox, polygon, classification_tag}` and `degraded_geometries` is
-empty, so a rotated box is dropped: the oriented-box layout ultralytics reads is not written yet. A tag beside a located label has no layout to land in and is not written, so the format
+empty, so a rotated box is dropped: the oriented-box layout ultralytics reads is
+[`yolo-obb`](#yolo-obb), a format of its own. A tag beside a located label has no layout to land in and is not written, so the format
 also declares `solitary_geometries = {classification_tag}`: whenever a box or polygon reaches the
 output, the report lists every tag row as **dropped** and counts it in `excluded_annotations`,
 which is what the label files hold. `lossy = True`, so consent is always asked. An asset with nothing on it gets an **empty** label file rather than
@@ -699,6 +702,67 @@ no test key, so test images are written under `images/test` and listed in neithe
 Detection only, always, with the same capabilities as `yolov5-yaml`: a polygon or a rotated box is
 written as its axis-aligned bounding box and reported as reduced, and a classification tag is dropped. The one
 target is `yolov4`; `yolov3` stays with `ultralytics`.
+
+### The rotated-box formats
+
+Two formats write rotated boxes (`obb`), and only rotated boxes: `yolo-obb` for the oriented-box
+models in the Ultralytics line (`yolo11n-obb` and its siblings) and `dota` for the DOTA benchmark
+and the toolkits that read it. **Ordinary YOLO detection is a different format**: a `class cx cy w
+h` row has no angle, so `ultralytics`, `yolov5-yaml` and `darknet` either drop a rotated box or
+write its enclosing axis-aligned box and report it degraded. Here the rotated box is native -
+`supported_geometries` is `{obb}` and `degraded_geometries` is empty - and every other geometry is
+**dropped and reported dropped**. Nothing is converted on the way out: a four-point polygon that
+happens to be a rectangle is a polygon, and is dropped like any other. Both declare `lossy = True`
+and one target each, named after the format, in family `other`; neither changes the `ultralytics`
+targets.
+
+A box is written as the four corners `obb_corners` gives, in order round the rectangle, and read
+back through `obb_from_corners`, which takes any start corner in either direction and returns the
+canonical box (see [annotations](annotations.md#a-rotated-box-is-a-centre-a-size-and-an-angle)).
+Corners are **not clamped** into the picture: clamping one corner of a box that crosses the edge
+bends it into a quadrilateral that is no longer a rectangle, and Ultralytics' own DOTA converter
+does not clamp either. They are written with enough digits - twelve decimals of a fraction for
+`yolo-obb`, nine of a pixel for `dota`, trailing zeros dropped - that **a round trip returns every
+corner within `1e-6` of the box's longest side**, and the angle equal modulo the canonical form;
+a box whose canonical angle sits at `-pi/2` may come back a hair inside `pi/2`, which is the same
+rectangle. Each picture gets a label file, empty when it holds no rotated box.
+
+#### `yolo-obb`
+
+The `ultralytics` detection layout - `images/<fold>/<content-hash>.<ext>`,
+`labels/<fold>/<content-hash>.txt` and the same `data.yaml`, `path: .`, a key per fold present and
+`names` by index in the release's frozen schema order - with one row per rotated box:
+
+```text
+0 0.34375 0.416666666667 0.65625 0.416666666667 0.65625 0.583333333333 0.34375 0.583333333333
+```
+
+a class index and four `x y` corners, each a fraction of the picture's width or height - here a
+20 by 8 pixel box at angle 0 on a 64 by 48 picture. A release
+with no recipe points `val` at the training images, as `ultralytics` does.
+
+#### `dota`
+
+The benchmark's own layout, fold first, with no class list:
+
+```
+train/images/<content-hash>.png     train/labelTxt/<content-hash>.txt
+val/…                               val/…
+test/…                              test/…
+```
+
+One row per rotated box, the corners in pixels, then the class name as the category token, then
+`difficult`:
+
+```text
+24 18 56 10 62 34 30 42 large-vehicle 0
+```
+
+No `imagesource:` or `gsd:` header is written. A category is one whitespace-free token, so a box
+of a class whose name holds whitespace refuses the export with `ExportSourceUnreadable`, naming the
+class, rather than being written under a name nobody chose. `difficult` is `1` for a box carrying a
+boolean attribute named `difficult` set to true and `0` otherwise. An import cannot hold it back
+(see [import.md](import.md#formats)), so it survives only the export.
 
 ### The COCO format
 
