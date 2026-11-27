@@ -68,6 +68,7 @@ from visionset.kernel.domain.task import (
     progress_after_annotating,
 )
 from visionset.kernel.domain.vocabulary import OpenVocabulary
+from visionset.kernel.errors import AssetNotJudged, VisionSetError
 
 
 # A declaration is a promise: under the `ui-capabilities` contract a conforming
@@ -107,16 +108,21 @@ class JobAction(OpenVocabulary):
     COMPLETE = "complete"
 
 
+# ``observe`` lands with the browser's track controls, which read it;
+# the route and the MCP tool that perform it shipped with the track kernel.
 class AssetAction(OpenVocabulary):
     """What can be asked of one asset inside a batch.
 
     ``ANNOTATE`` is the odd one and the important one: it is not a progress move
     but the right to write labels at all, which is ``WRITABLE_PROGRESS`` and the
-    batch gate together. The other six each name one edge of
+    batch gate together. ``OBSERVE`` is the right to add one of the asset's
+    labels to a track: ``annotate``, less what :data:`ASSET_WITHHOLDINGS`
+    withholds. The other six each name one edge of
     ``ASSET_PROGRESS_TRANSITIONS`` — see :data:`ASSET_MOVES`.
     """
 
     ANNOTATE = "annotate"
+    OBSERVE = "observe"
     SKIP = "skip"
     RESTORE = "restore"
     CONFIRM = "confirm"
@@ -326,6 +332,36 @@ Named at all so that a *new* edge cannot quietly arrive with no capability:
 ``test_every_edge_is_named_by_an_action_or_deliberately_not`` requires every edge
 of ``ASSET_PROGRESS_TRANSITIONS`` to be claimed by an action or to fall in here,
 and this set can only grow if the domain's own derivation rule does.
+"""
+
+
+@dataclass(frozen=True, slots=True)
+class Withholding:
+    """Why an asset that may be annotated still refuses one action: the error, and the words."""
+
+    refusal: type[VisionSetError]
+    why: str
+
+
+ASSET_WITHHOLDINGS: Final[Mapping[AssetAction, Mapping[AssetProgress, Withholding]]] = {
+    AssetAction.OBSERVE: {
+        AssetProgress.PRE_LABELED: Withholding(
+            AssetNotJudged,
+            "nobody has judged its labels, and a replacing pre-label run would delete what "
+            "the track observes; edit or confirm the asset first",
+        ),
+    },
+}
+"""What an asset that may be annotated still withholds, by progress, and the refusal.
+
+Each action here is ``annotate`` narrowed: declared wherever ``annotate`` is,
+except at the progress states its row names, where the service raises the error
+the row names with the row's words. ``observe`` is withheld at ``pre_labeled``
+because a replacing pre-label run deletes a model's unjudged labels without
+asking, and an observation of one would go with it.
+
+The service refuses by reading this row, and :func:`asset_withheld` publishes it,
+so the declared reason and the raised refusal are one entry.
 """
 
 
@@ -544,12 +580,13 @@ def asset_actions(
     caller that could omit a dimension is a caller that will, and a dropped
     dimension is how a hand-mirrored client produced two blockers.
 
-    ``annotate`` is not a progress move and is the one action here that is not in
-    ``ASSET_MOVES``: it is the right to add, change or remove labels, which is
-    ``WRITABLE_PROGRESS`` and the two gates together. It is also the declaration
-    the annotator wants, because "can I open this in edit mode" is exactly that
-    question — and answering it wrong is what left work stranded in a browser
-    against a batch that had closed.
+    ``annotate`` is not a progress move and is not in ``ASSET_MOVES``: it is the
+    right to add, change or remove labels, which is ``WRITABLE_PROGRESS`` and the
+    two gates together. It is also the declaration the annotator wants, because
+    "can I open this in edit mode" is exactly that question — and answering it
+    wrong is what left work stranded in a browser against a batch that had closed.
+    ``observe`` is the other action outside ``ASSET_MOVES``, and it is ``annotate``
+    less the progress states :data:`ASSET_WITHHOLDINGS` names for it.
     """
     if batch_state is not BatchState.IN_ANNOTATION or progress is None:
         return []
@@ -559,8 +596,35 @@ def asset_actions(
         action
         for action in AssetAction
         if (
-            progress in WRITABLE_PROGRESS
-            if action is AssetAction.ANNOTATE
-            else ASSET_MOVES[action].offered_from(progress, ASSET_PROGRESS_TRANSITIONS)
+            ASSET_MOVES[action].offered_from(progress, ASSET_PROGRESS_TRANSITIONS)
+            if action in ASSET_MOVES
+            else progress in WRITABLE_PROGRESS
+            and progress not in ASSET_WITHHOLDINGS.get(action, {})
         )
     ]
+
+
+def asset_withheld(
+    progress: AssetProgress | None,
+    *,
+    batch_state: BatchState,
+    job_state: AnnotationJobState | None,
+) -> dict[type[VisionSetError], list[AssetAction]]:
+    """What this asset withholds while it declares ``annotate``, grouped by the refusal.
+
+    Empty wherever ``annotate`` is not declared: a frame nobody may write withholds
+    everything for the reason it is read-only, which the batch, the job and the
+    progress already say. What this adds is the reason a writable frame still
+    refuses an action, which no field of the resource states. Actions keep
+    declaration order within each refusal.
+    """
+    withheld: dict[type[VisionSetError], list[AssetAction]] = {}
+    if progress is None or AssetAction.ANNOTATE not in asset_actions(
+        progress, batch_state=batch_state, job_state=job_state
+    ):
+        return withheld
+    for action in AssetAction:
+        row = ASSET_WITHHOLDINGS.get(action, {}).get(progress)
+        if row is not None:
+            withheld.setdefault(row.refusal, []).append(action)
+    return withheld

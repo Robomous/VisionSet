@@ -11,7 +11,7 @@ error envelope, and the three gate words.
 
 ## Always offered
 
-77 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
+78 tools, in the order an agent meets them: make a project, give it a schema, put images in it, work through them, promote, publish, export.
 
 | Tool | Takes | What it does |
 | --- | --- | --- |
@@ -60,6 +60,7 @@ error envelope, and the three gate words.
 | `list_tracks` | `source_id` | List a sequence source's tracks, in creation order, each with its observations. |
 | `get_track_status` | `track_id`, `batch_id` | Count a track's observations by the progress their assets hold in one batch. |
 | `create_track` | `source_id`, `label_class`, `external_id`? | Start an empty track of one class on a video or image-sequence source. |
+| `start_track` | `job_id`, `occurrence_id`, `annotation_id` | Start a track of the annotation's class on the occurrence's source, observing it there. |
 | `observe_track` | `job_id`, `track_id`, `occurrence_id`, `annotation_id` | Record that the track is seen at an occurrence, as an annotation drawn there. |
 | `unobserve_track` | `job_id`, `track_id`, `occurrence_id` | Remove the track's observation at an occurrence. The annotation stays. |
 | `set_track_class` | `job_id`, `track_id`, `label_class` | Give a track and every annotation it observes a new class, in one transaction. |

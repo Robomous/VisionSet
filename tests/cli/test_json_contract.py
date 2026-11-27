@@ -94,6 +94,7 @@ from visionset.kernel.domain import (
     ImportPlan,
     ImportRun,
     ObservedFrame,
+    ObservedLabel,
     PolylineGeometry,
     PreLabelRun,
     Track,
@@ -248,6 +249,20 @@ PAIRS: list[tuple[str, Mapping[str, Any], type[BaseModel]]] = [
             progress=AssetProgress.ANNOTATED,
             batch_state=BATCH.state,
             summary=AnnotationSummary(count=2, min_model_confidence=0.4),
+            observed=(),
+        ),
+        models.BatchAssetOut,
+    ),
+    (
+        "batch_asset_pre_labeled",
+        wire.batch_asset(
+            ASSET,
+            job_id=JOB.id,
+            job_state=JOB.state,
+            progress=AssetProgress.PRE_LABELED,
+            batch_state=BATCH.state,
+            summary=AnnotationSummary(count=1, min_model_confidence=0.4),
+            observed=(ObservedLabel(annotation_id=uuid4(), track_id=uuid4(), label_class="car"),),
         ),
         models.BatchAssetOut,
     ),
@@ -361,6 +376,36 @@ def test_a_polyline_projects_exactly_as_the_wire_model_serializes_it(
     geometry: PolylineGeometry,
 ) -> None:
     assert wire.geometry(geometry) == models.PolylineBody.of(geometry).model_dump(mode="json")
+
+
+@pytest.mark.parametrize("progress", list(AssetProgress), ids=str)
+def test_a_batch_asset_projects_its_withheld_actions_as_the_wire_model_does(
+    progress: AssetProgress,
+) -> None:
+    arguments: dict[str, Any] = {
+        "job_id": JOB.id,
+        "job_state": JOB.state,
+        "progress": progress,
+        "batch_state": BATCH.state,
+        "summary": AnnotationSummary(count=1, min_model_confidence=0.4),
+        "observed": (ObservedLabel(annotation_id=uuid4(), track_id=uuid4(), label_class="car"),),
+    }
+    projected = wire.batch_asset(ASSET, **arguments)
+    assert projected == models.BatchAssetOut.in_batch(ASSET, **arguments).model_dump(mode="json")
+    expected = (
+        [{"code": "ASSET_NOT_JUDGED", "actions": ["observe"]}]
+        if progress is AssetProgress.PRE_LABELED
+        else []
+    )
+    assert projected["withheld_actions"] == expected
+    (label,) = arguments["observed"]
+    assert projected["observed"] == [
+        {
+            "annotation_id": str(label.annotation_id),
+            "track_id": str(label.track_id),
+            "label_class": "car",
+        }
+    ]
 
 
 def test_unknown_visibility_is_absent_from_the_projection_not_null() -> None:
@@ -513,6 +558,7 @@ SHAPES: dict[str, Any] = {
     "source_calibration_none": shapes.SourceCalibration,
     "asset_calibration": shapes.AssetCalibration,
     "batch_asset": shapes.BatchAsset,
+    "batch_asset_pre_labeled": shapes.BatchAsset,
     "progress_counts": shapes.ProgressCounts,
     "batch": shapes.Batch,
     "job": shapes.Job,

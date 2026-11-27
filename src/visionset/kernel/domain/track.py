@@ -56,6 +56,16 @@ class ObservedFrame(BaseModel):
     annotation_id: UUID
 
 
+class ObservedLabel(BaseModel):
+    """An annotation a track observes, from any source, and the class that track keeps it to."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    annotation_id: UUID
+    track_id: UUID
+    label_class: str
+
+
 class TrackDetail(BaseModel):
     """A track and its observations, in source position order."""
 

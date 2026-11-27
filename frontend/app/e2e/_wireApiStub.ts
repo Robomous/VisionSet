@@ -8,7 +8,7 @@
  */
 
 import { expect, type Page, type Request } from "@playwright/test";
-import { assetActions, batchActions, geometryPage, jobActions, type Wire } from "./_wire";
+import { assetActions, assetWithheld, batchActions, geometryPage, jobActions, type Wire } from "./_wire";
 
 export const PROJECT = "11111111-1111-4111-8111-111111111111";
 export const BATCH = "22222222-2222-4222-8222-222222222222";
@@ -33,6 +33,7 @@ function asset(
   batchState: Wire["BatchState"] = "in_annotation",
   jobState: Wire["AnnotationJobState"] = "in_progress",
   sourceId: string | null = null,
+  observed: Wire["ObservedLabelOut"][] = [],
 ): Wire["BatchAssetOut"] {
   return {
     id: `asset-${index}`,
@@ -60,7 +61,18 @@ function asset(
     allowed_actions: assetActions(progress, { batchState, jobState }),
     annotation_count: 0,
     min_confidence: null,
+    withheld_actions: assetWithheld(progress, { batchState, jobState }),
+    observed,
   };
+}
+
+/** What the kernel says each track keeps this asset's labels to, from the tracks the stub holds. */
+function observedOn(world: TrackWorld | undefined, assetId: string): Wire["ObservedLabelOut"][] {
+  return (world?.tracks ?? []).flatMap((track) =>
+    track.observations
+      .filter((one) => one.asset_id === assetId)
+      .map((one) => ({ annotation_id: one.annotation_id, track_id: track.id, label_class: track.label_class })),
+  );
 }
 
 /** A 1x1 PNG, so the canvas has real pixels to lay out. */
@@ -346,8 +358,8 @@ export async function serveApi(
       return route.fulfill({
         json: {
           items: [
-            asset(1, progress.get("asset-1") ?? "unannotated", lifecycle.batch, lifecycle.job, tracks?.sourceId ?? null),
-            asset(2, progress.get("asset-2") ?? "annotated", lifecycle.batch, lifecycle.job, tracks?.sourceId ?? null),
+            asset(1, progress.get("asset-1") ?? "unannotated", lifecycle.batch, lifecycle.job, tracks?.sourceId ?? null, observedOn(tracks, "asset-1")),
+            asset(2, progress.get("asset-2") ?? "annotated", lifecycle.batch, lifecycle.job, tracks?.sourceId ?? null, observedOn(tracks, "asset-2")),
           ],
           total: 2,
         } satisfies Wire["BatchAssetPage"],
@@ -491,7 +503,8 @@ export async function serveApi(
       });
     }
     if (tracks !== undefined) {
-      const answered = trackRoute(tracks, request.method(), path, request.postData(), progress);
+      const classOf = (annotationId: string): string | undefined => stored.find((one) => one.id === annotationId)?.label_class;
+      const answered = trackRoute(tracks, request.method(), path, request.postData(), progress, classOf);
       if (answered !== null) return route.fulfill(answered);
     }
     if (path.endsWith("/content") || path.endsWith("/thumbnail")) {
@@ -546,6 +559,7 @@ function trackRoute(
   path: string,
   posted: string | null,
   progress: Map<string, Wire["AssetProgress"]>,
+  classOf: (annotationId: string) => string | undefined,
 ): Fulfilment | null {
   const sourcePath = `/sources/${world.sourceId}`;
   if (path === `${sourcePath}/occurrences`) {
@@ -583,6 +597,22 @@ function trackRoute(
     const outside = (track?.observations.length ?? 0) - held.length;
     const settled = held.length > 0 && outside === 0 && counts.unannotated + counts.pre_labeled + counts.review_pending === 0;
     return { json: { track_id: status[1]!, batch_id: BATCH, progress: counts, outside, settled } satisfies Wire["TrackStatusOut"] };
+  }
+  if (path === `/jobs/${JOB}/tracks` && method === "POST") {
+    if (world.refuseObserve !== undefined) return { status: 409, json: world.refuseObserve };
+    const body = JSON.parse(posted ?? "{}") as Wire["ObservationCreate"];
+    const seen = observationAt(world, body.occurrence_id, body.annotation_id);
+    const labelClass = classOf(body.annotation_id);
+    if (seen === null || labelClass === undefined) return { status: 404, json: { code: "ANNOTATION_NOT_FOUND", message: path } };
+    const started: Wire["TrackOut"] = {
+      id: `track-${world.tracks.length + 1}`,
+      source_id: world.sourceId,
+      label_class: labelClass,
+      external_id: null,
+      observations: [seen],
+    };
+    world.tracks.push(started);
+    return { status: 201, json: started };
   }
   const observe = new RegExp(`^/jobs/${JOB}/tracks/([^/]+)/observations$`).exec(path);
   if (observe !== null && method === "POST") {

@@ -993,3 +993,102 @@ def test_settled_needs_every_observation_inside_the_batch(world: World) -> None:
     assert not world.tracks.status(detail.track.id, elsewhere.id).settled
     empty = world.tracks.create(clip.source_id, "car")
     assert not world.tracks.status(empty.track.id, clip.batch_id).settled
+
+
+# --- starting ------------------------------------------------------------------
+
+
+def test_start_creates_a_track_of_the_annotations_class_observing_it(world: World) -> None:
+    clip = world.clip()
+    (job,) = world.working(clip.batch_id)
+    van = world.box(job, clip.at(1).asset_id, "van")
+    started = world.tracks.start(job.id, clip.at(1).id, van.id)
+    assert started.track.label_class == "van"
+    assert started.track.source_id == clip.source_id
+    assert _positions(started) == [1]
+    assert [d.track.id for d in world.tracks.list(clip.source_id)] == [started.track.id]
+
+
+def test_a_refused_start_leaves_no_track(world: World) -> None:
+    clip = world.clip()
+    (job,) = world.working(clip.batch_id)
+    model_box = _pre_labeled(world, job, clip.at(0).asset_id)
+    with pytest.raises(AssetNotJudged):
+        world.tracks.start(job.id, clip.at(0).id, model_box.id)
+
+    observed = world.observed(job, clip, [1])
+    with pytest.raises(AnnotationAlreadyObserved):
+        world.tracks.start(job.id, clip.at(1).id, observed.observations[0].annotation_id)
+
+    box = world.box(job, clip.at(2).asset_id)
+    with pytest.raises(AnnotationNotAtOccurrence):
+        world.tracks.start(job.id, clip.at(0).id, box.id)
+
+    assert [d.track.id for d in world.tracks.list(clip.source_id)] == [observed.track.id]
+
+
+# --- what a batch asset says its tracks keep -----------------------------------
+
+
+def test_a_batch_asset_names_every_track_observing_its_labels_from_any_source(
+    world: World,
+) -> None:
+    first, second = world.clip(seeds=(5, 6)), world.clip(seeds=(5, 7))
+    shared = first.at(0).asset_id
+    assert second.at(0).asset_id == shared
+    (job,) = world.working(second.batch_id)
+    observed = world.observed(job, second, [0])
+    world.batches.approve(first.batch_id)
+
+    placed, _ = world.batches.asset_page(first.batch_id)
+    by_asset = {one.asset.id: one.observed for one in placed}
+    (label,) = by_asset[shared]
+    assert label.annotation_id == observed.observations[0].annotation_id
+    assert label.track_id == observed.track.id
+    assert label.label_class == "car"
+    assert by_asset[first.at(1).asset_id] == ()
+
+
+def _pinned_van_dropped_later(world: World) -> tuple[Clip, AnnotationJob, Annotation]:
+    """A van box in a batch pinned at v1, after v2 dropped `van` from the active schema."""
+    clip = world.clip()
+    (job,) = world.working(clip.batch_id)
+    SchemaService(world.workspace).create_version(
+        world.project.id, [CAR, LANE], allow_destructive=True
+    )
+    assert world.batches.get(clip.batch_id).schema_version == 1
+    van = world.box(job, clip.at(0).asset_id, "van")
+    return clip, job, van
+
+
+def test_start_judges_the_class_against_the_batch_pin_not_the_active_version(
+    world: World,
+) -> None:
+    clip, job, van = _pinned_van_dropped_later(world)
+    started = world.tracks.start(job.id, clip.at(0).id, van.id)
+    assert started.track.label_class == "van"
+
+
+def test_start_refuses_a_settled_frame_before_it_judges_the_class(world: World) -> None:
+    clip, job, van = _pinned_van_dropped_later(world)
+    asset_id = clip.at(0).asset_id
+    world.jobs.mark(job.id, asset_id, AssetProgress.REVIEW_PENDING)
+    world.jobs.mark(job.id, asset_id, AssetProgress.ACCEPTED)
+    with pytest.raises(AssetNotWritable):
+        world.tracks.start(job.id, clip.at(0).id, van.id)
+    assert world.tracks.list(clip.source_id) == []
+
+
+def test_start_refuses_an_occurrence_of_another_project(world: World, tmp_path: Path) -> None:
+    clip = world.clip()
+    (job,) = world.working(clip.batch_id)
+    box = world.box(job, clip.at(0).asset_id)
+    other = World.__new__(World)
+    other.__dict__.update(world.__dict__)
+    other.project = ProjectService(world.workspace).create("elsewhere")
+    SchemaService(world.workspace).create_version(other.project.id, [CAR])
+    foreign = other.clip()
+    with pytest.raises(FrameOccurrenceNotFound):
+        world.tracks.start(job.id, foreign.at(0).id, box.id)
+    assert world.tracks.list(clip.source_id) == []
+    assert world.tracks.list(foreign.source_id) == []

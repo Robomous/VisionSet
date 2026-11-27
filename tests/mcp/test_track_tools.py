@@ -100,3 +100,27 @@ def test_refusals_arrive_in_the_envelope(world: TrackWorld) -> None:
     )
     assert refused["code"] == "TRACK_CLASS_MISMATCH"
     assert error(call("list_tracks", source_id="not-a-uuid"))["code"] == "VALIDATION_ERROR"
+
+
+def test_an_agent_starts_a_track_in_one_write_or_leaves_nothing(world: TrackWorld) -> None:
+    started = payload(
+        call(
+            "start_track",
+            job_id=world.jobs[0],
+            occurrence_id=world.occurrences[2],
+            annotation_id=world.van,
+        )
+    )
+    assert started["label_class"] == "van"
+    assert _positions(started) == [2]
+    listed = payload(call("list_tracks", source_id=world.source))["total"]
+    refused = error(
+        call(
+            "start_track",
+            job_id=world.jobs[0],
+            occurrence_id=world.occurrences[3],
+            annotation_id=world.spare[3],
+        )
+    )
+    assert refused["code"] == "ASSET_NOT_IN_JOB"
+    assert payload(call("list_tracks", source_id=world.source))["total"] == listed

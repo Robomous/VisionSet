@@ -106,6 +106,8 @@ function scanAsset(lifecycle: Lifecycle): Wire["BatchAssetOut"] {
     allowed_actions: assetActions("unannotated", { batchState: lifecycle.batch, jobState: lifecycle.job }),
     annotation_count: 1,
     min_confidence: null,
+    withheld_actions: [],
+    observed: [],
   };
 }
 

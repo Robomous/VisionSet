@@ -24,6 +24,7 @@ number of cases here without anybody editing a list.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from io import BytesIO
 from pathlib import Path
@@ -33,6 +34,7 @@ from uuid import UUID
 import pytest
 
 from visionset.kernel import (
+    AssetNotJudged,
     AssetNotWritable,
     BatchImmutable,
     BatchNotComplete,
@@ -50,6 +52,7 @@ from visionset.kernel import (
 from visionset.kernel.domain import (
     ASSET_MOVES,
     ASSET_PROGRESS_TRANSITIONS,
+    ASSET_WITHHOLDINGS,
     BATCH_GATES,
     BATCH_MOVES,
     BATCH_TRANSITIONS,
@@ -79,11 +82,15 @@ from visionset.kernel.domain import (
     ConnectionAction,
     ConnectionSetupState,
     ConnectionType,
+    FrameOccurrence,
     GeometryType,
     JobAction,
     LabelClass,
     Move,
+    Source,
+    SourceKind,
     asset_actions,
+    asset_withheld,
     batch_actions,
     connection_actions,
     job_actions,
@@ -96,6 +103,7 @@ from visionset.kernel.services import (
     JobService,
     ProjectService,
     SchemaService,
+    TrackService,
     WorkspaceService,
 )
 
@@ -130,7 +138,8 @@ class Fixture:
 
     Three assets, two of them in the batch: the third is what `edit_membership`
     adds, so that action is proved by a membership that actually grew rather than
-    by a call that returned.
+    by a call that returned. Each is an occurrence of one image sequence, so
+    `observe` is proved by a track that actually observes it.
     """
 
     def __init__(self, tmp_path: Path) -> None:
@@ -139,11 +148,42 @@ class Fixture:
         self.jobs = JobService(self.workspace)
         self.annotations = AnnotationService(self.workspace)
         self.datasets = DatasetService(self.workspace)
+        self.tracks = TrackService(self.workspace)
         self.project = ProjectService(self.workspace).create("caps")
         SchemaService(self.workspace).create_version(self.project.id, [SIGN])
         self.assets = [self._asset(f"a{index}") for index in range(3)]
         self.spare = self.assets[-1]
         self.batch = self.batches.create(self.project.id, "b", self.assets[:2])
+        self.source_id, self.occurrence_of = self._sequence()
+
+    def _sequence(self) -> tuple[UUID, dict[UUID, UUID]]:
+        with self.workspace.unit_of_work() as uow:
+            source = uow.sources.add(
+                Source(project_id=self.project.id, kind=SourceKind.IMAGE_SEQUENCE, locator="seq")
+            )
+            occurrences = {
+                asset_id: uow.frame_occurrences.add(
+                    FrameOccurrence(
+                        source_id=source.id, position=position, timestamp=None, asset_id=asset_id
+                    )
+                ).id
+                for position, asset_id in enumerate(self.assets)
+            }
+        return source.id, occurrences
+
+    def observe(self, job_id: UUID, asset_id: UUID) -> None:
+        """Observe a stored label of the asset with a new track; progress does not move."""
+        with self.workspace.unit_of_work() as uow:
+            label = uow.annotations.add(_box(asset_id))
+        track = self.tracks.create(self.source_id, SIGN.name).track
+        self.tracks.observe(job_id, track.id, self.occurrence_of[asset_id], label.id)
+
+    def observed(self, asset_id: UUID) -> int:
+        return sum(
+            frame.asset_id == asset_id
+            for detail in self.tracks.list(self.source_id)
+            for frame in detail.observations
+        )
 
     def _asset(self, seed: str) -> UUID:
         content_hash = self.workspace.blob_store.put(BytesIO(seed.encode()))
@@ -319,7 +359,8 @@ def test_every_action_is_decided_by_exactly_one_source() -> None:
     assert not set(BATCH_MOVES) & set(BATCH_GATES)
     assert set(JOB_MOVES) | set(JOB_GATES) == set(JobAction)
     assert not set(JOB_MOVES) & set(JOB_GATES)
-    assert set(ASSET_MOVES) | {AssetAction.ANNOTATE} == set(AssetAction)
+    assert set(ASSET_MOVES) | {AssetAction.ANNOTATE, AssetAction.OBSERVE} == set(AssetAction)
+    assert not set(ASSET_MOVES) & set(ASSET_WITHHOLDINGS)
     # A connection has no moves at all: nothing in this slice changes
     # `setup_state`, so every one of its actions is decided by a gate.
     assert set(CONNECTION_GATES) == set(ConnectionAction)
@@ -667,6 +708,8 @@ def _run_asset(fixture: Fixture, job_id: UUID | None, asset_id: UUID, action: As
     assert job_id is not None
     if action is AssetAction.ANNOTATE:
         fixture.annotations.add(job_id, [_box(asset_id)])
+    elif action is AssetAction.OBSERVE:
+        fixture.observe(job_id, asset_id)
     else:
         fixture.jobs.mark(job_id, asset_id, ASSET_MOVES[action].to)
 
@@ -683,6 +726,8 @@ def _landed(
     if action is AssetAction.ANNOTATE:
         stored = fixture.annotations.for_asset(job_id, asset_id)
         return [a.provenance for a in stored].count("human") == 1
+    if action is AssetAction.OBSERVE:
+        return fixture.observed(asset_id) == 1
     return fixture.state_of(job_id, asset_id) is ASSET_MOVES[action].to
 
 
@@ -726,9 +771,13 @@ def _assert_undeclared_is_refused(
         return
 
     assert progress is not None
-    if action is AssetAction.ANNOTATE:
-        with pytest.raises(AssetNotWritable):
+    if action not in ASSET_MOVES:
+        # A writable asset that withholds the action refuses it with the error
+        # its withholding names; anything else is not writable at all.
+        row = ASSET_WITHHOLDINGS.get(action, {}).get(progress)
+        with pytest.raises(AssetNotWritable if row is None else row.refusal):
             _run_asset(fixture, job_id, asset_id, action)
+        assert fixture.observed(asset_id) == 0
         return
 
     move = ASSET_MOVES[action]
@@ -837,6 +886,7 @@ def test_declaration_order_is_stable(tmp_path: Path) -> None:
         job_state=AnnotationJobState.IN_PROGRESS,
     ) == [
         AssetAction.ANNOTATE,
+        AssetAction.OBSERVE,
         AssetAction.SKIP,
         AssetAction.SUBMIT_FOR_REVIEW,
     ]
@@ -861,6 +911,45 @@ def test_confirm_is_declared_on_pre_labeled_and_nowhere_else() -> None:
             job_state=AnnotationJobState.IN_PROGRESS,
         )
         assert (AssetAction.CONFIRM in declared) is (progress is AssetProgress.PRE_LABELED)
+
+
+@pytest.mark.parametrize("scenario", ASSET_SCENARIOS, ids=_scenario_id)
+def test_a_writable_asset_says_why_it_withholds_observe(
+    scenario: tuple[BatchState, AnnotationJobState | None, AssetProgress | None],
+) -> None:
+    """`observe` is `annotate` less unjudged output, and the gap carries its refusal."""
+    batch_state, job_state, progress = scenario
+    declared = asset_actions(progress, batch_state=batch_state, job_state=job_state)
+    withheld = asset_withheld(progress, batch_state=batch_state, job_state=job_state)
+    if AssetAction.ANNOTATE not in declared:
+        assert AssetAction.OBSERVE not in declared
+        assert withheld == {}
+    elif progress is PRE_LABELED:
+        assert AssetAction.OBSERVE not in declared
+        assert withheld == {AssetNotJudged: [AssetAction.OBSERVE]}
+    else:
+        assert AssetAction.OBSERVE in declared
+        assert withheld == {}
+
+
+def test_a_pre_labeled_asset_refuses_observe_until_a_person_confirms_it(tmp_path: Path) -> None:
+    """The refusal is still the backstop: a caller that ignores the declaration is refused."""
+    fixture = Fixture(tmp_path)
+    fixture.walk_batch(BatchState.IN_ANNOTATION, unsettled=True)
+    job_id, asset_id = fixture.walk_asset(PRE_LABELED)
+    row = ASSET_WITHHOLDINGS[AssetAction.OBSERVE][PRE_LABELED]
+    with pytest.raises(AssetNotJudged, match=re.escape(row.why)):
+        fixture.observe(job_id, asset_id)
+    assert fixture.observed(asset_id) == 0
+
+    fixture.jobs.mark(job_id, asset_id, ANNOTATED)
+    declared = asset_actions(
+        ANNOTATED, batch_state=BatchState.IN_ANNOTATION, job_state=fixture.jobs.get(job_id).state
+    )
+    assert AssetAction.OBSERVE in declared
+    fixture.observe(job_id, asset_id)
+    assert fixture.observed(asset_id) == 1
+    fixture.close()
 
 
 def test_delete_is_declared_from_the_kernels_own_gate_and_not_from_a_copy() -> None:

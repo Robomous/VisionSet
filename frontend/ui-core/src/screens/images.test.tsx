@@ -163,7 +163,7 @@ afterEach(() => {
 
 /** What `GET /batches/{id}/assets` adds to an asset: the batch's own facts about it. */
 function batchAsset(one: Record<string, unknown>): Record<string, unknown> {
-  return { ...one, allowed_actions: [], annotation_count: 0, job_id: null, min_confidence: null, progress: null };
+  return { ...one, allowed_actions: [], annotation_count: 0, job_id: null, min_confidence: null, progress: null, withheld_actions: [], observed: [] };
 }
 
 function renderImages(onIngest?: () => void, batch?: { readonly id: string | null; readonly onChange?: (id: string | null) => void }): void {

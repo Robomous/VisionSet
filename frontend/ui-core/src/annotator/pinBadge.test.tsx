@@ -118,6 +118,8 @@ function answer(path: string, search: string): unknown {
           allowed_actions: assetActions("unannotated", { batchState: "in_annotation" }),
           annotation_count: 0,
           min_confidence: null,
+          withheld_actions: [],
+          observed: [],
         },
       ],
       total: 1,

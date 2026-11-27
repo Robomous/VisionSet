@@ -172,6 +172,7 @@ function answer(method: string, path: string, body: unknown): Response {
       allowed_actions: assetActions(index === 0 ? "unannotated" : "annotated", { batchState }),
       annotation_count: 0,
       min_confidence: null,
+      withheld_actions: [],
     }));
     return json({ items, total: items.length });
   }

@@ -73,9 +73,11 @@ from visionset.kernel.domain import (  # noqa: E402
     SchemaProvenance,
     SensorExtrinsics,
     asset_actions,
+    asset_withheld,
     batch_actions,
     job_actions,
 )
+from visionset.kernel.error_codes import ERROR_CODES  # noqa: E402
 from visionset.server.models import (  # noqa: E402
     AnnotationOut,
     AssetOut,
@@ -248,7 +250,9 @@ def build_capabilities() -> dict[str, dict[str, list[str]]]:
     The doubles table the settled projection — a batch with every asset settled,
     a job inside an `in_annotation` batch with every asset settled, an asset
     inside an open job — and apply the
-    other dimensions as code, so that is the projection exported. Keyed by the
+    other dimensions as code, so that is the projection exported.
+    `ASSET_WITHHELD` is `asset_withheld` in that same open job, keyed
+    `progress/CODE` and listing only what a writable asset withholds. Keyed by the
     names the rosters carry, so the gate matches roster to answer by name and a
     roster it cannot match is reported rather than skipped.
     """
@@ -275,6 +279,15 @@ def build_capabilities() -> dict[str, dict[str, list[str]]]:
                 )
             )
             for progress in AssetProgress
+        },
+        "ASSET_WITHHELD": {
+            f"{progress.value}/{ERROR_CODES[refusal]}": names(actions)
+            for progress in AssetProgress
+            for refusal, actions in asset_withheld(
+                progress,
+                batch_state=BatchState.IN_ANNOTATION,
+                job_state=AnnotationJobState.IN_PROGRESS,
+            ).items()
         },
     }
 

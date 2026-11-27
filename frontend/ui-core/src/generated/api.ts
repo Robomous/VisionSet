@@ -1994,6 +1994,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/jobs/{job_id}/tracks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Track
+         * @description Start a track of the annotation's class on the occurrence's source, observing it there.
+         *
+         *     One write: every refusal is decided before anything is written, so a refused
+         *     start leaves no track behind. The observation is judged as an observe is,
+         *     and the class against the batch's pinned version. 404: `JOB_NOT_FOUND`,
+         *     `FRAME_OCCURRENCE_NOT_FOUND`, `ANNOTATION_NOT_FOUND`. 409:
+         *     `BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`, `ASSET_NOT_IN_JOB` (rendered as a
+         *     409 here), `ASSET_NOT_WRITABLE`, `ASSET_NOT_JUDGED`,
+         *     `ANNOTATION_ALREADY_OBSERVED`. 422: `SOURCE_NOT_SEQUENCE`,
+         *     `ANNOTATION_NOT_AT_OCCURRENCE`, `INVALID_ANNOTATION`, `INVALID_NAME`,
+         *     `LABEL_CLASS_NOT_IN_SCHEMA`.
+         */
+        post: operations["start_track"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/jobs/{job_id}/tracks/{track_id}": {
         parameters: {
             query?: never;
@@ -4101,11 +4131,13 @@ export interface components {
          *
          *     ``ANNOTATE`` is the odd one and the important one: it is not a progress move
          *     but the right to write labels at all, which is ``WRITABLE_PROGRESS`` and the
-         *     batch gate together. The other six each name one edge of
+         *     batch gate together. ``OBSERVE`` is the right to add one of the asset's
+         *     labels to a track: ``annotate``, less what :data:`ASSET_WITHHOLDINGS`
+         *     withholds. The other six each name one edge of
          *     ``ASSET_PROGRESS_TRANSITIONS`` — see :data:`ASSET_MOVES`.
          * @enum {string}
          */
-        AssetAction: "annotate" | "skip" | "restore" | "confirm" | "submit_for_review" | "accept" | "return_to_annotator" | (string & {});
+        AssetAction: "annotate" | "observe" | "skip" | "restore" | "confirm" | "submit_for_review" | "accept" | "return_to_annotator" | (string & {});
         /**
          * AssetCalibrationOut
          * @description An asset's own override, and the calibration that applies to it.
@@ -4412,6 +4444,8 @@ export interface components {
              * @enum {string}
              */
             modality: "image" | "point_cloud";
+            /** Observed */
+            observed: components["schemas"]["ObservedLabelOut"][];
             point_cloud: components["schemas"]["PointCloudMetadataOut"] | null;
             progress: components["schemas"]["AssetProgress"] | null;
             /**
@@ -4425,6 +4459,8 @@ export interface components {
             thumbnail_hash: string | null;
             /** Width */
             width: number | null;
+            /** Withheld Actions */
+            withheld_actions: components["schemas"]["WithheldActionsOut"][];
         };
         /**
          * BatchAssetPage
@@ -5973,6 +6009,24 @@ export interface components {
              * Format: uuid
              */
             occurrence_id: string;
+        };
+        /**
+         * ObservedLabelOut
+         * @description An annotation of this asset a track observes, and the class that track keeps it to.
+         */
+        ObservedLabelOut: {
+            /**
+             * Annotation Id
+             * Format: uuid
+             */
+            annotation_id: string;
+            /** Label Class */
+            label_class: string;
+            /**
+             * Track Id
+             * Format: uuid
+             */
+            track_id: string;
         };
         /**
          * PointCloudBoundsOut
@@ -7904,6 +7958,16 @@ export interface components {
              */
             job_id: string;
             state: components["schemas"]["BackgroundJobState"];
+        };
+        /**
+         * WithheldActionsOut
+         * @description Actions a writable asset does not declare, and the refusal code asking for one gets.
+         */
+        WithheldActionsOut: {
+            /** Actions */
+            actions: components["schemas"]["AssetAction"][];
+            /** Code */
+            code: string;
         };
         /**
          * WorkspaceTotalsOut
@@ -12022,6 +12086,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such resource */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The resource's state refuses this request */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The request payload is not processable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unhandled server error, with an incident id */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The workspace is busy; retry after the header says */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    start_track: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ObservationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackOut"];
                 };
             };
             /** @description Missing or invalid bearer token */
@@ -17113,7 +17257,7 @@ export type OpenMember<A extends string> = A | (string & {});
 
 /** The members this build compiled against, per vocabulary the contract may grow. */
 export interface KnownMembers {
-  AssetAction: "annotate" | "skip" | "restore" | "confirm" | "submit_for_review" | "accept" | "return_to_annotator";
+  AssetAction: "annotate" | "observe" | "skip" | "restore" | "confirm" | "submit_for_review" | "accept" | "return_to_annotator";
   BatchAction: "approve" | "start" | "complete" | "repin" | "promote" | "create_correction" | "pre_label" | "edit_membership" | "delete";
   ConnectionAction: "download_weights" | "check_integrity" | "test_endpoint" | "update" | "update_model" | "delete";
   JobAction: "start" | "pre_label" | "complete";

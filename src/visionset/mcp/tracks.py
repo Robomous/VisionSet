@@ -126,6 +126,30 @@ def observe_track(
     return wire.track(found)
 
 
+def start_track(
+    job_id: JobRef,
+    occurrence_id: OccurrenceRef,
+    annotation_id: Annotated[
+        str, Field(description="The annotation drawn at that occurrence, by id.")
+    ],
+) -> shapes.Track:
+    """Start a track of the annotation's class on the occurrence's source, observing it there.
+
+    One write: a refused observation leaves no track behind, where `create_track`
+    then `observe_track` would leave an empty one. Every rule of both holds: the
+    source must be a video or image sequence, the class declared by the batch's
+    pinned schema, the annotation 2D and on the occurrence's asset, and the job
+    must carry that asset at a writable progress other than `pre_labeled`.
+    """
+    with opened_workspace() as workspace:
+        found = TrackService(workspace).start(
+            identifier(job_id, what="job_id"),
+            identifier(occurrence_id, what="occurrence_id"),
+            identifier(annotation_id, what="annotation_id"),
+        )
+    return wire.track(found)
+
+
 def unobserve_track(
     job_id: JobRef, track_id: TrackRef, occurrence_id: OccurrenceRef
 ) -> shapes.Track:

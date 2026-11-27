@@ -59,6 +59,7 @@ from visionset.kernel.domain import (
     BackgroundJobState,
     BatchState,
     Modality,
+    ObservedLabel,
     OrphanGuard,
     TrackObservation,
     VideoImportState,
@@ -876,6 +877,35 @@ class SqlUnitOfWork:
             asset_id: AnnotationSummary(count=count, min_model_confidence=lowest)
             for asset_id, count, lowest in rows
         }
+
+    def observed_labels(
+        self, asset_ids: Sequence[UUID]
+    ) -> Mapping[UUID, tuple[ObservedLabel, ...]]:
+        rows = [
+            row
+            for at in range(0, len(asset_ids), _IN_CLAUSE_LIMIT)
+            for row in self._session.execute(
+                select(
+                    t.AnnotationRow.asset_id,
+                    t.TrackObservationRow.annotation_id,
+                    t.TrackRow.id,
+                    t.TrackRow.label_class,
+                )
+                .select_from(t.TrackObservationRow)
+                .join(t.TrackRow, t.TrackRow.id == t.TrackObservationRow.track_id)
+                .join(t.AnnotationRow, t.AnnotationRow.id == t.TrackObservationRow.annotation_id)
+                .where(t.AnnotationRow.asset_id.in_(asset_ids[at : at + _IN_CLAUSE_LIMIT]))
+                .order_by(t.TrackObservationRow.annotation_id)
+            ).all()
+        ]
+        found: dict[UUID, list[ObservedLabel]] = {}
+        for asset_id, annotation_id, track_id, label_class in rows:
+            found.setdefault(asset_id, []).append(
+                ObservedLabel(
+                    annotation_id=annotation_id, track_id=track_id, label_class=label_class
+                )
+            )
+        return {asset_id: tuple(labels) for asset_id, labels in found.items()}
 
     def batch_modalities(self, project_id: UUID) -> Mapping[UUID, tuple[Modality, ...]]:
         rows = self._session.execute(

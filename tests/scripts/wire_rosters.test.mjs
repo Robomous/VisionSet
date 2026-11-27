@@ -9,6 +9,9 @@
 //   frontend/ui-core/src/testing/wire.fixtures.ts
 //   frontend/app/e2e/_wire.ts
 //
+// `ASSET_WITHHELD` rides the same gate: `asset_withheld`, the `withheld_actions` a
+// writable asset carries, keyed `progress/CODE` so it parses as one more roster.
+//
 // Both are typed against the generated vocabularies, and that holds *membership*
 // only — `tsc` refuses a value outside the union, which is what catches a
 // withdrawn `BatchAction.DELETE`, and nothing else: the *rows* are hand-written,
