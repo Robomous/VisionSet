@@ -13,6 +13,16 @@ nothing was being distributed. This is the first version that is.
 
 ### Added
 
+- **Apple Create ML object-detection JSON import and export as `createml`.** Only the object-detection annotation
+  schema: an array of `{"image", "annotations": [{"label", "coordinates": {"x", "y", "width", "height"}}]}` with
+  `x` and `y` the box's centre in pixels. The exporter writes the pictures and one `annotations.json` per folder, under
+  `<fold>/` when the release has a split, converting each top-left box to its centre rounded to ten decimals, so a
+  stored box reads back exactly; everything but boxes, and every attribute, is dropped and reported. The importer
+  reads every such array under the source, measures each picture it names because the file records no size, and
+  refuses an `image` that is absolute, leaves the source or is not there, an unreadable picture, malformed or
+  non-finite coordinates and a width or height that is not positive. An annotation with no label or wholly outside
+  its picture is a `label` loss, unknown keys `attribute` losses and unknown `coordinates` keys `geometry` losses
+  (#1167).
 - **LabelMe JSON import and export as `labelme`.** The importer reads every JSON object holding `shapes` as one
   picture's document: a `rectangle` (two opposite corners, either order) as a box and a `polygon` as a polygon, in
   pixels as written, never rounded or normalized; shape `flags` as boolean attributes and a non-empty `description`

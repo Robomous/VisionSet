@@ -78,6 +78,33 @@
         "notes": "A multi-part polygon is read as the union of its parts (a mask unless one drawable ring remains); iscrowd is reported as an attribute loss."
       }
     },
+    "createml": {
+      "task": "object detection",
+      "dialects": [
+        "Apple Create ML object detection: one annotations.json array of image and centre-based pixel boxes"
+      ],
+      "export": {
+        "lossy": true,
+        "geometries": ["bbox"],
+        "degraded_geometries": [],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_createml.py::test_known_top_left_boxes_are_written_as_their_centres_and_read_back", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_createml.py::test_boxes_round_trip_through_a_release_with_a_split", "gate": "python"}
+        ],
+        "notes": "Checked against the documented schema only; Create ML runs on macOS and no test runs it. Fixture and round trip only."
+      },
+      "import": {
+        "geometries": ["bbox"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_createml.py::test_known_centre_boxes_read_as_their_top_left_boxes", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_createml.py::test_losses_are_reported_never_dropped_silently", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_createml.py::test_boxes_round_trip_through_a_release_with_a_split", "gate": "python"}
+        ],
+        "notes": "No test runs Create ML; reads the documented object-detection schema only."
+      }
+    },
     "culane": {
       "task": "lane detection",
       "dialects": [

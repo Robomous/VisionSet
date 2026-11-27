@@ -423,7 +423,8 @@ The fix is vocabulary rather than capability. `Exporter` declares two geometry s
   `{polygon}` for `segmentation-png`, which rasterizes a polygon into its class map; and empty
   for `coco`, which writes a polygon as a polygon and a mask as RLE and drops a rotated box,
   for `yolo-obb` and `dota`, which write a rotated box as itself and drop everything else, for
-  `labelme`, which writes boxes and polygons as themselves and drops everything else, and for
+  `labelme`, which writes boxes and polygons as themselves and drops everything else, for
+  `createml`, which writes boxes as themselves and drops everything else, and for
   `cvat-images` and `cvat-video`, which write a rotated box as a CVAT box and its `rotation`. The two sets are disjoint, and `supported` wins if a plugin
   says both, because resolving a contradiction towards the weaker claim would report a loss that
   does not happen.
@@ -537,6 +538,7 @@ The catalog this build ships, generated from the declarations by
 | `bdd100k-lane` | bdd100k-lane | `other` | `bdd100k-lane` | — | polyline | — | — |
 | `classification` | classification | `other` | `classification` | — | classification_tag | — | — |
 | `coco` | coco | `other` | `coco` | — | bbox, mask, polygon | — | — |
+| `createml` | createml | `other` | `createml` | — | bbox | — | — |
 | `culane` | culane | `other` | `culane` | — | polyline | — | — |
 | `curvelanes` | curvelanes | `other` | `curvelanes` | — | polyline | — | — |
 | `cvat-images` | cvat-images | `other` | `cvat-images` | — | bbox, classification_tag, obb, polygon, polyline | — | — |
@@ -938,6 +940,40 @@ boxes, polylines, masks, tags and 3D geometry are dropped and reported, and conf
 provenance and every attribute value other than a boolean and `description` have nowhere to go.
 An export opens in LabelMe 7.9.1's own reader without repair; other LabelMe versions were not
 tried.
+
+### The Create ML format
+
+`createml` writes Apple Create ML's **object-detection** annotation JSON, and only that: Create ML's
+other tasks (classification folders, hand pose, activity, and so on) are not written. Each folder
+of the export is one Create ML data source - its pictures as `<hash>.<ext>` beside one
+`annotations.json` - at the top of the export for a release without a split recipe, and under
+`<fold>/` for one with. The [`createml` importer](import.md#formats) reads either layout back.
+
+The file is a JSON array with one entry per picture, labelled or not:
+
+```json
+[
+  {
+    "image": "<hash>.png",
+    "annotations": [
+      {"label": "sign", "coordinates": {"x": 12.35, "y": 3.65, "width": 4.1, "height": 1.9}}
+    ]
+  }
+]
+```
+
+`x` and `y` are the box's **centre**, in pixels of the picture as stored, `y` growing downward;
+`width` and `height` are its extent, written as stored. VisionSet stores a box by its top-left
+corner, so the centre is `x + width / 2` and `y + height / 2`, rounded to ten decimal places so
+the file holds no float noise such as `12.350000000000001`; the importer subtracts half the extent
+and rounds the same way, so a box stored with at most ten decimals reads back exactly. A box that
+crosses the picture's border is written as it stands, centre and all, never clamped.
+
+`lossy = True` and `supported_geometries` is `{bbox}`, with nothing degraded: polygons, rotated
+boxes, polylines, masks, tags and 3D geometry are dropped and reported, and attributes,
+confidence and provenance have nowhere to go. The file records no picture size, which a reader
+takes from the picture itself. The output was checked against the documented schema, not opened
+in Create ML itself, which runs only on macOS.
 
 ### The classification format
 

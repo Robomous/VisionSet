@@ -154,6 +154,7 @@ def test_every_installed_exporter_stays_discovered() -> None:
         "dota",
         "segmentation-png",
         "labelme",
+        "createml",
     }
 
 
