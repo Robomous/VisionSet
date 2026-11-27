@@ -28,7 +28,7 @@ from typing import Final
 from visionset.formats._layout import folds_of, write_image
 from visionset.formats._obb import decimal, obb_of
 from visionset.formats._targets import self_target
-from visionset.formats.dota.reader import LABELS_DIRNAME, DotaImporter
+from visionset.formats.dota.reader import DIFFICULT, LABELS_DIRNAME, DotaImporter
 from visionset.kernel.domain import (
     GeometryType,
     Manifest,
@@ -50,9 +50,6 @@ __all__ = [
 ]
 
 IMAGES_DIRNAME: Final = "images"
-
-#: The annotation attribute ``difficult`` is written from.
-DIFFICULT: Final = "difficult"
 
 #: Nine decimals of a pixel keep any box a rectangle to within the reader's tolerance.
 PRECISION: Final = 9

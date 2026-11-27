@@ -23,7 +23,7 @@ from tests.formats.test_yolo_obb import (
 )
 
 from visionset.formats._obb import FITTED
-from visionset.formats.dota import DotaExporter, DotaImporter, category_tokens
+from visionset.formats.dota import DIFFICULT, DotaExporter, DotaImporter, category_tokens
 from visionset.formats.registry import exporters, importers
 from visionset.kernel import ExportSourceUnreadable, ImportSourceUnreadable
 from visionset.kernel.domain import (
@@ -39,6 +39,12 @@ from visionset.kernel.domain import (
     SplitRecipe,
     TargetFamily,
     obb_corners,
+)
+from visionset.kernel.services import (
+    ImportService,
+    ProjectService,
+    SchemaService,
+    WorkspaceService,
 )
 
 
@@ -190,9 +196,7 @@ FLAGGED = LabelClass(
 )
 
 
-def test_the_difficult_attribute_is_written_back_and_its_import_is_a_declared_loss(
-    tmp_path: Path,
-) -> None:
+def test_the_difficult_attribute_round_trips_as_its_flag_with_no_loss(tmp_path: Path) -> None:
     drawing = {
         0: [
             annotation("ship", BOXES[0], difficult=True),
@@ -200,24 +204,38 @@ def test_the_difficult_attribute_is_written_back_and_its_import_is_a_declared_lo
             annotation("ship", BOXES[2]),
         ]
     }
-    fixture = Fixture(tmp_path / "written", images=1, classes=(FLAGGED,))
+    fixture = Fixture(tmp_path / "origin", images=1, classes=(FLAGGED,))
     fixture.label(drawing)
-    out = _export(fixture, tmp_path / "written" / "out")
+    out = _export(fixture, tmp_path / "exported")
     fixture.close()
     assert sorted(row[9] for row in _rows(out)) == ["0", "0", "1"]
 
-    original, imported, plan = round_trip(
-        tmp_path / "trip",
-        (FLAGGED,),
-        drawing,
-        DotaExporter(),
-        DotaImporter(),
-        ImportConsent(kinds=frozenset({ImportLossKind.ATTRIBUTE})),
-    )
-    assert [(one.kind, one.subject, one.reason, one.count) for one in plan.losses] == [
-        (ImportLossKind.ATTRIBUTE, "ship", "difficult is not imported", 1)
+    workspace = WorkspaceService.init(tmp_path / "copy")
+    project = ProjectService(workspace).create("copy")
+    run = ImportService(workspace).commit(project.id, DotaImporter(), out, consent=ImportConsent())
+    assert run.losses == ()
+    with workspace.unit_of_work() as uow:
+        written = [
+            label.attributes
+            for asset in uow.assets.list(project.id)
+            for label in uow.annotations.list(asset.id)
+        ]
+    assert sorted(written, key=lambda one: one[DIFFICULT]) == [
+        {DIFFICULT: False},
+        {DIFFICULT: False},
+        {DIFFICULT: True},
     ]
-    assert_same_labels(original, imported)
+    (schema,) = SchemaService(workspace).list_versions(project.id)
+    assert schema.classes[0].attributes == FLAGGED.attributes
+    workspace.close()
+
+    again = DotaImporter().read(out)
+    assert again.losses == ()
+    assert sorted(row[9] for row in _rows(out)) == sorted(
+        "1" if label.attributes[DIFFICULT] else "0"
+        for image in again.images
+        for label in image.labels
+    )
 
 
 # --- import ---------------------------------------------------------------------
@@ -344,13 +362,35 @@ def test_a_box_too_small_to_judge_by_shape_is_judged_by_the_rows_precision(
     ]
 
 
+def test_a_difficult_flag_of_0_or_1_is_the_boolean_attribute_and_no_flag_is_none(
+    tmp_path: Path,
+) -> None:
+    rows = (
+        f"{_corners(RECTANGLE)} ship 1\n{_corners(RECTANGLE)} ship 0\n{_corners(RECTANGLE)} plane\n"
+    )
+    dataset = _read(_source(tmp_path, rows))
+
+    assert dataset.losses == ()
+    assert [label.attributes for label in dataset.images[0].labels] == [
+        {DIFFICULT: True},
+        {DIFFICULT: False},
+        {},
+    ]
+    assert [(one.name, one.attributes) for one in dataset.classes] == [
+        ("ship", (Attribute(name=DIFFICULT, kind="boolean"),)),
+        ("plane", ()),
+    ]
+
+
 def test_a_difficult_flag_other_than_0_or_1_is_an_attribute_loss(tmp_path: Path) -> None:
     dataset = _read(_source(tmp_path, f"{_corners(RECTANGLE)} ship 2\n"))
 
     assert _losses(dataset) == [
         (ImportLossKind.ATTRIBUTE, "ship", "its difficult flag is neither 0 nor 1", 1)
     ]
-    assert len(dataset.images[0].labels) == 1
+    (label,) = dataset.images[0].labels
+    assert label.attributes == {}
+    assert dataset.classes[0].attributes == ()
 
 
 @pytest.mark.parametrize("token", ["nan", "inf"])
