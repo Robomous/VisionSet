@@ -35,6 +35,7 @@ from tests.formats.test_ultralytics import CLASSES, Fixture, _box
 
 from visionset.formats.classification import LABELS_FILENAME as CLASSIFICATION_LABELS
 from visionset.formats.coco import ANNOTATIONS_DIRNAME as COCO_ANNOTATIONS_DIRNAME
+from visionset.formats.createml import ANNOTATIONS_FILENAME as CREATEML_ANNOTATIONS
 from visionset.formats.lanes import LABELS_DIRNAME as LANE_LABELS_DIRNAME
 from visionset.formats.registry import exporters
 from visionset.formats.segmentation_png import DESCRIPTOR_FILENAME as SEGMENTATION_DESCRIPTOR
@@ -223,6 +224,15 @@ def _labelme_counts(root: Path) -> Counter[str]:
     return found
 
 
+def _createml_counts(root: Path) -> Counter[str]:
+    """Every annotation in a Create ML array, by its ``label``; other JSON is not a document."""
+    found: Counter[str] = Counter()
+    for path in sorted(root.rglob(CREATEML_ANNOTATIONS)):
+        for entry in json.loads(path.read_text(encoding="utf-8")):
+            found.update(annotation["label"] for annotation in entry["annotations"])
+    return found
+
+
 def _segmentation_png_counts(root: Path) -> Counter[str]:
     """Every class present in a mask, once per mask, by the name the descriptor gives its id.
 
@@ -255,6 +265,7 @@ COUNTERS: dict[str, Callable[[Path], Counter[str]]] = {
     "cvat-video": _cvat_video_counts,
     "segmentation-png": _segmentation_png_counts,
     "labelme": _labelme_counts,
+    "createml": _createml_counts,
 }
 
 #: Formats whose layout depends on what the release holds, and are therefore

@@ -249,6 +249,14 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "targets": ["coco"],
             },
             {
+                "name": "createml",
+                "lossy": True,
+                "geometries": ["bbox"],
+                "degraded_geometries": [],
+                "modalities": ["image"],
+                "targets": ["createml"],
+            },
+            {
                 "name": "culane",
                 "lossy": True,
                 "geometries": ["polyline"],
@@ -405,7 +413,7 @@ def test_the_installed_exporters_declare_what_they_can_carry() -> None:
                 "targets": ["yolov7"],
             },
         ],
-        "total": 20,
+        "total": 21,
     }
 
 

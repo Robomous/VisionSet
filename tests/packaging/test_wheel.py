@@ -353,6 +353,7 @@ def test_the_installed_command_finds_every_exporter(installed: Path) -> None:
         "bdd100k-lane",
         "classification",
         "coco",
+        "createml",
         "culane",
         "curvelanes",
         "cvat-images",
