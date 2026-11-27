@@ -45,7 +45,7 @@ from typing import Annotated, Final, Generic, Literal, Self, TypeVar, assert_nev
 from uuid import UUID, uuid4
 
 from fastapi import Query
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, PrivateAttr, model_validator
 
 from visionset.formats.matrix import Evidence, FormatMatrix, MatrixRow
 from visionset.inference import (
@@ -2380,8 +2380,18 @@ class MaskBody(BaseModel):
     size: tuple[Annotated[int, Field(strict=True)], Annotated[int, Field(strict=True)]]
     counts: str
 
+    # The body validator and the route each ask for the domain mask; decoding a
+    # large one is the expensive part, so the second ask reuses the first.
+    _domain: tuple[tuple[int, int], str, MaskGeometry] | None = PrivateAttr(default=None)
+
     def to_domain(self) -> MaskGeometry:
-        return MaskGeometry(size=self.size, counts=self.counts)
+        if self._domain is not None:
+            size, counts, geometry = self._domain
+            if size == self.size and counts is self.counts:
+                return geometry
+        geometry = MaskGeometry(size=self.size, counts=self.counts)
+        self._domain = (self.size, self.counts, geometry)
+        return geometry
 
     @classmethod
     def of(cls, geometry: MaskGeometry) -> Self:

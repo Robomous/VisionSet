@@ -539,6 +539,10 @@ nothing was being distributed. This is the first version that is.
 
 ### Fixed
 
+- **A mask is decoded once per write and not again on read.** Writing a `mask` annotation decoded its counts about
+  six times, plus once more for every mask already on the asset; reading one back decoded it twice. A write now
+  decodes the new mask once, and a mask read back from the workspace store is trusted as the canonical form the
+  write stored. What is accepted and refused, and the wire form, are unchanged (#1214).
 - **A replacing pre-label run no longer deletes labels another open batch confirmed.** A frame may sit in several
   open batches at once, and a run with `replace_model_labels` in one of them deleted the labels a person had just
   confirmed in another, which then completed and promoted labels nobody judged. The run now passes over, and
