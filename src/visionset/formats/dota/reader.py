@@ -8,16 +8,17 @@ benchmark's ``<fold>/images`` layout reads. ``imagesource:`` and ``gsd:`` header
 lines are skipped. A row is eight pixel coordinates, the corners of a rectangle
 in order round it from any start in either direction, then a category and an
 optional ``difficult`` flag; each becomes a canonical rotated box of the class
-the category names. Corners only near a rectangle, as whole-pixel
+the category names, carrying a ``0`` or ``1`` flag as the boolean ``difficult``
+attribute the exporter writes it from. A class with a flagged box defines that
+attribute; a row with no flag carries no value. Corners only near a rectangle, as whole-pixel
 hand-drawn ones usually are, become the nearest rectangle and a degraded
 geometry, by the rule in :mod:`visionset.formats._obb`. The classes are the categories the kept
 boxes name, in the order they first appear.
 
 A row of any other length, four corners farther than that from a rectangle or
 enclosing no area and a box wholly outside its measured picture are each a lost
-label. The
-importer has no place for ``difficult``: a box flagged ``1`` is kept and its
-flag counted as a lost attribute, as ``voc`` counts its own. A picture with no
+label. A ``difficult`` flag other than ``0`` or ``1`` is a lost attribute and
+its box is kept. A picture with no
 label file is imported unlabelled, a label file with no picture loses its rows,
 and the split is not imported.
 """
@@ -40,6 +41,7 @@ from visionset.formats._reading import (
     to_dataset,
 )
 from visionset.kernel.domain import (
+    Attribute,
     GeometryType,
     ImportedClass,
     ImportedDataset,
@@ -52,10 +54,15 @@ from visionset.kernel.errors import ImportSourceUnreadable
 
 LABELS_DIRNAME: Final = "labelTxt"
 
+#: The boolean annotation attribute ``difficult`` is read into and written from.
+DIFFICULT: Final = "difficult"
+
 _LABEL: Final = "DOTA"
 _LABEL_SUFFIX: Final = ".txt"
 _HEADERS: Final = frozenset({"imagesource", "gsd"})
 _ROW_LENGTHS: Final = (9, 10)
+_FLAGS: Final = {"0": False, "1": True}
+_DIFFICULT: Final = Attribute(name=DIFFICULT, kind="boolean")
 
 
 class DotaImporter:
@@ -87,6 +94,7 @@ class DotaImporter:
             )
 
         classes: dict[str, None] = {}
+        flagged: set[str] = set()
         losses: Losses = Losses()
         images: list[ImportedImage] = []
         claimed: set[PurePosixPath] = set()
@@ -109,6 +117,7 @@ class DotaImporter:
                 if (label := _label(row, str(label_path), size, losses)) is not None
             ]
             classes.update((label.class_name, None) for label in labels)
+            flagged.update(label.class_name for label in labels if label.attributes)
             width, height = size if size is not None else (None, None)
             images.append(
                 ImportedImage(path=picture, width=width, height=height, labels=tuple(labels))
@@ -119,7 +128,14 @@ class DotaImporter:
             losses[(ImportLossKind.LABEL, str(label_path), "a label file with no picture")] += count
 
         return to_dataset(
-            (ImportedClass(name=name, geometries=(GeometryType.OBB,)) for name in classes),
+            (
+                ImportedClass(
+                    name=name,
+                    geometries=(GeometryType.OBB,),
+                    attributes=(_DIFFICULT,) if name in flagged else (),
+                )
+                for name in classes
+            ),
             images,
             losses,
             _LABEL,
@@ -175,12 +191,14 @@ def _label(
         return None
     if reason:
         losses[(ImportLossKind.GEOMETRY, name, reason)] += 1
-    difficult = tokens[9] if len(tokens) == 10 else "0"
-    if difficult == "1":
-        losses[(ImportLossKind.ATTRIBUTE, name, "difficult is not imported")] += 1
-    elif difficult != "0":
-        losses[(ImportLossKind.ATTRIBUTE, name, "its difficult flag is neither 0 nor 1")] += 1
-    return ImportedLabel(class_name=name, geometry=geometry)
+    attributes = {}
+    if len(tokens) == 10:
+        flag = _FLAGS.get(tokens[9])
+        if flag is None:
+            losses[(ImportLossKind.ATTRIBUTE, name, "its difficult flag is neither 0 nor 1")] += 1
+        else:
+            attributes[DIFFICULT] = flag
+    return ImportedLabel(class_name=name, geometry=geometry, attributes=attributes)
 
 
-__all__ = ["LABELS_DIRNAME", "DotaImporter"]
+__all__ = ["DIFFICULT", "LABELS_DIRNAME", "DotaImporter"]
