@@ -46,8 +46,8 @@ WORKFLOW: Final = """\
 
 1. **Project.** `list_projects`, `create_project`. A project owns a dataset.
 2. **Schema.** `create_schema_version` with the classes and the geometries each allows
-   (bbox, obb, polygon, polyline, mask, classification_tag). A version never changes; the next one is a
-   new version. `get_schema` shows the one in force.
+   (bbox, obb, polygon, polyline, mask, classification_tag). A version never changes; the next
+   one is a new version. `get_schema` shows the one in force.
 3. **Ingest.** `ingest` reads one directory of images, top level only, into a draft
    batch. Anything unreadable is reported in `failures`.
 4. **Open the work.** `approve_batch` freezes membership and pins the schema;

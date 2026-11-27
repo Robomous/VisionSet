@@ -151,10 +151,10 @@ def test_a_class_bound_to_an_unimplemented_geometry_is_refused(
         call(
             "create_schema_version",
             project=named,
-            classes=[{"name": "lane", "geometries": ["mask"]}],
+            classes=[{"name": "face", "geometries": ["keypoints"]}],
         )
     )
-    assert "mask" in refusal["message"]
+    assert "keypoints" in refusal["message"]
 
 
 def test_the_domain_refuses_a_malformed_class_before_the_body_runs(

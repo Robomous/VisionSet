@@ -10,6 +10,7 @@ from tests.kernel.test_release_tracks import _asset, _observing
 
 from visionset.kernel.domain import (
     MANIFEST_VERSION,
+    MASK_MANIFEST_VERSION,
     OBB_MANIFEST_VERSION,
     SEQUENCED_MANIFEST_VERSION,
     TRACKED_MANIFEST_VERSION,
@@ -56,7 +57,8 @@ def test_a_version_7_document_reads_and_hashes_as_it_was_published() -> None:
     assert manifest.sources == ()
     assert canonical_bytes(manifest) == _VERSION_7.encode()
     assert manifest_version_for(manifest.assets, manifest.tracks) == TRACKED_MANIFEST_VERSION
-    assert MANIFEST_VERSION == SEQUENCED_MANIFEST_VERSION == OBB_MANIFEST_VERSION + 1 == 9
+    assert SEQUENCED_MANIFEST_VERSION == OBB_MANIFEST_VERSION + 1 == 9
+    assert MANIFEST_VERSION == MASK_MANIFEST_VERSION == SEQUENCED_MANIFEST_VERSION + 1
 
 
 def test_sources_and_unknown_timing_need_version_9() -> None:

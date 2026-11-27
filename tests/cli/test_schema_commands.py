@@ -172,9 +172,9 @@ def test_a_blank_class_name_exits_two_and_says_where(root: Path, tmp_path: Path)
 
 
 def test_an_unimplemented_geometry_exits_one(root: Path, tmp_path: Path) -> None:
-    # ``mask`` is a legal ``GeometryType`` member, so the document parses; it is
+    # ``keypoints`` is a legal ``GeometryType`` member, so the document parses; it is
     # the *service* that refuses it. A domain refusal, therefore exit 1.
-    path = _document(tmp_path, [{"name": "road", "geometries": ["mask"]}])
+    path = _document(tmp_path, [{"name": "face", "geometries": ["keypoints"]}])
     result = run(root, "schema", "apply", str(path), "-p", "road-signs")
     assert result.exit_code == 1, result.output
     assert "Error:" in result.stderr
