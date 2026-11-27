@@ -49,6 +49,7 @@ from visionset.kernel.domain.calibration import (
 )
 from visionset.kernel.domain.capabilities import (
     ASSET_MOVES,
+    ASSET_WITHHOLDINGS,
     BATCH_GATES,
     BATCH_MOVES,
     CONNECTION_GATES,
@@ -62,7 +63,9 @@ from visionset.kernel.domain.capabilities import (
     ConnectionAction,
     JobAction,
     Move,
+    Withholding,
     asset_actions,
+    asset_withheld,
     batch_actions,
     connection_actions,
     job_actions,
@@ -424,6 +427,7 @@ from visionset.kernel.domain.token import (
 )
 from visionset.kernel.domain.track import (
     ObservedFrame,
+    ObservedLabel,
     Track,
     TrackDetail,
     TrackObservation,
@@ -445,6 +449,9 @@ __all__ = [
     "job_actions",
     "batch_actions",
     "asset_actions",
+    "asset_withheld",
+    "ASSET_WITHHOLDINGS",
+    "Withholding",
     "connection_actions",
     "Move",
     "JobAction",
@@ -635,6 +642,7 @@ __all__ = [
     "ObservedFrame",
     "Track",
     "TrackDetail",
+    "ObservedLabel",
     "TrackObservation",
     "TrackStatus",
     "LetterboxFit",

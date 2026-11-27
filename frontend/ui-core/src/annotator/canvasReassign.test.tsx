@@ -227,3 +227,36 @@ describe("what the picker does", () => {
     expect(store.canUndo).toBe(false);
   });
 });
+
+describe("an object a track observes", () => {
+  const onTrack = new Map([["a", { labelClass: "vehicle", track: "vehicle 17" }]]);
+
+  it("offers only the track's class, naming the track on every other", () => {
+    render(mount(selectedBox(), { openFor: "a", classLocks: onTrack }));
+
+    expect(screen.getByTestId("canvas-reclass-vehicle").getAttribute("aria-disabled")).not.toBe("true");
+    for (const name of ["pedestrian", "lane", "daytime"]) {
+      const item = screen.getByTestId(`canvas-reclass-${name}`);
+      expect(item.getAttribute("aria-disabled")).toBe("true");
+      expect(item.textContent).toContain("on track vehicle 17");
+    }
+  });
+
+  it("names the class when the track is one this page cannot name", () => {
+    render(mount(selectedBox(), { openFor: "a", classLocks: new Map([["a", { labelClass: "vehicle", track: null }]]) }));
+
+    expect(screen.getByTestId("canvas-reclass-pedestrian").textContent).toContain("on a track of “vehicle”");
+  });
+
+  it("changes nothing on the hotkey of another class", async () => {
+    const store = selectedBox();
+    const onOpenChange = vi.fn();
+    render(mount(store, { openFor: "a", onOpenChange, classLocks: onTrack }));
+
+    await userEvent.keyboard("2");
+
+    expect(store.document.annotations.get("a")?.label_class).toBe("vehicle");
+    expect(store.canUndo).toBe(false);
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+});

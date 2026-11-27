@@ -359,26 +359,40 @@ position last stepped to is what tells the two apart.
 
 **Two writes, both a job's, both the kernel's to judge.** *Add selected object* observes the one
 selected drawn object at this frame, and *Remove from track* takes the track's observation here away
-— the object stays, as the kernel keeps it. The `+` creates a track of the object's class and
-observes the object with it; a refused observe leaves the new track listed, empty, and says so.
+— the object stays, as the kernel keeps it. The `+` starts a track of the object's class
+observing the object, in one write: a refusal leaves no track behind, and says why.
 Adding and starting save first, so an object drawn a moment ago is stored before a track names it,
 and a refused save stops there with its own notice; removing names only the occurrence and needs no
 save. What a write came to is held above the frame, so one that lands after a step is still said. Where this frame is several positions of its source, a write
-asks which (`At frame 4`). Every write is gated on the frame declaring `annotate` and is otherwise
-withheld with its reason: `Viewing only`, `Select one drawn object to add it`, `That object is
-already on car 7`, `The track already follows an object on this frame`. An object of another class
-is listed-and-refused, as the reassignment menu refuses a geometry: `This track follows “car”`.
-What only the kernel can know — a model's labels nobody has judged yet (`ASSET_NOT_JUDGED`), an
-asset another job carries — is its refusal, rendered under the region as prose from the one
-vocabulary; what landed is said there too (`Added at frame 4`). Merging, splitting, changing a
+asks which (`At frame 4`). Removing is gated on the frame declaring `annotate`; adding and starting
+on its declaring `observe`, which a frame of a model's labels nobody has judged yet does not. Each
+is otherwise withheld with its reason: `Viewing only`, the frame's own `withheld_actions` code as
+prose from the one vocabulary (`ASSET_NOT_JUDGED`: confirm or edit the model's labels first),
+`Select one drawn object to add it`, `That object is already on car 7`, `The track already follows
+an object on this frame`. An object of another class is listed-and-refused, as the reassignment
+menu refuses a geometry: `This track follows “car”`. What only the kernel can know — an asset
+another job carries, a declaration gone stale — is its refusal, rendered under the region as prose;
+what landed is said there too (`Added at frame 4`). Merging, splitting, changing a
 track's class and deleting a track are not offered in the editor.
 
 **An observed object's row carries a track badge** (`Route`), after the model mark: its name and
 position on hover (`On track car 7 at frame 12`), and a press follows that track. The badge is keyed
 by the annotation the kernel stored, so **a pasted copy is on no track** — paste mints a fresh id,
-which no observation names — and copy and paste are otherwise untouched by tracking. Changing the
-class of an observed object from its row is refused at save (`TRACK_CLASS_MISMATCH`), because a
-track's objects carry its class; deleting one deletes its observation, and the region rereads.
+which no observation names — and copy and paste are otherwise untouched by tracking. **The
+reassignment menu offers an observed object only its track's class**: from the row and from the
+canvas it lists every other class disabled with the track named (`on track car 7`), and their
+hotkeys do nothing. This source's tracks, once read, are the word on themselves, so an object a
+Remove from track here has just freed is free at once. The frame's own declaration — `observed` on
+the batch asset, naming every annotation a track observes from **any** source — covers what they
+cannot: a track of another sequence that decoded to the same bytes, and any track while this
+source's read is pending or has failed (named `on a track of “car”`, as the page cannot name it).
+**Undo and redo keep the lock too**: a step that would move a locked object from the class it holds
+to any but its track's is refused, and the control reads disabled with the reason (`Undo would move
+an object off its track's class`). The history is one line, so a refused step also holds back every
+step behind it until the object's track changes. The kernel still refuses such a change at save
+(`TRACK_CLASS_MISMATCH`), as prose in the save notice, for a declaration that has gone stale.
+Changing a whole track's class is a track operation. Deleting an observed object deletes its
+observation, and the region rereads.
 
 The split between the regions is a **hairline, not a handle** — a draggable splitter would
 add per-user state to a surface whose whole value is being the same on every frame. The two
@@ -392,7 +406,8 @@ The row's **class name** is the reassignment control — the name and a small ch
 icon beside it, because what the menu changes is what the name says. Pressing it opens the
 menu without selecting the row. The menu lists every class the schema declares, with
 the ones whose geometry does not match this annotation disabled and **carrying the reason**
-(`needs a polygon`). Listed-and-refused rather than filtered out: a short list with no
+(`needs a polygon`), and, for an object a track observes, every class but the track's
+(`on track car 7`). Listed-and-refused rather than filtered out: a short list with no
 explanation reads as a schema missing its classes, and the rule — the kernel judges
 geometry per class — is invisible exactly when somebody is hunting for the class that is
 not there. Applied on selection, not behind an Apply, so there is no per-keystroke state to

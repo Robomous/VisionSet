@@ -175,6 +175,8 @@ function answer(path: string): unknown {
       }),
       annotation_count: 0,
       min_confidence: null,
+      withheld_actions: [],
+      observed: [],
     }));
     return { items, total: items.length };
   }

@@ -57,6 +57,7 @@ export {
 } from "./core/state/commands";
 export {
   AnnotatorStore,
+  type HistoryGuard,
   type Projection,
   type StoreSnapshot,
   type VertexRef,

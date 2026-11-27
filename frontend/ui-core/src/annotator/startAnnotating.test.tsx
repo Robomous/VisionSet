@@ -113,6 +113,8 @@ function assetOut(): Record<string, unknown> {
     allowed_actions: assetActions("unannotated", { batchState, jobState }),
     annotation_count: 0,
     min_confidence: null,
+    withheld_actions: [],
+    observed: [],
   };
 }
 

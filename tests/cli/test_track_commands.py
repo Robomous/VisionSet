@@ -185,3 +185,35 @@ def test_unknown_timing_reads_as_a_dash_and_as_null(root: Path, tmp_path: Path) 
     rows = ok(root, "track", "occurrences", "--source", source).splitlines()[1:]
     assert rows
     assert all(row.split()[2] == "-" for row in rows)
+
+
+def test_start_creates_and_observes_in_one_write_or_leaves_nothing(
+    root: Path, world: TrackWorld
+) -> None:
+    started = payload(
+        root,
+        "track",
+        "start",
+        "--job",
+        world.jobs[0],
+        "--occurrence",
+        world.occurrences[2],
+        "--annotation",
+        world.van,
+    )
+    assert started["label_class"] == "van"
+    assert _positions(started) == [2]
+    listed = payload(root, "track", "list", "--source", world.source)["total"]
+    refused = _refusal(
+        root,
+        "track",
+        "start",
+        "--job",
+        world.jobs[0],
+        "--occurrence",
+        world.occurrences[3],
+        "--annotation",
+        world.spare[3],
+    )
+    assert refused["code"] == "ASSET_NOT_IN_JOB"
+    assert payload(root, "track", "list", "--source", world.source)["total"] == listed

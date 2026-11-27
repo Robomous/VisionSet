@@ -5,12 +5,15 @@ from __future__ import annotations
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 from tests.fixtures.tracks import FRAMES, TrackWorld, track_world
 from tests.server._api import api_workspace, served_app
+
+from visionset.kernel.domain import Annotation, BboxGeometry
+from visionset.kernel.services import AnnotationService, WorkspaceService
 
 
 class Rig:
@@ -200,6 +203,105 @@ def test_an_observation_outside_the_job_is_a_409_keeping_its_code(rig: Rig) -> N
         409,
         "ASSET_NOT_IN_JOB",
     )
+
+
+@pytest.fixture()
+def unjudged(tmp_path: Path) -> Iterator[tuple[Rig, str]]:
+    """The rig, with a model's unjudged box on position 4 of the second job."""
+    root = tmp_path / "ws"
+    secret = api_workspace(root)
+    world = track_world(root, tmp_path)
+    workspace = WorkspaceService.open(root)
+    try:
+        (model_box,) = AnnotationService(workspace).enter_unreviewed(
+            UUID(world.jobs[1]),
+            [
+                Annotation(
+                    asset_id=UUID(world.assets[4]),
+                    label_class="car",
+                    schema_version=1,
+                    geometry=BboxGeometry(x=1.0, y=1.0, width=5.0, height=5.0),
+                    provenance="model",
+                    model_ref="acme/detector@abc123",
+                )
+            ],
+        )
+    finally:
+        workspace.close()
+    with TestClient(served_app(root), headers={"Authorization": f"Bearer {secret}"}) as client:
+        yield Rig(client, world), str(model_box.id)
+
+
+def test_a_frame_declares_whether_it_can_be_observed_and_why_not(
+    unjudged: tuple[Rig, str],
+) -> None:
+    rig, model_box = unjudged
+    response = rig.client.get(f"/batches/{rig.world.batch}/assets", params={"limit": FRAMES})
+    assert response.status_code == 200, response.text
+    by_id = {item["id"]: item for item in response.json()["items"]}
+
+    pre_labeled = by_id[rig.world.assets[4]]
+    assert pre_labeled["progress"] == "pre_labeled"
+    assert "annotate" in pre_labeled["allowed_actions"]
+    assert "observe" not in pre_labeled["allowed_actions"]
+    assert pre_labeled["withheld_actions"] == [{"code": "ASSET_NOT_JUDGED", "actions": ["observe"]}]
+
+    untouched = by_id[rig.world.assets[5]]
+    assert "observe" in untouched["allowed_actions"]
+    assert untouched["withheld_actions"] == []
+    assert untouched["observed"] == []
+    assert by_id[rig.world.assets[0]]["observed"] == [
+        {"annotation_id": rig.world.observed[0], "track_id": rig.world.track, "label_class": "car"}
+    ]
+
+    _refused(
+        rig.client.post(
+            rig.job(1, f"/{rig.world.track}/observations"),
+            json={"occurrence_id": rig.world.occurrences[4], "annotation_id": model_box},
+        ),
+        409,
+        "ASSET_NOT_JUDGED",
+    )
+
+
+def test_a_track_starts_from_an_object_in_one_write(rig: Rig) -> None:
+    before = len(rig.client.get(f"/sources/{rig.world.source}/tracks").json()["items"])
+    started = rig.client.post(
+        rig.job(0),
+        json={"occurrence_id": rig.world.occurrences[2], "annotation_id": rig.world.van},
+    )
+    assert started.status_code == 201, started.text
+    assert started.json()["label_class"] == "van"
+    assert _positions(started.json()) == [2]
+    after = rig.client.get(f"/sources/{rig.world.source}/tracks").json()["items"]
+    assert len(after) == before + 1
+
+
+def test_a_start_through_a_job_not_carrying_the_frame_is_a_409(rig: Rig) -> None:
+    before = rig.client.get(f"/sources/{rig.world.source}/tracks").json()["items"]
+    _refused(
+        rig.client.post(
+            rig.job(0),
+            json={"occurrence_id": rig.world.occurrences[3], "annotation_id": rig.world.spare[3]},
+        ),
+        409,
+        "ASSET_NOT_IN_JOB",
+    )
+    assert rig.client.get(f"/sources/{rig.world.source}/tracks").json()["items"] == before
+
+
+def test_a_refused_start_leaves_no_track(unjudged: tuple[Rig, str]) -> None:
+    rig, model_box = unjudged
+    before = rig.client.get(f"/sources/{rig.world.source}/tracks").json()["items"]
+    _refused(
+        rig.client.post(
+            rig.job(1),
+            json={"occurrence_id": rig.world.occurrences[4], "annotation_id": model_box},
+        ),
+        409,
+        "ASSET_NOT_JUDGED",
+    )
+    assert rig.client.get(f"/sources/{rig.world.source}/tracks").json()["items"] == before
 
 
 def test_an_unknown_job_is_not_found(rig: Rig) -> None:

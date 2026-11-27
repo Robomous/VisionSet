@@ -474,9 +474,10 @@
         "type": "object"
       },
       "AssetAction": {
-        "description": "What can be asked of one asset inside a batch.\n\n``ANNOTATE`` is the odd one and the important one: it is not a progress move\nbut the right to write labels at all, which is ``WRITABLE_PROGRESS`` and the\nbatch gate together. The other six each name one edge of\n``ASSET_PROGRESS_TRANSITIONS`` \u2014 see :data:`ASSET_MOVES`.",
+        "description": "What can be asked of one asset inside a batch.\n\n``ANNOTATE`` is the odd one and the important one: it is not a progress move\nbut the right to write labels at all, which is ``WRITABLE_PROGRESS`` and the\nbatch gate together. ``OBSERVE`` is the right to add one of the asset's\nlabels to a track: ``annotate``, less what :data:`ASSET_WITHHOLDINGS`\nwithholds. The other six each name one edge of\n``ASSET_PROGRESS_TRANSITIONS`` \u2014 see :data:`ASSET_MOVES`.",
         "enum": [
           "annotate",
+          "observe",
           "skip",
           "restore",
           "confirm",
@@ -1289,6 +1290,13 @@
             "title": "Modality",
             "type": "string"
           },
+          "observed": {
+            "items": {
+              "$ref": "#/components/schemas/ObservedLabelOut"
+            },
+            "title": "Observed",
+            "type": "array"
+          },
           "point_cloud": {
             "anyOf": [
               {
@@ -1347,6 +1355,13 @@
               }
             ],
             "title": "Width"
+          },
+          "withheld_actions": {
+            "items": {
+              "$ref": "#/components/schemas/WithheldActionsOut"
+            },
+            "title": "Withheld Actions",
+            "type": "array"
           }
         },
         "required": [
@@ -1366,6 +1381,8 @@
           "job_id",
           "progress",
           "allowed_actions",
+          "withheld_actions",
+          "observed",
           "annotation_count",
           "min_confidence"
         ],
@@ -4578,6 +4595,32 @@
           "annotation_id"
         ],
         "title": "ObservationCreate",
+        "type": "object"
+      },
+      "ObservedLabelOut": {
+        "description": "An annotation of this asset a track observes, and the class that track keeps it to.",
+        "properties": {
+          "annotation_id": {
+            "format": "uuid",
+            "title": "Annotation Id",
+            "type": "string"
+          },
+          "label_class": {
+            "title": "Label Class",
+            "type": "string"
+          },
+          "track_id": {
+            "format": "uuid",
+            "title": "Track Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "annotation_id",
+          "track_id",
+          "label_class"
+        ],
+        "title": "ObservedLabelOut",
         "type": "object"
       },
       "PointCloudBoundsOut": {
@@ -8172,6 +8215,28 @@
           "error_code"
         ],
         "title": "WeightDownloadOut",
+        "type": "object"
+      },
+      "WithheldActionsOut": {
+        "description": "Actions a writable asset does not declare, and the refusal code asking for one gets.",
+        "properties": {
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/AssetAction"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "actions"
+        ],
+        "title": "WithheldActionsOut",
         "type": "object"
       },
       "WorkspaceTotalsOut": {
@@ -13902,6 +13967,115 @@
         "summary": "Start Job",
         "tags": [
           "jobs"
+        ]
+      }
+    },
+    "/jobs/{job_id}/tracks": {
+      "post": {
+        "description": "Start a track of the annotation's class on the occurrence's source, observing it there.\n\nOne write: every refusal is decided before anything is written, so a refused\nstart leaves no track behind. The observation is judged as an observe is,\nand the class against the batch's pinned version. 404: `JOB_NOT_FOUND`,\n`FRAME_OCCURRENCE_NOT_FOUND`, `ANNOTATION_NOT_FOUND`. 409:\n`BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`, `ASSET_NOT_IN_JOB` (rendered as a\n409 here), `ASSET_NOT_WRITABLE`, `ASSET_NOT_JUDGED`,\n`ANNOTATION_ALREADY_OBSERVED`. 422: `SOURCE_NOT_SEQUENCE`,\n`ANNOTATION_NOT_AT_OCCURRENCE`, `INVALID_ANNOTATION`, `INVALID_NAME`,\n`LABEL_CLASS_NOT_IN_SCHEMA`.",
+        "operationId": "start_track",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObservationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Missing or invalid bearer token"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "No such resource"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource's state refuses this request"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The request payload is not processable"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unhandled server error, with an incident id"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The workspace is busy; retry after the header says"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Start Track",
+        "tags": [
+          "tracks"
         ]
       }
     },

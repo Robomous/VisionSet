@@ -27,10 +27,13 @@ from collections.abc import Iterable, Sequence
 from uuid import UUID
 
 from visionset.kernel.domain import (
+    ASSET_WITHHOLDINGS,
     SEQUENCE_KINDS,
+    Annotation,
     AnnotationJob,
     AnnotationOperation,
     AnnotationSchema,
+    AssetAction,
     AssetProgress,
     Batch,
     FrameOccurrence,
@@ -45,7 +48,6 @@ from visionset.kernel.errors import (
     AnnotationAlreadyObserved,
     AnnotationNotAtOccurrence,
     AssetNotInBatch,
-    AssetNotJudged,
     BatchNotFound,
     FrameOccurrenceNotFound,
     InvalidAnnotation,
@@ -265,7 +267,8 @@ class TrackService:
             AnnotationNotAtOccurrence: the annotation sits on another asset.
             AssetNotInJob: the job does not carry the occurrence's asset.
             AssetNotWritable: that asset's progress says its labeling is over.
-            AssetNotJudged: that asset is ``pre_labeled``; nobody has judged its labels.
+            AssetNotJudged: ``ASSET_WITHHOLDINGS`` withholds ``observe`` at that asset's
+                progress - today ``pre_labeled``, whose labels nobody has judged.
             TrackClassMismatch: the annotation's class is not the track's.
             InvalidAnnotation: the annotation is a 3D label; tracks follow 2D ones.
             OccurrenceAlreadyObserved: the track already observes the occurrence.
@@ -276,40 +279,92 @@ class TrackService:
             track = self._require_track(uow, track_id, project_id=batch.project_id)
             occurrence = self._require_occurrence(uow, track, occurrence_id)
             annotation = self._annotations.require_annotation(uow, annotation_id)
-            if annotation.asset_id != occurrence.asset_id:
-                raise AnnotationNotAtOccurrence(
-                    f"annotation {annotation.id} is on asset {annotation.asset_id}, and "
-                    f"occurrence {occurrence.id} decoded to asset {occurrence.asset_id}"
-                )
-            require_writable(job, occurrence.asset_id)
-            if job.progress[occurrence.asset_id] is AssetProgress.PRE_LABELED:
-                raise AssetNotJudged(
-                    f"asset {occurrence.asset_id} in job {job.id} is 'pre_labeled', and a "
-                    f"replacing pre-label run would delete what the track observes; edit or "
-                    f"confirm the asset first"
-                )
-            if annotation.label_class != track.label_class:
-                raise TrackClassMismatch(
-                    f"annotation {annotation.id} is {annotation.label_class!r} and track "
-                    f"{track.id} is {track.label_class!r}"
-                )
-            require_trackable(uow, annotation)
-            if any(o.occurrence_id == occurrence.id for o in uow.track_observations.list(track.id)):
-                raise OccurrenceAlreadyObserved(
-                    f"track {track.id} already observes occurrence {occurrence.id} "
-                    f"(position {occurrence.position})"
-                )
-            if uow.observation_of(annotation.id) is not None:
-                raise AnnotationAlreadyObserved(
-                    f"annotation {annotation.id} is already observed by a track; an asset at two "
-                    f"occurrences needs one annotation per occurrence"
-                )
-            uow.track_observations.add(
-                TrackObservation(
-                    track_id=track.id, occurrence_id=occurrence.id, annotation_id=annotation.id
-                )
-            )
+            self._judge_observation(uow, job, track, occurrence, annotation)
+            _add_observation(uow, track, occurrence, annotation)
             return _detail(uow, track)
+
+    def start(self, job_id: UUID, occurrence_id: UUID, annotation_id: UUID) -> TrackDetail:
+        """Start a track of the annotation's class on the occurrence's source, observing it there.
+
+        Every refusal is decided before anything is written, so a refused start
+        leaves no track behind, which :meth:`create` then :meth:`observe` cannot
+        promise. The observation is judged as :meth:`observe` judges it, in the
+        same order; the class is then judged against the batch's pinned version,
+        which is what the observed annotation was written against, as a class
+        change is.
+
+        Raises:
+            JobNotFound: no such job in this workspace.
+            BatchNotInAnnotation: the job's batch is not open for annotation.
+            JobFinished: the job is already completed.
+            FrameOccurrenceNotFound: no such occurrence in the job's project.
+            SourceNotSequence: the occurrence's source is neither a video nor an image sequence.
+            AnnotationNotFound: no such annotation in this workspace.
+            AnnotationNotAtOccurrence: the annotation sits on another asset.
+            AssetNotInJob: the job does not carry the occurrence's asset.
+            AssetNotWritable: that asset's progress says its labeling is over.
+            AssetNotJudged: ``ASSET_WITHHOLDINGS`` withholds ``observe`` at that asset's
+                progress - today ``pre_labeled``, whose labels nobody has judged.
+            InvalidAnnotation: the annotation is a 3D label; tracks follow 2D ones.
+            AnnotationAlreadyObserved: another observation names the annotation.
+            InvalidName: the annotation's class is blank.
+            LabelClassNotInSchema: the batch's pinned version does not declare the class.
+            WorkspaceCorrupt: the open batch has no pinned schema version.
+        """
+        with self._workspace.unit_of_work() as uow:
+            job, batch = self._open(uow, job_id)
+            occurrence = uow.frame_occurrences.get(occurrence_id)
+            source = None if occurrence is None else uow.sources.get(occurrence.source_id)
+            if occurrence is None or source is None or source.project_id != batch.project_id:
+                raise FrameOccurrenceNotFound(
+                    f"no frame occurrence {occurrence_id} in project {batch.project_id}"
+                )
+            _require_sequence(source)
+            annotation = self._annotations.require_annotation(uow, annotation_id)
+            track = Track(source_id=source.id, label_class=annotation.label_class)
+            self._judge_observation(uow, job, track, occurrence, annotation)
+            _require_text(annotation.label_class, what="class")
+            _require_declared(self._annotations.pinned_schema(batch), annotation.label_class)
+            uow.tracks.add(track)
+            _add_observation(uow, track, occurrence, annotation)
+            return _detail(uow, track)
+
+    def _judge_observation(
+        self,
+        uow: UnitOfWork,
+        job: AnnotationJob,
+        track: Track,
+        occurrence: FrameOccurrence,
+        annotation: Annotation,
+    ) -> None:
+        if annotation.asset_id != occurrence.asset_id:
+            raise AnnotationNotAtOccurrence(
+                f"annotation {annotation.id} is on asset {annotation.asset_id}, and "
+                f"occurrence {occurrence.id} decoded to asset {occurrence.asset_id}"
+            )
+        require_writable(job, occurrence.asset_id)
+        progress = job.progress[occurrence.asset_id]
+        withheld = ASSET_WITHHOLDINGS[AssetAction.OBSERVE].get(progress)
+        if withheld is not None:
+            raise withheld.refusal(
+                f"asset {occurrence.asset_id} in job {job.id} is {progress.value!r}: {withheld.why}"
+            )
+        if annotation.label_class != track.label_class:
+            raise TrackClassMismatch(
+                f"annotation {annotation.id} is {annotation.label_class!r} and track "
+                f"{track.id} is {track.label_class!r}"
+            )
+        require_trackable(uow, annotation)
+        if any(o.occurrence_id == occurrence.id for o in uow.track_observations.list(track.id)):
+            raise OccurrenceAlreadyObserved(
+                f"track {track.id} already observes occurrence {occurrence.id} "
+                f"(position {occurrence.position})"
+            )
+        if uow.observation_of(annotation.id) is not None:
+            raise AnnotationAlreadyObserved(
+                f"annotation {annotation.id} is already observed by a track; an asset at two "
+                f"occurrences needs one annotation per occurrence"
+            )
 
     def unobserve(self, job_id: UUID, track_id: UUID, occurrence_id: UUID) -> TrackDetail:
         """Remove the track's observation at the occurrence. The annotation stays.
@@ -623,6 +678,16 @@ def _require_sequence(source: Source) -> Source:
             f"sequence has frame occurrences for a track to observe"
         )
     return source
+
+
+def _add_observation(
+    uow: UnitOfWork, track: Track, occurrence: FrameOccurrence, annotation: Annotation
+) -> None:
+    uow.track_observations.add(
+        TrackObservation(
+            track_id=track.id, occurrence_id=occurrence.id, annotation_id=annotation.id
+        )
+    )
 
 
 def _require_declared(schema: AnnotationSchema, label_class: str) -> None:

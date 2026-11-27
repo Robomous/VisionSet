@@ -101,6 +101,34 @@ def get_track_status(
 
 
 @job_router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=TrackOut,
+    responses=documented(404, 409),
+)
+def start_track(
+    workspace: WorkspaceDep, job_id: UUID, body: ObservationCreate
+) -> TrackOut | Response:
+    """Start a track of the annotation's class on the occurrence's source, observing it there.
+
+    One write: every refusal is decided before anything is written, so a refused
+    start leaves no track behind. The observation is judged as an observe is,
+    and the class against the batch's pinned version. 404: `JOB_NOT_FOUND`,
+    `FRAME_OCCURRENCE_NOT_FOUND`, `ANNOTATION_NOT_FOUND`. 409:
+    `BATCH_NOT_IN_ANNOTATION`, `JOB_FINISHED`, `ASSET_NOT_IN_JOB` (rendered as a
+    409 here), `ASSET_NOT_WRITABLE`, `ASSET_NOT_JUDGED`,
+    `ANNOTATION_ALREADY_OBSERVED`. 422: `SOURCE_NOT_SEQUENCE`,
+    `ANNOTATION_NOT_AT_OCCURRENCE`, `INVALID_ANNOTATION`, `INVALID_NAME`,
+    `LABEL_CLASS_NOT_IN_SCHEMA`.
+    """
+    try:
+        detail = TrackService(workspace).start(job_id, body.occurrence_id, body.annotation_id)
+    except AssetNotInJob as exc:
+        return error_response(exc, status=409)
+    return TrackOut.of(detail)
+
+
+@job_router.post(
     "/{track_id}/observations",
     status_code=status.HTTP_201_CREATED,
     response_model=TrackOut,

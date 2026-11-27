@@ -433,7 +433,15 @@ everything above - schema validation, provenance, progress - is untouched by tra
 - **A model's unjudged output carries no track.** Observing an annotation on a `pre_labeled` asset
   is `ASSET_NOT_JUDGED`: a replacing pre-label run deletes those labels without asking, and the
   observation would go with them. A person's edit or confirm moves the asset to `annotated`, after
-  which the same observe succeeds and no replacing run in that batch may touch the asset.
+  which the same observe succeeds and no replacing run in that batch may touch the asset. The asset
+  says so ahead of time: it does not declare `observe`, and its `withheld_actions` names the code
+  ([jobs](jobs.md#what-a-job-and-an-asset-say-they-allow)).
+- **Starting a track from an object is one write.** `TrackService.start` (`POST /jobs/{job_id}/tracks`)
+  creates a track of the annotation's class on the occurrence's source and observes the annotation
+  there in one transaction, judging the observation first in `observe`'s order and then the class
+  against the batch's pinned version - what the annotation was written against, as a class change
+  is - so any refusal leaves no track behind. REST, the CLI (`track start`) and MCP (`start_track`)
+  all offer it. Creating an empty track stays its own operation, judged against the active version.
 - **Changing a class rewrites every observed annotation, or nothing.** The rewrite is an ordinary
   `update` against the batch's pinned version, in the same transaction as the track, so a class the
   version does not declare, or one that declares another geometry, refuses the whole change. Being an

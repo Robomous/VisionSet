@@ -101,9 +101,9 @@ const JOB_ACTIONS: Record<Wire["AnnotationJobState"], readonly Wire["JobAction"]
 };
 
 const ASSET_ACTIONS: Record<Wire["AssetProgress"], readonly Wire["AssetAction"][]> = {
-  unannotated: ["annotate", "skip"],
+  unannotated: ["annotate", "observe", "skip"],
   pre_labeled: ["annotate", "skip", "confirm"],
-  annotated: ["annotate", "skip", "submit_for_review"],
+  annotated: ["annotate", "observe", "skip", "submit_for_review"],
   skipped: ["restore"],
   review_pending: ["accept", "return_to_annotator"],
   accepted: [],
@@ -162,4 +162,23 @@ export function assetActions(
   if (batchState !== "in_annotation" || progress === null) return [];
   if (jobState === "completed") return [];
   return [...(ASSET_ACTIONS[progress as Wire["AssetProgress"]] ?? [])];
+}
+
+/**
+ * `asset_withheld` in an open job, keyed `progress/CODE`: what a writable frame
+ * still withholds, and the refusal it names. A progress with no key withholds nothing.
+ */
+const ASSET_WITHHELD: Record<string, readonly Wire["AssetAction"][]> = {
+  "pre_labeled/ASSET_NOT_JUDGED": ["observe"],
+};
+
+/** A frame's `withheld_actions`, from `ASSET_WITHHELD`; empty wherever `annotate` is not declared. */
+export function assetWithheld(
+  progress: string | null,
+  options: { batchState?: string; jobState?: string } = {},
+): Wire["WithheldActionsOut"][] {
+  if (progress === null || !assetActions(progress, options).includes("annotate")) return [];
+  return Object.entries(ASSET_WITHHELD)
+    .filter(([key]) => key.startsWith(`${progress}/`))
+    .map(([key, actions]) => ({ code: key.slice(progress.length + 1), actions: [...actions] }));
 }

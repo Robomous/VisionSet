@@ -25,6 +25,10 @@
  * `LabelClass.geometry`, never against the union across the schema, which would let
  * a polygon through under a bbox class.
  *
+ * An object a track observes carries the track's class, so every other class is
+ * refused the same way, naming the track (the kernel's `TRACK_CLASS_MISMATCH`).
+ * Changing a whole track's class is a track operation, not a row's.
+ *
  * ## A digit reassigns, and a digit for a class that does not fit does nothing
  *
  * The same numbering the canvas draws with — `hotkeyForClass`, so this menu and the
@@ -55,6 +59,12 @@ import { formatGeometries } from "../data/geometryCategory";
 import { DropdownMenuContent, DropdownMenuItem } from "@robomous/ui-core";
 import { classColor } from "../palette";
 
+/** The class a track keeps an object to, and the track's name where this page can name it. */
+export interface ClassLock {
+  readonly labelClass: string;
+  readonly track: string | null;
+}
+
 export interface ReassignMenuProps {
   /** The object whose class is being changed. Its geometry decides what fits. */
   readonly annotation: Annotation;
@@ -81,6 +91,8 @@ export interface ReassignMenuProps {
    */
   readonly onClose: () => void;
   readonly align?: "start" | "center" | "end";
+  /** The track that observes this object, if one does: only its class is offered. */
+  readonly lock?: ClassLock | undefined;
 }
 
 export function ReassignMenu({
@@ -90,6 +102,7 @@ export function ReassignMenu({
   onReassign,
   onClose,
   align = "end",
+  lock,
 }: ReassignMenuProps): JSX.Element {
   const geometry = annotation.geometry.type;
 
@@ -99,6 +112,16 @@ export function ReassignMenu({
   // shape it already is; reassignment never converts one geometry into another.
   function fits(declared: LabelClass): boolean {
     return declared.geometries.includes(geometry);
+  }
+
+  function refusal(declared: LabelClass): string | null {
+    if (lock !== undefined && declared.name !== lock.labelClass) {
+      return lock.track === null ? `on a track of “${lock.labelClass}”` : `on track ${lock.track}`;
+    }
+    // Named in full rather than "does not take a {geometry}": the question somebody
+    // has is what this class *does* take, and a refusal that only repeats what they
+    // already selected answers nothing.
+    return fits(declared) ? null : `needs ${formatGeometries(declared.geometries)}`;
   }
 
   function byHotkey(event: KeyboardEvent<HTMLDivElement>): void {
@@ -114,7 +137,7 @@ export function ReassignMenu({
     // Radix's typeahead, whose handler is composed with this one and skipped once
     // the event is defaulted.
     event.preventDefault();
-    if (!fits(declared)) return;
+    if (refusal(declared) !== null) return;
     onReassign(declared.name);
     onClose();
   }
@@ -122,7 +145,8 @@ export function ReassignMenu({
   return (
     <DropdownMenuContent align={align} className="max-w-64" onKeyDown={byHotkey}>
       {schema.classes.map((declared) => {
-        const ok = fits(declared);
+        const reason = refusal(declared);
+        const ok = reason === null;
         const current = declared.name === annotation.label_class;
         const hotkey = hotkeyForClass(schema, declared.name);
         return (
@@ -152,13 +176,7 @@ export function ReassignMenu({
                 </kbd>
               )
             ) : (
-              <span className="shrink-0 text-xs text-muted-foreground">
-                {/* Named in full rather than "does not take a {geometry}": the
-                    question somebody has is what this class *does* take, and a
-                    refusal that only repeats what they already selected answers
-                    nothing. */}
-                needs {formatGeometries(declared.geometries)}
-              </span>
+              <span className="shrink-0 text-xs text-muted-foreground">{reason}</span>
             )}
           </DropdownMenuItem>
         );

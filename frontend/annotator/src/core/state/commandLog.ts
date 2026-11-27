@@ -104,6 +104,16 @@ export class CommandLog<D = AnnotationDocument> {
     return this.cursor < this.entries.length;
   }
 
+  /** The document `undo()` would return to, or `null`. */
+  get undoTarget(): D | null {
+    return this.canUndo ? this.entries[this.cursor - 1].before : null;
+  }
+
+  /** The document `redo()` would move to, or `null`. */
+  get redoTarget(): D | null {
+    return this.canRedo ? this.entries[this.cursor].after : null;
+  }
+
   /** The label `undo()` would reverse, or `null`. For a menu item. */
   get undoLabel(): string | null {
     return this.canUndo ? this.entries[this.cursor - 1].label : null;

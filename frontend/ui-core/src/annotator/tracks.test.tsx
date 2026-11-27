@@ -17,7 +17,7 @@ import { TooltipProvider } from "@robomous/ui-core";
 import { AnnotationPage } from "./AnnotationPage";
 import { renderWithData } from "../testing/dataHarness";
 import { stubResizeObserver } from "../testing/resizeObserver.js";
-import { assetActions, batchActions, jobActions } from "../testing/wire.fixtures.js";
+import { assetActions, assetWithheld, batchActions, jobActions } from "../testing/wire.fixtures.js";
 
 const PROJECT = "11111111-1111-4111-8111-111111111111";
 const BATCH = "22222222-2222-4222-8222-222222222222";
@@ -83,11 +83,23 @@ interface World {
   occurrences: typeof OCCURRENCES;
   tracks: { id: string; source_id: string; label_class: string; external_id: string | null; observations: ReturnType<typeof observation>[] }[];
   readOnly: boolean;
+  /** The first frame holds a model's labels nobody has judged. */
+  preLabeled: boolean;
   refuseObserve: { code: string; message: string } | null;
+  /** A refused observe finds the first frame pre-labeled by then, as a run elsewhere would leave it. */
+  preLabeledOnRefusal: boolean;
+  /** When set, every annotation write refuses 409 with it. */
+  refuseSave: { code: string; message: string } | null;
   /** While set, an observe waits on it. */
   observeGate: Promise<void> | null;
   /** How many more occurrence reads answer 500. */
   failOccurrences: number;
+  /** Every read of this source's tracks answers 500. */
+  failTracks: boolean;
+  /** Observations of this frame's labels by tracks of other sequences, which this page never reads. */
+  foreign: { annotation_id: string; track_id: string; label_class: string }[];
+  /** When set, the first frame's declaration is this, whatever the tracks now say: a stale read. */
+  staleObserved: { annotation_id: string; track_id: string; label_class: string }[] | null;
 }
 
 let world: World;
@@ -108,9 +120,15 @@ function freshWorld(): World {
       { id: "track-2", source_id: SOURCE, label_class: "pedestrian", external_id: null, observations: [] },
     ],
     readOnly: false,
+    preLabeled: false,
     refuseObserve: null,
+    preLabeledOnRefusal: false,
+    refuseSave: null,
     observeGate: null,
     failOccurrences: 0,
+    failTracks: false,
+    foreign: [],
+    staleObserved: null,
   };
 }
 
@@ -153,6 +171,7 @@ function answer(method: string, path: string, body: unknown): Response {
   }
   if (path.endsWith("/schema/versions/1")) return json(SCHEMA);
   if (path === `/batches/${BATCH}/assets`) {
+    const progressOf = (index: number) => (index === 0 ? (world.preLabeled ? "pre_labeled" : "unannotated") : "annotated");
     const items = [A1, A2].map((id, index) => ({
       id,
       project_id: PROJECT,
@@ -168,13 +187,23 @@ function answer(method: string, path: string, body: unknown): Response {
       source_id: world.sourceId,
       ingested_at: null,
       job_id: JOB,
-      progress: index === 0 ? "unannotated" : "annotated",
-      allowed_actions: assetActions(index === 0 ? "unannotated" : "annotated", { batchState }),
+      progress: progressOf(index),
+      allowed_actions: assetActions(progressOf(index), { batchState }),
       annotation_count: 0,
       min_confidence: null,
+      withheld_actions: assetWithheld(progressOf(index), { batchState }),
+      observed: index === 0 && world.staleObserved !== null ? world.staleObserved : [
+        ...world.tracks.flatMap((track) =>
+          track.observations
+            .filter((one) => one.asset_id === id)
+            .map((one) => ({ annotation_id: one.annotation_id, track_id: track.id, label_class: track.label_class })),
+        ),
+        ...(index === 0 ? world.foreign : []),
+      ],
     }));
     return json({ items, total: items.length });
   }
+  if (method !== "GET" && path.endsWith("/annotations") && world.refuseSave !== null) return json(world.refuseSave, 409);
   const annotations = /^\/jobs\/[^/]+\/assets\/([^/]+)\/annotations$/.exec(path);
   if (annotations !== null) {
     const items = ANNOTATIONS[annotations[1]!] ?? [];
@@ -185,6 +214,7 @@ function answer(method: string, path: string, body: unknown): Response {
     return json({ code: "INTERNAL", message: "down" }, 500);
   }
   if (path === `/sources/${SOURCE}/occurrences`) return json({ items: world.occurrences, total: world.occurrences.length });
+  if (path === `/sources/${SOURCE}/tracks` && method === "GET" && world.failTracks) return json({ code: "INTERNAL", message: "down" }, 500);
   if (path === `/sources/${SOURCE}/tracks` && method === "GET") return json({ items: world.tracks, total: world.tracks.length });
   if (path === `/sources/${SOURCE}/tracks` && method === "POST") {
     const created = {
@@ -207,9 +237,27 @@ function answer(method: string, path: string, body: unknown): Response {
       settled: false,
     });
   }
+  if (path === `/jobs/${JOB}/tracks` && method === "POST") {
+    if (world.refuseObserve !== null) return json(world.refuseObserve, 409);
+    const { occurrence_id, annotation_id } = body as { occurrence_id: string; annotation_id: string };
+    const at = OCCURRENCES.find((one) => one.id === occurrence_id)!;
+    const labelClass = (Object.values(ANNOTATIONS).flat() as { id: string; label_class: string }[]).find((one) => one.id === annotation_id)!.label_class;
+    const started = {
+      id: `track-${world.tracks.length + 1}`,
+      source_id: SOURCE,
+      label_class: labelClass,
+      external_id: null,
+      observations: [observation(at.position, annotation_id)],
+    };
+    world.tracks.push(started);
+    return json(started, 201);
+  }
   const observe = new RegExp(`^/jobs/${JOB}/tracks/([^/]+)/observations$`).exec(path);
   if (observe !== null && method === "POST") {
-    if (world.refuseObserve !== null) return json(world.refuseObserve, 409);
+    if (world.refuseObserve !== null) {
+      if (world.preLabeledOnRefusal) world.preLabeled = true;
+      return json(world.refuseObserve, 409);
+    }
     const { occurrence_id, annotation_id } = body as { occurrence_id: string; annotation_id: string };
     const at = OCCURRENCES.find((one) => one.id === occurrence_id)!;
     const track = trackOut(observe[1]!);
@@ -333,6 +381,104 @@ describe("reading tracks", () => {
   });
 });
 
+describe("reassigning an observed object", () => {
+  it("disables every class but the track's in the row's menu, naming the track", async () => {
+    await open();
+    await region();
+    await waitFor(() => expect(screen.getByTestId("object-track-0")).not.toBeNull());
+    await userEvent.click(screen.getByTestId("object-reclass-0"));
+    const other = await screen.findByTestId("reclass-0-pedestrian");
+    expect(other.getAttribute("aria-disabled")).toBe("true");
+    expect(other.textContent).toContain("on track vehicle 17");
+    expect(screen.getByTestId("reclass-0-vehicle").getAttribute("aria-disabled")).not.toBe("true");
+  });
+
+  it("says the kernel's refusal of a class change the menu did not lock", async () => {
+    // Only this source's tracks are read, so a track of another sequence observing
+    // this object is invisible here and the menu leaves it unlocked; the kernel's
+    // refusal at save is what stands behind it.
+    world.refuseSave = { code: "TRACK_CLASS_MISMATCH", message: "kernel wording" };
+    await open();
+    await region();
+    await userEvent.click(await screen.findByTestId("object-reclass-2"));
+    await userEvent.click(await screen.findByTestId("reclass-2-vehicle"));
+    expect(screen.getByTestId("object-reclass-2").textContent).toContain("vehicle");
+    screen.getByTestId("annotator-root").focus();
+    await userEvent.keyboard("{Control>}s{/Control}");
+    const refusal = await screen.findByTestId("save-refusal");
+    expect(refusal.textContent).toMatch(/every object a track follows carries the track's class/);
+    expect(refusal.textContent).not.toContain("TRACK_CLASS_MISMATCH");
+  });
+
+  it("locks to the track's class, not the object's own", async () => {
+    world.tracks[1]!.observations = [observation(4, "ann-2")];
+    await open();
+    await region();
+    await waitFor(() => expect(screen.getByTestId("object-track-1")).not.toBeNull());
+    await userEvent.click(screen.getByTestId("object-reclass-1"));
+    const own = await screen.findByTestId("reclass-1-vehicle");
+    expect(own.getAttribute("aria-disabled")).toBe("true");
+    expect(own.textContent).toContain("on track pedestrian #2");
+    expect(screen.getByTestId("reclass-1-pedestrian").getAttribute("aria-disabled")).not.toBe("true");
+  });
+
+  it("locks an object a track of another sequence observes, from the frame's own declaration", async () => {
+    world.foreign = [{ annotation_id: "ann-3", track_id: "elsewhere-1", label_class: "pedestrian" }];
+    await open();
+    await region();
+    await userEvent.click(await screen.findByTestId("object-reclass-2"));
+    const other = await screen.findByTestId("reclass-2-vehicle");
+    expect(other.getAttribute("aria-disabled")).toBe("true");
+    expect(other.textContent).toContain("on a track of “pedestrian”");
+  });
+
+  it("keeps the lock while this source's tracks cannot be read", async () => {
+    world.failTracks = true;
+    await open();
+    await screen.findByTestId("track-read-failed", {}, { timeout: 5000 });
+    await userEvent.click(await screen.findByTestId("object-reclass-0"));
+    const other = await screen.findByTestId("reclass-0-pedestrian");
+    expect(other.getAttribute("aria-disabled")).toBe("true");
+    expect(other.textContent).toContain("on a track of “vehicle”");
+  });
+
+  it("does not undo or redo an object off the class of the track that now observes it", async () => {
+    await open();
+    await region();
+    await userEvent.click(await screen.findByTestId("object-reclass-1"));
+    await userEvent.click(await screen.findByTestId("reclass-1-pedestrian"));
+    await userEvent.click(await screen.findByTestId("object-reclass-1"));
+    await userEvent.click(await screen.findByTestId("reclass-1-vehicle"));
+    expect(screen.getByTestId("tool-undo").getAttribute("aria-disabled")).toBeNull();
+
+    await userEvent.click(screen.getByTestId("object-select-1"));
+    await focusTrack("track-1");
+    await userEvent.click(screen.getByTestId("track-observe"));
+    await waitFor(() => expect(screen.getByTestId("track-done").textContent).toBe("Added at frame 4"));
+
+    await waitFor(() => expect(screen.getByTestId("tool-undo").getAttribute("aria-disabled")).toBe("true"));
+    expect(screen.getByTestId("tool-undo").getAttribute("aria-label")).toBe("Undo would move an object off its track's class");
+    screen.getByTestId("annotator-root").focus();
+    await userEvent.keyboard("{Control>}z{/Control}");
+    expect(screen.getByTestId("object-reclass-1").textContent).toContain("vehicle");
+  });
+
+  it("trusts this source's fresher read of its own track over a stale declaration", async () => {
+    world.staleObserved = [{ annotation_id: "ann-2", track_id: "track-1", label_class: "vehicle" }];
+    await open();
+    await region();
+    await userEvent.click(await screen.findByTestId("object-reclass-1"));
+    expect((await screen.findByTestId("reclass-1-pedestrian")).getAttribute("aria-disabled")).not.toBe("true");
+  });
+
+  it("leaves an object no track observes free to take any class that fits", async () => {
+    await open();
+    await region();
+    await userEvent.click(await screen.findByTestId("object-reclass-2"));
+    expect((await screen.findByTestId("reclass-2-vehicle")).getAttribute("aria-disabled")).not.toBe("true");
+  });
+});
+
 describe("stepping along a track", () => {
   it("passes over the frame outside the job, opens the next one in it, and says so", async () => {
     await open();
@@ -402,6 +548,19 @@ describe("writing", () => {
     expect(refusal.textContent).not.toContain("ASSET_NOT_JUDGED");
   });
 
+  it("rereads the frame's declaration after a refused observe, so the control then says why", async () => {
+    world.refuseObserve = { code: "ASSET_NOT_JUDGED", message: "kernel wording" };
+    world.preLabeledOnRefusal = true;
+    await open();
+    await userEvent.click(await screen.findByTestId("object-select-1"));
+    await focusTrack("track-1");
+    await userEvent.click(screen.getByTestId("track-observe"));
+    await screen.findByTestId("track-refusal");
+    await waitFor(() =>
+      expect(screen.getByTestId("track-observe").getAttribute("data-reason")).toMatch(/have not been judged yet/),
+    );
+  });
+
   it("still says a refusal that lands after a step to another frame", async () => {
     let release: () => void = () => {};
     world.observeGate = new Promise((resolve) => {
@@ -439,21 +598,42 @@ describe("writing", () => {
 
     await waitFor(() => expect(screen.getByTestId("track-done").textContent).toBe("Started a track at frame 4"));
     expect(writes()).toEqual([
-      { method: "POST", path: `/sources/${SOURCE}/tracks`, body: { label_class: "vehicle" } },
-      { method: "POST", path: `/jobs/${JOB}/tracks/track-3/observations`, body: { occurrence_id: "occ-4", annotation_id: "ann-2" } },
+      { method: "POST", path: `/jobs/${JOB}/tracks`, body: { occurrence_id: "occ-4", annotation_id: "ann-2" } },
     ]);
     expect(screen.getByTestId("track-row-track-3").getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("says a new track stayed empty when its first observation was refused", async () => {
+  it("says a refused start and leaves no track behind", async () => {
     world.refuseObserve = { code: "ASSET_NOT_JUDGED", message: "kernel wording" };
     await open();
     await userEvent.click(await screen.findByTestId("object-select-1"));
     await region();
     await userEvent.click(screen.getByTestId("track-start"));
     await userEvent.click(await screen.findByTestId("track-start-at-1"));
-    expect((await screen.findByTestId("track-refusal")).textContent).toMatch(/^Started an empty track\. .*judged/);
-    await waitFor(() => expect(screen.getByTestId("track-row-track-3").textContent).toMatch(/0 frames/));
+    expect((await screen.findByTestId("track-refusal")).textContent).toMatch(/have not been judged yet/);
+    expect(writes()).toEqual([
+      { method: "POST", path: `/jobs/${JOB}/tracks`, body: { occurrence_id: "occ-1", annotation_id: "ann-2" } },
+    ]);
+    expect(screen.getByTestId("track-count").textContent).toBe("2");
+    expect(screen.queryByTestId("track-row-track-3")).toBeNull();
+  });
+
+  it("withholds adding to a track on a frame of unjudged model labels, saying why, and still removes", async () => {
+    world.preLabeled = true;
+    await open();
+    await userEvent.click(await screen.findByTestId("object-select-1"));
+    await focusTrack("track-1");
+    const unjudged = /^A model's labels on this frame have not been judged yet/;
+    expect(screen.getByTestId("track-observe").getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getByTestId("track-observe").getAttribute("data-reason")).toMatch(unjudged);
+    expect(screen.getByTestId("track-start").getAttribute("data-reason")).toMatch(unjudged);
+    fireEvent.click(screen.getByTestId("track-observe"));
+    fireEvent.click(screen.getByTestId("track-start"));
+    expect(writes()).toEqual([]);
+
+    expect(screen.getByTestId("track-unobserve-1").getAttribute("data-reason")).toBeNull();
+    await userEvent.click(screen.getByTestId("track-unobserve-1"));
+    await waitFor(() => expect(writes()).toEqual([{ method: "DELETE", path: `/jobs/${JOB}/tracks/track-1/observations/occ-1`, body: null }]));
   });
 
   it("withholds every write in the read-only mode and keeps the steps", async () => {

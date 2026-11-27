@@ -127,6 +127,7 @@ from visionset.kernel.domain import (
     ModelOrigin,
     ObbGeometry,
     ObservedFrame,
+    ObservedLabel,
     Partition,
     PlumbBobDistortion,
     PointCloudFormat,
@@ -184,12 +185,14 @@ from visionset.kernel.domain import (
     WorkspaceSummary,
     WorkspaceTotals,
     asset_actions,
+    asset_withheld,
     batch_actions,
     check_vertex_visibility,
     connection_actions,
     job_actions,
     optional_visibility_field,
 )
+from visionset.kernel.error_codes import ERROR_CODES
 from visionset.kernel.ports import Exporter, Provider, supported_modalities_of
 
 T = TypeVar("T")
@@ -2045,6 +2048,21 @@ class JobPage(Page[JobOut]):
     """A page of annotation jobs."""
 
 
+class ObservedLabelOut(BaseModel):
+    """An annotation of this asset a track observes, and the class that track keeps it to."""
+
+    annotation_id: UUID
+    track_id: UUID
+    label_class: str
+
+
+class WithheldActionsOut(BaseModel):
+    """Actions a writable asset does not declare, and the refusal code asking for one gets."""
+
+    code: str
+    actions: list[AssetAction]
+
+
 # Inherits rather than repeats ``AssetOut``'s eleven fields, so a field published
 # there is published here too — the one place in this module where a widening
 # should propagate, because these are the same asset seen from inside a batch.
@@ -2060,6 +2078,12 @@ class BatchAssetOut(AssetOut):
     job_id: UUID | None
     progress: AssetProgress | None
     allowed_actions: list[AssetAction]
+    #: Why an action is missing from `allowed_actions` while `annotate` is in it;
+    #: empty when the asset may not be written at all.
+    withheld_actions: list[WithheldActionsOut]
+    #: Every annotation of this asset a track observes, from any source: each
+    #: keeps its track's class, which only a track operation changes.
+    observed: list[ObservedLabelOut]
     annotation_count: int
     min_confidence: float | None
 
@@ -2073,6 +2097,7 @@ class BatchAssetOut(AssetOut):
         progress: AssetProgress | None,
         batch_state: BatchState,
         summary: AnnotationSummary,
+        observed: Sequence[ObservedLabel],
     ) -> Self:
         # ``job_id``, ``job_state`` and ``progress`` are null together and exactly
         # while the batch is a draft, which is honest rather than lossy: a draft
@@ -2085,6 +2110,20 @@ class BatchAssetOut(AssetOut):
             job_id=job_id,
             progress=progress,
             allowed_actions=asset_actions(progress, batch_state=batch_state, job_state=job_state),
+            withheld_actions=[
+                WithheldActionsOut(code=ERROR_CODES[refusal], actions=actions)
+                for refusal, actions in asset_withheld(
+                    progress, batch_state=batch_state, job_state=job_state
+                ).items()
+            ],
+            observed=[
+                ObservedLabelOut(
+                    annotation_id=one.annotation_id,
+                    track_id=one.track_id,
+                    label_class=one.label_class,
+                )
+                for one in observed
+            ],
             annotation_count=summary.count,
             min_confidence=summary.min_model_confidence,
         )

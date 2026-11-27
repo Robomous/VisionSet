@@ -32,6 +32,7 @@ from visionset.kernel.domain import (
     InferenceConnection,
     IngestJob,
     Modality,
+    ObservedLabel,
     OrphanGuard,
     PreprocessingRecipe,
     Project,
@@ -635,6 +636,19 @@ class UnitOfWork(Protocol):
         gives: ``Repository[Annotation]`` is parented on the asset, so a gallery page
         asking per card reads the batch once per frame. Assets carrying no label are
         absent from the mapping; an unknown batch answers an empty one.
+        """
+        ...
+
+    def observed_labels(
+        self, asset_ids: Sequence[UUID]
+    ) -> Mapping[UUID, tuple[ObservedLabel, ...]]:
+        """Per asset named: each of its annotations a track observes, from any source.
+
+        One read for a page of assets rather than one per asset, and only the
+        page's: a dense tracked batch holds tens of thousands of observations. An
+        asset is content, so a track of another sequence that decoded to the same
+        bytes observes its annotations too. Assets with none are absent; labels
+        are in annotation id order.
         """
         ...
 

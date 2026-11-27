@@ -141,6 +141,7 @@ TOOLS: Final[tuple[tuple[Callable[..., Any], ToolAnnotations], ...]] = (
     (tracks.list_tracks, READS),
     (tracks.get_track_status, READS),
     (tracks.create_track, WRITES),
+    (tracks.start_track, WRITES),
     (tracks.observe_track, WRITES),
     (tracks.unobserve_track, WRITES),
     (tracks.set_track_class, WRITES),
