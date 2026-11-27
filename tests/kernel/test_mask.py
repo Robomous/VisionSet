@@ -31,6 +31,7 @@ from visionset.kernel.domain import (
     mask_rotated_once,
     mask_rows,
     mask_runs,
+    mask_union,
     rasterize_polygon,
     rasterize_rings,
     split_class_map,
@@ -339,6 +340,26 @@ def test_a_centre_on_an_edge_is_inside_below_and_to_the_right() -> None:
 def test_a_nonfinite_vertex_is_refused() -> None:
     with pytest.raises(ValueError, match="finite"):
         rasterize_rings([[(0.0, 0.0), (float("inf"), 0.0), (0.0, 1.0)]], height=2, width=2)
+
+
+def test_a_union_keeps_a_pixel_two_parts_share_where_one_ring_set_would_cut_a_hole() -> None:
+    outer = [(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)]
+    inner = [(1.0, 1.0), (3.0, 1.0), (3.0, 3.0), (1.0, 3.0)]
+    parts = [rasterize_rings([ring], height=4, width=5) for ring in (outer, inner)]
+
+    assert _drawn(mask_union(parts, height=4, width=5)) == ["####.", "####.", "####.", "####."]
+    assert _drawn(rasterize_rings([outer, inner], height=4, width=5)) == [
+        "####.",
+        "#..#.",
+        "#..#.",
+        "####.",
+    ]
+
+
+def test_a_union_of_nothing_is_empty_and_of_the_wrong_size_is_refused() -> None:
+    assert mask_area(mask_union([], height=2, width=3)) == 0
+    with pytest.raises(MaskEncodingError, match="union"):
+        mask_union([rasterize_rings([], height=3, width=2)], height=2, width=3)
 
 
 def test_tracing_reports_the_hole_and_the_island_inside_it() -> None:

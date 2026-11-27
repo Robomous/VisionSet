@@ -133,6 +133,27 @@ def rasterize_polygon(polygon: PolygonGeometry, *, height: int, width: int) -> M
     return rasterize_rings([polygon.points], height=height, width=width)
 
 
+def mask_union(masks: Iterable[MaskGeometry], *, height: int, width: int) -> MaskGeometry:
+    """The pixels any of ``masks`` holds, as one ``height x width`` mask. Exact.
+
+    Unlike one :func:`rasterize_rings` call over several rings, where a ring inside
+    another is a hole, a pixel two masks share stays foreground.
+
+    Raises:
+        MaskEncodingError: the size is out of bounds or a mask's size is not
+            ``(height, width)``.
+    """
+    total = check_mask_size(height, width)
+    union = 0
+    for mask in masks:
+        if mask.size != (height, width):
+            raise MaskEncodingError(
+                f"a {mask.size[0]} by {mask.size[1]} mask cannot join a {height} by {width} union"
+            )
+        union |= int.from_bytes(mask_bitmap(mask), "big")
+    return mask_from_bitmap(union.to_bytes(total, "big"), height=height, width=width)
+
+
 @dataclass(frozen=True, slots=True)
 class TracedRegion:
     """One 4-connected foreground region: its outline and the outlines of its holes.
