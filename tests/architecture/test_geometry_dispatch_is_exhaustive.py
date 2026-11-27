@@ -22,6 +22,7 @@ from visionset.kernel.domain import (
     BboxGeometry,
     Cuboid3DGeometry,
     GeometryType,
+    KeypointsGeometry,
     LabelClass,
     Manifest,
     ManifestAnnotation,
@@ -43,7 +44,7 @@ from visionset.wire import geometry as wire_geometry
 class _StandIn(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    type: Literal[GeometryType.KEYPOINTS] = GeometryType.KEYPOINTS
+    type: Literal["stand_in"] = "stand_in"
     points: list[tuple[float, float]]
 
 
@@ -99,7 +100,8 @@ SITES: dict[str, Callable[[pytest.MonkeyPatch], object]] = {
 
 
 def test_the_stand_in_is_not_an_implemented_geometry() -> None:
-    assert STAND_IN.type not in IMPLEMENTED_GEOMETRIES
+    assert STAND_IN.type not in {geometry.value for geometry in GeometryType}
+    assert frozenset(GeometryType) == IMPLEMENTED_GEOMETRIES
 
 
 @pytest.mark.parametrize("site", SITES)
@@ -208,3 +210,48 @@ def test_a_pixel_moving_step_never_moves_a_3d_label(
         AssertionError, match=f"no pixel-moving step transforms a {geometry.type.value}"
     ):
         move(geometry)
+
+
+KEYPOINTS = KeypointsGeometry(points=[(1.0, 1.0), (5.0, 3.0), (1.0, 1.0)])
+#: What each site answers for keypoints: a pixel extent, never a box, ring or 3D frame.
+EXPECTED_KEYPOINTS: dict[str, object] = {
+    "geometry_intersects_asset": True,
+    "coordinates_are_finite": True,
+    "geometry_needs_calibration": False,
+    "geometry_reference on a scan": None,
+    "geometry_fits_modality": False,
+    "nms extent": BboxGeometry(x=1.0, y=1.0, width=4.0, height=2.0),
+    "yolo derive_task": Task.DETECT,
+    "yolo box": None,
+    "yolo ring": None,
+    "voc box": None,
+    "coco annotation": None,
+    "server geometry_of": KEYPOINTS,
+    "wire geometry": {"type": "keypoints", "points": [[1.0, 1.0], [5.0, 3.0], [1.0, 1.0]]},
+}
+
+
+@pytest.mark.parametrize("site", ANSWERS_3D)
+def test_each_site_answers_keypoints(site: str) -> None:
+    assert ANSWERS_3D[site](KEYPOINTS) == EXPECTED_KEYPOINTS[site]
+
+
+@pytest.mark.parametrize(
+    ("move", "expected"),
+    [
+        (
+            lambda g: preprocessing_transform._scaled(g, 2.0, 3.0, 1.0, 0.5),
+            [(3.0, 3.5), (11.0, 9.5)],
+        ),
+        (lambda g: preprocessing_transform._mirrored(g, 8.0), [(7.0, 1.0), (3.0, 3.0)]),
+        (lambda g: preprocessing_transform._rotated_once(g, 8.0), [(1.0, 7.0), (3.0, 3.0)]),
+    ],
+    ids=["scale", "mirror", "rotate"],
+)
+def test_a_pixel_moving_step_moves_keypoints_in_order_with_their_visibility(
+    move: Callable[[Any], Any], expected: list[tuple[float, float]]
+) -> None:
+    visibility = (VertexVisibility.VISIBLE, VertexVisibility.UNLABELED)
+    moved = move(KeypointsGeometry(points=[(1.0, 1.0), (5.0, 3.0)], visibility=visibility))
+
+    assert moved == KeypointsGeometry(points=expected, visibility=visibility)

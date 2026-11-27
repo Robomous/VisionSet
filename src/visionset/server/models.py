@@ -120,6 +120,7 @@ from visionset.kernel.domain import (
     IntegrityCheck,
     ItemFailure,
     JobAction,
+    KeypointsGeometry,
     LabelClass,
     MaskGeometry,
     MembershipChange,
@@ -2278,6 +2279,44 @@ class PolylineBody(BaseModel):
         )
 
 
+class KeypointsBody(BaseModel):
+    """At least one keypoint as finite `(x, y)` asset pixels, in order.
+
+    The position in `points` is the keypoint's identity. When the class declares
+    a keypoint spec, `points` carries exactly one point per name, in the spec's
+    order, or the write is refused with `KEYPOINT_COUNT_MISMATCH`; without one,
+    any count of at least one is accepted. Points are never reordered, padded or
+    truncated. `visibility` follows the polyline's rules exactly: one state per
+    point (0 unlabeled, 1 occluded, 2 visible), or absent; never null.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal[GeometryType.KEYPOINTS]
+    points: list[tuple[float, float]]
+    visibility: VertexVisibilities = optional_visibility_field()
+
+    @model_validator(mode="after")
+    def _one_state_per_point(self) -> Self:
+        check_vertex_visibility(self.visibility, self.points)
+        return self
+
+    def to_domain(self) -> KeypointsGeometry:
+        if self.visibility is None:
+            return KeypointsGeometry(points=self.points)
+        return KeypointsGeometry(points=self.points, visibility=self.visibility)
+
+    @classmethod
+    def of(cls, geometry: KeypointsGeometry) -> Self:
+        if geometry.visibility is None:
+            return cls(type=GeometryType.KEYPOINTS, points=list(geometry.points))
+        return cls(
+            type=GeometryType.KEYPOINTS,
+            points=list(geometry.points),
+            visibility=geometry.visibility,
+        )
+
+
 class Polyline3DBody(BaseModel):
     """An open path of at least two `(x, y, z)` points, in order.
 
@@ -2418,6 +2457,7 @@ GeometryBody = Annotated[
     | ObbBody
     | PolygonBody
     | PolylineBody
+    | KeypointsBody
     | Polyline3DBody
     | Cuboid3DBody
     | MaskBody
@@ -2433,6 +2473,7 @@ def geometry_of(
     | ObbBody
     | PolygonBody
     | PolylineBody
+    | KeypointsBody
     | Polyline3DBody
     | Cuboid3DBody
     | MaskBody
@@ -2448,6 +2489,8 @@ def geometry_of(
             return PolygonBody.of(geometry)
         case PolylineGeometry():
             return PolylineBody.of(geometry)
+        case KeypointsGeometry():
+            return KeypointsBody.of(geometry)
         case Polyline3DGeometry():
             return Polyline3DBody.of(geometry)
         case Cuboid3DGeometry():

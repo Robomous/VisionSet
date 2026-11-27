@@ -239,7 +239,7 @@ class ReleaseService:
                 manifest_sources = _manifest_sources(uow, dataset.project_id, manifest_assets)
                 manifest = Manifest(
                     manifest_version=manifest_version_for(
-                        manifest_assets, manifest_tracks, manifest_sources
+                        manifest_assets, manifest_tracks, manifest_sources, active.classes
                     ),
                     schema_version=active.version,
                     classes=active.classes,

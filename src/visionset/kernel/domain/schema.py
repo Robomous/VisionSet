@@ -25,15 +25,13 @@ import unicodedata
 from collections.abc import Mapping
 from datetime import datetime
 from enum import StrEnum
-from typing import Final, Literal, TypeAlias
+from typing import Annotated, Final, Literal, TypeAlias
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class GeometryType(StrEnum):
-    # Wider than ``IMPLEMENTED_GEOMETRIES``: ``mask`` and ``keypoints`` have no
-    # ``Geometry`` model yet, and ``SchemaService`` refuses a class naming either.
     BBOX = "bbox"
     OBB = "obb"
     POLYGON = "polygon"
@@ -170,8 +168,64 @@ class Attribute(BaseModel):
         return None
 
 
+KeypointIndex = Annotated[int, Field(strict=True, ge=0)]
+
+
+class KeypointSpec(BaseModel):
+    """What a keypoints class's points are: their names in order, and how they connect.
+
+    ``names[i]`` names point ``i`` of every keypoints annotation of the class, so
+    an annotation carries exactly ``len(names)`` points in this order. Names are
+    stripped, never blank, and unique ignoring case.
+
+    ``skeleton`` lists undirected edges as pairs of indices into ``names``. An
+    edge joins two different keypoints, and no pair appears twice in either
+    order. It describes how the points are drawn; it constrains no coordinate.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    names: tuple[str, ...] = Field(min_length=1)
+    skeleton: tuple[tuple[KeypointIndex, KeypointIndex], ...] = ()
+
+    @field_validator("names")
+    @classmethod
+    def _named(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        names = tuple(name.strip() for name in value)
+        if any(not name for name in names):
+            raise ValueError("a keypoint name must contain at least one non-blank character")
+        folded = [name.casefold() for name in names]
+        if len(set(folded)) != len(folded):
+            raise ValueError("two keypoints share a name, ignoring case")
+        return names
+
+    @model_validator(mode="after")
+    def _edges_join_named_keypoints(self) -> KeypointSpec:
+        seen: set[frozenset[int]] = set()
+        for first, second in self.skeleton:
+            for index in (first, second):
+                if index >= len(self.names):
+                    raise ValueError(
+                        f"skeleton edge ({first}, {second}) names keypoint {index}, and the "
+                        f"spec has {len(self.names)} keypoints (indices 0 to "
+                        f"{len(self.names) - 1})"
+                    )
+            if first == second:
+                raise ValueError(f"skeleton edge ({first}, {second}) joins a keypoint to itself")
+            edge = frozenset((first, second))
+            if edge in seen:
+                raise ValueError(f"skeleton edge ({first}, {second}) appears twice")
+            seen.add(edge)
+        return self
+
+
 class LabelClass(BaseModel):
-    """One labelable class in a schema, and the geometries it may be drawn as."""
+    """One labelable class in a schema, and the geometries it may be drawn as.
+
+    ``keypoints`` is optional and only on a class accepting the keypoints
+    geometry: with it, every keypoints annotation of the class carries exactly
+    its points in its order; without it, any count of at least one is accepted.
+    """
 
     # ``geometries`` is a set in meaning and a sorted tuple in representation. A
     # class labelled as a box on some frames and as a polygon on others is one
@@ -185,6 +239,9 @@ class LabelClass(BaseModel):
     geometries: tuple[GeometryType, ...] = Field(min_length=1)
     color: str | None = None
     attributes: tuple[Attribute, ...] = ()
+    # Omitted rather than null, so a class without a spec keeps the bytes and
+    # manifest hash it had before the field existed.
+    keypoints: KeypointSpec | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="before")
     @classmethod
@@ -230,6 +287,15 @@ class LabelClass(BaseModel):
         names = [attribute.name.casefold() for attribute in self.attributes]
         if len(set(names)) != len(names):
             raise ValueError(f"class {self.name!r} has two attributes with the same name")
+        return self
+
+    @model_validator(mode="after")
+    def _keypoint_spec_needs_keypoints(self) -> LabelClass:
+        if self.keypoints is not None and GeometryType.KEYPOINTS not in self.geometries:
+            raise ValueError(
+                f"class {self.name!r} declares a keypoint spec but does not accept the "
+                f"keypoints geometry"
+            )
         return self
 
 

@@ -72,15 +72,18 @@ export can produce it by accident. Never written by an export.
 RESIZABLE_GEOMETRIES: Final[frozenset[GeometryType]] = PIXEL_GEOMETRIES - {GeometryType.MASK}
 """What a resize can transform at all: a mask would have to be resampled, which loses pixels."""
 
+_UNCROPPABLE: Final = frozenset({GeometryType.POLYLINE, GeometryType.OBB, GeometryType.KEYPOINTS})
+
 RESIZE_GEOMETRIES: Final[Mapping[ResizeStrategy, frozenset[GeometryType]]] = {
     # Scaling the axes apart turns a rotated rectangle into a parallelogram.
     ResizeStrategy.STRETCH: RESIZABLE_GEOMETRIES - {GeometryType.OBB},
     ResizeStrategy.LETTERBOX: RESIZABLE_GEOMETRIES,
     # A crop can cut a path into pieces, and which piece is the lane is not a
     # question the arithmetic can answer; a rotated rectangle cut by the canvas
-    # edge is no longer a rectangle.
-    ResizeStrategy.FILL: RESIZABLE_GEOMETRIES - {GeometryType.POLYLINE, GeometryType.OBB},
-    ResizeStrategy.CENTER_CROP: RESIZABLE_GEOMETRIES - {GeometryType.POLYLINE, GeometryType.OBB},
+    # edge is no longer a rectangle; a keypoint cut away keeps its slot, and
+    # nothing in the crop can say whether it became occluded or unlabeled.
+    ResizeStrategy.FILL: RESIZABLE_GEOMETRIES - _UNCROPPABLE,
+    ResizeStrategy.CENTER_CROP: RESIZABLE_GEOMETRIES - _UNCROPPABLE,
 }
 """Which geometries each resize strategy can transform, per :class:`ResizeStrategy`."""
 

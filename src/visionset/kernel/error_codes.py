@@ -107,6 +107,7 @@ ERROR_CODES: Final[Mapping[type[errors.VisionSetError], str]] = {
     errors.JobFinished: "JOB_FINISHED",
     errors.JobNotComplete: "JOB_NOT_COMPLETE",
     errors.JobNotFound: "JOB_NOT_FOUND",
+    errors.KeypointCountMismatch: "KEYPOINT_COUNT_MISMATCH",
     errors.LabelClassNotInSchema: "LABEL_CLASS_NOT_IN_SCHEMA",
     errors.LocalInferenceUnavailable: "LOCAL_INFERENCE_UNAVAILABLE",
     errors.LossyExportNotConsented: "LOSSY_EXPORT_NOT_CONSENTED",

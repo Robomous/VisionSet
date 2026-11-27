@@ -109,6 +109,7 @@ from visionset.kernel.domain import (
     IngestFailure,
     IngestJob,
     IntegrityCheck,
+    KeypointsGeometry,
     LabelClass,
     MaskGeometry,
     ObbGeometry,
@@ -744,6 +745,14 @@ def geometry(value: Geometry) -> shapes.Geometry:
             if value.visibility is not None:
                 polyline["visibility"] = [_vertex_visibility(v) for v in value.visibility]
             return polyline
+        case KeypointsGeometry():
+            keypoints: shapes.KeypointsGeometry = {
+                "type": "keypoints",
+                "points": [list(p) for p in value.points],
+            }
+            if value.visibility is not None:
+                keypoints["visibility"] = [_vertex_visibility(v) for v in value.visibility]
+            return keypoints
         case Polyline3DGeometry():
             path: shapes.Polyline3DGeometry = {
                 "type": "polyline_3d",

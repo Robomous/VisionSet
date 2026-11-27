@@ -145,7 +145,12 @@ from visionset.kernel.errors import UnserializableManifest
 #: sequence, so a release holding no point-cloud sequence keeps the version,
 #: the bytes and the hash it had before, and only a release holding one is one
 #: a version-10 build refuses.
-MANIFEST_VERSION: int = 11
+#:
+#: **12** since #1158, which added ``keypoints`` to the geometry union and the
+#: optional ``keypoints`` spec to a class. A release holding neither a keypoints
+#: label nor a class with a spec keeps the version, the bytes and the hash it had
+#: before, and only one holding either is one a version-11 build refuses.
+MANIFEST_VERSION: int = 12
 
 CALIBRATED_MANIFEST_VERSION: int = 4
 """The first manifest version that can carry a calibration, and so a 3D label."""
@@ -170,6 +175,9 @@ MASK_MANIFEST_VERSION: int = 10
 
 SCAN_SEQUENCE_MANIFEST_VERSION: int = 11
 """The first manifest version that can carry a point-cloud sequence, and a track on scans."""
+
+KEYPOINTS_MANIFEST_VERSION: int = 12
+"""The first manifest version that can carry keypoints or a class's keypoint spec."""
 
 
 class ManifestAnnotation(BaseModel):
@@ -596,6 +604,13 @@ class Manifest(BaseModel):
                 f"a version-{self.manifest_version} manifest carries no point-cloud sequences "
                 f"and no track on a scan; they need version {SCAN_SEQUENCE_MANIFEST_VERSION}"
             )
+        if self.manifest_version < KEYPOINTS_MANIFEST_VERSION and _uses_keypoints(
+            self.assets, self.classes
+        ):
+            raise ValueError(
+                f"a version-{self.manifest_version} manifest carries no keypoints; a keypoints "
+                f"label or a class's keypoint spec needs version {KEYPOINTS_MANIFEST_VERSION}"
+            )
         return self
 
     @property
@@ -612,12 +627,15 @@ def manifest_version_for(
     assets: Sequence[ManifestAsset],
     tracks: Sequence[ManifestTrack] = (),
     sources: Sequence[ManifestSource] = (),
+    classes: Sequence[LabelClass] = (),
 ) -> int:
-    """The lowest manifest version that can express these assets, tracks and sources.
+    """The lowest manifest version that can express these assets, tracks, sources and classes.
 
     Publishing writes this rather than :data:`MANIFEST_VERSION`, so content a
     version-3 build can read is still written as version 3 and keeps its hash.
     """
+    if _uses_keypoints(assets, classes):
+        return KEYPOINTS_MANIFEST_VERSION
     if _scan_sequenced(assets, tracks, sources):
         return SCAN_SEQUENCE_MANIFEST_VERSION
     if _holds(assets, GeometryType.MASK):
@@ -647,6 +665,12 @@ def _scan_sequenced(
         return True
     scans = {asset.asset_id for asset in assets if asset.modality != "image"}
     return any(one.asset_id in scans for track in tracks for one in track.observations)
+
+
+def _uses_keypoints(assets: Sequence[ManifestAsset], classes: Sequence[LabelClass]) -> bool:
+    return _holds(assets, GeometryType.KEYPOINTS) or any(
+        label_class.keypoints is not None for label_class in classes
+    )
 
 
 def _holds(assets: Sequence[ManifestAsset], geometry: GeometryType) -> bool:

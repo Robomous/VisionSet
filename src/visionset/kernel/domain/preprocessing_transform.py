@@ -29,6 +29,7 @@ from visionset.kernel.domain.geometry import (
     ClassificationGeometry,
     Cuboid3DGeometry,
     Geometry,
+    KeypointsGeometry,
     MaskGeometry,
     ObbGeometry,
     PolygonGeometry,
@@ -536,7 +537,7 @@ def _scaled(
                     (x * scale_x + offset_x, y * scale_y + offset_y) for x, y in geometry.points
                 ]
             )
-        case PolylineGeometry():
+        case PolylineGeometry() | KeypointsGeometry():
             return geometry.through(
                 [(x * scale_x + offset_x, y * scale_y + offset_y) for x, y in geometry.points]
             )
@@ -569,6 +570,7 @@ def _cropped(geometry: Geometry, width: float, height: float) -> tuple[Geometry 
         case (
             ObbGeometry()
             | PolylineGeometry()
+            | KeypointsGeometry()
             | Polyline3DGeometry()
             | Cuboid3DGeometry()
             | MaskGeometry()
@@ -778,7 +780,7 @@ def _mirrored(geometry: Geometry, width: float) -> Geometry:
             )
         case PolygonGeometry():
             return PolygonGeometry(points=[(width - x, y) for x, y in geometry.points])
-        case PolylineGeometry():
+        case PolylineGeometry() | KeypointsGeometry():
             return geometry.through([(width - x, y) for x, y in geometry.points])
         case MaskGeometry():
             return mask_mirrored(geometry)
@@ -818,7 +820,7 @@ def _rotated_once(geometry: Geometry, width: float) -> Geometry:
             )
         case PolygonGeometry():
             return PolygonGeometry(points=[(y, width - x) for x, y in geometry.points])
-        case PolylineGeometry():
+        case PolylineGeometry() | KeypointsGeometry():
             return geometry.through([(y, width - x) for x, y in geometry.points])
         case MaskGeometry():
             return mask_rotated_once(geometry)

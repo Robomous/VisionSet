@@ -300,6 +300,9 @@ def _class_changes(before: LabelClass, after: LabelClass) -> Iterator[SchemaChan
             detail=f"geometry {geometry.value!r} removed from class {after.name!r}",
         )
 
+    if GeometryType.KEYPOINTS in old_geometries & new_geometries:
+        yield from _keypoint_spec_changes(before, after)
+
     old = {attribute.name: attribute for attribute in before.attributes}
     new = {attribute.name: attribute for attribute in after.attributes}
 
@@ -331,6 +334,37 @@ def _class_changes(before: LabelClass, after: LabelClass) -> Iterator[SchemaChan
                 orphans=OrphanGuard(label_class=after.name, attribute=name),
                 detail=f"attribute {name!r} removed from class {after.name!r}",
             )
+
+
+def _keypoint_spec_changes(before: LabelClass, after: LabelClass) -> Iterator[SchemaChange]:
+    # Positions are identities: a keypoint renamed, added or removed reassigns
+    # what every stored point means, so any change to the names is destructive.
+    # Dropping the spec only lifts the count rule, and edges constrain no point.
+    old, new = before.keypoints, after.keypoints
+    if old == new:
+        return
+    if new is None:
+        yield SchemaChange(
+            kind=ChangeKind.ADDITIVE,
+            label_class=after.name,
+            detail=f"keypoint spec removed from class {after.name!r}",
+        )
+    elif old is None or old.names != new.names:
+        yield SchemaChange(
+            kind=ChangeKind.DESTRUCTIVE,
+            label_class=after.name,
+            orphans=OrphanGuard(label_class=after.name, geometry=GeometryType.KEYPOINTS),
+            detail=(
+                f"keypoint spec {'added to' if old is None else 'renamed or resized on'} "
+                f"class {after.name!r}"
+            ),
+        )
+    else:
+        yield SchemaChange(
+            kind=ChangeKind.ADDITIVE,
+            label_class=after.name,
+            detail=f"keypoint skeleton changed on class {after.name!r}",
+        )
 
 
 def _attribute_changes(

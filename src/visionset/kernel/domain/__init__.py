@@ -123,6 +123,7 @@ from visionset.kernel.domain.geometry import (
     ClassificationGeometry,
     Cuboid3DGeometry,
     Geometry,
+    KeypointsGeometry,
     MaskGeometry,
     ObbGeometry,
     PolygonGeometry,
@@ -338,6 +339,7 @@ from visionset.kernel.domain.raster_mask import (
 from visionset.kernel.domain.release import (
     CALIBRATED_MANIFEST_VERSION,
     GROUPED_MANIFEST_VERSION,
+    KEYPOINTS_MANIFEST_VERSION,
     MANIFEST_VERSION,
     MASK_MANIFEST_VERSION,
     MODALITY_MANIFEST_VERSION,
@@ -384,6 +386,7 @@ from visionset.kernel.domain.schema import (
     Attribute,
     AttributeValue,
     GeometryType,
+    KeypointSpec,
     LabelClass,
     SchemaProvenance,
     SchemaPublication,
@@ -397,7 +400,12 @@ from visionset.kernel.domain.schema_diff import (
     SchemaDiff,
     diff_classes,
 )
-from visionset.kernel.domain.schema_draft import DraftAttribute, DraftLabelClass, SchemaDraft
+from visionset.kernel.domain.schema_draft import (
+    DraftAttribute,
+    DraftKeypointSpec,
+    DraftLabelClass,
+    SchemaDraft,
+)
 from visionset.kernel.domain.schema_validation import validate_schema_annotation
 from visionset.kernel.domain.segmentation import (
     AssetSegmentation,
@@ -550,6 +558,7 @@ __all__ = [
     "CALIBRATED_MANIFEST_VERSION",
     "MODALITY_MANIFEST_VERSION",
     "GROUPED_MANIFEST_VERSION",
+    "KEYPOINTS_MANIFEST_VERSION",
     "TRACKED_MANIFEST_VERSION",
     "OBB_MANIFEST_VERSION",
     "SEQUENCED_MANIFEST_VERSION",
@@ -655,6 +664,7 @@ __all__ = [
     "DomainEvent",
     "DownloadSize",
     "DraftAttribute",
+    "DraftKeypointSpec",
     "DraftLabelClass",
     "ConnectionJob",
     "ConnectionJobs",
@@ -755,6 +765,7 @@ __all__ = [
     "InferenceConnection",
     "ItemFailure",
     "IssuedToken",
+    "KeypointSpec",
     "LabelClass",
     "SchemaPublication",
     "Manifest",
@@ -772,6 +783,7 @@ __all__ = [
     "Partition",
     "PointPrompt",
     "PolygonGeometry",
+    "KeypointsGeometry",
     "PolylineGeometry",
     "Polyline3DGeometry",
     "Cuboid3DGeometry",

@@ -411,6 +411,13 @@ class PolylineGeometry(TypedDict):
 
 
 @closed
+class KeypointsGeometry(TypedDict):
+    type: Literal["keypoints"]
+    points: list[list[float]]
+    visibility: NotRequired[list[Literal[0, 1, 2]]]
+
+
+@closed
 class Polyline3DGeometry(TypedDict):
     type: Literal["polyline_3d"]
     points: list[list[float]]
@@ -442,6 +449,7 @@ Geometry = (
     | ObbGeometry
     | PolygonGeometry
     | PolylineGeometry
+    | KeypointsGeometry
     | Polyline3DGeometry
     | Cuboid3DGeometry
     | MaskGeometry
