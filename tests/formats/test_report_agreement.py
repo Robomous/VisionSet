@@ -168,6 +168,11 @@ def _classification_counts(root: Path) -> Counter[str]:
         return Counter(row["class"] for row in csv.DictReader(handle))
 
 
+def _classification_dir_counts(root: Path) -> Counter[str]:
+    """Every picture, by the class directory it sits in under its fold."""
+    return Counter(path.parent.name for path in root.glob("*/*/*") if path.is_file())
+
+
 def _mot_counts(root: Path) -> Counter[str]:
     """Every ``gt.txt`` row, by the line of its sequence's ``labels.txt`` its class points at.
 
@@ -293,6 +298,7 @@ COUNTERS: dict[str, Callable[[Path], Counter[str]]] = {
     "coco": _coco_counts,
     "coco-panoptic": _coco_panoptic_counts,
     "classification": _classification_counts,
+    "classification-dir": _classification_dir_counts,
     "mot": _mot_counts,
     "cvat-images": _cvat_images_counts,
     "cvat-video": _cvat_video_counts,
