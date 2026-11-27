@@ -35,7 +35,8 @@ nothing was being distributed. This is the first version that is.
   same allowlisted tags, parameters, metrics and release lineage, as the job of the same type, and
   `visionset.execution_source` is `cli` or `mcp`. Pre-labeling opens one run per job row it writes and carries that
   row's id; nothing a background job runs opens a second run. A command waits up to 10 seconds at exit for its
-  deliveries and never changes its output or exit code; nothing reaches standard output, the MCP protocol channel.
+  deliveries and never changes its output or exit code; nothing reaches standard output, the MCP protocol channel,
+  and `MLFLOW_SUPPRESS_PRINTING_URL_TO_STDOUT` is always forced to `true` so MLflow's run links cannot reach it either.
   With tracking off, nothing is imported or started. See [tracking](docs/content/tracking.md#command-line-and-mcp)
   (#1177).
 - **A local MLflow server for development, and the adapter tested against a real one.** An optional `mlflow`

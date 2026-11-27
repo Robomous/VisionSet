@@ -212,8 +212,10 @@ export archives, credentials or absolute paths, and no artifact uploads.
 **Telemetry and printing.** VisionSet sets `MLFLOW_DISABLE_TELEMETRY=true`,
 `MLFLOW_DISABLE_AGENT_HINT=true` and `MLFLOW_SUPPRESS_PRINTING_URL_TO_STDOUT=true` before it imports
 the client, so the MLflow SDK sends no usage telemetry of its own and does not print a link to each
-finished run, with the server's address in it, to standard output. As with the timeouts, a value you
-set yourself is kept.
+finished run, with the server's address in it, to standard output. A telemetry or hint value you set
+yourself is kept, as with the timeouts. `MLFLOW_SUPPRESS_PRINTING_URL_TO_STDOUT` is always set to
+`true`, whatever you set: standard output carries the MCP server's protocol and the command line's
+`--json` output, and a printed run link would corrupt either.
 
 ## Across processes
 
