@@ -266,6 +266,7 @@ describe("the Images section", () => {
     await waitFor(() => expect(screen.getByTestId(`images-source-${FOLDER}`).textContent).toContain("Folder · 5 images"));
     expect(asked.map((one) => one.source)).not.toContain(SEGMENT);
     expect(screen.queryByTestId(`images-source-${SEGMENT}`)).toBeNull();
+    expect(screen.getByTestId("images-source-line").textContent).toBe("8 images from 2 sources");
   });
 
   it("narrows to a source from its heading's name, the same as choosing it in the menu", async () => {

@@ -72,6 +72,11 @@ export function isVideo(source: Source | undefined): boolean {
   return source?.kind === "video";
 }
 
+/** Whether assets name this source: a point-cloud sequence orders scans its directory holds. */
+export function holdsAssets(source: Source): boolean {
+  return source.kind !== "point_cloud_sequence";
+}
+
 /** What a source is, in one word: a video, an imported image sequence, or a folder. */
 export function sourceKindWord(source: Source | undefined): "Video" | "Sequence" | "Folder" {
   if (source?.kind === "video") return "Video";

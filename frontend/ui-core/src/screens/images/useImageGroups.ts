@@ -9,7 +9,7 @@
 import { useMemo, useState } from "react";
 
 import { useAssetPages, useBatchAssets, useSources, type Asset, type Source } from "../queries";
-import { groupOf, type ImageGroup } from "./imageFacts";
+import { groupOf, holdsAssets, type ImageGroup } from "./imageFacts";
 
 function newestFirst(sources: readonly Source[]): Source[] {
   return [...sources].sort((a, b) => (b.registered_at ?? "").localeCompare(a.registered_at ?? ""));
@@ -31,13 +31,9 @@ export const BATCH_GROUP_KEY = "batch";
 
 export function useImageGroups(projectId: string, pageSize: number): ImageGroups {
   const sourcesQuery = useSources(projectId);
-  const sources = useMemo(() => newestFirst(sourcesQuery.data?.items ?? []), [sourcesQuery.data]);
+  const sources = useMemo(() => newestFirst((sourcesQuery.data?.items ?? []).filter(holdsAssets)), [sourcesQuery.data]);
   // With no source registered, the whole listing is the one run.
-  // A point-cloud sequence orders scans its directory source holds, so no asset names it.
-  const keys = useMemo(() => {
-    const holding = sources.filter((s) => s.kind !== "point_cloud_sequence");
-    return holding.length === 0 ? [null] : holding.map((s) => s.id);
-  }, [sources]);
+  const keys = useMemo(() => (sources.length === 0 ? [null] : sources.map((s) => s.id)), [sources]);
   const [pages, setPages] = useState<Readonly<Record<string, number>>>({});
   const runs = useAssetPages(
     projectId,
@@ -75,7 +71,7 @@ export function useImageGroups(projectId: string, pageSize: number): ImageGroups
  */
 export function useBatchGroups(projectId: string, batchId: string, enabled = true): ImageGroups {
   const sourcesQuery = useSources(projectId);
-  const sources = useMemo(() => newestFirst(sourcesQuery.data?.items ?? []), [sourcesQuery.data]);
+  const sources = useMemo(() => newestFirst((sourcesQuery.data?.items ?? []).filter(holdsAssets)), [sourcesQuery.data]);
   const read = useBatchAssets(batchId, undefined, enabled);
   const { data, isSuccess, isError, error, isFetchingNextPage, hasNextPage, fetchNextPage, refetch } = read;
 

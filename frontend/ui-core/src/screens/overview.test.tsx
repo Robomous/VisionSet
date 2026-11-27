@@ -863,6 +863,24 @@ describe("the cards as doors", () => {
     await waitFor(() => expect(screen.getByTestId("kpi-images").textContent).toContain("from 2 sources"));
   });
 
+  it("does not count a point-cloud sequence, which holds no assets of its own, as a source", async () => {
+    readinessOf({ stats: statsOf({ asset_count: 48 }) });
+    const items = (["point_cloud_directory", "point_cloud_sequence", "point_cloud_sequence"] as const).map((kind, i) => ({
+      id: `00000000-0000-4000-8000-00000000000${i}`,
+      project_id: PROJECT,
+      kind,
+      name: `source-${i}`,
+      registered_at: "2026-11-01T00:00:00Z",
+      frame: null,
+      video: null,
+    }));
+    first("GET", /\/sources$/, { status: 200, body: { items, total: items.length } });
+    renderWithData(<OverviewPanel projectId={PROJECT} />);
+
+    await waitFor(() => expect(screen.getByTestId("kpi-images").textContent).toContain("from 1 source"));
+    expect(screen.getByTestId("kpi-images").textContent).not.toContain("sources");
+  });
+
   it.each([
     ["image-only", ["image_directory"]],
     ["scan-only", ["point_cloud_directory"]],
