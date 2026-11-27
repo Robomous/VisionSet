@@ -210,7 +210,7 @@ describe("a raster mask, carried outside the image scene", () => {
     const stored = fixture.annotations.find((one) => (one as { id: string }).id === parsed.id) as {
       geometry: unknown;
     };
-    expect(JSON.parse(JSON.stringify(parsed.geometry))).toStrictEqual(stored.geometry);
+    expect(parsed.geometry).toStrictEqual(stored.geometry);
   });
 
   it("is refused by the scene's own parser, which draws pixels", () => {
