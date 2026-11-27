@@ -159,7 +159,8 @@ import loss.
 - a restructuring track operation that touches an asset the actor may not write;
 - a server-side video decoder;
 - an `image_sequence` or `point_cloud_sequence` source written by anything but an import;
-- a track whose observations differ in geometry type;
+- a track whose observations differ in geometry kind (a rotated box counts as a box); tracks that
+  mixed kinds before #1189 are kept;
 - a manifest that changes shape without a `MANIFEST_VERSION` bump.
 
 ## Why
