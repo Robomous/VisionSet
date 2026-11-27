@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from visionset.kernel.domain import (
+    Attribute,
     BboxGeometry,
     Cuboid3DGeometry,
     GeometryType,
@@ -253,3 +254,25 @@ def test_a_sequence_lists_each_frame_once_in_time_order(
 def test_a_blank_track_id_is_refused(track: str) -> None:
     with pytest.raises(ValidationError):
         ImportedLabel(class_name="car", geometry=BOX, track=track)
+
+
+def test_a_class_defines_each_attribute_once_whatever_its_case() -> None:
+    with pytest.raises(ValidationError, match="two attributes with the same name"):
+        ImportedClass(
+            name="car",
+            geometries=(GeometryType.BBOX,),
+            attributes=(
+                Attribute(name="color", kind="string"),
+                Attribute(name="Color", kind="string"),
+            ),
+        )
+
+
+def test_a_label_names_its_attribute_values_as_a_definition_would() -> None:
+    box = BboxGeometry(x=0, y=0, width=1, height=1)
+    label = ImportedLabel(class_name="car", geometry=box, attributes={" color ": "red"})
+    assert label.attributes == {"color": "red"}
+    with pytest.raises(ValidationError, match="non-blank"):
+        ImportedLabel(class_name="car", geometry=box, attributes={" ": "red"})
+    with pytest.raises(ValidationError, match="same attribute"):
+        ImportedLabel(class_name="car", geometry=box, attributes={"color": "red", "color ": "b"})

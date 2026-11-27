@@ -9,8 +9,12 @@ here touches a workspace; it returns an ``ImportedDataset``.
 What the kernel cannot represent is counted into ``losses`` by kind, never
 dropped silently: an RLE or crowd mask, a multi-ring polygon and a degenerate
 shape lose the whole label; keypoints lose part of one (its box or polygon is
-kept); attributes are not imported. Whether a given file is lossy depends on
-its content, so there is no ``lossy`` flag here.
+kept). Attribute values are read from the ``"visionset"`` object the exporter
+writes, else from the row's own ``attributes``; a string, a boolean or a number
+is carried and anything else is an ``attribute`` loss. COCO has no attribute
+definitions, so each class defines an attribute by the first value it sees:
+a number, a boolean or a string, never required and with no options. Whether a
+given file is lossy depends on its content, so there is no ``lossy`` flag here.
 """
 
 from __future__ import annotations
@@ -40,6 +44,7 @@ from visionset.kernel.domain import (
     require_relative_path,
 )
 from visionset.kernel.domain.geometry import geometry_intersects_asset
+from visionset.kernel.domain.schema import Attribute, AttributeValue
 from visionset.kernel.errors import ImportSourceUnreadable
 
 ANNOTATIONS_DIRNAME: Final = "annotations"
@@ -66,6 +71,7 @@ class CocoImporter:
         geometries: dict[str, set[GeometryType]] = {}
         images: dict[PurePosixPath, _Image] = {}
         losses: Counter[tuple[ImportLossKind, str, str]] = Counter()
+        definitions: dict[str, dict[str, Attribute]] = {}
 
         for document_path in documents:
             document = _load(document_path)
@@ -75,13 +81,17 @@ class CocoImporter:
             image_dir = _image_dir(src, document_path)
             by_id = self._images(document, document_path.name, image_dir, images)
             for row in _rows(document, "annotations", document_path.name):
-                self._annotation(row, categories, by_id, geometries, losses)
+                self._annotation(row, categories, by_id, geometries, definitions, losses)
 
         for kind, subject, reason, count in map(_unread, unread):
             losses[(kind, subject, reason)] += max(count, 1)
 
         classes = tuple(
-            ImportedClass(name=name, geometries=tuple(seen) or (GeometryType.BBOX,))
+            ImportedClass(
+                name=name,
+                geometries=tuple(seen) or (GeometryType.BBOX,),
+                attributes=tuple(definitions.get(name, {}).values()),
+            )
             for name, seen in geometries.items()
         )
         try:
@@ -139,6 +149,7 @@ class CocoImporter:
         categories: Mapping[Any, str],
         by_id: Mapping[Any, _Image],
         geometries: dict[str, set[GeometryType]],
+        definitions: dict[str, dict[str, Attribute]],
         losses: Counter[tuple[ImportLossKind, str, str]],
     ) -> None:
         name = categories.get(row.get("category_id"))
@@ -161,8 +172,10 @@ class CocoImporter:
             losses[
                 (ImportLossKind.GEOMETRY, name, "keypoints are not imported; the shape is kept")
             ] += 1
-        if _has_attributes(row):
-            losses[(ImportLossKind.ATTRIBUTE, name, "attributes are not imported")] += 1
+        attributes = _attributes(row, name, losses)
+        defined = definitions.setdefault(name, {})
+        for key, value in attributes.items():
+            defined.setdefault(key.casefold(), _defined_by(key, value))
 
         geometries[name].add(geometry.type)
         confidence, discarded = _confidence(row)
@@ -171,7 +184,9 @@ class CocoImporter:
                 (ImportLossKind.ATTRIBUTE, name, "a confidence outside [0, 1] is not imported")
             ] += 1
         image.labels.append(
-            ImportedLabel(class_name=name, geometry=geometry, confidence=confidence)
+            ImportedLabel(
+                class_name=name, geometry=geometry, confidence=confidence, attributes=attributes
+            )
         )
 
 
@@ -321,8 +336,60 @@ def _has_keypoints(row: Mapping[str, Any]) -> bool:
     return isinstance(keypoints, list) and any(keypoints)
 
 
-def _has_attributes(row: Mapping[str, Any]) -> bool:
-    return bool(row.get("attributes")) or bool(_extension(row).get("attributes"))
+def _attributes(
+    row: Mapping[str, Any], name: str, losses: Counter[tuple[ImportLossKind, str, str]]
+) -> dict[str, AttributeValue]:
+    """The label's attribute values, each loss counted against its class."""
+    extension = _extension(row)
+    if "attributes" in extension:
+        found = extension["attributes"]
+        if row.get("attributes"):
+            reason = "the row's own attributes are not imported beside the visionset ones"
+            losses[(ImportLossKind.ATTRIBUTE, name, reason)] += 1
+    else:
+        found = row.get("attributes")
+    if found is None:
+        return {}
+    if not isinstance(found, dict):
+        losses[
+            (ImportLossKind.ATTRIBUTE, name, "attributes that are not an object are not imported")
+        ] += 1
+        return {}
+    values: dict[str, AttributeValue] = {}
+    for key, value in found.items():
+        stripped = key.strip()
+        shown = repr(key[:40])
+        if not stripped or stripped in values:
+            reason = f"attribute {shown} is unnamed or named twice; its value is not imported"
+            losses[(ImportLossKind.ATTRIBUTE, name, reason)] += 1
+            continue
+        kept = _attribute_value(value)
+        if kept is None:
+            reason = f"attribute {shown} is not a string, a boolean or a number; it is not imported"
+            losses[(ImportLossKind.ATTRIBUTE, name, reason)] += 1
+            continue
+        values[stripped] = kept
+    return values
+
+
+def _attribute_value(value: object) -> AttributeValue | None:
+    if isinstance(value, bool | str):
+        return value
+    if not isinstance(value, int | float):
+        return None
+    try:
+        number = float(value)
+    except OverflowError:
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _defined_by(name: str, value: AttributeValue) -> Attribute:
+    if isinstance(value, bool):
+        return Attribute(name=name, kind="boolean")
+    if isinstance(value, str):
+        return Attribute(name=name, kind="string")
+    return Attribute(name=name, kind="number")
 
 
 def _confidence(row: Mapping[str, Any]) -> tuple[float | None, bool]:

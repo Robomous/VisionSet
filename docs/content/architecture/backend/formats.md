@@ -51,7 +51,11 @@ Twenty-seven plugins in [`pyproject.toml`](../../../../pyproject.toml)'s
 The same group carries importers, which satisfy the other port,
 [`Importer`](../../../../src/visionset/kernel/ports/importer.py): `read(src)` returns an
 `ImportedDataset` - classes, images by relative path, their labels, and a report of everything it
-could not represent - and touches no workspace. A dataset of point-cloud scans holds `scans`
+could not represent - and touches no workspace. A class may carry attribute definitions (the
+schema's own `Attribute`) and a label attribute values as the source spells them; an importer
+reads a value as its definition's kind where it can and otherwise passes it on, because whether a
+value is kept is `ImportService`'s judgement against the schema the label lands under, not the
+importer's. A dataset of point-cloud scans holds `scans`
 instead, each a relative path, a `ScanLayout` naming the float32 fields of its headerless records,
 and labels in the one `ScanFrame` the dataset declares; `ImportService` stores each as a binary PCD
 of the same bytes under a point-cloud source declaring that frame. `registry.importers()` filters the scan by that

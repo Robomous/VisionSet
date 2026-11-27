@@ -9,6 +9,7 @@ CVAT never writes one.
 
 from __future__ import annotations
 
+import math
 import re
 import xml.etree.ElementTree as ElementTree
 import xml.parsers.expat as expat
@@ -16,7 +17,7 @@ from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal
 
 from pydantic import ValidationError
 
@@ -62,6 +63,14 @@ _INPUT_TYPES: Final = {
     "number": "number",
     "boolean": "checkbox",
     "select": "select",
+}
+#: Each CVAT ``input_type`` as the attribute kind it reads as; ``radio`` is a select.
+_KINDS: Final[Mapping[str, Literal["string", "number", "boolean", "select"]]] = {
+    "text": "string",
+    "number": "number",
+    "checkbox": "boolean",
+    "select": "select",
+    "radio": "select",
 }
 
 #: VisionSet provenance as CVAT's ``source`` names it: ``file`` is CVAT's own word
@@ -188,18 +197,24 @@ def parse(path: Path, where: str) -> Document:
 
 @dataclass(frozen=True)
 class Meta:
-    """What a document's ``<meta>`` declares: its labels in order, and its task's fields."""
+    """What a document's ``<meta>`` declares: its labels in order and their attributes,
+    and its task's fields."""
 
     labels: tuple[str, ...]
     label_types: Mapping[str, GeometryType]
     task: ElementTree.Element | None
     project: bool
+    attributes: Mapping[str, tuple[Attribute, ...]] = field(default_factory=dict)
+
+    def definitions(self, label: str) -> dict[str, Attribute]:
+        return {attribute.name: attribute for attribute in self.attributes.get(label, ())}
 
 
-def meta(document: Document) -> Meta:
+def meta(document: Document, losses: Losses) -> Meta:
     """The labels every ``<meta>/<task|job|project>/<labels>`` declares, each once."""
     labels: list[str] = []
     types: dict[str, GeometryType] = {}
+    attributes: dict[str, tuple[Attribute, ...]] = {}
     task = None
     project = False
     container = document.root.find("meta")
@@ -219,7 +234,87 @@ def meta(document: Document) -> Meta:
             typed = _TYPED.get((label.findtext("type") or "").strip())
             if typed is not None:
                 types[name] = typed
-    return Meta(labels=tuple(labels), label_types=types, task=task, project=project)
+            attributes[name] = _attribute_specs(document, label, name, losses)
+    return Meta(
+        labels=tuple(labels), label_types=types, task=task, project=project, attributes=attributes
+    )
+
+
+def _attribute_specs(
+    document: Document, label: ElementTree.Element, name: str, losses: Losses
+) -> tuple[Attribute, ...]:
+    specs: dict[str, Attribute] = {}
+    for spec in label.findall("attributes/attribute"):
+        one = _attribute_spec(document, spec, name, losses)
+        if one is None:
+            continue
+        if one.name.casefold() in specs:
+            reason = f"attribute {one.name[:40]!r} is defined twice; the first definition is kept"
+            losses[(ImportLossKind.ATTRIBUTE, name, reason)] += 1
+            continue
+        specs[one.name.casefold()] = one
+    return tuple(specs.values())
+
+
+def _attribute_spec(
+    document: Document, spec: ElementTree.Element, label: str, losses: Losses
+) -> Attribute | None:
+    """One ``<attribute>`` definition as an attribute, or ``None`` with its loss counted.
+
+    CVAT has no required attribute, so none is. A ``number``'s range and step
+    have no place in a definition and are a loss; the attribute is kept.
+    """
+    name = (spec.findtext("name") or "").strip()
+    if not name:
+        raise document.refuse(spec, "an attribute definition has no name")
+    shown = repr(name[:40])
+    input_type = (spec.findtext("input_type") or "").strip()
+    kind = _KINDS.get(input_type)
+    if kind is None:
+        reason = (
+            f"attribute {shown} is a {input_type[:40] or 'untyped'} input, which is not imported"
+        )
+        losses[(ImportLossKind.ATTRIBUTE, label, reason)] += 1
+        return None
+    values = [value for value in (spec.findtext("values") or "").split("\n") if value]
+    options = None
+    if kind == "select":
+        options = tuple(dict.fromkeys(values))
+        if not options:
+            reason = f"attribute {shown} is a select with no values; it is not imported"
+            losses[(ImportLossKind.ATTRIBUTE, label, reason)] += 1
+            return None
+    elif kind == "number" and values:
+        reason = f"attribute {shown}'s range and step are not carried; the attribute is kept"
+        losses[(ImportLossKind.ATTRIBUTE, label, reason)] += 1
+    declared = Attribute(name=name, kind=kind, options=options)
+    default_text = spec.findtext("default_value") or ""
+    if not default_text:
+        return declared
+    default = attribute_value(declared, default_text)
+    if declared.rejects(default) is not None:
+        reason = f"attribute {shown}'s default is not one it accepts; the default is not imported"
+        losses[(ImportLossKind.ATTRIBUTE, label, reason)] += 1
+        return declared
+    return declared.model_copy(update={"default": default})
+
+
+def attribute_value(definition: Attribute | None, text: str) -> AttributeValue:
+    """The text CVAT writes for a value, as the kind ``definition`` declares.
+
+    Text that does not read as that kind is answered as it is, for the import
+    to judge against the schema its label lands under.
+    """
+    if definition is None or definition.kind in ("string", "select"):
+        return text
+    token = text.strip()
+    if definition.kind == "boolean":
+        return token.lower() == "true" if token.lower() in ("true", "false") else text
+    try:
+        value = float(token)
+    except ValueError:
+        return text
+    return value if math.isfinite(value) else text
 
 
 def flag(document: Document, element: ElementTree.Element, name: str, default: str) -> bool:
@@ -317,9 +412,10 @@ def extras(
     element: ElementTree.Element,
     losses: Losses,
     label: str,
+    declared: Meta,
     read: frozenset[str] = frozenset(),
-) -> None:
-    """Count what a shape carries beyond its geometry, which the domain cannot hold."""
+) -> dict[str, AttributeValue]:
+    """The shape's attribute values, counting what else it carries that the domain cannot hold."""
     if flag(document, element, "occluded", "0"):
         losses[(ImportLossKind.ATTRIBUTE, label, _OCCLUDED)] += 1
     z_order = element.get("z_order")
@@ -329,16 +425,21 @@ def extras(
         losses[(ImportLossKind.ATTRIBUTE, label, _GROUP)] += 1
     for name in sorted(set(element.keys()) - _SHAPE_ATTRIBUTES - read):
         losses[(ImportLossKind.ATTRIBUTE, label, f"the {name[:40]} field is not imported")] += 1
+    definitions = declared.definitions(label)
+    values: dict[str, AttributeValue] = {}
     for child in element:
         if child.tag == "attribute":
             name = (child.get("name") or "").strip()
             if not name:
                 raise document.refuse(child, "an <attribute> has no name")
-            losses[
-                (ImportLossKind.ATTRIBUTE, label, f"attribute {name[:40]!r} is not imported")
-            ] += 1
+            if name in values:
+                reason = f"attribute {name[:40]!r} is given twice on one shape; the first is kept"
+                losses[(ImportLossKind.ATTRIBUTE, label, reason)] += 1
+                continue
+            values[name] = attribute_value(definitions.get(name), child.text or "")
         else:
             losses[(ImportLossKind.ATTRIBUTE, label, f"<{child.tag[:40]}> is not imported")] += 1
+    return values
 
 
 def imported_classes(
@@ -351,18 +452,36 @@ def imported_classes(
     A class takes the geometries its labels use. A declared label no shape uses
     is a class only when its ``<type>`` names a geometry the domain holds; CVAT's
     ``any`` names none, and a label left with no geometry is a ``class`` loss.
+    A class takes each attribute from the first document defining it; another
+    defining it differently is an ``attribute`` loss.
     """
     order: dict[str, None] = {}
     typed: dict[str, GeometryType] = {}
+    attributes: dict[str, dict[str, Attribute]] = {}
     for one in declared:
         order.update(dict.fromkeys(one.labels))
         typed.update(one.label_types)
+        for label, specs in one.attributes.items():
+            merged = attributes.setdefault(label, {})
+            for spec in specs:
+                if merged.setdefault(spec.name.casefold(), spec) != spec:
+                    reason = (
+                        f"attribute {spec.name[:40]!r} is defined differently by two documents; "
+                        "the first definition is kept"
+                    )
+                    losses[(ImportLossKind.ATTRIBUTE, label, reason)] += 1
     order.update(dict.fromkeys(used))
     classes = []
     for name in order:
         geometries = used.get(name) or ({typed[name]} if name in typed else set())
         if geometries:
-            classes.append(ImportedClass(name=name, geometries=tuple(geometries)))
+            classes.append(
+                ImportedClass(
+                    name=name,
+                    geometries=tuple(geometries),
+                    attributes=tuple(attributes.get(name, {}).values()),
+                )
+            )
         else:
             losses[(ImportLossKind.CLASS, name, _NO_GEOMETRY)] += 1
     return classes
@@ -429,6 +548,12 @@ def _write_attribute_spec(into: ElementTree.Element, attribute: Attribute, mutab
     ElementTree.SubElement(spec, "name").text = attribute.name
     ElementTree.SubElement(spec, "mutable").text = str(mutable)
     ElementTree.SubElement(spec, "input_type").text = _INPUT_TYPES[attribute.kind]
+    for option in attribute.options or ():
+        if not option or "\n" in option:
+            raise ExportSourceUnreadable(
+                f"attribute {attribute.name[:40]!r} has the option {option[:40]!r}; a CVAT "
+                "option is one non-empty line of <values>, so it cannot be written"
+            )
     default = "" if attribute.default is None else text_of(attribute.default)
     ElementTree.SubElement(spec, "default_value").text = default
     values = "\n".join(attribute.options or ())

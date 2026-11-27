@@ -43,13 +43,15 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path, PurePosixPath
-from typing import BinaryIO
+from typing import BinaryIO, TypeVar
 from uuid import UUID
 
 from visionset.kernel.domain import (
     Annotation,
     AnnotationSchema,
     Asset,
+    Attribute,
+    AttributeValue,
     Batch,
     DecodedStill,
     ImageFormat,
@@ -104,7 +106,10 @@ from visionset.kernel.services.source_service import SourceService
 from visionset.kernel.services.track_service import TrackService
 from visionset.kernel.services.workspace_service import WorkspaceService
 
+_Item = TypeVar("_Item", ImportedImage, ImportedScan)
+
 _OUTSIDE = "it lies wholly outside its image"
+_STALE = "it is already on its asset with other attribute values; the values are not updated"
 _OTHER_CLASS = "its track id names a track of another class; the label is kept untracked"
 _REPEATED = "its track id repeats within one frame; the label is kept untracked"
 
@@ -295,7 +300,7 @@ class ImportService:
             labeled: list[UUID] = []
             for item, candidate in zip(items, candidates, strict=True):
                 asset = by_hash[candidate.content_hash]
-                writing, repeated = _labels_to_write(
+                writing, repeated, _ = _labels_to_write(
                     _present(uow.annotations.list(asset.id)),
                     _occurrences(item, planned.repeats or {}),
                 )
@@ -313,6 +318,7 @@ class ImportService:
                             geometry=label.geometry,
                             provenance="import",
                             confidence=label.confidence,
+                            attributes=dict(label.attributes),
                         )
                         proposed.append(annotation)
                         labeled.append(asset.id)
@@ -454,17 +460,23 @@ class ImportService:
             ImportLoss(kind=ImportLossKind.LABEL, subject=name, count=count, reason=reason)
             for (name, reason), count in label_losses.items()
         )
+        with self._workspace.unit_of_work() as uow:
+            active = self._schemas.active(uow, project_id)
         folded = [one for group in repeats.values() for one in group]
-        consistent, track_losses = _consistent_tracks(dataset, [*kept, *folded])
+        judged, attribute_losses = _judged_attributes(
+            [*kept, *folded], _target_classes(dataset, active)
+        )
+        losses.extend(attribute_losses)
+        consistent, track_losses = _consistent_tracks(dataset, judged)
         kept = consistent[: len(kept)]
         fixed = {one.path: one for one in consistent[len(kept) :]}
         repeats = {path: [fixed[one.path] for one in group] for path, group in repeats.items()}
+        folded = [one for group in repeats.values() for one in group]
         losses.extend(track_losses)
 
         writes: set[PurePosixPath] = set()
         tracked: dict[PurePosixPath, set[str]] = {}
         with self._workspace.unit_of_work() as uow:
-            active = self._schemas.active(uow, project_id)
             known = {asset.content_hash: asset for asset in uow.assets.list(project_id)}
             trunk = member_asset_ids_of(
                 uow, ProjectService(self._workspace).require_dataset(uow, project_id)
@@ -475,14 +487,16 @@ class ImportService:
             new_assets = 0
             new_annotations = 0
             already = 0
+            stale: Counter[str] = Counter()
             blocked: list[VisionSetError] = []
             for image in kept:
                 asset = known.get(probes[image.path].content_hash)
-                writing, repeated = _labels_to_write(
-                    Counter() if asset is None else _present(uow.annotations.list(asset.id)),
+                writing, repeated, differing = _labels_to_write(
+                    {} if asset is None else _present(uow.annotations.list(asset.id)),
                     _occurrences(image, repeats),
                 )
                 already += repeated
+                stale.update(differing)
                 new = [label for _, labels in writing for label in labels]
                 new_annotations += len(new)
                 for at, labels in writing:
@@ -530,6 +544,7 @@ class ImportService:
             len(set().union(*(tracked.get(one.path, set()) for one in sequence.frames)))
             for sequence in touched
         )
+        losses.extend(_stale_losses(stale))
         members = bool(new_assets or new_annotations)
         refusals: list[VisionSetError] = []
         if active is not None:
@@ -603,6 +618,8 @@ class ImportService:
 
         with self._workspace.unit_of_work() as uow:
             active = self._schemas.active(uow, project_id)
+            kept, attribute_losses = _judged_attributes(kept, _target_classes(dataset, active))
+            losses.extend(attribute_losses)
             known = {asset.content_hash: asset for asset in uow.assets.list(project_id)}
             trunk = member_asset_ids_of(
                 uow, ProjectService(self._workspace).require_dataset(uow, project_id)
@@ -614,6 +631,7 @@ class ImportService:
             new_assets = 0
             new_annotations = 0
             already = 0
+            stale: Counter[str] = Counter()
             blocked: list[VisionSetError] = []
             for scan in kept:
                 asset = known.get(probes[scan.path].content_hash)
@@ -621,8 +639,11 @@ class ImportService:
                     new_assets += 1
                     new_annotations += len(scan.labels)
                     continue
-                new, repeated = _new_labels(_present(uow.annotations.list(asset.id)), scan.labels)
+                new, repeated, differing = _new_labels(
+                    _present(uow.annotations.list(asset.id)), scan.labels
+                )
                 already += repeated
+                stale.update(differing)
                 new_annotations += len(new)
                 if any(
                     geometry_needs_scan_frame(one.geometry, modality=asset.modality) for one in new
@@ -647,6 +668,7 @@ class ImportService:
                         )
                     )
 
+        losses.extend(_stale_losses(stale))
         members = bool(new_assets or new_annotations)
         refusals: list[VisionSetError] = []
         if members and registered is not None and registered.frame != frame:
@@ -938,9 +960,93 @@ def _consistent_tracks(
 
 def _derived_classes(dataset: ImportedDataset) -> list[LabelClass]:
     return [
-        LabelClass(name=imported.name, geometries=imported.geometries)
+        LabelClass(
+            name=imported.name, geometries=imported.geometries, attributes=imported.attributes
+        )
         for imported in dataset.classes
     ]
+
+
+def _target_classes(
+    dataset: ImportedDataset, active: AnnotationSchema | None
+) -> Sequence[LabelClass]:
+    """The classes the labels land under: the active schema's, else the ones a commit derives."""
+    return _derived_classes(dataset) if active is None else active.classes
+
+
+def _judged_attributes(
+    items: Sequence[_Item], classes: Sequence[LabelClass]
+) -> tuple[list[_Item], list[ImportLoss]]:
+    """The items with every attribute value ``classes`` would refuse taken off its label.
+
+    A value its class does not declare, or one its definition rejects, is an
+    ``attribute`` loss and the label is kept. A label then lacking a required
+    attribute is a ``label`` loss alone and is dropped. Each loss is counted per class
+    and attribute name. A label whose class or geometry ``classes`` do not hold
+    is left as it is, for the schema refusal to name.
+    """
+    declared = {label_class.name: label_class for label_class in classes}
+    definitions_of = {
+        label_class.name: {attribute.name: attribute for attribute in label_class.attributes}
+        for label_class in classes
+    }
+    dropped: Counter[tuple[ImportLossKind, str, str]] = Counter()
+    judged: list[_Item] = []
+    for item in items:
+        labels: list[ImportedLabel] = []
+        for label in item.labels:
+            owner = declared.get(label.class_name)
+            if owner is None or label.geometry.type not in owner.geometries:
+                labels.append(label)
+                continue
+            definitions = definitions_of[owner.name]
+            values: dict[str, AttributeValue] = {}
+            reasons: list[str] = []
+            for name, value in label.attributes.items():
+                definition = definitions.get(name)
+                if definition is None:
+                    reasons.append(_undeclared(name))
+                elif definition.rejects(value) is not None:
+                    reasons.append(_rejected(definition))
+                else:
+                    values[name] = value
+            missing = [
+                one.name for one in owner.attributes if one.required and one.name not in values
+            ]
+            if missing:
+                dropped[(ImportLossKind.LABEL, owner.name, _lacking(missing))] += 1
+                continue
+            dropped.update((ImportLossKind.ATTRIBUTE, owner.name, reason) for reason in reasons)
+            labels.append(
+                label
+                if values == label.attributes
+                else label.model_copy(update={"attributes": values})
+            )
+        judged.append(item.model_copy(update={"labels": tuple(labels)}))
+    losses = [
+        ImportLoss(kind=kind, subject=subject, count=count, reason=reason)
+        for (kind, subject, reason), count in dropped.items()
+    ]
+    return judged, losses
+
+
+def _undeclared(name: str) -> str:
+    return f"attribute {name[:40]!r} is not one its class declares; the value is not imported"
+
+
+def _rejected(definition: Attribute) -> str:
+    return (
+        f"attribute {definition.name!r} holds a value its {definition.kind} definition "
+        "rejects; the value is not imported"
+    )
+
+
+def _lacking(names: Sequence[str]) -> str:
+    listed = ", ".join(repr(name) for name in names)
+    return (
+        f"it has no value its class accepts for the required attribute {listed}; "
+        "the label is not imported"
+    )
 
 
 def _undeclared_unused(dataset: ImportedDataset, active: AnnotationSchema) -> list[ImportLoss]:
@@ -975,7 +1081,7 @@ def _schema_refusals(
                 validate_schema_annotation(
                     label_class=label.class_name,
                     geometry=label.geometry,
-                    attributes={},
+                    attributes=label.attributes,
                     schema=active,
                 )
             except InvalidAnnotation as refusal:
@@ -983,8 +1089,23 @@ def _schema_refusals(
     return refusals
 
 
-def _present(annotations: Iterable[Annotation]) -> Counter[tuple[str, str]]:
-    return Counter((a.label_class, a.geometry.model_dump_json()) for a in annotations)
+_Present = dict[tuple[str, str], list[dict[str, AttributeValue]]]
+
+
+def _present(annotations: Iterable[Annotation]) -> _Present:
+    """The asset's labels by class and geometry, each with its attribute values."""
+    present: _Present = {}
+    for annotation in annotations:
+        key = (annotation.label_class, annotation.geometry.model_dump_json())
+        present.setdefault(key, []).append(dict(annotation.attributes))
+    return present
+
+
+def _stale_losses(stale: Counter[str]) -> list[ImportLoss]:
+    return [
+        ImportLoss(kind=ImportLossKind.ATTRIBUTE, subject=name, count=count, reason=_STALE)
+        for name, count in stale.items()
+    ]
 
 
 def _occurrences(
@@ -997,21 +1118,25 @@ def _occurrences(
 
 
 def _labels_to_write(
-    present: Counter[tuple[str, str]],
+    present: _Present,
     occurrences: Sequence[tuple[PurePosixPath, Sequence[ImportedLabel]]],
-) -> tuple[list[tuple[PurePosixPath, list[ImportedLabel]]], int]:
-    """Each occurrence's labels the asset does not already carry, and how many it did.
+) -> tuple[list[tuple[PurePosixPath, list[ImportedLabel]]], int, Counter[str]]:
+    """Each occurrence's labels the asset does not already carry, how many it did,
+    and per class how many of those it carries with other attribute values.
 
     The first occurrence is judged as a multiset against the asset. A later one
     repeats its bytes: a tracked label there matches only an annotation no
     earlier label claimed, since a track observes each occurrence through an
     annotation of its own, and an untracked label matches anything the asset
-    carries, this run's writes included, so it never stacks.
+    carries, this run's writes included, so it never stacks. A match is by class
+    and geometry; one whose values no matching label carries is not updated.
     """
-    unclaimed = present.copy()
-    carried = present.copy()
+    unclaimed = Counter({key: len(values) for key, values in present.items()})
+    carried = unclaimed.copy()
+    values = {key: list(held) for key, held in present.items()}
     answer: list[tuple[PurePosixPath, list[ImportedLabel]]] = []
     already = 0
+    stale: Counter[str] = Counter()
     for index, (path, labels) in enumerate(occurrences):
         here = carried.copy()
         new: list[ImportedLabel] = []
@@ -1021,11 +1146,15 @@ def _labels_to_write(
             if pool[key] > 0:
                 pool[key] -= 1
                 already += 1
+                if label.attributes not in values.get(key, []):
+                    stale[label.class_name] += 1
             else:
                 new.append(label)
         carried.update(_key(label) for label in new)
+        for label in new:
+            values.setdefault(_key(label), []).append(label.attributes)
         answer.append((path, new))
-    return answer, already
+    return answer, already, stale
 
 
 def _key(label: ImportedLabel) -> tuple[str, str]:
@@ -1033,18 +1162,22 @@ def _key(label: ImportedLabel) -> tuple[str, str]:
 
 
 def _new_labels(
-    present: Counter[tuple[str, str]], labels: Sequence[ImportedLabel]
-) -> tuple[list[ImportedLabel], int]:
-    """The labels not already on the asset, as a multiset, and how many were."""
-    remaining = present.copy()
+    present: _Present, labels: Sequence[ImportedLabel]
+) -> tuple[list[ImportedLabel], int, Counter[str]]:
+    """The labels not already on the asset, as a multiset, how many were, and per
+    class how many of those it carries with other attribute values."""
+    remaining = Counter({key: len(values) for key, values in present.items()})
     new: list[ImportedLabel] = []
+    stale: Counter[str] = Counter()
     for label in labels:
-        key = (label.class_name, label.geometry.model_dump_json())
+        key = _key(label)
         if remaining[key] > 0:
             remaining[key] -= 1
+            if label.attributes not in present[key]:
+                stale[label.class_name] += 1
         else:
             new.append(label)
-    return new, len(labels) - len(new)
+    return new, len(labels) - len(new), stale
 
 
 def _require_frame_still_declared(

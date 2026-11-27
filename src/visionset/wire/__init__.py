@@ -1186,7 +1186,11 @@ def import_loss(value: ImportLoss) -> shapes.ImportLoss:
 
 
 def imported_class(value: ImportedClass) -> shapes.ImportedClass:
-    return {"name": value.name, "geometries": [g.value for g in value.geometries]}
+    return {
+        "name": value.name,
+        "geometries": [g.value for g in value.geometries],
+        "attributes": [attribute(one) for one in value.attributes],
+    }
 
 
 def import_plan(value: ImportPlan) -> shapes.ImportPlan:

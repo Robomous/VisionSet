@@ -63,9 +63,22 @@ none is dropped for its position. The plan counts `scans` and names the `frame`.
 a `group_label` - the set the source says it belongs to, such as a nuScenes scene - and a new
 asset keeps it as provenance; an asset already in the project keeps whatever it arrived with.
 
-An existing schema is never changed by an import. A label the active schema cannot accept refuses
-the whole import, as does a label that would land on an asset already in the dataset or held by
-another batch.
+An existing schema is never changed by an import. A label whose class or geometry the active
+schema cannot accept refuses the whole import, as does a label that would land on an asset already
+in the dataset or held by another batch.
+
+**Attributes.** An importer may define attributes on a class and give each label attribute values.
+With no schema, the version the import creates declares each class with the definitions the source
+gives it. Every value is then judged against the class it lands under - the active schema's, or
+the one the import creates - by the rule an annotation write uses: a value the class does not
+declare, or one its definition rejects, is an `attribute` loss counted per class and attribute
+name, and the label is kept without it. A label then lacking an attribute its class requires is a
+`label` loss alone and is not written. An existing schema is never widened to take a value, and
+the definitions a source gives are not consulted against one. Whether a label is already on its
+asset is decided by class and geometry: one already there is not written again, and when it is
+there with other attribute values - a re-run after the source changed a value, or a repeated
+sequence frame whose label differs only in its values - the stored values are kept and the
+difference is an `attribute` loss, never a silent no-op.
 
 ## Losses need consent, per kind
 
@@ -78,10 +91,10 @@ computed from the content, and a commit that would drop something is refused wit
 | --- | --- |
 | `class` | A class the project's schema does not declare and no label uses; a CVAT label that names no geometry the domain holds. |
 | `geometry` | Part of a shape the kernel has no type for, such as YOLO keypoints, VOC parts, 3D lane points or an unusable per-vertex visibility, while the shape itself is kept. |
-| `label` | A whole label: an RLE or crowd mask, a polygon of several rings, a label outside its image, a MOT row whose `conf` marks it ignored, a CVAT shape the domain has no geometry for (points, ellipse, cuboid, mask, skeleton, a rotated box). |
+| `label` | A whole label: an RLE or crowd mask, a polygon of several rings, a label outside its image, a label lacking an attribute its class requires, a MOT row whose `conf` marks it ignored, a CVAT shape the domain has no geometry for (points, ellipse, cuboid, mask, skeleton, a rotated box). |
 | `image` | An image the source names but does not hold, or one outside any sequence whose bytes repeat an earlier image; its labels go with it. A sequence frame that repeats one keeps its labels on that image's asset. A nuScenes camera frame, which is not read. |
 | `scan` | A scan whose points repeat an earlier scan's, or one gone from the source; its labels go with it. A nuScenes sweep or radar frame, which is not read. |
-| `attribute` | Extras the importer does not carry, such as COCO attributes, VOC difficult or pose flags, an OpenLane camera calibration, a track id outside a sequence or one a track cannot hold, a MOT box's visibility ratio or the absence of an identity (an `id` that is not positive), CVAT attribute values, `occluded`, `z_order`, `group_id`, a `subset` and the interpolation CVAT would expand, KITTI truncation, occlusion, alpha and calibration, nuScenes attributes, visibility, instance tokens, point counts, poses and a scene's fields other than its name. |
+| `attribute` | An attribute value its class does not declare or does not accept, or one a label already on its asset holds otherwise, and extras the importer does not carry, such as a COCO attribute value that is not a string, a boolean or a number, VOC difficult or pose flags, an OpenLane camera calibration, a track id outside a sequence or one a track cannot hold, a MOT box's visibility ratio or the absence of an identity (an `id` that is not positive), a CVAT attribute definition the domain has no kind for or a number's range, `occluded`, `z_order`, `group_id`, a `subset` and the interpolation CVAT would expand, KITTI truncation, occlusion, alpha and calibration, nuScenes attributes, visibility, instance tokens, point counts, poses and a scene's fields other than its name. |
 
 The refusal carries the full report in its `detail.losses`. Inspecting the source first returns
 the same report and writes nothing; its `loss_kinds` is exactly what the commit has to consent to,
@@ -113,8 +126,8 @@ naming the kinds to accept. See [mcp-tools.md](mcp-tools.md).
 
 | Format | Reads | Reported as lost |
 | --- | --- | --- |
-| `coco` | `annotations/instances_*.json` with images under `images/<fold>/` or `images/`, the layout the COCO exporter writes; boxes and single-ring polygons | RLE and crowd masks, multi-ring polygons, keypoints, captions and other non-instances files, attributes |
-| `openlane-2d` | `labels/**/*.json`, one document per image naming it in `file_path`, the layout the OpenLane 2D exporter writes; lanes as polylines with their per-vertex `visibility`; each `segment-*` directory as an image sequence and its lanes' `track_id` as tracks | 3D points (`xyz`), a camera calibration, a track id outside a `segment-*` sequence, and lane `attribute` values beyond the exporter's own, a `visibility` that is not one `0` or `1` per point (the lane is kept without it), malformed lanes |
+| `coco` | `annotations/instances_*.json` with images under `images/<fold>/` or `images/`, the layout the COCO exporter writes; boxes and single-ring polygons | RLE and crowd masks, multi-ring polygons, keypoints, captions and other non-instances files, an attribute value that is not a string, a boolean or a number |
+| `openlane-2d` | `labels/**/*.json`, one document per image naming it in `file_path`, the layout the OpenLane 2D exporter writes; lanes as polylines with their per-vertex `visibility`; each `segment-*` directory as an image sequence and its lanes' `track_id` as tracks | 3D points (`xyz`), a camera calibration, a track id outside a `segment-*` sequence, a lane `attribute` other than `1` to `4` or the exporter's own, a `visibility` that is not one `0` or `1` per point (the lane is kept without it), malformed lanes |
 | `ultralytics` | `data.yaml` with `names` and pictures under any `images/` directory, labels at the matching `labels/` path, the layout the exporter writes; boxes (four values) and polygons (six or more, an even count); or a class tree (`train`/`val`/`test` directories of class directories) as tags | Keypoints of a pose dataset (`kpt_shape`), malformed rows, an unknown class index, a zero-area or wholly outside box, a label file with no picture, the labels of a picture whose size cannot be read |
 | `yolov5-yaml` | The same layout with `nc` and a list of `names` | As `ultralytics` |
 | `darknet` | `obj.names` (and `obj.data`) with the same `images/` and `labels/` layout | As `ultralytics`, bar keypoints |
@@ -122,9 +135,18 @@ naming the kinds to accept. See [mcp-tools.md](mcp-tools.md).
 | `classification` | `labels.csv` (`image`, `class`) and `classes.txt` beside `images/`; one tag per row | A row naming a class `classes.txt` does not declare, a second row of one class on one picture, a malformed row, a row with no picture or class |
 | `kitti` | A 3D object detection split: `velodyne/*.bin` scans, `label_2/*.txt` and `calib/*.txt`, at the top or in `training/` and `testing/` (or the `train/`, `val/`, `test/` the exporter writes); boxes as `cuboid_3d` in the `lidar_flu` frame | `DontCare` regions, each box's 2D image `bbox`, truncation, occlusion and alpha, the calibration itself, a score outside 0 to 1, a label with no scan, no usable calibration, a malformed line or a dimension that is not positive |
 | `mot` | MOTChallenge (MOT16/17/20) sequences: every directory holding a `seqinfo.ini`, its frames `<imDir>/<frame:06d><imExt>` for frames 1 to `seqLength`, and `gt/gt.txt` boxes with `gt/labels.txt` as the class table; each sequence as an image sequence and its ids as tracks | A row whose `conf` is `0` (ignored), each box's `visibility`, the identity of a row whose `id` is not positive (the box is kept untracked), frames the sequence names but does not hold; `det/det.txt` is not read. A malformed row or `seqinfo.ini` refuses the source |
-| `cvat-images` | CVAT for images 1.1: every `annotations.xml` holding `<image>` elements, its pictures under `images/` beside it; boxes, polygons, polylines and image-level tags | Points, ellipses, cuboids, masks, skeletons and rotated boxes, attribute values, `occluded`, a non-zero `z_order`, a `group_id`, a `subset` other than `default`, a second tag of one class on a picture. A malformed document refuses the source by file and line |
-| `cvat-video` | CVAT for video 1.1: every `annotations.xml` holding `<track>` elements, its frames `images/frame_<frame:06d><ext>` beside it; each task as an image sequence and its tracks' ids as tracks, with boxes, polygons and polylines per frame and `<tag frame>` as untracked tags | Tracks of shapes the domain has no geometry for, attribute values, `occluded`, `z_order`, `group_id`, the `keyframe="0"` mark of an interpolated frame, the frames CVAT interpolates between stored shapes or carries to the task's end, frames the task counts but does not hold. A malformed document refuses the source by file and line |
+| `cvat-images` | CVAT for images 1.1: every `annotations.xml` holding `<image>` elements, its pictures under `images/` beside it; boxes, polygons, polylines and image-level tags | Points, ellipses, cuboids, masks, skeletons and rotated boxes, attribute definitions of an input type the domain has no kind for, `occluded`, a non-zero `z_order`, a `group_id`, a `subset` other than `default`, a second tag of one class on a picture. A malformed document refuses the source by file and line |
+| `cvat-video` | CVAT for video 1.1: every `annotations.xml` holding `<track>` elements, its frames `images/frame_<frame:06d><ext>` beside it; each task as an image sequence and its tracks' ids as tracks, with boxes, polygons and polylines per frame and `<tag frame>` as untracked tags | Tracks of shapes the domain has no geometry for, attribute definitions of an input type the domain has no kind for, `occluded`, `z_order`, `group_id`, the `keyframe="0"` mark of an interpolated frame, the frames CVAT interpolates between stored shapes or carries to the task's end, frames the task counts but does not hold. A malformed document refuses the source by file and line |
 | `nuscenes` | A data root: a version folder (`v1.0-mini`, `v1.0-trainval`, ...) of JSON tables beside `samples/LIDAR_TOP/*.pcd.bin`; the LIDAR_TOP keyframes, boxes as `cuboid_3d` in the `lidar_rfu` frame, and each keyframe's scene name as its group label | Attributes, visibility, instance tokens (tracking identity, because a track follows 2D labels only), `num_lidar_pts` and `num_radar_pts`, a scene's description, log and map, the ego pose and calibration themselves, a box leaning more than 6 degrees, a malformed box or a dimension that is not positive, an annotation whose sample has no LIDAR_TOP keyframe, the sweeps, and every other sensor's data |
+
+**COCO attributes.** A label's attribute values are read from the `"visionset"` object the
+exporter writes on each annotation, else from the row's own `attributes`, as CVAT's COCO export
+writes them; when both are present the row's own are an `attribute` loss. A string, a boolean or a
+number is carried, anything else is an `attribute` loss. COCO has no attribute definitions, so a
+class defines each attribute by the first value it sees - `number`, `boolean` or `string`, never
+required and with no options or default. A COCO export imported into a project whose schema
+already declares the attributes therefore reads back with the same values; into a project with no
+schema, a `select` reads back as a `string`.
 
 **YOLO family** (`ultralytics`, `yolov5-yaml`, `darknet`). A picture is any file under an `images/`
 directory; its label is at the same path with the last `images` segment swapped for `labels` and
@@ -173,8 +195,13 @@ column-major `uv` (`[[u...], [v...]]`) is a different layout and is refused rath
 One case cannot be told apart: a two-point lane is `[[a, b], [c, d]]` in both layouts, and is read
 as the two points `(a, b)` and `(c, d)`. A document with any longer column-major lane is refused
 whole, so only a document whose every lane has two points can be misread. A lane `attribute` is
-kept quiet only when it equals the lane's category, which is what the exporter writes; any other
-value is an `attribute` loss. A symbolic link to a directory under `labels/` is refused, not
+OpenLane's left-to-right position and is carried as the `position_role` lane attribute: `1`
+(left-left) is `adjacent_left`, `2` (left) `ego_left`, `3` (right) `ego_right` and `4`
+(right-right) `adjacent_right`, and a class carrying one defines `position_role` as the lane
+vocabulary does. The exporter writes the lane's category there instead, beside its own
+`lane_<n>` track id, so a value equal to the category on a lane whose `track_id` is `lane_<n>` at
+its own position `n` is that echo and is neither carried nor reported; on any other lane the value
+is read like any other. Any other value is an `attribute` loss. A symbolic link to a directory under `labels/` is refused, not
 followed.
 
 **OpenLane segments are sequences.** A directory named `segment-*` whose documents are all named by
@@ -228,8 +255,24 @@ of type `any` nothing draws or one only points or skeletons use, is a `class` lo
 sub-labels, declared with a `<parent>`, are not classes of their own. Coordinates are pixels from the picture's
 top-left corner as CVAT writes them, so a box is `x = xtl`, `width = xbr - xtl`, and polygon and
 polyline `points` are `x,y;x,y;...`. Every label is written with `import` provenance, whatever its
-`source`. Attribute values are reported as `attribute` losses per class and attribute name: the
-import wire carries no attribute values for any format yet.
+`source`.
+
+**CVAT attributes.** A label's `<attributes>` in the `<meta>` are its class's definitions: `text`
+is a `string`, `number` a `number`, `checkbox` a `boolean`, and `select` and `radio` a `select`
+whose options are the `<values>`, one per non-empty line, exactly as written. A non-empty
+`<default_value>` the definition accepts is its default. CVAT has no required attribute, so none is; a `number`'s range and step have no place in a
+definition and are an `attribute` loss, the attribute kept, and an input type other than these
+five, a `select` with no values, a default the definition rejects and a second definition of one
+name are each an `attribute` loss. A shape's `<attribute name>` values are read as the kind their
+definition declares - a number, `true` or `false` for a checkbox - and text that does not read as
+that kind, or a value with no definition, is carried as written for the import to judge. A class
+takes each definition from the first document defining it.
+
+What a `cvat-images` or `cvat-video` export reads back: every attribute value, and each
+definition's name, kind, options and non-empty default. CVAT has no place for `required` or for an
+empty-string default, so those read back as an optional attribute with no default; the exporter is
+`lossy` and asks for consent on that account. An option that is empty or spans lines cannot be a
+line of `<values>` and refuses the export before anything is written.
 
 | CVAT 1.1 | `cvat-images` | `cvat-video` |
 | --- | --- | --- |
@@ -238,7 +281,7 @@ import wire carries no attribute values for any format yet.
 | `<polygon>`, `<polyline>` | polygon, polyline | polygon, polyline, tracked |
 | `<points>`, `<ellipse>`, `<cuboid>`, `<mask>`, `<skeleton>` | `label` loss | `label` loss per stored shape |
 | `<tag>` | classification tag | `<tag frame>`: an untracked classification tag on that frame |
-| `<attribute>` values | `attribute` loss | `attribute` loss |
+| `<attribute>` values | the label's attribute values | the label's attribute values, per frame |
 | `occluded="1"`, non-zero `z_order`, `group_id` | `attribute` loss, shape kept | `attribute` loss, shape kept |
 | `subset` | `attribute` loss unless `default` | - |
 | `<track id>` | refused | the track's external id, scoped to its task |
