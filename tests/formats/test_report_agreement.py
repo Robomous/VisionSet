@@ -38,6 +38,7 @@ from visionset.formats.coco import ANNOTATIONS_DIRNAME as COCO_ANNOTATIONS_DIRNA
 from visionset.formats.coco_panoptic import read_segment_map
 from visionset.formats.createml import ANNOTATIONS_FILENAME as CREATEML_ANNOTATIONS
 from visionset.formats.lanes import LABELS_DIRNAME as LANE_LABELS_DIRNAME
+from visionset.formats.open_images import DESCRIPTIONS_FILENAME as OPEN_IMAGES_DESCRIPTIONS
 from visionset.formats.registry import exporters
 from visionset.formats.segmentation_png import DESCRIPTOR_FILENAME as SEGMENTATION_DESCRIPTOR
 from visionset.formats.ultralytics import DATA_FILENAME, LABELS_DIRNAME
@@ -253,6 +254,17 @@ def _coco_panoptic_counts(root: Path) -> Counter[str]:
     return found
 
 
+def _open_images_counts(root: Path) -> Counter[str]:
+    """Every box row of every split's CSV, by the ``DisplayName`` its ``LabelName`` maps to."""
+    with (root / OPEN_IMAGES_DESCRIPTIONS).open(newline="", encoding="utf-8") as handle:
+        names = {row["LabelName"]: row["DisplayName"] for row in csv.DictReader(handle)}
+    found: Counter[str] = Counter()
+    for path in sorted(root.glob("*-annotations-bbox.csv")):
+        with path.open(newline="", encoding="utf-8") as handle:
+            found.update(names[row["LabelName"]] for row in csv.DictReader(handle))
+    return found
+
+
 def _segmentation_png_counts(root: Path) -> Counter[str]:
     """Every class present in a mask, once per mask, by the name the descriptor gives its id.
 
@@ -287,6 +299,7 @@ COUNTERS: dict[str, Callable[[Path], Counter[str]]] = {
     "segmentation-png": _segmentation_png_counts,
     "labelme": _labelme_counts,
     "createml": _createml_counts,
+    "open-images": _open_images_counts,
 }
 
 #: Formats whose layout depends on what the release holds, and are therefore

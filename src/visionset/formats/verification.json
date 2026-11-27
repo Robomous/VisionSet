@@ -380,6 +380,35 @@
         "notes": "CI reads a synthetic root. A real nuScenes root, checked against nuScenes' own num_lidar_pts, is exercised only when VISIONSET_POINTCLOUD_SAMPLES is set locally."
       }
     },
+    "open-images": {
+      "task": "object detection",
+      "dialects": [
+        "Open Images V4-V7 boxes: <split>-annotations-bbox.csv of normalized XMin/XMax/YMin/YMax rows beside class-descriptions-boxable.csv"
+      ],
+      "export": {
+        "lossy": true,
+        "geometries": ["bbox"],
+        "degraded_geometries": [],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_open_images.py::test_known_pixel_boxes_are_written_normalized_and_read_back_on_two_sizes", "gate": "python"},
+          {"kind": "independent_reader", "test": "tests/formats/test_open_images.py::test_an_independent_csv_reader_takes_the_published_columns", "gate": "python", "reader": "test-local csv and Pillow reading of the published Open Images columns", "external": false},
+          {"kind": "round_trip", "test": "tests/formats/test_open_images.py::test_boxes_round_trip_through_a_release_with_a_split", "gate": "python"}
+        ],
+        "notes": "LabelName is the class name, not an Open Images MID. No test runs the Open Images tooling; the independent reader is test-local."
+      },
+      "import": {
+        "geometries": ["bbox"],
+        "modalities": ["image"],
+        "evidence": [
+          {"kind": "fixture", "test": "tests/formats/test_open_images.py::test_known_normalized_boxes_read_as_pixels_on_pictures_of_two_sizes", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_open_images.py::test_noncontiguous_mids_map_to_display_names_and_unused_classes_stay_out", "gate": "python"},
+          {"kind": "fixture", "test": "tests/formats/test_open_images.py::test_losses_are_reported_never_dropped_silently", "gate": "python"},
+          {"kind": "round_trip", "test": "tests/formats/test_open_images.py::test_boxes_round_trip_through_a_release_with_a_split", "gate": "python"}
+        ],
+        "notes": "Boxes only: segmentation masks, visual relationships and image-level labels are not read. Checked against the documented columns; no file Google published was read in a test."
+      }
+    },
     "openlane-2d": {
       "task": "lane detection, with per-vertex visibility and lane tracks",
       "dialects": [

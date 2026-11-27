@@ -446,7 +446,7 @@ no `--resume`: polling needs a second process, which is what `visionset server` 
 in, one **approved** batch out: the images (or scans) are ingested by content, the dataset's classes become
 schema version 1 when the project has none, and every label is written with `import` provenance.
 Nothing is completed or promoted. `FORMAT` is an importer's name (`ultralytics`, `yolov5-yaml`,
-`darknet`, `yolo-obb`, `dota`, `coco`, `coco-panoptic`, `segmentation-png`, `voc`, `labelme`, `createml`, `classification`, `openlane-2d`, `kitti`, `mot`, `cvat-images`, `cvat-video`, `nuscenes`); an unknown one is refused with the
+`darknet`, `yolo-obb`, `dota`, `coco`, `coco-panoptic`, `segmentation-png`, `voc`, `labelme`, `createml`, `open-images`, `classification`, `openlane-2d`, `kitti`, `mot`, `cvat-images`, `cvat-video`, `nuscenes`); an unknown one is refused with the
 importable formats listed. See [import.md](import.md).
 
 A commit that would drop anything is refused with `IMPORT_NOT_CONSENTED` unless each kind of loss
