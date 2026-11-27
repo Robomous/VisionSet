@@ -30,7 +30,9 @@ until the next amendment.
 may also follow a `cuboid_3d` through the scans of a point-cloud sequence, an ordered source an
 importer writes as it writes an image sequence, so nuScenes' `instance_token` lands as a track. A
 track's observations share one geometry type. Camera-calibrated 3D labels on images, and
-`polyline_3d` in scans, are still never observed.
+`polyline_3d` in scans, are still never observed. It is implemented - see
+[import](../../import.md#formats), [annotations](../../annotations.md#a-track-observes-annotations-an-annotation-knows-nothing-of-tracks)
+and [releases](../../releases.md#the-manifests-own-format-version), at manifest version 11.
 
 ## The rule
 

@@ -34,13 +34,21 @@ from visionset.formats.nuscenes.poses import (
     rotation_matrix,
 )
 from visionset.kernel.domain import (
+    SCAN_SEQUENCE_MANIFEST_VERSION,
     Cuboid3DGeometry,
     ImportedDataset,
     ImportLossKind,
+    SourceKind,
     SplitGrouping,
     SplitRecipe,
 )
-from visionset.kernel.services import IngestService, ProjectService, WorkspaceService
+from visionset.kernel.services import (
+    IngestService,
+    ProjectService,
+    SourceService,
+    TrackService,
+    WorkspaceService,
+)
 
 SAMPLES = os.environ.get("VISIONSET_POINTCLOUD_SAMPLES")
 NUSCENES = Path(SAMPLES) / "nuscenes" if SAMPLES else None
@@ -317,7 +325,8 @@ def test_a_grouped_split_keeps_each_scene_in_one_fold_where_a_plain_one_scatters
                 folds_of[scene_of[asset_id]].add(fold)
         straddling[name] = sum(1 for found in folds_of.values() if len(found) > 1)
         assert release.releases.verify(published_split.id).ok
-        assert release.releases.manifest(published_split.id).manifest_version == 6
+        manifest = release.releases.manifest(published_split.id)
+        assert manifest.manifest_version == SCAN_SEQUENCE_MANIFEST_VERSION
     with capsys.disabled():
         print(
             f"\nnuScenes {', '.join(survey.versions)}: {len(scenes)} scenes; "
@@ -326,3 +335,63 @@ def test_a_grouped_split_keeps_each_scene_in_one_fold_where_a_plain_one_scatters
         )
     assert straddling["grouped"] == 0
     assert straddling["plain"] > 0
+
+
+def test_each_instance_token_is_a_track_over_its_scene_in_sample_order(
+    survey: Survey, published: tuple[Published, Path]
+) -> None:
+    """Each scene's chain and each instance's annotations come from the tables themselves."""
+    assert NUSCENES is not None
+    release, _ = published
+    versions = _versions(NUSCENES)
+    samples, scenes = _table(versions, "sample"), _table(versions, "scene")
+    instance_samples: dict[str, set[str]] = defaultdict(set)
+    for row in _table(versions, "sample_annotation").values():
+        instance_samples[row["instance_token"]].add(row["sample_token"])
+    imported = sum(
+        len(scan.labels) for scan in survey.dataset.scans if (NUSCENES / scan.path).is_file()
+    )
+    by_name = {row["name"]: row for row in scenes.values()}
+    sources = [
+        source
+        for source in SourceService(release.workspace).list(release.project_id)
+        if source.kind is SourceKind.POINT_CLOUD_SEQUENCE
+    ]
+
+    observed = 0
+    for source in sources:
+        chain: list[str] = []
+        token = by_name[source.name]["first_sample_token"]
+        while token:
+            chain.append(token)
+            token = samples[token]["next"]
+        start = samples[chain[0]]["timestamp"]
+        for one in SourceService(release.workspace).occurrences(source.id):
+            assert one.timestamp == pytest.approx(
+                (samples[chain[one.position]]["timestamp"] - start) / 1e6
+            )
+        for detail in TrackService(release.workspace).list(source.id):
+            positions = [one.position for one in detail.observations]
+            assert positions == sorted(positions)
+            assert {chain[p] for p in positions} <= instance_samples[str(detail.track.external_id)]
+            observed += len(positions)
+    assert len(sources) == len({scan.group_label for scan in survey.dataset.scans})
+    assert observed == imported
+    assert not [loss for loss in survey.dataset.losses if "instance" in loss.reason]
+
+
+def test_a_release_of_the_tracked_scenes_republishes_to_the_same_hash(
+    published: tuple[Published, Path],
+) -> None:
+    release, _ = published
+    dataset_id = ProjectService(release.workspace).get_dataset(release.project_id).id
+    first = release.releases.get(release.release_id)
+    manifest = release.releases.manifest(release.release_id)
+
+    again = release.releases.publish(dataset_id, "again")
+
+    assert manifest.manifest_version == SCAN_SEQUENCE_MANIFEST_VERSION
+    assert {source.kind for source in manifest.sources} == {"point_cloud_sequence"}
+    assert manifest.tracks
+    assert again.manifest_hash == first.manifest_hash
+    assert release.releases.verify(again.id).ok
