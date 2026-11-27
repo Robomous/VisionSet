@@ -18,7 +18,11 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from visionset.kernel.domain.asset import GroupLabel
-from visionset.kernel.domain.calibration import ScanFrame, geometry_fits_modality
+from visionset.kernel.domain.calibration import (
+    ScanFrame,
+    geometry_fits_modality,
+    geometry_reference,
+)
 from visionset.kernel.domain.geometry import Geometry
 from visionset.kernel.domain.schema import GeometryType
 
@@ -74,13 +78,23 @@ class ImportedClass(BaseModel):
 
 
 class ImportedLabel(BaseModel):
+    """One label. ``track`` is the identity the dataset gives its object within a sequence."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     class_name: str
     geometry: Geometry
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    track: str | None = None
 
     _named = field_validator("class_name")(_class_name)
+
+    @field_validator("track")
+    @classmethod
+    def _track_is_not_blank(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("a track id must contain at least one non-blank character")
+        return value
 
 
 class ImportedImage(BaseModel):
@@ -170,6 +184,46 @@ class ImportedScan(BaseModel):
         return require_relative_path(value)
 
 
+class ImportedFrame(BaseModel):
+    """One still of a sequence, and its time since the sequence's first frame."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    path: PurePosixPath
+    timestamp: float = Field(ge=0)
+
+    @field_validator("path", mode="before")
+    @classmethod
+    def _inside_the_source(cls, value: object) -> PurePosixPath:
+        if not isinstance(value, PurePosixPath | str):
+            raise ValueError("frame path must be a string or a PurePosixPath")
+        return require_relative_path(value)
+
+
+class ImportedSequence(BaseModel):
+    """Stills the dataset itself orders, such as one OpenLane segment.
+
+    A frame's position is its index in ``frames``, so a frame the source names
+    but does not hold leaves its position empty rather than shifting the rest.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str
+    frames: tuple[ImportedFrame, ...] = Field(min_length=1)
+
+    _named = field_validator("name")(_class_name)
+
+    @model_validator(mode="after")
+    def _ordered(self) -> ImportedSequence:
+        if len({frame.path for frame in self.frames}) != len(self.frames):
+            raise ValueError(f"sequence {self.name!r} lists a frame twice")
+        times = [frame.timestamp for frame in self.frames]
+        if times != sorted(times):
+            raise ValueError(f"sequence {self.name!r} is not in time order")
+        return self
+
+
 class ImportLoss(BaseModel):
     """One thing the import cannot carry, counted, with the reason in words."""
 
@@ -186,6 +240,9 @@ class ImportedDataset(BaseModel):
 
     ``frame`` is the scan frame every scan and every scan label is written in,
     and it is set exactly when the dataset is one of scans, even an empty one.
+
+    ``sequences`` order some of the images; an image is in at most one, and only
+    a label on one may name a ``track``, which must be 2D.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -195,6 +252,7 @@ class ImportedDataset(BaseModel):
     scans: tuple[ImportedScan, ...] = ()
     frame: ScanFrame | None = None
     losses: tuple[ImportLoss, ...] = ()
+    sequences: tuple[ImportedSequence, ...] = ()
 
     @model_validator(mode="after")
     def _consistent(self) -> ImportedDataset:
@@ -235,7 +293,35 @@ class ImportedDataset(BaseModel):
                         f"scan {str(item.path)!r} has a {label.geometry.type.value}, "
                         "which a scan has no pixels for"
                     )
+        self._sequences_consistent()
         return self
+
+    def _sequences_consistent(self) -> None:
+        listed = {image.path for image in self.images}
+        sequenced: set[PurePosixPath] = set()
+        for sequence in self.sequences:
+            for frame in sequence.frames:
+                if frame.path not in listed:
+                    raise ValueError(
+                        f"sequence {sequence.name!r} names {str(frame.path)!r}, "
+                        "which is not a listed image"
+                    )
+                if frame.path in sequenced:
+                    raise ValueError(f"image {str(frame.path)!r} is in two sequences")
+                sequenced.add(frame.path)
+        for image in self.images:
+            for label in image.labels:
+                if label.track is None:
+                    continue
+                if image.path not in sequenced:
+                    raise ValueError(
+                        f"image {str(image.path)!r} names a track but is in no sequence"
+                    )
+                if geometry_reference(label.geometry, modality="image") is not None:
+                    raise ValueError(
+                        f"image {str(image.path)!r} names a track on a "
+                        f"{label.geometry.type.value}; a track follows 2D geometry only"
+                    )
 
 
 def loss_kinds(losses: Iterable[ImportLoss]) -> frozenset[ImportLossKind]:
@@ -264,6 +350,10 @@ class ImportPlan(BaseModel):
     ``scans`` and ``missing_scans`` are the same for a dataset of scans, whose
     labels have no image to fall outside of.
 
+    ``tracks`` counts the tracks the kept labels carry, one per sequence and
+    track id; a label whose id repeats within a frame, or names a track of
+    another class, is kept untracked and reported as an ``attribute`` loss.
+
     ``conflicts`` are refusals a commit would raise even with full consent: a
     label the active schema cannot accept, classes that cannot form a schema,
     or a label that would land on an asset another batch or the trunk holds.
@@ -284,6 +374,7 @@ class ImportPlan(BaseModel):
     new_assets: int = Field(ge=0)
     new_annotations: int = Field(ge=0)
     annotations_already_present: int = Field(ge=0)
+    tracks: int = Field(default=0, ge=0)
 
 
 class ImportRun(BaseModel):
@@ -298,6 +389,11 @@ class ImportRun(BaseModel):
 
     ``schema_version`` is ``None`` only when nothing was written and the
     project has no schema.
+
+    ``source_ids`` are the image-sequence sources the run wrote, one per
+    sequence holding an asset it created or labelled; ``tracks_written`` counts
+    the tracks over them. A label already on its asset is not written again, so
+    it is not observed again either.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -311,3 +407,5 @@ class ImportRun(BaseModel):
     annotations_written: int = Field(ge=0)
     annotations_already_present: int = Field(ge=0)
     losses: tuple[ImportLoss, ...]
+    source_ids: tuple[UUID, ...] = ()
+    tracks_written: int = Field(default=0, ge=0)

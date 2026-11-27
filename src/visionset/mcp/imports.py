@@ -75,6 +75,8 @@ def inspect_import(
     `creates_schema` is true when the project has no schema and the dataset's
     classes would become version 1. `new_assets` and `new_annotations` are what
     a commit would add; images already in the project are matched by content.
+    `sequences` counts the image sequences the dataset orders, such as OpenLane
+    segments, and `tracks` the tracks their labels carry.
 
     Every image or scan is decoded, so expect it to take a while on a large dataset.
     """
@@ -108,7 +110,9 @@ def import_dataset(
     a point-cloud source at `path` that declares the dataset's frame. The batch
     is approved and stops there: each labeled asset arrives `annotated`, and a
     person reviews and promotes them as with any other batch. An existing schema
-    is never changed by an import.
+    is never changed by an import. Each image sequence holding an asset the run
+    creates or labels becomes a new source, listed in `source_ids`, and its
+    tracks are written over it; `tracks_written` counts them.
 
     Call `inspect_import` first: an import that would drop anything refuses
     with `IMPORT_NOT_CONSENTED` unless `consent_lossy` names each kind, and the

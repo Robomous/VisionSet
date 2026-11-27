@@ -56,10 +56,10 @@ error envelope, and the three gate words.
 | `add_annotations` | `job_id`, `annotations` | Write new annotations into a job. All succeed together or none are written. |
 | `update_annotations` | `job_id`, `annotations` | Replace existing annotations wholesale. All succeed together or none are written. |
 | `delete_annotations` | `job_id`, `annotation_ids` | Remove annotations from a job. All succeed together or none are removed. |
-| `list_frame_occurrences` | `source_id` | List a video source's frame occurrences, in position order. |
-| `list_tracks` | `source_id` | List a video source's tracks, in creation order, each with its observations. |
+| `list_frame_occurrences` | `source_id` | List a sequence source's frame occurrences, in position order. |
+| `list_tracks` | `source_id` | List a sequence source's tracks, in creation order, each with its observations. |
 | `get_track_status` | `track_id`, `batch_id` | Count a track's observations by the progress their assets hold in one batch. |
-| `create_track` | `source_id`, `label_class`, `external_id`? | Start an empty track of one class on a video source. |
+| `create_track` | `source_id`, `label_class`, `external_id`? | Start an empty track of one class on a video or image-sequence source. |
 | `observe_track` | `job_id`, `track_id`, `occurrence_id`, `annotation_id` | Record that the track is seen at an occurrence, as an annotation drawn there. |
 | `unobserve_track` | `job_id`, `track_id`, `occurrence_id` | Remove the track's observation at an occurrence. The annotation stays. |
 | `set_track_class` | `job_id`, `track_id`, `label_class` | Give a track and every annotation it observes a new class, in one transaction. |

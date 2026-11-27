@@ -3671,8 +3671,8 @@ export interface paths {
          *
          *     An occurrence is one position of a clip's extraction grid and the asset it
          *     decoded to; identical frames at two positions are one asset at two
-         *     occurrences. A source that is not a video has none. An unknown source is
-         *     404 `SOURCE_NOT_FOUND`.
+         *     occurrences. A source that is neither a video nor an image sequence has
+         *     none. An unknown source is 404 `SOURCE_NOT_FOUND`.
          */
         get: operations["list_frame_occurrences"];
         put?: never;
@@ -3700,13 +3700,13 @@ export interface paths {
         put?: never;
         /**
          * Create Track
-         * @description Start an empty track of one class on a video source.
+         * @description Start an empty track of one class on a video or image-sequence source.
          *
          *     Not gated on a job: a track observes nothing until a job observes an
          *     annotation with it. The class must be declared by the project's active
          *     schema version. 404: `SOURCE_NOT_FOUND`, `SCHEMA_NOT_FOUND`. 409:
          *     `TRACK_EXTERNAL_ID_TAKEN`, for an `external_id` another track of the source
-         *     carries. 422: `SOURCE_NOT_SEQUENCE` for a source that is not a video,
+         *     carries. 422: `SOURCE_NOT_SEQUENCE` for a source that is neither a video nor an image sequence,
          *     `LABEL_CLASS_NOT_IN_SCHEMA`, `INVALID_NAME` for a blank class or external id.
          */
         post: operations["create_track"];
@@ -7275,7 +7275,7 @@ export interface components {
          *     never heard of.
          *
          *     Neither applies here. ``SourceService`` and ``VideoImportService`` are the
-         *     only two doors to a ``Source``, one per member, so no foreign writer exists;
+         *     only two doors to a ``Source``, so no foreign writer exists;
          *     the kernel **branches** on this value, in the invariant tying
          *     :attr:`Source.video` to
          *     :attr:`SourceKind.VIDEO`, and a branch on a magic string is the shape this
@@ -7285,7 +7285,7 @@ export interface components {
          *     — a ``StrEnum`` member *is* a ``str``.
          * @enum {string}
          */
-        SourceKind: "image_directory" | "video" | "point_cloud_directory";
+        SourceKind: "image_directory" | "video" | "point_cloud_directory" | "image_sequence";
         /**
          * SourceOut
          * @description A registered origin: a folder of stills, a clip, or a folder of point-cloud scans.

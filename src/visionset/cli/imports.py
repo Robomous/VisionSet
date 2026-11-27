@@ -119,6 +119,8 @@ def _summary(run: ImportRun) -> None:
         f"{run.annotations_written} label(s) into approved batch {run.batch_id} "
         f"(schema version {run.schema_version})."
     )
+    if run.source_ids:
+        note(f"Wrote {len(run.source_ids)} sequence(s) and {run.tracks_written} track(s).")
     if run.losses:
         dropped = ", ".join(sorted({loss.kind.value for loss in run.losses}))
         note(f"Dropped with consent: {dropped}.")
@@ -144,6 +146,8 @@ def _report(plan: ImportPlan, consent: ImportConsent, *, json_out: bool) -> None
         f"{plan.new_assets} new asset(s), {plan.new_annotations} new label(s), "
         f"{plan.annotations_already_present} already present."
     )
+    if plan.dataset.sequences:
+        note(f"{len(plan.dataset.sequences)} sequence(s) carrying {plan.tracks} track(s).")
     if plan.creates_schema:
         note(f"Schema version 1 would be created from {len(plan.dataset.classes)} class(es).")
     for conflict in plan.conflicts:

@@ -1206,6 +1206,8 @@ def import_plan(value: ImportPlan) -> shapes.ImportPlan:
         "new_assets": value.new_assets,
         "new_annotations": value.new_annotations,
         "annotations_already_present": value.annotations_already_present,
+        "sequences": len(value.dataset.sequences),
+        "tracks": value.tracks,
     }
 
 
@@ -1221,6 +1223,8 @@ def import_run(value: ImportRun) -> shapes.ImportRun:
         "annotations_written": value.annotations_written,
         "annotations_already_present": value.annotations_already_present,
         "losses": [import_loss(one) for one in value.losses],
+        "source_ids": [str(one) for one in value.source_ids],
+        "tracks_written": value.tracks_written,
     }
 
 
