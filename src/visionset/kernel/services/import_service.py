@@ -28,7 +28,10 @@ A dataset of images may order some of them into sequences. Each sequence
 holding an asset the run creates or labels becomes a new image-sequence source
 with one occurrence per position it holds, and the labels naming a ``track``
 become that source's tracks, written in the same transaction through
-``TrackService``. See
+``TrackService``. A frame whose bytes repeat an earlier image is an occurrence
+of that image's asset, and its labels land there: each tracked one as an
+annotation of its own, an untracked one only if the asset does not already
+carry it. See
 ``docs/content/architecture/decisions/a-track-observes-frame-occurrences.md``.
 """
 
@@ -131,6 +134,7 @@ class _Planned:
     scan_probes: dict[PurePosixPath, _ScanProbe] | None = None
     duplicates: dict[PurePosixPath, PurePosixPath] | None = None
     writes: frozenset[PurePosixPath] = frozenset()
+    repeats: dict[PurePosixPath, list[ImportedImage]] | None = None
 
 
 class ImportService:
@@ -291,24 +295,29 @@ class ImportService:
             labeled: list[UUID] = []
             for item, candidate in zip(items, candidates, strict=True):
                 asset = by_hash[candidate.content_hash]
-                present = _present(uow.annotations.list(asset.id))
-                new, repeated = _new_labels(present, item.labels)
+                writing, repeated = _labels_to_write(
+                    _present(uow.annotations.list(asset.id)),
+                    _occurrences(item, planned.repeats or {}),
+                )
                 already += repeated
                 if frame is not None:
-                    _require_frame_still_declared(uow, asset, new, frame, item)
-                for label in new:
-                    annotation = Annotation(
-                        asset_id=asset.id,
-                        label_class=label.class_name,
-                        schema_version=schema.version,
-                        geometry=label.geometry,
-                        provenance="import",
-                        confidence=label.confidence,
+                    _require_frame_still_declared(
+                        uow, asset, [one for _, new in writing for one in new], frame, item
                     )
-                    proposed.append(annotation)
-                    labeled.append(asset.id)
-                    if label.track is not None:
-                        tracked.setdefault(item.path, []).append((label.track, annotation))
+                for path, new in writing:
+                    for label in new:
+                        annotation = Annotation(
+                            asset_id=asset.id,
+                            label_class=label.class_name,
+                            schema_version=schema.version,
+                            geometry=label.geometry,
+                            provenance="import",
+                            confidence=label.confidence,
+                        )
+                        proposed.append(annotation)
+                        labeled.append(asset.id)
+                        if label.track is not None:
+                            tracked.setdefault(path, []).append((label.track, annotation))
 
             members = list(dict.fromkeys([*created, *labeled]))
             batch = uow.batches.add(
@@ -413,6 +422,7 @@ class ImportService:
 
         kept: list[ImportedImage] = []
         duplicates: dict[PurePosixPath, PurePosixPath] = {}
+        repeats: dict[PurePosixPath, list[ImportedImage]] = {}
         first_with: dict[str, PurePosixPath] = {}
         order = _listing_order(dataset)
         for image in sorted(
@@ -424,8 +434,9 @@ class ImportService:
             if original != image.path:
                 del probes[image.path]
                 duplicates[image.path] = original
-                losses.append(_image_loss(image, f"its bytes are those of {str(original)!r}"))
-                continue
+                if image.path not in order:
+                    losses.append(_image_loss(image, f"its bytes are those of {str(original)!r}"))
+                    continue
             inside = []
             for label in image.labels:
                 if geometry_intersects_asset(
@@ -434,12 +445,20 @@ class ImportService:
                     inside.append(label)
                 else:
                     label_losses[(label.class_name, _OUTSIDE)] += 1
-            kept.append(image.model_copy(update={"labels": tuple(inside)}))
+            one = image.model_copy(update={"labels": tuple(inside)})
+            if original == image.path:
+                kept.append(one)
+            else:
+                repeats.setdefault(original, []).append(one)
         losses.extend(
             ImportLoss(kind=ImportLossKind.LABEL, subject=name, count=count, reason=reason)
             for (name, reason), count in label_losses.items()
         )
-        kept, track_losses = _consistent_tracks(dataset, kept)
+        folded = [one for group in repeats.values() for one in group]
+        consistent, track_losses = _consistent_tracks(dataset, [*kept, *folded])
+        kept = consistent[: len(kept)]
+        fixed = {one.path: one for one in consistent[len(kept) :]}
+        repeats = {path: [fixed[one.path] for one in group] for path, group in repeats.items()}
         losses.extend(track_losses)
 
         writes: set[PurePosixPath] = set()
@@ -459,14 +478,21 @@ class ImportService:
             blocked: list[VisionSetError] = []
             for image in kept:
                 asset = known.get(probes[image.path].content_hash)
+                writing, repeated = _labels_to_write(
+                    Counter() if asset is None else _present(uow.annotations.list(asset.id)),
+                    _occurrences(image, repeats),
+                )
+                already += repeated
+                new = [label for _, labels in writing for label in labels]
+                new_annotations += len(new)
+                for at, labels in writing:
+                    if labels or (asset is None and at == image.path):
+                        writes.add(at)
+                        tracked[at] = {one.track for one in labels if one.track}
                 if asset is None:
-                    writes.add(image.path)
-                    tracked[image.path] = {one.track for one in image.labels if one.track}
                     new_assets += 1
-                    new_annotations += len(image.labels)
                     if any(
-                        geometry_needs_calibration(one.geometry, modality="image")
-                        for one in image.labels
+                        geometry_needs_calibration(one.geometry, modality="image") for one in new
                     ):
                         blocked.append(
                             CalibrationMissing(
@@ -476,12 +502,6 @@ class ImportService:
                             )
                         )
                     continue
-                new, repeated = _new_labels(_present(uow.annotations.list(asset.id)), image.labels)
-                already += repeated
-                new_annotations += len(new)
-                if new:
-                    writes.add(image.path)
-                    tracked[image.path] = {one.track for one in new if one.track}
                 if any(
                     geometry_needs_calibration(one.geometry, modality=asset.modality) for one in new
                 ):
@@ -493,7 +513,8 @@ class ImportService:
                 if new and (asset.id in trunk or asset.id in held):
                     blocked.append(
                         AssetNotWritable(
-                            f"image {str(image.path)!r} is asset {asset.id}, which "
+                            f"image {str(next(at for at, one in writing if one))!r} is asset "
+                            f"{asset.id}, which "
                             f"{'is in the dataset' if asset.id in trunk else 'a batch holds'}, "
                             f"and the source has {len(new)} label(s) it does not carry; an "
                             f"import is one-shot and never writes into reviewed or held work"
@@ -513,7 +534,7 @@ class ImportService:
         refusals: list[VisionSetError] = []
         if active is not None:
             losses.extend(_undeclared_unused(dataset, active))
-            refusals.extend(_schema_refusals(kept, active))
+            refusals.extend(_schema_refusals([*kept, *folded], active))
         elif members:
             try:
                 SchemaService.require_coherent(_derived_classes(dataset))
@@ -526,6 +547,7 @@ class ImportService:
             format_name=importer.format_name,
             dataset=dataset,
             images=tuple(kept),
+            repeats=tuple(one for group in repeats.values() for one in group),
             losses=tuple(losses),
             missing_images=tuple(missing),
             conflicts=tuple(str(refusal) for refusal in refusals),
@@ -545,6 +567,7 @@ class ImportService:
             root=root,
             duplicates=duplicates,
             writes=frozenset(writes),
+            repeats=repeats,
         )
 
     def _planned_scans(
@@ -962,6 +985,51 @@ def _schema_refusals(
 
 def _present(annotations: Iterable[Annotation]) -> Counter[tuple[str, str]]:
     return Counter((a.label_class, a.geometry.model_dump_json()) for a in annotations)
+
+
+def _occurrences(
+    item: ImportedImage | ImportedScan, repeats: dict[PurePosixPath, list[ImportedImage]]
+) -> list[tuple[PurePosixPath, Sequence[ImportedLabel]]]:
+    return [
+        (item.path, item.labels),
+        *((one.path, one.labels) for one in repeats.get(item.path, ())),
+    ]
+
+
+def _labels_to_write(
+    present: Counter[tuple[str, str]],
+    occurrences: Sequence[tuple[PurePosixPath, Sequence[ImportedLabel]]],
+) -> tuple[list[tuple[PurePosixPath, list[ImportedLabel]]], int]:
+    """Each occurrence's labels the asset does not already carry, and how many it did.
+
+    The first occurrence is judged as a multiset against the asset. A later one
+    repeats its bytes: a tracked label there matches only an annotation no
+    earlier label claimed, since a track observes each occurrence through an
+    annotation of its own, and an untracked label matches anything the asset
+    carries, this run's writes included, so it never stacks.
+    """
+    unclaimed = present.copy()
+    carried = present.copy()
+    answer: list[tuple[PurePosixPath, list[ImportedLabel]]] = []
+    already = 0
+    for index, (path, labels) in enumerate(occurrences):
+        here = carried.copy()
+        new: list[ImportedLabel] = []
+        for label in labels:
+            key = _key(label)
+            pool = unclaimed if index == 0 or label.track is not None else here
+            if pool[key] > 0:
+                pool[key] -= 1
+                already += 1
+            else:
+                new.append(label)
+        carried.update(_key(label) for label in new)
+        answer.append((path, new))
+    return answer, already
+
+
+def _key(label: ImportedLabel) -> tuple[str, str]:
+    return (label.class_name, label.geometry.model_dump_json())
 
 
 def _new_labels(

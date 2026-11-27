@@ -20,8 +20,8 @@ upload variant yet. [surfaces.md](surfaces.md) shows what each surface can do.
    scans also declares the [frame](sources.md#point-cloud-directories-and-their-frame) its scans
    and labels are written in.
 2. **Plans.** Every listed image is decoded and matched by content against the project's assets.
-   An image the source names but does not hold, an image whose bytes repeat another's, and a
-   label wholly outside its image are added to the loss report.
+   An image the source names but does not hold, an image outside any sequence whose bytes repeat
+   another's, and a label wholly outside its image are added to the loss report.
 3. **Commits.** The images are stored by content hash, as [ingest](ingest.md) stores them; a
    project with no schema gets version 1 from the dataset's classes; the labels and a batch are
    written and the batch is approved, in one transaction. Approval seeds each labeled asset as
@@ -35,9 +35,13 @@ per position it holds, and every track id in it becomes a track of that source w
 [a track observes frame occurrences](architecture/decisions/a-track-observes-frame-occurrences.md).
 Every import writes its own sources, so the same id in two sequences, or in two imports of one,
 is two tracks and never merges. A position whose image the source does not hold is a gap, and one
-whose bytes repeat an earlier image is an occurrence of that image's asset, its labels dropped as
-an `image` loss as any repeat's are; within a sequence, earlier means earlier in the sequence's own
-order, not in path order. A track takes the class of its first label in sequence order: a
+whose bytes repeat an earlier image is an occurrence of that image's asset; within a sequence,
+earlier means earlier in the sequence's own order, not in path order. Its labels land on that asset
+rather than being lost: a tracked label always becomes an annotation of its own, because a track
+observes each occurrence through a different annotation, and an untracked one is added only when the
+asset does not already carry an equal label, so it never stacks. A fully static clip - every frame
+the same bytes - is therefore one asset holding one annotation per tracked label per frame, N
+identical boxes for a track that stands still across N frames. A track takes the class of its first label in sequence order: a
 later label of the same id and another class, or a second label of one id in one frame, is kept
 untracked and reported as an `attribute` loss. The plan counts the `sequences` a commit would
 write and the `tracks` over the labels it would write, so a re-run that writes nothing counts none;
@@ -75,7 +79,7 @@ computed from the content, and a commit that would drop something is refused wit
 | `class` | A class the project's schema does not declare and no label uses; a CVAT label that names no geometry the domain holds. |
 | `geometry` | Part of a shape the kernel has no type for, such as YOLO keypoints, VOC parts, 3D lane points or an unusable per-vertex visibility, while the shape itself is kept. |
 | `label` | A whole label: an RLE or crowd mask, a polygon of several rings, a label outside its image, a MOT row whose `conf` marks it ignored, a CVAT shape the domain has no geometry for (points, ellipse, cuboid, mask, skeleton, a rotated box). |
-| `image` | An image the source names but does not hold, or one whose bytes repeat an earlier image; its labels go with it. A nuScenes camera frame, which is not read. |
+| `image` | An image the source names but does not hold, or one outside any sequence whose bytes repeat an earlier image; its labels go with it. A sequence frame that repeats one keeps its labels on that image's asset. A nuScenes camera frame, which is not read. |
 | `scan` | A scan whose points repeat an earlier scan's, or one gone from the source; its labels go with it. A nuScenes sweep or radar frame, which is not read. |
 | `attribute` | Extras the importer does not carry, such as COCO attributes, VOC difficult or pose flags, an OpenLane camera calibration, a track id outside a sequence or one a track cannot hold, a MOT box's visibility ratio or the absence of an identity (an `id` that is not positive), CVAT attribute values, `occluded`, `z_order`, `group_id`, a `subset` and the interpolation CVAT would expand, KITTI truncation, occlusion, alpha and calibration, nuScenes attributes, visibility, instance tokens, point counts, poses and a scene's fields other than its name. |
 
@@ -264,7 +268,7 @@ frame of the task is listed whether the directory holds it or not, so a
 missing frame is an `image` loss whose position stays a gap. `<original_size>`, when given, is
 every frame's size. The task is one image sequence named by its `<name>`, or by its directory when
 it has none; two tasks naming one sequence refuse the source. CVAT records no frame timing, so
-every frame's timestamp is `0` and its order lives in its position. Frames whose pictures are byte-identical share one asset, and the labels on a repeat are an `image` loss, so a task whose frames are all identical keeps only the first frame's tracks (#1197). Each `<track id>` is a track of
+every frame's timestamp is `0` and its order lives in its position. Frames whose pictures are byte-identical share one asset, and each keeps its own labels. Each `<track id>` is a track of
 that sequence whose external id is the decimal `id`, and each of its shapes at `outside="0"` an
 observation at its `frame`; a shape at `outside="1"` says the object is absent, so that frame is a
 gap and nothing is written. Interpolation is not expanded: a stored shape at `keyframe="0"` is kept
