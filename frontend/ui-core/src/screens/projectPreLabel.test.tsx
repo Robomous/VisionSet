@@ -326,6 +326,7 @@ it("marks a batch whose remembered run is live, on its row in the batches panel"
         regions_discarded: null,
         regions_out_of_bounds: null,
         annotations_replaced: null,
+        assets_protected: null,
       },
     },
   ]);

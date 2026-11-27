@@ -381,6 +381,13 @@ nothing was being distributed. This is the first version that is.
 
 ### Fixed
 
+- **A replacing pre-label run no longer deletes labels a completed batch confirmed.** A frame settled `annotated`
+  or `accepted` in a completed batch, promoted or not, reopens `pre_labeled` in a later batch because its labels
+  are all a model's; a run with `replace_model_labels` now passes it over and `enter_unreviewed` refuses it, as both
+  already did for a frame in the dataset, so those labels and the track observations on them survive. Model labels
+  the same job's earlier run wrote stay replaceable. A frame confirmed only in a batch that is still open is not
+  covered. The run outcome, `pre_label_run`, the CLI summary, the MCP outcome and the MLflow metrics carry a new
+  `assets_protected` count, and the Pre-label dialog reports it (#1211).
 - **A suggestion answer that arrives after Escape or a class change no longer repaints the discarded preview**,
   and `↵` pressed while a suggestion is still being asked no longer moves to the next frame.
 - **A scan's annotation page carries no 2D chrome and says "scan" throughout.** The 2D tool bar, the empty tool

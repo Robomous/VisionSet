@@ -14,6 +14,7 @@ from visionset.inference.prelabel import (
     DEFAULT_MINIMUM_CONFIDENCE,
     PreLabelExcludedClass,
     PreLabelExclusionReason,
+    PreLabelOutcome,
     PreLabelPlan,
     detectable_classes,
     effective_produces,
@@ -1871,7 +1872,9 @@ def test_an_inline_run_whose_receipt_fails_unexpectedly_still_tells_the_observer
 # --- #951: a confirmed label in the trunk is not replaceable from another batch --
 
 
-def _promoted_then_reopened(fixture: Fixture) -> tuple[UUID, dict[UUID, list[UUID]]]:
+def _promoted_then_reopened(
+    fixture: Fixture, *, promote: bool = True
+) -> tuple[UUID, dict[UUID, list[UUID]]]:
     """Batch one pre-labeled, confirmed, completed and promoted; batch two cut over it.
 
     Every label on those assets is a model's, so the second batch opens them
@@ -1888,7 +1891,8 @@ def _promoted_then_reopened(fixture: Fixture) -> tuple[UUID, dict[UUID, list[UUI
         fixture.mark(asset_id, AssetProgress.ANNOTATED)
     fixture.jobs.complete(fixture.job_id)
     fixture.batches.complete(fixture.batch.id)
-    DatasetService(fixture.workspace).promote(fixture.batch.id)
+    if promote:
+        DatasetService(fixture.workspace).promote(fixture.batch.id)
     confirmed = {a: [x.id for x in fixture.annotations_on(a)] for a in fixture.assets}
 
     second = fixture.batches.create(fixture.project.id, "second", fixture.assets)
@@ -1916,6 +1920,7 @@ def test_a_replacing_run_on_another_batch_leaves_the_trunks_confirmed_labels(
         pool=prelabel_fixture.pool,
     )
 
+    assert outcome.assets_protected == len(confirmed)
     assert outcome.annotations_replaced == 0
     assert outcome.annotations_written == 0
     for asset_id, ids in confirmed.items():
@@ -1931,6 +1936,43 @@ def test_the_door_refuses_to_replace_a_trunk_members_labels(prelabel_fixture: Fi
         prelabel_fixture.annotations.enter_unreviewed(job_id, [], replacing={asset_id})
 
     assert prelabel_fixture.annotations.for_asset(job_id, asset_id)
+
+
+def test_a_replacing_run_leaves_labels_confirmed_in_a_completed_batch_never_promoted(
+    prelabel_fixture: Fixture,
+) -> None:
+    """#1211: completion, not promotion, is what makes a confirmation final."""
+    job_id, confirmed = _promoted_then_reopened(prelabel_fixture, promote=False)
+
+    outcome = pre_label(
+        prelabel_fixture.workspace,
+        job_id=job_id,
+        connection_id=prelabel_fixture.connection.id,
+        replace_model_labels=True,
+        pool=prelabel_fixture.pool,
+    )
+
+    assert outcome.assets_considered == 0
+    assert outcome.assets_skipped == 0
+    assert outcome.assets_protected == len(confirmed)
+    assert outcome.annotations_replaced == 0
+    assert outcome.annotations_written == 0
+    for asset_id, ids in confirmed.items():
+        assert [x.id for x in prelabel_fixture.annotations.for_asset(job_id, asset_id)] == ids
+
+
+def test_the_door_refuses_to_replace_labels_confirmed_in_a_completed_batch(
+    prelabel_fixture: Fixture,
+) -> None:
+    job_id, confirmed = _promoted_then_reopened(prelabel_fixture, promote=False)
+    asset_id = prelabel_fixture.assets[0]
+
+    with pytest.raises(AssetNotWritable, match="confirmed in a completed batch"):
+        prelabel_fixture.annotations.enter_unreviewed(job_id, [], replacing={asset_id})
+
+    assert [x.id for x in prelabel_fixture.annotations.for_asset(job_id, asset_id)] == confirmed[
+        asset_id
+    ]
 
 
 def test_a_replacing_run_still_replaces_a_frame_outside_the_trunk(
@@ -1960,6 +2002,130 @@ def test_a_replacing_run_still_replaces_a_frame_outside_the_trunk(
     )
 
     assert again.annotations_replaced == 1
+
+
+# --- #1211: completion, not promotion, makes a confirmation final ------------
+
+
+_SETTLE_BY: dict[AssetProgress, tuple[AssetProgress, ...]] = {
+    AssetProgress.ANNOTATED: (AssetProgress.ANNOTATED,),
+    AssetProgress.ACCEPTED: (
+        AssetProgress.ANNOTATED,
+        AssetProgress.REVIEW_PENDING,
+        AssetProgress.ACCEPTED,
+    ),
+    AssetProgress.SKIPPED: (AssetProgress.SKIPPED,),
+}
+
+
+def _open_over(fixture: Fixture, name: str, assets: list[UUID]) -> tuple[UUID, UUID]:
+    batch = fixture.batches.create(fixture.project.id, name, assets)
+    fixture.batches.approve(batch.id)
+    job_id = fixture.batches.jobs(batch.id)[0].id
+    fixture.batches.start(batch.id)
+    fixture.jobs.start(job_id)
+    return batch.id, job_id
+
+
+def _settled_then_reopened(
+    fixture: Fixture, settled: AssetProgress, *, complete: bool = True
+) -> UUID:
+    """Batch one pre-labeled and every frame settled at ``settled``; batch two cut over it."""
+    pre_label(
+        fixture.workspace,
+        job_id=fixture.job_id,
+        connection_id=fixture.connection.id,
+        pool=fixture.pool,
+    )
+    for asset_id in fixture.assets:
+        for step in _SETTLE_BY[settled]:
+            fixture.mark(asset_id, step)
+    if complete:
+        fixture.jobs.complete(fixture.job_id)
+        fixture.batches.complete(fixture.batch.id)
+    _, job_id = _open_over(fixture, "second", fixture.assets)
+    assert set(fixture.jobs.get(job_id).progress.values()) == {AssetProgress.PRE_LABELED}
+    return job_id
+
+
+def _replace(fixture: Fixture, job_id: UUID) -> PreLabelOutcome:
+    return pre_label(
+        fixture.workspace,
+        job_id=job_id,
+        connection_id=fixture.connection.id,
+        replace_model_labels=True,
+        pool=fixture.pool,
+    )
+
+
+@pytest.mark.parametrize(
+    ("settled", "protected"),
+    [
+        (AssetProgress.ANNOTATED, True),
+        (AssetProgress.ACCEPTED, True),
+        (AssetProgress.SKIPPED, False),
+    ],
+)
+def test_only_a_frame_a_completed_batch_settled_promotable_is_protected(
+    prelabel_fixture: Fixture, settled: AssetProgress, protected: bool
+) -> None:
+    job_id = _settled_then_reopened(prelabel_fixture, settled)
+
+    outcome = _replace(prelabel_fixture, job_id)
+
+    count = len(prelabel_fixture.assets)
+    assert outcome.assets_protected == (count if protected else 0)
+    assert outcome.annotations_replaced == (0 if protected else count)
+
+
+def test_a_frame_settled_in_a_batch_still_open_is_not_protected(
+    prelabel_fixture: Fixture,
+) -> None:
+    """Only completed batches count; an open batch's settling is #1211's sibling decision."""
+    job_id = _settled_then_reopened(prelabel_fixture, AssetProgress.ANNOTATED, complete=False)
+
+    outcome = _replace(prelabel_fixture, job_id)
+
+    assert outcome.assets_protected == 0
+    assert outcome.annotations_replaced == len(prelabel_fixture.assets)
+
+
+def test_a_replacing_run_replaces_its_own_job_labels_on_a_frame_confirmed_earlier(
+    prelabel_fixture: Fixture,
+) -> None:
+    """Confirmed in A, emptied in C, pre-labeled again in D: D's own output is not A's."""
+    fixture = prelabel_fixture
+    asset_id = fixture.assets[0]
+    pre_label(
+        fixture.workspace,
+        job_id=fixture.job_id,
+        connection_id=fixture.connection.id,
+        pool=fixture.pool,
+    )
+    for each in fixture.assets:
+        fixture.mark(each, AssetProgress.ANNOTATED)
+    fixture.jobs.complete(fixture.job_id)
+    fixture.batches.complete(fixture.batch.id)
+
+    correction, emptying = _open_over(fixture, "correction", [asset_id])
+    fixture.annotations.delete(
+        emptying, [a.id for a in fixture.annotations.for_asset(emptying, asset_id)]
+    )
+    fixture.jobs.mark(emptying, asset_id, AssetProgress.SKIPPED)
+    fixture.jobs.complete(emptying)
+    fixture.batches.complete(correction)
+
+    _, again = _open_over(fixture, "again", [asset_id])
+    first = pre_label(
+        fixture.workspace, job_id=again, connection_id=fixture.connection.id, pool=fixture.pool
+    )
+    assert first.annotations_written == 1
+
+    outcome = _replace(fixture, again)
+
+    assert outcome.assets_protected == 0
+    assert outcome.annotations_replaced == 1
+    assert [a.job_id for a in fixture.annotations.for_asset(again, asset_id)] == [again]
 
 
 def test_a_point_cloud_asset_is_passed_over_and_counted(prelabel_fixture: Fixture) -> None:

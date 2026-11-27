@@ -107,6 +107,7 @@ PRE_LABEL_COUNTS: Final[Mapping[str, str]] = {
     "regions_out_of_bounds": "regions_out_of_bounds_count",
     "annotations_written": "annotations_written_count",
     "annotations_replaced": "annotations_replaced_count",
+    "assets_protected": "assets_protected_count",
 }
 
 #: An export's result keys that are counts or sizes, and the metric each becomes.

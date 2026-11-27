@@ -6369,8 +6369,8 @@ export interface components {
          *     counted in the unit its own work is over.
          *
          *     **The outcome, once the job has one.** `stopped_early`, `assets_labeled`,
-         *     `regions_discarded`, `regions_out_of_bounds` and `annotations_replaced` are
-         *     the handler's own account of what a settled run did.
+         *     `regions_discarded`, `regions_out_of_bounds`, `annotations_replaced` and
+         *     `assets_protected` are the handler's own account of what a settled run did.
          *     They are `null` while the job is still `queued` or `running`, and `null`
          *     where it ended `failed` before producing one — but a `cancelled` run still
          *     carries them: stopping partway is a coherent outcome for a handler whose
@@ -6388,6 +6388,8 @@ export interface components {
             assets_labeled: number | null;
             /** Assets Processed */
             assets_processed: number;
+            /** Assets Protected */
+            assets_protected: number | null;
             /** Assets Total */
             assets_total: number | null;
             /** Error */

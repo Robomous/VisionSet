@@ -810,6 +810,7 @@ def test_pre_labeling_blocks_and_returns_what_it_wrote(
             "assets_labeled": 2,
             "annotations_written": 2,
             "annotations_replaced": 0,
+            "assets_protected": 0,
             "model_ref": "acme/detector@abc123",
             "assets_skipped": 0,
             "regions_discarded": 0,

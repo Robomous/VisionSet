@@ -579,9 +579,10 @@ def pre_label_run(value: PreLabelRun) -> shapes.PreLabelRun:
 
     Assets, on ``weight_download``'s and ``integrity_check``'s terms: the
     handler's own unit, named where its job type is known. ``stopped_early``,
-    ``assets_labeled``, ``regions_discarded``, ``regions_out_of_bounds`` and
-    ``annotations_replaced`` are null until the job settles with a result — a
-    cancelled run still carries them, a failed one never does.
+    ``assets_labeled``, ``regions_discarded``, ``regions_out_of_bounds``,
+    ``annotations_replaced`` and ``assets_protected`` are null until the job
+    settles with a result — a cancelled run still carries them, a failed one
+    never does.
     """
     return {
         "annotation_job_id": str(value.annotation_job_id),
@@ -596,6 +597,7 @@ def pre_label_run(value: PreLabelRun) -> shapes.PreLabelRun:
         "regions_discarded": value.regions_discarded,
         "regions_out_of_bounds": value.regions_out_of_bounds,
         "annotations_replaced": value.annotations_replaced,
+        "assets_protected": value.assets_protected,
     }
 
 

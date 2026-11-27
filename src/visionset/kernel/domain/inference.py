@@ -747,7 +747,7 @@ class PreLabelRun(BaseModel):
 
     **The handler's own outcome, carried rather than re-derived.**
     ``stopped_early``, ``assets_labeled``, ``regions_discarded``,
-    ``regions_out_of_bounds`` and ``annotations_replaced`` are read
+    ``regions_out_of_bounds``, ``annotations_replaced`` and ``assets_protected`` are read
     straight out of the settled job's ``result`` — the dict ``prelabel.py``'s
     ``run`` returns — because a bare progress count cannot say how a cancelled
     run differs from an untouched batch, nor how many of a model's answers were
@@ -798,6 +798,10 @@ class PreLabelRun(BaseModel):
     #: Model labels a replacing run superseded. ``None`` until the job settles
     #: with a result.
     annotations_replaced: int | None = None
+    #: ``pre_labeled`` frames a replacing run passed over because a completed
+    #: batch confirmed their labels. ``None`` until the job settles with a
+    #: result, and for a run settled before the count existed.
+    assets_protected: int | None = None
 
     @model_validator(mode="after")
     def _progress_is_within_its_total(self) -> Self:
@@ -834,6 +838,7 @@ class PreLabelRun(BaseModel):
         regions_discarded = result.get("regions_discarded")
         regions_out_of_bounds = result.get("regions_out_of_bounds")
         annotations_replaced = result.get("annotations_replaced")
+        assets_protected = result.get("assets_protected")
         return cls(
             batch_id=UUID(named),
             annotation_job_id=UUID(named_job),
@@ -848,6 +853,7 @@ class PreLabelRun(BaseModel):
             regions_discarded=_result_int(regions_discarded),
             regions_out_of_bounds=(_result_int(regions_out_of_bounds)),
             annotations_replaced=_result_int(annotations_replaced),
+            assets_protected=_result_int(assets_protected),
         )
 
 

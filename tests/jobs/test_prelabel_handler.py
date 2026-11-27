@@ -132,6 +132,7 @@ def test_a_finished_run_reports_progress_and_returns_the_outcome(
             annotations_written=3,
             model_ref="acme/detector@abc123",
             annotations_replaced=1,
+            assets_protected=2,
         )
 
     monkeypatch.setattr(prelabel, "pre_label", fake_pre_label)
@@ -157,6 +158,7 @@ def test_a_finished_run_reports_progress_and_returns_the_outcome(
         "regions_discarded": 0,
         "regions_out_of_bounds": 0,
         "annotations_replaced": 1,
+        "assets_protected": 2,
     }
     assert captured["job_id"] == job_id
     assert captured["connection_id"] == connection_id

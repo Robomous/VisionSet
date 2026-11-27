@@ -278,8 +278,8 @@ question here; what an earlier round's progress said about the frame is not read
 confirmed in one batch therefore opens `pre_labeled` in a later one cut over it, and is
 confirmed again there. An edit keeps a label's provenance — a box a person moved is still a
 model's box — so an asset whose labels are all model-made, adjusted or not, opens `pre_labeled`
-in a later batch. A replacing run there still leaves it alone while the asset is in the dataset: see
-[pre-labeling](#pre-labeling) for the rule.
+in a later batch. A replacing run there still leaves it alone once a completed batch settled it,
+promoted or not: see [pre-labeling](#pre-labeling) for the rule and its one exception.
 
 The honest consequence: `annotated` is in `SETTLED_PROGRESS`, so **a correction whose every
 asset seeded `annotated` can be completed with no edits at all**. That is the intended reading -
@@ -446,11 +446,20 @@ and `--replace-model-labels` at a terminal - widens that reach to every frame st
 `pre_labeled`: the model's earlier labels there are deleted and the new ones land in the same
 transaction, one frame at a time, so no frame is ever briefly bare. A frame anybody edited,
 confirmed or skipped in this job is passed over whatever the flag says, and so is a frame already
-in the dataset: its labels were confirmed in a completed batch, which a run on another batch must
-not delete, so the run leaves it untouched and does not count it. A `pre_labeled` frame the
-second run finds nothing on returns to `unannotated`. Both the outcome and
-`pre_label_run` carry `annotations_replaced`, the count of earlier model labels the run
-superseded.
+in the dataset or settled `annotated` or `accepted` in a completed batch, promoted or not: its
+labels were confirmed there, which a run on another batch must not delete - nor the track
+observations on them - so the run leaves it untouched and counts it in `assets_protected` rather
+than `assets_considered`. Only a **completed** batch counts: a frame confirmed in a batch that is
+still open is not protected by this rule, and a frame `skipped` in a completed batch was never
+confirmed, so its model labels stay replaceable. One exception keeps a run able to redo its own
+work: model labels this job's own earlier run wrote stay replaceable on such a frame (a frame a
+correction emptied and this job pre-labeled again), because an edit re-stamps a label with the
+job that made it and a label carried in from an earlier batch never carries this job. A
+`pre_labeled` frame the second run finds nothing on returns to `unannotated`. Both the outcome
+and `pre_label_run` carry `annotations_replaced`, the count of earlier model labels the run
+superseded, and `assets_protected`. The job's `progress.pre_labeled`, which the Pre-label dialog
+and the MCP tool descriptions point at, counts protected frames too: it is an upper bound on what
+a replacing run reaches, and the settled run's `assets_protected` says how many it passed over.
 
 `visionset.inference.pre_label` is the one implementation an SDK caller, the API and MCP
 all run - see [background-jobs.md](background-jobs.md) for the `annotation.pre_label` job type
@@ -468,7 +477,7 @@ recent `annotation.pre_label` row naming this job - live or settled - and projec
 reload, a second tab or a run started at a terminal can only be shown by the job itself saying
 so. Counted in assets, the unit this handler works in, and carrying the outcome
 `prelabel.py`'s `run` returns once the job has settled - `stopped_early`, `assets_labeled`,
-`annotations_replaced`, `regions_discarded`, `regions_out_of_bounds` - so a client can tell a
+`annotations_replaced`, `assets_protected`, `regions_discarded`, `regions_out_of_bounds` - so a client can tell a
 cancelled run from an untouched job. Derived, never stored, and published on `JobOut` as
 `pre_label_run`, `null` where none ever ran; the row names both ids, `annotation_job_id` for the
 job it is over and `job_id` for the queue row to poll. `BatchOut.pre_label_run` is the newest run
