@@ -740,6 +740,27 @@ with white borders has to show where it ends. The e2e suite asserts the contrast
 light page rather than the hex; the dark page is held by the visual baselines. `stage` is a
 VisionSet-specific semantic token and is recorded as such in [`DESIGN.md`](../../../DESIGN.md).
 
+## The rotated box
+
+A class declaring `obb` gets the **rotated box** tool (lucide `RotateCwSquare`), derived from the
+class like every other tool. A drag draws an axis-aligned rectangle, stored at angle 0 in its
+canonical spelling - a tall drag is stored as the wide box turned a quarter, `width >= height` at
+`-pi/2` (see [annotations](../annotations.md#a-rotated-box-is-a-centre-a-size-and-an-angle)); a
+click too short to be a drag draws nothing. Selected, it offers:
+
+- **eight grips in its own turned frame**, the four corners and the four side midpoints. A grip
+  holds the opposite corner or side still, flips the box when dragged past it, and never lets a
+  side fall below the box tool's minimum; the resize cursors turn with the box;
+- **a round rotation grip** on a stem 24 screen pixels beyond whichever side faces most upward on
+  screen, so it stays above the box however it is spelled; it turns the box about its centre by
+  the angle the pointer sweeps (`grab`, `grabbing` while turning);
+- **its body**, which moves it; the centre is kept on the asset, so the box always meets it.
+
+While a drag is under way the box keeps its raw values, so a grip never jumps sides mid-gesture;
+the release commits the canonical spelling, Escape restores the box as it was, each gesture is one
+undo step, and copy and paste carry it like a box. It renders as its four edges, a closed outline
+in the class colour.
+
 ## Shape rendering
 
 One class-colour rule shared by the canvas, the side panel swatches, and the class

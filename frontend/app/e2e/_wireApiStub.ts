@@ -144,6 +144,8 @@ export interface SchemaSize {
   readonly classes?: number;
   /** Append a `centerline` polyline class, for the scenarios that seed a lane. */
   readonly polyline?: boolean;
+  /** Append a `crate` rotated-box class, after any lane class. */
+  readonly obb?: boolean;
 }
 
 const CENTERLINE = {
@@ -153,8 +155,22 @@ const CENTERLINE = {
   attributes: [],
 } satisfies Wire["SchemaVersionOut"]["classes"][number];
 
+const CRATE = {
+  name: "crate",
+  geometries: ["obb"],
+  color: "#2dd4bf",
+  attributes: [],
+} satisfies Wire["SchemaVersionOut"]["classes"][number];
+
 function schemaOfSize(size: SchemaSize | undefined): Wire["SchemaVersionOut"] {
-  const base = size?.polyline === true ? { ...SCHEMA, classes: [...SCHEMA.classes, CENTERLINE] } : SCHEMA;
+  const base = {
+    ...SCHEMA,
+    classes: [
+      ...SCHEMA.classes,
+      ...(size?.polyline === true ? [CENTERLINE] : []),
+      ...(size?.obb === true ? [CRATE] : []),
+    ],
+  };
   const want = size?.classes ?? base.classes.length;
   if (want <= base.classes.length) return base;
   return {

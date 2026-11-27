@@ -264,6 +264,11 @@ Applies to `add_annotations` and `update_annotations`. Every 2D coordinate is in
 asset's own pixels, never normalized. `type` selects the shape:
 
 - `bbox`: `x`, `y` (top-left corner), `width`, `height`.
+- `obb`: a rotated rectangle: `cx`, `cy` (its centre), `width`, `height` (both above
+  zero) and `angle` in radians. The width side runs along `(cos angle, sin angle)` with
+  y down, so a positive angle turns clockwise on screen. Stored canonical: `width >=
+  height` and `angle` in `[-pi/2, pi/2)` (a square's in `[-pi/4, pi/4)`), so a read may
+  spell a box differently from the write and still draw the same pixels.
 - `polygon`: `points`, at least three `[x, y]` pairs; the ends join.
 - `polyline`: `points`, at least two `[x, y]` pairs in order; the ends do not join.
 - `polyline_3d`: `points`, at least two `[x, y, z]` triples in order, never pixels.
@@ -297,7 +302,7 @@ heading is `(-sin yaw, 0, cos yaw)`: +z at `0`, not the +x an image uses on the 
 
 A scan needs no calibration, and `set_calibration` on one is refused with
 `CALIBRATION_NOT_APPLICABLE`. A 3D label on a scan whose source declares no frame is
-`CALIBRATION_MISSING`. A scan has no pixels: `bbox`, `polygon` and `polyline` on one
+`CALIBRATION_MISSING`. A scan has no pixels: `bbox`, `obb`, `polygon` and `polyline` on one
 are refused with `INVALID_ANNOTATION`; `classification_tag` is accepted.
 
 ## Polyline vertex visibility

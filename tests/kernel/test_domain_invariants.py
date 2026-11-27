@@ -45,6 +45,7 @@ def test_geometry_enum_includes_3d_values_today() -> None:
     values = {g.value for g in GeometryType}
     assert values == {
         "bbox",
+        "obb",
         "polygon",
         "mask",
         "polyline",

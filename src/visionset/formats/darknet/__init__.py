@@ -14,8 +14,8 @@ with no validation fold points it at the training list, as ``yolov5-yaml``
 points ``val`` at the training images. Darknet has no test key, so test images
 are written to ``images/test`` and listed in neither file.
 
-Detection only. A polygon is written as its axis-aligned bounding box and
-counted as degraded; a classification tag has no location and is dropped.
+Detection only. A polygon or a rotated box is written as its axis-aligned
+bounding box and counted as degraded; a classification tag has no location and is dropped.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Final
 
 from visionset.formats._layout import IMAGES_DIRNAME
-from visionset.formats._yolo_writer import class_names, detect_rows, write_label_layout
+from visionset.formats._yolo_writer import class_names, degraded_detect_rows, write_label_layout
 from visionset.formats.darknet.reader import DATA_FILENAME, NAMES_FILENAME, DarknetImporter
 from visionset.kernel.domain import (
     ExportTarget,
@@ -75,7 +75,7 @@ class DarknetExporter:
     supported_geometries = frozenset({GeometryType.BBOX})
 
     #: Polygons, written as their axis-aligned bounds.
-    degraded_geometries = frozenset({GeometryType.POLYGON})
+    degraded_geometries = frozenset({GeometryType.OBB, GeometryType.POLYGON})
 
     supported_modalities = frozenset({"image"})
 
@@ -90,7 +90,7 @@ class DarknetExporter:
         content: ContentReader,
         assignment: SplitAssignment | None,
     ) -> None:
-        folds = write_label_layout(manifest, dest, content, assignment, detect_rows)
+        folds = write_label_layout(manifest, dest, content, assignment, degraded_detect_rows)
         names = class_names(manifest)
         (dest / NAMES_FILENAME).write_text("".join(f"{name}\n" for name in names), encoding="utf-8")
 

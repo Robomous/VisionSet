@@ -206,8 +206,8 @@ straight into the document it hashes, so a set whose order depended on how a cal
 would make two identical schemas produce two different release hashes. Class *order* is
 authored and preserved; geometry order carries no meaning and nobody can read one into it.
 
-`GeometryType` names eight geometries; six have a model in the `Geometry` union today -
-`bbox`, `polygon`, `polyline`, `polyline_3d`, `cuboid_3d` and `classification_tag`.
+`GeometryType` names nine geometries; seven have a model in the `Geometry` union today -
+`bbox`, `obb`, `polygon`, `polyline`, `polyline_3d`, `cuboid_3d` and `classification_tag`.
 `IMPLEMENTED_GEOMETRIES` is read *off* the union, so shipping a variant widens it with no
 second edit, and `create_version` refuses a class naming anything outside it:
 
@@ -229,8 +229,14 @@ silently reinterpreted.
 Declaring a class whose geometry has no implementation would create a class nobody could
 ever label. Refusing at the schema is better than discovering it at the first annotation.
 
-**`polyline_3d` (#1038) and `cuboid_3d` (#1045) are the newest, and the browser draws them on
-scans only.** Each is a class like any other to the SDK, REST, MCP and the CLI. On a point-cloud
+**`obb` (#1160) is the newest: a rotated box in pixels**, a centre, two side lengths and an
+angle, stored in one canonical spelling (see
+[annotations](annotations.md#a-rotated-box-is-a-centre-a-size-and-an-angle)). It is a 2D shape
+like `bbox`, never a 3D one: the browser draws, moves, resizes and rotates it on an image, and a
+scan refuses it. It is not an axis-aligned `bbox` with an extra field: a class declaring `bbox`
+does not accept an `obb`, and no surface turns one into the other without saying so.
+
+**`polyline_3d` (#1038) and `cuboid_3d` (#1045) are drawn on scans only.** Each is a class like any other to the SDK, REST, MCP and the CLI. On a point-cloud
 scan the browser draws, edits and saves both (see
 [the scan editor](ui/annotator.md#editing-cuboids-and-polylines-on-a-scan)); on an image it has
 no tool for either, and loads a job holding one and saves it untouched. The `kitti` and
@@ -259,14 +265,14 @@ annotation, with `classes.txt` naming the tag-capable slice of the schema.
 
 ### The categories a picker groups them by
 
-The eight fall into two families, and the grouping is **presentation only** - the kernel has
+The nine fall into two families, and the grouping is **presentation only** - the kernel has
 no category concept and takes none (#375). "Basic Computer Vision" holds the geometries an
-ordinary image task produces: `bbox`, `polygon`, `mask`, `keypoints` and
+ordinary image task produces: `bbox`, `obb`, `polygon`, `mask`, `keypoints` and
 `classification_tag`. "Robotics and AD" holds the ones that describe a scene the camera
 alone does not give you - `polyline` for lanes, `polyline_3d` (#1038) and `cuboid_3d` (#1045).
 
 The map lives in `frontend/ui-core/src/data/geometryCategory.ts`, declared total over the
-generated `GeometryType` union so a ninth member fails the frontend build until somebody
+generated `GeometryType` union so a tenth member fails the frontend build until somebody
 categorises it. Nothing on the wire carries a category, and an exporter's capability
 declaration never names one: `supported_geometries` is per geometry, because a lane exporter
 supports `polyline` and has said nothing at all about `cuboid_3d`.

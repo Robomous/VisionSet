@@ -58,8 +58,9 @@ import { COLOR, RADIUS, SHADOW, SPACE, TEXT } from "./theme";
  * and it is not — `drawableGeometries` is still the only thing deciding which tools
  * exist.
  */
-const TOOL_LABELS: Readonly<Record<"bbox" | "polygon" | "polyline", string>> = {
+const TOOL_LABELS: Readonly<Record<"bbox" | "obb" | "polygon" | "polyline", string>> = {
   bbox: "Box",
+  obb: "Rotated box",
   polygon: "Polygon",
   polyline: "Polyline",
 };
@@ -233,6 +234,7 @@ function ToolIcon({ tool }: { readonly tool: Tool }): JSX.Element {
     >
       {tool === "select" && <path d="M5 3l14 8-6.5 1.8L10 20z" />}
       {tool === "bbox" && <rect x="3" y="3" width="18" height="18" rx="2" />}
+      {tool === "obb" && <path d="M8 3l13 5-5 13-13-5z" />}
       {tool === "polygon" && <path d="M12 3l9 6.5-3.5 10.5h-11L3 9.5z" />}
     </svg>
   );

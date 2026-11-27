@@ -1640,8 +1640,8 @@ export interface paths {
          *
          *     On a point-cloud scan a 3D label is read against the frame its source
          *     declares and needs no calibration; a source declaring no frame is 409
-         *     `CALIBRATION_MISSING`. A scan has no pixels, so a `bbox`, `polygon` or
-         *     `polyline` on one is 422 `INVALID_ANNOTATION`.
+         *     `CALIBRATION_MISSING`. A scan has no pixels, so a `bbox`, `obb`, `polygon`
+         *     or `polyline` on one is 422 `INVALID_ANNOTATION`.
          */
         post: operations["add_annotations"];
         /**
@@ -1687,7 +1687,7 @@ export interface paths {
          *     stops a replacement too — including 409 `CALIBRATION_MISSING` and 422
          *     `CALIBRATION_RESOLUTION_MISMATCH` for a 3D label, and on a scan 409
          *     `CALIBRATION_MISSING` for a source declaring no frame and 422
-         *     `INVALID_ANNOTATION` for a `bbox`, `polygon` or `polyline`.
+         *     `INVALID_ANNOTATION` for a `bbox`, `obb`, `polygon` or `polyline`.
          */
         patch: operations["update_annotations"];
         trace?: never;
@@ -3984,7 +3984,7 @@ export interface components {
             /** Confidence */
             confidence?: number | null;
             /** Geometry */
-            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["ClassificationBody"];
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["ObbBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["ClassificationBody"];
             /** Label Class */
             label_class: string;
             /** Model Ref */
@@ -4021,7 +4021,7 @@ export interface components {
             /** Confidence */
             confidence: number | null;
             /** Geometry */
-            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["ClassificationBody"];
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["ObbBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["ClassificationBody"];
             /**
              * Id
              * Format: uuid
@@ -4066,7 +4066,7 @@ export interface components {
             /** Confidence */
             confidence?: number | null;
             /** Geometry */
-            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["ClassificationBody"];
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["ObbBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["ClassificationBody"];
             /**
              * Id
              * Format: uuid
@@ -5253,7 +5253,7 @@ export interface components {
             /** Confidence */
             confidence: number;
             /** Geometry */
-            geometry: components["schemas"]["BboxGeometry"] | components["schemas"]["PolygonGeometry"] | components["schemas"]["PolylineGeometry"] | components["schemas"]["Polyline3DGeometry"] | components["schemas"]["Cuboid3DGeometry"] | components["schemas"]["ClassificationGeometry"];
+            geometry: components["schemas"]["BboxGeometry"] | components["schemas"]["ObbGeometry"] | components["schemas"]["PolygonGeometry"] | components["schemas"]["PolylineGeometry"] | components["schemas"]["Polyline3DGeometry"] | components["schemas"]["Cuboid3DGeometry"] | components["schemas"]["ClassificationGeometry"];
             /** Id */
             id: string;
             /** Label */
@@ -5608,7 +5608,7 @@ export interface components {
          * GeometryType
          * @enum {string}
          */
-        GeometryType: "bbox" | "polygon" | "mask" | "polyline" | "keypoints" | "cuboid_3d" | "polyline_3d" | "classification_tag";
+        GeometryType: "bbox" | "obb" | "polygon" | "mask" | "polyline" | "keypoints" | "cuboid_3d" | "polyline_3d" | "classification_tag";
         /**
          * HomeOut
          * @description Everything the workspace's front page asks for, in one answer.
@@ -5877,6 +5877,82 @@ export interface components {
          * @enum {string}
          */
         ModelOrigin: "huggingface" | "custom" | "robomous";
+        /**
+         * ObbBody
+         * @description A rotated rectangle in asset pixels: centre, side lengths and angle.
+         *
+         *     `cx`, `cy` are the centre; `width` and `height` are strictly positive; the
+         *     width side runs along `(cos angle, sin angle)` with `angle` in radians and
+         *     y down, so a positive angle turns clockwise on screen. Every value must be
+         *     finite. A stored box is canonical: `width >= height` (sides swapped and
+         *     `pi/2` added to the angle otherwise), `angle` in `[-pi/2, pi/2)`, and a
+         *     square's angle in `[-pi/4, pi/4)`. A response may therefore spell a box
+         *     differently from the request that wrote it, and still draw the same pixels.
+         */
+        ObbBody: {
+            /** Angle */
+            angle: number;
+            /** Cx */
+            cx: number;
+            /** Cy */
+            cy: number;
+            /** Height */
+            height: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "obb";
+            /** Width */
+            width: number;
+        };
+        /**
+         * ObbGeometry
+         * @description A rotated rectangle in pixels: a centre, a size and an angle.
+         *
+         *     ``cx`` and ``cy`` are the rectangle's centre, ``width`` and ``height`` its
+         *     side lengths, every one in the asset's pixel frame (x right, y down), and
+         *     ``angle`` the direction of the width side in radians: the width side runs
+         *     along ``(cos angle, sin angle)`` and the height side along
+         *     ``(-sin angle, cos angle)``, so a positive angle turns clockwise on screen.
+         *     ``width`` and ``height`` must be strictly positive and every value finite.
+         *
+         *     One rectangle has many spellings — adding ``pi`` to the angle, or swapping
+         *     the sides and adding ``pi/2``, draws the same pixels — so every value is
+         *     stored in one canonical form, applied on construction:
+         *
+         *     1. when ``width < height`` the sides swap and ``angle`` gains ``pi/2``, so
+         *        ``width >= height`` always;
+         *     2. ``angle`` is reduced modulo ``pi`` into ``[-pi/2, pi/2)``;
+         *     3. a square (``width == height``) reduces it further, modulo ``pi/2``
+         *        into ``[-pi/4, pi/4)``;
+         *     4. a negative zero angle is stored as ``0.0``.
+         *
+         *     Equivalent spellings therefore serialize to the same bytes up to the
+         *     rounding of the reduction itself, and a canonical value is a fixed point.
+         *     :func:`obb_corners` gives the four corners, which are the rectangle exactly.
+         *
+         *     A sibling of :class:`BboxGeometry`, never a subclass: an axis-aligned box
+         *     is a different claim, and no ``case BboxGeometry()`` may reach this by
+         *     inheritance. Reducing one to an axis-aligned box always loses the angle.
+         */
+        ObbGeometry: {
+            /** Angle */
+            angle: number;
+            /** Cx */
+            cx: number;
+            /** Cy */
+            cy: number;
+            /** Height */
+            height: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "obb";
+            /** Width */
+            width: number;
+        };
         /**
          * ObservationCreate
          * @description An occurrence for the track to observe, and the annotation drawn there.
@@ -6464,7 +6540,7 @@ export interface components {
             /** Confidence */
             confidence: number | null;
             /** Geometry */
-            geometry: components["schemas"]["BboxBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["ClassificationBody"];
+            geometry: components["schemas"]["BboxBody"] | components["schemas"]["ObbBody"] | components["schemas"]["PolygonBody"] | components["schemas"]["PolylineBody"] | components["schemas"]["Polyline3DBody"] | components["schemas"]["Cuboid3DBody"] | components["schemas"]["ClassificationBody"];
             /** Id */
             id: string;
             /** Label Class */
@@ -7441,7 +7517,7 @@ export interface components {
                 number
             ][];
             /** Geometry */
-            geometry: components["schemas"]["BboxGeometry"] | components["schemas"]["PolygonGeometry"] | components["schemas"]["PolylineGeometry"] | components["schemas"]["Polyline3DGeometry"] | components["schemas"]["Cuboid3DGeometry"] | components["schemas"]["ClassificationGeometry"];
+            geometry: components["schemas"]["BboxGeometry"] | components["schemas"]["ObbGeometry"] | components["schemas"]["PolygonGeometry"] | components["schemas"]["PolylineGeometry"] | components["schemas"]["Polyline3DGeometry"] | components["schemas"]["Cuboid3DGeometry"] | components["schemas"]["ClassificationGeometry"];
         };
         /**
          * SuggestionOut

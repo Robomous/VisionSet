@@ -12,6 +12,7 @@ import {
   HANDLE_TOLERANCE_PX,
   MIN_DRAW_SIZE_PX,
   PASTE_OFFSET_PX,
+  ROTATE_HANDLE_OFFSET_PX,
   SHAPE_TOLERANCE_PX,
   VERTEX_TOLERANCE_PX,
   assetTolerances,
@@ -110,7 +111,7 @@ describe("the tolerances themselves", () => {
   });
 });
 
-describe("all eight at once, which is the call an adapter actually makes", () => {
+describe("all nine at once, which is the call an adapter actually makes", () => {
   /** Every field, so a constant added without a conversion fails to compile. */
   const SCREEN: Record<keyof Tolerances, number> = {
     handle: HANDLE_TOLERANCE_PX,
@@ -121,6 +122,7 @@ describe("all eight at once, which is the call an adapter actually makes", () =>
     click: CLICK_SLOP_PX,
     minDraw: MIN_DRAW_SIZE_PX,
     pasteOffset: PASTE_OFFSET_PX,
+    rotateOffset: ROTATE_HANDLE_OFFSET_PX,
   };
 
   it("is the constants themselves at a zoom of one", () => {

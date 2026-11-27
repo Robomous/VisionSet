@@ -120,7 +120,12 @@ from visionset.kernel.errors import UnserializableManifest
 #: when no track observes anything in the release, so an untracked release keeps
 #: the version, the bytes and the hash it had before, and only a release holding
 #: a track is one a version-6 build refuses.
-MANIFEST_VERSION: int = 7
+#:
+#: **8** since #1160, which added ``obb`` — a rotated pixel rectangle — to the
+#: geometry union. A release with no rotated box keeps the version, the bytes
+#: and the hash it had before, and only a release holding one is one a
+#: version-7 build refuses.
+MANIFEST_VERSION: int = 8
 
 CALIBRATED_MANIFEST_VERSION: int = 4
 """The first manifest version that can carry a calibration, and so a 3D label."""
@@ -133,6 +138,9 @@ GROUPED_MANIFEST_VERSION: int = 6
 
 TRACKED_MANIFEST_VERSION: int = 7
 """The first manifest version that can carry tracks."""
+
+OBB_MANIFEST_VERSION: int = 8
+"""The first manifest version that can carry a rotated box."""
 
 
 class ManifestAnnotation(BaseModel):
@@ -430,6 +438,11 @@ class Manifest(BaseModel):
                 f"a version-{self.manifest_version} manifest carries no tracks; "
                 f"a tracked release needs version {TRACKED_MANIFEST_VERSION}"
             )
+        if self.manifest_version < OBB_MANIFEST_VERSION and _holds_obb(self.assets):
+            raise ValueError(
+                f"a version-{self.manifest_version} manifest carries no rotated boxes; "
+                f"an obb label needs version {OBB_MANIFEST_VERSION}"
+            )
         return self
 
     @property
@@ -446,6 +459,8 @@ def manifest_version_for(
     Publishing writes this rather than :data:`MANIFEST_VERSION`, so content a
     version-3 build can read is still written as version 3 and keeps its hash.
     """
+    if _holds_obb(assets):
+        return OBB_MANIFEST_VERSION
     if tracks:
         return TRACKED_MANIFEST_VERSION
     if any(asset.group_label is not None for asset in assets):
@@ -455,6 +470,14 @@ def manifest_version_for(
     if any(asset.calibration is not None for asset in assets):
         return CALIBRATED_MANIFEST_VERSION
     return 3
+
+
+def _holds_obb(assets: Sequence[ManifestAsset]) -> bool:
+    return any(
+        annotation.geometry.type == GeometryType.OBB
+        for asset in assets
+        for annotation in asset.annotations
+    )
 
 
 def canonical_bytes(model: BaseModel) -> bytes:

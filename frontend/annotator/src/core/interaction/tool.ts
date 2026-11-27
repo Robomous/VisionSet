@@ -80,11 +80,11 @@ import { classNamed } from "../state/document";
 import type { AnnotationDocument } from "../state/document";
 import type { LabelClass } from "../types";
 
-/** The four modes the canvas has. Three draw; one edits what is already there. */
-export type Tool = "select" | "bbox" | "polygon" | "polyline";
+/** The five modes the canvas has. Four draw; one edits what is already there. */
+export type Tool = "select" | "bbox" | "obb" | "polygon" | "polyline";
 
 /** The tools that draw, in the order a strip filtered by one class offers them. */
-const DRAWING_TOOLS = ["bbox", "polygon", "polyline"] as const satisfies readonly Tool[];
+const DRAWING_TOOLS = ["bbox", "obb", "polygon", "polyline"] as const satisfies readonly Tool[];
 
 type DrawingTool = (typeof DRAWING_TOOLS)[number];
 

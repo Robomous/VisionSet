@@ -125,6 +125,7 @@ from visionset.kernel.domain import (
     ModalityCompatibility,
     ModelCapability,
     ModelOrigin,
+    ObbGeometry,
     ObservedFrame,
     Partition,
     PlumbBobDistortion,
@@ -2141,6 +2142,44 @@ class BboxBody(BaseModel):
         )
 
 
+class ObbBody(BaseModel):
+    """A rotated rectangle in asset pixels: centre, side lengths and angle.
+
+    `cx`, `cy` are the centre; `width` and `height` are strictly positive; the
+    width side runs along `(cos angle, sin angle)` with `angle` in radians and
+    y down, so a positive angle turns clockwise on screen. Every value must be
+    finite. A stored box is canonical: `width >= height` (sides swapped and
+    `pi/2` added to the angle otherwise), `angle` in `[-pi/2, pi/2)`, and a
+    square's angle in `[-pi/4, pi/4)`. A response may therefore spell a box
+    differently from the request that wrote it, and still draw the same pixels.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal[GeometryType.OBB]
+    cx: float
+    cy: float
+    width: float
+    height: float
+    angle: float
+
+    def to_domain(self) -> ObbGeometry:
+        return ObbGeometry(
+            cx=self.cx, cy=self.cy, width=self.width, height=self.height, angle=self.angle
+        )
+
+    @classmethod
+    def of(cls, geometry: ObbGeometry) -> Self:
+        return cls(
+            type=GeometryType.OBB,
+            cx=geometry.cx,
+            cy=geometry.cy,
+            width=geometry.width,
+            height=geometry.height,
+            angle=geometry.angle,
+        )
+
+
 class PolygonBody(BaseModel):
     """A closed polygon of at least three points. The closing edge is implicit."""
 
@@ -2291,18 +2330,34 @@ class ClassificationBody(BaseModel):
 
 
 GeometryBody = Annotated[
-    BboxBody | PolygonBody | PolylineBody | Polyline3DBody | Cuboid3DBody | ClassificationBody,
+    BboxBody
+    | ObbBody
+    | PolygonBody
+    | PolylineBody
+    | Polyline3DBody
+    | Cuboid3DBody
+    | ClassificationBody,
     Field(discriminator="type"),
 ]
 
 
 def geometry_of(
     geometry: Geometry,
-) -> BboxBody | PolygonBody | PolylineBody | Polyline3DBody | Cuboid3DBody | ClassificationBody:
+) -> (
+    BboxBody
+    | ObbBody
+    | PolygonBody
+    | PolylineBody
+    | Polyline3DBody
+    | Cuboid3DBody
+    | ClassificationBody
+):
     """The wire form of a stored geometry, matched on the same discriminator."""
     match geometry:
         case BboxGeometry():
             return BboxBody.of(geometry)
+        case ObbGeometry():
+            return ObbBody.of(geometry)
         case PolygonGeometry():
             return PolygonBody.of(geometry)
         case PolylineGeometry():

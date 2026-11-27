@@ -64,6 +64,7 @@ from visionset.kernel.domain import (
     Manifest,
     ManifestAnnotation,
     ManifestAsset,
+    ObbGeometry,
     PolygonGeometry,
     Polyline3DGeometry,
     PolylineGeometry,
@@ -284,7 +285,8 @@ def _annotation(
             ]
             area = round(_shoelace(geometry.points), PRECISION)
         case (
-            ClassificationGeometry()
+            ObbGeometry()
+            | ClassificationGeometry()
             | PolylineGeometry()
             | Polyline3DGeometry()
             | Cuboid3DGeometry()

@@ -82,6 +82,14 @@ export const PATH_VERTEX: Point = [500, 300];
 /** Under no annotation, and not within any tolerance of one. */
 export const EMPTY_POINT: Point = [20, 440];
 
+export const OBB_ID = "crate";
+
+/** Centred at (180, 380), 80 by 40, turned π/6 clockwise. */
+export const OBB_BODY: Point = [180, 380];
+
+/** The rotation grip at a zoom of one: 24 px beyond the middle of the `n` side. */
+export const OBB_ROTATE: Point = [180 + 0.5 * 44, 380 - (Math.sqrt(3) / 2) * 44];
+
 /** A `sign` box at 100,100, 80×60. Its own fixture: `_sample.ts` has no polygon. */
 export function box(): Annotation {
   return {
@@ -131,8 +139,16 @@ export function path(): Annotation {
 }
 
 /** The scene's document: the box first, so the polygon and path are above it. */
+export function rotatedBox(): Annotation {
+  return {
+    ...annotation(OBB_ID),
+    label_class: "crate",
+    geometry: { type: "obb", cx: 180, cy: 380, width: 80, height: 40, angle: Math.PI / 6 },
+  };
+}
+
 export function sceneDocument(): AnnotationDocument {
-  return createDocument(ASSET, SCHEMA, [box(), polygon(), path()]);
+  return createDocument(ASSET, SCHEMA, [box(), polygon(), path(), rotatedBox()]);
 }
 
 /** A pointer-down. Primary button and no modifiers unless said otherwise. */
@@ -190,6 +206,7 @@ export const ROUTES: Readonly<Record<InteractionStateType, Route>> = {
   "drawing-bbox": { activeClass: "sign", events: [down([200, 200])] },
   "drawing-polygon": { activeClass: "lane", events: [down([200, 200])] },
   "drawing-polyline": { activeClass: "path", events: [down([200, 200])] },
+  "drawing-obb": { activeClass: "crate", events: [down([200, 200])] },
   moving: { activeClass: null, events: [down(BOX_BODY)] },
   resizing: {
     activeClass: null,
@@ -198,6 +215,10 @@ export const ROUTES: Readonly<Record<InteractionStateType, Route>> = {
   "moving-vertex": {
     activeClass: null,
     events: [down(POLY_BODY), up(POLY_BODY), down(POLY_VERTEX)],
+  },
+  rotating: {
+    activeClass: null,
+    events: [down(OBB_BODY), up(OBB_BODY), down(OBB_ROTATE)],
   },
 };
 

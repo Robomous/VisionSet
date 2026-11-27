@@ -35,6 +35,7 @@ from visionset.kernel.domain.geometry import (
     ClassificationGeometry,
     Cuboid3DGeometry,
     Geometry,
+    ObbGeometry,
     PolygonGeometry,
     Polyline3DGeometry,
     PolylineGeometry,
@@ -264,7 +265,13 @@ def geometry_reference(geometry: Geometry, *, modality: Modality) -> GeometryRef
                     return "scan_frame"
                 case _:
                     assert_never(modality)
-        case BboxGeometry() | PolygonGeometry() | PolylineGeometry() | ClassificationGeometry():
+        case (
+            BboxGeometry()
+            | ObbGeometry()
+            | PolygonGeometry()
+            | PolylineGeometry()
+            | ClassificationGeometry()
+        ):
             return None
         case _:
             assert_never(geometry)
@@ -291,7 +298,7 @@ def geometry_fits_modality(geometry: Geometry, *, modality: Modality) -> bool:
     3D label fit both.
     """
     match geometry:
-        case BboxGeometry() | PolygonGeometry() | PolylineGeometry():
+        case BboxGeometry() | ObbGeometry() | PolygonGeometry() | PolylineGeometry():
             return modality == "image"
         case Polyline3DGeometry() | Cuboid3DGeometry() | ClassificationGeometry():
             return True

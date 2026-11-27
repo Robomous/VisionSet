@@ -55,6 +55,10 @@ describe("which of a class's geometries can be drawn", () => {
     ]);
   });
 
+  it("draws a rotated box with its own tool, after the axis-aligned one", () => {
+    expect(drawableGeometries(classOf("x", "polygon", "obb", "bbox"))).toEqual(["bbox", "obb", "polygon"]);
+  });
+
   it("is empty for a class that draws nothing, whichever reason", () => {
     expect(drawableGeometries(classOf("x", "classification_tag"))).toEqual([]);
     expect(drawableGeometries(classOf("x", "mask"))).toEqual([]);

@@ -30,6 +30,7 @@ const outline = (svg: SVGSVGElement): Element | null => svg.querySelector("[data
 describe("ShapeGlyph", () => {
   it.each([
     { geometry: "bbox", element: "rect" },
+    { geometry: "obb", element: "polygon" },
     { geometry: "polygon", element: "polygon" },
     { geometry: "polyline", element: "polyline" },
     { geometry: "classification_tag", element: "rect" },
@@ -57,9 +58,10 @@ describe("ShapeGlyph", () => {
     expect(polygon[0]?.tagName.toLowerCase()).toBe("circle");
 
     expect(drawn("polyline").querySelectorAll("[data-part=vertex]")).toHaveLength(4);
+    expect(drawn("obb").querySelectorAll("[data-part=grip]")).toHaveLength(4);
   });
 
-  it.each(["bbox", "polygon", "polyline"])("leaves the handles of a %s hollow on whatever it sits on", (geometry) => {
+  it.each(["bbox", "obb", "polygon", "polyline"])("leaves the handles of a %s hollow on whatever it sits on", (geometry) => {
     const svg = drawn(geometry);
     const handles = [...svg.querySelectorAll("[data-part=grip], [data-part=vertex]")];
     const mask = svg.querySelector("mask");
@@ -101,7 +103,7 @@ describe("ShapeGlyph", () => {
 
   it("gives each geometry a drawing of its own", () => {
     // Without the mask ids, which differ between any two glyphs.
-    const offered = ["bbox", "polygon", "polyline", "classification_tag"].map((geometry) => drawn(geometry).innerHTML.replace(/shape-glyph-[\w-]+/g, ""));
+    const offered = ["bbox", "obb", "polygon", "polyline", "classification_tag"].map((geometry) => drawn(geometry).innerHTML.replace(/shape-glyph-[\w-]+/g, ""));
 
     expect(new Set(offered).size).toBe(offered.length);
   });

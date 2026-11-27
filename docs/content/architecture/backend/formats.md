@@ -93,7 +93,11 @@ part:
   True or false for the format, forever.
 - `supported_geometries` - what it writes **intact**.
 - `degraded_geometries` - what it writes **having lost something**, such as a
-  polygon arriving as its axis-aligned bounding box.
+  polygon or a rotated box (`obb`) arriving as its axis-aligned bounding box. A
+  format writes a rotated box's enclosing box only when it declares `obb` here;
+  `_yolo_writer.detect_rows` drops one unless its dialect asks for
+  `degraded_detect_rows`, so the `ultralytics` dialect, which does not declare
+  it, writes none.
 
 The last two are disjoint, and a geometry in neither is not written at all. An optional
 `tracked_only` says the format writes a label only as an observation of a released track, as `mot`

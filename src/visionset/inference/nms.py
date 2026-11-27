@@ -21,7 +21,8 @@ is why this is a module of its own rather than four lines inside a provider that
 cannot be constructed without weights.
 
 Every shape participates, through its extent. A polygon or a polyline is compared
-by the axis-aligned box around its points — ``extent_of`` — and a box by itself,
+by the axis-aligned box around its points — ``extent_of`` — a rotated box by the
+axis-aligned box around its corners, and a box by itself,
 so a text-prompted segmenter that answers many masks from one call is suppressed
 exactly as a detector is, and a box and a mask over one object are one answer.
 On duplicates of one instance, which is the failure mode this was measured
@@ -41,10 +42,12 @@ from visionset.kernel.domain import (
     ClassificationGeometry,
     Cuboid3DGeometry,
     Geometry,
+    ObbGeometry,
     PolygonGeometry,
     Polyline3DGeometry,
     PolylineGeometry,
     PredictedRegion,
+    obb_enclosing_box,
 )
 
 DEFAULT_IOU_THRESHOLD: Final = 0.5
@@ -89,6 +92,8 @@ def extent_of(geometry: Geometry) -> BboxGeometry | None:
     match geometry:
         case BboxGeometry():
             return geometry
+        case ObbGeometry():
+            return obb_enclosing_box(geometry)
         case ClassificationGeometry() | Polyline3DGeometry() | Cuboid3DGeometry():
             return None
         case PolygonGeometry() | PolylineGeometry():

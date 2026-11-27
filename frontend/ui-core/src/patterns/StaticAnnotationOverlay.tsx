@@ -16,7 +16,7 @@
 
 import type { CSSProperties, JSX } from "react";
 import { parseGeometry, type Geometry } from "@visionset/annotator";
-import { BboxShape, PolygonShape, PolylineShape, STROKE_PX } from "@visionset/annotator/react";
+import { BboxShape, ObbShape, PolygonShape, PolylineShape, STROKE_PX } from "@visionset/annotator/react";
 
 import type { WireAnnotation } from "../annotator/jobQueries";
 import { classColor, type LabelClass } from "../palette";
@@ -113,6 +113,8 @@ function Shape({
     <g data-testid={`preview-shape-${annotation.id}`} data-geometry={geometry.type}>
       {geometry.type === "bbox" ? (
         <BboxShape geometry={geometry} color={color} hot={false} selected={false} />
+      ) : geometry.type === "obb" ? (
+        <ObbShape geometry={geometry} color={color} hot={false} selected={false} />
       ) : geometry.type === "polygon" ? (
         <PolygonShape geometry={geometry} color={color} hot={false} selected={false} />
       ) : (

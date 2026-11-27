@@ -76,10 +76,10 @@
  * | --- | --- | --- | --- |
  * | `idle` | clears the selection | — | — |
  * | `pressing-empty` | idle; selection untouched | same | same |
- * | `drawing-bbox` | idle; the rubber band goes | same | same |
+ * | `drawing-bbox` / `drawing-obb` | idle; the rubber band goes | same | same |
  * | `drawing-polygon` | idle; **every** pending point dropped | **stays** | idle; dropped |
  * | `drawing-polyline` | same as `drawing-polygon` | **stays** | idle; dropped |
- * | `moving` / `resizing` / `moving-vertex` | idle + `discard` | same | same |
+ * | `moving` / `resizing` / `rotating` / `moving-vertex` | idle + `discard` | same | same |
  *
  * Two rows are decisions.
  *
@@ -172,6 +172,7 @@ import {
   translatePolyline,
 } from "../geometry/polygon";
 import { polygonCloseAttempt } from "../geometry/hitTest";
+import { canonicalObb, moveObb, obbFromBox, resizeObb, rotateObb } from "../geometry/obb";
 import { clampPoint, distance } from "../geometry/primitives";
 import type { Tolerances } from "../geometry/tolerance";
 import type { IdFactory } from "../ids";
@@ -179,7 +180,7 @@ import { annotationById } from "../state/document";
 import type { AnnotationDocument } from "../state/document";
 import { clearSelection, selectAlso, selectOnly, toggleSelection } from "../state/selection";
 import type { Selection } from "../state/selection";
-import { VERTEX_VISIBILITY, type Annotation, type Geometry, type Point } from "../types";
+import { VERTEX_VISIBILITY, type Annotation, type Geometry, type ObbGeometry, type Point } from "../types";
 import { draftAnnotation } from "./draft";
 import { NO_EFFECTS } from "./effects";
 import type { Effect } from "./effects";
@@ -273,6 +274,11 @@ function geometryEquals(a: Geometry, b: Geometry): boolean {
   if (a.type === "bbox" && b.type === "bbox") {
     return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
   }
+  if (a.type === "obb" && b.type === "obb") {
+    return (
+      a.cx === b.cx && a.cy === b.cy && a.width === b.width && a.height === b.height && a.angle === b.angle
+    );
+  }
   // Both point lists, compared by one helper. The `polyline` arm is not symmetry:
   // without it this function falls through to `return true`, so **every polyline
   // drag would stage nothing** — `stageOrDiscard` would discard on every move — and
@@ -310,16 +316,23 @@ function movedShape(
   bounds: AnnotationDocument["asset"],
 ): Geometry {
   if (startGeometry.type === "bbox") return moveBbox(startGeometry, origin, bounds);
+  if (startGeometry.type === "obb") return moveObb(startGeometry, origin, bounds);
   if (startGeometry.type === "polygon") return translatePolygon(startGeometry, origin, bounds);
   return translatePolyline(startGeometry, origin, bounds);
 }
 
-/** Where a `moving` gesture has pushed the shape's top-left corner. */
+/** Where a `moving` gesture has pushed the shape's top-left corner — a rotated box's centre. */
 function draggedOrigin(
   startGeometry: MovableGeometry,
   startPoint: Point,
   point: Point,
 ): Point {
+  if (startGeometry.type === "obb") {
+    return [
+      startGeometry.cx + (point[0] - startPoint[0]),
+      startGeometry.cy + (point[1] - startPoint[1]),
+    ];
+  }
   const extent = startGeometry.type === "bbox" ? startGeometry : polygonBbox(startGeometry);
   return [
     extent.x + (point[0] - startPoint[0]),
@@ -350,6 +363,21 @@ function commitDrag(context: InteractionContext, id: string, verb: string): Tran
   const annotation = annotationById(context.document, id);
   const what = annotation === undefined ? "annotation" : annotation.label_class;
   return idle({ kind: "commit", label: `${verb} ${what}` });
+}
+
+/**
+ * Pointer-up on a rotated-box drag. The drag staged raw values, so a grip never
+ * jumps sides mid-gesture; what is committed is the kernel's canonical spelling.
+ */
+function settleObb(
+  current: Annotation,
+  next: ObbGeometry,
+  verb: string,
+): Transition {
+  return idle(
+    ...stageOrDiscard(current, canonicalObb(next)),
+    { kind: "commit", label: `${verb} ${current.label_class}` },
+  );
 }
 
 /** A finished drawing gesture: one annotation, added and picked. */
@@ -453,9 +481,10 @@ const IDLE_ROW: Row<"idle"> = {
       if (context.labelClass === null) return stay(turn);
       const at = inFrame(context, event.point);
       const cleared: readonly Effect[] = [{ kind: "select", selection: clearSelection() }];
-      if (context.tool === "bbox") {
+      if (context.tool === "bbox" || context.tool === "obb") {
+        const type = context.tool === "bbox" ? "drawing-bbox" : "drawing-obb";
         return {
-          state: { type: "drawing-bbox", labelClass: context.labelClass, start: at, current: at },
+          state: { type, labelClass: context.labelClass, start: at, current: at },
           effects: cleared,
         };
       }
@@ -476,9 +505,23 @@ const IDLE_ROW: Row<"idle"> = {
       };
     }
 
+    if (target.kind === "rotate") {
+      const annotation = annotationById(context.document, target.id);
+      if (annotation === undefined || annotation.geometry.type !== "obb") return stay(turn);
+      return {
+        state: { type: "rotating", id: target.id, startGeometry: annotation.geometry, startPoint: event.point },
+        effects: NO_EFFECTS,
+      };
+    }
+
     if (target.kind === "handle") {
       const annotation = annotationById(context.document, target.id);
-      if (annotation === undefined || annotation.geometry.type !== "bbox") return stay(turn);
+      if (
+        annotation === undefined ||
+        (annotation.geometry.type !== "bbox" && annotation.geometry.type !== "obb")
+      ) {
+        return stay(turn);
+      }
       return {
         state: { type: "resizing", id: target.id, handle: target.handle, startGeometry: annotation.geometry },
         effects: NO_EFFECTS,
@@ -577,6 +620,28 @@ const DRAWING_BBOX_ROW: Row<"drawing-bbox"> = {
       return idle();
     }
     return finishDrawing(turn.context, turn.state.labelClass, box);
+  },
+  cancel: () => idle(),
+  "pointer-cancel": () => idle(),
+  "tool-changed": () => idle(),
+};
+
+/**
+ * `DRAWING_BBOX_ROW`, finished as a rotated box at angle 0: the same rubber band,
+ * the same click threshold. Rotation is an edit, made afterwards by the grip.
+ */
+const DRAWING_OBB_ROW: Row<"drawing-obb"> = {
+  "pointer-move": (turn) => ({
+    state: { ...turn.state, current: inFrame(turn.context, turn.event.point) },
+    effects: NO_EFFECTS,
+  }),
+  "pointer-up": (turn) => {
+    if (turn.event.button !== "primary") return stay(turn);
+    const box = normalizeBbox(turn.state.start, inFrame(turn.context, turn.event.point));
+    if (!isDrawnBox(box, turn.context.tolerances.minDraw, turn.context.document.asset)) {
+      return idle();
+    }
+    return finishDrawing(turn.context, turn.state.labelClass, obbFromBox(box));
   },
   cancel: () => idle(),
   "pointer-cancel": () => idle(),
@@ -808,15 +873,42 @@ const RESIZING_ROW: Row<"resizing"> = {
     const { context, event, state } = turn;
     const current = stillThere(context, state.id, state.startGeometry);
     if (current === null) return abandonDrag();
-    const next = resizeBbox(state.startGeometry, state.handle, event.point, context.document.asset);
+    const next =
+      state.startGeometry.type === "obb"
+        ? resizeObb(state.startGeometry, state.handle, event.point, context.document.asset)
+        : resizeBbox(state.startGeometry, state.handle, event.point, context.document.asset);
     return { state, effects: stageOrDiscard(current, next) };
   },
   "pointer-up": (turn) => {
-    if (turn.event.button !== "primary") return stay(turn);
-    if (stillThere(turn.context, turn.state.id, turn.state.startGeometry) === null) {
-      return abandonDrag();
+    const { context, event, state } = turn;
+    if (event.button !== "primary") return stay(turn);
+    const current = stillThere(context, state.id, state.startGeometry);
+    if (current === null) return abandonDrag();
+    if (state.startGeometry.type === "obb") {
+      const next = resizeObb(state.startGeometry, state.handle, event.point, context.document.asset);
+      return settleObb(current, next, "resize");
     }
-    return commitDrag(turn.context, turn.state.id, "resize");
+    return commitDrag(context, state.id, "resize");
+  },
+  cancel: () => abandonDrag(),
+  "pointer-cancel": () => abandonDrag(),
+  "tool-changed": () => abandonDrag(),
+};
+
+const ROTATING_ROW: Row<"rotating"> = {
+  "pointer-move": (turn) => {
+    const { context, event, state } = turn;
+    const current = stillThere(context, state.id, state.startGeometry);
+    if (current === null) return abandonDrag();
+    const next = rotateObb(state.startGeometry, state.startPoint, event.point);
+    return { state, effects: stageOrDiscard(current, next) };
+  },
+  "pointer-up": (turn) => {
+    const { context, event, state } = turn;
+    if (event.button !== "primary") return stay(turn);
+    const current = stillThere(context, state.id, state.startGeometry);
+    if (current === null) return abandonDrag();
+    return settleObb(current, rotateObb(state.startGeometry, state.startPoint, event.point), "rotate");
   },
   cancel: () => abandonDrag(),
   "pointer-cancel": () => abandonDrag(),
@@ -869,10 +961,12 @@ export const TRANSITIONS: { readonly [K in InteractionStateType]: Row<K> } = {
   idle: IDLE_ROW,
   "pressing-empty": PRESSING_EMPTY_ROW,
   "drawing-bbox": DRAWING_BBOX_ROW,
+  "drawing-obb": DRAWING_OBB_ROW,
   "drawing-polygon": DRAWING_POLYGON_ROW,
   "drawing-polyline": DRAWING_POLYLINE_ROW,
   moving: MOVING_ROW,
   resizing: RESIZING_ROW,
+  rotating: ROTATING_ROW,
   "moving-vertex": MOVING_VERTEX_ROW,
 };
 

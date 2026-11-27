@@ -107,6 +107,7 @@ from visionset.kernel.domain import (
     IngestJob,
     IntegrityCheck,
     LabelClass,
+    ObbGeometry,
     ObservedFrame,
     PointCloudMetadata,
     PolygonGeometry,
@@ -699,6 +700,15 @@ def geometry(value: Geometry) -> shapes.Geometry:
                 "y": value.y,
                 "width": value.width,
                 "height": value.height,
+            }
+        case ObbGeometry():
+            return {
+                "type": "obb",
+                "cx": value.cx,
+                "cy": value.cy,
+                "width": value.width,
+                "height": value.height,
+                "angle": value.angle,
             }
         case PolygonGeometry():
             return {"type": "polygon", "points": [list(p) for p in value.points]}

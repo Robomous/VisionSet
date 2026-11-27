@@ -11,7 +11,7 @@ Adding a geometry (keypoints, mask, the 3D variants) means defining a model whos
 ``type`` is the matching ``GeometryType`` member and appending it to the
 ``Geometry`` union. Nothing about the discriminator changes shape and no existing
 payload stops parsing, because geometry rides in the annotation's JSON column and
-needs no migration. ``GeometryType`` names eight geometries; six are implemented
+needs no migration. ``GeometryType`` names nine geometries; seven are implemented
 here — the rest are roadmap, and a payload naming one is rejected until its model
 exists.
 """
@@ -21,7 +21,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import IntEnum
-from math import isfinite, pi
+from math import atan2, cos, hypot, isfinite, pi, remainder, sin
 from typing import TYPE_CHECKING, Annotated, Any, Final, Literal, assert_never, get_args
 
 from pydantic import (
@@ -148,6 +148,161 @@ class BboxGeometry(BaseModel):
     y: float
     width: float = Field(gt=0.0)
     height: float = Field(gt=0.0)
+
+
+class ObbGeometry(BaseModel):
+    """A rotated rectangle in pixels: a centre, a size and an angle.
+
+    ``cx`` and ``cy`` are the rectangle's centre, ``width`` and ``height`` its
+    side lengths, every one in the asset's pixel frame (x right, y down), and
+    ``angle`` the direction of the width side in radians: the width side runs
+    along ``(cos angle, sin angle)`` and the height side along
+    ``(-sin angle, cos angle)``, so a positive angle turns clockwise on screen.
+    ``width`` and ``height`` must be strictly positive and every value finite.
+
+    One rectangle has many spellings — adding ``pi`` to the angle, or swapping
+    the sides and adding ``pi/2``, draws the same pixels — so every value is
+    stored in one canonical form, applied on construction:
+
+    1. when ``width < height`` the sides swap and ``angle`` gains ``pi/2``, so
+       ``width >= height`` always;
+    2. ``angle`` is reduced modulo ``pi`` into ``[-pi/2, pi/2)``;
+    3. a square (``width == height``) reduces it further, modulo ``pi/2``
+       into ``[-pi/4, pi/4)``;
+    4. a negative zero angle is stored as ``0.0``.
+
+    Equivalent spellings therefore serialize to the same bytes up to the
+    rounding of the reduction itself, and a canonical value is a fixed point.
+    :func:`obb_corners` gives the four corners, which are the rectangle exactly.
+
+    A sibling of :class:`BboxGeometry`, never a subclass: an axis-aligned box
+    is a different claim, and no ``case BboxGeometry()`` may reach this by
+    inheritance. Reducing one to an axis-aligned box always loses the angle.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    type: Literal[GeometryType.OBB] = GeometryType.OBB
+    cx: float
+    cy: float
+    width: float = Field(gt=0.0)
+    height: float = Field(gt=0.0)
+    angle: float
+
+    @model_validator(mode="after")
+    def _canonical(self) -> ObbGeometry:
+        width, height, angle = canonical_obb(self.width, self.height, self.angle)
+        corners = _corners_of(self.cx, self.cy, width, height, angle)
+        if not all(isfinite(value) for corner in corners for value in corner):
+            raise ValueError("the rectangle's corners are not finite; its size or centre overflows")
+        # Frozen, so the canonical values replace the sent ones in place.
+        object.__setattr__(self, "width", width)
+        object.__setattr__(self, "height", height)
+        object.__setattr__(self, "angle", angle)
+        return self
+
+
+def _reduced(angle: float, period: float) -> float:
+    # math.remainder is exact, so a value already in range is returned unchanged.
+    reduced = remainder(angle, period)
+    if reduced >= period / 2:
+        reduced -= period
+    return reduced + 0.0
+
+
+def canonical_obb(width: float, height: float, angle: float) -> tuple[float, float, float]:
+    """``(width, height, angle)`` in :class:`ObbGeometry`'s canonical form."""
+    if width < height:
+        width, height, angle = height, width, angle + pi / 2
+    angle = _reduced(angle, pi)
+    if width == height:
+        angle = _reduced(angle, pi / 2)
+    return width, height, angle
+
+
+def _corners_of(
+    cx: float, cy: float, width: float, height: float, angle: float
+) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float], tuple[float, float]]:
+    ux, uy = cos(angle) * width / 2, sin(angle) * width / 2
+    vx, vy = -sin(angle) * height / 2, cos(angle) * height / 2
+    return (
+        (cx - ux - vx, cy - uy - vy),
+        (cx + ux - vx, cy + uy - vy),
+        (cx + ux + vx, cy + uy + vy),
+        (cx - ux + vx, cy - uy + vy),
+    )
+
+
+def obb_corners(
+    geometry: ObbGeometry,
+) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float], tuple[float, float]]:
+    """The rectangle's four corners, the exact polygon it covers.
+
+    In order from ``centre - width/2 - height/2`` along the width side, then
+    the height side: at ``angle == 0`` that is top-left, top-right,
+    bottom-right, bottom-left — a bounding box's ring order.
+    """
+    return _corners_of(geometry.cx, geometry.cy, geometry.width, geometry.height, geometry.angle)
+
+
+def obb_polygon(geometry: ObbGeometry) -> PolygonGeometry:
+    """The rectangle as a four-vertex polygon: the same pixels, nothing lost."""
+    return PolygonGeometry(points=list(obb_corners(geometry)))
+
+
+def obb_enclosing_box(geometry: ObbGeometry) -> BboxGeometry:
+    """The smallest axis-aligned box holding the rectangle.
+
+    Lossy whenever the angle is not a multiple of ``pi/2``: the box covers
+    pixels the rectangle does not and says nothing about its orientation. Only
+    a writer declaring ``obb`` in ``degraded_geometries`` may call it.
+    """
+    xs = [x for x, _ in obb_corners(geometry)]
+    ys = [y for _, y in obb_corners(geometry)]
+    return BboxGeometry(x=min(xs), y=min(ys), width=max(xs) - min(xs), height=max(ys) - min(ys))
+
+
+OBB_CORNER_TOLERANCE: Final = 1e-6
+"""How far four corners may stray from a rectangle, relative to its longest side."""
+
+
+def obb_from_corners(
+    points: Sequence[tuple[float, float]], *, tolerance: float = OBB_CORNER_TOLERANCE
+) -> ObbGeometry:
+    """The rectangle four ordered corners describe, or a ``ValueError`` saying why not.
+
+    The corners go round the rectangle in either direction from any start.
+    Opposite sides must agree in length and adjacent sides meet at a right
+    angle, each within ``tolerance`` times the longest side; the width side
+    is the one from the first corner to the second, before normalization.
+    Fewer or more than four points, a nonfinite coordinate, a zero-area
+    rectangle and a quadrilateral that is not a rectangle are each refused.
+    """
+    if len(points) != 4:
+        raise ValueError(f"a rotated box has exactly 4 corners, not {len(points)}")
+    if not all(isfinite(value) for point in points for value in point):
+        raise ValueError("a rotated box's corners must be finite")
+    p0, p1, p2, p3 = points
+    sides = [
+        (p1[0] - p0[0], p1[1] - p0[1]),
+        (p2[0] - p1[0], p2[1] - p1[1]),
+        (p3[0] - p2[0], p3[1] - p2[1]),
+        (p0[0] - p3[0], p0[1] - p3[1]),
+    ]
+    lengths = [hypot(dx, dy) for dx, dy in sides]
+    scale = max(lengths)
+    if scale == 0.0 or min(lengths) <= tolerance * scale:
+        raise ValueError("a rotated box's corners must enclose a nonzero area")
+    allowance = tolerance * scale
+    for first, second in ((sides[0], sides[2]), (sides[1], sides[3])):
+        if hypot(first[0] + second[0], first[1] + second[1]) > allowance:
+            raise ValueError("the corners are not a rectangle: opposite sides differ")
+    (ax, ay), (bx, by) = sides[0], sides[1]
+    if abs(ax * bx + ay * by) / lengths[1] > allowance:
+        raise ValueError("the corners are not a rectangle: adjacent sides are not perpendicular")
+    cx = (p0[0] + p1[0] + p2[0] + p3[0]) / 4
+    cy = (p0[1] + p1[1] + p2[1] + p3[1]) / 4
+    return ObbGeometry(cx=cx, cy=cy, width=lengths[0], height=lengths[1], angle=atan2(ay, ax))
 
 
 class PolygonGeometry(BaseModel):
@@ -304,6 +459,7 @@ class ClassificationGeometry(BaseModel):
 
 Geometry = Annotated[
     BboxGeometry
+    | ObbGeometry
     | PolygonGeometry
     | PolylineGeometry
     | Polyline3DGeometry
@@ -348,6 +504,8 @@ def geometry_intersects_asset(geometry: Geometry, *, width: int | None, height: 
             return True
         case BboxGeometry():
             return _bbox_intersects_frame(geometry, frame)
+        case ObbGeometry():
+            return _path_intersects_frame(list(obb_corners(geometry)), frame, closed=True)
         case PolylineGeometry():
             return _path_intersects_frame(geometry.points, frame, closed=False)
         case PolygonGeometry():
@@ -364,6 +522,17 @@ def _coordinates_are_finite(geometry: Geometry) -> bool:
             return all(
                 isfinite(value)
                 for value in (geometry.x, geometry.y, geometry.width, geometry.height)
+            )
+        case ObbGeometry():
+            return all(
+                isfinite(value)
+                for value in (
+                    geometry.cx,
+                    geometry.cy,
+                    geometry.width,
+                    geometry.height,
+                    geometry.angle,
+                )
             )
         case PolygonGeometry() | PolylineGeometry() | Polyline3DGeometry():
             return all(isfinite(value) for point in geometry.points for value in point)

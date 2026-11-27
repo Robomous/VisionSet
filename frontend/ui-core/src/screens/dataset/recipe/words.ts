@@ -19,9 +19,9 @@ export const SIZES: readonly number[] = [320, 416, 640, 1024, 1280];
 
 export const FITS: readonly { readonly value: ResizeChoice; readonly label: string; readonly detail: string }[] = [
   { value: "letterbox", label: "Letterbox", detail: "Keeps the shape and pads the rest." },
-  { value: "stretch", label: "Stretch", detail: "Fills the frame and bends the shape." },
-  { value: "fill", label: "Fill", detail: "Covers the frame and crops what spills over. Labels cut mostly away are dropped." },
-  { value: "center_crop", label: "Crop", detail: "Cuts the middle out at its own size. Labels cut mostly away are dropped." },
+  { value: "stretch", label: "Stretch", detail: "Fills the frame and bends the shape. An export refuses it over rotated boxes." },
+  { value: "fill", label: "Fill", detail: "Covers the frame and crops what spills over. Labels cut mostly away are dropped. An export refuses it over rotated boxes." },
+  { value: "center_crop", label: "Crop", detail: "Cuts the middle out at its own size. Labels cut mostly away are dropped. An export refuses it over rotated boxes." },
   { value: "none", label: "Original", detail: "Keeps each image at its own size." },
 ];
 

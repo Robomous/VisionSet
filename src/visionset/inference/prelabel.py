@@ -150,6 +150,7 @@ def shapes_prose(produces: frozenset[GeometryType]) -> str:
     """``a box``, ``a polygon``, ``a box or a polygon`` — the shapes, for a sentence."""
     names = {
         GeometryType.BBOX: "a box",
+        GeometryType.OBB: "a rotated box",
         GeometryType.POLYGON: "a polygon",
         GeometryType.POLYLINE: "a polyline",
         GeometryType.MASK: "a mask",

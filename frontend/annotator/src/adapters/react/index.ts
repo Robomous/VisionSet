@@ -36,6 +36,7 @@ export {
   HANDLE_PX,
   LABEL_PX,
   OCCLUDED_DASH_PX,
+  ObbShape,
   PolygonShape,
   PolylineShape,
   SELECTED_STROKE_PX,

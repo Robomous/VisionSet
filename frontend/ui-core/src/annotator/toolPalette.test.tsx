@@ -108,6 +108,22 @@ describe("the tools a schema can reach", () => {
     expect(onActivateClass).toHaveBeenCalledWith("kerb");
   });
 
+  it("offers a rotated box as its own tool, after the box, and it activates its class", () => {
+    const schema = {
+      ...SCHEMA,
+      classes: [...SCHEMA.classes, { name: "crate", geometries: ["obb"], color: null, attributes: [] }],
+    } as unknown as Parameters<typeof toolChoices>[0];
+    expect(toolChoices(schema).map((choice) => choice.tool)).toEqual(["select", "bbox", "polygon", "polyline", "obb"]);
+    expect(toolChoices(schema, "crate").map((choice) => [choice.tool, choice.label])).toEqual([
+      ["select", "Select"],
+      ["obb", "Rotated box"],
+    ]);
+    const onActivateClass = vi.fn();
+    render(mount({ schema, onActivateClass }));
+    fireEvent.click(screen.getByTestId("tool-obb"));
+    expect(onActivateClass).toHaveBeenCalledWith("crate");
+  });
+
   it("has nothing left that is declared and not drawable, and keeps the mechanism", () => {
     // `PENDING_TOOLS` is empty now and the rule it encodes still holds: `mask` and
     // `keypoints` are in the position `polyline` was, so this asserts the *absence

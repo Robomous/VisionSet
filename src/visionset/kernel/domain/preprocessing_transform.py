@@ -15,6 +15,7 @@ is a hash-pinned contract and this document is derived and transient.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from math import pi
 from typing import Final, Literal, NamedTuple, assert_never
 from uuid import NAMESPACE_URL, UUID, uuid5
 
@@ -28,6 +29,7 @@ from visionset.kernel.domain.geometry import (
     ClassificationGeometry,
     Cuboid3DGeometry,
     Geometry,
+    ObbGeometry,
     PolygonGeometry,
     Polyline3DGeometry,
     PolylineGeometry,
@@ -516,6 +518,16 @@ def _scaled(
                 width=geometry.width * scale_x,
                 height=geometry.height * scale_y,
             )
+        case ObbGeometry():
+            if scale_x != scale_y:
+                raise AssertionError("no step scales a rotated box's axes apart")
+            return ObbGeometry(
+                cx=geometry.cx * scale_x + offset_x,
+                cy=geometry.cy * scale_y + offset_y,
+                width=geometry.width * scale_x,
+                height=geometry.height * scale_x,
+                angle=geometry.angle,
+            )
         case PolygonGeometry():
             return PolygonGeometry(
                 points=[
@@ -550,7 +562,7 @@ def _cropped(geometry: Geometry, width: float, height: float) -> tuple[Geometry 
             return _cropped_box(geometry, width, height)
         case PolygonGeometry():
             return _cropped_polygon(geometry, width, height)
-        case PolylineGeometry() | Polyline3DGeometry() | Cuboid3DGeometry():
+        case ObbGeometry() | PolylineGeometry() | Polyline3DGeometry() | Cuboid3DGeometry():
             raise AssertionError(f"no cropping resize transforms a {geometry.type.value}")
         case _:
             assert_never(geometry)
@@ -746,6 +758,14 @@ def _mirrored(geometry: Geometry, width: float) -> Geometry:
                 width=geometry.width,
                 height=geometry.height,
             )
+        case ObbGeometry():
+            return ObbGeometry(
+                cx=width - geometry.cx,
+                cy=geometry.cy,
+                width=geometry.width,
+                height=geometry.height,
+                angle=-geometry.angle,
+            )
         case PolygonGeometry():
             return PolygonGeometry(points=[(width - x, y) for x, y in geometry.points])
         case PolylineGeometry():
@@ -761,7 +781,9 @@ def _rotated_once(geometry: Geometry, width: float) -> Geometry:
 
     Counter-clockwise because that is what the pixel side's ``ROTATE_90``
     means, and the two must turn the same way. A box's corners rotate and the
-    result is rebuilt axis-aligned, which is exact at a quarter turn.
+    result is rebuilt axis-aligned, which is exact at a quarter turn. A rotated
+    box's centre moves the same way and its width side turns from ``angle`` to
+    ``angle - pi/2``.
     """
     match geometry:
         case ClassificationGeometry():
@@ -772,6 +794,14 @@ def _rotated_once(geometry: Geometry, width: float) -> Geometry:
                 y=width - geometry.x - geometry.width,
                 width=geometry.height,
                 height=geometry.width,
+            )
+        case ObbGeometry():
+            return ObbGeometry(
+                cx=geometry.cy,
+                cy=width - geometry.cx,
+                width=geometry.width,
+                height=geometry.height,
+                angle=geometry.angle - pi / 2,
             )
         case PolygonGeometry():
             return PolygonGeometry(points=[(y, width - x) for x, y in geometry.points])
@@ -870,7 +900,9 @@ def fit_within(file: TransformedFile, max_edge: int) -> TransformedFile:
     the annotations land where a resize driver asked for the same size would
     put the pixels. A file already within the cap, or one with no recorded
     size, is returned as it is. A 3D label is in metres, not pixels, so the
-    cap leaves it as it is too.
+    cap leaves it as it is too. A rotated box is scaled by the cap's one
+    ratio on both axes, so it stays a rectangle; the rounding of the capped
+    size can leave it under half a pixel from the pixels on the short axis.
     """
     if file.width is None or file.height is None or max(file.width, file.height) <= max_edge:
         return file
@@ -885,7 +917,9 @@ def fit_within(file: TransformedFile, max_edge: int) -> TransformedFile:
                 if GeometryType(annotation.geometry.type) in THREE_D
                 else annotation.model_copy(
                     update={
-                        "geometry": _scaled(
+                        "geometry": _scaled(annotation.geometry, scale, scale, 0.0, 0.0)
+                        if isinstance(annotation.geometry, ObbGeometry)
+                        else _scaled(
                             annotation.geometry, width / file.width, height / file.height, 0.0, 0.0
                         )
                     }

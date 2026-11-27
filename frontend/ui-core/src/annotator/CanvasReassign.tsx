@@ -48,6 +48,7 @@
 
 import {
   imageToScreen,
+  obbExtent,
   polygonBbox,
   reassignedAnnotation,
   replaceAnnotationCommand,
@@ -174,7 +175,9 @@ function anchorFor(
   const box =
     geometry.type === "bbox"
       ? geometry
-      : geometry.type === "polygon" || geometry.type === "polyline"
+      : geometry.type === "obb"
+        ? obbExtent(geometry)
+        : geometry.type === "polygon" || geometry.type === "polyline"
         ? polygonBbox(geometry)
         : null;
   if (box === null) return null;

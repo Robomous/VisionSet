@@ -57,10 +57,13 @@
 import type { JSX } from "react";
 
 import { BBOX_HANDLES, bboxHandlePositions } from "../../core/geometry/bbox";
+import { obbCorners, obbExtent, obbHandlePositions, obbRotateBase, obbRotateHandle } from "../../core/geometry/obb";
 import { polygonBbox } from "../../core/geometry/polygon";
+import { ROTATE_HANDLE_OFFSET_PX } from "../../core/geometry/tolerance";
 import {
   VERTEX_VISIBILITY,
   type BboxGeometry,
+  type ObbGeometry,
   type Point,
   type PolygonGeometry,
   type PolylineGeometry,
@@ -164,7 +167,9 @@ function pointsAttribute(points: readonly Point[]): string {
 
 /** Where a shape's label sits: just above its top-left corner. */
 function labelAnchor(shape: PaintedAnnotation): Point {
-  const bounds = shape.geometry.type === "bbox" ? shape.geometry : polygonBbox(shape.geometry);
+  const geometry = shape.geometry;
+  const bounds =
+    geometry.type === "bbox" ? geometry : geometry.type === "obb" ? obbExtent(geometry) : polygonBbox(geometry);
   return [bounds.x, bounds.y];
 }
 
@@ -207,6 +212,25 @@ export function BboxShape({ geometry, color, hot, selected }: {
   );
 }
 
+/** A rotated box: its four turned corners, filled like a box. */
+export function ObbShape({ geometry, color, hot, selected }: {
+  readonly geometry: ObbGeometry;
+  readonly color: string;
+  readonly hot: boolean;
+  readonly selected: boolean;
+}): JSX.Element {
+  return (
+    <polygon
+      data-obb-angle={geometry.angle}
+      points={pointsAttribute(obbCorners(geometry))}
+      fill={color}
+      fillOpacity={hot ? HOT_FILL_OPACITY : FILL_OPACITY}
+      stroke={color}
+      style={{ strokeWidth: strokeOf(selected) }}
+    />
+  );
+}
+
 /** A closed polygon. The closing edge is implicit, so `<polygon>` and not `<polyline>`. */
 export function PolygonShape({ geometry, color, hot, selected }: {
   readonly geometry: PolygonGeometry;
@@ -233,15 +257,19 @@ export function PolygonShape({ geometry, color, hot, selected }: {
  * against, so what is painted and what can be grabbed cannot drift apart.
  */
 export function Grips({ geometry, color, zoom, hotHandle }: {
-  readonly geometry: BboxGeometry;
+  readonly geometry: BboxGeometry | ObbGeometry;
   readonly color: string;
   readonly zoom: number;
   readonly hotHandle: string | null;
 }): JSX.Element {
-  const positions = bboxHandlePositions(geometry);
+  const positions =
+    geometry.type === "obb" ? obbHandlePositions(geometry) : bboxHandlePositions(geometry);
   const side = screenPx(HANDLE_PX, zoom);
   return (
     <g>
+      {geometry.type === "obb" && (
+        <RotateGrip geometry={geometry} color={color} zoom={zoom} hot={hotHandle === "rotate"} />
+      )}
       {BBOX_HANDLES.map((handle) => {
         const [x, y] = positions[handle];
         return (
@@ -258,6 +286,31 @@ export function Grips({ geometry, color, zoom, hotHandle }: {
           />
         );
       })}
+    </g>
+  );
+}
+
+/** The rotation grip, on a stem from the middle of the box's uppermost side. */
+function RotateGrip({ geometry, color, zoom, hot }: {
+  readonly geometry: ObbGeometry;
+  readonly color: string;
+  readonly zoom: number;
+  readonly hot: boolean;
+}): JSX.Element {
+  const [x, y] = obbRotateHandle(geometry, screenPx(ROTATE_HANDLE_OFFSET_PX, zoom));
+  const [sx, sy] = obbRotateBase(geometry);
+  return (
+    <g>
+      <line x1={sx} y1={sy} x2={x} y2={y} stroke={color} strokeWidth={screenPx(1.5, zoom)} />
+      <circle
+        data-handle="rotate"
+        cx={x}
+        cy={y}
+        r={screenPx(HANDLE_PX / 2 + 1, zoom)}
+        fill={hot ? color : "#ffffff"}
+        stroke={color}
+        strokeWidth={screenPx(1.5, zoom)}
+      />
     </g>
   );
 }
@@ -403,6 +456,13 @@ export function AnnotationShape({ shape, zoom, handles }: ShapeProps): JSX.Eleme
           hot={shape.hot}
           selected={shape.selected}
         />
+      ) : shape.geometry.type === "obb" ? (
+        <ObbShape
+          geometry={shape.geometry}
+          color={shape.color}
+          hot={shape.hot}
+          selected={shape.selected}
+        />
       ) : shape.geometry.type === "polyline" ? (
         <PolylineShape
           geometry={shape.geometry}
@@ -419,7 +479,7 @@ export function AnnotationShape({ shape, zoom, handles }: ShapeProps): JSX.Eleme
         />
       )}
       {shape.selected && <ShapeLabel shape={shape} />}
-      {handles && shape.selected && shape.geometry.type === "bbox" && (
+      {handles && shape.selected && (shape.geometry.type === "bbox" || shape.geometry.type === "obb") && (
         <Grips geometry={shape.geometry} color={shape.color} zoom={zoom} hotHandle={null} />
       )}
       {shape.selected &&

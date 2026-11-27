@@ -9,8 +9,8 @@ directory and spelled with a leading ``./``, ``nc`` as an integer, and
 not the mapping form.
 
 Detection only, always. ``supported_geometries`` is ``{bbox}`` and
-``degraded_geometries`` is ``{polygon}``: a polygon is written as its
-axis-aligned bounding box, which a detector can use, and the report counts it
+``degraded_geometries`` is ``{obb, polygon}``: a polygon or a rotated box is
+written as its axis-aligned bounding box, which a detector can use, and the report counts it
 as degraded and says so by class. A classification tag has no location and is
 dropped. ``lossy = True`` for the reason every label-row format is — a row is
 five numbers, so attributes, confidence and provenance never survive.
@@ -26,7 +26,7 @@ from visionset.formats._yolo_writer import (
     HEADER_COMMENT,
     LABELS_DIRNAME,
     class_names,
-    detect_rows,
+    degraded_detect_rows,
     fold_path,
     write_label_layout,
     yaml_scalar,
@@ -82,7 +82,7 @@ class Yolov5YamlExporter:
     #: Polygons, because the detect rows write one as its axis-aligned bounds.
     #: Declared rather than left to the reader: without this set the report has
     #: no word for the conversion and calls it a removal.
-    degraded_geometries = frozenset({GeometryType.POLYGON})
+    degraded_geometries = frozenset({GeometryType.OBB, GeometryType.POLYGON})
 
     #: A YOLO dataset is a directory of pictures.
     supported_modalities = frozenset({"image"})
@@ -98,7 +98,7 @@ class Yolov5YamlExporter:
         content: ContentReader,
         assignment: SplitAssignment | None,
     ) -> None:
-        folds = write_label_layout(manifest, dest, content, assignment, detect_rows)
+        folds = write_label_layout(manifest, dest, content, assignment, degraded_detect_rows)
         _write_data_yaml(dest / DATA_FILENAME, class_names(manifest), folds)
 
 
