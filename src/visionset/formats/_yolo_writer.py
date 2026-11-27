@@ -27,11 +27,13 @@ from visionset.kernel.domain import (
     Manifest,
     ManifestAnnotation,
     ManifestAsset,
+    ObbGeometry,
     PolygonGeometry,
     Polyline3DGeometry,
     PolylineGeometry,
     SplitAssignment,
     Task,
+    obb_enclosing_box,
 )
 from visionset.kernel.errors import ExportSourceUnreadable
 from visionset.kernel.ports import ContentReader
@@ -78,7 +80,7 @@ def derive_task(manifest: Manifest, accepted: frozenset[Task]) -> Task:
                     has_box = True
                 case ClassificationGeometry():
                     has_tag = True
-                case PolylineGeometry() | Polyline3DGeometry() | Cuboid3DGeometry():
+                case ObbGeometry() | PolylineGeometry() | Polyline3DGeometry() | Cuboid3DGeometry():
                     pass
                 case _:
                     assert_never(geometry)
@@ -133,12 +135,19 @@ def _write_labels(asset: ManifestAsset, target: Path, lines: Iterable[str]) -> N
     target.write_text("".join(f"{row}\n" for row in lines), encoding="utf-8")
 
 
-def detect_rows(asset: ManifestAsset, index_of: Mapping[str, int]) -> Iterable[str]:
-    """``class cx cy w h`` per box; a polygon contributes its axis-aligned bounds."""
+def detect_rows(
+    asset: ManifestAsset, index_of: Mapping[str, int], *, obb_as_box: bool = False
+) -> Iterable[str]:
+    """``class cx cy w h`` per box; a polygon contributes its axis-aligned bounds.
+
+    A rotated box contributes the axis-aligned box around it only with
+    ``obb_as_box``, which a dialect passes exactly when it declares ``obb`` in
+    ``degraded_geometries``; otherwise it is dropped, as declared.
+    """
     width, height = dimensions_of(asset)
     for annotation in asset.annotations:
         index = class_index(asset, annotation, index_of)
-        box = _as_box(annotation)
+        box = _as_box(annotation, obb_as_box=obb_as_box)
         if box is None:
             continue
         yield f"{index} {' '.join(_normalized_box(box, width, height))}"
@@ -173,7 +182,12 @@ def class_index(
     return index
 
 
-def _as_box(annotation: ManifestAnnotation) -> BboxGeometry | None:
+def degraded_detect_rows(asset: ManifestAsset, index_of: Mapping[str, int]) -> Iterable[str]:
+    """:func:`detect_rows` for a dialect declaring ``obb`` degraded."""
+    return detect_rows(asset, index_of, obb_as_box=True)
+
+
+def _as_box(annotation: ManifestAnnotation, *, obb_as_box: bool = False) -> BboxGeometry | None:
     """The box this annotation contributes, or ``None`` if it contributes none.
 
     A polygon becomes its axis-aligned bounding box, reachable only under
@@ -192,6 +206,8 @@ def _as_box(annotation: ManifestAnnotation) -> BboxGeometry | None:
             return BboxGeometry(
                 x=min(xs), y=min(ys), width=max(xs) - min(xs), height=max(ys) - min(ys)
             )
+        case ObbGeometry():
+            return obb_enclosing_box(geometry) if obb_as_box else None
         case (
             ClassificationGeometry()
             | PolylineGeometry()
@@ -213,7 +229,8 @@ def _as_ring(annotation: ManifestAnnotation) -> list[tuple[float, float]] | None
             right, bottom = geometry.x + geometry.width, geometry.y + geometry.height
             return [(left, top), (right, top), (right, bottom), (left, bottom)]
         case (
-            ClassificationGeometry()
+            ObbGeometry()
+            | ClassificationGeometry()
             | PolylineGeometry()
             | Polyline3DGeometry()
             | Cuboid3DGeometry()

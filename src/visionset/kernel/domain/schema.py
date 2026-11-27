@@ -35,6 +35,7 @@ class GeometryType(StrEnum):
     # Wider than ``IMPLEMENTED_GEOMETRIES``: ``mask`` and ``keypoints`` have no
     # ``Geometry`` model yet, and ``SchemaService`` refuses a class naming either.
     BBOX = "bbox"
+    OBB = "obb"
     POLYGON = "polygon"
     MASK = "mask"
     POLYLINE = "polyline"

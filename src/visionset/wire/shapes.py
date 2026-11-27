@@ -372,6 +372,16 @@ class BboxGeometry(TypedDict):
 
 
 @closed
+class ObbGeometry(TypedDict):
+    type: Literal["obb"]
+    cx: float
+    cy: float
+    width: float
+    height: float
+    angle: float
+
+
+@closed
 class PolygonGeometry(TypedDict):
     type: Literal["polygon"]
     points: list[list[float]]
@@ -406,6 +416,7 @@ class ClassificationGeometry(TypedDict):
 
 Geometry = (
     BboxGeometry
+    | ObbGeometry
     | PolygonGeometry
     | PolylineGeometry
     | Polyline3DGeometry

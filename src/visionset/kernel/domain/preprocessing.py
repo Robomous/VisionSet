@@ -70,12 +70,14 @@ export can produce it by accident. Never written by an export.
 
 
 RESIZE_GEOMETRIES: Final[Mapping[ResizeStrategy, frozenset[GeometryType]]] = {
-    ResizeStrategy.STRETCH: PIXEL_GEOMETRIES,
+    # Scaling the axes apart turns a rotated rectangle into a parallelogram.
+    ResizeStrategy.STRETCH: PIXEL_GEOMETRIES - {GeometryType.OBB},
     ResizeStrategy.LETTERBOX: PIXEL_GEOMETRIES,
     # A crop can cut a path into pieces, and which piece is the lane is not a
-    # question the arithmetic can answer.
-    ResizeStrategy.FILL: PIXEL_GEOMETRIES - {GeometryType.POLYLINE},
-    ResizeStrategy.CENTER_CROP: PIXEL_GEOMETRIES - {GeometryType.POLYLINE},
+    # question the arithmetic can answer; a rotated rectangle cut by the canvas
+    # edge is no longer a rectangle.
+    ResizeStrategy.FILL: PIXEL_GEOMETRIES - {GeometryType.POLYLINE, GeometryType.OBB},
+    ResizeStrategy.CENTER_CROP: PIXEL_GEOMETRIES - {GeometryType.POLYLINE, GeometryType.OBB},
 }
 """Which geometries each resize strategy can transform, per :class:`ResizeStrategy`."""
 

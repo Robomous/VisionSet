@@ -13,6 +13,7 @@ from visionset.kernel.domain import (
     Geometry,
     GeometryType,
     LabelClass,
+    ObbGeometry,
     PolygonGeometry,
     Polyline3DGeometry,
     PolylineGeometry,
@@ -24,6 +25,7 @@ geometry_adapter: TypeAdapter[Geometry] = TypeAdapter(Geometry)
 
 VARIANTS = [
     BboxGeometry(x=1.0, y=2.0, width=10.0, height=20.0),
+    ObbGeometry(cx=10.0, cy=12.0, width=20.0, height=8.0, angle=0.4),
     PolygonGeometry(points=[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)]),
     PolylineGeometry(points=[(0.0, 0.0), (10.0, 5.0), (20.0, 30.0)]),
     Polyline3DGeometry(points=[(-1.5, 1.2, 8.0), (-1.4, 1.2, 20.0)]),
@@ -307,6 +309,7 @@ def test_implemented_geometries_names_exactly_the_variants_of_the_union() -> Non
     from_the_union = {g.type for g in VARIANTS}
     expected = {
         GeometryType.BBOX,
+        GeometryType.OBB,
         GeometryType.POLYGON,
         GeometryType.POLYLINE,
         GeometryType.POLYLINE_3D,

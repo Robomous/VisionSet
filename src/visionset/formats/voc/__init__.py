@@ -24,12 +24,12 @@ consumers universally ignore it. Said out loud rather than dressed up.
 ``lossy = True`` and ``supported_geometries`` is ``{bbox}``: the ``<object>``
 element has a fixed schema its consumers index by tag name, so there is nowhere to
 put an attribute, a confidence or a provenance — unlike COCO, where JSON's
-tolerance for unknown keys is what makes that format lossless. A polygon is still
-exported, as its bounding box, which is why ``degraded_geometries`` is
-``{polygon}``; a classification tag is dropped. The compatibility report names
-both, by class and with a count, before anything is written — and names them
-differently, because "reduced to a box" and "absent" are not the same thing to
-consent to.
+tolerance for unknown keys is what makes that format lossless. A polygon or a
+rotated box is still exported, as its axis-aligned bounding box, which is why
+``degraded_geometries`` is ``{obb, polygon}``; a classification tag is dropped.
+The compatibility report names both, by class and with a count, before anything
+is written — and names them differently, because "reduced to a box" and
+"absent" are not the same thing to consent to.
 """
 
 from __future__ import annotations
@@ -55,11 +55,13 @@ from visionset.kernel.domain import (
     Manifest,
     ManifestAnnotation,
     ManifestAsset,
+    ObbGeometry,
     PolygonGeometry,
     Polyline3DGeometry,
     PolylineGeometry,
     Release,
     SplitAssignment,
+    obb_enclosing_box,
 )
 from visionset.kernel.errors import ExportSourceUnreadable
 from visionset.kernel.ports import ContentReader
@@ -104,7 +106,7 @@ class VocExporter:
     #: than a removal, and the report says which. A classification tag has no
     #: location for VOC to record at all, so it stays outside both sets and is
     #: genuinely dropped.
-    degraded_geometries = frozenset({GeometryType.POLYGON})
+    degraded_geometries = frozenset({GeometryType.OBB, GeometryType.POLYGON})
 
     supported_modalities = frozenset({"image"})
 
@@ -278,6 +280,8 @@ def _as_box(
             return BboxGeometry(
                 x=min(xs), y=min(ys), width=max(xs) - min(xs), height=max(ys) - min(ys)
             )
+        case ObbGeometry():
+            return obb_enclosing_box(geometry)
         case (
             ClassificationGeometry()
             | PolylineGeometry()

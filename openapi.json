@@ -116,6 +116,7 @@
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
                 "cuboid_3d": "#/components/schemas/Cuboid3DBody",
+                "obb": "#/components/schemas/ObbBody",
                 "polygon": "#/components/schemas/PolygonBody",
                 "polyline": "#/components/schemas/PolylineBody",
                 "polyline_3d": "#/components/schemas/Polyline3DBody"
@@ -125,6 +126,9 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/BboxBody"
+              },
+              {
+                "$ref": "#/components/schemas/ObbBody"
               },
               {
                 "$ref": "#/components/schemas/PolygonBody"
@@ -230,6 +234,7 @@
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
                 "cuboid_3d": "#/components/schemas/Cuboid3DBody",
+                "obb": "#/components/schemas/ObbBody",
                 "polygon": "#/components/schemas/PolygonBody",
                 "polyline": "#/components/schemas/PolylineBody",
                 "polyline_3d": "#/components/schemas/Polyline3DBody"
@@ -239,6 +244,9 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/BboxBody"
+              },
+              {
+                "$ref": "#/components/schemas/ObbBody"
               },
               {
                 "$ref": "#/components/schemas/PolygonBody"
@@ -380,6 +388,7 @@
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
                 "cuboid_3d": "#/components/schemas/Cuboid3DBody",
+                "obb": "#/components/schemas/ObbBody",
                 "polygon": "#/components/schemas/PolygonBody",
                 "polyline": "#/components/schemas/PolylineBody",
                 "polyline_3d": "#/components/schemas/Polyline3DBody"
@@ -389,6 +398,9 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/BboxBody"
+              },
+              {
+                "$ref": "#/components/schemas/ObbBody"
               },
               {
                 "$ref": "#/components/schemas/PolygonBody"
@@ -3215,6 +3227,7 @@
                 "bbox": "#/components/schemas/BboxGeometry",
                 "classification_tag": "#/components/schemas/ClassificationGeometry",
                 "cuboid_3d": "#/components/schemas/Cuboid3DGeometry",
+                "obb": "#/components/schemas/ObbGeometry",
                 "polygon": "#/components/schemas/PolygonGeometry",
                 "polyline": "#/components/schemas/PolylineGeometry",
                 "polyline_3d": "#/components/schemas/Polyline3DGeometry"
@@ -3224,6 +3237,9 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/BboxGeometry"
+              },
+              {
+                "$ref": "#/components/schemas/ObbGeometry"
               },
               {
                 "$ref": "#/components/schemas/PolygonGeometry"
@@ -3904,6 +3920,7 @@
       "GeometryType": {
         "enum": [
           "bbox",
+          "obb",
           "polygon",
           "mask",
           "polyline",
@@ -4449,6 +4466,90 @@
         ],
         "title": "ModelOrigin",
         "type": "string"
+      },
+      "ObbBody": {
+        "additionalProperties": false,
+        "description": "A rotated rectangle in asset pixels: centre, side lengths and angle.\n\n`cx`, `cy` are the centre; `width` and `height` are strictly positive; the\nwidth side runs along `(cos angle, sin angle)` with `angle` in radians and\ny down, so a positive angle turns clockwise on screen. Every value must be\nfinite. A stored box is canonical: `width >= height` (sides swapped and\n`pi/2` added to the angle otherwise), `angle` in `[-pi/2, pi/2)`, and a\nsquare's angle in `[-pi/4, pi/4)`. A response may therefore spell a box\ndifferently from the request that wrote it, and still draw the same pixels.",
+        "properties": {
+          "angle": {
+            "title": "Angle",
+            "type": "number"
+          },
+          "cx": {
+            "title": "Cx",
+            "type": "number"
+          },
+          "cy": {
+            "title": "Cy",
+            "type": "number"
+          },
+          "height": {
+            "title": "Height",
+            "type": "number"
+          },
+          "type": {
+            "const": "obb",
+            "title": "Type",
+            "type": "string"
+          },
+          "width": {
+            "title": "Width",
+            "type": "number"
+          }
+        },
+        "required": [
+          "type",
+          "cx",
+          "cy",
+          "width",
+          "height",
+          "angle"
+        ],
+        "title": "ObbBody",
+        "type": "object"
+      },
+      "ObbGeometry": {
+        "additionalProperties": false,
+        "description": "A rotated rectangle in pixels: a centre, a size and an angle.\n\n``cx`` and ``cy`` are the rectangle's centre, ``width`` and ``height`` its\nside lengths, every one in the asset's pixel frame (x right, y down), and\n``angle`` the direction of the width side in radians: the width side runs\nalong ``(cos angle, sin angle)`` and the height side along\n``(-sin angle, cos angle)``, so a positive angle turns clockwise on screen.\n``width`` and ``height`` must be strictly positive and every value finite.\n\nOne rectangle has many spellings \u2014 adding ``pi`` to the angle, or swapping\nthe sides and adding ``pi/2``, draws the same pixels \u2014 so every value is\nstored in one canonical form, applied on construction:\n\n1. when ``width < height`` the sides swap and ``angle`` gains ``pi/2``, so\n   ``width >= height`` always;\n2. ``angle`` is reduced modulo ``pi`` into ``[-pi/2, pi/2)``;\n3. a square (``width == height``) reduces it further, modulo ``pi/2``\n   into ``[-pi/4, pi/4)``;\n4. a negative zero angle is stored as ``0.0``.\n\nEquivalent spellings therefore serialize to the same bytes up to the\nrounding of the reduction itself, and a canonical value is a fixed point.\n:func:`obb_corners` gives the four corners, which are the rectangle exactly.\n\nA sibling of :class:`BboxGeometry`, never a subclass: an axis-aligned box\nis a different claim, and no ``case BboxGeometry()`` may reach this by\ninheritance. Reducing one to an axis-aligned box always loses the angle.",
+        "properties": {
+          "angle": {
+            "title": "Angle",
+            "type": "number"
+          },
+          "cx": {
+            "title": "Cx",
+            "type": "number"
+          },
+          "cy": {
+            "title": "Cy",
+            "type": "number"
+          },
+          "height": {
+            "exclusiveMinimum": 0.0,
+            "title": "Height",
+            "type": "number"
+          },
+          "type": {
+            "const": "obb",
+            "default": "obb",
+            "title": "Type",
+            "type": "string"
+          },
+          "width": {
+            "exclusiveMinimum": 0.0,
+            "title": "Width",
+            "type": "number"
+          }
+        },
+        "required": [
+          "cx",
+          "cy",
+          "width",
+          "height",
+          "angle"
+        ],
+        "title": "ObbGeometry",
+        "type": "object"
       },
       "ObservationCreate": {
         "additionalProperties": false,
@@ -5443,6 +5544,7 @@
                 "bbox": "#/components/schemas/BboxBody",
                 "classification_tag": "#/components/schemas/ClassificationBody",
                 "cuboid_3d": "#/components/schemas/Cuboid3DBody",
+                "obb": "#/components/schemas/ObbBody",
                 "polygon": "#/components/schemas/PolygonBody",
                 "polyline": "#/components/schemas/PolylineBody",
                 "polyline_3d": "#/components/schemas/Polyline3DBody"
@@ -5452,6 +5554,9 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/BboxBody"
+              },
+              {
+                "$ref": "#/components/schemas/ObbBody"
               },
               {
                 "$ref": "#/components/schemas/PolygonBody"
@@ -7358,6 +7463,7 @@
                 "bbox": "#/components/schemas/BboxGeometry",
                 "classification_tag": "#/components/schemas/ClassificationGeometry",
                 "cuboid_3d": "#/components/schemas/Cuboid3DGeometry",
+                "obb": "#/components/schemas/ObbGeometry",
                 "polygon": "#/components/schemas/PolygonGeometry",
                 "polyline": "#/components/schemas/PolylineGeometry",
                 "polyline_3d": "#/components/schemas/Polyline3DGeometry"
@@ -7367,6 +7473,9 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/BboxGeometry"
+              },
+              {
+                "$ref": "#/components/schemas/ObbGeometry"
               },
               {
                 "$ref": "#/components/schemas/PolygonGeometry"
@@ -12733,7 +12842,7 @@
         ]
       },
       "patch": {
-        "description": "Replace stored annotations whole, judged against the same pinned version.\n\nAddressed by `id` and by nothing else \u2014 annotations are never reached by\nindex or position. There is no `asset_id` on the body because the stored one\nwins: moving a label from one asset to another is a delete and an add, not an\nedit, and doing it silently would take an asset's last annotation away\nwithout anything saying so. Who made a label is kept the same way: a\n`provenance` other than the stored one is 422 `INVALID_ANNOTATION`, and\n`model_ref` and `confidence` are taken from the stored annotation. An edit\nchanges what a label says, never who made it.\n\nAll-or-nothing, and `detail.index` names the culprit, exactly as on the POST.\nAn asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST,\nand so are the two gates around it: a batch that is not open for annotation\nis 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409\n`JOB_FINISHED`. An annotation a track observes keeps the track's class: an\nedit to any other class is 409 `TRACK_CLASS_MISMATCH`, so change the track's\nclass instead. An edit is a write, and every gate that stops a new label\nstops a replacement too \u2014 including 409 `CALIBRATION_MISSING` and 422\n`CALIBRATION_RESOLUTION_MISMATCH` for a 3D label, and on a scan 409\n`CALIBRATION_MISSING` for a source declaring no frame and 422\n`INVALID_ANNOTATION` for a `bbox`, `polygon` or `polyline`.",
+        "description": "Replace stored annotations whole, judged against the same pinned version.\n\nAddressed by `id` and by nothing else \u2014 annotations are never reached by\nindex or position. There is no `asset_id` on the body because the stored one\nwins: moving a label from one asset to another is a delete and an add, not an\nedit, and doing it silently would take an asset's last annotation away\nwithout anything saying so. Who made a label is kept the same way: a\n`provenance` other than the stored one is 422 `INVALID_ANNOTATION`, and\n`model_ref` and `confidence` are taken from the stored annotation. An edit\nchanges what a label says, never who made it.\n\nAll-or-nothing, and `detail.index` names the culprit, exactly as on the POST.\nAn asset whose labeling is over is 409 `ASSET_NOT_WRITABLE`, as on the POST,\nand so are the two gates around it: a batch that is not open for annotation\nis 409 `BATCH_NOT_IN_ANNOTATION` and a job that was completed is 409\n`JOB_FINISHED`. An annotation a track observes keeps the track's class: an\nedit to any other class is 409 `TRACK_CLASS_MISMATCH`, so change the track's\nclass instead. An edit is a write, and every gate that stops a new label\nstops a replacement too \u2014 including 409 `CALIBRATION_MISSING` and 422\n`CALIBRATION_RESOLUTION_MISMATCH` for a 3D label, and on a scan 409\n`CALIBRATION_MISSING` for a source declaring no frame and 422\n`INVALID_ANNOTATION` for a `bbox`, `obb`, `polygon` or `polyline`.",
         "operationId": "update_annotations",
         "parameters": [
           {
@@ -12844,7 +12953,7 @@
         ]
       },
       "post": {
-        "description": "Store annotations, judged against the version this job's batch pinned.\n\nAll-or-nothing: every annotation is validated before any of them is written,\nso a payload with one bad box stores nothing at all. A half-labeled asset is\nnot a state a client can reach.\n\nA refusal that is about one item carries `detail.index` \u2014 the position in the\narray you sent \u2014 because nothing was written and the message alone cannot say\nwhich one it was. `schema_version` is not yours to set: the pinned version is\nstamped onto whatever you send, and comes back on the response.\n\nAn unknown job is 404 `JOB_NOT_FOUND`. The batch must be `in_annotation`, or\nthis is 409 `BATCH_NOT_IN_ANNOTATION`, and the job itself must still be open:\none that was completed is 409 `JOB_FINISHED`, and a completed job has no way\nback, so the remedy is a new job over those assets rather than a retry. An\nasset the job does not carry is 422 `ASSET_NOT_IN_JOB`.\n\nAn annotation the pinned version does not describe is 422\n`INVALID_ANNOTATION`, which is the general answer; the specific ones carry\ntheir own codes \u2014 `LABEL_CLASS_NOT_IN_SCHEMA`, `DISALLOWED_GEOMETRY`,\n`MISSING_REQUIRED_ATTRIBUTE` and their kin \u2014 so a client that wants to say\nwhat is wrong reads the code rather than the status.\n\nThe asset must also still be open for labeling \u2014 `unannotated` or\n`annotated`. One that was skipped, submitted for review or accepted is 409\n`ASSET_NOT_WRITABLE`, and the message names the state it is in. The remedy is\na progress move where the table allows one (`skipped` back to `unannotated`);\n`accepted` has no exit, so correcting it means a new batch. Read\n`allowed_actions` on the batch's asset listing rather than guessing: it\ndeclares `annotate` exactly when this will be accepted.\n\nA 3D label (`polyline_3d`, `cuboid_3d`) on an image is read against its\nasset's calibration \u2014 the asset's own, else its source's. With neither this\nis 409 `CALIBRATION_MISSING`, and with one measured at another size than the\nasset it is 422 `CALIBRATION_RESOLUTION_MISMATCH`; set a fitting calibration\nand resend.\n\nOn a point-cloud scan a 3D label is read against the frame its source\ndeclares and needs no calibration; a source declaring no frame is 409\n`CALIBRATION_MISSING`. A scan has no pixels, so a `bbox`, `polygon` or\n`polyline` on one is 422 `INVALID_ANNOTATION`.",
+        "description": "Store annotations, judged against the version this job's batch pinned.\n\nAll-or-nothing: every annotation is validated before any of them is written,\nso a payload with one bad box stores nothing at all. A half-labeled asset is\nnot a state a client can reach.\n\nA refusal that is about one item carries `detail.index` \u2014 the position in the\narray you sent \u2014 because nothing was written and the message alone cannot say\nwhich one it was. `schema_version` is not yours to set: the pinned version is\nstamped onto whatever you send, and comes back on the response.\n\nAn unknown job is 404 `JOB_NOT_FOUND`. The batch must be `in_annotation`, or\nthis is 409 `BATCH_NOT_IN_ANNOTATION`, and the job itself must still be open:\none that was completed is 409 `JOB_FINISHED`, and a completed job has no way\nback, so the remedy is a new job over those assets rather than a retry. An\nasset the job does not carry is 422 `ASSET_NOT_IN_JOB`.\n\nAn annotation the pinned version does not describe is 422\n`INVALID_ANNOTATION`, which is the general answer; the specific ones carry\ntheir own codes \u2014 `LABEL_CLASS_NOT_IN_SCHEMA`, `DISALLOWED_GEOMETRY`,\n`MISSING_REQUIRED_ATTRIBUTE` and their kin \u2014 so a client that wants to say\nwhat is wrong reads the code rather than the status.\n\nThe asset must also still be open for labeling \u2014 `unannotated` or\n`annotated`. One that was skipped, submitted for review or accepted is 409\n`ASSET_NOT_WRITABLE`, and the message names the state it is in. The remedy is\na progress move where the table allows one (`skipped` back to `unannotated`);\n`accepted` has no exit, so correcting it means a new batch. Read\n`allowed_actions` on the batch's asset listing rather than guessing: it\ndeclares `annotate` exactly when this will be accepted.\n\nA 3D label (`polyline_3d`, `cuboid_3d`) on an image is read against its\nasset's calibration \u2014 the asset's own, else its source's. With neither this\nis 409 `CALIBRATION_MISSING`, and with one measured at another size than the\nasset it is 422 `CALIBRATION_RESOLUTION_MISMATCH`; set a fitting calibration\nand resend.\n\nOn a point-cloud scan a 3D label is read against the frame its source\ndeclares and needs no calibration; a source declaring no frame is 409\n`CALIBRATION_MISSING`. A scan has no pixels, so a `bbox`, `obb`, `polygon`\nor `polyline` on one is 422 `INVALID_ANNOTATION`.",
         "operationId": "add_annotations",
         "parameters": [
           {
